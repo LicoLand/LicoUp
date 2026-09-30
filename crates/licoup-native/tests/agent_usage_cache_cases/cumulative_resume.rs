@@ -1,5 +1,14 @@
 use super::support::*;
 
+/// The composed inventory port one usage scan reads.
+///
+/// `agent_usage::scan` takes the port the inventory composes; this is the same
+/// value the runtime builds, and it is built per call because the fixture is a
+/// file-system arrangement rather than a composition.
+fn agent_usage_target_port() -> licoup_agent_targets::port::AgentTargetPort {
+    licoup_native::domain::target_port::agent_target_port()
+}
+
 fn params(history_root: &PathBuf, state_root: &PathBuf, now: &str) -> Value {
     agent_params("hermes", history_root, state_root, now)
 }
@@ -88,31 +97,31 @@ fn cumulative_metadata_counts_new_usage_when_an_old_session_resumes() {
     drop(connection);
     let today = params(&history_root, &state_root, "2026-07-10T12:00:00Z");
 
-    let baseline = agent_usage::scan(&today).unwrap();
+    let baseline = agent_usage::scan(&agent_usage_target_port(), &today).unwrap();
     assert_eq!(baseline["summary"]["totalTokens"], 110);
 
     update_usage(&database, 106, 14, "2026-07-10T13:00:00Z");
-    let resumed = agent_usage::scan(&today).unwrap();
+    let resumed = agent_usage::scan(&agent_usage_target_port(), &today).unwrap();
     assert_eq!(resumed["summary"]["totalTokens"], 120);
     assert_eq!(
-        agent_usage::scan(&today).unwrap()["summary"]["totalTokens"],
+        agent_usage::scan(&agent_usage_target_port(), &today).unwrap()["summary"]["totalTokens"],
         120
     );
 
     update_usage(&database, 2, 1, "2026-07-10T14:00:00Z");
     assert_eq!(
-        agent_usage::scan(&today).unwrap()["summary"]["totalTokens"],
+        agent_usage::scan(&agent_usage_target_port(), &today).unwrap()["summary"]["totalTokens"],
         120
     );
     update_usage(&database, 5, 2, "2026-07-10T15:00:00Z");
     assert_eq!(
-        agent_usage::scan(&today).unwrap()["summary"]["totalTokens"],
+        agent_usage::scan(&agent_usage_target_port(), &today).unwrap()["summary"]["totalTokens"],
         124
     );
 
     update_usage(&database, 9, 4, "2026-07-11T10:00:00Z");
     let tomorrow = params(&history_root, &state_root, "2026-07-11T12:00:00Z");
-    let rolled = agent_usage::scan(&tomorrow).unwrap();
+    let rolled = agent_usage::scan(&agent_usage_target_port(), &tomorrow).unwrap();
     assert_eq!(rolled["summary"]["totalTokens"], 130);
     assert_eq!(
         rolled["agents"][0]["history"]["scanCache"]["compactedDays"],
@@ -161,12 +170,12 @@ fn cumulative_append_rewrite_preserves_today_and_only_adds_new_delta() {
     });
 
     assert_eq!(
-        agent_usage::scan(&scan_params).unwrap()["summary"]["totalTokens"],
+        agent_usage::scan(&agent_usage_target_port(), &scan_params).unwrap()["summary"]["totalTokens"],
         120
     );
     fs::write(&wire, format!("{old}\n{today}\n")).unwrap();
     assert_eq!(
-        agent_usage::scan(&scan_params).unwrap()["summary"]["totalTokens"],
+        agent_usage::scan(&agent_usage_target_port(), &scan_params).unwrap()["summary"]["totalTokens"],
         120
     );
     fs::write(
@@ -175,7 +184,7 @@ fn cumulative_append_rewrite_preserves_today_and_only_adds_new_delta() {
     )
     .unwrap();
     assert_eq!(
-        agent_usage::scan(&scan_params).unwrap()["summary"]["totalTokens"],
+        agent_usage::scan(&agent_usage_target_port(), &scan_params).unwrap()["summary"]["totalTokens"],
         126
     );
 
@@ -210,7 +219,7 @@ fn openagent_today_query_detects_a_resumed_cross_day_session() {
         "2026-07-10T12:00:00Z",
     );
     assert_eq!(
-        agent_usage::scan(&scan_params).unwrap()["summary"]["totalTokens"],
+        agent_usage::scan(&agent_usage_target_port(), &scan_params).unwrap()["summary"]["totalTokens"],
         0
     );
     let connection = SqliteConnection::open(&database).unwrap();
@@ -223,7 +232,7 @@ fn openagent_today_query_detects_a_resumed_cross_day_session() {
         .unwrap();
     drop(connection);
     assert_eq!(
-        agent_usage::scan(&scan_params).unwrap()["summary"]["totalTokens"],
+        agent_usage::scan(&agent_usage_target_port(), &scan_params).unwrap()["summary"]["totalTokens"],
         10
     );
 

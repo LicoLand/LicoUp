@@ -42,13 +42,16 @@ pub(super) fn handle_execute(command: AdmittedCommand) -> Result<CliExecution> {
 
 fn authorize_exact_transfer(
     params: &Value,
-) -> Result<crate::platform::user_presence::UserPresenceSession> {
+) -> Result<licoup_foundation::platform::user_presence::UserPresenceSession> {
     let scope = exact_approval_scope(params)?;
     ensure!(
-        crate::platform::user_presence::available(),
+        licoup_foundation::platform::user_presence::available(),
         "mcp_transfer_user_presence_unavailable"
     );
-    crate::platform::user_presence::authorize("Approve this exact MCP transfer in LicoUp", scope)
+    licoup_foundation::platform::user_presence::authorize(
+        "Approve this exact MCP transfer in LicoUp",
+        scope,
+    )
 }
 
 fn exact_approval_scope(params: &Value) -> Result<&str> {

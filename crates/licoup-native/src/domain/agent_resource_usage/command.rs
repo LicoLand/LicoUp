@@ -11,8 +11,8 @@ pub const RESOURCE_USAGE_SCHEMA_VERSION: u64 = 1;
 
 /// Scans running agent processes and reports their resource usage.
 #[cfg_attr(not(test), allow(unused_imports))]
-pub fn scan(params: &Value) -> Result<Value> {
-    let target_scan = targets::scan_targets_with_params(params)?;
+pub fn scan(port: &crate::port::AgentTargetPort, params: &Value) -> Result<Value> {
+    let target_scan = targets::scan_targets_with_params(port, params)?;
     let candidates = injected_targets(params).unwrap_or_else(|| {
         target_scan
             .get("candidates")
@@ -147,7 +147,7 @@ mod tests {
                 snapshot(20, "Finder", 512),
             ]).unwrap(),
         });
-        let report = scan(&params).unwrap();
+        let report = scan(&crate::domain::target_port::agent_target_port(), &params).unwrap();
         assert_eq!(report["ok"], true);
         assert_eq!(report["schemaVersion"], 1);
         let agents = report["agents"].as_array().unwrap();
@@ -174,7 +174,7 @@ mod tests {
                 json!({"pid": 1, "name": "codex", "rssBytes": 10})
             ]).unwrap(),
         });
-        let report = scan(&params).unwrap();
+        let report = scan(&crate::domain::target_port::agent_target_port(), &params).unwrap();
         let codex = report["agents"]
             .as_array()
             .unwrap()

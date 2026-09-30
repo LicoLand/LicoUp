@@ -29,7 +29,7 @@ fn catalog_ids_without_a_point_adapter_use_the_generic_lane() {
 
 #[test]
 fn unknown_id_still_rejects_as_unsupported_adapter() {
-    let error = send_message(&json!({"agent": "unknown-cli-agent", "text": "hello"})).unwrap_err();
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &json!({"agent": "unknown-cli-agent", "text": "hello"})).unwrap_err();
     assert!(error.to_string().contains("unsupported runtime adapter"));
 }
 

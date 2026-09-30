@@ -16,8 +16,12 @@ pub(super) const DEFAULT_STALE_AFTER_SECONDS: u64 = 3600;
 
 /// Quota capability flags embedded in the packaged native-capability
 /// inventory so the UI can tell which agents have a quota source.
+// The packaged native-capability inventory moved to `licoup-agent-drivers`
+// with the registry that owns it, and an `include_str!` is a move rather than
+// a dependency: this reads the embedded document from the crate that embeds
+// it instead of re-reading a path that no longer exists.
 const NATIVE_CAPABILITY_JSON: &str =
-    include_str!("../../../resources/agent-native-capabilities.json");
+    licoup_agent_drivers::runtime_adapters::registry::NATIVE_CAPABILITY_JSON;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "lowercase")]

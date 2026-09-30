@@ -95,7 +95,7 @@ pub(super) fn handle_snapshots_archive(command: AdmittedCommand) -> Result<CliEx
     );
     let result = match route {
         ["snapshots", "archive", "collect"] => {
-            crate::domain::conversation_snapshots::archive_collect(&params)?
+            crate::domain::conversation_snapshots::archive_collect(&crate::domain::target_port::agent_target_port(), &params)?
         }
         ["snapshots", "archive", "run"] => {
             crate::domain::conversation_snapshots::archive_run(&params)?
@@ -107,10 +107,10 @@ pub(super) fn handle_snapshots_archive(command: AdmittedCommand) -> Result<CliEx
             crate::domain::conversation_snapshots::archive_report(&params)?
         }
         ["snapshots", "archive", "jobs", "preview"] => {
-            crate::domain::conversation_archive_jobs::preview(&params)?
+            crate::domain::conversation_archive_jobs::preview(&crate::domain::target_port::agent_target_port(), &params)?
         }
         ["snapshots", "archive", "jobs", "create"] => {
-            crate::domain::conversation_archive_jobs::create(&params)?
+            crate::domain::conversation_archive_jobs::create(&crate::domain::target_port::agent_target_port(), &params)?
         }
         ["snapshots", "archive", "jobs", "status"] => {
             crate::domain::conversation_archive_jobs::status(&params)?
@@ -125,7 +125,10 @@ pub(super) fn handle_snapshots_archive(command: AdmittedCommand) -> Result<CliEx
             crate::domain::conversation_archive_jobs::cancel(&params)?
         }
         ["snapshots", "archive", "jobs", "drain"] => {
-            crate::domain::conversation_archive_jobs::drain(&params)?
+            crate::domain::conversation_archive_jobs::drain(
+                &crate::domain::target_port::agent_target_port(),
+                &params,
+            )?
         }
         _ => {
             return Err(super::handler_error("command_failed", "use_cli_help").into());

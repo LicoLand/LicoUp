@@ -489,19 +489,22 @@ impl ConversationService {
                 let authority = super::production_snapshot_authority();
                 let snapshots =
                     super::project_profile_snapshots(conversation_id, &pairs, &authority);
-                let candidates =
-                    super::rank_candidates(snapshots, &filters).map_err(anyhow::Error::msg)?;
+                let candidates = super::rank_candidates(snapshots.clone(), &filters)
+                    .map_err(anyhow::Error::msg)?;
                 Ok(json!({
                     "candidates": serde_json::to_value(&candidates)?,
-                    "routeReceipt": route_receipt(conversation_id, &candidates),
-                    "timeoutPolicy": crate::domain::dispatch_timeout_policy::policy_envelope(
-                        &crate::domain::dispatch_timeout_policy::load_or_default(),
+                    // The receipt covers every projected participant, so an
+                    // Agent whose owner could not be read is named as unknown
+                    // instead of disappearing from the live capability view.
+                    "routeReceipt": route_receipt(conversation_id, &snapshots, &filters),
+                    "timeoutPolicy": licoup_application::dispatch_timeout_policy::policy_envelope(
+                        &licoup_application::dispatch_timeout_policy::load_or_default(),
                     ),
                 }))
             }
             "timeout.policy.get" => {
-                let mut envelope = crate::domain::dispatch_timeout_policy::policy_envelope(
-                    &crate::domain::dispatch_timeout_policy::load_or_default(),
+                let mut envelope = licoup_application::dispatch_timeout_policy::policy_envelope(
+                    &licoup_application::dispatch_timeout_policy::load_or_default(),
                 );
                 envelope["ok"] = json!(true);
                 Ok(envelope)
@@ -513,9 +516,10 @@ impl ConversationService {
                         .cloned()
                         .ok_or_else(|| anyhow!("invalid_request"))?,
                 )?;
-                let stored = crate::domain::dispatch_timeout_policy::store(&policy)
+                let stored = licoup_application::dispatch_timeout_policy::store(&policy)
                     .map_err(anyhow::Error::msg)?;
-                let mut envelope = crate::domain::dispatch_timeout_policy::policy_envelope(&stored);
+                let mut envelope =
+                    licoup_application::dispatch_timeout_policy::policy_envelope(&stored);
                 envelope["ok"] = json!(true);
                 Ok(envelope)
             }
@@ -1774,7 +1778,7 @@ impl ConversationService {
                 // Pre-dispatch rejection: settle the turn only when its
                 // dispatch was never opened. An opened dispatch already
                 // belongs to the completion authority.
-                let projected = serde_json::to_value(error.client_error())?;
+                let projected = serde_json::to_value(crate::platform::runtime_adapters::client_error::client_error(&error))?;
                 let diagnostic = serde_json::to_string(&json!({
                     "code": safe_failure_field(
                         &projected,
@@ -1862,11 +1866,23 @@ fn unwrap_strategy_execute(value: Value) -> std::result::Result<Value, Value> {
 }
 
 /// Privacy-safe immutable decision evidence. It freezes the exact allowlisted
-/// facts and source revisions used for ranking; it is not a mutable catalog.
+/// facts, their projection states and the source revisions used for ranking and
+/// admission; it is not a mutable catalog. This is the live capability view a
+/// client and an Agent read while work is being assigned.
 pub(crate) fn route_receipt(
     conversation_id: &str,
     snapshots: &[super::MembershipProfileSnapshot],
+    filters: &super::CandidateFilters,
 ) -> Value {
+    let admission = super::admit_profile_candidates(snapshots, filters);
+    let ranked_membership_ids = super::rank_candidates(snapshots.to_vec(), filters)
+        .map(|ranked| {
+            ranked
+                .into_iter()
+                .map(|snapshot| snapshot.membership_id)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     json!({
         "conversationId": conversation_id,
         "sourceRevisions": [
@@ -1877,10 +1893,26 @@ pub(crate) fn route_receipt(
             {"source": "skillHub", "revision": "request-snapshot-v1"},
             {"source": "assistantWorkflowAuthoringBundle", "revision": "v1"},
         ],
-        "rankedMembershipIds": snapshots
-            .iter()
-            .map(|snapshot| snapshot.membership_id.clone())
-            .collect::<Vec<_>>(),
+        "rankedMembershipIds": ranked_membership_ids,
+        "resolved": admission.resolved().map(|choice| json!({
+            "membershipId": choice.membership_id,
+            "agentId": choice.agent_id,
+            "model": choice.model,
+            "reasoningEffort": choice.reasoning_effort,
+            "origin": choice.origin.wire_name(),
+            "reason": choice.reason,
+        })),
+        "refusal": admission.refusal().map(|refusal| json!({
+            "requirement": refusal.requirement,
+            "outcome": refusal.outcome.map(super::RequirementOutcome::wire_name),
+            "unknownMembershipIds": refusal.unknown_membership_ids,
+            "reason": refusal.reason,
+        })),
+        "requirements": admission.requirements().iter().map(|requirement| json!({
+            "requirement": requirement.requirement,
+            "outcome": requirement.outcome.wire_name(),
+            "unknownMembershipIds": requirement.unknown_membership_ids,
+        })).collect::<Vec<_>>(),
         "candidates": snapshots.iter().map(|snapshot| json!({
             "membershipId": snapshot.membership_id,
             "profileRevision": snapshot.intent_revision,
@@ -2920,7 +2952,7 @@ mod tests {
             // dispatch tests do.
             let mut admitted = params.clone();
             admitted["binaryPath"] = json!("/bin/sh");
-            let result = send_message(&admitted);
+            let result = send_message(&crate::domain::target_port::agent_target_port(), &admitted);
             recorded
                 .lock()
                 .unwrap()

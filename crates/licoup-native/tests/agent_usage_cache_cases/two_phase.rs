@@ -1,4 +1,13 @@
 use super::support::*;
+
+/// The composed inventory port one usage scan reads.
+///
+/// `agent_usage::scan` takes the port the inventory composes; this is the same
+/// value the runtime builds, and it is built per call because the fixture is a
+/// file-system arrangement rather than a composition.
+fn agent_usage_target_port() -> licoup_agent_targets::port::AgentTargetPort {
+    licoup_native::domain::target_port::agent_target_port()
+}
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -53,7 +62,7 @@ fn native_usage_keeps_connection_opens_bounded_across_roots() {
     }
 
     for (params, _, _) in &params_by_root {
-        let cold = agent_usage::scan(params).unwrap();
+        let cold = agent_usage::scan(&agent_usage_target_port(), params).unwrap();
         let scan_cache = &cold["agents"][0]["history"]["scanCache"];
         assert_eq!(scan_cache["connectionOpens"], 2);
         assert_eq!(scan_cache["leases"], 3);
@@ -61,7 +70,7 @@ fn native_usage_keeps_connection_opens_bounded_across_roots() {
     }
 
     let (first_params, first_root, first_state) = &params_by_root[0];
-    let repeated = agent_usage::scan(first_params).unwrap();
+    let repeated = agent_usage::scan(&agent_usage_target_port(), first_params).unwrap();
     let scan_cache = &repeated["agents"][0]["history"]["scanCache"];
     assert!(scan_cache["connectionOpens"].as_u64().unwrap() <= 2);
     assert_eq!(scan_cache["leases"], 3);
@@ -78,7 +87,7 @@ fn native_usage_unstable_source_applies_nothing_and_warns() {
     write_native_events(&transcript, 60_000);
     let params = native_params(&history_root, &state_root, "2026-07-10T12:00:00Z");
 
-    let cold = agent_usage::scan(&params).unwrap();
+    let cold = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     assert!(cold["summary"]["totalTokens"].as_u64().unwrap() > 0);
 
     let cache = state_root.join("agent-usage-rollups-v2.sqlite3");
@@ -108,7 +117,7 @@ fn native_usage_unstable_source_applies_nothing_and_warns() {
     assert_eq!(snapshot_sources, 1);
 
     let scan_params = params.clone();
-    let scan_handle = thread::spawn(move || agent_usage::scan(&scan_params));
+    let scan_handle = thread::spawn(move || agent_usage::scan(&agent_usage_target_port(), &scan_params));
     let stop = Arc::new(AtomicBool::new(false));
     let writer_stop = Arc::clone(&stop);
     let append_path = transcript.clone();
@@ -163,7 +172,7 @@ fn native_usage_unstable_source_applies_nothing_and_warns() {
     assert_eq!(sources, snapshot_sources);
     assert_eq!(parsed, snapshot_parsed);
 
-    let recovered = agent_usage::scan(&params).unwrap();
+    let recovered = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     assert!(
         recovered["summary"]["totalTokens"].as_u64().unwrap()
             > cold["summary"]["totalTokens"].as_u64().unwrap()

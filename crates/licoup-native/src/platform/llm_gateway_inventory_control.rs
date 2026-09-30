@@ -272,7 +272,10 @@ mod tests {
         }
         assert!(socket.exists());
 
-        let readiness = include_str!("../../resources/agent-conversation-readiness.json");
+        // The readiness document moved to `licoup-agent-drivers` with the
+        // registry that embeds it.
+        let readiness =
+            licoup_agent_drivers::runtime_adapters::registry::READINESS_JSON;
         let mut applied = false;
         for _ in 0..40 {
             match apply_inventory_hot(&socket, readiness) {

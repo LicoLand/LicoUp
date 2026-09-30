@@ -216,6 +216,71 @@ impl ProfileIntentUpdate {
     }
 }
 
+/// Projection state of one capability fact. `Unknown` means the owner could
+/// not be read or the Agent is not in that owner's inventory; it is never the
+/// same answer as a fact the owner was read and did not declare.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CapabilityFactState {
+    Declared,
+    NotDeclared,
+    Unknown,
+}
+
+impl CapabilityFactState {
+    pub fn wire_name(self) -> &'static str {
+        match self {
+            Self::Declared => "declared",
+            Self::NotDeclared => "not-declared",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "declared" => Some(Self::Declared),
+            "not-declared" => Some(Self::NotDeclared),
+            "unknown" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+
+    /// Only a declared fact satisfies a requirement.
+    pub fn satisfies_requirement(self) -> bool {
+        self == Self::Declared
+    }
+}
+
+/// One projected capability fact of one participant: the fact name, its state
+/// and the logical owner that produced it. The source names an owner, never a
+/// local path or a runtime value.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CapabilityFact {
+    pub name: String,
+    pub state: CapabilityFactState,
+    pub source: String,
+}
+
+impl CapabilityFact {
+    pub fn new(name: impl Into<String>, state: CapabilityFactState, source: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            state,
+            source: source.into(),
+        }
+    }
+
+    /// The state this participant reports for one fact name. A participant
+    /// that never answers for the name reports nothing at all.
+    pub fn state_of(capabilities: &[CapabilityFact], name: &str) -> Option<CapabilityFactState> {
+        capabilities
+            .iter()
+            .find(|fact| fact.name == name)
+            .map(|fact| fact.state)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MembershipProfileSnapshot {
@@ -238,8 +303,10 @@ pub struct MembershipProfileSnapshot {
     pub preferred_environment: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Projected capability facts with their state and owner. A requirement is
+    /// satisfied only by a declared fact here.
     #[serde(default)]
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<CapabilityFact>,
     #[serde(default)]
     pub skills: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

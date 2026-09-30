@@ -72,7 +72,9 @@ fn declared_flags(matrix: Option<&Value>) -> BTreeMap<String, bool> {
 
 /// The existing conversation lane, reached the way the strategy actor effect
 /// already reaches it.
-pub(crate) struct LaneEffectDispatch;
+pub(crate) struct LaneEffectDispatch {
+    pub(crate) port: crate::port::AgentTargetPort,
+}
 
 impl EffectDispatch for LaneEffectDispatch {
     fn deliver(&self, invocation: &EffectInvocation) -> EffectDelivery {
@@ -95,7 +97,7 @@ impl EffectDispatch for LaneEffectDispatch {
                 }
             }
         }
-        let response = match crate::platform::dispatch_lane_operation("send", &params) {
+        let response = match crate::platform::dispatch_lane_operation(&self.port, "send", &params) {
             Ok(value) => value,
             Err(_) => {
                 return EffectDelivery::unconfirmed(
@@ -132,7 +134,7 @@ impl EffectDispatch for LaneEffectDispatch {
         if let Some(instruction) = instruction {
             params["text"] = Value::String(instruction.to_owned());
         }
-        let response = match crate::platform::dispatch_lane_operation(operation, &params) {
+        let response = match crate::platform::dispatch_lane_operation(&self.port, operation, &params) {
             Ok(value) => value,
             Err(_) => {
                 // The lane call failed. That alone cannot establish whether the
@@ -397,7 +399,9 @@ mod tests {
             },
             state: EffectState::InFlight,
         };
-        let dispatch = LaneEffectDispatch;
+        let dispatch = LaneEffectDispatch {
+            port: crate::domain::target_port::agent_target_port(),
+        };
         // The adapter id does not resolve: the lane call fails.
         let unresolved = dispatch.control(&handle, EffectControl::Cancel, None);
         assert_eq!(unresolved.disposition, ControlDisposition::Unconfirmed);

@@ -39,16 +39,22 @@ pub fn archive_report(params: &Value) -> Result<Value> {
     super::conversation::snapshots::archive_report(params)
 }
 
-pub fn archive_collect(params: &Value) -> Result<Value> {
-    super::conversation::snapshots::archive_collect(params)
+pub fn archive_collect(port: &crate::port::AgentTargetPort, params: &Value) -> Result<Value> {
+    super::conversation::snapshots::archive_collect(port, params)
 }
 
-pub(crate) fn archive_selection_preview(params: &Value) -> Result<Value> {
-    super::conversation::snapshots::archive_selection_preview(params)
+pub(crate) fn archive_selection_preview(
+    port: &crate::port::AgentTargetPort,
+    params: &Value,
+) -> Result<Value> {
+    super::conversation::snapshots::archive_selection_preview(port, params)
 }
 
-pub(crate) fn archive_selection_collect(params: &Value) -> Result<Value> {
-    super::conversation::snapshots::archive_selection_collect(params)
+pub(crate) fn archive_selection_collect(
+    port: &crate::port::AgentTargetPort,
+    params: &Value,
+) -> Result<Value> {
+    super::conversation::snapshots::archive_selection_collect(port, params)
 }
 
 pub fn collect(params: &Value) -> Result<Value> {

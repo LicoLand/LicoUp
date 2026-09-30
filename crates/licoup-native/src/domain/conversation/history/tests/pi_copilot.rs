@@ -47,7 +47,7 @@ fn pi_session_jsonl_history_preserves_native_session_and_roles() {
     assert_eq!(agent["usage"]["totalTokens"], 15);
 
     let usage_state = temp_dir("pi-exact-usage-state");
-    let usage = crate::domain::agent_usage::scan(&json!({
+    let usage = crate::domain::agent_usage::scan(&crate::domain::target_port::agent_target_port(), &json!({
         "agent": "pi",
         "root": display_path(&root),
         "stateRoot": display_path(&usage_state),

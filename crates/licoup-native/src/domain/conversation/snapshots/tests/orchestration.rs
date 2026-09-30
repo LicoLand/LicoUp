@@ -52,7 +52,7 @@ fn archive_collect_derives_profile_scans_targets_and_writes_destination() {
         )
         .unwrap();
 
-    let result = archive_collect(&json!({
+    let result = archive_collect(&crate::domain::target_port::agent_target_port(), &json!({
         "stateRoot": display_path(&state),
         "homeDir": display_path(&home),
         "agent": "codex",

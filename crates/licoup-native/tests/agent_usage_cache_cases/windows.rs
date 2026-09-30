@@ -1,5 +1,14 @@
 use super::support::*;
 
+/// The composed inventory port one usage scan reads.
+///
+/// `agent_usage::scan` takes the port the inventory composes; this is the same
+/// value the runtime builds, and it is built per call because the fixture is a
+/// file-system arrangement rather than a composition.
+fn agent_usage_target_port() -> licoup_agent_targets::port::AgentTargetPort {
+    licoup_native::domain::target_port::agent_target_port()
+}
+
 #[test]
 fn codex_usage_applies_one_local_calendar_window_to_daily_and_total_values() {
     let history_root = temp_dir("codex-usage-window-history");
@@ -19,7 +28,7 @@ fn codex_usage_applies_one_local_calendar_window_to_daily_and_total_values() {
     params["timezoneOffsetMinutes"] = json!(480);
     params["now"] = json!("2026-07-10T17:00:00Z");
 
-    let report = agent_usage::scan(&params).unwrap();
+    let report = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
 
     assert_eq!(report["summary"]["windowStart"], "2026-07-11");
     assert_eq!(report["summary"]["windowEnd"], "2026-07-11");
@@ -53,7 +62,7 @@ fn codex_usage_applies_historical_timezone_transitions_per_event() {
         {"atEpochSeconds": 1772953200_i64, "offsetMinutes": -240}
     ]);
 
-    let report = agent_usage::scan(&params).unwrap();
+    let report = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     assert_eq!(report["summary"]["totalTokens"], 3);
     assert_eq!(report["window"]["timezoneTransitionCount"], 2);
     assert_eq!(

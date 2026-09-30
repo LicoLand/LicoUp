@@ -258,6 +258,7 @@ pub(crate) fn actor_fingerprint(
 }
 
 pub(crate) fn execute_actor(
+    port: &crate::port::AgentTargetPort,
     command: &RunCommand,
     authorization_digest: &str,
     binding: &crate::domain::workflow_store::BindingValue,
@@ -306,7 +307,7 @@ pub(crate) fn execute_actor(
             object.insert("workingDirectory".into(), Value::String(cwd.to_owned()));
         }
     }
-    let response = match crate::platform::dispatch_lane_operation("send", &request) {
+    let response = match crate::platform::dispatch_lane_operation(port, "send", &request) {
         Ok(value) => value,
         Err(error) => return Err(anyhow!("strategy_actor_dispatch_failed:{error}")),
     };

@@ -19,7 +19,7 @@ fn cancelled_job_is_terminal_and_never_drained() {
 
     let cancelled = cancel(&json!({"stateRoot": display_path(&state), "jobId": job_id})).unwrap();
     assert_eq!(cancelled["status"], "cancelled");
-    let drained = drain(&json!({"stateRoot": display_path(&state), "jobId": job_id})).unwrap();
+    let drained = drain(&crate::domain::target_port::agent_target_port(), &json!({"stateRoot": display_path(&state), "jobId": job_id})).unwrap();
     assert_eq!(drained["processed"], 0);
     assert_eq!(
         status(&json!({"stateRoot": display_path(&state), "jobId": job_id})).unwrap()["status"],

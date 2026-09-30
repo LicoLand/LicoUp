@@ -351,6 +351,8 @@ pub struct StrategyService {
     post_commit: Arc<PostCommitDispatcher>,
     profile_authority: crate::domain::client_conversation::SharedSnapshotAuthority,
     drive: Arc<DriveRuntime>,
+    /// The inventory facts the actor binding validation reads.
+    targets: crate::port::AgentTargetPort,
 }
 
 impl std::fmt::Debug for StrategyService {
@@ -393,6 +395,7 @@ impl StrategyService {
             post_commit,
             profile_authority: crate::domain::client_conversation::production_snapshot_authority(),
             drive: Arc::new(DriveRuntime::default()),
+            targets: crate::domain::target_port::agent_target_port(),
         }
     }
 
@@ -1348,6 +1351,7 @@ impl StrategyService {
             BindingKind::Actor => {
                 actor_fingerprint(value_id, "", "")?;
                 let capabilities = crate::platform::dispatch_lane_operation(
+                    &self.targets,
                     "capabilities",
                     &json!({"agent": value_id}),
                 )
@@ -2310,8 +2314,15 @@ impl StrategyService {
         expected_fingerprint: &str,
     ) -> Result<(Value, bool)> {
         let Some(conversation_id) = conversation_id.filter(|value| !value.is_empty()) else {
-            return execute_actor(command, authorization_digest, binding, permit, cwd)
-                .map(|value| (value, false));
+            return execute_actor(
+                &self.targets,
+                command,
+                authorization_digest,
+                binding,
+                permit,
+                cwd,
+            )
+            .map(|value| (value, false));
         };
         // A Conversation-bound run must run a registered Membership
         // PersistentTurn. The entry command carries the pre-registered handle;
@@ -4579,7 +4590,11 @@ mod tests {
                 status: Some("available".to_owned()),
                 model: Some("model-a".to_owned()),
                 environment: Some("local".to_owned()),
-                capabilities: vec!["conversationDriver:supported".to_owned()],
+                capabilities: vec![crate::domain::client_conversation::CapabilityFact::new(
+                    "conversationDriver:supported",
+                    crate::domain::client_conversation::CapabilityFactState::Declared,
+                    "conversation-readiness",
+                )],
                 readiness: Some(self.readiness.to_owned()),
                 reliability_class: Some("verified".to_owned()),
                 latency_class: Some(1),
@@ -4604,7 +4619,7 @@ mod tests {
 
         fn skill_names(&mut self, _agent_id: &str) -> Vec<String> {
             *self.calls.lock().unwrap().entry("skills").or_default() += 1;
-            vec![crate::domain::client_conversation::LICOUP_GUIDE_SKILL_ID.to_owned()]
+            vec![licoup_mcp::guide_skill::LICOUP_GUIDE_SKILL_ID.to_owned()]
         }
     }
 
@@ -4636,7 +4651,11 @@ mod tests {
             Some(crate::domain::client_conversation::TargetFacts {
                 model: Some("model-a".to_owned()),
                 environment: Some("local".to_owned()),
-                capabilities: vec!["conversationDriver:supported".to_owned()],
+                capabilities: vec![crate::domain::client_conversation::CapabilityFact::new(
+                    "conversationDriver:supported",
+                    crate::domain::client_conversation::CapabilityFactState::Declared,
+                    "conversation-readiness",
+                )],
                 readiness: Some("ready".to_owned()),
                 ..Default::default()
             })
@@ -4681,7 +4700,7 @@ mod tests {
                     .unwrap();
                 self.mutated = true;
             }
-            vec![crate::domain::client_conversation::LICOUP_GUIDE_SKILL_ID.to_owned()]
+            vec![licoup_mcp::guide_skill::LICOUP_GUIDE_SKILL_ID.to_owned()]
         }
     }
 

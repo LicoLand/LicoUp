@@ -1,5 +1,5 @@
 use super::errors::ProtocolFailure;
-use crate::platform::native_agent_parser::Transition;
+use licoup_agent_adapter_sdk::Transition;
 use serde_json::Value;
 
 pub(in crate::platform) const RUNTIME_PROTOCOL: &str = "lico-agent-rpc-stdio-jsonl";

@@ -17,7 +17,7 @@ fn archive_and_verify_state_machine_reaches_completed() {
     .unwrap();
     let job_id = created["jobId"].as_str().unwrap();
 
-    let drained = drain(&json!({
+    let drained = drain(&crate::domain::target_port::agent_target_port(), &json!({
         "stateRoot": display_path(&state),
         "jobId": job_id
     }))

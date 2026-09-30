@@ -1,5 +1,8 @@
 use super::super::adapter::adapter_for_agent;
-use super::super::dispatch::{params_with_workspace, send_message};
+use super::super::dispatch::params_with_workspace;
+// The composition's entry point, not the moved crate's raw one: this one
+// installs the host before it dispatches, exactly as production does.
+use super::super::send_message;
 use super::super::params::message_param;
 use super::super::{RuntimeAdapter, RuntimeAdapterError};
 use serde_json::json;
@@ -86,9 +89,20 @@ fn codex_params(
     })
 }
 
+/// Write one synthetic executable that records its own launch. A refusal that
+/// leaves no record proves the driver was never started.
+#[cfg(unix)]
+fn executable_script(path: &Path, body: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::write(path, body).unwrap();
+    let mut permissions = fs::metadata(path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions).unwrap();
+}
+
 #[test]
 fn deepseek_send_reaches_native_validation_without_claiming_release_readiness() {
-    let result = send_message(&json!({
+    let result = send_message(&crate::domain::target_port::agent_target_port(), &json!({
         "agent": "deepseek-harness",
         "text": "synthetic prompt",
         "workingDirectory": "/synthetic",
@@ -121,7 +135,7 @@ fn deepseek_assistant_guidance_uses_ordinary_wire_without_changing_user_text() {
 #[test]
 fn codex_attachments_pass_admission_and_reach_the_driver() {
     let fixture = AttachmentFixture::new();
-    let result = send_message(&codex_params(
+    let result = send_message(&crate::domain::target_port::agent_target_port(), &codex_params(
         &fixture,
         vec![
             fixture.attachment("sel-1", &fixture.png),
@@ -155,7 +169,7 @@ fn attachment_only_send_is_accepted_for_codex() {
         "cwd": fixture.directory.to_string_lossy()
     });
     let result =
-        send_message(&params).expect("attachment-only sends must not be rejected as missing text");
+        send_message(&crate::domain::target_port::agent_target_port(), &params).expect("attachment-only sends must not be rejected as missing text");
     assert_eq!(result["ok"], false);
     let code = result["error"]["code"].as_str().unwrap_or_default();
     assert!(code.starts_with("codex_"), "got {code}");
@@ -164,7 +178,7 @@ fn attachment_only_send_is_accepted_for_codex() {
 #[test]
 fn non_codex_adapter_rejects_attachments_before_launch() {
     let fixture = AttachmentFixture::new();
-    let error = send_message(&json!({
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &json!({
         "agent": "claude-code",
         "text": "hello",
         "attachments": [fixture.attachment("sel-1", &fixture.png)],
@@ -182,7 +196,7 @@ fn non_codex_adapter_rejects_attachments_before_launch() {
 #[test]
 fn virtual_machine_transport_rejects_attachments_before_launch() {
     let fixture = AttachmentFixture::new();
-    let error = send_message(&json!({
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &json!({
         "agent": "openclaw",
         "text": "hello",
         "attachments": [fixture.attachment("sel-1", &fixture.png)],
@@ -209,7 +223,7 @@ fn excessive_attachment_list_is_rejected_before_launch() {
     let attachments = (0..5)
         .map(|index| fixture.attachment(&format!("sel-{index}"), &fixture.png))
         .collect();
-    let error = send_message(&codex_params(&fixture, attachments)).unwrap_err();
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &codex_params(&fixture, attachments)).unwrap_err();
     assert_eq!(error, RuntimeAdapterError::AttachmentListExceeded);
 }
 
@@ -279,7 +293,7 @@ fn malformed_attachment_shapes_are_rejected_before_launch() {
         ),
     ];
     for (params, expected) in cases {
-        assert_eq!(send_message(&params).unwrap_err(), expected);
+        assert_eq!(send_message(&crate::domain::target_port::agent_target_port(), &params).unwrap_err(), expected);
     }
 }
 
@@ -290,7 +304,7 @@ fn symlink_and_non_regular_attachments_are_rejected_before_launch() {
     {
         let link = fixture.directory.join("linked.png");
         std::os::unix::fs::symlink(&fixture.png, &link).unwrap();
-        let error = send_message(&json!({
+        let error = send_message(&crate::domain::target_port::agent_target_port(), &json!({
             "agent": "codex",
             "text": "hello",
             "attachments": [fixture.attachment("sel-1", &link)]
@@ -299,7 +313,7 @@ fn symlink_and_non_regular_attachments_are_rejected_before_launch() {
         assert_eq!(error, RuntimeAdapterError::AttachmentSymlinkRejected);
     }
 
-    let error = send_message(&json!({
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &json!({
         "agent": "codex",
         "text": "hello",
         "attachments": [fixture.attachment("sel-1", &fixture.directory)]
@@ -312,7 +326,7 @@ fn symlink_and_non_regular_attachments_are_rejected_before_launch() {
 fn missing_attachment_file_is_rejected_before_launch() {
     let fixture = AttachmentFixture::new();
     let missing = fixture.directory.join("missing.png");
-    let error = send_message(&json!({
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &json!({
         "agent": "codex",
         "text": "hello",
         "attachments": [fixture.attachment("sel-1", &missing)]
@@ -326,7 +340,7 @@ fn mismatched_signature_is_rejected_before_launch() {
     let fixture = AttachmentFixture::new();
     let wrong = fixture.directory.join("wrong.png");
     fs::write(&wrong, b"not-an-image").unwrap();
-    let error = send_message(&json!({
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &json!({
         "agent": "codex",
         "text": "hello",
         "attachments": [fixture.attachment("sel-1", &wrong)]
@@ -343,7 +357,7 @@ fn oversized_attachment_file_is_rejected_before_launch() {
     let file = fs::OpenOptions::new().write(true).open(&oversized).unwrap();
     file.set_len(4 * 1024 * 1024 + 1).unwrap();
     drop(file);
-    let error = send_message(&json!({
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &json!({
         "agent": "codex",
         "text": "hello",
         "attachments": [fixture.attachment("sel-1", &oversized)]
@@ -395,7 +409,7 @@ fn message_body_is_not_normalized() {
 #[test]
 fn message_beyond_the_removed_shared_cap_reaches_native_admission() {
     let oversized = "x".repeat(1024 * 1024 + 1);
-    let error = send_message(&json!({
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &json!({
         "agent": "codex",
         "text": oversized,
         "binaryPath": "/runtime/must-not-launch"
@@ -407,7 +421,7 @@ fn message_beyond_the_removed_shared_cap_reaches_native_admission() {
 
 #[test]
 fn configured_command_fallback_has_been_removed() {
-    let error = send_message(&json!({
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &json!({
         "agent": "claude-code",
         "text": "private prompt",
         "binary": "/definitely/not/a/claude-binary",
@@ -435,7 +449,7 @@ fn invalid_explicit_runtime_bounds_are_rejected_instead_of_clamped() {
         });
         request[field] = value;
         assert_eq!(
-            send_message(&request).unwrap_err(),
+            send_message(&crate::domain::target_port::agent_target_port(), &request).unwrap_err(),
             RuntimeAdapterError::InvalidRuntimeSetting { field }
         );
     }
@@ -465,6 +479,188 @@ fn a_local_turn_republishes_only_the_resolved_workspace() {
 
 #[test]
 fn unknown_runtime_adapter_is_rejected() {
-    let error = send_message(&json!({"agent": "unknown", "text": "hello"})).unwrap_err();
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &json!({"agent": "unknown", "text": "hello"})).unwrap_err();
     assert!(error.to_string().contains("unsupported runtime adapter"));
+}
+
+/// The image admission reads the projected fact instead of naming an adapter:
+/// an Agent whose owner was read and does not list image input is refused
+/// before any process starts, and the arranged request is not rewritten.
+#[cfg(unix)]
+#[test]
+fn an_agent_without_declared_image_input_is_refused_before_any_launch() {
+    let fixture = AttachmentFixture::new();
+    let marker = fixture.directory.join("launched.marker");
+    let binary = fixture.directory.join("claude");
+    executable_script(&binary, &format!("#!/bin/sh\ntouch {}\n", marker.display()));
+    let text = "  exact synthetic prompt  \n";
+    let params = json!({
+        "agent": "claude-code",
+        "text": text,
+        "sessionId": "native-session:exact-1",
+        "binary": binary.to_string_lossy(),
+        "attachments": [fixture.attachment("sel-1", &fixture.png)],
+    });
+    let arranged = serde_json::to_string(&params).unwrap();
+
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &params).unwrap_err();
+    assert_eq!(
+        error,
+        RuntimeAdapterError::AttachmentUnsupportedForAdapter {
+            agent_label: "claude-code".to_owned()
+        }
+    );
+    assert!(
+        !marker.exists(),
+        "the driver must not be launched for an undeclared image action"
+    );
+    assert_eq!(serde_json::to_string(&params).unwrap(), arranged);
+    assert_eq!(
+        message_param(&params, &["text"]).as_deref(),
+        Some(text),
+        "the original text is preserved byte for byte"
+    );
+    assert_eq!(params["sessionId"], json!("native-session:exact-1"));
+}
+
+/// A Profile requirement that no declared fact satisfies is refused at the
+/// dispatch entry, names the fact, and never launches the driver.
+#[cfg(unix)]
+#[test]
+fn an_unsatisfied_capability_requirement_is_refused_before_any_launch() {
+    let fixture = AttachmentFixture::new();
+    let marker = fixture.directory.join("launched.marker");
+    let binary = fixture.directory.join("claude");
+    executable_script(&binary, &format!("#!/bin/sh\ntouch {}\n", marker.display()));
+    let text = "  exact synthetic prompt  \n";
+    let params = json!({
+        "agent": "claude-code",
+        "text": text,
+        "sessionId": "native-session:exact-1",
+        "binary": binary.to_string_lossy(),
+        "requiredCapabilities": ["image-input"],
+    });
+    let arranged = serde_json::to_string(&params).unwrap();
+
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &params).unwrap_err();
+    assert_eq!(
+        error,
+        RuntimeAdapterError::CapabilityRequirementUnsatisfied {
+            capability: "image-input".to_owned()
+        }
+    );
+    assert!(error.to_string().contains("capability"));
+    assert!(
+        !marker.exists(),
+        "the driver must not be launched for an unsatisfied requirement"
+    );
+    assert_eq!(serde_json::to_string(&params).unwrap(), arranged);
+    assert_eq!(message_param(&params, &["text"]).as_deref(), Some(text));
+    assert_eq!(params["sessionId"], json!("native-session:exact-1"));
+}
+
+/// A requirement only a declared fact satisfies; the identity of the Agent is
+/// irrelevant, the fact is not.
+#[test]
+fn declared_capability_requirements_pass_admission() {
+    // Codex declares image input, so the requirement is satisfied and the turn
+    // reaches executable resolution instead of being refused.
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &json!({
+        "agent": "codex",
+        "text": "hello",
+        "sessionId": "native-session:exact-1",
+        "requiredCapabilities": ["image-input", "conversationDriver:supported"],
+        "binaryPath": "/runtime/must-not-launch",
+    }))
+    .unwrap_err();
+    assert_eq!(error, RuntimeAdapterError::ExecutableUnavailable);
+
+    // The same requirement on an Agent whose owner does not list it is refused.
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &json!({
+        "agent": "claude-code",
+        "text": "hello",
+        "requiredCapabilities": ["image-input"],
+        "binary": "/runtime/must-not-launch",
+    }))
+    .unwrap_err();
+    assert_eq!(
+        error,
+        RuntimeAdapterError::CapabilityRequirementUnsatisfied {
+            capability: "image-input".to_owned()
+        }
+    );
+
+    // A name outside the closed fact vocabulary cannot be satisfied either.
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &json!({
+        "agent": "codex",
+        "text": "hello",
+        "requiredCapabilities": ["not-a-capability"],
+        "binaryPath": "/runtime/must-not-launch",
+    }))
+    .unwrap_err();
+    assert_eq!(
+        error,
+        RuntimeAdapterError::CapabilityRequirementUnsatisfied {
+            capability: "not-a-capability".to_owned()
+        }
+    );
+
+    // No packaged Agent has verified readiness, so the readiness fact is
+    // not-declared rather than silently treated as satisfied.
+    let error = send_message(&crate::domain::target_port::agent_target_port(), &json!({
+        "agent": "codex",
+        "text": "hello",
+        "requiredCapabilities": ["conversationDriver:ready"],
+        "binaryPath": "/runtime/must-not-launch",
+    }))
+    .unwrap_err();
+    assert_eq!(
+        error,
+        RuntimeAdapterError::CapabilityRequirementUnsatisfied {
+            capability: "conversationDriver:ready".to_owned()
+        }
+    );
+}
+
+/// The admitted path hands the driver the arranged text and native session
+/// identity byte for byte; admission adds no normalization and no identity
+/// replacement.
+#[cfg(unix)]
+#[test]
+fn an_admitted_turn_carries_the_exact_text_and_native_identity() {
+    let fixture = AttachmentFixture::new();
+    let capture = fixture.directory.join("argv.bin");
+    let binary = fixture.directory.join("cursor-agent");
+    executable_script(
+        &binary,
+        &format!(
+            "#!/bin/sh\nfor argument in \"$@\"; do printf '%s\\0' \"$argument\"; done > {}\n",
+            capture.display()
+        ),
+    );
+    let text = "  exact synthetic prompt  \n";
+    let session = "native-session:exact-1";
+    let _ = send_message(&crate::domain::target_port::agent_target_port(), &json!({
+        "agent": "cursor",
+        "text": text,
+        "sessionId": session,
+        "binary": binary.to_string_lossy(),
+        "cwd": fixture.directory.to_string_lossy(),
+        "timeoutMs": 5_000,
+    }));
+
+    let recorded = fs::read(&capture).expect("the driver must have been launched");
+    let arguments = recorded
+        .split(|byte| *byte == 0)
+        .filter(|argument| !argument.is_empty())
+        .map(|argument| String::from_utf8_lossy(argument).into_owned())
+        .collect::<Vec<_>>();
+    assert!(
+        arguments.iter().any(|argument| argument == text),
+        "the dispatched text must match the arranged text byte for byte: {arguments:?}"
+    );
+    assert!(
+        arguments.iter().any(|argument| argument == session),
+        "the bound native session identity must be dispatched unchanged: {arguments:?}"
+    );
 }

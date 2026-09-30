@@ -10,9 +10,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
 use crate::domain::client_conversation::{
-    CandidateFilters, LICOUP_GUIDE_SKILL_ID, MembershipProfileSnapshot, ProfileResponsibility,
-    rank_candidates,
+    CandidateFilters, MembershipProfileSnapshot, ProfileResponsibility, rank_candidates,
 };
+use licoup_mcp::guide_skill::LICOUP_GUIDE_SKILL_ID;
 use licoup_workflow::{
     PreflightDiagnostic, WorkflowDiagnosticCode, WorkflowDiagnosticRecovery,
     WorkflowDiagnosticStage,
@@ -333,7 +333,8 @@ pub fn preflight_assistant_graph(
             .then_with(|| left.ordinal.cmp(&right.ordinal))
             .then_with(|| left.value_id.cmp(&right.value_id))
     });
-    let route_receipt = crate::domain::client_conversation::route_receipt(conversation_id, &ranked);
+    let route_receipt =
+        crate::domain::client_conversation::route_receipt(conversation_id, &ranked, &exact_filters);
     let digest_payload = json!({
         "workflow": definition,
         "bindings": canonical_bindings,
@@ -381,12 +382,15 @@ fn failure_code(diagnostics: &[PreflightDiagnostic]) -> &'static str {
     }
 }
 
+/// Only a declared conversation-driver fact makes the Assistant's own lane
+/// usable; an unknown answer is not a usable one.
 fn conversation_driver_available(snapshot: &MembershipProfileSnapshot) -> bool {
-    snapshot.capabilities.iter().any(|capability| {
-        matches!(
-            capability.as_str(),
-            "conversationDriver:supported" | "conversationDriver:ready"
-        )
+    snapshot.capabilities.iter().any(|fact| {
+        fact.state.satisfies_requirement()
+            && matches!(
+                fact.name.as_str(),
+                "conversationDriver:supported" | "conversationDriver:ready"
+            )
     })
 }
 
@@ -502,6 +506,7 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::client_conversation::{CapabilityFact, CapabilityFactState};
     use licoup_workflow::{MAX_ACTIVE_EFFECTS, MAX_WORKSET_ITEMS};
 
     fn workflow() -> Value {
@@ -543,7 +548,11 @@ mod tests {
             preferred_reasoning_effort: None,
             preferred_environment: None,
             model: Some("model-a".to_owned()),
-            capabilities: vec!["conversationDriver:supported".to_owned()],
+            capabilities: vec![CapabilityFact::new(
+                "conversationDriver:supported",
+                CapabilityFactState::Declared,
+                "conversation-readiness",
+            )],
             skills: if responsibility == ProfileResponsibility::Assistant {
                 vec![LICOUP_GUIDE_SKILL_ID.to_owned()]
             } else {

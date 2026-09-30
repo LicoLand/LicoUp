@@ -19,7 +19,7 @@ fn wrapper_namespaces_structured_failures_without_exposing_private_values() {
     assert!(!failure.message.contains("private"));
     assert!(matches!(
         result.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Failed { code, .. })
+        Some(licoup_agent_adapter_sdk::Transition::Failed { code, .. })
             if code == "opencode_serve_working_directory_invalid"
     ));
 }
@@ -52,7 +52,7 @@ fn serve_message_capture_keeps_private_guidance_separate_and_non_durable() {
     assert_eq!(returned.output, "answer");
     assert!(!returned.transitions.iter().any(|transition| matches!(
         transition,
-        crate::platform::native_agent_parser::Transition::Text { text, .. }
+        licoup_agent_adapter_sdk::Transition::Text { text, .. }
             if text.contains("private system guidance")
     )));
 }

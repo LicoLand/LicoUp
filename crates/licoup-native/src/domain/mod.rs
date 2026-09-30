@@ -5,11 +5,8 @@ pub mod agent_resource_usage;
 pub mod agent_usage;
 pub mod application_port;
 pub mod assistant_continuity;
-pub mod catalog_convergence;
 pub mod cli_registration;
-pub mod client_authority_registry;
 pub mod client_conversation;
-pub mod client_runtime;
 pub mod client_state_migration;
 pub mod client_update;
 pub mod collaboration_plugin;
@@ -18,29 +15,30 @@ pub mod conversation_archive_jobs;
 pub mod conversation_semantic;
 pub mod conversation_snapshots;
 pub mod conversations;
-pub mod dispatch_timeout_policy;
 pub mod history_backup;
-pub mod integration_state;
 pub mod lico_agent;
 pub mod llm_api_key_vault;
 pub mod llm_gateway;
 pub mod llm_gateway_agent_config;
 pub(crate) mod llm_gateway_stream;
-pub mod mcp_adapter;
+// The MCP adapter moved to `licoup-mcp`; the former path stays reachable for
+// the FFI command layer.
+pub use licoup_mcp::mcp_adapter;
 pub mod mobile_relay;
 pub mod model_planning;
 pub mod model_registry;
 pub mod native_roles;
-pub mod protocol_input_admission;
 pub mod provider_model_pricing;
 pub mod provider_quota;
-pub mod release_receipts;
-pub mod resource_bounds;
 pub(crate) mod secure_mesh_command_runtime;
-pub mod secure_mesh_mls;
-pub mod session_policy;
+// The product-facing MLS surface moved to `licoup-secure-mesh`, which is the
+// single authority for the secure-mesh family. The relay, FFI and mobile callers
+// that are extracted by later Nodes still reach it at this former path.
+pub use licoup_secure_mesh::domain::secure_mesh_mls;
 pub mod skill_hub;
 pub mod subagents;
+// The composition point for the Agent inventory port.
+pub mod target_port;
 pub mod targets;
 pub mod workflow_runtime;
 pub mod workflow_store;

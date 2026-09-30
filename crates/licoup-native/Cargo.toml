@@ -9,9 +9,34 @@ publish = false
 [features]
 default = []
 # Hermetic work-context constructors for integration tests. Not production.
-test-support = []
+# The interaction routes and the environment pinning helpers moved down to
+# `licoup-foundation`, the group-operation seams the MLS callers drive moved to
+# `licoup-secure-mesh`, and the relay family's fixtures moved to `licoup-relay`
+# with the trees that own them, so the feature reaches all three there.
+test-support = [
+  "licoup-foundation/test-support",
+  "licoup-secure-mesh/test-support",
+  "licoup-relay/test-support",
+  # The scan isolation seam the catalog fixtures drive moved to
+  # `licoup-agent-targets` with the targets tree, so the feature reaches there
+  # too.
+  "licoup-agent-targets/test-support",
+  # The ACP transport's replay arms, its protocol vocabulary and its session
+  # bounds, which this host's own Hermes and replay suites drive. They moved to
+  # `licoup-agent-drivers` with the trees that own them, and a `cfg(test)` seam
+  # there is compiled out of this host's test build because this host links that
+  # crate as a dependency — so the seam is a feature and this is the build that
+  # enables it.
+  "licoup-agent-drivers/test-support",
+]
 # Explicit non-production topology support. Release profiles are rejected in `lib.rs`.
-secure-mesh-acceptance-mock-kt = []
+# The Key Transparency acceptance authority moved to `licoup-secure-mesh` with the
+# module that composes it, and the directory-transparency callers that read it
+# moved to `licoup-relay`, so the feature reaches both there as well.
+secure-mesh-acceptance-mock-kt = [
+  "licoup-secure-mesh/secure-mesh-acceptance-mock-kt",
+  "licoup-relay/secure-mesh-acceptance-mock-kt",
+]
 
 [lib]
 crate-type = ["rlib", "cdylib", "staticlib"]
@@ -19,10 +44,36 @@ crate-type = ["rlib", "cdylib", "staticlib"]
 [dependencies]
 lico-catalog-convergence = { path = "../lico-catalog-convergence" }
 licoup-protocol-bindings = { path = "../licoup-protocol-bindings" }
+licoup-foundation = { path = "../licoup-foundation" }
 licoup-client-state = { path = "../licoup-client-state" }
+# The Agent inventory — the target catalog, its discovery and the packaged
+# declarations — lives in its own crate below this host. This crate consumes it
+# and re-exports the former paths; the dependency never runs the other way, and
+# the facts the inventory reads from the layers above it arrive through the
+# port `target_port` composes here.
+licoup-agent-targets = { path = "../licoup-agent-targets" }
+# The mesh cryptography now lives in its own crate. This crate consumes it and
+# re-exports the former paths from `core`; the dependency never runs the other way.
+licoup-secure-mesh = { path = "../licoup-secure-mesh" }
+# The relay's trust and transport base now lives in its own crate. This crate
+# consumes it and re-exports the former paths from `domain::mobile_relay` and
+# `platform`; the dependency never runs the other way.
+licoup-relay = { path = "../licoup-relay" }
 licoup-endpoint-core = { path = "../licoup-endpoint-core" }
 licoup-platform-bridges = { path = "../licoup-platform-bridges" }
 licoup-agent-adapters = { path = "../licoup-agent-adapters" }
+# The shared vocabulary every Agent adapter program uses — the line framing, the
+# adapter declaration, the transition vocabulary, the registry lookup and the
+# replay harness. The thirteen per-Agent parsers stay in this host until each
+# Agent's own crate exists, and this host composes them into the port that crate
+# declares.
+licoup-agent-adapter-sdk = { path = "../licoup-agent-adapter-sdk" }
+# The host-side work-context seam — the binding contract, the adapter transport,
+# the production host driver and the C01 effect port. This host consumes it and
+# composes the port it declares: the two Agents' protocol adapters and driver
+# executions, and this host's own lane reach. The dependency never runs the
+# other way, and no Agent is named in the seam.
+licoup-agent-drivers = { path = "../licoup-agent-drivers" }
 licoup-agent-runtime = { path = "../licoup-agent-runtime" }
 licoup-application = { path = "../licoup-application" }
 licoup-extension-contracts = { path = "../licoup-extension-contracts" }
@@ -30,6 +81,10 @@ licoup-workflow = { path = "../licoup-workflow" }
 licoup-workflow-runtime = { path = "../licoup-workflow-runtime" }
 licoup-workflow-store = { path = "../licoup-workflow-store" }
 licoup-conversation = { path = "../licoup-conversation" }
+# The MCP registry, transport and approval modules now live in their own crate,
+# including the bundled usage Skill's identity. This crate consumes it and keeps
+# the former module paths reachable; the dependency never runs the other way.
+licoup-mcp = { path = "../licoup-mcp" }
 anyhow.workspace = true
 thiserror.workspace = true
 base64.workspace = true
@@ -74,19 +129,12 @@ tar.workspace = true
 flate2.workspace = true
 zip.workspace = true
 
-[target.'cfg(target_os = "macos")'.dependencies]
-block2 = "0.6.2"
-core-foundation = "0.10.1"
-core-foundation-sys = "0.8.7"
-objc2 = "0.6.4"
-objc2-foundation = { version = "0.3.2", features = ["NSString"] }
-objc2-local-authentication = "0.3.2"
-security-framework = { version = "3.7.0", features = ["OSX_10_15"] }
-security-framework-sys = { version = "2.17.0", features = ["OSX_10_15"] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-dbus-secret-service = { version = "4.1.0", features = ["crypto-rust"] }
-
+# The macOS LocalAuthentication and CoreFoundation bindings moved down to
+# `licoup-foundation` with the user-presence primitive, and the Security.framework
+# and CoreFoundation bindings the platform secret store reaches moved up to
+# `licoup-secure-mesh` with that store. No code here names them, and the Linux
+# Secret Service crate followed the platform store into the same crate, so this
+# manifest declares no macOS- or Linux-only dependency of its own.
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
@@ -101,6 +149,30 @@ nix = { version = "0.27", default-features = false, features = ["fs", "user", "s
 [dev-dependencies]
 licoarc.workspace = true
 licoup-conversation = { path = "../licoup-conversation", features = ["test-counters"] }
+# The interaction routes moved to `licoup-foundation`; the tests that park and
+# wait on a route there need its test-support surface, which production builds
+# never compile.
+licoup-foundation = { path = "../licoup-foundation", features = ["test-support"] }
+licoup-agent-drivers = { path = "../licoup-agent-drivers", features = ["test-support"] }
+# The scan isolation seam the catalog fixtures drive travels behind this crate's
+# explicit feature, because `cfg(test)` is false for a dependency.
+licoup-agent-targets = { path = "../licoup-agent-targets", features = ["test-support"] }
+# The relay family's trees moved to `licoup-relay` with the fixtures and the
+# secure-command execution fixture the native suites drive, so this test build
+# enables that crate's test-support surface as well.
+licoup-relay = { path = "../licoup-relay", features = [
+  "secure-mesh-acceptance-mock-kt",
+  "test-support",
+] }
+# The Key Transparency acceptance authority moved to `licoup-secure-mesh` with
+# the module that composes it, and the group-operation seams the MLS callers
+# drive moved there too. The directory and journal-recovery suites read those
+# surfaces, which production builds never compile: `cfg(test)` is false for a
+# dependency.
+licoup-secure-mesh = { path = "../licoup-secure-mesh", features = [
+  "secure-mesh-acceptance-mock-kt",
+  "test-support",
+] }
 trybuild = { path = "../trybuild" }
 criterion = "0.5"
 rand_chacha = "0.3"
@@ -133,10 +205,8 @@ path = "src/bin/lico-llm-gateway.rs"
 name = "lico-agent"
 path = "src/bin/lico-agent.rs"
 
-[[bin]]
-name = "lico-secure-mesh-kt-mock"
-path = "src/bin/lico-secure-mesh-kt-mock.rs"
-required-features = ["secure-mesh-acceptance-mock-kt"]
+# The Key Transparency acceptance authority moved to `licoup-secure-mesh` with
+# the tree that composes it, so its acceptance binary is declared there.
 
 [[test]]
 name = "continuity_host"

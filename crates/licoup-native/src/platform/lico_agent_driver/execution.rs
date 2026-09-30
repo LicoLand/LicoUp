@@ -5,7 +5,7 @@ use crate::platform::agent_workspace::{
     default_local_agent_workspace, resolve_local_agent_workspace,
 };
 use crate::platform::file_security::ensure_private_dir;
-use crate::platform::native_agent_parser::adapters::NativeLineParser;
+use licoup_agent_adapter_sdk::adapters::NativeLineParser;
 use crate::platform::native_agent_parser::adapters::lico_agent::{
     RpcEffect, RpcParser, encode_request,
 };

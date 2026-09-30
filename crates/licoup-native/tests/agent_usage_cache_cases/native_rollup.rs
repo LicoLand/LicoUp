@@ -1,4 +1,13 @@
 use super::support::*;
+
+/// The composed inventory port one usage scan reads.
+///
+/// `agent_usage::scan` takes the port the inventory composes; this is the same
+/// value the runtime builds, and it is built per call because the fixture is a
+/// file-system arrangement rather than a composition.
+fn agent_usage_target_port() -> licoup_agent_targets::port::AgentTargetPort {
+    licoup_native::domain::target_port::agent_target_port()
+}
 fn native_event(timestamp: &str, prompt: u64, completion: u64) -> String {
     json!({
         "type": "assistant",
@@ -41,7 +50,7 @@ fn native_usage_finalizes_past_days_and_only_parses_appended_bytes() {
     .unwrap();
     let params = native_params(&history_root, &state_root, "2026-07-10T12:00:00Z");
 
-    let cold = agent_usage::scan(&params).unwrap();
+    let cold = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     let history = &cold["agents"][0]["history"];
     assert_eq!(history["totalTokens"], 35);
     assert_eq!(history["scanCache"]["compactedDays"], 1);
@@ -73,7 +82,7 @@ fn native_usage_finalizes_past_days_and_only_parses_appended_bytes() {
     );
     drop(connection);
 
-    let warm = agent_usage::scan(&params).unwrap();
+    let warm = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     let warm_cache = &warm["agents"][0]["history"]["scanCache"];
     assert_eq!(warm_cache["reusedSources"], 1);
     assert_eq!(warm_cache["parsedBytes"], 0);
@@ -91,7 +100,7 @@ fn native_usage_finalizes_past_days_and_only_parses_appended_bytes() {
         native_event("2026-07-10T11:00:00Z", 5, 1)
     )
     .unwrap();
-    let appended = agent_usage::scan(&params).unwrap();
+    let appended = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     assert_eq!(appended["agents"][0]["history"]["totalTokens"], 41);
     assert_eq!(
         appended["agents"][0]["history"]["scanCache"]["appendedSources"],
@@ -110,7 +119,7 @@ fn native_usage_finalizes_past_days_and_only_parses_appended_bytes() {
             < fs::metadata(&transcript).unwrap().len()
     );
 
-    let next_day = agent_usage::scan(&native_params(
+    let next_day = agent_usage::scan(&agent_usage_target_port(), &native_params(
         &history_root,
         &state_root,
         "2026-07-11T12:00:00Z",
@@ -153,7 +162,7 @@ fn native_usage_finalizes_past_days_and_only_parses_appended_bytes() {
     .join("\n");
     writeln!(suffix, "{late_suffix}").unwrap();
     let rollover = native_params(&history_root, &state_root, "2026-07-11T12:00:00Z");
-    let refreshed = agent_usage::scan(&rollover).unwrap();
+    let refreshed = agent_usage::scan(&agent_usage_target_port(), &rollover).unwrap();
     assert_eq!(refreshed["agents"][0]["history"]["totalTokens"], 45);
 
     fs::remove_dir_all(history_root).unwrap();

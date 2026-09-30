@@ -19,8 +19,8 @@ fn fake_child_completes_rpc_with_bounded_stderr_and_native_session() {
     assert_eq!(result.session_id, "pi-native-fake-1");
     assert!(matches!(
         result.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
-            crate::platform::native_agent_parser::LifecycleStage::Completed
+        Some(licoup_agent_adapter_sdk::Transition::Lifecycle(
+            licoup_agent_adapter_sdk::LifecycleStage::Completed
         ))
     ));
     assert!(result.stderr_truncated);

@@ -40,7 +40,7 @@ fn placeholder_models_use_actual_same_turn_evidence_without_leaking_next_turn() 
         json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"three"}}),
         token(5,"default",None,None),
     ].iter().map(serde_json::Value::to_string).collect::<Vec<_>>().join("\n")).unwrap();
-    let result = agent_usage::scan(&scan_params(&history_root, &state_root)).unwrap();
+    let result = agent_usage::scan(&crate::domain::target_port::agent_target_port(), &scan_params(&history_root, &state_root)).unwrap();
     assert_eq!(result["summary"]["totalTokens"], 50);
     let models = &result["agents"][0]["history"]["dailyUsage"][0]["modelTokenUsage"];
     assert_eq!(
@@ -93,7 +93,7 @@ fn parser_keeps_actual_variants_separate_and_missing_context_unspecified() {
         token_event("2026-07-10T10:00:04Z",(40,4,8),(10,1,2)),
         model_event.to_string(),
     ].join("\n")).unwrap();
-    let result = agent_usage::scan(&scan_params(&history_root, &state_root)).unwrap();
+    let result = agent_usage::scan(&crate::domain::target_port::agent_target_port(), &scan_params(&history_root, &state_root)).unwrap();
     assert_eq!(result["summary"]["totalTokens"], 60);
     let models = &result["agents"][0]["history"]["dailyUsage"][0]["modelTokenUsage"];
     assert_eq!(models["gpt-5.5"]["totalTokens"], 48);
@@ -142,7 +142,7 @@ fn incremental_context_and_daily_rollup_preserve_variant_without_leaking_next_tu
     ].join("\n")).unwrap();
     let mut params = scan_params(&history_root, &state_root);
     assert_eq!(
-        agent_usage::scan(&params).unwrap()["summary"]["totalTokens"],
+        agent_usage::scan(&crate::domain::target_port::agent_target_port(), &params).unwrap()["summary"]["totalTokens"],
         0
     );
     fs::OpenOptions::new()
@@ -161,7 +161,7 @@ fn incremental_context_and_daily_rollup_preserve_variant_without_leaking_next_tu
         )
         .unwrap();
     assert_eq!(
-        agent_usage::scan(&params).unwrap()["summary"]["totalTokens"],
+        agent_usage::scan(&crate::domain::target_port::agent_target_port(), &params).unwrap()["summary"]["totalTokens"],
         10
     );
     fs::OpenOptions::new().append(true).open(&path).unwrap().write_all([
@@ -172,13 +172,13 @@ fn incremental_context_and_daily_rollup_preserve_variant_without_leaking_next_tu
         token_event("2026-07-10T10:00:04Z",(30,0,0),(5,0,0)),
         String::new(),
     ].join("\n").as_bytes()).unwrap();
-    let appended = agent_usage::scan(&params).unwrap();
+    let appended = agent_usage::scan(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     assert_eq!(
         appended["agents"][0]["history"]["scanCache"]["appendedFiles"],
         1
     );
     params["now"] = json!("2026-07-11T12:00:00Z");
-    let rolled = agent_usage::scan(&params).unwrap();
+    let rolled = agent_usage::scan(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     assert_eq!(rolled["summary"]["totalTokens"], 30);
     let variants =
         &rolled["agents"][0]["history"]["dailyUsage"][0]["modelTokenUsage"]["gpt-5.5"]["variants"];
@@ -230,7 +230,7 @@ fn schema_migration_preserves_sealed_days_and_rebuilds_only_current_usage() {
         let mut params = scan_params(&history_root, &state_root);
         params["now"] = json!("2026-07-09T12:00:00Z");
         assert_eq!(
-            agent_usage::scan(&params).unwrap()["summary"]["totalTokens"],
+            agent_usage::scan(&crate::domain::target_port::agent_target_port(), &params).unwrap()["summary"]["totalTokens"],
             23
         );
         let database = codex_database_path(&state_root);
@@ -266,7 +266,7 @@ fn schema_migration_preserves_sealed_days_and_rebuilds_only_current_usage() {
         .unwrap();
         params["now"] = json!("2026-07-10T12:00:00Z");
         params["forceRefresh"] = json!(false);
-        let upgraded = agent_usage::scan(&params).unwrap();
+        let upgraded = agent_usage::scan(&crate::domain::target_port::agent_target_port(), &params).unwrap();
         let days = upgraded["agents"][0]["history"]["dailyUsage"]
             .as_array()
             .unwrap();
@@ -303,7 +303,7 @@ fn schema_migration_preserves_sealed_days_and_rebuilds_only_current_usage() {
         }
         params["forceRefresh"] = json!(true);
         assert_eq!(
-            agent_usage::scan(&params).unwrap()["summary"]["totalTokens"],
+            agent_usage::scan(&crate::domain::target_port::agent_target_port(), &params).unwrap()["summary"]["totalTokens"],
             30
         );
         fs::OpenOptions::new()
@@ -313,7 +313,7 @@ fn schema_migration_preserves_sealed_days_and_rebuilds_only_current_usage() {
             .write_all(token_event("2026-07-10T11:00:00Z", (1012, 0, 0), (5, 0, 0)).as_bytes())
             .unwrap();
         assert_eq!(
-            agent_usage::scan(&params).unwrap()["summary"]["totalTokens"],
+            agent_usage::scan(&crate::domain::target_port::agent_target_port(), &params).unwrap()["summary"]["totalTokens"],
             35
         );
         let connection = Connection::open(database).unwrap();
@@ -352,7 +352,7 @@ fn parser_reconciles_explicit_deltas_and_model_context() {
     )
     .unwrap();
 
-    let result = agent_usage::scan(&scan_params(&history_root, &state_root)).unwrap();
+    let result = agent_usage::scan(&crate::domain::target_port::agent_target_port(), &scan_params(&history_root, &state_root)).unwrap();
     let history = &result["agents"][0]["history"];
     assert_eq!(history["totalTokens"], 13);
     assert_eq!(history["dailyUsage"][0]["modelUsage"]["gpt-test"], 13);
@@ -367,7 +367,7 @@ fn parser_keeps_incomplete_jsonl_suffix_for_the_next_append() {
         r#"{"timestamp":"2026-07-08T10:00:00Z","type":"event_msg""#,
     )
     .unwrap();
-    let result = agent_usage::scan(&scan_params(&history_root, &state_root)).unwrap();
+    let result = agent_usage::scan(&crate::domain::target_port::agent_target_port(), &scan_params(&history_root, &state_root)).unwrap();
     assert_eq!(result["summary"]["totalTokens"], 0);
 }
 
@@ -385,7 +385,7 @@ fn parser_rolls_up_all_history_without_losing_windowed_token_deltas() {
     )
     .unwrap();
 
-    let result = agent_usage::scan(&scan_params(&history_root, &state_root)).unwrap();
+    let result = agent_usage::scan(&crate::domain::target_port::agent_target_port(), &scan_params(&history_root, &state_root)).unwrap();
     let history = &result["agents"][0]["history"];
     assert_eq!(history["totalTokens"], 10);
     assert_eq!(history["tokenSourceBreakdown"]["explicitRecords"], 1);
@@ -409,7 +409,7 @@ fn current_day_details_are_compacted_after_the_calendar_rolls_over() {
     )
     .unwrap();
     let mut params = scan_params(&history_root, &state_root);
-    let first = agent_usage::scan(&params).unwrap();
+    let first = agent_usage::scan(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     assert_eq!(first["summary"]["totalTokens"], 10);
     let database_path = codex_database_path(&state_root);
     let connection = Connection::open(&database_path).unwrap();
@@ -431,7 +431,7 @@ fn current_day_details_are_compacted_after_the_calendar_rolls_over() {
     drop(connection);
 
     params["now"] = serde_json::json!("2026-07-11T12:00:00Z");
-    let next_day = agent_usage::scan(&params).unwrap();
+    let next_day = agent_usage::scan(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     assert_eq!(next_day["summary"]["totalTokens"], 10);
     let connection = Connection::open(database_path).unwrap();
     assert_eq!(

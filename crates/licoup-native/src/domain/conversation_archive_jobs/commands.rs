@@ -5,13 +5,13 @@ use serde_json::Value;
 
 use super::store::ArchiveJobStore;
 
-pub fn create(params: &Value) -> Result<Value> {
+pub fn create(port: &crate::port::AgentTargetPort, params: &Value) -> Result<Value> {
     let store = ArchiveJobStore::from_params(params)?;
-    store.create(params)
+    store.create(port, params)
 }
 
-pub fn preview(params: &Value) -> Result<Value> {
-    super::plan::preview(params)
+pub fn preview(port: &crate::port::AgentTargetPort, params: &Value) -> Result<Value> {
+    super::plan::preview(port, params)
 }
 
 pub fn status(params: &Value) -> Result<Value> {
@@ -34,7 +34,7 @@ pub fn cancel(params: &Value) -> Result<Value> {
     store.cancel(params)
 }
 
-pub fn drain(params: &Value) -> Result<Value> {
+pub fn drain(port: &crate::port::AgentTargetPort, params: &Value) -> Result<Value> {
     let store = ArchiveJobStore::from_params(params)?;
-    store.drain(params)
+    store.drain(port, params)
 }

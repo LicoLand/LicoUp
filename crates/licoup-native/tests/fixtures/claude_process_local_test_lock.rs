@@ -13,13 +13,30 @@ pub(crate) struct ClaudeProcessLocalTestGuard {
     lease_directory: PathBuf,
 }
 
+/// The lease guards one checkout, not the machine.
+///
+/// The state these tests share is written into the test process's working directory,
+/// which is this package's directory: two test binaries of one checkout collide there and
+/// must take turns. Two worktrees of the same repository do not share that directory at
+/// all, so a machine-wide lease name would make them wait for each other, and under load
+/// one of them would reach the deadline and fail on a resource it never touched.
+pub(crate) fn lease_directory() -> PathBuf {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    env!("CARGO_MANIFEST_DIR").hash(&mut hasher);
+    std::env::temp_dir().join(format!(
+        "lico-claude-process-local-test-{:016x}.lock",
+        hasher.finish()
+    ))
+}
+
 pub(crate) fn lock_claude_process_local_tests() -> ClaudeProcessLocalTestGuard {
     static LOCAL: OnceLock<Mutex<()>> = OnceLock::new();
     let local = LOCAL
         .get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let lease_directory = std::env::temp_dir().join("lico-claude-process-local-test.lock");
+    let lease_directory = lease_directory();
     let deadline = Instant::now() + Duration::from_secs(20);
     loop {
         match fs::create_dir(&lease_directory) {

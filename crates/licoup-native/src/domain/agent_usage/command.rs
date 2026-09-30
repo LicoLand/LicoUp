@@ -26,7 +26,7 @@ fn cache_runtime() -> &'static CacheRuntime {
     CACHE_RUNTIME.get_or_init(CacheRuntime::new)
 }
 
-pub fn scan(params: &Value) -> Result<Value> {
+pub fn scan(port: &crate::port::AgentTargetPort, params: &Value) -> Result<Value> {
     let state_root = text_param(params, &["stateRoot"]).filter(|root| !root.trim().is_empty());
     let registry = crate::domain::model_registry::refresh_cached_snapshot_for_state_root(
         state_root.as_deref().map(Path::new),
@@ -37,7 +37,7 @@ pub fn scan(params: &Value) -> Result<Value> {
     let usage_window = UsageWindow::from_params(params);
     let mut warnings = Vec::<Value>::new();
     let target_status = if include_target_status {
-        target_status_map(params, &mut warnings)
+        target_status_map(port, params, &mut warnings)
     } else {
         BTreeMap::new()
     };
@@ -51,7 +51,7 @@ pub fn scan(params: &Value) -> Result<Value> {
         {
             continue;
         }
-        let history = summarize_agent_history(&def, params, &usage_window, &mut warnings);
+        let history = summarize_agent_history(port, &def, params, &usage_window, &mut warnings);
         summary.merge(&history);
         let confidence = history.confidence();
         agents.push(json!({
@@ -140,6 +140,7 @@ pub fn report(params: &Value) -> Result<Value> {
 }
 
 fn summarize_agent_history(
+    port: &crate::port::AgentTargetPort,
     def: &super::contract::AgentDef,
     params: &Value,
     window: &UsageWindow,
@@ -155,16 +156,20 @@ fn summarize_agent_history(
             ..HistoryUsageSummary::default()
         };
     }
-    agent_usage_native::summarize(def, params, window, warnings, cache_runtime())
+    agent_usage_native::summarize(port, def, params, window, warnings, cache_runtime())
         .unwrap_or_default()
 }
 
-fn target_status_map(params: &Value, warnings: &mut Vec<Value>) -> BTreeMap<String, String> {
+fn target_status_map(
+    port: &crate::port::AgentTargetPort,
+    params: &Value,
+    warnings: &mut Vec<Value>,
+) -> BTreeMap<String, String> {
     let mut scan_params = params.clone();
     if let Some(object) = scan_params.as_object_mut() {
         object.insert("includeHistoryModelCatalog".to_owned(), json!(false));
     }
-    match targets::scan_targets_with_params(&scan_params) {
+    match targets::scan_targets_with_params(port, &scan_params) {
         Ok(scan) => scan
             .get("candidates")
             .and_then(Value::as_array)

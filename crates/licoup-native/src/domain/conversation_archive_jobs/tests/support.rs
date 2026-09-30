@@ -37,13 +37,13 @@ pub(super) fn archive_job_fixture(name: &str, content: &str) -> (PathBuf, PathBu
 }
 
 pub(super) fn create_planned(mut params: Value) -> anyhow::Result<Value> {
-    let plan = preview(&params)?;
+    let plan = preview(&crate::domain::target_port::agent_target_port(), &params)?;
     let binding = plan["plan"]["binding"].as_str().unwrap_or_default();
     params
         .as_object_mut()
         .expect("archive test params must be an object")
         .insert("planBinding".to_string(), json!(binding));
-    create(&params)
+    create(&crate::domain::target_port::agent_target_port(), &params)
 }
 
 pub(super) fn corrupt_first_raw_content(archive_root: &Path, folder: &str) {

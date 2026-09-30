@@ -14,8 +14,12 @@ use crate::domain::conversation::archive_queue::ArchiveJobStatus;
 use crate::state_machines::conversation_archive_job;
 
 impl ArchiveJobStore {
-    pub(super) fn create(&self, params: &Value) -> Result<Value> {
-        let prepared = prepare(params)?;
+    pub(super) fn create(
+        &self,
+        port: &crate::port::AgentTargetPort,
+        params: &Value,
+    ) -> Result<Value> {
+        let prepared = prepare(port, params)?;
         require_matching_binding(params, &prepared)?;
         let (request, target_scan) = request_with_plan(prepared);
         let policy = retry_policy_from_request(&request, None);

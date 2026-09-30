@@ -253,7 +253,7 @@ fn archive_verify_collection_path_recomputes_hashes_for_keyword_archives() {
     )
     .unwrap();
 
-    let result = archive_collect(&json!({
+    let result = archive_collect(&crate::domain::target_port::agent_target_port(), &json!({
         "stateRoot": display_path(&state),
         "homeDir": display_path(&home),
         "agent": "codex",

@@ -1,6 +1,7 @@
 //! Explicitly approved installation of the released LicoUp Codex Plugin.
 
-use crate::{domain::integration_state::IntegrationState, platform::run_bounded_command_output};
+use crate::platform::run_bounded_command_output;
+use licoup_application::integration_state::IntegrationState;
 use sha2::{Digest, Sha256};
 use std::{
     fs,

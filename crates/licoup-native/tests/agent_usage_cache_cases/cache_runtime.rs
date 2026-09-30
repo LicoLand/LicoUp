@@ -1,5 +1,14 @@
 use super::support::*;
 
+/// The composed inventory port one usage scan reads.
+///
+/// `agent_usage::scan` takes the port the inventory composes; this is the same
+/// value the runtime builds, and it is built per call because the fixture is a
+/// file-system arrangement rather than a composition.
+fn agent_usage_target_port() -> licoup_agent_targets::port::AgentTargetPort {
+    licoup_native::domain::target_port::agent_target_port()
+}
+
 #[test]
 fn codex_usage_does_not_advance_cache_past_an_incomplete_jsonl_line() {
     let history_root = temp_dir("codex-usage-partial-history");
@@ -15,7 +24,7 @@ fn codex_usage_does_not_advance_cache_past_an_incomplete_jsonl_line() {
     )
     .unwrap();
     let params = scan_params(&history_root, &state_root);
-    let first = agent_usage::scan(&params).unwrap();
+    let first = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     assert_eq!(first["summary"]["totalTokens"], 0);
 
     let mut file = fs::OpenOptions::new().append(true).open(&rollout).unwrap();
@@ -26,7 +35,7 @@ fn codex_usage_does_not_advance_cache_past_an_incomplete_jsonl_line() {
     )
     .unwrap();
 
-    let completed = agent_usage::scan(&params).unwrap();
+    let completed = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     assert_eq!(completed["agents"][0]["history"]["totalTokens"], 10);
     assert_eq!(
         completed["agents"][0]["history"]["scanCache"]["appendedFiles"],
@@ -49,12 +58,12 @@ fn codex_usage_cache_keeps_independent_roots_warm() {
         token_event("2026-07-08T10:00:01Z", (8, 2, 5), (8, 2, 5)),
     )
     .unwrap();
-    agent_usage::scan(&scan_params(&first_root, &state_root)).unwrap();
-    agent_usage::scan(&scan_params(&second_root, &state_root)).unwrap();
+    agent_usage::scan(&agent_usage_target_port(), &scan_params(&first_root, &state_root)).unwrap();
+    agent_usage::scan(&agent_usage_target_port(), &scan_params(&second_root, &state_root)).unwrap();
 
     let mut first_params = scan_params(&first_root, &state_root);
     first_params["forceRefresh"] = json!(false);
-    let first_again = agent_usage::scan(&first_params).unwrap();
+    let first_again = agent_usage::scan(&agent_usage_target_port(), &first_params).unwrap();
     assert_eq!(first_again["summary"]["totalTokens"], 10);
     assert_eq!(
         first_again["agents"][0]["history"]["scanCache"]["fresh"],
@@ -89,7 +98,7 @@ fn codex_usage_returns_cached_snapshot_when_same_root_refresh_is_busy() {
     .unwrap();
     let params = scan_params(&history_root, &state_root);
     assert_eq!(
-        agent_usage::scan(&params).unwrap()["summary"]["totalTokens"],
+        agent_usage::scan(&agent_usage_target_port(), &params).unwrap()["summary"]["totalTokens"],
         10
     );
     let database_path = fs::read_dir(&state_root)
@@ -106,7 +115,7 @@ fn codex_usage_returns_cached_snapshot_when_same_root_refresh_is_busy() {
     let lock = SqliteConnection::open(database_path).unwrap();
     lock.execute_batch("BEGIN IMMEDIATE").unwrap();
 
-    let report = agent_usage::scan(&params).unwrap();
+    let report = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     lock.execute_batch("ROLLBACK").unwrap();
     let history = &report["agents"][0]["history"];
     assert_eq!(history["totalTokens"], 10);

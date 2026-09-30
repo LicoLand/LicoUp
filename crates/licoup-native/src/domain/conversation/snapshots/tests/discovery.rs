@@ -67,7 +67,7 @@ fn archive_target_scan_accepts_desktop_preflight_json() {
         }]
     });
 
-    let result = archive_target_scan(&json!({
+    let result = archive_target_scan(&crate::domain::target_port::agent_target_port(), &json!({
         "targetScanJson": scan.to_string()
     }))
     .unwrap();

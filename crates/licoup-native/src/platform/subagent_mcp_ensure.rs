@@ -1,10 +1,10 @@
 //! Agent-agnostic Subagent MCP status/plan/install dispatcher.
 
-use crate::domain::integration_state::IntegrationState;
 use crate::platform::{
     antigravity_subagent_mcp_manager, claude_code_subagent_mcp_manager, codex_plugin_manager,
     cursor_subagent_mcp_manager,
 };
+use licoup_application::integration_state::IntegrationState;
 use std::path::Path;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -19,8 +19,8 @@
 //! next_request_id)`, counted from one).
 
 use super::super::{FrameReplay, RecordedFrame};
-use crate::platform::native_agent_parser::Transition;
-use crate::platform::native_agent_parser::adapters::NativeLineParser;
+use licoup_agent_adapter_sdk::Transition;
+use licoup_agent_adapter_sdk::adapters::NativeLineParser;
 use crate::platform::native_agent_parser::adapters::deepseek_harness::{
     FrameError, FrameParser, ProtocolFrame, TurnParseError, TurnParser, initialize_accepted,
 };
@@ -56,7 +56,7 @@ impl Replay {
     /// The framing this boundary consumes, taken from the adapter's own
     /// contract so a frame recorded under another channel cannot pass.
     fn framing() -> &'static str {
-        crate::platform::native_agent_parser::adapters::contract(RuntimeAdapter::DeepSeekHarness)
+        crate::platform::native_agent_parser::adapters::contract_for(RuntimeAdapter::DeepSeekHarness)
             .framing
     }
 

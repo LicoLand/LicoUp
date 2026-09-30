@@ -13,7 +13,7 @@ pub(in crate::domain::collaboration_plugin) struct CapabilityState {
     /// Cached projection only. The append-only, user-presence protected
     /// platform ledger remains authoritative.
     pub(in crate::domain::collaboration_plugin) authority_record:
-        Option<crate::core::authorized_secure_record::VersionedSecureRecord>,
+        Option<licoup_foundation::core::authorized_secure_record::VersionedSecureRecord>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

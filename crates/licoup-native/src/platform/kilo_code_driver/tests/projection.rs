@@ -33,8 +33,8 @@ fn projection_keeps_effective_settings_and_bounded_capability_claims() {
     assert_eq!(outcome.output, "answer");
     assert!(matches!(
         outcome.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
-            crate::platform::native_agent_parser::LifecycleStage::Completed
+        Some(licoup_agent_adapter_sdk::Transition::Lifecycle(
+            licoup_agent_adapter_sdk::LifecycleStage::Completed
         ))
     ));
     assert_eq!(outcome.effective.model.as_deref(), Some("provider/model"));

@@ -10,7 +10,11 @@ use super::store::{ArchiveJobStore, row_to_job};
 use crate::domain::conversation::archive_queue::ArchiveJob;
 
 impl ArchiveJobStore {
-    pub(super) fn drain(&self, params: &Value) -> Result<Value> {
+    pub(super) fn drain(
+        &self,
+        port: &crate::port::AgentTargetPort,
+        params: &Value,
+    ) -> Result<Value> {
         let conn = self.conn()?;
         let once = bool_param(params, &["once"]).unwrap_or(false);
         let stop_on_error = bool_param(params, &["stopOnError"]).unwrap_or(false);
@@ -26,7 +30,7 @@ impl ArchiveJobStore {
             }
             for job in jobs {
                 let job_id = job.job_id.clone();
-                let outcome = self.advance_job(&conn, job)?;
+                let outcome = self.advance_job(port, &conn, job)?;
                 let status = outcome
                     .get("status")
                     .and_then(Value::as_str)

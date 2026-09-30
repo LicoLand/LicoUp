@@ -5,13 +5,13 @@ use std::process::{ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
-use super::native_agent_parser::Transition;
-use super::native_agent_parser::adapters::NativeLineParser;
+use licoup_agent_adapter_sdk::Transition;
+use licoup_agent_adapter_sdk::adapters::NativeLineParser;
 use super::native_agent_parser::adapters::deepseek_harness::{
     FrameError, FrameParser, ProtocolFrame, TurnParseError, TurnParser, encode_request,
     initialize_accepted, initialize_request, prompt_request, shutdown_request,
 };
-use super::native_agent_parser::adapters::driver_registry::{
+use licoup_agent_adapter_sdk::adapters::driver_registry::{
     registry_get, registry_insert_if_absent, registry_remove, registry_remove_if,
 };
 use super::process_supervisor::SupervisedChild;

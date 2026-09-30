@@ -14,21 +14,24 @@ pub(super) struct PreparedArchivePlan {
     pub(super) binding: String,
 }
 
-pub(super) fn prepare(params: &Value) -> Result<PreparedArchivePlan> {
+pub(super) fn prepare(port: &crate::port::AgentTargetPort, params: &Value) -> Result<PreparedArchivePlan> {
     let request = normalize_request(params)?;
     let mut scan_params = request.clone();
     if let Some(object) = scan_params.as_object_mut() {
         object.insert("archiveMode".to_string(), json!(true));
     }
-    let target_scan = targets::scan_targets_with_params(&scan_params)?;
-    prepare_with_target_scan(request, target_scan)
+    let target_scan = targets::scan_targets_with_params(port, &scan_params)?;
+    prepare_with_target_scan(port, request, target_scan)
 }
 
 pub(super) fn prepare_with_target_scan(
+    port: &crate::port::AgentTargetPort,
     request: Value,
     target_scan: Value,
 ) -> Result<PreparedArchivePlan> {
-    let preview = conversation_snapshots::archive_selection_preview(&merge_params(
+    let preview = conversation_snapshots::archive_selection_preview(
+        port,
+        &merge_params(
         &request,
         json!({"targetScan": target_scan}),
     ))?;
@@ -42,8 +45,8 @@ pub(super) fn prepare_with_target_scan(
     })
 }
 
-pub(super) fn preview(params: &Value) -> Result<Value> {
-    let prepared = prepare(params)?;
+pub(super) fn preview(port: &crate::port::AgentTargetPort, params: &Value) -> Result<Value> {
+    let prepared = prepare(port, params)?;
     Ok(json!({
         "ok": true,
         "mode": "conversation-archive-plan",
@@ -69,9 +72,13 @@ pub(super) fn require_matching_binding(
     Ok(())
 }
 
-pub(super) fn validate_stored_plan(request: &Value, target_scan: &Value) -> Result<()> {
+pub(super) fn validate_stored_plan(
+    port: &crate::port::AgentTargetPort,
+    request: &Value,
+    target_scan: &Value,
+) -> Result<()> {
     let expected = text_param(request, &["planBinding"]).unwrap_or_default();
-    let prepared = prepare_with_target_scan(request.clone(), target_scan.clone())?;
+    let prepared = prepare_with_target_scan(port, request.clone(), target_scan.clone())?;
     ensure!(
         !expected.is_empty() && expected == prepared.binding,
         "conversation archive plan changed before execution"

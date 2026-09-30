@@ -4,18 +4,37 @@
 //! `backup export` and `backup import`. The command layer only marshals the data
 //! root, the archive path and the writer statement, and reports the owner's typed
 //! outcome. It never copies a live database itself and never invents a key.
+//! The caller always names the archive destination; there is no default, and a
+//! destination inside the captured root is refused before the owner runs.
 
 use super::{AdmittedCommand, CliExecution};
-use crate::core::full_data_root_archive::{
-    export_data_root, restore_data_root, ExportRequest, RestoreRequest,
+use anyhow::{Result, anyhow, ensure};
+use licoup_foundation::core::full_data_root_archive::{
+    ExportRequest, RestoreRequest, archive_path_inside_data_root, export_data_root,
+    restore_data_root,
 };
-use anyhow::{anyhow, Result};
 use serde_json::json;
 use std::path::PathBuf;
 
 pub(super) fn handle_backup_export(command: AdmittedCommand) -> Result<CliExecution> {
-    let data_root = data_root(&command)?;
-    let archive_path = archive_path(&command)?;
+    let data_root = absolute_path(
+        command
+            .option_text("data-root")
+            .ok_or_else(|| anyhow!("backup_data_root_required"))?,
+        "backup_data_root_unresolved",
+    )?;
+    let archive_path = absolute_path(
+        command.required_text("archive"),
+        "backup_archive_unresolved",
+    )?;
+    // The caller names the destination; the verb never defaults one. The archive must not
+    // be part of the data the capture reads, so an inadmissible destination is refused
+    // here, before the owner is asked to create anything. The owner holds the same rule
+    // for every caller.
+    ensure!(
+        !archive_path_inside_data_root(&data_root, &archive_path),
+        "archive_path_inside_data_root"
+    );
     let outcome = export_data_root(&ExportRequest {
         data_root,
         archive_path,
@@ -32,12 +51,16 @@ pub(super) fn handle_backup_export(command: AdmittedCommand) -> Result<CliExecut
 }
 
 pub(super) fn handle_backup_import(command: AdmittedCommand) -> Result<CliExecution> {
-    let target_root = command
-        .option_text("target-root")
-        .map(PathBuf::from)
-        .ok_or_else(|| anyhow!("backup_target_root_required"))?;
+    let target_root = PathBuf::from(
+        command
+            .option_text("target-root")
+            .ok_or_else(|| anyhow!("backup_target_root_required"))?,
+    );
     let outcome = restore_data_root(&RestoreRequest {
-        archive_path: archive_path(&command)?,
+        archive_path: absolute_path(
+            command.required_text("archive"),
+            "backup_archive_unresolved",
+        )?,
         target_root,
     })?;
     Ok(CliExecution::Json(json!({
@@ -50,28 +73,15 @@ pub(super) fn handle_backup_import(command: AdmittedCommand) -> Result<CliExecut
     })))
 }
 
-fn data_root(command: &AdmittedCommand) -> Result<PathBuf> {
-    let raw = command
-        .option_text("data-root")
-        .ok_or_else(|| anyhow!("backup_data_root_required"))?;
-    let root = PathBuf::from(raw);
-    let root = if root.is_absolute() {
-        root
-    } else {
-        std::env::current_dir()
-            .map_err(|_| anyhow!("backup_data_root_unresolved"))?
-            .join(root)
-    };
-    Ok(root)
-}
-
-fn archive_path(command: &AdmittedCommand) -> Result<PathBuf> {
-    let path = PathBuf::from(command.required_text("archive"));
+/// The absolute form of one admitted path: a relative name the caller supplied is read
+/// against the process working directory, exactly as the owner will read it.
+fn absolute_path(raw: &str, unresolved: &'static str) -> Result<PathBuf> {
+    let path = PathBuf::from(raw);
     Ok(if path.is_absolute() {
         path
     } else {
         std::env::current_dir()
-            .map_err(|_| anyhow!("backup_archive_unresolved"))?
+            .map_err(|_| anyhow!(unresolved))?
             .join(path)
     })
 }

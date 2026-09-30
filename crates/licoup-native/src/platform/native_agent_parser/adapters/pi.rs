@@ -1,5 +1,5 @@
 use super::AdapterContract;
-use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
+use licoup_agent_adapter_sdk::{LifecycleStage, Transition, TransitionReducer};
 use crate::platform::pi_driver::errors::ProtocolFailure;
 use serde_json::Value;
 

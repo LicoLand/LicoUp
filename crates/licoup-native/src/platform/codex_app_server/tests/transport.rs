@@ -66,8 +66,8 @@ fn fake_child_proves_spawn_stdin_concurrent_drain_and_completion() {
     assert_eq!(result.turn_status, "completed");
     assert!(matches!(
         result.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
-            crate::platform::native_agent_parser::LifecycleStage::Completed
+        Some(licoup_agent_adapter_sdk::Transition::Lifecycle(
+            licoup_agent_adapter_sdk::LifecycleStage::Completed
         ))
     ));
     assert_eq!(result.effective.model.as_deref(), Some("gpt-5.6-luna"));

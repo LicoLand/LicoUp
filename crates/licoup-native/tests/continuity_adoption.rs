@@ -33,7 +33,7 @@ use licoup_native::domain::assistant_continuity::{
 use licoup_native::domain::client_conversation::{ConversationService, PersistentRuntimePorts};
 use licoup_native::platform::runtime_adapters::RuntimeAdapterError;
 use licoup_native::platform::work_context_ports::{
-    AdapterCall, AdapterTransport, HostDriverTransport,
+    AdapterCall, AdapterTransport, host_driver_transport,
 };
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -875,7 +875,7 @@ fn ac_05_001_bound_runtime_collects_typed_observations_without_hermetic_observer
     let invoked = Arc::new(Mutex::new(Vec::<Value>::new()));
     let invoked_for_turn = invoked.clone();
     let transport = Arc::new(
-        HostDriverTransport::new(ProtocolFamily::Codex)
+        host_driver_transport(ProtocolFamily::Codex)
             .with_executable(executable.to_string_lossy().into_owned())
             .with_working_directory(cwd.clone()),
     );

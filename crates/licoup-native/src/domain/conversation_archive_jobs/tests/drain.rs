@@ -18,7 +18,7 @@ fn once_drain_processes_only_the_oldest_queued_job() {
         .unwrap();
     }
 
-    let drained = drain(&json!({
+    let drained = drain(&crate::domain::target_port::agent_target_port(), &json!({
         "stateRoot": display_path(&state),
         "once": true
     }))

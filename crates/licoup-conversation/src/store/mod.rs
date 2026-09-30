@@ -7282,36 +7282,86 @@ mod tests {
         assert_eq!(store.dispatch_record(dispatch_id).unwrap(), Some(record));
     }
 
-    // ---- durable reserved-group cutover (schema v2 -> v3) ----
+    // ---- stored formats: only a released format is read or converted ----
 
-    fn seed_v2_database(connection: &Connection, block_version_three: bool) {
-        if block_version_three {
-            connection
-                .execute_batch(
-                    "CREATE TABLE schema_meta (
-                       key TEXT PRIMARY KEY, value TEXT NOT NULL, CHECK(value <> '3')
-                     );",
-                )
-                .unwrap();
-        } else {
-            connection
-                .execute_batch(
-                    "CREATE TABLE schema_meta (
-                       key TEXT PRIMARY KEY, value TEXT NOT NULL
-                     );",
-                )
-                .unwrap();
-        }
+    /// Arrange the stored shape a published release wrote. `published_format`
+    /// is the marker that release recorded; the arrangement keeps that
+    /// release's tables and columns and leaves the current layout pass to own
+    /// everything added since.
+    fn arrange_published_store(connection: &Connection, published_format: &str) {
+        connection
+            .execute_batch("CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);")
+            .unwrap();
         connection
             .execute(
-                "INSERT INTO schema_meta(key, value) VALUES ('version', '2')",
-                [],
+                "INSERT INTO schema_meta(key, value) VALUES ('version', ?1)",
+                params![published_format],
             )
             .unwrap();
         connection
             .execute_batch(CONVERSATION_SCHEMA_TABLES)
             .unwrap();
+        connection
+            .execute_batch(
+                "DROP TABLE IF EXISTS subagent_dispatch_deliveries;
+                 DROP TABLE IF EXISTS archived_native_sessions;",
+            )
+            .unwrap();
+        if published_format == "15" {
+            connection.execute_batch(native_sessions::TABLE).unwrap();
+        } else {
+            connection
+                .execute_batch(
+                    "ALTER TABLE conversation_dispatches DROP COLUMN request_payload;
+                     ALTER TABLE conversation_dispatches DROP COLUMN terminal_payload;
+                     ALTER TABLE conversation_dispatches DROP COLUMN native_provenance;
+                     ALTER TABLE event_parts DROP COLUMN execution_kind;",
+                )
+                .unwrap();
+        }
+        if published_format == "11" {
+            connection
+                .execute_batch(
+                    "ALTER TABLE subagent_dispatch_claims
+                       DROP COLUMN watchdog_deadline_unix_ms;",
+                )
+                .unwrap();
+        } else {
+            connection
+                .execute_batch(
+                    "DROP INDEX IF EXISTS memberships_active_unique;
+                     CREATE UNIQUE INDEX IF NOT EXISTS memberships_principal_unique
+                       ON memberships(conversation_id, principal_id);",
+                )
+                .unwrap();
+        }
+    }
 
+    /// Arrange a stored shape no release wrote: a marker that existed only in a
+    /// development tree, carrying the same content the published arrangements
+    /// carry so a refusal can be shown to move nothing.
+    fn arrange_unpublished_store(connection: &Connection, stored_format: &str) {
+        connection
+            .execute_batch("CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);")
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO schema_meta(key, value) VALUES ('version', ?1)",
+                params![stored_format],
+            )
+            .unwrap();
+        connection
+            .execute_batch(CONVERSATION_SCHEMA_TABLES)
+            .unwrap();
+    }
+
+    /// Content shared by every arrangement above: a reserved default local
+    /// group with history, an unrelated custom group, Assistant and member
+    /// Profile intent, a native runtime binding and the reverse provenance
+    /// link a released store recorded. The group history is already settled,
+    /// so the same content also states that a later reopening or legacy-import
+    /// closure changes nothing.
+    fn arrange_store_content(connection: &Connection) {
         for (id, kind, name, agent_id, created) in [
             ("human:local", "human", "You", None::<&str>, 100),
             ("agent:one", "agent", "One", Some("one"), 200),
@@ -7326,7 +7376,16 @@ mod tests {
                 .unwrap();
         }
         for (id, title, archived, pinned, is_group, revision, created, updated) in [
-            ("legacy-reserved-group", "Lico", 0, 1, 0, 7, 1000, 9000),
+            (
+                "legacy-reserved-group",
+                DEFAULT_LOCAL_AGENT_GROUP_TITLE,
+                0,
+                1,
+                0,
+                7,
+                1000,
+                9000,
+            ),
             ("custom-group", "Custom Group", 0, 0, 1, 3, 1000, 8000),
         ] {
             connection
@@ -7364,9 +7423,9 @@ mod tests {
                 "legacy-reserved-group",
                 "agent:two",
                 "member",
-                "left",
+                "active",
                 3000,
-                Some(9000),
+                None,
             ),
             (
                 "mc-owner",
@@ -7413,6 +7472,29 @@ mod tests {
                 )
                 .unwrap();
         }
+        connection
+            .execute_batch(
+                "INSERT INTO membership_profiles(
+                   membership_id, revision, responsibility, required_capabilities,
+                   preferred_capabilities, skill_references, preferred_model,
+                   preferred_reasoning_effort, preferred_environment, updated_at)
+                 VALUES ('m-one', 3, 'assistant', '[]', '[]',
+                         '[\"assistant-workflow-authoring\",\"custom-skill\"]',
+                         NULL, NULL, NULL, 2500),
+                        ('m-two', 2, 'member', '[]', '[]', '[\"user-skill\"]',
+                         NULL, NULL, NULL, 3500)",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO runtime_bindings(id, conversation_id, membership_id, lane,
+                 availability, safe_reason, runtime_session_id, runtime_conversation_path,
+                 working_directory)
+                 VALUES ('binding-m-one', 'legacy-reserved-group', 'm-one', 'primary',
+                         'available', NULL, 'native-session-1', NULL, NULL)",
+                [],
+            )
+            .unwrap();
 
         let event = |id: &str,
                      conversation_id: &str,
@@ -7469,7 +7551,7 @@ mod tests {
             "e2",
             "legacy-reserved-group",
             2,
-            None,
+            Some("m-owner"),
             "membership-changed",
             2000,
         );
@@ -7482,131 +7564,53 @@ mod tests {
             "e3",
             "legacy-reserved-group",
             3,
-            None,
-            "membership-changed",
-            3000,
+            Some("m-one"),
+            "message",
+            4000,
         );
-        metadata_part(
-            "e3",
-            r#"{"membershipId":"m-two","principalId":"agent:two","change":"joined"}"#,
-            3000,
-        );
+        message_part("e3", "legacy-reserved-group", "middle message", 4000);
         event(
             "e4",
             "legacy-reserved-group",
             4,
-            Some("m-owner"),
-            "message",
-            4000,
+            None,
+            "membership-changed",
+            9100,
         );
-        message_part("e4", "legacy-reserved-group", "middle message", 4000);
+        metadata_part(
+            "e4",
+            r#"{"membershipId":"m-x","principalId":"agent:ghost","change":"left","reason":"retired"}"#,
+            9100,
+        );
         event(
             "e5",
             "legacy-reserved-group",
             5,
-            None,
-            "membership-changed",
-            9000,
+            Some("m-one"),
+            "message",
+            9300,
         );
-        metadata_part(
-            "e5",
-            r#"{"membershipId":"m-two","principalId":"agent:two","change":"left"}"#,
-            9000,
-        );
+        message_part("e5", "legacy-reserved-group", "final hello", 9300);
         event(
             "e6",
             "legacy-reserved-group",
             6,
             None,
             "membership-changed",
-            9100,
-        );
-        metadata_part(
-            "e6",
-            r#"{"membershipId":"m-x","principalId":"agent:ghost","change":"left","reason":"retired"}"#,
-            9100,
-        );
-        event(
-            "e7",
-            "legacy-reserved-group",
-            7,
-            None,
-            "membership-changed",
-            9200,
-        );
-        metadata_part(
-            "e7",
-            r#"{"membershipId":"m-two","change":"access-set","access":"member"}"#,
-            9200,
-        );
-        event(
-            "e8",
-            "legacy-reserved-group",
-            8,
-            Some("m-one"),
-            "message",
-            9300,
-        );
-        message_part("e8", "legacy-reserved-group", "final hello", 9300);
-        event(
-            "e9",
-            "legacy-reserved-group",
-            9,
-            Some("m-owner"),
-            "membership-changed",
-            9400,
-        );
-        metadata_part(
-            "e9",
-            r#"{"membershipId":"m-one","principalId":"agent:one","change":"joined"}"#,
-            9400,
-        );
-        event(
-            "e10",
-            "legacy-reserved-group",
-            10,
-            None,
-            "membership-changed",
             9500,
         );
         metadata_part(
-            "e10",
-            r#"{"membershipId":"m-one","principalId":"agent:one","change":"joined"}"#,
+            "e6",
+            r#"{"membershipId":"m-two","principalId":"agent:two","change":"joined"}"#,
             9500,
         );
         connection
             .execute(
                 "INSERT INTO event_parts(id, event_id, ordinal, kind, content, created_at)
-                 VALUES ('e10-extra', 'e10', 1, 'text', 'preserve this near-match', 9500)",
+                 VALUES ('e6-extra', 'e6', 1, 'text', 'preserve this near-match', 9500)",
                 [],
             )
             .unwrap();
-        event(
-            "e11",
-            "legacy-reserved-group",
-            11,
-            None,
-            "membership-changed",
-            9600,
-        );
-        metadata_part(
-            "e11",
-            r#"{"membershipId":"m-one","principalId":"agent:two","change":"joined"}"#,
-            9600,
-        );
-        event(
-            "e12",
-            "legacy-reserved-group",
-            12,
-            None,
-            "membership-changed",
-            9700,
-        );
-        metadata_part(
-            "e12",
-            r#"{"membershipId":"m-owner","principalId":"human:local","change":"joined"}"#,
-            9700,
-        );
 
         event("ce1", "custom-group", 1, Some("mc-owner"), "message", 1100);
         message_part("ce1", "custom-group", "custom message", 1100);
@@ -7732,6 +7736,31 @@ mod tests {
         out
     }
 
+    /// Every stored object, so a refused shape can be shown to have created
+    /// nothing and an upgraded shape can be shown to own the current objects.
+    fn snapshot_layout(root: &Path) -> String {
+        let connection = open_fixture_connection(root);
+        let mut statement = connection
+            .prepare(
+                "SELECT type, name, COALESCE(sql, '') FROM sqlite_schema
+                 ORDER BY type, name",
+            )
+            .unwrap();
+        let rows = statement
+            .query_map([], |row| {
+                Ok(format!(
+                    "{}|{}|{}",
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?
+                ))
+            })
+            .unwrap();
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+            .join("\n")
+    }
+
     fn schema_version(root: &Path) -> String {
         let connection = open_fixture_connection(root);
         connection
@@ -7744,169 +7773,237 @@ mod tests {
     }
 
     #[test]
-    fn migrates_v2_reserved_group_and_preserves_everything_else() {
-        let root = std::env::temp_dir().join(format!("lico-conv-v2-{}", Uuid::new_v4()));
-        std::fs::create_dir_all(fixture_database(&root).parent().unwrap()).unwrap();
-        let fixture = open_fixture_connection(&root);
-        seed_v2_database(&fixture, false);
-        fixture.close().unwrap();
+    fn refuses_a_stored_shape_no_release_wrote_without_writing_or_moving_data() {
+        for stored_format in ["2", "3", "5", "6", "13", "17"] {
+            let root =
+                std::env::temp_dir().join(format!("lico-conv-unpublished-{}", Uuid::new_v4()));
+            std::fs::create_dir_all(fixture_database(&root).parent().unwrap()).unwrap();
+            let fixture = open_fixture_connection(&root);
+            arrange_unpublished_store(&fixture, stored_format);
+            arrange_store_content(&fixture);
+            fixture.close().unwrap();
 
-        let custom_before = snapshot_group(&root, "custom-group");
-        assert!(ConversationStore::open(&root).is_err());
-        let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
+            let layout_before = snapshot_layout(&root);
+            let database_before = snapshot_database(&root);
 
-        let conversation = store.get("legacy-reserved-group").unwrap();
-        assert_eq!(conversation.title, DEFAULT_LOCAL_AGENT_GROUP_TITLE);
-        assert!(conversation.pinned);
-        assert!(conversation.is_group);
-        assert_eq!(conversation.event_count, 9);
-        assert_eq!(conversation.memberships.len(), 3);
-        let mut by_principal = std::collections::HashMap::new();
-        for membership in &conversation.memberships {
-            by_principal.insert(membership.principal.id.as_str(), membership);
+            assert!(
+                ConversationStore::open(&root).is_err(),
+                "a stored shape no release wrote must not open as current"
+            );
+            let error = match ConversationStore::open_for_migration(&root) {
+                Ok(_) => panic!("stored shape {stored_format} was not refused"),
+                Err(error) => error,
+            };
+            assert_eq!(
+                error.to_string(),
+                format!("conversation_schema_unsupported_version: {stored_format}")
+            );
+            assert_eq!(schema_version(&root), stored_format);
+            assert_eq!(snapshot_layout(&root), layout_before);
+            assert_eq!(snapshot_database(&root), database_before);
+            let _ = std::fs::remove_dir_all(&root);
         }
-        assert_eq!(by_principal.len(), 3);
-        for principal_id in ["human:local", "agent:one", "agent:two"] {
-            let membership = by_principal[principal_id];
-            assert_eq!(membership.status, MembershipStatus::Active);
-            assert_eq!(membership.left_at_unix_ms, None);
-        }
-
-        let remaining: Vec<(String, String, i64)> = store
-            .with_connection(|connection| {
-                let mut statement = connection
-                    .prepare(
-                        "SELECT id, kind, sequence FROM events
-                         WHERE conversation_id=?1 ORDER BY sequence ASC",
-                    )
-                    .unwrap();
-                let rows = statement
-                    .query_map(params!["legacy-reserved-group"], |row| {
-                        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-                    })
-                    .unwrap();
-                rows.collect::<rusqlite::Result<Vec<_>>>()
-                    .map_err(Into::into)
-            })
-            .unwrap();
-        assert_eq!(
-            remaining,
-            vec![
-                ("e1".to_owned(), "message".to_owned(), 1),
-                ("e4".to_owned(), "message".to_owned(), 2),
-                ("e6".to_owned(), "membership-changed".to_owned(), 3),
-                ("e7".to_owned(), "membership-changed".to_owned(), 4),
-                ("e8".to_owned(), "message".to_owned(), 5),
-                ("e9".to_owned(), "membership-changed".to_owned(), 6),
-                ("e10".to_owned(), "membership-changed".to_owned(), 7),
-                ("e11".to_owned(), "membership-changed".to_owned(), 8),
-                ("e12".to_owned(), "membership-changed".to_owned(), 9),
-            ]
-        );
-
-        let search: Vec<(String, String)> = store
-            .with_connection(|connection| {
-                let mut statement = connection
-                    .prepare(
-                        "SELECT event_id, content FROM event_search
-                         WHERE conversation_id=?1 ORDER BY rowid",
-                    )
-                    .unwrap();
-                let rows = statement
-                    .query_map(params!["legacy-reserved-group"], |row| {
-                        Ok((row.get(0)?, row.get(1)?))
-                    })
-                    .unwrap();
-                rows.collect::<rusqlite::Result<Vec<_>>>()
-                    .map_err(Into::into)
-            })
-            .unwrap();
-        assert_eq!(
-            search,
-            vec![
-                ("e1".to_owned(), "first hello".to_owned()),
-                ("e4".to_owned(), "middle message".to_owned()),
-                ("e8".to_owned(), "final hello".to_owned()),
-            ]
-        );
-
-        assert_eq!(snapshot_group(&root, "custom-group"), custom_before);
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
-    fn reopening_current_schema_and_legacy_import_closure_are_no_ops() {
-        let root = std::env::temp_dir().join(format!("lico-conv-v4-{}", Uuid::new_v4()));
-        std::fs::create_dir_all(fixture_database(&root).parent().unwrap()).unwrap();
-        let fixture = open_fixture_connection(&root);
-        seed_v2_database(&fixture, false);
-        fixture.close().unwrap();
+    fn upgrades_every_published_store_to_the_current_format_and_preserves_its_data() {
+        for published_format in ["11", "12", "15"] {
+            let root = std::env::temp_dir().join(format!("lico-conv-published-{}", Uuid::new_v4()));
+            std::fs::create_dir_all(fixture_database(&root).parent().unwrap()).unwrap();
+            let fixture = open_fixture_connection(&root);
+            arrange_published_store(&fixture, published_format);
+            arrange_store_content(&fixture);
+            fixture.close().unwrap();
 
-        assert!(ConversationStore::open(&root).is_err());
-        let store = ConversationStore::open_for_migration(&root).unwrap();
-        let after_first_open = snapshot_database(&root);
-        drop(store);
-        let reopened = ConversationStore::open(&root).unwrap();
-        assert_eq!(snapshot_database(&root), after_first_open);
-        reopened
-            .normalize_reserved_default_group_after_legacy_import()
-            .unwrap();
-        assert_eq!(snapshot_database(&root), after_first_open);
-        let _ = std::fs::remove_dir_all(&root);
+            let custom_before = snapshot_group(&root, "custom-group");
+            assert!(ConversationStore::open(&root).is_err());
+            let store = ConversationStore::open_for_migration(&root).unwrap();
+            assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
+
+            let conversation = store.get("legacy-reserved-group").unwrap();
+            assert_eq!(conversation.title, DEFAULT_LOCAL_AGENT_GROUP_TITLE);
+            assert!(conversation.pinned);
+            assert!(conversation.is_group);
+            assert_eq!(conversation.revision, 7);
+            assert!(conversation.assistant_membership_id.is_none());
+            assert_eq!(conversation.event_count, 6);
+            assert_eq!(conversation.memberships.len(), 3);
+            for principal_id in ["human:local", "agent:one", "agent:two"] {
+                let membership = conversation
+                    .memberships
+                    .iter()
+                    .find(|membership| membership.principal.id == principal_id)
+                    .unwrap();
+                assert_eq!(membership.status, MembershipStatus::Active);
+                assert_eq!(membership.left_at_unix_ms, None);
+            }
+
+            let events: Vec<(String, String, i64)> = store
+                .with_connection(|connection| {
+                    let mut statement = connection
+                        .prepare(
+                            "SELECT id, kind, sequence FROM events
+                             WHERE conversation_id=?1 ORDER BY sequence ASC",
+                        )
+                        .unwrap();
+                    let rows = statement
+                        .query_map(params!["legacy-reserved-group"], |row| {
+                            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                        })
+                        .unwrap();
+                    rows.collect::<rusqlite::Result<Vec<_>>>()
+                        .map_err(Into::into)
+                })
+                .unwrap();
+            assert_eq!(
+                events,
+                vec![
+                    ("e1".to_owned(), "message".to_owned(), 1),
+                    ("e2".to_owned(), "membership-changed".to_owned(), 2),
+                    ("e3".to_owned(), "message".to_owned(), 3),
+                    ("e4".to_owned(), "membership-changed".to_owned(), 4),
+                    ("e5".to_owned(), "message".to_owned(), 5),
+                    ("e6".to_owned(), "membership-changed".to_owned(), 6),
+                ]
+            );
+
+            let search: Vec<(String, String)> = store
+                .with_connection(|connection| {
+                    let mut statement = connection
+                        .prepare(
+                            "SELECT event_id, content FROM event_search
+                             WHERE conversation_id=?1 ORDER BY rowid",
+                        )
+                        .unwrap();
+                    let rows = statement
+                        .query_map(params!["legacy-reserved-group"], |row| {
+                            Ok((row.get(0)?, row.get(1)?))
+                        })
+                        .unwrap();
+                    rows.collect::<rusqlite::Result<Vec<_>>>()
+                        .map_err(Into::into)
+                })
+                .unwrap();
+            assert_eq!(
+                search,
+                vec![
+                    ("e1".to_owned(), "first hello".to_owned()),
+                    ("e3".to_owned(), "middle message".to_owned()),
+                    ("e5".to_owned(), "final hello".to_owned()),
+                ]
+            );
+
+            let profiles = store.membership_profiles("legacy-reserved-group").unwrap();
+            assert_eq!(profiles.len(), 2);
+            let assistant = profiles
+                .iter()
+                .find(|(membership, _)| membership.id == "m-one")
+                .map(|(_, profile)| profile)
+                .unwrap();
+            assert_eq!(assistant.responsibility, ProfileResponsibility::Assistant);
+            assert_eq!(assistant.revision, 4);
+            assert_eq!(
+                assistant.skill_references,
+                vec!["custom-skill".to_owned(), LICOUP_GUIDE_SKILL_ID.to_owned()]
+            );
+            let member = profiles
+                .iter()
+                .find(|(membership, _)| membership.id == "m-two")
+                .map(|(_, profile)| profile)
+                .unwrap();
+            assert_eq!(member.revision, 2);
+            assert_eq!(member.skill_references, vec!["user-skill".to_owned()]);
+
+            let native_session: String = store
+                .with_connection(|connection| {
+                    Ok(connection.query_row(
+                        "SELECT native_session_id FROM conversation_native_sessions
+                         WHERE conversation_id='legacy-reserved-group' AND membership_id='m-one'",
+                        [],
+                        |row| row.get::<_, String>(0),
+                    )?)
+                })
+                .unwrap();
+            assert_eq!(native_session, "native-session-1");
+
+            let objects = snapshot_layout(&root);
+            for expected in [
+                "conversation_native_sessions",
+                "archived_native_sessions",
+                "subagent_dispatch_deliveries",
+                "memberships_principal_unique",
+                "request_payload",
+                "terminal_payload",
+                "native_provenance",
+                "execution_kind",
+                "watchdog_deadline_unix_ms",
+            ] {
+                assert!(
+                    objects.contains(expected),
+                    "the {published_format} upgrade left {expected} missing"
+                );
+            }
+            assert!(!objects.contains("memberships_active_unique"));
+            assert_eq!(snapshot_group(&root, "custom-group"), custom_before);
+            let _ = std::fs::remove_dir_all(&root);
+        }
     }
 
     #[test]
-    fn failed_v3_migration_rolls_back_and_retry_succeeds() {
-        let root = std::env::temp_dir().join(format!("lico-conv-rollback-{}", Uuid::new_v4()));
+    fn a_failed_published_upgrade_leaves_the_store_and_a_retry_reaches_the_current_format() {
+        let root = std::env::temp_dir().join(format!("lico-conv-retry-{}", Uuid::new_v4()));
         std::fs::create_dir_all(fixture_database(&root).parent().unwrap()).unwrap();
         let fixture = open_fixture_connection(&root);
-        seed_v2_database(&fixture, true);
-        fixture.close().unwrap();
-
-        assert!(ConversationStore::open_for_migration(&root).is_err());
-        assert_eq!(schema_version(&root), "2");
-        let check = open_fixture_connection(&root);
-        let event_count: i64 = check
-            .query_row(
-                "SELECT COUNT(*) FROM events WHERE conversation_id='legacy-reserved-group'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(event_count, 12);
-        let m_two: String = check
-            .query_row(
-                "SELECT status FROM memberships WHERE id='m-two'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(m_two, "left");
-        let automatic_survived: i64 = check
-            .query_row(
-                "SELECT COUNT(*) FROM events WHERE id IN ('e2','e3','e5')",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(automatic_survived, 3);
-        check
+        arrange_published_store(&fixture, "11");
+        arrange_store_content(&fixture);
+        fixture
             .execute_batch(
-                "DROP TABLE schema_meta;
-                 CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-                 INSERT INTO schema_meta(key, value) VALUES ('version', '2');",
+                "CREATE TRIGGER fail_upgrade BEFORE UPDATE ON schema_meta
+                   BEGIN SELECT RAISE(ABORT, 'synthetic interrupted upgrade'); END;",
             )
             .unwrap();
-        drop(check);
+        fixture.close().unwrap();
+
+        let before = snapshot_database(&root);
+        assert!(ConversationStore::open_for_migration(&root).is_err());
+        assert_eq!(schema_version(&root), "11");
+        assert_eq!(snapshot_database(&root), before);
+
+        let fixture = open_fixture_connection(&root);
+        fixture.execute_batch("DROP TRIGGER fail_upgrade;").unwrap();
+        fixture.close().unwrap();
 
         let store = ConversationStore::open_for_migration(&root).unwrap();
         assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
         let conversation = store.get("legacy-reserved-group").unwrap();
-        assert_eq!(conversation.event_count, 9);
+        assert_eq!(conversation.event_count, 6);
+        assert_eq!(conversation.memberships.len(), 3);
         for membership in conversation.memberships {
             assert_eq!(membership.status, MembershipStatus::Active);
         }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn reopening_a_migrated_store_and_the_legacy_import_closure_are_no_ops() {
+        let root = std::env::temp_dir().join(format!("lico-conv-reopen-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(fixture_database(&root).parent().unwrap()).unwrap();
+        let fixture = open_fixture_connection(&root);
+        arrange_published_store(&fixture, "11");
+        arrange_store_content(&fixture);
+        fixture.close().unwrap();
+
+        assert!(ConversationStore::open(&root).is_err());
+        let migrated = ConversationStore::open_for_migration(&root).unwrap();
+        let after_migration = snapshot_database(&root);
+        drop(migrated);
+        let reopened = ConversationStore::open(&root).unwrap();
+        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
+        assert_eq!(snapshot_database(&root), after_migration);
+        reopened
+            .normalize_reserved_default_group_after_legacy_import()
+            .unwrap();
+        assert_eq!(snapshot_database(&root), after_migration);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -7945,46 +8042,6 @@ mod tests {
         drop(store);
         ConversationStore::open(&root).unwrap();
         let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn migrates_v5_conversations_to_durable_strategy_selection() {
-        let root = std::env::temp_dir().join(format!("lico-conv-v5-{}", Uuid::new_v4()));
-        std::fs::create_dir_all(fixture_database(&root).parent().unwrap()).unwrap();
-        let fixture = open_fixture_connection(&root);
-        fixture
-            .execute_batch(
-                "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-                 INSERT INTO schema_meta(key, value) VALUES ('version', '5');
-                 CREATE TABLE conversations (
-                   id TEXT PRIMARY KEY, title TEXT NOT NULL,
-                   archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)),
-                   pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),
-                   is_group INTEGER NOT NULL DEFAULT 0 CHECK(is_group IN (0,1)),
-                   revision INTEGER NOT NULL DEFAULT 0,
-                   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-                 );",
-            )
-            .unwrap();
-        fixture.close().unwrap();
-
-        assert!(ConversationStore::open(&root).is_err());
-        let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
-        let has_strategy_revision = store
-            .with_connection(|connection| {
-                let mut statement = connection.prepare("PRAGMA table_info(conversations)")?;
-                Ok(statement
-                    .query_map([], |row| row.get::<_, String>(1))?
-                    .collect::<rusqlite::Result<Vec<_>>>()?
-                    .iter()
-                    .any(|column| column == "strategy_revision"))
-            })
-            .unwrap();
-        assert!(has_strategy_revision);
-
-        drop(store);
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -8913,64 +8970,5 @@ mod tests {
                 .any(|(_, profile)| profile.revision == profile_revision + 1)
         );
         assert!(profiles.iter().any(|(_, profile)| profile.revision == 0));
-    }
-
-    #[test]
-    fn migrates_v6_conversations_to_assistant_and_profile_state_without_assigning_assistants() {
-        let root = std::env::temp_dir().join(format!("lico-conv-v6-assistant-{}", Uuid::new_v4()));
-        std::fs::create_dir_all(fixture_database(&root).parent().unwrap()).unwrap();
-        let fixture = open_fixture_connection(&root);
-        fixture
-            .execute_batch(
-                "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-                 INSERT INTO schema_meta(key, value) VALUES ('version', '6');
-                 CREATE TABLE principals (
-                   id TEXT PRIMARY KEY, kind TEXT NOT NULL, display_name TEXT NOT NULL,
-                   agent_id TEXT, created_at INTEGER NOT NULL
-                 );
-                 CREATE TABLE conversations (
-                   id TEXT PRIMARY KEY, title TEXT NOT NULL,
-                   archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)),
-                   pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),
-                   is_group INTEGER NOT NULL DEFAULT 0 CHECK(is_group IN (0,1)),
-                   strategy_revision TEXT,
-                   revision INTEGER NOT NULL DEFAULT 0,
-                   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-                 );
-                 INSERT INTO principals(id, kind, display_name, agent_id, created_at)
-                   VALUES ('agent:one', 'agent', 'One', 'one', 1),
-                          ('human:local', 'human', 'You', NULL, 1);
-                 INSERT INTO conversations(id, title, archived, pinned, is_group, revision, created_at, updated_at)
-                   VALUES ('legacy-group', 'Legacy', 0, 0, 1, 0, 1, 1);
-                 CREATE TABLE memberships (
-                   id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL,
-                   principal_id TEXT NOT NULL, access TEXT NOT NULL,
-                   status TEXT NOT NULL, joined_at INTEGER NOT NULL, left_at INTEGER
-                 );
-                 INSERT INTO memberships(id, conversation_id, principal_id, access, status, joined_at)
-                   VALUES ('m-human', 'legacy-group', 'human:local', 'owner', 'active', 1),
-                          ('m-agent', 'legacy-group', 'agent:one', 'member', 'active', 1);",
-            )
-            .unwrap();
-        fixture.close().unwrap();
-
-        assert!(ConversationStore::open(&root).is_err());
-        let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
-        let conversation = store.get("legacy-group").unwrap();
-        assert!(conversation.assistant_membership_id.is_none());
-        let profiles = store.membership_profiles("legacy-group").unwrap();
-        assert_eq!(profiles.len(), 1);
-        assert_eq!(profiles[0].1.revision, 0);
-        assert_eq!(profiles[0].1.required_capabilities.len(), 0);
-
-        drop(store);
-        let reopened = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
-        assert_eq!(
-            reopened.membership_profiles("legacy-group").unwrap().len(),
-            1
-        );
-        let _ = std::fs::remove_dir_all(&root);
     }
 }

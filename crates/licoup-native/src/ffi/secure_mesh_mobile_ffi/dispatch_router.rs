@@ -78,7 +78,7 @@ fn dispatch_value(
         action
             if crate::domain::secure_mesh_mls::SECURE_MESH_MLS_NATIVE_ACTIONS.contains(&action) =>
         {
-            crate::domain::secure_mesh_mls::dispatch(action, params)
+            crate::domain::mobile_relay::dispatch_secure_mesh_mls_action(action, params)
         }
         "secure_mesh.command.execute" => execute_secure_command(params),
         "secure_mesh.deviceTrust.evaluate" => {
@@ -151,7 +151,9 @@ fn execute_secure_command(params: &Value) -> anyhow::Result<Value> {
         crate::domain::secure_mesh_command_runtime::default_secure_command_ledger_path()?;
     let mut ledger =
         crate::core::secure_mesh_command::SecureCommandSqliteReplayLedger::open(ledger_path)?;
-    let mut executor = crate::domain::secure_mesh_command_runtime::SecureCommandRuntimeExecutor;
+    let mut executor = crate::domain::secure_mesh_command_runtime::SecureCommandRuntimeExecutor {
+        port: crate::domain::target_port::agent_target_port(),
+    };
     crate::core::secure_mesh_command::execute_secure_command_json(
         payload,
         context,

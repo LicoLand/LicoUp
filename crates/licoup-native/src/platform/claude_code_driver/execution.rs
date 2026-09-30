@@ -9,7 +9,7 @@ use super::supervision::{
     set_active_session, spawn_transport,
 };
 use super::transport::PersistentTransport;
-use crate::platform::native_agent_parser::adapters::NativeLineParser;
+use licoup_agent_adapter_sdk::adapters::NativeLineParser;
 use crate::platform::native_agent_parser::adapters::claude_code::{
     ClaudeCodeParser, ClaudeEffect, ProtocolFinishReport, interrupt_request, steer_message,
 };

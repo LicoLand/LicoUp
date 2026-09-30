@@ -21,7 +21,7 @@ pub(super) struct ProtocolOutcome {
     pub(super) turn_id: String,
     pub(super) turn_status: String,
     pub(super) effective: EffectiveSettings,
-    pub(super) transitions: Vec<crate::platform::native_agent_parser::Transition>,
+    pub(super) transitions: Vec<licoup_agent_adapter_sdk::Transition>,
 }
 
 #[derive(Debug)]
@@ -398,7 +398,7 @@ impl OpenClawProtocol {
                     None,
                 );
             }
-            let skill_events = super::super::skill_invocation_projection::project_skill_invocations(
+            let skill_events = licoup_agent_adapter_sdk::skill_invocation_projection::project_skill_invocations(
                 update.payload(),
             );
             if !skill_events.is_empty() {

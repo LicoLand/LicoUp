@@ -111,7 +111,7 @@ impl ActorPort for NativeCallerAuthority {
         // A provider claim is only as good as the mesh that admits it. The
         // conversation-level check stays with the domain owner, which performs
         // it against the durable store before any effect.
-        if crate::platform::runtime_adapters::production_subagent_registry()
+        if crate::platform::runtime_adapters::production_subagent_registry(crate::domain::target_port::agent_target_port())
             .caller_providers()
             .any(|provider| provider.as_str() == provider_id)
         {

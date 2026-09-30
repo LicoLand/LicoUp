@@ -8,6 +8,6 @@ pub(super) fn handle_resource_usage_scan(command: AdmittedCommand) -> Result<Cli
         &[],
     );
     Ok(CliExecution::Json(
-        crate::domain::agent_resource_usage::scan(&params)?,
+        crate::domain::agent_resource_usage::scan(&crate::domain::target_port::agent_target_port(), &params)?,
     ))
 }

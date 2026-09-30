@@ -10,7 +10,9 @@ fn stdio_rpc_protocol_matches_the_persistent_host_boundary() {
 
 #[test]
 fn stdio_rpc_parses_exact_method_and_absolute_portable_path() {
-    let portable = env::temp_dir().join("licoup-rpc-portable");
+    // The assertion is about an absolute portable path, so the fixture only has
+    // to be unique; a fixed name would collide across concurrent runs.
+    let portable = env::temp_dir().join(format!("licoup-rpc-portable-{}", std::process::id()));
     let request = serde_json::to_vec(&json!({
         "protocol": STDIO_RPC_PROTOCOL,
         "id": "request-1",

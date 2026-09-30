@@ -1,5 +1,14 @@
 use super::support::*;
 
+/// The composed inventory port one usage scan reads.
+///
+/// `agent_usage::scan` takes the port the inventory composes; this is the same
+/// value the runtime builds, and it is built per call because the fixture is a
+/// file-system arrangement rather than a composition.
+fn agent_usage_target_port() -> licoup_agent_targets::port::AgentTargetPort {
+    licoup_native::domain::target_port::agent_target_port()
+}
+
 #[test]
 fn codex_usage_warm_scan_reuses_files_and_append_scan_reads_only_suffix() {
     let history_root = temp_dir("codex-usage-cache-history");
@@ -17,13 +26,13 @@ fn codex_usage_warm_scan_reuses_files_and_append_scan_reads_only_suffix() {
     .unwrap();
     let params = scan_params(&history_root, &state_root);
 
-    let cold = agent_usage::scan(&params).unwrap();
+    let cold = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     assert_eq!(
         cold["agents"][0]["history"]["scanCache"]["rescannedFiles"],
         1
     );
 
-    let warm = agent_usage::scan(&params).unwrap();
+    let warm = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     assert_eq!(warm["agents"][0]["history"]["scanCache"]["reusedFiles"], 1);
     assert_eq!(warm["agents"][0]["history"]["scanCache"]["parsedBytes"], 0);
 
@@ -35,7 +44,7 @@ fn codex_usage_warm_scan_reuses_files_and_append_scan_reads_only_suffix() {
     )
     .unwrap();
 
-    let appended = agent_usage::scan(&params).unwrap();
+    let appended = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     assert_eq!(appended["agents"][0]["history"]["totalTokens"], 13);
     assert_eq!(
         appended["agents"][0]["history"]["scanCache"]["appendedFiles"],
@@ -58,7 +67,7 @@ fn codex_usage_keeps_finalized_day_immutable_after_source_rewrite() {
     )
     .unwrap();
     let params = scan_params(&history_root, &state_root);
-    let first = agent_usage::scan(&params).unwrap();
+    let first = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     assert_eq!(first["summary"]["totalTokens"], 10);
     let old_size = fs::metadata(&rollout).unwrap().len();
 
@@ -74,7 +83,7 @@ fn codex_usage_keeps_finalized_day_immutable_after_source_rewrite() {
     fs::write(&rollout, replacement).unwrap();
     assert!(fs::metadata(&rollout).unwrap().len() > old_size);
 
-    let rewritten = agent_usage::scan(&params).unwrap();
+    let rewritten = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     let history = &rewritten["agents"][0]["history"];
     assert_eq!(history["totalTokens"], 10);
     assert_eq!(history["scanCache"]["appendedFiles"], 0);
@@ -106,7 +115,7 @@ fn codex_usage_detects_middle_rewrite_before_append_in_large_file() {
     fs::write(&rollout, original).unwrap();
     let params = scan_params(&history_root, &state_root);
     assert_eq!(
-        agent_usage::scan(&params).unwrap()["summary"]["totalTokens"],
+        agent_usage::scan(&agent_usage_target_port(), &params).unwrap()["summary"]["totalTokens"],
         12
     );
 
@@ -120,7 +129,7 @@ fn codex_usage_detects_middle_rewrite_before_append_in_large_file() {
     .join("\n");
     fs::write(&rollout, rewritten).unwrap();
 
-    let report = agent_usage::scan(&params).unwrap();
+    let report = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     let history = &report["agents"][0]["history"];
     assert_eq!(history["totalTokens"], 22);
     assert_eq!(history["scanCache"]["appendedFiles"], 0);
@@ -141,7 +150,7 @@ fn codex_usage_force_refresh_detects_equal_metadata_rewrite() {
     fs::write(&rollout, &original).unwrap();
     let params = scan_params(&history_root, &state_root);
     assert_eq!(
-        agent_usage::scan(&params).unwrap()["summary"]["totalTokens"],
+        agent_usage::scan(&agent_usage_target_port(), &params).unwrap()["summary"]["totalTokens"],
         12
     );
     let original_metadata = fs::metadata(&rollout).unwrap();
@@ -165,7 +174,7 @@ fn codex_usage_force_refresh_detects_equal_metadata_rewrite() {
         original_metadata.len()
     );
 
-    let report = agent_usage::scan(&params).unwrap();
+    let report = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     let history = &report["agents"][0]["history"];
     assert_eq!(history["totalTokens"], 22);
     assert_eq!(history["scanCache"]["reusedFiles"], 0);

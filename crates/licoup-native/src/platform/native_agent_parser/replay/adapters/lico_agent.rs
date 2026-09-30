@@ -6,7 +6,7 @@
 //! frame is reported as the parser's own closed error kind.
 
 use super::super::{FrameReplay, RecordedFrame};
-use crate::platform::native_agent_parser::adapters::NativeLineParser;
+use licoup_agent_adapter_sdk::adapters::NativeLineParser;
 use crate::platform::native_agent_parser::adapters::lico_agent::{
     FrameError, RpcEffect, RpcParser,
 };
@@ -23,7 +23,7 @@ impl Replay {
     /// The framing this boundary consumes, taken from the adapter's own
     /// contract so a frame recorded under another channel cannot pass.
     fn framing() -> &'static str {
-        crate::platform::native_agent_parser::adapters::contract(RuntimeAdapter::LicoAgent).framing
+        crate::platform::native_agent_parser::adapters::contract_for(RuntimeAdapter::LicoAgent).framing
     }
 }
 

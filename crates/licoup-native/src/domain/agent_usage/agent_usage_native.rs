@@ -74,6 +74,7 @@ struct StableParse {
 }
 
 pub(super) fn summarize(
+    port: &crate::port::AgentTargetPort,
     agent: &AgentDef,
     scan_params: &Value,
     window: &UsageWindow,
@@ -81,7 +82,7 @@ pub(super) fn summarize(
     runtime: &CacheRuntime,
 ) -> Option<HistoryUsageSummary> {
     if agent.id == "openclaw" {
-        return Some(openclaw::summarize(window, warnings));
+        return Some(openclaw::summarize(port, window, warnings));
     }
     // Cursor's billing ledger is hosted: the local stores it writes are not a
     // request ledger, so the file pipeline is never consulted for it.

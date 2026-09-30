@@ -129,8 +129,8 @@ fn cli_exact_resume_places_session_and_prompt_in_argv() {
     assert_eq!(first.output, "first response");
     assert!(matches!(
         first.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
-            crate::platform::native_agent_parser::LifecycleStage::Completed
+        Some(licoup_agent_adapter_sdk::Transition::Lifecycle(
+            licoup_agent_adapter_sdk::LifecycleStage::Completed
         ))
     ));
 

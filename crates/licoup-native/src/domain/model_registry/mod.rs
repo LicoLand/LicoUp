@@ -1,12 +1,15 @@
 //! Shared canonical model identities from public catalog facts. Native Agent
 //! selectors remain untouched; the registry supplies identity, not entitlement.
+//!
+//! The display typography is not registry behaviour — it formats any catalog
+//! name or native selector the same way for every layer that renders one — so
+//! it sank to `licoup-foundation` and the former path stays reachable here.
 
-mod display;
 mod index;
 mod source;
 
 use anyhow::{Result, anyhow};
-pub use display::model_display_name;
+pub use licoup_foundation::core::model_naming::model_display_name;
 pub use index::RegistrySnapshot;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

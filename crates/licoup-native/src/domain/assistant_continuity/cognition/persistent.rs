@@ -14,7 +14,8 @@ use licoup_conversation::{
 };
 use serde_json::{Value, json};
 
-use crate::domain::client_conversation::{LICOUP_GUIDE_SKILL_SOURCE, dispatch_attachments_param};
+use crate::domain::client_conversation::dispatch_attachments_param;
+use licoup_mcp::guide_skill::LICOUP_GUIDE_SKILL_SOURCE;
 use crate::platform::runtime_adapters::{
     GeneratedInstructionDelivery, RuntimeAdapterError, compose_generated_instruction_delivery,
 };

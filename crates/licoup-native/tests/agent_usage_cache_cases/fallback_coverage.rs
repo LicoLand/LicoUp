@@ -1,7 +1,16 @@
 use super::support::*;
 
+/// The composed inventory port one usage scan reads.
+///
+/// `agent_usage::scan` takes the port the inventory composes; this is the same
+/// value the runtime builds, and it is built per call because the fixture is a
+/// file-system arrangement rather than a composition.
+fn agent_usage_target_port() -> licoup_agent_targets::port::AgentTargetPort {
+    licoup_native::domain::target_port::agent_target_port()
+}
+
 fn scan_agent(home: &PathBuf, state: &PathBuf, agent: &str, force_refresh: bool) -> Value {
-    agent_usage::scan(&json!({
+    agent_usage::scan(&agent_usage_target_port(), &json!({
         "agent": agent,
         "homeDir": home.to_string_lossy(),
         "stateRoot": state.to_string_lossy(),

@@ -264,7 +264,7 @@ where
                                 &writer,
                                 Some(&request.id),
                                 Some(&request.workflow_id),
-                                &error.client_error(),
+                                &licoup_native::platform::runtime_adapters::client_error::client_error(&error),
                             )?,
                         }
                     } else if operation == "send" {
@@ -569,7 +569,7 @@ where
                 } => {
                     let execution = catch_unwind(AssertUnwindSafe(|| {
                         let _guard = PortableDataDirOverrideGuard::set(portable_data_dir);
-                        licoup_native::domain::catalog_convergence::dispatch(
+                        licoup_application::catalog_convergence::dispatch(
                             &["catalog".to_string(), operation],
                             &params,
                         )

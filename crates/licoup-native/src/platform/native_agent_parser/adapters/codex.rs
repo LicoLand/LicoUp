@@ -13,7 +13,7 @@ use crate::platform::codex_app_server::limits::{
 use crate::platform::codex_app_server::model::{
     EffectiveSettings, ProtocolEffect, ProtocolFailure, ProtocolPhase,
 };
-use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
+use licoup_agent_adapter_sdk::{LifecycleStage, Transition, TransitionReducer};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::io;

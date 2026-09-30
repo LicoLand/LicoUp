@@ -1,5 +1,5 @@
 use super::{AdapterContract, NativeLineParser};
-use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
+use licoup_agent_adapter_sdk::{LifecycleStage, Transition, TransitionReducer};
 use serde_json::Value;
 
 pub(super) const CONTRACT: AdapterContract = AdapterContract::new("lico-agent", "lf-jsonl-jsonrpc");

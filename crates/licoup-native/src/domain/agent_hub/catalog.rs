@@ -13,7 +13,7 @@ use crate::domain::targets::normalize_target;
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
 
-pub fn catalog(params: &Value) -> Result<Value> {
+pub fn catalog(port: &crate::port::AgentTargetPort, params: &Value) -> Result<Value> {
     let store = store_from_params(params)?;
     let capabilities = capabilities_from_params(params)?;
     let warehouse = recipes::warehouse()?;
@@ -29,9 +29,9 @@ pub fn catalog(params: &Value) -> Result<Value> {
     let supplied_snapshot = params.get("discoveryCandidates").is_some();
     let live_lookup = (requested.is_some() || live_members) && !supplied_snapshot;
     let facts = if live_members && requested.is_none() && !supplied_snapshot {
-        member_facts(params, &members)
+        member_facts(port, params, &members)
     } else {
-        discovery_facts(params, requested.as_deref())?
+        discovery_facts(port, params, requested.as_deref())?
     };
     let package_roots = live_lookup
         .then(|| package_versions::package_roots(params))
@@ -109,10 +109,14 @@ pub fn catalog(params: &Value) -> Result<Value> {
 /// One member's inspection failing must not fail the refresh: the per-card path
 /// this replaces isolated that failure to the one card, so a member without a
 /// fact simply projects from its static metadata.
-fn member_facts(params: &Value, members: &[AgentCatalogEntry]) -> Vec<DiscoveryFact> {
+fn member_facts(
+    port: &crate::port::AgentTargetPort,
+    params: &Value,
+    members: &[AgentCatalogEntry],
+) -> Vec<DiscoveryFact> {
     members
         .iter()
-        .filter_map(|entry| live_fact(params, &entry.id).ok().flatten())
+        .filter_map(|entry| live_fact(port, params, &entry.id).ok().flatten())
         .collect()
 }
 
@@ -450,7 +454,11 @@ fn requested_agent_id(params: &Value, members: &[AgentCatalogEntry]) -> Result<O
     Ok(Some(id))
 }
 
-pub fn discovery_facts(params: &Value, agent_id: Option<&str>) -> Result<Vec<DiscoveryFact>> {
+pub fn discovery_facts(
+    port: &crate::port::AgentTargetPort,
+    params: &Value,
+    agent_id: Option<&str>,
+) -> Result<Vec<DiscoveryFact>> {
     if let Some(items) = params.get("discoveryCandidates").and_then(Value::as_array) {
         return Ok(items
             .iter()
@@ -461,13 +469,13 @@ pub fn discovery_facts(params: &Value, agent_id: Option<&str>) -> Result<Vec<Dis
     let Some(agent_id) = agent_id else {
         return Ok(Vec::new());
     };
-    live_fact(params, agent_id).map(|fact| fact.into_iter().collect())
+    live_fact(port, params, agent_id).map(|fact| fact.into_iter().collect())
 }
 
-fn live_fact(params: &Value, agent_id: &str) -> Result<Option<DiscoveryFact>> {
+fn live_fact(port: &crate::port::AgentTargetPort, params: &Value, agent_id: &str) -> Result<Option<DiscoveryFact>> {
     let mut inspect_params = params.clone();
     inspect_params["target"] = json!(agent_id);
-    let inspected = crate::domain::targets::inspect_target_with_params(&inspect_params)?;
+    let inspected = crate::domain::targets::inspect_target_with_params(port, &inspect_params)?;
     Ok(inspected.get("target").and_then(fact_from_value))
 }
 

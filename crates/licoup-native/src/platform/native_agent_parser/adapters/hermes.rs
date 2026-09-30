@@ -1,6 +1,6 @@
 use super::AdapterContract;
 use crate::core::acp::{self, AcpSessionUpdate, AcpStopReason};
-use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
+use licoup_agent_adapter_sdk::{LifecycleStage, Transition, TransitionReducer};
 use serde_json::Value;
 
 pub(super) const CONTRACT: AdapterContract = AdapterContract::new("hermes", "stdio-jsonrpc-acp");
@@ -21,13 +21,13 @@ pub(in crate::platform) fn initialize_response(
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::platform) struct PermissionRequest {
-    pub(in crate::platform) id: Value,
-    pub(in crate::platform) method: String,
-    pub(in crate::platform) session_id: Option<String>,
-    pub(in crate::platform) display_summary: String,
-    pub(in crate::platform) option_id: Option<String>,
-    pub(in crate::platform) requested_tools: Vec<String>,
+pub struct PermissionRequest {
+    pub id: Value,
+    pub method: String,
+    pub session_id: Option<String>,
+    pub display_summary: String,
+    pub option_id: Option<String>,
+    pub requested_tools: Vec<String>,
 }
 
 pub(in crate::platform) fn permission_request(message: &Value) -> Option<PermissionRequest> {

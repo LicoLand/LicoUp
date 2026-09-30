@@ -79,11 +79,11 @@ fn create_requires_the_exact_preview_binding() {
         "selectionMode": "all",
         "path": display_path(&archive)
     });
-    let plan = preview(&params).unwrap();
+    let plan = preview(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     for binding in ["", "sha256:stale"] {
         let mut attempted = params.clone();
         attempted["planBinding"] = json!(binding);
-        let error = create(&attempted).unwrap_err().to_string();
+        let error = create(&crate::domain::target_port::agent_target_port(), &attempted).unwrap_err().to_string();
         assert!(error.contains("plan"));
     }
     assert_eq!(plan["plan"]["selectionMode"], "all");

@@ -169,19 +169,23 @@ fn run_prompt(
     let mut usage_records = Vec::new();
     let result = {
         let mut guard = agent.lock().unwrap();
-        guard.prompt(message, |event| {
-            if let AgentEvent::MessageUpdate { role, delta } = &event
-                && role == "assistant"
-            {
-                assistant_output.push_str(delta);
-            }
-            if let AgentEvent::Usage { model, usage } = &event {
-                usage_records.push((OffsetDateTime::now_utc(), usage_record(model, usage)));
-            }
-            if !matches!(event, AgentEvent::AgentEnd) {
-                let _ = emit_event(out, &event);
-            }
-        })
+        guard.prompt(
+            &licoup_native::domain::target_port::agent_target_port(),
+            message,
+            |event| {
+                if let AgentEvent::MessageUpdate { role, delta } = &event
+                    && role == "assistant"
+                {
+                    assistant_output.push_str(delta);
+                }
+                if let AgentEvent::Usage { model, usage } = &event {
+                    usage_records.push((OffsetDateTime::now_utc(), usage_record(model, usage)));
+                }
+                if !matches!(event, AgentEvent::AgentEnd) {
+                    let _ = emit_event(out, &event);
+                }
+            },
+        )
     };
     if let Err(err) = result {
         // Earlier model calls still consumed tokens when a later call failed.
@@ -512,7 +516,12 @@ mod tests {
     #[test]
     fn cli_requires_fixed_native_session_identity_and_explicit_workspace() {
         let session_id = Uuid::new_v4().to_string();
-        let workspace = std::env::temp_dir().join("lico-agent-cli-workspace-fixture");
+        // Per-run fixture: two checkouts, or two runs in one checkout, must not
+        // share a workspace directory.
+        let workspace = std::env::temp_dir().join(format!(
+            "lico-agent-cli-workspace-fixture-{}",
+            Uuid::new_v4()
+        ));
         let args = parse_args(&[
             "--model".into(),
             "synthetic-model".into(),
@@ -644,7 +653,11 @@ mod tests {
             "forceRefresh": true,
         });
         for _ in 0..2 {
-            let report = licoup_native::domain::agent_usage::scan(&params).unwrap();
+            let report = licoup_native::domain::agent_usage::scan(
+                &licoup_native::domain::target_port::agent_target_port(),
+                &params,
+            )
+            .unwrap();
             assert_eq!(report["summary"]["promptTokens"], 24);
             assert_eq!(report["summary"]["completionTokens"], 6);
             assert_eq!(report["summary"]["totalTokens"], 30);

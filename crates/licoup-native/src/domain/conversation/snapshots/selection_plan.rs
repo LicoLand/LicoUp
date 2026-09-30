@@ -59,6 +59,7 @@ fn selection_profile(
 }
 
 fn prepared_selection(
+    port: &crate::port::AgentTargetPort,
     params: &Value,
 ) -> Result<(
     ClientStateStore,
@@ -72,7 +73,7 @@ fn prepared_selection(
 )> {
     let store = client_state_store(params)?;
     let archive_root = archive_destination(params)?;
-    let target_scan = archive_target_scan(params)?;
+    let target_scan = archive_target_scan(port, params)?;
     let mut agents = archive_agents_from_target_scan(params, &target_scan);
     agents.sort();
     let mode = archive_selection_mode(params)?.to_string();
@@ -99,9 +100,12 @@ fn prepared_selection(
     ))
 }
 
-pub(crate) fn archive_selection_preview(params: &Value) -> Result<Value> {
+pub(crate) fn archive_selection_preview(
+    port: &crate::port::AgentTargetPort,
+    params: &Value,
+) -> Result<Value> {
     let (_, archive_root, target_scan, agents, mode, query, profile, discovery) =
-        prepared_selection(params)?;
+        prepared_selection(port, params)?;
     let (selected, _) = select_profile_archive_candidates(&profile, &discovery);
     let collection_dir = collection_dir_for_profile_layout(
         &archive_root,
@@ -126,9 +130,12 @@ pub(crate) fn archive_selection_preview(params: &Value) -> Result<Value> {
     }))
 }
 
-pub(crate) fn archive_selection_collect(params: &Value) -> Result<Value> {
+pub(crate) fn archive_selection_collect(
+    port: &crate::port::AgentTargetPort,
+    params: &Value,
+) -> Result<Value> {
     let (store, archive_root, target_scan, agents, mode, query, profile, discovery) =
-        prepared_selection(params)?;
+        prepared_selection(port, params)?;
     if agents.is_empty() {
         return Ok(json!({
             "ok": false,

@@ -1,9 +1,14 @@
 use super::{AdmittedCommand, CliExecution};
 use anyhow::{Result, anyhow};
 
+/// The inventory port this command layer composes.
+fn targets() -> crate::port::AgentTargetPort {
+    crate::domain::target_port::agent_target_port()
+}
+
 pub(super) fn handle_status(_command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(
-        crate::platform::client_autostart::status()?,
+        crate::platform::client_autostart::status(&targets())?,
     ))
 }
 
@@ -37,9 +42,9 @@ pub(super) fn handle_set(command: AdmittedCommand) -> Result<CliExecution> {
         None => crate::platform::llm_gateway_service::DEFAULT_PORT,
     };
     let result = match component {
-        "desktop" => crate::platform::client_autostart::set_desktop(enabled, silent)?,
-        "mcp" => crate::platform::client_autostart::set_mcp(enabled)?,
-        "gateway" => crate::platform::client_autostart::set_gateway(enabled, port)?,
+        "desktop" => crate::platform::client_autostart::set_desktop(&targets(), enabled, silent)?,
+        "mcp" => crate::platform::client_autostart::set_mcp(&targets(), enabled)?,
+        "gateway" => crate::platform::client_autostart::set_gateway(&targets(), enabled, port)?,
         _ => return Err(anyhow!("autostart_component_invalid")),
     };
     Ok(CliExecution::Json(result))

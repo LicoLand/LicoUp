@@ -27,7 +27,7 @@ fn catalog_joins_one_discovery_snapshot_onto_supported_cards() {
             "scanSource": "virtual-machine-orbstack"
         }
     ]);
-    let catalog = catalog(&params).unwrap();
+    let catalog = catalog(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     assert_eq!(catalog["scanGeneration"], 7);
     assert_eq!(catalog["pluginManagementBoundary"], "adapter-plugins-only");
     let cards = catalog["cards"].as_array().unwrap();
@@ -98,7 +98,7 @@ fn catalog_with_agent_id_loads_that_agent_toml() {
     let mut params = portable_params("agent-toml").1;
     params["agentId"] = serde_json::json!("cursor");
     params["discoveryCandidates"] = serde_json::json!([]);
-    let catalog = catalog(&params).unwrap();
+    let catalog = catalog(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     let cards = catalog["cards"].as_array().unwrap();
     assert_eq!(cards.len(), 1);
     let cursor = &cards[0];
@@ -132,7 +132,7 @@ fn catalog_does_not_emit_install_actions_for_missing_channels() {
     });
     params["discoveryCandidates"] = serde_json::json!([]);
     params["agentId"] = serde_json::json!("hermes");
-    let catalog = catalog(&params).unwrap();
+    let catalog = catalog(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     let hermes = catalog["cards"]
         .as_array()
         .unwrap()
@@ -178,7 +178,7 @@ fn catalog_marks_update_available_when_latest_is_strictly_newer() {
             "latestVersion": "0.43.0"
         }
     });
-    let catalog = catalog(&params).unwrap();
+    let catalog = catalog(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     let codex = card(&catalog, "codex");
     assert_eq!(codex["installedVersion"], "0.42.1");
     assert_eq!(codex["latestVersion"], "0.43.0");
@@ -196,7 +196,7 @@ fn catalog_does_not_mark_update_when_versions_are_equal() {
             "latestVersion": "0.42.1"
         }
     });
-    let catalog = catalog(&params).unwrap();
+    let catalog = catalog(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     let codex = card(&catalog, "codex");
     assert_eq!(codex["installedVersion"], "0.42.1");
     assert_eq!(codex["latestVersion"], "0.42.1");
@@ -207,7 +207,7 @@ fn catalog_does_not_mark_update_when_versions_are_equal() {
 fn catalog_does_not_mark_update_when_versions_are_missing() {
     let mut params = portable_params("missing").1;
     present_codex(&mut params);
-    let catalog = catalog(&params).unwrap();
+    let catalog = catalog(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     let codex = card(&catalog, "codex");
     assert_eq!(codex["installedVersion"], "");
     assert_eq!(codex["latestVersion"], "");
@@ -224,7 +224,7 @@ fn catalog_does_not_mark_update_when_versions_are_unparseable() {
             "latestVersion": "vendor-latest"
         }
     });
-    let catalog = catalog(&params).unwrap();
+    let catalog = catalog(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     let codex = card(&catalog, "codex");
     assert_eq!(codex["installedVersion"], "");
     assert_eq!(codex["latestVersion"], "");
@@ -252,7 +252,7 @@ fn catalog_prefers_owned_installed_version_over_the_word_latest() {
     params["packageMetadata"] = serde_json::json!({
         "codex": { "latestVersion": "0.42.1" }
     });
-    let catalog = catalog(&params).unwrap();
+    let catalog = catalog(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     let codex = card(&catalog, "codex");
     assert_eq!(codex["installedVersion"], "0.41.0");
     assert_eq!(codex["latestVersion"], "0.42.1");
@@ -275,7 +275,7 @@ fn catalog_uses_dedicated_version_probes_and_keeps_absent_cards_blank() {
     params["packageMetadata"] = serde_json::json!({
         "opencode": { "installedVersion": "9.9.9" }
     });
-    let catalog = catalog(&params).unwrap();
+    let catalog = catalog(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     assert_eq!(card(&catalog, "codex")["installedVersion"], "0.147.0");
     assert_eq!(card(&catalog, "cursor")["installedVersion"], "1.4.2");
     assert_eq!(card(&catalog, "opencode")["installedVersion"], "");
@@ -302,7 +302,7 @@ fn contradictory_cursor_presence_admits_strong_discovery_and_version_probe() {
         "cursor": "cursor-agent 2026.08.25-3e8eec8"
     });
 
-    let catalog = catalog(&params).unwrap();
+    let catalog = catalog(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     let cursor = card(&catalog, "cursor");
     assert_eq!(cursor["present"], true);
     assert_eq!(cursor["installedVersion"], "2026.08.25-3e8eec8");
@@ -316,7 +316,7 @@ fn catalog_without_live_lookup_is_a_static_card_template() {
         .as_object_mut()
         .unwrap()
         .remove("discoveryCandidates");
-    let catalog = catalog(&params).unwrap();
+    let catalog = catalog(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     let cards = catalog["cards"].as_array().unwrap();
     assert_catalog_membership(cards);
     for item in cards {
@@ -337,7 +337,7 @@ fn catalog_with_agent_id_projects_one_injected_card() {
     params["versionProbes"] = serde_json::json!({
         "codex": "codex-cli 0.147.0"
     });
-    let catalog = catalog(&params).unwrap();
+    let catalog = catalog(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     let cards = catalog["cards"].as_array().unwrap();
     assert_eq!(cards.len(), 1);
     assert_eq!(cards[0]["id"], "codex");
@@ -349,7 +349,7 @@ fn catalog_with_agent_id_projects_one_injected_card() {
 fn catalog_rejects_unknown_agent_id() {
     let mut params = portable_params("unknown-id").1;
     params["agentId"] = serde_json::json!("not-an-agent");
-    let error = catalog(&params).unwrap_err();
+    let error = catalog(&crate::domain::target_port::agent_target_port(), &params).unwrap_err();
     assert!(error.to_string().contains("agent_not_found"));
 }
 
@@ -363,7 +363,7 @@ fn catalog_accepts_kimi_code_without_an_install_recipe() {
         "present": true,
         "location": "local"
     }]);
-    let catalog = catalog(&params).unwrap();
+    let catalog = catalog(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     let cards = catalog["cards"].as_array().unwrap();
     assert_eq!(cards.len(), 1);
     assert_eq!(cards[0]["id"], "kimi-code");
@@ -378,7 +378,7 @@ fn catalog_accepts_kimi_code_without_an_install_recipe() {
 fn catalog_rejects_scan_only_agents_without_a_runtime_lane() {
     let mut params = portable_params("unsupported-id").1;
     params["agentId"] = serde_json::json!("workbuddy");
-    let error = catalog(&params).unwrap_err();
+    let error = catalog(&crate::domain::target_port::agent_target_port(), &params).unwrap_err();
     assert!(error.to_string().contains("agent_not_found"));
 }
 
@@ -405,7 +405,7 @@ fn catalog_projects_discovered_grok_and_command_code() {
             "location": "local"
         }
     ]);
-    let catalog = catalog(&params).unwrap();
+    let catalog = catalog(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     let cards = catalog["cards"].as_array().unwrap();
     assert_catalog_membership(cards);
     let grok = card(&catalog, "grok");
@@ -443,7 +443,7 @@ fn catalog_live_lookup_resolves_every_member_in_one_pass() {
         .unwrap()
         .remove("discoveryCandidates");
 
-    let batched = catalog(&batched_params).unwrap();
+    let batched = catalog(&crate::domain::target_port::agent_target_port(), &batched_params).unwrap();
     let batched_cards = batched["cards"].as_array().unwrap().clone();
     assert_catalog_membership(&batched_cards);
 
@@ -490,7 +490,7 @@ fn catalog_live_lookup_defers_to_a_supplied_snapshot() {
         {"target": "openclaw", "present": true, "status": "detected",
          "location": "virtual-machine", "scanSource": "virtual-machine-orbstack"}
     ]);
-    let cards = catalog(&injected).unwrap()["cards"]
+    let cards = catalog(&crate::domain::target_port::agent_target_port(), &injected).unwrap()["cards"]
         .as_array()
         .unwrap()
         .clone();
@@ -510,7 +510,7 @@ fn catalog_live_lookup_keeps_membership_order_and_one_card_per_member() {
         .as_object_mut()
         .unwrap()
         .remove("discoveryCandidates");
-    let cards = catalog(&batched_params).unwrap()["cards"]
+    let cards = catalog(&crate::domain::target_port::agent_target_port(), &batched_params).unwrap()["cards"]
         .as_array()
         .unwrap()
         .clone();

@@ -18,7 +18,7 @@ fn verify_failure_schedules_retry_using_same_target_scan() {
     }))
     .unwrap();
     let job_id = created["jobId"].as_str().unwrap();
-    drain(&json!({
+    drain(&crate::domain::target_port::agent_target_port(), &json!({
         "stateRoot": display_path(&state),
         "jobId": job_id,
         "once": "true"
@@ -26,7 +26,7 @@ fn verify_failure_schedules_retry_using_same_target_scan() {
     .unwrap();
     corrupt_first_raw_content(&archive_root, "durable-verification-retry");
 
-    let verify = drain(&json!({
+    let verify = drain(&crate::domain::target_port::agent_target_port(), &json!({
         "stateRoot": display_path(&state),
         "jobId": job_id,
         "once": "true"
@@ -45,7 +45,7 @@ fn verify_failure_schedules_retry_using_same_target_scan() {
             .any(|event| event["type"] == "archive.retry.scheduled")
     );
 
-    let completed = drain(&json!({
+    let completed = drain(&crate::domain::target_port::agent_target_port(), &json!({
         "stateRoot": display_path(&state),
         "jobId": job_id
     }))
@@ -73,7 +73,7 @@ fn max_attempts_exhausted_fails_dead_letter_style() {
     }))
     .unwrap();
     let job_id = created["jobId"].as_str().unwrap();
-    drain(&json!({
+    drain(&crate::domain::target_port::agent_target_port(), &json!({
         "stateRoot": display_path(&state),
         "jobId": job_id,
         "once": "true"
@@ -81,7 +81,7 @@ fn max_attempts_exhausted_fails_dead_letter_style() {
     .unwrap();
     corrupt_first_raw_content(&archive_root, "durable-permanent-failure");
 
-    let drained = drain(&json!({
+    let drained = drain(&crate::domain::target_port::agent_target_port(), &json!({
         "stateRoot": display_path(&state),
         "jobId": job_id,
         "once": "true"

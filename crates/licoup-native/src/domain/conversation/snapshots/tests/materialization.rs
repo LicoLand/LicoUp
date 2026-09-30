@@ -55,7 +55,7 @@ fn archive_collect_materializes_snapshots_in_parallel() {
     )
     .unwrap();
 
-    let result = archive_collect(&json!({
+    let result = archive_collect(&crate::domain::target_port::agent_target_port(), &json!({
         "stateRoot": display_path(&state),
         "homeDir": display_path(&home),
         "agent": "codex",

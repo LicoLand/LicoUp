@@ -17,12 +17,17 @@ use crate::domain::conversation::archive_queue::{
 use crate::domain::conversation_snapshots;
 
 impl ArchiveJobStore {
-    pub(super) fn advance_job(&self, conn: &Connection, job: ArchiveJob) -> Result<Value> {
+    pub(super) fn advance_job(
+        &self,
+        port: &crate::port::AgentTargetPort,
+        conn: &Connection,
+        job: ArchiveJob,
+    ) -> Result<Value> {
         match parse_archive_job_status(&job.status)? {
             ArchiveJobStatus::Queued | ArchiveJobStatus::RetryScheduled => {
-                self.run_archive_step(conn, job)
+                self.run_archive_step(port, conn, job)
             }
-            ArchiveJobStatus::Archiving => self.run_archive_step(conn, job),
+            ArchiveJobStatus::Archiving => self.run_archive_step(port, conn, job),
             ArchiveJobStatus::Verifying => self.run_verify_step(conn, job),
             ArchiveJobStatus::Scanning
             | ArchiveJobStatus::Completed
@@ -31,7 +36,12 @@ impl ArchiveJobStore {
         }
     }
 
-    pub(super) fn run_archive_step(&self, conn: &Connection, mut job: ArchiveJob) -> Result<Value> {
+    pub(super) fn run_archive_step(
+        &self,
+        port: &crate::port::AgentTargetPort,
+        conn: &Connection,
+        mut job: ArchiveJob,
+    ) -> Result<Value> {
         if self.is_cancelled(conn, &job.job_id)? {
             let updated = self
                 .get_job(conn, &job.job_id)?
@@ -39,7 +49,7 @@ impl ArchiveJobStore {
             return self.job_response(conn, updated);
         }
         if job.attempt == 0 {
-            validate_stored_plan(&job.request, &job.target_scan)?;
+            validate_stored_plan(port, &job.request, &job.target_scan)?;
         }
         let archiving = advance_archive_job_status(
             parse_archive_job_status(&job.status)?,
@@ -75,7 +85,7 @@ impl ArchiveJobStore {
                 "jobId": job.job_id
             }),
         );
-        match conversation_snapshots::archive_selection_collect(&archive_params) {
+        match conversation_snapshots::archive_selection_collect(port, &archive_params) {
             Ok(result) => {
                 let archive_ok = result.get("ok").and_then(Value::as_bool).unwrap_or(false);
                 conn.execute(

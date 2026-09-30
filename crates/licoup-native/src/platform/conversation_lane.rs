@@ -8,7 +8,11 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-use super::runtime_adapters::{self, RuntimeAdapter, RuntimeAdapterError};
+use licoup_agent_drivers::runtime_adapters::{RuntimeAdapter, RuntimeAdapterError};
+
+// The host's own composition of the adapter registry now lives beside this
+// module rather than under the moved tree.
+use super::runtime_adapters as runtime_adapters;
 
 #[path = "../domain/client_conversation/settlement.rs"]
 mod settlement;
@@ -343,8 +347,11 @@ mod governed {
 pub use governed::*;
 // lico-governed-orchestration:end
 
+// The driver inventory moved to `licoup-agent-drivers` with the registry that
+// embeds it; this reads that crate's embedded copy rather than a path that no
+// longer exists here.
 const CONVERSATION_DRIVER_INVENTORY_JSON: &str =
-    include_str!("../../resources/agent-conversation-drivers.json");
+    licoup_agent_drivers::runtime_adapters::registry::DRIVER_INVENTORY_JSON;
 static CAPABILITY_MATRIX_BY_AGENT: LazyLock<HashMap<String, Value>> = LazyLock::new(|| {
     serde_json::from_str::<Value>(CONVERSATION_DRIVER_INVENTORY_JSON)
         .ok()
@@ -368,13 +375,28 @@ pub fn lane_family(adapter: RuntimeAdapter) -> &'static str {
         .unwrap_or("unavailable")
 }
 
+/// The packaged driver inventory entry for one Agent's own lane. `None` means
+/// the inventory has no readable entry for the Agent, so a fact this owner
+/// owns is unknown rather than false.
+fn declared_capability_matrix(adapter: RuntimeAdapter) -> Option<&'static Value> {
+    CAPABILITY_MATRIX_BY_AGENT.get(adapter.id())
+}
+
+/// Read one declared driver-inventory capability flag for an Agent's own lane.
+/// Every inventory-owned answer goes through this single reader, so a fact such
+/// as `multimodal` has one owner instead of a second copy of the packaged JSON.
+pub fn declared_capability_flag(adapter: RuntimeAdapter, flag: &str) -> Option<bool> {
+    declared_capability_matrix(adapter)
+        .and_then(|matrix| matrix.get(flag))
+        .and_then(Value::as_bool)
+}
+
 /// Static capability matrix aligned with Evidence.md / drivers inventory.
 /// Field names avoid reducer-sensitive fragments (session/path/argv/…).
 /// `approvals` means an end-to-end client response bridge, not merely that the
 /// native protocol can report and fail closed on an interaction request.
 pub fn static_capability_matrix(adapter: RuntimeAdapter) -> Value {
-    CAPABILITY_MATRIX_BY_AGENT
-        .get(adapter.id())
+    declared_capability_matrix(adapter)
         .cloned()
         .unwrap_or_else(|| {
             json!({
@@ -1030,6 +1052,7 @@ pub fn lane_capabilities(params: &Value) -> Result<Value> {
 
 /// Dispatch a conversation lane RPC/CLI operation by name.
 pub fn dispatch_lane_operation(
+    port: &crate::port::AgentTargetPort,
     operation: &str,
     params: &Value,
 ) -> std::result::Result<Value, RuntimeAdapterError> {
@@ -1037,7 +1060,7 @@ pub fn dispatch_lane_operation(
         "open" | "openOrResume" | "resume" => {
             open_or_resume(params).map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)
         }
-        "send" => send_and_settle(params),
+        "send" => send_and_settle(port, params),
         "steer" => steer_turn(params).map_err(|_| RuntimeAdapterError::ConversationDispatchFailed),
         "cancel" => {
             cancel_turn(params).map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)
@@ -1066,9 +1089,13 @@ pub fn dispatch_lane_operation(
 /// forwarded as `timeoutUnbounded` so no lower layer reintroduces a deadline.
 /// Finite deadlines come only from an explicit caller value or a configured
 /// policy entry.
-fn send_and_settle(params: &Value) -> std::result::Result<Value, RuntimeAdapterError> {
-    let resolved_timeout = crate::domain::dispatch_timeout_policy::resolve_dispatch_timeout(params)
-        .map_err(|_| RuntimeAdapterError::InvalidRuntimeSetting { field: "timeoutMs" })?;
+fn send_and_settle(
+    port: &crate::port::AgentTargetPort,
+    params: &Value,
+) -> std::result::Result<Value, RuntimeAdapterError> {
+    let resolved_timeout =
+        licoup_application::dispatch_timeout_policy::resolve_dispatch_timeout(params)
+            .map_err(|_| RuntimeAdapterError::InvalidRuntimeSetting { field: "timeoutMs" })?;
     let explicit_deadline = resolved_timeout > 0;
     let effective_params = params_with_resolved_timeout(params, resolved_timeout);
     let mut arbiter = TurnSettlementArbiter::new();
@@ -1078,7 +1105,7 @@ fn send_and_settle(params: &Value) -> std::result::Result<Value, RuntimeAdapterE
     let mut projected_deltas = arbiter.drain_deltas();
     emit_settlement_deltas(&projected_deltas, "", "");
 
-    match runtime_adapters::send_message(&effective_params) {
+    match runtime_adapters::send_message(port, &effective_params) {
         Ok(mut response) => {
             let signal = settlement_signal(&response, explicit_deadline);
             let outcome = arbiter
@@ -1286,11 +1313,12 @@ mod tests {
             "defaultTimeoutMs": 180_000,
             "agents": {}
         });
-        let missing = crate::domain::dispatch_timeout_policy::resolve_dispatch_timeout(&json!({
-            "agent": "codex",
-            "dispatchTimeoutPolicy": policy,
-        }))
-        .unwrap();
+        let missing =
+            licoup_application::dispatch_timeout_policy::resolve_dispatch_timeout(&json!({
+                "agent": "codex",
+                "dispatchTimeoutPolicy": policy,
+            }))
+            .unwrap();
         assert_eq!(missing, 180_000);
         let resolved = params_with_resolved_timeout(
             &json!({"agent": "codex", "dispatchTimeoutPolicy": policy}),
@@ -1299,7 +1327,7 @@ mod tests {
         assert_eq!(resolved["timeoutMs"], 180_000);
 
         assert!(
-            crate::domain::dispatch_timeout_policy::resolve_dispatch_timeout(&json!({
+            licoup_application::dispatch_timeout_policy::resolve_dispatch_timeout(&json!({
                 "agent": "codex",
                 "timeoutMs": "120000",
                 "dispatchTimeoutPolicy": policy,
@@ -1307,20 +1335,22 @@ mod tests {
             .is_err()
         );
 
-        let explicit = crate::domain::dispatch_timeout_policy::resolve_dispatch_timeout(&json!({
-            "agent": "codex",
-            "timeoutMs": 300_000,
-            "dispatchTimeoutPolicy": policy,
-        }))
-        .unwrap();
+        let explicit =
+            licoup_application::dispatch_timeout_policy::resolve_dispatch_timeout(&json!({
+                "agent": "codex",
+                "timeoutMs": 300_000,
+                "dispatchTimeoutPolicy": policy,
+            }))
+            .unwrap();
         assert_eq!(explicit, 300_000);
 
-        let unbounded = crate::domain::dispatch_timeout_policy::resolve_dispatch_timeout(&json!({
-            "agent": "codex",
-            "timeoutMs": 0,
-            "timeoutUnbounded": true,
-        }))
-        .unwrap();
+        let unbounded =
+            licoup_application::dispatch_timeout_policy::resolve_dispatch_timeout(&json!({
+                "agent": "codex",
+                "timeoutMs": 0,
+                "timeoutUnbounded": true,
+            }))
+            .unwrap();
         assert_eq!(unbounded, 0);
     }
 

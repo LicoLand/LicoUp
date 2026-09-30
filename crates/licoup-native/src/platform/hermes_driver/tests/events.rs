@@ -11,7 +11,7 @@ fn streaming_chunks_emit_progressive_turn_events() {
     }));
     let _guard = crate::platform::turn_event_emit::StreamSinkGuard;
 
-    let mut protocol = SessionProtocol::new(config(json!({}), "hello", ""));
+    let mut protocol = SessionProtocol::new(config(json!({}), "hello", ""), HERMES_SESSION_DRIVER.driver_id);
     initialize(&mut protocol);
     protocol.handle_message(json!({
         "jsonrpc": "2.0",
@@ -61,7 +61,7 @@ fn streaming_chunks_emit_progressive_turn_events() {
 
 #[test]
 fn session_update_for_another_session_fails_closed() {
-    let mut protocol = SessionProtocol::new(config(json!({}), "hello", ""));
+    let mut protocol = SessionProtocol::new(config(json!({}), "hello", ""), HERMES_SESSION_DRIVER.driver_id);
     initialize(&mut protocol);
     protocol.handle_message(json!({
         "jsonrpc": "2.0",

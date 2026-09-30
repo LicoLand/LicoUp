@@ -3,8 +3,8 @@
 //! The gateway protocol state machine is module-private here, so the arm lives
 //! with it rather than in the parser tree.
 
-use crate::platform::native_agent_parser::Transition;
-use crate::platform::native_agent_parser::replay::{FrameReplay, RecordedFrame};
+use licoup_agent_adapter_sdk::Transition;
+use licoup_agent_adapter_sdk::replay::{FrameReplay, RecordedFrame};
 use serde_json::{Value, json};
 
 use super::ProtocolFailure;

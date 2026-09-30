@@ -355,7 +355,7 @@ fn bind_family_child(
 ) -> (WorkContextRuntime, NativeWorkContextKey) {
     use licoup_conversation::RuntimeBinding;
     use licoup_native::platform::work_context_ports::{
-        HostDriverTransport, bind_adapter_work_context,
+        bind_adapter_work_context, host_driver_transport,
     };
     use std::sync::Arc;
 
@@ -380,7 +380,7 @@ fn bind_family_child(
             .unwrap();
     }
     let mut transport =
-        HostDriverTransport::new(family).with_executable(executable.to_string_lossy().into_owned());
+        host_driver_transport(family).with_executable(executable.to_string_lossy().into_owned());
     if let Some(cwd) = working_directory {
         transport = transport.with_working_directory(cwd.to_path_buf());
     }
@@ -399,7 +399,7 @@ fn bind_family_child(
 fn host_driver_reaches_codex_execute_for_exact_resume_and_identity() {
     use licoup_conversation::ConversationStore;
     use licoup_native::platform::work_context_ports::{
-        AdapterCall, AdapterTransport, HostDriverTransport, bind_adapter_work_context,
+        AdapterCall, AdapterTransport, bind_adapter_work_context, host_driver_transport,
         pi_session_id_missing,
     };
     use serde_json::json;
@@ -435,7 +435,7 @@ fn host_driver_reaches_codex_execute_for_exact_resume_and_identity() {
         ProtocolFamily::Codex,
         WorkContextConfig::child(lost_binding),
         std::sync::Arc::new(
-            HostDriverTransport::new(ProtocolFamily::Codex)
+            host_driver_transport(ProtocolFamily::Codex)
                 .with_executable(executable.to_string_lossy().into_owned()),
         ),
         Some(lost_store),
@@ -445,7 +445,7 @@ fn host_driver_reaches_codex_execute_for_exact_resume_and_identity() {
         ContinuityFailureCode::NativeBindingLost
     );
 
-    let transport = HostDriverTransport::new(ProtocolFamily::Pi);
+    let transport = host_driver_transport(ProtocolFamily::Pi);
     let missing = transport.invoke(&AdapterCall {
         method: "session/resume",
         params: json!({ "sessionId": "missing-session" }),
@@ -464,13 +464,13 @@ fn pi_resume_and_start_are_effect_free_without_managed_executable() {
     use licoup_conversation::ConversationStore;
     use licoup_conversation::continuity::list_unknown_effect_ids;
     use licoup_native::platform::work_context_ports::{
-        AdapterCall, AdapterTransport, HostDriverTransport,
+        AdapterCall, AdapterTransport, host_driver_transport,
     };
     use serde_json::json;
 
     let store = ConversationStore::open_in_memory().unwrap();
     let before = list_unknown_effect_ids(&store).unwrap();
-    let transport = HostDriverTransport::new(ProtocolFamily::Pi);
+    let transport = host_driver_transport(ProtocolFamily::Pi);
     let resume = transport.invoke(&AdapterCall {
         method: "session/resume",
         params: json!({ "sessionId": "session:pi-proof" }),
@@ -574,14 +574,24 @@ fn control_payload_is_preserved_at_transport_and_scoped_lane() {
     }
     assert_eq!(calls[0].params["text"], "exact-steer-content");
 
-    let lane = dispatch_lane_operation("steer", &calls[0].params).unwrap();
+    let lane = dispatch_lane_operation(
+        &licoup_native::domain::target_port::agent_target_port(),
+        "steer",
+        &calls[0].params,
+    )
+    .unwrap();
     assert_eq!(lane["ok"], false);
     assert_ne!(lane["status"], "unsupported");
     assert_eq!(
         lane["error"]["code"],
         "dispatch_steer_transport_unavailable"
     );
-    let cancel = dispatch_lane_operation("cancel", &calls[1].params).unwrap();
+    let cancel = dispatch_lane_operation(
+        &licoup_native::domain::target_port::agent_target_port(),
+        "cancel",
+        &calls[1].params,
+    )
+    .unwrap();
     assert_eq!(cancel["ok"], false);
     assert_ne!(
         cancel.get("error").and_then(|error| error.get("code")),
@@ -693,11 +703,11 @@ fn swapped_child_member_turn_and_generation_are_rejected_before_effect() {
 #[test]
 fn invalid_timeout_is_typed_rejection_with_zero_driver_effects() {
     use licoup_native::platform::work_context_ports::{
-        AdapterCall, AdapterTransport, HostDriverTransport,
+        AdapterCall, AdapterTransport, host_driver_transport,
     };
     use serde_json::json;
 
-    let transport = HostDriverTransport::new(ProtocolFamily::Codex)
+    let transport = host_driver_transport(ProtocolFamily::Codex)
         .with_executable("/nonexistent/licoup-codex-missing");
     let working_directory =
         std::env::temp_dir().join(format!("lico-ca-invalid-timeout-{}", uuid::Uuid::new_v4()));
@@ -775,7 +785,7 @@ fn transient_transport_failure_is_not_binding_loss() {
 fn host_driver_reaches_pi_execute_for_resume_start_and_loss() {
     use licoup_conversation::ConversationStore;
     use licoup_native::platform::work_context_ports::{
-        AdapterCall, AdapterTransport, HostDriverTransport, bind_adapter_work_context,
+        AdapterCall, AdapterTransport, bind_adapter_work_context, host_driver_transport,
     };
     use serde_json::json;
 
@@ -830,7 +840,7 @@ fn host_driver_reaches_pi_execute_for_resume_start_and_loss() {
     );
     assert_eq!(started.start_new(&start_key).unwrap(), 2);
 
-    let missing = HostDriverTransport::new(ProtocolFamily::Pi)
+    let missing = host_driver_transport(ProtocolFamily::Pi)
         .with_executable(executable.to_string_lossy().into_owned())
         .with_working_directory(cwd.to_path_buf())
         .invoke(&AdapterCall {
@@ -850,7 +860,7 @@ fn host_driver_reaches_pi_execute_for_resume_start_and_loss() {
     let header = "{\"type\":\"session\",\"version\":3,\"id\":\"duplicate-session\"}\n";
     std::fs::write(session_root.join("a/first.jsonl"), header).unwrap();
     std::fs::write(session_root.join("b/second.jsonl"), header).unwrap();
-    let ambiguous = HostDriverTransport::new(ProtocolFamily::Pi)
+    let ambiguous = host_driver_transport(ProtocolFamily::Pi)
         .with_executable(executable.to_string_lossy().into_owned())
         .with_working_directory(cwd.to_path_buf())
         .invoke(&AdapterCall {
@@ -874,7 +884,7 @@ fn host_driver_reaches_pi_execute_for_resume_start_and_loss() {
         ProtocolFamily::Pi,
         WorkContextConfig::child(lost_binding),
         std::sync::Arc::new(
-            HostDriverTransport::new(ProtocolFamily::Pi)
+            host_driver_transport(ProtocolFamily::Pi)
                 .with_executable(executable.to_string_lossy().into_owned())
                 .with_working_directory(cwd.to_path_buf()),
         ),
@@ -898,7 +908,7 @@ fn host_driver_reaches_pi_execute_for_resume_start_and_loss() {
 #[test]
 fn host_driver_transport_forwards_developer_instructions_to_fake_codex_process() {
     use licoup_native::platform::work_context_ports::{
-        AdapterCall, AdapterTransport, HostDriverTransport,
+        AdapterCall, AdapterTransport, host_driver_transport,
     };
     use serde_json::json;
 
@@ -914,7 +924,7 @@ fn host_driver_transport_forwards_developer_instructions_to_fake_codex_process()
             .as_nanos()
     ));
     std::fs::create_dir_all(&cwd).unwrap();
-    let transport = HostDriverTransport::new(ProtocolFamily::Codex)
+    let transport = host_driver_transport(ProtocolFamily::Codex)
         .with_executable(executable.to_string_lossy().into_owned())
         .with_working_directory(cwd.clone());
     let started = transport.invoke(&AdapterCall {

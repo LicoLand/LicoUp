@@ -18,7 +18,7 @@ const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 struct ServeOutcome {
     output: String,
-    transitions: Vec<crate::platform::native_agent_parser::Transition>,
+    transitions: Vec<licoup_agent_adapter_sdk::Transition>,
     session_id: String,
     thread_id: String,
     turn_id: String,

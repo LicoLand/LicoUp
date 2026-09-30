@@ -64,7 +64,7 @@ fn command_scan_keeps_schema_modes_dimensions_and_privacy_boundary() {
     let history_root = temp_root("command-history");
     let state_root = temp_root("command-state");
     write_usage_history(&history_root);
-    let result = scan(&json!({
+    let result = scan(&crate::domain::target_port::agent_target_port(), &json!({
         "agent": "opencode",
         "root": history_root.to_string_lossy(),
         "stateRoot": state_root.to_string_lossy(),
@@ -107,7 +107,7 @@ fn command_custom_window_and_retained_report_close_independently() {
         "historyDays": 7,
         "now": "2026-07-15T12:00:00Z"
     });
-    let result = scan(&params).unwrap();
+    let result = scan(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     assert_eq!(result["summary"]["windowDays"], 7);
     assert_eq!(result["summary"]["windowStart"], "2026-07-09");
     assert_eq!(result["summary"]["totalTokens"], 0);
@@ -149,7 +149,7 @@ fn command_kimi_code_keeps_exact_turn_and_session_usage_with_model_dimension() {
     let state_root = temp_root("kimi-code-state");
     let registry=crate::domain::model_registry::RegistrySnapshot::from_catalog(json!({"models":{"moonshotai/kimi-k3":{"name":"Kimi K3"}},"providers":{"kimi-for-coding":{"name":"Kimi Code","models":{"k3-256k":{"name":"Kimi Code K3 256K","base_model":"moonshotai/kimi-k3"}}}}})).unwrap();
     let result = crate::domain::model_registry::with_test_snapshot(registry, || {
-        scan(&json!({
+        scan(&crate::domain::target_port::agent_target_port(), &json!({
             "agent": "kimi-code",
             "root": history_root.to_string_lossy(),
             "stateRoot": state_root.to_string_lossy(),
@@ -263,7 +263,7 @@ fn command_hermes_uses_reconciled_gateway_counters_without_text_estimates() {
         .unwrap();
     drop(connection);
 
-    let result = scan(&json!({
+    let result = scan(&crate::domain::target_port::agent_target_port(), &json!({
         "agent": "hermes",
         "root": history_root.to_string_lossy(),
         "stateRoot": state_root.to_string_lossy(),
@@ -303,7 +303,7 @@ fn catalog_agents_without_historical_usage_sources_report_explicit_unavailabilit
     );
     let state_root = temp_root("unavailable-source-state");
     for agent in unsupported {
-        let result=scan(&json!({"agent":agent,"stateRoot":state_root.to_string_lossy(),"now":"2026-07-15T12:00:00Z"})).unwrap();
+        let result=scan(&crate::domain::target_port::agent_target_port(), &json!({"agent":agent,"stateRoot":state_root.to_string_lossy(),"now":"2026-07-15T12:00:00Z"})).unwrap();
         assert_eq!(result["agents"][0]["agentId"], agent);
         assert_eq!(
             result["agents"][0]["history"]["source"],
@@ -328,7 +328,7 @@ fn lico_agent_native_transcript_preserves_exact_model_and_request_effort_without
         json!({"type":"session","id":"synthetic-session"}),
         json!({"type":"message","role":"assistant","text":"synthetic response","timestamp":"2026-07-15T10:00:00Z","model":"fixture-model","reasoning_effort":"high","usage":{"input_tokens":12,"output_tokens":3}})
     ].iter().map(Value::to_string).collect::<Vec<_>>().join("\n")+"\n").unwrap();
-    let result=scan(&json!({"agent":"lico-agent","root":history_root.to_string_lossy(),"stateRoot":state_root.to_string_lossy(),"now":"2026-07-15T12:00:00Z"})).unwrap();
+    let result=scan(&crate::domain::target_port::agent_target_port(), &json!({"agent":"lico-agent","root":history_root.to_string_lossy(),"stateRoot":state_root.to_string_lossy(),"now":"2026-07-15T12:00:00Z"})).unwrap();
     assert_eq!(result["agents"][0]["history"]["totalTokens"], 15);
     assert_eq!(
         result["agents"][0]["history"]["dailyUsage"][0]["modelTokenUsage"]["fixture-model"]["variants"]

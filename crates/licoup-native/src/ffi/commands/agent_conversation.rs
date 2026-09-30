@@ -34,7 +34,11 @@ pub(super) fn handle_agent_conversation(command: AdmittedCommand) -> Result<CliE
                 "streamTransport": "stdio_ndjson_on_send"
             }),
         );
-        let result = match crate::platform::dispatch_lane_operation(operation, &params) {
+        let result = match crate::platform::dispatch_lane_operation(
+            &crate::domain::target_port::agent_target_port(),
+            operation,
+            &params,
+        ) {
             Ok(result) => result,
             Err(error) => agent_conversation_failure(&error),
         };
@@ -47,7 +51,11 @@ pub(super) fn handle_agent_conversation(command: AdmittedCommand) -> Result<CliE
         return Ok(CliExecution::Streamed);
     }
 
-    let result = match crate::platform::dispatch_lane_operation(operation, &params) {
+    let result = match crate::platform::dispatch_lane_operation(
+        &crate::domain::target_port::agent_target_port(),
+        operation,
+        &params,
+    ) {
         Ok(result) => result,
         Err(error) => agent_conversation_failure(&error),
     };
@@ -73,7 +81,7 @@ fn observe_skill_invocations(params: &Value, result: &Value) {
 }
 
 fn agent_conversation_failure(error: &RuntimeAdapterError) -> Value {
-    let client_error: ClientError = error.client_error();
+    let client_error: ClientError = crate::platform::runtime_adapters::client_error::client_error(&error);
     serde_json::json!({
         "ok": false,
         "error": client_error

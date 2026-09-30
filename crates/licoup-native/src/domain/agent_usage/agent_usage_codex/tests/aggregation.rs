@@ -45,7 +45,7 @@ fn aggregation_keeps_unknown_models_separate_from_explicit_turn_models() {
     .unwrap();
 
     let mut params = scan_params(&history_root, &state_root);
-    let result = agent_usage::scan(&params).unwrap();
+    let result = agent_usage::scan(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     let history = &result["agents"][0]["history"];
     let expected = json!({"Others":50,"gpt-5.5":30,"gpt-5.6":10});
     assert_eq!(history["totalTokens"], 90);
@@ -80,7 +80,7 @@ fn aggregation_keeps_unknown_models_separate_from_explicit_turn_models() {
     );
     drop(connection);
     params["now"] = json!("2026-07-11T12:00:00Z");
-    let rolled = agent_usage::scan(&params).unwrap();
+    let rolled = agent_usage::scan(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     assert_eq!(rolled["summary"]["totalTokens"], 90);
     assert_eq!(
         rolled["agents"][0]["history"]["dailyUsage"][0]["modelUsage"],
@@ -102,7 +102,7 @@ fn identity_fixture() -> (std::path::PathBuf, std::path::PathBuf, serde_json::Va
         today.to_string(),
     ].join("\n")).unwrap();
     let params = scan_params(&history, &state);
-    agent_usage::scan(&params).unwrap();
+    agent_usage::scan(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     (history, state, params)
 }
 
@@ -163,7 +163,7 @@ fn force_refresh_updates_only_current_event_models_with_identical_counters() {
             .execute("UPDATE usage_daily_models SET model='Default'", [])
             .unwrap();
         let before = identity_ledger(&connection);
-        let refreshed = agent_usage::scan(&params).unwrap();
+        let refreshed = agent_usage::scan(&crate::domain::target_port::agent_target_port(), &params).unwrap();
         assert_eq!(
             refreshed["agents"][0]["history"]["scanCache"]["identityRefreshedFiles"],
             1
@@ -183,7 +183,7 @@ fn force_refresh_updates_only_current_event_models_with_identical_counters() {
                 .unwrap(),
             "Default"
         );
-        let again = agent_usage::scan(&params).unwrap();
+        let again = agent_usage::scan(&crate::domain::target_port::agent_target_port(), &params).unwrap();
         assert_eq!(
             again["summary"]["totalTokens"],
             refreshed["summary"]["totalTokens"]
@@ -229,7 +229,7 @@ fn force_refresh_preserves_rows_when_cached_components_or_event_identity_disagre
             }
         }
         let before = identity_ledger(&connection);
-        let refreshed = agent_usage::scan(&params).unwrap();
+        let refreshed = agent_usage::scan(&crate::domain::target_port::agent_target_port(), &params).unwrap();
         assert_eq!(
             refreshed["agents"][0]["history"]["scanCache"]["identitySkippedFiles"], 1,
             "{reason}"

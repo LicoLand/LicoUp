@@ -213,7 +213,9 @@ impl super::service::EffectSessionSource for ContinuityEffectSessions {
             live_writer,
             owner,
             profiles: Arc::new(crate::platform::strategy_runtime::RuntimeRegistryAgentProfiles),
-            dispatch: Arc::new(crate::platform::strategy_runtime::LaneEffectDispatch),
+            dispatch: Arc::new(crate::platform::strategy_runtime::LaneEffectDispatch {
+                port: crate::domain::target_port::agent_target_port(),
+            }),
             fresh_native_session: Some(binding.runtime_session_id),
         })
     }

@@ -39,8 +39,8 @@ pub struct SessionSummary {
     pub title: String,
 }
 
-pub fn list_agents() -> Result<Vec<AgentSummary>, BridgeError> {
-    let scanned = crate::domain::targets::scan_targets()
+pub fn list_agents(port: &crate::port::AgentTargetPort) -> Result<Vec<AgentSummary>, BridgeError> {
+    let scanned = crate::domain::targets::scan_targets(port)
         .map_err(|error| BridgeError::new("telegram_gateway_targets_failed", error.to_string()))?;
     let mut agents = Vec::new();
     if let Some(items) = scanned.get("candidates").and_then(Value::as_array) {
@@ -156,6 +156,7 @@ pub fn open_session(agent_id: &str, session_id: Option<&str>) -> Result<String, 
 }
 
 pub fn send_turn(
+    port: &crate::port::AgentTargetPort,
     agent_id: &str,
     session_id: Option<&str>,
     text: &str,
@@ -168,7 +169,7 @@ pub fn send_turn(
     if let Some(session_id) = session_id.filter(|value| !value.is_empty()) {
         params["sessionId"] = json!(session_id);
     }
-    let result = crate::platform::dispatch_lane_operation("send", &params).map_err(|_| {
+    let result = crate::platform::dispatch_lane_operation(port, "send", &params).map_err(|_| {
         BridgeError::new(
             "telegram_gateway_send_failed",
             "conversation lane send failed",
@@ -275,8 +276,11 @@ fn truncate(value: &str, max: usize) -> String {
     }
 }
 
-pub fn ensure_known_agent(agent_id: &str) -> Result<(), BridgeError> {
-    let agents = list_agents()?;
+pub fn ensure_known_agent(
+    port: &crate::port::AgentTargetPort,
+    agent_id: &str,
+) -> Result<(), BridgeError> {
+    let agents = list_agents(port)?;
     if agents.iter().any(|agent| agent.id == agent_id) {
         return Ok(());
     }

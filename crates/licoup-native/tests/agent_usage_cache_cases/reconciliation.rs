@@ -1,5 +1,14 @@
 use super::support::*;
 
+/// The composed inventory port one usage scan reads.
+///
+/// `agent_usage::scan` takes the port the inventory composes; this is the same
+/// value the runtime builds, and it is built per call because the fixture is a
+/// file-system arrangement rather than a composition.
+fn agent_usage_target_port() -> licoup_agent_targets::port::AgentTargetPort {
+    licoup_native::domain::target_port::agent_target_port()
+}
+
 #[test]
 fn codex_usage_reconciles_subsets_duplicates_and_divergent_totals() {
     let history_root = temp_dir("codex-usage-reconcile-history");
@@ -20,7 +29,7 @@ fn codex_usage_reconciles_subsets_duplicates_and_divergent_totals() {
     )
     .unwrap();
 
-    let report = agent_usage::scan(&scan_params(&history_root, &state_root)).unwrap();
+    let report = agent_usage::scan(&agent_usage_target_port(), &scan_params(&history_root, &state_root)).unwrap();
     let history = &report["agents"][0]["history"];
     assert_eq!(history["promptTokens"], 250);
     assert_eq!(history["cachedInputTokens"], 100);

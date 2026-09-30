@@ -22,8 +22,8 @@ fn fake_child_streams_redacted_events_and_drains_stderr() {
     assert_eq!(result.turn_status, "end_turn");
     assert!(matches!(
         result.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
-            crate::platform::native_agent_parser::LifecycleStage::Completed
+        Some(licoup_agent_adapter_sdk::Transition::Lifecycle(
+            licoup_agent_adapter_sdk::LifecycleStage::Completed
         ))
     ));
     assert!(result.stderr_truncated);

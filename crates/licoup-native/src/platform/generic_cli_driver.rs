@@ -79,6 +79,7 @@ pub(crate) fn execute(
 }
 
 pub(crate) fn resolve_executable(
+    port: &crate::port::AgentTargetPort,
     registration: &CliRegistration,
     params: &Value,
 ) -> Result<String, RuntimeAdapterError> {
@@ -87,15 +88,19 @@ pub(crate) fn resolve_executable(
             if Path::new(requested).is_absolute() {
                 Err(RuntimeAdapterError::ExecutableUnavailable)
             } else {
-                discovered_or_command(registration)
+                discovered_or_command(port, registration)
             }
         });
     }
-    discovered_or_command(registration)
+    discovered_or_command(port, registration)
 }
 
-fn discovered_or_command(registration: &CliRegistration) -> Result<String, RuntimeAdapterError> {
-    if let Some(discovered) = crate::domain::targets::available_runtime_executable(&registration.id)
+fn discovered_or_command(
+    port: &crate::port::AgentTargetPort,
+    registration: &CliRegistration,
+) -> Result<String, RuntimeAdapterError> {
+    if let Some(discovered) =
+        crate::domain::targets::available_runtime_executable(port, &registration.id)
         .or_else(|| crate::domain::targets::agent_cli_executable(&registration.id))
     {
         return discovered
@@ -497,7 +502,12 @@ mod tests {
             args: Vec::new(),
             stream_mode: StreamMode::Stdio,
         };
-        let error = resolve_executable(&registration, &json!({})).unwrap_err();
+        let error = resolve_executable(
+            &crate::domain::target_port::agent_target_port(),
+            &registration,
+            &json!({}),
+        )
+        .unwrap_err();
         assert_eq!(error, RuntimeAdapterError::ExecutableUnavailable);
     }
 }

@@ -592,7 +592,7 @@ impl PersistentConversationRuntime {
         // settlement watchdog. A zero resolved timeout is unbounded, and an
         // ordinary unclaimed dispatch never registers one.
         let timeout_ms =
-            licoup_native::domain::dispatch_timeout_policy::resolve_dispatch_timeout(&params)
+            licoup_application::dispatch_timeout_policy::resolve_dispatch_timeout(&params)
                 .unwrap_or(0);
         if timeout_ms > 0
             && matches!(
@@ -761,14 +761,17 @@ impl PersistentConversationRuntime {
         if !turn_id.is_empty() {
             cancel_params["turnId"] = json!(turn_id);
         }
-        let response =
-            match licoup_native::platform::dispatch_lane_operation("cancel", &cancel_params) {
-                Ok(response) => response,
-                Err(_) => {
-                    turn.cancel_requested.store(true, Ordering::Release);
-                    return None;
-                }
-            };
+        let response = match licoup_native::platform::dispatch_lane_operation(
+            &licoup_native::domain::target_port::agent_target_port(),
+            "cancel",
+            &cancel_params,
+        ) {
+            Ok(response) => response,
+            Err(_) => {
+                turn.cancel_requested.store(true, Ordering::Release);
+                return None;
+            }
+        };
         if response.get("ok").and_then(Value::as_bool) == Some(true) {
             return Some(response);
         }
@@ -911,7 +914,11 @@ impl PersistentConversationRuntime {
         let params = self
             .scoped_control_params(params)
             .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)?;
-        licoup_native::platform::dispatch_lane_operation("steer", &params)
+        licoup_native::platform::dispatch_lane_operation(
+            &licoup_native::domain::target_port::agent_target_port(),
+            "steer",
+            &params,
+        )
     }
 
     fn begin_accepted(
@@ -966,7 +973,11 @@ impl PersistentConversationRuntime {
         ));
         let execution = catch_unwind(AssertUnwindSafe(|| {
             let _guard = PortableDataDirOverrideGuard::set(portable_data_dir);
-            licoup_native::platform::dispatch_lane_operation("send", &params)
+            licoup_native::platform::dispatch_lane_operation(
+                &licoup_native::domain::target_port::agent_target_port(),
+                "send",
+                &params,
+            )
         }));
         drop(stream_guard);
         drop(raw_scope);
@@ -992,7 +1003,7 @@ impl PersistentConversationRuntime {
                 Ok(value)
             }
             Ok(Err(error)) => {
-                persist_runtime_failure(&turn, &error.client_error());
+                persist_runtime_failure(&turn, &licoup_native::platform::runtime_adapters::client_error::client_error(&error));
                 Err(error)
             }
             Err(_) => {
@@ -2015,8 +2026,12 @@ where
     });
     let execution = catch_unwind(AssertUnwindSafe(|| {
         let _guard = PortableDataDirOverrideGuard::set(portable_data_dir);
-        licoup_native::platform::dispatch_lane_operation(operation, &params)
-            .map(licoup_native::ffi::commands::CliExecution::Json)
+        licoup_native::platform::dispatch_lane_operation(
+            &licoup_native::domain::target_port::agent_target_port(),
+            operation,
+            &params,
+        )
+        .map(licoup_native::ffi::commands::CliExecution::Json)
     }));
     drop(stream_guard);
     let terminal_sequence = sequence.fetch_add(1, Ordering::AcqRel) + 1;
@@ -2076,7 +2091,7 @@ where
             terminal_sequence,
             persistent_turn.as_ref(),
             observer_connected.load(Ordering::Acquire),
-            error.client_error(),
+            licoup_native::platform::runtime_adapters::client_error::client_error(&error),
         ),
         Err(_) => finish_error(
             writer,

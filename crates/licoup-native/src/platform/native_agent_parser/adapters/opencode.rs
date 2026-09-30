@@ -272,7 +272,9 @@ fn append_text_parts(parts: &[Value], chunks: &mut Vec<String>) {
     }
 }
 
-#[cfg(test)]
+// A production answer, not a test-only one: `licoup-agent-drivers` composes
+// this Agent's transitions through the SDK's protocol-agnostic port, so the
+// builder has to exist in the build that composes it. Nothing else reads it.
 pub(in crate::platform) fn completed_transitions(output: &str) -> Vec<Transition> {
     completed_transitions_with_controls(output, Vec::new())
 }

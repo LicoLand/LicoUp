@@ -4,7 +4,7 @@ use crate::platform::native_agent_parser::adapters::kilo_code::ServeMessage;
 
 pub(super) struct ProtocolOutcome {
     pub(super) output: String,
-    pub(super) transitions: Vec<crate::platform::native_agent_parser::Transition>,
+    pub(super) transitions: Vec<licoup_agent_adapter_sdk::Transition>,
     pub(super) session_id: String,
     pub(super) thread_id: String,
     pub(super) turn_id: String,

@@ -71,11 +71,13 @@ pub(super) fn handle_codex_plugin_status(command: AdmittedCommand) -> Result<Cli
         .option_text("binary-path")
         .map(Path::new)
         .map(crate::platform::codex_plugin_manager::status)
-        .unwrap_or(crate::domain::integration_state::IntegrationState::Unavailable);
+        .unwrap_or(licoup_application::integration_state::IntegrationState::Unavailable);
     let (state_label, ready) = match state {
-        crate::domain::integration_state::IntegrationState::Ready => ("ready", true),
-        crate::domain::integration_state::IntegrationState::Missing => ("missing", false),
-        crate::domain::integration_state::IntegrationState::Unavailable => ("unavailable", false),
+        licoup_application::integration_state::IntegrationState::Ready => ("ready", true),
+        licoup_application::integration_state::IntegrationState::Missing => ("missing", false),
+        licoup_application::integration_state::IntegrationState::Unavailable => {
+            ("unavailable", false)
+        }
     };
     Ok(CliExecution::Json(serde_json::json!({
         "ok": true,

@@ -25,8 +25,8 @@ fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
     assert_eq!(first.output, "fake Claude final answer 1");
     assert!(matches!(
         first.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
-            crate::platform::native_agent_parser::LifecycleStage::Completed
+        Some(licoup_agent_adapter_sdk::Transition::Lifecycle(
+            licoup_agent_adapter_sdk::LifecycleStage::Completed
         ))
     ));
     assert_eq!(first.session_id, "fake-claude-session");
@@ -800,4 +800,32 @@ fn authentication_failure_is_a_stable_redacted_blocker_and_closes_the_transport(
     assert!(!failure.message.contains(directory_text.as_ref()));
     assert!(!has_live_session("fake-claude-session"));
     let _ = fs::remove_dir_all(directory);
+}
+
+/// The lease these tests take must guard this checkout and nothing else.
+///
+/// The shared state is written into the test process's working directory, so two test
+/// binaries of one checkout serialize on it while two worktrees share nothing. A name
+/// that is the same everywhere would make worktrees wait for each other.
+#[test]
+fn process_local_test_lease_is_scoped_to_this_checkout() {
+    let lease = super::claude_process_local_test_lock::lease_directory();
+    let name = lease
+        .file_name()
+        .expect("lease directory name")
+        .to_string_lossy()
+        .into_owned();
+    assert!(
+        name.starts_with("lico-claude-process-local-test-"),
+        "{name}"
+    );
+    assert!(name.ends_with(".lock"), "{name}");
+    assert_ne!(name, "lico-claude-process-local-test.lock", "machine-wide lease name");
+    // The name must be stable inside one checkout, or the lease would serialize nothing.
+    assert_eq!(lease, super::claude_process_local_test_lock::lease_directory());
+    // And it must identify the checkout, not the process that happens to run first.
+    assert!(
+        !name.contains(&std::process::id().to_string()),
+        "{name} must not be keyed by the process id"
+    );
 }

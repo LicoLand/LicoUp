@@ -53,7 +53,24 @@ pub(super) fn handle_mobile_relay(command: AdmittedCommand) -> Result<CliExecuti
         ("pairing", "revoke") => crate::domain::mobile_relay::pairing_revoke(&params)?,
         ("pc", "check-in") => crate::domain::mobile_relay::pc_check_in(&params)?,
         ("commands", "poll") => crate::domain::mobile_relay::commands_poll(&params)?,
-        ("commands", "sync") => crate::domain::mobile_relay::commands_sync(&params)?,
+        // The relay's local authorization context and its replay ledger read
+        // capabilities this host composes: the packaged adapter ids, the local
+        // target scan, the replay-ledger path and the local executor.
+        ("commands", "sync") => {
+            let ledger_path =
+                crate::domain::secure_mesh_command_runtime::default_secure_command_ledger_path()?;
+            let mut executor =
+                crate::domain::secure_mesh_command_runtime::SecureCommandRuntimeExecutor {
+                    port: crate::domain::target_port::agent_target_port(),
+                };
+            crate::domain::mobile_relay::commands_sync(
+                &params,
+                crate::platform::runtime_adapters::PACKAGED_RUNTIME_ADAPTER_IDS,
+                crate::domain::target_port::target_scan,
+                &ledger_path,
+                &mut executor,
+            )?
+        }
         ("commands", "create") => crate::domain::mobile_relay::command_create(&params)?,
         ("commands", "create-secure") => {
             crate::domain::mobile_relay::command_create_secure(&params)?

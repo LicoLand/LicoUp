@@ -827,7 +827,11 @@ impl crate::domain::client_conversation::ProfileSnapshotAuthority for ReadyProfi
             status: Some("available".to_owned()),
             model: Some("model-a".to_owned()),
             environment: Some("local".to_owned()),
-            capabilities: vec!["conversationDriver:supported".to_owned()],
+            capabilities: vec![crate::domain::client_conversation::CapabilityFact::new(
+                "conversationDriver:supported",
+                crate::domain::client_conversation::CapabilityFactState::Declared,
+                "conversation-readiness",
+            )],
             readiness: Some("ready".to_owned()),
             reliability_class: Some("verified".to_owned()),
             latency_class: Some(1),
@@ -846,7 +850,7 @@ impl crate::domain::client_conversation::ProfileSnapshotAuthority for ReadyProfi
         Some(3)
     }
     fn skill_names(&mut self, _agent_id: &str) -> Vec<String> {
-        vec![crate::domain::client_conversation::LICOUP_GUIDE_SKILL_ID.to_owned()]
+        vec![licoup_mcp::guide_skill::LICOUP_GUIDE_SKILL_ID.to_owned()]
     }
 }
 

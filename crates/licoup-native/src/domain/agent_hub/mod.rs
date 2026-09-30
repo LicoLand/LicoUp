@@ -23,8 +23,8 @@ pub use contract::{
 pub use engine::{HubContext, apply, apply_with, plan, plan_with};
 pub use recipes::{manifest, registry};
 
-pub fn catalog(params: &Value) -> Result<Value> {
-    catalog::catalog(params)
+pub fn catalog(port: &crate::port::AgentTargetPort, params: &Value) -> Result<Value> {
+    catalog::catalog(port, params)
 }
 
 pub fn install_plan(params: &Value) -> Result<Value> {

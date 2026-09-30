@@ -24,7 +24,7 @@
 //! them in. Nothing is timed or derived from the clock.
 
 use super::super::{FrameReplay, RecordedFrame};
-use crate::platform::native_agent_parser::Transition;
+use licoup_agent_adapter_sdk::Transition;
 use crate::platform::native_agent_parser::adapters::antigravity::{
     PtyOutputParser, TerminalFacts, classify_terminal, parse_hook_receipt,
 };
@@ -54,7 +54,7 @@ impl Replay {
     /// The framing this boundary consumes, taken from the adapter's own
     /// contract so a frame recorded under another channel cannot pass.
     fn framing() -> &'static str {
-        crate::platform::native_agent_parser::adapters::contract(RuntimeAdapter::Antigravity)
+        crate::platform::native_agent_parser::adapters::contract_for(RuntimeAdapter::Antigravity)
             .framing
     }
 

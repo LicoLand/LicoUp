@@ -272,7 +272,7 @@ fn cursor_adapter_reads_disk_kv_composer_bubbles_with_model() {
     assert_eq!(sessions[0]["messages"][1]["usage"]["completionTokens"], 40);
 
     let usage_state = temp_dir("cursor-usage-state");
-    let usage = crate::domain::agent_usage::scan(&json!({
+    let usage = crate::domain::agent_usage::scan(&crate::domain::target_port::agent_target_port(), &json!({
         "agent": "cursor",
         "root": dir.to_string_lossy(),
         "historyDays": 3650,
@@ -379,7 +379,7 @@ fn cursor_adapter_prefers_selected_models_over_composer_label() {
     assert_eq!(sessions[0]["messages"][1]["model"], "grok-4.5");
 
     let usage_state = temp_dir("cursor-selected-usage-state");
-    let usage = crate::domain::agent_usage::scan(&json!({
+    let usage = crate::domain::agent_usage::scan(&crate::domain::target_port::agent_target_port(), &json!({
         "agent": "cursor",
         "root": dir.to_string_lossy(),
         "historyDays": 3650,
@@ -667,7 +667,7 @@ fn cursor_usage_scan_ignores_composer_context_occupancy() {
     }
 
     let usage_state = temp_dir("cursor-composer-usage-state");
-    let usage = crate::domain::agent_usage::scan(&json!({
+    let usage = crate::domain::agent_usage::scan(&crate::domain::target_port::agent_target_port(), &json!({
         "agent": "cursor",
         "root": dir.to_string_lossy(),
         "historyDays": 3650,
@@ -753,7 +753,7 @@ fn cursor_usage_scan_does_not_treat_product_context_meter_as_usage() {
     }
 
     let usage_state = temp_dir("cursor-composer-product-usage-state");
-    let usage = crate::domain::agent_usage::scan(&json!({
+    let usage = crate::domain::agent_usage::scan(&crate::domain::target_port::agent_target_port(), &json!({
         "agent": "cursor",
         "root": dir.to_string_lossy(),
         "historyDays": 3650,

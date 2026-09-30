@@ -207,10 +207,12 @@ pub fn run_channel_loop<T: BotTransport + 'static>(
         Arc::clone(&config.stop),
     ));
 
+    let processor_targets = crate::domain::target_port::agent_target_port();
     let processor_transport = Arc::clone(&transport);
     let processor_store = Arc::clone(&store);
     let processor_identity = identity.clone();
     let processor = move |chat_id: i64, message: InboundMessage| match handle_inbound(
+        &processor_targets,
         &*processor_transport,
         &processor_store,
         &processor_identity,
@@ -297,6 +299,7 @@ fn drain_pending(scheduler: &Scheduler, pending: &mut VecDeque<InboundMessage>) 
 }
 
 fn handle_inbound<T: BotTransport>(
+    targets: &crate::port::AgentTargetPort,
     transport: &T,
     store: &Mutex<BindingStore>,
     identity: &BotIdentity,
@@ -308,14 +311,14 @@ fn handle_inbound<T: BotTransport>(
     }
     match parse_control_command(&message.control_text()) {
         ControlOutcome::Command(command) => {
-            handle_command(transport, store, identity, message, command)
+            handle_command(targets, transport, store, identity, message, command)
         }
         ControlOutcome::OrdinaryText(_) => {
             let body = message.agent_text();
             if body.trim().is_empty() {
                 return Ok(());
             }
-            handle_ordinary(transport, store, message, &body)
+            handle_ordinary(targets, transport, store, message, &body)
         }
     }
 }
@@ -327,6 +330,7 @@ fn send_reply<T: BotTransport>(transport: &T, message: &InboundMessage, text: &s
 }
 
 fn handle_command<T: BotTransport>(
+    targets: &crate::port::AgentTargetPort,
     transport: &T,
     store: &Mutex<BindingStore>,
     identity: &BotIdentity,
@@ -375,14 +379,15 @@ fn handle_command<T: BotTransport>(
         }
         ControlCommand::Agent { agent_id: None } => {
             require_paired(store, message)?;
-            let agents = list_agents().map_err(|error| anyhow!(error.to_string()))?;
+            let agents = list_agents(targets).map_err(|error| anyhow!(error.to_string()))?;
             send_reply(transport, message, &format_agent_list(&agents))?;
         }
         ControlCommand::Agent {
             agent_id: Some(agent_id),
         } => {
             require_paired(store, message)?;
-            ensure_known_agent(&agent_id).map_err(|error| anyhow!(error.to_string()))?;
+            ensure_known_agent(targets, &agent_id)
+                .map_err(|error| anyhow!(error.to_string()))?;
             let binding = store_set_agent(store, message.chat_id, Some(agent_id.clone()))?;
             send_reply(
                 transport,
@@ -490,6 +495,7 @@ fn handle_pair_request<T: BotTransport>(
 }
 
 fn handle_ordinary<T: BotTransport>(
+    targets: &crate::port::AgentTargetPort,
     transport: &T,
     store: &Mutex<BindingStore>,
     message: &InboundMessage,
@@ -519,7 +525,12 @@ fn handle_ordinary<T: BotTransport>(
         )?;
         return Ok(());
     };
-    let (reply, next_session) = send_turn(&agent_id, binding.session_id.as_deref(), text)
+    let (reply, next_session) = send_turn(
+        targets,
+        &agent_id,
+        binding.session_id.as_deref(),
+        text,
+    )
         .map_err(|error| anyhow!(error.to_string()))?;
     if !next_session.is_empty() && binding.session_id.as_deref() != Some(next_session.as_str()) {
         let _ = store_set_session(store, message.chat_id, Some(next_session));
@@ -713,11 +724,11 @@ mod tests {
             ..MockBotTransport::default()
         };
         let message = text_message(99, 77, Some("bob"), "/start", 1);
-        handle_inbound(&transport, &store, &BotIdentity::default(), &message).unwrap();
+        handle_inbound(&crate::domain::target_port::agent_target_port(), &transport, &store, &BotIdentity::default(), &message).unwrap();
         let code = store.lock().unwrap().pending_pairings()[0].code.clone();
         store.lock().unwrap().approve(&code).unwrap();
         let list = text_message(99, 77, Some("bob"), "/agent", 2);
-        handle_inbound(&transport, &store, &BotIdentity::default(), &list).unwrap();
+        handle_inbound(&crate::domain::target_port::agent_target_port(), &transport, &store, &BotIdentity::default(), &list).unwrap();
         let messages = sent.lock().unwrap();
         assert!(
             messages
@@ -747,15 +758,13 @@ mod tests {
             username: "licoup_bot".into(),
             ..BotIdentity::default()
         };
-        handle_inbound(
-            &transport,
+        handle_inbound(&crate::domain::target_port::agent_target_port(), &transport,
             &store,
             &identity,
             &text_message(42, 42, Some("alice"), "/whoami", 1),
         )
         .unwrap();
-        handle_inbound(
-            &transport,
+        handle_inbound(&crate::domain::target_port::agent_target_port(), &transport,
             &store,
             &identity,
             &text_message(42, 42, Some("alice"), "/start", 2),
@@ -763,8 +772,7 @@ mod tests {
         .unwrap();
         let code = store.lock().unwrap().pending_pairings()[0].code.clone();
         store.lock().unwrap().approve(&code).unwrap();
-        handle_inbound(
-            &transport,
+        handle_inbound(&crate::domain::target_port::agent_target_port(), &transport,
             &store,
             &identity,
             &text_message(42, 42, Some("alice"), "/unpair", 3),
@@ -812,7 +820,7 @@ mod tests {
                 emoji: None,
             },
         ];
-        handle_inbound(&transport, &store, &BotIdentity::default(), &message).unwrap();
+        handle_inbound(&crate::domain::target_port::agent_target_port(), &transport, &store, &BotIdentity::default(), &message).unwrap();
         let messages = sent.lock().unwrap();
         assert!(messages.iter().any(|(_, body)| body.contains("chatId: 5")));
         set_portable_data_dir_override(previous);

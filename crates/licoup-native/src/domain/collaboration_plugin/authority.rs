@@ -5,11 +5,11 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 use uuid::Uuid;
 
-use crate::core::authorized_secure_record::{
+use crate::platform::client_state::ClientStateStore;
+use licoup_foundation::core::authorized_secure_record::{
     SecureRecordAuthorizationRequest, SecureRecordLocator, SecureRecordOperation,
     VersionedSecureRecord,
 };
-use crate::platform::client_state::ClientStateStore;
 
 const AUTHORITY_SCHEMA: &str = "licoup.optional-collaboration-authority.v1";
 
@@ -370,7 +370,7 @@ pub(super) fn create(
     reason: &str,
 ) -> Result<BoundAuthority> {
     let secure_record = VersionedSecureRecord::new(1, None, authority.payload()?)?;
-    let provider = crate::platform::authorized_secure_record::store();
+    let provider = licoup_foundation::platform::authorized_secure_record::store();
     ensure!(
         provider.user_presence_available(),
         "collaboration_authority_user_presence_unavailable"
@@ -396,7 +396,7 @@ pub(super) fn read(
     expected_digest_sha256: &str,
     reason: &str,
 ) -> Result<BoundAuthority> {
-    let provider = crate::platform::authorized_secure_record::store();
+    let provider = licoup_foundation::platform::authorized_secure_record::store();
     ensure!(
         provider.user_presence_available(),
         "collaboration_authority_user_presence_unavailable"
@@ -421,7 +421,7 @@ pub(super) fn read(
 }
 
 pub(super) fn recover_current(store: &ClientStateStore, reason: &str) -> Result<BoundAuthority> {
-    let provider = crate::platform::authorized_secure_record::store();
+    let provider = licoup_foundation::platform::authorized_secure_record::store();
     ensure!(
         provider.user_presence_available(),
         "collaboration_authority_user_presence_unavailable"
@@ -461,7 +461,7 @@ pub(super) fn replace(
         Some(expected.secure_record.record_digest_sha256().to_owned()),
         replacement.payload()?,
     )?;
-    let provider = crate::platform::authorized_secure_record::store();
+    let provider = licoup_foundation::platform::authorized_secure_record::store();
     ensure!(
         provider.user_presence_available(),
         "collaboration_authority_user_presence_unavailable"

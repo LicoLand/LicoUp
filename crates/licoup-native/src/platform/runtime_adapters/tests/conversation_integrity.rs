@@ -4,6 +4,7 @@ use serde_json::json;
 
 #[test]
 fn remaining_packaged_driver_registry_is_bound_to_one_exact_native_lane_each() {
+    super::compose();
     let matrix = [
         (
             "claude-code",
@@ -49,7 +50,11 @@ fn legacy_launch_values_are_rejected_before_selected_executable_admission() {
             .unwrap()
             .extend(legacy.as_object().unwrap().clone());
         assert_eq!(
-            super::super::dispatch::send_message(&request).unwrap_err(),
+            super::super::dispatch::send_message(
+                &crate::domain::target_port::agent_target_port(),
+                &request,
+            )
+            .unwrap_err(),
             RuntimeAdapterError::LegacyLaunchConfiguration
         );
     }

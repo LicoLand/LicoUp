@@ -129,7 +129,7 @@ fn exact_resume_does_not_relabel_terminal_http_output_as_streaming() {
     assert_eq!(outcome.turn_status, "end_turn");
     assert!(!outcome.transitions.iter().any(|transition| matches!(
         transition,
-        crate::platform::native_agent_parser::Transition::Text { text, .. }
+        licoup_agent_adapter_sdk::Transition::Text { text, .. }
             if text.contains("private-kilo-system-guidance")
     )));
 

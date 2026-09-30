@@ -23,7 +23,7 @@ use crate::platform::claude_code_driver::command::LaunchIdentity;
 use crate::platform::claude_code_driver::errors::ProtocolFailure;
 use crate::platform::claude_code_driver::model::EffectiveSettings;
 use crate::platform::claude_code_driver::params::DriverConfig;
-use crate::platform::native_agent_parser::adapters::NativeLineParser;
+use licoup_agent_adapter_sdk::adapters::NativeLineParser;
 use crate::platform::native_agent_parser::adapters::claude_code::{
     ClaudeCodeParser, ClaudeEffect, ProtocolFinishReport,
 };

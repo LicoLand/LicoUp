@@ -1,5 +1,14 @@
 use super::support::*;
 
+/// The composed inventory port one usage scan reads.
+///
+/// `agent_usage::scan` takes the port the inventory composes; this is the same
+/// value the runtime builds, and it is built per call because the fixture is a
+/// file-system arrangement rather than a composition.
+fn agent_usage_target_port() -> licoup_agent_targets::port::AgentTargetPort {
+    licoup_native::domain::target_port::agent_target_port()
+}
+
 #[test]
 fn codex_usage_unions_active_and_archived_copies_by_event_identity() {
     let history_root = temp_dir("codex-usage-dedup-history");
@@ -12,7 +21,7 @@ fn codex_usage_unions_active_and_archived_copies_by_event_identity() {
     fs::write(history_root.join("active.jsonl"), &contents).unwrap();
     fs::write(history_root.join("archived.jsonl"), &contents).unwrap();
 
-    let report = agent_usage::scan(&scan_params(&history_root, &state_root)).unwrap();
+    let report = agent_usage::scan(&agent_usage_target_port(), &scan_params(&history_root, &state_root)).unwrap();
     let history = &report["agents"][0]["history"];
 
     assert_eq!(history["sessionCount"], 1);
@@ -42,7 +51,7 @@ fn codex_usage_ignores_text_only_incomplete_copy() {
     )
     .unwrap();
 
-    let report = agent_usage::scan(&scan_params(&history_root, &state_root)).unwrap();
+    let report = agent_usage::scan(&agent_usage_target_port(), &scan_params(&history_root, &state_root)).unwrap();
     let history = &report["agents"][0]["history"];
     assert_eq!(history["totalTokens"], 10);
     assert_eq!(history["tokenSourceBreakdown"]["explicitRecords"], 1);
@@ -73,7 +82,7 @@ fn codex_usage_noop_events_do_not_split_copy_identity() {
     )
     .unwrap();
 
-    let report = agent_usage::scan(&scan_params(&history_root, &state_root)).unwrap();
+    let report = agent_usage::scan(&agent_usage_target_port(), &scan_params(&history_root, &state_root)).unwrap();
     let history = &report["agents"][0]["history"];
     assert_eq!(history["totalTokens"], 24);
     assert_eq!(history["tokenSourceBreakdown"]["explicitRecords"], 2);
@@ -101,7 +110,7 @@ fn codex_usage_counts_identical_events_from_independent_sessions() {
         .unwrap();
     }
 
-    let report = agent_usage::scan(&scan_params(&history_root, &state_root)).unwrap();
+    let report = agent_usage::scan(&agent_usage_target_port(), &scan_params(&history_root, &state_root)).unwrap();
     let history = &report["agents"][0]["history"];
     assert_eq!(history["sessionCount"], 2);
     assert_eq!(history["totalTokens"], 24);
@@ -143,11 +152,11 @@ fn codex_usage_deduplicates_forked_rollout_prefix_before_window_filtering() {
 
     let mut params = scan_params(&history_root, &state_root);
     params["historyDays"] = json!(1);
-    let recent = agent_usage::scan(&params).unwrap();
+    let recent = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     assert_eq!(recent["summary"]["totalTokens"], 10);
 
     params["historyDays"] = json!(365);
     params["forceRefresh"] = json!(false);
-    let all = agent_usage::scan(&params).unwrap();
+    let all = agent_usage::scan(&agent_usage_target_port(), &params).unwrap();
     assert_eq!(all["summary"]["totalTokens"], 120);
 }

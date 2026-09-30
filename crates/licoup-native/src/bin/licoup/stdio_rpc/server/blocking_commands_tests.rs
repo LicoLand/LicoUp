@@ -52,7 +52,10 @@ fn blocked_scan_and_key_migration_leave_the_same_rpc_frame_loop_responsive() {
         }),
         execute_request("blocked", &["llm-gateway", "credentials", "migrate"]),
     ] {
-        let root = std::env::temp_dir().join("licoup-rpc-synthetic-root");
+        let root = std::env::temp_dir().join(format!(
+            "licoup-rpc-synthetic-root-{}",
+            std::process::id()
+        ));
         request["portableDataDir"] = json!(root);
         let gate = Arc::new((Mutex::new(false), Condvar::new()));
         let worker_gate = Arc::clone(&gate);

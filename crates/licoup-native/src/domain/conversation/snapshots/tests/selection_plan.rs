@@ -43,22 +43,22 @@ fn all_preview_counts_every_real_local_conversation_and_binds_conflict() {
         "path": display_path(&destination)
     });
 
-    let preview = archive_selection_preview(&params).unwrap();
+    let preview = archive_selection_preview(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     assert_eq!(preview["selectionMode"], "all");
     assert_eq!(preview["query"], "");
     assert_eq!(preview["count"], 4);
     assert_eq!(preview["conflict"], false);
 
-    let collected = archive_selection_collect(&params).unwrap();
+    let collected = archive_selection_collect(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     assert_eq!(collected["selectedCount"], 4);
-    let next_preview = archive_selection_preview(&params).unwrap();
+    let next_preview = archive_selection_preview(&crate::domain::target_port::agent_target_port(), &params).unwrap();
     assert_eq!(next_preview["conflict"], true);
 }
 
 #[test]
 fn exact_keyword_preview_does_not_expand_compact_aliases() {
     let (state, home, destination, _) = selection_fixture("exact-preview");
-    let preview = archive_selection_preview(&json!({
+    let preview = archive_selection_preview(&crate::domain::target_port::agent_target_port(), &json!({
         "stateRoot": display_path(&state),
         "homeDir": display_path(&home),
         "agent": "codex",
@@ -91,7 +91,7 @@ fn global_all_preview_spans_every_explicitly_discovered_agent() {
     )
     .unwrap();
 
-    let preview = archive_selection_preview(&json!({
+    let preview = archive_selection_preview(&crate::domain::target_port::agent_target_port(), &json!({
         "stateRoot": display_path(&state),
         "homeDir": display_path(&home),
         "selectionMode": "all",

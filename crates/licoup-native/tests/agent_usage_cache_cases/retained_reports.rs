@@ -1,5 +1,14 @@
 use super::support::*;
 
+/// The composed inventory port one usage scan reads.
+///
+/// `agent_usage::scan` takes the port the inventory composes; this is the same
+/// value the runtime builds, and it is built per call because the fixture is a
+/// file-system arrangement rather than a composition.
+fn agent_usage_target_port() -> licoup_agent_targets::port::AgentTargetPort {
+    licoup_native::domain::target_port::agent_target_port()
+}
+
 #[test]
 fn explicit_state_roots_isolate_model_registry_for_fresh_and_retained_usage() {
     let fixture = temp_dir("usage-registry-state-scope");
@@ -31,14 +40,14 @@ fn explicit_state_roots_isolate_model_registry_for_fresh_and_retained_usage() {
         .unwrap();
     };
     write_catalog(&first, "example/model-1");
-    let first_report = agent_usage::scan(&scan_params(&history, &first)).unwrap();
+    let first_report = agent_usage::scan(&agent_usage_target_port(), &scan_params(&history, &first)).unwrap();
     assert_eq!(
         first_report["agents"][0]["history"]["dailyUsage"][0]["modelTokenUsage"]["example/model-1"]
             ["totalTokens"],
         10
     );
 
-    let second_report = agent_usage::scan(&scan_params(&history, &second)).unwrap();
+    let second_report = agent_usage::scan(&agent_usage_target_port(), &scan_params(&history, &second)).unwrap();
     assert_eq!(second_report["modelRegistryRevision"], "");
     assert_eq!(
         second_report["agents"][0]["history"]["dailyUsage"][0]["modelTokenUsage"]["scoped-selector"]

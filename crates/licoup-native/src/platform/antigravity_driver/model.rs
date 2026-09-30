@@ -1,5 +1,5 @@
 use super::errors::ProtocolFailure;
-use crate::platform::native_agent_parser::Transition;
+use licoup_agent_adapter_sdk::Transition;
 use serde_json::Value;
 use std::time::Duration;
 

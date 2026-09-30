@@ -125,7 +125,9 @@ pub(super) fn handle_secure_mesh(admitted: AdmittedCommand) -> Result<CliExecuti
                     ledger_path,
                 )?;
             let mut executor =
-                crate::domain::secure_mesh_command_runtime::SecureCommandRuntimeExecutor;
+                crate::domain::secure_mesh_command_runtime::SecureCommandRuntimeExecutor {
+                    port: crate::domain::target_port::agent_target_port(),
+                };
             crate::core::secure_mesh_command::execute_secure_command_json(
                 &payload,
                 &context,

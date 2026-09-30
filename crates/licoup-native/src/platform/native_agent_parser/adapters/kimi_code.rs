@@ -1,6 +1,6 @@
 use super::AdapterContract;
 use crate::core::acp::{self, AcpSessionUpdate, AcpStopReason};
-use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
+use licoup_agent_adapter_sdk::{LifecycleStage, Transition, TransitionReducer};
 use serde_json::Value;
 
 pub(super) const CONTRACT: AdapterContract = AdapterContract::new("kimi-code", "lf-ndjson-acp");
@@ -23,11 +23,11 @@ pub(in crate::platform) fn initialize_response(
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::platform) struct ClientRequest {
-    pub(in crate::platform) id: Value,
-    pub(in crate::platform) method: String,
-    pub(in crate::platform) session_id: Option<String>,
-    pub(in crate::platform) allow_once_option: Option<String>,
+pub struct ClientRequest {
+    pub id: Value,
+    pub method: String,
+    pub session_id: Option<String>,
+    pub allow_once_option: Option<String>,
 }
 
 pub(in crate::platform) fn client_request(message: &Value) -> Option<ClientRequest> {

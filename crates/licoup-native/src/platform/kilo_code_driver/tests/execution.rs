@@ -22,7 +22,7 @@ fn empty_executable_fails_closed_without_session_fallback() {
     );
     assert!(matches!(
         result.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Failed { code, .. })
+        Some(licoup_agent_adapter_sdk::Transition::Failed { code, .. })
             if code == "kilo_code_serve_process_start_failed"
     ));
 }

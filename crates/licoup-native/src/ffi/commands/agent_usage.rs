@@ -19,6 +19,7 @@ pub(super) fn handle_agent_usage_scan(command: AdmittedCommand) -> Result<CliExe
         &[("forceRefresh", command.option_flag("force-refresh"))],
     );
     Ok(CliExecution::Json(crate::domain::agent_usage::scan(
+        &crate::domain::target_port::agent_target_port(),
         &params,
     )?))
 }

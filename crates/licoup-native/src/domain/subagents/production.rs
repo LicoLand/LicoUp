@@ -10,11 +10,14 @@ use serde_json::{Map, Value, json};
 use std::sync::Arc;
 
 pub fn production_application() -> Result<SubagentApplication, SubagentError> {
-    let adapters = crate::platform::runtime_adapters::production_subagent_registry();
+    let adapters = crate::platform::runtime_adapters::production_subagent_registry(crate::domain::target_port::agent_target_port());
     Ok(SubagentApplication::new(
         Arc::new(NativeConversationHost),
         adapters.clone(),
-        Arc::new(NativeReadOnlyTargets { adapters }),
+        Arc::new(NativeReadOnlyTargets {
+            adapters,
+            port: crate::domain::target_port::agent_target_port(),
+        }),
     ))
 }
 
@@ -397,6 +400,9 @@ struct NativeReadOnlyTargets {
     /// Mesh membership authority, shared with the application that owns it. The
     /// inventory exposes exactly the Agents that hold a mesh seat.
     adapters: AdapterRegistry,
+    /// The inventory facts this read-only port projects, supplied by the
+    /// composition that builds it.
+    port: crate::port::AgentTargetPort,
 }
 
 impl NativeReadOnlyTargets {
@@ -420,7 +426,7 @@ impl ReadOnlyTargetPort for NativeReadOnlyTargets {
             .members()
             .iter()
             .map(|provider| {
-                crate::domain::targets::inspect_target_read_only(provider)
+                crate::domain::targets::inspect_target_read_only(&self.port, provider)
                     .map_err(|_| retryable("target_inventory_unavailable", "target/list"))?
                     .get("target")
                     .and_then(|target| project_target(target, &self.adapters))
@@ -438,7 +444,7 @@ impl ReadOnlyTargetPort for NativeReadOnlyTargets {
         if !self.is_member(provider.as_str()) {
             return Err(permanent("subagent_unavailable", "target/probe"));
         }
-        let inspected = crate::domain::targets::inspect_target_read_only(provider.as_str())
+        let inspected = crate::domain::targets::inspect_target_read_only(&self.port, provider.as_str())
             .map_err(|_| permanent("subagent_unavailable", "target/probe"))?;
         inspected
             .get("target")
@@ -461,8 +467,8 @@ fn project_target(target: &Value, adapters: &AdapterRegistry) -> Option<Value> {
         "conversationDriver": target.pointer("/adapterCapabilities/conversationDriver").and_then(Value::as_str).unwrap_or("unavailable"),
         "conversationReadiness": target.pointer("/adapterCapabilities/conversationReadiness").and_then(Value::as_str).unwrap_or("unverified"),
         "intelligenceCatalog": crate::domain::agent_intelligence_catalog::project_harness_catalog(agent_id, 8),
-        "timeoutPolicy": crate::domain::dispatch_timeout_policy::policy_envelope(
-            &crate::domain::dispatch_timeout_policy::load_or_default(),
+        "timeoutPolicy": licoup_application::dispatch_timeout_policy::policy_envelope(
+            &licoup_application::dispatch_timeout_policy::load_or_default(),
         ),
     }))
 }
@@ -608,7 +614,7 @@ mod tests {
 
     #[test]
     fn target_projection_drops_user_labels_and_private_inventory() {
-        let adapters = crate::platform::runtime_adapters::production_subagent_registry();
+        let adapters = crate::platform::runtime_adapters::production_subagent_registry(crate::domain::target_port::agent_target_port());
         let projected = project_target(
             &json!({
                 "target": "cursor",

@@ -29,7 +29,7 @@ use licoup_native::platform::work_context_ports::{
     EffectControl, EffectDelivery, EffectDispatch, EffectHandle, EffectInvocation, EffectOperation,
     EffectRefusal, EffectState, EffectTurn, EffectUnknownReason, ReconcileOutcome,
     RuntimeAgentProfile, Settlement, SteerOutcome, SubmitOutcome, bind_adapter_work_context,
-    effect_input_text, unverified_snapshot,
+    effect_input_text, production_effect_bridge, unverified_snapshot,
 };
 use serde_json::{Value, json};
 
@@ -903,7 +903,7 @@ fn observe_reports_the_adapter_record_and_never_invents_one() {
 fn the_production_port_negotiates_from_the_live_runtime_registry() {
     let owner = session_owner(ProtocolFamily::Codex, CapabilityProfile::High);
     let owner_port = Arc::clone(&owner);
-    let port = EffectBridge::runtime_lane(owner_port);
+    let port = production_effect_bridge(owner_port);
 
     // Two vendors, one code path: the difference below is packaged profile data,
     // not a vendor branch in the bridge.
@@ -1153,14 +1153,14 @@ fn a_session_the_owner_will_not_admit_claims_nothing() {
     assert_eq!(dispatch.deliveries(), 0);
 }
 
-/// The production dispatch path, not an injected surface: `runtime_lane` binds
-/// the real lane control. The session below is not bound to this process, which
+/// The production dispatch path, not an injected surface: `production_effect_bridge`
+/// binds the real lane control. The session below is not bound to this process, which
 /// is the exact "the host answered but no turn is here" case, and the lane
 /// answers it without launching anything.
 #[test]
 fn the_production_control_path_reaches_the_lane_and_reports_its_answer() {
     let owner = session_owner(ProtocolFamily::Codex, CapabilityProfile::High);
-    let port = EffectBridge::runtime_lane(owner);
+    let port = production_effect_bridge(owner);
     let handle = EffectHandle {
         effect_id: "effect:lane".into(),
         attempt_token: "effect:lane-attempt-1".into(),

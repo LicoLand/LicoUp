@@ -249,11 +249,11 @@ pub(super) fn run_archive_with_profile_discovery(
     }))
 }
 
-pub(crate) fn archive_collect(params: &Value) -> Result<Value> {
+pub(crate) fn archive_collect(port: &crate::port::AgentTargetPort, params: &Value) -> Result<Value> {
     let store = client_state_store(params)?;
     let keywords = archive_keywords(params)?;
     let archive_root = archive_destination(params)?;
-    let target_scan = archive_target_scan(params)?;
+    let target_scan = archive_target_scan(port, params)?;
     let agents = archive_agents_from_target_scan(params, &target_scan);
     if agents.is_empty() {
         return Ok(json!({

@@ -6,6 +6,7 @@
 
 mod migration;
 pub mod peer_ingress;
+mod profile_admission;
 mod profile_snapshot;
 pub(crate) mod projection_delta;
 mod service;
@@ -14,15 +15,18 @@ mod store;
 
 pub use licoup_conversation::*;
 pub use migration::{MigrationReport, migrate_legacy_state};
-pub use profile_snapshot::{
-    CandidateFilters, PriceFacts, ProfileSnapshotAuthority, SharedSnapshotAuthority, TargetFacts,
-    production_snapshot_authority, project_profile_snapshot, project_profile_snapshots,
+pub use profile_admission::{
+    CandidateFilters, ProfileAdmission, ProfileAdmissionRefusal, ProfileChoiceOrigin,
+    ProfileRequirementOutcome, RequirementOutcome, ResolvedProfileChoice, admit_profile_candidates,
     rank_candidates,
+};
+pub use profile_snapshot::{
+    PriceFacts, ProfileSnapshotAuthority, SharedSnapshotAuthority, TargetFacts,
+    production_snapshot_authority, project_profile_snapshot, project_profile_snapshots,
 };
 pub(crate) use service::route_receipt;
 pub use service::{ConversationService, PersistentRuntimePorts, dispatch_attachments_param};
 
-/// Product-owned private dispatch guidance remains composed by the native host
-/// and is never written into Conversation Event text.
-pub(crate) const LICOUP_GUIDE_SKILL_SOURCE: &str =
-    include_str!("../../../resources/licoup-guide/SKILL.md");
+// The bundled usage Skill's identity — its published name and the source one MCP
+// registration delivers under it — is owned by `licoup-mcp::guide_skill`, which
+// owns that registration. The host reads it downward; it keeps no second copy.

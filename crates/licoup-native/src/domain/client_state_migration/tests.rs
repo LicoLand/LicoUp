@@ -8,12 +8,13 @@ fn protected_custody_upgrade_defers_until_success_and_retries_without_reset() {
         std::env::temp_dir().join(format!("licoup-custody-migration-{}", uuid::Uuid::new_v4()));
     admit(&root).unwrap();
     assert!(gateway_credential_migration_pending(&root).unwrap());
-    // An installed older frontier has no custody completion receipt.
+    // An installed older frontier has no custody completion receipt. The root
+    // names the declared source, which is the one older format this binary admits.
     let ledger_path = root.join("client-state/migrations/ledger.json");
     let frontier = embedded_frontier().unwrap();
     let mut ledger = load_ledger(&ledger_path, &frontier).unwrap();
     ledger.domains.remove(GATEWAY_CUSTODY_DOMAIN);
-    ledger.frontier_id = "licoup-state-0.1.1".to_owned();
+    ledger.frontier_id = frontier.source_frontier_id.clone();
     write_json_atomic(&ledger_path, &ledger).unwrap();
 
     let startup = admit(&root).unwrap();
@@ -615,7 +616,9 @@ fn completed_frontier_one_advances_adaptive_flywheel_ledger_and_marker() {
         &Ledger {
             schema_version: LEDGER_SCHEMA.to_owned(),
             highest_admitted_product_version: running_product_version().unwrap().to_owned(),
-            frontier_id: "licoup-state-0.2.1".to_owned(),
+            // The declared source, read from the catalog: this root is at the one
+            // older format the admission converts, not at a name of its own.
+            frontier_id: embedded_frontier().unwrap().source_frontier_id.clone(),
             domains: BTreeMap::from([(
                 "adaptive-flywheel".to_owned(),
                 LedgerDomain {
@@ -1074,5 +1077,233 @@ fn admitted_v11_conversation_store_upgrades_without_resetting_the_domain() {
         )
         .unwrap();
     assert_eq!(version, licoup_conversation::store::CURRENT_SCHEMA_VERSION);
+    let _ = fs::remove_dir_all(root);
+}
+
+/// A domain converted without a store file reports the version it is at.
+///
+/// Most domains own no store file: admission writes their durable marker and
+/// nothing else. The projection resolves a version the way the admission does —
+/// a store that reports a version above zero is authoritative, otherwise the
+/// domain's own marker is — so a converted domain never reads as version zero
+/// to a consumer of the raw projection. The version comes from the marker only
+/// because no store exists, and reading it must not create one.
+#[test]
+fn a_converted_domain_without_a_store_file_reports_its_marker_version() {
+    let root = std::env::temp_dir().join(format!(
+        "licoup-migration-projection-{}",
+        uuid::Uuid::new_v4()
+    ));
+    // The domains below are converted by their marker alone; their store files
+    // are never written, which is what the projection must report without
+    // inventing one.
+    let storeless = [
+        root.join("client-state/agent-tab-order.json"),
+        root.join("client-state/current-client-view.json"),
+        root.join("client-state/skill-hub-preferences.json"),
+    ];
+    let admission = admit(&root).unwrap();
+    assert!(storeless.iter().all(|path| !path.exists()));
+
+    let states = domain_state_projection(&root).unwrap();
+    assert_eq!(
+        states.len(),
+        embedded_frontier().unwrap().domains.len(),
+        "every declared domain is projected"
+    );
+    let mut converted = 0;
+    for state in &states {
+        // Platform credential custody is deliberately deferred on macOS: a data
+        // root alone cannot prove the account holds no legacy Keychain items, so
+        // its version stays at zero until the protected operation completes.
+        if admission
+            .pending_authorization_domain_ids
+            .contains(&state.domain_id)
+        {
+            continue;
+        }
+        assert_eq!(
+            state.marker_schema_version,
+            Some(state.target_schema_version),
+            "{} was admitted, so its marker records the target",
+            state.domain_id
+        );
+        assert_eq!(
+            state.store_version, state.target_schema_version,
+            "{} is converted without a store file, so the store version reports the \
+             marker's authoritative version instead of zero",
+            state.domain_id
+        );
+        assert_eq!(
+            state.effective_version, state.target_schema_version,
+            "{} owes no migration edge",
+            state.domain_id
+        );
+        converted += 1;
+    }
+    assert!(converted > 0, "a fresh root converts every domain it can");
+    assert!(
+        storeless.iter().all(|path| !path.exists()),
+        "projecting a domain must not fabricate the store file it has none of"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+/// A store the owner cannot read never hides the other domains' versions.
+///
+/// The projection answers per domain. A store document whose version marker is not
+/// a version is refused by the domain's own probe, and that one domain reads as
+/// version 0 without failing the read for the root's other domains; a converted
+/// neighbour keeps reporting the version its durable marker records.
+#[test]
+fn an_unreadable_store_never_hides_the_other_domains_versions() {
+    let root = std::env::temp_dir().join(format!(
+        "licoup-migration-unreadable-store-{}",
+        uuid::Uuid::new_v4()
+    ));
+    admit(&root).unwrap();
+    fs::write(
+        root.join("client-state/agent-tool-allowlists.json"),
+        b"{\"schemaVersion\":\"one\"}",
+    )
+    .unwrap();
+
+    let states = domain_state_projection(&root).unwrap();
+    assert_eq!(
+        states.len(),
+        embedded_frontier().unwrap().domains.len(),
+        "an unreadable store must not shorten the projection"
+    );
+    let unreadable = states
+        .iter()
+        .find(|state| state.domain_id == "agent-tool-allowlist")
+        .unwrap();
+    assert_eq!(unreadable.store_version, 0);
+    assert_eq!(unreadable.effective_version, 0);
+    let readable = states
+        .iter()
+        .find(|state| state.domain_id == "current-view")
+        .unwrap();
+    assert_eq!(
+        readable.store_version, readable.target_schema_version,
+        "a converted neighbour still reports the version its marker records"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+/// A marker ahead of this binary still refuses the read.
+///
+/// The tolerant resolution of an unreadable store must not swallow the marker's
+/// own refusal: a domain whose marker claims more than the embedded frontier
+/// supports is a state the client refuses, not a version to report.
+#[test]
+fn a_marker_ahead_of_the_binary_still_refuses_the_projection() {
+    let root = std::env::temp_dir().join(format!(
+        "licoup-migration-ahead-marker-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let marker_root = root.join("client-state/migrations/domain-state");
+    crate::platform::file_security::ensure_private_dir(&marker_root).unwrap();
+    let domain = embedded_frontier().unwrap().domains[0].clone();
+    write_json_atomic(
+        &marker_path(&marker_root, &domain.domain_id),
+        &DomainMarker {
+            schema_version: DOMAIN_MARKER_SCHEMA.to_owned(),
+            domain_id: domain.domain_id.clone(),
+            authoritative_schema_version: domain.target_schema_version + 1,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        domain_state_projection(&root).unwrap_err().to_string(),
+        "state_newer_than_binary"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+/// The catalog declares exactly the two conversion endpoints, and a reader
+/// enumerates the pair instead of restating a format name.
+///
+/// The source is the format the last published client left, the target is this
+/// binary's own frontier, and the two are distinct: one format is never both
+/// halves of the same conversion.
+#[test]
+fn the_declared_conversion_endpoints_are_the_published_source_and_the_binary_target() {
+    let frontier = embedded_frontier().unwrap();
+    let endpoints = conversion_endpoints().unwrap();
+    assert_eq!(
+        endpoints,
+        ConversionEndpoints {
+            source_frontier_id: frontier.source_frontier_id.clone(),
+            target_frontier_id: frontier.frontier_id.clone(),
+        },
+        "the enumerated endpoints are the catalog's own declaration"
+    );
+    assert_ne!(
+        endpoints.source_frontier_id, endpoints.target_frontier_id,
+        "one format cannot be both endpoints"
+    );
+    assert!(
+        is_frontier_identity(&endpoints.source_frontier_id)
+            && is_frontier_identity(&endpoints.target_frontier_id),
+        "both endpoints are frontier identities"
+    );
+    assert!(
+        frontier
+            .require_declared_format(&endpoints.source_frontier_id)
+            .is_ok()
+            && frontier
+                .require_declared_format(&endpoints.target_frontier_id)
+                .is_ok(),
+        "both declared endpoints are admitted formats"
+    );
+}
+
+/// Only the declared source is converted, and only this binary's own target is a
+/// rerun. Any other name is refused as an unsupported source before the ledger's
+/// high-water advances or a domain moves, so an older published format stays
+/// release history instead of becoming a second supported source.
+#[test]
+fn admission_refuses_a_root_that_names_a_format_outside_the_declared_pair() {
+    let frontier = embedded_frontier().unwrap();
+    let root = std::env::temp_dir().join(format!(
+        "licoup-migration-declared-source-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let migration_root = root.join("client-state/migrations");
+    crate::platform::file_security::ensure_private_dir(&migration_root).unwrap();
+    let ledger_path = migration_root.join("ledger.json");
+    let mut ledger = load_ledger(&ledger_path, &frontier).unwrap();
+
+    // The format the previous stable release left is retained by the published
+    // record; the declaration does not offer it as a conversion endpoint.
+    ledger.frontier_id = "licoup-state-0.1.1".to_owned();
+    write_json_atomic(&ledger_path, &ledger).unwrap();
+    let before = fs::read(&ledger_path).unwrap();
+    assert_eq!(
+        admit(&root).unwrap_err().to_string(),
+        "unsupported_state_shape",
+        "a name outside the declared pair has no conversion path"
+    );
+    assert_eq!(
+        fs::read(&ledger_path).unwrap(),
+        before,
+        "the refusal writes no ledger"
+    );
+    assert!(
+        !migration_root.join("domain-state").exists(),
+        "the refusal converts no domain"
+    );
+
+    // The declared source is the one older format the admission converts, and the
+    // ledger then names this binary's own target.
+    ledger.frontier_id = frontier.source_frontier_id.clone();
+    write_json_atomic(&ledger_path, &ledger).unwrap();
+    assert_eq!(admit(&root).unwrap().frontier_id, frontier.frontier_id);
+    assert_eq!(
+        load_ledger(&ledger_path, &frontier).unwrap().frontier_id,
+        frontier.frontier_id,
+        "a converted root records this binary's own target"
+    );
     let _ = fs::remove_dir_all(root);
 }

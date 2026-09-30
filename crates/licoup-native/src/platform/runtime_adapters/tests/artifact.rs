@@ -1,7 +1,7 @@
 use super::super::RuntimeAdapter;
 use super::super::artifact::{runtime_artifact_digest, runtime_executable};
 use super::super::params::timestamp;
-use crate::platform::client_state::{
+use licoup_client_state::{
     ClientStateStore, TARGET_DISCOVERY_CACHE_SCHEMA, TargetRouteRecord,
 };
 use serde_json::Map;
@@ -36,7 +36,7 @@ fn kilo_default_command_uses_the_native_discovery_binding_for_group_turns() {
     let executable = root.join("extension/bin/kilo");
     fs::create_dir_all(executable.parent().unwrap()).unwrap();
     fs::write(&executable, b"fixture").unwrap();
-    let previous = crate::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+    let previous = licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
     let store = ClientStateStore::portable().unwrap();
     store
         .write_target_routes(&[TargetRouteRecord {
@@ -51,8 +51,13 @@ fn kilo_default_command_uses_the_native_discovery_binding_for_group_turns() {
         }])
         .unwrap();
 
-    let resolved = runtime_executable(RuntimeAdapter::KiloCode, "kilo").unwrap();
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    let resolved = runtime_executable(
+        &crate::domain::target_port::agent_target_port(),
+        RuntimeAdapter::KiloCode,
+        "kilo",
+    )
+    .unwrap();
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
 
     assert_eq!(
         resolved,
@@ -67,7 +72,12 @@ fn kilo_default_command_uses_the_native_discovery_binding_for_group_turns() {
 #[test]
 fn explicit_relative_command_is_not_replaced_by_discovery() {
     assert_eq!(
-        runtime_executable(RuntimeAdapter::KiloCode, "custom-kilo").unwrap(),
+        runtime_executable(
+            &crate::domain::target_port::agent_target_port(),
+            RuntimeAdapter::KiloCode,
+            "custom-kilo",
+        )
+        .unwrap(),
         "custom-kilo"
     );
 }

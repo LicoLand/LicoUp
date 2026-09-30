@@ -42,6 +42,7 @@ fn hub_params(
 
 pub(super) fn handle_catalog(command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(crate::domain::agent_hub::catalog(
+        &crate::domain::target_port::agent_target_port(),
         &hub_params(
             command.option_text("agent-id"),
             None,

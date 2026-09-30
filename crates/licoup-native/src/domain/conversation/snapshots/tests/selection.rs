@@ -127,7 +127,7 @@ fn pactium_keyword_uses_strict_current_project_archive() {
         )
         .unwrap();
 
-    let result = archive_collect(&json!({
+    let result = archive_collect(&crate::domain::target_port::agent_target_port(), &json!({
         "stateRoot": display_path(&state),
         "homeDir": display_path(&home),
         "agent": "codex",
