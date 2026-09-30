@@ -10,6 +10,29 @@ import { directedLayout } from "../reporting/graph-layout.mjs";
 import { architectureViews } from "../reporting/architecture.mjs";
 import { loadBetterPlan } from "../reporting/adapters/better-plan.mjs";
 
+test("engineering continuation follows recorded current delivery without granting live authority", () => {
+  const workflow = JSON.parse(readFileSync(new URL("../workflows/07-engineering-handoff.json", import.meta.url), "utf8"));
+  const prohibition = "Do not initiate real conversations, Computer Use or per-worker installations.";
+  const continuation = "Only an explicit finite programme assignment may start the next dependency-satisfied milestone after the current milestone has been reviewed and its delivery recorded.";
+  assert.equal(workflow.boundary.en, `${prohibition} ${continuation}`);
+  assert.equal(workflow.boundary.zh, "不得自行启动真实对话、Computer Use 或各自安装客户端。只有在当前里程碑已通过评审且交付结果已记录后，显式有限程序安排才允许启动下一个依赖已满足的里程碑。");
+  const root = mkdtempSync(path.join(tmpdir(), "licoup-handoff-report-test-"));
+  try {
+    const source = path.join(root, "tools/development");
+    mkdirSync(path.join(source, "workflows"), { recursive: true });
+    writeFileSync(path.join(source, "workflows/07-engineering-handoff.json"), JSON.stringify(workflow));
+    writeFileSync(path.join(source, "state-machines.json"), "[]");
+    writeFileSync(path.join(source, "architecture-views.json"), "[]");
+    generateReports({ root, now: "synthetic timestamp" });
+    const page = readFileSync(path.join(root, "build/reports/workflows.html"), "utf8");
+    assert.ok(page.includes(prohibition));
+    assert.ok(page.includes(continuation));
+    assert.doesNotMatch(page, /reviewed, recorded, dependency-satisfied successor|已记录交付且依赖已满足的后续里程碑/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("report generation reflects sources without executing workflows or reading privacy payloads", () => {
   const root = mkdtempSync(path.join(tmpdir(), "licoup-report-test-"));
   const previousTool = process.env.LICOUP_BETTER_PLAN_TOOL;
