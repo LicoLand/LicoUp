@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/frontend/features/settings/ui/settings_control_metrics.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_dropdown_list.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
@@ -10,10 +11,10 @@ import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 
+export 'package:licoup/src/frontend/features/settings/ui/settings_control_metrics.dart';
 export 'package:licoup/src/frontend/features/settings/ui/settings_dropdown_list.dart';
 
 const _appearanceSegmentLabelWidth = 72.0;
-const _appearanceToggleWidth = 320.0;
 
 /// One segmented control recipe for settings surfaces: a hairline rounded
 /// track with an inset sliding thumb — the iOS idiom, in the interface's own
@@ -60,7 +61,7 @@ class SettingsSegmentedControl<T> extends StatelessWidget {
           child: Opacity(
             opacity: enabled ? 1 : 0.55,
             child: SizedBox(
-              height: 28,
+              height: settingsControlHeight - 4,
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final segmentWidth = constraints.maxWidth / count;
@@ -241,10 +242,7 @@ class SettingsDropdownRow<T> extends StatelessWidget {
             children: [
               Expanded(child: titleRow),
               const SizedBox(width: LicoContentSpacing.item),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 320),
-                child: dropdown,
-              ),
+              SizedBox(width: settingsControlWidth, child: dropdown),
             ],
           );
         },
@@ -297,7 +295,7 @@ class SettingsDayNightToggleRow extends StatelessWidget {
       onChanged: onChanged,
       disabledSegments: disabledSegments,
       segmentMinWidth: _appearanceSegmentLabelWidth,
-      width: _appearanceToggleWidth,
+      width: settingsControlWidth,
     );
 
     return Padding(

@@ -15,6 +15,7 @@ class LicoSectionHeader extends StatelessWidget {
     super.key,
     required this.title,
     this.leading,
+    this.trailing,
     this.padding = EdgeInsets.zero,
   });
 
@@ -23,6 +24,9 @@ class LicoSectionHeader extends StatelessWidget {
   /// Optional glyph before the title. The caller owns the icon itself because
   /// some surfaces use a brand or provider mark rather than a material icon.
   final Widget? leading;
+
+  /// Optional widget after the title, for example a busy indicator.
+  final Widget? trailing;
 
   /// Outer padding. Surfaces whose layout scope owns section rhythm pass it
   /// in; inline usages keep the zero default.
@@ -48,6 +52,10 @@ class LicoSectionHeader extends StatelessWidget {
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
+          if (trailing != null) ...[
+            const SizedBox(width: LicoContentSpacing.compact),
+            trailing!,
+          ],
         ],
       ),
     );

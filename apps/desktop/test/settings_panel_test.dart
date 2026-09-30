@@ -527,8 +527,75 @@ void main() {
       await tester.pump(const Duration(milliseconds: 16));
     }
     expect(find.text('Export Logs'), findsOneWidget);
+    expect(find.byKey(const Key('settings-log-export-card')), findsOneWidget);
+    expect(
+      find.byKey(const Key('settings-section-header-diagnostics')),
+      findsOneWidget,
+    );
     expect(find.byType(ClientResourceUsageCard), findsNothing);
     expect(find.text('Tools'), findsNothing);
+  });
+
+  testWidgets('settings selection controls share one geometry', (tester) async {
+    final fixture = _settingsFixture();
+    await _pumpSettings(tester, fixture, height: 1400);
+
+    final dropdownSize = tester.getSize(
+      find.byKey(const Key('settings-locale-dropdown')),
+    );
+    expect(dropdownSize.height, settingsControlHeight);
+    expect(dropdownSize.width, settingsControlWidth);
+    final toggleSize = tester.getSize(
+      find.byKey(const Key('appearance-day-night-toggle')),
+    );
+    expect(toggleSize.height, settingsControlHeight);
+    expect(toggleSize.width, settingsControlWidth);
+
+    // Directory rows echo live state, so no refresh buttons remain anywhere
+    // in the settings content.
+    final scrollable = find
+        .descendant(
+          of: find.byKey(const Key('settings-content-scroll')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.text('LicoUp Backup Directory'),
+      360,
+      scrollable: scrollable,
+    );
+    expect(find.byIcon(Icons.refresh_outlined), findsNothing);
+  });
+
+  testWidgets('updates and startup render the shared section header', (
+    tester,
+  ) async {
+    final fixture = _settingsFixture();
+    await _pumpSettings(tester, fixture, height: 1400);
+    final scrollable = find
+        .descendant(
+          of: find.byKey(const Key('settings-content-scroll')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('settings-section-header-updates')),
+      360,
+      scrollable: scrollable,
+    );
+    expect(
+      find.byKey(const Key('settings-section-header-updates')),
+      findsOneWidget,
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('settings-section-header-startup')),
+      360,
+      scrollable: scrollable,
+    );
+    expect(
+      find.byKey(const Key('settings-section-header-startup')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('an empty theme catalog leaves general and layout available', (

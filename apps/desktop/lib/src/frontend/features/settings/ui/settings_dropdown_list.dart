@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/features/settings/ui/settings_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// One row in a [SettingsDropdownList].
@@ -47,61 +48,75 @@ class SettingsDropdownList<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    return DropdownButtonFormField<T>(
-      key: ValueKey<Object?>(value),
-      initialValue: value,
-      isExpanded: true,
-      decoration: const InputDecoration(
-        floatingLabelBehavior: FloatingLabelBehavior.never,
-      ),
-      selectedItemBuilder: (context) {
-        return [
-          for (final item in items)
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: Text(
-                item.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+    final valueStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+      color: _interactive ? colors.text : colors.textMuted,
+      fontSize: 13,
+      fontWeight: FontWeight.w500,
+    );
+    return SizedBox(
+      height: settingsControlHeight,
+      child: DropdownButtonFormField<T>(
+        key: ValueKey<Object?>(value),
+        initialValue: value,
+        isExpanded: true,
+        iconSize: 20,
+        style: valueStyle,
+        decoration: const InputDecoration(
+          floatingLabelBehavior: FloatingLabelBehavior.never,
+          isDense: true,
+          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        ),
+        selectedItemBuilder: (context) {
+          return [
+            for (final item in items)
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(
+                  item.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: valueStyle,
+                ),
               ),
-            ),
-        ];
-      },
-      items: [
-        for (final item in items)
-          DropdownMenuItem<T>(
-            key: item.key,
-            value: item.value,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    item.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: item.value == value
-                          ? colors.primaryStrong
-                          : colors.text,
-                      fontWeight: item.value == value
-                          ? FontWeight.w700
-                          : FontWeight.w500,
+          ];
+        },
+        items: [
+          for (final item in items)
+            DropdownMenuItem<T>(
+              key: item.key,
+              value: item.value,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      item.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: item.value == value
+                            ? colors.primaryStrong
+                            : colors.text,
+                        fontSize: 13,
+                        fontWeight: item.value == value
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                      ),
                     ),
                   ),
-                ),
-                if (item.value == value)
-                  Icon(Icons.check, size: 16, color: colors.accentStrong),
-              ],
+                  if (item.value == value)
+                    Icon(Icons.check, size: 16, color: colors.accentStrong),
+                ],
+              ),
             ),
-          ),
-      ],
-      onChanged: _interactive
-          ? (selected) {
-              if (selected != null) {
-                onSelected(selected);
+        ],
+        onChanged: _interactive
+            ? (selected) {
+                if (selected != null) {
+                  onSelected(selected);
+                }
               }
-            }
-          : null,
+            : null,
+      ),
     );
   }
 }
