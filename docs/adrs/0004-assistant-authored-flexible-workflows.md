@@ -25,7 +25,7 @@ Updated: 2026-09-25
     An unknown required fact rejects; an unknown optional price or score
     ranks after known values and stays visibly unknown.
   - The designated Assistant references the product-owned `licoup-guide`
-    software-use Skill at `crates/licoup-native/resources/licoup-guide/SKILL.md`.
+    software-use Skill at `crates/licoup-mcp/resources/licoup-guide/SKILL.md`.
     It shares guidance with provider registration; registration remains an
     explicitly approved operation.
   - Candidate discovery hard-filters Membership, Authority, privacy/location,

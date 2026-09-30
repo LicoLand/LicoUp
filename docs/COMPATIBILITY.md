@@ -1,12 +1,12 @@
 # LicoUp Compatibility
 
-Updated: 2026-09-14
+Updated: 2026-09-26
 
 English (normative) · [简体中文](COMPATIBILITY.zh-CN.md) · [Documentation](README.md) · [Project](../README.md)
 
 Product version: `0.3.0`
 
-Generated sources: `tools/client-support-matrix.json`, `tools/client-release-targets.json`, `tools/client-version.json`, `crates/licoup-native/resources/agent-conversation-drivers.json`, `crates/licoup-native/resources/agent-native-capabilities.json`, and `crates/licoup-native/resources/agent-conversation-readiness.json`.
+Generated sources: `tools/client-support-matrix.json`, `tools/client-release-targets.json`, `tools/client-version.json`, `crates/licoup-native/resources/agent-conversation-drivers.json`, `crates/licoup-native/resources/agent-native-capabilities.json`, `crates/licoup-native/resources/agent-conversation-readiness.json`, and `crates/licoup-native/resources/client-state-migration-frontier.json`.
 
 Update with `npm run client:support-matrix:sync`; verify with `npm run client:support-matrix:check`. Do not edit this projection by hand.
 
@@ -52,6 +52,15 @@ Runtime targets and release packages are intentionally different authorities. Ea
 | android-direct-arm64-v8a | android-arm64 | android | direct | apk | arm64-v8a | available | not eligible | manual-download |
 | android-play-arm64-v8a | android-arm64 | android | google-play | aab | arm64-v8a | available | not eligible | store-managed |
 | ios-app-store-arm64 | ios-arm64 | ios | app-store | ipa | arm64 | available | not eligible | store-managed |
+
+## State migration endpoints
+
+The embedded frontier catalog declares exactly two conversion endpoints: the last published format as the source and this client's own target format as the destination. A root that names any other format is refused as an unsupported source; older published formats are release history, not additional endpoints.
+
+| Endpoint | Format identity |
+| --- | --- |
+| Source (last published) | `licoup-state-0.2.1` |
+| Destination (this client) | `licoup-state-0.3.0` |
 
 ## Meaning
 

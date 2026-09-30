@@ -99,6 +99,6 @@ fallback keeps the change bounded and reviewable.
 
 ## Current authorities
 
-`crates/licoup-native/src/platform/pty_transport.rs` owns the PTY behavior.
+`crates/licoup-foundation/src/platform/pty_transport.rs` owns the PTY behavior.
 The Antigravity and Cursor drivers own their process and parsing adaptations;
 `resources/agent-conversation-drivers.json` owns declared driver capabilities.

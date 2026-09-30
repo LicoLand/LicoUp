@@ -1,6 +1,6 @@
 # Client update and state migration
 
-Updated: 2026-09-25
+Updated: 2026-09-26
 
 [简体中文](CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md) ·
 [Architecture](README.md) · [Data migration](../modules/data-migration.md)
@@ -12,19 +12,28 @@ or packaging transports. `direct` and `app-store` are packaging transport values
 ## Independent migration CLI
 
 The standalone Rust program in `crates/licoup-migrate/` provides `inspect`,
-`plan`, `convert`, `resume`, `export`, and `import`. It builds and runs as one
-binary and needs no Node.js runtime. It probes the actual stores and selects the
-registered conversion path for the requested published target. `inspect` and
-`plan` are read-only.
+`plan`, `convert`, `resume`, `export`, `import`, and `rehearse`. It builds and
+runs as one binary and needs no Node.js runtime. It probes the actual stores and
+selects the registered conversion path for the requested published target.
+`inspect` and `plan` are read-only.
 
-`convert`, `resume`, and `export` require `--writers-stopped`. The tool lock
-excludes only other runs of this tool; it cannot stop an older client or another
-writer that does not participate in that lock. Each domain commits and verifies
-its own postcondition before its marker and journal advance. Recovery resumes
-from the physical stores without repeating committed steps; the tool does not
-claim one transaction across every database, file, and platform credential
-store. A run that leaves a domain owed reports that domain and exits non-zero
-instead of presenting the move as finished.
+Conversion runs between two declared endpoints and no others. The frontier
+catalog in `crates/licoup-native/resources/client-state-migration-frontier.json`
+declares the last published format as the source and this binary's own target as
+the destination, so the native admission and this tool's diagnostic reader both
+read one pair instead of restating a format name. A root that names any other
+format is refused as an unsupported source before a store is opened for writing;
+publication history keeps the older release records without adding a third
+endpoint, a compatibility layer, or another migration step.
+
+`convert`, `resume`, `export`, and `rehearse` require `--writers-stopped`. The
+tool lock excludes only other runs of this tool; it cannot stop an older client
+or another writer that does not participate in that lock. Each domain commits
+and verifies its own postcondition before its marker and journal advance.
+Recovery resumes from the physical stores without repeating committed steps; the
+tool does not claim one transaction across every database, file, and platform
+credential store. A run that leaves a domain owed reports that domain and exits
+non-zero instead of presenting the move as finished.
 
 Unsupported shapes and unsafe downgrades fail before mutation. Preservation
 records keep data that a supported older shape cannot express and merge it back

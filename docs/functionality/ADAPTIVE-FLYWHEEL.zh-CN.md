@@ -32,7 +32,7 @@ Adaptive Flywheel 导入用户编写的 JSON Graph，将 actor 槽绑定到有�
 
 ## Agent 使用
 
-内置 [LicoUp 指南](../../crates/licoup-native/resources/licoup-guide/SKILL.md)解释现有
+内置 [LicoUp 指南](../../crates/licoup-mcp/resources/licoup-guide/SKILL.md)解释现有
 会话、委派和工作流工具。加载技能不授予执行权限，也不选择开发流程或模型预设；
 能力以当前目录和已接纳成员配置为准。
 

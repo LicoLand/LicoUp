@@ -77,6 +77,42 @@ Use `npm run repo:impact -- --path <repository-relative-path>` to inspect the
 registered checks and affected module routes before assigning work. An unmapped path
 needs ownership review; a plan is never evidence that the dependency is covered.
 
+### One writer per working tree
+
+Parallel work needs separate working trees, not separate intentions. Two writers in one
+checkout do not merely collide in Git: they compile each other's half-finished moves, and a
+green gate then describes a tree that never existed. The dispatcher is a writer too — while
+another Agent holds a task in a checkout, the dispatcher reads and plans there, it does not
+edit.
+
+Give each concurrent workstream its own worktree:
+
+```sh
+git worktree add ../LicoUp-android feature/android-native
+git worktree add ../LicoUp-ios feature/ios-native
+```
+
+`build/` is ignored, so every worktree gets its own Cargo target directory, fixture roots,
+leases and generated reports without configuration, and each worktree's verification describes
+only its own changes.
+
+Work may run in parallel when the file sets are disjoint — a delivery that rewrites `crates/`
+and a mobile delivery that writes its own application root do not touch the same files. Work
+must stay ordered when it shares files: two tasks that both rewrite a crate manifest and its
+module wiring are one writer at a time, in one tree, however independent their subject matter
+looks. A plan that runs such tasks "in parallel" has not ordered them.
+
+State the host's budget instead of assuming the whole machine is yours. The complete
+regression derives its concurrency from the core count, which is a property of the machine
+rather than of what it can spare while another worktree compiles:
+
+```sh
+node tools/scripts/client-module-regression.mjs --capacity 4
+```
+
+Report the capacity with any gate result, because the same command on the same host is a
+different measurement at a different budget.
+
 ## Start
 
 Use the Node, Rust and Flutter versions declared by the package/toolchain manifests.
@@ -133,6 +169,22 @@ For a narrower existing suite, discover it with `npm run client:regression:list`
 During development run only affected suites. Shared semantic or transport changes
 include their dependent consumers; adapter-specific changes stay with that adapter. Use synthetic, redacted test data.
 Do not launch real Agents or live services without an explicit request.
+
+The complete regression sizes its concurrency from the core count, which describes what
+the machine has rather than what it can spare. A host that shares itself with another
+worktree or an already running build states its own budget instead:
+
+```sh
+node tools/scripts/client-module-regression.mjs --capacity 4
+```
+
+Every pool is derived from that number and no pool exceeds it, so the statement is a
+ceiling rather than a hint; a stated capacity equal to the core count reproduces the
+derived model exactly. The number is in the model's own units, where a Rust module weighs
+four, Flutter three and a Node module one, so the practical floor is the heaviest module
+selected: `--capacity 1` cannot schedule Rust work and is refused up front with the number
+to state instead. Record the capacity with the run when a gate is reported, because the
+same command on the same host is a different measurement at a different budget.
 
 Before handoff, map every requirement in the approved delivery scope to its production
 implementation and engineering evidence. Complete missing behavior and wiring; do

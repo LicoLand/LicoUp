@@ -3,7 +3,7 @@
 Updated: 2026-09-25
 
 Status: implemented · Current authority:
-`crates/licoup-native/src/platform/user_shell_environment.rs`
+`crates/licoup-foundation/src/platform/user_shell_environment.rs`
 
 ## Decision
 

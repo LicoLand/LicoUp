@@ -38,7 +38,7 @@ to stop an already running turn. It does not cancel the independent workflow.
 
 ## Agent use
 
-The bundled [LicoUp guide](../../crates/licoup-native/resources/licoup-guide/SKILL.md)
+The bundled [LicoUp guide](../../crates/licoup-mcp/resources/licoup-guide/SKILL.md)
 explains the current conversation, delegation and workflow tools. Loading it grants
 no execution authority and selects no development process or model preset. Read
 capabilities from current catalogs and admitted membership profiles.

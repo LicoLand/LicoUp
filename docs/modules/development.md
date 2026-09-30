@@ -1,6 +1,6 @@
 # Development tools and documentation developer guide
 
-Updated: 2026-09-26
+Updated: 2026-09-28
 
 [Developer entry](../RUNBOOK.md)
 
@@ -84,7 +84,7 @@ Run `node tools/development/reports.mjs` to refresh the local HTML navigation at
 `build/reports/index.html`. It includes workflow views, registered state machines, component dependencies
 and links to available evidence. Temporary Better Plan workspaces are separate:
 `--better-plan <local-source>` explicitly adds a read-only projection from the
-Skill's current `Plan.json` or `Manifest.json`. Without that option, omit the plan
+Skill's `Programme.json`, which selects its split Tree workspaces. Without that option, omit the plan
 page and navigation entry, including stale generated output. Do not maintain a
 repository-specific persisted plan format or scan for private workspaces.
 Existing authorities supply states and dependencies; do not duplicate them in
