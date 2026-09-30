@@ -269,6 +269,33 @@ fn sanitize_entry_path(raw: &Path, max_depth: usize) -> Result<PathBuf> {
         return Err(anyhow!("archive entry path is empty after normalization"));
     }
 
+    // Every component must be portable independently of the host platform: the same
+    // rules the ZIP path enforces, so a member name can never mean a different location
+    // on a different host.
+    for component in normalized.iter() {
+        let name = component.to_str().ok_or_else(|| {
+            anyhow!(
+                "archive entry path is not portable UTF-8: {}",
+                normalized.display()
+            )
+        })?;
+        ensure!(
+            !name.is_empty() && name != "." && name != "..",
+            "archive entry path component is not portable: {}",
+            normalized.display()
+        );
+        ensure!(
+            !name.contains('\\') && !name.contains(':'),
+            "archive entry path component is not portable: {}",
+            normalized.display()
+        );
+        ensure!(
+            !name.chars().any(char::is_control),
+            "archive entry path component contains a control character: {}",
+            normalized.display()
+        );
+    }
+
     // Check depth.
     let depth = normalized.components().count();
     ensure!(

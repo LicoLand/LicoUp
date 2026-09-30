@@ -1,4 +1,5 @@
 mod append_lock;
+mod atomic_private_file;
 mod atomic_replace;
 mod composition;
 mod hardening;

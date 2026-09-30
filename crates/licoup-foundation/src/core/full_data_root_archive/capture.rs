@@ -1,31 +1,37 @@
 //! Capture one data root into a plaintext archive.
 //!
 //! The caller names the destination; the owner never defaults one, and it never captures
-//! the archive it is writing. Writers must be stopped before capture. The owner takes the
-//! same `client-state/migrations/admission.lock` that native state admission already
-//! uses, so a capture cannot run while another application writer holds it, and no
-//! second locking convention is invented.
+//! the archive it is writing. Writers must be stopped before capture: the caller's
+//! explicit `writers_stopped` statement is the authority, and the owner additionally
+//! coordinates with the application's own state admission when its lock file already
+//! exists. The owner never creates admission state in the source.
+//!
+//! The archive is written to a private temporary file beside the destination and
+//! committed by rename, so an existing output is replaced only by a complete archive,
+//! and a refused capture leaves both the source and any previous destination untouched.
+//! The same inventory policy the importer applies is checked before the first byte is
+//! written, so a successful export is importable by its own owner.
 
-use anyhow::{Context, Result, anyhow, ensure};
+use anyhow::{Result, anyhow, ensure};
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use fs2::FileExt;
-use std::ffi::OsString;
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, BufWriter, Write};
+use std::io::{BufReader, BufWriter, Seek, Write};
 use std::path::{Path, PathBuf};
 
+use crate::platform::file_security::AtomicPrivateFile;
+
 use super::inventory::{
-    ArchiveManifest, InventoryKind, RecoveryCoverage, RecoveryLimitation, inventory_data_root,
+    ArchiveManifest, InventoryEntry, InventoryKind, RecoveryCoverage, RecoveryLimitation,
+    ensure_within_archive_limits, inventory_data_root, validate_inventory_structure,
 };
 use super::{ArchiveContainer, DATA_PREFIX, MANIFEST_MEMBER};
 
-/// Application-owned key-reference stores, at the data-root-relative path the
-/// credential inventory owner actually reads. Their absence is reported as a
-/// named limitation so an archive is never described as a complete recovery
-/// when a credential domain could not travel with it.
-const CREDENTIAL_REFERENCE_STORES: &[(&str, &str)] =
-    &[("gateway-credential-custody", "llm-api-key-inventory.json")];
+/// Credential custody domain whose key material never travels in a plaintext archive.
+const CREDENTIAL_DOMAIN: &str = "gateway-credential-custody";
+/// Non-secret inventory document at the data-root-relative path its owner reads.
+const CREDENTIAL_INVENTORY_PATH: &str = "llm-api-key-inventory.json";
 
 #[derive(Clone, Debug)]
 pub struct ExportRequest {
@@ -48,12 +54,10 @@ pub struct ExportOutcome {
 
 /// Capture `data_root` into a standard plaintext archive.
 pub fn export_data_root(request: &ExportRequest) -> Result<ExportOutcome> {
-    // The caller names the destination, and the archive is never part of the data the
-    // capture operates on. The owner creates the destination before it inventories the
-    // root, so an archive named inside the root would be captured as a member of itself
-    // and a restore would then write that file back into the restored root. This is
-    // decided before anything is created, so a refused capture publishes no file and
-    // creates no parent directory inside the root it declined to describe.
+    // Decide every refusal before the source is inspected or the destination is touched.
+    // The archive is never part of the data the capture operates on: an archive named
+    // inside the root would be captured as a member of itself and a restore would then
+    // write that file back into the restored root.
     ensure!(
         !archive_path_inside_data_root(&request.data_root, &request.archive_path),
         "archive_path_inside_data_root"
@@ -61,55 +65,72 @@ pub fn export_data_root(request: &ExportRequest) -> Result<ExportOutcome> {
     ensure!(request.writers_stopped, "archive_writers_running");
     ensure!(request.data_root.is_dir(), "data_root_missing");
     let container = ArchiveContainer::from_path(&request.archive_path)?;
-
-    if let Some(parent) = request.archive_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)
-                .map_err(|_| anyhow!("archive_destination_unwritable"))?;
-        }
+    if let Ok(metadata) = std::fs::symlink_metadata(&request.archive_path) {
+        // A symbolic-link destination (including a dangling link into the root) is
+        // refused no-follow; the atomic writer never follows one either.
+        ensure!(
+            !metadata.file_type().is_symlink(),
+            "archive_destination_unsafe"
+        );
     }
 
-    // Preconditions first: a refused capture must leave no archive and must not
-    // touch the source.
     let _admission = AdmissionGuard::acquire(&request.data_root)?;
 
-    let destination = File::create(&request.archive_path)
-        .map_err(|_| anyhow!("archive_destination_unwritable"))?;
-
+    // Inventory and policy first: a refused capture publishes nothing and mutates nothing.
     let entries = inventory_data_root(&request.data_root)?;
+    let facts = validate_inventory_structure(&entries)
+        .map_err(|_| anyhow!("data_root_path_not_portable"))?;
     let limitations = recovery_limitations(&entries);
     let coverage = if limitations.is_empty() {
         RecoveryCoverage::Complete
     } else {
         RecoveryCoverage::Limited
     };
-    let manifest = ArchiveManifest::new(
-        container.extension(),
-        coverage,
-        limitations.clone(),
-        entries,
-    );
+    let manifest = ArchiveManifest::new(container.extension(), coverage, limitations, entries)?;
+    let manifest_bytes = manifest.to_bytes()?;
+    ensure_within_archive_limits(
+        &facts,
+        manifest_bytes.len() as u64,
+        "archive_export_limits_exceeded",
+    )?;
 
-    match container {
-        ArchiveContainer::Zip => {
-            let bytes = build_zip(&request.data_root, &manifest)?;
-            let mut writer = BufWriter::new(destination);
-            writer
-                .write_all(&bytes)
-                .map_err(|_| anyhow!("archive_write_failed"))?;
-            writer
-                .flush()
-                .map_err(|_| anyhow!("archive_write_failed"))?;
-        }
-        ArchiveContainer::TarGz => {
-            write_tar_gz(BufWriter::new(destination), &request.data_root, &manifest)?;
+    let mut output = AtomicPrivateFile::create(&request.archive_path)
+        .map_err(|_| anyhow!("archive_destination_unwritable"))?;
+    {
+        let mut buffered = BufWriter::new(output.file_mut());
+        match container {
+            ArchiveContainer::Zip => {
+                let writer = write_zip(
+                    &mut buffered,
+                    &request.data_root,
+                    &manifest,
+                    &manifest_bytes,
+                )?;
+                writer
+                    .flush()
+                    .map_err(|_| anyhow!("archive_write_failed"))?;
+            }
+            ArchiveContainer::TarGz => {
+                let writer = write_tar_gz(
+                    &mut buffered,
+                    &request.data_root,
+                    &manifest,
+                    &manifest_bytes,
+                )?;
+                writer
+                    .flush()
+                    .map_err(|_| anyhow!("archive_write_failed"))?;
+            }
         }
     }
+    output
+        .commit()
+        .map_err(|_| anyhow!("archive_write_failed"))?;
 
     Ok(ExportOutcome {
         container,
-        coverage,
-        limitations,
+        coverage: manifest.coverage,
+        limitations: manifest.limitations.clone(),
         file_count: manifest.file_count(),
         total_bytes: manifest.total_bytes,
     })
@@ -143,7 +164,7 @@ fn resolve_through_existing_ancestor(path: &Path) -> Option<PathBuf> {
     } else {
         std::env::current_dir().ok()?.join(path)
     };
-    let mut suffix: Vec<OsString> = Vec::new();
+    let mut suffix: Vec<std::ffi::OsString> = Vec::new();
     loop {
         if existing.exists() {
             let mut resolved = existing.canonicalize().ok()?;
@@ -160,30 +181,43 @@ fn resolve_through_existing_ancestor(path: &Path) -> Option<PathBuf> {
     }
 }
 
-fn recovery_limitations(entries: &[super::inventory::InventoryEntry]) -> Vec<RecoveryLimitation> {
-    CREDENTIAL_REFERENCE_STORES
+/// The credential custody limit, reported for every archive.
+///
+/// The archive can carry the non-secret inventory document when it exists, but the key
+/// material the document describes stays in platform custody and is never portable. File
+/// presence is therefore reported as what it is and never completes the recovery.
+fn recovery_limitations(entries: &[InventoryEntry]) -> Vec<RecoveryLimitation> {
+    let metadata_present = entries
         .iter()
-        .filter(|(_, path)| {
-            !entries
-                .iter()
-                .any(|entry| entry.kind == InventoryKind::File && entry.path == *path)
-        })
-        .map(|(domain, path)| RecoveryLimitation {
-            domain: (*domain).to_string(),
-            reason: format!("{path} is absent from the captured root"),
-        })
-        .collect()
+        .any(|entry| entry.kind == InventoryKind::File && entry.path == CREDENTIAL_INVENTORY_PATH);
+    let reason = if metadata_present {
+        format!(
+            "{CREDENTIAL_INVENTORY_PATH} travels as non-secret metadata; platform-held credential key material stays in place and must be reacquired"
+        )
+    } else {
+        format!(
+            "{CREDENTIAL_INVENTORY_PATH} is absent from the captured root; platform-held credential key material stays in place"
+        )
+    };
+    vec![RecoveryLimitation {
+        domain: CREDENTIAL_DOMAIN.to_string(),
+        reason,
+    }]
 }
 
-fn build_zip(root: &Path, manifest: &ArchiveManifest) -> Result<Vec<u8>> {
-    let mut buffer = std::io::Cursor::new(Vec::new());
-    let mut zip = zip::ZipWriter::new(&mut buffer);
+fn write_zip<W: Write + Seek>(
+    writer: W,
+    root: &Path,
+    manifest: &ArchiveManifest,
+    manifest_bytes: &[u8],
+) -> Result<W> {
+    let mut zip = zip::ZipWriter::new(writer);
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
 
     zip.start_file(MANIFEST_MEMBER, options)
         .map_err(|_| anyhow!("archive_write_failed"))?;
-    zip.write_all(&manifest.to_bytes()?)
+    zip.write_all(manifest_bytes)
         .map_err(|_| anyhow!("archive_write_failed"))?;
 
     for entry in &manifest.entries {
@@ -196,27 +230,30 @@ fn build_zip(root: &Path, manifest: &ArchiveManifest) -> Result<Vec<u8>> {
             InventoryKind::File => {
                 zip.start_file(member, options)
                     .map_err(|_| anyhow!("archive_write_failed"))?;
-                copy_file(root, &entry.path, &mut zip)?;
+                copy_file(root, entry, &mut zip)?;
             }
         }
     }
-    zip.finish().map_err(|_| anyhow!("archive_write_failed"))?;
-    Ok(buffer.into_inner())
+    zip.finish().map_err(|_| anyhow!("archive_write_failed"))
 }
 
-fn write_tar_gz<W: Write>(writer: W, root: &Path, manifest: &ArchiveManifest) -> Result<()> {
+fn write_tar_gz<W: Write>(
+    writer: W,
+    root: &Path,
+    manifest: &ArchiveManifest,
+    manifest_bytes: &[u8],
+) -> Result<W> {
     let encoder = GzEncoder::new(writer, Compression::default());
     let mut builder = tar::Builder::new(encoder);
     builder.mode(tar::HeaderMode::Deterministic);
 
-    let manifest_bytes = manifest.to_bytes()?;
     let mut header = tar::Header::new_gnu();
     header.set_size(manifest_bytes.len() as u64);
     header.set_mode(0o600);
     header.set_mtime(manifest.created_at_unix);
     header.set_cksum();
     builder
-        .append_data(&mut header, MANIFEST_MEMBER, manifest_bytes.as_slice())
+        .append_data(&mut header, MANIFEST_MEMBER, manifest_bytes)
         .map_err(|_| anyhow!("archive_write_failed"))?;
 
     for entry in &manifest.entries {
@@ -234,14 +271,21 @@ fn write_tar_gz<W: Write>(writer: W, root: &Path, manifest: &ArchiveManifest) ->
                     .map_err(|_| anyhow!("archive_write_failed"))?;
             }
             InventoryKind::File => {
+                let file = File::open(root.join(&entry.path))
+                    .map_err(|_| anyhow!("data_root_entry_unreadable"))?;
+                let metadata = file
+                    .metadata()
+                    .map_err(|_| anyhow!("data_root_entry_unreadable"))?;
+                ensure!(
+                    metadata.is_file() && metadata.len() == entry.size,
+                    "data_root_entry_changed"
+                );
                 let mut header = tar::Header::new_gnu();
                 header.set_entry_type(tar::EntryType::Regular);
                 header.set_size(entry.size);
                 header.set_mode(0o600);
                 header.set_mtime(manifest.created_at_unix);
                 header.set_cksum();
-                let file = File::open(root.join(&entry.path))
-                    .map_err(|_| anyhow!("data_root_entry_unreadable"))?;
                 builder
                     .append_data(&mut header, member, BufReader::new(file))
                     .map_err(|_| anyhow!("archive_write_failed"))?;
@@ -252,45 +296,190 @@ fn write_tar_gz<W: Write>(writer: W, root: &Path, manifest: &ArchiveManifest) ->
     let encoder = builder
         .into_inner()
         .map_err(|_| anyhow!("archive_write_failed"))?;
+    // The inner writer is returned to the caller, which flushes it and then commits the
+    // atomic file; a final ENOSPC therefore fails the capture instead of being dropped.
     encoder
         .finish()
-        .map_err(|_| anyhow!("archive_write_failed"))?;
-    Ok(())
+        .map_err(|_| anyhow!("archive_write_failed"))
 }
 
-fn copy_file<W: Write>(root: &Path, relative: &str, writer: &mut W) -> Result<()> {
-    let mut file = BufReader::new(
-        File::open(root.join(relative)).map_err(|_| anyhow!("data_root_entry_unreadable"))?,
+fn copy_file<W: Write>(root: &Path, entry: &InventoryEntry, writer: &mut W) -> Result<()> {
+    let file =
+        File::open(root.join(&entry.path)).map_err(|_| anyhow!("data_root_entry_unreadable"))?;
+    let metadata = file
+        .metadata()
+        .map_err(|_| anyhow!("data_root_entry_unreadable"))?;
+    ensure!(
+        metadata.is_file() && metadata.len() == entry.size,
+        "data_root_entry_changed"
     );
-    std::io::copy(&mut file, writer).map_err(|_| anyhow!("archive_write_failed"))?;
+    let mut reader = BufReader::new(file);
+    let written =
+        std::io::copy(&mut reader, writer).map_err(|_| anyhow!("archive_write_failed"))?;
+    ensure!(written == entry.size, "data_root_entry_changed");
     Ok(())
 }
 
-/// Exclusive admission, matching the convention native state admission already
-/// uses. Holding it proves no other application writer is inside the same window.
+/// Coordination with the application's own state admission, when its lock file exists.
+///
+/// The caller's explicit `writers_stopped` statement remains the authority; holding this
+/// lock is coordination with the current application's writers and is not proof that every
+/// writer (including an older client) has stopped. The guard opens only an existing lock
+/// file and never creates admission state inside the source root.
 struct AdmissionGuard {
-    file: File,
+    file: Option<File>,
 }
 
 impl AdmissionGuard {
     fn acquire(data_root: &Path) -> Result<Self> {
-        let directory = data_root.join("client-state").join("migrations");
-        std::fs::create_dir_all(&directory).context("archive_admission_unavailable")?;
-        let file = OpenOptions::new()
-            .create(true)
-            .read(true)
-            .write(true)
-            .truncate(false)
-            .open(directory.join("admission.lock"))
-            .context("archive_admission_unavailable")?;
-        file.try_lock_exclusive()
-            .map_err(|_| anyhow!("archive_writers_running"))?;
-        Ok(Self { file })
+        let path = data_root
+            .join("client-state")
+            .join("migrations")
+            .join("admission.lock");
+        match OpenOptions::new().read(true).open(&path) {
+            Ok(file) => {
+                file.try_lock_exclusive()
+                    .map_err(|_| anyhow!("archive_writers_running"))?;
+                Ok(Self { file: Some(file) })
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self { file: None }),
+            Err(_) => Err(anyhow!("archive_admission_unavailable")),
+        }
     }
 }
 
 impl Drop for AdmissionGuard {
     fn drop(&mut self) {
-        let _ = fs2::FileExt::unlock(&self.file);
+        if let Some(file) = &self.file {
+            let _ = fs2::FileExt::unlock(file);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::full_data_root_archive::inventory::InventoryFacts;
+    use crate::core::safe_archive::default_zip_extraction_limits;
+    use std::io::{self, SeekFrom};
+
+    struct FaultyZipWriter {
+        inner: std::io::Cursor<Vec<u8>>,
+        fail_after: usize,
+    }
+
+    impl Write for FaultyZipWriter {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            if self.inner.position() as usize >= self.fail_after {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "injected write failure",
+                ));
+            }
+            self.inner.write(buffer)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl Seek for FaultyZipWriter {
+        fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
+            self.inner.seek(position)
+        }
+    }
+
+    struct FailingWriter {
+        fail_after: usize,
+        written: usize,
+    }
+
+    impl Write for FailingWriter {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            if self.written >= self.fail_after {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "injected write failure",
+                ));
+            }
+            let remaining = self.fail_after - self.written;
+            let accepted = buffer.len().min(remaining.max(1));
+            self.written += accepted;
+            Ok(accepted)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct FlushFailingWriter;
+
+    impl Write for FlushFailingWriter {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "injected flush failure",
+            ))
+        }
+    }
+
+    fn empty_manifest(container: &str) -> (ArchiveManifest, Vec<u8>) {
+        let manifest =
+            ArchiveManifest::new(container, RecoveryCoverage::Limited, Vec::new(), Vec::new())
+                .expect("empty manifest");
+        let bytes = manifest.to_bytes().expect("encode manifest");
+        (manifest, bytes)
+    }
+
+    #[test]
+    fn zip_write_propagates_an_injected_writer_failure() {
+        let (manifest, bytes) = empty_manifest("zip");
+        let writer = FaultyZipWriter {
+            inner: std::io::Cursor::new(Vec::new()),
+            fail_after: 2,
+        };
+        let result = write_zip(writer, Path::new("."), &manifest, &bytes);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn tar_gz_write_propagates_an_injected_writer_failure() {
+        let (manifest, bytes) = empty_manifest("tar.gz");
+        let writer = FailingWriter {
+            fail_after: 1,
+            written: 0,
+        };
+        let result = write_tar_gz(writer, Path::new("."), &manifest, &bytes);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn tar_gz_returns_the_inner_writer_so_the_final_flush_is_observed() {
+        let (manifest, bytes) = empty_manifest("tar.gz");
+        let writer = write_tar_gz(FlushFailingWriter, Path::new("."), &manifest, &bytes)
+            .expect("encoder finishes");
+        let mut writer = writer;
+        assert!(
+            writer.flush().is_err(),
+            "the returned writer's flush must be observable"
+        );
+    }
+
+    #[test]
+    fn manifest_overhead_counts_towards_the_export_limit() {
+        let limits = default_zip_extraction_limits();
+        let facts = InventoryFacts {
+            file_bytes: limits.max_total_bytes,
+            member_count: 2,
+            max_member_depth: 2,
+            max_file_bytes: 1,
+        };
+        assert!(ensure_within_archive_limits(&facts, 1, "archive_export_limits_exceeded").is_err());
     }
 }

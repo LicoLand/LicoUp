@@ -83,6 +83,73 @@ pub(super) fn rename_into_place(tmp: &Path, path: &Path) -> Result<()> {
     }
 }
 
+/// A private file created beside `destination` and committed by rename.
+///
+/// This is the streamed sibling of [`atomic_write_private_text`] for binary output:
+/// the caller writes through [`AtomicPrivateFile::file_mut`], flushes the data, and
+/// calls [`AtomicPrivateFile::commit`], which syncs, validates and renames the private
+/// temporary file into place. Dropping an uncommitted writer removes the temporary file
+/// and leaves any existing destination untouched.
+pub struct AtomicPrivateFile {
+    file: fs::File,
+    temp: PathBuf,
+    destination: PathBuf,
+    committed: bool,
+}
+
+impl AtomicPrivateFile {
+    pub fn create(destination: &Path) -> Result<Self> {
+        validation::ensure_atomic_write_parent(destination)?;
+        validation::validate_regular_file_or_missing_no_follow(destination, true)?;
+        let temp = sibling_temp_path(destination);
+        let mut options = OpenOptions::new();
+        options.create_new(true).write(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600).custom_flags(nix::libc::O_NOFOLLOW);
+        }
+        let file = options
+            .open(&temp)
+            .map_err(|_| anyhow!("private state temporary file could not be created"))?;
+        validation::apply_private_file_permissions(&file, &temp)?;
+        validation::validate_open_state_marker(&temp, &file)?;
+        Ok(Self {
+            file,
+            temp,
+            destination: destination.to_path_buf(),
+            committed: false,
+        })
+    }
+
+    /// The open private temporary file. It stays valid until `commit` consumes the writer.
+    pub fn file_mut(&mut self) -> &mut fs::File {
+        &mut self.file
+    }
+
+    /// Sync, validate and rename the temporary file over the destination.
+    pub fn commit(mut self) -> Result<()> {
+        sync::file(&mut self.file)?;
+        validation::validate_open_state_marker(&self.temp, &self.file)?;
+        rename_into_place(&self.temp, &self.destination)
+            .map_err(|_| anyhow!("private state file could not be committed"))?;
+        let committed = fs::symlink_metadata(&self.destination)
+            .map_err(|_| anyhow!("private state file disappeared after commit"))?;
+        validation::validate_private_file_metadata(&committed)?;
+        sync::parent(&self.destination)?;
+        self.committed = true;
+        Ok(())
+    }
+}
+
+impl Drop for AtomicPrivateFile {
+    fn drop(&mut self) {
+        if !self.committed {
+            let _ = fs::remove_file(&self.temp);
+        }
+    }
+}
+
 fn copy_cross_device_then_atomic_replace(tmp: &Path, path: &Path) -> Result<()> {
     let parent = path
         .parent()

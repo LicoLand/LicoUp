@@ -30,9 +30,11 @@ pub(super) fn ensure_private_state_parent(path: &Path) -> Result<()> {
 }
 
 pub(super) fn ensure_atomic_write_parent(path: &Path) -> Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| anyhow!("private state file parent is missing"))?;
+    // An empty parent means the current directory, exactly as file creation reads it.
+    let parent = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
     validate_private_path_ancestors(parent)?;
     if !parent.try_exists()? {
         fs::create_dir_all(parent)?;
