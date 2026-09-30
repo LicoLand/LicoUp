@@ -14,7 +14,7 @@ account, the network, the plan, the graph or the ledger.
 
 Run from the repository root:
 
-    python3 tests/integration/v71_package_lifecycle/verify_component_lifecycle.py
+    python3 tests/integration/package_lifecycle/verify_component_lifecycle.py
 
 ``--keep`` leaves the temporary sandbox in place for inspection.
 """

@@ -55,7 +55,7 @@ cargo test --locked --manifest-path components/analytics/Cargo.toml
 ```
 
 That runs the package's unit tests and the V7-U6 component-integration suite in
-`tests/integration/v71_usage_sources/` (A34 and the component-level part of
+`tests/integration/usage_sources/` (A34 and the component-level part of
 A31). Everything is synthetic; no account, ledger, usage file or network is
 involved.
 
