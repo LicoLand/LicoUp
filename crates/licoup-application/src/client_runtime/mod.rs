@@ -1,10 +1,10 @@
 //! Typed in-process client runtime: generation-safe handles, wake-only
 //! callbacks, monotonic stream cursors, and closed Agent private IPC.
 //!
-//! Hosts later bind this surface through `licoup-platform-bridges`. Until that
-//! crate exists, these types stay in the native domain and remain the ABI
-//! contract. GUI callers never supply origin, risk, confirmation, or
-//! authentication fields.
+//! Hosts bind this surface through `licoup-platform-bridges`, which owns the
+//! ABI identity and the generation-index handle arena these types stand on;
+//! this module is the composed contract. GUI callers never supply origin, risk,
+//! confirmation, or authentication fields.
 
 mod abi;
 mod agent_ipc;

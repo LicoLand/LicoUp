@@ -94,7 +94,7 @@ impl OperationPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::session_policy::session::{ClientSession, LockReason, SessionCommand};
+    use crate::session_policy::session::{ClientSession, LockReason, SessionCommand};
 
     #[test]
     fn ordinary_add_chat_send_file_stay_direct() {

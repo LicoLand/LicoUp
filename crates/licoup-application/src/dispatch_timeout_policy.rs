@@ -5,7 +5,7 @@
 //! timers; turns run unbounded unless an explicit deadline or policy is configured.
 //! Finite non-zero values stay inside the 1s–30min clamp.
 
-use crate::platform::client_state::ClientStateStore;
+use licoup_client_state::ClientStateStore;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
@@ -194,7 +194,7 @@ fn redacted_store_error(error: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::platform::paths::set_portable_data_dir_override;
+    use licoup_foundation::platform::paths::set_portable_data_dir_override;
 
     #[test]
     fn zero_and_missing_timeouts_use_the_writable_policy() {

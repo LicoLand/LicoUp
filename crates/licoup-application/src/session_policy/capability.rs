@@ -187,8 +187,8 @@ impl AgentScope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::session_policy::policy::OperationFamily;
-    use crate::domain::session_policy::review::ContentRange;
+    use crate::session_policy::policy::OperationFamily;
+    use crate::session_policy::review::ContentRange;
 
     #[test]
     fn capability_is_single_use_and_generation_bound() {

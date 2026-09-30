@@ -94,7 +94,7 @@ impl Default for InteractionAuthority {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::session_policy::review::ReviewDescriptor;
+    use crate::session_policy::review::ReviewDescriptor;
 
     #[test]
     fn ordinary_chat_is_direct_interaction_while_unlocked() {

@@ -1,4 +1,4 @@
-//! Fail-closed Protocol Line admission at the native composition root.
+//! Fail-closed Protocol Line admission at the client composition root.
 
 pub use licoup_protocol_bindings::{
     AUTHORIZATION_REQUIRED, AdmissionRefusal, AuthorityInput, VerifiedProtocolLine,

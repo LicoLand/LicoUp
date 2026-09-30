@@ -13,6 +13,10 @@ impl StreamCursor {
         Self { position: 0 }
     }
 
+    pub const fn from_position(position: u64) -> Self {
+        Self { position }
+    }
+
     pub const fn position(self) -> u64 {
         self.position
     }
