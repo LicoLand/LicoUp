@@ -50,9 +50,10 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/platform/extension_packages/artifact.rs",
         "crates/licoup-native/src/platform/extension_packages/mod.rs",
-        "crates/licoup-native/tests/v71_package_lifecycle/**",
+        "crates/licoup-native/tests/package_lifecycle/**",
+        "tests/integration/package_lifecycle/**",
       ],
-      command: rustIntegrationTest("v71_package_lifecycle"),
+      command: rustIntegrationTest("package_lifecycle"),
     }),
   defineModule({
       id: "rust.ffi.typed-error-chain",
@@ -1655,6 +1656,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/platform/codex_app_server.rs",
         "crates/licoup-native/src/platform/codex_app_server/model_catalog.rs",
+        "crates/licoup-native/src/platform/codex_app_server/reserve.rs",
         "crates/licoup-native/src/platform/codex_app_server/contract.rs",
         "crates/licoup-native/src/platform/codex_app_server/error.rs",
         "crates/licoup-native/src/platform/codex_app_server/limits.rs",

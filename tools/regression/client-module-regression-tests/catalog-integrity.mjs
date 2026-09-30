@@ -22,6 +22,7 @@ import { FLUTTER_MODULES } from "../client-module-catalog/groups/flutter.mjs";
 import { REGRESSION_MODULES } from "../client-module-catalog/groups/regression.mjs";
 import { RUST_CORE_MODULES } from "../client-module-catalog/groups/rust-core.mjs";
 import { RUST_CATALOG_CONVERGENCE_MODULES } from "../client-module-catalog/groups/rust-catalog-convergence.mjs";
+import { RUST_COMPONENT_MODULES } from "../client-module-catalog/groups/rust-components.mjs";
 import { RUST_DOMAIN_MODULES } from "../client-module-catalog/groups/rust-domain.mjs";
 import { RUST_PLATFORM_MODULES } from "../client-module-catalog/groups/rust-platform.mjs";
 
@@ -433,6 +434,7 @@ test("catalog physical groups retain a thin barrel and complete source ownership
     "flutter.mjs",
     "regression.mjs",
     "rust-catalog-convergence.mjs",
+    "rust-components.mjs",
     "rust-core.mjs",
     "rust-domain.mjs",
     "rust-platform.mjs",
@@ -454,6 +456,9 @@ test("catalog physical groups retain a thin barrel and complete source ownership
       "rust-domain",
       "rust-platform",
       "rust-ffi",
+    ])],
+    [RUST_COMPONENT_MODULES, new Set([
+      "rust-crate",
     ])],
     [RUST_PLATFORM_MODULES, new Set([
       "rust-composition",
