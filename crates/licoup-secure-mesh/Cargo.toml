@@ -1,0 +1,89 @@
+[package]
+name = "licoup-secure-mesh"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+# Hermetic group-operation constructors the module's own tests and the
+# `licoup-native` callers drive. `cfg(test)` is false for a dependency, so the
+# seam they name is carried as a feature rather than as `cfg(test)`.
+test-support = []
+# Explicit non-production topology support for the Key Transparency authority.
+# `cfg(test)` is false for a dependency and a `--lib` build compiles no test
+# code, so the acceptance harness the mock authority composes is carried as a
+# feature. Release profiles are rejected in `lib.rs`.
+secure-mesh-acceptance-mock-kt = []
+
+# The line-oriented Key Transparency authority the selected-target acceptance
+# topology orchestrates. It is acceptance-only tooling and is compiled only
+# behind `secure-mesh-acceptance-mock-kt`, which `lib.rs` rejects in release
+# profiles.
+[[bin]]
+name = "lico-secure-mesh-kt-mock"
+path = "src/bin/lico-secure-mesh-kt-mock.rs"
+required-features = ["secure-mesh-acceptance-mock-kt"]
+
+[dependencies]
+anyhow.workspace = true
+base64.workspace = true
+chacha20poly1305.workspace = true
+# The portable client-state root the endpoint's durable secure-mesh state lives
+# under: the MLS state directory, the Key Transparency authority store and the
+# guard marker that blocks protected operations while a reset is incomplete.
+licoup-client-state = { path = "../licoup-client-state" }
+ed25519-dalek.workspace = true
+hkdf.workspace = true
+hmac.workspace = true
+libcrux-ml-kem.workspace = true
+libcrux-sha3.workspace = true
+libcrux-traits.workspace = true
+# The group (MLS) surface drives OpenMLS directly: it owns the group state, the
+# commit and join flows, the key packages and the epoch extensions.
+openmls.workspace = true
+openmls_basic_credential.workspace = true
+openmls_rust_crypto.workspace = true
+openmls_traits.workspace = true
+# The secure-mesh protocol-identity vocabulary two trees on opposite sides of
+# this crate's boundary have to agree on lives below both of them.
+licoup-foundation = { path = "../licoup-foundation" }
+# The authenticated-padding and Lico Arc envelope formats are protocol material
+# both this crate and the relay compose, so they sit below both.
+licoup-protocol-bindings = { path = "../licoup-protocol-bindings" }
+rand_core.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+subtle.workspace = true
+thiserror.workspace = true
+time.workspace = true
+# Presence authorization sessions are identified by random version-4 identifiers.
+uuid.workspace = true
+# The pairwise handshake and ratchet are X25519-based.
+x25519-dalek.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+rand_chacha = "0.3"
+
+# The macOS platform secret store reaches Security.framework and CoreFoundation
+# directly: it owns the keychain effects and the LocalAuthentication context the
+# presence batch is bound to. The bindings moved here with that code, so the
+# manifest that declares what uses them is this one.
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10.1"
+core-foundation-sys = "0.8.7"
+security-framework = { version = "3.7.0", features = ["OSX_10_15"] }
+security-framework-sys = { version = "2.17.0", features = ["OSX_10_15"] }
+
+# The Linux platform secret store probes the Secret Service over D-Bus, and its
+# fail-closed states are exercised where the code is.
+[target.'cfg(target_os = "linux")'.dependencies]
+dbus-secret-service = { version = "4.1.0", features = ["crypto-rust"] }
+
+[build-dependencies]
+licoup-state-machine-codegen = { path = "../licoup-state-machine-codegen" }
