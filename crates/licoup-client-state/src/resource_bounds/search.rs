@@ -132,7 +132,7 @@ impl LocalSearchAuthority {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::resource_bounds::policy::ClientResourcePolicy;
+    use crate::resource_bounds::policy::ClientResourcePolicy;
 
     #[test]
     fn namespaces_do_not_share_content_and_protected_stays_unsealed() {

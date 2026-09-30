@@ -71,7 +71,7 @@ pub struct ClientResourcePolicy {
 
 impl ClientResourcePolicy {
     pub fn default_bounded() -> Self {
-        let bounds = licoup_client_state::ClientResourcePolicy::standard().bounds();
+        let bounds = crate::ClientResourcePolicy::standard().bounds();
         Self {
             history_first_page: bounds.history_page_size as u32,
             history_second_page: bounds.history_page_size as u32,

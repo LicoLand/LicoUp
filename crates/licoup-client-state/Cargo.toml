@@ -5,3 +5,17 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
+
+[dependencies]
+# The process, IO and path primitives this crate writes through. Private-file
+# access and the portable data root come from here rather than from a copy.
+licoup-foundation = { path = "../licoup-foundation" }
+anyhow.workspace = true
+fs2.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.27", default-features = false, features = ["fs", "user", "signal", "socket"] }

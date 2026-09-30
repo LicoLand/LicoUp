@@ -70,7 +70,7 @@ impl HistoryPageSelector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::resource_bounds::policy::ClientResourcePolicy;
+    use crate::resource_bounds::policy::ClientResourcePolicy;
 
     #[test]
     fn small_page_does_not_require_the_full_identity_set_to_sort() {
