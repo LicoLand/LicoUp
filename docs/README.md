@@ -1,5 +1,7 @@
 # LicoUp Documentation
 
+Updated: 2026-10-01
+
 [Project](../README.md) · [简体中文项目入口](../README.zh-CN.md)
 
 English is the normative language for shared technical facts. Files marked
@@ -73,7 +75,9 @@ authority.
 
 ## Operations and configuration
 
-- [Runbook](RUNBOOK.md)
+- [Runbook](RUNBOOK.md) · [开发者指南](RUNBOOK.zh-CN.md)
+- [Change closure](CLOSURE.md)
+- [Workflow and report sources](../tools/development/workflows/README.md)
 - [Parallel development map](parallel/PARALLEL-DEVELOPMENT-MAP.md) ·
   [并行开发地图](parallel/PARALLEL-DEVELOPMENT-MAP.zh-CN.md)
 - [Compatibility](COMPATIBILITY.md) ·

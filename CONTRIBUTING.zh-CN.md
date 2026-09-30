@@ -1,5 +1,7 @@
 # 参与贡献
 
+Updated: 2026-10-01
+
 [English](CONTRIBUTING.md) · 简体中文 · [首页](README.zh-CN.md)
 
 感谢你帮助 LicoUp。每次改动应只覆盖一个清晰的客户端功能、模块或流程，并且可以
@@ -156,6 +158,20 @@ SKILL.md 只做通往按需参考文档或现有工具的最小路由。打包 S
 遵循某种格式。自然语言的回复，不会因为没有格式就被判成无效、空回复或弃权。连续性只读
 Agent 实际说了什么。
 
+## 本地报告
+
+本地工作流、状态机和架构页面由维护中的报告来源生成：
+
+```bash
+node tools/development/reports.mjs
+node tools/development/reports.mjs --better-plan <local-source>
+```
+
+输出留在被忽略的 `build/reports/`。第二种形式为私有规划工作区增加一个显式选择的
+只读 Better Plan 投影；不带该选项运行会删除生成的计划页面及其导航入口。报告是英文、
+仅在本地使用：不随客户端分发，不运行检查、Agent 或客户端进程，也不是执行权威。修改
+[工作流与报告来源](tools/development/workflows/README.md)所述的来源，绝不改动生成页面。
+
 ## 系统权限
 
 只在当前用户操作真正需要某项系统隐私权限时才向操作系统申请。自动发现只探测 Agent
@@ -233,9 +249,9 @@ Flutter 客户端与 Rust 原生核心共享两类接口：
 
 ## 切分到 `release`，再委托公开发布
 
-`nightly` 是持续开放的集成分支。产品改动通过带动作前缀的普通 Pull Request 合入，
-一份已接受快照再通过 merge commit 从 `nightly` 晋升到 `stable`，最后晋升到
-`release`。
+`nightly` 是唯一的集成主干，也是持续开放的开发分支。产品改动通过带动作前缀的普通
+Pull Request 合入，一份已接受快照再通过 merge commit 从 `nightly` 晋升到 `stable`，
+最后晋升到 `release`。
 
 临时分支只活到合并为止。Pull Request 合并且 merge commit 进入 `nightly` 后，立刻删掉它的
 远程分支和本地分支，就在同一次会话里做。只删那一个分支，并且只在确认合并已进入 `nightly`

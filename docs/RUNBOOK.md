@@ -1,103 +1,208 @@
-# LicoUp Runbook
+# LicoUp developer guide
 
-[Documentation index](README.md) · [Contributing](../CONTRIBUTING.md) · [Security](../SECURITY.md)
+Updated: 2026-10-01
 
-This runbook contains repository-root operational entry points. `package.json`
-is authoritative for command definitions, the regression catalog under
-`tools/regression/` owns module selection, and platform packaging scripts under
-`apps/desktop/scripts/` own package behavior. Continuous Assistant operator
-behavior is in [`functionality/USER-GUIDE.md`](functionality/USER-GUIDE.md);
-the owning specification is
-[`architecture/CONTINUOUS-ASSISTANT.md`](architecture/CONTINUOUS-ASSISTANT.md).
+[简体中文](RUNBOOK.zh-CN.md) · [Documentation](README.md) · [Contributing](../CONTRIBUTING.md) · [Security](../SECURITY.md)
 
-## Prepare a development checkout
+`nightly` is the only integration trunk. Product work enters through the pull
+requests described in [Contributing](../CONTRIBUTING.md); the protected promotion
+train advances from `nightly` and receives no direct development commits. This
+guide explains LicoUp's boundaries and design trade-offs; tests and configuration
+own executable behavior.
 
-Use a supported Node.js version from `package.json`, the Rust toolchain declared
-by `rust-toolchain.toml`, and a Flutter SDK compatible with
-`apps/desktop/pubspec.yaml`.
+## Investigation before design
 
-```bash
-npm ci
-npm run client:get
+Investigation is a prerequisite for planning, Designer dispatch, informed requirements
+discussion and project edits. Bound it to the requested outcome and its actual
+dependencies. Inspect the applicable rules and historical requirements, trace current
+production producers and consumers, and review existing contracts and engineering
+coverage. Verify claims of completion against current source; distinguish shipped
+capabilities, partial implementations, absent wiring, unverified behavior and retired
+proposals. Resolve contradictions and discoverable questions before proposing work.
+
+The lead may parallelize independent read-only investigations, but must consolidate
+their evidence before design begins. The Designer receives the requested outcome,
+source-grounded baseline, requirement provenance, dependency boundaries and remaining
+maintainer decisions together. Do not ask the maintainer to approve guessed groupings
+or repeat facts available in the repository or supplied history. Until discovery is
+complete, questions are limited to missing access or information needed to investigate.
+Unavailable evidence remains explicit and dependent design stays pending.
+
+Record the findings in the existing private work record, without another permanent
+report or enforcement mechanism. After consolidation, discuss consequential choices,
+design the selected scope and obtain any required approval before implementation.
+New contradictory evidence reopens the affected investigation before revising its
+design; it does not authorize extending the delivery scope.
+
+## Requirements and milestone boundaries
+
+After completing investigation, discuss requirements before implementation. Resolve
+consequential questions about scope, design, contracts, authority, dependencies and
+completion with the maintainer; record the decision and its rationale in the local
+work record. Investigate first and present concrete options. Do not infer approval
+from a plan or from silence. Routine in-scope implementation decisions and repairs
+need no renewed approval.
+
+Select one approved milestone with a finite outcome and stopping condition, and keep
+one milestone active at a time. Resolve its inherited defects and superseded paths
+before extending it. Give independent ready tasks within the milestone separate
+owners and run them in parallel. Preserve dependency order and exclusive ownership
+of shared integration files. Later milestones remain inactive until the approved
+progression condition is met. Stop at the selected milestone's engineering handoff;
+an explicit finite programme assignment may authorize continuing to the next
+dependency-satisfied milestone after the current milestone is reviewed and its
+delivery is recorded, but nothing else advances the roadmap automatically.
+
+Static source review must examine the complete production path, affected contracts,
+data ownership, state transitions and failure/recovery behavior. Resolve its findings
+alongside focused tests before final deterministic regression. Passing tests alone
+cannot replace this review, and static review alone cannot prove runtime behavior.
+Report missing implementation, failed checks and live-only unknowns separately.
+
+Client packaging, installation, real-data transition, launch and live acceptance are
+centralized on the integrated candidate by the assigned delivery owner. Module Agents
+do not perform these actions during implementation. Necessary compilation and
+synthetic unit, contract and isolated integration tests remain engineering work.
+
+## Agent collaboration
+
+These role rules apply to Agents; human contributors need not simulate Agent teams.
+
+- Designers start from the lead's consolidated investigation and identify every
+  affected module and boundary before assigning work. Give each module a distinct
+  owner and explicit create/edit/delete scope. A contract change includes its
+  producer and consumers, with one owner for shared files.
+- Module implementers read the owning tests, configuration and architecture document,
+  stay in their assigned scope, and notify the designer when a neighboring contract
+  must change. Do not edit another owner's files or revert their work. Independent
+  module work may run in parallel.
+- Reviewers integrate the module commits, inspect both sides of changed boundaries,
+  then verify the complete feature. The lead prepares the integrated PR. Corrections
+  may be later commits; each affected module needs an attributable commit.
+
+Discover the registered checks for a changed path with the regression catalog:
+
+```sh
+npm run client:regression:list
+npm run client:regression -- --changed-from <ref> --dry-run
 ```
 
-Dependency directories, toolchain downloads, and generated metadata are local
-assets. They do not enter Git or a release candidate.
+Catalog selection maps changed paths to the registered suites that cover them. It is
+not a complete impact graph: an unmapped path needs an ownership review, the affected
+producers and consumers still need manual inspection, and a plan is never evidence
+that the dependency is covered.
 
-## Start a client
+### One writer per working tree
 
-Run the platform entry point from the repository root:
+Parallel work needs separate working trees, not separate intentions. Two writers in one
+checkout do not merely collide in Git: they compile each other's half-finished moves, and a
+green gate then describes a tree that never existed. The dispatcher is a writer too — while
+another Agent holds a task in a checkout, the dispatcher reads and plans there, it does not
+edit.
 
-```bash
-npm run client:run:macos
-npm run client:run:android -- --debug
-npm run client:run:ios -- --debug
+Give each concurrent workstream its own worktree:
+
+```sh
+git worktree add ../LicoUp-android feature/android-native
+git worktree add ../LicoUp-ios feature/ios-native
 ```
 
-Each command returns a nonzero exit code when its required toolchain or target
-is unavailable. Stop an interactive development client through its normal
-platform UI or the foreground process that launched it. Do not treat a
-successful development launch as package, store, or release evidence.
+`build/` is ignored, so every worktree gets its own Cargo target directory, fixture roots,
+leases and generated reports without configuration, and each worktree's verification describes
+only its own changes.
 
-## Run the assigned Agent conversation acceptance
+Work may run in parallel when the file sets are disjoint — a delivery that rewrites `crates/`
+and a mobile delivery that writes its own application root do not touch the same files. Work
+must stay ordered when it shares files: two tasks that both rewrite a crate manifest and its
+module wiring are one writer at a time, in one tree, however independent their subject matter
+looks. A plan that runs such tasks "in parallel" has not ordered them.
 
-Only the maintainer-assigned delivery owner performs live acceptance on the
-integrated ordinary Release candidate. First record the candidate identity,
-stop every installed writer, and create a consistent recoverable backup of the
-same selected data root, including application-owned encrypted files. Keep
-platform-held keys in place; do not read or export them.
+The complete regression derives its concurrency from the machine's core count; this
+revision's runner accepts no explicit budget option. When another worktree or a long
+build shares the host, select only the affected modules instead of running the whole
+regression, and state that the host was shared when a result is reported, because the
+same command on the same host is a different measurement at a different budget.
 
-Let the candidate's normal startup admission handle the selected root before
-opening mutable stores. If bootstrap admission fails, stop the acceptance and
-record the candidate's bounded error evidence for the maintainer. Routine
-acceptance does not require a separate public read-only state-inspection
-command or a manually invoked admission command.
+## Start
 
-Use the four configured targets—Codex, Cursor, Antigravity, and DeepSeek
-Harness—and their exact model, provider, and independent-effort selections from
-the [maintained selector configuration](../tools/scripts/config/agent-conversation-verification-models.toml).
-Cursor and Antigravity do not use a separate effort selection; Antigravity's
-selected model already identifies its effort variant.
+Use the Node, Rust and Flutter versions declared by the package and toolchain
+manifests. Run `npm ci` and `npm run client:get` when preparing a checkout. The
+explicitly assigned client operation uses `npm run client:run:macos` (or the
+corresponding Android/iOS command); repository setup does not authorize launching
+the client.
 
-Run the four selections sequentially in the system UI through CUA, on the same
-data root. Submit exactly one plain `Hi` for each model and accept its actual
-reply without a format requirement. Retain only the candidate identity,
-selected model/provider/effort, submission and reply status, and result; do not
-retain conversation history or reply content.
+## Design boundaries
 
-## Build a client or release package
+Keep domain decisions, host effects, transport and presentation in separate modules.
+Interfaces belong to their consumers; a UI projects domain state instead of owning a
+second lifecycle. Name modules by responsibility. Preserve documented support
+obligations for published contracts when reorganizing implementation. Apply the
+[development-state policy](../AGENTS.md#development-state-and-corrections) to
+unpublished project-owned code: correct defective contracts and their producers,
+consumers, tests and documentation together. Existing implementation is not evidence
+that its behavior is required. Resolve inherited defects in the selected feature
+before adding behavior; remove the replaced path instead of versioning the mistake.
 
-Platform build commands produce runnable client build output:
+A state machine's transition configuration is its authority; its executor loads that
+configuration. Do not maintain a second transition table in prose or handwritten
+branching code. Tests assert behavior against the configuration. Register each
+machine with its configuration, executor and owning verification in
+`tools/development/state-machines.json` so the report and reviewers can find it. The
+registry and its report page list registered sources; they do not validate, generate
+or execute a machine. Compilation and behavior are verified by the owning tests — the
+code-generation suite under `crates/licoup-state-machine-codegen/tests/` and the
+owning module's catalog command. Edit the configuration, never a generated table.
 
-```bash
-npm run client:package:plan
-npm run client:build -- --platform macos
-npm run client:build -- --platform windows
-npm run client:build -- --platform linux
-npm run client:build -- --platform android
+## Module ownership and registered checks
+
+The regression catalog under `tools/regression/` owns module selection and the
+registered commands. `npm run client:regression:list` lists the modules, and the
+owning architecture documents under `docs/architecture/` hold boundaries and design
+contracts. This revision does not ship per-module developer guides: read the owning
+tests, configuration and architecture document before editing a module. Catalog
+selection answers which registered suites cover a changed path; review the affected
+producers and consumers manually and report an unmapped path as an ownership gap.
+
+## Development and verification
+
+Run the owning module's registered command, for example:
+
+```sh
+npm run client:regression -- --module <module-id>
 ```
 
-`client:build` is the only client build entry. It removes inactive compiler
-output and temporary Flutter build caches after every build while preserving
-the staged runnable/package output used by platform installers.
+Discover module ids and narrower existing suites with `npm run client:regression:list`.
+During development run only affected suites. Shared semantic or transport changes
+include their dependent consumers; adapter-specific changes stay with that adapter.
+Use synthetic, redacted test data. Do not launch real Agents or live services without
+an explicit request.
 
-To plan one or several exact native release packages, use the shared selector:
+Before handoff, map every requirement in the approved delivery scope to its production
+implementation and engineering evidence. Complete missing behavior and wiring; do
+not reduce the scope to one successful demonstration. Distinguish an implementation
+gap from a completed implementation whose external behavior still needs live confirmation.
 
-```bash
-npm run client:release:plan -- --target macos-direct-arm64
-npm run client:release:plan -- \
-  --targets macos-direct-arm64,android-direct-arm64-v8a
-```
+Verify DSL parsing and semantics, configured transitions and guards, scheduling,
+cancellation, storage and recovery through the actual owners with deterministic
+inputs, synthetic events and isolated integration fixtures. Mock external boundaries,
+not the production logic being verified. Include the affected production composition
+so that a passing pure core does not conceal missing application wiring.
 
-The same selector is accepted by `client:release:build`,
-`client:release:stage`, and `client:release:verify`. Canonical package leaves
-are written under `build/releases/<version>/<package-target>/`; no universal
-outer archive is created. A local build is not a formal release artifact.
-Formal artifacts come from the exact accepted `origin/release` source through
-an explicitly authorized publication owner and bind source, package target,
-immutable digest, and generation metadata.
+Real Agent conversations and development tasks belong to a separate user-assigned
+acceptance workflow. The implementation owner must finish all verification that can
+be performed without those calls before delivering the buildable, locally runnable
+client. Identify the specific live-only claims at handoff and leave them unverified;
+do not invoke Agents or create live acceptance tasks to substitute for that work.
+Authorized building, installation, data migration and application launch do not
+authorize Computer Use or reading and exercising the live client interface. Stop
+at the requested launch and report the tool results; do not initiate UI acceptance
+under the name of a startup check.
 
-## Run focused verification
+Keep each change independently verifiable. Before final checks read
+[Closure](CLOSURE.md), resolve findings in the changed scope, and finish source review.
+All writers must finish before global regression. Unavailable checks stay unverified.
+
+### Run focused verification
 
 List the maintained regression modules and preview change-based selection:
 
@@ -160,6 +265,7 @@ Common focused checks are:
 | --- | --- |
 | Public documents and links | `npm run repo:docs` |
 | Repository privacy boundary | `npm run repo:local-info-hygiene` |
+| Dependency-directory boundary | `npm run repo:workspace-cache-boundary` |
 | Flutter source | `npm run client:analyze` |
 | Flutter behavior | `npm run client:test` |
 | Native client | `npm run client:native:test` |
@@ -177,7 +283,7 @@ Node-only; it does not install platform toolchains
 and is not authorization for live services, runtime-data capture, device
 installation, signing, publication, or store operations.
 
-## Diagnose a failed check
+### Diagnose a failed check
 
 1. Re-run the failing focused command, not the complete suite.
 2. Inspect `npm run client:artifacts:status` before assuming compiler output is
@@ -190,6 +296,64 @@ installation, signing, publication, or store operations.
 5. If the failure requires a device, credential, network service, installer, or
    publication authority, stop and report that prerequisite before running the
    side-effecting command.
+
+## Run the assigned Agent conversation acceptance
+
+Only the maintainer-assigned delivery owner performs live acceptance on the
+integrated ordinary Release candidate. First record the candidate identity,
+stop every installed writer, and create a consistent recoverable backup of the
+same selected data root, including application-owned encrypted files. Keep
+platform-held keys in place; do not read or export them.
+
+Let the candidate's normal startup admission handle the selected root before
+opening mutable stores. If bootstrap admission fails, stop the acceptance and
+record the candidate's bounded error evidence for the maintainer. Routine
+acceptance does not require a separate public read-only state-inspection
+command or a manually invoked admission command.
+
+Use the four configured targets—Codex, Cursor, Antigravity, and DeepSeek
+Harness—and their exact model, provider, and independent-effort selections from
+the [maintained selector configuration](../tools/scripts/config/agent-conversation-verification-models.toml).
+Cursor and Antigravity do not use a separate effort selection; Antigravity's
+selected model already identifies its effort variant.
+
+Run the four selections sequentially in the system UI through CUA, on the same
+data root. Submit exactly one plain `Hi` for each model and accept its actual
+reply without a format requirement. Retain only the candidate identity,
+selected model/provider/effort, submission and reply status, and result; do not
+retain conversation history or reply content.
+
+## Build a client or release package
+
+Platform build commands produce runnable client build output:
+
+```bash
+npm run client:package:plan
+npm run client:build -- --platform macos
+npm run client:build -- --platform windows
+npm run client:build -- --platform linux
+npm run client:build -- --platform android
+```
+
+`client:build` is the only client build entry. It removes inactive compiler
+output and temporary Flutter build caches after every build while preserving
+the staged runnable/package output used by platform installers.
+
+To plan one or several exact native release packages, use the shared selector:
+
+```bash
+npm run client:release:plan -- --target macos-direct-arm64
+npm run client:release:plan -- \
+  --targets macos-direct-arm64,android-direct-arm64-v8a
+```
+
+The same selector is accepted by `client:release:build`,
+`client:release:stage`, and `client:release:verify`. Canonical package leaves
+are written under `build/releases/<version>/<package-target>/`; no universal
+outer archive is created. A local build is not a formal release artifact.
+Formal artifacts come from the exact accepted `origin/release` source through
+an explicitly authorized publication owner and bind source, package target,
+immutable digest, and generation metadata.
 
 ## Recover local generated state
 
@@ -249,7 +413,19 @@ model. A same-source draft may be resumed; an already public Release may not be
 extended or altered. A damaged public asset requires a corrective build or
 version.
 
-## Maintain documentation
+## Documentation
+
+Keep only external contributor/user knowledge: necessary design choices, module
+boundaries, usage and fixed commands. Link the owner instead of copying assertions,
+state tables, command internals or volatile acceptance results. Describe implemented
+capabilities and rules currently in force. Remove instructions when their
+implementation is removed; do not present proposals as current behavior.
+
+Every maintained Markdown document has `Updated: YYYY-MM-DD`. Update it when editing
+content; generated documents retain their content date until their sources change.
+A date is not evidence of correctness. `npm run repo:docs` checks required public
+files, index coverage, language pairs and link targets. Review meaning and freshness
+during closure; never bulk-stamp dates to claim verification.
 
 Before editing documentation, run:
 
@@ -268,6 +444,20 @@ cross-links, bilingual mapping, generators, tests, regression catalog,
 packaging/release references, and ignore rules in one change. Delete the old
 entry and duplicate fact sources. Use a one-time search during the migration;
 do not retain an old-path absence check as a permanent gate.
+
+Local workflow, state-machine and architecture pages are generated explicitly
+from the maintained report sources:
+
+```bash
+node tools/development/reports.mjs
+node tools/development/reports.mjs --better-plan <local-source>
+```
+
+The output stays in ignored `build/reports/`. The second form adds one
+explicitly selected read-only Better Plan projection for the private planning
+workspace. Reports are English, are not shipped with the client, run no checks
+or Agents, and are not an execution authority; see
+[workflow and report sources](../tools/development/workflows/README.md).
 
 Before handoff, run:
 
