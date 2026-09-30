@@ -1,5 +1,5 @@
 use super::*;
-use crate::core::mcp::transfer::{TransferApproval, encode_bounded_transfer_body, message_digest};
+use crate::mcp::transfer::{TransferApproval, encode_bounded_transfer_body, message_digest};
 use serde_json::json;
 use std::time::{Duration, Instant};
 

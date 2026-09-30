@@ -1,4 +1,4 @@
-use crate::core::mcp::{
+use crate::mcp::{
     DEFAULT_MAX_MESSAGE_BYTES, McpMessage, McpTransferDirection,
     OUTBOUND_TRANSFER_PROTOCOL_REVISION, decode_http_body, encode_http_body,
 };

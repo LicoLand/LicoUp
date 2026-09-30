@@ -1,5 +1,5 @@
 use super::*;
-use crate::core::mcp::OUTBOUND_TRANSFER_PROTOCOL_REVISION;
+use crate::mcp::OUTBOUND_TRANSFER_PROTOCOL_REVISION;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Mutex;

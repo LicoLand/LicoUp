@@ -1,4 +1,4 @@
-use crate::core::mcp::{DEFAULT_MAX_MESSAGE_BYTES, McpMessage, decode_http_body};
+use crate::mcp::{DEFAULT_MAX_MESSAGE_BYTES, McpMessage, decode_http_body};
 use anyhow::{Result, ensure};
 
 const MAX_SSE_EVENTS: usize = 256;

@@ -1,7 +1,7 @@
 use super::approval::{parse_scope, require_direct_confirmation, require_direct_origin};
 use super::plan::McpApprovalPlanStore;
 use super::sse::decode_sse_messages;
-use crate::core::mcp::{
+use crate::mcp::{
     DEFAULT_MAX_MESSAGE_BYTES, McpExternalTransferGate, McpMessage, McpRequestId,
     McpTransferDirection, OUTBOUND_TRANSFER_PROTOCOL_REVISION, decode_http_body,
 };
@@ -42,7 +42,7 @@ pub fn execute_http_transfer<F>(
 ) -> Result<Value>
 where
     F: FnOnce(
-        &crate::core::mcp::McpTransferPacket,
+        &crate::mcp::McpTransferPacket,
         Option<&str>,
     ) -> Result<McpHttpTransportResponse>,
 {
@@ -63,7 +63,7 @@ fn execute_approved_scope<F>(
 ) -> Result<Value>
 where
     F: FnOnce(
-        &crate::core::mcp::McpTransferPacket,
+        &crate::mcp::McpTransferPacket,
         Option<&str>,
     ) -> Result<McpHttpTransportResponse>,
 {

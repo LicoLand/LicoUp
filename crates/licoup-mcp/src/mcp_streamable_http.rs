@@ -4,7 +4,7 @@
 //! owns only endpoint validation, protocol headers, bounded concurrency and
 //! bounded HTTP response collection.
 
-use crate::core::mcp::{
+use crate::mcp::{
     DEFAULT_MAX_MESSAGE_BYTES, McpTransferPacket, OUTBOUND_TRANSFER_PROTOCOL_REVISION,
 };
 use anyhow::{Result, anyhow, ensure};
@@ -20,14 +20,14 @@ const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 
 static HTTP_IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
 
-pub(crate) struct McpStreamableHttpResponse {
-    pub(crate) status: u16,
-    pub(crate) content_type: Option<String>,
-    pub(crate) session_id: Option<String>,
-    pub(crate) body: Vec<u8>,
+pub struct McpStreamableHttpResponse {
+    pub status: u16,
+    pub content_type: Option<String>,
+    pub session_id: Option<String>,
+    pub body: Vec<u8>,
 }
 
-pub(crate) fn exchange(
+pub fn exchange(
     packet: &McpTransferPacket,
     session_id: Option<&str>,
 ) -> Result<McpStreamableHttpResponse> {

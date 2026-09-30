@@ -3,7 +3,7 @@
 //! One approval also delivers the embedded usage Skill to the provider's user
 //! Skill Hub root, and publishes a copy of it on the shared Skill surface.
 
-use super::{file_security, paths};
+use licoup_foundation::platform::{file_security, paths};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -13,7 +13,7 @@ pub(crate) const SERVER_KEY: &str = "land.lico.licoup.subagents";
 const ENTRY_SCHEMA: &str = "licoup.subagent-mcp-registration.v2";
 const MANAGED_BY: &str = "LicoUp";
 const MAX_CONFIG_BYTES: u64 = 1024 * 1024;
-const SKILL_SOURCE: &str = crate::domain::client_conversation::LICOUP_GUIDE_SKILL_SOURCE;
+const SKILL_SOURCE: &str = crate::guide_skill::LICOUP_GUIDE_SKILL_SOURCE;
 
 fn cursor_context_environment() -> Value {
     json!({
@@ -370,7 +370,7 @@ fn resolve_skill_path(kind: ProviderConfigKind) -> Result<PathBuf, RegistrationE
         ProviderConfigKind::ClaudeCode => home.join(".claude").join("skills"),
     };
     Ok(root
-        .join(crate::domain::client_conversation::LICOUP_GUIDE_SKILL_ID)
+        .join(crate::guide_skill::LICOUP_GUIDE_SKILL_ID)
         .join("SKILL.md"))
 }
 
@@ -385,7 +385,7 @@ fn shared_skill_path() -> Result<PathBuf, RegistrationError> {
 fn shared_skill_path_in(home: &Path) -> PathBuf {
     home.join(".agents")
         .join("skills")
-        .join(crate::domain::client_conversation::LICOUP_GUIDE_SKILL_ID)
+        .join(crate::guide_skill::LICOUP_GUIDE_SKILL_ID)
         .join("SKILL.md")
 }
 
@@ -960,7 +960,7 @@ mod tests {
             shared,
             root.join(".agents")
                 .join("skills")
-                .join(crate::domain::client_conversation::LICOUP_GUIDE_SKILL_ID)
+                .join(crate::guide_skill::LICOUP_GUIDE_SKILL_ID)
                 .join("SKILL.md")
         );
         assert_eq!(publish_shared_skill(&shared), Some(shared.clone()));

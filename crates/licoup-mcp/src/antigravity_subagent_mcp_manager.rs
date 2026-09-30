@@ -3,7 +3,7 @@
 use super::provider_mcp_registration::{
     ProviderConfigKind, RegistrationError, RegistrationPermit, RegistrationPlan,
 };
-use crate::domain::integration_state::IntegrationState;
+use licoup_application::integration_state::IntegrationState;
 use std::path::{Path, PathBuf};
 
 const PLUGIN_VERSION: &str = "0.2.0";
@@ -182,7 +182,7 @@ pub fn default_mcp_binary_path() -> Option<PathBuf> {
     if let Some(directory) = std::env::current_exe()
         .ok()
         .as_ref()
-        .and_then(|exe| super::paths::packaged_binary_directory(exe))
+        .and_then(|exe| licoup_foundation::platform::paths::packaged_binary_directory(exe))
     {
         let connector = directory.join(&name);
         if connector.is_file()

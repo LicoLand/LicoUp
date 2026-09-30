@@ -3,7 +3,7 @@
 use super::provider_mcp_registration::{
     ProviderConfigKind, RegistrationError, RegistrationPermit, RegistrationPlan,
 };
-use crate::domain::integration_state::IntegrationState;
+use licoup_application::integration_state::IntegrationState;
 use std::path::Path;
 
 pub type CursorSubagentMcpError = RegistrationError;
