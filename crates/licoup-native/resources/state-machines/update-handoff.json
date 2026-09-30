@@ -22,23 +22,32 @@
       "id": "native.strategy-store-artifact",
       "rust_module": "strategy_store_artifact",
       "states": [
-        { "id": "legacy" },
-        { "id": "workflow-routed" },
-        { "id": "current" }
+        { "id": "pending" },
+        { "id": "applied" }
       ],
-      "events": ["normalize-store", "materialize-workflow-routing"],
-      "initial": "legacy",
-      "terminal": ["current"],
+      "events": ["begin", "complete"],
+      "initial": "pending",
+      "terminal": [],
       "transitions": [
         {
-          "from_state": "legacy",
-          "event": "normalize-store",
-          "to_state": "workflow-routed"
+          "from_state": "pending",
+          "event": "begin",
+          "to_state": "pending"
         },
         {
-          "from_state": "workflow-routed",
-          "event": "materialize-workflow-routing",
-          "to_state": "current"
+          "from_state": "pending",
+          "event": "complete",
+          "to_state": "applied"
+        },
+        {
+          "from_state": "applied",
+          "event": "begin",
+          "to_state": "pending"
+        },
+        {
+          "from_state": "applied",
+          "event": "complete",
+          "to_state": "applied"
         }
       ]
     }

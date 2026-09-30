@@ -37,9 +37,11 @@ const CLIENT_STATE_COLLECTIONS = Object.freeze([
   "local-server-assembly-transaction",
   "mcp-install-transactions",
 ]);
-const CONVERSATION_SCHEMA_VERSION = "15";
+// The Conversation owner's own `CURRENT_SCHEMA_VERSION` in
+// `crates/licoup-conversation/src/store/mod.rs`.
+const CONVERSATION_SCHEMA_VERSION = "18";
 const CONVERSATION_COMPLETION_MARKER = "schema=v5\nstatus=complete\n";
-const ADAPTIVE_FLYWHEEL_SCHEMA_VERSIONS = Object.freeze({ "3": 2, "2": 1 });
+export const ADAPTIVE_FLYWHEEL_SCHEMA_VERSIONS = Object.freeze({ "3": 2, "2": 1 });
 const MOBILE_RELAY_SCHEMA_VERSION = 2;
 const MOBILE_RELAY_E2EE_PROTOCOL_VERSION =
   "licomesh.mobile-relay.e2ee.pqxdh-mlkem1024.v1";

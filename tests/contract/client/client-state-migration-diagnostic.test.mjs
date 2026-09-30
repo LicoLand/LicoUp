@@ -12,7 +12,10 @@ import {
   loadEmbeddedFrontier,
   planSteps,
 } from "../../../tools/scripts/client-state-migration/frontier.mjs";
-import { DURABLE_SHAPES } from "../../../tools/scripts/client-state-migration/probe.mjs";
+import {
+  ADAPTIVE_FLYWHEEL_SCHEMA_VERSIONS,
+  DURABLE_SHAPES,
+} from "../../../tools/scripts/client-state-migration/probe.mjs";
 import { evaluateMigrationState } from "../../../tools/scripts/client-state-migration/report.mjs";
 import { repairDomain } from "../../../tools/scripts/client-state-migration/repair.mjs";
 import { writePrivateJsonAtomic } from "../../../tools/scripts/client-state-migration/util.mjs";
@@ -21,6 +24,9 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)
 const facadeRef = "tools/scripts/client-state-migration.mjs";
 const moduleRoot = "tools/scripts/client-state-migration";
 const MIGRATION_MODULE = "crates/licoup-native/src/domain/client_state_migration.rs";
+const STORES_MODULE = "crates/licoup-native/src/domain/client_state_migration/stores.rs";
+const STRATEGY_STORE_MODULE =
+  "crates/licoup-native/src/domain/client_state_migration/strategy_store.rs";
 const CLIENT_STATE_POLICY = "crates/licoup-native/src/platform/client_state/policy.rs";
 const CLIENT_STATE_MIGRATION =
   "crates/licoup-native/src/platform/client_state/migration.rs";
@@ -830,14 +836,19 @@ test("exit codes stay distinct for healthy, behind, ahead, invalid, and usage", 
 });
 
 test("every mirrored durable shape and constant still matches the Rust admission", async () => {
-  const [migration, policy, migrationPlatform, conversationStore] = await Promise.all([
-    fs.promises.readFile(path.join(repoRoot, MIGRATION_MODULE), "utf8"),
-    fs.promises.readFile(path.join(repoRoot, CLIENT_STATE_POLICY), "utf8"),
-    fs.promises.readFile(path.join(repoRoot, CLIENT_STATE_MIGRATION), "utf8"),
-    fs.promises.readFile(path.join(repoRoot, CONVERSATION_STORE), "utf8"),
-  ]);
-  // Whitespace is stripped so the binding survives any rustfmt layout.
-  const compact = migration.replace(/\s+/gu, "");
+  const [migration, stores, strategyStore, policy, migrationPlatform, conversationStore] =
+    await Promise.all([
+      fs.promises.readFile(path.join(repoRoot, MIGRATION_MODULE), "utf8"),
+      fs.promises.readFile(path.join(repoRoot, STORES_MODULE), "utf8"),
+      fs.promises.readFile(path.join(repoRoot, STRATEGY_STORE_MODULE), "utf8"),
+      fs.promises.readFile(path.join(repoRoot, CLIENT_STATE_POLICY), "utf8"),
+      fs.promises.readFile(path.join(repoRoot, CLIENT_STATE_MIGRATION), "utf8"),
+      fs.promises.readFile(path.join(repoRoot, CONVERSATION_STORE), "utf8"),
+    ]);
+  // The domain routing lives in the stores leaf and the strategy layouts in the
+  // strategy-store leaf, so the mirror reads the owners together. Whitespace is
+  // stripped so the bindings survive any rustfmt layout.
+  const compact = `${migration}${stores}${strategyStore}`.replace(/\s+/gu, "");
 
   const jsonDocuments = new Map();
   const pattern =
@@ -875,9 +886,26 @@ test("every mirrored durable shape and constant still matches the Rust admission
   assert.ok(
     compact.includes(probeRoute("probe_mobile_relay", DURABLE_SHAPES["mobile-relay"].document)),
   );
-  assert.ok(compact.includes('root.join("client-state/adaptive-flywheel/strategies.sqlite3")'));
-  assert.ok(compact.includes('Some("3")=>Ok(AuthoritativeProbe{version:2,present:true,})'));
-  assert.ok(compact.includes('Some("2")=>Ok(AuthoritativeProbe{version:1,present:true,})'));
+  assert.ok(
+    compact.includes(
+      'constSTRATEGY_STORE_DATABASE:&str="client-state/adaptive-flywheel/strategies.sqlite3";',
+    ),
+    "the strategy database path must stay the admission's own constant",
+  );
+  // The Node tool maps a store's own `strategy_meta` version to a domain
+  // version. Read that mapping out of the Rust layout registry so the mirror
+  // cannot drift from the formats the admission actually knows.
+  const formatVersions = {};
+  for (const match of compact.matchAll(
+    /meta_versions:&\["(\d+)"\],domain_schema_version:(\d+),/gu,
+  )) {
+    formatVersions[match[1]] = Number(match[2]);
+  }
+  assert.deepEqual(
+    formatVersions,
+    { ...ADAPTIVE_FLYWHEEL_SCHEMA_VERSIONS },
+    "the Node strategy-version mapping must mirror the Rust layout registry",
+  );
   assert.ok(compact.includes('root.join("client-state/conversations/conversations.sqlite3")'));
   assert.ok(compact.includes('root.join("client-state/conversations/migration-v5.complete")'));
   const completionSource =

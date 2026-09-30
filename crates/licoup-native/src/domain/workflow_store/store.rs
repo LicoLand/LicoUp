@@ -67,19 +67,6 @@ impl StrategyStore {
         Ok(store)
     }
 
-    pub(crate) fn migrate_to_schema_2(portable_root: &Path) -> Result<()> {
-        let root = portable_root.join("client-state").join("adaptive-flywheel");
-        licoup_foundation::platform::file_security::ensure_private_dir(&root)?;
-        let store = Self {
-            db_path: root.join(DATABASE_FILE),
-            package_revisions_root: Some(root.join("strategy-packages").join("revisions")),
-        };
-        let retired = store.with_connection(initialize_schema_2)?;
-        licoup_foundation::platform::file_security::harden_private_path(&store.db_path)?;
-        store.remove_retired_revision_trees(&retired);
-        Ok(())
-    }
-
     pub fn open_in_memory() -> Result<Self> {
         let path =
             std::env::temp_dir().join(format!("lico-adaptive-flywheel-{}.sqlite3", Uuid::new_v4()));
@@ -1486,17 +1473,19 @@ impl StrategyStore {
 }
 
 fn initialize_schema(connection: &mut Connection) -> Result<Vec<String>> {
-    initialize_schema_through(connection, true)
+    let retired = initialize_schema_through(connection)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    migrate_legacy_workflow_definitions(&transaction)?;
+    transaction.execute("UPDATE strategy_meta SET value='3' WHERE key='version'", [])?;
+    transaction.commit()?;
+    super::queue::initialize_schema(connection)?;
+    super::subscriptions::initialize_schema(connection)?;
+    super::commit::initialize_schema(connection)?;
+    super::control::initialize_schema(connection)?;
+    Ok(retired)
 }
 
-fn initialize_schema_2(connection: &mut Connection) -> Result<Vec<String>> {
-    initialize_schema_through(connection, false)
-}
-
-fn initialize_schema_through(
-    connection: &mut Connection,
-    include_workflow_routing: bool,
-) -> Result<Vec<String>> {
+fn initialize_schema_through(connection: &mut Connection) -> Result<Vec<String>> {
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS strategy_meta(
            key TEXT PRIMARY KEY, value TEXT NOT NULL
@@ -1598,18 +1587,6 @@ fn initialize_schema_through(
            ON strategy_runs(revision_digest, conversation_id, terminal, updated_at DESC);",
     )?;
     migrate_bindings_ordinal_primary_key(connection)?;
-    if include_workflow_routing {
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        migrate_legacy_workflow_definitions(&transaction)?;
-        transaction.execute("UPDATE strategy_meta SET value='3' WHERE key='version'", [])?;
-        transaction.commit()?;
-    } else {
-        connection.execute("UPDATE strategy_meta SET value='2' WHERE key='version'", [])?;
-    }
-    super::queue::initialize_schema(connection)?;
-    super::subscriptions::initialize_schema(connection)?;
-    super::commit::initialize_schema(connection)?;
-    super::control::initialize_schema(connection)?;
     Ok(retired)
 }
 

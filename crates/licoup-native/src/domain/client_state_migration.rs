@@ -26,10 +26,10 @@ use handoff::{
 };
 use handoff::{claim_update_handoff, update_handoff_is_claimed, write_update_handoff_rejection};
 #[cfg(test)]
-use stores::{apply_authoritative_store, load_domain_marker, probe_canonical_conversation};
+use stores::{apply_authoritative_store, probe_canonical_conversation};
 use stores::{
-    apply_marker_step, migration_handler_target, probe_domain, reconcile_current_marker,
-    upgrade_canonical_conversation_schema,
+    apply_marker_step, load_domain_marker, migration_handler_target, probe_domain,
+    reconcile_current_marker, upgrade_canonical_conversation_schema,
 };
 
 include!(concat!(env!("OUT_DIR"), "/state_machines.rs"));
@@ -75,8 +75,46 @@ pub fn running_product_version() -> Result<&'static str> {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MigrationFrontier {
     schema_version: String,
+    /// The last published format this binary converts from. The catalog fixes it:
+    /// a root that names any other source is not an input this binary supports.
+    pub source_frontier_id: String,
+    /// This binary's own target format, and the destination of every conversion.
     pub frontier_id: String,
     pub domains: Vec<DomainFrontier>,
+}
+
+/// The two conversion endpoints the catalog declares: the last published format
+/// as source and this binary's own target format as destination. There is no
+/// third endpoint, so a name outside this pair has no conversion path.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversionEndpoints {
+    pub source_frontier_id: String,
+    pub target_frontier_id: String,
+}
+
+impl MigrationFrontier {
+    /// The declared endpoints in one value, so a reader enumerates them instead
+    /// of restating a format name.
+    pub fn conversion_endpoints(&self) -> ConversionEndpoints {
+        ConversionEndpoints {
+            source_frontier_id: self.source_frontier_id.clone(),
+            target_frontier_id: self.frontier_id.clone(),
+        }
+    }
+
+    /// Refuses a root that names a format this catalog does not declare. A root
+    /// at the source is converted and a root already at this binary's own target
+    /// is a rerun; every other name — an older published format, or a format no
+    /// release ever left — is refused as an unsupported source before any
+    /// mutation, with the same stable code an unsupported shape gets.
+    fn require_declared_format(&self, named_frontier_id: &str) -> Result<()> {
+        ensure!(
+            named_frontier_id == self.source_frontier_id || named_frontier_id == self.frontier_id,
+            "unsupported_state_shape"
+        );
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -159,10 +197,21 @@ struct AuthoritativeProbe {
 /// intentionally a stable privacy-safe code; paths and stored values never
 /// cross this boundary.
 pub fn admit(data_root: &Path) -> Result<AdmissionResult> {
-    admit_inner(data_root).map_err(|error| anyhow!(safe_error_code(&error)))
+    running_product_version()
+        .and_then(|running_version| admit_inner(data_root, running_version))
+        .map_err(|error| anyhow!(safe_error_code(&error)))
 }
 
-fn admit_inner(data_root: &Path) -> Result<AdmissionResult> {
+/// Admission under an explicit running identity, for tests that must run a
+/// faithful released-source root under the identity the caller names instead
+/// of lowering the root's recorded high-water to the development fallback. The
+/// mapping to stable codes is the same one `admit` applies.
+#[cfg(test)]
+fn admit_as_version(data_root: &Path, running_version: &str) -> Result<AdmissionResult> {
+    admit_inner(data_root, running_version).map_err(|error| anyhow!(safe_error_code(&error)))
+}
+
+fn admit_inner(data_root: &Path, running_version: &str) -> Result<AdmissionResult> {
     ensure!(data_root.is_absolute(), "unsupported_state_shape");
     fs::create_dir_all(data_root).context("migration_lock_unavailable")?;
     let migration_root = data_root.join("client-state").join("migrations");
@@ -192,8 +241,12 @@ fn admit_inner(data_root: &Path) -> Result<AdmissionResult> {
     }
     let ledger_path = migration_root.join("ledger.json");
     let mut ledger = load_ledger(&ledger_path, &frontier)?;
-    let running_version = running_product_version()?;
     reject_older_binary(&ledger, running_version)?;
+    // The root names the format it was last admitted at. Only the declared
+    // source is converted and only this binary's own target is a rerun, so a
+    // third name is refused here — before the high-water advances or any domain
+    // moves — instead of being converted under an undeclared endpoint.
+    frontier.require_declared_format(&ledger.frontier_id)?;
 
     // Probe every authoritative marker and construct every exact path before
     // persisting high-water or changing a domain.
@@ -264,6 +317,16 @@ fn admit_inner(data_root: &Path) -> Result<AdmissionResult> {
         }
         if domain.domain_id == "canonical-conversation" {
             upgrade_canonical_conversation_schema(data_root)?;
+        }
+        if domain.domain_id == strategy_store::STRATEGY_STORE_DOMAIN {
+            // The store is already at its target layout, so this converts
+            // nothing: it reconciles the recovery record of a conversion whose
+            // physical layout committed before its bookkeeping did. Without
+            // this hook a completed store would keep a pending record forever.
+            strategy_store::reconcile_completed_strategy_store(
+                data_root,
+                strategy_store::strategy_format_for_domain_version(domain.target_schema_version)?,
+            )?;
         }
         reconcile_current_marker(&marker_root, domain)?;
         for edge in &domain.steps {
@@ -498,7 +561,9 @@ pub fn embedded_frontier() -> Result<MigrationFrontier> {
         "migration_frontier_incomplete"
     );
     ensure!(
-        !frontier.frontier_id.is_empty(),
+        is_frontier_identity(&frontier.source_frontier_id)
+            && is_frontier_identity(&frontier.frontier_id)
+            && frontier.source_frontier_id != frontier.frontier_id,
         "migration_frontier_incomplete"
     );
     ensure!(
@@ -639,6 +704,131 @@ fn safe_error_code(error: &anyhow::Error) -> &'static str {
     "migration_step_failed"
 }
 
+/// A frontier identity is a lowercase dotted name. The catalog's two endpoints
+/// are two such names, and they are distinct: one format cannot be both the
+/// source and the destination of the same conversion.
+fn is_frontier_identity(value: &str) -> bool {
+    !value.is_empty()
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-' || byte == b'.'
+        })
+}
+
+/// The conversion endpoints the embedded catalog declares, for a reader that
+/// enumerates the declared pair instead of restating a format name.
+pub fn conversion_endpoints() -> Result<ConversionEndpoints> {
+    Ok(embedded_frontier()?.conversion_endpoints())
+}
+
+/// The authoritative migration frontier in a form the standalone migration tool
+/// can read without duplicating the domain catalog.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrontierProjection {
+    pub frontier_id: String,
+    pub domains: Vec<FrontierDomainProjection>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrontierDomainProjection {
+    pub domain_id: String,
+    pub target_schema_version: u32,
+    pub steps: Vec<FrontierStepProjection>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrontierStepProjection {
+    pub step_id: String,
+    pub from_schema_version: u32,
+    pub to_schema_version: u32,
+}
+
+/// One domain's observed state, as the standalone tool must report it.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DomainStateProjection {
+    pub domain_id: String,
+    /// The domain's authoritative version: the version its own readable store
+    /// reports, otherwise the version the domain's durable marker records. Most
+    /// domains are converted by writing only their marker and own no store file, so
+    /// a converted domain reports the marker's version here instead of 0. Zero means
+    /// no readable authority records a version — an unreadable store, or neither a
+    /// store version nor a marker. It claims nothing about whether a store file is
+    /// present, and it is never reported for a domain whose readable store or marker
+    /// records a version.
+    pub store_version: u32,
+    /// The marker's authoritative version when a marker exists.
+    pub marker_schema_version: Option<u32>,
+    /// The version the next migration edge will move from.
+    pub effective_version: u32,
+    pub target_schema_version: u32,
+}
+
+/// Probe the root through the same store owners the client uses, so the tool
+/// reports the client's own facts instead of re-deriving them.
+pub fn domain_state_projection(data_root: &Path) -> Result<Vec<DomainStateProjection>> {
+    let frontier = embedded_frontier()?;
+    let marker_root = data_root
+        .join("client-state")
+        .join("migrations")
+        .join("domain-state");
+    let mut states = Vec::with_capacity(frontier.domains.len());
+    for domain in &frontier.domains {
+        let marker = load_domain_marker(&marker_root, domain)?;
+        // Resolve the domain's version through the admission's own probe rather than the
+        // store probe alone, so a domain converted without a store file reports the
+        // marker's authoritative version instead of 0. A domain the probe refuses reports
+        // version 0, which is what this projection has always reported for a store it
+        // cannot read; it never hides the versions of the root's other domains. The
+        // marker's own refusals are raised above, before this point, so a marker this
+        // binary cannot accept still refuses the read instead of being reported as a
+        // version.
+        let store_version = probe_domain(&marker_root, domain).unwrap_or(0);
+        let marker_schema_version = marker
+            .as_ref()
+            .map(|marker| marker.authoritative_schema_version);
+        let effective_version = marker_schema_version
+            .filter(|marker| *marker <= store_version)
+            .unwrap_or(store_version);
+        states.push(DomainStateProjection {
+            domain_id: domain.domain_id.clone(),
+            store_version,
+            marker_schema_version,
+            effective_version,
+            target_schema_version: domain.target_schema_version,
+        });
+    }
+    Ok(states)
+}
+
+/// Project the immutable embedded frontier. This is the single schema authority:
+/// the standalone tool reads it instead of keeping its own domain list.
+pub fn frontier_projection_struct() -> Result<FrontierProjection> {
+    let frontier = embedded_frontier()?;
+    Ok(FrontierProjection {
+        frontier_id: frontier.frontier_id.clone(),
+        domains: frontier
+            .domains
+            .iter()
+            .map(|domain| FrontierDomainProjection {
+                domain_id: domain.domain_id.clone(),
+                target_schema_version: domain.target_schema_version,
+                steps: domain
+                    .steps
+                    .iter()
+                    .map(|step| FrontierStepProjection {
+                        step_id: step.step_id.clone(),
+                        from_schema_version: step.from_schema_version,
+                        to_schema_version: step.to_schema_version,
+                    })
+                    .collect(),
+            })
+            .collect(),
+    })
+}
+
 pub fn admission_json(data_root: &Path) -> Result<serde_json::Value> {
     Ok(serde_json::to_value(admit(data_root)?)?)
 }
@@ -659,5 +849,7 @@ fn frontier_projection_for(frontier: &MigrationFrontier) -> serde_json::Value {
     })
 }
 
+#[cfg(test)]
+mod source_fixtures;
 #[cfg(test)]
 mod tests;

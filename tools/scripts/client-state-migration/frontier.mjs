@@ -17,24 +17,38 @@ export const REPO_ROOT = path.resolve(
 );
 
 const DOMAIN_ID_PATTERN = /^[a-z0-9-]+$/u;
+const FRONTIER_ID_PATTERN = /^[a-z0-9][a-z0-9.-]*$/u;
 
-/**
- * Validates the frontier as a document contract. Chain contiguity is
- * deliberately *not* checked here: the per-domain plan check reports a gap or
- * an ambiguous step as its own diagnosis, which is what an operator needs.
- */
+/** Reads the one frontier the admission embedded, refusing anything else. */
 export function loadEmbeddedFrontier() {
   const document = readJsonArtifact(path.join(REPO_ROOT, FRONTIER_REF));
   requireValue(document !== null, "migration_frontier_incomplete");
   return validateFrontier(document);
 }
 
+/**
+ * Validates the frontier as a document contract. Chain contiguity is
+ * deliberately *not* checked here: the per-domain plan check reports a gap or
+ * an ambiguous step as its own diagnosis, which is what an operator needs.
+ *
+ * The declaration is a pair. A document that names one endpoint, repeats the
+ * same identity twice, or spells an identity this vocabulary cannot carry
+ * declares no conversion at all, and is refused as an incomplete frontier
+ * rather than read as a frontier with a missing half.
+ */
 export function validateFrontier(document) {
   requireValue(
     isPlainObject(document) && document.schemaVersion === FRONTIER_SCHEMA,
     "migration_frontier_incomplete",
   );
-  requireValue(isNonEmptyText(document.frontierId), "migration_frontier_incomplete");
+  requireValue(
+    isNonEmptyText(document.sourceFrontierId) &&
+      FRONTIER_ID_PATTERN.test(document.sourceFrontierId) &&
+      isNonEmptyText(document.frontierId) &&
+      FRONTIER_ID_PATTERN.test(document.frontierId) &&
+      document.sourceFrontierId !== document.frontierId,
+    "migration_frontier_incomplete",
+  );
   requireValue(
     Array.isArray(document.domains) && document.domains.length > 0,
     "migration_frontier_incomplete",
@@ -86,8 +100,21 @@ export function validateFrontier(document) {
   });
   return Object.freeze({
     schemaVersion: document.schemaVersion,
+    sourceFrontierId: document.sourceFrontierId,
     frontierId: document.frontierId,
     domains: Object.freeze(domains),
+  });
+}
+
+/**
+ * The two conversion endpoints the catalog declares: the last published format
+ * as source and this binary's own target as destination. A reader enumerates
+ * this pair instead of restating a format name.
+ */
+export function conversionEndpoints(frontier) {
+  return Object.freeze({
+    sourceFrontierId: frontier.sourceFrontierId,
+    targetFrontierId: frontier.frontierId,
   });
 }
 
