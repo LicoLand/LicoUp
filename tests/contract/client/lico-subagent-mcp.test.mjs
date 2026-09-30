@@ -48,7 +48,14 @@ test("independent MCP freezes its protocol, identity, and five public operations
   assert.match(remoteApplication, /REMOTE_TOOL_NAMES\.contains/u);
   assert.match(remoteApplication, /"subagents"\.into\(\).*"execute"\.into\(\)/su);
   assert.match(remoteApplication, /"rpc", "stdio"/u);
-  assert.doesNotMatch(mcpCargo.split("[[bin]]")[0], /(?:licoup-native|licoup-conversation|licoup-agent-runtime|path\s*=|workspace\s*=)/u);
+  const dependencies = mcpCargo.split("[[bin]]")[0];
+  const foundation = /^licoup-foundation = \{ path = "\.\.\/licoup-foundation" \}$/mu;
+  assert.match(dependencies, foundation);
+  assert.doesNotMatch(
+    dependencies.replace(foundation, ""),
+    /(?:licoup-[\w-]+\s*=|path\s*=|workspace\s*=)/u,
+    "only neutral Foundation may be shared; runtime and domain authority stay behind the CLI",
+  );
   assert.match(application, /"additionalProperties": false/u);
   assert.equal(schema.properties.protocolRevision.const, "2025-06-18");
   assert.equal(schema.properties.server.properties.version.const, "0.14.0");

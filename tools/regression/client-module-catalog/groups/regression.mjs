@@ -283,6 +283,7 @@ export const REGRESSION_MODULES = Object.freeze([
         "crates/lico-catalog-convergence/README.md",
         "packages/contracts/client/README.md",
         "packages/protocols/native-client/README.md",
+        "packages/protocols/native-client/README.zh-CN.md",
         "tools/verify-documentation.mjs",
         "tools/scripts/client-support-matrix.mjs",
         "crates/licoup-native/resources/agent-native-capabilities.json",

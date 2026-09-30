@@ -1,5 +1,7 @@
 # 安全架构与数据边界
 
+Updated: 2026-09-30
+
 [English (Normative)](SECURITY-AND-DATA-BOUNDARY.md) · 简体中文（本地化） · [返回架构主文档](README.zh-CN.md)
 
 本文档定义 LicoUp 客户端的安全边界、数据流动规则、虚拟机集成隔离以及端点加密规范。

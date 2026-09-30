@@ -1,5 +1,7 @@
 # Native Client Protocol Boundary
 
+Updated: 2026-09-30
+
 English (normative) · [简体中文](README.zh-CN.md)
 
 This directory documents the client-internal adaptation boundary among the

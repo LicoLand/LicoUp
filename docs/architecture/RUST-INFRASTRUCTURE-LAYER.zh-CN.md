@@ -1,5 +1,7 @@
 # Rust 基础设施与对外交互层规范
 
+Updated: 2026-09-30
+
 | 关联文档 | 语言 / 路径 | 权威职责 |
 |:---|:---|:---|
 | **规范版本** | [English (Normative)](RUST-INFRASTRUCTURE-LAYER.md) | 基础设施与对外交互层英文规范 |
