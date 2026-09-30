@@ -40,25 +40,6 @@ mixin ClientFunctionalStatusCommands on AgentWorkspaceCoordinator {
     );
   }
 
-  void reportAppearanceReloadOutcome({required bool hasErrors}) {
-    setLocalizedStatusMessage(
-      hasErrors ? '外观预设已重新加载，部分配置无效。' : '外观预设已重新加载。',
-      hasErrors
-          ? 'Appearance presets reloaded, but some configurations are invalid.'
-          : 'Appearance presets reloaded.',
-    );
-    statusCaption = 'Appearance';
-  }
-
-  void reportAppearanceReloadFailure() {
-    lastError = 'appearance_preset_reload_failed';
-    setLocalizedStatusMessage(
-      '外观预设重新加载失败。',
-      'Failed to reload appearance presets.',
-    );
-    statusCaption = 'Error';
-  }
-
   @override
   void agentWorkspaceSetLocalizedStatusMessage(
     String chinese,

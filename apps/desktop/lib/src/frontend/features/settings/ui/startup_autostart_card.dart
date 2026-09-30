@@ -7,6 +7,7 @@ import 'package:presentation_flutter/presentation_flutter.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
@@ -72,140 +73,132 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
       ),
       SettingsAutostartResult.none => (null, false),
     };
-    return Padding(
+    return Column(
       key: const Key('startup-autostart-card'),
-      padding: presentation.rowPadding,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.rocket_launch_outlined,
-                color: colors.textSecondary,
-                size: 18,
-              ),
-              const SizedBox(width: LicoContentSpacing.compact),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      strings.startupAutostartTitle,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: colors.text,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (loading || busy)
-                const SizedBox.square(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LicoSectionHeader(
+          key: const Key('settings-section-header-startup'),
+          title: strings.startupAutostartTitle,
+          leading: Icon(
+            Icons.rocket_launch_outlined,
+            color: colors.textSecondary,
+            size: 18,
+          ),
+          trailing: loading || busy
+              ? const SizedBox.square(
                   dimension: 16,
                   child: LicoLoadingIndicator(strokeWidth: 2),
+                )
+              : null,
+          padding: presentation.sectionHeaderPadding,
+        ),
+        Padding(
+          padding: presentation.rowPadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (message != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  message,
+                  style: TextStyle(
+                    color: messageIsError ? colors.error : colors.textMuted,
+                    fontSize: 12,
+                  ),
                 ),
+              ] else if (!loading && !projection.supported) ...[
+                const SizedBox(height: 10),
+                Text(
+                  strings.startupAutostartUnsupported,
+                  style: TextStyle(color: colors.textMuted, fontSize: 12),
+                ),
+              ],
+              const SizedBox(height: LicoContentSpacing.item),
+              _SectionLabel(label: strings.startupDesktopClientSection),
+              SwitchListTile.adaptive(
+                key: const Key('startup-desktop-autostart'),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: Text(strings.startupDesktopClientAutostart),
+                value: projection.desktopEnabled,
+                onChanged: !enabled
+                    ? null
+                    : (value) => widget.binding.intents.send(
+                        SetSettingsAutostart(
+                          component: SettingsAutostartComponent.desktop,
+                          enabled: value,
+                          silent: projection.desktopSilent,
+                        ),
+                      ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: SwitchListTile.adaptive(
+                  key: const Key('startup-desktop-silent'),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: Text(strings.startupSilentStart),
+                  subtitle: Text(
+                    strings.startupSilentStartHint,
+                    style: TextStyle(color: colors.textMuted, fontSize: 11),
+                  ),
+                  value: projection.desktopSilent,
+                  onChanged: !enabled || !projection.desktopEnabled
+                      ? null
+                      : (value) => widget.binding.intents.send(
+                          SetSettingsAutostart(
+                            component: SettingsAutostartComponent.desktop,
+                            enabled: true,
+                            silent: value,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(height: LicoContentSpacing.item),
+              _SectionLabel(label: strings.startupBackgroundSection),
+              SwitchListTile.adaptive(
+                key: const Key('startup-gateway-autostart'),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('LLM Gateway'),
+                subtitle: Text(
+                  strings.startupGatewayHint,
+                  style: TextStyle(color: colors.textMuted, fontSize: 11),
+                ),
+                value: projection.gatewayEnabled,
+                onChanged: !enabled
+                    ? null
+                    : (value) => widget.binding.intents.send(
+                        SetSettingsAutostart(
+                          component: SettingsAutostartComponent.gateway,
+                          enabled: value,
+                        ),
+                      ),
+              ),
+              SwitchListTile.adaptive(
+                key: const Key('startup-mcp-autostart'),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: Text(strings.startupLocalMcpServices),
+                subtitle: Text(
+                  strings.startupLocalMcpHint,
+                  style: TextStyle(color: colors.textMuted, fontSize: 11),
+                ),
+                value: projection.mcpEnabled,
+                onChanged: !enabled
+                    ? null
+                    : (value) => widget.binding.intents.send(
+                        SetSettingsAutostart(
+                          component: SettingsAutostartComponent.mcp,
+                          enabled: value,
+                        ),
+                      ),
+              ),
             ],
           ),
-          if (message != null) ...[
-            const SizedBox(height: 10),
-            Text(
-              message,
-              style: TextStyle(
-                color: messageIsError ? colors.error : colors.textMuted,
-                fontSize: 12,
-              ),
-            ),
-          ] else if (!loading && !projection.supported) ...[
-            const SizedBox(height: 10),
-            Text(
-              strings.startupAutostartUnsupported,
-              style: TextStyle(color: colors.textMuted, fontSize: 12),
-            ),
-          ],
-          const SizedBox(height: LicoContentSpacing.item),
-          _SectionLabel(label: strings.startupDesktopClientSection),
-          SwitchListTile.adaptive(
-            key: const Key('startup-desktop-autostart'),
-            contentPadding: EdgeInsets.zero,
-            dense: true,
-            title: Text(strings.startupDesktopClientAutostart),
-            value: projection.desktopEnabled,
-            onChanged: !enabled
-                ? null
-                : (value) => widget.binding.intents.send(
-                    SetSettingsAutostart(
-                      component: SettingsAutostartComponent.desktop,
-                      enabled: value,
-                      silent: projection.desktopSilent,
-                    ),
-                  ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(left: 12),
-            child: SwitchListTile.adaptive(
-              key: const Key('startup-desktop-silent'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: Text(strings.startupSilentStart),
-              subtitle: Text(
-                strings.startupSilentStartHint,
-                style: TextStyle(color: colors.textMuted, fontSize: 11),
-              ),
-              value: projection.desktopSilent,
-              onChanged: !enabled || !projection.desktopEnabled
-                  ? null
-                  : (value) => widget.binding.intents.send(
-                      SetSettingsAutostart(
-                        component: SettingsAutostartComponent.desktop,
-                        enabled: true,
-                        silent: value,
-                      ),
-                    ),
-            ),
-          ),
-          const SizedBox(height: LicoContentSpacing.item),
-          _SectionLabel(label: strings.startupBackgroundSection),
-          SwitchListTile.adaptive(
-            key: const Key('startup-gateway-autostart'),
-            contentPadding: EdgeInsets.zero,
-            dense: true,
-            title: const Text('LLM Gateway'),
-            subtitle: Text(
-              strings.startupGatewayHint,
-              style: TextStyle(color: colors.textMuted, fontSize: 11),
-            ),
-            value: projection.gatewayEnabled,
-            onChanged: !enabled
-                ? null
-                : (value) => widget.binding.intents.send(
-                    SetSettingsAutostart(
-                      component: SettingsAutostartComponent.gateway,
-                      enabled: value,
-                    ),
-                  ),
-          ),
-          SwitchListTile.adaptive(
-            key: const Key('startup-mcp-autostart'),
-            contentPadding: EdgeInsets.zero,
-            dense: true,
-            title: Text(strings.startupLocalMcpServices),
-            subtitle: Text(
-              strings.startupLocalMcpHint,
-              style: TextStyle(color: colors.textMuted, fontSize: 11),
-            ),
-            value: projection.mcpEnabled,
-            onChanged: !enabled
-                ? null
-                : (value) => widget.binding.intents.send(
-                    SetSettingsAutostart(
-                      component: SettingsAutostartComponent.mcp,
-                      enabled: value,
-                    ),
-                  ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

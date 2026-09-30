@@ -11,8 +11,6 @@ mixin ClientAppearanceCommands {
   LayoutManager get layoutManager;
   PortableDataRoot get portableData;
   AppearancePresetCatalogService get appearancePresetCatalogService;
-  void reportAppearanceReloadOutcome({required bool hasErrors});
-  void reportAppearanceReloadFailure();
 
   String get appearancePresetId => appearancePreferenceOwner.presetId;
   bool get reduceMotion => appearancePreferenceOwner.reduceMotion;
@@ -39,23 +37,6 @@ mixin ClientAppearanceCommands {
     }
     if (await layoutManager.setAppearancePreset(presetId, cause: cause)) {
       appearancePreferenceOwner.replacePreset(presetId, cause: cause);
-    }
-  }
-
-  Future<void> reloadAppearancePresets() async {
-    try {
-      final catalog = await appearancePresetCatalogService.loadCatalog(
-        portableData,
-      );
-      final fellBack = applyAppearancePresetCatalog(catalog);
-      if (fellBack) {
-        await layoutManager.setAppearancePreset(appearancePresetId);
-      }
-      reportAppearanceReloadOutcome(
-        hasErrors: appearancePresetLoadErrors.isNotEmpty,
-      );
-    } catch (_) {
-      reportAppearanceReloadFailure();
     }
   }
 
