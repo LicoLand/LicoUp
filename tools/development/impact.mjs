@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
@@ -109,11 +109,14 @@ export function analyzePaths(paths, owners = modules, catalog = CLIENT_MODULE_CA
 
 export function workingPaths(base, repoRoot = root) {
   const git = (args) => execFileSync("git", args, { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).split("\0").filter(Boolean);
-  return [...new Set([
+  const changed = [...new Set([
     ...git(["diff", "--name-only", "-z", ...(base ? [`${base}...HEAD`] : ["HEAD"]), "--"]),
     ...(base ? git(["diff", "--name-only", "-z", "HEAD", "--"]) : []),
     ...git(["ls-files", "--others", "--exclude-standard", "-z"]),
   ])];
+  // A removed path still appears in the diff, but it has no reader left to own
+  // and no check left to select, so only the paths that exist carry coverage.
+  return changed.filter((relative) => existsSync(path.join(repoRoot, relative)));
 }
 
 export function eventBase(event) {

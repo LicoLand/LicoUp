@@ -67,7 +67,8 @@
       "regression.continuous-assistant-contract",
       "rust.domain.agent-conversations.parser-codex",
       "rust.domain.agent-conversations.session-metadata",
-      "rust.domain.agent-conversations.message-projection.projection"
+      "rust.domain.agent-conversations.message-projection.projection",
+      "rust.platform.profile-admission"
     ],
     "sourceRoots": [
       "crates/licoup-conversation",
@@ -145,19 +146,23 @@
     "sourceRoots": [
       "crates/licoup-endpoint-core",
       "crates/licoup-protocol-bindings",
-      "crates/licoup-native/src/domain/mobile_relay",
-      "crates/licoup-native/src/domain/secure_mesh_mls",
-      "crates/licoup-native/src/platform/badtower_station",
-      "crates/licoup-native/src/platform/secure_mesh_secret_store",
+      "crates/licoup-native/src/domain/mobile_relay.rs",
+      "crates/licoup-relay/src/domain/mobile_relay",
+      "crates/licoup-relay/src/platform/badtower_station",
       "crates/licoup-native/tests/endpoint_storage",
       "crates/licoup-native/tests/peer_ingress",
       "crates/licoup-native/src/domain/collaboration_plugin",
-      "crates/licoup-native/src/core/secure_mesh_approval",
-      "crates/licoup-native/src/core/secure_mesh_command",
-      "crates/licoup-native/src/core/secure_mesh_file",
-      "crates/licoup-native/src/core/secure_mesh_mlkem_braid",
-      "crates/licoup-native/src/core/secure_mesh_mls_product",
-      "crates/licoup-native/src/domain/session_policy",
+      "crates/licoup-secure-mesh/src/core/secure_mesh_acp",
+      "crates/licoup-secure-mesh/src/core/secure_mesh_approval",
+      "crates/licoup-secure-mesh/src/core/secure_mesh_command",
+      "crates/licoup-secure-mesh/src/core/secure_mesh_file",
+      "crates/licoup-secure-mesh/src/core/secure_mesh_lifecycle",
+      "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid",
+      "crates/licoup-secure-mesh/src/core/secure_mesh_mls_product",
+      "crates/licoup-secure-mesh/src/domain/secure_mesh_mls",
+      "crates/licoup-secure-mesh/src/platform/secure_mesh_mls_store",
+      "crates/licoup-secure-mesh/src/platform/secure_mesh_secret_store",
+      "crates/licoup-application/src/session_policy",
       "tests/contract/client/core-state-machine-test-layout.test.mjs",
       "tests/contract/client/key-transparency-source-bundle.test.mjs"
     ],
@@ -257,6 +262,7 @@
       "rust.crate.agent-runtime",
       "rust.domain.subagents",
       "rust.platform.runtime-adapters",
+      "rust.platform.runtime-adapters.capability-facts",
       "rust.platform.acp-runtime.composition",
       "rust.platform.acp-runtime.test-support",
       "rust.platform.acp-runtime.continuity",
@@ -279,11 +285,12 @@
       "crates/licoup-agent-runtime",
       "crates/licoup-mcp",
       "crates/licoup-native/src/domain/subagents",
+      "crates/licoup-agent-adapter-sdk",
       "crates/licoup-native/src/platform/native_agent_parser",
-      "crates/licoup-native/src/platform/runtime_adapters",
-      "crates/licoup-native/src/platform/acp_driver_runtime",
-      "crates/licoup-native/src/platform/acp_session_transport",
-      "crates/licoup-native/src/platform/native_agent_interaction",
+      "crates/licoup-agent-drivers/src/runtime_adapters",
+      "crates/licoup-agent-drivers/src/acp_driver_runtime",
+      "crates/licoup-agent-drivers/src/acp_session_transport",
+      "crates/licoup-foundation/src/platform/native_agent_interaction",
       "crates/licoup-native/src/platform/openclaw_driver",
       "crates/licoup-native/src/platform/openclaw_gateway",
       "crates/licoup-native/src/platform/claude_code_driver",
@@ -301,15 +308,16 @@
       "crates/licoup-native/src/platform/copilot_driver",
       "crates/licoup-native/src/platform/kimi_code_driver",
       "crates/licoup-native/src/platform/deepseek_harness_driver",
-      "crates/licoup-native/src/platform/pty_transport",
-      "crates/licoup-native/src/platform/process_supervisor",
+      "crates/licoup-foundation/src/platform/pty_transport",
+      "crates/licoup-foundation/src/platform/process_supervisor",
       "crates/licoup-native/src/platform/hermes_tui_gateway_driver",
-      "crates/licoup-native/src/platform/work_context_ports",
+      "crates/licoup-native/src/platform/work_context_ports.rs",
+      "crates/licoup-agent-drivers/src",
       "tests/product-e2e/cli/subagent-mcp",
       "tests/contract/client/acp-conversation-parity-source-bundle.test.mjs",
       "tests/contract/client/kilo-code-serve-source-bundle.test.mjs",
       "tests/contract/client/opencode-serve-source-bundle.test.mjs",
-      "crates/licoup-native/src/platform/ansi_stripper"
+      "crates/licoup-foundation/src/platform/ansi_stripper"
     ],
     "boundaries": [
       {
@@ -378,7 +386,6 @@
         "inputs": [
           "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot",
           "packages/contracts/client/fixtures/agent-conversation-adapter/manifests/copilot.json",
-          "crates/licoup-native/resources/agent-hub/copilot.toml",
           "crates/licoup-native/src/platform/copilot_driver"
         ]
       },
@@ -388,8 +395,7 @@
           "crates/licoup-native/src/platform/kilo_code_driver",
           "crates/licoup-native/src/platform/kilo_code_serve",
           "crates/licoup-native/src/platform/native_agent_parser/adapters/kilo_code",
-          "packages/contracts/client/fixtures/agent-conversation-adapter/manifests/kilo-code.json",
-          "crates/licoup-native/resources/agent-hub/kilo-code.toml"
+          "packages/contracts/client/fixtures/agent-conversation-adapter/manifests/kilo-code.json"
         ]
       },
       {
@@ -415,7 +421,6 @@
         "inputs": [
           "crates/licoup-native/src/platform/native_agent_parser/adapters/kimi_code",
           "packages/contracts/client/fixtures/agent-conversation-adapter/manifests/kimi-code.json",
-          "crates/licoup-native/resources/agent-hub/kimi-code.toml",
           "crates/licoup-native/src/platform/kimi_code_driver"
         ]
       },
@@ -442,24 +447,24 @@
         "inputs": [
           "crates/licoup-native/src/platform/lico_agent_driver",
           "crates/licoup-native/src/platform/native_agent_parser/adapters/lico_agent",
-          "packages/contracts/client/fixtures/agent-conversation-adapter/manifests/lico-agent.json",
-          "crates/licoup-native/resources/agent-hub/lico-agent.toml"
+          "packages/contracts/client/fixtures/agent-conversation-adapter/manifests/lico-agent.json"
         ]
       }
     ],
     "sharedAdapterInputs": [
       "crates/licoup-agent-runtime",
+      "crates/licoup-agent-adapter-sdk",
       "crates/licoup-native/src/platform/native_agent_parser",
-      "crates/licoup-native/src/platform/native_agent_interaction",
-      "crates/licoup-native/src/platform/runtime_adapters",
-      "crates/licoup-native/src/platform/acp_driver_runtime",
-      "crates/licoup-native/src/platform/acp_session_transport",
-      "crates/licoup-native/src/platform/process_supervisor",
-      "crates/licoup-native/resources/agent-conversation-drivers.json",
+      "crates/licoup-foundation/src/platform/native_agent_interaction",
+      "crates/licoup-agent-drivers/src/runtime_adapters",
+      "crates/licoup-agent-drivers/src/acp_driver_runtime",
+      "crates/licoup-agent-drivers/src/acp_session_transport",
+      "crates/licoup-foundation/src/platform/process_supervisor",
+      "crates/licoup-agent-drivers/resources/agent-conversation-drivers.json",
       "schemas/client_bridge/conversation.json",
-      "crates/licoup-native/src/platform/pty_transport",
+      "crates/licoup-foundation/src/platform/pty_transport",
       "crates/licoup-native/src/platform/mod.rs",
-      "crates/licoup-native/src/platform/ansi_stripper"
+      "crates/licoup-foundation/src/platform/ansi_stripper"
     ]
   },
   {
@@ -485,7 +490,7 @@
       "crates/licoup-native/src/bin/licoup/stdio_rpc",
       "tests/contract/client/native-stdio-rpc-source-bundle.test.mjs",
       "crates/licoup-native/src/platform/mod.rs",
-      "crates/licoup-native/src/domain/client_runtime",
+      "crates/licoup-application/src/client_runtime",
       "crates/licoup-native/src/ffi",
       "crates/licoup-native/src/contracts",
       "tools/templates/client_bridge",
@@ -535,11 +540,11 @@
       "crates/licoup-native/src/domain/agent_intelligence_catalog",
       "crates/licoup-native/src/domain/provider_model_pricing",
       "components/analytics",
-      "crates/licoup-native/src/platform/diagnostics",
+      "crates/licoup-foundation/src/platform/diagnostics",
       "sdk/usage-source",
       "tests/integration/usage_sources",
       "crates/licoup-native/src/domain/agent_hub",
-      "crates/licoup-native/resources/licoup-guide",
+      "crates/licoup-mcp/resources/licoup-guide",
       "crates/licoup-native/resources/licoup-refactor",
       "crates/licoup-native/src/domain/provider_quota"
     ],
@@ -581,17 +586,25 @@
     "id": "data-migration",
     "guide": "docs/modules/data-migration.md",
     "testRoots": [
-      "crates/licoup-migrate/tests"
+      "crates/licoup-migrate/tests",
+      "crates/licoup-native/tests/local_recovery",
+      "crates/licoup-native/tests/full_data_root_archive"
     ],
     "regressionModules": [
       "migration.client-state-diagnostic",
-      "rust.crate.migrate"
+      "rust.crate.migrate",
+      "rust.platform.client-state-migration",
+      "rust.platform.full-data-root-archive"
     ],
     "sourceRoots": [
       "crates/licoup-migrate",
       "crates/licoup-native/src/domain/client_state_migration",
+      "crates/licoup-foundation/src/core/full_data_root_archive",
+      "crates/licoup-native/resources/client-state-migration-frontier.json",
       "crates/licoup-native/tests/migration",
-      "tests/contract/client/client-state-migration-diagnostic.test.mjs"
+      "crates/licoup-native/tests/local_recovery",
+      "crates/licoup-native/tests/full_data_root_archive",
+      "tests/contract/client/client-state-migration"
     ],
     "boundaries": []
   },

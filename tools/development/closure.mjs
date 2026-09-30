@@ -49,7 +49,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     mkdirSync(directory, { recursive: true });
     // Each invocation has its own report; an interrupted invocation stays running.
     const file = path.join(directory, `${new Date().toISOString().replaceAll(":", "-")}-${process.pid}.json`);
-    const drivers = JSON.parse(readFileSync(path.join(root, "crates/licoup-native/resources/agent-conversation-drivers.json"))).drivers;
+    const drivers = JSON.parse(readFileSync(path.join(root, "crates/licoup-agent-drivers/resources/agent-conversation-drivers.json"))).drivers;
     const report = runClosure({
       live: liveInventory(drivers),
       revision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),

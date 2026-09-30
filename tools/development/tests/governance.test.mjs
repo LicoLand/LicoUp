@@ -80,6 +80,6 @@ test("optional public refactoring Skill is packaged and explicitly invoked", () 
   assert.ok(packaging.modules["user-skills"].includePaths.includes("crates/licoup-native/resources/licoup-refactor"));
   const policy = readFileSync(new URL("crates/licoup-native/resources/licoup-refactor/agents/openai.yaml", root), "utf8");
   assert.match(policy, /allow_implicit_invocation: false/);
-  const defaultGuide = readFileSync(new URL("crates/licoup-native/resources/licoup-guide/SKILL.md", root), "utf8");
+  const defaultGuide = readFileSync(new URL("crates/licoup-mcp/resources/licoup-guide/SKILL.md", root), "utf8");
   assert.doesNotMatch(defaultGuide, /licoup-refactor/);
 });

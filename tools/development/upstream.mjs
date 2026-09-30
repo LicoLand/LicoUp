@@ -40,7 +40,7 @@ export function officialSources(drivers, readManifest) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (process.argv.length > 2) throw new Error("No options supported");
   const read = (file) => JSON.parse(readFileSync(path.join(root, file), "utf8"));
-  const sources = officialSources(read("crates/licoup-native/resources/agent-conversation-drivers.json").drivers,
+  const sources = officialSources(read("crates/licoup-agent-drivers/resources/agent-conversation-drivers.json").drivers,
     (id) => read(`packages/contracts/client/fixtures/agent-conversation-adapter/manifests/${id}.json`));
   const output = "build/reports/upstream-observations.json";
   const prior = existsSync(path.join(root, output)) ? read(output).references ?? [] : [];

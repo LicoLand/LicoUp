@@ -81,6 +81,20 @@
         }
       },
       {
+        "manifest": "crates/licoup-agent-adapter-sdk/Cargo.toml",
+        "title": {
+          "en": "Agent adapter SDK",
+          "zh": "智能体适配器 SDK"
+        }
+      },
+      {
+        "manifest": "crates/licoup-agent-drivers/Cargo.toml",
+        "title": {
+          "en": "Agent work-context seam",
+          "zh": "智能体工作上下文接缝"
+        }
+      },
+      {
         "manifest": "crates/licoup-agent-adapters/Cargo.toml",
         "title": {
           "en": "Agent adapters",
@@ -97,8 +111,15 @@
       {
         "manifest": "crates/licoup-application/Cargo.toml",
         "title": {
-          "en": "Application contracts",
-          "zh": "应用契约"
+          "en": "Application composition",
+          "zh": "应用组合"
+        }
+      },
+      {
+        "manifest": "crates/licoup-mcp/Cargo.toml",
+        "title": {
+          "en": "MCP integration",
+          "zh": "MCP 集成"
         }
       }
     ]
@@ -159,6 +180,13 @@
         "title": {
           "en": "Platform bridges",
           "zh": "系统桥接"
+        }
+      },
+      {
+        "manifest": "crates/licoup-secure-mesh/Cargo.toml",
+        "title": {
+          "en": "Secure mesh",
+          "zh": "安全网格"
         }
       }
     ]

@@ -1,6 +1,6 @@
 # Workflow and report sources
 
-Updated: 2026-09-26
+Updated: 2026-09-28
 
 Each JSON file describes one contributor workflow: `id`, `title`, `purpose`,
 `owner`, `entry`, ordered `steps`, `exit`, `failure` and `boundary`. Text objects
@@ -20,7 +20,7 @@ refresh these projections automatically. Repository hook installation continues
 to use the existing contribution procedure; no additional hook is installed.
 
 Temporary plans belong to the maintainer's Better Plan workspace. The optional
-read-only adapter accepts the Skill's current `Plan.json` or `Manifest.json`:
+read-only adapter accepts the Skill's `Programme.json` and referenced split Tree workspaces:
 
 ```sh
 node tools/development/reports.mjs --better-plan <local-source>
@@ -30,17 +30,14 @@ The default command generates only the permanent navigation, workflow,
 state-machine and architecture pages. It does not discover local workspaces or
 read a fixed repository plan path. Supplying a source adds the temporary plan page
 and navigation entry; running without it removes that generated page and entry.
-No Skill lifecycle command runs, and no Plan or Checkpoint file is written.
+No work is started, and no current plan or archive file is written.
 The adapter projects semantic fields directly; it does not introduce a second
 persisted plan format. Keep private inputs and generated pages outside Git.
 
-The current Better Plan format records Task-local Node dependencies, but no
-executable inter-Plan dependency field. The optional adapter also projects the
-Skill's explicit architecture-note declaration, `Milestone prerequisites:
-<comma-separated sibling directories>.` or `Milestone prerequisites: none.`.
-These are design constraints from the semantic Plan, not scheduling authority.
-Preserve declared edges without inferring them from manifest order. A displayed
-plan never activates work. Reuse the
+Node dependencies come from `after` edges; cross-delivery dependencies come from
+Programme `requires` edges. The adapter invokes the Skill's `tree export` command
+for current state and pending review. It does not infer decisions from prose, read
+archives or derive state itself. A displayed plan never activates work. Reuse the
 [Better Plan execution graph](../reporting/better-plan-source.md) for the projection.
 
 Architecture view definitions in `tools/development/architecture-views.json` select

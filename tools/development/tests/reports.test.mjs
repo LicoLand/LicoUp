@@ -12,6 +12,7 @@ import { loadBetterPlan } from "../reporting/adapters/better-plan.mjs";
 
 test("report generation reflects sources without executing workflows or reading privacy payloads", () => {
   const root = mkdtempSync(path.join(tmpdir(), "licoup-report-test-"));
+  const previousTool = process.env.LICOUP_BETTER_PLAN_TOOL;
   const write = (file, value) => {
     mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
     writeFileSync(path.join(root, file), typeof value === "string" ? value : JSON.stringify(value));
@@ -42,47 +43,220 @@ test("report generation reflects sources without executing workflows or reading 
     write("config.json", { machines: [] });
     assert.equal(generateReports({ root }).configuredMachines, 0);
 
-    const native = { schema: "better-plan.plan/v3", code: "PLAN-001", directory: "delivery", phase: "draft", title: "Synthetic delivery",
-      intent: { goal: "Example outcome", success: ["Observable result"], scope: { in: ["Example capability"] } },
-      spec: { architecture: { notes: ["Milestone prerequisites: none."] },
-        full_regression: { commands: ["node --test tests/integration.test.mjs"], paths: ["tests/integration.test.mjs"] },
-        tasks: [{ code: "TASK-001", title: "Worker", outcome: "Delivered", nodes: [
-        { code: "NODE-001", title: "Implement", outcome: "Ready", prerequisites: [] },
-        { code: "NODE-002", title: "Verify", outcome: "Proven", prerequisites: ["NODE-001"] },
-      ], design: { approach: ["Use the actual production owner"] },
-      ownership: { write_paths: ["src/example.mjs"], shared_exclusive: ["Synthetic store isolated per task"] },
-      acceptance: [{ given: "A synthetic input", when: "The public entry runs", then: "The declared result is returned", oracle: "Compare with the fixture", evidence: { source: "tests/example.test.mjs" } }],
-      focused_regression: { commands: ["node --test tests/example.test.mjs"], paths: ["tests/example.test.mjs"] } }] } };
-    write("private/workspace/Manifest.json", { schema: "better-plan.manifest/v3", plans: [{ code: native.code, title: native.title, directory: "delivery", plan: "delivery/Plan.json" }] });
-    write("private/workspace/delivery/Plan.json", native);
-    const source = readFileSync(path.join(root, "private/workspace/delivery/Plan.json"), "utf8");
-    assert.equal(generateReports({ root, planSource: "private/workspace/Manifest.json" }).pages.length, 5);
+    // The projection consumes one `programme export` call, so the fixture is the
+    // tool's JSON output: a recorded Tree, a planned outline and one export error.
+    const tree = { schema: "better-plan.checkpoints-tree", id: "TREE-001", title: "Recorded delivery",
+      goal: "Ship the recorded delivery", success: ["The recorded delivery renders"],
+      requirements: [{ code: "REQ-001", statement: { en: "One owner decides the result", zh: "中文不应渲染" }, source_ids: ["REQ-201"] }],
+      open_decisions: ["Choose the supported export format. Confirm its consumer."],
+      delivery_policy: { pull_requests: "draft_until_tree_review", live_acceptance: { model: "synthetic-model", instruction: { en: "Use the ordinary UI", zh: "REVIEW_LABEL_MUST_NOT_RENDER" } } },
+      tasks: [
+        { id: "TASK-001", title: "Worker", outcome: "Delivered", draft_pr: "https://example.invalid/pull/7",
+          requirements: ["REQ-201", { statement: { en: "Task object requirement", zh: "中文" }, source_ids: ["REQ-202"] }],
+          contract: {}, nodes: [
+            { id: "NODE-001", title: "Implement", outcome: "Ready", role: "worker-1", after: [], status: "completed",
+              review: [{ source: { kind: "node", id: "NODE-003" }, reason: "content_changed" }], result: { summary: "Design is ready" }, executors: [], contract: {
+                scope: { in: ["Example capability", "STOP CONDITION: preserve the source until transfer completes"], out: ["Live provider quality"] },
+                design: { approach: ["Use the actual production owner"] },
+                ownership: { write_paths: ["src/example.mjs"], shared_exclusive: ["Synthetic store isolated per task"] },
+                acceptance: [{ given: "A synthetic input", when: "The public entry runs", then: "The declared result is returned", oracle: "Compare with the fixture", evidence: { source: "tests/example.test.mjs" } }],
+                requirements: [{ statement: { en: "Node contract requirement", zh: "中文" }, source_ids: ["REQ-301"] }],
+                regression_paths: ["tests/example.test.mjs"] } },
+            { id: "NODE-002", title: "Verify", outcome: "Proven", role: "worker-1", after: ["NODE-001"], status: "pending", commit: "synthetic-commit", result: null, executors: [], contract: { scope: ["Current array scope"], files: { edit: ["src/current-owner.rs"] }, commit_outcome: "Complete the current owner" } },
+          ] },
+      ] };
+    const plannedRequirements = [{ code: "REQ-PLAN-1", statement: { en: "The planned requirement statement", zh: "中文" }, source_ids: ["REQ-101", "REQ-102"] }];
+    const plannedDecisions = [{ statement: { en: "Choose the planned path", zh: "中文" } }];
+    const fixture = {
+      schema: "better-plan.programme-export",
+      programme: { schema: "better-plan.programme", id: "PROGRAMME-001", title: "Synthetic programme",
+        goal: { en: "Ship the synthetic programme", zh: "中文目标不应渲染" }, success: ["The synthetic page renders"],
+        deliveries: [
+          { id: "DELIVERY-002", title: "Recorded delivery", tree: "delivery/Tree.json", requires: [] },
+          { id: "DELIVERY-001", title: "Planned delivery", requires: ["DELIVERY-002", "DELIVERY-404"],
+            goal: { en: "Design the planned delivery", zh: "中文目标" }, success: ["The outline is reviewable"],
+            requirements: plannedRequirements, open_decisions: plannedDecisions },
+          { id: "DELIVERY-003", title: "Broken delivery", tree: "delivery/missing/Tree.json", requires: ["DELIVERY-001"] },
+        ] },
+      report: {
+        deliveries: [
+          { id: "DELIVERY-001", title: "Planned delivery", state: "planned", execution_status: "planned", unconfirmed_tasks: [], ready_nodes: [], review_nodes: [], requires: ["DELIVERY-002", "DELIVERY-404"], blocked_by: ["DELIVERY-002"], error: null },
+          { id: "DELIVERY-002", title: "Recorded delivery", state: "recorded", execution_status: "running", unconfirmed_tasks: ["TASK-001"], ready_nodes: ["NODE-002"], review_nodes: ["NODE-001"], requires: [], blocked_by: [], error: null },
+          { id: "DELIVERY-003", title: "Broken delivery", state: "error", execution_status: "missing", unconfirmed_tasks: [], ready_nodes: [], review_nodes: [], requires: ["DELIVERY-001"], blocked_by: [], error: "The Tree at delivery/missing/Tree.json could not be read." },
+        ],
+        ready: ["DELIVERY-002"],
+        ready_to_design: ["DELIVERY-001"],
+        counts: { recorded: 1, planned: 1, error: 1 },
+        errors: [],
+      },
+      deliveries: {
+        "DELIVERY-002": { kind: "tree", tree: "delivery/Tree.json", export: { tree,
+          derived: { status: "running", ready: ["NODE-002"], review_nodes: ["NODE-001"], node_counts: { completed: 1, total: 2 } },
+          checks: [{ id: "CHECK-REPORT", title: "Shared report check", commands: ["node --test tests/example.test.mjs"], coverage: { kind: "tree" }, pending: true, running: true, dirty: true, result: { status: "passed" }, covers: ["NODE-001", "NODE-002"], owner: { kind: "task", id: "TASK-001" } }] } },
+        "DELIVERY-001": { kind: "planned", outline: { goal: { en: "Design the planned delivery", zh: "中文目标" }, success: ["The outline is reviewable"], requirements: plannedRequirements, open_decisions: plannedDecisions } },
+        "DELIVERY-003": { kind: "error", tree: "delivery/missing/Tree.json", error: "The Tree at delivery/missing/Tree.json could not be read." },
+      },
+      requirements: {
+        catalogue: [
+          { id: "AS-001", title: { en: "Accessibility baseline", zh: "中文" }, statement: { en: "The interface meets the accessibility baseline", zh: "中文" }, status: "implemented", priority: "high" },
+          { id: "OR-001", title: { en: "Ordering guarantee", zh: "中文" }, statement: { en: "Deliveries run in programme order", zh: "中文" }, status: "implemented" },
+          { id: "QA-001", title: { en: "Uncovered check", zh: "中文" }, statement: { en: "The uncovered requirement statement", zh: "中文" }, status: "accepted" },
+          { id: "EX-001", title: { en: "Excluded item", zh: "中文" }, statement: { en: "The excluded requirement statement", zh: "中文" }, status: "excluded",
+            exclusion: { en: "Out of this programme's scope", zh: "中文" }, scope_note: { en: "Tracked elsewhere", zh: "中文" },
+            acceptance: [{ given: "An excluded input", when: "The scope is reviewed", then: "The exclusion is recorded", oracle: "Compare with the register", evidence: { source: "docs/register.md" } }] },
+        ],
+        coverage: {
+          by_requirement: {
+            "AS-001": { deliveries: ["DELIVERY-002"], tasks: [{ delivery: "DELIVERY-002", task: "TASK-001" }] },
+            "OR-001": { deliveries: ["DELIVERY-002"], tasks: [] },
+            "EX-001": { deliveries: [], tasks: [] },
+          },
+          uncovered: ["QA-001"],
+          excluded: ["EX-001"],
+          unknown_refs: [{ delivery: "DELIVERY-002", task: "TASK-001", ref: "REQ-999" }],
+        },
+      },
+      metrics: { coverage_percent: [{ delivery: "DELIVERY-002", check: "CHECK-REPORT", owner: "TASK-001", value: 87.5, status: "recorded" }] },
+    };
+    write("private/workspace/export.json", fixture);
+    write("private/workspace/stub-tool.py", [
+      "import os, sys",
+      "path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'export.json')",
+      "with open(path, 'r', encoding='utf-8') as handle:",
+      "    sys.stdout.write(handle.read())",
+    ].join("\n") + "\n");
+    write("private/workspace/Programme.json", { schema: "better-plan.programme", id: "PROGRAMME-001", title: "Synthetic programme",
+      deliveries: fixture.programme.deliveries });
+    process.env.LICOUP_BETTER_PLAN_TOOL = path.join(root, "private/workspace/stub-tool.py");
+    const programmeSource = readFileSync(path.join(root, "private/workspace/Programme.json"), "utf8");
+    assert.equal(generateReports({ root, planSource: "private/workspace/Programme.json" }).pages.length, 5);
     const projected = readFileSync(path.join(root, "build/reports/delivery-plan.html"), "utf8");
-    assert.match(projected, /Synthetic delivery/);
+    // Programme identity, goal and success list.
+    assert.match(projected, /Synthetic programme/);
+    assert.match(projected, /Ship the synthetic programme/);
+    assert.match(projected, /The synthetic page renders/);
+    // The recorded Tree delivery renders its existing execution graph plus badges.
+    assert.match(projected, /1\. Recorded delivery/);
+    assert.match(projected, /<span class="badge">Recorded<\/span>/);
+    assert.match(projected, /<span class="badge">Running<\/span>/);
+    assert.match(projected, /<span class="badge">Ready to execute<\/span>/);
     assert.match(projected, /Use the actual production owner/);
-    assert.match(projected, /src\/example.mjs/);
+    assert.match(projected, /src\/example\.mjs/);
     assert.match(projected, /Compare with the fixture/);
-    assert.match(projected, /node --test tests\/example.test.mjs/);
-    assert.match(projected, /Milestone integration handoff/);
-    assert.equal(readFileSync(path.join(root, "private/workspace/delivery/Plan.json"), "utf8"), source);
-    assert.equal(existsSync(path.join(root, "private/workspace/delivery/Checkpoints.json")), false);
-    const successor = structuredClone(native);
-    successor.code = "PLAN-002";
-    successor.directory = "successor";
-    successor.spec.architecture.notes = ["Milestone prerequisites: delivery."];
-    write("private/workspace/successor/Plan.json", successor);
-    write("private/workspace/Manifest.json", { schema: "better-plan.manifest/v3", plans: [
-      { code: successor.code, plan: "successor/Plan.json" },
-      { code: native.code, plan: "delivery/Plan.json" },
-    ] });
-    const sourcePlan = loadBetterPlan(path.join(root, "private/workspace/Manifest.json"));
-    assert.deepEqual(planGraphs(sourcePlan)[0].edges.map(({ from, to }) => [from, to]), [["PLAN-001", "PLAN-002"]]);
-    const deliveryGraph = planGraphs(sourcePlan)[2];
-    assert.deepEqual(deliveryGraph.edges.map(({ from, to }) => [from, to]), [["NODE-001", "NODE-002"], ["NODE-002", "PLAN-001-handoff"]]);
+    assert.match(projected, /node --test tests\/example\.test\.mjs/);
+    assert.match(projected, /NODE-002/);
+    assert.match(projected, /Shared report check/);
+    assert.match(projected, /Running · Review needed · passed · Covers NODE-001, NODE-002/u);
+    assert.match(projected, /completed needs-review/u);
+    assert.match(projected, /Review needed/u);
+    assert.match(projected, /Pending review/u);
+    assert.match(projected, /Current array scope/u);
+    assert.match(projected, /src\/current-owner\.rs/u);
+    assert.match(projected, /Complete the current owner/u);
+    assert.match(projected, /synthetic-commit/u);
+    assert.match(projected, /https:\/\/example\.invalid\/pull\/7/u);
+    assert.match(projected, /Use the ordinary UI/u);
+    assert.match(projected, /synthetic-model/u);
+    assert.match(projected, /<g class="graph-node[^"]*\bpending\b[^"]*" data-node="NODE-002"/u);
+    // The planned delivery renders an outline card without an execution graph.
+    assert.match(projected, /2\. Planned delivery/);
+    assert.match(projected, /Ready to design/);
+    assert.match(projected, /Design the planned delivery/);
+    assert.match(projected, /The outline is reviewable/);
+    assert.match(projected, /REQ-PLAN-1/);
+    assert.match(projected, /REQ-101/);
+    assert.match(projected, /REQ-102/);
+    assert.match(projected, /Choose the planned path/);
+    assert.match(projected, /Requires: DELIVERY-002 · Blocked by: DELIVERY-002/);
+    // One broken delivery renders an error card instead of aborting the page.
+    assert.match(projected, /3\. Broken delivery/);
+    assert.match(projected, /The Tree at delivery\/missing\/Tree\.json could not be read\./);
+    assert.match(projected, /class="error-note"/);
+    // Requirement coverage: totals, groups, uncovered, excluded reasons, unknown refs.
+    assert.match(projected, /Requirement coverage/);
+    assert.match(projected, /4 catalogue entries/);
+    assert.match(projected, /implemented <b>2<\/b>/);
+    assert.match(projected, /accepted <b>1<\/b>/);
+    assert.match(projected, /Accessibility baseline/);
+    assert.match(projected, /Owned by DELIVERY-002/);
+    assert.match(projected, /Tasks: DELIVERY-002 · TASK-001/);
+    assert.match(projected, /Uncovered \(1\)/);
+    assert.match(projected, /The uncovered requirement statement/);
+    assert.match(projected, /Excluded \(1\)/);
+    assert.match(projected, /Out of this programme's scope/);
+    assert.match(projected, /Unknown references \(1\)/);
+    assert.match(projected, /REQ-999/);
+    // Metrics appear only when recorded, with values in programme order.
+    assert.match(projected, /coverage_percent/);
+    assert.match(projected, /87\.5/);
+    // Unknown requires ids are a warning line, not a crash.
+    assert.match(projected, /DELIVERY-001 requires 'DELIVERY-404', which is not a delivery/);
+    // English-only rendering: bilingual review labels never reach the page.
+    assert.doesNotMatch(projected, /中文/u);
+    assert.doesNotMatch(projected, /REVIEW_LABEL_MUST_NOT_RENDER/u);
+    // Only the overview and the Tree delivery draw execution graphs.
+    assert.equal((projected.match(/class="execution-graph"/g) ?? []).length, 2);
+    // Milestone cards and overview rows stay in programme order.
+    const cardOrder = ["DELIVERY-002", "DELIVERY-001", "DELIVERY-003"].map((id) => projected.indexOf(`id="milestone-${id}"`));
+    assert.ok(cardOrder[0] < cardOrder[1] && cardOrder[1] < cardOrder[2], "milestone cards follow programme order");
+    assert.ok(projected.indexOf("1. Recorded delivery") < projected.indexOf("2. Planned delivery"));
+    assert.ok(projected.indexOf("2. Planned delivery") < projected.indexOf("3. Broken delivery"));
+    // Drawers carry the requirement ids and check ids that the page must show.
+    const records = JSON.parse(projected.match(/<script id="report-data" type="application\/json">([\s\S]*?)<\/script>/)[1]);
+    const hasItem = (fragment) => records.some((record) => (record.sections ?? []).some((section) => (section.items ?? []).some((item) => typeof item === "string" && item.includes(fragment))));
+    assert.ok(hasItem("One owner decides the result · covers REQ-201"), "Tree requirement ids sit beside their statement");
+    assert.ok(hasItem("REQ-301"), "Node requirement ids sit beside their statement");
+    assert.ok(hasItem("REQ-202"), "Task requirement ids sit beside their statement");
+    assert.ok(records.some((record) => record.title === "coverage_percent"
+      && (record.sections ?? []).some((section) => (section.items ?? []).some((item) => item.includes("CHECK-REPORT") && item.includes("87.5")))), "the metric drawer carries the check id");
+    // The adapter never writes its source.
+    assert.equal(readFileSync(path.join(root, "private/workspace/Programme.json"), "utf8"), programmeSource);
+
+    const sourcePlan = loadBetterPlan(path.join(root, "private/workspace/Programme.json"));
+    assert.deepEqual(sourcePlan.milestones.map(({ id }) => id), ["DELIVERY-002", "DELIVERY-001", "DELIVERY-003"]);
+    assert.deepEqual(sourcePlan.milestones.map(({ kind }) => kind), ["tree", "planned", "error"]);
+    assert.equal(sourcePlan.milestones[0].state, "recorded");
+    assert.equal(sourcePlan.milestones[0].readyToExecute, true);
+    assert.equal(sourcePlan.milestones[1].readyToDesign, true);
+    assert.deepEqual(sourcePlan.warnings, ["DELIVERY-001 requires 'DELIVERY-404', which is not a delivery; the dependency edge is ignored."]);
+    // The projection follows the Tree's own dependency edges, in Tree order.
+    const graphs = planGraphs(sourcePlan);
+    assert.deepEqual(graphs[0].edges.map(({ from, to }) => [from, to]), [["DELIVERY-002", "DELIVERY-001"], ["DELIVERY-001", "DELIVERY-003"]]);
+    assert.deepEqual(graphs[1].edges.map(({ from, to }) => [from, to]), [["NODE-001", "NODE-002"]]);
+    assert.ok(graphs[1].nodes.every((node) => node.status), "the adapter carries each Node's status");
+    assert.equal(graphs[2], null, "a planned delivery has no execution graph");
+    assert.equal(graphs[3], null, "an error delivery has no execution graph");
+    assert.deepEqual(sourcePlan.requirements.counts, [["implemented", 2], ["accepted", 1], ["excluded", 1]]);
+    assert.deepEqual(sourcePlan.requirements.groups.map(({ prefix }) => prefix), ["AS", "OR"]);
+    assert.deepEqual(sourcePlan.requirements.uncovered.map(({ id }) => id), ["QA-001"]);
+    assert.deepEqual(sourcePlan.requirements.excluded.map(({ id }) => id), ["EX-001"]);
+    assert.deepEqual(sourcePlan.requirements.unknown.map(({ ref }) => ref), ["REQ-999"]);
+    assert.deepEqual(sourcePlan.metrics.map(({ name }) => name), ["coverage_percent"]);
+
     generateReports({ root });
     assert.equal(existsSync(path.join(root, "build/reports/delivery-plan.html")), false);
     assert.doesNotMatch(readFileSync(path.join(root, "build/reports/index.html"), "utf8"), /delivery-plan.html/);
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally {
+    if (previousTool === undefined) delete process.env.LICOUP_BETTER_PLAN_TOOL;
+    else process.env.LICOUP_BETTER_PLAN_TOOL = previousTool;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a Better Plan tool without 'programme export' fails with operator guidance", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "licoup-better-plan-tool-"));
+  const previousTool = process.env.LICOUP_BETTER_PLAN_TOOL;
+  try {
+    mkdirSync(path.join(root, "workspace"), { recursive: true });
+    writeFileSync(path.join(root, "workspace", "unsupported.py"),
+      "import sys\nsys.stderr.write(\"error: argument command: invalid choice: 'export'\\n\")\nsys.exit(2)\n");
+    process.env.LICOUP_BETTER_PLAN_TOOL = path.join(root, "workspace", "unsupported.py");
+    assert.throws(() => loadBetterPlan(path.join(root, "workspace", "Programme.json")), /update the Better Plan skill/i);
+  } finally {
+    if (previousTool === undefined) delete process.env.LICOUP_BETTER_PLAN_TOOL;
+    else process.env.LICOUP_BETTER_PLAN_TOOL = previousTool;
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("execution layout preserves explicit joins and source dependency order", () => {
@@ -105,6 +279,32 @@ test("execution layout preserves explicit joins and source dependency order", ()
   assert.ok(html.indexOf('id="milestone-first"') < html.indexOf('id="milestone-second"'));
   assert.equal((html.match(/class="execution-graph"/g) ?? []).length, 3);
   assert.doesNotMatch(html, /<select/);
+});
+
+// The graph is where a reader looks for progress. A Node's derived state used to
+// reach only its detail panel, so a 49-Node Tree drew every box identically and the
+// reader had to open each one to learn which were done. The panel is not a substitute
+// for the picture, so the state is asserted on the drawn node itself.
+test("derived Node state reaches the execution graph, not only the detail panel", () => {
+  const tasks = [{ code: "A", title: "Worker A", outcome: "Domain", nodes: [
+    { code: "a", title: "Done", outcome: "Core", status: "completed", prerequisites: [] },
+    { code: "b", title: "Waiting", outcome: "Core", status: "pending", prerequisites: [] },
+  ] }];
+  const milestone = { id: "first", title: "First feature", outcome: "Outcome", acceptance: ["One"], requires: [], phase: "authorized", tasks };
+  const drawn = (html) => new Map([...html.matchAll(/<g class="graph-node([^"]*)" data-node="([^"]*)"/gu)]
+    .map((match) => [match[2], match[1].trim().split(/\s+/u)]));
+  const html = renderPlan({ now: "synthetic", plan: { summary: "Summary", milestones: [milestone] } });
+  const classes = drawn(html);
+  assert.ok(classes.get("a").includes("completed"), "a completed Node is drawn as completed");
+  assert.ok(classes.get("b").includes("pending"), "a pending Node is drawn as pending");
+  assert.ok(classes.get("first").includes("authorized"), "the overview draws the delivery phase");
+  assert.match(html, /<div class="graph-legend">.*completed <b>1<\/b>.*pending <b>1<\/b>/u);
+  // A graph whose Nodes share one state says nothing the box colour has not already
+  // said, so the legend stays out of the way. The phase is cleared too: it is drawn
+  // on the overview Node and would otherwise be the second state.
+  const uniform = renderPlan({ now: "synthetic", plan: { summary: "Summary",
+    milestones: [{ ...milestone, phase: undefined, tasks: [{ ...tasks[0], nodes: tasks[0].nodes.map((node) => ({ ...node, status: "pending" })) }] }] } });
+  assert.doesNotMatch(uniform, /<div class="graph-legend">/u);
 });
 
 test("state diagrams preserve return paths, self-loops and parallel transition conditions", () => {

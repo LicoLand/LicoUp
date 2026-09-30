@@ -44,9 +44,9 @@ test("a vendor edit warns only for that vendor, while the common parser reaches 
   assert.deepEqual(vendor.live.map((entry) => entry.id), ["codex"]);
   assert.ok(vendor.regressionModules.some((id) => id.includes("codex")));
   assert.ok(vendor.live.every((entry) => !entry.blocking && entry.status === "not-run"));
-  const shared = analyzePaths(["crates/licoup-native/src/platform/native_agent_parser/lifecycle.rs"]);
+  const shared = analyzePaths(["crates/licoup-agent-adapter-sdk/src/lifecycle.rs"]);
   assert.ok(shared.live.length > 1);
-  const pty = analyzePaths(["crates/licoup-native/src/platform/pty_transport.rs"]);
+  const pty = analyzePaths(["crates/licoup-foundation/src/platform/pty_transport.rs"]);
   assert.deepEqual(pty.live.map((entry) => entry.id), shared.live.map((entry) => entry.id));
   assert.ok(pty.regressionModules.includes("rust.platform.codex-app-server"));
   assert.ok(pty.regressionModules.some((id) => id.startsWith("rust.platform.claude-code-driver.")));

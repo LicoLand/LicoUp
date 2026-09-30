@@ -4,7 +4,7 @@ const style = readFileSync(new URL("style.css", import.meta.url), "utf8");
 const interaction = readFileSync(new URL("interaction.js", import.meta.url), "utf8");
 // Reports are English. A bilingual source object carries its maintained English text in
 // `en`; `zh` is a review label and is never what a generated report shows.
-export const label = (value) => value && typeof value === "object" ? value.en ?? value.zh : value;
+export const label = (value) => value && typeof value === "object" ? value.en : value;
 export const escape = (value) => String(label(value) ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 export const list = (items) => `<ul>${items.map((item) => `<li>${escape(item)}</li>`).join("")}</ul>`;
 export const chevron = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 6 6-6 6"/></svg>';
@@ -14,7 +14,8 @@ export class ReportPage {
   detail(value) { this.details.push(value); return this.details.length - 1; }
   card({ id, title, subtitle, body = "", detail, bullets = [], badge, collapsed = false, open = false, kind = "" }) {
     const attributes = detail ? `data-detail="${this.detail(detail)}"` : "";
-    const heading = `<div class="card-heading"><h2>${escape(title)}</h2>${badge ? `<span class="badge">${escape(badge)}</span>` : ""}${chevron}</div>${subtitle ? `<p>${escape(subtitle)}</p>` : ""}`;
+    const badges = (Array.isArray(badge) ? badge : badge ? [badge] : []).filter(Boolean).map((value) => `<span class="badge">${escape(value)}</span>`).join("");
+    const heading = `<div class="card-heading"><h2>${escape(title)}</h2>${badges}${chevron}</div>${subtitle ? `<p>${escape(subtitle)}</p>` : ""}`;
     const inside = `${bullets.length ? `<div class="acceptance">${list(bullets)}</div>` : ""}${body}`;
     return collapsed
       ? `<details class="report-card ${kind}" ${id ? `id="${escape(id)}"` : ""} ${open ? "open" : ""}><summary class="card-head">${heading}</summary><div class="card-content">${inside}</div></details>`

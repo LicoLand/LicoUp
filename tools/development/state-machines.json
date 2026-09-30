@@ -61,9 +61,9 @@
   {
     "id": "hermes-protocol",
     "owner": "agent-runtime",
-    "executor": "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes/protocol.rs",
+    "executor": "crates/licoup-agent-drivers/src/acp_session_transport/protocol.rs",
     "verification": "verify:agent-runtime",
-    "configuration": "crates/licoup-native/resources/state-machines/hermes.json",
+    "configuration": "crates/licoup-agent-drivers/resources/state-machines/hermes.json",
     "execution": "compiled-table"
   },
   {
@@ -77,25 +77,25 @@
   {
     "id": "copilot-protocol",
     "owner": "agent-runtime",
-    "executor": "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot/protocol.rs",
+    "executor": "crates/licoup-agent-drivers/src/acp_driver_runtime/protocol.rs",
     "verification": "verify:agent-runtime",
-    "configuration": "crates/licoup-native/resources/state-machines/copilot.json",
+    "configuration": "crates/licoup-agent-drivers/resources/state-machines/copilot.json",
     "execution": "compiled-table"
   },
   {
     "id": "native-parser-lifecycle",
     "owner": "agent-runtime",
-    "executor": "crates/licoup-native/src/platform/native_agent_parser/lifecycle.rs",
+    "executor": "crates/licoup-agent-adapter-sdk/src/lifecycle.rs",
     "verification": "verify:agent-runtime",
-    "configuration": "crates/licoup-native/resources/state-machines/parser-lifecycle.json",
+    "configuration": "crates/licoup-agent-adapter-sdk/resources/state-machines/parser-lifecycle.json",
     "execution": "compiled-table"
   },
   {
     "id": "ansi-parser",
     "owner": "agent-runtime",
-    "executor": "crates/licoup-native/src/platform/ansi_stripper.rs",
+    "executor": "crates/licoup-foundation/src/platform/ansi_stripper.rs",
     "verification": "verify:agent-runtime",
-    "configuration": "crates/licoup-native/resources/state-machines/ansi-parser.json",
+    "configuration": "crates/licoup-foundation/resources/state-machines/ansi-parser.json",
     "execution": "compiled-table"
   },
   {
@@ -229,65 +229,65 @@
   {
     "id": "security-mlkem-braid",
     "owner": "endpoint-collaboration",
-    "configuration": "crates/licoup-native/resources/state-machines/security-mlkem-braid.json",
-    "executor": "crates/licoup-native/src/core/secure_mesh_mlkem_braid/session.rs",
+    "configuration": "crates/licoup-secure-mesh/resources/state-machines/security-mlkem-braid.json",
+    "executor": "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/session.rs",
     "execution": "compiled-table",
     "verification": "verify:endpoint-collaboration",
-    "source": "crates/licoup-native/src/core/secure_mesh_mlkem_braid/protocol_state.rs",
+    "source": "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/protocol_state.rs",
     "symbol": "ProtocolState",
     "consumers": [
-      "crates/licoup-native/src/core/secure_mesh_mlkem_braid/protocol_state.rs",
-      "crates/licoup-native/src/core/secure_mesh_mlkem_braid/send_transition.rs",
-      "crates/licoup-native/src/core/secure_mesh_mlkem_braid/receive_transition.rs"
+      "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/protocol_state.rs",
+      "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/send_transition.rs",
+      "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/receive_transition.rs"
     ]
   },
   {
     "id": "security-mls-operation",
     "owner": "endpoint-collaboration",
-    "configuration": "crates/licoup-native/resources/state-machines/security-mls-operation.json",
-    "executor": "crates/licoup-native/src/core/secure_mesh_mls_product/security_ledger.rs",
+    "configuration": "crates/licoup-secure-mesh/resources/state-machines/security-mls-operation.json",
+    "executor": "crates/licoup-secure-mesh/src/core/secure_mesh_mls_product/security_ledger.rs",
     "execution": "compiled-table",
     "verification": "verify:endpoint-collaboration"
   },
   {
     "id": "security-effect-capability",
     "owner": "endpoint-collaboration",
-    "configuration": "crates/licoup-native/resources/state-machines/security-capability.json",
-    "executor": "crates/licoup-native/src/domain/session_policy/capability.rs",
+    "configuration": "crates/licoup-application/resources/state-machines/security-capability.json",
+    "executor": "crates/licoup-application/src/session_policy/capability.rs",
     "execution": "compiled-table",
     "verification": "verify:endpoint-collaboration"
   },
   {
     "id": "security-macos-presence-batch",
     "owner": "endpoint-collaboration",
-    "configuration": "crates/licoup-native/resources/state-machines/security-macos-presence-batch.json",
-    "executor": "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
+    "configuration": "crates/licoup-secure-mesh/resources/state-machines/security-macos-presence-batch.json",
+    "executor": "crates/licoup-secure-mesh/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
     "execution": "compiled-table",
     "verification": "verify:endpoint-collaboration"
   },
   {
     "id": "security-custody-lifecycle",
     "owner": "endpoint-collaboration",
-    "configuration": "crates/licoup-native/resources/state-machines/security-custody-lifecycle.json",
-    "executor": "crates/licoup-native/src/domain/mobile_relay/endpoint_storage/store.rs",
+    "configuration": "crates/licoup-relay/resources/state-machines/security-custody-lifecycle.json",
+    "executor": "crates/licoup-relay/src/domain/mobile_relay/endpoint_storage/store.rs",
     "execution": "compiled-table",
     "verification": "verify:endpoint-collaboration",
     "source": "crates/licoup-endpoint-core/src/ports.rs",
     "symbol": "CustodyLifecycle",
     "consumers": [
-      "crates/licoup-native/src/domain/mobile_relay/endpoint_storage/root.rs",
-      "crates/licoup-native/src/domain/mobile_relay/endpoint_storage/custody.rs"
+      "crates/licoup-relay/src/domain/mobile_relay/endpoint_storage/root.rs",
+      "crates/licoup-relay/src/domain/mobile_relay/endpoint_storage/custody.rs"
     ]
   },
   {
     "id": "client-runtime-services",
     "owner": "native-bridge",
-    "configuration": "crates/licoup-native/resources/state-machines/services-client-runtime.json",
-    "executor": "crates/licoup-native/src/domain/client_runtime/runtime.rs",
+    "configuration": "crates/licoup-application/resources/state-machines/services-client-runtime.json",
+    "executor": "crates/licoup-application/src/client_runtime/runtime.rs",
     "execution": "compiled-table",
     "verification": "verify:native-bridge",
     "consumers": [
-      "crates/licoup-native/src/domain/client_runtime/mod.rs"
+      "crates/licoup-application/src/client_runtime/mod.rs"
     ]
   },
   {
@@ -372,36 +372,36 @@
   {
     "id": "security-approval",
     "owner": "endpoint-collaboration",
-    "configuration": "crates/licoup-native/resources/state-machines/security-approval.json",
-    "executor": "crates/licoup-native/src/core/secure_mesh_approval/response.rs",
+    "configuration": "crates/licoup-secure-mesh/resources/state-machines/security-approval.json",
+    "executor": "crates/licoup-secure-mesh/src/core/secure_mesh_approval/response.rs",
     "execution": "compiled-table",
     "verification": "verify:endpoint-collaboration",
     "consumers": [
-      "crates/licoup-native/src/core/secure_mesh_approval/request.rs",
-      "crates/licoup-native/src/core/secure_mesh_approval/model.rs"
+      "crates/licoup-secure-mesh/src/core/secure_mesh_approval/request.rs",
+      "crates/licoup-secure-mesh/src/core/secure_mesh_approval/model.rs"
     ]
   },
   {
     "id": "security-command-replay",
     "owner": "endpoint-collaboration",
-    "configuration": "crates/licoup-native/resources/state-machines/security-command-replay.json",
-    "executor": "crates/licoup-native/src/core/secure_mesh_command/replay.rs",
+    "configuration": "crates/licoup-secure-mesh/resources/state-machines/security-command-replay.json",
+    "executor": "crates/licoup-secure-mesh/src/core/secure_mesh_command/replay.rs",
     "execution": "compiled-table",
     "verification": "verify:endpoint-collaboration"
   },
   {
     "id": "security-file-transfer",
     "owner": "endpoint-collaboration",
-    "configuration": "crates/licoup-native/resources/state-machines/security-file-transfer.json",
-    "executor": "crates/licoup-native/src/core/secure_mesh_file/transfer.rs",
+    "configuration": "crates/licoup-secure-mesh/resources/state-machines/security-file-transfer.json",
+    "executor": "crates/licoup-secure-mesh/src/core/secure_mesh_file/transfer.rs",
     "execution": "compiled-table",
     "verification": "verify:endpoint-collaboration"
   },
   {
     "id": "security-kt-authority-challenge",
     "owner": "endpoint-collaboration",
-    "configuration": "crates/licoup-native/resources/state-machines/security-kt-authority-challenge.json",
-    "executor": "crates/licoup-native/src/domain/mobile_relay/key_transparency/authority/challenge.rs",
+    "configuration": "crates/licoup-relay/resources/state-machines/security-kt-authority-challenge.json",
+    "executor": "crates/licoup-relay/src/domain/mobile_relay/key_transparency/authority/challenge.rs",
     "execution": "compiled-table",
     "verification": "verify:endpoint-collaboration"
   },
