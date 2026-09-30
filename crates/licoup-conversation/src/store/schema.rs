@@ -249,6 +249,209 @@ pub(super) fn preflight_schema(connection: &Connection) -> StoreResult<Option<St
     Ok(prior_schema_version)
 }
 
+/// Read-only preflight for the migration admission.
+///
+/// Classifies the store exactly as the owner does and validates the physical
+/// layout of the two schemas the admission converts from or runs: the released
+/// source schema (12) and the current schema (18). Malformed metadata,
+/// development snapshots (13..17), and incomplete physical layouts are refused
+/// here, before the caller advances its high-water, frontier or domain markers.
+/// Returns the recorded inner schema version (`None` when the file carries no
+/// tables at all). Nothing in this function writes.
+pub fn validate_migration_source(connection: &Connection) -> StoreResult<Option<String>> {
+    let version = preflight_schema(connection)?;
+    match version.as_deref() {
+        Some(CURRENT_SCHEMA_VERSION) => {}
+        Some("12") => validate_released_schema_shape(connection)?,
+        _ => {}
+    }
+    Ok(version)
+}
+
+/// The final released schema-12 layout: every table and column the released
+/// initializer left once it converged an existing store, plus the converged
+/// membership identity index. The released layout is immutable; a store that
+/// merely stamps `12` without it is not a published source.
+fn validate_released_schema_shape(connection: &Connection) -> StoreResult<()> {
+    const RELEASED_TABLES: &[(&str, &[&str])] = &[
+        (
+            "conversation_dispatches",
+            &[
+                "id",
+                "conversation_id",
+                "membership_id",
+                "operation",
+                "state",
+                "session_mode",
+                "runtime_conversation_path",
+                "error_code",
+                "created_at",
+                "updated_at",
+            ],
+        ),
+        (
+            "conversations",
+            &[
+                "id",
+                "title",
+                "archived",
+                "pinned",
+                "is_group",
+                "strategy_revision",
+                "assistant_membership_id",
+                "revision",
+                "created_at",
+                "updated_at",
+            ],
+        ),
+        (
+            "direct_turns",
+            &[
+                "id",
+                "conversation_id",
+                "source_event_id",
+                "membership_id",
+                "state",
+                "ordinal",
+            ],
+        ),
+        (
+            "event_parts",
+            &[
+                "id",
+                "event_id",
+                "ordinal",
+                "kind",
+                "content",
+                "runtime_cursor",
+                "created_at",
+            ],
+        ),
+        (
+            "events",
+            &[
+                "id",
+                "conversation_id",
+                "sequence",
+                "author_membership_id",
+                "kind",
+                "causation_id",
+                "correlation_id",
+                "created_at",
+                "finalized",
+            ],
+        ),
+        (
+            "membership_profiles",
+            &[
+                "membership_id",
+                "revision",
+                "responsibility",
+                "required_capabilities",
+                "preferred_capabilities",
+                "skill_references",
+                "preferred_model",
+                "preferred_reasoning_effort",
+                "preferred_environment",
+                "updated_at",
+            ],
+        ),
+        (
+            "memberships",
+            &[
+                "id",
+                "conversation_id",
+                "principal_id",
+                "access",
+                "status",
+                "joined_at",
+                "left_at",
+            ],
+        ),
+        (
+            "migration_provenance",
+            &["source_kind", "source_identity", "conversation_id"],
+        ),
+        (
+            "principals",
+            &["id", "kind", "display_name", "agent_id", "created_at"],
+        ),
+        (
+            "runtime_bindings",
+            &[
+                "id",
+                "conversation_id",
+                "membership_id",
+                "lane",
+                "availability",
+                "safe_reason",
+                "runtime_session_id",
+                "runtime_conversation_path",
+                "working_directory",
+            ],
+        ),
+        (
+            "source_links",
+            &["id", "conversation_id", "source_kind", "native_identity"],
+        ),
+        (
+            "subagent_dispatch_claims",
+            &[
+                "id",
+                "conversation_id",
+                "caller_membership_id",
+                "target_membership_id",
+                "parent_dispatch_id",
+                "depth",
+                "state",
+                "created_at",
+                "updated_at",
+                "watchdog_deadline_unix_ms",
+            ],
+        ),
+        (
+            "subagent_mcp_inbound",
+            &[
+                "id",
+                "conversation_id",
+                "caller_membership_id",
+                "target_membership_id",
+                "tool",
+                "outcome",
+                "created_at",
+            ],
+        ),
+    ];
+    for (table, required_columns) in RELEASED_TABLES {
+        let pragma = format!("PRAGMA table_info({table})");
+        let columns = connection
+            .prepare(&pragma)?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<rusqlite::Result<BTreeSet<_>>>()?;
+        if columns.is_empty()
+            || required_columns
+                .iter()
+                .any(|column| !columns.contains(*column))
+        {
+            return Err(anyhow!("conversation_schema_incomplete"));
+        }
+    }
+    // The released converge pass replaced the partial membership index with the
+    // principal uniqueness the current reader relies on.
+    let membership_unique: bool = connection.query_row(
+        "SELECT EXISTS(
+           SELECT 1 FROM sqlite_schema
+           WHERE type='index' AND name='memberships_principal_unique'
+         )",
+        [],
+        |row| row.get(0),
+    )?;
+    if !membership_unique {
+        return Err(anyhow!("conversation_schema_incomplete"));
+    }
+    Ok(())
+}
+
 fn validate_current_schema_shape(connection: &Connection) -> StoreResult<()> {
     const REQUIRED_TABLES: &[&str] = &[
         "schema_meta",

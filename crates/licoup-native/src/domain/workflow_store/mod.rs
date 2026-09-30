@@ -19,6 +19,7 @@ pub use control::DurableControlledStore;
 pub use queue::{DurableQueue, DurableQueueLease, DurableQueueStats, QueueReplay, QueueStoreError};
 pub use store::StrategyStore;
 pub(crate) use store::normalize_legacy_workflow;
+pub(crate) use store::validate_published_core_layout;
 pub use strategy_types::{
     BindingCandidate, BindingValue, StrategyAuthorization, StrategyDefinition,
     StrategyDefinitionSummary, StrategyDiagnostic, StrategyError, StrategyErrorCode,

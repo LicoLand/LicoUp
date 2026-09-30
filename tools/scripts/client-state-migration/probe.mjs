@@ -226,20 +226,590 @@ function collectionsProbe(root, shape) {
   };
 }
 
+// The Conversation owner's own layout contract in
+// `crates/licoup-conversation/src/store/schema.rs`: `validate_current_schema_shape`
+// for the current schema, and the owner's released schema-12 layout
+// (`validate_released_schema_shape`). A version row on anything less than these
+// physical layouts is not a store.
+export const CONVERSATION_CURRENT_TABLES = Object.freeze([
+  "schema_meta",
+  "principals",
+  "conversations",
+  "memberships",
+  "membership_profiles",
+  "events",
+  "event_parts",
+  "direct_turns",
+  "event_search",
+  "source_links",
+  "runtime_bindings",
+  "conversation_dispatches",
+  "subagent_dispatch_claims",
+  "subagent_mcp_inbound",
+  "subagent_dispatch_deliveries",
+  "migration_provenance",
+  "archived_native_sessions",
+  "conversation_native_sessions",
+]);
+export const CONVERSATION_CURRENT_COLUMNS = Object.freeze({
+  schema_meta: Object.freeze(["key", "value"]),
+  conversations: Object.freeze(["id", "revision", "updated_at"]),
+  events: Object.freeze([
+    "id",
+    "conversation_id",
+    "sequence",
+    "author_membership_id",
+    "correlation_id",
+    "kind",
+    "finalized",
+  ]),
+  event_parts: Object.freeze(["event_id", "ordinal", "kind", "content", "created_at"]),
+  direct_turns: Object.freeze(["id", "state"]),
+  event_search: Object.freeze(["event_id", "conversation_id", "content"]),
+  conversation_dispatches: Object.freeze([
+    "id",
+    "conversation_id",
+    "membership_id",
+    "state",
+    "created_at",
+    "error_code",
+    "updated_at",
+  ]),
+  subagent_dispatch_claims: Object.freeze([
+    "id",
+    "conversation_id",
+    "caller_membership_id",
+    "state",
+    "updated_at",
+  ]),
+  subagent_dispatch_deliveries: Object.freeze([
+    "claim_id",
+    "kind",
+    "conversation_id",
+    "recipient_membership_id",
+    "state",
+    "terminal_state",
+    "payload",
+    "attempt_count",
+    "created_at",
+    "updated_at",
+  ]),
+});
+const CONVERSATION_RELEASED_SCHEMA_VERSION = "12";
+export const CONVERSATION_RELEASED_MEMBERSHIP_INDEX = "memberships_principal_unique";
+export const CONVERSATION_RELEASED_TABLES = Object.freeze({
+  conversation_dispatches: Object.freeze([
+    "id",
+    "conversation_id",
+    "membership_id",
+    "operation",
+    "state",
+    "session_mode",
+    "runtime_conversation_path",
+    "error_code",
+    "created_at",
+    "updated_at",
+  ]),
+  conversations: Object.freeze([
+    "id",
+    "title",
+    "archived",
+    "pinned",
+    "is_group",
+    "strategy_revision",
+    "assistant_membership_id",
+    "revision",
+    "created_at",
+    "updated_at",
+  ]),
+  direct_turns: Object.freeze([
+    "id",
+    "conversation_id",
+    "source_event_id",
+    "membership_id",
+    "state",
+    "ordinal",
+  ]),
+  event_parts: Object.freeze([
+    "id",
+    "event_id",
+    "ordinal",
+    "kind",
+    "content",
+    "runtime_cursor",
+    "created_at",
+  ]),
+  events: Object.freeze([
+    "id",
+    "conversation_id",
+    "sequence",
+    "author_membership_id",
+    "kind",
+    "causation_id",
+    "correlation_id",
+    "created_at",
+    "finalized",
+  ]),
+  membership_profiles: Object.freeze([
+    "membership_id",
+    "revision",
+    "responsibility",
+    "required_capabilities",
+    "preferred_capabilities",
+    "skill_references",
+    "preferred_model",
+    "preferred_reasoning_effort",
+    "preferred_environment",
+    "updated_at",
+  ]),
+  memberships: Object.freeze([
+    "id",
+    "conversation_id",
+    "principal_id",
+    "access",
+    "status",
+    "joined_at",
+    "left_at",
+  ]),
+  migration_provenance: Object.freeze(["source_kind", "source_identity", "conversation_id"]),
+  principals: Object.freeze(["id", "kind", "display_name", "agent_id", "created_at"]),
+  runtime_bindings: Object.freeze([
+    "id",
+    "conversation_id",
+    "membership_id",
+    "lane",
+    "availability",
+    "safe_reason",
+    "runtime_session_id",
+    "runtime_conversation_path",
+    "working_directory",
+  ]),
+  source_links: Object.freeze(["id", "conversation_id", "source_kind", "native_identity"]),
+  subagent_dispatch_claims: Object.freeze([
+    "id",
+    "conversation_id",
+    "caller_membership_id",
+    "target_membership_id",
+    "parent_dispatch_id",
+    "depth",
+    "state",
+    "created_at",
+    "updated_at",
+    "watchdog_deadline_unix_ms",
+  ]),
+  subagent_mcp_inbound: Object.freeze([
+    "id",
+    "conversation_id",
+    "caller_membership_id",
+    "target_membership_id",
+    "tool",
+    "outcome",
+    "created_at",
+  ]),
+});
+
+// The strategy store's exact core layout, mirrored from the owner's
+// `validate_published_core_layout` in
+// `crates/licoup-native/src/domain/workflow_store/store.rs`. The released
+// schema 2 and the current schema 3 create the same seven tables, keys,
+// foreign keys and uniqueness constraints; only `strategy_meta.version`
+// differs.
+export const STRATEGY_CORE_TABLES = Object.freeze([
+  Object.freeze({
+    name: "strategy_meta",
+    columns: Object.freeze([
+      ["key", "TEXT", false, 1],
+      ["value", "TEXT", true, 0],
+    ]),
+    foreignKeys: Object.freeze([]),
+    uniqueSets: Object.freeze([Object.freeze([Object.freeze(["key"]), false])]),
+    indexes: Object.freeze([]),
+  }),
+  Object.freeze({
+    name: "strategy_definitions",
+    columns: Object.freeze([
+      ["definition_id", "TEXT", true, 0],
+      ["revision_digest", "TEXT", false, 1],
+      ["semantics_digest", "TEXT", true, 0],
+      ["name", "TEXT", true, 0],
+      ["version", "TEXT", true, 0],
+      ["workflow_json", "TEXT", true, 0],
+      ["asset_count", "INTEGER", true, 0],
+      ["imported_at", "INTEGER", true, 0],
+    ]),
+    foreignKeys: Object.freeze([]),
+    uniqueSets: Object.freeze([Object.freeze([Object.freeze(["revision_digest"]), false])]),
+    indexes: Object.freeze([
+      Object.freeze([
+        "strategy_definitions_id_idx",
+        Object.freeze(["definition_id", "imported_at"]),
+        false,
+        false,
+        "",
+      ]),
+    ]),
+  }),
+  Object.freeze({
+    name: "strategy_bindings",
+    columns: Object.freeze([
+      ["revision_digest", "TEXT", true, 1],
+      ["slot_id", "TEXT", true, 2],
+      ["ordinal", "INTEGER", true, 3],
+      ["value_id", "TEXT", true, 0],
+      ["model", "TEXT", true, 0],
+      ["reasoning_effort", "TEXT", true, 0],
+      ["revision", "INTEGER", true, 0],
+    ]),
+    foreignKeys: Object.freeze([
+      Object.freeze(["revision_digest", "strategy_definitions", "revision_digest", "CASCADE"]),
+    ]),
+    uniqueSets: Object.freeze([
+      Object.freeze([
+        Object.freeze(["revision_digest", "slot_id", "ordinal"]),
+        false,
+      ]),
+    ]),
+    indexes: Object.freeze([]),
+  }),
+  Object.freeze({
+    name: "strategy_authorizations",
+    columns: Object.freeze([
+      ["revision_digest", "TEXT", true, 1],
+      ["revision", "INTEGER", true, 2],
+      ["semantics_digest", "TEXT", true, 0],
+      ["binding_digest", "TEXT", true, 0],
+      ["authorization_digest", "TEXT", true, 0],
+      ["active", "INTEGER", true, 0],
+      ["created_at", "INTEGER", true, 0],
+    ]),
+    foreignKeys: Object.freeze([
+      Object.freeze(["revision_digest", "strategy_definitions", "revision_digest", "CASCADE"]),
+    ]),
+    uniqueSets: Object.freeze([
+      Object.freeze([Object.freeze(["revision_digest", "revision"]), false]),
+      Object.freeze([Object.freeze(["revision_digest"]), true]),
+    ]),
+    indexes: Object.freeze([
+      Object.freeze([
+        "strategy_authorization_active_idx",
+        Object.freeze(["revision_digest"]),
+        true,
+        true,
+        "WHERE active=1",
+      ]),
+    ]),
+  }),
+  Object.freeze({
+    name: "strategy_runs",
+    columns: Object.freeze([
+      ["run_id", "TEXT", false, 1],
+      ["revision_digest", "TEXT", true, 0],
+      ["semantics_digest", "TEXT", true, 0],
+      ["idempotency_key", "TEXT", true, 0],
+      ["request_digest", "TEXT", true, 0],
+      ["snapshot_json", "TEXT", true, 0],
+      ["conversation_id", "TEXT", false, 0],
+      ["terminal", "INTEGER", true, 0],
+      ["created_at", "INTEGER", true, 0],
+      ["updated_at", "INTEGER", true, 0],
+    ]),
+    foreignKeys: Object.freeze([
+      Object.freeze([
+        "revision_digest",
+        "strategy_definitions",
+        "revision_digest",
+        "NO ACTION",
+      ]),
+    ]),
+    uniqueSets: Object.freeze([
+      Object.freeze([Object.freeze(["run_id"]), false]),
+      Object.freeze([Object.freeze(["idempotency_key"]), false]),
+    ]),
+    indexes: Object.freeze([
+      Object.freeze([
+        "strategy_runs_revision_idx",
+        Object.freeze(["revision_digest", "updated_at"]),
+        false,
+        false,
+        "",
+      ]),
+      Object.freeze([
+        "strategy_runs_active_conversation_idx",
+        Object.freeze(["revision_digest", "conversation_id", "terminal", "updated_at"]),
+        false,
+        false,
+        "",
+      ]),
+    ]),
+  }),
+  Object.freeze({
+    name: "strategy_run_events",
+    columns: Object.freeze([
+      ["run_id", "TEXT", true, 1],
+      ["sequence", "INTEGER", true, 2],
+      ["event_type", "TEXT", true, 0],
+      ["event_json", "TEXT", true, 0],
+      ["created_at", "INTEGER", true, 0],
+    ]),
+    foreignKeys: Object.freeze([
+      Object.freeze(["run_id", "strategy_runs", "run_id", "CASCADE"]),
+    ]),
+    uniqueSets: Object.freeze([
+      Object.freeze([Object.freeze(["run_id", "sequence"]), false]),
+    ]),
+    indexes: Object.freeze([]),
+  }),
+  Object.freeze({
+    name: "strategy_commands",
+    columns: Object.freeze([
+      ["command_id", "TEXT", false, 1],
+      ["run_id", "TEXT", true, 0],
+      ["state_id", "TEXT", true, 0],
+      ["kind", "TEXT", true, 0],
+      ["status", "TEXT", true, 0],
+      ["attempt", "INTEGER", true, 0],
+      ["attempt_token", "TEXT", true, 0],
+      ["command_json", "TEXT", true, 0],
+      ["lease_owner", "TEXT", false, 0],
+      ["lease_until", "INTEGER", false, 0],
+      ["updated_at", "INTEGER", true, 0],
+    ]),
+    foreignKeys: Object.freeze([
+      Object.freeze(["run_id", "strategy_runs", "run_id", "CASCADE"]),
+    ]),
+    uniqueSets: Object.freeze([
+      Object.freeze([Object.freeze(["command_id"]), false]),
+    ]),
+    indexes: Object.freeze([
+      Object.freeze([
+        "strategy_commands_ready_idx",
+        Object.freeze(["status", "command_id"]),
+        false,
+        false,
+        "",
+      ]),
+      Object.freeze([
+        "strategy_commands_lease_idx",
+        Object.freeze(["lease_until"]),
+        false,
+        true,
+        "WHERE status IN ('claimed', 'running')",
+      ]),
+    ]),
+  }),
+]);
+
+const STRATEGY_CORE_FORMATS = Object.freeze(
+  Object.fromEntries(
+    Object.entries(ADAPTIVE_FLYWHEEL_SCHEMA_VERSIONS).map(([version, domainVersion]) => [
+      version,
+      Object.freeze({ domainSchemaVersion: domainVersion }),
+    ]),
+  ),
+);
+
+function withReadOnlyDatabase(pathname, callback) {
+  const module = sqliteOrNull();
+  if (module === null) throw new MigrationStateError("probe_capability_unavailable");
+  if (!hasSqliteHeader(pathname)) throw new MigrationStateError("unsupported_state_shape");
+  let database;
+  try {
+    database = new module.DatabaseSync(pathname, { readOnly: true });
+  } catch {
+    throw new MigrationStateError("unsupported_state_shape");
+  }
+  try {
+    return callback(database);
+  } finally {
+    database.close();
+  }
+}
+
+function sqliteTableNames(database) {
+  return new Set(
+    database
+      .prepare("SELECT name FROM sqlite_schema WHERE type='table'")
+      .all()
+      .map((row) => String(row.name)),
+  );
+}
+
+function sqliteColumns(database, table) {
+  return new Set(
+    database
+      .prepare(`PRAGMA table_info(${table})`)
+      .all()
+      .map((row) => String(row.name)),
+  );
+}
+
+function sqliteTableInfo(database, table) {
+  return database.prepare(`PRAGMA table_info(${table})`).all().map((row) => ({
+    name: String(row.name),
+    type: String(row.type ?? ""),
+    notNull: Number(row.notnull) !== 0,
+    pk: Number(row.pk),
+  }));
+}
+
+function sqliteForeignKeys(database, table) {
+  return database
+    .prepare(`PRAGMA foreign_key_list(${table})`)
+    .all()
+    .map((row) => [
+      String(row.from),
+      String(row.table),
+      String(row.to ?? ""),
+      String(row.on_delete),
+    ]);
+}
+
+function sqliteIndexList(database, table) {
+  return database.prepare(`PRAGMA index_list(${table})`).all().map((row) => ({
+    name: String(row.name),
+    unique: Number(row.unique) !== 0,
+    partial: Number(row.partial ?? 0) !== 0,
+  }));
+}
+
+function sqliteIndexColumns(database, indexName) {
+  const rows = database.prepare(`PRAGMA index_info(${indexName})`).all();
+  if (rows.some((row) => row.name === null || row.name === undefined)) {
+    throw new MigrationStateError("unsupported_state_shape");
+  }
+  return rows.map((row) => String(row.name));
+}
+
+function stableKey(value) {
+  return JSON.stringify(value);
+}
+
+function inspectConversationLayout(database) {
+  const tables = sqliteTableNames(database);
+  if (!tables.has("schema_meta")) {
+    if (tables.size === 0) return { version: null };
+    throw new MigrationStateError("unsupported_state_shape");
+  }
+  const row = database.prepare("SELECT value FROM schema_meta WHERE key='version'").get();
+  if (row === undefined || row.value === null) {
+    throw new MigrationStateError("unsupported_state_shape");
+  }
+  const version = String(row.value);
+  if (version === CONVERSATION_SCHEMA_VERSION) {
+    if (!CONVERSATION_CURRENT_TABLES.every((table) => tables.has(table))) {
+      throw new MigrationStateError("unsupported_state_shape");
+    }
+    for (const [table, columns] of Object.entries(CONVERSATION_CURRENT_COLUMNS)) {
+      const present = sqliteColumns(database, table);
+      if (!columns.every((column) => present.has(column))) {
+        throw new MigrationStateError("unsupported_state_shape");
+      }
+    }
+    return { version };
+  }
+  if (version === CONVERSATION_RELEASED_SCHEMA_VERSION) {
+    for (const [table, columns] of Object.entries(CONVERSATION_RELEASED_TABLES)) {
+      const present = sqliteColumns(database, table);
+      if (columns.some((column) => !present.has(column))) {
+        throw new MigrationStateError("unsupported_state_shape");
+      }
+    }
+    const membership = database
+      .prepare("SELECT 1 FROM sqlite_schema WHERE type='index' AND name=?")
+      .get(CONVERSATION_RELEASED_MEMBERSHIP_INDEX);
+    if (membership === undefined) throw new MigrationStateError("unsupported_state_shape");
+    return { version };
+  }
+  if (/^(?:[1-9]|10|11)$/u.test(version)) return { version };
+  throw new MigrationStateError("unsupported_state_shape");
+}
+
+function requireStrategyCoreLayout(database, expectedVersion) {
+  const row = database.prepare("SELECT value FROM strategy_meta WHERE key='version'").get();
+  if (row === undefined || row.value === null || String(row.value) !== expectedVersion) {
+    throw new MigrationStateError("unsupported_state_shape");
+  }
+  for (const table of STRATEGY_CORE_TABLES) {
+    const info = sqliteTableInfo(database, table.name);
+    if (info.length !== table.columns.length) {
+      throw new MigrationStateError("unsupported_state_shape");
+    }
+    for (const [name, type, notNull, pk] of table.columns) {
+      const column = info.find((entry) => entry.name === name);
+      if (
+        column === undefined ||
+        column.type.toUpperCase() !== type ||
+        column.notNull !== notNull ||
+        column.pk !== pk
+      ) {
+        throw new MigrationStateError("unsupported_state_shape");
+      }
+    }
+    const actualForeignKeys = sqliteForeignKeys(database, table.name).sort((left, right) =>
+      stableKey(left) < stableKey(right) ? -1 : 1,
+    );
+    const expectedForeignKeys = table.foreignKeys
+      .map((entry) => [...entry])
+      .sort((left, right) => (stableKey(left) < stableKey(right) ? -1 : 1));
+    if (stableKey(actualForeignKeys) !== stableKey(expectedForeignKeys)) {
+      throw new MigrationStateError("unsupported_state_shape");
+    }
+    const listed = sqliteIndexList(database, table.name);
+    const actualUniqueSets = listed
+      .filter((index) => index.unique)
+      .map((index) => [sqliteIndexColumns(database, index.name), index.partial])
+      .sort((left, right) => (stableKey(left) < stableKey(right) ? -1 : 1));
+    const expectedUniqueSets = table.uniqueSets
+      .map(([columns, partial]) => [[...columns], partial])
+      .sort((left, right) => (stableKey(left) < stableKey(right) ? -1 : 1));
+    if (stableKey(actualUniqueSets) !== stableKey(expectedUniqueSets)) {
+      throw new MigrationStateError("unsupported_state_shape");
+    }
+    const named = listed
+      .filter((index) => !index.name.startsWith("sqlite_autoindex_"))
+      .map((index) => index.name)
+      .sort();
+    const expectedNames = table.indexes.map((index) => index[0]).sort();
+    if (stableKey(named) !== stableKey(expectedNames)) {
+      throw new MigrationStateError("unsupported_state_shape");
+    }
+    for (const [name, columns, unique, partial, predicate] of table.indexes) {
+      const entry = listed.find((index) => index.name === name);
+      if (entry === undefined || entry.unique !== unique || entry.partial !== partial) {
+        throw new MigrationStateError("unsupported_state_shape");
+      }
+      if (stableKey(sqliteIndexColumns(database, name)) !== stableKey([...columns])) {
+        throw new MigrationStateError("unsupported_state_shape");
+      }
+      if (predicate !== "") {
+        const sqlRow = database
+          .prepare("SELECT sql FROM sqlite_master WHERE type='index' AND name=?")
+          .get(name);
+        const normalized =
+          sqlRow === undefined || sqlRow.sql === null
+            ? ""
+            : String(sqlRow.sql).split(/\s+/u).join(" ");
+        if (!normalized.includes(predicate)) {
+          throw new MigrationStateError("unsupported_state_shape");
+        }
+      }
+    }
+  }
+}
+
 function conversationStoreProbe(root) {
   const database = path.join(root, "client-state/conversations/conversations.sqlite3");
   const completion = path.join(root, "client-state/conversations/migration-v5.complete");
   const databasePresent = regularFileExists(database);
   const completionPresent = regularFileExists(completion);
   const legacyPresent = canonicalLegacyStatePresent(root);
-  const inner = databasePresent
-    ? readSqliteMeta(database, "schema_meta", "version", CONVERSATION_SCHEMA_VERSION)
-    : { available: true, value: null, code: null };
-  if (inner.code !== null) throw new MigrationStateError(inner.code);
   if (!databasePresent) {
     requireValue(!completionPresent, "unsupported_state_shape");
     return { storeSchemaVersion: 0, present: legacyPresent, documentSchemaVersion: null };
   }
+  const layout = withReadOnlyDatabase(database, (connection) =>
+    inspectConversationLayout(connection),
+  );
   if (!completionPresent) {
     return { storeSchemaVersion: 0, present: true, documentSchemaVersion: null };
   }
@@ -248,12 +818,12 @@ function conversationStoreProbe(root) {
     readBoundedText(completion) === CONVERSATION_COMPLETION_MARKER,
     "unsupported_state_shape",
   );
-  return {
-    storeSchemaVersion: 1,
-    present: true,
-    documentSchemaVersion: null,
-    unverified: inner.available ? null : "inner_store_schema",
-  };
+  // The completion marker is written only after a store existed at a published
+  // inner schema. Older published schemas (1..11) remain documented migration
+  // sources the owner upgrades; a marker over a versionless file is not a
+  // store at all.
+  requireValue(layout.version !== null, "unsupported_state_shape");
+  return { storeSchemaVersion: 1, present: true, documentSchemaVersion: null };
 }
 
 function adaptiveFlywheelProbe(root) {
@@ -261,23 +831,30 @@ function adaptiveFlywheelProbe(root) {
   if (!regularFileExists(database)) {
     return { storeSchemaVersion: 0, present: false, documentSchemaVersion: null };
   }
-  const inner = readSqliteMeta(database, "strategy_meta", "version", null);
-  if (!inner.available) {
+  return withReadOnlyDatabase(database, (connection) => {
+    const row = connection.prepare("SELECT value FROM strategy_meta WHERE key='version'").get();
+    if (row === undefined || row.value === null) {
+      throw new MigrationStateError("unsupported_state_shape");
+    }
+    const version = String(row.value);
+    const format = STRATEGY_CORE_FORMATS[version];
+    if (format !== undefined) {
+      requireStrategyCoreLayout(connection, version);
+      return {
+        storeSchemaVersion: format.domainSchemaVersion,
+        present: true,
+        documentSchemaVersion: Number(version),
+      };
+    }
+    const numeric = Number(version);
+    if (Number.isInteger(numeric) && numeric > 3) {
+      throw new MigrationStateError("state_newer_than_binary");
+    }
+    // Legacy stamps (0/1) are not a published layout this tool recognizes, and
+    // neither is a malformed version: both are refused rather than mapped to a
+    // version.
     throw new MigrationStateError("unsupported_state_shape");
-  }
-  if (inner.code !== null) throw new MigrationStateError(inner.code);
-  const mapped = ADAPTIVE_FLYWHEEL_SCHEMA_VERSIONS[inner.value];
-  if (mapped !== undefined) {
-    return { storeSchemaVersion: mapped, present: true, documentSchemaVersion: Number(inner.value) };
-  }
-  const numeric = Number(inner.value);
-  if (Number.isInteger(numeric) && numeric < 2) {
-    return { storeSchemaVersion: 0, present: true, documentSchemaVersion: numeric };
-  }
-  if (Number.isInteger(numeric) && numeric > 3) {
-    throw new MigrationStateError("state_newer_than_binary");
-  }
-  throw new MigrationStateError("unsupported_state_shape");
+  });
 }
 
 function canonicalLegacyStatePresent(root) {
@@ -325,50 +902,6 @@ function sqliteOrNull() {
     }
   }
   return sqliteModule;
-}
-
-/**
- * Reads a `key`/`value` marker table the way `probe_sqlite_meta` does. When the
- * runtime has no SQLite reader the caller is told the probe is unavailable and
- * decides for itself whether that is a fail-closed condition.
- */
-function readSqliteMeta(pathname, table, key, current) {
-  const module = sqliteOrNull();
-  if (module === null) return { available: false, value: null, code: null };
-  if (!hasSqliteHeader(pathname)) {
-    return { available: true, value: null, code: "unsupported_state_shape" };
-  }
-  let database;
-  try {
-    database = new module.DatabaseSync(pathname, { readOnly: true });
-  } catch {
-    return { available: true, value: null, code: "unsupported_state_shape" };
-  }
-  try {
-    const row = database.prepare(`SELECT value FROM ${table} WHERE key = ?`).get(key);
-    const value = row === undefined || row.value === null ? null : String(row.value);
-    if (current === null) {
-      return value === null
-        ? { available: true, value: null, code: "unsupported_state_shape" }
-        : { available: true, value, code: null };
-    }
-    if (value === current) return { available: true, value, code: null };
-    const numeric = Number(value);
-    if (Number.isInteger(numeric) && numeric < Number(current)) {
-      return { available: true, value, code: null };
-    }
-    return {
-      available: true,
-      value,
-      code: Number.isInteger(numeric) && numeric > Number(current)
-        ? "state_newer_than_binary"
-        : "unsupported_state_shape",
-    };
-  } catch {
-    return { available: true, value: null, code: "unsupported_state_shape" };
-  } finally {
-    database.close();
-  }
 }
 
 /**

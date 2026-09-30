@@ -52,32 +52,13 @@ pub(super) const STRATEGY_STORE_ARTIFACT: &str =
 pub(super) const STRATEGY_STORE_ARTIFACT_SCHEMA: &str =
     "v0.0.1:strategy-store-conversion-artifact-1";
 
-/// The seven tables both published writers create, with the columns this
-/// conversion relies on. A released store is not a version stamp on a truncated
-/// database: the probe refuses that layout before any data is touched.
-const STRATEGY_STORE_TABLES: &[(&str, &[&str])] = &[
-    ("strategy_meta", &["key", "value"]),
-    (
-        "strategy_definitions",
-        &["revision_digest", "workflow_json"],
-    ),
-    (
-        "strategy_bindings",
-        &["ordinal", "value_id", "model", "reasoning_effort"],
-    ),
-    (
-        "strategy_authorizations",
-        &["revision_digest", "revision", "active"],
-    ),
-    (
-        "strategy_runs",
-        &["snapshot_json", "conversation_id", "terminal"],
-    ),
-    ("strategy_run_events", &["run_id", "sequence", "event_json"]),
-    ("strategy_commands", &["command_id", "run_id", "status"]),
-];
-
 /// A layout of the strategy database, as data.
+///
+/// The physical layout itself is validated by the owning store
+/// (`validate_published_core_layout`), not by a table or column subset here:
+/// both published writers create the same seven core tables with the same keys,
+/// foreign keys and uniqueness constraints, and only the `strategy_meta.version`
+/// row tells them apart.
 pub(super) struct StrategyStoreFormat {
     pub(super) format_id: &'static str,
     /// The `strategy_meta.version` values this layout shipped under. Both
@@ -85,8 +66,6 @@ pub(super) struct StrategyStoreFormat {
     pub(super) meta_versions: &'static [&'static str],
     /// The frontier domain version this layout answers to.
     pub(super) domain_schema_version: u32,
-    /// Tables that must be present, with the columns a reader relies on.
-    pub(super) required: &'static [(&'static str, &'static [&'static str])],
 }
 
 /// The two layouts this conversion model knows, released first.
@@ -95,13 +74,11 @@ pub(super) const STRATEGY_STORE_FORMATS: &[StrategyStoreFormat] = &[
         format_id: "strategy-store-2",
         meta_versions: &["2"],
         domain_schema_version: 1,
-        required: STRATEGY_STORE_TABLES,
     },
     StrategyStoreFormat {
         format_id: "strategy-store-3",
         meta_versions: &["3"],
         domain_schema_version: 2,
-        required: STRATEGY_STORE_TABLES,
     },
 ];
 
@@ -164,42 +141,15 @@ pub(super) fn strategy_store_path(from: &str, to: &str) -> Result<Vec<&'static S
     Ok(path)
 }
 
-pub(super) fn published_table_columns(connection: &Connection, table: &str) -> Result<Vec<String>> {
-    ensure!(
-        table
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'),
-        "unsupported_state_shape"
-    );
-    let mut statement = connection.prepare(&format!("PRAGMA table_info({table})"))?;
-    let names = statement
-        .query_map([], |row| row.get::<_, String>(1))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(names)
-}
-
-pub(super) fn strategy_table_columns(connection: &Connection, table: &str) -> Result<Vec<String>> {
-    published_table_columns(connection, table)
-}
-
-pub(super) fn strategy_table_has_columns(
-    connection: &Connection,
-    table: &str,
-    required: &[&str],
-) -> Result<bool> {
-    let present = strategy_table_columns(connection, table)?;
-    Ok(required
-        .iter()
-        .all(|column| present.iter().any(|name| name == column)))
-}
-
 /// Read which known layout a real file holds.
 ///
 /// Read-only, and by construction unable to declare a layout: the answer comes
-/// from the file's own `strategy_meta` row and from the tables and columns that
-/// are physically there. A file that matches no layout is refused rather than
-/// converted, and a file whose version is ahead of this binary is refused as
-/// `state_newer_than_binary` — the same two answers the domain probe gives.
+/// from the file's own `strategy_meta` row and then from the owning store's
+/// exact layout validation, which checks the seven core tables, their columns,
+/// keys, foreign keys, uniqueness constraints and named indexes. A file that
+/// matches no known version is refused, a file whose version is ahead of this
+/// binary is refused as `state_newer_than_binary`, and a version row on an
+/// incomplete or malformed layout is refused as `unsupported_state_shape`.
 pub(super) fn read_strategy_store_format(path: &Path) -> Result<&'static StrategyStoreFormat> {
     ensure!(regular_file_present(path)?, "unsupported_state_shape");
     let connection = Connection::open_with_flags(
@@ -232,16 +182,9 @@ pub(super) fn read_strategy_store_format_on(
         if !format.meta_versions.contains(&version.as_str()) {
             continue;
         }
-        let mut matches = true;
-        for (table, columns) in format.required {
-            if !strategy_table_has_columns(connection, table, columns)? {
-                matches = false;
-                break;
-            }
-        }
-        if matches {
-            return Ok(format);
-        }
+        crate::domain::workflow_store::validate_published_core_layout(connection, &version)
+            .context("unsupported_state_shape")?;
+        return Ok(format);
     }
     bail!("unsupported_state_shape")
 }

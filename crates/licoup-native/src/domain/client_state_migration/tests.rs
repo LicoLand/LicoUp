@@ -1,8 +1,48 @@
-use super::source_fixtures::*;
 use super::*;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, collections::BTreeSet, fs, path::Path};
+
+// The released source fixture is shared data frozen from tag v0.2.1; unit,
+// recovery and standalone migration targets include the same file so the
+// released layout is defined exactly once.
+include!("../../../../../tests/fixtures/client_state_migration/released_source.rs");
+
+/// Materialize the shared released source root with the native drivers.
+fn seed_released_source_root(root: &Path) {
+    seed_released_conversation_store(root);
+    seed_released_strategy_store(&root.join(RELEASED_STRATEGY_DATABASE));
+    let marker_root = root.join("client-state/migrations/domain-state");
+    licoup_foundation::platform::file_security::ensure_private_dir(&marker_root).unwrap();
+    for (relative, content) in released_root_files() {
+        let path = root.join(&relative);
+        if relative == RELEASED_CONVERSATION_COMPLETION {
+            fs::write(&path, content).unwrap();
+            continue;
+        }
+        let document: Value = serde_json::from_str(&content).unwrap();
+        write_json_atomic(&path, &document).unwrap();
+    }
+}
+
+fn seed_released_conversation_store(root: &Path) {
+    let database = root.join(RELEASED_CONVERSATION_DATABASE);
+    fs::create_dir_all(database.parent().unwrap()).unwrap();
+    let connection = Connection::open(&database).unwrap();
+    connection
+        .execute_batch(RELEASED_CONVERSATION_SCHEMA)
+        .unwrap();
+    connection
+        .execute_batch(RELEASED_CONVERSATION_ROWS)
+        .unwrap();
+}
+
+fn seed_released_strategy_store(path: &Path) {
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let connection = Connection::open(path).unwrap();
+    connection.execute_batch(RELEASED_STRATEGY_SCHEMA).unwrap();
+    connection.execute_batch(&released_strategy_rows()).unwrap();
+}
 
 #[cfg(target_os = "macos")]
 #[test]
@@ -666,12 +706,15 @@ fn unsupported_adaptive_flywheel_schema_refuses_without_writing_database() {
         assert_eq!(fs::read(&database).unwrap(), before);
         assert!(!root.join("client-state/migrations/ledger.json").exists());
         let connection = Connection::open(&database).unwrap();
-        let canary: String = connection
-            .query_row("SELECT value FROM preservation_canary", [], |row| {
-                row.get(0)
-            })
+        let binding: String = connection
+            .query_row(
+                "SELECT value_id FROM strategy_bindings
+                  WHERE revision_digest=?1 AND slot_id='actor' AND ordinal=0",
+                rusqlite::params![RELEASED_DEFINITION_REVISION],
+                |row| row.get(0),
+            )
             .unwrap();
-        assert_eq!(canary, "must-survive");
+        assert_eq!(binding, "lico-basic");
         let _ = fs::remove_dir_all(root);
     }
 }
@@ -716,7 +759,9 @@ fn a_released_source_root_is_admitted_to_the_current_frontier() {
         "a domain already at its target is not reported as converted"
     );
 
-    // The released strategy layout reached the current one, with its canary.
+    // The released strategy layout reached the current one. The owning store
+    // reads the released definition, its ordinal binding and its authorization
+    // back, and the raw run/event rows survive with their values.
     let database = root.join(strategy_store::STRATEGY_STORE_DATABASE);
     let connection = Connection::open(&database).unwrap();
     let version: String = connection
@@ -726,17 +771,41 @@ fn a_released_source_root_is_admitted_to_the_current_frontier() {
             |row| row.get(0),
         )
         .unwrap();
-    let canary: String = connection
-        .query_row("SELECT value FROM preservation_canary", [], |row| {
-            row.get(0)
-        })
-        .unwrap();
     assert_eq!(version, "3");
-    assert_eq!(canary, "must-survive");
+    drop(connection);
+    let strategy = crate::domain::workflow_store::StrategyStore::open(&root).unwrap();
+    let definition = strategy
+        .definition_by_revision(RELEASED_DEFINITION_REVISION)
+        .unwrap();
+    assert_eq!(definition.summary.name, "Temporary");
+    assert_eq!(definition.workflow.metadata.id, "assistant-temporary");
+    assert_eq!(definition.bindings.len(), 1);
+    assert_eq!(definition.bindings[0].slot_id, "actor");
+    assert!(definition.authorization.unwrap().active);
+    let connection = Connection::open(&database).unwrap();
+    let run: (String, String, String) = connection
+        .query_row(
+            "SELECT conversation_id, idempotency_key, snapshot_json
+               FROM strategy_runs WHERE run_id=?1",
+            rusqlite::params![RELEASED_RUN_ID],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(run.0, RELEASED_CONVERSATION_ID);
+    assert_eq!(run.1, "released-idempotency");
+    let event: (String, String) = connection
+        .query_row(
+            "SELECT event_type, event_json FROM strategy_run_events
+              WHERE run_id=?1 AND sequence=1",
+            rusqlite::params![RELEASED_RUN_ID],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(event.0, "run-completed");
     drop(connection);
 
-    // The released Conversation store is upgraded in place by its owner, and
-    // the released conversation survives the schema-12 upgrade.
+    // The released Conversation store is upgraded in place by its owner; the
+    // owning store reads the released conversation and its event back.
     let database = root.join(RELEASED_CONVERSATION_DATABASE);
     let connection = Connection::open(&database).unwrap();
     let inner: String = connection
@@ -747,15 +816,16 @@ fn a_released_source_root_is_admitted_to_the_current_frontier() {
         )
         .unwrap();
     assert_eq!(inner, licoup_conversation::store::CURRENT_SCHEMA_VERSION);
-    let title: String = connection
-        .query_row(
-            "SELECT title FROM conversations WHERE id='released-conversation'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(title, "Synthetic released conversation");
     drop(connection);
+    let conversations = crate::domain::client_conversation::ConversationStore::open(&root).unwrap();
+    let conversation = conversations.get(RELEASED_CONVERSATION_ID).unwrap();
+    assert_eq!(conversation.title, "Synthetic released conversation");
+    assert_eq!(conversation.memberships.len(), 1);
+    let page = conversations
+        .page_events(RELEASED_CONVERSATION_ID, None, 10)
+        .unwrap();
+    assert_eq!(page.events.len(), 1);
+    assert_eq!(page.events[0].id, RELEASED_EVENT_ID);
 
     // The ledger now names this binary's target and keeps the released step.
     let ledger: Ledger = serde_json::from_slice(&fs::read(&ledger_path).unwrap()).unwrap();
@@ -1075,12 +1145,15 @@ fn an_interrupted_released_store_conversion_resumes_from_its_artifact() {
         vec!["adaptive-flywheel.strategy-store-workflow-routing".to_owned()]
     );
     let connection = Connection::open(&database).unwrap();
-    let canary: String = connection
-        .query_row("SELECT value FROM preservation_canary", [], |row| {
-            row.get(0)
-        })
+    let binding: String = connection
+        .query_row(
+            "SELECT value_id FROM strategy_bindings
+              WHERE revision_digest=?1 AND slot_id='actor' AND ordinal=0",
+            rusqlite::params![RELEASED_DEFINITION_REVISION],
+            |row| row.get(0),
+        )
         .unwrap();
-    assert_eq!(canary, "must-survive");
+    assert_eq!(binding, "lico-basic");
     let frontier = embedded_frontier().unwrap();
     let ledger = load_ledger(&root.join("client-state/migrations/ledger.json"), &frontier).unwrap();
     assert_eq!(
@@ -1265,6 +1338,64 @@ fn a_fabricated_conversation_store_is_refused_rather_than_admitted() {
     let _ = fs::remove_dir_all(root);
 }
 
+/// A stamped version on anything less than a real Conversation layout is
+/// refused before the root's ledger, high-water or markers advance.
+///
+/// The removed partial check accepted `schema_meta` plus two
+/// `conversations` columns; the owner preflight requires the owner's own
+/// current table set and columns, and rejects development snapshots outright.
+#[test]
+fn a_stamped_conversation_fake_is_refused_before_any_advance() {
+    let cases = [
+        (
+            "a current stamp on two tables",
+            "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO schema_meta(key,value) VALUES ('version','18');
+             CREATE TABLE conversations(id TEXT PRIMARY KEY, title TEXT NOT NULL);",
+        ),
+        (
+            "a development snapshot",
+            "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO schema_meta(key,value) VALUES ('version','15');",
+        ),
+    ];
+    for (label, statements) in cases {
+        let root =
+            std::env::temp_dir().join(format!("licoup-conversation-fake-{}", uuid::Uuid::new_v4()));
+        let database = root.join("client-state/conversations/conversations.sqlite3");
+        fs::create_dir_all(database.parent().unwrap()).unwrap();
+        let connection = Connection::open(&database).unwrap();
+        connection.execute_batch(statements).unwrap();
+        drop(connection);
+        fs::write(
+            root.join("client-state/conversations/migration-v5.complete"),
+            "schema=v5\nstatus=complete\n",
+        )
+        .unwrap();
+        let before = fs::read(&database).unwrap();
+
+        assert_eq!(
+            admit(&root).unwrap_err().to_string(),
+            "unsupported_state_shape",
+            "{label}"
+        );
+        assert_eq!(
+            fs::read(&database).unwrap(),
+            before,
+            "{label}: the refused store keeps its bytes"
+        );
+        assert!(
+            !root.join("client-state/migrations/ledger.json").exists(),
+            "{label}: the refusal must not advance the ledger"
+        );
+        assert!(
+            !root.join("client-state/migrations/domain-state").exists(),
+            "{label}: the refusal must not write a domain marker"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+}
+
 /// A domain converted without a store file reports the version it is at.
 ///
 /// Most domains own no store file: admission writes their durable marker and
@@ -1314,14 +1445,12 @@ fn a_converted_domain_without_a_store_file_reports_its_marker_version() {
             state.domain_id
         );
         assert_eq!(
-            state.store_version, state.target_schema_version,
-            "{} is converted without a store file, so the store version reports the \
-             marker's authoritative version instead of zero",
-            state.domain_id
-        );
-        assert_eq!(
-            state.effective_version, state.target_schema_version,
-            "{} owes no migration edge",
+            state.authority,
+            DomainAuthority::Known {
+                version: state.target_schema_version
+            },
+            "{} is converted without a store file, so its authority is the \
+             marker's version instead of zero",
             state.domain_id
         );
         converted += 1;
@@ -1363,26 +1492,36 @@ fn an_unreadable_store_never_hides_the_other_domains_versions() {
         .iter()
         .find(|state| state.domain_id == "agent-tool-allowlist")
         .unwrap();
-    assert_eq!(unreadable.store_version, 0);
-    assert_eq!(unreadable.effective_version, 0);
+    assert_eq!(
+        unreadable.authority,
+        DomainAuthority::Refused {
+            code: "unsupported_state_shape".to_owned()
+        },
+        "a refused store is reported as a refusal, never flattened to version zero"
+    );
     let readable = states
         .iter()
         .find(|state| state.domain_id == "current-view")
         .unwrap();
     assert_eq!(
-        readable.store_version, readable.target_schema_version,
+        readable.authority,
+        DomainAuthority::Known {
+            version: readable.target_schema_version
+        },
         "a converted neighbour still reports the version its marker records"
     );
     let _ = fs::remove_dir_all(root);
 }
 
-/// A marker ahead of this binary still refuses the read.
+/// A marker ahead of this binary is a typed refusal, not a version and not a
+/// failure of the whole projection.
 ///
 /// The tolerant resolution of an unreadable store must not swallow the marker's
 /// own refusal: a domain whose marker claims more than the embedded frontier
-/// supports is a state the client refuses, not a version to report.
+/// supports is a state the client refuses, and the projection says so per
+/// domain so every other domain stays readable.
 #[test]
-fn a_marker_ahead_of_the_binary_still_refuses_the_projection() {
+fn a_marker_ahead_of_the_binary_is_reported_as_a_refusal() {
     let root = std::env::temp_dir().join(format!(
         "licoup-migration-ahead-marker-{}",
         uuid::Uuid::new_v4()
@@ -1399,10 +1538,110 @@ fn a_marker_ahead_of_the_binary_still_refuses_the_projection() {
         },
     )
     .unwrap();
+    let states = domain_state_projection(&root).unwrap();
     assert_eq!(
-        domain_state_projection(&root).unwrap_err().to_string(),
-        "state_newer_than_binary"
+        states.len(),
+        embedded_frontier().unwrap().domains.len(),
+        "one refused domain must not shorten the projection"
     );
+    let ahead = states
+        .iter()
+        .find(|state| state.domain_id == domain.domain_id)
+        .unwrap();
+    assert_eq!(
+        ahead.authority,
+        DomainAuthority::Refused {
+            code: "state_newer_than_binary".to_owned()
+        }
+    );
+    let other = states
+        .iter()
+        .find(|state| state.domain_id == "workspace-manifest")
+        .unwrap();
+    assert_eq!(
+        other.authority,
+        DomainAuthority::Absent,
+        "an untouched root's other domains stay absent, not refused"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+/// An absent authority is not a refused one.
+#[test]
+fn projection_distinguishes_an_absent_domain_from_a_refused_one() {
+    let root = std::env::temp_dir().join(format!(
+        "licoup-migration-absent-refused-{}",
+        uuid::Uuid::new_v4()
+    ));
+    fs::create_dir_all(&root).unwrap();
+    let states = domain_state_projection(&root).unwrap();
+    let absent = states
+        .iter()
+        .find(|state| state.domain_id == "workspace-manifest")
+        .unwrap();
+    assert_eq!(absent.authority, DomainAuthority::Absent);
+    assert_eq!(absent.marker_schema_version, None);
+
+    // A corrupt store document is a refusal for that one domain.
+    fs::write(root.join(".licoup-workspace.json"), b"{not json").unwrap();
+    let states = domain_state_projection(&root).unwrap();
+    let corrupt = states
+        .iter()
+        .find(|state| state.domain_id == "workspace-manifest")
+        .unwrap();
+    assert_eq!(
+        corrupt.authority,
+        DomainAuthority::Refused {
+            code: "unsupported_state_shape".to_owned()
+        }
+    );
+    let absent = states
+        .iter()
+        .find(|state| state.domain_id == "current-view")
+        .unwrap();
+    assert_eq!(absent.authority, DomainAuthority::Absent);
+    let _ = fs::remove_dir_all(root);
+}
+
+/// After the owner committed the store layout but before the bookkeeping, the
+/// projection reports the committed authority even though the durable marker
+/// still carries the released version.
+#[test]
+fn projection_reports_committed_authority_after_an_interrupted_store_commit() {
+    let root = std::env::temp_dir().join(format!(
+        "licoup-migration-committed-authority-{}",
+        uuid::Uuid::new_v4()
+    ));
+    seed_released_source_root(&root);
+    {
+        let _guard = MigrationFailpointGuard::set("after-strategy-store-edge");
+        assert_eq!(
+            admit_as_version(&root, "0.3.0").unwrap_err().to_string(),
+            "migration_step_failed"
+        );
+    }
+    // The physical store committed the current layout; the marker was not
+    // written yet, and the projection must not lower the committed authority.
+    let states = domain_state_projection(&root).unwrap();
+    let adaptive = states
+        .iter()
+        .find(|state| state.domain_id == "adaptive-flywheel")
+        .unwrap();
+    assert_eq!(adaptive.marker_schema_version, Some(1));
+    assert_eq!(
+        adaptive.authority,
+        DomainAuthority::Known { version: 2 },
+        "the committed store is the authority, not the stale marker"
+    );
+
+    admit_as_version(&root, "0.3.0").unwrap();
+    let states = domain_state_projection(&root).unwrap();
+    let adaptive = states
+        .iter()
+        .find(|state| state.domain_id == "adaptive-flywheel")
+        .unwrap();
+    assert_eq!(adaptive.marker_schema_version, Some(2));
+    assert_eq!(adaptive.authority, DomainAuthority::Known { version: 2 });
     let _ = fs::remove_dir_all(root);
 }
 

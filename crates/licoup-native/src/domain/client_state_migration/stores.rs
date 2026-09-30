@@ -4,13 +4,20 @@ use serde_json::{Value, json};
 use std::{fs, path::Path};
 
 use super::strategy_store::{
-    advance_strategy_store, probe_adaptive_flywheel, published_table_columns,
-    strategy_format_for_domain_version,
+    advance_strategy_store, probe_adaptive_flywheel, strategy_format_for_domain_version,
 };
 use super::{
     AuthoritativeProbe, DOMAIN_MARKER_SCHEMA, DomainFrontier, DomainMarker, MigrationEdge,
     marker_path, write_json_atomic,
 };
+
+/// Resolve a domain's authoritative version exactly as the admission does,
+/// together with whether a readable store is present, so a projection can tell
+/// an absent authority from a present store that records no version.
+pub(super) fn probe_authority(root: &Path, domain: &DomainFrontier) -> Result<(u32, bool)> {
+    let present = probe_authoritative_store(root, &domain.domain_id)?.present;
+    Ok((probe_domain(root, domain)?, present))
+}
 
 pub(super) fn probe_domain(root: &Path, domain: &DomainFrontier) -> Result<u32> {
     let marker = load_domain_marker(root, domain)?;
@@ -178,36 +185,6 @@ fn probe_agent_tab_order(path: &Path) -> Result<AuthoritativeProbe> {
     probe_json_schema(path, 1, JsonSchemaPolicy::CurrentOnly)
 }
 
-/// The table every published conversation store carries, whatever generation
-/// wrote it.
-///
-/// An existing conversation database is admitted as domain version 1 on the
-/// strength of its completion marker, so the probe has to say "this is a
-/// conversation store at all" from what is physically in the file. The check is
-/// the oldest common denominator: `schema_meta` and the conversation identity
-/// columns. Every published SQLite generation has both (`conversations.id` and
-/// `title` appear in the released schema 12 and in the current schema), older
-/// published inner schemas are upgraded by the store's own open path, and a file that only carries a
-/// version row is not a store any reader ever wrote. Without this, a fabricated
-/// database that merely declares the current version would be admitted as the
-/// canonical conversation owner.
-pub(super) fn ensure_conversation_store_shape(connection: &Connection) -> Result<()> {
-    for (table, columns) in [
-        ("schema_meta", &["key", "value"] as &[&str]),
-        ("conversations", &["id", "title"]),
-    ] {
-        let present = published_table_columns(connection, table)?;
-        ensure!(
-            !present.is_empty()
-                && columns
-                    .iter()
-                    .all(|column| present.iter().any(|name| name == column)),
-            "unsupported_state_shape"
-        );
-    }
-    Ok(())
-}
-
 pub(super) fn probe_canonical_conversation(root: &Path) -> Result<AuthoritativeProbe> {
     let database = root.join("client-state/conversations/conversations.sqlite3");
     let completion_marker = root.join("client-state/conversations/migration-v5.complete");
@@ -215,12 +192,25 @@ pub(super) fn probe_canonical_conversation(root: &Path) -> Result<AuthoritativeP
     let completion_present = regular_file_present(&completion_marker)?;
     let legacy_present = canonical_legacy_state_present(root)?;
     if database_present {
+        // The owning Conversation store classifies and validates the physical
+        // layout read-only: malformed metadata, development snapshots (13..17),
+        // a current store with an incomplete layout, and a released source
+        // store (12) that does not carry the released layout are all refused
+        // here — before the admission's ledger or any domain marker can move.
         let connection = Connection::open_with_flags(
             &database,
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )
         .context("unsupported_state_shape")?;
-        ensure_conversation_store_shape(&connection)?;
+        let inner_version = licoup_conversation::store::validate_migration_source(&connection)
+            .context("unsupported_state_shape")?;
+        if completion_present {
+            // The completion marker is written only after a store existed at a
+            // published inner schema. Older published schemas (1..11) remain
+            // documented migration sources their owner upgrades; a marker over
+            // a versionless file is not a store at all and is refused.
+            ensure!(inner_version.is_some(), "unsupported_state_shape");
+        }
     }
     probe_sqlite_meta(
         &database,

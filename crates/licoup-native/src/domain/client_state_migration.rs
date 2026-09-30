@@ -28,7 +28,7 @@ use handoff::{claim_update_handoff, update_handoff_is_claimed, write_update_hand
 #[cfg(test)]
 use stores::{apply_authoritative_store, probe_canonical_conversation};
 use stores::{
-    apply_marker_step, load_domain_marker, migration_handler_target, probe_domain,
+    apply_marker_step, load_domain_marker, migration_handler_target, probe_authority, probe_domain,
     reconcile_current_marker, upgrade_canonical_conversation_schema,
 };
 
@@ -745,29 +745,42 @@ pub struct FrontierStepProjection {
     pub to_schema_version: u32,
 }
 
-/// One domain's observed state, as the standalone tool must report it.
+/// One domain's observed authority, as the standalone tool must report it.
+///
+/// The three states are deliberately distinct: `absent` means neither a
+/// readable store nor a durable marker records a version, `known` carries the
+/// version the admission's own probe resolves (a store that reports one is
+/// authoritative, otherwise the marker), and `refused` carries the stable code
+/// of a probe or marker refusal. A refused domain is never flattened into
+/// version zero, so an unreadable, ahead or corrupt authority stays
+/// distinguishable from an absent one.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", tag = "state")]
+pub enum DomainAuthority {
+    Absent,
+    Known { version: u32 },
+    Refused { code: String },
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DomainStateProjection {
     pub domain_id: String,
-    /// The domain's authoritative version: the version its own readable store
-    /// reports, otherwise the version the domain's durable marker records. Most
-    /// domains are converted by writing only their marker and own no store file, so
-    /// a converted domain reports the marker's version here instead of 0. Zero means
-    /// no readable authority records a version — an unreadable store, or neither a
-    /// store version nor a marker. It claims nothing about whether a store file is
-    /// present, and it is never reported for a domain whose readable store or marker
-    /// records a version.
-    pub store_version: u32,
+    pub authority: DomainAuthority,
     /// The marker's authoritative version when a marker exists.
     pub marker_schema_version: Option<u32>,
-    /// The version the next migration edge will move from.
-    pub effective_version: u32,
     pub target_schema_version: u32,
 }
 
 /// Probe the root through the same store owners the client uses, so the tool
 /// reports the client's own facts instead of re-deriving them.
+///
+/// Each domain is projected independently: a domain whose store or marker this
+/// binary refuses is reported as `refused` with its stable code while every
+/// other domain keeps its own authority. The version in `known` is exactly the
+/// one the admission's `probe_domain` resolves, so a store that committed a
+/// conversion before its bookkeeping still reports the committed version — the
+/// projection never lowers it back to a stale marker.
 pub fn domain_state_projection(data_root: &Path) -> Result<Vec<DomainStateProjection>> {
     let frontier = embedded_frontier()?;
     let marker_root = data_root
@@ -776,27 +789,34 @@ pub fn domain_state_projection(data_root: &Path) -> Result<Vec<DomainStateProjec
         .join("domain-state");
     let mut states = Vec::with_capacity(frontier.domains.len());
     for domain in &frontier.domains {
-        let marker = load_domain_marker(&marker_root, domain)?;
-        // Resolve the domain's version through the admission's own probe rather than the
-        // store probe alone, so a domain converted without a store file reports the
-        // marker's authoritative version instead of 0. A domain the probe refuses reports
-        // version 0, which is what this projection has always reported for a store it
-        // cannot read; it never hides the versions of the root's other domains. The
-        // marker's own refusals are raised above, before this point, so a marker this
-        // binary cannot accept still refuses the read instead of being reported as a
-        // version.
-        let store_version = probe_domain(&marker_root, domain).unwrap_or(0);
+        let marker = match load_domain_marker(&marker_root, domain) {
+            Ok(marker) => marker,
+            Err(error) => {
+                states.push(DomainStateProjection {
+                    domain_id: domain.domain_id.clone(),
+                    authority: DomainAuthority::Refused {
+                        code: safe_error_code(&error).to_owned(),
+                    },
+                    marker_schema_version: None,
+                    target_schema_version: domain.target_schema_version,
+                });
+                continue;
+            }
+        };
         let marker_schema_version = marker
             .as_ref()
             .map(|marker| marker.authoritative_schema_version);
-        let effective_version = marker_schema_version
-            .filter(|marker| *marker <= store_version)
-            .unwrap_or(store_version);
+        let authority = match probe_authority(&marker_root, domain) {
+            Ok((0, false)) => DomainAuthority::Absent,
+            Ok((version, _)) => DomainAuthority::Known { version },
+            Err(error) => DomainAuthority::Refused {
+                code: safe_error_code(&error).to_owned(),
+            },
+        };
         states.push(DomainStateProjection {
             domain_id: domain.domain_id.clone(),
-            store_version,
+            authority,
             marker_schema_version,
-            effective_version,
             target_schema_version: domain.target_schema_version,
         });
     }
@@ -849,7 +869,5 @@ fn frontier_projection_for(frontier: &MigrationFrontier) -> serde_json::Value {
     })
 }
 
-#[cfg(test)]
-mod source_fixtures;
 #[cfg(test)]
 mod tests;

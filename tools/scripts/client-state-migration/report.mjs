@@ -15,6 +15,9 @@ export const VERDICT_EXIT_CODES = Object.freeze({
   behind: 2,
   ahead: 3,
   invalid: 4,
+  // A root that awaits the protected custody operation is incomplete, not
+  // healthy: the tool must not certify it.
+  pending_authorization: 5,
 });
 
 export const USAGE_EXIT_CODE = 64;
@@ -22,7 +25,17 @@ export const USAGE_EXIT_CODE = 64;
 // Worst first. `invalid` is the fail-closed bucket: the tool will not certify a
 // state it cannot fully read. `ahead` outranks `behind` because the admission is
 // forward-only, so a state from a newer binary is the more urgent finding.
-const VERDICT_ORDER = Object.freeze(["invalid", "ahead", "behind", "healthy"]);
+// Worst first. A root that is both behind and awaiting the protected custody
+// operation still reports `behind` — the migration is the actionable finding —
+// but a root that is otherwise current and only awaits custody is incomplete,
+// never healthy.
+const VERDICT_ORDER = Object.freeze([
+  "invalid",
+  "ahead",
+  "behind",
+  "pending_authorization",
+  "healthy",
+]);
 
 const INVALID_CODES = Object.freeze([
   "unsupported_state_shape",
@@ -67,6 +80,16 @@ export function evaluateMigrationState({
     codes.push({ code: "state_newer_than_binary", domainId: null });
   }
   if (ledgerDocument !== null) {
+    // The admission converts only the declared source and treats its own
+    // target as a rerun. A ledger that names any other format — an unpublished
+    // spelling, an unpublished correction, or an older published format — has
+    // no conversion path and is refused, not certified.
+    if (
+      ledgerDocument.frontierId !== frontier.sourceFrontierId &&
+      ledgerDocument.frontierId !== frontier.frontierId
+    ) {
+      codes.push({ code: "unsupported_state_shape", domainId: null });
+    }
     for (const domainId of Object.keys(ledgerDocument.domains)) {
       if (!frontier.domains.some((domain) => domain.domainId === domainId)) {
         codes.push({ code: "migration_ledger_invalid", domainId });

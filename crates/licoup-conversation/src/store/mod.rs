@@ -46,6 +46,7 @@ pub use execution::{
 };
 pub use native_sessions::NativeSessionReference;
 pub use recovery::{ColdRecoverableConversationStore, ColdRecoveryReport};
+pub use schema::validate_migration_source;
 
 pub const DEFAULT_EVENT_PAGE_SIZE: usize = 20;
 pub const MAX_EVENT_PAGE_SIZE: usize = 100;

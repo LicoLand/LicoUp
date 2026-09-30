@@ -1,45 +1,30 @@
-//! Faithful fixtures for the state the last published client leaves.
-//!
-//! Provenance is the immutable release tag v0.2.1
-//! (db0fc4d7ae875332f8b0cab28cda3f3337ac3c9e), not the current frontier and not
-//! a developer build:
-//!
-//! * Its embedded `resources/client-state-migration-frontier.json` names
-//!   `licoup-state-0.1.1`, lists eleven domains (there is no
-//!   `gateway-credential-custody`), every domain sits at target version 1, and
-//!   every domain's only step is `<domainId>.absent-to-1`.
-//! * Its packaged product version is `0.2.1`, so a root admitted by it records
-//!   `highestAdmittedProductVersion = 0.2.1`.
-//! * Its Conversation owner (`crates/licoup-conversation/src/store/mod.rs`)
-//!   writes inner schema `12`. `RELEASED_CONVERSATION_SCHEMA_12` below is that
-//!   owner's complete table layout, not the current layout with a stamped
-//!   number: the current layout has columns and tables this one does not.
-//!   Development schemas 13-17 are rejected by the current owner's upgrade
-//!   path and are not represented here.
-//! * Its strategy owner
-//!   (`crates/licoup-native/src/domain/adaptive_flywheel/store.rs`) creates the
-//!   seven `strategy_*` tables and stamps `strategy_meta.version = '2'`.
-//!   `RELEASED_STRATEGY_SCHEMA_2` below is that owner's complete statement
-//!   batch, not a version stamp on a truncated database.
-//! * A published root may hold `<root>/llm-api-key-inventory.json` and no
-//!   gateway-custody marker. The file is credential metadata, not custody
-//!   proof: no fixture here fabricates a completed custody marker, and the
-//!   released inventory document shape is used as-is.
-//!
-//! Migration and recovery fixtures downstream should reuse these statements and
-//! facts instead of re-deriving a source root from the current catalog.
+// Frozen fixture: the state the last published client leaves.
+//
+// Provenance is the immutable release tag v0.2.1
+// (db0fc4d7ae875332f8b0cab28cda3f3337ac3c9e), not the current frontier and not
+// a developer build. The layouts below are the *final* released layouts: the
+// released Conversation initializer converges an existing store by dropping
+// the partial membership index, creating the principal uniqueness index and
+// the pinned conversation index, and adding the late binding/claim columns;
+// the released strategy initializer creates the seven `strategy_*` tables and
+// then the active-conversation index. `strategy_meta.version` is `'2'` and the
+// Conversation inner schema is `'12'`.
+//
+// The released catalog names `licoup-state-0.1.1`, lists eleven domains (there
+// is no `gateway-credential-custody`), every domain sits at target version 1,
+// and every domain's only step is `<domainId>.absent-to-1`. The packaged
+// product high-water is `0.2.1`.
+//
+// This file is shared data, included by test targets (unit, recovery and
+// standalone migration) with a relative `include!("...")`. It uses only
+// `std` and free functions: no synthetic data reaches a normal runtime build,
+// and the released layout is defined once, here.
 
-use super::strategy_store::STRATEGY_STORE_DATABASE;
-use super::*;
-use rusqlite::Connection;
-use std::{fs, path::Path};
-
-/// The frontier identity the released client embedded.
-pub(super) const SOURCE_FRONTIER_ID: &str = "licoup-state-0.1.1";
-/// The product version the released client packaged.
-pub(super) const SOURCE_PRODUCT_VERSION: &str = "0.2.1";
-/// The released client's eleven domains, in catalog order.
-pub(super) const RELEASED_DOMAINS: &[&str] = &[
+pub const SOURCE_FRONTIER_ID: &str = "licoup-state-0.1.1";
+pub const SOURCE_PRODUCT_VERSION: &str = "0.2.1";
+pub const LEDGER_SCHEMA: &str = "v0.0.1:client-state-migration-ledger-1";
+pub const DOMAIN_MARKER_SCHEMA: &str = "v0.0.1:client-state-domain-marker-1";
+pub const RELEASED_DOMAINS: &[&str] = &[
     "adaptive-flywheel",
     "agent-tab-order",
     "agent-tool-allowlist",
@@ -53,12 +38,27 @@ pub(super) const RELEASED_DOMAINS: &[&str] = &[
     "workspace-manifest",
 ];
 
-pub(super) fn released_step_id(domain_id: &str) -> String {
-    format!("{domain_id}.absent-to-1")
-}
+pub const RELEASED_CONVERSATION_DATABASE: &str = "client-state/conversations/conversations.sqlite3";
+pub const RELEASED_CONVERSATION_SCHEMA_VERSION: &str = "12";
+pub const RELEASED_CONVERSATION_COMPLETION: &str =
+    "client-state/conversations/migration-v5.complete";
+pub const RELEASED_CONVERSATION_COMPLETION_CONTENT: &str = "schema=v5\nstatus=complete\n";
+pub const RELEASED_STRATEGY_DATABASE: &str = "client-state/adaptive-flywheel/strategies.sqlite3";
+pub const RELEASED_STRATEGY_META_VERSION: &str = "2";
+pub const RELEASED_INVENTORY_FILE: &str = "llm-api-key-inventory.json";
+pub const RELEASED_INVENTORY_SCHEMA: &str = "licoup.llm-api-key-inventory.v1";
 
-/// The released Conversation owner's complete table layout.
-const RELEASED_CONVERSATION_SCHEMA_12: &str = r#"
+pub const RELEASED_CONVERSATION_ID: &str = "released-conversation";
+pub const RELEASED_EVENT_ID: &str = "released-event-1";
+pub const RELEASED_DEFINITION_REVISION: &str = "sha256:released-definition";
+pub const RELEASED_RUN_ID: &str = "released-run-1";
+pub const RELEASED_WORKFLOW_JSON: &str = r#"{"schema":"licoup.adaptive-flywheel.workflow.v1","metadata":{"id":"assistant-temporary","name":"Temporary","version":"1"},"limits":{"maxParallelism":2,"maxWorksetItems":16,"maxAttempts":2},"actorSlots":[{"id":"actor","kind":"actor","label":"Actor","required":true,"entry":true}],"runtimes":[],"worksets":[],"initial":"run","states":[{"id":"run","kind":"actor","label":"Run","binding":"actor"},{"id":"done","kind":"succeed","label":"Done"},{"id":"failed","kind":"fail","label":"Failed"}],"transitions":[{"id":"done","from":"run","to":"done","event":"success"},{"id":"failed","from":"run","to":"failed","event":"failure"}]}"#;
+
+/// The final released Conversation layout, including the converged indexes.
+pub const RELEASED_CONVERSATION_SCHEMA: &str = r#"
+         CREATE TABLE IF NOT EXISTS schema_meta (
+           key TEXT PRIMARY KEY, value TEXT NOT NULL
+         );
          CREATE TABLE IF NOT EXISTS principals (
            id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('human','agent')),
            display_name TEXT NOT NULL, agent_id TEXT, created_at INTEGER NOT NULL
@@ -72,12 +72,14 @@ const RELEASED_CONVERSATION_SCHEMA_12: &str = r#"
            created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
          );
          CREATE INDEX IF NOT EXISTS conversations_updated_idx ON conversations(updated_at DESC, id DESC);
+         CREATE INDEX IF NOT EXISTS conversations_pinned_updated_idx ON conversations(pinned DESC, updated_at DESC, id DESC);
          CREATE TABLE IF NOT EXISTS memberships (
            id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
            principal_id TEXT NOT NULL REFERENCES principals(id), access TEXT NOT NULL CHECK(access IN ('owner','member')),
            status TEXT NOT NULL CHECK(status IN ('active','left')), joined_at INTEGER NOT NULL, left_at INTEGER
          );
-         CREATE UNIQUE INDEX IF NOT EXISTS memberships_active_unique ON memberships(conversation_id, principal_id) WHERE status='active';
+         CREATE UNIQUE INDEX IF NOT EXISTS memberships_principal_unique
+           ON memberships(conversation_id, principal_id);
          CREATE INDEX IF NOT EXISTS memberships_conversation_idx ON memberships(conversation_id, status, joined_at);
          CREATE TABLE IF NOT EXISTS membership_profiles (
            membership_id TEXT PRIMARY KEY REFERENCES memberships(id) ON DELETE CASCADE,
@@ -185,8 +187,23 @@ const RELEASED_CONVERSATION_SCHEMA_12: &str = r#"
            PRIMARY KEY(source_kind, source_identity)
          );"#;
 
-/// The released strategy writer's complete statement batch.
-const RELEASED_STRATEGY_SCHEMA_2: &str = r#"CREATE TABLE IF NOT EXISTS strategy_meta(
+/// Representative released Conversation business rows.
+pub const RELEASED_CONVERSATION_ROWS: &str = "
+         INSERT INTO schema_meta(key, value) VALUES ('version', '12');
+         INSERT INTO principals(id, kind, display_name, agent_id, created_at)
+           VALUES ('principal-1', 'human', 'Synthetic Principal', NULL, 1);
+         INSERT INTO conversations(id, title, created_at, updated_at)
+           VALUES ('released-conversation', 'Synthetic released conversation', 1, 1);
+         INSERT INTO memberships(id, conversation_id, principal_id, access, status, joined_at, left_at)
+           VALUES ('membership-1', 'released-conversation', 'principal-1', 'owner', 'active', 1, NULL);
+         INSERT INTO events(id, conversation_id, sequence, author_membership_id, kind, causation_id, correlation_id, created_at, finalized)
+           VALUES ('released-event-1', 'released-conversation', 1, 'membership-1', 'message', NULL, NULL, 1, 1);
+         INSERT INTO event_parts(id, event_id, ordinal, kind, content, runtime_cursor, created_at)
+           VALUES ('released-part-1', 'released-event-1', 0, 'text', 'Synthetic released content', NULL, 1);";
+
+/// The released strategy layout: the seven-table batch and the active
+/// conversation index the released initializer creates afterwards.
+pub const RELEASED_STRATEGY_SCHEMA: &str = r#"CREATE TABLE IF NOT EXISTS strategy_meta(
            key TEXT PRIMARY KEY, value TEXT NOT NULL
          );
          INSERT INTO strategy_meta(key, value) VALUES ('version', '2')
@@ -239,6 +256,8 @@ const RELEASED_STRATEGY_SCHEMA_2: &str = r#"CREATE TABLE IF NOT EXISTS strategy_
          );
          CREATE INDEX IF NOT EXISTS strategy_runs_revision_idx
            ON strategy_runs(revision_digest, updated_at DESC);
+         CREATE INDEX IF NOT EXISTS strategy_runs_active_conversation_idx
+           ON strategy_runs(revision_digest, conversation_id, terminal, updated_at DESC);
          CREATE TABLE IF NOT EXISTS strategy_run_events(
            run_id TEXT NOT NULL REFERENCES strategy_runs(run_id) ON DELETE CASCADE,
            sequence INTEGER NOT NULL,
@@ -265,118 +284,93 @@ const RELEASED_STRATEGY_SCHEMA_2: &str = r#"CREATE TABLE IF NOT EXISTS strategy_
          CREATE INDEX IF NOT EXISTS strategy_commands_lease_idx
            ON strategy_commands(lease_until) WHERE status IN ('claimed', 'running');"#;
 
-pub(super) const RELEASED_CONVERSATION_DATABASE: &str =
-    "client-state/conversations/conversations.sqlite3";
-pub(super) const RELEASED_CONVERSATION_COMPLETION: &str =
-    "client-state/conversations/migration-v5.complete";
-pub(super) const RELEASED_CONVERSATION_COMPLETION_CONTENT: &str = "schema=v5\nstatus=complete\n";
-pub(super) const RELEASED_INVENTORY_FILE: &str = "llm-api-key-inventory.json";
-pub(super) const RELEASED_INVENTORY_SCHEMA: &str = "licoup.llm-api-key-inventory.v1";
+pub fn released_step_id(domain_id: &str) -> String {
+    format!("{domain_id}.absent-to-1")
+}
 
-/// Create the released Conversation store: the schema-12 layout, one synthetic
-/// conversation, and the completion marker a released admission wrote.
-pub(super) fn seed_released_conversation_store(root: &Path) {
-    let database = root.join(RELEASED_CONVERSATION_DATABASE);
-    fs::create_dir_all(database.parent().unwrap()).unwrap();
-    let connection = Connection::open(&database).unwrap();
-    connection
-        .execute_batch(
-            "CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
-        )
-        .unwrap();
-    connection
-        .execute_batch(RELEASED_CONVERSATION_SCHEMA_12)
-        .unwrap();
-    connection
-        .execute_batch(
-            "INSERT INTO schema_meta(key, value) VALUES ('version', '12');
-             INSERT INTO principals(id, kind, display_name, agent_id, created_at)
-               VALUES ('principal-1', 'human', 'Synthetic Principal', NULL, 1);
-             INSERT INTO conversations(id, title, created_at, updated_at)
-               VALUES ('released-conversation', 'Synthetic released conversation', 1, 1);",
-        )
-        .unwrap();
-    drop(connection);
-    fs::write(
-        root.join(RELEASED_CONVERSATION_COMPLETION),
-        RELEASED_CONVERSATION_COMPLETION_CONTENT,
+/// Representative released strategy business rows for a definition, its
+/// ordinal binding, its authorization, one run and one run event.
+pub fn released_strategy_rows() -> String {
+    format!(
+        "INSERT INTO strategy_definitions(
+           definition_id, revision_digest, semantics_digest, name, version,
+           workflow_json, asset_count, imported_at
+         ) VALUES (
+           'assistant-temporary', '{RELEASED_DEFINITION_REVISION}', 'sha256:released-semantics',
+           'Temporary', '1', '{RELEASED_WORKFLOW_JSON}', 0, 1
+         );
+         INSERT INTO strategy_bindings(
+           revision_digest, slot_id, ordinal, value_id, model, reasoning_effort, revision
+         ) VALUES ('{RELEASED_DEFINITION_REVISION}', 'actor', 0, 'lico-basic', '', '', 1);
+         INSERT INTO strategy_authorizations(
+           revision_digest, revision, semantics_digest, binding_digest, authorization_digest, active, created_at
+         ) VALUES (
+           '{RELEASED_DEFINITION_REVISION}', 1, 'sha256:released-semantics', 'sha256:released-bindings',
+           'sha256:released-authorization', 1, 1
+         );
+         INSERT INTO strategy_runs(
+           run_id, revision_digest, semantics_digest, idempotency_key, request_digest,
+           snapshot_json, conversation_id, terminal, created_at, updated_at
+         ) VALUES (
+           '{RELEASED_RUN_ID}', '{RELEASED_DEFINITION_REVISION}', 'sha256:released-semantics',
+           'released-idempotency', 'sha256:released-request', '{{}}',
+           '{RELEASED_CONVERSATION_ID}', 1, 1, 1
+         );
+         INSERT INTO strategy_run_events(run_id, sequence, event_type, event_json, created_at)
+           VALUES ('{RELEASED_RUN_ID}', 1, 'run-completed', '{{}}', 1);"
     )
-    .unwrap();
 }
 
-/// Create the released strategy store: the seven-table layout at
-/// `strategy_meta.version = '2'`, with one canary row nothing in the migration
-/// knows about.
-pub(super) fn seed_released_strategy_store(path: &Path) {
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    let connection = Connection::open(path).unwrap();
-    connection
-        .execute_batch(RELEASED_STRATEGY_SCHEMA_2)
-        .unwrap();
-    connection
-        .execute_batch(
-            "CREATE TABLE preservation_canary(value TEXT NOT NULL);
-             INSERT INTO preservation_canary(value) VALUES ('must-survive');",
-        )
-        .unwrap();
+pub fn released_marker_json(domain_id: &str) -> String {
+    format!(
+        "{{\"schemaVersion\":\"{DOMAIN_MARKER_SCHEMA}\",\"domainId\":\"{domain_id}\",\"authoritativeSchemaVersion\":1}}"
+    )
 }
 
-/// Write the root-level credential inventory document the released client
-/// leaves. It is metadata; no custody marker accompanies it.
-pub(super) fn seed_released_credential_inventory(root: &Path) {
-    let document = serde_json::json!({
-        "schemaVersion": RELEASED_INVENTORY_SCHEMA,
-        "leaseDays": 7,
-        "entries": [],
-    });
-    write_json_atomic(&root.join(RELEASED_INVENTORY_FILE), &document).unwrap();
+pub fn released_ledger_json() -> String {
+    let domains = RELEASED_DOMAINS
+        .iter()
+        .map(|domain_id| {
+            format!(
+                "\"{domain_id}\":{{\"schemaVersion\":1,\"completedStepIds\":[\"{}\"]}}",
+                released_step_id(domain_id)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        "{{\"schemaVersion\":\"{LEDGER_SCHEMA}\",\"highestAdmittedProductVersion\":\"{SOURCE_PRODUCT_VERSION}\",\"frontierId\":\"{SOURCE_FRONTIER_ID}\",\"domains\":{{{domains}}}}}"
+    )
 }
 
-/// Build the ledger a released admission wrote: source frontier identity,
-/// product high-water 0.2.1, and all eleven domains at version 1 with their
-/// released step.
-pub(super) fn released_ledger() -> Ledger {
-    Ledger {
-        schema_version: LEDGER_SCHEMA.to_owned(),
-        highest_admitted_product_version: SOURCE_PRODUCT_VERSION.to_owned(),
-        frontier_id: SOURCE_FRONTIER_ID.to_owned(),
-        domains: RELEASED_DOMAINS
-            .iter()
-            .map(|domain_id| {
-                (
-                    (*domain_id).to_owned(),
-                    LedgerDomain {
-                        schema_version: 1,
-                        completed_step_ids: vec![released_step_id(domain_id)],
-                    },
-                )
-            })
-            .collect(),
-    }
+pub fn released_inventory_json() -> &'static str {
+    r#"{"schemaVersion":"licoup.llm-api-key-inventory.v1","leaseDays":7,"entries":[]}"#
 }
 
-/// Build a complete released source root in a disposable directory: ledger,
-/// domain markers, the released Conversation and strategy stores, and the
-/// root-level credential inventory the released client can leave behind. No
-/// gateway-custody marker is written because the released client had no such
-/// domain.
-pub(super) fn seed_released_source_root(root: &Path) {
-    let migration_root = root.join("client-state/migrations");
-    let marker_root = migration_root.join("domain-state");
-    licoup_foundation::platform::file_security::ensure_private_dir(&marker_root).unwrap();
+/// Every non-SQL released root file as (relative path, exact content): the
+/// ledger, the eleven domain markers, the Conversation completion marker, and
+/// the root-level credential inventory document. No custody marker is included
+/// because the released client had no custody domain, and the inventory is
+/// metadata rather than custody proof.
+pub fn released_root_files() -> Vec<(String, String)> {
+    let mut files = Vec::new();
+    files.push((
+        "client-state/migrations/ledger.json".to_owned(),
+        released_ledger_json(),
+    ));
     for domain_id in RELEASED_DOMAINS {
-        write_json_atomic(
-            &marker_path(&marker_root, domain_id),
-            &DomainMarker {
-                schema_version: DOMAIN_MARKER_SCHEMA.to_owned(),
-                domain_id: (*domain_id).to_owned(),
-                authoritative_schema_version: 1,
-            },
-        )
-        .unwrap();
+        files.push((
+            format!("client-state/migrations/domain-state/{domain_id}.json"),
+            released_marker_json(domain_id),
+        ));
     }
-    write_json_atomic(&migration_root.join("ledger.json"), &released_ledger()).unwrap();
-    seed_released_conversation_store(root);
-    seed_released_strategy_store(&root.join(STRATEGY_STORE_DATABASE));
-    seed_released_credential_inventory(root);
+    files.push((
+        RELEASED_CONVERSATION_COMPLETION.to_owned(),
+        RELEASED_CONVERSATION_COMPLETION_CONTENT.to_owned(),
+    ));
+    files.push((
+        RELEASED_INVENTORY_FILE.to_owned(),
+        released_inventory_json().to_owned(),
+    ));
+    files
 }
