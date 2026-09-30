@@ -146,19 +146,20 @@ English text is missing, and the fix belongs in that source or renderer, not in 
 
 ## Showing the plan to the maintainer
 
-The maintainer reads the generated plan page, never the raw plan files. Whenever a
-local plan is created, revised or re-selected, regenerate the projection and give the
-maintainer the page:
+The maintainer reads the generated plan page, never the raw plan files. A milestone is
+one Better Plan Checkpoints Tree, and the delivery programme selects them:
 
 ```sh
-node tools/development/reports.mjs --better-plan <workspace>/Manifest.json
+node tools/development/reports.mjs --better-plan docs/plans/delivery/Programme.json
 ```
 
-The command writes `build/reports/delivery-plan.html` and adds its navigation entry.
-Handing over `Design.md`, `Plan.json` or the workspace directory instead of the page is
-a delivery failure, even when the plan itself is correct. The page is generated from the
-semantic source and is never hand-edited; a change to the plan means regenerating the
-page, not editing the HTML.
+The command writes `build/reports/delivery-plan.html` and adds its navigation entry. The
+page projects each Tree's own Node execution graph and dependency edges, and reads the
+derived state from the tool rather than re-deriving it; it is not an execution authority
+and holds no state. Handing over `Tree.json` or the workspace directory instead of the
+page is a delivery failure, even when the plan itself is correct. The page is generated
+from the semantic source and is never hand-edited; a change to the plan means
+regenerating the page, not editing the HTML.
 
 ## Report and temporary-plan boundaries
 

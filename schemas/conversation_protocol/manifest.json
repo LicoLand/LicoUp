@@ -13,7 +13,7 @@
       "id": "secure_mesh_capability_catalog",
       "status": "active",
       "kind": "dart-snapshot",
-      "schema": "crates/licoup-native/resources/secure-mesh-capability-catalog.json",
+      "schema": "crates/licoup-secure-mesh/resources/secure-mesh-capability-catalog.json",
       "rustOutput": null,
       "dartOutput": "apps/desktop/lib/src/contracts/generated/secure_mesh_capability_catalog.g.dart"
     }

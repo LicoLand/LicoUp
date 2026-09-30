@@ -50,7 +50,7 @@
       "kind": "config-object"
     },
     {
-      "path": "crates/licoup-native/resources/state-machines/ansi-parser.json",
+      "path": "crates/licoup-foundation/resources/state-machines/ansi-parser.json",
       "kind": "config-object"
     },
     {
@@ -62,7 +62,7 @@
       "kind": "config-object"
     },
     {
-      "path": "crates/licoup-native/resources/state-machines/copilot.json",
+      "path": "crates/licoup-agent-drivers/resources/state-machines/copilot.json",
       "kind": "config-object"
     },
     {
@@ -82,7 +82,7 @@
       "kind": "config-object"
     },
     {
-      "path": "crates/licoup-native/resources/state-machines/hermes.json",
+      "path": "crates/licoup-agent-drivers/resources/state-machines/hermes.json",
       "kind": "config-object"
     },
     {
@@ -90,7 +90,7 @@
       "kind": "config-object"
     },
     {
-      "path": "crates/licoup-native/resources/state-machines/parser-lifecycle.json",
+      "path": "crates/licoup-agent-adapter-sdk/resources/state-machines/parser-lifecycle.json",
       "kind": "config-object"
     },
     {
@@ -98,43 +98,43 @@
       "kind": "config-object"
     },
     {
-      "path": "crates/licoup-native/resources/state-machines/security-approval.json",
+      "path": "crates/licoup-secure-mesh/resources/state-machines/security-approval.json",
       "kind": "config-object"
     },
     {
-      "path": "crates/licoup-native/resources/state-machines/security-capability.json",
+      "path": "crates/licoup-application/resources/state-machines/security-capability.json",
       "kind": "config-object"
     },
     {
-      "path": "crates/licoup-native/resources/state-machines/security-command-replay.json",
+      "path": "crates/licoup-secure-mesh/resources/state-machines/security-command-replay.json",
       "kind": "config-object"
     },
     {
-      "path": "crates/licoup-native/resources/state-machines/security-custody-lifecycle.json",
+      "path": "crates/licoup-relay/resources/state-machines/security-custody-lifecycle.json",
       "kind": "config-object"
     },
     {
-      "path": "crates/licoup-native/resources/state-machines/security-file-transfer.json",
+      "path": "crates/licoup-secure-mesh/resources/state-machines/security-file-transfer.json",
       "kind": "config-object"
     },
     {
-      "path": "crates/licoup-native/resources/state-machines/security-kt-authority-challenge.json",
+      "path": "crates/licoup-relay/resources/state-machines/security-kt-authority-challenge.json",
       "kind": "config-object"
     },
     {
-      "path": "crates/licoup-native/resources/state-machines/security-macos-presence-batch.json",
+      "path": "crates/licoup-secure-mesh/resources/state-machines/security-macos-presence-batch.json",
       "kind": "config-object"
     },
     {
-      "path": "crates/licoup-native/resources/state-machines/security-mlkem-braid.json",
+      "path": "crates/licoup-secure-mesh/resources/state-machines/security-mlkem-braid.json",
       "kind": "config-object"
     },
     {
-      "path": "crates/licoup-native/resources/state-machines/security-mls-operation.json",
+      "path": "crates/licoup-secure-mesh/resources/state-machines/security-mls-operation.json",
       "kind": "config-object"
     },
     {
-      "path": "crates/licoup-native/resources/state-machines/services-client-runtime.json",
+      "path": "crates/licoup-application/resources/state-machines/services-client-runtime.json",
       "kind": "config-object"
     },
     {
@@ -478,15 +478,15 @@
       "kind": "config-object"
     },
     {
-      "path": "tests/integration/v71_usage_sources/fixtures/otlp-cumulative.json",
+      "path": "tests/integration/usage_sources/fixtures/otlp-cumulative.json",
       "kind": "config-object"
     },
     {
-      "path": "tests/integration/v71_usage_sources/fixtures/otlp-regressed.json",
+      "path": "tests/integration/usage_sources/fixtures/otlp-regressed.json",
       "kind": "config-object"
     },
     {
-      "path": "tests/integration/v71_usage_sources/fixtures/otlp-restarted.json",
+      "path": "tests/integration/usage_sources/fixtures/otlp-restarted.json",
       "kind": "config-object"
     }
   ],

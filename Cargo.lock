@@ -2054,10 +2054,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-agent-adapter-sdk"
+version = "0.3.0"
+dependencies = [
+ "licoup-state-machine-codegen",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "licoup-agent-adapters"
 version = "0.3.0"
 dependencies = [
  "licoup-agent-runtime",
+]
+
+[[package]]
+name = "licoup-agent-drivers"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "fs2",
+ "licoup-agent-adapter-sdk",
+ "licoup-agent-adapters",
+ "licoup-agent-runtime",
+ "licoup-agent-targets",
+ "licoup-application",
+ "licoup-conversation",
+ "licoup-foundation",
+ "licoup-mcp",
+ "licoup-secure-mesh",
+ "licoup-state-machine-codegen",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "time",
+ "ureq",
+ "url",
+ "uuid",
 ]
 
 [[package]]
@@ -2071,16 +2106,53 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-agent-targets"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "libc",
+ "licoup-client-state",
+ "licoup-foundation",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "toml",
+ "uuid",
+]
+
+[[package]]
 name = "licoup-application"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
+ "chacha20poly1305 0.10.1",
+ "lico-catalog-convergence",
+ "licoup-agent-adapters",
+ "licoup-client-state",
+ "licoup-endpoint-core",
+ "licoup-foundation",
+ "licoup-platform-bridges",
+ "licoup-protocol-bindings",
+ "licoup-state-machine-codegen",
+ "rand_core 0.6.4",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]
 name = "licoup-client-state"
 version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "fs2",
+ "licoup-foundation",
+ "nix",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
 
 [[package]]
 name = "licoup-conversation"
@@ -2112,15 +2184,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-foundation"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "block2",
+ "command-group",
+ "core-foundation",
+ "core-foundation-sys",
+ "flate2",
+ "fs2",
+ "libc",
+ "licoup-state-machine-codegen",
+ "log",
+ "nix",
+ "objc2",
+ "objc2-foundation",
+ "objc2-local-authentication",
+ "security-framework",
+ "security-framework-sys",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tar",
+ "url",
+ "uuid",
+ "zip",
+]
+
+[[package]]
 name = "licoup-mcp"
 version = "0.2.1"
 dependencies = [
  "anyhow",
  "fs2",
  "libc",
+ "licoup-application",
+ "licoup-foundation",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "ureq",
+ "url",
  "uuid",
  "windows-sys 0.61.2",
 ]
@@ -2142,13 +2248,9 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "base64",
- "block2",
  "chacha20poly1305 0.10.1",
  "command-group",
- "core-foundation",
- "core-foundation-sys",
  "criterion",
- "dbus-secret-service",
  "ed25519-dalek 2.2.0",
  "env_logger",
  "flate2",
@@ -2164,15 +2266,22 @@ dependencies = [
  "libcrux-traits",
  "lico-catalog-convergence",
  "licoarc-rust",
+ "licoup-agent-adapter-sdk",
  "licoup-agent-adapters",
+ "licoup-agent-drivers",
  "licoup-agent-runtime",
+ "licoup-agent-targets",
  "licoup-application",
  "licoup-client-state",
  "licoup-conversation",
  "licoup-endpoint-core",
  "licoup-extension-contracts",
+ "licoup-foundation",
+ "licoup-mcp",
  "licoup-platform-bridges",
  "licoup-protocol-bindings",
+ "licoup-relay",
+ "licoup-secure-mesh",
  "licoup-state-machine-codegen",
  "licoup-workflow",
  "licoup-workflow-runtime",
@@ -2180,9 +2289,6 @@ dependencies = [
  "log",
  "mime_guess",
  "nix",
- "objc2",
- "objc2-foundation",
- "objc2-local-authentication",
  "openmls",
  "openmls_basic_credential",
  "openmls_memory_storage",
@@ -2192,8 +2298,6 @@ dependencies = [
  "rand_core 0.6.4",
  "regex",
  "rusqlite",
- "security-framework",
- "security-framework-sys",
  "semver",
  "serde",
  "serde_json",
@@ -2227,8 +2331,84 @@ dependencies = [
 name = "licoup-protocol-bindings"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
+ "base64",
+ "chacha20poly1305 0.10.1",
+ "hkdf 0.12.4",
  "licoarc-rust",
+ "rand_core 0.6.4",
+ "regex",
+ "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "licoup-relay"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "ed25519-dalek 2.2.0",
+ "fs2",
+ "hmac 0.12.1",
+ "licoup-client-state",
+ "licoup-foundation",
+ "licoup-protocol-bindings",
+ "licoup-secure-mesh",
+ "licoup-state-machine-codegen",
+ "rand_core 0.6.4",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "time",
+ "ureq",
+ "uuid",
+ "x25519-dalek 2.0.1",
+ "zeroize",
+]
+
+[[package]]
+name = "licoup-secure-mesh"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "chacha20poly1305 0.10.1",
+ "core-foundation",
+ "core-foundation-sys",
+ "dbus-secret-service",
+ "ed25519-dalek 2.2.0",
+ "hkdf 0.12.4",
+ "hmac 0.12.1",
+ "libcrux-ml-kem",
+ "libcrux-sha3",
+ "libcrux-traits",
+ "licoup-client-state",
+ "licoup-foundation",
+ "licoup-protocol-bindings",
+ "licoup-state-machine-codegen",
+ "openmls",
+ "openmls_basic_credential",
+ "openmls_rust_crypto",
+ "openmls_traits",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.4",
+ "rusqlite",
+ "security-framework",
+ "security-framework-sys",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "subtle",
+ "thiserror",
+ "time",
+ "uuid",
+ "x25519-dalek 2.0.1",
+ "zeroize",
 ]
 
 [[package]]

@@ -22,5 +22,5 @@ url = "2"
 licoup-state-machine-codegen = { path = "../../crates/licoup-state-machine-codegen" }
 
 [[test]]
-name = "v71_model_providers"
-path = "../../tests/integration/v71_model_providers/main.rs"
+name = "model_providers"
+path = "../../tests/integration/model_providers/main.rs"

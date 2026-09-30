@@ -20,7 +20,7 @@ The normative contract lives in
 and [`docs/architecture/EXTENSION-PLATFORM.md`](../../docs/architecture/EXTENSION-PLATFORM.md);
 the samples here are checked against it, not a second version of it. The
 component suite in
-[`tests/integration/v71_agent_sdk/`](../../tests/integration/v71_agent_sdk)
+[`tests/integration/agent_sdk/`](../../tests/integration/agent_sdk)
 starts every sample as a real subprocess and asserts the wire behavior, and
 `test_wire_parity.py` reads the contract crate and fails if a bound, a version
 or a method name drifts.
