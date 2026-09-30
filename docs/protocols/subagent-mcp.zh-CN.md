@@ -1,5 +1,7 @@
 # LicoUp Subagent MCP
 
+Updated: 2026-09-30
+
 | 参考 | 文档 |
 | --- | --- |
 | 规范版本 | [English](subagent-mcp.md) |
@@ -9,10 +11,16 @@
 
 ## 模块边界
 
-`crates/licoup-mcp` 独立拥有可选公共 MCP 服务和 stdio 连接器。它只依赖公开
-Rust 依赖，可以独立构建，不依赖 native、Flutter、领域 crate 或项目源码路径。
-它仅通过已安装原生 CLI 的公开 `licoup.stdio.v1` 进程契约调用 LicoUp。
+`crates/licoup-mcp` 独立拥有可选公共 MCP 服务和 stdio 连接器。它使用公开
+Rust 依赖及中立的 `licoup-foundation` crate 独立构建，后者负责共享数据根目录
+解析和进程访问租约。它不依赖 native、Flutter 或领域 crate；运行时操作
+通过已安装原生 CLI 的公开 `licoup.stdio.v1` 进程契约调用 LicoUp。
 原生出站 MCP 客户端适配器仍是独立能力。
+
+MCP 传输凭据继续由独立的 `private_state` 模块负责，不是 Foundation 通用
+私有文件工具的门面。尤其是 Windows 凭据文件，必须属于当前用户，具有仅含
+当前用户授权的受保护 DACL，并拒绝重解析点。共享数据根目录协调能力不替代
+或放宽这些凭据保护。
 
 原生 `domain/subagents` 拥有调用方 Membership 检查、Provider 执行准入、
 持久化分派声明、继续、取消与回执。Canonical Conversation 与 PersistentTurn

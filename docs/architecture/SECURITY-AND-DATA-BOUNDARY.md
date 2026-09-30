@@ -1,5 +1,7 @@
 # Security Architecture and Data Boundaries
 
+Updated: 2026-09-30
+
 English (Normative) · [简体中文](SECURITY-AND-DATA-BOUNDARY.zh-CN.md) · [Back to Architecture README](README.md)
 
 This document defines LicoUp client security boundaries, data flow rules, virtual machine integration isolation, and endpoint encryption standards.

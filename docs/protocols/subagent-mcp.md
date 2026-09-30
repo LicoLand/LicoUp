@@ -1,5 +1,7 @@
 # LicoUp Subagent MCP
 
+Updated: 2026-09-30
+
 | Reference | Document |
 | --- | --- |
 | Localization | [简体中文](subagent-mcp.zh-CN.md) |
@@ -10,10 +12,17 @@
 ## Module boundary
 
 `crates/licoup-mcp` owns the optional public MCP service and stdio connector.
-It is independently buildable using published Rust dependencies; it has no
-native, Flutter, domain-crate, or source-path dependency. Its only connection
-to LicoUp is the public `licoup.stdio.v1` process contract of the installed
+It is independently buildable using published Rust dependencies and the neutral
+`licoup-foundation` crate for shared data-root resolution and process access leases.
+It has no native, Flutter, or domain-crate dependency. Runtime operations reach
+LicoUp through the public `licoup.stdio.v1` process contract of the installed
 native CLI. The outbound MCP client adapter remains a separate native capability.
+
+MCP transport credentials retain their independent `private_state` owner. They
+are not a facade over Foundation's generic private-file helpers. In particular,
+Windows credential files require current-user ownership, an exact protected
+current-user DACL, and reparse-point rejection. Sharing data-root coordination
+does not replace or relax these credential guards.
 
 The native `domain/subagents` application owns caller Membership checks,
 provider execution admission, durable dispatch claims, continuation, cancellation,

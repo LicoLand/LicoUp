@@ -1,5 +1,7 @@
 # packages/protocols/native-client
 
+Updated: 2026-09-30
+
 [English (normative)](README.md) · 简体中文本地化
 
 本目录记录 LicoUp Flutter 客户端、Rust native library 与本机智能体之间的客户端内部

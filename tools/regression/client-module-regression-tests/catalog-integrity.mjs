@@ -57,6 +57,21 @@ test("catalog declares every independently accepted client architecture family",
   }
 });
 
+test("both native protocol README languages select documentation governance", () => {
+  for (const relativePath of [
+    "packages/protocols/native-client/README.md",
+    "packages/protocols/native-client/README.zh-CN.md",
+  ]) {
+    assert.equal(
+      ids(selectModulesForChangedPaths([relativePath])).includes(
+        "regression.documentation-governance",
+      ),
+      true,
+      `${relativePath} must select its documentation owner`,
+    );
+  }
+});
+
 test("catalog validation rejects an implicit aggregate-gate command", () => {
   const invalid = [{
     id: "invalid.full-regression",
