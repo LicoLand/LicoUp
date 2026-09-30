@@ -28,29 +28,32 @@ const conversationSnapshotSourceFiles = [
   ...rustSourceBundle("crates/licoup-native/src/domain/conversation/snapshots"),
 ];
 const targetSourceFiles = [
-  "crates/licoup-native/src/domain/targets.rs",
-  ...rustSourceBundle("crates/licoup-native/src/domain/targets")
+  "crates/licoup-agent-targets/src/domain/targets.rs",
+  ...rustSourceBundle("crates/licoup-agent-targets/src/domain/targets")
     .filter((ref) => !ref.endsWith("/tests.rs") && !ref.includes("/tests/")),
 ];
 const clientStateSourceFiles = [
+  "crates/licoup-client-state/src/lib.rs",
+  ...rustSourceBundle("crates/licoup-client-state/src")
+    .filter((ref) => !ref.includes("/tests/")),
   "crates/licoup-native/src/platform/client_state.rs",
   ...rustSourceBundle("crates/licoup-native/src/platform/client_state")
     .filter((ref) => !ref.includes("/tests/")),
 ];
 const fileSecuritySourceFiles = [
-  "crates/licoup-native/src/platform/file_security.rs",
-  ...rustSourceBundle("crates/licoup-native/src/platform/file_security")
+  "crates/licoup-foundation/src/platform/file_security.rs",
+  ...rustSourceBundle("crates/licoup-foundation/src/platform/file_security")
     .filter((ref) => !ref.includes("/tests/")),
 ];
 const fileSecurityFacadeSource = readFileSync(
-  path.join(repoRoot, "crates/licoup-native/src/platform/file_security.rs"),
+  path.join(repoRoot, "crates/licoup-foundation/src/platform/file_security.rs"),
   "utf8",
 );
 const unixHardeningModuleGuarded =
   /#\[cfg\(unix\)\]\s*mod unix_hardening;/u.test(fileSecurityFacadeSource);
 const secureMeshMlsSourceFiles = [
-  "crates/licoup-native/src/core/secure_mesh_mls.rs",
-  ...rustSourceBundle("crates/licoup-native/src/core/secure_mesh_mls"),
+  "crates/licoup-secure-mesh/src/core/secure_mesh_mls.rs",
+  ...rustSourceBundle("crates/licoup-secure-mesh/src/core/secure_mesh_mls"),
 ];
 
 const sensitiveRustFiles = [
@@ -58,17 +61,17 @@ const sensitiveRustFiles = [
   ...conversationSnapshotSourceFiles,
   ...fileSecuritySourceFiles,
   ...secureMeshMlsSourceFiles,
-  "crates/licoup-native/src/platform/secure_mesh_mls_store.rs",
+  "crates/licoup-secure-mesh/src/platform/secure_mesh_mls_store.rs",
   ...targetSourceFiles,
 ];
 
 const failures = [];
 const helperExpectations = new Map([
-  ["crates/licoup-native/src/platform/client_state/serialization.rs", ["atomic_write_private_text"]],
-  ["crates/licoup-native/src/platform/client_state/activity.rs", ["append_private_line"]],
+  ["crates/licoup-client-state/src/serialization.rs", ["atomic_write_private_text"]],
+  ["crates/licoup-client-state/src/activity.rs", ["append_private_line"]],
   ["crates/licoup-native/src/domain/conversation/snapshots/mod.rs", ["atomic_write_private_text"]],
-  ["crates/licoup-native/src/platform/file_security/windows_acl.rs", ["icacls", "*S-1-3-4:(F)", "*S-1-3-4:(OI)(CI)(F)"]],
-  ["crates/licoup-native/src/platform/secure_mesh_mls_store.rs", ["harden_private_path"]],
+  ["crates/licoup-foundation/src/platform/file_security/windows_acl.rs", ["icacls", "*S-1-3-4:(F)", "*S-1-3-4:(OI)(CI)(F)"]],
+  ["crates/licoup-secure-mesh/src/platform/secure_mesh_mls_store.rs", ["harden_private_path"]],
 ]);
 const notes = [
   "Sensitive client writes now flow through a shared file_security helper.",

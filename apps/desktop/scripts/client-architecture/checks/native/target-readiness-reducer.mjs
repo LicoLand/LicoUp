@@ -21,15 +21,15 @@ export async function checkTargetReadinessReducer(context) {
   } = context;
   // Target catalog and merge policy must share one runtime-availability reducer.
   const targetSourceFiles = [
-    "crates/licoup-native/src/domain/targets.rs",
-    ...await collectSourceFiles("crates/licoup-native/src/domain/targets", ".rs")
+    "crates/licoup-agent-targets/src/domain/targets.rs",
+    ...await collectSourceFiles("crates/licoup-agent-targets/src/domain/targets", ".rs")
   ];
   const targetsSource = await readJoinedText(targetSourceFiles);
   const targetCatalogSource = await readText(
-    "crates/licoup-native/src/domain/targets/catalog.rs"
+    "crates/licoup-agent-targets/src/domain/targets/catalog.rs"
   );
   const targetScanMergeSource = await readText(
-    "crates/licoup-native/src/domain/targets/scan_merge.rs"
+    "crates/licoup-agent-targets/src/domain/targets/scan_merge.rs"
   );
   const supportsApplyMatches = targetCatalogSource.match(/matches!\([\s\S]*?"openclaw".*?"kilo-code"\)/);
   assert(supportsApplyMatches === null,
@@ -49,10 +49,10 @@ export async function checkTargetReadinessReducer(context) {
     "target discovery must advertise runtime.message.send whenever a driver profile and executable are available; parity evidence must stay informational"
   );
   const targetRuntimeBindingSource = await readText(
-    "crates/licoup-native/src/domain/targets/runtime_binding.rs"
+    "crates/licoup-agent-targets/src/domain/targets/runtime_binding.rs"
   );
   const targetCacheSource = await readText(
-    "crates/licoup-native/src/domain/targets/target_cache.rs"
+    "crates/licoup-agent-targets/src/domain/targets/target_cache.rs"
   );
   assert(targetsSource.includes("available_runtime_executable") &&
     targetRuntimeBindingSource.includes("runtime_driver_profile") &&

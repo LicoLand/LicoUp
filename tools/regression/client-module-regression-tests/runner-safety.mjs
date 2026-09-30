@@ -11,6 +11,8 @@ import {
   executeClientRegressionBatches,
   runClientRegressionCommand,
   planClientRegressionBatches,
+  defaultRegressionCapacities,
+  regressionCapacitiesFor,
   changedPathsSince,
   normalizeRepoPath,
   parseNulDelimitedPaths,
@@ -549,6 +551,92 @@ test("argument parser requires one bounded selector", () => {
   ]), /choose exactly one/u);
   assert.throws(() => parseClientModuleRegressionArgs(["--dry-run"]),
     /requires a focused selector/u);
+});
+
+test("a stated capacity replaces the core count without exceeding it", () => {
+  // The derived model is a function of the core count; a stated capacity of the same
+  // number must reproduce it exactly, or the override would silently change gates.
+  for (const cores of [4, 5, 6, 8, 10, 16]) {
+    assert.deepEqual(regressionCapacitiesFor(cores), defaultRegressionCapacities(cores));
+  }
+  for (const stated of [1, 2, 3]) {
+    const capacities = regressionCapacitiesFor(stated);
+    assert.equal(capacities.global, stated);
+    for (const [pool, value] of Object.entries(capacities.pools)) {
+      assert.ok(value >= 1, `${pool} must allow one module`);
+      assert.ok(value <= stated, `${pool} ${value} exceeds the stated ${stated}`);
+    }
+  }
+  for (const nonsense of [0, -1, 1.5, "many", "", null]) {
+    assert.throws(() => regressionCapacitiesFor(nonsense), /positive integer/u);
+  }
+});
+
+test("the runner states its capacity and refuses a nonsense one", async () => {
+  // Rust work weighs four in the capacity's own units, so four is the smallest
+  // statement that can schedule it.
+  const stated = [];
+  const exitCode = await main(["--module", "rust.ffi", "--capacity", "4"], {
+    output: stringSink(),
+    errorOutput: stringSink(),
+    async executor(_modules, options) {
+      stated.push(options.capacities);
+      return { exitCode: 0 };
+    },
+  });
+  assert.equal(exitCode, 0);
+  assert.equal(stated.length, 1);
+  assert.equal(stated[0].global, 4);
+
+  // Without the flag the executor receives no capacities of its own, so the derived
+  // model applies and an unrelated run is unchanged.
+  const derived = [];
+  await main(["--module", "rust.ffi"], {
+    output: stringSink(),
+    errorOutput: stringSink(),
+    async executor(_modules, options) {
+      derived.push(options.capacities);
+      return { exitCode: 0 };
+    },
+  });
+  assert.deepEqual(derived, [undefined]);
+
+  const errors = stringSink();
+  const refused = await main(["--module", "rust.ffi", "--capacity", "0"], {
+    output: stringSink(),
+    errorOutput: errors,
+  });
+  assert.equal(refused, 2);
+  assert.match(errors.value(), /positive integer/u);
+});
+
+test("a stated capacity below the heaviest selected module is refused up front", async () => {
+  // Rust work weighs four in the same units as the capacity, so stating one cannot
+  // schedule it. The refusal names the number to state instead of failing later
+  // inside the planner with a resource message.
+  const errors = stringSink();
+  let executed = false;
+  const refused = await main(["--module", "rust.ffi", "--capacity", "1"], {
+    output: stringSink(),
+    errorOutput: errors,
+    executor: async () => { executed = true; return { exitCode: 0 }; },
+  });
+  assert.equal(refused, 2);
+  assert.equal(executed, false);
+  assert.match(errors.value(), /rust work, which weighs 4; state at least 4/u);
+
+  // Node work weighs one, so the same statement schedules it.
+  const ran = [];
+  const exitCode = await main(["--module", "architecture.client-boundaries", "--capacity", "1"], {
+    output: stringSink(),
+    errorOutput: stringSink(),
+    async executor(_modules, options) {
+      ran.push(options.capacities.global);
+      return { exitCode: 0 };
+    },
+  });
+  assert.equal(exitCode, 0);
+  assert.deepEqual(ran, [1]);
 });
 
 test("changed-from dry-run selects paths without executing module commands", async () => {

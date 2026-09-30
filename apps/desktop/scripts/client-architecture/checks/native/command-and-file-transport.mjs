@@ -20,8 +20,8 @@ export async function checkCommandAndFileTransport(context, { secureMeshMobileFf
     sameSet,
   } = context;
   const secureMeshCommandRustSource = await readJoinedText([
-    "crates/licoup-native/src/core/secure_mesh_command.rs",
-    ...await collectSourceFiles("crates/licoup-native/src/core/secure_mesh_command", ".rs")
+    "crates/licoup-secure-mesh/src/core/secure_mesh_command.rs",
+    ...await collectSourceFiles("crates/licoup-secure-mesh/src/core/secure_mesh_command", ".rs")
   ]);
   const secureMeshCommandRuntimeRustSource = await readText(
     "crates/licoup-native/src/domain/secure_mesh_command_runtime.rs"
@@ -41,8 +41,8 @@ export async function checkCommandAndFileTransport(context, { secureMeshMobileFf
     "Secure Mesh agent sends must keep the readiness gate and enter the shared conversation lane"
   );
   const secureMeshFileRustSource = await readJoinedText([
-    "crates/licoup-native/src/core/secure_mesh_file.rs",
-    ...await collectSourceFiles("crates/licoup-native/src/core/secure_mesh_file", ".rs")
+    "crates/licoup-secure-mesh/src/core/secure_mesh_file.rs",
+    ...await collectSourceFiles("crates/licoup-secure-mesh/src/core/secure_mesh_file", ".rs")
   ]);
   assert(secureMeshFileRustSource.includes("file_manifest_delivery_json") &&
     secureMeshFileRustSource.includes("file_chunk_delivery_json") &&

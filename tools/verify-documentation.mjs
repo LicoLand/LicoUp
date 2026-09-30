@@ -218,9 +218,9 @@ for (const generatedPath of ["docs/COMPATIBILITY.md", "docs/COMPATIBILITY.zh-CN.
   const source = readFileSync(path.join(repoRoot, generatedPath), "utf8");
   for (const token of [
     "tools/client-support-matrix.json",
-    "crates/licoup-native/resources/agent-conversation-drivers.json",
-    "crates/licoup-native/resources/agent-native-capabilities.json",
-    "crates/licoup-native/resources/agent-conversation-readiness.json",
+    "crates/licoup-agent-drivers/resources/agent-conversation-drivers.json",
+    "crates/licoup-agent-drivers/resources/agent-native-capabilities.json",
+    "crates/licoup-agent-drivers/resources/agent-conversation-readiness.json",
     "client:support-matrix:sync",
     "client:support-matrix:check",
   ]) {

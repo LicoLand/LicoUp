@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const read = (path) => readFileSync(path, "utf8");
-const common = read("crates/licoup-native/src/platform/provider_mcp_registration.rs");
-const manager = read("crates/licoup-native/src/platform/cursor_subagent_mcp_manager.rs");
+const common = read("crates/licoup-mcp/src/provider_mcp_registration.rs");
+const manager = read("crates/licoup-mcp/src/cursor_subagent_mcp_manager.rs");
 const driver = read("crates/licoup-native/src/platform/cursor_driver/execution.rs");
 const model = read("crates/licoup-native/src/platform/cursor_driver/model.rs");
 const parser = read("crates/licoup-native/src/platform/native_agent_parser/adapters/cursor.rs");
-const runtime = read("crates/licoup-native/src/platform/runtime_adapters/subagent_mesh.rs");
+const runtime = read("crates/licoup-agent-drivers/src/runtime_adapters/subagent_mesh.rs");
 const startup = read("tests/product-e2e/cli/subagent-mcp/upstream/cursor-startup-recognition.mjs");
 
 test("Cursor registration is namespaced, digest-bound, owned, and ambiguity-closed", () => {
@@ -20,7 +20,7 @@ test("Cursor registration is namespaced, digest-bound, owned, and ambiguity-clos
   assert.match(common, /DuplicateConnectorEntry/u);
   assert.match(common, /ApprovalConsumed/u);
   assert.match(common, /pub fn remove/u);
-  assert.match(common, /resources\/subagent-mesh\/SKILL\.md/u);
+  assert.match(common, /crate::guide_skill::LICOUP_GUIDE_SKILL_SOURCE/u);
   assert.match(common, /\.cursor.*skills/su);
   assert.match(common, /publish_shared_skill/u);
   assert.match(common, /\.agents.*skills/su);
@@ -41,7 +41,7 @@ test("Cursor target keeps exact create/resume, workspace, PTY, acknowledgement a
 });
 
 test("Cursor generated guidance is one ordinary unmarked wire prefix", () => {
-  const policy = read("crates/licoup-native/src/platform/runtime_adapters.rs");
+  const policy = read("crates/licoup-agent-drivers/src/runtime_adapters.rs");
   assert.match(policy, /RuntimeAdapter::Cursor \| RuntimeAdapter::Antigravity/u);
   assert.match(policy, /OrdinaryWirePrefix/u);
   assert.match(driver, /cursor_cli_private_instructions_unsupported/u);

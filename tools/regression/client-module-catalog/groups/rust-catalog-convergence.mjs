@@ -2,6 +2,7 @@ import {
   NATIVE_MANIFEST,
   command,
   defineModule,
+  rustApplicationLayer,
 } from "../helpers.mjs";
 
 const CATALOG_CONVERGENCE_MANIFEST =
@@ -37,11 +38,11 @@ export const RUST_CATALOG_CONVERGENCE_MODULES = Object.freeze([
   defineModule({
     id: "rust.domain.catalog-convergence-adapter",
     kind: "rust-domain",
-    summary: "Native domain boundary re-exporting the portable catalog convergence contract",
+    summary: "Composition boundary re-exporting the portable catalog convergence contract",
     inputs: [
-      "crates/licoup-native/src/domain/catalog_convergence.rs",
+      "crates/licoup-application/src/catalog_convergence.rs",
     ],
-    command: nativeLibraryCheck(),
+    command: rustApplicationLayer("catalog_convergence::"),
   }),
   defineModule({
     id: "rust.platform.catalog-cache-store",

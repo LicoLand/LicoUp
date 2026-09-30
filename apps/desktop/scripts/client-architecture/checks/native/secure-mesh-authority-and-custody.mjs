@@ -22,29 +22,42 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     sameSet,
   } = context;
   const cargoToml = await readText("crates/licoup-native/Cargo.toml");
+  // The presence primitive and its LocalAuthentication bindings moved to
+  // `licoup-foundation`. Secret custody still reaches Security.framework directly from
+  // this crate, so the assertion follows each implementation to the manifest that
+  // declares what it uses instead of requiring both in one place.
+  const foundationCargoToml = await readText("crates/licoup-foundation/Cargo.toml");
+  // The platform secret store that reaches Security.framework directly moved to
+  // `licoup-secure-mesh` last, together with the Linux Secret Service probe, so
+  // their manifest is read where the code and its bindings now are.
+  const secureMeshCargoToml = await readText("crates/licoup-secure-mesh/Cargo.toml");
   const mobileRelayRustSource = await readJoinedText([
+    // The family's trees, its root and the family tests all live in
+    // `licoup-relay`; `licoup-native` keeps only the re-export facade at the
+    // former path, so this bundle spans both crates.
     "crates/licoup-native/src/domain/mobile_relay.rs",
-    ...await collectSourceFiles("crates/licoup-native/src/domain/mobile_relay", ".rs")
+    "crates/licoup-relay/src/domain/mobile_relay.rs",
+    ...await collectSourceFiles("crates/licoup-relay/src/domain/mobile_relay", ".rs")
   ]);
   const mobileRelayCommandSyncRustSource = await readText(
-    "crates/licoup-native/src/domain/mobile_relay/command_sync.rs"
+    "crates/licoup-relay/src/domain/mobile_relay/command_sync.rs"
   );
   const keyTransparencyFacadeSource = await readText(
-    "crates/licoup-native/src/domain/mobile_relay/key_transparency.rs"
+    "crates/licoup-relay/src/domain/mobile_relay/key_transparency.rs"
   );
   const keyTransparencyConfigSource = await readText(
-    "crates/licoup-native/src/domain/mobile_relay/key_transparency/config.rs"
+    "crates/licoup-relay/src/domain/mobile_relay/key_transparency/config.rs"
   );
   const keyTransparencyPersistenceSource = await readText(
-    "crates/licoup-native/src/domain/mobile_relay/key_transparency/persistence.rs"
+    "crates/licoup-relay/src/domain/mobile_relay/key_transparency/persistence.rs"
   );
   const keyTransparencyProjectionSource = await readText(
-    "crates/licoup-native/src/domain/mobile_relay/key_transparency/projection.rs"
+    "crates/licoup-relay/src/domain/mobile_relay/key_transparency/projection.rs"
   );
   const keyTransparencyAuthoritySource = await readJoinedText([
-    "crates/licoup-native/src/domain/mobile_relay/key_transparency/authority.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/key_transparency/authority.rs",
     ...await collectSourceFiles(
-      "crates/licoup-native/src/domain/mobile_relay/key_transparency/authority",
+      "crates/licoup-relay/src/domain/mobile_relay/key_transparency/authority",
       ".rs"
     )
   ]);
@@ -68,24 +81,24 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     "key transparency must keep split workflows and one-way fail-closed authority persistence"
   );
   const localMaterialFacadeSource = await readText(
-    "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material.rs"
+    "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material.rs"
   );
   const localMaterialRustSource = await readJoinedText([
-    "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material.rs",
     ...await collectSourceFiles(
-      "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material",
+      "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material",
       ".rs"
     )
   ]);
   const localMaterialGenerationSource = await readJoinedText([
-    "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/identity_generation.rs",
-    "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/prekey_generation.rs"
+    "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/identity_generation.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/prekey_generation.rs"
   ]);
   const localMaterialMutationSource = await readJoinedText([
-    "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/material_mutation.rs",
-    "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/prekey_inventory.rs",
-    "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/protocol_reset.rs",
-    "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/rotation.rs"
+    "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/material_mutation.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/prekey_inventory.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/protocol_reset.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/rotation.rs"
   ]);
   assert(
     localMaterialFacadeSource.includes("mod identity_generation;") &&
@@ -111,7 +124,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     "local endpoint material must keep generation, mutation, inventory, reset, codec, and projection in separate fail-closed leaves"
   );
   const directoryTransparencyFacadeSource = await readText(
-    "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency.rs"
+    "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency.rs"
   );
   const directoryTransparencyProductLeaves = [
     "authority.rs",
@@ -130,14 +143,14 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     directoryTransparencyProductLeaves.map(async (leaf) => [
       leaf,
       await readText(
-        `crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/${leaf}`
+        `crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/${leaf}`
       )
     ])
   ));
   const directoryTransparencyJoinedSource =
     Object.values(directoryTransparencySources).join("\n");
   const directoryTransparencyTestSupportSource = await readText(
-    "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/test_support.rs"
+    "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/test_support.rs"
   );
   assert(
     directoryTransparencyFacadeSource.includes("mod authorization;") &&
@@ -178,7 +191,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     "directory transparency must isolate claims, pin configuration, clocks, verifier, authority, peer/local/exact authorization, and test-only authority state"
   );
   const pairwiseSessionFacadeSource = await readText(
-    "crates/licoup-native/src/domain/mobile_relay/pairwise_session.rs"
+    "crates/licoup-relay/src/domain/mobile_relay/pairwise_session.rs"
   );
   const pairwiseSessionLeaves = [
     "crypto_operation.rs",
@@ -193,7 +206,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     pairwiseSessionLeaves.map(async (leaf) => [
       leaf,
       await readText(
-        `crates/licoup-native/src/domain/mobile_relay/pairwise_session/${leaf}`
+        `crates/licoup-relay/src/domain/mobile_relay/pairwise_session/${leaf}`
       )
     ])
   ));
@@ -232,7 +245,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     "pairwise session must isolate status, replay redaction, ciphertext operations, atomic commit, handshake bootstrap, and durable store ownership"
   );
   const relayOperationsFacadeSource = await readText(
-    "crates/licoup-native/src/domain/mobile_relay/relay_operations.rs"
+    "crates/licoup-relay/src/domain/mobile_relay/relay_operations.rs"
   );
   const relayOperationLeaves = [
     "allow_list.rs",
@@ -251,7 +264,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     relayOperationLeaves.map(async (leaf) => [
       leaf,
       await readText(
-        `crates/licoup-native/src/domain/mobile_relay/relay_operations/${leaf}`
+        `crates/licoup-relay/src/domain/mobile_relay/relay_operations/${leaf}`
       )
     ])
   ));
@@ -283,7 +296,13 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     relayOperationSources["command_handlers/result.rs"].includes('"bodyRedacted": true') &&
     relayOperationSources["status.rs"].includes("should_authorize_secret_read") &&
     relayOperationSources["status.rs"].includes("redacted_pairing_invite") &&
-    relayOperationSources["allow_list.rs"].includes("PACKAGED_RUNTIME_ADAPTER_IDS") &&
+    // The allow-list reads two agent-inventory facts it does not own. They are
+    // threaded in from the caller that composes them, so the relay never names
+    // the inventory crates; this asserts the seam rather than the old reach.
+    relayOperationSources["allow_list.rs"].includes("packaged_agent_ids: &[&str]") &&
+    relayOperationSources["allow_list.rs"].includes("scan_targets: fn(&Value) -> Result<Value>") &&
+    !relayOperationSources["allow_list.rs"].includes("crate::domain::targets") &&
+    !relayOperationSources["allow_list.rs"].includes("crate::platform::runtime_adapters") &&
     relayOperationSources["allow_list.rs"].includes("runtime.message.send") &&
     !relayOperationJoinedSource.includes("fn execute_command(") &&
     !relayOperationJoinedSource.includes("ureq::") &&
@@ -291,40 +310,43 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     "relay operations must isolate ciphertext-only handlers, station context, mailbox, envelope, delivery, status, and allow-list boundaries"
   );
   const secureMeshSecretStoreRustSource = await readJoinedText([
-    "crates/licoup-native/src/platform/secure_mesh_secret_store.rs",
+    "crates/licoup-secure-mesh/src/platform/secure_mesh_secret_store.rs",
     ...await collectSourceFiles(
-      "crates/licoup-native/src/platform/secure_mesh_secret_store",
+      "crates/licoup-secure-mesh/src/platform/secure_mesh_secret_store",
       ".rs"
     )
   ]);
+  // The secret-custody port and presence authorization moved to
+  // `licoup-secure-mesh` first; the platform keychain that implements them
+  // followed the port into that crate, so both halves are read there now.
   const secureMeshSecretStoreContractRustSource = await readJoinedText([
-    "crates/licoup-native/src/core/secure_mesh_secret_store.rs",
-    "crates/licoup-native/src/core/secure_mesh_secret_store/authorization.rs",
-    "crates/licoup-native/src/core/secure_mesh_secret_store/handle.rs",
-    "crates/licoup-native/src/core/secure_mesh_secret_store/port.rs"
+    "crates/licoup-secure-mesh/src/core/secure_mesh_secret_store.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_secret_store/authorization.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_secret_store/handle.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_secret_store/port.rs"
   ]);
   const secureMeshSecretStoreAuthorizationRustSource = await readText(
-    "crates/licoup-native/src/core/secure_mesh_secret_store/authorization.rs"
+    "crates/licoup-secure-mesh/src/core/secure_mesh_secret_store/authorization.rs"
   );
   const macosUserPresenceRustSource = await readText(
-    "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs"
+    "crates/licoup-secure-mesh/src/platform/secure_mesh_secret_store/macos_user_presence.rs"
   );
   const platformUserPresenceRustSource = await readText(
-    "crates/licoup-native/src/platform/user_presence.rs"
+    "crates/licoup-foundation/src/platform/user_presence.rs"
   );
   const secureMeshCapabilityFacadeRustSource =
-    await readText("crates/licoup-native/src/core/secure_mesh_capability.rs");
+    await readText("crates/licoup-secure-mesh/src/core/secure_mesh_capability.rs");
   const secureMeshCapabilityProductionPaths = [
-    "crates/licoup-native/src/core/secure_mesh_capability/catalog.rs",
-    "crates/licoup-native/src/core/secure_mesh_capability/custody.rs",
-    "crates/licoup-native/src/core/secure_mesh_capability/evaluation.rs",
-    "crates/licoup-native/src/core/secure_mesh_capability/facts.rs",
-    "crates/licoup-native/src/core/secure_mesh_capability/report.rs",
-    "crates/licoup-native/src/core/secure_mesh_capability/taxonomy.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_capability/catalog.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_capability/custody.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_capability/evaluation.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_capability/facts.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_capability/report.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_capability/taxonomy.rs",
   ];
   const secureMeshCapabilityDiscoveredProductionPaths = (
     await collectSourceFiles(
-      "crates/licoup-native/src/core/secure_mesh_capability",
+      "crates/licoup-secure-mesh/src/core/secure_mesh_capability",
       ".rs",
     )
   ).filter((relativePath) => !relativePath.includes("/tests/"));
@@ -339,16 +361,16 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     ...Object.values(secureMeshCapabilityProductionSources),
   ].join("\n");
   const secureMeshPrekeyFacadeRustSource =
-    await readText("crates/licoup-native/src/core/secure_mesh_prekey.rs");
+    await readText("crates/licoup-secure-mesh/src/core/secure_mesh_prekey.rs");
   const secureMeshPrekeyProductionPaths = [
-    "crates/licoup-native/src/core/secure_mesh_prekey/inventory.rs",
-    "crates/licoup-native/src/core/secure_mesh_prekey/key_package.rs",
-    "crates/licoup-native/src/core/secure_mesh_prekey/pairwise.rs",
-    "crates/licoup-native/src/core/secure_mesh_prekey/validation.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_prekey/inventory.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_prekey/key_package.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_prekey/pairwise.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_prekey/validation.rs",
   ];
   const secureMeshPrekeyDiscoveredProductionPaths = (
     await collectSourceFiles(
-      "crates/licoup-native/src/core/secure_mesh_prekey",
+      "crates/licoup-secure-mesh/src/core/secure_mesh_prekey",
       ".rs",
     )
   ).filter((relativePath) => !relativePath.includes("/tests/"));
@@ -359,31 +381,31 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     ])),
   );
   const secureMeshCapabilityProofRustSource =
-    await readText("crates/licoup-native/src/core/secure_mesh_capability_proof.rs");
+    await readText("crates/licoup-secure-mesh/src/core/secure_mesh_capability_proof.rs");
   const secureMeshSessionNegotiationRustSource =
-    await readText("crates/licoup-native/src/core/secure_mesh_session_negotiation.rs");
+    await readText("crates/licoup-secure-mesh/src/core/secure_mesh_session_negotiation.rs");
   const coreStateMachinePhysicalTestLayouts = await Promise.all([
-    "secure_mesh_session_negotiation",
-    "secure_mesh_capability_proof",
-    "secure_mesh_sparse_pq_ratchet",
-    "secure_mesh_acp",
-  ].map(async (moduleName) => ({
+    // Peer session negotiation, the capability proof and the sparse
+    // post-quantum ratchet moved to their own crate.
+    ["crates/licoup-secure-mesh/src/core", "secure_mesh_session_negotiation"],
+    ["crates/licoup-secure-mesh/src/core", "secure_mesh_capability_proof"],
+    ["crates/licoup-secure-mesh/src/core", "secure_mesh_sparse_pq_ratchet"],
+    ["crates/licoup-secure-mesh/src/core", "secure_mesh_acp"],
+  ].map(async ([coreRoot, moduleName]) => ({
     moduleName,
-    production: await readText(`crates/licoup-native/src/core/${moduleName}.rs`),
-    tests: await readText(
-      `crates/licoup-native/src/core/${moduleName}/tests/mod.rs`,
-    ),
+    production: await readText(`${coreRoot}/${moduleName}.rs`),
+    tests: await readText(`${coreRoot}/${moduleName}/tests/mod.rs`),
   })));
   const secureMeshMlsSecurityLedgerRustSource = await readText(
-    "crates/licoup-native/src/core/secure_mesh_mls_product/security_ledger.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_mls_product/security_ledger.rs",
   );
   const secureMeshMlsSecurityLedgerTestSupportRustSource = await readText(
-    "crates/licoup-native/src/core/secure_mesh_mls_product/security_ledger/test_support.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_mls_product/security_ledger/test_support.rs",
   );
   const secureMeshProtocolStatusRustSource =
-    await readText("crates/licoup-native/src/core/secure_mesh.rs");
+    await readText("crates/licoup-secure-mesh/src/core/secure_mesh.rs");
   const secureMeshCapabilityProbeRustSource =
-    await readText("crates/licoup-native/src/platform/secure_mesh_capability_probe.rs");
+    await readText("crates/licoup-secure-mesh/src/platform/secure_mesh_capability_probe.rs");
   const secureMeshCapabilityReportSource =
     await readText("tools/scripts/lib/secure-mesh-capability-report.mjs");
   const macosUserPresenceProofSource = await readJoinedText([
@@ -401,7 +423,17 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     ),
   ]);
   const clientCliVmSource = await readText("tools/scripts/client-cli-vm/verify/command.mjs");
+  // The registry, the dispatch admission and the response aggregate moved to
+  // `licoup-agent-drivers`; what stays in the host is the composition that
+  // answers the moved crate's port with the thirteen per-Agent arms. The
+  // check reads both halves, because the properties it asserts are split
+  // across exactly that boundary.
   const runtimeAdaptersRustSource = await readJoinedText([
+    "crates/licoup-agent-drivers/src/runtime_adapters.rs",
+    ...await collectSourceFiles(
+      "crates/licoup-agent-drivers/src/runtime_adapters",
+      ".rs"
+    ),
     "crates/licoup-native/src/platform/runtime_adapters.rs",
     ...await collectSourceFiles(
       "crates/licoup-native/src/platform/runtime_adapters",
@@ -456,8 +488,8 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
   assert(!mobileRelayRustSource.includes("fn execute_command("),
     "mobile_relay.rs must not keep a plaintext command execution path for relayed server commands"
   );
-  const secureMeshAcpRustSource = await readText("crates/licoup-native/src/core/secure_mesh_acp.rs");
-  const secureMeshStatusRustSource = await readText("crates/licoup-native/src/core/secure_mesh.rs");
+  const secureMeshAcpRustSource = await readText("crates/licoup-secure-mesh/src/core/secure_mesh_acp.rs");
+  const secureMeshStatusRustSource = await readText("crates/licoup-secure-mesh/src/core/secure_mesh.rs");
   const licoClientBinSource = await readJoinedText([
     "crates/licoup-native/src/bin/licoup.rs",
     ...await collectSourceFiles("crates/licoup-native/src/bin/licoup", ".rs")
@@ -633,26 +665,39 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     mobileRelayRustSource.includes("e2ee_status_redacts_pairing_invite_secret"),
     "mobile_relay.rs must expose the shared exact capability result, safe selected custody, and unsafe-persistence rejection while public reads remain no-authorize"
   );
-  const macosCargoDependencyStart = cargoToml.indexOf(
+  const macosCargoDependencyStart = secureMeshCargoToml.indexOf(
     "[target.'cfg(target_os = \"macos\")'.dependencies]"
   );
-  const macosCargoDependencyEnd = cargoToml.indexOf(
+  const macosCargoDependencyEnd = secureMeshCargoToml.indexOf(
     "[target.'cfg(target_os = \"linux\")'.dependencies]"
   );
-  const macosCargoDependencies = cargoToml.slice(
+  const macosCargoDependencies = secureMeshCargoToml.slice(
     macosCargoDependencyStart,
     macosCargoDependencyEnd
   );
+  const foundationMacosCargoDependencyStart = foundationCargoToml.indexOf(
+    "[target.'cfg(target_os = \"macos\")'.dependencies]"
+  );
+  const foundationMacosCargoDependencyEnd = foundationCargoToml.indexOf(
+    "[target.'cfg(unix)'.dependencies]"
+  );
+  const foundationMacosCargoDependencies = foundationCargoToml.slice(
+    foundationMacosCargoDependencyStart,
+    foundationMacosCargoDependencyEnd
+  );
   assert(!cargoToml.includes("keyring =") &&
+    !secureMeshCargoToml.includes("keyring =") &&
     macosCargoDependencyStart >= 0 &&
     macosCargoDependencyEnd > macosCargoDependencyStart &&
-    macosCargoDependencies.includes("objc2 =") &&
-    macosCargoDependencies.includes("objc2-local-authentication =") &&
+    foundationMacosCargoDependencyStart >= 0 &&
+    foundationMacosCargoDependencyEnd > foundationMacosCargoDependencyStart &&
+    foundationMacosCargoDependencies.includes("objc2 =") &&
+    foundationMacosCargoDependencies.includes("objc2-local-authentication =") &&
     macosCargoDependencies.includes("security-framework =") &&
     macosCargoDependencies.includes("security-framework-sys =") &&
     !secureMeshSecretStoreRustSource.includes("keyring::") &&
     !await exists(
-      "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/keyring.rs"
+      "crates/licoup-secure-mesh/src/platform/secure_mesh_secret_store/platform_backends/keyring.rs"
     ) &&
     mobileRelayRustSource.includes("NATIVE_SECRET_STORE_SERVICE") &&
     mobileRelayRustSource.includes("persist_config_secret_material_to_native_store") &&
@@ -710,7 +755,9 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     macosUserPresenceRustSource.includes("pub struct SecurityFrameworkKeychain") &&
     macosUserPresenceRustSource.includes("pub trait MacosSecItemPort") &&
     macosUserPresenceRustSource.includes("kSecUseAuthenticationContext") &&
-    macosUserPresenceRustSource.includes("crate::platform::user_presence::authorize(") &&
+    macosUserPresenceRustSource.includes(
+      "licoup_foundation::platform::user_presence::authorize("
+    ) &&
     platformUserPresenceRustSource.includes("APPLICATION_AUTHORIZATION") &&
     platformUserPresenceRustSource.includes("LAPolicy::DeviceOwnerAuthenticationWithBiometrics") &&
     platformUserPresenceRustSource.includes("password_fallback_allowed") &&
@@ -729,7 +776,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     !macosUserPresenceRustSource.includes("evaluatePolicy_localizedReason_reply") &&
     !macosUserPresenceRustSource.includes("keyring::") &&
     !await exists(
-      "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/keyring.rs"
+      "crates/licoup-secure-mesh/src/platform/secure_mesh_secret_store/platform_backends/keyring.rs"
     ),
     "macOS Secure Mesh custody must bind exact 30-second single-use grants to one LocalAuthentication context and direct Security.framework effects without app passwords or legacy caches"
   );
@@ -790,10 +837,10 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     "Ubuntu proof tooling may exercise Secret Service, but production selection must stay fail-closed until measured CRUD and native authorization are available"
   );
   const mobileRelaySupportRustSource = await readText(
-    "crates/licoup-native/src/domain/mobile_relay/support.rs"
+    "crates/licoup-relay/src/domain/mobile_relay/support.rs"
   );
   const mobileRelayRedactionTests = await readText(
-    "crates/licoup-native/src/domain/mobile_relay/tests/relay_operations/identity_replay_safety.rs"
+    "crates/licoup-relay/src/domain/mobile_relay/tests/relay_operations/identity_replay_safety.rs"
   );
   assert(mobileRelaySupportRustSource.includes("SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_DETAIL") &&
     mobileRelayRedactionTests.includes("commands_sync_redacts_malicious_station_crypto_errors") &&

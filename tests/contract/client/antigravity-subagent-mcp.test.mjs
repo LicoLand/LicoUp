@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const read = (path) => readFileSync(path, "utf8");
-const common = read("crates/licoup-native/src/platform/provider_mcp_registration.rs");
-const manager = read("crates/licoup-native/src/platform/antigravity_subagent_mcp_manager.rs");
+const common = read("crates/licoup-mcp/src/provider_mcp_registration.rs");
+const manager = read("crates/licoup-mcp/src/antigravity_subagent_mcp_manager.rs");
 const execution = read("crates/licoup-native/src/platform/antigravity_driver/execution.rs");
 const hooks = read("crates/licoup-native/src/platform/antigravity_driver/hooks.rs");
 const auth = read("crates/licoup-native/src/platform/antigravity_driver/auth.rs");
-const runtime = read("crates/licoup-native/src/platform/runtime_adapters/subagent_mesh.rs");
+const runtime = read("crates/licoup-agent-drivers/src/runtime_adapters/subagent_mesh.rs");
 const startup = read("tests/product-e2e/cli/subagent-mcp/upstream/antigravity-startup-recognition.mjs");
 
 test("Antigravity registration uses one common namespaced ownership contract", () => {
@@ -43,7 +43,7 @@ test("Antigravity target requires hook identity, auth preflight, PTY and exact r
 });
 
 test("Antigravity guidance and cancellation are explicit without private field fallback", () => {
-  const policy = read("crates/licoup-native/src/platform/runtime_adapters.rs");
+  const policy = read("crates/licoup-agent-drivers/src/runtime_adapters.rs");
   const control = read("crates/licoup-native/src/platform/antigravity_driver/control.rs");
   assert.match(policy, /OrdinaryWirePrefix/u);
   assert.match(execution, /antigravity_private_instructions_unsupported/u);

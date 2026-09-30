@@ -1,6 +1,6 @@
 export async function checkLicoArcBadTowerBoundary(context) {
   const { assert, readText } = context;
-  const stationRoot = "crates/licoup-native/src/platform/badtower_station";
+  const stationRoot = "crates/licoup-relay/src/platform/badtower_station";
   const stationLeaves = ["contract.rs", "http_io.rs", "transport.rs", "wire.rs"];
   const stationSources = Object.fromEntries(await Promise.all(
     stationLeaves.map(async (leaf) => [
@@ -10,15 +10,15 @@ export async function checkLicoArcBadTowerBoundary(context) {
   ));
   const stationFacade = await readText(`${stationRoot}/mod.rs`);
   const urlSecurity = await readText(
-    "crates/licoup-native/src/platform/url_security.rs",
+    "crates/licoup-foundation/src/platform/url_security.rs",
   );
   assert(
     stationLeaves.every((leaf) =>
       stationFacade.includes(`mod ${leaf.replace(".rs", "")};`)) &&
       stationFacade.includes(
-        "pub(crate) use transport::BadTowerStationTransport;",
+        "pub use transport::BadTowerStationTransport;",
       ),
-    "BadTower station adapter must expose one crate-private split module root",
+    "BadTower station adapter must expose one split module root at its relay crate path",
   );
   assert(
     stationSources["contract.rs"].includes("enum BadTowerStationOperation") &&

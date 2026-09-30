@@ -456,7 +456,7 @@ export async function runSameSessionConversationGate(argv = process.argv.slice(2
       requireFact(reducer.ok === true, "reducer_write_failed");
       const readinessPath = resolve(
         root,
-        "crates/licoup-native/resources/agent-conversation-readiness.json",
+        "crates/licoup-agent-drivers/resources/agent-conversation-readiness.json",
       );
       const readiness = JSON.parse(readFileSync(readinessPath, "utf8"));
       readinessRow = (readiness.adapters || []).find((row) => row?.agentId === agentId) || null;

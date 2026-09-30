@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const pairwiseRoot = "crates/licoup-native/src/core/secure_mesh_pairwise";
+const pairwiseRoot = "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise";
 const negotiationFacade = `${pairwiseRoot}/session_negotiation.rs`;
 const negotiationRoot = `${pairwiseRoot}/session_negotiation`;
 const ratchetCore = `${pairwiseRoot}/key_ratchet.rs`;

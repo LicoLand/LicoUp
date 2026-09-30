@@ -20,7 +20,7 @@ export async function checkConversationBridges(context, { packagedTargets, conve
     sameSet,
   } = context;
   const driverInventory = await readJson(
-    "crates/licoup-native/resources/agent-conversation-drivers.json"
+    "crates/licoup-agent-drivers/resources/agent-conversation-drivers.json"
   );
   const driverProfiles = new Map(
     (driverInventory.drivers || []).map((driver) => [driver.agentId, driver])

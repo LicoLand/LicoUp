@@ -12,9 +12,10 @@
     {
       "id": "content-payload-bucket-padding-is-bounded-and-authenticated",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_crypto/constants.rs",
-        "crates/licoup-native/src/core/secure_mesh_crypto/padding.rs",
-        "crates/licoup-native/src/core/secure_mesh_crypto/tests/padding.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_crypto/constants.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_crypto/padding.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_crypto/tests/padding.rs",
+        "crates/licoup-protocol-bindings/src/padding_bucket.rs"
       ],
       "tokens": [
         "PADDED_PLAINTEXT_MAGIC",
@@ -31,13 +32,13 @@
     {
       "id": "pairwise-relay-header-uses-double-ratchet-header-encryption",
       "files": [
-        "crates/licoup-native/src/core/licoarc_relay/constants.rs",
-        "crates/licoup-native/src/core/licoarc_relay/aad.rs",
-        "crates/licoup-native/src/core/licoarc_relay/private_header_frame.rs",
-        "crates/licoup-native/src/core/licoarc_relay/private_header.rs",
-        "crates/licoup-native/src/core/licoarc_relay/tests/header.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/key_ratchet/relay_codec.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/codec.rs"
+        "crates/licoup-protocol-bindings/src/licoarc_relay/constants.rs",
+        "crates/licoup-protocol-bindings/src/licoarc_relay/aad.rs",
+        "crates/licoup-protocol-bindings/src/licoarc_relay/private_header_frame.rs",
+        "crates/licoup-protocol-bindings/src/licoarc_relay/private_header.rs",
+        "crates/licoup-protocol-bindings/src/licoarc_relay/tests/header.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/key_ratchet/relay_codec.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/codec.rs"
       ],
       "tokens": [
         "RELAY_HEADER_FRAME_MAGIC",
@@ -56,9 +57,9 @@
     {
       "id": "pairwise-session-rotates-bounded-header-keys",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_pairwise/key_ratchet.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/key_ratchet.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/codec.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/key_ratchet.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/key_ratchet.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/codec.rs"
       ],
       "tokens": [
         "sending_header_key",
@@ -73,7 +74,7 @@
     {
       "id": "content-crypto-stable-vectors-cover-all-payload-kinds",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_crypto/tests/stable_vector.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_crypto/tests/stable_vector.rs"
       ],
       "tokens": [
         "secure_mesh_content_crypto_has_stable_vectors_for_all_payload_kinds",
@@ -94,7 +95,7 @@
     },
     {
       "id": "pqxdh-mlkem1024-schedule-has-known-answer-vectors",
-      "file": "crates/licoup-native/src/core/secure_mesh_pqxdh.rs",
+      "file": "crates/licoup-secure-mesh/src/core/secure_mesh_pqxdh.rs",
       "tokens": [
         "licomesh.pqxdh-triple-ratchet.v1.x25519-ed25519-mlkem1024-hkdfsha256",
         "ML_KEM_1024_PUBLIC_KEY_BYTES: usize = 1_568",
@@ -108,11 +109,11 @@
     },
     {
       "id": "mlkem1024-braid-parameters-and-authenticator-have-known-answers",
-      "file": "crates/licoup-native/src/core/secure_mesh_mlkem_braid/constants.rs",
+      "file": "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/constants.rs",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_mlkem_braid/constants.rs",
-        "crates/licoup-native/src/core/secure_mesh_mlkem_braid/authenticator.rs",
-        "crates/licoup-native/src/core/secure_mesh_mlkem_braid/tests/authenticator.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/constants.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/authenticator.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/tests/authenticator.rs"
       ],
       "tokens": [
         "mlkem1024::incremental",
@@ -131,11 +132,11 @@
     {
       "id": "pairwise-pqxdh-triple-ratchet-combines-ec-and-sparse-pq",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_pairwise/support.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/session_negotiation.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/key_ratchet.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/session_negotiation.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/key_ratchet.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/support.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/session_negotiation.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/key_ratchet.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/session_negotiation.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/key_ratchet.rs"
       ],
       "tokens": [
         "licomesh.pqxdh-triple-ratchet.v1.x25519-ed25519-mlkem1024-hkdfsha256-chacha20poly1305",
@@ -151,16 +152,16 @@
     {
       "id": "pairwise-authenticated-ratchet-is-restart-safe",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_pairwise/session_negotiation.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/key_ratchet.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/public_snapshot.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/session_codec.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/session_commit.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/session_read.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/secret_store_io.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/codec.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/key_ratchet.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/persistence_recovery.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/session_negotiation.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/key_ratchet.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/public_snapshot.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/session_codec.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/session_commit.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/session_read.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/secret_store_io.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/codec.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/key_ratchet.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/persistence_recovery.rs"
       ],
       "tokens": [
         "handshake_transcript_hash",
@@ -180,12 +181,12 @@
     {
       "id": "mls-product-policy-bindings-and-kt-signed-checkpoints",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_mls_product/constants.rs",
-        "crates/licoup-native/src/core/secure_mesh_mls_product/identity_trust.rs",
-        "crates/licoup-native/src/core/secure_mesh_mls_product/invitation_authorization.rs",
-        "crates/licoup-native/src/core/secure_mesh_mls_product/ledger_transaction.rs",
-        "crates/licoup-native/src/core/secure_mesh_mls_product/security_ledger.rs",
-        "crates/licoup-native/src/core/secure_mesh_mls_product/tests/invitation_authorization.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_mls_product/constants.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_mls_product/identity_trust.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_mls_product/invitation_authorization.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_mls_product/ledger_transaction.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_mls_product/security_ledger.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_mls_product/tests/invitation_authorization.rs"
       ],
       "tokens": [
         "SECURE_MESH_MLS_PRODUCT_POLICY_STATUS",
@@ -204,14 +205,14 @@
     {
       "id": "key-transparency-signed-checkpoints-non-authorizing-hash-chain",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_transparency.rs",
-        "crates/licoup-native/src/core/secure_mesh_transparency/constants.rs",
-        "crates/licoup-native/src/core/secure_mesh_transparency/diagnostics.rs",
-        "crates/licoup-native/src/core/secure_mesh_transparency/client_state/mod.rs",
-        "crates/licoup-native/src/core/secure_mesh_transparency/client_state/authorization.rs",
-        "crates/licoup-native/src/core/secure_mesh_transparency/proofs/inclusion.rs",
-        "crates/licoup-native/src/core/secure_mesh_transparency/proofs/consistency.rs",
-        "crates/licoup-native/src/core/secure_mesh_transparency/sparse_map.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_transparency.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_transparency/constants.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_transparency/diagnostics.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_transparency/client_state/mod.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_transparency/client_state/authorization.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_transparency/proofs/inclusion.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_transparency/proofs/consistency.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_transparency/sparse_map.rs"
       ],
       "tokens": [
         "SECURE_MESH_KT_PROTOCOL_VERSION",
@@ -233,11 +234,11 @@
     {
       "id": "lifecycle-service-actions-require-pairwise-or-mls-envelopes",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_lifecycle/mod.rs",
-        "crates/licoup-native/src/core/secure_mesh_lifecycle/projection.rs",
-        "crates/licoup-native/src/core/secure_mesh_lifecycle/pairwise.rs",
-        "crates/licoup-native/src/core/secure_mesh_lifecycle/mls.rs",
-        "crates/licoup-native/src/core/secure_mesh_lifecycle/tests/pairwise.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_lifecycle/mod.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_lifecycle/projection.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_lifecycle/pairwise.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_lifecycle/mls.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_lifecycle/tests/pairwise.rs"
       ],
       "tokens": [
         "seal_lifecycle_service_action_pairwise",
@@ -251,10 +252,10 @@
     {
       "id": "pairwise-command-result-endpoint-kind-matrix-exists",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_pairwise/codec.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/key_ratchet.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/codec.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/test_support.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/codec.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/key_ratchet.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/codec.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/test_support.rs"
       ],
       "tokens": [
         "secure_mesh_pairwise_pc_pc_command_result_relay_round_trip",
@@ -272,8 +273,8 @@
     {
       "id": "sesame-style-multi-device-fanout-uses-independent-pairwise-envelopes",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_pairwise/manager_fanout.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/manager_fanout.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/manager_fanout.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/manager_fanout.rs"
       ],
       "tokens": [
         "secure_mesh_sesame_multi_device_fanout_uses_independent_pairwise_envelopes_and_ack_purge",
@@ -288,10 +289,10 @@
     {
       "id": "pairwise-adversarial-open-failures-do-not-advance-state",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_pairwise/key_ratchet.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/codec.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/key_ratchet.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/manager_fanout.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/key_ratchet.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/codec.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/key_ratchet.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/manager_fanout.rs"
       ],
       "tokens": [
         "secure_mesh_pairwise_relay_header_public_boundary_is_explicit_and_payload_free",
@@ -310,11 +311,11 @@
     {
       "id": "mobile-relay-seals-command-result-with-pairwise-session",
       "files": [
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session.rs",
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/crypto_operation.rs",
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/transaction.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/session_commit.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests/relay_operations/envelope_roundtrip.rs"
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/crypto_operation.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/transaction.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/session_commit.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/relay_operations/envelope_roundtrip.rs"
       ],
       "tokens": [
         "fn seal_mobile_relay_payload",
@@ -330,9 +331,9 @@
     {
       "id": "mobile-relay-opens-command-result-with-pairwise-session",
       "files": [
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/crypto_operation.rs",
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/transaction.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/session_commit.rs"
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/crypto_operation.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/transaction.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/session_commit.rs"
       ],
       "tokens": [
         "fn open_mobile_relay_payload",
@@ -346,7 +347,7 @@
     {
       "id": "mobile-relay-default-payload-route-does-not-own-content-key-derivation",
       "files": [
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/crypto_operation.rs"
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/crypto_operation.rs"
       ],
       "functionName": "seal_mobile_relay_payload",
       "forbiddenTokens": [
@@ -359,15 +360,15 @@
     {
       "id": "pairwise-runtime-status-remains-independent-review-blocked",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_pairwise.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/support.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/initial_write.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/remote_prekey.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/schema.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/session_commit.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/store_model.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/persistence_prekey.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/support.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/initial_write.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/remote_prekey.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/schema.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/session_commit.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/store_model.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/persistence_prekey.rs"
       ],
       "tokens": [
         "SECURE_MESH_PAIRWISE_STATUS",
@@ -382,10 +383,10 @@
     {
       "id": "telegram-like-lifecycle-service-actions-are-redacted",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_lifecycle/schema.rs",
-        "crates/licoup-native/src/core/secure_mesh_lifecycle/policy.rs",
-        "crates/licoup-native/src/core/secure_mesh_lifecycle/projection.rs",
-        "crates/licoup-native/src/core/secure_mesh_lifecycle/tests/policy.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_lifecycle/schema.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_lifecycle/policy.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_lifecycle/projection.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_lifecycle/tests/policy.rs"
       ],
       "tokens": [
         "SECURE_MESH_LIFECYCLE_STATUS",
@@ -443,8 +444,8 @@
     {
       "id": "pairwise-payload-codec-uses-ratchet-message-key",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_pairwise/key_ratchet.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/key_ratchet/payload_adapter.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/key_ratchet.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/key_ratchet/payload_adapter.rs"
       ],
       "tokens": [
         "pub fn seal_payload(",
@@ -456,7 +457,7 @@
     {
       "id": "content-crypto-keeps-mls-product-route-disabled",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_crypto/constants.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_crypto/constants.rs"
       ],
       "tokens": [
         "SECURE_MESH_CONTENT_CRYPTO_STATUS",
@@ -491,11 +492,11 @@
     },
     {
       "id": "mls-exporter-payload-route-exists",
-      "file": "crates/licoup-native/src/core/secure_mesh_mls/group_payload.rs",
+      "file": "crates/licoup-secure-mesh/src/core/secure_mesh_mls/group_payload.rs",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_mls/group_payload.rs",
-        "crates/licoup-native/src/core/secure_mesh_mls/constants.rs",
-        "crates/licoup-native/src/core/secure_mesh_mls/private_context_codec.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_mls/group_payload.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_mls/constants.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_mls/private_context_codec.rs"
       ],
       "tokens": [
         "derive_group_payload_content_key",
@@ -532,10 +533,10 @@
     {
       "id": "mobile-relay-pairwise-intro-and-claim-proof-bind-verified-peer",
       "files": [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/primitives.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/pairwise_codec.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests/pairwise_session.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests/pairing.rs"
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/primitives.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/pairwise_codec.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/pairwise_session.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/pairing.rs"
       ],
       "tokens": [
         "mobile_relay_claim_descriptor_binding",
@@ -551,9 +552,9 @@
     {
       "id": "mobile-relay-peer-substitution-and-trust-tamper-fail-closed",
       "files": [
-        "crates/licoup-native/src/domain/mobile_relay/tests/pairwise_session.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests/pairing.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests/endpoint_trust.rs"
+        "crates/licoup-relay/src/domain/mobile_relay/tests/pairwise_session.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/pairing.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/endpoint_trust.rs"
       ],
       "tokens": [
         "mobile_relay_pairwise_does_not_reinitialize_from_peer_descriptor_session_id",
@@ -569,8 +570,8 @@
     {
       "id": "acp-envelope-aad-covers-protected-payload-binding",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_acp.rs",
-        "crates/licoup-native/src/core/secure_mesh_acp/tests/mod.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_acp.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_acp/tests/mod.rs"
       ],
       "tokens": [
         "SECURE_MESH_ACP_ENVELOPE_PROTOCOL",
@@ -597,8 +598,8 @@
     {
       "id": "acp-plaintext-protected-payload-relay-is-not-a-production-path",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_acp.rs",
-        "crates/licoup-native/src/core/secure_mesh_acp/tests/mod.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_acp.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_acp/tests/mod.rs"
       ],
       "tokens": [
         "reject_plaintext_acp_protected_payload_relay",
@@ -612,7 +613,7 @@
     },
     {
       "id": "production-status-exposes-acp-envelope-contract",
-      "file": "crates/licoup-native/src/core/secure_mesh.rs",
+      "file": "crates/licoup-secure-mesh/src/core/secure_mesh.rs",
       "tokens": [
         "SECURE_MESH_ACP_STATUS",
         "acpEnvelopeStatus"

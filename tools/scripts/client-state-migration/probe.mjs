@@ -16,10 +16,12 @@ import {
 export const GATEWAY_CUSTODY_DOMAIN = "gateway-credential-custody";
 
 // Every constant below is the admission's own contract, mirrored read-only.
-// The final test in `tests/contract/client/client-state-migration-diagnostic.test.mjs`
-// fails if this file drifts from the Rust admission.
-const CLIENT_STATE_SCHEMA_VERSION = "v0.0.1:schema:definition-1";
-const CLIENT_STATE_COLLECTIONS = Object.freeze([
+// The mirrored collection list and schema marker are exported so the contract
+// test asserts these declarations instead of restating them; a drift from the
+// Rust admission fails in
+// `tests/contract/client/client-state-migration/admission-mirror.test.mjs`.
+export const CLIENT_STATE_SCHEMA_VERSION = "v0.0.1:schema:definition-1";
+export const CLIENT_STATE_COLLECTIONS = Object.freeze([
   "settings",
   "targets",
   "target-discovery-cache",

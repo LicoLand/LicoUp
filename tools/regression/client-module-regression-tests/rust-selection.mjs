@@ -30,14 +30,16 @@ test("Rust catalog commands are independently filtered", () => {
   }
 });
 
-test("catalog convergence crate and native adapters retain bounded closures", () => {
+test("catalog convergence crate and its composition adapters retain bounded closures", () => {
   const selections = new Map([
     ["crates/lico-catalog-convergence/src/engine.rs", [
       "rust.crate.catalog-convergence",
     ]],
-    ["crates/licoup-native/src/domain/catalog_convergence.rs", [
+    ["crates/licoup-application/src/catalog_convergence.rs", [
       "architecture.client-boundaries",
       "rust.domain.catalog-convergence-adapter",
+      "rust.crate.application",
+      "rust.sdk.model-provider",
     ]],
     ["crates/licoup-native/src/platform/catalog_cache_store.rs", [
       "architecture.client-boundaries",
@@ -65,7 +67,6 @@ test("catalog convergence crate and native adapters retain bounded closures", ()
     "crates/lico-catalog-convergence/Cargo.toml",
   ]);
   for (const id of [
-    "rust.domain.catalog-convergence-adapter",
     "rust.platform.catalog-cache-store",
     "rust.ffi.catalog-convergence",
   ]) {
@@ -118,7 +119,7 @@ test("Independent MCP lifecycle tests use the standalone crate regression", () =
 
 test("Rust domain changes select a precise cargo-filtered slice", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/raw_execution.rs",
+    "crates/licoup-foundation/src/platform/raw_execution.rs",
   ])), ["architecture.client-boundaries", "rust.platform"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/conversation/history/execution_provenance.rs",
@@ -183,12 +184,23 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "tests::rpc::",
     "stdio_rpc::server::conversation::",
   ]);
+  // The MCP adapter moved into `licoup-mcp`, so the path selects the module that
+  // owns it, the crate-level entry that now also owns the registry, transport and
+  // approval modules, and the Subagent MCP regression that reads the crate.
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/mcp_adapter/plan.rs",
-  ])), ["architecture.client-boundaries", "rust.domain.mcp-adapter"]);
+    "crates/licoup-mcp/src/mcp_adapter/plan.rs",
+  ])), [
+    "regression.subagent-mcp-common",
+    "rust.domain.mcp-adapter",
+    "rust.core.mcp-server",
+  ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/mcp_adapter/execution.rs",
-  ])), ["architecture.client-boundaries", "rust.domain.mcp-adapter"]);
+    "crates/licoup-mcp/src/mcp_adapter/execution.rs",
+  ])), [
+    "regression.subagent-mcp-common",
+    "rust.domain.mcp-adapter",
+    "rust.core.mcp-server",
+  ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/secure_mesh_command_runtime.rs",
   ])), [
@@ -256,6 +268,9 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.snapshots.composition",
+    // The Windows file-security boundary verifier reads this path, so its module
+    // is selected by the same change.
+    "bridge.windows",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/conversation_archive_jobs.rs",
@@ -293,37 +308,61 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.snapshots.settings",
-  ]);
+  
+    // The Windows file-security boundary verifier reads this path, so its
+    // module is selected by the same change.
+    "bridge.windows",
+]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/conversation/snapshots/discovery.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.snapshots.discovery",
-  ]);
+  
+    // The Windows file-security boundary verifier reads this path, so its
+    // module is selected by the same change.
+    "bridge.windows",
+]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/conversation/snapshots/selection_plan.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.snapshots.selection-plan",
-  ]);
+  
+    // The Windows file-security boundary verifier reads this path, so its
+    // module is selected by the same change.
+    "bridge.windows",
+]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/conversation/snapshots/privacy_projection.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.snapshots.privacy-projection",
-  ]);
+  
+    // The Windows file-security boundary verifier reads this path, so its
+    // module is selected by the same change.
+    "bridge.windows",
+]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/conversation/snapshots/materialization.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.snapshots.materialization",
-  ]);
+  
+    // The Windows file-security boundary verifier reads this path, so its
+    // module is selected by the same change.
+    "bridge.windows",
+]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/conversation/snapshots/validation.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.snapshots.validation",
-  ]);
+  
+    // The Windows file-security boundary verifier reads this path, so its
+    // module is selected by the same change.
+    "bridge.windows",
+]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/conversation/archive_queue.rs",
   ])), [
@@ -411,74 +450,98 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "rust.domain.agent-conversations.session-merge.integration",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/targets/catalog.rs",
-  ])), ["architecture.client-boundaries", "rust.domain.targets.catalog"]);
+    "crates/licoup-agent-targets/src/domain/targets/catalog.rs",
+  ])), [
+    "architecture.client-boundaries",
+    "rust.domain.targets.catalog",
+    // The Windows file-security boundary verifier reads this path, so its
+    // module is selected by the same change.
+    "bridge.windows",
+  ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/targets/target_cache.rs",
-  ])), ["architecture.client-boundaries", "rust.domain.targets.discovery-cache"]);
+    "crates/licoup-agent-targets/src/domain/targets/target_cache.rs",
+  ])), [
+    "architecture.client-boundaries",
+    "rust.domain.targets.discovery-cache",
+    // The Windows file-security boundary verifier reads this path, so its
+    // module is selected by the same change.
+    "bridge.windows",
+  ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/targets/model_catalog/kilo.rs",
+    "crates/licoup-agent-targets/src/domain/targets/model_catalog/kilo.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.targets.model-catalog.kilo",
-  ]);
+  
+    // The Windows file-security boundary verifier reads this path, so its
+    // module is selected by the same change.
+    "bridge.windows",
+]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/targets/model_catalog/claude.rs",
+    "crates/licoup-agent-targets/src/domain/targets/model_catalog/claude.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.targets.model-catalog.claude-code",
-  ]);
+  
+    // The Windows file-security boundary verifier reads this path, so its
+    // module is selected by the same change.
+    "bridge.windows",
+]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/targets/model_catalog/opencode.rs",
+    "crates/licoup-agent-targets/src/domain/targets/model_catalog/opencode.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.targets.model-catalog.opencode",
-  ]);
+  
+    // The Windows file-security boundary verifier reads this path, so its
+    // module is selected by the same change.
+    "bridge.windows",
+]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/mobile_relay/pairing.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/pairing.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.mobile-relay.pairing",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/mobile_relay/relay_operations.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/relay_operations.rs",
   ])), [
     "regression.relay-operations-source-bundle",
     "architecture.client-boundaries",
     "rust.domain.mobile-relay.relay-operations",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/mobile_relay/secret_custody.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/secret_custody.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.mobile-relay.secret-custody",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/mobile_relay/secret_custody/runtime.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/secret_custody/runtime.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.mobile-relay.secret-custody.runtime",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/tests/secret_custody.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.mobile-relay.secret-custody.scenario.config-integrity",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody/secure_command_store.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/tests/secret_custody/secure_command_store.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.mobile-relay.secret-custody.scenario.secure-command-store",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/persistence.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/persistence.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.mobile-relay.endpoint-trust.persistence",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/mobile_relay/tests/endpoint_trust.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/tests/endpoint_trust.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.mobile-relay.endpoint-trust.scenarios",
@@ -651,12 +714,12 @@ test("foundation and security modules retain exact narrow command filters", () =
     "core::acp::tests::responses");
   assert.equal(commandFilter("rust.core.acp.codec"),
     "core::acp::tests::codec");
-  assert.equal(commandFilter("rust.core.mcp.composition"), "core::mcp::tests");
-  assert.equal(commandFilter("rust.core.mcp.wire"), "core::mcp::tests::wire");
+  assert.equal(commandFilter("rust.core.mcp.composition"), "mcp::tests");
+  assert.equal(commandFilter("rust.core.mcp.wire"), "mcp::tests::wire");
   assert.equal(commandFilter("rust.core.mcp.transfer"),
-    "core::mcp::tests::transfer");
+    "mcp::tests::transfer");
   assert.equal(commandFilter("rust.domain.mcp-adapter"),
-    "domain::mcp_adapter::tests::");
+    "mcp_adapter::tests::");
   assert.equal(commandFilter("rust.domain.secure-mesh-command-runtime"),
     "domain::secure_mesh_command_runtime::tests::");
   assert.equal(commandFilter("rust.domain.agent-usage.window"),
@@ -694,11 +757,11 @@ test("foundation and security modules retain exact narrow command filters", () =
   ]);
 
   for (const [id, sharedFacade] of [
-    ["rust.core.acp.requests", "crates/licoup-native/src/core/acp.rs"],
-    ["rust.core.acp.responses", "crates/licoup-native/src/core/acp.rs"],
-    ["rust.core.acp.codec", "crates/licoup-native/src/core/acp.rs"],
-    ["rust.core.mcp.wire", "crates/licoup-native/src/core/mcp.rs"],
-    ["rust.core.mcp.transfer", "crates/licoup-native/src/core/mcp.rs"],
+    ["rust.core.acp.requests", "crates/licoup-foundation/src/core/acp.rs"],
+    ["rust.core.acp.responses", "crates/licoup-foundation/src/core/acp.rs"],
+    ["rust.core.acp.codec", "crates/licoup-foundation/src/core/acp.rs"],
+    ["rust.core.mcp.wire", "crates/licoup-mcp/src/mcp.rs"],
+    ["rust.core.mcp.transfer", "crates/licoup-mcp/src/mcp.rs"],
   ]) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.inputs.includes(sharedFacade), false,
@@ -708,7 +771,7 @@ test("foundation and security modules retain exact narrow command filters", () =
 
 test("Secure Mesh custody, runtime, MLS store, and schema reset select bounded closures", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/secure_mesh_secret_store/authorization.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_secret_store/authorization.rs",
   ])), [
     "architecture.client-boundaries",
       "rust.platform.secure-mesh-secret-store.authorization",
@@ -722,13 +785,15 @@ test("Secure Mesh custody, runtime, MLS store, and schema reset select bounded c
     "rust.domain.secure-mesh-command-runtime",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/secure_mesh_mls_store.rs",
+    "crates/licoup-secure-mesh/src/platform/secure_mesh_mls_store.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.platform.secure-mesh-mls-store",
+    // The Windows file-security boundary verifier reads this path as well.
+    "bridge.windows",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/secure_mesh_pairwise/tests/persistence_schema_reset.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/persistence_schema_reset.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.pairwise-persistence.schema-reset",
@@ -912,7 +977,7 @@ test("target modules retain leaf-owned inputs and exact command filters", () => 
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
     assert.equal(module.inputs.includes(
-      "crates/licoup-native/src/domain/targets.rs"), false);
+      "crates/licoup-agent-targets/src/domain/targets.rs"), false);
   }
 });
 

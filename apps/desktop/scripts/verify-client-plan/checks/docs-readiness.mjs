@@ -33,7 +33,7 @@ export async function checkDocsReadiness({ assert, files }) {
   }
   const packaging = await readJson("apps/desktop/packaging.modules.json");
   const driverInventory = await readJson(
-    "crates/licoup-native/resources/agent-conversation-drivers.json",
+    "crates/licoup-agent-drivers/resources/agent-conversation-drivers.json",
   );
   const adapterIds = packaging.modules?.["target-adapters"]?.targetAdapters || [];
   const driverIds = driverInventory.drivers?.map((driver) => driver.agentId) || [];

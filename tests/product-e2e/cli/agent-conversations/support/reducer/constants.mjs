@@ -40,11 +40,11 @@ export const PACKAGING_REGISTRY_FILE = resolve(
 );
 export const DRIVER_INVENTORY_FILE = resolve(
   REPOSITORY_ROOT,
-  "crates/licoup-native/resources/agent-conversation-drivers.json",
+  "crates/licoup-agent-drivers/resources/agent-conversation-drivers.json",
 );
 export const READINESS_FILE = resolve(
   REPOSITORY_ROOT,
-  "crates/licoup-native/resources/agent-conversation-readiness.json",
+  "crates/licoup-agent-drivers/resources/agent-conversation-readiness.json",
 );
 export const CANONICAL_EVIDENCE_FILE = resolve(
   REPOSITORY_ROOT,

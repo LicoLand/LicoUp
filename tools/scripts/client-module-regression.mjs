@@ -6,6 +6,7 @@ import { CLIENT_MODULE_CATALOG } from "../regression/client-module-catalog.mjs";
 import { executeClientModules } from "../regression/client-module-execution.mjs";
 import { runClientCompatibilityFrontier } from "../regression/client-regression-compatibility.mjs";
 import { CLIENT_COMPATIBILITY_ENTRIES } from "../regression/client-regression-entries/index.mjs";
+import { regressionCapacitiesFor } from "../regression/client-regression-metadata.mjs";
 import { retrySelectionFromReport } from "../regression/client-regression-report.mjs";
 import {
   changedPathsSince,
@@ -38,6 +39,9 @@ Options:
   --changed-from <ref>     Select modules from changed repository paths.
   --retry-report <path>    Redispatch only failed/pending members from a prior report.
   --report <path>          Write the privacy-safe report under build/reports.
+  --capacity <n>           Cap concurrency at a host-stated budget instead of the core
+                           count. Every pool is derived from n and never exceeds it, so a
+                           worktree sharing a busy host states what it can spare.
   --static-compatibility   Do not execute eligible live platform/Agent verifiers.
   --dry-run                Print the selection without spawning or probing.
   --help                   Show this help.
@@ -60,6 +64,7 @@ function reportFile(value) {
 export function parseClientModuleRegressionArgs(argv) {
   const options = {
     agentIds: [],
+    capacity: null,
     changedFrom: null,
     dryRun: false,
     help: false,
@@ -77,13 +82,14 @@ export function parseClientModuleRegressionArgs(argv) {
     else if (argument === "--dry-run") options.dryRun = true;
     else if (argument === "--static-compatibility") options.staticCompatibility = true;
     else if (argument === "--help" || argument === "-h") options.help = true;
-    else if (["--module", "--lane", "--agent", "--platform", "--changed-from", "--retry-report", "--report"].includes(argument)) {
+    else if (["--module", "--lane", "--agent", "--platform", "--capacity", "--changed-from", "--retry-report", "--report"].includes(argument)) {
       const value = argv[++index];
       if (!value) throw new Error("client regression option value is required");
       if (argument === "--module") options.moduleIds.push(...commaValues(value, "module id"));
       else if (argument === "--lane") options.lanes.push(...commaValues(value, "lane id"));
       else if (argument === "--agent") options.agentIds.push(...commaValues(value, "agent id"));
       else if (argument === "--platform") options.platformIds.push(...commaValues(value, "platform id"));
+      else if (argument === "--capacity") options.capacity = Number(value);
       else if (argument === "--changed-from") options.changedFrom = value;
       else if (argument === "--retry-report") options.retryReport = reportFile(value);
       else options.reportPath = reportFile(value);
@@ -95,7 +101,8 @@ export function parseClientModuleRegressionArgs(argv) {
       options.agentIds.push(...commaValues(argument.slice(8), "agent id"));
     } else if (argument.startsWith("--platform=")) {
       options.platformIds.push(...commaValues(argument.slice(11), "platform id"));
-    } else if (argument.startsWith("--changed-from=")) options.changedFrom = argument.slice(15);
+    } else if (argument.startsWith("--capacity=")) options.capacity = Number(argument.slice(11));
+    else if (argument.startsWith("--changed-from=")) options.changedFrom = argument.slice(15);
     else if (argument.startsWith("--retry-report=")) options.retryReport = reportFile(argument.slice(15));
     else if (argument.startsWith("--report=")) options.reportPath = reportFile(argument.slice(9));
     else throw new Error("unknown client module regression option");
@@ -219,12 +226,33 @@ export async function main(argv = process.argv.slice(2), {
       writeSelection(selected, output);
       return 0;
     }
+    // A stated capacity is in the same units as the derived model, where a rust module
+    // weighs four and a node module one. Saying a number below the heaviest selected
+    // module cannot schedule it, so refuse the run with the number to state instead of
+    // failing later inside the planner with a resource message.
+    const statedCapacity = options.capacity === null
+      ? null
+      : regressionCapacitiesFor(options.capacity);
+    if (statedCapacity !== null && selected.length > 0) {
+      const heaviest = selected.reduce(
+        (worst, module) => Math.max(worst, module.regression?.weight ?? 1), 0);
+      if (heaviest > statedCapacity.global) {
+        const toolchains = [...new Set(selected
+          .filter((module) => (module.regression?.weight ?? 1) === heaviest)
+          .map((module) => module.regression?.toolchain ?? "unknown"))].join(", ");
+        errorOutput.write(
+          `client module regression: a stated capacity of ${statedCapacity.global} cannot schedule ` +
+          `${toolchains} work, which weighs ${heaviest}; state at least ${heaviest}\n`);
+        return 2;
+      }
+    }
     const result = await executor(selected, {
       repoRoot,
       catalog: CLIENT_MODULE_CATALOG,
       output,
       reportPath: options.reportPath,
       runKind,
+      capacities: statedCapacity ?? undefined,
       compatibilityRunner: compatibilityEntries.length > 0
         ? ({ capacities }) => compatibilityRunner({
           repoRoot,

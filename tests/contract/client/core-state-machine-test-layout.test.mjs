@@ -5,13 +5,15 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const coreRoot = "crates/licoup-native/src/core";
+// The mesh cryptography and the Secure Mesh lifecycle, ACP and platform stores now
+// live in their own crate, so every physical test module below is read from there.
+const secureMeshCoreRoot = "crates/licoup-secure-mesh/src/core";
 
 const physicalTestModules = Object.freeze([
   {
     id: "session-negotiation",
-    source: `${coreRoot}/secure_mesh_session_negotiation.rs`,
-    tests: `${coreRoot}/secure_mesh_session_negotiation/tests/mod.rs`,
+    source: `${secureMeshCoreRoot}/secure_mesh_session_negotiation.rs`,
+    tests: `${secureMeshCoreRoot}/secure_mesh_session_negotiation/tests/mod.rs`,
     names: [
       "pairwise_and_mls_transcripts_bind_both_proofs_and_protocol_only_intersection",
       "stable_pairwise_and_mls_transcript_vectors_are_deterministic",
@@ -31,8 +33,8 @@ const physicalTestModules = Object.freeze([
   },
   {
     id: "capability-proof",
-    source: `${coreRoot}/secure_mesh_capability_proof.rs`,
-    tests: `${coreRoot}/secure_mesh_capability_proof/tests/mod.rs`,
+    source: `${secureMeshCoreRoot}/secure_mesh_capability_proof.rs`,
+    tests: `${secureMeshCoreRoot}/secure_mesh_capability_proof/tests/mod.rs`,
     names: [
       "stable_capability_proof_vector_uses_existing_endpoint_identity_signature",
       "canonical_proof_is_independent_of_platform_fact_input_order",
@@ -52,8 +54,8 @@ const physicalTestModules = Object.freeze([
   },
   {
     id: "sparse-pq-ratchet",
-    source: `${coreRoot}/secure_mesh_sparse_pq_ratchet.rs`,
-    tests: `${coreRoot}/secure_mesh_sparse_pq_ratchet/tests/mod.rs`,
+    source: `${secureMeshCoreRoot}/secure_mesh_sparse_pq_ratchet.rs`,
+    tests: `${secureMeshCoreRoot}/secure_mesh_sparse_pq_ratchet/tests/mod.rs`,
     names: [
       "sparse_pq_ratchet_matches_keys_and_restores_state",
       "sparse_pq_ratchet_supports_bounded_out_of_order_messages",
@@ -66,8 +68,8 @@ const physicalTestModules = Object.freeze([
   },
   {
     id: "secure-mesh-acp",
-    source: `${coreRoot}/secure_mesh_acp.rs`,
-    tests: `${coreRoot}/secure_mesh_acp/tests/mod.rs`,
+    source: `${secureMeshCoreRoot}/secure_mesh_acp.rs`,
+    tests: `${secureMeshCoreRoot}/secure_mesh_acp/tests/mod.rs`,
     names: [
       "secure_mesh_acp_envelope_aad_has_stable_digest_vector",
       "secure_mesh_acp_envelope_aad_field_mutation_fails_open",
@@ -121,9 +123,9 @@ test("physical test modules preserve deterministic vectors", async () => {
 });
 
 test("MLS security-ledger test-only queries have a physical support owner", async () => {
-  const productionPath = `${coreRoot}/secure_mesh_mls_product/security_ledger.rs`;
-  const supportPath = `${coreRoot}/secure_mesh_mls_product/security_ledger/test_support.rs`;
-  const scenariosPath = `${coreRoot}/secure_mesh_mls_product/tests/security_ledger.rs`;
+  const productionPath = `${secureMeshCoreRoot}/secure_mesh_mls_product/security_ledger.rs`;
+  const supportPath = `${secureMeshCoreRoot}/secure_mesh_mls_product/security_ledger/test_support.rs`;
+  const scenariosPath = `${secureMeshCoreRoot}/secure_mesh_mls_product/tests/security_ledger.rs`;
   const [production, support, scenarios] = await Promise.all([
     read(productionPath),
     read(supportPath),

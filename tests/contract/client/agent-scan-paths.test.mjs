@@ -7,13 +7,13 @@ import test from "node:test";
 const root = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const read = (relative) => readFileSync(path.join(root, relative), "utf8");
 
-const manifest = read("crates/licoup-native/resources/agent-scan-paths.toml");
-const scanPaths = read("crates/licoup-native/src/domain/targets/scan_paths.rs");
+const manifest = read("crates/licoup-agent-targets/resources/agent-scan-paths.toml");
+const scanPaths = read("crates/licoup-agent-targets/src/domain/targets/scan_paths.rs");
 const platformPaths = read(
-  "crates/licoup-native/src/domain/targets/platform_paths.rs",
+  "crates/licoup-agent-targets/src/domain/targets/platform_paths.rs",
 );
-const nativeHome = read("crates/licoup-native/src/platform/paths.rs");
-const binaries = read("crates/licoup-native/src/domain/targets/binaries.rs").split(
+const nativeHome = read("crates/licoup-foundation/src/platform/paths.rs");
+const binaries = read("crates/licoup-agent-targets/src/domain/targets/binaries.rs").split(
   "#[cfg(test)]",
   1,
 )[0];
@@ -71,7 +71,7 @@ test("Agent discovery is an allowlisted TOML scan, not a PATH walk", () => {
     /fn automatic_probe_admitted[\s\S]*automatic_probe_admitted_with/u,
   );
   assert.match(
-    read("crates/licoup-native/src/domain/targets/model_catalog/config.rs"),
+    read("crates/licoup-agent-targets/src/domain/targets/model_catalog/config.rs"),
     /probe_exists_under_home/u,
   );
   assert.match(

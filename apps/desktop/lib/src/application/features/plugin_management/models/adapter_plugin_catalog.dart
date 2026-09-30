@@ -30,8 +30,11 @@ enum AdapterPluginLifecycleAction {
   };
 }
 
-/// Native delivery channels an agent itself ships, as opposed to a
-/// LicoUp-installed adapter plugin or LicoUp-owned gateway.
+/// Native delivery channels an agent itself ships, plus the declared ability
+/// facts the same projection reports. An ability carries no channel semantics;
+/// `imageInput` declares that the Agent's own lane accepts image input and
+/// `realInterface` declares that a desktop surface is present on this host.
+/// Neither is a claim that LicoUp can drive that surface.
 enum AdapterNativeCapabilityKind {
   desktop('desktop'),
   cli('cli'),
@@ -41,7 +44,9 @@ enum AdapterNativeCapabilityKind {
   gateway('gateway'),
   localServer('local-server'),
   webServer('web-server'),
-  tuiGateway('tui-gateway');
+  tuiGateway('tui-gateway'),
+  imageInput('image-input'),
+  realInterface('real-interface');
 
   const AdapterNativeCapabilityKind(this.wireName);
 
@@ -57,7 +62,29 @@ enum AdapterNativeCapabilityKind {
     'local-server' => localServer,
     'web-server' => webServer,
     'tui-gateway' => tuiGateway,
+    'image-input' => imageInput,
+    'real-interface' => realInterface,
     _ => throw const FormatException('adapter_native_capability_kind_invalid'),
+  };
+}
+
+/// The projection state of one native capability fact. `unknown` means the
+/// owner could not be read, which is a different answer from a fact the owner
+/// was read and did not declare.
+enum AdapterNativeCapabilityState {
+  declared('declared'),
+  notDeclared('not-declared'),
+  unknown('unknown');
+
+  const AdapterNativeCapabilityState(this.wireName);
+
+  final String wireName;
+
+  static AdapterNativeCapabilityState? parse(Object? value) => switch (value) {
+    'declared' => declared,
+    'not-declared' => notDeclared,
+    'unknown' => unknown,
+    _ => null,
   };
 }
 
@@ -66,6 +93,7 @@ final class AdapterNativeCapability {
     required this.kind,
     required this.detected,
     required this.running,
+    this.state,
     this.pid,
     this.processName,
     this.port,
@@ -73,10 +101,17 @@ final class AdapterNativeCapability {
 
   factory AdapterNativeCapability.fromJson(Map<Object?, Object?> json) {
     final kind = AdapterNativeCapabilityKind.parse(json['kind']);
-    final detected = json['detected'];
-    if (detected is! bool) {
-      throw const FormatException('adapter_plugin_catalog_invalid');
-    }
+    // An owner that could not be read reports no detection value at all. The
+    // catalog model accepts that absence instead of rejecting the whole
+    // catalog; `state` keeps the unknown answer distinguishable, and the
+    // presentation projection, which types detection as a bool, reads it as
+    // not detected.
+    final detected = switch (json['detected']) {
+      null => false,
+      final bool value => value,
+      _ => throw const FormatException('adapter_plugin_catalog_invalid'),
+    };
+    final state = AdapterNativeCapabilityState.parse(json['state']);
     final running = switch (json['running']) {
       null => false,
       final bool value => value,
@@ -101,6 +136,7 @@ final class AdapterNativeCapability {
       kind: kind,
       detected: detected,
       running: running,
+      state: state,
       pid: pid,
       processName: processName,
       port: port,
@@ -109,6 +145,9 @@ final class AdapterNativeCapability {
 
   final AdapterNativeCapabilityKind kind;
   final bool detected;
+
+  /// The projection state of the fact; null when the owner reports no state.
+  final AdapterNativeCapabilityState? state;
 
   /// Live on-host evidence: a process (and, for servers, a listening port)
   /// proving the capability is effective right now.

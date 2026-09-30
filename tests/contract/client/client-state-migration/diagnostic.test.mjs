@@ -1,168 +1,30 @@
+// The operator-facing contract of the client-state migration diagnostic: what
+// `status`, `doctor` and `repair` report against a synthetic data root, which
+// exit code each verdict carries, and what the tool must never print or write.
+// The mirrored Rust constants are asserted by the sibling admission-mirror
+// leaf; this leaf only observes behavior.
+
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 
+import { loadEmbeddedFrontier, planSteps } from "../../../../tools/scripts/client-state-migration/frontier.mjs";
+import { evaluateMigrationState } from "../../../../tools/scripts/client-state-migration/report.mjs";
+import { repairDomain } from "../../../../tools/scripts/client-state-migration/repair.mjs";
+import { writePrivateJsonAtomic } from "../../../../tools/scripts/client-state-migration/util.mjs";
 import {
-  FRONTIER_REF,
-  loadEmbeddedFrontier,
-  planSteps,
-} from "../../../tools/scripts/client-state-migration/frontier.mjs";
-import { DURABLE_SHAPES } from "../../../tools/scripts/client-state-migration/probe.mjs";
-import { evaluateMigrationState } from "../../../tools/scripts/client-state-migration/report.mjs";
-import { repairDomain } from "../../../tools/scripts/client-state-migration/repair.mjs";
-import { writePrivateJsonAtomic } from "../../../tools/scripts/client-state-migration/util.mjs";
-
-const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const facadeRef = "tools/scripts/client-state-migration.mjs";
-const moduleRoot = "tools/scripts/client-state-migration";
-const MIGRATION_MODULE = "crates/licoup-native/src/domain/client_state_migration.rs";
-const CLIENT_STATE_POLICY = "crates/licoup-native/src/platform/client_state/policy.rs";
-const CLIENT_STATE_MIGRATION =
-  "crates/licoup-native/src/platform/client_state/migration.rs";
-const CONVERSATION_STORE = "crates/licoup-conversation/src/store/mod.rs";
-const BACKSLASH = String.fromCharCode(92);
-
-/**
- * The conversation store's own current schema version, read from the owner that
- * defines it so a fixture never restates it. The last test asserts the same
- * value through the diagnostic's mirrored constant.
- */
-function conversationSchemaVersion() {
-  const source = fs.readFileSync(path.join(repoRoot, CONVERSATION_STORE), "utf8");
-  const match = source.match(/pub const CURRENT_SCHEMA_VERSION: &str = "(\d+)";/u);
-  assert.ok(match, "the conversation store schema version moved");
-  return match[1];
-}
-
-function tempRoot(label) {
-  return fs.mkdtempSync(path.join(os.tmpdir(), `licoup-migration-${label}-`));
-}
-
-function removeRoot(root) {
-  fs.rmSync(root, { recursive: true, force: true });
-}
-
-function runCli(args) {
-  return spawnSync(process.execPath, [path.join(repoRoot, facadeRef), ...args], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
-}
-
-function runJson(args) {
-  const result = runCli([...args, "--json"]);
-  const envelope = JSON.parse(result.stdout);
-  return { ...result, envelope };
-}
-
-function writeJson(filePath, value) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, `${JSON.stringify(value)}\n`);
-}
-
-/**
- * Migration metadata is private state: the admission reads it through the
- * 0700/0600-enforcing path, so a fixture that is going to be certified healthy
- * has to carry those modes.
- */
-function writePrivateJson(filePath, value) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
-  fs.writeFileSync(filePath, `${JSON.stringify(value)}\n`, { mode: 0o600 });
-}
-
-/** Every path and byte under `root`, so a read-only command can be proven inert. */
-function snapshot(root) {
-  const entries = [];
-  const visit = (directory, prefix) => {
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort()) {
-      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
-      const absolute = path.join(directory, entry.name);
-      if (entry.isDirectory()) {
-        entries.push(`${relative}/`);
-        visit(absolute, relative);
-      } else {
-        entries.push(`${relative}:${fs.readFileSync(absolute).toString("base64")}`);
-      }
-    }
-  };
-  visit(root, "");
-  return entries.join("\n");
-}
-
-function seedLedger(root, frontier, domains) {
-  writePrivateJson(path.join(root, "client-state/migrations/ledger.json"), {
-    schemaVersion: "v0.0.1:client-state-migration-ledger-1",
-    highestAdmittedProductVersion: "0.3.0",
-    frontierId: frontier.frontierId,
-    domains,
-  });
-}
-
-/** The state a completed admission leaves behind, for the healthy verdict. */
-function seedAdmittedRoot(root, frontier) {
-  const expectedSteps = (domain) =>
-    domain.steps.filter((step) => step.toSchemaVersion <= domain.targetSchemaVersion)
-      .map((step) => step.stepId);
-  const domains = {};
-  for (const domain of frontier.domains) {
-    domains[domain.domainId] = {
-      schemaVersion: domain.targetSchemaVersion,
-      completedStepIds: expectedSteps(domain),
-    };
-  }
-  seedLedger(root, frontier, domains);
-  for (const domain of frontier.domains) {
-    writePrivateJson(path.join(root, `client-state/migrations/domain-state/${domain.domainId}.json`), {
-      schemaVersion: "v0.0.1:client-state-domain-marker-1",
-      domainId: domain.domainId,
-      authoritativeSchemaVersion: domain.targetSchemaVersion,
-    });
-  }
-  writeJson(path.join(root, ".licoup-workspace.json"), { schemaVersion: 1 });
-  writeJson(path.join(root, "client-state/appearance-preferences.json"), {
-    schemaVersion: 1,
-    appearancePresetId: "synthetic",
-  });
-  writeJson(path.join(root, "client-state/agent-tool-allowlists.json"), { schemaVersion: 1 });
-  writeJson(path.join(root, "client-state/current-client-view.json"), { schemaVersion: 1 });
-  writeJson(path.join(root, "client-state/skill-hub-preferences.json"), { schemaVersion: 1 });
-  writeJson(path.join(root, "client-state/mobile-home-layout.json"), { schemaVersion: 2 });
-  writeJson(path.join(root, "client-state/agent-tab-order.json"), {
-    schemaVersion: 1,
-    order: [],
-  });
-  writeJson(path.join(root, "client-state/mobile-relay/config.json"), { schemaVersion: 2 });
-  writeJson(path.join(root, "client-state/settings.json"), {
-    schemaVersion: "v0.0.1:schema:definition-1",
-    collection: "settings",
-    items: [],
-  });
-  const conversations = path.join(root, "client-state/conversations");
-  fs.mkdirSync(conversations, { recursive: true });
-  const database = new DatabaseSync(path.join(conversations, "conversations.sqlite3"));
-  database.exec(
-    "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);" +
-      `INSERT INTO schema_meta(key,value) VALUES ('version','${conversationSchemaVersion()}');`,
-  );
-  database.close();
-  fs.writeFileSync(
-    path.join(conversations, "migration-v5.complete"),
-    ["schema=v5", "status=complete", ""].join("\n"),
-  );
-  const flywheel = path.join(root, "client-state/adaptive-flywheel");
-  fs.mkdirSync(flywheel, { recursive: true });
-  const strategies = new DatabaseSync(path.join(flywheel, "strategies.sqlite3"));
-  strategies.exec(
-    "CREATE TABLE strategy_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);" +
-      "INSERT INTO strategy_meta(key,value) VALUES ('version','3');",
-  );
-  strategies.close();
-}
+  removeRoot,
+  runCli,
+  runJson,
+  seedAdmittedRoot,
+  seedLedger,
+  snapshot,
+  tempRoot,
+  writeJson,
+  writePrivateJson,
+} from "./support.mjs";
 
 test("status reports every domain from the ledger and the durable stores, and changes nothing", () => {
   const root = tempRoot("status");
@@ -781,45 +643,6 @@ test("no output carries a local path, a stored value or credential material", ()
   }
 });
 
-test("the client never invokes the migration CLI and the tool never guesses a data root", async () => {
-  const offenders = [];
-  const visit = async (relative) => {
-    const absolute = path.join(repoRoot, relative);
-    if (!fs.existsSync(absolute)) return;
-    for (const entry of await fs.promises.readdir(absolute, { withFileTypes: true })) {
-      const child = path.join(relative, entry.name);
-      if (entry.isDirectory()) {
-        await visit(child);
-      } else if (/\.(rs|dart)$/u.test(entry.name)) {
-        const source = await fs.promises.readFile(path.join(repoRoot, child), "utf8");
-        if (source.includes(`client-state-migration${".mjs"}`)) offenders.push(child);
-      }
-    }
-  };
-  await visit("crates");
-  await visit("apps/desktop/lib");
-  assert.deepEqual(offenders, [], "startup migration stays exclusively the Rust admission");
-
-  const admission = await fs.promises.readFile(path.join(repoRoot, MIGRATION_MODULE), "utf8");
-  assert.doesNotMatch(admission, /Command::new|std::process::Command/u);
-  const bridge = JSON.parse(
-    await fs.promises.readFile(path.join(repoRoot, "schemas/client_bridge/state.json"), "utf8"),
-  );
-  assert.deepEqual(bridge.operations, ["get", "set", "admit"]);
-
-  // The CLI has no default data root: an operator always names the root, so a
-  // self-test cannot read a real installation.
-  const missingRoot = runCli(["status"]);
-  assert.equal(missingRoot.status, 64);
-  assert.match(missingRoot.stderr, /usage: client-state-migration/u);
-  for (const source of await Promise.all(
-    fs.readdirSync(path.join(repoRoot, moduleRoot))
-      .map((leaf) => fs.promises.readFile(path.join(repoRoot, moduleRoot, leaf), "utf8")),
-  )) {
-    assert.doesNotMatch(source, /homedir\(\)|Application Support|APPDATA/u);
-  }
-});
-
 test("exit codes stay distinct for healthy, behind, ahead, invalid, and usage", () => {
   const frontier = loadEmbeddedFrontier();
   const healthy = tempRoot("exit-healthy");
@@ -839,145 +662,4 @@ test("exit codes stay distinct for healthy, behind, ahead, invalid, and usage", 
     removeRoot(healthy);
     removeRoot(ahead);
   }
-});
-
-test("every mirrored durable shape and constant still matches the Rust admission", async () => {
-  const [migration, policy, migrationPlatform, conversationStore, probe, strategyStore] = await Promise.all([
-    fs.promises.readFile(path.join(repoRoot, "crates/licoup-native/src/domain/client_state_migration/stores.rs"), "utf8"),
-    fs.promises.readFile(path.join(repoRoot, CLIENT_STATE_POLICY), "utf8"),
-    fs.promises.readFile(path.join(repoRoot, CLIENT_STATE_MIGRATION), "utf8"),
-    fs.promises.readFile(path.join(repoRoot, CONVERSATION_STORE), "utf8"),
-    fs.promises.readFile(path.join(repoRoot, "tools/scripts/client-state-migration/probe.mjs"), "utf8"),
-    fs.promises.readFile(path.join(repoRoot, "crates/licoup-native/src/domain/client_state_migration/strategy_store.rs"), "utf8"),
-  ]);
-  // Whitespace is stripped so the binding survives any rustfmt layout.
-  const compact = migration.replace(/\s+/gu, "");
-
-  const jsonDocuments = new Map();
-  const pattern =
-    /"([a-z0-9-]+)"=>probe_json_schema\(&root\.join\("([^"]+)"\),(\d+),JsonSchemaPolicy::(\w+),\)/gu;
-  for (const match of compact.matchAll(pattern)) {
-    jsonDocuments.set(match[1], {
-      document: match[2],
-      schemaVersion: Number(match[3]),
-      policy: match[4] === "MissingIsLegacy" ? "missing-is-legacy" : "current-only",
-    });
-  }
-  const mirrored = Object.fromEntries(
-    Object.entries(DURABLE_SHAPES)
-      .filter(([, shape]) => shape.kind === "json-document")
-      .map(([domainId, shape]) => [domainId, {
-        document: shape.document,
-        schemaVersion: shape.schemaVersion,
-        policy: shape.policy,
-      }]),
-  );
-  assert.deepEqual(Object.fromEntries(jsonDocuments), mirrored);
-  for (const [domainId, shape] of Object.entries(mirrored)) {
-    assert.ok(
-      compact.includes(`"${domainId}"=>probe_json_schema`),
-      `${domainId} must route through probe_json_schema`,
-    );
-    assert.ok(shape.document.length > 0);
-  }
-
-  const probeRoute = (name, document) =>
-    `${name}(&root.join("${document}"))`;
-  assert.ok(
-    compact.includes(probeRoute("probe_agent_tab_order", DURABLE_SHAPES["agent-tab-order"].document)),
-  );
-  assert.ok(
-    compact.includes(probeRoute("probe_mobile_relay", DURABLE_SHAPES["mobile-relay"].document)),
-  );
-  const strategy = strategyStore.replace(/\s+/gu, "");
-  assert.ok(strategy.includes('STRATEGY_STORE_DATABASE:&str="client-state/adaptive-flywheel/strategies.sqlite3";'));
-  assert.ok(strategy.includes('meta_versions:&["3"],domain_schema_version:2,'));
-  assert.ok(strategy.includes('meta_versions:&["2"],domain_schema_version:1,'));
-  assert.ok(compact.includes('root.join("client-state/conversations/conversations.sqlite3")'));
-  assert.ok(compact.includes('root.join("client-state/conversations/migration-v5.complete")'));
-  const completionSource =
-    `value=="schema=v5${BACKSLASH}nstatus=complete${BACKSLASH}n"`;
-  assert.ok(
-    compact.includes(completionSource),
-    "the completion marker contract moved in the admission",
-  );
-  const currentSchema = conversationStore.match(
-    /pub const CURRENT_SCHEMA_VERSION: &str = "(\d+)";/u,
-  );
-  assert.ok(currentSchema, "the conversation store schema version moved");
-  assert.ok(
-    probe.includes(`const CONVERSATION_SCHEMA_VERSION = "${currentSchema[1]}";`),
-    "the diagnostic's conversation schema version must mirror the conversation store",
-  );
-
-  const collections = policy
-    .slice(
-      policy.indexOf("pub(super) const COLLECTIONS"),
-      policy.indexOf("];", policy.indexOf("pub(super) const COLLECTIONS")),
-    )
-    .match(/"([a-z0-9-]+)"/gu)
-    .map((quoted) => quoted.slice(1, -1));
-  assert.deepEqual(collections, [
-    "settings",
-    "targets",
-    "target-discovery-cache",
-    "pairings",
-    "skills",
-    "pins",
-    "identities",
-    "conversation-archive-profiles",
-    "agent-usage-reports",
-    "provider-quota-snapshots",
-    "skill-usage",
-    "collaboration-plugins",
-    "local-server-assemblies",
-    "local-server-assembly-cleanup",
-    "local-server-assembly-transaction",
-    "mcp-install-transactions",
-  ]);
-  const stateSchema = policy.match(
-    /pub\(super\) const STATE_SCHEMA_VERSION: &str = "([^"]+)";/u,
-  );
-  assert.ok(stateSchema, "the client-state schema marker moved");
-  assert.ok(probe.includes(`const CLIENT_STATE_SCHEMA_VERSION = "${stateSchema[1]}";`));
-  assert.match(migrationPlatform, /"client state collection owner mismatch"/u);
-});
-
-test("the diagnostic module keeps its facade, its leaf set, and one authority per leaf", async () => {
-  const leaves = fs.readdirSync(path.join(repoRoot, moduleRoot)).sort();
-  assert.deepEqual(leaves, [
-    "cli.mjs",
-    "errors.mjs",
-    "frontier.mjs",
-    "ledger.mjs",
-    "probe.mjs",
-    "repair.mjs",
-    "report.mjs",
-    "util.mjs",
-  ]);
-  const facade = await fs.promises.readFile(path.join(repoRoot, facadeRef), "utf8");
-  assert.match(facade, /runClientStateMigrationCli\(\);/u);
-  assert.equal(facade.includes("readFileSync"), false);
-  const sources = Object.fromEntries(await Promise.all(leaves.map(async (leaf) => [
-    leaf,
-    await fs.promises.readFile(path.join(repoRoot, moduleRoot, leaf), "utf8"),
-  ])));
-  for (const [leaf, source] of Object.entries(sources)) {
-    assert.equal(
-      source.includes(`../client-state-migration${".mjs"}`),
-      false,
-      `${leaf} must not import the facade`,
-    );
-  }
-  const owners = (declaration) =>
-    leaves.filter((leaf) => new RegExp(`export (?:async )?function ${declaration}\\(`, "u")
-      .test(sources[leaf]));
-  assert.deepEqual(owners("parseArgs"), ["cli.mjs"]);
-  assert.deepEqual(owners("evaluateMigrationState"), ["report.mjs"]);
-  assert.deepEqual(owners("repairDomain"), ["repair.mjs"]);
-  assert.deepEqual(owners("loadEmbeddedFrontier"), ["frontier.mjs"]);
-  assert.deepEqual(owners("loadLedger"), ["ledger.mjs"]);
-  assert.deepEqual(owners("probeDomain"), ["probe.mjs"]);
-  assert.deepEqual(owners("writePrivateJsonAtomic"), ["util.mjs"]);
-  assert.equal(fs.existsSync(path.join(repoRoot, FRONTIER_REF)), true);
 });

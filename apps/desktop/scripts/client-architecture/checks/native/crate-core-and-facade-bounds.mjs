@@ -43,26 +43,37 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     assert(!modSource.includes("#[path ="), `${relativePath}/mod.rs must not remount flat native files with #[path]`);
   }
   const coreModuleSource = await readText("crates/licoup-native/src/core/mod.rs");
-  const taskQueueSource = await readText("crates/licoup-native/src/core/task_queue.rs");
+  // The queue, the archive container formats and the ACP framing vocabulary are
+  // mechanisms every caller shares, so they live in `licoup-foundation` and this crate
+  // re-exports them. The declarations are asserted where the modules are declared.
+  const foundationCoreModuleSource = await readText("crates/licoup-foundation/src/core/mod.rs");
+  const taskQueueSource = await readText("crates/licoup-foundation/src/core/task_queue.rs");
+  // The MCP authority now lives in `licoup-mcp`; `licoup-native` re-exports the
+  // former core path, so the closure is read where the code is and the host's
+  // exposure is asserted where the re-export is declared.
+  const mcpCrateLibSource = await readText("crates/licoup-mcp/src/lib.rs");
   const mcpAdapterSource = await readJoinedText([
-    "crates/licoup-native/src/core/mcp.rs",
-    ...await collectSourceFiles("crates/licoup-native/src/core/mcp", ".rs")
+    "crates/licoup-mcp/src/mcp.rs",
+    ...await collectSourceFiles("crates/licoup-mcp/src/mcp", ".rs")
   ]);
   const mcpProductionSource = await readJoinedText([
-    "crates/licoup-native/src/domain/mcp_adapter.rs",
-    ...await collectSourceFiles("crates/licoup-native/src/domain/mcp_adapter", ".rs"),
-    "crates/licoup-native/src/platform/mcp_approval_plan_store.rs",
-    "crates/licoup-native/src/platform/mcp_streamable_http.rs",
+    "crates/licoup-mcp/src/mcp_adapter.rs",
+    ...await collectSourceFiles("crates/licoup-mcp/src/mcp_adapter", ".rs"),
+    "crates/licoup-mcp/src/mcp_approval_plan_store.rs",
+    "crates/licoup-mcp/src/mcp_streamable_http.rs",
     "crates/licoup-native/src/ffi/commands/mcp.rs",
     "apps/desktop/lib/src/contracts/mcp_adapter.dart",
     "apps/desktop/lib/src/platform/native_client/native_mcp_actions.dart",
     "apps/desktop/lib/src/application/features/mcp/controller/mcp_transfer_controller.dart"
   ]);
-  const acpAdapterSource = await readText("crates/licoup-native/src/core/acp.rs");
-  const secureMeshCoreFiles = (await collectSourceFiles(
-    "crates/licoup-native/src/core",
-    ".rs"
-  )).filter((relativePath) =>
+  const acpAdapterSource = await readText("crates/licoup-foundation/src/core/acp.rs");
+  // The mesh cryptography, pairing trust, key transparency, approval and product
+  // readiness trees now live in `licoup-secure-mesh`, so the closure is asserted
+  // where the code is rather than only where the remainder still sits.
+  const secureMeshCoreFiles = [
+    ...await collectSourceFiles("crates/licoup-native/src/core", ".rs"),
+    ...await collectSourceFiles("crates/licoup-secure-mesh/src/core", ".rs"),
+  ].filter((relativePath) =>
     relativePath.includes("secure_mesh") &&
     !relativePath.includes("/tests/")
   );
@@ -73,17 +84,21 @@ export async function checkCrateCoreAndFacadeBounds(context) {
       `${relativePath} must depend on core ports instead of domain or platform implementations`
     );
   }
+  // The secret-custody port moved to `licoup-secure-mesh`, so the port closure is
+  // read where the code is.
   const secureMeshCustodyPortSource = await readJoinedText([
-    "crates/licoup-native/src/core/secure_mesh_secret_store.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_secret_store.rs",
     ...await collectSourceFiles(
-      "crates/licoup-native/src/core/secure_mesh_secret_store",
+      "crates/licoup-secure-mesh/src/core/secure_mesh_secret_store",
       ".rs"
     )
   ]);
+  // The command pipeline's port lives in `licoup-secure-mesh`; the composition
+  // that binds it to local agent runtimes is native and stays here.
   const secureMeshRuntimeCompositionSource = await readJoinedText([
-    "crates/licoup-native/src/core/secure_mesh_command/runtime.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_command/runtime.rs",
     "crates/licoup-native/src/domain/secure_mesh_command_runtime.rs",
-    "crates/licoup-native/src/platform/secure_mesh_mls_store.rs"
+    "crates/licoup-secure-mesh/src/platform/secure_mesh_mls_store.rs"
   ]);
   assert(
     secureMeshCustodyPortSource.includes("trait SecureMeshSecretStore") &&
@@ -94,10 +109,10 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     "Secure Mesh core ports and outer runtime/path-hardening composition must remain explicit"
   );
   const transparencySchemaSource = await readText(
-    "crates/licoup-native/src/core/secure_mesh_transparency/persistence/schema.rs"
+    "crates/licoup-secure-mesh/src/core/secure_mesh_transparency/persistence/schema.rs"
   );
   const secureMeshStatusSource = await readText(
-    "crates/licoup-native/src/core/secure_mesh.rs"
+    "crates/licoup-secure-mesh/src/core/secure_mesh.rs"
   );
   assert(
     !transparencySchemaSource.includes("migrate_gossip_observation_binding") &&
@@ -105,14 +120,15 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     "Secure Mesh must initialize current state or require reset without retaining runtime migrations"
   );
   assert(
-    coreModuleSource.includes("pub mod task_queue;") &&
+    foundationCoreModuleSource.includes("pub mod task_queue;") &&
       taskQueueSource.includes("sync_channel") &&
       taskQueueSource.includes("try_submit") &&
       taskQueueSource.includes("bounded_queue_preserves_fifo_and_reports_depth"),
     "Rust core must expose a bounded, backpressured, independently tested local task queue"
   );
   assert(
-    coreModuleSource.includes("pub mod mcp;") &&
+    coreModuleSource.includes("pub use licoup_mcp::mcp;") &&
+      mcpCrateLibSource.includes("pub mod mcp;") &&
       mcpAdapterSource.includes('PROTOCOL_REVISION: &str = "2025-11-25"') &&
       mcpAdapterSource.includes("mcp_batch_unsupported") &&
       mcpAdapterSource.includes("record_direct_user_approval") &&
@@ -138,7 +154,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     );
   }
   assert(
-    coreModuleSource.includes("pub mod acp;") &&
+    foundationCoreModuleSource.includes("pub mod acp;") &&
       acpAdapterSource.includes("PROTOCOL_VERSION") &&
       acpAdapterSource.includes("initialize_request") &&
       acpAdapterSource.includes("session_request") &&
@@ -174,7 +190,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
   );
 
   const reviewedRustUnsafeResponsibilities = new Map([
-    ["crates/licoup-native/src/core/safe_archive.rs", "bounded archive FFI"],
+    ["crates/licoup-foundation/src/core/safe_archive.rs", "bounded archive FFI"],
     ["crates/licoup-native/src/ffi/android_ffi.rs", "Android ABI boundary"],
     ["crates/licoup-native/src/ffi/ios_ffi.rs", "iOS ABI boundary"],
     ["crates/licoup-native/src/domain/collaboration_plugin/package/writer.rs", "atomic package filesystem ownership"],
@@ -185,14 +201,14 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     ["crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/process/windows.rs", "Windows child process identity"],
     ["crates/licoup-native/src/domain/agent_resource_usage/process_snapshot.rs", "platform process metrics"],
     ["crates/licoup-native/src/domain/client_update/native_runner/plan.rs", "parent process identity and Windows process enumeration"],
-    ["crates/licoup-native/src/domain/targets/model_catalog/tests.rs", "isolated process environment fixtures"],
+    ["crates/licoup-agent-targets/src/domain/targets/model_catalog/tests.rs", "isolated process environment fixtures"],
     ["crates/licoup-native/src/bin/lico-gateway.rs", "inherited readiness file descriptor"],
     ["crates/licoup-native/src/bin/lico-llm-gateway.rs", "inherited readiness file descriptor"],
-    ["crates/licoup-native/src/platform/authorized_secure_record/macos_keychain.rs", "macOS Keychain FFI"],
-    ["crates/licoup-native/src/platform/user_presence.rs", "platform presence authorization"],
-    ["crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs", "macOS presence authorization"],
+    ["crates/licoup-foundation/src/platform/authorized_secure_record/macos_keychain.rs", "macOS Keychain FFI"],
+    ["crates/licoup-foundation/src/platform/user_presence.rs", "platform presence authorization"],
+    ["crates/licoup-secure-mesh/src/platform/secure_mesh_secret_store/macos_user_presence.rs", "macOS presence authorization"],
     ["crates/licoup-native/src/platform/antigravity_driver/tests.rs", "isolated process environment fixture"],
-    ["crates/licoup-native/src/platform/client_autostart.rs", "launchd user identity"],
+    ["crates/licoup-agent-targets/src/platform/client_autostart.rs", "launchd user identity"],
     ["crates/licoup-native/src/platform/cursor_driver/tests.rs", "isolated process environment fixtures"],
     ["crates/licoup-native/src/platform/extension_host/isolation/limits.rs", "hard POSIX resource ceilings in the child before exec"],
     ["crates/licoup-native/src/platform/extension_packages/managed.rs", "descriptor-relative package reclamation with owned directory streams and no symlink traversal"],
@@ -202,7 +218,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     ["crates/licoup-native/src/platform/llm_gateway_credentials_control.rs", "Unix peer credential verification"],
     ["crates/licoup-native/src/platform/llm_gateway_inventory_control.rs", "Unix peer credential verification"],
     ["crates/licoup-native/src/platform/llm_gateway_service.rs", "bounded sidecar pipe and process lifecycle"],
-    ["crates/licoup-native/src/platform/pty_transport.rs", "PTY descriptor and ioctl ownership"],
+    ["crates/licoup-foundation/src/platform/pty_transport.rs", "PTY descriptor and ioctl ownership"],
     ["crates/licoup-native/src/bin/licoup/conversation_host.rs", "process termination signal registration for graceful host shutdown"],
   ]);
   const reviewedRustUnsafeFiles = new Set(reviewedRustUnsafeResponsibilities.keys());

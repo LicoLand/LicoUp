@@ -187,6 +187,112 @@ test("catalog inputs exist and exclude local-only document roots", async () => {
   }
 });
 
+async function staleTestFilters(catalog) {
+  const stat = async (candidate) => {
+    try {
+      return await fs.stat(candidate);
+    } catch {
+      return null;
+    }
+  };
+  const prefixesAnEntry = async (directory, segment) => {
+    let entries;
+    try {
+      entries = await fs.readdir(directory);
+    } catch {
+      return false;
+    }
+    return entries.some((entry) => entry.startsWith(segment));
+  };
+  const offenders = [];
+  for (const module of catalog) {
+    const args = (module.command?.args ?? []).join(" ");
+    const manifest = (args.match(/--manifest-path (\S+)/) ?? [])[1];
+    const filter = (args.match(/--lib (\S+)/) ?? [])[1];
+    if (!manifest || !filter || filter.startsWith("-")) continue;
+    const crateDirectory = manifest.replace(/\/Cargo\.toml$/u, "");
+    const sourceRoot = path.join(repoRoot, crateDirectory, "src");
+    const segments = filter.split("::").filter(Boolean);
+    // `cargo test` filters are substring matches, so a filter that does not start at the
+    // crate root (`mobile_relay::config`, `pairing`) cannot be checked by path at all.
+    // Only a rooted filter can be proven stale this way, and only a rooted one has ever
+    // gone stale; unrooted ones are left to the run itself.
+    const first = segments[0];
+    const rooted = (await stat(path.join(sourceRoot, first))) !== null ||
+      (await stat(path.join(sourceRoot, `${first}.rs`))) !== null ||
+      await prefixesAnEntry(sourceRoot, first);
+    if (!rooted) continue;
+    let directory = sourceRoot;
+    for (const segment of segments) {
+      const next = path.join(directory, segment);
+      const asDirectory = await stat(next);
+      if (asDirectory?.isDirectory()) {
+        // A directory with a same-named `.rs` is a module root whose remaining filter
+        // segments can name inline modules; stop checking there.
+        if (await stat(`${next}.rs`)) break;
+        directory = next;
+        continue;
+      }
+      if ((await stat(`${next}.rs`))?.isFile()) break;
+      if (await prefixesAnEntry(directory, segment)) break;
+      offenders.push(`${module.id} filters ${filter} but ${next} does not exist`);
+      break;
+    }
+  }
+  return offenders;
+}
+
+test("the stale-filter rule flags a rooted filter whose module is gone", async () => {
+  // The rule is only worth having if it catches the shape it was written for: a filter
+  // that starts at the crate root and names a module that no longer exists. The real
+  // catalog passes; a synthetic entry with the module that was renamed must not.
+  const synthetic = (filter, manifest = "crates/licoup-foundation/Cargo.toml") => ({
+    id: "synthetic.module",
+    inputs: [`${manifest.replace(/\/Cargo\.toml$/u, "")}/src/platform/diagnostics/mod.rs`],
+    command: { args: ["test", "--manifest-path", manifest, "--lib", filter] },
+  });
+  const stale = await staleTestFilters([synthetic("platform::diagnostics::v7::")]);
+  assert.equal(stale.length, 1);
+  assert.match(stale[0], /platform::diagnostics::v7::/u);
+  // The module that exists is accepted, in the crate that holds it.
+  assert.deepEqual(await staleTestFilters([synthetic("platform::diagnostics::observation::")]), []);
+  // The same filter against the crate that does not hold it is caught too.
+  assert.equal(
+    (await staleTestFilters([synthetic("platform::diagnostics::observation::", "crates/licoup-native/Cargo.toml")])).length,
+    1);
+  // An unrooted substring filter is not checkable this way and must not be flagged.
+  assert.deepEqual(await staleTestFilters([synthetic("pairing")]), []);
+  assert.deepEqual(await staleTestFilters([synthetic("--")]), []);
+});
+
+test("a module's test filter names modules that exist", async () => {
+  // A filter whose leading module path no longer exists matches zero tests, so the module
+  // reports green without executing one. `platform::diagnostics::v7::` was that shape after
+  // the module was renamed to `observation`: the crate/manifest check cannot see it,
+  // because the manifest was right and only the path was stale.
+  assert.deepEqual(await staleTestFilters(CLIENT_MODULE_CATALOG), []);
+});
+
+test("a module runs its tests in the crate its inputs live in", () => {
+  // A dependency's `#[cfg(test)]` items are not compiled into the dependent's test
+  // binary. A module whose inputs all live in another crate but whose command filters
+  // the native manifest therefore matches zero tests, and the regression reports it
+  // green without executing one. Seventeen entries did exactly that after the
+  // foundation extraction; this is the assertion that keeps the class out.
+  const offenders = [];
+  for (const module of CLIENT_MODULE_CATALOG) {
+    const args = (module.command?.args ?? []).join(" ");
+    const manifest = (args.match(/--manifest-path (\S+)/) ?? [])[1];
+    const inputs = module.inputs ?? [];
+    if (!manifest || inputs.length === 0) continue;
+    const crateDirectory = manifest.replace(/\/Cargo\.toml$/u, "/");
+    if (inputs.every((input) => !input.startsWith(crateDirectory))) {
+      offenders.push(`${module.id} tests ${manifest} but its inputs live in ${inputs[0]}`);
+    }
+  }
+  assert.deepEqual(offenders, []);
+});
+
 test("package aliases remain thin and cannot route to an aggregate gate", async () => {
   const packageJson = JSON.parse(await fs.readFile(path.join(repoRoot, "package.json"), "utf8"));
   assert.deepEqual({

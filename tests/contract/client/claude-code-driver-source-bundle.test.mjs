@@ -224,7 +224,7 @@ test("Claude Code product controls and parity use one persistent stdio RPC owner
 test("Claude Code capabilities expose supervised active-turn cancel", async () => {
   const [manifestText, inventoryText] = await Promise.all([
     read("packages/contracts/client/fixtures/agent-conversation-adapter/manifests/claude-code.json"),
-    read("crates/licoup-native/resources/agent-conversation-drivers.json"),
+    read("crates/licoup-agent-drivers/resources/agent-conversation-drivers.json"),
   ]);
   const manifest = JSON.parse(manifestText);
   const inventory = JSON.parse(inventoryText);

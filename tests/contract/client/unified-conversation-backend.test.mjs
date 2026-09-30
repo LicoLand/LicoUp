@@ -108,7 +108,9 @@ test("Canonical Conversation crate owns messaging and membership facts only", ()
       new RegExp(`CREATE TABLE IF NOT EXISTS ${retired}`, "u"),
     );
   }
-  assert.match(canonicalStore, /DROP TABLE IF EXISTS flywheels/u);
+  // No accepted format carries the retired ordinal generation, so no migration
+  // step drops one; a store naming a shape no release wrote is refused instead.
+  assert.match(canonicalStore, /conversation_schema_unsupported_version/u);
   assert.match(canonicalStore, /PRAGMA journal_mode=WAL/u);
   assert.match(
     canonicalStore,

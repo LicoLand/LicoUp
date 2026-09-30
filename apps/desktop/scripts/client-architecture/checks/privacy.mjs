@@ -40,7 +40,7 @@ export async function checkFileSecurityAndClientState(context) {
     runJson,
     sameSet,
   } = context;
-  const fileSecurityRoot = "crates/licoup-native/src/platform/file_security";
+  const fileSecurityRoot = "crates/licoup-foundation/src/platform/file_security";
   const fileSecurityLeaves = [
     "append_lock.rs",
     "atomic_replace.rs",
@@ -132,42 +132,76 @@ export async function checkFileSecurityAndClientState(context) {
     );
   }
 
+  // The persistence owners live in `licoup-client-state`; the command layer
+  // keeps a thin facade plus the one module that depends on the wire contract.
+  const clientStateOwnerRoot = "crates/licoup-client-state/src";
   const clientStateRoot = "crates/licoup-native/src/platform/client_state";
+  const clientStateCommandLeaves = ["operations.rs"];
   const clientStateLeaves = [
     "accessors.rs",
     "activity.rs",
     "collections.rs",
     "migration.rs",
-    "operations.rs",
     "paths.rs",
     "policy.rs",
     "redaction.rs",
+    "resource_policy.rs",
     "serialization.rs",
     "snapshots.rs"
   ];
-  const clientStateFacadeSource = await readText(`${clientStateRoot}.rs`);
-  const clientStateFiles = await collectSourceFiles(clientStateRoot, ".rs");
+  // The bounded resource policy is a module directory inside the same owner,
+  // so its four leaves are production files of this crate too.
+  const clientStateModuleLeaves = [
+    "resource_bounds/mod.rs",
+    "resource_bounds/policy.rs",
+    "resource_bounds/history.rs",
+    "resource_bounds/search.rs"
+  ];
+  const clientStateModules = ["resource_bounds"];
+  const clientStateFacadeSource = await readText(`${clientStateOwnerRoot}/lib.rs`);
+  const clientStateCommandFacadeSource = await readText(`${clientStateRoot}.rs`);
+  const clientStateFiles = await collectSourceFiles(clientStateOwnerRoot, ".rs");
   const clientStateProductionFiles = clientStateFiles.filter(
     (relativePath) => !relativePath.includes("/tests/")
   );
   assert(
     sameSet(
       clientStateProductionFiles,
-      clientStateLeaves.map((leaf) => `${clientStateRoot}/${leaf}`)
+      ["lib.rs", ...clientStateLeaves, ...clientStateModuleLeaves].map(
+        (leaf) => `${clientStateOwnerRoot}/${leaf}`
+      )
     ) &&
-      clientStateLeaves.every((leaf) =>
-        clientStateFacadeSource.includes(`mod ${leaf.replace(".rs", "")};`)) &&
+      [
+        ...clientStateLeaves.map((leaf) => leaf.replace(".rs", "")),
+        ...clientStateModules
+      ].every((name) => clientStateFacadeSource.includes(`mod ${name};`)) &&
       !clientStateFacadeSource.includes("struct ") &&
       !clientStateFacadeSource.includes("impl ") &&
       !clientStateFacadeSource.includes("fn ") &&
       !clientStateFacadeSource.includes("include!(") &&
       !clientStateFacadeSource.includes("#[path"),
-    "Client state root must remain an exact thin stable facade"
+    "Client state owner crate must remain an exact thin stable facade"
+  );
+  assert(
+    sameSet(
+      (await collectSourceFiles(clientStateRoot, ".rs")).filter(
+        (relativePath) => !relativePath.includes("/tests/")
+      ),
+      clientStateCommandLeaves.map((leaf) => `${clientStateRoot}/${leaf}`)
+    ) &&
+      clientStateCommandLeaves.every((leaf) =>
+        clientStateCommandFacadeSource.includes(`mod ${leaf.replace(".rs", "")};`)) &&
+      !clientStateCommandFacadeSource.includes("struct ") &&
+      !clientStateCommandFacadeSource.includes("impl ") &&
+      !clientStateCommandFacadeSource.includes("fn ") &&
+      !clientStateCommandFacadeSource.includes("include!(") &&
+      !clientStateCommandFacadeSource.includes("#[path"),
+    "Client state command layer must keep only the wire contract operations module"
   );
   const clientStateSources = Object.fromEntries(await Promise.all(
-    clientStateLeaves.map(async (leaf) => [
+    [...clientStateLeaves, ...clientStateModuleLeaves].map(async (leaf) => [
       leaf,
-      await readText(`${clientStateRoot}/${leaf}`)
+      await readText(`${clientStateOwnerRoot}/${leaf}`)
     ])
   ));
   for (const [leaf, owner, foreignOwners] of [
@@ -218,7 +252,10 @@ export async function checkFileSecurityAndClientState(context) {
       clientStateSources["serialization.rs"].includes("read_private_text_bounded"),
     "Client state redaction and serialization must cache patterns and retain explicit bounds"
   );
-  const clientStateProductionSource = Object.values(clientStateSources).join("\n");
+  const clientStateProductionSource = [
+    ...Object.values(clientStateSources),
+    await readText(`${clientStateRoot}/operations.rs`)
+  ].join("\n");
   for (const forbidden of [
     "ureq::",
     "reqwest::",

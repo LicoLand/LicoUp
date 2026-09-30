@@ -1115,7 +1115,7 @@ final class ConversationDeltaDecoder {
 function dartCatalogOutput(schemaPath, catalogSource) {
   const digest = createHash("sha256").update(catalogSource).digest("hex");
   const parsed = JSON.parse(catalogSource);
-  return `// Generated from crates/licoup-native/resources/
+  return `// Generated from crates/licoup-secure-mesh/resources/
 // secure-mesh-capability-catalog.json. Do not edit by hand.
 
 const int secureMeshCapabilityCatalogSchemaVersion = ${parsed.schemaVersion};

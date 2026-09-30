@@ -5,8 +5,8 @@ import test from "node:test";
 
 const paths = {
   selector:
-    "crates/licoup-native/src/platform/runtime_adapters/protocol_selector.rs",
-  adapters: "crates/licoup-native/src/platform/runtime_adapters.rs",
+    "crates/licoup-agent-drivers/src/runtime_adapters/protocol_selector.rs",
+  adapters: "crates/licoup-agent-drivers/src/runtime_adapters.rs",
   lane: "crates/licoup-native/src/platform/conversation_lane.rs",
   authRun: "tools/scripts/client-agent-auth-status/run.mjs",
   authProbe: "tools/scripts/client-agent-auth-status/probe.mjs",

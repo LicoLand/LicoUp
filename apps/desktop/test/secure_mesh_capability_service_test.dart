@@ -13,7 +13,7 @@ void main() {
 
   test('generated catalog stays byte-for-byte bound to canonical source', () {
     final source = File(
-      '../../crates/licoup-native/resources/'
+      '../../crates/licoup-secure-mesh/resources/'
       'secure-mesh-capability-catalog.json',
     ).readAsStringSync();
     expect(source, secureMeshCapabilityCatalogSource);

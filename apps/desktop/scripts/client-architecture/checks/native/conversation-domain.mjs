@@ -22,8 +22,16 @@ export async function checkConversationDomain(context, { agentConversationServic
   const agentConversationCommandsRustSource = await readText(
     "crates/licoup-native/src/ffi/commands/agent_conversation.rs"
   );
+  // The lane entry carries the Agent inventory port the host composes, so the
+  // call names three arguments and spans several lines. The claim is unchanged:
+  // every CLI conversation command enters the shared lane, and no legacy send
+  // bypass remains.
+  const entersSharedLane =
+    /dispatch_lane_operation\(\s*&crate::domain::target_port::agent_target_port\(\),\s*operation,\s*&params,?\s*\)/u.test(
+      agentConversationCommandsRustSource
+    );
   assert(
-    agentConversationCommandsRustSource.includes("dispatch_lane_operation(operation, &params)") &&
+    entersSharedLane &&
       !agentConversationCommandsRustSource.includes("handle_agent_message_send") &&
       !agentConversationCommandsRustSource.includes("runtime_adapters::send_message"),
     "native conversation CLI commands must enter the shared conversation lane without a legacy send bypass"

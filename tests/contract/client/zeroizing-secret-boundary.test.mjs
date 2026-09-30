@@ -6,8 +6,12 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const nativeRoot = "crates/licoup-native/src";
+// The secret-store port and the platform keychain that implements it moved to
+// `licoup-secure-mesh`, so the contract, its implementations and the bridges that
+// still live in this crate are read from the crate that owns each of them.
+const secureMeshRoot = "crates/licoup-secure-mesh/src";
 const custodyRoot = `${nativeRoot}/domain/mobile_relay/secret_custody`;
-const platformRoot = `${nativeRoot}/platform/secure_mesh_secret_store`;
+const platformRoot = `${secureMeshRoot}/platform/secure_mesh_secret_store`;
 const catalogRoot = "tools/regression/client-module-catalog";
 const RUST_WHITESPACE = String.raw`\s`;
 
@@ -81,7 +85,7 @@ function rustFunctionBlock(source, functionName) {
 }
 
 test("every secret-store implementation transfers bounded owned SecretBytes", async () => {
-  const port = await read(`${nativeRoot}/core/secure_mesh_secret_store/port.rs`);
+  const port = await read(`${secureMeshRoot}/core/secure_mesh_secret_store/port.rs`);
   assert.match(
     port,
     /fn set_secret\([^)]*secret:\s*SecretBytes\)\s*->\s*Result<\(\)>/su,
@@ -98,7 +102,10 @@ test("every secret-store implementation transfers bounded owned SecretBytes", as
     assert.doesNotMatch(port, forbidden);
   }
 
-  const allNativeSources = await rustSources(nativeRoot);
+  const allNativeSources = [
+    ...await rustSources(nativeRoot),
+    ...await rustSources(secureMeshRoot),
+  ];
   const implementations = allNativeSources.flatMap(([relativePath, source]) =>
     implementationBlocks(source, "SecureMeshSecretStore")
       .map((block) => [relativePath, block]));

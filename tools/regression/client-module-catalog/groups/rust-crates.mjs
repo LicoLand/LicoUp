@@ -31,6 +31,20 @@ export const RUST_CRATE_MODULES = Object.freeze([
     command: command("cargo", ["test", "-p", "licoup-agent-runtime", "-p", "licoup-agent-adapters"], 10 * 60_000),
   }),
   defineModule({
+    id: "rust.crate.agent-adapter-sdk",
+    kind: "rust-crate",
+    summary: "The shared Agent adapter SDK: line framing, the adapter declaration, the parser-set port and the replay harness, with no Agent's protocol",
+    inputs: ["crates/licoup-agent-adapter-sdk/**"],
+    command: crateTests("licoup-agent-adapter-sdk"),
+  }),
+  defineModule({
+    id: "rust.crate.agent-drivers",
+    kind: "rust-crate",
+    summary: "The host-side work-context seam: the binding contract, the adapter transport, the production host driver and the C01 effect port, with the Agent protocol reaching it through an injected port",
+    inputs: ["crates/licoup-agent-drivers/**"],
+    command: crateTests("licoup-agent-drivers"),
+  }),
+  defineModule({
     id: "rust.platform.host-integration",
     kind: "rust-crate",
     summary: "Native host workflow and conversation integration",
@@ -193,7 +207,7 @@ export const RUST_CRATE_MODULES = Object.freeze([
   defineModule({
     id: "rust.crate.protocol-bindings",
     kind: "rust-crate",
-    summary: "Endpoint protocol revision, admission, and inbound message bindings",
+    summary: "Endpoint protocol revision, admission, inbound bindings, and the LicoArc envelope codec",
     inputs: [
       "crates/licoup-protocol-bindings/**",
     ],

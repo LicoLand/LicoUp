@@ -5,8 +5,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const facadePath = "crates/licoup-native/src/domain/mobile_relay/relay_operations.rs";
-const moduleRoot = "crates/licoup-native/src/domain/mobile_relay/relay_operations";
+const facadePath = "crates/licoup-relay/src/domain/mobile_relay/relay_operations.rs";
+const moduleRoot = "crates/licoup-relay/src/domain/mobile_relay/relay_operations";
 const productionLeaves = Object.freeze([
   "allow_list.rs",
   "command_handlers.rs",
@@ -137,7 +137,7 @@ test("mailbox envelope and delivery enforce Lico Arc bounded structures", async 
   assert.ok(source["envelope.rs"].includes("LicoArcRelayEnvelope::from_json"));
   assert.ok(source["envelope.rs"].includes("serde_json::to_string"));
   const pairwisePayload = await read(
-    "crates/licoup-native/src/domain/mobile_relay/pairwise_session/payload.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/payload.rs",
   );
   assert.ok(pairwisePayload.includes("MOBILE_RELAY_COMMAND_TTL_SECONDS"));
   assert.ok(pairwisePayload.includes("timestamp_after_seconds"));

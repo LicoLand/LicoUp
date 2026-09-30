@@ -89,3 +89,29 @@ export function runCargoTestFilter({
           : "cargo test filter execution failed"
   };
 }
+
+// A crate-boundary move relocates a module's `#[cfg(test)]` items into the crate
+// that now owns them. A dependency's test items are not compiled into the
+// dependent's test binary, so a filter left on the donor manifest matches zero
+// executable tests and the check reports green without running one. The caller
+// states the manifests that can own the filter, donor first; the first manifest
+// that executes at least one test is the answer, and a filter that executes none
+// in any of them still fails with the last attempt's diagnostic. The returned
+// record is the run that matched, so `command` names the manifest that ran.
+export function runCargoTestFilterInOwningCrate({
+  repoRoot,
+  manifestPaths,
+  filter,
+  env = process.env,
+  sanitizeError = () => ""
+}) {
+  if (!Array.isArray(manifestPaths) || manifestPaths.length === 0) {
+    throw new Error("cargo test filter needs at least one owning manifest");
+  }
+  let attempt = null;
+  for (const manifestPath of manifestPaths) {
+    attempt = runCargoTestFilter({ repoRoot, manifestPath, filter, env, sanitizeError });
+    if (attempt.matchedAtLeastOneTest) return attempt;
+  }
+  return attempt;
+}

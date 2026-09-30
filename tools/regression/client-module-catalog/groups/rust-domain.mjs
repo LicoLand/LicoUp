@@ -1,4 +1,4 @@
-import { command, rustLayer, rustIntegrationTest, rustCrateIntegrationTest, defineModule } from "../helpers.mjs";
+import { command, rustLayer, rustAgentTargetsLayer, rustRelayLayer, rustMcpLayer, rustApplicationLayer, rustClientStateLayer, rustSecureMeshLayer, rustIntegrationTest, rustCrateIntegrationTest, defineModule } from "../helpers.mjs";
 
 export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
@@ -9,8 +9,8 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/workflow_runtime/**",
         "crates/licoup-native/src/domain/workflow_store/**",
         "crates/licoup-workflow/**",
-        "crates/licoup-native/src/core/safe_archive.rs",
-        "crates/licoup-native/src/platform/process_sandbox/strategy.rs",
+        "crates/licoup-foundation/src/core/safe_archive.rs",
+        "crates/licoup-foundation/src/platform/process_sandbox/strategy.rs",
         "crates/licoup-native/src/platform/strategy_runtime/**",
       ],
       command: rustLayer("domain::workflow_"),
@@ -48,8 +48,8 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.lico-agent",
       kind: "rust-domain",
       summary: "First-party local agent loop, profiles, tools, events, and transport",
-      inputs: ["crates/licoup-native/src/domain/lico_agent/**"],
-      command: rustLayer("domain::lico_agent::"),
+      inputs: ["crates/licoup-native/src/domain/lico_agent.rs", "crates/licoup-agent-targets/src/domain/lico_agent/**"],
+      command: rustAgentTargetsLayer("domain::lico_agent::"),
     }),
   defineModule({
       id: "rust.domain.llm-gateway",
@@ -168,14 +168,14 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Exact-scope MCP preview-to-authorization, one-shot execution, response validation, and projection",
       inputs: [
-        "crates/licoup-native/src/domain/mcp_adapter.rs",
-        "crates/licoup-native/src/domain/mcp_adapter/approval.rs",
-        "crates/licoup-native/src/domain/mcp_adapter/execution.rs",
-        "crates/licoup-native/src/domain/mcp_adapter/plan.rs",
-        "crates/licoup-native/src/domain/mcp_adapter/sse.rs",
-        "crates/licoup-native/src/domain/mcp_adapter/tests.rs",
+        "crates/licoup-mcp/src/mcp_adapter.rs",
+        "crates/licoup-mcp/src/mcp_adapter/approval.rs",
+        "crates/licoup-mcp/src/mcp_adapter/execution.rs",
+        "crates/licoup-mcp/src/mcp_adapter/plan.rs",
+        "crates/licoup-mcp/src/mcp_adapter/sse.rs",
+        "crates/licoup-mcp/src/mcp_adapter/tests.rs",
       ],
-      command: rustLayer("domain::mcp_adapter::tests::"),
+      command: rustMcpLayer("mcp_adapter::tests::"),
     }),
   defineModule({
       id: "rust.domain.secure-mesh-command-runtime",
@@ -193,6 +193,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/domain/agent_hub/**",
         "crates/licoup-native/src/domain/agent_catalog.rs",
+        "crates/licoup-agent-targets/src/domain/cli_registration.rs",
         "crates/licoup-native/src/domain/cli_registration.rs",
         "crates/licoup-native/src/domain/native_roles.rs",
       ],
@@ -202,46 +203,51 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.client-authority-registry",
       kind: "rust-domain",
       summary: "Canonical client authority registration and conflict policy",
-      inputs: ["crates/licoup-native/src/domain/client_authority_registry.rs"],
-      command: rustLayer("domain::client_authority_registry::tests::"),
+      inputs: ["crates/licoup-application/src/client_authority_registry.rs"],
+      command: rustApplicationLayer("client_authority_registry::tests::"),
     }),
   defineModule({
       id: "rust.domain.client-runtime",
       kind: "rust-domain",
       summary: "Bounded client runtime ABI, arena, stream, spool, and agent IPC",
-      inputs: ["crates/licoup-native/src/domain/client_runtime/**"],
-      command: rustLayer("domain::client_runtime::"),
+      inputs: ["crates/licoup-application/src/client_runtime/**"],
+      command: rustApplicationLayer("client_runtime::"),
     }),
   defineModule({
       id: "rust.domain.protocol-input-admission",
       kind: "rust-domain",
       summary: "Protocol input size and structure admission",
-      inputs: ["crates/licoup-native/src/domain/protocol_input_admission.rs"],
-      command: rustLayer("domain::protocol_input_admission::tests::"),
+      inputs: ["crates/licoup-application/src/protocol_input_admission.rs"],
+      command: rustApplicationLayer("protocol_input_admission::tests::"),
     }),
   defineModule({
       id: "rust.domain.release-receipts",
       kind: "rust-domain",
       summary: "Typed release receipt validation and projection",
-      inputs: ["crates/licoup-native/src/domain/release_receipts/**"],
-      command: rustLayer("domain::release_receipts::"),
+      inputs: ["crates/licoup-application/src/release_receipts/**"],
+      command: rustApplicationLayer("release_receipts::"),
     }),
   defineModule({
       id: "rust.domain.resource-bounds",
       kind: "rust-domain",
       summary: "Bounded history and search resource policy",
-      inputs: ["crates/licoup-native/src/domain/resource_bounds/**"],
-      command: rustLayer("domain::resource_bounds::"),
+      inputs: [
+        "crates/licoup-client-state/src/resource_bounds/mod.rs",
+        "crates/licoup-client-state/src/resource_bounds/policy.rs",
+        "crates/licoup-client-state/src/resource_bounds/history.rs",
+        "crates/licoup-client-state/src/resource_bounds/search.rs",
+      ],
+      command: rustClientStateLayer("resource_bounds::"),
     }),
   defineModule({
       id: "rust.domain.session-policy",
       kind: "rust-domain",
       summary: "Session capability, review, and admission policy",
       inputs: [
-        "crates/licoup-native/src/domain/session_policy/**",
-        "crates/licoup-native/src/domain/dispatch_timeout_policy.rs",
+        "crates/licoup-application/src/session_policy/**",
+        "crates/licoup-application/src/dispatch_timeout_policy.rs",
       ],
-      command: rustLayer("domain::session_policy::"),
+      command: rustApplicationLayer("session_policy::", ["dispatch_timeout_policy::tests::"]),
     }),
   defineModule({
       id: "rust.domain.provider-quota",
@@ -680,8 +686,8 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Agent history adapter and source-root catalog",
       inputs: [
         "crates/licoup-native/src/domain/conversation/source_catalog.rs",
-        "crates/licoup-native/src/domain/targets/scan_paths.rs",
-        "crates/licoup-native/resources/agent-scan-paths.toml",
+        "crates/licoup-agent-targets/src/domain/targets/scan_paths.rs",
+        "crates/licoup-agent-targets/resources/agent-scan-paths.toml",
       ],
       command: rustLayer("domain::conversation::source_catalog::tests"),
     }),
@@ -1408,12 +1414,12 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Local-only Mobile Relay configuration and bounded identifiers",
       inputs: [
         "crates/licoup-native/src/domain/mobile_relay.rs",
-        "crates/licoup-native/src/domain/mobile_relay/config.rs",
-        "crates/licoup-native/src/domain/mobile_relay/support.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests/test_support.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/config.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/support.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/test_support.rs",
       ],
-      command: rustLayer("mobile_relay::config"),
+      command: rustRelayLayer("mobile_relay::config"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.pairing",
@@ -1421,23 +1427,23 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Directly approved endpoint pairing and invitation policy",
       inputs: [
         "crates/licoup-native/src/domain/mobile_relay.rs",
-        "crates/licoup-native/src/domain/mobile_relay/support.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests/test_support.rs",
-        "crates/licoup-native/src/domain/mobile_relay/pairing.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests/pairing.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/support.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/test_support.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairing.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/pairing.rs",
       ],
-      command: rustLayer("pairing"),
+      command: rustRelayLayer("pairing"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.pairwise-session",
       kind: "rust-domain",
       summary: "Pairwise session facade and aggregate split regression",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session.rs",
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/tests.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/tests.rs",
       ],
-      command: rustLayer("domain::mobile_relay::pairwise_session::tests::"),
+      command: rustRelayLayer("domain::mobile_relay::pairwise_session::tests::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.pairwise-session.scenarios",
@@ -1445,102 +1451,102 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "End-to-end pairwise session lifecycle scenarios",
       inputs: [
         "crates/licoup-native/src/domain/mobile_relay.rs",
-        "crates/licoup-native/src/domain/mobile_relay/support.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests/test_support.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests/pairwise_session.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/support.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/test_support.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/pairwise_session.rs",
       ],
-      command: rustLayer("domain::mobile_relay::tests::pairwise_session::"),
+      command: rustRelayLayer("domain::mobile_relay::tests::pairwise_session::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.pairwise-session.status-projection",
       kind: "rust-domain",
       summary: "Authorized durable-session and capability status projection",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/status_projection.rs",
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/tests/status_projection.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/status_projection.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/tests/status_projection.rs",
       ],
-      command: rustLayer("domain::mobile_relay::pairwise_session::tests::status_projection::"),
+      command: rustRelayLayer("domain::mobile_relay::pairwise_session::tests::status_projection::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.pairwise-session.response-replay",
       kind: "rust-domain",
       summary: "Result response redaction and ratchet replay proof",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/response.rs",
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/tests/response.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/response.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/tests/response.rs",
       ],
-      command: rustLayer("domain::mobile_relay::pairwise_session::tests::response::"),
+      command: rustRelayLayer("domain::mobile_relay::pairwise_session::tests::response::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.pairwise-session.payload",
       kind: "rust-domain",
       summary: "Bound command payload and authorization context construction",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/payload.rs",
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/tests/payload.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/payload.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/tests/payload.rs",
       ],
-      command: rustLayer("domain::mobile_relay::pairwise_session::tests::payload::"),
+      command: rustRelayLayer("domain::mobile_relay::pairwise_session::tests::payload::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.pairwise-session.crypto-operation",
       kind: "rust-domain",
       summary: "Directory-gated ciphertext seal and open operations",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/crypto_operation.rs",
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/tests/crypto_operation.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/crypto_operation.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/tests/crypto_operation.rs",
       ],
-      command: rustLayer("domain::mobile_relay::pairwise_session::tests::crypto_operation::"),
+      command: rustRelayLayer("domain::mobile_relay::pairwise_session::tests::crypto_operation::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.pairwise-session.transaction",
       kind: "rust-domain",
       summary: "Single authorized pairwise session transaction and atomic commit",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/transaction.rs",
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/tests/transaction.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/transaction.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/tests/transaction.rs",
       ],
-      command: rustLayer("domain::mobile_relay::pairwise_session::tests::transaction::"),
+      command: rustRelayLayer("domain::mobile_relay::pairwise_session::tests::transaction::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.pairwise-session.handshake",
       kind: "rust-domain",
       summary: "PQXDH initiate accept and capability-proof handshake bootstrap",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/handshake.rs",
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/tests/handshake.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/handshake.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/tests/handshake.rs",
       ],
-      command: rustLayer("domain::mobile_relay::pairwise_session::tests::handshake::"),
+      command: rustRelayLayer("domain::mobile_relay::pairwise_session::tests::handshake::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.pairwise-session.store",
       kind: "rust-domain",
       summary: "Durable pairwise store path secret backend restart purge and reset",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/store.rs",
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/tests/store.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/store.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/tests/store.rs",
       ],
-      command: rustLayer("domain::mobile_relay::pairwise_session::tests::store::"),
+      command: rustRelayLayer("domain::mobile_relay::pairwise_session::tests::store::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.relay-operations",
       kind: "rust-domain",
       summary: "Relay operations facade and aggregate split regression",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/tests.rs",
       ],
-      command: rustLayer("domain::mobile_relay::relay_operations::tests::"),
+      command: rustRelayLayer("domain::mobile_relay::relay_operations::tests::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.relay-operations.scenario.session-device-restore",
       kind: "rust-domain",
       summary: "Read-only session binding, authority reset CAS, and selected-device secret restoration",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/relay_operations.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests/relay_operations/session_device_restore.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/relay_operations.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/relay_operations/session_device_restore.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::tests::relay_operations::session_device_restore::",
       ),
     }),
@@ -1549,9 +1555,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Transport-only envelope validation, encrypted round trips, and file metadata boundaries",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/relay_operations/envelope_roundtrip.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/relay_operations/envelope_roundtrip.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::tests::relay_operations::envelope_roundtrip::",
       ),
     }),
@@ -1560,9 +1566,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Pinned identity, tamper rejection, redacted errors, and replay protection",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/relay_operations/identity_replay_safety.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/relay_operations/identity_replay_safety.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::tests::relay_operations::identity_replay_safety::",
       ),
     }),
@@ -1571,9 +1577,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Local confirmation, secure result handling, and single-operation authorization batches",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/relay_operations/local_result_authorization.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/relay_operations/local_result_authorization.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::tests::relay_operations::local_result_authorization::",
       ),
     }),
@@ -1582,73 +1588,73 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Ciphertext-only lease poll send receive delete and result command handlers",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers/check_in.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers/create.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers/poll.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers/result.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/command_handlers.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/command_handlers/check_in.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/command_handlers/create.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/command_handlers/poll.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/command_handlers/result.rs",
       ],
-      command: rustLayer("domain::mobile_relay::relay_operations::tests::"),
+      command: rustRelayLayer("domain::mobile_relay::relay_operations::tests::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.relay-operations.station",
       kind: "rust-domain",
       summary: "Explicit BadTower station selection and untrusted transport-hint projection",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/station.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests/station.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/station.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/tests/station.rs",
       ],
-      command: rustLayer("domain::mobile_relay::relay_operations::tests::station::"),
+      command: rustRelayLayer("domain::mobile_relay::relay_operations::tests::station::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.relay-operations.mailbox",
       kind: "rust-domain",
       summary: "Pairwise mailbox schedule token and rotation epoch",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/mailbox.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests/mailbox.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/mailbox.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/tests/mailbox.rs",
       ],
-      command: rustLayer("domain::mobile_relay::relay_operations::tests::mailbox::"),
+      command: rustRelayLayer("domain::mobile_relay::relay_operations::tests::mailbox::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.relay-operations.envelope",
       kind: "rust-domain",
       summary: "Canonical bounded encrypted relay envelope validation and codec",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/envelope.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests/envelope.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/envelope.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/tests/envelope.rs",
       ],
-      command: rustLayer("domain::mobile_relay::relay_operations::tests::envelope::"),
+      command: rustRelayLayer("domain::mobile_relay::relay_operations::tests::envelope::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.relay-operations.delivery",
       kind: "rust-domain",
       summary: "Exact outer-envelope delivery and local command conversion",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/delivery.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests/delivery.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/delivery.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/tests/delivery.rs",
       ],
-      command: rustLayer("domain::mobile_relay::relay_operations::tests::delivery::"),
+      command: rustRelayLayer("domain::mobile_relay::relay_operations::tests::delivery::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.relay-operations.status",
       kind: "rust-domain",
       summary: "Authorization-aware redacted E2EE readiness projection",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/status.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests/status.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/status.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/tests/status.rs",
       ],
-      command: rustLayer("domain::mobile_relay::relay_operations::tests::status::"),
+      command: rustRelayLayer("domain::mobile_relay::relay_operations::tests::status::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.relay-operations.allow-list",
       kind: "rust-domain",
       summary: "Canonical packaged-agent and detected runtime-send allow-list",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/allow_list.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests/allow_list.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/allow_list.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/relay_operations/tests/allow_list.rs",
       ],
-      command: rustLayer("domain::mobile_relay::relay_operations::tests::allow_list::"),
+      command: rustRelayLayer("domain::mobile_relay::relay_operations::tests::allow_list::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.command-sync",
@@ -1656,31 +1662,31 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Bounded encrypted command synchronization state",
       inputs: [
         "crates/licoup-native/src/domain/mobile_relay.rs",
-        "crates/licoup-native/src/domain/mobile_relay/command_sync.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/command_sync.rs",
       ],
-      command: rustLayer("mobile_relay::command_sync"),
+      command: rustRelayLayer("mobile_relay::command_sync"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.endpoint-trust",
       kind: "rust-domain",
       summary: "Endpoint trust facade and public redacted projection",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/tests.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/tests.rs",
       ],
-      command: rustLayer("domain::mobile_relay::endpoint_trust::tests::"),
+      command: rustRelayLayer("domain::mobile_relay::endpoint_trust::tests::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.endpoint-trust.directory-transparency",
       kind: "rust-domain",
       summary: "Directory transparency facade and aggregate authorization regression",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/authorization.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/support.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/authorization.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/support.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::directory_transparency::tests::",
       ),
     }),
@@ -1689,10 +1695,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Canonical local directory claim and pairwise prekey bundle codec",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/claim.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/claim.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/claim.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/claim.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::directory_transparency::tests::claim::",
       ),
     }),
@@ -1701,10 +1707,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Pinned verifier configuration, scope commitment, and publication purpose",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/config.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/config.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/config.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/config.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::directory_transparency::tests::config::",
       ),
     }),
@@ -1713,10 +1719,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Scoped key-transparency freshness clock",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/clock.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/clock.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/clock.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/clock.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::directory_transparency::tests::clock::",
       ),
     }),
@@ -1725,10 +1731,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Current active pairwise directory receipt reduction",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/freshness.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/freshness.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/freshness.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/freshness.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::directory_transparency::tests::freshness::",
       ),
     }),
@@ -1737,11 +1743,11 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Central KT response preparation and exact pairwise or MLS request binding",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/verifier.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/ensure.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/verifier.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/verifier.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/ensure.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/verifier.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::directory_transparency::tests::verifier::",
       ),
     }),
@@ -1750,10 +1756,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Fail-closed pinned directory authority open",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/authority.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/authority.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/authority.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/authority.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::directory_transparency::tests::authority::",
       ),
     }),
@@ -1762,10 +1768,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Peer descriptor key-transparency authorization",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/authorization/peer.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/peer_authorization.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/authorization/peer.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/peer_authorization.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::directory_transparency::tests::peer_authorization::",
       ),
     }),
@@ -1774,10 +1780,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Local endpoint key-transparency authorization",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/authorization/local.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/local_authorization.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/authorization/local.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/local_authorization.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::directory_transparency::tests::local_authorization::",
       ),
     }),
@@ -1786,10 +1792,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Exact local directory claim authorization",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/authorization/exact.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/exact_authorization.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/authorization/exact.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/exact_authorization.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::directory_transparency::tests::exact_authorization::",
       ),
     }),
@@ -1798,10 +1804,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Test-only isolated local KT authority and fresh-response simulation",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/test_support.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/test_support.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/test_support.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/directory_transparency/tests/test_support.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::directory_transparency::tests::test_support::",
       ),
     }),
@@ -1810,11 +1816,11 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Local endpoint material facade, composition, and aggregate regression",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/state.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/tests.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/state.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/tests.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::local_material::tests::",
       ),
     }),
@@ -1823,12 +1829,12 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Local identity and signing generation separated from endpoint config mutation",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/composition.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/identity_generation.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/material_mutation.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/tests/generation.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/composition.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/identity_generation.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/material_mutation.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/tests/generation.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::local_material::tests::generation::",
       ),
     }),
@@ -1837,11 +1843,11 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "PQXDH curve and ML-KEM prekey generation and inventory mutation",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/prekey_generation.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/prekey_inventory.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/tests/inventory.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/prekey_generation.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/prekey_inventory.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/tests/inventory.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::local_material::tests::inventory::",
       ),
     }),
@@ -1850,10 +1856,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "One-time prekey and repair-only local identity rotation",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/rotation.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/tests/rotation.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/rotation.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/tests/rotation.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::local_material::tests::rotation::",
       ),
     }),
@@ -1862,10 +1868,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Fail-closed reset for protocol-incompatible local pairwise state",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/protocol_reset.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/tests/protocol_reset.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/protocol_reset.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/tests/protocol_reset.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::local_material::tests::protocol_reset::",
       ),
     }),
@@ -1874,10 +1880,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Fail-closed local endpoint state codec and fingerprint projection",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/state_codec.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/tests/state_codec.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/state_codec.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/tests/state_codec.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::local_material::tests::state_codec::",
       ),
     }),
@@ -1886,11 +1892,11 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Secret-free local descriptor projection and typed key accessors",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/accessors.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/descriptor.rs",
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/tests/descriptor.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/accessors.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/descriptor.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/local_material/tests/descriptor.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::local_material::tests::descriptor::",
       ),
     }),
@@ -1899,9 +1905,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Secret-free endpoint pairing invitation projection",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/pairing_presentation.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/pairing_presentation.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::pairing_presentation::tests::",
       ),
     }),
@@ -1910,9 +1916,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Canonical pairwise endpoint identity codec",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/pairwise_codec.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/pairwise_codec.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::pairwise_codec::tests::",
       ),
     }),
@@ -1921,9 +1927,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Peer trust rotation and continuity policy",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/peer_trust.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/peer_trust.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::peer_trust::tests::",
       ),
     }),
@@ -1932,9 +1938,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Stable endpoint trust persistence and scoped removal",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/persistence.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/persistence.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::persistence::tests::",
       ),
     }),
@@ -1943,9 +1949,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Canonical endpoint trust digests and base64url primitives",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/primitives.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/endpoint_trust/primitives.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::endpoint_trust::primitives::tests::",
       ),
     }),
@@ -1954,9 +1960,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Cross-boundary endpoint trust scenarios",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/endpoint_trust.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/endpoint_trust.rs",
       ],
-      command: rustLayer("domain::mobile_relay::tests::endpoint_trust::"),
+      command: rustRelayLayer("domain::mobile_relay::tests::endpoint_trust::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.key-transparency",
@@ -1964,101 +1970,101 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Key-transparency action contract, dispatcher, facade, and aggregate regression",
       inputs: [
         "crates/licoup-native/src/domain/mobile_relay.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/contract.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/dispatcher.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/tests.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/tests/dispatcher.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/contract.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/dispatcher.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/tests.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/tests/dispatcher.rs",
       ],
-      command: rustLayer("domain::mobile_relay::key_transparency::tests::"),
+      command: rustRelayLayer("domain::mobile_relay::key_transparency::tests::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.key-transparency.authority",
       kind: "rust-domain",
       summary: "Pinned authority proposal, persisted challenge, transactional confirmation, and destructive reset",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/authority.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/authority/challenge.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/authority/proposal.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/authority/reset.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/authority/transaction.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/persistence.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/projection.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/tests/authority.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/tests/authority_challenge.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/authority.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/authority/challenge.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/authority/proposal.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/authority/reset.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/authority/transaction.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/persistence.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/projection.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/tests/authority.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/tests/authority_challenge.rs",
       ],
-      command: rustLayer("domain::mobile_relay::key_transparency::tests::authority"),
+      command: rustRelayLayer("domain::mobile_relay::key_transparency::tests::authority"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.key-transparency.publication",
       kind: "rust-domain",
       summary: "Exact local directory publication claim and derived authorization purpose",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/publication.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/tests/publication.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/publication.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/tests/publication.rs",
       ],
-      command: rustLayer("domain::mobile_relay::key_transparency::tests::publication::"),
+      command: rustRelayLayer("domain::mobile_relay::key_transparency::tests::publication::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.key-transparency.revocation",
       kind: "rust-domain",
       summary: "Explicitly confirmed directory revocation claim",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/revocation.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/tests/revocation.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/revocation.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/tests/revocation.rs",
       ],
-      command: rustLayer("domain::mobile_relay::key_transparency::tests::revocation::"),
+      command: rustRelayLayer("domain::mobile_relay::key_transparency::tests::revocation::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.key-transparency.provision",
       kind: "rust-domain",
       summary: "Exact pending-claim service response authorization and committed projection",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/provision.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/tests/provision.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/provision.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/tests/provision.rs",
       ],
-      command: rustLayer("domain::mobile_relay::key_transparency::tests::provision::"),
+      command: rustRelayLayer("domain::mobile_relay::key_transparency::tests::provision::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.key-transparency.monitor-gossip",
       kind: "rust-domain",
       summary: "Self-monitor authorization plus encrypted pairwise gossip control",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/self_monitor.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/gossip.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/tests/monitor_gossip.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/self_monitor.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/gossip.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/tests/monitor_gossip.rs",
       ],
-      command: rustLayer("domain::mobile_relay::key_transparency::tests::monitor_gossip::"),
+      command: rustRelayLayer("domain::mobile_relay::key_transparency::tests::monitor_gossip::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.key-transparency.status-config",
       kind: "rust-domain",
       summary: "Single secret-context adapter, generation ownership, and fail-closed public status",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/config.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/status.rs",
-        "crates/licoup-native/src/domain/mobile_relay/key_transparency/tests/status.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/config.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/status.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/key_transparency/tests/status.rs",
       ],
-      command: rustLayer("domain::mobile_relay::key_transparency::tests::status::"),
+      command: rustRelayLayer("domain::mobile_relay::key_transparency::tests::status::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.secret-custody",
       kind: "rust-domain",
       summary: "Secret custody facade and shared helper projection",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/secret_custody.rs",
-        "crates/licoup-native/src/domain/mobile_relay/secret_custody/tests.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/secret_custody.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/secret_custody/tests.rs",
       ],
-      command: rustLayer("domain::mobile_relay::secret_custody::tests::"),
+      command: rustRelayLayer("domain::mobile_relay::secret_custody::tests::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.secret-custody.cleanup",
       kind: "rust-domain",
       summary: "Explicit disposable-proof secret-store cleanup",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/secret_custody/cleanup.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/secret_custody/cleanup.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::secret_custody::cleanup::tests::",
       ),
     }),
@@ -2067,9 +2073,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Protected secret-custody configuration persistence",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/secret_custody/config_store.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/secret_custody/config_store.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::secret_custody::config_store::tests::",
       ),
     }),
@@ -2078,9 +2084,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Native secret persistence and restart semantics",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/secret_custody/persistence.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/secret_custody/persistence.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::secret_custody::persistence::tests::",
       ),
     }),
@@ -2089,9 +2095,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Redacted secret-custody status presentation",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/secret_custody/presentation.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/secret_custody/presentation.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::secret_custody::presentation::tests::",
       ),
     }),
@@ -2100,9 +2106,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Retired-state reset and protected-operation guard",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/secret_custody/reset_guard.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/secret_custody/reset_guard.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::secret_custody::reset_guard::tests::",
       ),
     }),
@@ -2111,9 +2117,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Native-authorized custody runtime and biometric session composition",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/secret_custody/runtime.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/secret_custody/runtime.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::secret_custody::runtime::tests::",
       ),
     }),
@@ -2122,10 +2128,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Bounded secret material generation and custody handles",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/secret_custody/secret_material.rs",
-        "crates/licoup-native/src/domain/mobile_relay/secret_custody/runtime_secret_material.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/secret_custody/secret_material.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/secret_custody/runtime_secret_material.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::secret_custody::secret_material::tests::",
       ),
     }),
@@ -2134,9 +2140,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Minimal secret-custody capability readiness self-test",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/secret_custody/self_test.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/secret_custody/self_test.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::secret_custody::self_test::tests::",
       ),
     }),
@@ -2145,10 +2151,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Fail-closed config integrity, optimistic concurrency, and public redaction",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody/config_integrity.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/secret_custody.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/secret_custody/config_integrity.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::tests::secret_custody::config_integrity::",
       ),
     }),
@@ -2157,9 +2163,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Native secret-bundle persistence, hydration, and redacted portable state",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody/native_store_boundary.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/secret_custody/native_store_boundary.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::tests::secret_custody::native_store_boundary::",
       ),
     }),
@@ -2168,9 +2174,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Mobile FFI public-read and authorized native secret-store boundary",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody/ffi_dispatcher.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/secret_custody/ffi_dispatcher.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::tests::secret_custody::ffi_dispatcher::",
       ),
     }),
@@ -2179,9 +2185,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "User-level secret mutation and cleanup authorization batch budgets",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody/authorization_batches.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/secret_custody/authorization_batches.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::tests::secret_custody::authorization_batches::",
       ),
     }),
@@ -2190,9 +2196,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Exact-confirmation disposable cleanup, bounded deletion, and failure propagation",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody/disposable_cleanup.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/secret_custody/disposable_cleanup.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::tests::secret_custody::disposable_cleanup::",
       ),
     }),
@@ -2201,9 +2207,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Owned runtime secret handoff and zeroizing replacement/drop boundary",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody/zeroizing_boundary.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/secret_custody/zeroizing_boundary.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::tests::secret_custody::zeroizing_boundary::",
       ),
     }),
@@ -2212,9 +2218,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Public config save, selected-device restoration, and runtime override rejection",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody/public_config_restore.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/secret_custody/public_config_restore.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::tests::secret_custody::public_config_restore::",
       ),
     }),
@@ -2223,9 +2229,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Truthful E2EE status projection and bounded secret-store authorization",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody/e2ee_status_authorization.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/secret_custody/e2ee_status_authorization.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::tests::secret_custody::e2ee_status_authorization::",
       ),
     }),
@@ -2234,9 +2240,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Secure command raw-secret rejection and native secret-store execution",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody/secure_command_store.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/secret_custody/secure_command_store.rs",
       ],
-      command: rustLayer(
+      command: rustRelayLayer(
         "domain::mobile_relay::tests::secret_custody::secure_command_store::",
       ),
     }),
@@ -2245,269 +2251,270 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "BadTower-backed mobile relay acceptance scenarios",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/badtower_acceptance.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests/badtower_acceptance/**",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/badtower_acceptance.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/badtower_acceptance/**",
       ],
-      command: rustLayer("domain::mobile_relay::tests::badtower_acceptance::"),
+      command: rustRelayLayer("domain::mobile_relay::tests::badtower_acceptance::"),
     }),
   defineModule({
       id: "rust.domain.targets",
       kind: "rust-domain",
       summary: "Target public facade, shared support, and test composition",
       inputs: [
+        "crates/licoup-agent-targets/src/domain/targets.rs",
         "crates/licoup-native/src/domain/targets.rs",
-        "crates/licoup-native/src/domain/targets/support.rs",
-        "crates/licoup-native/src/domain/targets/tests.rs",
-        "crates/licoup-native/src/domain/targets/tests/test_support.rs",
+        "crates/licoup-agent-targets/src/domain/targets/support.rs",
+        "crates/licoup-agent-targets/src/domain/targets/tests.rs",
+        "crates/licoup-agent-targets/src/domain/targets/tests/test_support.rs",
       ],
-      command: rustLayer("domain::targets::tests::"),
+      command: rustAgentTargetsLayer("domain::targets::tests::"),
     }),
   defineModule({
       id: "rust.domain.targets.scan-paths",
       kind: "rust-domain",
       summary: "Agent Scan Path Manifest: allowlisted discovery, lexical deny, unused-agent other-app skip",
       inputs: [
-        "crates/licoup-native/src/domain/targets/scan_paths.rs",
-        "crates/licoup-native/src/platform/paths.rs",
-        "crates/licoup-native/resources/agent-scan-paths.toml",
+        "crates/licoup-agent-targets/src/domain/targets/scan_paths.rs",
+        "crates/licoup-foundation/src/platform/paths.rs",
+        "crates/licoup-agent-targets/resources/agent-scan-paths.toml",
       ],
-      command: rustLayer("domain::targets::scan_paths::tests::"),
+      command: rustAgentTargetsLayer("domain::targets::scan_paths::tests::"),
     }),
   defineModule({
       id: "rust.domain.targets.binaries",
       kind: "rust-domain",
       summary: "Bounded platform executable discovery and source classification",
       inputs: [
-        "crates/licoup-native/src/domain/targets/binaries.rs",
-        "crates/licoup-native/src/domain/targets/scan_paths.rs",
-        "crates/licoup-native/resources/agent-scan-paths.toml",
+        "crates/licoup-agent-targets/src/domain/targets/binaries.rs",
+        "crates/licoup-agent-targets/src/domain/targets/scan_paths.rs",
+        "crates/licoup-agent-targets/resources/agent-scan-paths.toml",
       ],
-      command: rustLayer("domain::targets::binaries::tests::"),
+      command: rustAgentTargetsLayer("domain::targets::binaries::tests::"),
     }),
   defineModule({
       id: "rust.domain.targets.catalog",
       kind: "rust-domain",
       summary: "Canonical target definitions and adapter readiness policy",
       inputs: [
-        "crates/licoup-native/src/domain/targets/catalog.rs",
+        "crates/licoup-agent-targets/src/domain/targets/catalog.rs",
       ],
-      command: rustLayer("domain::targets::catalog::tests::"),
+      command: rustAgentTargetsLayer("domain::targets::catalog::tests::"),
     }),
   defineModule({
       id: "rust.domain.targets.parameters",
       kind: "rust-domain",
       summary: "Bounded target command parameter parsing",
       inputs: [
-        "crates/licoup-native/src/domain/targets/parameters.rs",
+        "crates/licoup-agent-targets/src/domain/targets/parameters.rs",
       ],
-      command: rustLayer("domain::targets::parameters::tests::"),
+      command: rustAgentTargetsLayer("domain::targets::parameters::tests::"),
     }),
   defineModule({
       id: "rust.domain.targets.platform-paths",
       kind: "rust-domain",
       summary: "Cross-platform target configuration and evidence paths",
       inputs: [
-        "crates/licoup-native/src/domain/targets/platform_paths.rs",
-        "crates/licoup-native/src/domain/targets/scan_paths.rs",
-        "crates/licoup-native/src/platform/paths.rs",
-        "crates/licoup-native/resources/agent-scan-paths.toml",
+        "crates/licoup-agent-targets/src/domain/targets/platform_paths.rs",
+        "crates/licoup-agent-targets/src/domain/targets/scan_paths.rs",
+        "crates/licoup-foundation/src/platform/paths.rs",
+        "crates/licoup-agent-targets/resources/agent-scan-paths.toml",
       ],
-      command: rustLayer("domain::targets::platform_paths::tests::"),
+      command: rustAgentTargetsLayer("domain::targets::platform_paths::tests::"),
     }),
   defineModule({
       id: "rust.domain.targets.processes",
       kind: "rust-domain",
       summary: "Single-snapshot running-process target detection",
       inputs: [
-        "crates/licoup-native/src/domain/targets/processes.rs",
+        "crates/licoup-agent-targets/src/domain/targets/processes.rs",
       ],
-      command: rustLayer("domain::targets::processes::tests::"),
+      command: rustAgentTargetsLayer("domain::targets::processes::tests::"),
     }),
   defineModule({
       id: "rust.domain.targets.platform-integration",
       kind: "rust-domain",
       summary: "Cross-platform path, process, and executable integration projections",
       inputs: [
-        "crates/licoup-native/src/domain/targets/binaries.rs",
-        "crates/licoup-native/src/domain/targets/platform_paths.rs",
-        "crates/licoup-native/src/domain/targets/processes.rs",
-        "crates/licoup-native/src/domain/targets/tests/platform.rs",
+        "crates/licoup-agent-targets/src/domain/targets/binaries.rs",
+        "crates/licoup-agent-targets/src/domain/targets/platform_paths.rs",
+        "crates/licoup-agent-targets/src/domain/targets/processes.rs",
+        "crates/licoup-agent-targets/src/domain/targets/tests/platform.rs",
       ],
-      command: rustLayer("domain::targets::tests::platform::"),
+      command: rustAgentTargetsLayer("domain::targets::tests::platform::"),
     }),
   defineModule({
       id: "rust.domain.targets.probe-pool",
       kind: "rust-domain",
       summary: "Bounded ordered concurrent target probe scheduling",
       inputs: [
-        "crates/licoup-native/src/domain/targets/probe_pool.rs",
+        "crates/licoup-agent-targets/src/domain/targets/probe_pool.rs",
       ],
-      command: rustLayer("domain::targets::probe_pool::tests::"),
+      command: rustAgentTargetsLayer("domain::targets::probe_pool::tests::"),
     }),
   defineModule({
       id: "rust.domain.targets.discovery",
       kind: "rust-domain",
       summary: "Concurrent target discovery and inspect orchestration",
       inputs: [
-        "crates/licoup-native/src/domain/targets/discovery.rs",
-        "crates/licoup-native/src/domain/targets/virtual_machine_discovery.rs",
-        "crates/licoup-native/src/domain/targets/tests/discovery.rs",
+        "crates/licoup-agent-targets/src/domain/targets/discovery.rs",
+        "crates/licoup-agent-targets/src/domain/targets/virtual_machine_discovery.rs",
+        "crates/licoup-agent-targets/src/domain/targets/tests/discovery.rs",
       ],
-      command: rustLayer("domain::targets::tests::discovery::"),
+      command: rustAgentTargetsLayer("domain::targets::tests::discovery::"),
     }),
   defineModule({
       id: "rust.domain.targets.discovery-cache",
       kind: "rust-domain",
       summary: "Local quick-start target route cache without conversation or model content",
       inputs: [
-        "crates/licoup-native/src/domain/targets/target_cache.rs",
+        "crates/licoup-agent-targets/src/domain/targets/target_cache.rs",
       ],
-      command: rustLayer("domain::targets::target_cache::tests::"),
+      command: rustAgentTargetsLayer("domain::targets::target_cache::tests::"),
     }),
   defineModule({
       id: "rust.domain.targets.manual",
       kind: "rust-domain",
       summary: "Manual target persistence, normalization, and local state projection",
       inputs: [
-        "crates/licoup-native/src/domain/targets/manual.rs",
-        "crates/licoup-native/src/domain/targets/tests/manual.rs",
+        "crates/licoup-agent-targets/src/domain/targets/manual.rs",
+        "crates/licoup-agent-targets/src/domain/targets/tests/manual.rs",
       ],
-      command: rustLayer("domain::targets::tests::manual::"),
+      command: rustAgentTargetsLayer("domain::targets::tests::manual::"),
     }),
   defineModule({
       id: "rust.domain.targets.scan-merge",
       kind: "rust-domain",
       summary: "Target evidence, capability, model-catalog, and supported-action reduction",
       inputs: [
-        "crates/licoup-native/src/domain/targets/scan_merge.rs",
-        "crates/licoup-native/src/domain/targets/tests/scan_merge.rs",
+        "crates/licoup-agent-targets/src/domain/targets/scan_merge.rs",
+        "crates/licoup-agent-targets/src/domain/targets/tests/scan_merge.rs",
       ],
-      command: rustLayer("domain::targets::tests::scan_merge::"),
+      command: rustAgentTargetsLayer("domain::targets::tests::scan_merge::"),
     }),
   defineModule({
       id: "rust.domain.targets.runtime-binding",
       kind: "rust-domain",
       summary: "Canonical ready-runtime executable binding",
       inputs: [
-        "crates/licoup-native/src/domain/targets/runtime_binding.rs",
-        "crates/licoup-native/src/domain/targets/tests/runtime_binding.rs",
+        "crates/licoup-agent-targets/src/domain/targets/runtime_binding.rs",
+        "crates/licoup-agent-targets/src/domain/targets/tests/runtime_binding.rs",
       ],
-      command: rustLayer("domain::targets::tests::runtime_binding::"),
+      command: rustAgentTargetsLayer("domain::targets::tests::runtime_binding::"),
     }),
   defineModule({
       id: "rust.domain.targets.model-catalog",
       kind: "rust-domain",
       summary: "Local model catalog orchestration and test composition",
       inputs: [
-        "crates/licoup-native/src/domain/targets/model_catalog/builtin.rs",
-        "crates/licoup-native/src/domain/targets/model_catalog/builtin_catalog.json",
-        "crates/licoup-native/src/domain/targets/model_catalog/deepseek.rs",
-        "crates/licoup-native/src/domain/targets/model_catalog/kimi.rs",
-        "crates/licoup-native/src/domain/targets/model_catalog/mod.rs",
-        "crates/licoup-native/src/domain/targets/model_catalog/pi.rs",
-        "crates/licoup-native/src/domain/targets/model_catalog/presentation.rs",
-        "crates/licoup-native/src/domain/targets/model_catalog/tests.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/builtin.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/builtin_catalog.json",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/deepseek.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/kimi.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/mod.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/pi.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/presentation.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/tests.rs",
       ],
-      command: rustLayer("domain::targets::model_catalog::tests::"),
+      command: rustAgentTargetsLayer("domain::targets::model_catalog::tests::"),
     }),
   defineModule({
       id: "rust.domain.targets.model-catalog.antigravity",
       kind: "rust-domain",
       summary: "Bounded Antigravity local model discovery",
       inputs: [
-        "crates/licoup-native/src/domain/targets/model_catalog/antigravity.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/antigravity.rs",
       ],
-      command: rustLayer("domain::targets::model_catalog::tests::antigravity::"),
+      command: rustAgentTargetsLayer("domain::targets::model_catalog::tests::antigravity::"),
     }),
   defineModule({
       id: "rust.domain.targets.model-catalog.cursor",
       kind: "rust-domain",
       summary: "Bounded Cursor Agent CLI model discovery",
       inputs: [
-        "crates/licoup-native/src/domain/targets/model_catalog/cursor.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/cursor.rs",
       ],
-      command: rustLayer("domain::targets::model_catalog::tests::cursor::"),
+      command: rustAgentTargetsLayer("domain::targets::model_catalog::tests::cursor::"),
     }),
   defineModule({
       id: "rust.domain.targets.model-catalog.config",
       kind: "rust-domain",
       summary: "Local model settings and cache document discovery",
       inputs: [
-        "crates/licoup-native/src/domain/targets/model_catalog/config.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/config.rs",
       ],
-      command: rustLayer("domain::targets::model_catalog::tests::config_"),
+      command: rustAgentTargetsLayer("domain::targets::model_catalog::tests::config_"),
     }),
   defineModule({
       id: "rust.domain.targets.model-catalog.history",
       kind: "rust-domain",
       summary: "Bounded local conversation history model projection",
       inputs: [
-        "crates/licoup-native/src/domain/targets/model_catalog/history.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/history.rs",
       ],
-      command: rustLayer("domain::targets::model_catalog::tests::history::"),
+      command: rustAgentTargetsLayer("domain::targets::model_catalog::tests::history::"),
     }),
   defineModule({
       id: "rust.domain.targets.model-catalog.kilo",
       kind: "rust-domain",
       summary: "Kilo CLI catalog with local-state fallback discovery",
       inputs: [
-        "crates/licoup-native/src/domain/targets/model_catalog/kilo.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/kilo.rs",
       ],
-      command: rustLayer("domain::targets::model_catalog::tests::kilo::"),
+      command: rustAgentTargetsLayer("domain::targets::model_catalog::tests::kilo::"),
     }),
   defineModule({
       id: "rust.domain.targets.model-catalog.claude-code",
       kind: "rust-domain",
       summary: "Claude Code admitted model aliases, configured providers, and allowlist projection",
       inputs: [
-        "crates/licoup-native/src/domain/targets/model_catalog/claude.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/claude.rs",
       ],
-      command: rustLayer("domain::targets::model_catalog::tests::claude_code::"),
+      command: rustAgentTargetsLayer("domain::targets::model_catalog::tests::claude_code::"),
     }),
   defineModule({
       id: "rust.domain.targets.model-catalog.opencode",
       kind: "rust-domain",
       summary: "OpenCode provider-scoped model catalog discovery",
       inputs: [
-        "crates/licoup-native/src/domain/targets/model_catalog/opencode.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/opencode.rs",
       ],
-      command: rustLayer("domain::targets::model_catalog::tests::opencode::"),
+      command: rustAgentTargetsLayer("domain::targets::model_catalog::tests::opencode::"),
     }),
   defineModule({
       id: "rust.domain.targets.model-catalog.normalization",
       kind: "rust-domain",
       summary: "Model identifiers, display names, and selectable collection normalization",
       inputs: [
-        "crates/licoup-native/src/domain/targets/model_catalog/normalization.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/normalization.rs",
       ],
-      command: rustLayer("domain::targets::model_catalog::tests::normalization::"),
+      command: rustAgentTargetsLayer("domain::targets::model_catalog::tests::normalization::"),
     }),
   defineModule({
       id: "rust.domain.targets.model-catalog.provider",
       kind: "rust-domain",
       summary: "Provider identity and display-label projection",
       inputs: [
-        "crates/licoup-native/src/domain/targets/model_catalog/provider.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/provider.rs",
       ],
-      command: rustLayer("domain::targets::model_catalog::tests::provider::"),
+      command: rustAgentTargetsLayer("domain::targets::model_catalog::tests::provider::"),
     }),
   defineModule({
       id: "rust.domain.targets.model-catalog.reasoning",
       kind: "rust-domain",
       summary: "Reasoning and thinking option extraction",
       inputs: [
-        "crates/licoup-native/src/domain/targets/model_catalog/reasoning.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/reasoning.rs",
       ],
-      command: rustLayer("domain::targets::model_catalog::tests::reasoning::"),
+      command: rustAgentTargetsLayer("domain::targets::model_catalog::tests::reasoning::"),
     }),
   defineModule({
       id: "rust.domain.targets.model-catalog.merge",
       kind: "rust-domain",
       summary: "Deterministic model source merge and JSON projection",
       inputs: [
-        "crates/licoup-native/src/domain/targets/model_catalog/merge.rs",
+        "crates/licoup-agent-targets/src/domain/targets/model_catalog/merge.rs",
       ],
-      command: rustLayer("domain::targets::model_catalog::tests::merge::"),
+      command: rustAgentTargetsLayer("domain::targets::model_catalog::tests::merge::"),
     }),
   defineModule({
       id: "rust.domain.skill-hub",
@@ -2865,30 +2872,30 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Product-facing Secure Mesh MLS facade and aggregate domain regression",
       inputs: [
-        "crates/licoup-native/src/domain/secure_mesh_mls.rs",
-        "crates/licoup-native/src/domain/secure_mesh_mls/tests/mod.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/tests/mod.rs",
       ],
-      command: rustLayer("domain::secure_mesh_mls::tests::"),
+      command: rustSecureMeshLayer("domain::secure_mesh_mls::tests::"),
     }),
   defineModule({
       id: "rust.domain.secure-mesh-mls.actions",
       kind: "rust-domain",
       summary: "Stable native action dispatch and readiness status projection",
       inputs: [
-        "crates/licoup-native/src/domain/secure_mesh_mls/actions.rs",
-        "crates/licoup-native/src/domain/secure_mesh_mls/tests/actions.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/actions.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/tests/actions.rs",
       ],
-      command: rustLayer("domain::secure_mesh_mls::tests::actions::"),
+      command: rustSecureMeshLayer("domain::secure_mesh_mls::tests::actions::"),
     }),
   defineModule({
       id: "rust.domain.secure-mesh-mls.participant-key-package",
       kind: "rust-domain",
       summary: "Local participant projection and identity-bound KeyPackage creation",
       inputs: [
-        "crates/licoup-native/src/domain/secure_mesh_mls/participant_key_package.rs",
-        "crates/licoup-native/src/domain/secure_mesh_mls/tests/participant_key_package.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/participant_key_package.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/tests/participant_key_package.rs",
       ],
-      command: rustLayer(
+      command: rustSecureMeshLayer(
         "domain::secure_mesh_mls::tests::participant_key_package::",
       ),
     }),
@@ -2897,33 +2904,33 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Group create, member mutation, join, and commit action orchestration",
       inputs: [
-        "crates/licoup-native/src/domain/secure_mesh_mls/group_create.rs",
-        "crates/licoup-native/src/domain/secure_mesh_mls/group_join.rs",
-        "crates/licoup-native/src/domain/secure_mesh_mls/commit_process.rs",
-        "crates/licoup-native/src/domain/secure_mesh_mls/member_mutation.rs",
-        "crates/licoup-native/src/domain/secure_mesh_mls/tests/group_flow.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/group_create.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/group_join.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/commit_process.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/member_mutation.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/tests/group_flow.rs",
       ],
-      command: rustLayer("domain::secure_mesh_mls::tests::group_flow::"),
+      command: rustSecureMeshLayer("domain::secure_mesh_mls::tests::group_flow::"),
     }),
   defineModule({
       id: "rust.domain.secure-mesh-mls.payload",
       kind: "rust-domain",
       summary: "Trusted-roster payload sealing and opening request projection",
       inputs: [
-        "crates/licoup-native/src/domain/secure_mesh_mls/payload.rs",
-        "crates/licoup-native/src/domain/secure_mesh_mls/tests/payload.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/payload.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/tests/payload.rs",
       ],
-      command: rustLayer("domain::secure_mesh_mls::tests::payload::"),
+      command: rustSecureMeshLayer("domain::secure_mesh_mls::tests::payload::"),
     }),
   defineModule({
       id: "rust.domain.secure-mesh-mls.participant-runtime",
       kind: "rust-domain",
       summary: "Selected-custody participant runtime, persistence, reset, and missing-state policy",
       inputs: [
-        "crates/licoup-native/src/domain/secure_mesh_mls/participant_runtime.rs",
-        "crates/licoup-native/src/domain/secure_mesh_mls/tests/participant_runtime.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/participant_runtime.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/tests/participant_runtime.rs",
       ],
-      command: rustLayer(
+      command: rustSecureMeshLayer(
         "domain::secure_mesh_mls::tests::participant_runtime::",
       ),
     }),
@@ -2932,11 +2939,11 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Pinned key-transparency directory authorization and roster readiness",
       inputs: [
-        "crates/licoup-native/src/domain/secure_mesh_mls/directory_authorization.rs",
-        "crates/licoup-native/src/domain/secure_mesh_mls/tests/directory_authorization.rs",
-        "crates/licoup-native/src/domain/secure_mesh_mls/tests/support.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/directory_authorization.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/tests/directory_authorization.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/tests/support.rs",
       ],
-      command: rustLayer(
+      command: rustSecureMeshLayer(
         "domain::secure_mesh_mls::tests::directory_authorization::",
       ),
     }),
@@ -2945,10 +2952,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Crash-safe operation journal, failpoints, replay, and recovery",
       inputs: [
-        "crates/licoup-native/src/domain/secure_mesh_mls/journal_recovery.rs",
-        "crates/licoup-native/src/domain/secure_mesh_mls/tests/journal_recovery.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/journal_recovery.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/tests/journal_recovery.rs",
       ],
-      command: rustLayer(
+      command: rustSecureMeshLayer(
         "domain::secure_mesh_mls::tests::journal_recovery::",
       ),
     }),
@@ -2957,19 +2964,19 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Durable group authority reconciliation and rollback detection",
       inputs: [
-        "crates/licoup-native/src/domain/secure_mesh_mls/group_state.rs",
-        "crates/licoup-native/src/domain/secure_mesh_mls/tests/group_state.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/group_state.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/tests/group_state.rs",
       ],
-      command: rustLayer("domain::secure_mesh_mls::tests::group_state::"),
+      command: rustSecureMeshLayer("domain::secure_mesh_mls::tests::group_state::"),
     }),
   defineModule({
       id: "rust.domain.secure-mesh-mls.input-codec",
       kind: "rust-domain",
       summary: "Bounded request schema, trust roster, identity, context, and canonical codecs",
       inputs: [
-        "crates/licoup-native/src/domain/secure_mesh_mls/input_codec.rs",
-        "crates/licoup-native/src/domain/secure_mesh_mls/tests/input_codec.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/input_codec.rs",
+        "crates/licoup-secure-mesh/src/domain/secure_mesh_mls/tests/input_codec.rs",
       ],
-      command: rustLayer("domain::secure_mesh_mls::tests::input_codec::"),
+      command: rustSecureMeshLayer("domain::secure_mesh_mls::tests::input_codec::"),
     })
 ]);

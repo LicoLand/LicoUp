@@ -5,19 +5,39 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const facadePath = "crates/licoup-native/src/platform/client_state.rs";
-const root = "crates/licoup-native/src/platform/client_state";
+// The generic local persistence owners live in `licoup-client-state`. The
+// command layer keeps a thin facade plus the module that depends on the
+// generated wire contract.
+const ownerCrateRoot = "crates/licoup-client-state/src";
+const ownerFacadePath = `${ownerCrateRoot}/lib.rs`;
+const ownerManifestPath = "crates/licoup-client-state/Cargo.toml";
+const commandFacadePath = "crates/licoup-native/src/platform/client_state.rs";
+const commandRoot = "crates/licoup-native/src/platform/client_state";
 const productionLeaves = Object.freeze([
   "accessors.rs",
   "activity.rs",
   "collections.rs",
   "migration.rs",
-  "operations.rs",
   "paths.rs",
   "policy.rs",
   "redaction.rs",
+  "resource_policy.rs",
   "serialization.rs",
   "snapshots.rs",
+]);
+const commandLeaves = Object.freeze(["operations.rs"]);
+// The bounded resource policy is a module directory of the same owner: one
+// declared module whose four leaves admit history pages, search pages, archive
+// workers and reservations under the bounds the crate re-exports.
+const ownerModule = "resource_bounds";
+const ownerModuleLeaves = Object.freeze([
+  "mod.rs",
+  "policy.rs",
+  "history.rs",
+  "search.rs",
+]);
+const FORBIDDEN_FACADE_TOKENS = Object.freeze([
+  "struct ", "impl ", "fn ", "fs::", "include!(", "#[path",
 ]);
 
 async function read(relativePath) {
@@ -40,24 +60,64 @@ async function sourceFiles(relativeRoot) {
 }
 
 test("client state root is an exact thin stable facade", async () => {
-  const facade = await read(facadePath);
+  const facade = await read(ownerFacadePath);
   for (const leaf of productionLeaves) {
     assert.match(facade, new RegExp(`mod ${leaf.replace(".rs", "")};`, "u"));
-    await fs.access(path.join(repoRoot, root, leaf));
+    await fs.access(path.join(repoRoot, ownerCrateRoot, leaf));
   }
-  const entries = await fs.readdir(path.join(repoRoot, root), { withFileTypes: true });
+  const entries = await fs.readdir(path.join(repoRoot, ownerCrateRoot), { withFileTypes: true });
   assert.deepEqual(
     entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort(),
-    [...productionLeaves].sort(),
+    [...productionLeaves, "lib.rs"].sort(),
   );
-  for (const forbidden of ["struct ", "impl ", "fn ", "fs::", "include!(", "#[path"])
+  assert.deepEqual(
+    entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort(),
+    [ownerModule, "tests"].sort(),
+  );
+  assert.match(facade, new RegExp(`pub mod ${ownerModule};`, "u"));
+  for (const leaf of ownerModuleLeaves)
+    await fs.access(path.join(repoRoot, ownerCrateRoot, ownerModule, leaf));
+  for (const forbidden of FORBIDDEN_FACADE_TOKENS)
     assert.equal(facade.includes(forbidden), false, forbidden);
+});
+
+test("the command layer keeps only its wire contract operations module", async () => {
+  const facade = await read(commandFacadePath);
+  for (const leaf of commandLeaves) {
+    assert.match(facade, new RegExp(`mod ${leaf.replace(".rs", "")};`, "u"));
+    await fs.access(path.join(repoRoot, commandRoot, leaf));
+  }
+  const entries = await fs.readdir(path.join(repoRoot, commandRoot), { withFileTypes: true });
+  assert.deepEqual(
+    entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort(),
+    [...commandLeaves].sort(),
+  );
+  for (const forbidden of FORBIDDEN_FACADE_TOKENS)
+    assert.equal(facade.includes(forbidden), false, forbidden);
+  // The command layer keeps the same public names it published before the move.
+  for (const name of [
+    "ActivityLog", "ClientStateStore", "SnapshotRecord", "SnapshotStore",
+    "migrate_collections", "probe_collections", "state_get", "state_set",
+    "activity_list", "snapshots_list", "snapshots_restore",
+  ]) assert.equal(facade.includes(name), true, name);
+});
+
+test("the persistence owner never reaches up into the command layer", async () => {
+  const sources = await Promise.all([
+    ...[...productionLeaves, "lib.rs"].map((leaf) => read(`${ownerCrateRoot}/${leaf}`)),
+    ...ownerModuleLeaves.map((leaf) => read(`${ownerCrateRoot}/${ownerModule}/${leaf}`)),
+  ]);
+  for (const source of sources)
+    assert.equal(source.includes("licoup_native"), false, "owner source names the command layer");
+  const manifest = await read(ownerManifestPath);
+  assert.equal(manifest.includes("licoup-native"), false, "owner manifest names the command layer");
+  assert.match(manifest, /licoup-foundation = \{ path = "\.\.\/licoup-foundation" \}/u);
 });
 
 test("collections activity and snapshots are independent single-path owners", async () => {
   const owners = Object.fromEntries(await Promise.all([
     "collections.rs", "activity.rs", "snapshots.rs",
-  ].map(async (leaf) => [leaf, await read(`${root}/${leaf}`)])));
+  ].map(async (leaf) => [leaf, await read(`${ownerCrateRoot}/${leaf}`)])));
   assert.match(owners["collections.rs"], /struct ClientStateStore \{\s*root: PathBuf/u);
   assert.match(owners["activity.rs"], /struct ActivityLog \{\s*path: PathBuf/u);
   assert.match(owners["snapshots.rs"], /struct SnapshotStore \{\s*root: PathBuf/u);
@@ -65,15 +125,15 @@ test("collections activity and snapshots are independent single-path owners", as
     for (const foreign of ["ClientStateStore", "ActivityLog", "SnapshotStore"])
       if (!source.includes(`struct ${foreign}`)) assert.equal(source.includes(foreign), false, `${leaf}:${foreign}`);
   }
-  const accessors = await read(`${root}/accessors.rs`);
+  const accessors = await read(`${ownerCrateRoot}/accessors.rs`);
   assert.match(accessors, /impl ClientStateStore/u);
   assert.match(accessors, /ActivityLog::from_state_root/u);
   assert.match(accessors, /SnapshotStore::from_state_root/u);
 });
 
 test("activity JSONL is bounded latest-first in memory and privacy projected", async () => {
-  const activity = await read(`${root}/activity.rs`);
-  const policy = await read(`${root}/policy.rs`);
+  const activity = await read(`${ownerCrateRoot}/activity.rs`);
+  const policy = await read(`${ownerCrateRoot}/policy.rs`);
   for (const token of [
     "MAX_ACTIVITY_FILE_BYTES", "MAX_ACTIVITY_EVENT_BYTES", "MAX_ACTIVITY_EVENTS",
     "MAX_ACTIVITY_TYPE_BYTES",
@@ -94,8 +154,8 @@ test("activity JSONL is bounded latest-first in memory and privacy projected", a
 });
 
 test("snapshot capture restore and listing remain bounded redacted and traversal safe", async () => {
-  const snapshots = await read(`${root}/snapshots.rs`);
-  const paths = await read(`${root}/paths.rs`);
+  const snapshots = await read(`${ownerCrateRoot}/snapshots.rs`);
+  const paths = await read(`${ownerCrateRoot}/paths.rs`);
   for (const token of [
     "MAX_SNAPSHOT_SOURCE_BYTES", "MAX_SNAPSHOT_RECORD_BYTES", "MAX_SNAPSHOT_FILES",
     "redact_snapshot", "validate_restore_destination", "redacted_local_path",
@@ -111,8 +171,8 @@ test("snapshot capture restore and listing remain bounded redacted and traversal
 });
 
 test("redaction caches compiled patterns and fails closed on depth and evidence bounds", async () => {
-  const redaction = await read(`${root}/redaction.rs`);
-  const policy = await read(`${root}/policy.rs`);
+  const redaction = await read(`${ownerCrateRoot}/redaction.rs`);
+  const policy = await read(`${ownerCrateRoot}/policy.rs`);
   assert.match(redaction, /OnceLock<Regex>/u);
   assert.match(redaction, /MAX_REDACTION_DEPTH/u);
   assert.match(redaction, /MAX_REDACTION_PATHS/u);
@@ -124,8 +184,8 @@ test("redaction caches compiled patterns and fails closed on depth and evidence 
 });
 
 test("serialization and path helpers own all bounded filesystem details", async () => {
-  const serialization = await read(`${root}/serialization.rs`);
-  const paths = await read(`${root}/paths.rs`);
+  const serialization = await read(`${ownerCrateRoot}/serialization.rs`);
+  const paths = await read(`${ownerCrateRoot}/paths.rs`);
   assert.match(serialization, /read_private_text_bounded/u);
   assert.match(serialization, /atomic_write_private_text_bounded/u);
   assert.match(serialization, /content\.len\(\) <= max_bytes/u);
@@ -140,23 +200,28 @@ test("all external consumers use only the restricted client state facade", async
   const internalModules = "accessors|activity|collections|migration|operations|paths|policy|redaction|serialization|snapshots";
   const internalPath = new RegExp(`client_state::(?:${internalModules})::`, "u");
   const consumers = (await sourceFiles("crates/licoup-native/src"))
-    .filter((relativePath) => relativePath !== facadePath && !relativePath.startsWith(`${root}/`));
+    .filter((relativePath) => relativePath !== commandFacadePath && !relativePath.startsWith(`${commandRoot}/`));
   for (const relativePath of consumers) {
     const source = await read(relativePath);
     assert.equal(internalPath.test(source), false, relativePath);
   }
-  const production = (await Promise.all(productionLeaves.map((leaf) => read(`${root}/${leaf}`))))
-    .join("\n");
+  const production = (await Promise.all([
+    ...productionLeaves.map((leaf) => read(`${ownerCrateRoot}/${leaf}`)),
+    ...ownerModuleLeaves.map((leaf) => read(`${ownerCrateRoot}/${ownerModule}/${leaf}`)),
+  ])).join("\n");
   for (const forbidden of [
     "ureq::", "reqwest::", "TcpStream", "UdpSocket", "unsafe {",
   ]) assert.equal(production.includes(forbidden), false, forbidden);
 });
 
 test("every client state responsibility owns a dedicated narrow regression", async () => {
-  const entries = (await fs.readdir(path.join(repoRoot, root, "tests"))).sort();
-  assert.deepEqual(entries, [
-    "accessors.rs", "activity.rs", "collections.rs", "composition.rs", "mod.rs",
-    "operations.rs", "paths.rs", "policy.rs", "redaction.rs", "serialization.rs",
-    "snapshots.rs", "support.rs",
+  const ownerEntries = (await fs.readdir(path.join(repoRoot, ownerCrateRoot, "tests"))).sort();
+  assert.deepEqual(ownerEntries, [
+    "accessors.rs", "activity.rs", "collections.rs", "mod.rs", "paths.rs", "policy.rs",
+    "redaction.rs", "resource_policy.rs", "serialization.rs", "snapshots.rs", "support.rs",
+  ]);
+  const commandEntries = (await fs.readdir(path.join(repoRoot, commandRoot, "tests"))).sort();
+  assert.deepEqual(commandEntries, [
+    "composition.rs", "mod.rs", "operations.rs", "support.rs",
   ]);
 });

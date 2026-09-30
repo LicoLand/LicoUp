@@ -32,7 +32,7 @@ const inventory = JSON.parse(
   readFileSync(
     resolve(
       REPOSITORY_ROOT,
-      "crates/licoup-native/resources/agent-conversation-drivers.json",
+      "crates/licoup-agent-drivers/resources/agent-conversation-drivers.json",
     ),
     "utf8",
   ),
@@ -41,7 +41,7 @@ const readinessResource = JSON.parse(
   readFileSync(
     resolve(
       REPOSITORY_ROOT,
-      "crates/licoup-native/resources/agent-conversation-readiness.json",
+      "crates/licoup-agent-drivers/resources/agent-conversation-readiness.json",
     ),
     "utf8",
   ),

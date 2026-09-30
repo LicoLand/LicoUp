@@ -162,17 +162,55 @@ export function classifyClientModule({ id, kind, command }) {
   });
 }
 
-export function defaultRegressionCapacities(available = os.availableParallelism()) {
-  const global = Math.max(4, available);
+// The pool floors and shares are the derived model. A stated capacity uses the same
+// shares and the same floors, clamped to the stated number, so a host that states its
+// budget is never oversubscribed by this table and a stated capacity equal to the core
+// count reproduces the derived model exactly.
+const POOL_FLOORS = Object.freeze({
+  rust: 4,
+  flutter: 3,
+  gradle: 4,
+  "node-test": 2,
+  node: 2,
+  compatibility: 2,
+});
+
+const POOL_SHARES = Object.freeze({
+  rust: 0.75,
+  flutter: 0.5,
+  gradle: 0.5,
+  "node-test": 0.75,
+  node: null,
+  compatibility: 0.5,
+});
+
+/**
+ * Capacities from a host-stated budget rather than from the core count.
+ *
+ * The core count says how much a machine has, not how much it can spare. A worktree
+ * that shares the host with another worktree, an already busy machine, or a CI runner
+ * with a CPU quota states what it can actually run, and every pool is derived from that
+ * number. The statement is a ceiling: no pool exceeds it.
+ */
+export function regressionCapacitiesFor(stated) {
+  const global = Number(stated);
+  if (!Number.isInteger(global) || global < 1) {
+    throw new Error("stated regression capacity must be a positive integer");
+  }
+  const pool = (name) => {
+    const share = POOL_SHARES[name];
+    const derived = share === null ? global - 1 : Math.floor(global * share);
+    return Math.min(global, Math.max(POOL_FLOORS[name], derived));
+  };
   return Object.freeze({
     global,
     pools: Object.freeze({
-      rust: Math.max(4, Math.floor(global * 0.75)),
-      flutter: Math.max(3, Math.floor(global * 0.5)),
-      gradle: Math.max(4, Math.floor(global * 0.5)),
-      "node-test": Math.max(2, Math.floor(global * 0.75)),
-      node: Math.max(2, global - 1),
-      compatibility: Math.max(2, Math.floor(global * 0.5)),
+      rust: pool("rust"),
+      flutter: pool("flutter"),
+      gradle: pool("gradle"),
+      "node-test": pool("node-test"),
+      node: pool("node"),
+      compatibility: pool("compatibility"),
     }),
     resources: Object.freeze({
       // Cargo/libtest and Flutter already provide native internal parallelism.
@@ -183,4 +221,8 @@ export function defaultRegressionCapacities(available = os.availableParallelism(
       "gradle-cache": 1,
     }),
   });
+}
+
+export function defaultRegressionCapacities(available = os.availableParallelism()) {
+  return regressionCapacitiesFor(Math.max(4, available));
 }

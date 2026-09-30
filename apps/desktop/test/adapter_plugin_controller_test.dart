@@ -127,6 +127,81 @@ void main() {
       AdapterNativeCapabilityKind.parse('tui-gateway'),
       AdapterNativeCapabilityKind.tuiGateway,
     );
+    expect(
+      AdapterNativeCapabilityKind.parse('image-input'),
+      AdapterNativeCapabilityKind.imageInput,
+    );
+    expect(
+      AdapterNativeCapabilityKind.parse('real-interface'),
+      AdapterNativeCapabilityKind.realInterface,
+    );
+  });
+
+  test('catalog carries declared ability facts with their projection state', () {
+    final catalog = AdapterPluginCatalog.fromJson({
+      'ok': true,
+      'schemaVersion': adapterPluginCatalogSchema,
+      'adapters': [
+        _descriptor(
+            agentId: 'codex',
+            managementKind: 'native',
+            actions: const [],
+          )
+          ..['nativeCapabilities'] = [
+            {'kind': 'cli', 'detected': true, 'state': 'declared'},
+            {
+              'kind': 'image-input',
+              'detected': true,
+              'state': 'declared',
+              'running': false,
+            },
+            {
+              'kind': 'real-interface',
+              'detected': false,
+              'state': 'not-declared',
+              'running': false,
+            },
+          ],
+      ],
+    });
+
+    final capabilities = catalog.adapters.single.nativeCapabilities;
+    expect(capabilities.map((capability) => capability.kind), [
+      AdapterNativeCapabilityKind.cli,
+      AdapterNativeCapabilityKind.imageInput,
+      AdapterNativeCapabilityKind.realInterface,
+    ]);
+    expect(capabilities[1].state, AdapterNativeCapabilityState.declared);
+    expect(capabilities[1].detected, isTrue);
+    expect(capabilities[2].state, AdapterNativeCapabilityState.notDeclared);
+    expect(capabilities[2].detected, isFalse);
+  });
+
+  test('catalog accepts an ability whose owner reported no detection value', () {
+    final catalog = AdapterPluginCatalog.fromJson({
+      'ok': true,
+      'schemaVersion': adapterPluginCatalogSchema,
+      'adapters': [
+        _descriptor(
+            agentId: 'codex',
+            managementKind: 'native',
+            actions: const [],
+          )
+          ..['nativeCapabilities'] = [
+            {'kind': 'image-input', 'state': 'unknown', 'running': false},
+            {'kind': 'real-interface'},
+          ],
+      ],
+    });
+
+    final capabilities = catalog.adapters.single.nativeCapabilities;
+    expect(capabilities, hasLength(2));
+    // An unreadable owner is never reported as a declared fact, and the missing
+    // detection value does not reject the whole catalog.
+    expect(capabilities.first.state, AdapterNativeCapabilityState.unknown);
+    expect(capabilities.first.detected, isFalse);
+    expect(capabilities.last.state, isNull);
+    expect(capabilities.last.detected, isFalse);
   });
 
   test('catalog rejects duplicate capability kinds and plugin ids', () {

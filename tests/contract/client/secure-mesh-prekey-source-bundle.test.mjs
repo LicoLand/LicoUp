@@ -5,8 +5,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const facadePath = "crates/licoup-native/src/core/secure_mesh_prekey.rs";
-const root = "crates/licoup-native/src/core/secure_mesh_prekey";
+const facadePath = "crates/licoup-secure-mesh/src/core/secure_mesh_prekey.rs";
+const root = "crates/licoup-secure-mesh/src/core/secure_mesh_prekey";
 const productionLeaves = Object.freeze([
   "inventory.rs",
   "key_package.rs",

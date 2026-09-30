@@ -9,6 +9,7 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/composition/binding_shell_renderer.dart';
 import 'package:licoup/src/composition/built_in_layout_composition.dart';
+import 'package:licoup/src/composition/client_composition_set.dart';
 import 'package:licoup/src/composition/dispose_all.dart';
 import 'package:licoup/src/composition/features/agent_hub/agent_hub_feature_composition.dart';
 import 'package:licoup/src/composition/features/agents/agents_feature_composition.dart';
@@ -62,11 +63,19 @@ import 'package:licoup/src/projections/shell/shell_effect_producer.dart';
 import 'package:licoup/src/projections/shell/shell_projection_producer.dart';
 import 'package:licoup/src/projections/shell/shell_presentation_sources.dart';
 
+/// Assembles one client from the feature compositions its declaration names.
+///
+/// This is the only assembly point: a feature the injected
+/// [ClientCompositionSet] does not name is never constructed, so it can neither
+/// hold an owner nor install a provider override nor serve a destination. The
+/// declaration defaults to the full set, so callers that omit it keep the
+/// complete client.
 final class ClientAppComposition {
   factory ClientAppComposition({
     ClientController? controller,
     CausalFrameTelemetry? telemetry,
     Stream<bool>? systemReduceMotionChanges,
+    ClientCompositionSet compositionSet = ClientCompositionSet.full,
   }) {
     AgentRenderAdapterRegistry.instance = AgentRenderAdapterRegistry(
       loadJson: DefaultAgentRenderAdapterJsonSource().loadAdapterJson,
@@ -90,6 +99,7 @@ final class ClientAppComposition {
       resolvedController,
       layout,
       resolvedTelemetry,
+      compositionSet,
       systemReduceMotionChanges ??
           (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS
               ? const MacosReduceMotionChannel().changes
@@ -134,6 +144,7 @@ final class ClientAppComposition {
     this._controller,
     this._layout,
     this.telemetry,
+    this._compositionSet,
     Stream<bool> systemReduceMotionChanges,
   ) : _projectionTracing = CausalProjectionSourceRegistry(telemetry) {
     final beginRendererIntent = telemetry?.beginRendererIntent;
@@ -191,144 +202,194 @@ final class ClientAppComposition {
       status: binding.status,
     );
 
-    _agents = AgentsFeatureComposition(
-      _controller,
-      beginRendererIntent: beginRendererIntent,
-    );
-    _monitoring = MonitoringFeatureComposition(
-      _controller,
-      beginRendererIntent: beginRendererIntent,
-    );
-    _conversation = ConversationFeatureComposition(
-      _controller,
-      beginRendererIntent: beginRendererIntent,
-    );
-    _mobileRelay = MobileRelayFeatureComposition(
-      relay: _controller.mobileRelayController,
-      secureMesh: _controller.secureMeshController,
-      homeLayout: _controller.mobileHomeLayoutController,
-      readMobileRuntime: () => _controller.mobileClientRuntimePlatform,
-      beginRendererIntent: beginRendererIntent,
-    );
-    _models = ModelsFeatureComposition(
-      _controller,
-      beginRendererIntent: beginRendererIntent,
-    );
-    _skillHub = SkillHubFeatureComposition(
-      _controller,
-      beginRendererIntent: beginRendererIntent,
-    );
-    _pluginManagement = PluginManagementFeatureComposition(
-      _controller,
-      beginRendererIntent: beginRendererIntent,
-    );
-    _agentHub = AgentHubFeatureComposition(
-      _controller,
-      beginRendererIntent: beginRendererIntent,
-    );
-    _targets = TargetsFeatureComposition(
-      _controller,
-      beginRendererIntent: beginRendererIntent,
-    );
-    _search = SearchFeatureComposition(
-      _controller,
-      beginRendererIntent: beginRendererIntent,
-    );
-    _chrome = ChromeFeatureComposition(
-      _controller,
-      beginRendererIntent: beginRendererIntent,
-    );
-    _settings = SettingsFeatureComposition(
-      controller: _controller,
-      beginRendererIntent: beginRendererIntent,
-    );
+    if (_compositionSet.agents) {
+      _agents = AgentsFeatureComposition(
+        _controller,
+        beginRendererIntent: beginRendererIntent,
+      );
+    }
+    if (_compositionSet.monitoring) {
+      _monitoring = MonitoringFeatureComposition(
+        _controller,
+        beginRendererIntent: beginRendererIntent,
+      );
+    }
+    if (_compositionSet.conversation) {
+      _conversation = ConversationFeatureComposition(
+        _controller,
+        beginRendererIntent: beginRendererIntent,
+      );
+    }
+    if (_compositionSet.mobileRelay) {
+      _mobileRelay = MobileRelayFeatureComposition(
+        relay: _controller.mobileRelayController,
+        secureMesh: _controller.secureMeshController,
+        homeLayout: _controller.mobileHomeLayoutController,
+        readMobileRuntime: () => _controller.mobileClientRuntimePlatform,
+        beginRendererIntent: beginRendererIntent,
+      );
+    }
+    if (_compositionSet.models) {
+      _models = ModelsFeatureComposition(
+        _controller,
+        beginRendererIntent: beginRendererIntent,
+      );
+    }
+    if (_compositionSet.skillHub) {
+      _skillHub = SkillHubFeatureComposition(
+        _controller,
+        beginRendererIntent: beginRendererIntent,
+      );
+    }
+    if (_compositionSet.pluginManagement) {
+      _pluginManagement = PluginManagementFeatureComposition(
+        _controller,
+        beginRendererIntent: beginRendererIntent,
+      );
+    }
+    if (_compositionSet.agentHub) {
+      _agentHub = AgentHubFeatureComposition(
+        _controller,
+        beginRendererIntent: beginRendererIntent,
+      );
+    }
+    if (_compositionSet.targets) {
+      _targets = TargetsFeatureComposition(
+        _controller,
+        beginRendererIntent: beginRendererIntent,
+      );
+    }
+    if (_compositionSet.search) {
+      _search = SearchFeatureComposition(
+        _controller,
+        beginRendererIntent: beginRendererIntent,
+      );
+    }
+    if (_compositionSet.chrome) {
+      _chrome = ChromeFeatureComposition(
+        _controller,
+        beginRendererIntent: beginRendererIntent,
+      );
+    }
+    if (_compositionSet.settings) {
+      _settings = SettingsFeatureComposition(
+        controller: _controller,
+        beginRendererIntent: beginRendererIntent,
+      );
+    }
 
-    final rawAgents = _agents.binding;
-    agents = AgentsBinding(
-      projection: _projectionTracing.wrap(rawAgents.projection),
-      intents: rawAgents.intents,
-      effects: rawAgents.effects,
-    );
-    final rawMonitoring = _monitoring.binding;
-    monitoring = MonitoringBinding(
-      projection: _projectionTracing.wrap(rawMonitoring.projection),
-      intents: rawMonitoring.intents,
-      effects: rawMonitoring.effects,
-    );
-    final rawConversation = _conversation.binding;
-    final rawConversationExecution = rawConversation.execution;
-    conversation = ConversationBinding(
-      projection: _projectionTracing.wrap(rawConversation.projection),
-      execution: rawConversationExecution == null
-          ? null
-          : _projectionTracing.wrap(rawConversationExecution),
-      nativeCatalog: _projectionTracing.wrap(rawConversation.nativeCatalog),
-      canonicalEvents: _projectionTracing.wrap(rawConversation.canonicalEvents),
-      persistentTurns: _projectionTracing.wrap(rawConversation.persistentTurns),
-      composer: _projectionTracing.wrap(rawConversation.composer),
-      attachments: _projectionTracing.wrap(rawConversation.attachments),
-      tabActivity: _projectionTracing.wrap(rawConversation.tabActivity),
-      notifications: _projectionTracing.wrap(rawConversation.notifications),
-      archive: _projectionTracing.wrap(rawConversation.archive),
-      intents: rawConversation.intents,
-      effects: rawConversation.effects,
-    );
-    final rawMobileRelay = _mobileRelay.binding;
-    mobileRelay = MobileRelayBinding(
-      projection: _projectionTracing.wrap(rawMobileRelay.projection),
-      intents: rawMobileRelay.intents,
-      effects: rawMobileRelay.effects,
-    );
-    final rawModels = _models.binding;
-    models = ModelsBinding(
-      projection: _projectionTracing.wrap(rawModels.projection),
-      intents: rawModels.intents,
-      effects: rawModels.effects,
-    );
-    final rawSkillHub = _skillHub.binding;
-    skillHub = SkillHubBinding(
-      projection: _projectionTracing.wrap(rawSkillHub.projection),
-      intents: rawSkillHub.intents,
-      effects: rawSkillHub.effects,
-    );
-    final rawPluginManagement = _pluginManagement.binding;
-    pluginManagement = PluginManagementBinding(
-      projection: _projectionTracing.wrap(rawPluginManagement.projection),
-      intents: rawPluginManagement.intents,
-      effects: rawPluginManagement.effects,
-    );
-    final rawAgentHub = _agentHub.binding;
-    agentHub = AgentHubBinding(
-      projection: _projectionTracing.wrap(rawAgentHub.projection),
-      intents: rawAgentHub.intents,
-      effects: rawAgentHub.effects,
-    );
-    final rawTargets = _targets.binding;
-    targets = TargetsBinding(
-      projection: _projectionTracing.wrap(rawTargets.projection),
-      intents: rawTargets.intents,
-      effects: rawTargets.effects,
-    );
-    final rawSearch = _search.binding;
-    search = SearchBinding(
-      projection: _projectionTracing.wrap(rawSearch.projection),
-      intents: rawSearch.intents,
-      effects: rawSearch.effects,
-    );
-    final rawChrome = _chrome.binding;
-    chrome = ChromeBinding(
-      projection: _projectionTracing.wrap(rawChrome.projection),
-      intents: rawChrome.intents,
-      effects: rawChrome.effects,
-    );
-    final rawSettings = _settings.binding;
-    settings = SettingsBinding(
-      projection: _projectionTracing.wrap(rawSettings.projection),
-      resourceUsage: _projectionTracing.wrap(rawSettings.resourceUsage),
-      autostart: _projectionTracing.wrap(rawSettings.autostart),
-      intents: rawSettings.intents,
-      effects: rawSettings.effects,
-    );
+    if (_compositionSet.agents) {
+      final rawAgents = _agents.binding;
+      agents = AgentsBinding(
+        projection: _projectionTracing.wrap(rawAgents.projection),
+        intents: rawAgents.intents,
+        effects: rawAgents.effects,
+      );
+    }
+    if (_compositionSet.monitoring) {
+      final rawMonitoring = _monitoring.binding;
+      monitoring = MonitoringBinding(
+        projection: _projectionTracing.wrap(rawMonitoring.projection),
+        intents: rawMonitoring.intents,
+        effects: rawMonitoring.effects,
+      );
+    }
+    if (_compositionSet.conversation) {
+      final rawConversation = _conversation.binding;
+      final rawConversationExecution = rawConversation.execution;
+      conversation = ConversationBinding(
+        projection: _projectionTracing.wrap(rawConversation.projection),
+        execution: rawConversationExecution == null
+            ? null
+            : _projectionTracing.wrap(rawConversationExecution),
+        nativeCatalog: _projectionTracing.wrap(rawConversation.nativeCatalog),
+        canonicalEvents: _projectionTracing.wrap(
+          rawConversation.canonicalEvents,
+        ),
+        persistentTurns: _projectionTracing.wrap(rawConversation.persistentTurns),
+        composer: _projectionTracing.wrap(rawConversation.composer),
+        attachments: _projectionTracing.wrap(rawConversation.attachments),
+        tabActivity: _projectionTracing.wrap(rawConversation.tabActivity),
+        notifications: _projectionTracing.wrap(rawConversation.notifications),
+        archive: _projectionTracing.wrap(rawConversation.archive),
+        intents: rawConversation.intents,
+        effects: rawConversation.effects,
+      );
+    }
+    if (_compositionSet.mobileRelay) {
+      final rawMobileRelay = _mobileRelay.binding;
+      mobileRelay = MobileRelayBinding(
+        projection: _projectionTracing.wrap(rawMobileRelay.projection),
+        intents: rawMobileRelay.intents,
+        effects: rawMobileRelay.effects,
+      );
+    }
+    if (_compositionSet.models) {
+      final rawModels = _models.binding;
+      models = ModelsBinding(
+        projection: _projectionTracing.wrap(rawModels.projection),
+        intents: rawModels.intents,
+        effects: rawModels.effects,
+      );
+    }
+    if (_compositionSet.skillHub) {
+      final rawSkillHub = _skillHub.binding;
+      skillHub = SkillHubBinding(
+        projection: _projectionTracing.wrap(rawSkillHub.projection),
+        intents: rawSkillHub.intents,
+        effects: rawSkillHub.effects,
+      );
+    }
+    if (_compositionSet.pluginManagement) {
+      final rawPluginManagement = _pluginManagement.binding;
+      pluginManagement = PluginManagementBinding(
+        projection: _projectionTracing.wrap(rawPluginManagement.projection),
+        intents: rawPluginManagement.intents,
+        effects: rawPluginManagement.effects,
+      );
+    }
+    if (_compositionSet.agentHub) {
+      final rawAgentHub = _agentHub.binding;
+      agentHub = AgentHubBinding(
+        projection: _projectionTracing.wrap(rawAgentHub.projection),
+        intents: rawAgentHub.intents,
+        effects: rawAgentHub.effects,
+      );
+    }
+    if (_compositionSet.targets) {
+      final rawTargets = _targets.binding;
+      targets = TargetsBinding(
+        projection: _projectionTracing.wrap(rawTargets.projection),
+        intents: rawTargets.intents,
+        effects: rawTargets.effects,
+      );
+    }
+    if (_compositionSet.search) {
+      final rawSearch = _search.binding;
+      search = SearchBinding(
+        projection: _projectionTracing.wrap(rawSearch.projection),
+        intents: rawSearch.intents,
+        effects: rawSearch.effects,
+      );
+    }
+    if (_compositionSet.chrome) {
+      final rawChrome = _chrome.binding;
+      chrome = ChromeBinding(
+        projection: _projectionTracing.wrap(rawChrome.projection),
+        intents: rawChrome.intents,
+        effects: rawChrome.effects,
+      );
+    }
+    if (_compositionSet.settings) {
+      final rawSettings = _settings.binding;
+      settings = SettingsBinding(
+        projection: _projectionTracing.wrap(rawSettings.projection),
+        resourceUsage: _projectionTracing.wrap(rawSettings.resourceUsage),
+        autostart: _projectionTracing.wrap(rawSettings.autostart),
+        intents: rawSettings.intents,
+        effects: rawSettings.effects,
+      );
+    }
 
     _renderer = BindingShellRenderer(
       layout: _layout,
@@ -340,13 +401,15 @@ final class ClientAppComposition {
       agents: agents,
       conversation: conversation,
       monitoring: monitoring,
-      skillHub: skillHub,
-      pluginManagement: pluginManagement,
-      mobileRelay: mobileRelay,
-      models: models,
-      settings: settings,
-      agentHub: agentHub,
-      search: search,
+      skillHub: _compositionSet.skillHub ? skillHub : null,
+      pluginManagement: _compositionSet.pluginManagement
+          ? pluginManagement
+          : null,
+      mobileRelay: _compositionSet.mobileRelay ? mobileRelay : null,
+      models: _compositionSet.models ? models : null,
+      settings: _compositionSet.settings ? settings : null,
+      agentHub: _compositionSet.agentHub ? agentHub : null,
+      search: _compositionSet.search ? search : null,
       targets: targets,
       openExternalUri: _controller.runtimePlatformBridge.openHttps,
       workspaceHomeDirectory: userHomeDirectory(),
@@ -357,6 +420,10 @@ final class ClientAppComposition {
   final ClientController _controller;
   final BuiltInLayoutComposition _layout;
   final CausalFrameTelemetry? telemetry;
+
+  /// The closed declaration this client was assembled from. Every feature
+  /// composition below is constructed only when this set names it.
+  final ClientCompositionSet _compositionSet;
   final CausalProjectionSourceRegistry _projectionTracing;
 
   /// The app-scope presentation runtime.
@@ -385,6 +452,11 @@ final class ClientAppComposition {
   late final SettingsFeatureComposition _settings;
   late final BindingShellRenderer _renderer;
 
+  /// One binding per feature the declaration names.
+  ///
+  /// A binding for a feature the injected [ClientCompositionSet] does not name
+  /// is never assigned, so reading it fails: there is no owner behind it, no
+  /// provider override for it and no destination surface for it.
   late final ShellBinding binding;
   late final AgentsBinding agents;
   late final MonitoringBinding monitoring;
@@ -401,10 +473,12 @@ final class ClientAppComposition {
   late final ShellRendererPort renderer;
   Future<void>? _disposal;
 
-  /// Aggregated Riverpod overrides that install every migrated feature's live
+  /// Aggregated Riverpod overrides that install every installed feature's live
   /// presentation sources and the app-scope runtime. The app root wraps its
   /// tree in a `ProviderScope` with these; feature tests install their own
-  /// synthetic overrides instead.
+  /// synthetic overrides instead. A feature the declaration does not name
+  /// contributes no override, so its regions keep their documented disabled
+  /// value and no consumer can observe an owner that was never constructed.
   List<Override> get presentationOverrides => <Override>[
     presentationRuntimeProvider.overrideWithValue(_runtime),
     shellAppearanceSourceProvider.overrideWithValue(_shellSources.appearance),
@@ -413,17 +487,17 @@ final class ClientAppComposition {
     shellEnvironmentSourceProvider.overrideWithValue(_shellSources.environment),
     shellNavigationSourceProvider.overrideWithValue(_shellSources.navigation),
     shellStatusSourceProvider.overrideWithValue(_shellSources.status),
-    ..._agents.providerOverrides,
-    ..._targets.providerOverrides,
-    ..._monitoring.providerOverrides,
-    ..._models.providerOverrides,
-    ..._agentHub.providerOverrides,
-    ..._search.providerOverrides,
-    ..._conversation.providerOverrides,
-    ..._settings.providerOverrides,
-    ..._pluginManagement.providerOverrides,
-    ..._skillHub.providerOverrides,
-    ..._mobileRelay.providerOverrides,
+    if (_compositionSet.agents) ..._agents.providerOverrides,
+    if (_compositionSet.targets) ..._targets.providerOverrides,
+    if (_compositionSet.monitoring) ..._monitoring.providerOverrides,
+    if (_compositionSet.models) ..._models.providerOverrides,
+    if (_compositionSet.agentHub) ..._agentHub.providerOverrides,
+    if (_compositionSet.search) ..._search.providerOverrides,
+    if (_compositionSet.conversation) ..._conversation.providerOverrides,
+    if (_compositionSet.settings) ..._settings.providerOverrides,
+    if (_compositionSet.pluginManagement) ..._pluginManagement.providerOverrides,
+    if (_compositionSet.skillHub) ..._skillHub.providerOverrides,
+    if (_compositionSet.mobileRelay) ..._mobileRelay.providerOverrides,
   ];
 
   Future<void> initialize() => _controller.initialize();
@@ -467,18 +541,18 @@ final class ClientAppComposition {
     _runtime.dispose,
     _projectionTracing.dispose,
     () => telemetry?.dispose(),
-    _settings.dispose,
-    _chrome.close,
-    _search.close,
-    _targets.dispose,
-    _agentHub.dispose,
-    _pluginManagement.dispose,
-    _skillHub.dispose,
-    _models.dispose,
-    _mobileRelay.dispose,
-    _conversation.close,
-    _monitoring.close,
-    _agents.close,
+    if (_compositionSet.settings) _settings.dispose,
+    if (_compositionSet.chrome) _chrome.close,
+    if (_compositionSet.search) _search.close,
+    if (_compositionSet.targets) _targets.dispose,
+    if (_compositionSet.agentHub) _agentHub.dispose,
+    if (_compositionSet.pluginManagement) _pluginManagement.dispose,
+    if (_compositionSet.skillHub) _skillHub.dispose,
+    if (_compositionSet.models) _models.dispose,
+    if (_compositionSet.mobileRelay) _mobileRelay.dispose,
+    if (_compositionSet.conversation) _conversation.close,
+    if (_compositionSet.monitoring) _monitoring.close,
+    if (_compositionSet.agents) _agents.close,
     _shellProjection.dispose,
     _systemReduceMotionSubscription.cancel,
     _environment.dispose,

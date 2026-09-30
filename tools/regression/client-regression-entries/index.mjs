@@ -53,7 +53,7 @@ export function validateClientRegressionEntries() {
   }
   const inventory = JSON.parse(readFileSync(path.resolve(
     regressionRoot,
-    "crates/licoup-native/resources/agent-conversation-drivers.json",
+    "crates/licoup-agent-drivers/resources/agent-conversation-drivers.json",
   ), "utf8"));
   const expectedAgents = inventory.drivers.map((driver) => driver.agentId);
   const actualAgents = AGENT_REGRESSION_ENTRIES.map((entry) => entry.id);

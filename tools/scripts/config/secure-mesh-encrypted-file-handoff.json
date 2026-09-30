@@ -4,9 +4,9 @@
     {
       "id": "file-manifest-and-chunk-codec-redacts-delivery-json",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_file/manifest_chunk_crypto.rs",
-        "crates/licoup-native/src/core/secure_mesh_file/tests/delivery_projection.rs",
-        "crates/licoup-native/src/core/secure_mesh_file/tests/manifest_chunk_crypto.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_file/manifest_chunk_crypto.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_file/tests/delivery_projection.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_file/tests/manifest_chunk_crypto.rs"
       ],
       "tokens": [
         "pub fn seal_file_manifest",
@@ -19,11 +19,11 @@
     {
       "id": "file-transfer-state-tracks-resume-ack-and-purge",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_file/handoff_reseal.rs",
-        "crates/licoup-native/src/core/secure_mesh_file/transfer.rs",
-        "crates/licoup-native/src/core/secure_mesh_file/tests/handoff_reseal.rs",
-        "crates/licoup-native/src/core/secure_mesh_file/tests/key_proof.rs",
-        "crates/licoup-native/src/core/secure_mesh_file/tests/transfer.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_file/handoff_reseal.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_file/transfer.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_file/tests/handoff_reseal.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_file/tests/key_proof.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_file/tests/transfer.rs"
       ],
       "tokens": [
         "pub fn start_file_transfer",
@@ -70,8 +70,8 @@
     {
       "id": "file-handoff-proof-reseals-distinct-ciphertext-for-every-recipient",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_file/handoff_reseal.rs",
-        "crates/licoup-native/src/core/secure_mesh_file/tests/handoff_reseal.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_file/handoff_reseal.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_file/tests/handoff_reseal.rs"
       ],
       "tokens": [
         "fn handoff_recipient_endpoints",
@@ -85,8 +85,8 @@
     {
       "id": "file-receive-policy-requires-approved-root-and-redacts-paths",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_file/receive_policy.rs",
-        "crates/licoup-native/src/core/secure_mesh_file/tests/receive_policy.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_file/receive_policy.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_file/tests/receive_policy.rs"
       ],
       "tokens": [
         "pub fn evaluate_file_receive_destination_json",
@@ -164,9 +164,9 @@
     {
       "id": "mobile-relay-file-key-envelope-uses-pairwise-transport-with-opaque-relay-wire",
       "files": [
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session.rs",
-        "crates/licoup-native/src/domain/mobile_relay/pairwise_session/crypto_operation.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests/relay_operations/envelope_roundtrip.rs"
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/pairwise_session/crypto_operation.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/tests/relay_operations/envelope_roundtrip.rs"
       ],
       "tokens": [
         "fn seal_mobile_relay_payload",

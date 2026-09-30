@@ -219,7 +219,7 @@ async function main(argv = process.argv.slice(2), output = process.stdout, error
   try {
     validateClientRegressionEntries();
     const options = parseArgs(argv);
-    const inventory = readJson("crates/licoup-native/resources/agent-conversation-drivers.json");
+    const inventory = readJson("crates/licoup-agent-drivers/resources/agent-conversation-drivers.json");
     const evidence = readJson("crates/licoup-native/resources/agent-conversation-evidence.json");
     const driverByAgent = new Map(inventory.drivers.map((driver) => [driver.agentId, driver]));
     const evidenceRows = new Map((evidence.adapters || []).map((row) => [row.agentId, row]));

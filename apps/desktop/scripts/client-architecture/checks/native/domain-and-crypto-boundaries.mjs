@@ -278,7 +278,7 @@ export async function checkDomainAndCryptoBoundaries(context) {
   }
 
   const contentCryptoFacadeSource = await readText(
-    "crates/licoup-native/src/core/secure_mesh_crypto.rs"
+    "crates/licoup-secure-mesh/src/core/secure_mesh_crypto.rs"
   );
   assert(
     !contentCryptoFacadeSource.includes("impl ContentKey") &&
@@ -355,11 +355,11 @@ export async function checkDomainAndCryptoBoundaries(context) {
     );
   }
   const contentCryptoFoundationSource = await readJoinedText([
-    "crates/licoup-native/src/core/secure_mesh_crypto/constants.rs",
-    "crates/licoup-native/src/core/secure_mesh_crypto/content_key.rs",
-    "crates/licoup-native/src/core/secure_mesh_crypto/model.rs",
-    "crates/licoup-native/src/core/secure_mesh_crypto/length_codec.rs",
-    "crates/licoup-native/src/core/secure_mesh_crypto/validation.rs"
+    "crates/licoup-secure-mesh/src/core/secure_mesh_crypto/constants.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_crypto/content_key.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_crypto/model.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_crypto/length_codec.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_crypto/validation.rs"
   ]);
   for (const dependency of [
     "aad_binding::",
@@ -376,9 +376,9 @@ export async function checkDomainAndCryptoBoundaries(context) {
     );
   }
   const contentCryptoCodecSource = await readJoinedText([
-    "crates/licoup-native/src/core/secure_mesh_crypto/frame_codec.rs",
-    "crates/licoup-native/src/core/secure_mesh_crypto/header_codec.rs",
-    "crates/licoup-native/src/core/secure_mesh_crypto/padding.rs"
+    "crates/licoup-secure-mesh/src/core/secure_mesh_crypto/frame_codec.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_crypto/header_codec.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_crypto/padding.rs"
   ]);
   for (const dependency of ["private_context::", "public_payload::"]) {
     assert(

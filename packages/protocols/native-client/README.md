@@ -11,13 +11,13 @@ does not apply to the
 
 ## Implementation Entry Points
 
-- `../../../crates/licoup-native/src/core/task_queue.rs`: bounded local task
+- `../../../crates/licoup-foundation/src/core/task_queue.rs`: bounded local task
   queue.
-- `../../../crates/licoup-native/src/platform/runtime_adapters.rs`: native
+- `../../../crates/licoup-agent-drivers/src/runtime_adapters.rs`: native
   agent-session adapter registry.
-- `../../../crates/licoup-native/src/core/mcp.rs`: service-neutral MCP
+- `../../../crates/licoup-mcp/src/mcp.rs`: service-neutral MCP
   JSON-RPC message adaptation.
-- `../../../crates/licoup-native/src/core/secure_mesh_acp.rs`: ACP carriage
+- `../../../crates/licoup-secure-mesh/src/core/secure_mesh_acp.rs`: ACP carriage
   over the current endpoint-protection Preview.
 
 ## Protocol Scope

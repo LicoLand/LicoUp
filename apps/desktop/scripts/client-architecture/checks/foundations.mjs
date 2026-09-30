@@ -99,7 +99,8 @@ export async function checkPackagingAndTargetProjection(context) {
     "target-adapters module must define the canonical packaged target set");
   assert(new Set(packagedTargets).size === packagedTargets.length && packagedTargets.every((target) => typeof target === "string" && target.trim().length > 0),
     "target-adapters module targetAdapters must contain unique non-empty target ids");
-  const runtimeAdaptersSource = await readText("crates/licoup-native/src/platform/runtime_adapters.rs");
+  // The packaged adapter projection is the moved crate's own declaration.
+  const runtimeAdaptersSource = await readText("crates/licoup-agent-drivers/src/runtime_adapters.rs");
   const runtimeAdapterIdsBlock = runtimeAdaptersSource.match(/PACKAGED_RUNTIME_ADAPTER_IDS\s*:\s*&\[&str\]\s*=\s*&\[([\s\S]*?)\];/);
   assert(runtimeAdapterIdsBlock,
     "native runtime dispatch must expose its packaged adapter projection");

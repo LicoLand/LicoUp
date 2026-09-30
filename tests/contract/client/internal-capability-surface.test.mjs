@@ -54,11 +54,11 @@ test("MLS, KT, and MCP transfer execution stay outside the product frontend", as
 
 test("MCP execution retains exact one-shot direct approval ownership", async () => {
   const approval = await fs.readFile(
-    path.join(repoRoot, "crates/licoup-native/src/domain/mcp_adapter/approval.rs"),
+    path.join(repoRoot, "crates/licoup-mcp/src/mcp_adapter/approval.rs"),
     "utf8",
   );
   const execution = await fs.readFile(
-    path.join(repoRoot, "crates/licoup-native/src/domain/mcp_adapter/execution.rs"),
+    path.join(repoRoot, "crates/licoup-mcp/src/mcp_adapter/execution.rs"),
     "utf8",
   );
 

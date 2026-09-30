@@ -8,11 +8,11 @@ import { agentConfigs } from "../../../tests/product-e2e/cli/agent-conversations
 export const regressionRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const driverInventory = JSON.parse(readFileSync(path.resolve(
   regressionRoot,
-  "crates/licoup-native/resources/agent-conversation-drivers.json",
+  "crates/licoup-agent-drivers/resources/agent-conversation-drivers.json",
 ), "utf8"));
 const readinessInventory = JSON.parse(readFileSync(path.resolve(
   regressionRoot,
-  "crates/licoup-native/resources/agent-conversation-readiness.json",
+  "crates/licoup-agent-drivers/resources/agent-conversation-readiness.json",
 ), "utf8"));
 
 function executableCandidates(name) {

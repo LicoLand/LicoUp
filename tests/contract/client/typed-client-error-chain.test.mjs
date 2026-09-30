@@ -18,7 +18,7 @@ const production = {
   dartGenerated:
     "apps/desktop/lib/src/contracts/generated/client_error.g.dart",
   runtimeError:
-    "crates/licoup-native/src/platform/runtime_adapters/error.rs",
+    "crates/licoup-agent-drivers/src/runtime_adapters/error.rs",
   ffiConversation:
     "crates/licoup-native/src/ffi/commands/agent_conversation.rs",
   rpcError:

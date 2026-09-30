@@ -285,7 +285,25 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
       id: "bridge.windows",
       kind: "platform-bridge",
       summary: "Windows runner and native file-security boundary",
-      inputs: ["apps/desktop/windows/**"],
+      // The verifier reads every Rust source listed here and crashes on a missing
+      // path, so each one is an input: a move that does not select this module
+      // would break the check silently. Updated with the crate-boundaries moves.
+      inputs: [
+        "apps/desktop/windows/**",
+        "tests/verify-windows-file-security-boundary.mjs",
+        "crates/licoup-client-state/src/**",
+        "crates/licoup-foundation/src/platform/file_security.rs",
+        "crates/licoup-foundation/src/platform/file_security/**",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_mls.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_mls/**",
+        "crates/licoup-secure-mesh/src/platform/secure_mesh_mls_store.rs",
+        "crates/licoup-agent-targets/src/domain/targets.rs",
+        "crates/licoup-agent-targets/src/domain/targets/**",
+        "crates/licoup-native/src/domain/conversation_snapshots.rs",
+        "crates/licoup-native/src/domain/conversation/snapshots/**",
+        "crates/licoup-native/src/platform/client_state.rs",
+        "crates/licoup-native/src/platform/client_state/**",
+      ],
       command: node("tests/verify-windows-file-security-boundary.mjs", [], 120_000),
     }),
   defineModule({
@@ -533,6 +551,12 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
         "tools/scripts/repository-rulesets.mjs",
         "tools/apple-release/macos-direct-arm64.json",
         "tests/contract/client/apple-release-integration.test.mjs",
+              "tools/apple-release/macos-direct-arm64-nightly.json",
+        "tools/scripts/client-update-manifest.mjs",
+        "tools/scripts/macos-release/build.mjs",
+        "tools/scripts/macos-release/gate-release-policy.mjs",
+        "tools/scripts/macos-release/gate-source.mjs",
+        "tools/scripts/macos-release/write-update-manifest.mjs",
       ],
       command: node("tests/contract/client/apple-release-integration.test.mjs"),
     })

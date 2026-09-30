@@ -69,7 +69,7 @@
     },
     {
       "id": "acp-archive-layer-is-protected-payload-class",
-      "file": "crates/licoup-native/src/core/secure_mesh_acp.rs",
+      "file": "crates/licoup-secure-mesh/src/core/secure_mesh_acp.rs",
       "tokens": [
         "ArchiveLayer",
         "archive_layer",

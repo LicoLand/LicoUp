@@ -6,17 +6,17 @@ const read = (path) => readFileSync(path, "utf8");
 const application = read("crates/licoup-native/src/domain/subagents/mod.rs");
 const production = read("crates/licoup-native/src/domain/subagents/production.rs");
 const engine = read("crates/licoup-mcp/src/server.rs");
-const core = read("crates/licoup-native/src/core/mcp.rs");
+const core = read("crates/licoup-mcp/src/mcp.rs");
 const connector = read("crates/licoup-mcp/src/connector.rs");
 const transport = read("crates/licoup-mcp/src/transport.rs");
 const remoteApplication = read("crates/licoup-mcp/src/application.rs");
-const lifecycle = read("crates/licoup-native/src/platform/mcp_service_process.rs");
+const lifecycle = read("crates/licoup-mcp/src/mcp_service_process.rs");
 const mcpCargo = read("crates/licoup-mcp/Cargo.toml");
 const runtime = read("crates/licoup-agent-runtime/src/lib.rs");
 const adapters = read("crates/licoup-agent-adapters/src/lib.rs");
 const claims = read("crates/licoup-conversation/src/store/dispatches.rs");
 const providerRuntime = read(
-  "crates/licoup-native/src/platform/runtime_adapters/subagent_mesh.rs",
+  "crates/licoup-agent-drivers/src/runtime_adapters/subagent_mesh.rs",
 );
 const agentHubCatalog = read("crates/licoup-native/src/domain/agent_hub/catalog.rs");
 const agentHubVersion = read("crates/licoup-native/src/domain/agent_hub/version_check.rs");
@@ -48,7 +48,20 @@ test("independent MCP freezes its protocol, identity, and five public operations
   assert.match(remoteApplication, /REMOTE_TOOL_NAMES\.contains/u);
   assert.match(remoteApplication, /"subagents"\.into\(\).*"execute"\.into\(\)/su);
   assert.match(remoteApplication, /"rpc", "stdio"/u);
-  assert.doesNotMatch(mcpCargo.split("[[bin]]")[0], /(?:licoup-native|licoup-conversation|licoup-agent-runtime|path\s*=|workspace\s*=)/u);
+  // The crate is now the MCP authority as well as the independent adapter, so it
+  // stands on the layer crates below it: the portable data root and private-file
+  // primitives it writes through, and the integration state every provider
+  // registration reports. It still shares no type with the host it was extracted
+  // from and never links the canonical history store or the Agent runtime, so the
+  // adapter process carries no conversation database and no client runtime.
+  const mcpDependencies = mcpCargo.slice(0, mcpCargo.indexOf("[[bin]]"));
+  assert.doesNotMatch(
+    mcpDependencies,
+    /licoup-native|licoup-conversation|licoup-agent-runtime/u,
+  );
+  for (const layer of ["licoup-foundation", "licoup-application"]) {
+    assert.match(mcpDependencies, new RegExp(`^${layer} = \\{ path = "\\.\\./${layer}" \\}$`, "mu"));
+  }
   assert.match(application, /"additionalProperties": false/u);
   assert.equal(schema.properties.protocolRevision.const, "2025-06-18");
   assert.equal(schema.properties.server.properties.version.const, "0.14.0");

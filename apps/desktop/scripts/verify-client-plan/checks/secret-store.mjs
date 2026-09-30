@@ -13,28 +13,33 @@ const platformSecretStoreMatrixConfigHelper =
   await readText("tools/scripts/lib/secure-mesh-platform-secret-store-matrix-config.mjs");
 const secureMeshSecretStoreRustSource =
   await readSourceBundle(
-    "crates/licoup-native/src/platform/secure_mesh_secret_store.rs",
-    "crates/licoup-native/src/platform/secure_mesh_secret_store",
+    "crates/licoup-secure-mesh/src/platform/secure_mesh_secret_store.rs",
+    "crates/licoup-secure-mesh/src/platform/secure_mesh_secret_store",
     ".rs",
   );
 const platformUserPresenceRustSource =
-  await readText("crates/licoup-native/src/platform/user_presence.rs");
+  await readText("crates/licoup-foundation/src/platform/user_presence.rs");
 const secureMeshSecretStoreCoreRustSource =
   await readSourceBundle(
-    "crates/licoup-native/src/core/secure_mesh_secret_store.rs",
-    "crates/licoup-native/src/core/secure_mesh_secret_store",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_secret_store.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_secret_store",
     ".rs",
   );
-const mobileRelayPairwiseRustSource =
+const mobileRelayPairwiseRustSource = [
+  // The family's trees, its root and the family tests all live in
+  // `licoup-relay`; `licoup-native` keeps only the re-export facade at the
+  // former path, so the pairwise runtime this bundle proves spans both crates.
+  await readText("crates/licoup-native/src/domain/mobile_relay.rs"),
   await readSourceBundle(
-    "crates/licoup-native/src/domain/mobile_relay.rs",
-    "crates/licoup-native/src/domain/mobile_relay",
+    "crates/licoup-relay/src/domain/mobile_relay.rs",
+    "crates/licoup-relay/src/domain/mobile_relay",
     ".rs",
-  );
+  ),
+].join("\n");
 const mobileRelaySecretCustodyRustSource =
   await readSourceBundle(
-    "crates/licoup-native/src/domain/mobile_relay/secret_custody.rs",
-    "crates/licoup-native/src/domain/mobile_relay/secret_custody",
+    "crates/licoup-relay/src/domain/mobile_relay/secret_custody.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/secret_custody",
     ".rs",
   );
 for (const token of [

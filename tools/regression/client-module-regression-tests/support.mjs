@@ -15,6 +15,10 @@ import {
 } from "../client-module-execution.mjs";
 import { planClientRegressionBatches } from "../client-regression-batching.mjs";
 import {
+  defaultRegressionCapacities,
+  regressionCapacitiesFor,
+} from "../client-regression-metadata.mjs";
+import {
   changedPathsSince,
   normalizeRepoPath,
   parseNulDelimitedPaths,
@@ -76,6 +80,8 @@ export {
   executeClientRegressionBatches,
   runClientRegressionCommand,
   planClientRegressionBatches,
+  defaultRegressionCapacities,
+  regressionCapacitiesFor,
   changedPathsSince,
   normalizeRepoPath,
   parseNulDelimitedPaths,

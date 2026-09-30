@@ -14,14 +14,16 @@ const store = [
   "crates/licoup-conversation/src/store/schema.rs",
 ].map(read).join("\n");
 const profile = read("crates/licoup-native/src/domain/client_conversation/profile_snapshot.rs");
+const profileAdmission = read("crates/licoup-native/src/domain/client_conversation/profile_admission.rs");
 const assistant = read("crates/licoup-native/src/domain/workflow_runtime/assistant.rs");
 const flywheelService = read("crates/licoup-native/src/domain/workflow_runtime/service.rs");
 const usage = read("crates/licoup-native/src/domain/agent_usage/workflow_ledger.rs");
-const policy = read("crates/licoup-native/src/platform/client_state/policy.rs");
+const policy = read("crates/licoup-client-state/src/policy.rs");
 const subagents = read("crates/licoup-native/src/domain/subagents/mod.rs");
 const conversationContract = JSON.parse(read("schemas/client_bridge/conversation.json"));
 const strategyContract = JSON.parse(read("schemas/client_bridge/strategy.json"));
-const bundledSkill = read("crates/licoup-native/resources/licoup-guide/SKILL.md");
+const bundledSkill = read("crates/licoup-mcp/resources/licoup-guide/SKILL.md");
+const guideSkillIdentity = read("crates/licoup-mcp/src/guide_skill.rs");
 
 const FORBIDDEN_PRIVATE = [
   /prompt body/u,
@@ -33,20 +35,36 @@ const FORBIDDEN_PRIVATE = [
   /endpoint-token/u,
 ];
 
-test("conversation migration v8 cuts over to intent-only Assistant Profiles idempotently", () => {
+test("conversation store converges intent-only Assistant Profiles and writes its own format", () => {
   assert.equal(conversationDomain.includes('LICOUP_GUIDE_SKILL_ID: &str = "licoup-guide"'), true);
-  assert.match(domain, /include_str!\([\s\S]*licoup-guide\/SKILL\.md/u);
+  // The bundled Skill's identity is owned by the crate that owns the MCP
+  // registration delivering it, and the host reads it downward instead of
+  // holding a second copy: the source is embedded where the identity is, and the
+  // conversation domain no longer embeds it.
+  assert.match(guideSkillIdentity, /LICOUP_GUIDE_SKILL_ID: &str = "licoup-guide"/u);
+  assert.match(guideSkillIdentity, /include_str!\([\s\S]*licoup-guide\/SKILL\.md/u);
+  assert.doesNotMatch(domain, /include_str!\([\s\S]*licoup-guide\/SKILL\.md/u);
+  assert.match(domain, /licoup-mcp::guide_skill/u);
   assert.match(store, /CREATE TABLE IF NOT EXISTS membership_profiles/u);
   assert.match(store, /CREATE INDEX IF NOT EXISTS membership_profiles_membership_idx/u);
   assert.match(store, /assistant_membership_id TEXT REFERENCES memberships\(id\)/u);
-  assert.match(store, /INSERT INTO schema_meta\(key, value\) VALUES \('version', '8'\)/u);
+  // The published membership shape converges duplicate rows once, and every
+  // accepted input then writes this binary's own format through the single
+  // parameterized version writer.
+  assert.match(store, /INSERT INTO schema_meta\(key, value\) VALUES \('version', '12'\)/u);
+  assert.match(store, /INSERT INTO schema_meta\(key, value\) VALUES \('version', \?1\)/u);
   assert.match(store, /pub fn set_conversation_assistant/u);
   assert.match(store, /pub fn set_membership_profile/u);
   assert.match(store, /pub fn membership_profiles/u);
   // Migration is applied before any store read and repeated opens replay it
-  // without reinterpretation; the retired ordinal generation has no table.
+  // without reinterpretation; the retired ordinal generation has no table, and
+  // a shape no release wrote is refused instead of being upgraded.
   assert.match(store, /normalize_reserved_default_group_after_legacy_import/u);
-  assert.match(store, /DROP TABLE IF EXISTS flywheels/u);
+  assert.doesNotMatch(
+    store,
+    /CREATE TABLE IF NOT EXISTS (conversation_roles|role_candidates|flywheels|flywheel_stages|runs|turns)\b/u,
+  );
+  assert.match(store, /conversation_schema_unsupported_version/u);
 });
 
 test("Profile snapshots derive only from named existing authorities", () => {
@@ -81,13 +99,17 @@ test("Profile snapshots derive only from named existing authorities", () => {
 });
 
 test("candidate ranking is deterministic and keeps unknown optional facts visible", () => {
-  assert.match(profile, /pub fn rank_candidates/u);
-  assert.match(profile, /optional_desc\(left\.intelligence_score, right\.intelligence_score\)/u);
-  assert.match(profile, /optional_price\(left\)\.cmp\(&optional_price\(right\)\)/u);
-  assert.match(profile, /optional_asc\(left\.latency_class, right\.latency_class\)/u);
-  assert.match(profile, /left\.membership_id\.cmp\(&right\.membership_id\)/u);
-  assert.match(profile, /profile_candidate_rejected/u);
-  assert.match(profile, /Hard constraints/u);
+  // Ranking and admission moved to profile_admission.rs; the markers follow the code
+  // that owns them, and the new admission value is pinned in the same place.
+  assert.match(profileAdmission, /pub fn rank_candidates/u);
+  assert.match(profileAdmission, /optional_desc\(left\.intelligence_score, right\.intelligence_score\)/u);
+  assert.match(profileAdmission, /optional_price\(left\)\.cmp\(&optional_price\(right\)\)/u);
+  assert.match(profileAdmission, /optional_asc\(left\.latency_class, right\.latency_class\)/u);
+  assert.match(profileAdmission, /left\.membership_id\.cmp\(&right\.membership_id\)/u);
+  assert.match(profileAdmission, /profile_candidate_rejected/u);
+  assert.match(profileAdmission, /Hard constraints/u);
+  assert.match(profileAdmission, /pub fn admit_profile_candidates/u);
+  assert.match(profileAdmission, /ProfileAdmissionRefusal/u);
 });
 
 test("preflight diagnostic stages match the public bridge contract", () => {

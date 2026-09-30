@@ -337,9 +337,9 @@
     {
       "id": "rust-core-owns-secure-mesh-payload-crypto",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_crypto/model.rs",
-        "crates/licoup-native/src/core/secure_mesh_crypto/public_payload.rs",
-        "crates/licoup-native/src/core/secure_mesh_crypto/key_derivation.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_crypto/model.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_crypto/public_payload.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_crypto/key_derivation.rs"
       ],
       "tokens": [
         "SecureMeshContentContext",
@@ -374,14 +374,14 @@
     },
     {
       "id": "rust-core-owns-secure-mesh-pairwise-state",
-      "file": "crates/licoup-native/src/core/secure_mesh_pairwise.rs",
+      "file": "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise.rs",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_pairwise.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/key_ratchet.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/key_ratchet/relay_codec.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/store_model.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/session_negotiation/transcript_codec.rs",
-        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/persistence_recovery.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/key_ratchet.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/key_ratchet/relay_codec.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/store_model.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/session_negotiation/transcript_codec.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/tests/persistence_recovery.rs"
       ],
       "tokens": [
         "SecureMeshPairwiseSession",
@@ -398,10 +398,10 @@
     },
     {
       "id": "rust-core-owns-platform-secret-store-contract",
-      "file": "crates/licoup-native/src/core/secure_mesh_secret_store.rs",
+      "file": "crates/licoup-secure-mesh/src/core/secure_mesh_secret_store.rs",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_secret_store.rs",
-        "crates/licoup-native/src/platform/secure_mesh_secret_store.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_secret_store.rs",
+        "crates/licoup-secure-mesh/src/platform/secure_mesh_secret_store.rs"
       ],
       "tokens": [
         "pub use authorization",
@@ -412,7 +412,7 @@
     },
     {
       "id": "rust-platform-secret-store-trait-is-session-aware",
-      "file": "crates/licoup-native/src/core/secure_mesh_secret_store/port.rs",
+      "file": "crates/licoup-secure-mesh/src/core/secure_mesh_secret_store/port.rs",
       "tokens": [
         "pub trait SecureMeshSecretStore",
         "begin_authorized_session",
@@ -423,7 +423,7 @@
     },
     {
       "id": "rust-platform-secret-store-authorization-is-budgeted",
-      "file": "crates/licoup-native/src/core/secure_mesh_secret_store/authorization.rs",
+      "file": "crates/licoup-secure-mesh/src/core/secure_mesh_secret_store/authorization.rs",
       "tokens": [
         "SecretStoreAuthorizationRequest",
         "SecretStoreAuthorizationSession",
@@ -435,7 +435,7 @@
     },
     {
       "id": "rust-platform-secret-store-platform-proof-is-redacted",
-      "file": "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_store.rs",
+      "file": "crates/licoup-secure-mesh/src/platform/secure_mesh_secret_store/platform_store.rs",
       "tokens": [
         "PlatformSecretStore",
         "SecretClassPersistenceProof",
@@ -617,9 +617,9 @@
     {
       "id": "macos-rust-user-presence-uses-one-biometric-first-application-authorization",
       "files": [
-        "crates/licoup-native/src/platform/user_presence.rs",
-        "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
-        "crates/licoup-native/src/platform/authorized_secure_record/macos_keychain.rs"
+        "crates/licoup-foundation/src/platform/user_presence.rs",
+        "crates/licoup-secure-mesh/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
+        "crates/licoup-foundation/src/platform/authorized_secure_record/macos_keychain.rs"
       ],
       "tokens": [
         "APPLICATION_AUTHORIZATION",
@@ -641,7 +641,7 @@
     },
     {
       "id": "macos-rust-secret-store-authorization-session-is-single-context",
-      "file": "crates/licoup-native/src/core/secure_mesh_secret_store/authorization.rs",
+      "file": "crates/licoup-secure-mesh/src/core/secure_mesh_secret_store/authorization.rs",
       "tokens": [
         "system_authorization_attempt_count",
         "system_authorization_completed",
@@ -653,7 +653,7 @@
     },
     {
       "id": "macos-rust-secret-store-interactive-selection-fails-closed",
-      "file": "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/macos.rs",
+      "file": "crates/licoup-secure-mesh/src/platform/secure_mesh_secret_store/platform_backends/macos.rs",
       "tokens": [
         "if request.allow_interaction() {",
         "secure mesh macOS user-presence authorization is unavailable",
@@ -662,7 +662,7 @@
     },
     {
       "id": "macos-rust-secret-store-projects-apple-keychain-capability",
-      "file": "crates/licoup-native/src/platform/secure_mesh_secret_store/capability.rs",
+      "file": "crates/licoup-secure-mesh/src/platform/secure_mesh_secret_store/capability.rs",
       "tokens": [
         "SecurityCapability::AppleKeychain"
       ]
@@ -713,12 +713,12 @@
     },
     {
       "id": "macos-mobile-relay-composite-operations-use-operation-auth-batch",
-      "file": "crates/licoup-native/src/domain/mobile_relay/secret_custody.rs",
+      "file": "crates/licoup-relay/src/domain/mobile_relay/secret_custody.rs",
       "files": [
-        "crates/licoup-native/src/domain/mobile_relay/secret_custody.rs",
-        "crates/licoup-native/src/domain/mobile_relay/secret_custody/config_store.rs",
-        "crates/licoup-native/src/domain/mobile_relay/secret_custody/presentation.rs",
-        "crates/licoup-native/src/domain/mobile_relay/secret_custody/runtime.rs"
+        "crates/licoup-relay/src/domain/mobile_relay/secret_custody.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/secret_custody/config_store.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/secret_custody/presentation.rs",
+        "crates/licoup-relay/src/domain/mobile_relay/secret_custody/runtime.rs"
       ],
       "tokens": [
         "pub(in crate::domain::mobile_relay) struct RuntimeSecretContext",

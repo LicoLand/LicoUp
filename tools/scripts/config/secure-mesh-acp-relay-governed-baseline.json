@@ -18,8 +18,8 @@
     {
       "id": "client-acp-envelope-aad-and-taxonomy",
       "files": [
-        "crates/licoup-native/src/core/secure_mesh_acp.rs",
-        "crates/licoup-native/src/core/secure_mesh_acp/tests/mod.rs"
+        "crates/licoup-secure-mesh/src/core/secure_mesh_acp.rs",
+        "crates/licoup-secure-mesh/src/core/secure_mesh_acp/tests/mod.rs"
       ],
       "tokens": [
         "encode_acp_envelope_aad",

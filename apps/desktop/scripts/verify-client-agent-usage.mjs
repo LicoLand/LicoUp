@@ -11,6 +11,8 @@ const agentUsagePanelPath =
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_panel.dart";
 const bindingShellRendererPath =
   "apps/desktop/lib/src/composition/binding_shell_renderer.dart";
+const shellDestinationsPath =
+  "apps/desktop/lib/src/composition/binding_shell_renderer/shell_destinations.dart";
 const failures = [];
 
 function assert(condition, message) {
@@ -102,7 +104,7 @@ const commandMod = await readText("crates/licoup-native/src/ffi/commands/mod.rs"
 const commandUsage = await readText("crates/licoup-native/src/ffi/commands/agent_usage.rs");
 const stateStore = await readJoinedText([
   "crates/licoup-native/src/platform/client_state.rs",
-  "crates/licoup-native/src/platform/client_state/policy.rs",
+  "crates/licoup-client-state/src/policy.rs",
 ]);
 const dartService = await readText(
   "apps/desktop/lib/src/backend/features/agents/services/agent_usage_service.dart"
@@ -127,7 +129,10 @@ const usagePanel = await readJoinedText([
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_token_breakdown.dart",
 ]);
 const clientShell = await readText("apps/desktop/lib/src/frontend/shell/client_shell.dart");
-const bindingShellRenderer = await readText(bindingShellRendererPath);
+const bindingShellRenderer = await readJoinedText([
+  bindingShellRendererPath,
+  shellDestinationsPath,
+]);
 const flutterProductionSources = new Map(
   await Promise.all(
     (await collectSourceFiles("apps/desktop/lib", ".dart")).map(
@@ -377,7 +382,7 @@ const usagePanelMountedByComposition =
   bindingShellRenderer.includes(
     "frontend/features/agents/ui/agent_usage_panel.dart",
   ) &&
-  /ClientSection\.monitoring\s*=>\s*AgentUsagePanel\s*\(\s*binding:\s*_monitoring\s*,?/u
+  /case ClientSection\.monitoring:\s*return AgentUsagePanel\(\s*binding:\s*monitoring\s*,?\s*\)/u
     .test(bindingShellRenderer);
 assert(
   usagePanelMountedByComposition,
@@ -406,7 +411,7 @@ const usagePanelReferencePaths = [...flutterProductionSources]
   .map(([relativePath]) => relativePath);
 const expectedUsagePanelReferencePaths = new Set([
   agentUsagePanelPath,
-  bindingShellRendererPath,
+  shellDestinationsPath,
 ]);
 const usagePanelConstructionIsCompositionOnly =
   usagePanelReferencePaths.length === expectedUsagePanelReferencePaths.size &&

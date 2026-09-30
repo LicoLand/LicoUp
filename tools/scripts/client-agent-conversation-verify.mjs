@@ -12,8 +12,8 @@ import { verificationModelsMap } from "./lib/agent-conversation-verification-mod
 import { strictRoundCount } from "../../tests/product-e2e/cli/agent-conversations/support/parity/constants.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const inventoryPath = resolve(root, "crates/licoup-native/resources/agent-conversation-drivers.json");
-const readinessPath = resolve(root, "crates/licoup-native/resources/agent-conversation-readiness.json");
+const inventoryPath = resolve(root, "crates/licoup-agent-drivers/resources/agent-conversation-drivers.json");
+const readinessPath = resolve(root, "crates/licoup-agent-drivers/resources/agent-conversation-readiness.json");
 const defaultReport = resolve(root, "build/reports/agent-conversation-verification.json");
 const validationModels = verificationModelsMap();
 

@@ -20,7 +20,7 @@ export async function checkSecureMeshFoundationsAndLocalArchive(context) {
     sameSet,
   } = context;
   const mlKemBraidFacadeSource = await readText(
-    "crates/licoup-native/src/core/secure_mesh_mlkem_braid.rs"
+    "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid.rs"
   );
   assert(
     !mlKemBraidFacadeSource.includes("impl MlKemBraidSession") &&
@@ -29,15 +29,15 @@ export async function checkSecureMeshFoundationsAndLocalArchive(context) {
     "ML-KEM Braid root must expose only ordinary modules and stable re-exports"
   );
   const mlKemBraidFoundationSource = await readJoinedText([
-    "crates/licoup-native/src/core/secure_mesh_mlkem_braid/constants.rs",
-    "crates/licoup-native/src/core/secure_mesh_mlkem_braid/wire.rs",
-    "crates/licoup-native/src/core/secure_mesh_mlkem_braid/output.rs",
-    "crates/licoup-native/src/core/secure_mesh_mlkem_braid/secret.rs",
-    "crates/licoup-native/src/core/secure_mesh_mlkem_braid/authenticator.rs",
-    "crates/licoup-native/src/core/secure_mesh_mlkem_braid/erasure_gf.rs",
-    "crates/licoup-native/src/core/secure_mesh_mlkem_braid/erasure_encoder.rs",
-    "crates/licoup-native/src/core/secure_mesh_mlkem_braid/erasure_decoder.rs",
-    "crates/licoup-native/src/core/secure_mesh_mlkem_braid/encapsulation_kdf.rs"
+    "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/constants.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/wire.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/output.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/secret.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/authenticator.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/erasure_gf.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/erasure_encoder.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/erasure_decoder.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/encapsulation_kdf.rs"
   ]);
   for (const token of [
     "protocol_state::",
@@ -52,10 +52,10 @@ export async function checkSecureMeshFoundationsAndLocalArchive(context) {
     );
   }
   const mlKemBraidTransitionSource = await readJoinedText([
-    "crates/licoup-native/src/core/secure_mesh_mlkem_braid/protocol_state.rs",
-    "crates/licoup-native/src/core/secure_mesh_mlkem_braid/transition.rs",
-    "crates/licoup-native/src/core/secure_mesh_mlkem_braid/send_transition.rs",
-    "crates/licoup-native/src/core/secure_mesh_mlkem_braid/receive_transition.rs"
+    "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/protocol_state.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/transition.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/send_transition.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_mlkem_braid/receive_transition.rs"
   ]);
   for (const token of ["session::", "persistence::", "validation::"]) {
     assert(
@@ -65,7 +65,7 @@ export async function checkSecureMeshFoundationsAndLocalArchive(context) {
   }
 
   const pairwisePersistenceFacadeSource = await readText(
-    "crates/licoup-native/src/core/secure_mesh_pairwise/persistence.rs"
+    "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence.rs"
   );
   assert(
     !pairwisePersistenceFacadeSource.includes("impl SecureMeshPairwiseDurableStore") &&
@@ -74,12 +74,12 @@ export async function checkSecureMeshFoundationsAndLocalArchive(context) {
     "pairwise persistence root must expose only ordinary modules and stable re-exports"
   );
   const pairwisePersistenceFoundationSource = await readJoinedText([
-    "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/store_model.rs",
-    "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/public_snapshot.rs",
-    "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/secret_snapshot.rs",
-    "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/namespace_binding.rs",
-    "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/replay_watermark.rs",
-    "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/restoration_validation.rs"
+    "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/store_model.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/public_snapshot.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/secret_snapshot.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/namespace_binding.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/replay_watermark.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/persistence/restoration_validation.rs"
   ]);
   for (const dependency of [
     "initial_write::",
@@ -119,13 +119,17 @@ export async function checkSecureMeshFoundationsAndLocalArchive(context) {
     );
   }
 
+  // The endpoint-owned envelope codec lives in `licoup-protocol-bindings`, which
+  // the relay and the secure mesh both consume. The padded-content bucket rule the
+  // carrier enforces moved down with the envelope format it belongs to.
   const licoArcRelayFiles = (await collectSourceFiles(
-    "crates/licoup-native/src/core/licoarc_relay",
+    "crates/licoup-protocol-bindings/src/licoarc_relay",
     ".rs"
   )).filter((relativePath) => !relativePath.includes("/tests/"));
   const licoArcRelayRustSource = await readJoinedText([
-    "crates/licoup-native/src/core/licoarc_relay.rs",
-    ...licoArcRelayFiles
+    "crates/licoup-protocol-bindings/src/licoarc_relay.rs",
+    ...licoArcRelayFiles,
+    "crates/licoup-protocol-bindings/src/padding_bucket.rs"
   ]);
   for (const token of [
     "Hkdf::<Sha256>",

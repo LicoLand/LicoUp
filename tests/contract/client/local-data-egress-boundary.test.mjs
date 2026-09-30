@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -6,9 +7,25 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 
+// The Rust roots are derived from the workspace members rather than listed, because the
+// crate split moves network-capable files between crates and a hand-written list stops
+// scanning them the moment they move: measured at generation 198, two entries of
+// `reviewedRustEgressFiles` — `licoup-agent-targets/src/domain/lico_agent/transport.rs`
+// and `licoup-relay/src/platform/badtower_station/http_io.rs` — had left the two roots
+// that were listed, so the scan could not see them and the boundary check compared a
+// short list against a complete one. Deriving the roots means a new crate is covered the
+// day it joins the workspace.
+function rustProductionRoots() {
+  const workspace = readFileSync(path.join(repoRoot, "Cargo.toml"), "utf8");
+  const members = /^members\s*=\s*\[([\s\S]*?)^\]$/mu.exec(workspace)?.[1] ?? "";
+  return [...members.matchAll(/"([^"]+)"/gu)]
+    .map((match) => `${match[1]}/src`)
+    .filter((relativeRoot) => existsSync(path.join(repoRoot, relativeRoot)))
+    .map((relativeRoot) => [relativeRoot, ".rs"]);
+}
+
 const productionRoots = Object.freeze([
-  ["crates/licoup-native/src", ".rs"],
-  ["crates/licoup-mcp/src", ".rs"],
+  ...rustProductionRoots(),
   ["apps/desktop/lib", ".dart"],
   ["apps/desktop/android/app/src/main", ".kt"],
   ["apps/desktop/ios/Runner", ".swift"],
@@ -23,24 +40,24 @@ const networkTokensByExtension = Object.freeze({
 
 const reviewedRustEgressFiles = Object.freeze([
   "crates/licoup-mcp/src/lifecycle.rs",
+  "crates/licoup-mcp/src/mcp_streamable_http.rs",
   "crates/licoup-mcp/src/transport.rs",
   "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cursor.rs",
   "crates/licoup-native/src/domain/client_update/github_source.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/probe.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/shutdown.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/source.rs",
-  "crates/licoup-native/src/domain/lico_agent/transport.rs",
+  "crates/licoup-agent-targets/src/domain/lico_agent/transport.rs",
   "crates/licoup-native/src/domain/model_registry/source.rs",
   "crates/licoup-native/src/domain/provider_model_pricing.rs",
   "crates/licoup-native/src/domain/provider_quota/http.rs",
-  "crates/licoup-native/src/platform/badtower_station/http_io.rs",
+  "crates/licoup-relay/src/platform/badtower_station/http_io.rs",
   "crates/licoup-native/src/platform/gateway_runtime/channels/telegram/transport.rs",
   "crates/licoup-native/src/platform/llm_gateway_server.rs",
   "crates/licoup-native/src/platform/llm_gateway_service.rs",
   "crates/licoup-native/src/platform/llm_gateway_transport.rs",
-  "crates/licoup-native/src/platform/local_service/http.rs",
-  "crates/licoup-native/src/platform/local_service/sse.rs",
-  "crates/licoup-native/src/platform/mcp_streamable_http.rs",
+  "crates/licoup-agent-drivers/src/local_service/http.rs",
+  "crates/licoup-agent-drivers/src/local_service/sse.rs",
 ]);
 
 async function sourceFiles(relativeRoot, extension) {
@@ -76,7 +93,11 @@ async function networkCapableSources() {
 }
 
 test("production network capability stays inside the reviewed client egress boundary", async () => {
-  assert.deepEqual(await networkCapableSources(), reviewedRustEgressFiles);
+  // The claim is set equality: every production file that can reach the network is one an
+  // operator reviewed. The discovery side is sorted, so the reviewed side is sorted too —
+  // otherwise the assertion also tests the hand-order of the list, and a file moving between
+  // crates (which changes where its path sorts) fails a check whose meaning did not change.
+  assert.deepEqual(await networkCapableSources(), [...reviewedRustEgressFiles].sort());
 });
 
 test("GitHub package fetchers are bounded inbound GET-only sources", async () => {
@@ -131,7 +152,7 @@ test("reviewed runtime owners retain direction, endpoint, and data bounds", asyn
       "MAX_PAGES", "MAX_PAGE_BYTES", ".take(MAX_PAGE_BYTES.saturating_add(1))",
       '"Origin"',
     ]],
-    ["crates/licoup-native/src/domain/lico_agent/transport.rs", [
+    ["crates/licoup-agent-targets/src/domain/lico_agent/transport.rs", [
       'strip_prefix("http://")', 'host != "127.0.0.1"',
       "TcpStream::connect_timeout", "set_read_timeout", "Content-Length",
     ]],
@@ -144,7 +165,7 @@ test("reviewed runtime owners retain direction, endpoint, and data bounds", asyn
       "quota_endpoint_url_rejected", "quota_loopback_url_rejected",
       ".take(MAX_RESPONSE_BYTES.saturating_add(1))",
     ]],
-    ["crates/licoup-native/src/platform/badtower_station/http_io.rs", [
+    ["crates/licoup-relay/src/platform/badtower_station/http_io.rs", [
       "HTTP_TIMEOUT_SECONDS", "MAX_ERROR_RESPONSE_BYTES", "read_bounded",
       ".take(take_limit)",
     ]],
@@ -164,15 +185,15 @@ test("reviewed runtime owners retain direction, endpoint, and data bounds", asyn
       "MAX_IN_FLIGHT", "MAX_COALESCED_WRITE_BYTES", ".post(&prepared.endpoint)",
       'request.set("authorization"', "MAX_GATEWAY_BODY_BYTES",
     ]],
-    ["crates/licoup-native/src/platform/local_service/http.rs", [
+    ["crates/licoup-agent-drivers/src/local_service/http.rs", [
       "MAX_HTTP_REQUEST_BODY_BYTES", "MAX_HTTP_RESPONSE_BODY_BYTES",
       "MAX_HTTP_HEADER_BYTES", "MAX_HTTP_IN_FLIGHT", "is_https_or_loopback_http_url",
     ]],
-    ["crates/licoup-native/src/platform/local_service/sse.rs", [
+    ["crates/licoup-agent-drivers/src/local_service/sse.rs", [
       "MAX_SSE_LINE_BYTES", "MAX_SSE_FRAME_BYTES", "MAX_SSE_EVENTS_PER_STREAM",
       "MAX_SSE_STREAMS", "http::validate_url", "http::validate_headers",
     ]],
-    ["crates/licoup-native/src/platform/mcp_streamable_http.rs", [
+    ["crates/licoup-mcp/src/mcp_streamable_http.rs", [
       "DEFAULT_MAX_MESSAGE_BYTES", "MAX_HTTP_HEADERS", "MAX_HTTP_HEADER_BYTES",
       "MAX_HTTP_IN_FLIGHT", "validate_endpoint", ".post(endpoint.as_str())",
     ]],
@@ -196,7 +217,7 @@ test("local assembly runtime networking is synthetic loopback inspection only", 
   const sandboxPath =
     "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/sandbox.rs";
   const sandboxOwnerPath =
-    "crates/licoup-native/src/platform/process_sandbox/seatbelt.rs";
+    "crates/licoup-foundation/src/platform/process_sandbox/seatbelt.rs";
   const [apply, probe, shutdown, sandbox, sandboxOwner] = await Promise.all(
     [applyPath, probePath, shutdownPath, sandboxPath, sandboxOwnerPath].map((relativePath) =>
       fs.readFile(path.join(repoRoot, relativePath), "utf8"),
@@ -251,11 +272,11 @@ test("local assembly runtime networking is synthetic loopback inspection only", 
 
 test("MCP HTTP egress is reachable only through an exact one-shot direct approval", async () => {
   const approval = await fs.readFile(
-    path.join(repoRoot, "crates/licoup-native/src/domain/mcp_adapter/approval.rs"),
+    path.join(repoRoot, "crates/licoup-mcp/src/mcp_adapter/approval.rs"),
     "utf8",
   );
   const execution = await fs.readFile(
-    path.join(repoRoot, "crates/licoup-native/src/domain/mcp_adapter/execution.rs"),
+    path.join(repoRoot, "crates/licoup-mcp/src/mcp_adapter/execution.rs"),
     "utf8",
   );
   const command = await fs.readFile(
@@ -263,7 +284,7 @@ test("MCP HTTP egress is reachable only through an exact one-shot direct approva
     "utf8",
   );
   const transport = await fs.readFile(
-    path.join(repoRoot, "crates/licoup-native/src/platform/mcp_streamable_http.rs"),
+    path.join(repoRoot, "crates/licoup-mcp/src/mcp_streamable_http.rs"),
     "utf8",
   );
 

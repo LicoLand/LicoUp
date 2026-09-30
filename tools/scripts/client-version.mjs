@@ -9,16 +9,22 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const versionManifestPath = path.join(repoRoot, "tools", "client-version.json");
 const versionManifestSchema = "v0.0.1:client-version-manifest-1";
 export const cargoWorkspaceVersionPackages = Object.freeze([
+  "licoup-agent-adapter-sdk",
   "licoup-agent-adapters",
+  "licoup-agent-drivers",
   "licoup-agent-runtime",
+  "licoup-agent-targets",
   "licoup-application",
   "licoup-client-state",
   "licoup-conversation",
   "licoup-endpoint-core",
   "licoup-extension-contracts",
+  "licoup-foundation",
   "licoup-native",
   "licoup-platform-bridges",
   "licoup-protocol-bindings",
+  "licoup-relay",
+  "licoup-secure-mesh",
   "licoup-state-machine-codegen",
   "licoup-workflow",
   "licoup-workflow-runtime",

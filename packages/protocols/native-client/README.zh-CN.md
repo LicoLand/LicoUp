@@ -10,10 +10,10 @@ Updated: 2026-09-25
 
 实现入口：
 
-- `../../../crates/licoup-native/src/core/task_queue.rs`：有界本机任务队列。
-- `../../../crates/licoup-native/src/platform/runtime_adapters.rs`：智能体会话适配注册表。
-- `../../../crates/licoup-native/src/core/mcp.rs`：与服务实现无关的 MCP JSON-RPC 报文适配。
-- `../../../crates/licoup-native/src/core/secure_mesh_acp.rs`：当前端点保护预览上的 ACP 承载。
+- `../../../crates/licoup-foundation/src/core/task_queue.rs`：有界本机任务队列。
+- `../../../crates/licoup-agent-drivers/src/runtime_adapters.rs`：智能体会话适配注册表。
+- `../../../crates/licoup-mcp/src/mcp.rs`：与服务实现无关的 MCP JSON-RPC 报文适配。
+- `../../../crates/licoup-secure-mesh/src/core/secure_mesh_acp.rs`：当前端点保护预览上的 ACP 承载。
 
 协议范围：
 

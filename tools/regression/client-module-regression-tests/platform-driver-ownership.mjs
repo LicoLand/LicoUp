@@ -12,15 +12,17 @@ import {
 
 test("layer, FFI, bridge, packaging, and release paths select dedicated modules", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/mobile_relay/config.rs",
+    "crates/licoup-relay/src/domain/mobile_relay/config.rs",
   ])), ["architecture.client-boundaries", "rust.domain.mobile-relay.configuration"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/targets/binaries.rs",
+    "crates/licoup-agent-targets/src/domain/targets/binaries.rs",
   ])), [
     "regression.agent-scan-paths",
     "architecture.client-boundaries",
     "rust.domain.targets.binaries",
     "rust.domain.targets.platform-integration",
+    // The Windows file-security boundary verifier reads the target sources.
+    "bridge.windows",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/ffi/android_ffi.rs",
@@ -37,12 +39,23 @@ test("layer, FFI, bridge, packaging, and release paths select dedicated modules"
     "rust.ffi.cli-command-admission",
     "bridge.native-mcp-command",
   ]);
+  // The MCP transport and approval modules moved into `licoup-mcp`, so their
+  // paths select the leaf that owns them, the crate-level entry that now owns the
+  // whole MCP authority, and the Subagent MCP regression that reads the crate.
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/mcp_streamable_http.rs",
-  ])), ["architecture.client-boundaries", "rust.platform.mcp-streamable-http"]);
+    "crates/licoup-mcp/src/mcp_streamable_http.rs",
+  ])), [
+    "regression.subagent-mcp-common",
+    "rust.platform.mcp-streamable-http",
+    "rust.core.mcp-server",
+  ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/mcp_approval_plan_store.rs",
-  ])), ["architecture.client-boundaries", "rust.platform.mcp-approval-plan-store"]);
+    "crates/licoup-mcp/src/mcp_approval_plan_store.rs",
+  ])), [
+    "regression.subagent-mcp-common",
+    "rust.platform.mcp-approval-plan-store",
+    "rust.core.mcp-server",
+  ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/bin/licoup.rs",
   ])), [
@@ -134,34 +147,34 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "architecture.client-boundaries",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/acp.rs",
+    "crates/licoup-foundation/src/core/acp.rs",
   ])), ["architecture.client-boundaries", "rust.core.acp.composition"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/acp/requests.rs",
+    "crates/licoup-foundation/src/core/acp/requests.rs",
   ])), ["architecture.client-boundaries", "rust.core.acp.requests"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/acp/responses.rs",
+    "crates/licoup-foundation/src/core/acp/responses.rs",
   ])), ["architecture.client-boundaries", "rust.core.acp.responses"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/acp/codec.rs",
+    "crates/licoup-foundation/src/core/acp/codec.rs",
   ])), ["architecture.client-boundaries", "rust.core.acp.codec"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/task_queue.rs",
+    "crates/licoup-foundation/src/core/task_queue.rs",
   ])), ["architecture.client-boundaries", "rust.core.task-queue"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/authorized_secure_record.rs",
+    "crates/licoup-foundation/src/core/authorized_secure_record.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.secret-custody-port",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/authorized_secure_record/ledger.rs",
+    "crates/licoup-foundation/src/platform/authorized_secure_record/ledger.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.platform.secure-mesh-secret-store.authorization",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/user_presence.rs",
+    "crates/licoup-foundation/src/platform/user_presence.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.platform.secure-mesh-secret-store.authorization",
@@ -185,24 +198,38 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "architecture.client-boundaries",
     "rust.domain.optional-collaboration.workflow-operations.apply-mcp",
   ]);
+  // The MCP core moved into `licoup-mcp`, where the host's former path is a
+  // re-export; each leaf keeps its own narrow command beside the crate entry.
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/mcp.rs",
-  ])), ["architecture.client-boundaries", "rust.core.mcp.composition"]);
+    "crates/licoup-mcp/src/mcp.rs",
+  ])), [
+    "regression.subagent-mcp-common",
+    "rust.core.mcp-server",
+    "rust.core.mcp.composition",
+  ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/mcp/wire.rs",
-  ])), ["architecture.client-boundaries", "rust.core.mcp.wire"]);
+    "crates/licoup-mcp/src/mcp/wire.rs",
+  ])), [
+    "regression.subagent-mcp-common",
+    "rust.core.mcp-server",
+    "rust.core.mcp.wire",
+  ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/mcp/transfer.rs",
-  ])), ["architecture.client-boundaries", "rust.core.mcp.transfer"]);
+    "crates/licoup-mcp/src/mcp/transfer.rs",
+  ])), [
+    "regression.subagent-mcp-common",
+    "rust.core.mcp-server",
+    "rust.core.mcp.transfer",
+  ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/safe_archive.rs",
+    "crates/licoup-foundation/src/core/safe_archive.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.adaptive-flywheel",
     "rust.core.safe-archive",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/secure_mesh_pairwise.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.pairwise-codec",
@@ -213,43 +240,48 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "rust.core.secure-mesh.pairwise-session-negotiation.handshake-machine",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/secure_mesh_pairwise/codec.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_pairwise/codec.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.pairwise-codec",
   ]);
+  // The codec now lives under `rust.crate.protocol-bindings`, whose inputs are the
+  // whole crate, so its leaves select the crate-level suite as well as their own.
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/licoarc_relay.rs",
+    "crates/licoup-protocol-bindings/src/licoarc_relay.rs",
   ])), [
     "architecture.client-boundaries",
+    "rust.crate.protocol-bindings",
     "rust.core.licoarc-relay.contract",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/licoarc_relay/mailbox/schedule.rs",
+    "crates/licoup-protocol-bindings/src/licoarc_relay/mailbox/schedule.rs",
   ])), [
     "architecture.client-boundaries",
+    "rust.crate.protocol-bindings",
     "rust.core.licoarc-relay.schedule",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/licoarc_relay/private_header.rs",
+    "crates/licoup-protocol-bindings/src/licoarc_relay/private_header.rs",
   ])), [
     "architecture.client-boundaries",
+    "rust.crate.protocol-bindings",
     "rust.core.licoarc-relay.header",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/secure_mesh_command.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_command.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.command",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/secure_mesh_command/schema.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_command/schema.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.command.schema",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/secure_mesh_directory/authority.rs",
+    "crates/licoup-secure-mesh/src/core/secure_mesh_directory/authority.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.directory",
@@ -391,35 +423,35 @@ test("Cursor and OpenAgent leaves retain exact tests and complete source ownersh
 test("neutral ACP runtime and session transport retain bounded ownership", async () => {
   const filters = new Map([
     ["rust.platform.acp-runtime.composition",
-      "platform::acp_driver_runtime::tests::composition::"],
+      "acp_driver_runtime::tests::composition::"],
     ["rust.platform.acp-runtime.test-support",
-      "platform::acp_driver_runtime::tests::"],
+      "acp_driver_runtime::tests::"],
     ["rust.platform.acp-runtime.continuity",
-      "platform::acp_driver_runtime::tests::continuity::"],
+      "acp_driver_runtime::tests::continuity::"],
     ["rust.platform.acp-runtime.errors",
-      "platform::acp_driver_runtime::tests::errors::"],
+      "acp_driver_runtime::tests::errors::"],
     ["rust.platform.acp-runtime.events",
-      "platform::acp_driver_runtime::tests::events::"],
+      "acp_driver_runtime::tests::events::"],
     ["rust.platform.acp-runtime.interaction",
-      "platform::acp_driver_runtime::tests::interaction::"],
+      "acp_driver_runtime::tests::interaction::"],
     ["rust.platform.acp-runtime.io",
-      "platform::acp_driver_runtime::tests::io::"],
+      "acp_driver_runtime::tests::io::"],
     ["rust.platform.acp-runtime.model",
-      "platform::acp_driver_runtime::tests::model::"],
+      "acp_driver_runtime::tests::model::"],
     ["rust.platform.acp-runtime.params",
-      "platform::acp_driver_runtime::tests::params::"],
+      "acp_driver_runtime::tests::params::"],
     ["rust.platform.acp-runtime.probe",
-      "platform::acp_driver_runtime::tests::probe::"],
+      "acp_driver_runtime::tests::probe::"],
     ["rust.platform.acp-runtime.protocol",
-      "platform::acp_driver_runtime::tests::protocol::"],
+      "acp_driver_runtime::tests::protocol::"],
     ["rust.platform.acp-runtime.settings",
-      "platform::acp_driver_runtime::tests::settings::"],
+      "acp_driver_runtime::tests::settings::"],
     ["rust.platform.acp-runtime.stdio-transport",
-      "platform::acp_driver_runtime::tests::stdio_transport::"],
+      "acp_driver_runtime::tests::stdio_transport::"],
     ["rust.platform.acp-runtime.supervision",
-      "platform::acp_driver_runtime::tests::supervision::"],
+      "acp_driver_runtime::tests::supervision::"],
     ["rust.platform.acp-runtime.replay",
-      "platform::native_agent_parser::replay::"],
+      "platform::native_agent_parser::replay::adapters::"],
   ]);
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
     candidate.id.startsWith("rust.platform.acp-runtime."));
@@ -430,63 +462,68 @@ test("neutral ACP runtime and session transport retain bounded ownership", async
   }
   const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
   const sources = await sourceFiles(
-    "crates/licoup-native/src/platform/acp_driver_runtime", ".rs");
+    "crates/licoup-agent-drivers/src/acp_driver_runtime", ".rs");
   for (const relativePath of [
-    "crates/licoup-native/src/platform/acp_driver_runtime.rs",
+    "crates/licoup-agent-drivers/src/acp_driver_runtime.rs",
     ...sources,
     "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot.rs",
     "crates/licoup-native/src/platform/native_agent_parser/adapters/kimi_code.rs",
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot/framing.rs",
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot/protocol.rs",
+    "crates/licoup-agent-drivers/src/acp_driver_runtime/events.rs",
+    "crates/licoup-agent-drivers/src/acp_driver_runtime/protocol.rs",
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `neutral ACP runtime source must have a precise regression owner: ${relativePath}`);
   }
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/acp_driver_runtime/session_plan.rs",
-  ])), ["architecture.client-boundaries", "rust.platform.acp-runtime.continuity"]);
+    "crates/licoup-agent-drivers/src/acp_driver_runtime/session_plan.rs",
+  ])), ["architecture.client-boundaries", "rust.crate.agent-drivers",
+    "rust.platform.acp-runtime.continuity"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/acp_driver_runtime/params.rs",
-  ])), ["architecture.client-boundaries", "rust.platform.acp-runtime.params"]);
+    "crates/licoup-agent-drivers/src/acp_driver_runtime/params.rs",
+  ])), ["architecture.client-boundaries", "rust.crate.agent-drivers",
+    "rust.platform.acp-runtime.params"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot/protocol.rs",
+    "crates/licoup-agent-drivers/src/acp_driver_runtime/protocol.rs",
   ])), [
     "architecture.client-boundaries",
+    "rust.crate.agent-drivers",
     "rust.platform.acp-runtime.interaction",
     "rust.platform.acp-runtime.protocol",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/acp_driver_runtime/stdio_transport.rs",
+    "crates/licoup-agent-drivers/src/acp_driver_runtime/stdio_transport.rs",
   ])), [
     "architecture.client-boundaries",
+    "rust.crate.agent-drivers",
     "rust.platform.acp-runtime.stdio-transport",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/acp_session_transport/execution.rs",
+    "crates/licoup-agent-drivers/src/acp_session_transport/execution.rs",
   ])), [
     "architecture.client-boundaries",
+    "rust.crate.agent-drivers",
     "rust.platform.acp-session-transport.collaboration-mcp",
   ]);
   assert.equal(CLIENT_MODULE_CATALOG.find((candidate) =>
     candidate.id === "rust.platform.acp-session-transport").command.args.at(-1),
-  "platform::acp_session_transport::tests::");
+  "acp_session_transport::tests::");
   const sessionMcp = CLIENT_MODULE_CATALOG.find((candidate) =>
     candidate.id === "rust.platform.acp-session-transport.collaboration-mcp");
   assert.equal(sessionMcp.command.args.at(-1),
-    "platform::acp_session_transport::tests::");
+    "acp_session_transport::tests::");
   const sessionModules = CLIENT_MODULE_CATALOG.filter((candidate) =>
     candidate.id === "rust.platform.acp-session-transport"
       || candidate.id === "rust.platform.acp-session-transport.collaboration-mcp");
   const sessionInputs = new Set(sessionModules.flatMap((module) => module.inputs));
   for (const relativePath of [
-    "crates/licoup-native/src/platform/acp_session_transport.rs",
+    "crates/licoup-agent-drivers/src/acp_session_transport.rs",
     ...await sourceFiles(
-      "crates/licoup-native/src/platform/acp_session_transport",
+      "crates/licoup-agent-drivers/src/acp_session_transport",
       ".rs",
     ),
     "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes.rs",
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes/framing.rs",
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes/protocol.rs",
+    "crates/licoup-agent-drivers/src/acp_session_transport/events.rs",
+    "crates/licoup-agent-drivers/src/acp_session_transport/protocol.rs",
   ]) {
     assert.equal(sessionInputs.has(relativePath), true,
       `neutral ACP session source must have a precise regression owner: ${relativePath}`);
@@ -547,7 +584,7 @@ test("runtime adapter modules retain leaf-owned inputs and exact command filters
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
     assert.equal(module.inputs.includes(
-      "crates/licoup-native/src/platform/runtime_adapters.rs"), false);
+      "crates/licoup-agent-drivers/src/runtime_adapters.rs"), false);
   }
 });
 
@@ -630,18 +667,18 @@ test("Codex app-server leaves retain exact narrow regression ownership", async (
 
 test("local service leaves retain exact tests and complete source ownership", async () => {
   const filters = new Map([
-    ["rust.platform.local-service.composition", "platform::local_service::tests::composition::"],
-    ["rust.platform.local-service.bounds", "platform::local_service::tests::bounds::"],
-    ["rust.platform.local-service.concurrency", "platform::local_service::tests::concurrency::"],
-    ["rust.platform.local-service.endpoint", "platform::local_service::tests::endpoint::"],
-    ["rust.platform.local-service.executable", "platform::local_service::tests::executable::"],
-    ["rust.platform.local-service.http", "platform::local_service::tests::http::"],
-    ["rust.platform.local-service.params", "platform::local_service::tests::params::"],
-    ["rust.platform.local-service.port", "platform::local_service::tests::port::"],
-    ["rust.platform.local-service.process", "platform::local_service::tests::process::"],
-    ["rust.platform.local-service.serve", "platform::local_service::tests::serve::"],
-    ["rust.platform.local-service.sse", "platform::local_service::tests::sse::"],
-    ["rust.platform.local-service.state", "platform::local_service::tests::state::"],
+    ["rust.platform.local-service.composition", "local_service::tests::composition::"],
+    ["rust.platform.local-service.bounds", "local_service::tests::bounds::"],
+    ["rust.platform.local-service.concurrency", "local_service::tests::concurrency::"],
+    ["rust.platform.local-service.endpoint", "local_service::tests::endpoint::"],
+    ["rust.platform.local-service.executable", "local_service::tests::executable::"],
+    ["rust.platform.local-service.http", "local_service::tests::http::"],
+    ["rust.platform.local-service.params", "local_service::tests::params::"],
+    ["rust.platform.local-service.port", "local_service::tests::port::"],
+    ["rust.platform.local-service.process", "local_service::tests::process::"],
+    ["rust.platform.local-service.serve", "local_service::tests::serve::"],
+    ["rust.platform.local-service.sse", "local_service::tests::sse::"],
+    ["rust.platform.local-service.state", "local_service::tests::state::"],
   ]);
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
     candidate.id.startsWith("rust.platform.local-service."));
@@ -651,7 +688,7 @@ test("local service leaves retain exact tests and complete source ownership", as
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/licoup-native/src/platform/local_service.rs"), false);
+        "crates/licoup-agent-drivers/src/local_service.rs"), false);
     }
   }
   const sourceCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
@@ -663,9 +700,9 @@ test("local service leaves retain exact tests and complete source ownership", as
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/licoup-native/src/platform/local_service", ".rs");
+    "crates/licoup-agent-drivers/src/local_service", ".rs");
   for (const relativePath of [
-    "crates/licoup-native/src/platform/local_service.rs",
+    "crates/licoup-agent-drivers/src/local_service.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -694,7 +731,7 @@ test("file security leaves retain exact tests and complete source ownership", as
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/licoup-native/src/platform/file_security.rs"), false);
+        "crates/licoup-foundation/src/platform/file_security.rs"), false);
     }
   }
   const sourceCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
@@ -706,9 +743,9 @@ test("file security leaves retain exact tests and complete source ownership", as
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/licoup-native/src/platform/file_security", ".rs");
+    "crates/licoup-foundation/src/platform/file_security", ".rs");
   for (const relativePath of [
-    "crates/licoup-native/src/platform/file_security.rs",
+    "crates/licoup-foundation/src/platform/file_security.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -717,16 +754,18 @@ test("file security leaves retain exact tests and complete source ownership", as
 });
 
 test("client state leaves retain exact tests and complete source ownership", async () => {
+  // The persistence leaves run against `licoup-client-state`; the command layer
+  // keeps only the facade and the wire-contract operations module.
   const filters = new Map([
     ["rust.platform.client-state.composition", "platform::client_state::tests::composition::"],
-    ["rust.platform.client-state.policy", "platform::client_state::tests::policy::"],
-    ["rust.platform.client-state.collections", "platform::client_state::tests::collections::"],
-    ["rust.platform.client-state.activity", "platform::client_state::tests::activity::"],
-    ["rust.platform.client-state.snapshots", "platform::client_state::tests::snapshots::"],
-    ["rust.platform.client-state.redaction", "platform::client_state::tests::redaction::"],
-    ["rust.platform.client-state.serialization", "platform::client_state::tests::serialization::"],
-    ["rust.platform.client-state.paths", "platform::client_state::tests::paths::"],
-    ["rust.platform.client-state.accessors", "platform::client_state::tests::accessors::"],
+    ["rust.platform.client-state.policy", "tests::policy::"],
+    ["rust.platform.client-state.collections", "tests::collections::"],
+    ["rust.platform.client-state.activity", "tests::activity::"],
+    ["rust.platform.client-state.snapshots", "tests::snapshots::"],
+    ["rust.platform.client-state.redaction", "tests::redaction::"],
+    ["rust.platform.client-state.serialization", "tests::serialization::"],
+    ["rust.platform.client-state.paths", "tests::paths::"],
+    ["rust.platform.client-state.accessors", "tests::accessors::"],
     ["rust.platform.client-state.operations", "platform::client_state::tests::operations::"],
   ]);
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
@@ -756,6 +795,14 @@ test("client state leaves retain exact tests and complete source ownership", asy
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `client state source must have a precise regression owner: ${relativePath}`);
+  }
+  const ownerSources = await sourceFiles("crates/licoup-client-state/src", ".rs");
+  for (const relativePath of [
+    "crates/licoup-client-state/src/lib.rs",
+    ...ownerSources,
+  ]) {
+    assert.equal(ownedInputs.has(relativePath), true,
+      `client state owner source must have a precise regression owner: ${relativePath}`);
   }
 });
 
