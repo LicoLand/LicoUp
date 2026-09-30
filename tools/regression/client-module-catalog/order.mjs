@@ -4,6 +4,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "regression.test-artifact-lifecycle",
   "regression.public-client-docs",
   "regression.documentation-governance",
+  "regression.development-reports",
   "regression.secure-mesh-source-bundles",
   "regression.core-state-machine-test-layout",
   "regression.client-update-source-bundle",

@@ -13,6 +13,25 @@ const readyBadges = (milestone) => [
   milestone.readyToExecute ? "Ready to execute" : null,
   milestone.readyToDesign ? "Ready to design" : null,
 ].filter(Boolean);
+// The export's derived delivery state, result, pending review and exceptions reach
+// the reader's drawer unchanged. The page re-derives nothing and activates nothing.
+function deliverySections(milestone) {
+  if (!milestone.delivery) return [];
+  const statuses = milestone.taskDeliveryStatus ?? {};
+  return [
+    { title: "Delivery result", items: (milestone.delivery.result ?? []).map(label) },
+    { title: "Delivery exceptions", items: (milestone.delivery.exceptions ?? []).map(label) },
+    { title: "Delivery review", items: (milestone.delivery.review ?? []).map(label) },
+    { title: "Unconfirmed tasks", items: (milestone.unconfirmedTasks ?? []).map((id) => `${id} · ${statuses[id] ?? "unrecorded"}`) },
+  ];
+}
+// A metric owner is the export's check owner object ({kind, id}); older string
+// values still render rather than becoming "[object Object]".
+const ownerText = (owner) => typeof owner === "string"
+  ? owner
+  : owner && typeof owner === "object"
+    ? [owner.kind, owner.id].filter(Boolean).join("/")
+    : "";
 
 function taskSections(task, requirements, node = null) {
   const nodeContracts = (task.design?.["node-contracts"] ?? []).filter((item) => node && item.startsWith(`${node.title}:`));
@@ -41,6 +60,7 @@ export function planGraphs(plan) {
         { title: "Delivery state", items: [stateLabel(milestone.state)].filter(Boolean) },
         { title: "Execution status", items: [executionLabel(milestone.execution)].filter(Boolean) },
         { title: "Ready markers", items: readyBadges(milestone) },
+        ...deliverySections(milestone),
         { title: "Requires", items: milestone.requires ?? [] },
         { title: "Blocked by", items: milestone.blockedBy ?? [] },
         { title: "Acceptance", items: (milestone.acceptance ?? []).map(label) },
@@ -77,6 +97,7 @@ function deliveryList(page, plan) {
         { title: "Delivery state", items: [stateLabel(milestone.state) ?? "Unknown"] },
         { title: "Execution status", items: [executionLabel(milestone.execution) ?? "Unknown"] },
         { title: "Ready markers", items: readyBadges(milestone) },
+        ...deliverySections(milestone),
         { title: "Requires", items: milestone.requires ?? [] },
         { title: "Blocked by", items: milestone.blockedBy ?? [] },
         { title: "Open decisions", items: (milestone.decisions ?? []).map(decisionLine) },
@@ -137,7 +158,7 @@ function metricsCard(page, plan) {
       sections: plan.milestones.map((milestone) => ({
         title: `${milestone.id} · ${label(milestone.title)}`,
         items: metric.entries.filter((entry) => entry.delivery === milestone.id).map((entry) =>
-          [entry.check, entry.owner ? `owner ${entry.owner}` : "", entry.value != null ? String(entry.value) : "", entry.status]
+          [entry.check, ownerText(entry.owner) ? `owner ${ownerText(entry.owner)}` : "", entry.value != null ? String(entry.value) : "", entry.status]
             .filter(Boolean).join(" · ")),
       })),
     };
@@ -193,6 +214,7 @@ function milestoneCard(page, milestone, index, graph) {
     subtitle: milestone.outcome, bullets: milestone.acceptance.slice(0, 3), badge: marks,
     detail: { title: label(milestone.title), description: label(milestone.outcome), sections: [
       { title: "Delivery state", items: marks },
+      ...deliverySections(milestone),
       { title: "Acceptance", items: milestone.acceptance.map(label) },
       { title: "Entry condition", items: [label(milestone.entry)] },
       { title: "Current evidence", items: (Array.isArray(milestone.evidence) ? milestone.evidence : [milestone.evidence]).filter(Boolean).map(label) },

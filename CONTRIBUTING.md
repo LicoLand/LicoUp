@@ -148,9 +148,10 @@ approval gates. Focused state and lifecycle tests support this model.
 
 ## Local client verification
 
-After a client fix or behavior change, including a bundled Agent prompt or
-Skill change, build macOS once and verify that exact installed output when
-the local macOS build and installation environment is available:
+Implementation ends at engineering handoff. Build, installation and launch run
+only for an integrated candidate with an explicit central delivery assignment
+from the maintainer. The assigned delivery owner then verifies that exact
+installed output:
 
 ```bash
 npm run client:build -- --platform macos
@@ -159,9 +160,11 @@ npm run client:install:macos -- --launch-installed --verify-stable
 
 Do not substitute `client:run:macos`; it rebuilds. Ordinary documentation and
 tests without product binary impact do not require a client build or launch.
-Honor an explicit request to skip installation and report the remaining
-verification. Local installation does not authorize signing, notarization,
-source promotion, public publication, or production changes.
+An installed trial never starts the next milestone; an explicit finite programme
+assignment may continue to the next dependency-satisfied engineering milestone
+after the current one is reviewed and its delivery is recorded. Local installation
+does not authorize signing, notarization, source promotion, public publication, or
+production changes.
 
 A live response or transport check spends real tokens, so use the cheapest
 adequate model. The per-Agent choice has one file:

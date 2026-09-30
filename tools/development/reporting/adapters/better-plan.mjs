@@ -85,11 +85,24 @@ const criterionLine = (criterion) => typeof criterion === "string"
   ? criterion
   : `Given: ${label(criterion.given) ?? ""}\nWhen: ${label(criterion.when) ?? ""}\nThen: ${label(criterion.then) ?? ""}\nOracle: ${label(criterion.oracle) ?? ""}\nEvidence: ${label(criterion.evidence?.source) ?? ""}`;
 
+// Delivery result/review are the export's own current-state projection. The page
+// carries them without re-deriving lifecycle, reading history or exposing raw
+// evidence payloads: only the recorded summary, exceptions and review sources.
+const reviewLines = (review) => (Array.isArray(review) ? review : []).map(requirementText);
+const exceptionLines = (value) => factLines(value);
+const resultSummaryLines = (result) => {
+  if (result == null) return [];
+  if (typeof result === "string") return [result];
+  if (typeof result !== "object") return [String(result)];
+  return result.summary == null ? [] : factLines(result.summary);
+};
+
 function treeMilestone(definition, report, payload) {
   const { tree = {}, derived = {}, checks = [] } = payload.export ?? {};
   const nodes = (tree.tasks ?? []).flatMap((task) => task.nodes ?? []);
   const completed = derived.node_counts?.completed ?? 0;
   const reviewNodes = new Set(derived.review_nodes ?? []);
+  const taskDeliveryStatus = derived.task_delivery_status ?? {};
   const checkLines = (selected) => selected.map((check) => {
     const state = check.running ? "Running" : check.pending ? (check.ready ? "Ready to check" : "Waiting for covered work") : "Recorded";
     return `${check.title ?? check.id}: ${state}${check.dirty ? " · Review needed" : ""}${check.result?.status ? ` · ${check.result.status}` : ""} · Covers ${(check.covers ?? []).join(", ")}`;
@@ -107,6 +120,15 @@ function treeMilestone(definition, report, payload) {
     phase: report.execution_status ?? derived.status,
     entry: (derived.ready ?? []).join(" · "),
     evidence: [`${completed}/${nodes.length} Nodes completed · ${reviewNodes.size} awaiting review`],
+    // The export's derived delivery state, recorded result, pending review and
+    // exceptions stay attached to the milestone the maintainer is reading.
+    delivery: {
+      status: derived.delivery_status ?? null,
+      result: resultSummaryLines(tree.delivery?.result),
+      exceptions: exceptionLines(tree.delivery?.result?.exceptions),
+      review: reviewLines(tree.delivery?.review),
+    },
+    taskDeliveryStatus,
     architecture: { summary: `${nodes.length} executable Nodes in ${(tree.tasks ?? []).length} Tasks`, notes: factLines(tree.architecture) },
     requirements: tree.requirements ?? [],
     fullRegression: { commands: [...new Set([...(tree.checks ?? []), ...checks].flatMap((check) => check.commands ?? []))], paths: [] },
@@ -125,6 +147,10 @@ function treeMilestone(definition, report, payload) {
         description: task.outcome,
         sections: [
           { title: "Node execution status", items: [derived.task_status?.[task.id] ?? "pending"] },
+          { title: "Task delivery status", items: taskDeliveryStatus[task.id] ? [taskDeliveryStatus[task.id]] : [] },
+          { title: "Task delivery result", items: resultSummaryLines(task.delivery?.result) },
+          { title: "Task delivery exceptions", items: exceptionLines(task.delivery?.result?.exceptions) },
+          { title: "Task delivery review", items: reviewLines(task.delivery?.review) },
           { title: "Draft pull request", items: task.draft_pr ? [task.draft_pr] : [] },
           { title: "Execution role", items: taskNodes.map((node) => `${node.id} · ${node.role}`) },
           { title: "Direct dependencies", items: [...new Set(taskNodes.flatMap(nodePrerequisites))] },
@@ -158,7 +184,8 @@ function treeMilestone(definition, report, payload) {
                 { title: "Execution state", items: [node.status] },
                 { title: "Commit", items: node.commit ? [node.commit] : [] },
                 { title: "Pending review", items: (node.review ?? []).map(requirementText) },
-                { title: "Current result", items: node.result ? [typeof node.result === "string" ? node.result : node.result.summary ?? JSON.stringify(node.result)] : [] },
+                { title: "Current result", items: resultSummaryLines(node.result) },
+                { title: "Current result exceptions", items: node.result && typeof node.result === "object" ? exceptionLines(node.result.exceptions) : [] },
                 { title: "Checks", items: checkLines(checks.filter((check) => (check.covers ?? []).includes(node.id))) },
                 { title: "Resources contended", items: node.resources ?? [] },
                 { title: "Direct dependencies", items: nodePrerequisites(node) },

@@ -246,6 +246,30 @@ test("source-bundle contract keeps an independent regression leaf", () => {
   ]);
 });
 
+test("development report sources select the existing report suite", () => {
+  const module = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "regression.development-reports");
+  assert.ok(module, "the report suite has one maintained owner");
+  assert.equal(module.kind, "regression-infrastructure");
+  assert.deepEqual(module.command.args, [
+    "--test",
+    "tools/development/tests/reports.test.mjs",
+  ]);
+  for (const relativePath of [
+    "tools/development/reports.mjs",
+    "tools/development/reporting/adapters/better-plan.mjs",
+    "tools/development/reporting/plan.mjs",
+    "tools/development/state-machines.json",
+    "tools/development/architecture-views.json",
+    "tools/development/workflows/13-installed-milestone-candidate.json",
+    "tools/development/tests/reports.test.mjs",
+  ]) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), [
+      "regression.development-reports",
+    ], `${relativePath} must select the report suite`);
+  }
+});
+
 test("agent-usage routing sources select the dedicated evidence verifier", () => {
   const module = CLIENT_MODULE_CATALOG.find((candidate) =>
     candidate.id === "regression.client-agent-usage");
