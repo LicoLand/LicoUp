@@ -87,7 +87,7 @@ pub enum CustodyPurpose {
 ///
 /// This is the dependency-free port representation. Executable key-mutation
 /// transitions are compiled from
-/// `crates/licoup-native/resources/state-machines/security-custody-lifecycle.json`.
+/// `crates/licoup-relay/resources/state-machines/security-custody-lifecycle.json`.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum CustodyLifecycle {
     Adopted,
