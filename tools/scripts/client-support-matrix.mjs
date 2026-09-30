@@ -12,21 +12,21 @@ const catalogPath = path.join(repoRoot, "tools", "client-support-matrix.json");
 const driverInventoryPath = path.join(
   repoRoot,
   "crates",
-  "licoup-native",
+  "licoup-agent-drivers",
   "resources",
   "agent-conversation-drivers.json",
 );
 const nativeCapabilityInventoryPath = path.join(
   repoRoot,
   "crates",
-  "licoup-native",
+  "licoup-agent-drivers",
   "resources",
   "agent-native-capabilities.json",
 );
 const driverReadinessPath = path.join(
   repoRoot,
   "crates",
-  "licoup-native",
+  "licoup-agent-drivers",
   "resources",
   "agent-conversation-readiness.json",
 );

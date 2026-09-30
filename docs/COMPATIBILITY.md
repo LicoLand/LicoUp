@@ -1,12 +1,12 @@
 # LicoUp Compatibility
 
-Updated: 2026-09-26
+Updated: 2026-09-30
 
 English (normative) · [简体中文](COMPATIBILITY.zh-CN.md) · [Documentation](README.md) · [Project](../README.md)
 
 Product version: `0.3.0`
 
-Generated sources: `tools/client-support-matrix.json`, `tools/client-release-targets.json`, `tools/client-version.json`, `crates/licoup-native/resources/agent-conversation-drivers.json`, `crates/licoup-native/resources/agent-native-capabilities.json`, `crates/licoup-native/resources/agent-conversation-readiness.json`, and `crates/licoup-native/resources/client-state-migration-frontier.json`.
+Generated sources: `tools/client-support-matrix.json`, `tools/client-release-targets.json`, `tools/client-version.json`, `crates/licoup-agent-drivers/resources/agent-conversation-drivers.json`, `crates/licoup-agent-drivers/resources/agent-native-capabilities.json`, `crates/licoup-agent-drivers/resources/agent-conversation-readiness.json`, and `crates/licoup-native/resources/client-state-migration-frontier.json`.
 
 Update with `npm run client:support-matrix:sync`; verify with `npm run client:support-matrix:check`. Do not edit this projection by hand.
 

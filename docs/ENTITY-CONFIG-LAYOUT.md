@@ -14,8 +14,8 @@ private addresses, or runtime data.
 | Release targets | `tools/client-release-targets.json` | packaging and release verification tools |
 | Platform capability status | `tools/client-support-matrix.json` | generated `COMPATIBILITY.md` and `COMPATIBILITY.zh-CN.md` |
 | Desktop package composition | `apps/desktop/packaging.modules.json` | platform packagers and architecture checks |
-| Agent conversation drivers | `crates/licoup-native/resources/agent-conversation-drivers.json` | generated compatibility adapter table and desktop projections |
-| Agent readiness | `crates/licoup-native/resources/agent-conversation-readiness.json` and its reducer | composer availability and verification summaries |
+| Agent conversation drivers | `crates/licoup-agent-drivers/resources/agent-conversation-drivers.json` | generated compatibility adapter table and desktop projections |
+| Agent readiness | `crates/licoup-agent-drivers/resources/agent-conversation-readiness.json` and its reducer | composer availability and verification summaries |
 | Subagent MCP direct-verification evidence | `tests/product-e2e/cli/subagent-mcp/interop-manifest.yaml`, atomically written by the explicit live downstream route | latest App Version, one privacy-safe record per target Agent |
 | Public client DTOs | JSON Schemas under `packages/contracts/client/` | generated or validated Rust, Flutter, fixture, and protocol consumers |
 | Native client protocol DTOs | schemas under `packages/protocols/native-client/` | Rust/Flutter/mobile bridge consumers |

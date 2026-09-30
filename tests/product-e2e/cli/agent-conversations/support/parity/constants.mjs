@@ -8,7 +8,7 @@ export const packagingRegistryPath = join(workspaceRoot, "apps", "desktop", "pac
 export const driversInventoryPath = join(
   workspaceRoot,
   "crates",
-  "licoup-native",
+  "licoup-agent-drivers",
   "resources",
   "agent-conversation-drivers.json",
 );

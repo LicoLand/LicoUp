@@ -1,12 +1,12 @@
 # LicoUp 兼容性
 
-Updated: 2026-09-26
+Updated: 2026-09-30
 
 [English（规范版本）](COMPATIBILITY.md) · 简体中文（本地化） · [文档索引](README.md) · [项目首页](../README.zh-CN.md)
 
 产品版本：`0.3.0`
 
-生成来源：`tools/client-support-matrix.json`、`tools/client-release-targets.json`、`tools/client-version.json`、`crates/licoup-native/resources/agent-conversation-drivers.json`、`crates/licoup-native/resources/agent-native-capabilities.json`、`crates/licoup-native/resources/agent-conversation-readiness.json` 和 `crates/licoup-native/resources/client-state-migration-frontier.json`。
+生成来源：`tools/client-support-matrix.json`、`tools/client-release-targets.json`、`tools/client-version.json`、`crates/licoup-agent-drivers/resources/agent-conversation-drivers.json`、`crates/licoup-agent-drivers/resources/agent-native-capabilities.json`、`crates/licoup-agent-drivers/resources/agent-conversation-readiness.json` 和 `crates/licoup-native/resources/client-state-migration-frontier.json`。
 
 使用 `npm run client:support-matrix:sync` 更新，使用 `npm run client:support-matrix:check` 验证。请勿手工维护本投影。
 
