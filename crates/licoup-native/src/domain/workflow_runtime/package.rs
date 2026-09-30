@@ -554,6 +554,29 @@ mod tests {
     }
 
     #[test]
+    fn a_directory_member_with_a_body_is_refused_before_preparation() {
+        let root = root();
+        let importer = StrategyPackageImporter::open(&root).unwrap();
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut cursor);
+            let options = SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated)
+                .unix_permissions(0o100600);
+            writer.start_file("workflow.json", options).unwrap();
+            writer.write_all(SYNTHETIC_FIXTURE_WORKFLOW).unwrap();
+            writer.start_file("data/d/", options).unwrap();
+            writer.write_all(b"body").unwrap();
+            writer.finish().unwrap();
+        }
+        let error = importer
+            .prepare_bytes(&cursor.into_inner())
+            .expect_err("a directory member with a body is refused");
+        assert_eq!(error.to_string(), "package_entry_invalid");
+        remove_root(root);
+    }
+
+    #[test]
     fn multiline_instructions_survive_import_and_revision_reload() {
         let root = root();
         let importer = StrategyPackageImporter::open(&root).unwrap();

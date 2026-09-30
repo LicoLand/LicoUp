@@ -12,7 +12,8 @@ mod windows_acl;
 
 pub use append_lock::{append_private_line, open_private_lock_file};
 pub use atomic_replace::{
-    AtomicPrivateFile, atomic_write_private_text, atomic_write_private_text_bounded,
+    AtomicPrivateFile, CommitDurability, atomic_write_private_text,
+    atomic_write_private_text_bounded,
 };
 pub use hardening::{ensure_private_dir, harden_private_path, harden_private_tree};
 pub use marker::read_existing_private_text_bounded;

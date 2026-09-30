@@ -4,10 +4,12 @@
 //! enforces path traversal rejection, entry type allowlisting, and
 //! configurable byte / entry / depth limits.
 
+use std::cell::Cell;
 use std::ffi::CString;
 use std::fs::{self, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
+use std::rc::Rc;
 
 #[cfg(unix)]
 use std::os::fd::{AsRawFd, FromRawFd};
@@ -15,7 +17,7 @@ use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::ffi::OsStrExt;
 
 use anyhow::{Context, Result, anyhow, ensure};
-use flate2::read::GzDecoder;
+use flate2::bufread::GzDecoder;
 use tar::{Archive, EntryType};
 use zip::ZipArchive;
 
@@ -38,29 +40,40 @@ const PORTABLE_NAME_BYTES: u64 = 255;
 /// format's own header blocks, padding and worst-case portable long-name metadata.
 ///
 /// This bounds the physical decoded stream before the TAR library can buffer GNU or
-/// PAX extension metadata, derived from the existing limits rather than a new cap. A
-/// member may carry its path twice (an extension header and the entry header) and the
-/// extension data is block padded, so the allowance covers that exact worst case.
+/// PAX extension metadata, derived from the existing limits rather than a new cap.
 pub(crate) fn decoded_tar_gz_budget(
     max_total_bytes: u64,
     max_entries: usize,
     max_depth: usize,
 ) -> u64 {
-    let longest_name = (max_depth as u64)
-        .saturating_mul(PORTABLE_NAME_BYTES.saturating_add(1))
-        .div_ceil(TAR_BLOCK_BYTES)
-        .saturating_mul(TAR_BLOCK_BYTES);
-    let per_entry = longest_name.saturating_add(TAR_BLOCK_BYTES.saturating_mul(3));
-    max_total_bytes.saturating_add((max_entries as u64).saturating_mul(per_entry))
+    max_total_bytes.saturating_add(
+        (max_entries as u64).saturating_mul(decoded_tar_gz_metadata_budget(max_depth)),
+    )
 }
 
-/// A reader that refuses to hand out more than its budget and remembers that it did.
+/// The most decoded metadata one member may legally carry: its path twice (an extension
+/// header and the entry header), block padded, plus the fixed header blocks.
+///
+/// Applied per advance as a pre-yield bound, so a single GNU long-name or PAX record
+/// cannot consume the whole archive budget before the entry is admitted.
+pub(crate) fn decoded_tar_gz_metadata_budget(max_depth: usize) -> u64 {
+    (max_depth as u64)
+        .saturating_mul(PORTABLE_NAME_BYTES.saturating_add(1))
+        .div_ceil(TAR_BLOCK_BYTES)
+        .saturating_mul(TAR_BLOCK_BYTES)
+        .saturating_add(TAR_BLOCK_BYTES.saturating_mul(3))
+}
+
+/// A reader that refuses to hand out more than its budget and remembers how much it did.
 ///
 /// Both the manifest scan and extraction run through it, so no pass can inflate the
-/// archive past its policy before the TAR library buffers a single member.
+/// archive past its policy before the TAR library buffers a single member. A detached
+/// progress handle lets a pass measure one library advance while the archive borrows the
+/// stream.
 pub(crate) struct BoundedStream<R> {
     inner: R,
     remaining: u64,
+    consumed: Rc<Cell<u64>>,
     exceeded: bool,
 }
 
@@ -69,13 +82,58 @@ impl<R> BoundedStream<R> {
         Self {
             inner,
             remaining: limit,
+            consumed: Rc::new(Cell::new(0)),
             exceeded: false,
         }
+    }
+
+    pub(crate) fn progress(&self) -> StreamProgress {
+        StreamProgress(self.consumed.clone())
     }
 
     pub(crate) fn exceeded(&self) -> bool {
         self.exceeded
     }
+
+    pub(crate) fn into_inner(self) -> R {
+        self.inner
+    }
+}
+
+/// Detached view of how many decoded bytes a [`BoundedStream`] has handed out.
+pub(crate) struct StreamProgress(Rc<Cell<u64>>);
+
+impl StreamProgress {
+    pub(crate) fn consumed(&self) -> u64 {
+        self.0.get()
+    }
+}
+
+/// The decoded reader both TAR passes share: a single-member GZIP decoder over the
+/// in-memory archive, so completion can be validated and trailing material detected.
+pub(crate) type TarGzDecoder<'a> = GzDecoder<BufReader<std::io::Cursor<&'a [u8]>>>;
+
+pub(crate) fn tar_gz_decoder(bytes: &[u8]) -> TarGzDecoder<'_> {
+    GzDecoder::new(BufReader::new(std::io::Cursor::new(bytes)))
+}
+
+/// Consume the rest of a decoded `.tar.gz` stream to its valid end.
+///
+/// The TAR end padding and the GZIP trailer are read here, so the trailer's CRC and
+/// ISIZE are verified and a truncated or corrupted stream is refused instead of
+/// stopping at the first zero block. Compressed material after the single GZIP member
+/// is refused as well, using the decoder's own buffered remainder.
+pub(crate) fn finish_tar_gz(
+    mut stream: BoundedStream<TarGzDecoder<'_>>,
+    bytes_len: usize,
+) -> Result<()> {
+    std::io::copy(&mut stream, &mut std::io::sink())
+        .map_err(|_| anyhow!("archive did not end cleanly"))?;
+    let reader = stream.into_inner().into_inner();
+    let trailing = (reader.buffer().len() as u64)
+        .saturating_add((bytes_len as u64).saturating_sub(reader.get_ref().position()));
+    ensure!(trailing == 0, "archive has trailing compressed material");
+    Ok(())
 }
 
 impl<R: Read> Read for BoundedStream<R> {
@@ -92,6 +150,8 @@ impl<R: Read> Read for BoundedStream<R> {
             .min(usize::try_from(self.remaining).unwrap_or(usize::MAX));
         let read = self.inner.read(&mut buffer[..allowed])?;
         self.remaining -= read as u64;
+        self.consumed
+            .set(self.consumed.get().saturating_add(read as u64));
         Ok(read)
     }
 }
@@ -191,6 +251,9 @@ pub fn extract_zip_safe(
         );
 
         if directory {
+            // A directory body is never legitimate: the member is a directory, so its
+            // declared size must be zero and no body bytes are consumed.
+            ensure!(entry.size() == 0, "zip_entry_directory_body_unsupported");
             extraction_root.create_directory(&relative)?;
             result.push(ZipEntryInfo {
                 path: relative,
@@ -247,62 +310,84 @@ pub fn extract_tar_gz_safe(
     let max_depth = max_depth.unwrap_or(DEFAULT_MAX_DEPTH);
 
     let budget = decoded_tar_gz_budget(max_total_bytes, max_entries, max_depth);
-    let decoder = GzDecoder::new(std::io::Cursor::new(bytes));
+    let metadata_budget = decoded_tar_gz_metadata_budget(max_depth);
+    let decoder = tar_gz_decoder(bytes);
     let mut stream = BoundedStream::new(decoder, budget);
-    let mut archive = Archive::new(&mut stream);
+    let progress = stream.progress();
 
     let mut total_bytes = 0_u64;
     let mut entry_count: usize = 0;
     let extraction_root = ExtractionRoot::open(destination)?;
 
-    for entry in archive.entries()? {
-        let mut entry = entry?;
-        entry_count += 1;
-
-        ensure!(
-            entry_count <= max_entries,
-            "archive entry count {entry_count} exceeds maximum {max_entries}"
-        );
-
-        let entry_type = entry.header().entry_type();
-
-        // Allow only regular files and directories.
-        ensure!(
-            entry_type == EntryType::Regular || entry_type == EntryType::Directory,
-            "archive entry {entry_count} has unsupported type {entry_type:?}; only regular files and directories are allowed"
-        );
-
-        // Validate and sanitize the entry path.
-        let entry_path = entry.path()?;
-        let relative = sanitize_entry_path(&entry_path, max_depth)?;
-
-        if entry_type == EntryType::Directory {
-            // A directory body is never legitimate and would otherwise be decompressed
-            // while the iterator skips it without counting against the payload total.
+    {
+        let mut archive = Archive::new(&mut stream);
+        let mut entries = archive.entries()?;
+        loop {
+            let before = progress.consumed();
+            let Some(entry) = entries.next() else {
+                break;
+            };
+            // One library advance may buffer GNU long-name or PAX metadata before the
+            // entry is admitted; that metadata is bounded here, before it can consume
+            // the aggregate decoded budget.
             ensure!(
-                entry.size() == 0,
-                "archive directory entry {entry_count} declares a body"
+                progress.consumed().saturating_sub(before) <= metadata_budget,
+                "archive member metadata exceeds the portable header budget"
             );
-            extraction_root.create_directory(&relative)?;
-            continue;
+            let mut entry = entry?;
+            entry_count += 1;
+
+            ensure!(
+                entry_count <= max_entries,
+                "archive entry count {entry_count} exceeds maximum {max_entries}"
+            );
+
+            let entry_type = entry.header().entry_type();
+
+            // Allow only regular files and directories.
+            ensure!(
+                entry_type == EntryType::Regular || entry_type == EntryType::Directory,
+                "archive entry {entry_count} has unsupported type {entry_type:?}; only regular files and directories are allowed"
+            );
+
+            // Validate and sanitize the entry path.
+            let entry_path = entry.path()?;
+            let relative = sanitize_entry_path(&entry_path, max_depth)?;
+
+            if entry_type == EntryType::Directory {
+                // A directory body is never legitimate and would otherwise be decompressed
+                // while the iterator skips it without counting against the payload total.
+                ensure!(
+                    entry.size() == 0,
+                    "archive directory entry {entry_count} declares a body"
+                );
+                extraction_root.create_directory(&relative)?;
+                continue;
+            }
+
+            let declared_size = entry.size();
+            let next_total = total_bytes
+                .checked_add(declared_size)
+                .ok_or_else(|| anyhow!("archive extracted byte count overflowed"))?;
+            ensure!(next_total <= max_total_bytes, "archive byte limit exceeded");
+            let mut file = extraction_root.create_file(&relative)?;
+            let written = std::io::copy(&mut entry, &mut file)?;
+
+            ensure!(
+                written == declared_size,
+                "archive entry {entry_count} size did not match its header"
+            );
+            file.flush()?;
+            file.sync_all()?;
+            total_bytes = next_total;
         }
-
-        let declared_size = entry.size();
-        let next_total = total_bytes
-            .checked_add(declared_size)
-            .ok_or_else(|| anyhow!("archive extracted byte count overflowed"))?;
-        ensure!(next_total <= max_total_bytes, "archive byte limit exceeded");
-        let mut file = extraction_root.create_file(&relative)?;
-        let written = std::io::copy(&mut entry, &mut file)?;
-
-        ensure!(
-            written == declared_size,
-            "archive entry {entry_count} size did not match its header"
-        );
-        file.flush()?;
-        file.sync_all()?;
-        total_bytes = next_total;
     }
+
+    // Read the remainder of the decoded stream to its valid end: the TAR end padding and
+    // the GZIP trailer are consumed here, so the trailer's CRC and ISIZE are verified and
+    // a truncated or corrupted stream is refused instead of stopping at the first zero
+    // block.
+    finish_tar_gz(stream, bytes.len())?;
 
     Ok(())
 }
@@ -969,5 +1054,145 @@ mod tests {
         let mut buffer = [0_u8; 2];
         assert_eq!(stream.read(&mut buffer).unwrap(), 2);
         assert!(stream.read(&mut buffer).is_err());
+    }
+
+    fn gzip(bytes: &[u8]) -> Vec<u8> {
+        let mut gz_buf = Vec::new();
+        {
+            let mut encoder =
+                flate2::write::GzEncoder::new(&mut gz_buf, flate2::Compression::default());
+            encoder.write_all(bytes).unwrap();
+            encoder.finish().unwrap();
+        }
+        gz_buf
+    }
+
+    /// A TAR body whose member paths may exceed the short-header limit.
+    fn tar_bytes_with(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut tar_buf = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut tar_buf);
+            for (path, data) in entries {
+                let mut header = tar::Header::new_gnu();
+                header.set_size(data.len() as u64);
+                header.set_mode(0o644);
+                header.set_cksum();
+                builder.append_data(&mut header, path, &data[..]).unwrap();
+            }
+            builder.finish().unwrap();
+        }
+        tar_buf
+    }
+
+    #[test]
+    fn tar_gz_truncated_trailer_is_refused() {
+        let temp = temp_dir();
+        let bytes = create_test_tar_gz(&[("a.txt", b"abc")]);
+        let truncated = &bytes[..bytes.len() - 4];
+        assert!(
+            extract_tar_gz_safe(truncated, &temp.join("truncated"), None, None, None).is_err(),
+            "a truncated GZIP trailer is refused"
+        );
+    }
+
+    #[test]
+    fn tar_gz_corrupted_trailer_is_refused() {
+        let temp = temp_dir();
+        let mut bytes = create_test_tar_gz(&[("a.txt", b"abc")]);
+        let length = bytes.len();
+        bytes[length - 5] ^= 0xFF; // the CRC field of the trailer
+        assert!(
+            extract_tar_gz_safe(&bytes, &temp.join("crc"), None, None, None).is_err(),
+            "a corrupted GZIP trailer is refused"
+        );
+    }
+
+    #[test]
+    fn tar_gz_trailing_material_is_refused() {
+        let temp = temp_dir();
+        let mut bytes = create_test_tar_gz(&[("a.txt", b"abc")]);
+        bytes.extend_from_slice(b"trailing");
+        assert!(
+            extract_tar_gz_safe(&bytes, &temp.join("trailing"), None, None, None).is_err(),
+            "compressed material after the GZIP member is refused"
+        );
+    }
+
+    #[test]
+    fn tar_gz_member_metadata_is_bounded_before_the_library_buffers_it() {
+        let temp = temp_dir();
+        let long_name = format!("data/{}", "l".repeat(8 * 1024));
+        let bytes = gzip(&tar_bytes_with(&[(long_name.as_str(), b"abc")]));
+        // The aggregate budget admits this stream, so the refusal proves the per-member
+        // metadata bound applied at the library advance.
+        assert!(
+            extract_tar_gz_safe(
+                &bytes,
+                &temp.join("metadata"),
+                Some(64 * 1024),
+                Some(8),
+                Some(4)
+            )
+            .is_err(),
+            "metadata beyond the per-member budget is refused"
+        );
+    }
+
+    #[test]
+    fn tar_gz_valid_long_paths_are_admitted() {
+        let temp = temp_dir();
+        let component = "m".repeat(200);
+        let long_name = format!("data/{component}/{component}/{component}/{component}/file.txt");
+        let bytes = gzip(&tar_bytes_with(&[(long_name.as_str(), b"abc")]));
+        let destination = temp.join("long-path");
+        extract_tar_gz_safe(&bytes, &destination, None, None, None).expect("long path extracts");
+        assert!(destination.join(&long_name).is_file());
+    }
+
+    #[test]
+    fn zip_directory_with_a_body_is_refused() {
+        let temp = temp_dir();
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut cursor);
+            let options = zip::write::SimpleFileOptions::default();
+            writer.start_file("data/d/", options).unwrap();
+            writer.write_all(b"body").unwrap();
+            writer.finish().unwrap();
+        }
+        let bytes = cursor.into_inner();
+        let destination = temp.join("zip-body");
+        assert!(
+            extract_zip_safe(&bytes, &destination, default_zip_extraction_limits()).is_err(),
+            "a ZIP directory entry with a body is refused"
+        );
+        assert_eq!(fs::read_dir(&destination).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn tar_gz_non_portable_member_names_are_refused() {
+        let temp = temp_dir();
+        for (index, name) in ["data/a\\b.txt", "data/a:b.txt", "data/a\u{1}b.txt"]
+            .iter()
+            .enumerate()
+        {
+            let bytes = gzip(&tar_bytes_with(&[(name, b"abc")]));
+            let destination = temp.join(format!("non-portable-{index}"));
+            assert!(
+                extract_tar_gz_safe(&bytes, &destination, None, None, None).is_err(),
+                "TAR member {name:?} must be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn zip_control_character_member_names_are_refused() {
+        let temp = temp_dir();
+        let bytes = create_test_zip(&[("a\u{1}b.txt", b"abc", 0o100600)]);
+        let destination = temp.join("zip-control");
+        assert!(
+            extract_zip_safe(&bytes, &destination, default_zip_extraction_limits()).is_err(),
+            "a ZIP control-character member name is refused"
+        );
     }
 }

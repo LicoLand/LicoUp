@@ -1,6 +1,7 @@
 import {
   command,
   foundationLayer,
+  rustCrateIntegrationTest,
   rustLayer,
   rustBinaryTests,
   defineModule,
@@ -145,6 +146,19 @@ export const RUST_CORE_MODULES = Object.freeze([
         "crates/licoup-foundation/src/core/safe_archive.rs",
       ],
       command: foundationLayer("core::safe_archive::tests"),
+    }),
+  defineModule({
+      id: "rust.core.full-data-root-archive",
+      kind: "rust-core",
+      summary: "Full data-root archive inventory, atomic private capture, and transactional restore",
+      inputs: [
+        "crates/licoup-foundation/src/core/full_data_root_archive/mod.rs",
+        "crates/licoup-foundation/src/core/full_data_root_archive/capture.rs",
+        "crates/licoup-foundation/src/core/full_data_root_archive/inventory.rs",
+        "crates/licoup-foundation/src/core/full_data_root_archive/restore.rs",
+        "crates/licoup-foundation/tests/full_data_root_archive/main.rs",
+      ],
+      command: rustCrateIntegrationTest("licoup-foundation", "full_data_root_archive"),
     }),
   secureMeshModule({
       id: "rust.core.secure-mesh",

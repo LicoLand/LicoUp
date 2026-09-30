@@ -1180,6 +1180,115 @@ fn restore_bounds_tar_metadata_before_the_library_buffers_it() {
         }),
         "archive_extraction_refused",
     );
+    assert!(
+        !target.exists(),
+        "the per-member metadata bound refuses before the destination is created"
+    );
+}
+
+#[test]
+fn restore_preserves_a_payload_named_like_the_scratch_under_unicode_folding_in_both_containers() {
+    // U+017F folds to 's' on the default macOS filesystem, so an in-target scratch could
+    // alias this legitimate payload name even though lowercase differs. The scratch now
+    // lives outside the target namespace, so the payload survives in both containers.
+    let source = synthetic_data_root("staging-unicode");
+    write(
+        &source.join(".licoup-re\u{17f}tore-staging/keep.bin"),
+        b"unicode staging payload",
+    );
+    let work = scratch("staging-unicode-out");
+
+    for name in ["unicode.zip", "unicode.tar.gz"] {
+        let archive = work.join(name);
+        export(&source, &archive);
+        let target = work.join(format!("{name}-target"));
+        restore(&archive, &target);
+
+        assert_eq!(
+            read(&target.join(".licoup-re\u{17f}tore-staging/keep.bin")),
+            b"unicode staging payload",
+            "{name}: the Unicode staging-named payload survives"
+        );
+        assert_eq!(payload(&target), payload(&source));
+    }
+}
+
+#[test]
+fn restore_refuses_a_truncated_tar_gz_container() {
+    let source = synthetic_data_root("truncated");
+    let work = scratch("truncated-out");
+    let archive = work.join("complete.tar.gz");
+    export(&source, &archive);
+    let mut bytes = fs::read(&archive).expect("read archive");
+    bytes.truncate(bytes.len() - 4);
+    let truncated = work.join("truncated.tar.gz");
+    fs::write(&truncated, &bytes).expect("write truncated archive");
+
+    let target = work.join("truncated-target");
+    refusal(
+        restore_data_root(&RestoreRequest {
+            archive_path: truncated,
+            target_root: target.clone(),
+        }),
+        "archive_extraction_refused",
+    );
+    assert!(
+        !target.exists(),
+        "a truncated container never creates the destination"
+    );
+}
+
+#[test]
+fn restore_refuses_trailing_material_after_the_gzip_member() {
+    let source = synthetic_data_root("trailing");
+    let work = scratch("trailing-out");
+    let archive = work.join("complete.tar.gz");
+    export(&source, &archive);
+    let mut bytes = fs::read(&archive).expect("read archive");
+    bytes.extend_from_slice(b"trailing");
+    let trailing = work.join("trailing.tar.gz");
+    fs::write(&trailing, &bytes).expect("write archive with trailing material");
+
+    let target = work.join("trailing-target");
+    refusal(
+        restore_data_root(&RestoreRequest {
+            archive_path: trailing,
+            target_root: target.clone(),
+        }),
+        "archive_extraction_refused",
+    );
+    assert!(!target.exists());
+}
+
+#[test]
+fn restore_refuses_a_zip_directory_member_with_a_body() {
+    let work = scratch("zip-directory-body");
+    let manifest = manifest_json("zip", vec![entry_json("d", "directory", 0)]);
+    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    writer
+        .start_file(MANIFEST_MEMBER, options)
+        .expect("add manifest");
+    writer
+        .write_all(&serde_json::to_vec(&manifest).expect("encode manifest"))
+        .expect("write manifest");
+    writer
+        .start_file("data/d/", options)
+        .expect("add directory member");
+    writer.write_all(b"body").expect("write directory body");
+    let bytes = writer.finish().expect("finish zip").into_inner();
+    let archive = work.join("directory-body.zip");
+    fs::write(&archive, bytes).expect("write archive fixture");
+
+    let target = work.join("directory-body-target");
+    refusal(
+        restore_data_root(&RestoreRequest {
+            archive_path: archive,
+            target_root: target.clone(),
+        }),
+        "archive_extraction_refused",
+    );
     assert!(fs::read_dir(&target).expect("target").next().is_none());
 }
 

@@ -714,7 +714,7 @@ test("file security leaves retain exact tests and complete source ownership", as
     ["rust.platform.file-security.composition", "platform::file_security::tests::composition::"],
     ["rust.platform.file-security.policy", "platform::file_security::tests::policy::"],
     ["rust.platform.file-security.append-lock", "platform::file_security::tests::append_lock::"],
-    ["rust.platform.file-security.atomic-replace", "platform::file_security::tests::atomic_replace::"],
+    ["rust.platform.file-security.atomic-replace", "platform::file_security::tests::atomic_"],
     ["rust.platform.file-security.marker", "platform::file_security::tests::marker::"],
     ["rust.platform.file-security.validation", "platform::file_security::tests::validation::"],
     ["rust.platform.file-security.sync", "platform::file_security::tests::sync::"],

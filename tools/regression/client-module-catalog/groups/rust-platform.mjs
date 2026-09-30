@@ -484,9 +484,12 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "Atomic private replacement and safe cross-device staging",
       inputs: [
         "crates/licoup-foundation/src/platform/file_security/atomic_replace.rs",
+        "crates/licoup-foundation/src/platform/file_security/validation.rs",
+        "crates/licoup-foundation/src/platform/file_security/sync.rs",
         "crates/licoup-foundation/src/platform/file_security/tests/atomic_replace.rs",
+        "crates/licoup-foundation/src/platform/file_security/tests/atomic_private_file.rs",
       ],
-      command: foundationLayer("platform::file_security::tests::atomic_replace::"),
+      command: foundationLayer("platform::file_security::tests::atomic_"),
     }),
   defineModule({
       id: "rust.platform.file-security.marker",

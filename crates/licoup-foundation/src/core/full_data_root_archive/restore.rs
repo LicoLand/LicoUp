@@ -21,8 +21,9 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::core::safe_archive::{
-    BoundedStream, ZipExtractionLimits, decoded_tar_gz_budget, default_zip_extraction_limits,
-    extract_tar_gz_safe, extract_zip_safe,
+    BoundedStream, ZipExtractionLimits, decoded_tar_gz_budget, decoded_tar_gz_metadata_budget,
+    default_zip_extraction_limits, extract_tar_gz_safe, extract_zip_safe, finish_tar_gz,
+    tar_gz_decoder,
 };
 use crate::platform::file_security::{ensure_private_dir, harden_private_path, sync_directory};
 
@@ -75,9 +76,12 @@ pub fn restore_data_root(request: &RestoreRequest) -> Result<RestoreOutcome> {
         .saturating_add(inspected.manifest_member_bytes);
     let declared_member_count = inspected.manifest.entries.len().saturating_add(1);
 
-    let target_root = prepare_target_root(&request.target_root)?;
-    let staging = target_root.join(unique_staging_name(&inspected.manifest.entries));
-    ensure_private_dir(&staging).map_err(|_| anyhow!("archive_target_unwritable"))?;
+    let mut created_target_dirs = BTreeSet::new();
+    let target_root = prepare_target_root(&request.target_root, &mut created_target_dirs)?;
+    // Scratch lives beside the target, outside the target namespace: every declared
+    // payload path is target-relative, so no payload name can alias the scratch under
+    // any filesystem case or Unicode normalization.
+    let staging = create_sibling_scratch(&target_root)?;
     let mut staging_directory = StagingDirectory {
         path: staging.clone(),
         cleaned: false,
@@ -116,13 +120,13 @@ pub fn restore_data_root(request: &RestoreRequest) -> Result<RestoreOutcome> {
         return Err(staging_directory.fail(error));
     }
 
-    let mut publication = PublicationGuard::new(&target_root);
+    let mut publication = PublicationGuard::new(&target_root, created_target_dirs);
     if let Err(error) = publish_payload(
         &mut publication,
         &target_root,
         &staging,
         &inspected.manifest.entries,
-        publish_entry,
+        publish_file,
     ) {
         let error = publication.fail(error);
         return Err(staging_directory.fail(error));
@@ -132,9 +136,12 @@ pub fn restore_data_root(request: &RestoreRequest) -> Result<RestoreOutcome> {
         return Err(staging_directory.fail(error));
     }
     // Checked operation-owned scratch removal, then the final root sync that makes the
-    // published tree and the removal durable. A cleanup failure is reported rather than
-    // silently leaving scratch behind; the payload itself is already complete.
-    staging_directory.cleanup()?;
+    // published tree and the removal durable. A cleanup failure rolls the publication
+    // back with checked cleanup so the destination is retryable, and both failures are
+    // reported instead of letting the guard's Drop swallow one.
+    if let Err(error) = staging_directory.cleanup() {
+        return Err(publication.fail(error));
+    }
     if let Err(error) =
         sync_directory(&target_root).map_err(|_| anyhow!("archive_target_unwritable"))
     {
@@ -159,7 +166,7 @@ pub fn restore_data_root(request: &RestoreRequest) -> Result<RestoreOutcome> {
 /// temporary directory does on macOS. Extraction and publication then use the resolved
 /// name, which keeps every write confined to the destination the caller named. A name
 /// that does not resolve to exactly one directory stays refused.
-fn prepare_target_root(named: &Path) -> Result<PathBuf> {
+fn prepare_target_root(named: &Path, created: &mut BTreeSet<PathBuf>) -> Result<PathBuf> {
     ensure!(!named.as_os_str().is_empty(), "archive_target_invalid");
     if named.exists() {
         ensure!(named.is_dir(), "archive_target_not_directory");
@@ -171,15 +178,56 @@ fn prepare_target_root(named: &Path) -> Result<PathBuf> {
             "archive_target_not_empty"
         );
     } else {
+        // Record the missing chain before creating it, so the final sync plan persists
+        // the new directory entries and not only their contents.
+        let mut missing = Vec::new();
+        let mut current = named.to_path_buf();
+        while fs::symlink_metadata(&current).is_err() {
+            missing.push(current.clone());
+            match current.parent() {
+                Some(parent) if !parent.as_os_str().is_empty() => current = parent.to_path_buf(),
+                _ => break,
+            }
+        }
         fs::create_dir_all(named).map_err(|_| anyhow!("archive_target_unwritable"))?;
+        created.extend(missing);
     }
     let resolved = named
         .canonicalize()
         .map_err(|_| anyhow!("archive_target_invalid"))?;
-    // The restored data home and its staging are private, including a pre-existing
-    // empty destination the caller prepared.
+    // The restored data home is private, including a pre-existing empty destination the
+    // caller prepared.
     ensure_private_dir(&resolved).map_err(|_| anyhow!("archive_target_unwritable"))?;
     Ok(resolved)
+}
+
+/// Create the operation's scratch directory beside the target root.
+///
+/// The scratch lives in the target's parent, outside the target namespace: every declared
+/// payload path is relative to the target, so no payload name can alias the scratch,
+/// regardless of the target filesystem's case or Unicode normalization. The suffix only
+/// avoids directory entries that already exist in the parent.
+fn create_sibling_scratch(target_root: &Path) -> Result<PathBuf> {
+    let parent = target_root
+        .parent()
+        .ok_or_else(|| anyhow!("archive_target_invalid"))?;
+    let mut suffix = 1_u32;
+    loop {
+        let candidate = parent.join(format!("{STAGING_DIRECTORY_BASE}-{suffix}"));
+        match fs::create_dir(&candidate) {
+            Ok(()) => {
+                if harden_private_path(&candidate).is_err() {
+                    let _ = fs::remove_dir(&candidate);
+                    return Err(anyhow!("archive_target_unwritable"));
+                }
+                return Ok(candidate);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                suffix += 1;
+            }
+            Err(_) => return Err(anyhow!("archive_target_unwritable")),
+        }
+    }
 }
 
 /// Read the archive only after its own byte limit has been applied to the file.
@@ -264,71 +312,84 @@ fn inspect_zip(bytes: &[u8], limits: &ZipExtractionLimits) -> Result<InspectedAr
 /// Find the manifest and collect the whole member inventory in one bounded pass.
 ///
 /// A TAR manifest may follow other members, so the scan itself is the first thing a
-/// hostile archive would grow. The physical decoded stream is bounded before the TAR
-/// library can buffer GNU or PAX extension metadata, and the entry count uses the same
-/// policy extraction and inventory validation use.
+/// hostile archive would grow. The physical decoded stream is bounded, one library
+/// advance may buffer only the portable header/metadata budget, skipped payloads are
+/// drained through the same stream, and the pass ends only after the GZIP trailer is
+/// verified.
 fn inspect_tar_gz(bytes: &[u8], limits: &ZipExtractionLimits) -> Result<InspectedArchive> {
-    let decoder = flate2::read::GzDecoder::new(std::io::Cursor::new(bytes));
     let budget =
         decoded_tar_gz_budget(limits.max_total_bytes, limits.max_entries, limits.max_depth);
-    let mut stream = BoundedStream::new(decoder, budget);
+    let metadata_budget = decoded_tar_gz_metadata_budget(limits.max_depth);
+    let mut stream = BoundedStream::new(tar_gz_decoder(bytes), budget);
+    let progress = stream.progress();
     let mut manifest_bytes: Option<Vec<u8>> = None;
     let mut members = Vec::new();
     let mut scan_error: Option<anyhow::Error> = None;
     let mut entry_count = 0_usize;
     {
         let mut archive = tar::Archive::new(&mut stream);
-        match archive.entries() {
-            Err(_) => scan_error = Some(anyhow!("archive_invalid")),
-            Ok(entries) => {
-                for entry in entries {
-                    entry_count += 1;
-                    if entry_count > limits.max_entries {
-                        scan_error = Some(anyhow!("archive_extraction_refused"));
-                        break;
-                    }
-                    let mut entry = match entry {
-                        Ok(entry) => entry,
-                        Err(_) => {
-                            scan_error = Some(anyhow!("archive_invalid"));
-                            break;
-                        }
-                    };
-                    let path = match entry.path() {
-                        Ok(path) => path,
-                        Err(_) => {
-                            scan_error = Some(anyhow!("archive_invalid"));
-                            break;
-                        }
-                    };
-                    let name = match path.to_str() {
-                        Some(name) => name.trim_end_matches('/').to_string(),
-                        None => {
-                            scan_error = Some(anyhow!("archive_extraction_refused"));
-                            break;
-                        }
-                    };
-                    if name == MANIFEST_MEMBER {
-                        if entry.size() > limits.max_total_bytes {
-                            scan_error = Some(anyhow!("archive_extraction_refused"));
-                            break;
-                        }
-                        let mut buffer = Vec::new();
-                        let mut bounded =
-                            (&mut entry).take(limits.max_total_bytes.saturating_add(1));
-                        if bounded.read_to_end(&mut buffer).is_err() {
-                            scan_error = Some(anyhow!("archive_manifest_unreadable"));
-                            break;
-                        }
-                        if buffer.len() as u64 > limits.max_total_bytes {
-                            scan_error = Some(anyhow!("archive_extraction_refused"));
-                            break;
-                        }
-                        manifest_bytes = Some(buffer);
-                    }
-                    members.push(name);
-                }
+        let mut entries = match archive.entries() {
+            Ok(entries) => entries,
+            Err(_) => return Err(anyhow!("archive_invalid")),
+        };
+        loop {
+            let before = progress.consumed();
+            let Some(entry) = entries.next() else {
+                break;
+            };
+            if progress.consumed().saturating_sub(before) > metadata_budget {
+                scan_error = Some(anyhow!("archive_extraction_refused"));
+                break;
             }
+            entry_count += 1;
+            if entry_count > limits.max_entries {
+                scan_error = Some(anyhow!("archive_extraction_refused"));
+                break;
+            }
+            let mut entry = match entry {
+                Ok(entry) => entry,
+                Err(_) => {
+                    scan_error = Some(anyhow!("archive_invalid"));
+                    break;
+                }
+            };
+            let path = match entry.path() {
+                Ok(path) => path,
+                Err(_) => {
+                    scan_error = Some(anyhow!("archive_invalid"));
+                    break;
+                }
+            };
+            let name = match path.to_str() {
+                Some(name) => name.trim_end_matches('/').to_string(),
+                None => {
+                    scan_error = Some(anyhow!("archive_extraction_refused"));
+                    break;
+                }
+            };
+            if name == MANIFEST_MEMBER {
+                if entry.size() > limits.max_total_bytes {
+                    scan_error = Some(anyhow!("archive_extraction_refused"));
+                    break;
+                }
+                let mut buffer = Vec::new();
+                let mut bounded = (&mut entry).take(limits.max_total_bytes.saturating_add(1));
+                if bounded.read_to_end(&mut buffer).is_err() {
+                    scan_error = Some(anyhow!("archive_manifest_unreadable"));
+                    break;
+                }
+                if buffer.len() as u64 > limits.max_total_bytes {
+                    scan_error = Some(anyhow!("archive_extraction_refused"));
+                    break;
+                }
+                manifest_bytes = Some(buffer);
+            } else if std::io::copy(&mut entry, &mut std::io::sink()).is_err() {
+                // Drain each skipped member through the bounded stream so the next
+                // advance carries only its own header metadata.
+                scan_error = Some(anyhow!("archive_invalid"));
+                break;
+            }
+            members.push(name);
         }
     }
     if stream.exceeded() {
@@ -337,6 +398,9 @@ fn inspect_tar_gz(bytes: &[u8], limits: &ZipExtractionLimits) -> Result<Inspecte
     if let Some(error) = scan_error {
         return Err(error);
     }
+    // The scan must reach the archive's valid end: the GZIP trailer is verified and
+    // trailing material is refused, exactly as extraction does.
+    finish_tar_gz(stream, bytes.len()).map_err(|_| anyhow!("archive_extraction_refused"))?;
     let manifest_bytes = manifest_bytes.ok_or_else(|| anyhow!("archive_manifest_missing"))?;
     let manifest_member_bytes = manifest_bytes.len() as u64;
     let manifest =
@@ -376,30 +440,6 @@ fn verify_raw_members(members: &[String], manifest: &ArchiveManifest) -> Result<
         ensure!(exact.contains(name.as_str()), "archive_inventory_mismatch");
     }
     Ok(())
-}
-
-/// A staging name that cannot equal or contain any declared payload path, folded for
-/// the target filesystem's case normalization.
-///
-/// A payload may legitimately contain a `.licoup-restore-staging` path in any letter
-/// case; on a case-insensitive target that name aliases the scratch directory,
-/// so the comparison and the suffix search are both case-folded.
-fn unique_staging_name(entries: &[InventoryEntry]) -> String {
-    let mut candidate = STAGING_DIRECTORY_BASE.to_string();
-    let mut suffix = 1_u32;
-    loop {
-        let folded = candidate.to_lowercase();
-        let prefix = format!("{folded}/");
-        let collides = entries.iter().any(|entry| {
-            let path = entry.path.to_lowercase();
-            path == folded || path.starts_with(&prefix)
-        });
-        if !collides {
-            return candidate;
-        }
-        suffix += 1;
-        candidate = format!("{STAGING_DIRECTORY_BASE}-{suffix}");
-    }
 }
 
 /// Every declared member exists with the declared kind and size, and no undeclared
@@ -480,50 +520,45 @@ fn collect_payload_paths(root: &Path, directory: &Path, paths: &mut Vec<String>)
 /// Publish the verified payload into the target, recording every side effect it may
 /// create before the effect happens.
 ///
-/// Implicit parent directories are recorded too, so a failure at any point — including
-/// after a rename or after private-path hardening — can roll back exactly the
-/// operation's own output.
+/// Implicit parent directories are recorded and created here, so a failure at any point
+/// — including after a rename or after private-path hardening — can roll back exactly the
+/// operation's own output, and every created directory's parent entry is included in the
+/// durability sync plan.
 fn publish_payload<F>(
     guard: &mut PublicationGuard<'_>,
     target: &Path,
     staging: &Path,
     entries: &[InventoryEntry],
-    mut publish_one: F,
+    mut publish_file: F,
 ) -> Result<()>
 where
-    F: FnMut(&Path, &Path, bool) -> Result<()>,
+    F: FnMut(&Path, &Path) -> Result<()>,
 {
     let extracted = staging.join("data");
     for entry in entries {
         let destination = target.join(&entry.path);
-        let directory = entry.kind == InventoryKind::Directory;
         let mut ancestor = destination.parent();
         while let Some(path) = ancestor {
             if path == target {
                 break;
             }
-            guard.record(path.to_path_buf(), true);
+            guard.create_private_directory(path)?;
             ancestor = path.parent();
         }
-        guard.record(destination.clone(), directory);
-        publish_one(&extracted.join(&entry.path), &destination, directory)
-            .map_err(|_| anyhow!("archive_target_unwritable"))?;
+        guard.record(destination.clone(), entry.kind == InventoryKind::Directory);
+        match entry.kind {
+            InventoryKind::Directory => guard.create_private_directory(&destination)?,
+            InventoryKind::File => publish_file(&extracted.join(&entry.path), &destination)
+                .map_err(|_| anyhow!("archive_target_unwritable"))?,
+        }
     }
     Ok(())
 }
 
-/// Publish one verified member privately: create private directories, rename the file
-/// in place, and harden the published file's permissions.
-fn publish_entry(source: &Path, destination: &Path, directory: bool) -> Result<()> {
-    if let Some(parent) = destination.parent() {
-        ensure_private_dir(parent)?;
-    }
-    if directory {
-        ensure_private_dir(destination)?;
-    } else {
-        fs::rename(source, destination)?;
-        harden_private_path(destination)?;
-    }
+/// Publish one verified file privately: rename it into place and harden its permissions.
+fn publish_file(source: &Path, destination: &Path) -> Result<()> {
+    fs::rename(source, destination)?;
+    harden_private_path(destination)?;
     Ok(())
 }
 
@@ -531,14 +566,16 @@ fn publish_entry(source: &Path, destination: &Path, directory: bool) -> Result<(
 struct PublicationGuard<'a> {
     target: &'a Path,
     published: Vec<(PathBuf, bool)>,
+    created: BTreeSet<PathBuf>,
     armed: bool,
 }
 
 impl<'a> PublicationGuard<'a> {
-    fn new(target: &'a Path) -> Self {
+    fn new(target: &'a Path, created: BTreeSet<PathBuf>) -> Self {
         Self {
             target,
             published: Vec::new(),
+            created,
             armed: true,
         }
     }
@@ -547,17 +584,92 @@ impl<'a> PublicationGuard<'a> {
         self.published.push((path, directory));
     }
 
+    #[cfg(test)]
+    fn record_created(&mut self, path: PathBuf) {
+        self.created.insert(path);
+    }
+
     fn disarm(&mut self) {
         self.armed = false;
     }
 
-    /// Remove every recorded path; report the first removal that did not complete.
+    /// Create a missing directory chain privately, recording every directory this
+    /// operation creates so its parent entry can be synced.
+    fn create_private_directory(&mut self, path: &Path) -> Result<()> {
+        self.create_missing_chain(path)?;
+        harden_private_path(path).map_err(|_| anyhow!("archive_target_unwritable"))
+    }
+
+    fn create_missing_chain(&mut self, path: &Path) -> Result<()> {
+        if fs::symlink_metadata(path).is_ok() {
+            return Ok(());
+        }
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                self.create_missing_chain(parent)?;
+            }
+        }
+        fs::create_dir(path).map_err(|_| anyhow!("archive_target_unwritable"))?;
+        self.created.insert(path.to_path_buf());
+        Ok(())
+    }
+
+    /// Every directory whose entries this operation changed: published directories,
+    /// parents of published entries, parents of created directories, the target and the
+    /// target's parent (which held the scratch).
+    fn sync_plan(&self) -> BTreeSet<PathBuf> {
+        let mut directories = BTreeSet::new();
+        directories.insert(self.target.to_path_buf());
+        if let Some(parent) = self.target.parent() {
+            directories.insert(parent.to_path_buf());
+        }
+        for (path, directory) in &self.published {
+            if *directory {
+                directories.insert(path.clone());
+            }
+            if let Some(parent) = path.parent() {
+                directories.insert(parent.to_path_buf());
+            }
+        }
+        for path in &self.created {
+            if let Some(parent) = path.parent() {
+                directories.insert(parent.to_path_buf());
+            }
+        }
+        directories
+    }
+
+    /// Sync the plan deepest first through the injected sync, so a fault is reported and
+    /// ordering is observable in synthetic seams without a real power loss.
+    fn sync_directories_with<S>(&self, mut sync: S) -> Result<()>
+    where
+        S: FnMut(&Path) -> Result<()>,
+    {
+        let mut ordered: Vec<PathBuf> = self.sync_plan().into_iter().collect();
+        ordered.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
+        for directory in ordered {
+            sync(&directory).map_err(|_| anyhow!("archive_target_unwritable"))?;
+        }
+        Ok(())
+    }
+
+    fn sync_changed_directories(&self) -> Result<()> {
+        self.sync_directories_with(sync_directory)
+    }
+
+    /// Remove every recorded path and sync the directories that held them; report the
+    /// first step that did not complete.
     ///
     /// Files are removed first, then directories deepest first, so a parent directory is
-    /// never seen non-empty because of a child this rollback still has to visit.
-    fn rollback(&mut self) -> Result<()> {
+    /// never seen non-empty because of a child this rollback still has to visit. The
+    /// syncs persist the removals, so a later retry starts from the same directory state
+    /// the operation inherited.
+    fn rollback_with<S>(&mut self, mut sync: S) -> Result<()>
+    where
+        S: FnMut(&Path) -> Result<()>,
+    {
         self.armed = false;
-        let mut failure: Option<std::io::Error> = None;
+        let mut failure: Option<anyhow::Error> = None;
         let mut files = Vec::new();
         let mut directories = BTreeSet::new();
         for (path, directory) in &self.published {
@@ -571,28 +683,61 @@ impl<'a> PublicationGuard<'a> {
                 files.push(path.clone());
             }
         }
+        // Directories this operation created below the target are its own output too,
+        // even when they were only implicit parents of a published member.
+        for path in &self.created {
+            if path.starts_with(self.target) {
+                directories.insert(path.clone());
+            }
+        }
         let mut ordered: Vec<PathBuf> = directories.into_iter().collect();
         ordered.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
-        let remove =
-            |result: std::io::Result<()>, failure: &mut Option<std::io::Error>| match result {
-                Ok(()) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => {
-                    if failure.is_none() {
-                        *failure = Some(error);
-                    }
+        let remove = |result: std::io::Result<()>, failure: &mut Option<anyhow::Error>| match result
+        {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                if failure.is_none() {
+                    *failure = Some(error.into());
                 }
-            };
+            }
+        };
         for path in &files {
             remove(fs::remove_file(path), &mut failure);
         }
         for path in &ordered {
             remove(fs::remove_dir(path), &mut failure);
         }
+        if failure.is_none() {
+            let mut changed = self.sync_plan();
+            changed.insert(self.target.to_path_buf());
+            let mut deepest: Vec<PathBuf> = changed.into_iter().collect();
+            deepest.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
+            for directory in deepest {
+                // Directories this rollback removed no longer exist; their surviving
+                // parents are the entries that need the sync.
+                if fs::symlink_metadata(&directory).is_err() {
+                    continue;
+                }
+                match sync(&directory) {
+                    Ok(()) => {}
+                    Err(error) => {
+                        if failure.is_none() {
+                            failure = Some(error);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
         match failure {
-            Some(error) => Err(error.into()),
+            Some(error) => Err(error),
             None => Ok(()),
         }
+    }
+
+    fn rollback(&mut self) -> Result<()> {
+        self.rollback_with(sync_directory)
     }
 
     /// Return the publication failure after the checked rollback, naming any cleanup
@@ -602,27 +747,6 @@ impl<'a> PublicationGuard<'a> {
             Ok(()) => error,
             Err(rollback) => anyhow!("{error}; archive_target_rollback_incomplete: {rollback}"),
         }
-    }
-
-    /// Sync every directory that received a published entry, deepest first, so nested
-    /// renames are durable and not only the target root.
-    fn sync_changed_directories(&self) -> Result<()> {
-        let mut directories = BTreeSet::new();
-        directories.insert(self.target.to_path_buf());
-        for (path, directory) in &self.published {
-            if *directory {
-                directories.insert(path.clone());
-            }
-            if let Some(parent) = path.parent() {
-                directories.insert(parent.to_path_buf());
-            }
-        }
-        let mut ordered: Vec<PathBuf> = directories.into_iter().collect();
-        ordered.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
-        for directory in ordered {
-            sync_directory(&directory).map_err(|_| anyhow!("archive_target_unwritable"))?;
-        }
-        Ok(())
     }
 }
 
@@ -642,10 +766,16 @@ struct StagingDirectory {
 }
 
 impl StagingDirectory {
-    /// Checked removal used on the success path and on every handled failure.
+    /// Checked removal used on the success path and on every handled failure. A failure
+    /// names the operation-owned scratch that remains, so the caller can recover it.
     fn cleanup(&mut self) -> Result<()> {
         self.cleaned = true;
-        fs::remove_dir_all(&self.path).map_err(|_| anyhow!("archive_target_cleanup_failed"))
+        fs::remove_dir_all(&self.path).map_err(|error| {
+            anyhow!(
+                "archive_target_cleanup_failed: {} could not be removed: {error}",
+                self.path.display()
+            )
+        })
     }
 
     /// Return the failure after the checked cleanup, naming cleanup that did not
@@ -695,26 +825,52 @@ mod tests {
     }
 
     #[test]
-    fn staging_names_never_overlap_declared_payload_paths() {
-        let entries = vec![
-            file_entry(".licoup-restore-staging/keep.bin", 1),
-            file_entry(".licoup-restore-staging-2/keep.bin", 1),
-        ];
-        let name = unique_staging_name(&entries);
-        assert_ne!(name, ".licoup-restore-staging");
-        assert_ne!(name, ".licoup-restore-staging-2");
-        assert_eq!(name, ".licoup-restore-staging-3");
+    fn scratch_is_created_beside_the_target_and_never_inside_it() {
+        let root = scratch("scratch-sibling");
+        let target = root.join("restored");
+        fs::create_dir(&target).expect("create target");
+        fs::create_dir(root.join(format!("{STAGING_DIRECTORY_BASE}-1"))).expect("existing sibling");
+        let staging = create_sibling_scratch(&target).expect("create scratch");
+        assert_eq!(staging.parent(), Some(root.as_path()));
+        assert!(!staging.starts_with(&target));
+        assert_eq!(
+            staging.file_name().expect("scratch name"),
+            format!("{STAGING_DIRECTORY_BASE}-2").as_str()
+        );
+        fs::remove_dir_all(root).expect("remove scratch");
     }
 
     #[test]
-    fn staging_names_are_case_folded_against_declared_payload_paths() {
-        let entries = vec![
-            directory_entry(".LICOUP-RESTORE-STAGING"),
-            file_entry(".LICOUP-RESTORE-STAGING/keep.bin", 1),
-        ];
-        let name = unique_staging_name(&entries);
-        assert_ne!(name.to_lowercase(), ".licoup-restore-staging");
-        assert_eq!(name, ".licoup-restore-staging-2");
+    fn sync_plan_lists_changed_directories_deepest_first_and_tracks_created_parents() {
+        let target = PathBuf::from("/fixture/restored");
+        let mut guard = PublicationGuard::new(&target, BTreeSet::new());
+        guard.record(target.join("a/b.txt"), false);
+        guard.record(target.join("a"), true);
+        guard.record_created(target.join("a"));
+        let mut seen = Vec::new();
+        guard
+            .sync_directories_with(|directory| {
+                seen.push(directory.to_path_buf());
+                Ok(())
+            })
+            .expect("sync plan runs");
+        let depths: Vec<usize> = seen.iter().map(|path| path.components().count()).collect();
+        assert!(
+            depths.windows(2).all(|window| window[0] >= window[1]),
+            "{seen:?}"
+        );
+        assert!(seen.contains(&target.join("a")), "{seen:?}");
+        assert!(seen.contains(&PathBuf::from("/fixture")), "{seen:?}");
+    }
+
+    #[test]
+    fn a_directory_sync_fault_is_reported() {
+        let target = PathBuf::from("/fixture/restored");
+        let guard = PublicationGuard::new(&target, BTreeSet::new());
+        let error = guard
+            .sync_directories_with(|_| Err(anyhow!("injected sync fault")))
+            .expect_err("sync fault is reported");
+        assert_eq!(error.to_string(), "archive_target_unwritable");
     }
 
     #[test]
@@ -763,16 +919,13 @@ mod tests {
         fs::create_dir_all(root.join("staging/data/a")).expect("create staging");
         fs::write(root.join("staging/data/a/first.txt"), b"first").expect("first");
         let entries = vec![file_entry("a/first.txt", 5)];
-        let mut guard = PublicationGuard::new(&root);
+        let mut guard = PublicationGuard::new(&root, BTreeSet::new());
         let result = publish_payload(
             &mut guard,
             &root,
             &root.join("staging"),
             &entries,
-            |source, destination, _directory| {
-                if let Some(parent) = destination.parent() {
-                    fs::create_dir_all(parent)?;
-                }
+            |source, destination| {
                 fs::rename(source, destination)?;
                 // Simulates a failure after the rename, such as private-path hardening.
                 Err(anyhow!("injected post-rename failure"))
@@ -789,21 +942,48 @@ mod tests {
     }
 
     #[test]
-    fn rollback_reports_state_it_cannot_remove() {
-        let root = scratch("publication-unremovable");
+    fn rollback_reports_a_cleanup_sync_fault() {
+        let root = scratch("publication-sync-fault");
         fs::create_dir_all(root.join("staging/data/a")).expect("create staging");
         fs::write(root.join("staging/data/a/first.txt"), b"first").expect("first");
         let entries = vec![file_entry("a/first.txt", 5)];
-        let mut guard = PublicationGuard::new(&root);
+        let mut guard = PublicationGuard::new(&root, BTreeSet::new());
         let result = publish_payload(
             &mut guard,
             &root,
             &root.join("staging"),
             &entries,
-            |source, destination, _directory| {
-                if let Some(parent) = destination.parent() {
-                    fs::create_dir_all(parent)?;
-                }
+            |source, destination| {
+                fs::rename(source, destination)?;
+                Err(anyhow!("injected post-rename failure"))
+            },
+        );
+        assert!(result.is_err());
+        let error = guard
+            .rollback_with(|_| Err(anyhow!("injected cleanup sync fault")))
+            .expect_err("cleanup sync fault is reported");
+        assert!(
+            error.to_string().contains("injected cleanup sync fault"),
+            "{error}"
+        );
+        assert!(!root.join("a").exists());
+        drop(guard);
+        fs::remove_dir_all(root).expect("remove scratch");
+    }
+
+    #[test]
+    fn rollback_reports_state_it_cannot_remove() {
+        let root = scratch("publication-unremovable");
+        fs::create_dir_all(root.join("staging/data/a")).expect("create staging");
+        fs::write(root.join("staging/data/a/first.txt"), b"first").expect("first");
+        let entries = vec![file_entry("a/first.txt", 5)];
+        let mut guard = PublicationGuard::new(&root, BTreeSet::new());
+        let result = publish_payload(
+            &mut guard,
+            &root,
+            &root.join("staging"),
+            &entries,
+            |source, destination| {
                 fs::rename(source, destination)?;
                 // A file the operation never recorded keeps the directory non-empty.
                 fs::write(root.join("a/foreign.txt"), b"foreign")?;

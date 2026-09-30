@@ -83,72 +83,60 @@ pub(super) fn rename_into_place(tmp: &Path, path: &Path) -> Result<()> {
     }
 }
 
-/// Commit a sibling `temp` over `destination` so a reported failure never destroys the
-/// previous destination.
+/// Whether the committed artifact's directory entry is confirmed durable.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CommitDurability {
+    /// The replacement and its parent-directory sync both completed.
+    Confirmed,
+    /// The replacement completed but the final directory sync did not: the artifact is
+    /// in place and recoverable, while its durability is unconfirmed.
+    Unconfirmed,
+}
+
+/// Atomically replace `destination` with the synced sibling `temp`.
 ///
-/// When the destination exists it is first renamed aside, then the temporary file is
-/// renamed into place. Any failure before the final parent sync restores the previous
-/// destination (or removes a previously absent one); after that sync the commit is
-/// durable and only operation-owned scratch removal remains, which is best effort
-/// because reporting failure there would misdescribe an already committed destination.
-pub(super) fn commit_with_sync<F>(temp: &Path, destination: &Path, sync_parent: F) -> Result<()>
+/// Every fallible check runs before the single rename, and the previous artifact stays
+/// at its name until that replacement, so no window exists in which the artifact is
+/// missing and a reported failure always leaves the previous artifact in place. After
+/// the replacement only the parent-directory sync remains; if it fails, the artifact is
+/// still published and the caller receives [`CommitDurability::Unconfirmed`] instead of
+/// a misleading failure that would suggest nothing was written.
+pub(super) fn commit_with_sync<F>(
+    temp: &Path,
+    destination: &Path,
+    mut sync_parent: F,
+) -> Result<CommitDurability>
 where
-    F: Fn(&Path) -> Result<()>,
+    F: FnMut(&Path) -> Result<()>,
 {
     validation::validate_regular_file_or_missing_no_follow(temp, false)?;
     validation::validate_regular_file_or_missing_no_follow(destination, true)?;
-    let previous = if destination.try_exists()? {
-        Some(sibling_backup_path(destination))
-    } else {
-        None
-    };
-    if let Some(previous) = &previous {
-        validation::validate_regular_file_or_missing_no_follow(previous, true)?;
-        if fs::rename(destination, previous).is_err() {
-            let _ = fs::remove_file(temp);
-            return Err(anyhow!("private state file could not be committed"));
-        }
-    }
-    let restore_previous = |previous: Option<&PathBuf>| match previous {
-        Some(previous) => {
-            let _ = fs::rename(previous, destination);
-        }
-        None => {
-            let _ = fs::remove_file(destination);
-        }
-    };
-    if fs::rename(temp, destination).is_err() {
-        restore_previous(previous.as_ref());
-        let _ = fs::remove_file(temp);
-        return Err(anyhow!("private state file could not be committed"));
-    }
-    let published = match fs::symlink_metadata(destination) {
-        Ok(metadata) => metadata,
-        Err(_) => {
-            restore_previous(previous.as_ref());
-            return Err(anyhow!("private state file disappeared after commit"));
-        }
-    };
-    if let Err(error) = validation::validate_private_file_metadata(&published) {
-        restore_previous(previous.as_ref());
-        return Err(error);
-    }
+    let temporary = fs::symlink_metadata(temp)?;
+    validation::validate_private_file_metadata(&temporary)?;
+    // Durability precondition before the replacement; a failure here leaves the
+    // previous artifact untouched.
     if let Err(error) = sync_parent(destination) {
-        restore_previous(previous.as_ref());
-        return Err(error);
+        return Err(discard_temporary(temp, error));
     }
-    if let Some(previous) = &previous {
-        let _ = fs::remove_file(previous);
+    if fs::rename(temp, destination).is_err() {
+        return Err(discard_temporary(
+            temp,
+            anyhow!("private state file could not be committed"),
+        ));
     }
-    Ok(())
+    match sync_parent(destination) {
+        Ok(()) => Ok(CommitDurability::Confirmed),
+        Err(_) => Ok(CommitDurability::Unconfirmed),
+    }
 }
 
-fn sibling_backup_path(path: &Path) -> PathBuf {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    path.with_extension(format!("commit-bak-{}-{stamp}", std::process::id()))
+/// Remove the operation's own temporary file, naming both failures when even that
+/// cleanup does not complete.
+fn discard_temporary(temp: &Path, error: anyhow::Error) -> anyhow::Error {
+    match fs::remove_file(temp) {
+        Ok(()) => error,
+        Err(cleanup) => anyhow!("{error}; private temporary file could not be removed: {cleanup}"),
+    }
 }
 
 /// A private file created beside `destination` and committed by rename.
@@ -196,14 +184,14 @@ impl AtomicPrivateFile {
     }
 
     /// Sync, validate and commit the temporary file as a transaction over the
-    /// destination: a reported failure restores the previous destination or removes a
-    /// previously absent one.
-    pub fn commit(mut self) -> Result<()> {
+    /// destination: a reported failure leaves the previous destination in place, and a
+    /// published artifact whose final directory sync failed is reported as unconfirmed.
+    pub fn commit(mut self) -> Result<CommitDurability> {
         sync::file(&mut self.file)?;
         validation::validate_open_state_marker(&self.temp, &self.file)?;
-        commit_with_sync(&self.temp, &self.destination, sync::parent)?;
+        let durability = commit_with_sync(&self.temp, &self.destination, sync::parent)?;
         self.committed = true;
-        Ok(())
+        Ok(durability)
     }
 }
 

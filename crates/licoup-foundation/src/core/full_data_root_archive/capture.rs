@@ -21,7 +21,7 @@ use std::io::{BufReader, BufWriter, Seek, Write};
 use std::path::{Path, PathBuf};
 
 use crate::core::safe_archive::default_zip_extraction_limits;
-use crate::platform::file_security::AtomicPrivateFile;
+use crate::platform::file_security::{AtomicPrivateFile, CommitDurability};
 
 use super::inventory::{
     ArchiveManifest, InventoryEntry, InventoryKind, RecoveryCoverage, RecoveryLimitation,
@@ -182,20 +182,21 @@ fn resolve_through_existing_ancestor(path: &Path) -> Option<PathBuf> {
 
 /// The credential custody limit, reported for every archive.
 ///
-/// The archive can carry the non-secret inventory document when it exists, but the key
-/// material the document describes stays in platform custody and is never portable. File
-/// presence is therefore reported as what it is and never completes the recovery.
+/// The archive can carry the non-secret inventory document when it exists, but credential
+/// key material is not transported, and whether a key is available is determined by the
+/// credential owner rather than by a file in the data root. File presence is therefore
+/// reported as what it is and never completes the recovery.
 fn recovery_limitations(entries: &[InventoryEntry]) -> Vec<RecoveryLimitation> {
     let metadata_present = entries
         .iter()
         .any(|entry| entry.kind == InventoryKind::File && entry.path == CREDENTIAL_INVENTORY_PATH);
     let reason = if metadata_present {
         format!(
-            "{CREDENTIAL_INVENTORY_PATH} travels as non-secret metadata; platform-held credential key material stays in place and must be reacquired"
+            "{CREDENTIAL_INVENTORY_PATH} travels as non-secret metadata; credential key material is not transported and its availability is determined by the credential owner"
         )
     } else {
         format!(
-            "{CREDENTIAL_INVENTORY_PATH} is absent from the captured root; platform-held credential key material stays in place"
+            "{CREDENTIAL_INVENTORY_PATH} is absent from the captured root; credential key material is not transported and its availability is determined by the credential owner"
         )
     };
     vec![RecoveryLimitation {
@@ -220,7 +221,16 @@ fn finish_archive(mut output: AtomicPrivateFile) -> Result<()> {
         artifact_bytes <= default_zip_extraction_limits().max_archive_bytes,
         "archive_export_limits_exceeded"
     );
-    output.commit().map_err(|_| anyhow!("archive_write_failed"))
+    match output
+        .commit()
+        .map_err(|_| anyhow!("archive_write_failed"))?
+    {
+        CommitDurability::Confirmed => Ok(()),
+        // The archive is complete at its destination and must be kept; only its
+        // directory entry could not be confirmed durable. Report that typed incomplete
+        // state rather than success or a misleading write failure.
+        CommitDurability::Unconfirmed => Err(anyhow!("archive_commit_durability_unconfirmed")),
+    }
 }
 
 fn write_zip<W: Write + Seek>(
