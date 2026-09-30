@@ -306,7 +306,9 @@ final class ClientAppComposition {
         canonicalEvents: _projectionTracing.wrap(
           rawConversation.canonicalEvents,
         ),
-        persistentTurns: _projectionTracing.wrap(rawConversation.persistentTurns),
+        persistentTurns: _projectionTracing.wrap(
+          rawConversation.persistentTurns,
+        ),
         composer: _projectionTracing.wrap(rawConversation.composer),
         attachments: _projectionTracing.wrap(rawConversation.attachments),
         tabActivity: _projectionTracing.wrap(rawConversation.tabActivity),
@@ -495,7 +497,8 @@ final class ClientAppComposition {
     if (_compositionSet.search) ..._search.providerOverrides,
     if (_compositionSet.conversation) ..._conversation.providerOverrides,
     if (_compositionSet.settings) ..._settings.providerOverrides,
-    if (_compositionSet.pluginManagement) ..._pluginManagement.providerOverrides,
+    if (_compositionSet.pluginManagement)
+      ..._pluginManagement.providerOverrides,
     if (_compositionSet.skillHub) ..._skillHub.providerOverrides,
     if (_compositionSet.mobileRelay) ..._mobileRelay.providerOverrides,
   ];

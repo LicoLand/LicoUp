@@ -132,11 +132,7 @@ final class BindingShellRenderer implements ShellRendererPort {
     BuildContext context,
     ClientSection destination, {
     required GlobalKey agentsHomeKey,
-  }) => _destinations.build(
-    context,
-    destination,
-    agentsHomeKey: agentsHomeKey,
-  );
+  }) => _destinations.build(context, destination, agentsHomeKey: agentsHomeKey);
 
   @override
   void resetAgentsHome(GlobalKey agentsHomeKey) =>

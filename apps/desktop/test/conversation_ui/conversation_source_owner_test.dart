@@ -39,72 +39,85 @@ void main() {
     runtime.dispose();
   });
 
-  test('every plane is admitted from its channel at its own resource', () async {
-    expect(owner.projection.visibleValue, fixture.projection.current);
-    expect(owner.nativeCatalog.visibleValue, fixture.nativeCatalog.current);
-    expect(owner.canonicalEvents.visibleValue, fixture.canonicalEvents.current);
-    expect(
-      owner.persistentTurns.visibleValue,
-      fixture.persistentTurns.current,
-    );
-    expect(owner.composer.visibleValue, fixture.composer.current);
-    expect(owner.attachments.visibleValue, fixture.attachments.current);
-    expect(owner.tabActivity.visibleValue, fixture.tabActivity.current);
-    expect(owner.archive.visibleValue, fixture.archive.current);
-    expect(owner.execution?.visibleValue, fixture.execution.current);
-
-    for (final plane in <ConversationPlanePort<Object?>>[
-      owner.projection,
-      owner.nativeCatalog,
-      owner.canonicalEvents,
-      owner.persistentTurns,
-      owner.composer,
-      owner.attachments,
-      owner.tabActivity,
-      owner.archive,
-      owner.execution!,
-    ]) {
-      final admitted = runtime.current(plane.fieldGroup);
-      expect(admitted, isNotNull, reason: plane.fieldGroup.name);
-      expect(admitted!.version.value, 0);
+  test(
+    'every plane is admitted from its channel at its own resource',
+    () async {
+      expect(owner.projection.visibleValue, fixture.projection.current);
+      expect(owner.nativeCatalog.visibleValue, fixture.nativeCatalog.current);
       expect(
-        admitted.consistencyGroup?.id,
-        ConsistencyGroupId(
-          'conversation-plane:${plane.fieldGroup.resource.stableKey}',
-        ),
+        owner.canonicalEvents.visibleValue,
+        fixture.canonicalEvents.current,
       );
-    }
-  });
+      expect(
+        owner.persistentTurns.visibleValue,
+        fixture.persistentTurns.current,
+      );
+      expect(owner.composer.visibleValue, fixture.composer.current);
+      expect(owner.attachments.visibleValue, fixture.attachments.current);
+      expect(owner.tabActivity.visibleValue, fixture.tabActivity.current);
+      expect(owner.archive.visibleValue, fixture.archive.current);
+      expect(owner.execution?.visibleValue, fixture.execution.current);
 
-  test('a channel update admits one version and notifies only its plane', () async {
-    final composerReads = <ConversationPlaneRead<ComposerProjection>>[];
-    final canonicalReads = <ConversationPlaneRead<CanonicalConversationProjection>>[];
-    final releaseComposer = owner.composer.reads.listen(composerReads.add);
-    final releaseCanonical = owner.canonicalEvents.reads.listen(
-      canonicalReads.add,
-    );
-    addTearDown(() => releaseComposer.cancel());
-    addTearDown(() => releaseCanonical.cancel());
+      for (final plane in <ConversationPlanePort<Object?>>[
+        owner.projection,
+        owner.nativeCatalog,
+        owner.canonicalEvents,
+        owner.persistentTurns,
+        owner.composer,
+        owner.attachments,
+        owner.tabActivity,
+        owner.archive,
+        owner.execution!,
+      ]) {
+        final admitted = runtime.current(plane.fieldGroup);
+        expect(admitted, isNotNull, reason: plane.fieldGroup.name);
+        expect(admitted!.version.value, 0);
+        expect(
+          admitted.consistencyGroup?.id,
+          ConsistencyGroupId(
+            'conversation-plane:${plane.fieldGroup.resource.stableKey}',
+          ),
+        );
+      }
+    },
+  );
 
-    final next = _composer(revision: 3);
-    fixture.composer.publish(next);
-    await _settle();
+  test(
+    'a channel update admits one version and notifies only its plane',
+    () async {
+      final composerReads = <ConversationPlaneRead<ComposerProjection>>[];
+      final canonicalReads =
+          <ConversationPlaneRead<CanonicalConversationProjection>>[];
+      final releaseComposer = owner.composer.reads.listen(composerReads.add);
+      final releaseCanonical = owner.canonicalEvents.reads.listen(
+        canonicalReads.add,
+      );
+      addTearDown(() => releaseComposer.cancel());
+      addTearDown(() => releaseCanonical.cancel());
 
-    expect(owner.composer.visibleValue, next);
-    expect(composerReads, hasLength(1));
-    expect((composerReads.single as ConversationPlaneVisible).value, next);
-    expect(canonicalReads, isEmpty, reason: 'narrow per-plane notification');
-    expect(owner.canonicalEvents.visibleValue, fixture.canonicalEvents.current);
-    expect(
-      runtime.current(owner.composer.fieldGroup)!.version.value,
-      1,
-      reason: 'the update is a new version of the same resource',
-    );
-    expect(
-      runtime.current(owner.canonicalEvents.fieldGroup)!.version.value,
-      0,
-    );
-  });
+      final next = _composer(revision: 3);
+      fixture.composer.publish(next);
+      await _settle();
+
+      expect(owner.composer.visibleValue, next);
+      expect(composerReads, hasLength(1));
+      expect((composerReads.single as ConversationPlaneVisible).value, next);
+      expect(canonicalReads, isEmpty, reason: 'narrow per-plane notification');
+      expect(
+        owner.canonicalEvents.visibleValue,
+        fixture.canonicalEvents.current,
+      );
+      expect(
+        runtime.current(owner.composer.fieldGroup)!.version.value,
+        1,
+        reason: 'the update is a new version of the same resource',
+      );
+      expect(
+        runtime.current(owner.canonicalEvents.fieldGroup)!.version.value,
+        0,
+      );
+    },
+  );
 
   test('rebuilds never open another source incarnation', () async {
     for (var index = 0; index < 20; index++) {
@@ -116,7 +129,10 @@ void main() {
       20,
       reason: 'one source, one version per read',
     );
-    expect(owner.composer.fieldGroup.resource.stableKey, conversationPlaneComposer);
+    expect(
+      owner.composer.fieldGroup.resource.stableKey,
+      conversationPlaneComposer,
+    );
     expect(
       owner.composer.fieldGroup,
       conversationPlaneFieldGroupFor<ComposerProjection>(
@@ -126,54 +142,66 @@ void main() {
     );
   });
 
-  test('an authority withdrawal hides one plane and keeps the others', () async {
-    final reads = <ConversationPlaneRead<ComposerProjection>>[];
-    final subscription = owner.composer.reads.listen(reads.add);
-    addTearDown(() => subscription.cancel());
+  test(
+    'an authority withdrawal hides one plane and keeps the others',
+    () async {
+      final reads = <ConversationPlaneRead<ComposerProjection>>[];
+      final subscription = owner.composer.reads.listen(reads.add);
+      addTearDown(() => subscription.cancel());
 
-    runtime.revoke(owner.composer.fieldGroup.resource);
-    expect(owner.composer.visibleValue, isNull);
-    expect(runtime.current(owner.composer.fieldGroup), isNull);
-    expect(reads.last, isA<ConversationPlaneWithdrawn<ComposerProjection>>());
-    expect(
-      (reads.last as ConversationPlaneWithdrawn).reason,
-      ConversationPlaneWithdrawal.revoked,
-    );
+      runtime.revoke(owner.composer.fieldGroup.resource);
+      expect(owner.composer.visibleValue, isNull);
+      expect(runtime.current(owner.composer.fieldGroup), isNull);
+      expect(reads.last, isA<ConversationPlaneWithdrawn<ComposerProjection>>());
+      expect(
+        (reads.last as ConversationPlaneWithdrawn).reason,
+        ConversationPlaneWithdrawal.revoked,
+      );
 
-    // An authorization-only change for one plane never marks the rest of the
-    // conversation unreadable.
-    expect(owner.canonicalEvents.visibleValue, isNotNull);
-    expect(owner.persistentTurns.visibleValue, isNotNull);
-    expect(owner.projection.visibleValue, isNotNull);
+      // An authorization-only change for one plane never marks the rest of the
+      // conversation unreadable.
+      expect(owner.canonicalEvents.visibleValue, isNotNull);
+      expect(owner.persistentTurns.visibleValue, isNotNull);
+      expect(owner.projection.visibleValue, isNotNull);
 
-    // A producer read while withdrawn does not silently bring the plane back.
-    fixture.composer.publish(_composer(revision: 9));
-    await _settle();
-    expect(owner.composer.visibleValue, isNull);
-    expect(runtime.current(owner.composer.fieldGroup), isNull);
-  });
+      // A producer read while withdrawn does not silently bring the plane back.
+      fixture.composer.publish(_composer(revision: 9));
+      await _settle();
+      expect(owner.composer.visibleValue, isNull);
+      expect(runtime.current(owner.composer.fieldGroup), isNull);
+    },
+  );
 
-  test('an explicit reconnect admits the provider value in a fresh epoch', () async {
-    final before = runtime.current(owner.composer.fieldGroup)!;
-    runtime.revoke(owner.composer.fieldGroup.resource);
-    fixture.composer.publish(_composer(revision: 7));
+  test(
+    'an explicit reconnect admits the provider value in a fresh epoch',
+    () async {
+      final before = runtime.current(owner.composer.fieldGroup)!;
+      runtime.revoke(owner.composer.fieldGroup.resource);
+      fixture.composer.publish(_composer(revision: 7));
 
-    owner.reconnect(conversationPlaneComposer);
-    await _settle();
-    final after = runtime.current(owner.composer.fieldGroup);
-    expect(after, isNotNull, reason: 'the real re-read is admitted');
-    expect(after!.epoch, isNot(before.epoch));
-    expect(after.version.value, 0, reason: 'a fresh incarnation starts at v0');
-    expect(
-      owner.composer.visibleValue,
-      fixture.composer.current,
-      reason: 'the admitted value is the producer read, not a reconstructed one',
-    );
-    expect(
-      (owner.composer as ConversationPlaneRuntime<ComposerProjection>).incarnations,
-      2,
-    );
-  });
+      owner.reconnect(conversationPlaneComposer);
+      await _settle();
+      final after = runtime.current(owner.composer.fieldGroup);
+      expect(after, isNotNull, reason: 'the real re-read is admitted');
+      expect(after!.epoch, isNot(before.epoch));
+      expect(
+        after.version.value,
+        0,
+        reason: 'a fresh incarnation starts at v0',
+      );
+      expect(
+        owner.composer.visibleValue,
+        fixture.composer.current,
+        reason:
+            'the admitted value is the producer read, not a reconstructed one',
+      );
+      expect(
+        (owner.composer as ConversationPlaneRuntime<ComposerProjection>)
+            .incarnations,
+        2,
+      );
+    },
+  );
 
   test('dispose withdraws every plane as a scope end', () async {
     await owner.dispose();
@@ -183,29 +211,32 @@ void main() {
     expect(runtime.current(owner.projection.fieldGroup), isNull);
   });
 
-  test('the initial value becomes visible only through runtime admission', () async {
-    final freshRuntime = PresentationRuntime();
-    final freshFixture = _PlaneFixture();
-    final freshOwner = ConversationSourceOwner.spawn(
-      runtime: freshRuntime,
-      planes: freshFixture.planes,
-    );
-    addTearDown(() async {
-      await freshOwner.dispose();
-      freshRuntime.dispose();
-    });
+  test(
+    'the initial value becomes visible only through runtime admission',
+    () async {
+      final freshRuntime = PresentationRuntime();
+      final freshFixture = _PlaneFixture();
+      final freshOwner = ConversationSourceOwner.spawn(
+        runtime: freshRuntime,
+        planes: freshFixture.planes,
+      );
+      addTearDown(() async {
+        await freshOwner.dispose();
+        freshRuntime.dispose();
+      });
 
-    // The producer already holds its channel value, but the plane is not
-    // visible until the runtime admitted it: the owner never serves the
-    // producer's current value as a cache.
-    expect(freshFixture.composer.current, isNotNull);
-    expect(freshOwner.composer.visibleValue, isNull);
-    expect(freshRuntime.current(freshOwner.composer.fieldGroup), isNull);
+      // The producer already holds its channel value, but the plane is not
+      // visible until the runtime admitted it: the owner never serves the
+      // producer's current value as a cache.
+      expect(freshFixture.composer.current, isNotNull);
+      expect(freshOwner.composer.visibleValue, isNull);
+      expect(freshRuntime.current(freshOwner.composer.fieldGroup), isNull);
 
-    await _settle();
-    expect(freshOwner.composer.visibleValue, freshFixture.composer.current);
-    expect(freshRuntime.current(freshOwner.composer.fieldGroup), isNotNull);
-  });
+      await _settle();
+      expect(freshOwner.composer.visibleValue, freshFixture.composer.current);
+      expect(freshRuntime.current(freshOwner.composer.fieldGroup), isNotNull);
+    },
+  );
 
   test('a projection adapter never serves a withdrawn plane value', () async {
     final reads = <ProjectionUpdate<ComposerProjection>>[];
@@ -224,7 +255,11 @@ void main() {
     expect(reads, hasLength(1));
 
     runtime.revoke(owner.composer.fieldGroup.resource);
-    expect(source.current.draft, isEmpty, reason: 'the withdrawn value is gone');
+    expect(
+      source.current.draft,
+      isEmpty,
+      reason: 'the withdrawn value is gone',
+    );
     fixture.composer.publish(_composer(revision: 6));
     await _settle();
     expect(reads, hasLength(1), reason: 'a withdrawn plane publishes nothing');
@@ -305,13 +340,10 @@ final class _PlaneFixture {
           ConversationProjectionChannel<CanonicalConversationProjection>(
             _canonical(),
           ),
-      persistentTurns =
-          ConversationProjectionChannel<PersistentTurnProjection>(
-            _turns(),
-          ),
-      composer = ConversationProjectionChannel<ComposerProjection>(
-        _composer(),
+      persistentTurns = ConversationProjectionChannel<PersistentTurnProjection>(
+        _turns(),
       ),
+      composer = ConversationProjectionChannel<ComposerProjection>(_composer()),
       attachments =
           ConversationProjectionChannel<ConversationAttachmentsProjection>(
             _attachments(),
@@ -382,13 +414,12 @@ NativeConversationCatalogProjection _nativeCatalog() =>
       phase: PresentationPhase.ready,
     );
 
-CanonicalConversationProjection _canonical() =>
-    CanonicalConversationProjection(
-      conversationId: 'c-1',
-      events: const <CanonicalConversationEventProjection>[],
-      hasEarlier: false,
-      phase: PresentationPhase.ready,
-    );
+CanonicalConversationProjection _canonical() => CanonicalConversationProjection(
+  conversationId: 'c-1',
+  events: const <CanonicalConversationEventProjection>[],
+  hasEarlier: false,
+  phase: PresentationPhase.ready,
+);
 
 PersistentTurnProjection _turns() => PersistentTurnProjection(
   conversationId: 'c-1',

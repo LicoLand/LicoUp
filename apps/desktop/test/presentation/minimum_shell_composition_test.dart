@@ -175,7 +175,8 @@ void main() {
         _ClientFeature.monitoring,
         _ClientFeature.mobileRelay,
       },
-      reason: 'the minimum set is the three required features, the relay the '
+      reason:
+          'the minimum set is the three required features, the relay the '
           'agents destination frames through, and the shell owners',
     );
     expect(owned, declared);
@@ -354,9 +355,7 @@ final class _ComposedShellHarness {
         portableData: PortableDataRoot(dataDirectoryOverride: root),
         memoryDiagnosticSink: const NoopClientMemoryDiagnosticSink(),
         presentationPreferencesRepository:
-            InMemoryPresentationPreferencesRepository(
-              _fixturePreferences(),
-            ),
+            InMemoryPresentationPreferencesRepository(_fixturePreferences()),
         llmGatewayMonitorInterval: Duration.zero,
         llmGatewayRecoveryRetryDelay: Duration.zero,
         llmGatewayDiagnosticSink: const NoopLlmGatewayDiagnosticSink(),
@@ -496,12 +495,11 @@ final class _ComposedShellHarness {
                 child: KeyedSubtree(
                   key: _destinationSurfaceKey,
                   child: Builder(
-                    builder: (context) =>
-                        composition.renderer.buildDestination(
-                          context,
-                          section,
-                          agentsHomeKey: agentsHomeKey,
-                        ),
+                    builder: (context) => composition.renderer.buildDestination(
+                      context,
+                      section,
+                      agentsHomeKey: agentsHomeKey,
+                    ),
                   ),
                 ),
               ),

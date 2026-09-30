@@ -137,45 +137,48 @@ void main() {
     );
   });
 
-  test('catalog carries declared ability facts with their projection state', () {
-    final catalog = AdapterPluginCatalog.fromJson({
-      'ok': true,
-      'schemaVersion': adapterPluginCatalogSchema,
-      'adapters': [
-        _descriptor(
-            agentId: 'codex',
-            managementKind: 'native',
-            actions: const [],
-          )
-          ..['nativeCapabilities'] = [
-            {'kind': 'cli', 'detected': true, 'state': 'declared'},
-            {
-              'kind': 'image-input',
-              'detected': true,
-              'state': 'declared',
-              'running': false,
-            },
-            {
-              'kind': 'real-interface',
-              'detected': false,
-              'state': 'not-declared',
-              'running': false,
-            },
-          ],
-      ],
-    });
+  test(
+    'catalog carries declared ability facts with their projection state',
+    () {
+      final catalog = AdapterPluginCatalog.fromJson({
+        'ok': true,
+        'schemaVersion': adapterPluginCatalogSchema,
+        'adapters': [
+          _descriptor(
+              agentId: 'codex',
+              managementKind: 'native',
+              actions: const [],
+            )
+            ..['nativeCapabilities'] = [
+              {'kind': 'cli', 'detected': true, 'state': 'declared'},
+              {
+                'kind': 'image-input',
+                'detected': true,
+                'state': 'declared',
+                'running': false,
+              },
+              {
+                'kind': 'real-interface',
+                'detected': false,
+                'state': 'not-declared',
+                'running': false,
+              },
+            ],
+        ],
+      });
 
-    final capabilities = catalog.adapters.single.nativeCapabilities;
-    expect(capabilities.map((capability) => capability.kind), [
-      AdapterNativeCapabilityKind.cli,
-      AdapterNativeCapabilityKind.imageInput,
-      AdapterNativeCapabilityKind.realInterface,
-    ]);
-    expect(capabilities[1].state, AdapterNativeCapabilityState.declared);
-    expect(capabilities[1].detected, isTrue);
-    expect(capabilities[2].state, AdapterNativeCapabilityState.notDeclared);
-    expect(capabilities[2].detected, isFalse);
-  });
+      final capabilities = catalog.adapters.single.nativeCapabilities;
+      expect(capabilities.map((capability) => capability.kind), [
+        AdapterNativeCapabilityKind.cli,
+        AdapterNativeCapabilityKind.imageInput,
+        AdapterNativeCapabilityKind.realInterface,
+      ]);
+      expect(capabilities[1].state, AdapterNativeCapabilityState.declared);
+      expect(capabilities[1].detected, isTrue);
+      expect(capabilities[2].state, AdapterNativeCapabilityState.notDeclared);
+      expect(capabilities[2].detected, isFalse);
+    },
+  );
 
   test('catalog accepts an ability whose owner reported no detection value', () {
     final catalog = AdapterPluginCatalog.fromJson({

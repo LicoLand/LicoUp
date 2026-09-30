@@ -140,7 +140,10 @@ final class ShellDestinations {
       case ClientSection.settings:
         final settings = this.settings;
         if (settings == null) return _absent;
-        return SettingsPanel(binding: settings, layoutRegistry: layout.registry);
+        return SettingsPanel(
+          binding: settings,
+          layoutRegistry: layout.registry,
+        );
       case ClientSection.agentHub:
         final agentHub = this.agentHub;
         if (agentHub == null) return _absent;
@@ -150,7 +153,8 @@ final class ShellDestinations {
             plugins: pluginManagement,
             skills: skillHub,
             openHomepage: openExternalUri,
-            onOpenAgent: (agentId) => shellIntents.send(OpenShellAgent(agentId)),
+            onOpenAgent: (agentId) =>
+                shellIntents.send(OpenShellAgent(agentId)),
           ),
         );
     }
@@ -194,7 +198,8 @@ final class _AbsentMobileRelayProjection
       const Stream.empty();
 }
 
-final class _DroppedMobileRelayIntents implements IntentSink<MobileRelayIntent> {
+final class _DroppedMobileRelayIntents
+    implements IntentSink<MobileRelayIntent> {
   const _DroppedMobileRelayIntents();
 
   @override

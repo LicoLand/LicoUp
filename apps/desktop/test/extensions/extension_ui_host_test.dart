@@ -17,146 +17,148 @@ void main() {
     runtime.dispose();
   });
 
-  testWidgets('a settings form submits ordinary values and credential handles',
-      (tester) async {
-    final field = syntheticExtensionField('form-resource');
-    final source = SyntheticExtensionResourceSource(
-      fieldGroup: field,
-      initial: ExtensionUiResourceValue(
-        formValues: <String, String>{
-          'endpoint': 'https://local',
-          'enabled': 'true',
-          'mode': 'fast',
-        },
-        fieldOptions: <String, List<String>>{
-          'mode': <String>['fast', 'slow'],
-        },
-      ),
-    );
-    final bindings = ExtensionUiBindingRegistry()
-      ..registerResource(
-        ExtensionUiResourceBinding(
-          resourceRef: 'resource:test.form',
-          source: source,
+  testWidgets(
+    'a settings form submits ordinary values and credential handles',
+    (tester) async {
+      final field = syntheticExtensionField('form-resource');
+      final source = SyntheticExtensionResourceSource(
+        fieldGroup: field,
+        initial: ExtensionUiResourceValue(
+          formValues: <String, String>{
+            'endpoint': 'https://local',
+            'enabled': 'true',
+            'mode': 'fast',
+          },
+          fieldOptions: <String, List<String>>{
+            'mode': <String>['fast', 'slow'],
+          },
         ),
       );
-    final actions = RecordingExtensionActions();
-    bindings.registerAction('action:test.save', actions);
-    final credentials = FixtureExtensionCredentialPort();
-    final registry = syntheticExtensionRegistry(
-      runtime: runtime,
-      bindings: bindings,
-      credentialPort: credentials,
-    );
-    addTearDown(registry.dispose);
-    registry.mount(
-      ExtensionUiRegistrySnapshot.fromJson(
-        extensionEpochDocument(
-          registryEpoch: 1,
-          contributions: <Map<String, Object?>>[
-            extensionContributionJson(
-              id: 'vendor.example.form',
-              kind: 'settings',
-              title: 'Endpoint',
-              resourceRef: 'resource:test.form',
-              actionRef: 'action:test.save',
-              fields: <Map<String, Object?>>[
-                extensionFieldJson(
-                  id: 'endpoint',
-                  label: 'Endpoint',
-                  type: 'text',
-                  required: true,
-                ),
-                extensionFieldJson(
-                  id: 'enabled',
-                  label: 'Enabled',
-                  type: 'boolean',
-                ),
-                extensionFieldJson(
-                  id: 'mode',
-                  label: 'Mode',
-                  type: 'select',
-                ),
-                extensionFieldJson(
-                  id: 'key',
-                  label: 'API key',
-                  type: 'secret-ref',
-                ),
-              ],
-            ),
-          ],
+      final bindings = ExtensionUiBindingRegistry()
+        ..registerResource(
+          ExtensionUiResourceBinding(
+            resourceRef: 'resource:test.form',
+            source: source,
+          ),
+        );
+      final actions = RecordingExtensionActions();
+      bindings.registerAction('action:test.save', actions);
+      final credentials = FixtureExtensionCredentialPort();
+      final registry = syntheticExtensionRegistry(
+        runtime: runtime,
+        bindings: bindings,
+        credentialPort: credentials,
+      );
+      addTearDown(registry.dispose);
+      registry.mount(
+        ExtensionUiRegistrySnapshot.fromJson(
+          extensionEpochDocument(
+            registryEpoch: 1,
+            contributions: <Map<String, Object?>>[
+              extensionContributionJson(
+                id: 'vendor.example.form',
+                kind: 'settings',
+                title: 'Endpoint',
+                resourceRef: 'resource:test.form',
+                actionRef: 'action:test.save',
+                fields: <Map<String, Object?>>[
+                  extensionFieldJson(
+                    id: 'endpoint',
+                    label: 'Endpoint',
+                    type: 'text',
+                    required: true,
+                  ),
+                  extensionFieldJson(
+                    id: 'enabled',
+                    label: 'Enabled',
+                    type: 'boolean',
+                  ),
+                  extensionFieldJson(id: 'mode', label: 'Mode', type: 'select'),
+                  extensionFieldJson(
+                    id: 'key',
+                    label: 'API key',
+                    type: 'secret-ref',
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-      ),
-    );
-    await _pumpHost(tester, registry);
+      );
+      await _pumpHost(tester, registry);
 
-    final endpointField = find.byKey(
-      const Key('extension-field-vendor.example.form-endpoint'),
-    );
-    expect(tester.widget<TextField>(endpointField).controller?.text, 'https://local');
-
-    await tester.enterText(endpointField, 'https://next');
-    await tester.tap(
-      find.byKey(const Key('extension-field-vendor.example.form-enabled')),
-    );
-    await tester.tap(
-      find.byKey(const Key('extension-field-vendor.example.form-mode')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('slow').last);
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const Key('extension-field-vendor.example.form-key')),
-      'local-synthetic-secret',
-    );
-    await tester.tap(
-      find.byKey(const Key('extension-submit-vendor.example.form')),
-    );
-    await tester.pumpAndSettle();
-
-    final invocation = actions.invocations.single;
-    expect(invocation.values['endpoint'], 'https://next');
-    expect(invocation.values['enabled'], 'false');
-    expect(invocation.values['mode'], 'slow');
-    final handle = invocation.credentialRefs['key'];
-    expect(handle, isNotNull);
-    expect(handle, startsWith('credential:fixture-'));
-    expect(credentials.holds(handle!), isTrue);
-    expect(credentials.secretFor(handle), 'local-synthetic-secret');
-    final request = credentials.requests.single;
-    expect(request.contributionId, 'vendor.example.form');
-    expect(request.fieldId, 'key');
-    expect(request.actionRef, 'action:test.save');
-    expect(
-      request.origin.scope,
-      const ResourceScope('extension:vendor.example.form'),
-      reason: 'the session pins the scope the host port verifies',
-    );
-    expect(request.origin.resource, field.resource);
-    for (final value in <String>[
-      ...invocation.values.values,
-      ...invocation.credentialRefs.values,
-    ]) {
+      final endpointField = find.byKey(
+        const Key('extension-field-vendor.example.form-endpoint'),
+      );
       expect(
-        value.contains('local-synthetic-secret'),
-        isFalse,
-        reason: 'a raw secret never crosses into the contribution',
+        tester.widget<TextField>(endpointField).controller?.text,
+        'https://local',
       );
-    }
-    expect(
-      tester
-          .widget<TextField>(
-            find.byKey(const Key('extension-field-vendor.example.form-key')),
-          )
-          .controller
-          ?.text,
-      isEmpty,
-      reason: 'the host control does not keep the secret after collecting it',
-    );
-  });
 
-  testWidgets('a prepared update does not clobber local input state',
-      (tester) async {
+      await tester.enterText(endpointField, 'https://next');
+      await tester.tap(
+        find.byKey(const Key('extension-field-vendor.example.form-enabled')),
+      );
+      await tester.tap(
+        find.byKey(const Key('extension-field-vendor.example.form-mode')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('slow').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('extension-field-vendor.example.form-key')),
+        'local-synthetic-secret',
+      );
+      await tester.tap(
+        find.byKey(const Key('extension-submit-vendor.example.form')),
+      );
+      await tester.pumpAndSettle();
+
+      final invocation = actions.invocations.single;
+      expect(invocation.values['endpoint'], 'https://next');
+      expect(invocation.values['enabled'], 'false');
+      expect(invocation.values['mode'], 'slow');
+      final handle = invocation.credentialRefs['key'];
+      expect(handle, isNotNull);
+      expect(handle, startsWith('credential:fixture-'));
+      expect(credentials.holds(handle!), isTrue);
+      expect(credentials.secretFor(handle), 'local-synthetic-secret');
+      final request = credentials.requests.single;
+      expect(request.contributionId, 'vendor.example.form');
+      expect(request.fieldId, 'key');
+      expect(request.actionRef, 'action:test.save');
+      expect(
+        request.origin.scope,
+        const ResourceScope('extension:vendor.example.form'),
+        reason: 'the session pins the scope the host port verifies',
+      );
+      expect(request.origin.resource, field.resource);
+      for (final value in <String>[
+        ...invocation.values.values,
+        ...invocation.credentialRefs.values,
+      ]) {
+        expect(
+          value.contains('local-synthetic-secret'),
+          isFalse,
+          reason: 'a raw secret never crosses into the contribution',
+        );
+      }
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('extension-field-vendor.example.form-key')),
+            )
+            .controller
+            ?.text,
+        isEmpty,
+        reason: 'the host control does not keep the secret after collecting it',
+      );
+    },
+  );
+
+  testWidgets('a prepared update does not clobber local input state', (
+    tester,
+  ) async {
     final field = syntheticExtensionField('local-resource');
     final source = SyntheticExtensionResourceSource(
       fieldGroup: field,
@@ -217,8 +219,9 @@ void main() {
     );
   });
 
-  testWidgets('a command contribution dispatches its action on tap',
-      (tester) async {
+  testWidgets('a command contribution dispatches its action on tap', (
+    tester,
+  ) async {
     final bindings = ExtensionUiBindingRegistry();
     final actions = RecordingExtensionActions();
     bindings.registerAction('action:test.run', actions);
@@ -257,72 +260,76 @@ void main() {
     );
   });
 
-  testWidgets('a metric panel draws declared series with an accessible summary',
-      (tester) async {
-    final semantics = tester.ensureSemantics();
-    final field = syntheticExtensionField('panel-resource');
-    final source = SyntheticExtensionResourceSource(
-      fieldGroup: field,
-      initial: ExtensionUiResourceValue(
-        series: <String, List<double>>{
-          'example.documents.processed': <double>[4, 12],
-        },
-      ),
-    );
-    final bindings = ExtensionUiBindingRegistry()
-      ..registerResource(
-        ExtensionUiResourceBinding(
-          resourceRef: 'resource:test.panel',
-          source: source,
+  testWidgets(
+    'a metric panel draws declared series with an accessible summary',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      final field = syntheticExtensionField('panel-resource');
+      final source = SyntheticExtensionResourceSource(
+        fieldGroup: field,
+        initial: ExtensionUiResourceValue(
+          series: <String, List<double>>{
+            'example.documents.processed': <double>[4, 12],
+          },
         ),
       );
-    final registry = syntheticExtensionRegistry(
-      runtime: runtime,
-      bindings: bindings,
-    );
-    addTearDown(registry.dispose);
-    registry.mount(
-      ExtensionUiRegistrySnapshot.fromJson(
-        extensionEpochDocument(
-          registryEpoch: 4,
-          contributions: <Map<String, Object?>>[
-            extensionContributionJson(
-              id: 'vendor.example.panel',
-              kind: 'metric-panel',
-              title: 'Processed documents',
-              resourceRef: 'resource:test.panel',
-              series: <Map<String, Object?>>[
-                extensionSeriesJson(
-                  metric: 'example.documents.processed',
-                  label: 'Documents processed',
-                  unit: 'item',
-                ),
-              ],
-            ),
-          ],
+      final bindings = ExtensionUiBindingRegistry()
+        ..registerResource(
+          ExtensionUiResourceBinding(
+            resourceRef: 'resource:test.panel',
+            source: source,
+          ),
+        );
+      final registry = syntheticExtensionRegistry(
+        runtime: runtime,
+        bindings: bindings,
+      );
+      addTearDown(registry.dispose);
+      registry.mount(
+        ExtensionUiRegistrySnapshot.fromJson(
+          extensionEpochDocument(
+            registryEpoch: 4,
+            contributions: <Map<String, Object?>>[
+              extensionContributionJson(
+                id: 'vendor.example.panel',
+                kind: 'metric-panel',
+                title: 'Processed documents',
+                resourceRef: 'resource:test.panel',
+                series: <Map<String, Object?>>[
+                  extensionSeriesJson(
+                    metric: 'example.documents.processed',
+                    label: 'Documents processed',
+                    unit: 'item',
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-      ),
-    );
-    await _pumpHost(tester, registry);
+      );
+      await _pumpHost(tester, registry);
 
-    expect(find.text('Processed documents'), findsOneWidget);
-    expect(find.text('Documents processed: 12 item'), findsOneWidget);
-    expect(
-      find.byKey(
-        const Key('extension-series-vendor.example.panel-example.documents.processed'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      tester
-          .getSemantics(
-            find.byKey(const Key('extension-chart-vendor.example.panel')),
-          )
-          .label,
-      contains('Documents processed: 12 item'),
-    );
-    semantics.dispose();
-  });
+      expect(find.text('Processed documents'), findsOneWidget);
+      expect(find.text('Documents processed: 12 item'), findsOneWidget);
+      expect(
+        find.byKey(
+          const Key(
+            'extension-series-vendor.example.panel-example.documents.processed',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .getSemantics(
+              find.byKey(const Key('extension-chart-vendor.example.panel')),
+            )
+            .label,
+        contains('Documents processed: 12 item'),
+      );
+      semantics.dispose();
+    },
+  );
 
   testWidgets('an optional navigation entry appears only while its profile is '
       'served', (tester) async {
@@ -358,7 +365,10 @@ void main() {
       find.byKey(const Key('extension-navigation-vendor.example.nav')),
       findsNothing,
     );
-    expect(registry.decisions.single.blocked, ExtensionUiMountBlock.profileNotInstalled);
+    expect(
+      registry.decisions.single.blocked,
+      ExtensionUiMountBlock.profileNotInstalled,
+    );
 
     registry.mount(
       ExtensionUiRegistrySnapshot.fromJson(
@@ -452,8 +462,9 @@ void main() {
     expect(confirmed, isTrue);
   });
 
-  testWidgets('mounting an epoch does not rebuild unrelated surfaces',
-      (tester) async {
+  testWidgets('mounting an epoch does not rebuild unrelated surfaces', (
+    tester,
+  ) async {
     final bindings = ExtensionUiBindingRegistry();
     final actions = RecordingExtensionActions();
     bindings.registerAction('action:test.run', actions);

@@ -113,9 +113,7 @@ final prepared = await engine.decompose(...);
               GlobalCupertinoLocalizations.delegate,
               GlobalWidgetsLocalizations.delegate,
             ],
-            theme: buildLicoTheme(
-              platformBrightness: scene.brightness,
-            ),
+            theme: buildLicoTheme(platformBrightness: scene.brightness),
             builder: (context, child) => MediaQuery(
               data: MediaQuery.of(context).copyWith(
                 textScaler: TextScaler.linear(scene.scale),

@@ -41,8 +41,9 @@ void main() {
     );
   });
 
-  testWidgets('mutating an admitted input cannot change the visible value',
-      (tester) async {
+  testWidgets('mutating an admitted input cannot change the visible value', (
+    tester,
+  ) async {
     final runtime = PresentationRuntime();
     addTearDown(runtime.dispose);
     final field = syntheticExtensionField('immutable-resource');
@@ -52,10 +53,7 @@ void main() {
     };
     final source = SyntheticExtensionResourceSource(
       fieldGroup: field,
-      initial: ExtensionUiResourceValue(
-        formValues: formValues,
-        series: series,
-      ),
+      initial: ExtensionUiResourceValue(formValues: formValues, series: series),
     );
     final bindings = ExtensionUiBindingRegistry()
       ..registerResource(
@@ -109,14 +107,13 @@ void main() {
 
     expect(identical(session.displayed.value, admitted), isTrue);
     expect(session.displayed.value?.formValues['endpoint'], 'https://local');
-    expect(
-      session.displayed.value?.series['licoup.tokens.input'],
-      <double>[7],
-    );
+    expect(session.displayed.value?.series['licoup.tokens.input'], <double>[7]);
     expect(
       tester
           .widget<TextField>(
-            find.byKey(const Key('extension-field-vendor.example.form-endpoint')),
+            find.byKey(
+              const Key('extension-field-vendor.example.form-endpoint'),
+            ),
           )
           .controller
           ?.text,
@@ -124,53 +121,55 @@ void main() {
     );
   });
 
-  test('mutating the maps passed to dispatch cannot change the invocation',
-      () async {
-    final runtime = PresentationRuntime();
-    addTearDown(runtime.dispose);
-    final bindings = ExtensionUiBindingRegistry();
-    final actions = RecordingExtensionActions();
-    bindings.registerAction('action:test.run', actions);
-    final registry = syntheticExtensionRegistry(
-      runtime: runtime,
-      bindings: bindings,
-    );
-    addTearDown(registry.dispose);
-    registry.mount(
-      ExtensionUiRegistrySnapshot.fromJson(
-        extensionEpochDocument(
-          registryEpoch: 2,
-          contributions: <Map<String, Object?>>[
-            extensionContributionJson(
-              id: 'vendor.example.command',
-              kind: 'command',
-              actionRef: 'action:test.run',
-            ),
-          ],
+  test(
+    'mutating the maps passed to dispatch cannot change the invocation',
+    () async {
+      final runtime = PresentationRuntime();
+      addTearDown(runtime.dispose);
+      final bindings = ExtensionUiBindingRegistry();
+      final actions = RecordingExtensionActions();
+      bindings.registerAction('action:test.run', actions);
+      final registry = syntheticExtensionRegistry(
+        runtime: runtime,
+        bindings: bindings,
+      );
+      addTearDown(registry.dispose);
+      registry.mount(
+        ExtensionUiRegistrySnapshot.fromJson(
+          extensionEpochDocument(
+            registryEpoch: 2,
+            contributions: <Map<String, Object?>>[
+              extensionContributionJson(
+                id: 'vendor.example.command',
+                kind: 'command',
+                actionRef: 'action:test.run',
+              ),
+            ],
+          ),
         ),
-      ),
-    );
-    await pumpEventQueue();
-    final session = registry.mounted.single;
+      );
+      await pumpEventQueue();
+      final session = registry.mounted.single;
 
-    final values = <String, String>{'endpoint': 'https://local'};
-    final credentialRefs = <String, String>{'key': 'credential:fixture-1'};
-    await Future<void>.value(
-      session.dispatch(values: values, credentialRefs: credentialRefs),
-    );
-    values['endpoint'] = 'https://mutated';
-    credentialRefs['key'] = 'credential:mutated';
+      final values = <String, String>{'endpoint': 'https://local'};
+      final credentialRefs = <String, String>{'key': 'credential:fixture-1'};
+      await Future<void>.value(
+        session.dispatch(values: values, credentialRefs: credentialRefs),
+      );
+      values['endpoint'] = 'https://mutated';
+      credentialRefs['key'] = 'credential:mutated';
 
-    final invocation = actions.invocations.single;
-    expect(invocation.values['endpoint'], 'https://local');
-    expect(invocation.credentialRefs['key'], 'credential:fixture-1');
-    expect(
-      () => invocation.values['endpoint'] = 'https://mutated',
-      throwsUnsupportedError,
-    );
-    expect(
-      () => invocation.credentialRefs['key'] = 'credential:mutated',
-      throwsUnsupportedError,
-    );
-  });
+      final invocation = actions.invocations.single;
+      expect(invocation.values['endpoint'], 'https://local');
+      expect(invocation.credentialRefs['key'], 'credential:fixture-1');
+      expect(
+        () => invocation.values['endpoint'] = 'https://mutated',
+        throwsUnsupportedError,
+      );
+      expect(
+        () => invocation.credentialRefs['key'] = 'credential:mutated',
+        throwsUnsupportedError,
+      );
+    },
+  );
 }

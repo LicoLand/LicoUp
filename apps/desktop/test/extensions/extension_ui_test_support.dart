@@ -53,8 +53,9 @@ final class SyntheticExtensionResourceSource
   @override
   Future<SourceObservation<ExtensionUiResourceValue>> open() async {
     openCount += 1;
-    final controller =
-        StreamController<SourceChange<ExtensionUiResourceValue>>(sync: true);
+    final controller = StreamController<SourceChange<ExtensionUiResourceValue>>(
+      sync: true,
+    );
     controller.onCancel = () {
       closeCount += 1;
     };
@@ -127,7 +128,8 @@ final class RecordingExtensionActions implements ExtensionUiActionPort {
 /// This exists so tests can prove the host seam without a real keychain; it is
 /// never the production path. The composition gets no fallback, so a test that
 /// wants secret fields available must inject this explicitly.
-final class FixtureExtensionCredentialPort implements ExtensionUiCredentialPort {
+final class FixtureExtensionCredentialPort
+    implements ExtensionUiCredentialPort {
   final List<ExtensionUiCredentialRequest> requests =
       <ExtensionUiCredentialRequest>[];
   final Map<String, String> _values = <String, String>{};
