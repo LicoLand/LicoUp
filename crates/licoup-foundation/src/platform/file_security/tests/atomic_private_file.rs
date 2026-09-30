@@ -79,3 +79,72 @@ fn replacing_a_hard_link_alias_preserves_the_other_name() {
     assert_eq!(fs::read(&destination).unwrap(), b"archive");
     fs::remove_dir_all(root).unwrap();
 }
+
+#[cfg(unix)]
+#[test]
+fn a_post_rename_sync_failure_restores_the_previous_output() {
+    let root = temp_path("atomic-commit-sync-failure");
+    fs::create_dir_all(&root).unwrap();
+    let temporary = root.join("temporary.tmp");
+    let destination = root.join("destination");
+    fs::write(&temporary, b"replacement").unwrap();
+    // The published file must satisfy the private-file policy before the sync runs.
+    fs::set_permissions(&temporary, fs::Permissions::from_mode(0o600)).unwrap();
+    fs::write(&destination, b"previous").unwrap();
+
+    let error = super::super::atomic_replace::commit_with_sync(&temporary, &destination, |_| {
+        Err(anyhow::anyhow!("injected parent sync failure"))
+    })
+    .expect_err("a failed parent sync must fail the commit");
+
+    assert_eq!(error.to_string(), "injected parent sync failure");
+    assert_eq!(fs::read(&destination).unwrap(), b"previous");
+    assert!(!temporary.exists());
+    assert_eq!(
+        fs::read_dir(&root).unwrap().count(),
+        1,
+        "only the previous destination remains"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_post_rename_sync_failure_removes_a_previously_absent_destination() {
+    let root = temp_path("atomic-commit-sync-absent");
+    fs::create_dir_all(&root).unwrap();
+    let temporary = root.join("temporary.tmp");
+    let destination = root.join("destination");
+    fs::write(&temporary, b"replacement").unwrap();
+    fs::set_permissions(&temporary, fs::Permissions::from_mode(0o600)).unwrap();
+
+    let error = super::super::atomic_replace::commit_with_sync(&temporary, &destination, |_| {
+        Err(anyhow::anyhow!("injected parent sync failure"))
+    })
+    .expect_err("a failed parent sync must fail the commit");
+
+    assert_eq!(error.to_string(), "injected parent sync failure");
+    assert!(!destination.exists());
+    assert!(!temporary.exists());
+    assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_bare_relative_output_path_commits() {
+    let relative =
+        std::path::PathBuf::from(format!("lico-relative-output-{}.bin", std::process::id()));
+    struct Cleanup(std::path::PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = fs::remove_file(&self.0);
+        }
+    }
+    let _cleanup = Cleanup(relative.clone());
+
+    let mut writer = super::super::AtomicPrivateFile::create(&relative).unwrap();
+    writer.file_mut().write_all(b"relative").unwrap();
+    writer.commit().unwrap();
+
+    assert_eq!(fs::read(&relative).unwrap(), b"relative");
+}

@@ -880,7 +880,7 @@ fn restore_refuses_unlisted_payload_and_missing_or_resized_members() {
             archive_path: unlisted_zip,
             target_root: work.join("unlisted-zip-target"),
         }),
-        "archive_inventory_mismatch",
+        "archive_extraction_refused",
     );
 
     let unlisted_tar = work.join("unlisted.tar.gz");
@@ -894,7 +894,7 @@ fn restore_refuses_unlisted_payload_and_missing_or_resized_members() {
             archive_path: unlisted_tar,
             target_root: work.join("unlisted-tar-target"),
         }),
-        "archive_inventory_mismatch",
+        "archive_extraction_refused",
     );
 
     let missing = work.join("missing.zip");
@@ -908,7 +908,7 @@ fn restore_refuses_unlisted_payload_and_missing_or_resized_members() {
             archive_path: missing,
             target_root: work.join("missing-target"),
         }),
-        "archive_payload_missing",
+        "archive_inventory_mismatch",
     );
 
     let resized = work.join("resized.zip");
@@ -964,6 +964,226 @@ fn restore_preserves_a_payload_named_like_the_staging_directory_in_both_containe
 }
 
 #[test]
+fn restore_preserves_a_case_variant_staging_named_payload_in_both_containers() {
+    let source = synthetic_data_root("staging-case");
+    write(
+        &source.join(".LICOUP-RESTORE-STAGING/keep.bin"),
+        b"case-variant staging payload",
+    );
+    write(
+        &source.join(".licoup-restore-staging-2/keep.bin"),
+        b"second staging-name payload",
+    );
+    let work = scratch("staging-case-out");
+
+    for name in ["case.zip", "case.tar.gz"] {
+        let archive = work.join(name);
+        export(&source, &archive);
+        let target = work.join(format!("{name}-target"));
+        restore(&archive, &target);
+
+        assert_eq!(
+            read(&target.join(".LICOUP-RESTORE-STAGING/keep.bin")),
+            b"case-variant staging payload",
+            "{name}: the case-variant staging-named payload survives"
+        );
+        assert_eq!(
+            read(&target.join(".licoup-restore-staging-2/keep.bin")),
+            b"second staging-name payload"
+        );
+        assert!(
+            !target.join(".licoup-restore-staging-3").exists(),
+            "{name}: no scratch directory leaks into the restored root"
+        );
+        assert_eq!(payload(&target), payload(&source));
+    }
+}
+
+#[test]
+fn restore_refuses_an_undeclared_top_level_member_in_both_containers() {
+    let work = scratch("top-level-member");
+    // The member count and byte total match the declared payload, so only the raw
+    // inventory name comparison can catch the undeclared top-level file.
+    let entries = vec![
+        entry_json("a.txt", "file", 4),
+        entry_json("b.txt", "file", 4),
+    ];
+
+    let zip_archive = work.join("top-level.zip");
+    write_zip_fixture(
+        &zip_archive,
+        &manifest_json("zip", entries.clone()),
+        &[("data/a.txt", b"aaaa"), ("escaped.bin", b"bbbb")],
+    );
+    let zip_target = work.join("top-level-zip-target");
+    refusal(
+        restore_data_root(&RestoreRequest {
+            archive_path: zip_archive,
+            target_root: zip_target.clone(),
+        }),
+        "archive_inventory_mismatch",
+    );
+    assert!(fs::read_dir(&zip_target).expect("target").next().is_none());
+
+    let tar_archive = work.join("top-level.tar.gz");
+    write_tar_gz_fixture(
+        &tar_archive,
+        &manifest_json("tar.gz", entries),
+        &[
+            ("data/a.txt", b"aaaa", tar::EntryType::Regular),
+            ("escaped.bin", b"bbbb", tar::EntryType::Regular),
+        ],
+    );
+    let tar_target = work.join("top-level-tar-target");
+    refusal(
+        restore_data_root(&RestoreRequest {
+            archive_path: tar_archive,
+            target_root: tar_target.clone(),
+        }),
+        "archive_inventory_mismatch",
+    );
+    assert!(fs::read_dir(&tar_target).expect("target").next().is_none());
+}
+
+#[test]
+fn restore_refuses_tar_duplicate_members_that_extraction_would_collapse() {
+    let work = scratch("tar-duplicate");
+    let archive = work.join("duplicate.tar.gz");
+    // Two declared directories and two raw members for the first one: the filesystem
+    // would collapse them into one directory, so only the raw inventory can refuse it.
+    write_tar_gz_fixture(
+        &archive,
+        &manifest_json(
+            "tar.gz",
+            vec![
+                entry_json("d", "directory", 0),
+                entry_json("e", "directory", 0),
+            ],
+        ),
+        &[
+            ("data/d/", &[], tar::EntryType::Directory),
+            ("data/d/", &[], tar::EntryType::Directory),
+        ],
+    );
+    let target = work.join("duplicate-target");
+    refusal(
+        restore_data_root(&RestoreRequest {
+            archive_path: archive,
+            target_root: target.clone(),
+        }),
+        "archive_inventory_duplicate",
+    );
+    assert!(fs::read_dir(&target).expect("target").next().is_none());
+}
+
+#[test]
+fn restore_refuses_a_forged_complete_manifest() {
+    let work = scratch("forged-complete");
+    let archive = work.join("complete.zip");
+    let mut manifest = manifest_json("zip", vec![]);
+    manifest["coverage"] = serde_json::json!("complete");
+    write_zip_fixture(&archive, &manifest, &[]);
+
+    let target = work.join("complete-target");
+    refusal(
+        restore_data_root(&RestoreRequest {
+            archive_path: archive,
+            target_root: target.clone(),
+        }),
+        "archive_coverage_unproven",
+    );
+    assert!(
+        !target.exists(),
+        "a refused manifest never creates the destination"
+    );
+}
+
+#[test]
+fn restore_refuses_a_tar_directory_with_a_body() {
+    let work = scratch("tar-directory-body");
+    let archive = work.join("body.tar.gz");
+    // A declared directory whose raw member declares a body: a legitimate archive never
+    // carries one, and counting it as a member only would let it bypass the byte policy.
+    let manifest = manifest_json(
+        "tar.gz",
+        vec![
+            entry_json("d", "directory", 0),
+            entry_json("e", "directory", 0),
+        ],
+    );
+    let mut tar_bytes = Vec::new();
+    {
+        let mut builder = tar::Builder::new(&mut tar_bytes);
+        append_tar_member(
+            &mut builder,
+            MANIFEST_MEMBER,
+            tar::EntryType::Regular,
+            &serde_json::to_vec(&manifest).expect("encode manifest"),
+            None,
+        );
+        append_tar_member(
+            &mut builder,
+            "data/d/",
+            tar::EntryType::Directory,
+            &[],
+            None,
+        );
+        let body = vec![0_u8; 4096];
+        append_tar_member(
+            &mut builder,
+            "data/e/",
+            tar::EntryType::Directory,
+            &body,
+            None,
+        );
+        builder.finish().expect("finish tar");
+    }
+    let mut gz_bytes = Vec::new();
+    {
+        let mut encoder =
+            flate2::write::GzEncoder::new(&mut gz_bytes, flate2::Compression::default());
+        encoder.write_all(&tar_bytes).expect("compress payload");
+        encoder.finish().expect("finish gzip");
+    }
+    fs::write(&archive, gz_bytes).expect("write archive fixture");
+
+    let target = work.join("body-target");
+    refusal(
+        restore_data_root(&RestoreRequest {
+            archive_path: archive,
+            target_root: target.clone(),
+        }),
+        "archive_extraction_refused",
+    );
+    assert!(fs::read_dir(&target).expect("target").next().is_none());
+}
+
+#[test]
+fn restore_bounds_tar_metadata_before_the_library_buffers_it() {
+    let work = scratch("tar-metadata-bound");
+    // One declared member with a path far beyond the portable component length: the
+    // declared payload budget plus its format overhead must refuse the long-name
+    // metadata before the TAR library buffers it.
+    let long_name = "l".repeat(32 * 1024);
+    let member_name = format!("data/{long_name}");
+    let archive = work.join("metadata.tar.gz");
+    write_tar_gz_fixture(
+        &archive,
+        &manifest_json("tar.gz", vec![entry_json(&long_name, "file", 4)]),
+        &[(member_name.as_str(), b"abcd", tar::EntryType::Regular)],
+    );
+    let target = work.join("metadata-target");
+    refusal(
+        restore_data_root(&RestoreRequest {
+            archive_path: archive,
+            target_root: target.clone(),
+        }),
+        "archive_extraction_refused",
+    );
+    assert!(fs::read_dir(&target).expect("target").next().is_none());
+}
+
+#[test]
 fn a_failed_restore_leaves_the_destination_retryable() {
     let source = synthetic_data_root("retry");
     let work = scratch("retry-out");
@@ -983,7 +1203,7 @@ fn a_failed_restore_leaves_the_destination_retryable() {
             archive_path: bad,
             target_root: target.clone(),
         }),
-        "archive_inventory_mismatch",
+        "archive_extraction_refused",
     );
     assert!(
         fs::read_dir(&target).expect("target").next().is_none(),

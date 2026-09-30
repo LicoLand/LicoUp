@@ -114,12 +114,13 @@ impl ArchiveManifest {
         manifest_member_bytes: u64,
     ) -> Result<()> {
         ensure!(self.layout == ARCHIVE_LAYOUT, "archive_layout_unsupported");
+        // Custody is never proven by the archive itself. The owner never exports
+        // Complete, and until the credential owner can establish non-secret custody
+        // facts, a caller-controlled Complete is refused instead of restored as
+        // evidence that platform-held material is available.
         ensure!(
-            matches!(
-                self.coverage,
-                RecoveryCoverage::Complete | RecoveryCoverage::Limited
-            ),
-            "archive_coverage_invalid"
+            self.coverage == RecoveryCoverage::Limited,
+            "archive_coverage_unproven"
         );
         ensure!(
             self.container == expected_container,

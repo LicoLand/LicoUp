@@ -28,6 +28,74 @@ const DEFAULT_MAX_ENTRIES: usize = 10_000;
 /// Default maximum directory depth relative to destination root.
 const DEFAULT_MAX_DEPTH: usize = 32;
 
+/// One TAR header block.
+const TAR_BLOCK_BYTES: u64 = 512;
+
+/// Longest portable single path component; longer metadata is not portable anyway.
+const PORTABLE_NAME_BYTES: u64 = 255;
+
+/// The most decoded bytes a `.tar.gz` may carry: the declared payload plus the
+/// format's own header blocks, padding and worst-case portable long-name metadata.
+///
+/// This bounds the physical decoded stream before the TAR library can buffer GNU or
+/// PAX extension metadata, derived from the existing limits rather than a new cap. A
+/// member may carry its path twice (an extension header and the entry header) and the
+/// extension data is block padded, so the allowance covers that exact worst case.
+pub(crate) fn decoded_tar_gz_budget(
+    max_total_bytes: u64,
+    max_entries: usize,
+    max_depth: usize,
+) -> u64 {
+    let longest_name = (max_depth as u64)
+        .saturating_mul(PORTABLE_NAME_BYTES.saturating_add(1))
+        .div_ceil(TAR_BLOCK_BYTES)
+        .saturating_mul(TAR_BLOCK_BYTES);
+    let per_entry = longest_name.saturating_add(TAR_BLOCK_BYTES.saturating_mul(3));
+    max_total_bytes.saturating_add((max_entries as u64).saturating_mul(per_entry))
+}
+
+/// A reader that refuses to hand out more than its budget and remembers that it did.
+///
+/// Both the manifest scan and extraction run through it, so no pass can inflate the
+/// archive past its policy before the TAR library buffers a single member.
+pub(crate) struct BoundedStream<R> {
+    inner: R,
+    remaining: u64,
+    exceeded: bool,
+}
+
+impl<R> BoundedStream<R> {
+    pub(crate) fn new(inner: R, limit: u64) -> Self {
+        Self {
+            inner,
+            remaining: limit,
+            exceeded: false,
+        }
+    }
+
+    pub(crate) fn exceeded(&self) -> bool {
+        self.exceeded
+    }
+}
+
+impl<R: Read> Read for BoundedStream<R> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        if self.remaining == 0 {
+            self.exceeded = true;
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "archive decoded stream limit exceeded",
+            ));
+        }
+        let allowed = buffer
+            .len()
+            .min(usize::try_from(self.remaining).unwrap_or(usize::MAX));
+        let read = self.inner.read(&mut buffer[..allowed])?;
+        self.remaining -= read as u64;
+        Ok(read)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ZipExtractionLimits {
     pub max_archive_bytes: u64,
@@ -178,9 +246,10 @@ pub fn extract_tar_gz_safe(
     let max_entries = max_entries.unwrap_or(DEFAULT_MAX_ENTRIES);
     let max_depth = max_depth.unwrap_or(DEFAULT_MAX_DEPTH);
 
-    let cursor = std::io::Cursor::new(bytes);
-    let decoder = GzDecoder::new(cursor);
-    let mut archive = Archive::new(decoder);
+    let budget = decoded_tar_gz_budget(max_total_bytes, max_entries, max_depth);
+    let decoder = GzDecoder::new(std::io::Cursor::new(bytes));
+    let mut stream = BoundedStream::new(decoder, budget);
+    let mut archive = Archive::new(&mut stream);
 
     let mut total_bytes = 0_u64;
     let mut entry_count: usize = 0;
@@ -208,6 +277,12 @@ pub fn extract_tar_gz_safe(
         let relative = sanitize_entry_path(&entry_path, max_depth)?;
 
         if entry_type == EntryType::Directory {
+            // A directory body is never legitimate and would otherwise be decompressed
+            // while the iterator skips it without counting against the payload total.
+            ensure!(
+                entry.size() == 0,
+                "archive directory entry {entry_count} declares a body"
+            );
             extraction_root.create_directory(&relative)?;
             continue;
         }
@@ -776,5 +851,123 @@ mod tests {
 
         assert!(result.is_err());
         assert!(!external.join("out").exists());
+    }
+
+    #[test]
+    fn tar_gz_decoded_stream_is_bounded_including_metadata() {
+        let temp = temp_dir();
+
+        let supported = create_test_tar_gz(&[("data/a.txt", b"abc")]);
+        extract_tar_gz_safe(
+            &supported,
+            &temp.join("supported"),
+            Some(1024),
+            Some(8),
+            Some(4),
+        )
+        .expect("a supported archive extracts");
+
+        // Build the long-name member through `append_data`, which emits the GNU
+        // long-name extension the TAR library would buffer before yielding the entry.
+        let long_name = format!("data/{}", "l".repeat(64 * 1024));
+        let mut tar_bytes = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut tar_bytes);
+            let mut header = tar::Header::new_gnu();
+            header.set_size(3);
+            header.set_mode(0o600);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, &long_name, &b"abc"[..])
+                .expect("append long-name member");
+            builder.finish().expect("finish tar");
+        }
+        let mut oversized = Vec::new();
+        {
+            let mut encoder =
+                flate2::write::GzEncoder::new(&mut oversized, flate2::Compression::default());
+            encoder.write_all(&tar_bytes).expect("compress payload");
+            encoder.finish().expect("finish gzip");
+        }
+        let refused_root = temp.join("long-name");
+        assert!(
+            extract_tar_gz_safe(&oversized, &refused_root, Some(1024), Some(8), Some(4)).is_err(),
+            "long-name metadata beyond the decoded budget is refused"
+        );
+        assert_eq!(fs::read_dir(&refused_root).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn tar_gz_directory_with_a_body_is_refused() {
+        let temp = temp_dir();
+        let mut tar_bytes = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut tar_bytes);
+            let mut header = tar::Header::new_gnu();
+            header.set_path("data/body/").unwrap();
+            header.set_entry_type(tar::EntryType::Directory);
+            header.set_size(4096);
+            header.set_mode(0o700);
+            header.set_cksum();
+            builder
+                .append(&header, std::io::repeat(0).take(4096))
+                .unwrap();
+            builder.finish().unwrap();
+        }
+        let mut gz_bytes = Vec::new();
+        {
+            let mut encoder =
+                flate2::write::GzEncoder::new(&mut gz_bytes, flate2::Compression::default());
+            encoder.write_all(&tar_bytes).unwrap();
+            encoder.finish().unwrap();
+        }
+        let destination = temp.join("body");
+        assert!(
+            extract_tar_gz_safe(&gz_bytes, &destination, Some(8192), Some(8), Some(4)).is_err(),
+            "a directory body is refused"
+        );
+        assert_eq!(fs::read_dir(&destination).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn bounded_stream_stops_at_its_budget() {
+        let mut stream = BoundedStream::new(std::io::repeat(0_u8), 8);
+        let mut buffer = [0_u8; 16];
+        let mut total = 0_usize;
+        loop {
+            match stream.read(&mut buffer) {
+                Ok(read) => total += read,
+                Err(error) => {
+                    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+                    break;
+                }
+            }
+        }
+        assert_eq!(total, 8);
+        assert!(stream.exceeded());
+    }
+
+    #[test]
+    fn bounded_stream_propagates_an_injected_read_fault() {
+        struct FaultyReader {
+            remaining: usize,
+        }
+        impl Read for FaultyReader {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                if self.remaining == 0 {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "injected read fault",
+                    ));
+                }
+                let read = buffer.len().min(self.remaining);
+                self.remaining -= read;
+                Ok(read)
+            }
+        }
+        let mut stream = BoundedStream::new(FaultyReader { remaining: 2 }, 8);
+        let mut buffer = [0_u8; 2];
+        assert_eq!(stream.read(&mut buffer).unwrap(), 2);
+        assert!(stream.read(&mut buffer).is_err());
     }
 }

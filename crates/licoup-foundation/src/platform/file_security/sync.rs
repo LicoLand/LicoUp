@@ -3,6 +3,8 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
+use super::validation;
+
 pub(super) fn file(file: &mut fs::File) -> Result<()> {
     if let Err(error) = file.sync_all() {
         if unsupported(&error) {
@@ -14,9 +16,9 @@ pub(super) fn file(file: &mut fs::File) -> Result<()> {
 }
 
 pub(super) fn parent(path: &Path) -> Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("private security state marker parent is missing"))?;
+    // A bare relative destination syncs its containing directory, the same directory the
+    // rename committed into, instead of failing on an empty parent after the rename.
+    let parent = validation::parent_or_current(path)?;
     directory(parent)
 }
 

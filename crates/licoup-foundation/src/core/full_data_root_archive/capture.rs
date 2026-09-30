@@ -20,6 +20,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Seek, Write};
 use std::path::{Path, PathBuf};
 
+use crate::core::safe_archive::default_zip_extraction_limits;
 use crate::platform::file_security::AtomicPrivateFile;
 
 use super::inventory::{
@@ -123,9 +124,7 @@ pub fn export_data_root(request: &ExportRequest) -> Result<ExportOutcome> {
             }
         }
     }
-    output
-        .commit()
-        .map_err(|_| anyhow!("archive_write_failed"))?;
+    finish_archive(output)?;
 
     Ok(ExportOutcome {
         container,
@@ -203,6 +202,25 @@ fn recovery_limitations(entries: &[InventoryEntry]) -> Vec<RecoveryLimitation> {
         domain: CREDENTIAL_DOMAIN.to_string(),
         reason,
     }]
+}
+
+/// Check the finished private artifact against the importer's own byte policy before
+/// committing it, so a successful export is always importable under that policy.
+///
+/// The check runs after the bytes are written but before the rename that publishes
+/// them; a refusal removes the private temporary file and leaves any prior output in
+/// place.
+fn finish_archive(mut output: AtomicPrivateFile) -> Result<()> {
+    let artifact_bytes = output
+        .file_mut()
+        .metadata()
+        .map_err(|_| anyhow!("archive_write_failed"))?
+        .len();
+    ensure!(
+        artifact_bytes <= default_zip_extraction_limits().max_archive_bytes,
+        "archive_export_limits_exceeded"
+    );
+    output.commit().map_err(|_| anyhow!("archive_write_failed"))
 }
 
 fn write_zip<W: Write + Seek>(
@@ -481,5 +499,56 @@ mod tests {
             max_file_bytes: 1,
         };
         assert!(ensure_within_archive_limits(&facts, 1, "archive_export_limits_exceeded").is_err());
+    }
+
+    fn artifact_scratch(name: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("lico-capture-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("create scratch");
+        root
+    }
+
+    #[test]
+    fn an_artifact_beyond_the_import_byte_policy_is_refused_before_commit() {
+        let root = artifact_scratch("oversized-artifact");
+        let destination = root.join("artifact.zip");
+        let mut output = AtomicPrivateFile::create(&destination).expect("create private output");
+        let limits = default_zip_extraction_limits();
+        output
+            .file_mut()
+            .set_len(limits.max_archive_bytes + 1)
+            .expect("size the sparse artifact");
+        let error = finish_archive(output).expect_err("oversized artifact is refused");
+        assert_eq!(error.to_string(), "archive_export_limits_exceeded");
+        assert!(
+            !destination.exists(),
+            "a refused artifact is never published"
+        );
+        assert_eq!(
+            std::fs::read_dir(&root).expect("scratch").count(),
+            0,
+            "the private temporary artifact is removed"
+        );
+        std::fs::remove_dir_all(root).expect("remove scratch");
+    }
+
+    #[test]
+    fn an_artifact_at_the_import_byte_policy_commits() {
+        let root = artifact_scratch("supported-artifact");
+        let destination = root.join("artifact.zip");
+        let mut output = AtomicPrivateFile::create(&destination).expect("create private output");
+        let limits = default_zip_extraction_limits();
+        output
+            .file_mut()
+            .set_len(limits.max_archive_bytes)
+            .expect("size the sparse artifact");
+        finish_archive(output).expect("a supported artifact commits");
+        assert_eq!(
+            std::fs::metadata(&destination)
+                .expect("committed artifact")
+                .len(),
+            limits.max_archive_bytes
+        );
+        std::fs::remove_dir_all(root).expect("remove scratch");
     }
 }

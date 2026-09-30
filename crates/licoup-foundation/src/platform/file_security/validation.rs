@@ -29,12 +29,20 @@ pub(super) fn ensure_private_state_parent(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// The directory that contains `path`, reading an empty parent as the current directory.
+///
+/// A bare relative name is created and synced against the process working directory,
+/// exactly as the file APIs read it, instead of failing on an empty parent.
+pub(super) fn parent_or_current(path: &Path) -> Result<&Path> {
+    match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => Ok(parent),
+        Some(_) => Ok(Path::new(".")),
+        None => Err(anyhow!("private state file parent is missing")),
+    }
+}
+
 pub(super) fn ensure_atomic_write_parent(path: &Path) -> Result<()> {
-    // An empty parent means the current directory, exactly as file creation reads it.
-    let parent = match path.parent() {
-        Some(parent) if !parent.as_os_str().is_empty() => parent,
-        _ => Path::new("."),
-    };
+    let parent = parent_or_current(path)?;
     validate_private_path_ancestors(parent)?;
     if !parent.try_exists()? {
         fs::create_dir_all(parent)?;

@@ -83,6 +83,74 @@ pub(super) fn rename_into_place(tmp: &Path, path: &Path) -> Result<()> {
     }
 }
 
+/// Commit a sibling `temp` over `destination` so a reported failure never destroys the
+/// previous destination.
+///
+/// When the destination exists it is first renamed aside, then the temporary file is
+/// renamed into place. Any failure before the final parent sync restores the previous
+/// destination (or removes a previously absent one); after that sync the commit is
+/// durable and only operation-owned scratch removal remains, which is best effort
+/// because reporting failure there would misdescribe an already committed destination.
+pub(super) fn commit_with_sync<F>(temp: &Path, destination: &Path, sync_parent: F) -> Result<()>
+where
+    F: Fn(&Path) -> Result<()>,
+{
+    validation::validate_regular_file_or_missing_no_follow(temp, false)?;
+    validation::validate_regular_file_or_missing_no_follow(destination, true)?;
+    let previous = if destination.try_exists()? {
+        Some(sibling_backup_path(destination))
+    } else {
+        None
+    };
+    if let Some(previous) = &previous {
+        validation::validate_regular_file_or_missing_no_follow(previous, true)?;
+        if fs::rename(destination, previous).is_err() {
+            let _ = fs::remove_file(temp);
+            return Err(anyhow!("private state file could not be committed"));
+        }
+    }
+    let restore_previous = |previous: Option<&PathBuf>| match previous {
+        Some(previous) => {
+            let _ = fs::rename(previous, destination);
+        }
+        None => {
+            let _ = fs::remove_file(destination);
+        }
+    };
+    if fs::rename(temp, destination).is_err() {
+        restore_previous(previous.as_ref());
+        let _ = fs::remove_file(temp);
+        return Err(anyhow!("private state file could not be committed"));
+    }
+    let published = match fs::symlink_metadata(destination) {
+        Ok(metadata) => metadata,
+        Err(_) => {
+            restore_previous(previous.as_ref());
+            return Err(anyhow!("private state file disappeared after commit"));
+        }
+    };
+    if let Err(error) = validation::validate_private_file_metadata(&published) {
+        restore_previous(previous.as_ref());
+        return Err(error);
+    }
+    if let Err(error) = sync_parent(destination) {
+        restore_previous(previous.as_ref());
+        return Err(error);
+    }
+    if let Some(previous) = &previous {
+        let _ = fs::remove_file(previous);
+    }
+    Ok(())
+}
+
+fn sibling_backup_path(path: &Path) -> PathBuf {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    path.with_extension(format!("commit-bak-{}-{stamp}", std::process::id()))
+}
+
 /// A private file created beside `destination` and committed by rename.
 ///
 /// This is the streamed sibling of [`atomic_write_private_text`] for binary output:
@@ -127,16 +195,13 @@ impl AtomicPrivateFile {
         &mut self.file
     }
 
-    /// Sync, validate and rename the temporary file over the destination.
+    /// Sync, validate and commit the temporary file as a transaction over the
+    /// destination: a reported failure restores the previous destination or removes a
+    /// previously absent one.
     pub fn commit(mut self) -> Result<()> {
         sync::file(&mut self.file)?;
         validation::validate_open_state_marker(&self.temp, &self.file)?;
-        rename_into_place(&self.temp, &self.destination)
-            .map_err(|_| anyhow!("private state file could not be committed"))?;
-        let committed = fs::symlink_metadata(&self.destination)
-            .map_err(|_| anyhow!("private state file disappeared after commit"))?;
-        validation::validate_private_file_metadata(&committed)?;
-        sync::parent(&self.destination)?;
+        commit_with_sync(&self.temp, &self.destination, sync::parent)?;
         self.committed = true;
         Ok(())
     }
@@ -151,9 +216,7 @@ impl Drop for AtomicPrivateFile {
 }
 
 fn copy_cross_device_then_atomic_replace(tmp: &Path, path: &Path) -> Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| anyhow!("atomic replacement destination parent is missing"))?;
+    let parent = validation::parent_or_current(path)?;
     validation::validate_private_path_ancestors(parent)?;
     let stage = sibling_temp_path(path);
     validation::validate_regular_file_or_missing_no_follow(&stage, true)?;
