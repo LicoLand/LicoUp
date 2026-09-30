@@ -1,0 +1,47 @@
+[package]
+name = "licoup-foundation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+# Constructors and harnesses that exist only for integration tests. Not production.
+test-support = []
+
+[dependencies]
+anyhow.workspace = true
+base64.workspace = true
+command-group.workspace = true
+flate2.workspace = true
+fs2.workspace = true
+libc.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tar.workspace = true
+url.workspace = true
+uuid.workspace = true
+zip.workspace = true
+
+# The user-presence grant and the authorized-record ledger are the only macOS
+# native APIs this crate binds: LocalAuthentication for the presence context and
+# Security.framework for the Data Protection Keychain.
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6.2"
+core-foundation = "0.10.1"
+core-foundation-sys = "0.8.7"
+objc2 = "0.6.4"
+objc2-foundation = { version = "0.3.2", features = ["NSString"] }
+objc2-local-authentication = "0.3.2"
+security-framework = { version = "3.7.0", features = ["OSX_10_15"] }
+security-framework-sys = { version = "2.17.0", features = ["OSX_10_15"] }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.27", default-features = false, features = ["fs", "user", "signal", "socket"] }
+
+[build-dependencies]
+licoup-state-machine-codegen = { path = "../licoup-state-machine-codegen" }

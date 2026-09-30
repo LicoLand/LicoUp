@@ -1,4 +1,9 @@
-//! Display typography is independent from model identity and availability.
+//! Model display typography, shared by every layer that projects a model name.
+//!
+//! The projection is independent from model identity and availability: it
+//! formats catalog names and unresolved native IDs the same way for whichever
+//! crate is rendering them, so it is vocabulary rather than the behaviour of
+//! the registry that first owned it.
 
 /// Format both catalog names and unresolved native IDs in one Rust-owned
 /// projection. Formatting never establishes an alias or a canonical model.
