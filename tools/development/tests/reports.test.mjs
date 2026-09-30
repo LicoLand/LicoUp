@@ -50,12 +50,16 @@ test("report generation reflects sources without executing workflows or reading 
       requirements: [{ code: "REQ-001", statement: { en: "One owner decides the result", zh: "中文不应渲染" }, source_ids: ["REQ-201"] }],
       open_decisions: ["Choose the supported export format. Confirm its consumer."],
       delivery_policy: { pull_requests: "draft_until_tree_review", live_acceptance: { model: "synthetic-model", instruction: { en: "Use the ordinary UI", zh: "REVIEW_LABEL_MUST_NOT_RENDER" } } },
+      delivery: { result: { summary: "TREE-RESULT-SENTINEL", exceptions: ["TREE-EXCEPTION-SENTINEL", "<img src=x onerror=alert(1)>TREE-ESCAPE-SENTINEL"] },
+        review: [{ source: { kind: "node", id: "NODE-003" }, reason: "TREE-REVIEW-SENTINEL" }] },
       tasks: [
         { id: "TASK-001", title: "Worker", outcome: "Delivered", draft_pr: "https://example.invalid/pull/7",
+          delivery: { result: { summary: "TASK-RESULT-SENTINEL", exceptions: ["TASK-EXCEPTION-SENTINEL"] },
+            review: [{ source: { kind: "node", id: "NODE-004" }, reason: "TASK-REVIEW-SENTINEL" }] },
           requirements: ["REQ-201", { statement: { en: "Task object requirement", zh: "中文" }, source_ids: ["REQ-202"] }],
           contract: {}, nodes: [
             { id: "NODE-001", title: "Implement", outcome: "Ready", role: "worker-1", after: [], status: "completed",
-              review: [{ source: { kind: "node", id: "NODE-003" }, reason: "content_changed" }], result: { summary: "Design is ready" }, executors: [], contract: {
+              review: [{ source: { kind: "node", id: "NODE-003" }, reason: "content_changed" }], result: { summary: "Design is ready", exceptions: ["NODE-EXCEPTION-SENTINEL"] }, executors: [], contract: {
                 scope: { in: ["Example capability", "STOP CONDITION: preserve the source until transfer completes"], out: ["Live provider quality"] },
                 design: { approach: ["Use the actual production owner"] },
                 ownership: { write_paths: ["src/example.mjs"], shared_exclusive: ["Synthetic store isolated per task"] },
@@ -81,17 +85,17 @@ test("report generation reflects sources without executing workflows or reading 
       report: {
         deliveries: [
           { id: "DELIVERY-001", title: "Planned delivery", state: "planned", execution_status: "planned", unconfirmed_tasks: [], ready_nodes: [], review_nodes: [], requires: ["DELIVERY-002", "DELIVERY-404"], blocked_by: ["DELIVERY-002"], error: null },
-          { id: "DELIVERY-002", title: "Recorded delivery", state: "recorded", execution_status: "running", unconfirmed_tasks: ["TASK-001"], ready_nodes: ["NODE-002"], review_nodes: ["NODE-001"], requires: [], blocked_by: [], error: null },
+          { id: "DELIVERY-002", title: "Recorded delivery", state: "needs_review", execution_status: "running", unconfirmed_tasks: ["TASK-001"], ready_nodes: ["NODE-002"], review_nodes: ["NODE-001"], requires: [], blocked_by: [], error: null },
           { id: "DELIVERY-003", title: "Broken delivery", state: "error", execution_status: "missing", unconfirmed_tasks: [], ready_nodes: [], review_nodes: [], requires: ["DELIVERY-001"], blocked_by: [], error: "The Tree at delivery/missing/Tree.json could not be read." },
         ],
         ready: ["DELIVERY-002"],
         ready_to_design: ["DELIVERY-001"],
-        counts: { recorded: 1, planned: 1, error: 1 },
+        counts: { needs_review: 1, planned: 1, error: 1 },
         errors: [],
       },
       deliveries: {
         "DELIVERY-002": { kind: "tree", tree: "delivery/Tree.json", export: { tree,
-          derived: { status: "running", ready: ["NODE-002"], review_nodes: ["NODE-001"], node_counts: { completed: 1, total: 2 } },
+          derived: { status: "running", delivery_status: "needs_review", task_delivery_status: { "TASK-001": "needs_review" }, ready: ["NODE-002"], review_nodes: ["NODE-001"], node_counts: { completed: 1, total: 2 } },
           checks: [{ id: "CHECK-REPORT", title: "Shared report check", commands: ["node --test tests/example.test.mjs"], coverage: { kind: "tree" }, pending: true, running: true, dirty: true, result: { status: "passed" }, covers: ["NODE-001", "NODE-002"], owner: { kind: "task", id: "TASK-001" } }] } },
         "DELIVERY-001": { kind: "planned", outline: { goal: { en: "Design the planned delivery", zh: "中文目标" }, success: ["The outline is reviewable"], requirements: plannedRequirements, open_decisions: plannedDecisions } },
         "DELIVERY-003": { kind: "error", tree: "delivery/missing/Tree.json", error: "The Tree at delivery/missing/Tree.json could not be read." },
@@ -116,7 +120,7 @@ test("report generation reflects sources without executing workflows or reading 
           unknown_refs: [{ delivery: "DELIVERY-002", task: "TASK-001", ref: "REQ-999" }],
         },
       },
-      metrics: { coverage_percent: [{ delivery: "DELIVERY-002", check: "CHECK-REPORT", owner: "TASK-001", value: 87.5, status: "recorded" }] },
+      metrics: { coverage_percent: [{ delivery: "DELIVERY-002", check: "CHECK-REPORT", owner: { kind: "task", id: "TASK-001" }, value: 87.5, status: "recorded" }] },
     };
     write("private/workspace/export.json", fixture);
     write("private/workspace/stub-tool.py", [
@@ -137,7 +141,7 @@ test("report generation reflects sources without executing workflows or reading 
     assert.match(projected, /The synthetic page renders/);
     // The recorded Tree delivery renders its existing execution graph plus badges.
     assert.match(projected, /1\. Recorded delivery/);
-    assert.match(projected, /<span class="badge">Recorded<\/span>/);
+    assert.match(projected, /<span class="badge">Needs review<\/span>/);
     assert.match(projected, /<span class="badge">Running<\/span>/);
     assert.match(projected, /<span class="badge">Ready to execute<\/span>/);
     assert.match(projected, /Use the actual production owner/);
@@ -150,6 +154,19 @@ test("report generation reflects sources without executing workflows or reading 
     assert.match(projected, /completed needs-review/u);
     assert.match(projected, /Review needed/u);
     assert.match(projected, /Pending review/u);
+    // A current needs-review delivery carries its recorded result, exceptions,
+    // pending review and unconfirmed Task identity, not only the status badge.
+    assert.match(projected, /TREE-RESULT-SENTINEL/u);
+    assert.match(projected, /TREE-EXCEPTION-SENTINEL/u);
+    assert.match(projected, /TREE-REVIEW-SENTINEL/u);
+    assert.match(projected, /TASK-RESULT-SENTINEL/u);
+    assert.match(projected, /TASK-EXCEPTION-SENTINEL/u);
+    assert.match(projected, /TASK-REVIEW-SENTINEL/u);
+    assert.match(projected, /NODE-EXCEPTION-SENTINEL/u);
+    assert.match(projected, /TASK-001 · needs_review/u);
+    // Exception text is projected verbatim into the escaped JSON payload; it
+    // never becomes live markup in the page.
+    assert.doesNotMatch(projected, /<img src=x/u);
     assert.match(projected, /Current array scope/u);
     assert.match(projected, /src\/current-owner\.rs/u);
     assert.match(projected, /Complete the current owner/u);
@@ -208,14 +225,31 @@ test("report generation reflects sources without executing workflows or reading 
     assert.ok(hasItem("REQ-301"), "Node requirement ids sit beside their statement");
     assert.ok(hasItem("REQ-202"), "Task requirement ids sit beside their statement");
     assert.ok(records.some((record) => record.title === "coverage_percent"
-      && (record.sections ?? []).some((section) => (section.items ?? []).some((item) => item.includes("CHECK-REPORT") && item.includes("87.5")))), "the metric drawer carries the check id");
+      && (record.sections ?? []).some((section) => (section.items ?? []).some((item) => item.includes("CHECK-REPORT") && item.includes("87.5") && item.includes("owner task/TASK-001")))), "the metric drawer carries the check id and owner identity");
+    assert.ok(records.some((record) => (record.sections ?? []).some((section) => section.title === "Unconfirmed tasks"
+      && (section.items ?? []).some((item) => item === "TASK-001 · needs_review"))), "unconfirmed Task identity stays structured");
+    assert.ok(records.some((record) => (record.sections ?? []).some((section) => (section.items ?? []).some((item) => typeof item === "string" && item.includes("<img src=x onerror=alert(1)>TREE-ESCAPE-SENTINEL")))), "exception text stays escaped inside the embedded JSON");
     // The adapter never writes its source.
     assert.equal(readFileSync(path.join(root, "private/workspace/Programme.json"), "utf8"), programmeSource);
 
     const sourcePlan = loadBetterPlan(path.join(root, "private/workspace/Programme.json"));
     assert.deepEqual(sourcePlan.milestones.map(({ id }) => id), ["DELIVERY-002", "DELIVERY-001", "DELIVERY-003"]);
     assert.deepEqual(sourcePlan.milestones.map(({ kind }) => kind), ["tree", "planned", "error"]);
-    assert.equal(sourcePlan.milestones[0].state, "recorded");
+    const current = sourcePlan.milestones[0];
+    assert.deepEqual(current.delivery, {
+      status: "needs_review",
+      result: ["TREE-RESULT-SENTINEL"],
+      exceptions: ["TREE-EXCEPTION-SENTINEL", "<img src=x onerror=alert(1)>TREE-ESCAPE-SENTINEL"],
+      review: ["node/NODE-003: TREE-REVIEW-SENTINEL"],
+    });
+    assert.deepEqual(current.taskDeliveryStatus, { "TASK-001": "needs_review" });
+    assert.deepEqual(current.unconfirmedTasks, ["TASK-001"]);
+    assert.deepEqual(current.tasks[0].detail.sections
+      .find((section) => section.title === "Task delivery review").items, ["node/NODE-004: TASK-REVIEW-SENTINEL"]);
+    assert.deepEqual(current.tasks[0].nodes.find((node) => node.code === "NODE-001").detail.sections
+      .find((section) => section.title === "Current result exceptions").items, ["NODE-EXCEPTION-SENTINEL"]);
+    assert.deepEqual(sourcePlan.metrics[0].entries[0].owner, { kind: "task", id: "TASK-001" });
+    assert.equal(sourcePlan.milestones[0].state, "needs_review");
     assert.equal(sourcePlan.milestones[0].readyToExecute, true);
     assert.equal(sourcePlan.milestones[1].readyToDesign, true);
     assert.deepEqual(sourcePlan.warnings, ["DELIVERY-001 requires 'DELIVERY-404', which is not a delivery; the dependency edge is ignored."]);

@@ -6,8 +6,8 @@
     "zh": "工程交付"
   },
   "purpose": {
-    "en": "Close one milestone without starting another.",
-    "zh": "闭环一个里程碑，然后停止。"
+    "en": "Close one milestone at engineering handoff; the next dependency-satisfied milestone starts only under an explicit finite programme assignment.",
+    "zh": "在工程交付处闭环一个里程碑；下一个依赖已满足的里程碑仅在显式有限程序安排下启动。"
   },
   "owner": {
     "en": "Integrator",
@@ -32,15 +32,15 @@
     }
   ],
   "exit": {
-    "en": "Reviewed buildable source and concise completion evidence are handed over.",
-    "zh": "交付审阅过的可构建源码和简洁完成证据。"
+    "en": "Reviewed buildable source and concise completion evidence are handed over. Continuing to a dependency-satisfied successor requires an explicit finite programme assignment.",
+    "zh": "交付审阅过的可构建源码和简洁完成证据；继续到依赖已满足的后续里程碑需要显式有限程序安排。"
   },
   "failure": {
-    "en": "Incomplete code returns to implementation; missing live evidence stays separate.",
-    "zh": "代码缺口返回开发；真实环境待证项单独列出。"
+    "en": "Incomplete code returns to implementation; missing live evidence stays separate; the next milestone remains inactive without an explicit finite programme assignment.",
+    "zh": "代码缺口返回开发；真实环境待证项单独列出；没有显式有限程序安排时，下一个里程碑保持不启动。"
   },
   "boundary": {
-    "en": "Do not initiate real conversations, Computer Use or per-worker installations.",
-    "zh": "不自行启动真实对话、Computer Use 或各自安装客户端。"
+    "en": "Do not initiate real conversations, Computer Use, per-worker installations, or the next milestone without an explicit finite programme assignment.",
+    "zh": "不得自行启动真实对话、Computer Use 或各自安装客户端，也不得在没有显式有限程序安排时启动下一个里程碑。"
   }
 }

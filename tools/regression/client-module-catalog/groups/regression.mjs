@@ -238,7 +238,6 @@ export const REGRESSION_MODULES = Object.freeze([
         "docs/RUNBOOK.zh-CN.md",
         "docs/CLOSURE.md",
         "tools/development/workflows/README.md",
-        "tools/development/reports.mjs",
         "SECURITY.md",
         "SECURITY.zh-CN.md",
         "docs/functionality/USER-GUIDE.md",
@@ -299,6 +298,24 @@ export const REGRESSION_MODULES = Object.freeze([
         "crates/licoup-native/resources/agent-native-capabilities.json",
       ],
       command: node("tools/verify-documentation.mjs", [], 60_000),
+    }),
+  defineModule({
+      id: "regression.development-reports",
+      kind: "regression-infrastructure",
+      summary: "Developer report renderer, plan projection adapter, and current delivery fidelity fixtures",
+      inputs: [
+        "tools/development/architecture-views.json",
+        "tools/development/reports.mjs",
+        "tools/development/reporting/**",
+        "tools/development/state-machines.json",
+        "tools/development/tests/reports.test.mjs",
+        "tools/development/workflows/**",
+      ],
+      command: command(
+        "node",
+        ["--test", "tools/development/tests/reports.test.mjs"],
+        60_000,
+      ),
     }),
   defineModule({
       id: "regression.secure-mesh-source-bundles",

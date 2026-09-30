@@ -6,16 +6,16 @@
     "zh": "里程碑安装候选与维护者微调"
   },
   "purpose": {
-    "en": "Turn one completed milestone into the installed application the maintainer reviews before the next milestone starts.",
-    "zh": "把一个已完成里程碑变成维护者可评审的已安装应用，再进入下一个里程碑。"
+    "en": "Under an explicit central delivery assignment, turn one completed milestone into the installed application the maintainer reviews.",
+    "zh": "在显式中央交付安排下，把一个已完成里程碑变成维护者可评审的已安装应用。"
   },
   "owner": {
-    "en": "Integrator for the current milestone",
-    "zh": "当前里程碑的集成人"
+    "en": "Assigned central delivery owner for the integrated candidate",
+    "zh": "整合候选的指定中央交付负责人"
   },
   "entry": {
-    "en": "One milestone's implementation, source review, non-live verification and engineering handoff are complete",
-    "zh": "单个里程碑的实现、源码审阅、非真实验证与工程交付均已完成"
+    "en": "An explicit central delivery assignment exists for the integrated candidate; the milestone's implementation, source review, non-live verification and engineering handoff are complete",
+    "zh": "整合候选已获得显式中央交付安排；该里程碑的实现、源码审阅、非真实验证与工程交付均已完成"
   },
   "steps": [
     {
@@ -40,15 +40,15 @@
     }
   ],
   "exit": {
-    "en": "The maintainer has the installed build of this milestone and its fine-tuning result.",
-    "zh": "维护者拿到该里程碑的已安装构建及其微调结果。"
+    "en": "The assigned delivery owner hands the maintainer the installed build of this milestone and its fine-tuning result. The installed trial never activates the next milestone.",
+    "zh": "指派的交付负责人把该里程碑的已安装构建及其微调结果交给维护者。安装验证本身不会启动下一个里程碑。"
   },
   "failure": {
-    "en": "A defect found here repairs the current milestone; it never activates the next one.",
-    "zh": "此阶段发现的缺陷在当前里程碑内修复，绝不激活下一个里程碑。"
+    "en": "A defect found here repairs the current milestone; it never activates the next. The next dependency-satisfied milestone starts only under an explicit finite programme assignment.",
+    "zh": "此阶段发现的缺陷在当前里程碑内修复，绝不激活下一个。下一个依赖已满足的里程碑仅在显式有限程序安排下启动。"
   },
   "boundary": {
-    "en": "Build, install and launch belong to this delivery step. Driving the interface, user-scenario acceptance and Computer Use stay separate and are not implied; signing, notarization and publication keep their own authorization.",
-    "zh": "构建、安装与启动属于本交付步骤；操作界面、用户场景验收与 Computer Use 另属独立范围，不由此隐含；签名、公证与发布保留各自授权。"
+    "en": "Build, install and launch belong to this explicitly assigned central delivery step, never to an ordinary engineering handoff. Driving the interface, user-scenario acceptance and Computer Use stay separate and are not implied; signing, notarization and publication keep their own authorization.",
+    "zh": "构建、安装与启动属于本显式指派的中央交付步骤，不属于普通工程交付；操作界面、用户场景验收与 Computer Use 另属独立范围，不由此隐含；签名、公证与发布保留各自授权。"
   }
 }
