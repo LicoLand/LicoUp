@@ -267,16 +267,19 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-protocol-bindings/src/licoarc_relay.rs",
   ])), [
+    "architecture.client-boundaries",
     "rust.core.protocol-bindings",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-protocol-bindings/src/licoarc_relay/mailbox/schedule.rs",
   ])), [
+    "architecture.client-boundaries",
     "rust.core.protocol-bindings",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-protocol-bindings/src/licoarc_relay/private_header.rs",
   ])), [
+    "architecture.client-boundaries",
     "rust.core.protocol-bindings",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([

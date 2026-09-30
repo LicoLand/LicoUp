@@ -13,6 +13,7 @@ import * as flutterChecks from "./client-architecture/checks/flutter.mjs";
 import * as nativeChecks from "./client-architecture/checks/native.mjs";
 import * as platformChecks from "./client-architecture/checks/platform.mjs";
 import * as privacyChecks from "./client-architecture/checks/privacy.mjs";
+import * as ratchetChecks from "./client-architecture/checks/ratchet.mjs";
 
 const defaultChecks = Object.freeze({
   ...compositionChecks,
@@ -21,6 +22,7 @@ const defaultChecks = Object.freeze({
   ...nativeChecks,
   ...platformChecks,
   ...privacyChecks,
+  ...ratchetChecks,
 });
 
 export const CLIENT_ARCHITECTURE_PHASE_IDS = Object.freeze([
@@ -45,6 +47,7 @@ export const CLIENT_ARCHITECTURE_PHASE_IDS = Object.freeze([
   "flutter.presentation-boundary",
   "composition.client-root-and-shell",
   "native.target-readiness-reducer",
+  "architecture.ratchet-metrics",
 ]);
 
 const phasePlan = Object.freeze([
@@ -94,6 +97,7 @@ const phasePlan = Object.freeze([
     secureMeshControllerSource: state.secureMeshControllerSource,
   }),
   (context, checks) => checks.checkTargetReadinessReducer(context),
+  (context, checks) => checks.checkArchitectureRatchet(context),
 ]);
 
 export async function runClientArchitecturePhases(context, checks = defaultChecks) {
@@ -119,12 +123,37 @@ export async function runClientArchitectureVerification({
     futureModules: state.futureModules,
     packagedTargets: state.packagedTargets,
     packagePlanCheckedPlatforms: state.packagePlanCheckedPlatforms,
+    metrics: state.ratchetMetrics,
+    ratchet: state.ratchetReport,
   });
+  emitArchitectureResult(result, output);
+  return result;
+}
+
+export async function recordArchitectureRatchetBaseline({
+  repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url))),
+  output,
+} = {}) {
+  const outcome = await ratchetChecks.recordArchitectureRatchet({ repoRoot });
+  const result = {
+    ok: outcome.ok,
+    text: JSON.stringify(
+      outcome.ok
+        ? { ok: true, baseline: outcome.path, metrics: outcome.record }
+        : { ok: false, failures: [outcome.message, ...(outcome.regressions ?? [])] },
+      null,
+      2,
+    ),
+  };
   emitArchitectureResult(result, output);
   return result;
 }
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
 if (invokedPath === fileURLToPath(import.meta.url)) {
-  await runClientArchitectureVerification();
+  if (process.argv.includes("--record-ratchet-baseline")) {
+    await recordArchitectureRatchetBaseline();
+  } else {
+    await runClientArchitectureVerification();
+  }
 }

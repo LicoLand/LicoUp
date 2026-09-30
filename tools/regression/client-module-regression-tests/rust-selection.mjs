@@ -13,6 +13,7 @@ test("workflow changes select the pure crate and its native integration", async 
   assert.ok(sources.length > 0);
   for (const source of sources) {
     assert.deepEqual(ids(selectModulesForChangedPaths([source])), [
+      "architecture.client-boundaries",
       "rust.core.workflow",
       "rust.domain.adaptive-flywheel",
     ]);
@@ -32,6 +33,7 @@ test("Rust catalog commands are independently filtered", () => {
 test("catalog convergence crate and native adapters retain bounded closures", () => {
   const selections = new Map([
     ["crates/lico-catalog-convergence/src/engine.rs", [
+      "architecture.client-boundaries",
       "rust.crate.catalog-convergence",
     ]],
     ["crates/licoup-native/src/domain/catalog_convergence.rs", [
@@ -136,6 +138,7 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "crates/licoup-conversation/src/store/execution.rs",
   ])), [
     "regression.subagent-mcp-common",
+    "architecture.client-boundaries",
     "rust.domain.client-conversations",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([

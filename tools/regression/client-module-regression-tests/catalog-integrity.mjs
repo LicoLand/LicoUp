@@ -377,6 +377,17 @@ test("architecture and package facades retain precise source-bundle ownership", 
   ];
   const architectureTest =
     "tests/contract/client/client-architecture-modules.test.mjs";
+  const ratchetSources = [
+    "apps/desktop/scripts/client-architecture/checks/ratchet.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/baseline.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/cargo-manifest.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/definitions.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/developer-tools.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/lexical.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/measure.mjs",
+  ];
+  const ratchetTest =
+    "tests/contract/client/client-architecture-ratchet.test.mjs";
   const packageAssets = [
     "apps/desktop/macos/CustodyHelper/Info.plist",
     "apps/desktop/macos/CustodyHelper/ProductionRelease.entitlements",
@@ -423,6 +434,15 @@ test("architecture and package facades retain precise source-bundle ownership", 
   assert.deepEqual(ids(selectModulesForChangedPaths([architectureTest])), [
     "regression.client-architecture-modules",
   ]);
+  for (const relativePath of ratchetSources) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), [
+      "regression.client-architecture-ratchet",
+      "architecture.client-boundaries",
+    ]);
+  }
+  assert.deepEqual(ids(selectModulesForChangedPaths([ratchetTest])), [
+    "regression.client-architecture-ratchet",
+  ]);
 
   for (const relativePath of [...packageAssets, ...packageSources]) {
     const expected = [
@@ -458,6 +478,8 @@ test("architecture and package facades retain precise source-bundle ownership", 
 
   const architectureBundle = CLIENT_MODULE_CATALOG.find((candidate) =>
     candidate.id === "regression.client-architecture-modules");
+  const ratchetBundle = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "regression.client-architecture-ratchet");
   const packageBundle = CLIENT_MODULE_CATALOG.find((candidate) =>
     candidate.id === "regression.package-client-source-bundle");
   const planBundle = CLIENT_MODULE_CATALOG.find((candidate) =>
@@ -467,6 +489,8 @@ test("architecture and package facades retain precise source-bundle ownership", 
     architectureTest,
   ]);
   assert.deepEqual(architectureBundle.command.args, ["--test", architectureTest]);
+  assert.deepEqual(ratchetBundle.inputs, [...ratchetSources, ratchetTest]);
+  assert.deepEqual(ratchetBundle.command.args, ["--test", ratchetTest]);
   assert.deepEqual(packageBundle.inputs, [...packageAssets, ...packageSources, ...packageTests]);
   assert.deepEqual(packageBundle.command.args, ["--test", ...packageTests]);
   assert.deepEqual(planBundle.inputs, [...planSources, ...planTests]);
@@ -477,7 +501,8 @@ test("architecture and package facades retain precise source-bundle ownership", 
     "tests/contract/client/verify-client-plan/verify-client-plan-privacy.test.mjs",
     "tests/contract/client/verify-client-plan/verify-client-plan-source-bundle.test.mjs",
   ]);
-  assert.equal([...architectureBundle.inputs, ...packageBundle.inputs, ...planBundle.inputs]
+  assert.equal([...architectureBundle.inputs, ...ratchetBundle.inputs,
+    ...packageBundle.inputs, ...planBundle.inputs]
     .some((relativePath) => relativePath.includes("*")), false);
 
   const architectureOwner = CLIENT_MODULE_CATALOG.find((candidate) =>
@@ -494,6 +519,38 @@ test("architecture and package facades retain precise source-bundle ownership", 
   }
   for (const relativePath of planSources) {
     assert.equal(planOwner.inputs.includes(relativePath), true);
+  }
+});
+
+test("architecture gate owns every measured manifest and runtime source root", async () => {
+  const measuredPaths = [
+    "Cargo.toml",
+    "apps/desktop/packaging.modules.json",
+    "crates/licoup-extension-contracts/src/deployment.rs",
+  ];
+  for (const root of ["crates", "components", "sdk"]) {
+    const entries = await fs.readdir(path.join(repoRoot, root), { withFileTypes: true });
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      measuredPaths.push(`${root}/${entry.name}/Cargo.toml`);
+      const sources = await sourceFiles(`${root}/${entry.name}/src`, ".rs");
+      if (sources.length > 0) {
+        measuredPaths.push(sources[0]);
+      }
+    }
+  }
+  const dartSources = await sourceFiles("apps/desktop/lib", ".dart");
+  if (dartSources.length > 0) {
+    measuredPaths.push(dartSources[0]);
+  }
+  for (const relativePath of measuredPaths) {
+    assert.equal(
+      ids(selectModulesForChangedPaths([relativePath])).includes("architecture.client-boundaries"),
+      true,
+      relativePath,
+    );
   }
 });
 

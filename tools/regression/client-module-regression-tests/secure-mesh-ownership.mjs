@@ -530,7 +530,7 @@ test("protocol bindings own and test the complete Lico Arc relay codec", async (
   ]) {
     assert.deepEqual(
       ids(selectModulesForChangedPaths([relativePath])),
-      ["rust.core.protocol-bindings"],
+      ["architecture.client-boundaries", "rust.core.protocol-bindings"],
       `protocol bindings must own and test ${relativePath}`,
     );
   }

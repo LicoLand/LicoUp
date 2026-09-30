@@ -16,6 +16,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "regression.pairwise-session-source-bundle",
   "regression.relay-operations-source-bundle",
   "regression.client-architecture-modules",
+  "regression.client-architecture-ratchet",
   "regression.assistant-workflow-contract",
   "regression.subagent-mcp-common",
   "regression.subagent-mcp-verification-routes",

@@ -283,6 +283,37 @@ Node-only; it does not install platform toolchains
 and is not authorization for live services, runtime-data capture, device
 installation, signing, publication, or store operations.
 
+### Static architecture metrics
+
+`npm run client:verify:architecture` ends with the architecture ratchet phase,
+which measures five static metrics and prints them as a numeric record for
+milestone check results:
+
+- kernel Cargo dependencies on optional capability crates,
+- domain/platform and platform/domain importing files in `licoup-native`,
+- `licoup-native` Rust size over one defined scope,
+- optional capabilities bundled by the packaging module set,
+- developer-tool execution sites in runtime sources.
+
+Exact scopes, the optional-crate and packaging ownership maps, and the
+justified developer-tool allowlist are declared in
+`apps/desktop/scripts/client-architecture/ratchet/definitions.mjs`; every
+metric also emits its `details.definition` in the verification report. The
+Cargo manifest graph is resolved with the pinned `smol-toml` devDependency so
+workspace inheritance, renames and path locality are read the way Cargo
+declares them.
+
+Tracked numbers and sets move only in the improving direction. A number that
+grows or a set member that appears fails the check with the offending entry; an
+improvement passes and prompts a baseline update. The initial comparable
+baseline is recorded on the integrated candidate with
+`node apps/desktop/scripts/verify-client-architecture.mjs --record-ratchet-baseline`,
+which writes `apps/desktop/scripts/client-architecture/ratchet/baseline.json`
+and refuses to raise a recorded value. An unrecorded baseline fails the check
+by design. Installed size, and the processes, listeners and login items seen
+after a fresh minimal install, remain separately assigned installed-candidate
+evidence and are not measured here.
+
 ### Diagnose a failed check
 
 1. Re-run the failing focused command, not the complete suite.
