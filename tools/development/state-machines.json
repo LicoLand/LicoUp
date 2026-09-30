@@ -3,7 +3,7 @@
     "id": "conversation",
     "configuration": "crates/licoup-conversation/resources/state-machines.json",
     "execution": "compiled-table",
-    "verification": "verify:conversation",
+    "verification": "npm run client:regression -- --module rust.domain.client-conversations",
     "owner": "conversation",
     "executor": "crates/licoup-conversation/src/state_machine/mod.rs",
     "consumers": [
@@ -25,7 +25,7 @@
     "format": "user-supplied JSON Graph definition",
     "executor": "crates/licoup-workflow/src/machine.rs",
     "owner": "workflow",
-    "verification": "verify:workflow",
+    "verification": "npm run client:regression -- --module rust.core.workflow",
     "execution": "runtime-graph",
     "note": "User graph instances stay private; the provider and executor are registered."
   },
@@ -35,7 +35,7 @@
     "configuration": "crates/licoup-native/resources/state-machines/update-handoff.json",
     "executor": "crates/licoup-native/src/domain/client_state_migration/handoff.rs",
     "execution": "compiled-table",
-    "verification": "verify:data-migration",
+    "verification": "npm run client:regression -- --module rust.domain.client-state-migration",
     "consumers": [
       "crates/licoup-native/src/domain/client_state_migration/strategy_store.rs",
       "crates/licoup-native/src/domain/client_state_migration.rs"

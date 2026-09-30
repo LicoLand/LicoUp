@@ -1,5 +1,7 @@
 # Contributing
 
+Updated: 2026-10-01
+
 English · [简体中文](CONTRIBUTING.zh-CN.md) · [Home](README.md)
 
 Thank you for helping LicoUp. Keep each change small enough to review and
@@ -211,6 +213,24 @@ LicoUp defines, and never check whether it followed one. A reply is not
 invalid, empty or an abstention just because it is plain language. Continuity
 reads what the Agent actually said.
 
+## Local reports
+
+Local workflow, state-machine and architecture pages come from the maintained
+report sources:
+
+```bash
+node tools/development/reports.mjs
+node tools/development/reports.mjs --better-plan <local-source>
+```
+
+The output stays in ignored `build/reports/`. The second form adds one explicitly
+selected read-only Better Plan projection for the private planning workspace, and
+running without it removes that generated page and its navigation entry. Reports
+are English and local-only: they are never shipped with the client, run no checks,
+Agents or client processes, and are not an execution authority. Change the sources
+described in [workflow and report sources](tools/development/workflows/README.md),
+never a generated page.
+
 ## Agent-assisted contribution
 
 An Agent may assist your work, but you remain the author of every commit. If
@@ -353,9 +373,10 @@ cost source beside the current catalog.
 
 ## Cut onto `release`; delegate publication
 
-`nightly` is the open integration branch. Product changes land there through
-ordinary action-prefixed pull requests, then one accepted snapshot advances by
-merge commit from `nightly` to `stable` and from `stable` to `release`.
+`nightly` is the only integration trunk and the open development branch. Product
+changes land there through ordinary action-prefixed pull requests, then one accepted
+snapshot advances by merge commit from `nightly` to `stable` and from `stable` to
+`release`.
 
 The project must complete 100 distinct releases before promoting any build to
 the `1.0.0` line. Every pre-1.0 release keeps its own immutable version,
