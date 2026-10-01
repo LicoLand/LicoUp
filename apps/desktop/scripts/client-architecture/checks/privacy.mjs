@@ -169,7 +169,7 @@ export async function checkFileSecurityAndClientState(context) {
     );
   }
   const fileSecurityInternalImport =
-    /file_security::(?:append_lock|atomic_replace|hardening|marker|policy|sync|unix_hardening|validation|windows_acl)/u;
+    /file_security::(?:append_lock|atomic_replace|hardening|marker|policy|sync|unix_hardening|validation|windows_acl)\b/u;
   for (const relativePath of (await collectSourceFiles(rustCliRoot, ".rs")).filter(
     (sourcePath) => sourcePath !== `${fileSecurityRoot}.rs` &&
       !sourcePath.startsWith(`${fileSecurityRoot}/`)

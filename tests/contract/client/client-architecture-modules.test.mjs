@@ -5,9 +5,11 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
+  createArchitectureContext,
   emitArchitectureResult,
   formatArchitectureResult,
 } from "../../../apps/desktop/scripts/client-architecture/context.mjs";
+import { checkFileSecurityAndClientState } from "../../../apps/desktop/scripts/client-architecture/checks/privacy.mjs";
 import {
   CLIENT_ARCHITECTURE_PHASE_IDS,
   runClientArchitecturePhases,
@@ -114,6 +116,24 @@ const phaseRunners = Object.freeze([
   ["native.target-readiness-reducer", "checkTargetReadinessReducer"],
   ["architecture.ratchet-metrics", "checkArchitectureRatchet"],
 ]);
+
+test("file-security facade checks distinguish public functions from internal modules", async () => {
+  const consumer = "crates/licoup-native/src/domain/local_recovery/mod.rs";
+  for (const [binding, refused] of [["sync_directory", false], ["sync::sync_directory", true]]) {
+    const context = createArchitectureContext({ repoRoot });
+    const readText = context.readText;
+    context.readText = async (relative) => {
+      const source = await readText(relative);
+      return relative === consumer
+        ? `${source}\nuse licoup_foundation::platform::file_security::${binding};\n`
+        : source;
+    };
+    await checkFileSecurityAndClientState(context);
+    assert.deepEqual(context.failures, refused
+      ? [`${consumer} must consume file security only through its stable facade`]
+      : []);
+  }
+});
 
 test("client architecture verifier has one thin entry and the complete source bundle", async () => {
   const rootLeaves = (await fs.readdir(path.join(repoRoot, moduleRoot)))

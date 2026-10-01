@@ -35,7 +35,8 @@ pub(crate) use endpoint_trust::{
 #[cfg(test)]
 pub(crate) use secret_custody::test_runtime_secret_material;
 pub(crate) use secret_custody::{
-    ensure_secure_mesh_protected_operation_allowed, with_secure_mesh_mls_participant,
+    ensure_secure_mesh_protected_operation_allowed, prepare_recovered_custody_metadata,
+    with_secure_mesh_mls_participant,
 };
 
 #[cfg(test)]

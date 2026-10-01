@@ -318,21 +318,33 @@ fn credential_custody_status_projection(
     selected_backend: &str,
     overrides: &RuntimeSecretOverrides,
 ) -> Value {
+    let mut relay_token_material = std::collections::BTreeMap::new();
+    if overrides.secret_store_authorization.is_some() {
+        relay_token_material.insert("pcToken".to_string(), overrides.pc_token);
+        relay_token_material.insert("mobileToken".to_string(), overrides.mobile_token);
+        for device in config
+            .get("pairedDevices")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            if let Some(key) = paired_device_token_secret_store_key(device) {
+                let observed = overrides.paired_device_tokens.iter().any(|token| {
+                    token.id == paired_device_id(device)
+                        && token.pairing_id == paired_device_pairing_id(device)
+                });
+                relay_token_material.insert(key, observed);
+            }
+        }
+    }
     let observations = CredentialCustodyObservations {
         selected_custody_backend: selected_backend.to_string(),
-        identity_material_in_selected_custody: Some(overrides.e2ee_private_key),
+        identity_material_in_selected_custody: overrides.identity_custody_verified,
         provider_key_material_in_selected_custody: None,
-        relay_token_material_in_selected_custody: Some(
-            overrides.pc_token
-                || overrides.mobile_token
-                || !overrides.paired_device_tokens.is_empty(),
-        ),
+        relay_token_material,
         opaque_platform_items: Vec::new(),
     };
-    let data_root = config_path().ok().and_then(|config_file| {
-        let client_state_dir = config_file.parent()?.parent()?;
-        Some(client_state_dir.parent()?.to_path_buf())
-    });
+    let data_root = licoup_foundation::platform::paths::portable_data_dir_read_only().ok();
     let Some(data_root) = data_root else {
         return json!({
             "available": false,

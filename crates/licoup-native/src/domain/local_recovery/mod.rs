@@ -101,9 +101,10 @@ pub fn export_data_home(
 /// call created it, emptied when the caller named an existing empty directory — and the
 /// original owner refusal is returned. Cleanup that cannot complete is reported as
 /// [`RECOVERY_CLEANUP_FAILED`] instead of being silently ignored, because the caller must
-/// know that a fully published but unverified root remains. The source archive is never
-/// deleted, so that retained root is forward-recoverable: the reference rewrite and the
-/// revision refreeze/readback are idempotent owner operations.
+/// know that destination contents or rollback durability are uncertain. The source
+/// archive is never deleted: preserve any retained destination for diagnosis and retry
+/// into a fresh empty home. This operation does not activate the restored home or claim
+/// crash-atomic owner preparation; process interruption can leave an unverified root.
 pub fn import_archive(archive_path: &Path, target_root: &Path) -> Result<RecoveryImport> {
     let archive_path =
         std::path::absolute(archive_path).map_err(|_| anyhow!("backup_archive_unresolved"))?;
@@ -116,10 +117,15 @@ pub fn import_archive(archive_path: &Path, target_root: &Path) -> Result<Recover
         target_root: target_root.clone(),
     })?;
 
-    let source_home = std::path::absolute(&outcome.source_home)
-        .map_err(|_| anyhow!("backup_source_home_unresolved"))?;
+    // Foundation validated absolute provenance before publishing. There must be no
+    // fallible post-publication preparation outside the checked rollback branch.
+    let source_home = outcome.source_home.clone();
     let relocated = source_home != target_root;
     let verification = (|| -> Result<Vec<String>> {
+        crate::domain::mobile_relay::prepare_recovered_custody_metadata(
+            &target_root,
+            &source_home,
+        )?;
         // The existing conversation-snapshot owner owns which references travel with
         // the home; it returns immediately when the source and target are the same.
         crate::domain::conversation::snapshots::relocate_copied_data_home_references(
@@ -140,7 +146,9 @@ pub fn import_archive(archive_path: &Path, target_root: &Path) -> Result<Recover
             verified_workflow_revisions,
         }),
         Err(error) => {
-            rollback_published_root(&target_root, created_target)?;
+            if rollback_published_root(&target_root, created_target).is_err() {
+                return Err(error.context(RECOVERY_CLEANUP_FAILED));
+            }
             Err(error)
         }
     }
@@ -154,14 +162,33 @@ pub fn import_archive(archive_path: &Path, target_root: &Path) -> Result<Recover
 /// rolled back. A rollback that cannot complete reports the stable cleanup code; it never
 /// pretends the destination is gone.
 fn rollback_published_root(target_root: &Path, created_target: bool) -> Result<()> {
+    rollback_published_root_with_sync(
+        target_root,
+        created_target,
+        licoup_foundation::platform::file_security::sync_directory,
+    )
+}
+
+fn rollback_published_root_with_sync(
+    target_root: &Path,
+    created_target: bool,
+    mut sync: impl FnMut(&Path) -> Result<()>,
+) -> Result<()> {
     if created_target {
-        return remove_published_tree(target_root).map_err(|_| anyhow!(RECOVERY_CLEANUP_FAILED));
+        remove_published_tree(target_root).map_err(|_| anyhow!(RECOVERY_CLEANUP_FAILED))?;
+    } else {
+        let entries =
+            std::fs::read_dir(target_root).map_err(|_| anyhow!(RECOVERY_CLEANUP_FAILED))?;
+        for entry in entries {
+            let entry = entry.map_err(|_| anyhow!(RECOVERY_CLEANUP_FAILED))?;
+            remove_published_tree(&entry.path()).map_err(|_| anyhow!(RECOVERY_CLEANUP_FAILED))?;
+        }
+        sync(target_root).map_err(|_| anyhow!(RECOVERY_CLEANUP_FAILED))?;
     }
-    let entries = std::fs::read_dir(target_root).map_err(|_| anyhow!(RECOVERY_CLEANUP_FAILED))?;
-    for entry in entries {
-        let entry = entry.map_err(|_| anyhow!(RECOVERY_CLEANUP_FAILED))?;
-        remove_published_tree(&entry.path()).map_err(|_| anyhow!(RECOVERY_CLEANUP_FAILED))?;
-    }
+    let parent = target_root
+        .parent()
+        .ok_or_else(|| anyhow!(RECOVERY_CLEANUP_FAILED))?;
+    sync(parent).map_err(|_| anyhow!(RECOVERY_CLEANUP_FAILED))?;
     Ok(())
 }
 
@@ -177,7 +204,9 @@ fn remove_published_tree(path: &Path) -> std::io::Result<()> {
     // A hardened directory refuses the removal of its own entries, so its write
     // permission is restored before the walk continues.
     let directory = metadata.is_dir() && !metadata.file_type().is_symlink();
-    make_removable(path, &metadata, directory)?;
+    if !metadata.file_type().is_symlink() {
+        make_removable(path, &metadata, directory)?;
+    }
     if directory {
         for entry in std::fs::read_dir(path)? {
             remove_published_tree(&entry?.path())?;
@@ -274,6 +303,39 @@ mod tests {
 
     /// A cleanup that cannot read the destination reports the stable code instead of
     /// claiming the destination is gone.
+    #[test]
+    fn checked_cleanup_requires_durable_removal_for_both_destination_shapes() {
+        for created in [false, true] {
+            let base = scratch(if created {
+                "durability-created"
+            } else {
+                "durability-existing"
+            });
+            let target = base.join("target");
+            std::fs::create_dir_all(&target).unwrap();
+            std::fs::write(target.join("payload"), b"synthetic").unwrap();
+            let mut synced = Vec::new();
+            let error = rollback_published_root_with_sync(&target, created, |path| {
+                synced.push(path.to_path_buf());
+                if path == base {
+                    Err(anyhow!("synthetic directory sync failure"))
+                } else {
+                    Ok(())
+                }
+            })
+            .unwrap_err();
+            assert_eq!(error.to_string(), RECOVERY_CLEANUP_FAILED);
+            let expected = if created {
+                vec![base.clone()]
+            } else {
+                vec![target.clone(), base.clone()]
+            };
+            assert_eq!(synced, expected);
+            assert_eq!(target.exists(), !created);
+            std::fs::remove_dir_all(base).unwrap();
+        }
+    }
+
     #[test]
     fn checked_cleanup_reports_an_incomplete_rollback() {
         let base = scratch("failed");

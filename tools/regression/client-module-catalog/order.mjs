@@ -358,6 +358,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.domain.mobile-relay.secret-custody.persistence",
   "rust.domain.mobile-relay.secret-custody.presentation",
   "rust.domain.mobile-relay.secret-custody.reset-guard",
+  "rust.domain.mobile-relay.secret-custody.recovery",
   "rust.domain.mobile-relay.secret-custody.runtime",
   "rust.domain.mobile-relay.secret-custody.secret-material",
   "rust.domain.mobile-relay.secret-custody.self-test",

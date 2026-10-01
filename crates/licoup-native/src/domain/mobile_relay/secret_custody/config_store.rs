@@ -264,6 +264,8 @@ pub(in crate::domain::mobile_relay) fn save_config_raw_with_reset_policy(
     config: &mut Value,
     allow_reset_write: bool,
 ) -> Result<()> {
+    // Reject malformed custody provenance before normalization, generations or I/O.
+    recorded_custody_namespace(config)?;
     prepare_station_fields_for_persistence(config)?;
     validate_config_generations(config)?;
     let expected_generation = config_generation(config, CONFIG_GENERATION_FIELD)?;
@@ -313,17 +315,18 @@ pub(in crate::domain::mobile_relay) fn save_config_raw_with_reset_policy(
         .ok_or_else(|| anyhow!("mobile relay config generation overflow"))?;
     config[CONFIG_GENERATION_FIELD] = json!(committed_generation);
     config[AUTHORITY_GENERATION_FIELD] = json!(candidate_authority_generation);
-    // Bind the identity state to the home that wrote it. A later restore or
-    // relocation carries the previous binding and is refused by the identity
-    // owner instead of silently minting a replacement identity.
+    // Preserve the owning locator. Normalization is not custody verification
+    // and must not erase an origin reference after a data-home restore.
     if let Some(e2ee) = config
         .get_mut("mobileRelayE2ee")
         .and_then(Value::as_object_mut)
     {
-        e2ee.insert(
-            CUSTODY_NAMESPACE_FIELD.to_string(),
-            json!(native_secret_store_namespace()?),
-        );
+        if !e2ee.contains_key(CUSTODY_NAMESPACE_FIELD) {
+            e2ee.insert(
+                CUSTODY_NAMESPACE_FIELD.to_string(),
+                json!(current_custody_namespace()?),
+            );
+        }
     }
     let encoded = format!("{}\n", serde_json::to_string_pretty(config)?);
     licoup_foundation::platform::file_security::atomic_write_private_text_bounded(
@@ -345,6 +348,38 @@ pub(in crate::domain::mobile_relay) fn save_config_raw_with_reset_policy(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn invalid_locator_is_rejected_before_config_normalization_or_io() {
+        use licoup_foundation::platform::paths::set_portable_data_dir_override;
+        struct RestoreHome {
+            previous: Option<PathBuf>,
+            root: PathBuf,
+        }
+        impl Drop for RestoreHome {
+            fn drop(&mut self) {
+                set_portable_data_dir_override(self.previous.take());
+                let _ = fs::remove_dir_all(&self.root);
+            }
+        }
+        let root = env::temp_dir().join(format!("licoup-invalid-locator-{}", Uuid::new_v4()));
+        let _home = RestoreHome {
+            previous: set_portable_data_dir_override(Some(root.clone())),
+            root: root.clone(),
+        };
+        let mut config = json!({
+            "configGeneration": 7,
+            "mobileRelayE2ee": {"custodyNamespace": "invalid-locator"}
+        });
+        let before = config.clone();
+        let error = save_config_raw(&mut config).unwrap_err();
+        assert_eq!(error.to_string(), "mobile relay custody locator is invalid");
+        assert_eq!(config, before);
+        assert!(
+            !root.exists(),
+            "invalid provenance must not create the data home"
+        );
+    }
 
     #[test]
     fn raw_runtime_secret_override_detection_is_fail_closed() {

@@ -16,11 +16,11 @@
 //! an empty destination and a manifest that matches every member. A refusal therefore
 //! publishes nothing and is never rendered as a completed export or import.
 
-use crate::error::{ARCHIVE_INSIDE_DATA_ROOT, ToolError, ToolResult};
+use crate::error::{ToolError, ToolResult};
 use licoup_native::core::full_data_root_archive::{RecoveryCoverage, RecoveryLimitation};
 use licoup_native::domain::local_recovery::{self, RecoveryImport};
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Export refused because the caller did not state that every writer is stopped.
 pub const ARCHIVE_WRITERS_RUNNING: ToolError = ToolError::new("archive_writers_running");
@@ -55,6 +55,7 @@ const OWNER_REFUSALS: &[&str] = &[
     "archive_manifest_unencodable",
     "archive_manifest_unreadable",
     "archive_path_invalid",
+    "archive_path_inside_data_root",
     "archive_payload_missing",
     "archive_source_home_invalid",
     "archive_target_invalid",
@@ -77,6 +78,10 @@ const OWNER_REFUSALS: &[&str] = &[
     "data_root_unreadable",
     "data_root_unresolved",
     "recovery_target_cleanup_failed",
+    "recovery_custody_origin_invalid",
+    "recovery_custody_metadata_invalid",
+    "recovery_custody_locator_invalid",
+    "recovery_source_identity_not_portable",
     "strategy_revision_content_drifted",
 ];
 
@@ -121,20 +126,13 @@ pub struct ImportReport {
 /// destination only after the refusal, so an unconfirmed or failed export never leaves
 /// behind a file that could be mistaken for a backup.
 ///
-/// The destination is refused before the owner runs when it sits inside the root being
-/// captured. The owner creates the destination before it inventories the root, so an
-/// archive named inside the root is captured as a member of itself and a restore would
-/// then write that archive back into the restored root. A capture that cannot describe
-/// the root as it was before the capture is not a backup of it.
+/// The Foundation owner refuses a destination inside the captured root before
+/// creating any output. The tool does not maintain a second path policy.
 pub fn export(
     data_root: &Path,
     archive_path: &Path,
     writers_stopped: bool,
 ) -> ToolResult<ExportReport> {
-    if archive_sits_inside(data_root, archive_path) {
-        return Err(ARCHIVE_INSIDE_DATA_ROOT);
-    }
-
     // The native composition resolves the explicit root, drives the Foundation owner and
     // keeps the stopped-writer rule in one place; this tool never captures a root itself.
     let outcome = local_recovery::export_data_home(Some(data_root), archive_path, writers_stopped)
@@ -176,45 +174,6 @@ pub fn import(archive_path: &Path, target_root: &Path) -> ToolResult<ImportRepor
     })
 }
 
-/// Whether the destination archive sits inside the root a capture would read.
-///
-/// The root's own path counts as inside it: a capture cannot write over the thing it is
-/// describing, so the conservative answer is the safe one.
-/// A path that does not exist yet is resolved through its nearest existing ancestor, so
-/// a symbolic link anywhere above the destination is seen the same way the owner will see
-/// it when it opens the file.
-fn archive_sits_inside(data_root: &Path, archive_path: &Path) -> bool {
-    let (Ok(root), Some(destination)) = (
-        data_root.canonicalize(),
-        resolve_for_comparison(archive_path),
-    ) else {
-        // An unresolvable destination is not this check's refusal: the owner reports the
-        // destination it cannot write, with its own code.
-        return false;
-    };
-    destination.starts_with(&root)
-}
-
-/// Resolve one path for comparison, following the ancestors that exist.
-fn resolve_for_comparison(path: &Path) -> Option<PathBuf> {
-    let mut existing = path.to_path_buf();
-    let mut suffix: Vec<std::ffi::OsString> = Vec::new();
-    loop {
-        if existing.exists() {
-            let mut resolved = existing.canonicalize().ok()?;
-            while let Some(component) = suffix.pop() {
-                resolved.push(component);
-            }
-            return Some(resolved);
-        }
-        let name = existing.file_name()?.to_os_string();
-        suffix.push(name);
-        if !existing.pop() {
-            return None;
-        }
-    }
-}
-
 /// Reduce one owner failure to a stable code, never to its message.
 ///
 /// The owners raise two shapes of message: a bare code, and a code carrying a context
@@ -236,6 +195,8 @@ fn refusal(error: &anyhow::Error) -> ToolError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use licoup_native::core::full_data_root_archive::archive_path_inside_data_root as archive_sits_inside;
+    use std::path::PathBuf;
 
     #[test]
     fn a_known_refusal_keeps_the_owner_code_and_drops_its_message() {
@@ -312,6 +273,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_destination_reached_through_a_link_is_still_inside_the_root() {
         let base = scratch_base("link");
         let root = base.join("root");

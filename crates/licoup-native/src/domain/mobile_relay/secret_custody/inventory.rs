@@ -50,7 +50,8 @@ impl CredentialCustodyClass {
 /// None of these actions copy an active secret to another device.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::domain::mobile_relay) enum CredentialRecoveryAction {
-    ProvisionNewDeviceIdentity,
+    RetainAuthorizedLocalCustody,
+    ObserveLocalCustody,
     ReauthorizeProvider,
     RePairDevice,
     ReacquireThroughPlatformCustody,
@@ -59,7 +60,8 @@ pub(in crate::domain::mobile_relay) enum CredentialRecoveryAction {
 impl CredentialRecoveryAction {
     pub(in crate::domain::mobile_relay) const fn as_str(self) -> &'static str {
         match self {
-            Self::ProvisionNewDeviceIdentity => "provisionNewDeviceIdentity",
+            Self::RetainAuthorizedLocalCustody => "retainAuthorizedLocalCustody",
+            Self::ObserveLocalCustody => "observeLocalCustody",
             Self::ReauthorizeProvider => "reauthorizeProvider",
             Self::RePairDevice => "rePairDevice",
             Self::ReacquireThroughPlatformCustody => "reacquireThroughPlatformCustody",
@@ -84,7 +86,9 @@ pub(in crate::domain::mobile_relay) struct CredentialCustodyObservations {
     pub(in crate::domain::mobile_relay) selected_custody_backend: String,
     pub(in crate::domain::mobile_relay) identity_material_in_selected_custody: Option<bool>,
     pub(in crate::domain::mobile_relay) provider_key_material_in_selected_custody: Option<bool>,
-    pub(in crate::domain::mobile_relay) relay_token_material_in_selected_custody: Option<bool>,
+    // Keyed by the exact token field or paired-device credential key. An
+    // observed sibling must never imply that another credential is available.
+    pub(in crate::domain::mobile_relay) relay_token_material: BTreeMap<String, bool>,
     pub(in crate::domain::mobile_relay) opaque_platform_items: Vec<String>,
 }
 
@@ -204,7 +208,7 @@ pub(in crate::domain::mobile_relay) fn classify_credential_custody(
                 "custody": custody_location(observations.provider_key_material_in_selected_custody),
                 "metadataPortable": true,
                 "secretPortable": false,
-                "recovery": CredentialRecoveryAction::ReauthorizeProvider.as_str(),
+                "recovery": recovery_action(observations.provider_key_material_in_selected_custody, CredentialRecoveryAction::ReauthorizeProvider),
             }),
         );
     }
@@ -227,7 +231,7 @@ pub(in crate::domain::mobile_relay) fn classify_credential_custody(
                     "custody": token_custody_location(config, field, observations),
                     "metadataPortable": true,
                     "secretPortable": false,
-                    "recovery": CredentialRecoveryAction::RePairDevice.as_str(),
+                    "recovery": recovery_action(observations.relay_token_material.get(field).copied(), CredentialRecoveryAction::RePairDevice),
                 }),
             );
         }
@@ -253,11 +257,11 @@ pub(in crate::domain::mobile_relay) fn classify_credential_custody(
                     {
                         CUSTODY_LOCATION_PORTABLE_CONFIG
                     } else {
-                        custody_location(observations.relay_token_material_in_selected_custody)
+                        custody_location(observations.relay_token_material.get(&key).copied())
                     },
                     "metadataPortable": true,
                     "secretPortable": false,
-                    "recovery": CredentialRecoveryAction::RePairDevice.as_str(),
+                    "recovery": recovery_action(observations.relay_token_material.get(&key).copied(), CredentialRecoveryAction::RePairDevice),
                 }),
             );
         }
@@ -280,22 +284,24 @@ pub(in crate::domain::mobile_relay) fn classify_credential_custody(
                     "custody": custody_location(observations.identity_material_in_selected_custody),
                     "metadataPortable": true,
                     "secretPortable": false,
-                    "recovery": CredentialRecoveryAction::ProvisionNewDeviceIdentity.as_str(),
+                    "recovery": recovery_action(observations.identity_material_in_selected_custody, CredentialRecoveryAction::ReacquireThroughPlatformCustody),
                 }),
             );
         }
     }
 
-    for item in &observations.opaque_platform_items {
-        let item = item.trim();
-        if item.is_empty() {
-            continue;
-        }
+    let opaque: BTreeSet<_> = observations
+        .opaque_platform_items
+        .iter()
+        .map(|item| item.trim())
+        .filter(|item| !item.is_empty())
+        .collect();
+    for (index, _) in opaque.iter().enumerate() {
         push_entry(
             &mut entries,
             &mut seen,
             json!({
-                "credentialRef": format!("platform-opaque:{item}"),
+                "credentialRef": format!("platform-opaque:{}", index + 1),
                 "class": CredentialCustodyClass::PlatformOpaqueCredential.as_str(),
                 "custody": CUSTODY_LOCATION_PLATFORM_SECRET_STORE,
                 "metadataPortable": false,
@@ -374,6 +380,14 @@ fn custody_location(material_in_selected_custody: Option<bool>) -> &'static str 
     }
 }
 
+fn recovery_action(observed: Option<bool>, unavailable: CredentialRecoveryAction) -> &'static str {
+    match observed {
+        Some(true) => CredentialRecoveryAction::RetainAuthorizedLocalCustody.as_str(),
+        None => CredentialRecoveryAction::ObserveLocalCustody.as_str(),
+        Some(false) => unavailable.as_str(),
+    }
+}
+
 fn token_custody_location(
     config: &Value,
     field: &str,
@@ -386,7 +400,7 @@ fn token_custody_location(
     {
         return CUSTODY_LOCATION_PORTABLE_CONFIG;
     }
-    custody_location(observations.relay_token_material_in_selected_custody)
+    custody_location(observations.relay_token_material.get(field).copied())
 }
 
 fn relay_token_present(config: &Value, field: &str, presence_field: &str) -> bool {

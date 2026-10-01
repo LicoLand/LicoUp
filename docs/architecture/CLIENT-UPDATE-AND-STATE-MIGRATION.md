@@ -25,9 +25,9 @@ build or schema correction does not establish another supported release.
 
 Store owners define physical schemas and conversions. Startup admission and the
 standalone native tool use those owners, rather than separate format writers.
-The delivered standalone program is `crates/licoup-migrate`: one Rust binary that
-runs without Node.js or an installed client, distributed as a separately
-downloadable client-release asset rather than a permanently bundled package. Its
+The standalone program is `crates/licoup-migrate`: one Rust binary that runs
+without Node.js or an installed client. Release distribution must provide it as a
+separately downloadable asset rather than a permanently bundled package. Its
 verbs are `inspect`, `plan`, `convert`, `resume`, `export`, `import`, and
 `rehearse`. Every invocation prints one JSON report and exits non-zero when the
 run leaves work owed. `inspect` and `plan` are read-only; `convert`, `resume`,
@@ -44,17 +44,31 @@ compatibility entry point, or fallback. Retained repository diagnostics are
 developer tools, not another supported conversion authority. There is no
 arbitrary historical-target selection or downgrade conversion contract.
 
-Obtaining the tool: the client release tags the standalone asset
-`LicoUp-migrate-macos-arm64` with its `.sha256` beside the client assets. It is
-downloaded on demand from that release, runs offline once obtained, and needs
-neither a Node.js runtime nor an installed client. Installing or updating the
-client neither installs, replaces, nor removes it, and the running client never
-selects a bundled migrator. The tool accepts only the published source and the
-planned target the release declares; replace it by downloading the asset of the
-same release again, which is safe because the tool holds no state.
+Import first validates and extracts through Foundation, then prepares custody
+metadata and restores owner-managed references and revision protections. These
+owner checks currently run after publication into the empty destination, not as a
+crash-atomic activation transaction. The entry point holds selected-home writer
+coordination throughout. Reported owner failures use checked, directory-synced
+rollback; interruption or incomplete rollback leaves an unverified destination,
+not a usable recovery. Preserve it for diagnosis and retry from the unchanged
+source archive into a fresh empty home. Import never selects or activates the
+recovered home.
+
+For a release that provides the tool, `LicoUp-migrate-macos-arm64` is downloaded
+on demand with its `.sha256` from that release and runs offline once obtained.
+The local release catalogue stages the tool and checksum; that is not proof of
+publication or availability from a released tag. Installing or updating the
+client neither installs, replaces, nor removes the downloaded tool, and the
+running client never selects a bundled migrator. Use a release whose declared
+source and target match the required conversion. Replacing the executable does
+not reset progress: conversion journals remain in the selected data root.
 
 Explicit maintenance requires stopped writers and a recoverable source. The short
-startup `admission.lock` does not prove that runtime writers have stopped. Preserve
+startup `admission.lock` does not prove that runtime writers have stopped. The
+standalone tool holds the client's selected-home exclusive process lease across
+conversion, resume, export, import and rehearsal; a participating active writer
+causes refusal rather than being stopped. The operator statement still covers
+older clients and other writers outside that coordination. Preserve
 the source before an authorized real-data transition and rehearse in a disposable
 root; never use a live store to debug the target schema. Protected credentials
 remain behind their platform custody and authorization boundary.

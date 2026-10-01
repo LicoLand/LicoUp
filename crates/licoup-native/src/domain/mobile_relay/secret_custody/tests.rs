@@ -67,7 +67,18 @@ fn credential_custody_inventory_classifies_each_credential_once_without_values()
         selected_custody_backend: "memory-only-ephemeral".to_string(),
         identity_material_in_selected_custody: Some(false),
         provider_key_material_in_selected_custody: Some(false),
-        relay_token_material_in_selected_custody: Some(false),
+        relay_token_material: ["pcToken", "mobileToken"]
+            .into_iter()
+            .map(|key| (key.to_string(), false))
+            .chain(
+                config["pairedDevices"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter_map(paired_device_token_secret_store_key)
+                    .map(|key| (key, false)),
+            )
+            .collect(),
         opaque_platform_items: vec!["legacyProtectedInventory".to_string()],
     };
 
@@ -93,7 +104,7 @@ fn credential_custody_inventory_classifies_each_credential_once_without_values()
         match entry["class"].as_str().unwrap() {
             "providerApiKey" => assert_eq!(entry["recovery"], "reauthorizeProvider"),
             "relayAccessToken" => assert_eq!(entry["recovery"], "rePairDevice"),
-            "deviceIdentityKey" => assert_eq!(entry["recovery"], "provisionNewDeviceIdentity"),
+            "deviceIdentityKey" => assert_eq!(entry["recovery"], "reacquireThroughPlatformCustody"),
             "platformOpaqueCredential" => {
                 assert_eq!(entry["recovery"], "reacquireThroughPlatformCustody");
             }
@@ -115,6 +126,74 @@ fn credential_custody_inventory_classifies_each_credential_once_without_values()
     assert!(!serialized.contains("pc-token-value-canary"));
     assert!(!serialized.contains("Synthetic DeepSeek label"));
     assert!(!serialized.contains("Synthetic Kimi label"));
+    assert!(!serialized.contains("legacyProtectedInventory"));
+    for (observed, action) in [
+        (Some(true), "retainAuthorizedLocalCustody"),
+        (None, "observeLocalCustody"),
+    ] {
+        let mut facts = observations.clone();
+        facts.identity_material_in_selected_custody = observed;
+        let report = credential_custody_inventory(&root.0, &config, &facts).unwrap();
+        let identity = report["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["class"] == "deviceIdentityKey")
+            .unwrap();
+        assert_eq!(identity["recovery"], action);
+        assert_eq!(report["metadataProvesCustody"], false);
+    }
+}
+
+#[test]
+fn custody_inventory_does_not_promote_unobserved_or_missing_sibling_tokens() {
+    let config = json!({
+        "pcTokenPresent": true, "mobileTokenPresent": true,
+        "pairedDevices": [
+            {"id":"pc-a", "pairingId":"pair-a", "credentialPresent":true},
+            {"id":"pc-b", "pairingId":"pair-b", "credentialPresent":true}
+        ]
+    });
+    let devices = config["pairedDevices"].as_array().unwrap();
+    let a = paired_device_token_secret_store_key(&devices[0]).unwrap();
+    let b = paired_device_token_secret_store_key(&devices[1]).unwrap();
+    let facts = CredentialCustodyObservations {
+        relay_token_material: [
+            ("pcToken".to_string(), true),
+            ("mobileToken".to_string(), false),
+            (a.clone(), true),
+        ]
+        .into(),
+        ..Default::default()
+    };
+    let report = classify_credential_custody(&config, &[], &facts);
+    for (key, custody, action) in [
+        (
+            "pcToken",
+            CUSTODY_LOCATION_PLATFORM_SECRET_STORE,
+            "retainAuthorizedLocalCustody",
+        ),
+        (
+            "mobileToken",
+            CUSTODY_LOCATION_SELECTED_UNAVAILABLE,
+            "rePairDevice",
+        ),
+        (
+            &a,
+            CUSTODY_LOCATION_PLATFORM_SECRET_STORE,
+            "retainAuthorizedLocalCustody",
+        ),
+        (&b, CUSTODY_LOCATION_NOT_OBSERVED, "observeLocalCustody"),
+    ] {
+        let entry = report["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["credentialRef"] == format!("relay-token:{key}"))
+            .unwrap();
+        assert_eq!(entry["custody"], custody);
+        assert_eq!(entry["recovery"], action);
+    }
 }
 
 #[test]

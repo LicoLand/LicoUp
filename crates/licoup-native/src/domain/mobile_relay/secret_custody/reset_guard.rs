@@ -7,6 +7,12 @@ pub(in crate::domain::mobile_relay) fn config_path() -> Result<PathBuf> {
         .join("config.json"))
 }
 
+pub(in crate::domain::mobile_relay) fn config_path_for_data_home(root: &Path) -> PathBuf {
+    crate::platform::client_state::state_root_for_data_home(root)
+        .join("mobile-relay")
+        .join("config.json")
+}
+
 pub(in crate::domain::mobile_relay) fn config_lock_path() -> Result<PathBuf> {
     Ok(ClientStateStore::portable()?
         .root()

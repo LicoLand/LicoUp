@@ -16,12 +16,10 @@
 //!
 //! The released layouts, rows and root documents are the `released_source` fixture frozen
 //! from tag `v0.2.1`; this file does not restate them. The released root records product
-//! high-water `0.2.1`, which an un-injected development binary must refuse. The conversion
-//! case therefore stamps the *bookkeeping* high-water with the admitting binary's own
-//! identity, exactly as the primary upstream oracle did, while keeping the released
-//! frontier and every released owner layout intact. That the true `0.2.1` stamp is refused
-//! by a lower-identity binary is asserted by the migration owner's own unit tests, not
-//! re-asserted here.
+//! high-water `0.2.1`, which an un-injected development binary must refuse. Run through
+//! `tools/scripts/migration-crate-tests.mjs --native-recovery`, which supplies the planned
+//! product identity through the native build script. The released ledger, frontier and
+//! owner layouts remain unchanged; the test never lowers admission to fit its binary.
 //!
 //! # Oracle
 //!
@@ -92,6 +90,11 @@ fn write_json_atomic(path: &Path, value: &Value) {
 /// Materialize the frozen released root. The released owner layouts are applied by the
 /// released producers themselves (the schema and row constants in the fixture).
 fn seed_released_source_root(root: &Path) {
+    assert_eq!(
+        running_product_version().expect("embedded product identity"),
+        "0.3.0",
+        "run through tools/scripts/migration-crate-tests.mjs --native-recovery; never lower the released ledger"
+    );
     seed_released_conversation_store(root);
     seed_released_strategy_store(&root.join(RELEASED_STRATEGY_DATABASE));
     ensure_private_dir(&root.join("client-state/migrations/domain-state"))
@@ -144,20 +147,6 @@ fn seed_released_strategy_store(path: &Path) {
         )
         .expect("released strategy schema identity");
     assert_eq!(version, RELEASED_STRATEGY_META_VERSION);
-}
-
-/// Stamp the released ledger's bookkeeping high-water with the admitting binary's own
-/// identity, keeping the released frontier the documented source endpoint.
-fn stamp_ledger_to_running_identity(root: &Path) {
-    let path = root.join("client-state/migrations/ledger.json");
-    let mut ledger: Value =
-        serde_json::from_slice(&fs::read(&path).expect("released ledger")).expect("ledger json");
-    ledger["highestAdmittedProductVersion"] = Value::String(
-        running_product_version()
-            .expect("binary identity")
-            .to_owned(),
-    );
-    write_json_atomic(&path, &ledger);
 }
 
 /// Arrange current-format owner content and one genuine workflow package revision.
@@ -337,6 +326,20 @@ fn assert_projection_is_at_target(
     }
 }
 
+fn writable_fixture_permissions(metadata: &fs::Metadata) -> fs::Permissions {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::Permissions::from_mode(if metadata.is_dir() { 0o700 } else { 0o600 })
+    }
+    #[cfg(not(unix))]
+    {
+        let mut permissions = metadata.permissions();
+        permissions.set_readonly(false);
+        permissions
+    }
+}
+
 fn remove_root(root: &Path) {
     if !root.exists() {
         return;
@@ -351,9 +354,7 @@ fn remove_root(root: &Path) {
             return;
         }
         if metadata.permissions().readonly() {
-            let mut permissions = metadata.permissions();
-            permissions.set_readonly(false);
-            let _ = fs::set_permissions(path, permissions);
+            let _ = fs::set_permissions(path, writable_fixture_permissions(&metadata));
         }
         if metadata.is_dir()
             && let Ok(entries) = fs::read_dir(path)
@@ -380,7 +381,6 @@ fn local_recovery_released_root_round_trips_both_containers_across_homes() {
     ensure_private_dir(&converted).expect("converted root");
     seed_released_source_root(&released);
     copy_tree(&released, &converted);
-    stamp_ledger_to_running_identity(&converted);
 
     // The released layouts are converted by the client's own admission owner.
     let admission = admit(&converted).expect("released root is admitted");
@@ -554,7 +554,6 @@ fn local_recovery_missing_credential_metadata_stays_limited() {
     let source = fixture.join("source");
     ensure_private_dir(&source).expect("source root");
     seed_released_source_root(&source);
-    stamp_ledger_to_running_identity(&source);
     admit(&source).expect("admission");
     // The protected credential metadata did not travel in this root.
     fs::remove_file(source.join(CREDENTIAL_METADATA)).expect("remove credential metadata");
@@ -599,7 +598,6 @@ fn a_failed_owner_verification_rolls_the_imported_destination_back() {
     let source = fixture.join("source");
     ensure_private_dir(&source).expect("source root");
     seed_released_source_root(&source);
-    stamp_ledger_to_running_identity(&source);
     admit(&source).expect("admission");
     let work = fixture.join("work");
     fs::create_dir_all(&work).expect("work directory");
@@ -608,11 +606,9 @@ fn a_failed_owner_verification_rolls_the_imported_destination_back() {
     // Corrupt the committed revision content: this is exactly the drift the workflow
     // package owner refuses when it re-freezes and reads the revision back.
     let workflow = revision_workflow_path(&source, &revision_digest);
-    let mut permissions = fs::metadata(&workflow)
-        .expect("revision metadata")
-        .permissions();
-    permissions.set_readonly(false);
-    fs::set_permissions(&workflow, permissions).expect("unfreeze the revision for the corruption");
+    let metadata = fs::metadata(&workflow).expect("revision metadata");
+    fs::set_permissions(&workflow, writable_fixture_permissions(&metadata))
+        .expect("unfreeze the revision for the corruption");
     fs::write(&workflow, b"{\"drifted\":true}").expect("corrupt the revision content");
 
     let archive = fixture.join("drifted.zip");

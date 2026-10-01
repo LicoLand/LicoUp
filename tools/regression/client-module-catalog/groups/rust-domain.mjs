@@ -2118,6 +2118,15 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "rust.domain.mobile-relay.secret-custody.recovery",
+      kind: "rust-domain",
+      summary: "Archive custody metadata preparation and authorized same-device recovery",
+      inputs: [
+        "crates/licoup-native/src/domain/mobile_relay/secret_custody/recovery.rs",
+      ],
+      command: rustLayer("domain::mobile_relay::secret_custody::recovery::tests::"),
+    }),
+  defineModule({
       id: "rust.domain.mobile-relay.secret-custody.runtime",
       kind: "rust-domain",
       summary: "Native-authorized custody runtime and biometric session composition",

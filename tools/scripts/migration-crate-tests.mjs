@@ -15,18 +15,20 @@
 // constructed here, in the same target directory and under the same identity.
 //
 // Everything runs offline and locked against the checkout's isolated target directory.
+// --native-recovery selects the native recovery and relocation consumers under that
+// same identity. Other arguments are forwarded to the selected Cargo test invocation.
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { acquireTestArtifactLease, NATIVE_CARGO_TEST_TARGET } from "./lib/test-artifact-lifecycle.mjs";
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const jobs = "3";
 
 function fail(message) {
-  process.stderr.write(`migration-crate-tests: ${message}\n`);
-  process.exit(1);
+  throw new Error(`migration-crate-tests: ${message}`);
 }
 
 function workspaceProductVersion() {
@@ -72,49 +74,68 @@ function metadata(env) {
   }
 }
 
-const productVersion = workspaceProductVersion();
-if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u.test(productVersion)) {
-  fail(`the workspace product version is not a semantic version: ${JSON.stringify(productVersion)}`);
+function main() {
+  const productVersion = workspaceProductVersion();
+  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u.test(productVersion)) {
+    fail(`the workspace product version is not a semantic version: ${JSON.stringify(productVersion)}`);
+  }
+
+  const lease = acquireTestArtifactLease({
+    repoRoot: workspaceRoot,
+    scope: "migration-crate-tests",
+    targetPath: NATIVE_CARGO_TEST_TARGET
+  });
+  try {
+    const environment = {
+      ...process.env,
+      CARGO_BUILD_JOBS: jobs,
+      CARGO_TARGET_DIR: lease.targetPath,
+      LICO_MOBILE_RELAY_NATIVE_SECRET_STORE: "disabled",
+      // The native build-metadata owner supplies the candidate identity; the
+      // frozen released fixture's product high-water is never changed.
+      LICO_CLIENT_PRODUCT_VERSION: productVersion
+    };
+
+    const targetDirectory = metadata(environment).target_directory;
+    if (typeof targetDirectory !== "string" || targetDirectory.length === 0) {
+      fail("cargo metadata did not report a target directory");
+    }
+
+    const cliBinary = path.join(
+      targetDirectory,
+      "debug",
+      process.platform === "win32" ? "licoup-cli.exe" : "licoup-cli"
+    );
+    const buildStatus = run(
+      "cargo",
+      ["build", "--offline", "--locked", "-j", jobs, "-p", "licoup-native", "--bin", "licoup-cli"],
+      environment
+    );
+    if (buildStatus !== 0) {
+      fail("the client CLI binary did not build; the interoperability oracle cannot run");
+    }
+
+    environment.LICOUP_MIGRATE_CLIENT_CLI = cliBinary;
+    process.stdout.write(`migration-crate-tests: candidate identity ${productVersion}\n`);
+    const forwarded = process.argv.slice(2);
+    const nativeRecovery = forwarded[0] === "--native-recovery";
+    if (nativeRecovery) forwarded.shift();
+    const selection = nativeRecovery
+      ? ["-p", "licoup-native", "--test", "local_recovery", "--test", "data_home_process"]
+      : ["-p", "licoup-migrate"];
+    return run(
+      "cargo",
+      ["test", "--offline", "--locked", "-j", jobs, ...selection, ...forwarded],
+      environment
+    );
+  } finally {
+    lease.release();
+  }
 }
 
-const environment = {
-  ...process.env,
-  CARGO_BUILD_JOBS: jobs,
-  // The real build-metadata owner: the native build script injects this value into the
-  // packaged binary, and the migration suites convert the frozen released root with it.
-  LICO_CLIENT_PRODUCT_VERSION: productVersion
-};
-
-const targetDirectory = metadata(environment).target_directory;
-if (typeof targetDirectory !== "string" || targetDirectory.length === 0) {
-  fail("cargo metadata did not report a target directory");
+try {
+  process.exitCode = main();
+} catch (error) {
+  process.stderr.write(`${error.message}\n`);
+  process.exitCode = 1;
 }
-
-const cliBinary = path.join(
-  targetDirectory,
-  "debug",
-  process.platform === "win32" ? "licoup-cli.exe" : "licoup-cli"
-);
-
-const buildStatus = run(
-  "cargo",
-  ["build", "--offline", "--locked", "-j", jobs, "-p", "licoup-native", "--bin", "licoup-cli"],
-  environment
-);
-if (buildStatus !== 0) {
-  fail("the client CLI binary did not build; the interoperability oracle cannot run");
-}
-
-environment.LICOUP_MIGRATE_CLIENT_CLI = cliBinary;
-
-process.stdout.write(
-  `migration-crate-tests: candidate identity ${productVersion}, client CLI ${cliBinary}\n`
-);
-
-const forwarded = process.argv.slice(2);
-const testStatus = run(
-  "cargo",
-  ["test", "--offline", "--locked", "-j", jobs, "-p", "licoup-migrate", ...forwarded],
-  environment
-);
-process.exit(testStatus);

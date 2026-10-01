@@ -127,13 +127,24 @@ Credential classes have distinct custody and reacquisition paths:
 | Relay access token | Platform secret custody keyed by the local custody namespace | Re-pair the device or reauthorize it with its peer |
 | Non-exportable platform credential | Platform secret custody item with no portable form | Reacquire through the platform custody owner |
 
-Relay custody is bound to the data home: the custody namespace is derived from
-the resolved configuration path rather than a fixed name, and the durable
-configuration records the home that wrote it. A restore that keeps the same
-data home and live platform custody continues the same device fingerprint. A
-restore into a different home reports the missing custody and refuses to
-regenerate identity material behind copied endpoint metadata. Credential
-inventory and archive coverage report non-secret metadata only; they never
-include secret values and never present metadata as proof that key material is
-available. Possession of an ordinary backup grants no takeover, revocation or
-wiping authority.
+Relay custody namespaces derive from configuration paths. Durable configuration
+retains the originating namespace as a locator, never as authorization or proof
+of custody. A same-device restore may retain the same identity and fingerprint
+in either the original or a different data home only after platform authorization
+and verification that locally held private material matches the recorded public
+identity. Destination custody takes precedence: a different existing identity
+refuses the operation rather than falling back to the source. Empty destination
+custody may resolve the origin locator; keys are not copied to a new namespace.
+Missing custody, including loss in the original home, never permits silent rekeying.
+
+Archive import prepares non-secret origin metadata without authorizing custody,
+advancing the stored schema or granting device activation. It refuses embedded
+device private material. Public configuration projections redact custody locators;
+transported runtime bundles carry no local-custody verification authority. Disposable
+cleanup cannot use an origin locator to delete another home's custody.
+
+Credential inventory distinguishes authorized verified custody, unavailable custody
+and custody not observed by the current operation. It exposes no secret values or
+raw custody handles, and metadata never proves that key material is available.
+Archive coverage remains limited by non-exportable custody. Possession of an
+ordinary backup grants no takeover, revocation or wiping authority.

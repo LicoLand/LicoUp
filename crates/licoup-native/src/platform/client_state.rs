@@ -18,5 +18,7 @@ pub(crate) use migration::{migrate_collections, probe_collections};
 pub use operations::{activity_list, snapshots_list, snapshots_restore, state_get, state_set};
 pub use snapshots::{SnapshotRecord, SnapshotStore};
 
+pub(crate) use paths::state_root_for_data_home;
+
 #[cfg(test)]
 mod tests;

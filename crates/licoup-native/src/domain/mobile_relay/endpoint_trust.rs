@@ -32,9 +32,9 @@ pub(in crate::domain::mobile_relay) use local_material::rotate_mobile_relay_loca
 pub(in crate::domain::mobile_relay) use local_material::{
     LocalEndpointState, ensure_local_pairwise_protocol_compatible,
     ensure_mobile_relay_endpoint_descriptor, ensure_mobile_relay_endpoint_material,
-    hex_encode_bytes, local_endpoint_public_descriptor, local_endpoint_state,
-    local_identity_metadata_present, local_public_device_identity,
-    rotate_mobile_relay_one_time_prekeys,
+    existing_identity_requires_custody, hex_encode_bytes, local_endpoint_public_descriptor,
+    local_endpoint_state, local_identity_metadata_present, local_public_device_identity,
+    rotate_mobile_relay_one_time_prekeys, validate_existing_identity_custody,
 };
 pub(in crate::domain::mobile_relay) use pairing_presentation::*;
 pub(in crate::domain::mobile_relay) use pairwise_codec::*;

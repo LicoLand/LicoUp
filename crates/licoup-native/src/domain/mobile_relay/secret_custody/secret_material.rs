@@ -70,23 +70,38 @@ pub(in crate::domain::mobile_relay) fn hydrate_runtime_secret_material_from_nati
     material: &mut RuntimeSecretMaterial,
     overrides: &mut RuntimeSecretOverrides,
 ) -> Result<()> {
-    if let Some(store) = mobile_relay_secret_store_override() {
-        return hydrate_runtime_secret_material_from_secret_store(
+    let current = current_custody_namespace()?;
+    if recorded_custody_namespace(config)?.is_none_or(|origin| origin == current) {
+        let store =
+            mobile_relay_secret_store_override().unwrap_or_else(selected_mobile_relay_secret_store);
+        // Read-only presence/redaction observation does not create or mutate an
+        // identity. Protected operations use the verified-context path below.
+        hydrate_runtime_secret_material_from_secret_store(
             config,
             material,
             overrides,
             store.as_ref(),
-            MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE,
-        );
+            &current,
+        )?;
+        if overrides.secret_store_authorization.is_some() {
+            overrides.identity_custody_verified = Some(
+                material
+                    .e2ee_secret(MobileRelayE2eeSecretField::PrivateKey)
+                    .is_some()
+                    && material
+                        .e2ee_secret(MobileRelayE2eeSecretField::SigningKey)
+                        .is_some()
+                    && validate_existing_identity_custody(config, material).is_ok(),
+            );
+        }
+        return Ok(());
     }
-    let store = selected_mobile_relay_secret_store();
-    let namespace = native_secret_store_namespace()?;
-    hydrate_runtime_secret_material_from_secret_store(
-        config,
-        material,
-        overrides,
-        store.as_ref(),
-        &namespace,
+    let mut batch = MobileRelaySecretStoreAuthBatch::new(
+        "Mobile Relay E2EE secret bundle hydration",
+        mobile_relay_e2ee_secret_store_authorization_batch_operation_count(),
+    );
+    hydrate_runtime_secret_material_from_native_store_with_batch(
+        config, material, overrides, &mut batch,
     )
 }
 
@@ -96,17 +111,116 @@ pub(in crate::domain::mobile_relay) fn hydrate_runtime_secret_material_from_nati
     overrides: &mut RuntimeSecretOverrides,
     batch: &mut MobileRelaySecretStoreAuthBatch,
 ) -> Result<()> {
+    batch.prepare_custody_lookup(config)?;
     let Some((store, session, namespace)) = batch.authorization()? else {
         return Ok(());
     };
-    hydrate_runtime_secret_material_from_store_with_session(
+    let selected = hydrate_runtime_secret_material_with_local_owner(
         config,
         material,
         overrides,
         store.as_ref(),
         &session,
         &namespace,
-    )
+    )?;
+    if let Some(selected) = selected {
+        batch.select_verified_custody_namespace(selected)?;
+    }
+    Ok(())
+}
+
+/// Resolve only app-owned locators under an actual native authorization session.
+/// Material is kept local and never copied into a new custody namespace.
+pub(in crate::domain::mobile_relay) fn hydrate_runtime_secret_material_with_local_owner(
+    config: &Value,
+    material: &mut RuntimeSecretMaterial,
+    overrides: &mut RuntimeSecretOverrides,
+    store: &dyn SecureMeshSecretStore,
+    session: &SecretStoreAuthorizationSession,
+    current_namespace: &str,
+) -> Result<Option<String>> {
+    validate_custody_namespace(current_namespace)?;
+    let recorded = recorded_custody_namespace(config)?;
+    let mut candidate = RuntimeSecretMaterial::new();
+    let mut observed = RuntimeSecretOverrides::default();
+    hydrate_runtime_secret_material_from_store_with_session(
+        config,
+        &mut candidate,
+        &mut observed,
+        store,
+        session,
+        current_namespace,
+    )?;
+    let has_identity_material = candidate
+        .e2ee_secret(MobileRelayE2eeSecretField::PrivateKey)
+        .is_some()
+        || candidate
+            .e2ee_secret(MobileRelayE2eeSecretField::SigningKey)
+            .is_some();
+    if has_identity_material {
+        // Existing target identity takes precedence; a mismatch never falls
+        // through to source material and never overwrites the target.
+        validate_existing_identity_custody(config, &candidate)?;
+    }
+    let mut selected = (!existing_identity_requires_custody(config) || has_identity_material)
+        .then(|| current_namespace.to_string());
+    if let Some(origin) = recorded.filter(|origin| *origin != current_namespace) {
+        if !has_identity_material {
+            ensure!(
+                candidate.is_empty(),
+                "mobile relay target custody is already occupied"
+            );
+            let e2ee = config.get("mobileRelayE2ee");
+            let has_public_identity = ["publicKeyBase64url", "signingPublicKeyBase64url"]
+                .into_iter()
+                .all(|field| {
+                    e2ee.and_then(|value| value.get(field))
+                        .and_then(Value::as_str)
+                        .is_some_and(|value| !value.trim().is_empty())
+                });
+            ensure!(
+                has_public_identity,
+                "mobile relay recorded custody lacks a verifiable local identity"
+            );
+            hydrate_runtime_secret_material_from_store_with_session(
+                config,
+                &mut candidate,
+                &mut observed,
+                store,
+                session,
+                origin,
+            )?;
+            if candidate
+                .e2ee_secret(MobileRelayE2eeSecretField::PrivateKey)
+                .is_some()
+                || candidate
+                    .e2ee_secret(MobileRelayE2eeSecretField::SigningKey)
+                    .is_some()
+            {
+                validate_existing_identity_custody(config, &candidate)?;
+                selected = Some(origin.to_string());
+            } else {
+                // Absence remains an observation, not permission to generate a
+                // replacement. The identity owner refuses before mutation.
+                candidate = RuntimeSecretMaterial::new();
+                observed = RuntimeSecretOverrides::default();
+                observed.mark_e2ee_secret_store(store.backend());
+                observed.mark_secret_store_authorization(session);
+            }
+        }
+    }
+    *material = candidate;
+    observed.identity_custody_verified = Some(
+        material
+            .e2ee_secret(MobileRelayE2eeSecretField::PrivateKey)
+            .is_some()
+            && material
+                .e2ee_secret(MobileRelayE2eeSecretField::SigningKey)
+                .is_some()
+            && validate_existing_identity_custody(config, material).is_ok(),
+    );
+    overrides.merge(observed);
+    Ok(selected)
 }
 
 pub(in crate::domain::mobile_relay) fn hydrate_runtime_secret_material_from_secret_store(
@@ -170,6 +284,7 @@ fn hydrate_runtime_secret_material_from_store_with_session(
             }
         }
         material.merge_e2ee_bundle(bundle);
+        material.mark_local_custody(namespace);
     }
     overrides.mark_e2ee_secret_store(store.backend());
     overrides.mark_secret_store_authorization(session);
@@ -179,6 +294,41 @@ fn hydrate_runtime_secret_material_from_store_with_session(
 pub(in crate::domain::mobile_relay) fn persist_config_secret_material_to_native_store(
     config: &mut Value,
 ) -> Result<()> {
+    let foreign_origin = match recorded_custody_namespace(config)? {
+        Some(origin) => !custody_locator_matches_current_home(origin)?,
+        None => false,
+    };
+    if foreign_origin {
+        // Config normalization is not a private-key import operation. In
+        // particular it must not turn copied identity bytes into target custody.
+        ensure!(
+            !config_contains_native_store_secret_material(config),
+            "mobile relay copied identity material requires its owning recovery operation"
+        );
+        if !contains_unredacted_token_secret_override(config) {
+            return Ok(());
+        }
+        let mut batch = MobileRelaySecretStoreAuthBatch::default();
+        let mut material = RuntimeSecretMaterial::new();
+        let mut observed = RuntimeSecretOverrides::default();
+        hydrate_runtime_secret_material_from_native_store_with_batch(
+            config,
+            &mut material,
+            &mut observed,
+            &mut batch,
+        )?;
+        validate_existing_identity_custody(config, &material)?;
+        persist_config_secret_material_to_native_store_with_batch(config, &mut batch)?;
+        if let Some(namespace) = batch.verified_namespace() {
+            if let Some(e2ee) = config
+                .get_mut("mobileRelayE2ee")
+                .and_then(Value::as_object_mut)
+            {
+                e2ee.insert(CUSTODY_NAMESPACE_FIELD.to_string(), json!(namespace));
+            }
+        }
+        return Ok(());
+    }
     if let Some(store) = mobile_relay_secret_store_override() {
         return persist_config_secret_material_to_secret_store(
             config,
@@ -195,9 +345,24 @@ pub(in crate::domain::mobile_relay) fn persist_config_secret_material_to_native_
     config: &mut Value,
     batch: &mut MobileRelaySecretStoreAuthBatch,
 ) -> Result<()> {
+    if !contains_unredacted_token_secret_override(config)
+        && !config_contains_native_store_secret_material(config)
+    {
+        return Ok(());
+    }
     let Some((store, session, namespace)) = batch.authorization()? else {
         return Ok(());
     };
+    let same_home = match recorded_custody_namespace(config)? {
+        Some(origin) => custody_locator_matches_current_home(origin)?,
+        None => true,
+    };
+    ensure!(
+        same_home
+            || recorded_custody_namespace(config)?.is_none_or(|origin| origin == namespace)
+            || batch.verified_namespace() == Some(namespace.as_str()),
+        "mobile relay custody persistence requires verified local ownership"
+    );
     persist_config_secret_material_to_secret_store_with_session(
         config,
         store.as_ref(),
@@ -230,6 +395,7 @@ pub(in crate::domain::mobile_relay) fn persist_runtime_secret_material_to_native
     let persisted = read_native_e2ee_secret_bundle(store.as_ref(), &session, &namespace)?
         .ok_or_else(|| anyhow!("mobile relay E2EE secret bundle disappeared after persistence"))?;
     material.merge_e2ee_bundle(persisted);
+    material.mark_local_custody(&namespace);
     Ok(())
 }
 
@@ -402,7 +568,10 @@ pub(in crate::domain::mobile_relay) fn cleanup_native_secret_store_fields_for_st
     Ok(())
 }
 
-fn mark_native_secret_override(overrides: &mut RuntimeSecretOverrides, field: &str) {
+pub(in crate::domain::mobile_relay) fn mark_native_secret_override(
+    overrides: &mut RuntimeSecretOverrides,
+    field: &str,
+) {
     match field {
         "pcToken" => overrides.pc_token = true,
         "mobileToken" => overrides.mobile_token = true,
