@@ -45,6 +45,9 @@ pub struct RestoreRequest {
 #[derive(Clone, Debug)]
 pub struct RestoreOutcome {
     pub container: ArchiveContainer,
+    /// The logical data home the archive was captured from. An import into another
+    /// home uses it to rebase owner-managed references; it never selects a root.
+    pub source_home: PathBuf,
     pub coverage: RecoveryCoverage,
     pub limitations: Vec<RecoveryLimitation>,
     pub file_count: usize,
@@ -151,6 +154,7 @@ pub fn restore_data_root(request: &RestoreRequest) -> Result<RestoreOutcome> {
 
     Ok(RestoreOutcome {
         container,
+        source_home: PathBuf::from(&inspected.manifest.source_home),
         coverage: inspected.manifest.coverage,
         limitations: inspected.manifest.limitations.clone(),
         file_count: inspected.manifest.file_count(),
@@ -933,6 +937,7 @@ mod tests {
     fn raw_member_inventory_must_match_the_declared_members_exactly() {
         let manifest = ArchiveManifest::new(
             "zip",
+            Path::new("/synthetic/source-home"),
             RecoveryCoverage::Limited,
             Vec::new(),
             vec![file_entry("a.txt", 1), directory_entry("d")],

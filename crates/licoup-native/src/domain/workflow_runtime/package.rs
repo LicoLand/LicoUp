@@ -229,6 +229,69 @@ impl StrategyPackageImporter {
         compile_workflow(definition).map_err(|_| anyhow!("strategy_revision_content_drifted"))?;
         Ok(content)
     }
+
+    /// Open the restored package store only when the recovery actually carried one.
+    ///
+    /// A data root whose committed revisions never existed is legitimate; reading it
+    /// back must not create package state merely to observe its absence.
+    pub(crate) fn open_restored(portable_root: &Path) -> Result<Option<Self>> {
+        let root = portable_root
+            .join("client-state")
+            .join("adaptive-flywheel")
+            .join("strategy-packages");
+        if !root.is_dir() {
+            return Ok(None);
+        }
+        Ok(Some(Self::open(portable_root)?))
+    }
+
+    /// Re-establish the immutable revision invariant and read every revision back.
+    ///
+    /// A generic archive restore publishes each member under fresh permissions, so the
+    /// read-only hardening applied when a revision was committed is gone even though
+    /// every byte is intact. This re-applies that same hardening through this owner and
+    /// then verifies each revision digest, semantics digest and asset inventory through
+    /// the ordinary `verified_revision_content` readback. No revision byte is rewritten;
+    /// a missing, altered or unexpected revision is refused instead of accepted.
+    pub(crate) fn restore_revision_invariants(&self) -> Result<Vec<String>> {
+        let revisions = self.root.join("revisions");
+        let entries = match fs::read_dir(&revisions) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(_) => return Err(anyhow!("strategy_revision_content_drifted")),
+        };
+        let mut digests = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|_| anyhow!("strategy_revision_content_drifted"))?;
+            let digest = entry
+                .file_name()
+                .into_string()
+                .map_err(|_| anyhow!("strategy_revision_content_drifted"))?;
+            let metadata = fs::symlink_metadata(entry.path())
+                .map_err(|_| anyhow!("strategy_revision_content_drifted"))?;
+            ensure!(
+                metadata.is_dir() && !metadata.file_type().is_symlink(),
+                "strategy_revision_content_drifted"
+            );
+            validate_digest(&digest).map_err(|_| anyhow!("strategy_revision_content_drifted"))?;
+            // The preparation envelope travels with its committed revision; it names
+            // the semantics digest this readback must verify.
+            let prepared_bytes = read_bounded(&entry.path().join("preparation.json"), 64 * 1024)
+                .map_err(|_| anyhow!("strategy_revision_content_drifted"))?;
+            let envelope: PreparationEnvelope = serde_json::from_slice(&prepared_bytes)
+                .map_err(|_| anyhow!("strategy_revision_content_drifted"))?;
+            ensure!(
+                envelope.schema == PREPARATION_SCHEMA
+                    && envelope.prepared.revision_digest == digest,
+                "strategy_revision_content_drifted"
+            );
+            harden_read_only_tree(&entry.path())?;
+            self.verified_revision_content(&digest, &envelope.prepared.semantics_digest)?;
+            digests.push(digest);
+        }
+        digests.sort();
+        Ok(digests)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

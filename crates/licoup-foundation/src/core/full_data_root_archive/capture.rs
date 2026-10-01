@@ -47,6 +47,8 @@ pub struct ExportRequest {
 #[derive(Clone, Debug)]
 pub struct ExportOutcome {
     pub container: ArchiveContainer,
+    /// The logical data-home spelling recorded in the archive manifest.
+    pub source_home: PathBuf,
     pub coverage: RecoveryCoverage,
     pub limitations: Vec<RecoveryLimitation>,
     pub file_count: usize,
@@ -65,6 +67,11 @@ pub fn export_data_root(request: &ExportRequest) -> Result<ExportOutcome> {
     );
     ensure!(request.writers_stopped, "archive_writers_running");
     ensure!(request.data_root.is_dir(), "data_root_missing");
+    // The logical source home travels as provenance so a later import can rebase the
+    // references its owners rewrite. It is normalized lexically here, never resolved
+    // through links: the selected spelling is the identity the owners' references use.
+    let source_home =
+        std::path::absolute(&request.data_root).map_err(|_| anyhow!("data_root_unresolved"))?;
     let container = ArchiveContainer::from_path(&request.archive_path)?;
     if let Ok(metadata) = std::fs::symlink_metadata(&request.archive_path) {
         // A symbolic-link destination (including a dangling link into the root) is
@@ -87,7 +94,13 @@ pub fn export_data_root(request: &ExportRequest) -> Result<ExportOutcome> {
     } else {
         RecoveryCoverage::Limited
     };
-    let manifest = ArchiveManifest::new(container.extension(), coverage, limitations, entries)?;
+    let manifest = ArchiveManifest::new(
+        container.extension(),
+        &source_home,
+        coverage,
+        limitations,
+        entries,
+    )?;
     let manifest_bytes = manifest.to_bytes()?;
     ensure_within_archive_limits(
         &facts,
@@ -135,6 +148,7 @@ pub fn export_data_root(request: &ExportRequest) -> Result<ExportOutcome> {
 
     Ok(ExportOutcome {
         container,
+        source_home,
         coverage: manifest.coverage,
         limitations: manifest.limitations.clone(),
         file_count: manifest.file_count(),
@@ -491,9 +505,14 @@ mod tests {
     }
 
     fn empty_manifest(container: &str) -> (ArchiveManifest, Vec<u8>) {
-        let manifest =
-            ArchiveManifest::new(container, RecoveryCoverage::Limited, Vec::new(), Vec::new())
-                .expect("empty manifest");
+        let manifest = ArchiveManifest::new(
+            container,
+            Path::new("/synthetic/source-home"),
+            RecoveryCoverage::Limited,
+            Vec::new(),
+            Vec::new(),
+        )
+        .expect("empty manifest");
         let bytes = manifest.to_bytes().expect("encode manifest");
         (manifest, bytes)
     }

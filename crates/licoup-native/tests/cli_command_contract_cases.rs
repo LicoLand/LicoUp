@@ -21,7 +21,7 @@ const ADMISSION_STAGE: &str = "cli/admission";
 const ADMISSION_COMPONENT: &str = "native_cli";
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
-const AUTHORITATIVE_ROUTE_COUNT: usize = 177;
+const AUTHORITATIVE_ROUTE_COUNT: usize = 179;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -2603,6 +2603,24 @@ fn route_authorities() -> Vec<RouteAuthority> {
         options: vec![],
         constraints: &[],
     });
+    routes.push(RouteAuthority {
+        module: "full_backup.rs",
+        handler: "handle_backup_export",
+        path: "backup export",
+        required: &[("archive", Text)],
+        cardinality: Options,
+        options: vec![],
+        constraints: &[],
+    });
+    routes.push(RouteAuthority {
+        module: "full_backup.rs",
+        handler: "handle_backup_import",
+        path: "backup import",
+        required: &[("archive", Text)],
+        cardinality: Options,
+        options: vec![],
+        constraints: &[],
+    });
     for route in &mut routes {
         route.required = match route.path {
             "skill get" | "skill visibility set" => &[("skill-id", Text)],
@@ -2765,6 +2783,11 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("topic", Text, true),
             value_option("agent", Text, false),
         ],
+        "backup export" => &[
+            value_option("data-root", Text, false),
+            boolean_option("writers-stopped"),
+        ],
+        "backup import" => &[value_option("target-root", Text, true)],
         "conversations list" | "conversations stream" => &[
             value_option("agent", Text, true),
             value_option("limit", Text, false),
@@ -3178,6 +3201,493 @@ fn constraints_for_route(path: &str) -> &'static [ConstraintAuthority] {
             required_option: None,
         }],
         _ => &[],
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Archive recovery through the real binary on the selected data home
+// ---------------------------------------------------------------------------
+
+#[cfg(unix)]
+mod recovery_cli {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    const LEASE_ACTION: &str = "LICOUP_TEST_CLI_LEASE_ACTION";
+    const SNAPSHOT_ROOT_KEY: &str = "conversationSnapshotRoot";
+    const UNRELATED_USER_PATH: &str = "/tmp/unrelated-user-project";
+
+    fn recovery_fixture(label: &str) -> (PathBuf, PathBuf, PathBuf) {
+        let fixture = temporary_directory(label)
+            .canonicalize()
+            .expect("canonical recovery fixture");
+        let home = fixture.join("home");
+        let root = fixture.join("root");
+        fs::create_dir_all(&home).expect("fixture home");
+        fs::create_dir_all(&root).expect("fixture root");
+        (fixture, home, root)
+    }
+
+    fn locator_path(home: &Path) -> PathBuf {
+        #[cfg(target_os = "macos")]
+        {
+            home.join("Library/Application Support/LicoUp/data-home")
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            home.join(".config/licoup/data-home")
+        }
+    }
+
+    fn save_locator(home: &Path, root: &Path) {
+        let locator = locator_path(home);
+        fs::create_dir_all(locator.parent().expect("locator parent")).expect("locator directory");
+        fs::set_permissions(
+            locator.parent().expect("locator parent"),
+            fs::Permissions::from_mode(0o700),
+        )
+        .expect("locator directory permissions");
+        fs::write(&locator, format!("{}\n", root.display())).expect("locator");
+        fs::set_permissions(&locator, fs::Permissions::from_mode(0o600))
+            .expect("locator permissions");
+    }
+
+    fn arrange_root(root: &Path) {
+        let store =
+            licoup_native::platform::client_state::ClientStateStore::new(root.join("client-state"))
+                .expect("client-state owner");
+        store
+            .write_collection(
+                "settings",
+                json!({
+                    SNAPSHOT_ROOT_KEY: root.join("snapshots").display().to_string(),
+                    "userProjectPath": UNRELATED_USER_PATH,
+                }),
+            )
+            .expect("arrange settings");
+        fs::write(root.join("member.bin"), b"member-canary").expect("arrange member");
+    }
+
+    fn run_backup(
+        home: &Path,
+        args: &[String],
+        current_dir: Option<&Path>,
+        environment: &[(&str, &str)],
+    ) -> Output {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_licoup-cli"));
+        command
+            .args(args)
+            .env("HOME", home)
+            .env_remove("LICOUP_HOME")
+            .env_remove("LICOUP_PORTABLE_DIR")
+            .env_remove("XDG_CONFIG_HOME")
+            .env_remove("RUST_LOG")
+            .env_remove("RUST_BACKTRACE");
+        for (key, value) in environment {
+            command.env(key, value);
+        }
+        if let Some(directory) = current_dir {
+            command.current_dir(directory);
+        }
+        command
+            .output()
+            .expect("the real licoup binary must be runnable")
+    }
+
+    fn export(home: &Path, root: &Path, archive: &Path) -> Value {
+        let output = run_backup(
+            home,
+            &[
+                "backup".to_owned(),
+                "export".to_owned(),
+                archive.display().to_string(),
+                "--data-root".to_owned(),
+                root.display().to_string(),
+                "--writers-stopped".to_owned(),
+            ],
+            None,
+            &[],
+        );
+        assert!(
+            output.status.success(),
+            "export must succeed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice(&output.stdout).expect("export reports JSON")
+    }
+
+    #[test]
+    fn backup_export_and_import_round_trip_the_selected_home() {
+        let (fixture, home, root) = recovery_fixture("licoup-backup-round-trip");
+        save_locator(&home, &root);
+        arrange_root(&root);
+
+        for name in ["home.zip", "home.tar.gz"] {
+            let archive = fixture.join(name);
+            let output = run_backup(
+                &home,
+                &[
+                    "backup".to_owned(),
+                    "export".to_owned(),
+                    archive.display().to_string(),
+                    "--writers-stopped".to_owned(),
+                ],
+                None,
+                &[],
+            );
+            assert!(
+                output.status.success(),
+                "export {name}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let exported: Value = serde_json::from_slice(&output.stdout).expect("export JSON");
+            assert_eq!(exported["status"], "exported");
+            assert_eq!(
+                exported["sourceHome"].as_str(),
+                Some(root.display().to_string().as_str()),
+                "the default export selects the saved data home"
+            );
+            assert_eq!(
+                exported["container"],
+                if name.ends_with(".zip") {
+                    "zip"
+                } else {
+                    "tar.gz"
+                }
+            );
+            assert_eq!(exported["coverage"], "limited");
+            assert_eq!(
+                exported["limitations"][0]["domain"],
+                "gateway-credential-custody"
+            );
+
+            let target = fixture.join(format!("{name}-target"));
+            let output = run_backup(
+                &home,
+                &[
+                    "backup".to_owned(),
+                    "import".to_owned(),
+                    archive.display().to_string(),
+                    "--target-root".to_owned(),
+                    target.display().to_string(),
+                ],
+                None,
+                &[],
+            );
+            assert!(
+                output.status.success(),
+                "import {name}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let imported: Value = serde_json::from_slice(&output.stdout).expect("import JSON");
+            assert_eq!(imported["status"], "imported");
+            assert_eq!(imported["relocated"], true);
+            assert_eq!(
+                imported["sourceHome"].as_str(),
+                Some(root.display().to_string().as_str())
+            );
+            assert_eq!(
+                fs::read(target.join("member.bin")).expect("member"),
+                b"member-canary"
+            );
+            let restored = licoup_native::platform::client_state::ClientStateStore::new(
+                target.join("client-state"),
+            )
+            .expect("client-state owner")
+            .read_collection("settings")
+            .expect("settings read");
+            assert_eq!(
+                restored[SNAPSHOT_ROOT_KEY].as_str(),
+                Some(target.join("snapshots").display().to_string().as_str()),
+                "the owned reference follows the restored home"
+            );
+            assert_eq!(
+                restored["userProjectPath"].as_str(),
+                Some(UNRELATED_USER_PATH)
+            );
+        }
+        let _ = fs::remove_dir_all(fixture);
+    }
+
+    #[test]
+    fn backup_export_resolves_environment_alias_explicit_and_relative_roots() {
+        let (fixture, home, root) = recovery_fixture("licoup-backup-resolution");
+        let other = fixture.join("other-root");
+        fs::create_dir_all(&other).expect("other root");
+        let relative_root = fixture.join("relative-root");
+        fs::create_dir_all(&relative_root).expect("relative root");
+
+        let archive = fixture.join("environment.zip");
+        let exported = export_with(
+            &home,
+            &archive,
+            &[("LICOUP_HOME", root.display().to_string().as_str())],
+        );
+        assert_eq!(
+            exported["sourceHome"].as_str(),
+            Some(root.display().to_string().as_str()),
+            "LICOUP_HOME selects the data home"
+        );
+
+        let archive = fixture.join("alias.zip");
+        let exported = export_with(
+            &home,
+            &archive,
+            &[("LICOUP_PORTABLE_DIR", root.display().to_string().as_str())],
+        );
+        assert_eq!(
+            exported["sourceHome"].as_str(),
+            Some(root.display().to_string().as_str()),
+            "the published alias selects the data home"
+        );
+
+        let archive = fixture.join("explicit.zip");
+        let exported = export(&home, &other, &archive);
+        assert_eq!(
+            exported["sourceHome"].as_str(),
+            Some(other.display().to_string().as_str()),
+            "an explicit absolute root selects that root"
+        );
+
+        let output = run_backup(
+            &home,
+            &[
+                "backup".to_owned(),
+                "export".to_owned(),
+                "relative.zip".to_owned(),
+                "--data-root".to_owned(),
+                "relative-root".to_owned(),
+                "--writers-stopped".to_owned(),
+            ],
+            Some(&fixture),
+            &[],
+        );
+        assert!(
+            output.status.success(),
+            "relative export: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let exported: Value = serde_json::from_slice(&output.stdout).expect("export JSON");
+        assert_eq!(
+            exported["sourceHome"].as_str(),
+            Some(relative_root.display().to_string().as_str()),
+            "a relative root resolves against the process working directory"
+        );
+        assert!(fixture.join("relative.zip").is_file());
+        let _ = fs::remove_dir_all(fixture);
+    }
+
+    fn export_with(home: &Path, archive: &Path, environment: &[(&str, &str)]) -> Value {
+        let output = run_backup(
+            home,
+            &[
+                "backup".to_owned(),
+                "export".to_owned(),
+                archive.display().to_string(),
+                "--writers-stopped".to_owned(),
+            ],
+            None,
+            environment,
+        );
+        assert!(
+            output.status.success(),
+            "export must succeed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice(&output.stdout).expect("export JSON")
+    }
+
+    #[test]
+    fn backup_commands_refuse_unadmissible_writers_and_destinations() {
+        let (fixture, home, root) = recovery_fixture("licoup-backup-refusals");
+        let archive = fixture.join("refused.zip");
+
+        // The caller's stopped-writer statement is required.
+        let output = run_backup(
+            &home,
+            &[
+                "backup".to_owned(),
+                "export".to_owned(),
+                archive.display().to_string(),
+                "--data-root".to_owned(),
+                root.display().to_string(),
+            ],
+            None,
+            &[],
+        );
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("archive_writers_running"),
+            "stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!archive.exists(), "a refused export publishes nothing");
+
+        // A destination inside the captured root is refused.
+        let inside = root.join("inside.zip");
+        let output = run_backup(
+            &home,
+            &[
+                "backup".to_owned(),
+                "export".to_owned(),
+                inside.display().to_string(),
+                "--data-root".to_owned(),
+                root.display().to_string(),
+                "--writers-stopped".to_owned(),
+            ],
+            None,
+            &[],
+        );
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("archive_path_inside_data_root"),
+            "stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!inside.exists());
+
+        // A non-empty import target is refused and left untouched.
+        let archive = fixture.join("complete.zip");
+        export(&home, &root, &archive);
+        let occupied = fixture.join("occupied");
+        fs::create_dir_all(&occupied).expect("occupied target");
+        fs::write(occupied.join("keep.txt"), b"keep").expect("occupied member");
+        let output = run_backup(
+            &home,
+            &[
+                "backup".to_owned(),
+                "import".to_owned(),
+                archive.display().to_string(),
+                "--target-root".to_owned(),
+                occupied.display().to_string(),
+            ],
+            None,
+            &[],
+        );
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("archive_target_not_empty"),
+            "stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(fs::read(occupied.join("keep.txt")).unwrap(), b"keep");
+        assert_eq!(
+            fs::read_dir(&occupied)
+                .expect("occupied target")
+                .filter_map(Result::ok)
+                .count(),
+            1,
+            "a refused import publishes no destination member"
+        );
+        let _ = fs::remove_dir_all(fixture);
+    }
+
+    #[test]
+    fn backup_refuses_an_active_data_home_writer_without_stopping_it() {
+        let (fixture, home, root) = recovery_fixture("licoup-backup-lease");
+        save_locator(&home, &root);
+        arrange_root(&root);
+
+        let mut writer = Command::new(std::env::current_exe().expect("test executable"))
+            .args([
+                "--exact",
+                "recovery_cli::data_home_lease_holder_helper",
+                "--nocapture",
+            ])
+            .env(LEASE_ACTION, "hold")
+            .env("HOME", &home)
+            .env_remove("LICOUP_HOME")
+            .env_remove("LICOUP_PORTABLE_DIR")
+            .env_remove("XDG_CONFIG_HOME")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("the writer helper must start");
+        let mut stdout = BufReader::new(writer.stdout.take().expect("helper stdout"));
+        let mut line = String::new();
+        loop {
+            line.clear();
+            let read = stdout.read_line(&mut line).expect("helper line");
+            assert_ne!(
+                read, 0,
+                "the writer helper exited before acquiring its lease"
+            );
+            if line.trim() == "DATA_HOME_LEASE_READY" {
+                break;
+            }
+        }
+
+        let archive = fixture.join("blocked.zip");
+        let output = run_backup(
+            &home,
+            &[
+                "backup".to_owned(),
+                "export".to_owned(),
+                archive.display().to_string(),
+                "--writers-stopped".to_owned(),
+            ],
+            None,
+            &[],
+        );
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("backup_writers_running"),
+            "stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!archive.exists());
+        assert!(
+            writer.try_wait().expect("writer state").is_none(),
+            "the active writer must not be stopped"
+        );
+
+        writer
+            .stdin
+            .as_mut()
+            .expect("helper stdin")
+            .write_all(b"release\n")
+            .expect("release the writer");
+        assert!(writer.wait().expect("writer exits").success());
+
+        let output = run_backup(
+            &home,
+            &[
+                "backup".to_owned(),
+                "export".to_owned(),
+                archive.display().to_string(),
+                "--writers-stopped".to_owned(),
+            ],
+            None,
+            &[],
+        );
+        assert!(
+            output.status.success(),
+            "export after the writer drained: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(archive.is_file());
+        let _ = fs::remove_dir_all(fixture);
+    }
+
+    /// Cross-process fixture: holds the shared process lease until the parent says
+    /// `release`. The `--exact` filter runs only this function.
+    #[test]
+    fn data_home_lease_holder_helper() {
+        let Ok(action) = std::env::var(LEASE_ACTION) else {
+            return;
+        };
+        assert_eq!(action, "hold");
+        let _lease =
+            licoup_foundation::platform::data_home_access::acquire_process_data_home_access()
+                .expect("the helper acquires the shared process lease");
+        println!("DATA_HOME_LEASE_READY");
+        std::io::stdout().flush().expect("helper stdout flush");
+        let mut release = String::new();
+        std::io::stdin()
+            .read_line(&mut release)
+            .expect("helper release line");
+        assert_eq!(release.trim(), "release");
     }
 }
 

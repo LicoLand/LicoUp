@@ -2162,12 +2162,27 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.data-home-relocation",
       kind: "rust-platform",
-      summary: "Coordinated data-root relocation and its dedicated-process lifecycle proof",
+      summary: "Coordinated data-root relocation and archive-backed local recovery through the real owners",
       inputs: [
         "crates/licoup-native/src/platform/data_home_relocation.rs",
+        "crates/licoup-native/src/domain/local_recovery/**",
+        "crates/licoup-native/src/ffi/commands/full_backup.rs",
         "crates/licoup-native/tests/data_home_process.rs",
+        "crates/licoup-native/tests/local_recovery/**",
       ],
-      command: rustIntegrationTest("data_home_process"),
+      command: command(
+        "cargo",
+        [
+          "test",
+          "--manifest-path",
+          NATIVE_MANIFEST,
+          "--test",
+          "data_home_process",
+          "--test",
+          "local_recovery",
+        ],
+        10 * 60_000,
+      ),
     }),
   defineModule({
       id: "rust.platform.data-home-access",

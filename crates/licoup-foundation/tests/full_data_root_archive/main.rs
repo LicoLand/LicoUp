@@ -191,6 +191,7 @@ fn manifest_json(container: &str, entries: Vec<serde_json::Value>) -> serde_json
     serde_json::json!({
         "layout": ARCHIVE_LAYOUT,
         "container": container,
+        "source_home": "/synthetic/source-home",
         "created_at_unix": 0,
         "coverage": "limited",
         "limitations": [],
@@ -304,6 +305,9 @@ fn both_containers_restore_equivalent_application_facts() {
 
     assert_eq!(zip_outcome.container, ArchiveContainer::Zip);
     assert_eq!(tar_outcome.container, ArchiveContainer::TarGz);
+    // The logical source home travels as provenance through both containers.
+    assert_eq!(zip_outcome.source_home, source);
+    assert_eq!(tar_outcome.source_home, source);
     // The credential metadata travels, but platform-held key material never does: the
     // archive is always a limited recovery, never a claim that keys are available.
     assert_eq!(zip_outcome.coverage, RecoveryCoverage::Limited);
@@ -326,11 +330,43 @@ fn both_containers_restore_equivalent_application_facts() {
 
     assert_eq!(zip_restore.file_count, tar_restore.file_count);
     assert_eq!(zip_restore.coverage, RecoveryCoverage::Limited);
+    assert_eq!(zip_restore.source_home, source);
+    assert_eq!(tar_restore.source_home, source);
     assert_eq!(payload(&zip_target), payload(&source));
     assert_eq!(payload(&tar_target), payload(&source));
 
     // Independent canary: capture and both restores left the source byte-identical.
     assert_eq!(payload(&source), payload(&canary));
+}
+
+#[test]
+fn archive_origin_provenance_is_required_and_preserved() {
+    let source = synthetic_data_root("provenance");
+    let work = scratch("provenance-out");
+    let archive = work.join("provenance.zip");
+    let outcome = export(&source, &archive);
+    assert_eq!(outcome.source_home, source);
+
+    // The origin is part of the manifest itself, so an import reports the captured
+    // home even when the importer cannot know it from the file system.
+    let restored = restore(&archive, &work.join("restored"));
+    assert_eq!(restored.source_home, source);
+
+    // A manifest that does not name an absolute origin cannot be rebased later and is
+    // refused before any destination is created.
+    let mut forged_manifest = manifest_json("zip", Vec::new());
+    forged_manifest["source_home"] = serde_json::json!("relative/source-home");
+    let forged = work.join("forged.zip");
+    write_zip_fixture(&forged, &forged_manifest, &[]);
+    let target = work.join("forged-target");
+    refusal(
+        restore_data_root(&RestoreRequest {
+            archive_path: forged,
+            target_root: target.clone(),
+        }),
+        "archive_source_home_invalid",
+    );
+    assert!(!target.exists(), "a refused restore creates no destination");
 }
 
 #[test]

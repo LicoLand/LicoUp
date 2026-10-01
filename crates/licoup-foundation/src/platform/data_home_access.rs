@@ -88,6 +88,19 @@ pub fn acquire_data_home_relocation_lease() -> Result<DataHomeRelocationLease> {
     acquire_data_home_relocation_admission()?.wait_for_process_access()
 }
 
+/// Try to acquire the exclusive relocation lease without waiting for writers.
+///
+/// `Ok(None)` means another process holds the admission barrier or a shared access
+/// lease: a capture or import must be refused rather than read a live root, and no
+/// process is stopped by asking. Like the blocking form, this runs only in a process
+/// that holds no shared lease.
+pub fn try_acquire_data_home_relocation_lease() -> Result<Option<DataHomeRelocationLease>> {
+    if PROCESS_ACCESS_LEASES.load(Ordering::Acquire) != 0 {
+        bail!("data_home_relocation_requires_stopped_native_process");
+    }
+    try_acquire_data_home_relocation_lease_at(&locator_path()?)
+}
+
 /// Close process admission before stopping services. The returned barrier
 /// must remain alive through service shutdown and access draining.
 pub fn acquire_data_home_relocation_admission() -> Result<DataHomeRelocationAdmission> {
@@ -169,7 +182,6 @@ fn try_acquire_data_home_access_at(locator: &Path) -> Result<Option<DataHomeAcce
     Ok(Some(DataHomeAccessLease { _access: access }))
 }
 
-#[cfg(test)]
 fn try_acquire_data_home_relocation_lease_at(
     locator: &Path,
 ) -> Result<Option<DataHomeRelocationLease>> {
@@ -281,6 +293,68 @@ mod tests {
         assert!(try_acquire_data_home_access_at(&locator).unwrap().is_none());
         assert!(acquire_data_home_access_at(&locator).is_err());
         drop(relocation);
+        assert!(try_acquire_data_home_access_at(&locator).unwrap().is_some());
+        let _ = std::fs::remove_dir_all(fixture);
+    }
+
+    #[test]
+    fn non_blocking_lease_refuses_an_active_writer_and_recovers_after_release() {
+        let fixture = std::env::temp_dir().join(format!(
+            "licoup-data-home-try-lease-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let locator = fixture.join("config/data-home");
+        std::fs::create_dir_all(locator.parent().unwrap()).unwrap();
+
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "platform::data_home_access::tests::cross_process_lease_helper",
+                "--nocapture",
+            ])
+            .env(HELPER_ACTION, "hold")
+            .env(HELPER_LOCATOR, &locator)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut stdout = BufReader::new(child.stdout.take().unwrap());
+        let mut line = String::new();
+        loop {
+            line.clear();
+            let read = stdout.read_line(&mut line).unwrap();
+            assert_ne!(read, 0, "lease helper exited before acquiring its lease");
+            if line.trim() == "DATA_HOME_LEASE_READY" {
+                break;
+            }
+        }
+
+        // An active writer is refused without being stopped or signalled.
+        assert!(
+            try_acquire_data_home_relocation_lease_at(&locator)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            child.try_wait().unwrap().is_none(),
+            "the writer stays alive"
+        );
+
+        child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(b"release\n")
+            .unwrap();
+        child.stdin.as_mut().unwrap().flush().unwrap();
+        assert!(child.wait().unwrap().success());
+
+        let lease = try_acquire_data_home_relocation_lease_at(&locator)
+            .unwrap()
+            .expect("the lease is available once the writer drained");
+        assert!(try_acquire_data_home_access_at(&locator).unwrap().is_none());
+        drop(lease);
         assert!(try_acquire_data_home_access_at(&locator).unwrap().is_some());
         let _ = std::fs::remove_dir_all(fixture);
     }

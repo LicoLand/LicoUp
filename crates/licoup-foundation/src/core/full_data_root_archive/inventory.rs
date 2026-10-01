@@ -61,6 +61,11 @@ pub struct RecoveryLimitation {
 pub struct ArchiveManifest {
     pub layout: String,
     pub container: String,
+    /// The logical data-home spelling the capture was taken from, preserved so an
+    /// import into another home can rebase the references its owners rewrite. It is
+    /// provenance, not authority: it grants no custody and never replaces the active
+    /// selection.
+    pub source_home: String,
     pub created_at_unix: u64,
     pub coverage: RecoveryCoverage,
     #[serde(default)]
@@ -73,6 +78,7 @@ pub struct ArchiveManifest {
 impl ArchiveManifest {
     pub(crate) fn new(
         container: &str,
+        source_home: &Path,
         coverage: RecoveryCoverage,
         limitations: Vec<RecoveryLimitation>,
         entries: Vec<InventoryEntry>,
@@ -88,6 +94,7 @@ impl ArchiveManifest {
         Ok(Self {
             layout: ARCHIVE_LAYOUT.to_string(),
             container: container.to_string(),
+            source_home: source_home.to_string_lossy().into_owned(),
             created_at_unix: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map(|elapsed| elapsed.as_secs())
@@ -114,6 +121,12 @@ impl ArchiveManifest {
         manifest_member_bytes: u64,
     ) -> Result<()> {
         ensure!(self.layout == ARCHIVE_LAYOUT, "archive_layout_unsupported");
+        // A source home is provenance an import needs; an archive that does not name
+        // its logical origin cannot be rebased and is refused before publication.
+        ensure!(
+            Path::new(&self.source_home).is_absolute(),
+            "archive_source_home_invalid"
+        );
         // Custody is never proven by the archive itself. The owner never exports
         // Complete, and until the credential owner can establish non-secret custody
         // facts, a caller-controlled Complete is refused instead of restored as
