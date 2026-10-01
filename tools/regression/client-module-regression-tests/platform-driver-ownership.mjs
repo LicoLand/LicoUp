@@ -200,13 +200,19 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/core/mcp/transfer.rs",
   ])), ["architecture.client-boundaries", "rust.core.mcp.transfer"]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
+  for (const source of [
     "crates/licoup-foundation/src/core/safe_archive.rs",
-  ])), [
-    "architecture.client-boundaries",
-    "rust.domain.adaptive-flywheel",
-    "rust.core.safe-archive",
-  ]);
+    "crates/licoup-foundation/src/core/safe_archive/zip_structure.rs",
+  ]) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([source])), [
+      "architecture.client-boundaries",
+      "rust.domain.adaptive-flywheel",
+      "rust.domain.optional-collaboration",
+      "rust.core.safe-archive",
+      "rust.core.full-data-root-archive",
+      "rust.platform.extension-packages.artifact",
+    ]);
+  }
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-foundation/src/platform/paths.rs",
   ])), [
@@ -222,6 +228,7 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
   ])), [
     "architecture.client-boundaries",
     "rust.platform.extension-packages",
+    "rust.platform.extension-packages.artifact",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/tests/package_lifecycle/main.rs",
