@@ -34,9 +34,8 @@ export async function checkArchitectureRatchet(context) {
     (metric) => metric.id === "developer_tool_sites",
   );
   for (const site of developerTools?.details.unallowlisted_sites ?? []) {
-    const location = site.lines?.length ? `${site.file}:${site.lines[0]}` : site.file;
     context.fail(
-      `architecture ratchet: developer-tool execution site ${location} executes ${site.tool} without a justified allowlist entry (classification rule ${site.rule})`,
+      `architecture ratchet: developer-tool execution sink ${site.id} (line ${site.line}, tools ${site.tools.join(", ")}) is not covered by a justified allowlist entry with this sink fingerprint`,
     );
   }
 

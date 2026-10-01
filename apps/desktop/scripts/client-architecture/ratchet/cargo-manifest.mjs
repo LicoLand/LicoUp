@@ -77,42 +77,72 @@ function mergeDependencySpec(base, local) {
 
 /** Optional dependencies activated by the default feature set. */
 export function defaultActivatedDependencies(features, dependencies) {
+  return featureActivation(features, ["default"], dependencies).optionalDependencies;
+}
+
+/**
+ * Resolve a requested feature set against a crate's feature table: feature
+ * indirection, `dep:` syntax, `dep/feature` activation and implicit optional
+ * dependency features all activate optional dependencies.
+ *
+ * @returns {{features: Set<string>, optionalDependencies: Set<string>}}
+ */
+export function featureActivation(features, requested, dependencies = []) {
   const featureMap = features && typeof features === "object" ? features : {};
   const optionalAliases = new Set(
     dependencies.filter((dependency) => dependency.optional === true)
       .map((dependency) => dependency.alias),
   );
-  const activated = new Set();
-  const queue = Array.isArray(featureMap.default) ? [...featureMap.default] : [];
-  const seen = new Set();
+  const active = new Set();
+  const optionalDependencies = new Set();
+  const queue = [];
+  for (const entry of requested ?? []) {
+    if (typeof entry === "string" && !active.has(entry)) {
+      active.add(entry);
+      queue.push(entry);
+    }
+  }
+  const seenFeatures = new Set();
   while (queue.length > 0) {
     const entry = queue.shift();
     if (typeof entry !== "string") {
       continue;
     }
     if (entry.startsWith("dep:")) {
-      activated.add(entry.slice(4));
+      optionalDependencies.add(entry.slice(4));
       continue;
     }
     if (entry.includes("/")) {
       const [dependencyName, featureName] = entry.split("/", 2);
       if (!featureName.startsWith("?")) {
-        activated.add(dependencyName);
-      } else if (activated.has(dependencyName)) {
-        activated.add(dependencyName);
+        optionalDependencies.add(dependencyName);
+      } else if (optionalDependencies.has(dependencyName)) {
+        optionalDependencies.add(dependencyName);
       }
       continue;
     }
-    if (optionalAliases.has(entry)) {
-      activated.add(entry);
+    if (Array.isArray(featureMap[entry]) && !seenFeatures.has(entry)) {
+      seenFeatures.add(entry);
+      queue.push(...featureMap[entry]);
       continue;
     }
-    if (Array.isArray(featureMap[entry]) && !seen.has(entry)) {
-      seen.add(entry);
-      queue.push(...featureMap[entry]);
+    // An implicit feature exists for every optional dependency.
+    if (optionalAliases.has(entry)) {
+      optionalDependencies.add(entry);
     }
   }
-  return activated;
+  return { features: active, optionalDependencies };
+}
+
+/** Whether a declared dependency is part of the activated build. */
+export function dependencyActivated(dependency, activation) {
+  if (!dependency.optional) {
+    return true;
+  }
+  return (
+    activation.optionalDependencies.has(dependency.alias) ||
+    activation.features.has(dependency.alias)
+  );
 }
 
 function resolveDependencyManifestPath(baseDirectory, dependencyPath) {
@@ -123,12 +153,17 @@ function resolveDependencyManifestPath(baseDirectory, dependencyPath) {
   return target.endsWith(".toml") ? target : `${target}/Cargo.toml`;
 }
 
-async function childManifestPaths(readdir, repoRoot, relativeRoot) {
+async function childManifestPaths(readdir, repoRoot, relativeRoot, problems) {
   const paths = [];
   let entries = [];
   try {
     entries = await readdir(path.join(repoRoot, relativeRoot), { withFileTypes: true });
-  } catch {
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      problems.push(
+        `${relativeRoot} cannot be read: ${error?.code ?? error?.message ?? "unknown"}`,
+      );
+    }
     return paths;
   }
   for (const entry of [...entries].sort((left, right) => left.name.localeCompare(right.name))) {
@@ -137,6 +172,63 @@ async function childManifestPaths(readdir, repoRoot, relativeRoot) {
     }
   }
   return paths;
+}
+
+/** Cargo auto-discovers src/main.rs and src/bin/* as binary targets. */
+async function discoverImplicitBins({
+  readdir,
+  repoRoot,
+  manifestPath,
+  packageName,
+  autobins,
+  problems,
+}) {
+  if (!autobins || !packageName) {
+    return [];
+  }
+  const directory = path.posix.dirname(manifestPath);
+  const base = directory === "." ? "" : directory;
+  const bins = [];
+  const mainPath = base ? `${base}/src/main.rs` : "src/main.rs";
+  try {
+    if ((await fs.stat(path.join(repoRoot, mainPath))).isFile()) {
+      bins.push(packageName);
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      problems.push(`${mainPath} cannot be read: ${error?.code ?? error?.message ?? "unknown"}`);
+    }
+  }
+  const binDirectory = base ? `${base}/src/bin` : "src/bin";
+  let entries = [];
+  try {
+    entries = await readdir(path.join(repoRoot, binDirectory), { withFileTypes: true });
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      problems.push(
+        `${binDirectory} cannot be read: ${error?.code ?? error?.message ?? "unknown"}`,
+      );
+    }
+    return bins;
+  }
+  for (const entry of [...entries].sort((left, right) => left.name.localeCompare(right.name))) {
+    if (entry.isFile() && entry.name.endsWith(".rs")) {
+      bins.push(entry.name.slice(0, -3));
+    } else if (entry.isDirectory()) {
+      try {
+        if ((await fs.stat(path.join(repoRoot, binDirectory, entry.name, "main.rs"))).isFile()) {
+          bins.push(entry.name);
+        }
+      } catch (error) {
+        if (error?.code !== "ENOENT") {
+          problems.push(
+            `${binDirectory}/${entry.name}/main.rs cannot be read: ${error?.code ?? error?.message ?? "unknown"}`,
+          );
+        }
+      }
+    }
+  }
+  return bins;
 }
 
 /**
@@ -156,7 +248,7 @@ export async function collectManifestGraph({
   const problems = [];
   const queue = ["Cargo.toml"];
   for (const root of FIRST_PARTY_CRATE_ROOTS) {
-    queue.push(...await childManifestPaths(readdir, repoRoot, root));
+    queue.push(...await childManifestPaths(readdir, repoRoot, root, problems));
   }
   const documents = new Map();
   const visited = new Set();
@@ -169,7 +261,12 @@ export async function collectManifestGraph({
     let text;
     try {
       text = await readFile(path.join(repoRoot, manifestPath), "utf8");
-    } catch {
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        problems.push(
+          `${manifestPath} cannot be read: ${error?.code ?? error?.message ?? "unknown"}`,
+        );
+      }
       continue;
     }
     try {
@@ -246,12 +343,21 @@ export async function collectManifestGraph({
       document.package && typeof document.package.name === "string"
         ? document.package.name
         : null;
+    const explicitBins = Array.isArray(document.bin)
+      ? document.bin.map((entry) => entry?.name).filter((name) => typeof name === "string")
+      : [];
+    const implicitBins = await discoverImplicitBins({
+      readdir,
+      repoRoot,
+      manifestPath,
+      packageName,
+      autobins: document.package?.autobins !== false,
+      problems,
+    });
     const record = {
       path: manifestPath,
       name: packageName,
-      bins: Array.isArray(document.bin)
-        ? document.bin.map((entry) => entry?.name).filter((name) => typeof name === "string")
-        : [],
+      bins: [...new Set([...explicitBins, ...implicitBins])],
       features: document.features && typeof document.features === "object"
         ? document.features
         : {},
@@ -286,9 +392,11 @@ export async function collectManifestGraph({
       let text;
       try {
         text = await readFile(path.join(repoRoot, resolved), "utf8");
-      } catch {
+      } catch (error) {
         problems.push(
-          `${manifestPath}: path dependency ${dependency.alias} does not resolve to ${resolved}`,
+          error?.code === "ENOENT"
+            ? `${manifestPath}: path dependency ${dependency.alias} does not resolve to ${resolved}`
+            : `${resolved} cannot be read: ${error?.code ?? error?.message ?? "unknown"}`,
         );
         continue;
       }
@@ -301,11 +409,9 @@ export async function collectManifestGraph({
     }
   }
 
-  // Resolve locality and default activation against the completed graph.
+  // Resolve locality against the completed graph.
   for (const record of byPath.values()) {
-    const activated = defaultActivatedDependencies(record.features, record.deps);
     for (const dependency of record.deps) {
-      dependency.active = !dependency.optional || activated.has(dependency.alias);
       dependency.localName = null;
       if (typeof dependency.spec.path === "string") {
         const resolved = resolveDependencyManifestPath(dependency.pathBase, dependency.spec.path);
@@ -331,10 +437,4 @@ export function binaryOwners(byPath) {
     }
   }
   return owners;
-}
-
-export function activeRuntimeDependencies(record) {
-  return record.deps.filter(
-    (dependency) => dependency.kind !== "dev-dependencies" && dependency.active,
-  );
 }

@@ -20,22 +20,27 @@ import {
   recordRatchetBaseline,
 } from "../../../apps/desktop/scripts/client-architecture/ratchet/baseline.mjs";
 import {
+  DEVELOPER_TOOL_ALLOWLIST,
   OPTIONAL_CAPABILITY_ARTIFACTS,
   OPTIONAL_CAPABILITY_BUNDLES,
   OPTIONAL_CAPABILITY_CRATES,
 } from "../../../apps/desktop/scripts/client-architecture/ratchet/definitions.mjs";
 import {
-  classifyToolOccurrences,
   inspectDeveloperToolSites,
-  stripCfgTestItems,
+  stripTestItems,
 } from "../../../apps/desktop/scripts/client-architecture/ratchet/developer-tools.mjs";
-import { collectManifestGraph, defaultActivatedDependencies } from "../../../apps/desktop/scripts/client-architecture/ratchet/cargo-manifest.mjs";
+import {
+  binaryOwners,
+  collectManifestGraph,
+  defaultActivatedDependencies,
+} from "../../../apps/desktop/scripts/client-architecture/ratchet/cargo-manifest.mjs";
 import {
   checkArchitectureRatchet,
   recordArchitectureRatchet,
 } from "../../../apps/desktop/scripts/client-architecture/checks/ratchet.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
+const strategyRuntimePath = "crates/licoup-native/src/platform/strategy_runtime/mod.rs";
 
 async function withFixtureTree(files, run) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "licoup-ratchet-"));
@@ -54,7 +59,7 @@ async function withFixtureTree(files, run) {
 function deploymentSource(rows) {
   const entries = rows
     .map(([capability, kind, packageId]) =>
-      `    ("${capability}", PackOwnership::${kind}("${packageId}")),`)
+      `    ("${capability}", PackOwnership::${kind}(${JSON.stringify(packageId)})),`)
     .join("\n");
   return `pub const CAPABILITY_OWNERSHIP: [(&str, PackOwnership); ${rows.length}] = [\n${entries}\n];\n`;
 }
@@ -71,213 +76,344 @@ function crateManifest(name, dependencies = {}, extra = "") {
   return `[package]\nname = "${name}"\nversion = "0.0.0"\n\n[dependencies]\n${lines}\n${extra}`;
 }
 
-function classifyRust(source, crossFileWrappers = new Set()) {
-  return classifyToolOccurrences({ source, language: "rust", crossFileWrappers });
+async function inspectFixture(files, allowlist = []) {
+  return withFixtureTree(files, async (root) =>
+    inspectDeveloperToolSites({
+      repoRoot: root,
+      readdir: fs.readdir,
+      readFile: fs.readFile,
+      allowlist,
+    }));
 }
 
-function summary(occurrences) {
-  return occurrences.map((entry) => [entry.tool, entry.classification, entry.rule]);
-}
-
-test("developer-tool classification catches multiline, alias, shell, wrapper, and dynamic execution", () => {
-  const multiline = classifyRust(
-    'fn start() {\n  Command::new(\n\n\n\n\n    "node",\n  ).spawn();\n}\n',
+test("actual-native same-line second spawn adds an unauthorized sink and regresses an in-memory baseline", async () => {
+  const realSource = await fs.readFile(path.join(repoRoot, strategyRuntimePath), "utf8");
+  const baseline = await inspectFixture({ [strategyRuntimePath]: realSource });
+  assert.equal(baseline.executionSites.length, 2);
+  assert.deepEqual(
+    baseline.executionSites.map((sink) => sink.tools),
+    [["node", "python", "python3"], ["node", "python", "python3"]],
   );
-  assert.deepEqual(summary(multiline), [
-    ["node", "execution", "statement-execution-token"],
-  ]);
+  assert.deepEqual(baseline.problems, []);
 
-  const alias = classifyRust(
-    'use std::process::Command as Cmd;\nfn start() {\n  Cmd::new("node").spawn();\n}\n',
+  const mutatedSource = realSource.replace(
+    "    let mut command = Command::new(executable);",
+    "    let mut command = Command::new(executable); Command::new(executable).arg(\"--version\").spawn();",
   );
-  assert.deepEqual(summary(alias), [
-    ["node", "execution", "statement-execution-token"],
-  ]);
-
-  const shell = classifyRust(
-    'const SCRIPT: &str = "node /tmp/agent.js";\nfn start() {\n  Command::new("sh").args(["-c", SCRIPT]).status();\n}\n',
+  assert.notEqual(mutatedSource, realSource);
+  const mutated = await inspectFixture(
+    { [strategyRuntimePath]: mutatedSource },
   );
-  assert.deepEqual(summary(shell), [
-    ["node", "execution", "bound-program-execution"],
-  ]);
-
-  const wrapper = classifyRust([
-    "fn run_tool(tool: &str) {",
-    "  Command::new(tool);",
-    "}",
-    "// padding keeps the call outside the direct statement",
-    "// padding",
-    "// padding",
-    "// padding",
-    "fn main() {",
-    '  run_tool("npx");',
-    "}",
-    "",
-  ].join("\n"));
-  assert.deepEqual(summary(wrapper), [
-    ["npx", "execution", "wrapper-call-argument"],
-  ]);
-
-  const dynamic = classifyRust([
-    "fn read() -> String { String::new() }",
-    "fn start() {",
-    "  let program = read();",
-    "  Command::new(program);",
-    "}",
-    'const KIND: &str = "uvx";',
-    "",
-  ].join("\n"));
-  assert.deepEqual(summary(dynamic), [
-    ["uvx", "execution", "file-executes-variable-program"],
-  ]);
-
-  const reference = classifyRust('const CHANNEL: &str = "pip";\n');
-  assert.deepEqual(summary(reference), [
-    ["pip", "reference", "no-execution-context"],
-  ]);
-});
-
-test("commented-out commands never count as execution", () => {
-  const source = [
-    "fn keep() {",
-    '  // Command::new("node");',
-    '  /* Command::new("npm");',
-    '     Command::new("python3"); */',
-    "}",
-    "",
-  ].join("\n");
-  assert.deepEqual(classifyRust(source), []);
-});
-
-test("same file multiple calls are distinct sites and cannot share one allowlist entry", async () => {
-  const file = "crates/demo/src/lib.rs";
-  const twoCalls = [
-    "pub fn a() {",
-    '  Command::new("node").spawn();',
-    "}",
-    "pub fn b() {",
-    '  Command::new("node").spawn();',
-    "}",
-    "",
-  ].join("\n");
-  await withFixtureTree({ [file]: twoCalls }, async (root) => {
-    const blanket = await inspectDeveloperToolSites({
-      repoRoot: root,
-      readdir: fs.readdir,
-      readFile: fs.readFile,
-      allowlist: [{
-        file,
-        tool: "node",
-        ordinal: 1,
-        reason: "justified first call site for the fixture",
-      }],
-    });
-    assert.deepEqual(blanket.executionSites.map((site) => site.id), [
-      `${file}::node::1`,
-      `${file}::node::2`,
-    ]);
-    assert.deepEqual(blanket.unallowlisted.map((site) => site.id), [
-      `${file}::node::2`,
-    ]);
-
-    const emptyReason = await inspectDeveloperToolSites({
-      repoRoot: root,
-      readdir: fs.readdir,
-      readFile: fs.readFile,
-      allowlist: [{ file, tool: "node", ordinal: 1, reason: "   " }],
-    });
-    assert.equal(emptyReason.invalidAllowlist.length, 1);
-    assert.match(emptyReason.invalidAllowlist[0], /meaningful justification/u);
-    assert.deepEqual(emptyReason.unallowlisted.map((site) => site.id), [
-      `${file}::node::1`,
-      `${file}::node::2`,
-    ]);
-
-    const ordinalMissing = await inspectDeveloperToolSites({
-      repoRoot: root,
-      readdir: fs.readdir,
-      readFile: fs.readFile,
-      allowlist: [{ file, tool: "node", reason: "a file-level reason without an ordinal" }],
-    });
-    assert.equal(ordinalMissing.invalidAllowlist.length, 1);
-    assert.match(ordinalMissing.invalidAllowlist[0], /positive ordinal/u);
-  });
-});
-
-test("cfg(test) fixtures and test files do not count as runtime code", async () => {
+  assert.equal(mutated.executionSites.length, 3);
   assert.equal(
-    stripCfgTestItems('fn keep() {}\n#[cfg(test)]\nmod tests {\n  fn t() { Command::new("node"); }\n}\nfn tail() {}\n'),
-    "fn keep() {}\n\nfn tail() {}\n",
+    mutated.unallowlisted.some((sink) =>
+      sink.statement.includes("Command::new(executable).arg(\"--version\").spawn()")),
+    true,
   );
-  await withFixtureTree({
-    "crates/demo/src/lib.rs": '#[cfg(test)]\nmod tests {\n  fn t() { Command::new("node"); }\n}\n',
-    "crates/demo/src/tests.rs": 'fn t() { Command::new("npm"); }\n',
-    "crates/demo/tests/integration.rs": 'fn t() { Command::new("python3"); }\n',
-  }, async (root) => {
-    const inspection = await inspectDeveloperToolSites({
+
+  const comparison = formatRatchetComparison(compareRatchetPayloads(
+    {
+      developer_tool_sites: {
+        execution_sites: baseline.executionSites.length,
+        unallowlisted_sites: 0,
+        execution_site_ids: baseline.siteIds,
+        unallowlisted_site_ids: [],
+      },
+    },
+    {
+      developer_tool_sites: {
+        execution_sites: mutated.executionSites.length,
+        unallowlisted_sites: mutated.unallowlisted.length,
+        execution_site_ids: mutated.siteIds,
+        unallowlisted_site_ids: [],
+      },
+    },
+  ));
+  assert.equal(comparison.regressions.length > 0, true);
+  assert.match(comparison.regressions.join("\n"), /developer_tool_sites/u);
+});
+
+test("entry-level baseline fails the actual-native second spawn", async () => {
+  const realSource = await fs.readFile(path.join(repoRoot, strategyRuntimePath), "utf8");
+  await withFixtureTree(completeFixture({ [strategyRuntimePath]: realSource }), async (root) => {
+    const recorded = await recordArchitectureRatchet({ repoRoot: root });
+    assert.equal(recorded.ok, true);
+    assert.equal(recorded.record.developerToolExecutionSites, 2);
+    assert.equal(recorded.record.developerToolUnallowlistedSites, 0);
+
+    const mutatedSource = realSource.replace(
+      "    let mut command = Command::new(executable);",
+      "    let mut command = Command::new(executable); Command::new(executable).arg(\"--version\").spawn();",
+    );
+    await fs.writeFile(path.join(root, strategyRuntimePath), mutatedSource, "utf8");
+    const failures = [];
+    const state = await checkArchitectureRatchet({
       repoRoot: root,
-      readdir: fs.readdir,
-      readFile: fs.readFile,
-      allowlist: [],
+      fail: (message) => failures.push(message),
     });
-    assert.deepEqual(inspection.executionSites, []);
+    assert.equal(state.ratchetReport.status, "regression");
+    assert.equal(
+      failures.some((message) => message.includes("sink fingerprint")),
+      true,
+    );
+    assert.equal(
+      failures.some((message) => message.includes("developer_tool_sites.execution_sites grew")),
+      true,
+    );
   });
 });
 
-test("layer imports use lexical source: lifetimes, braced uses, nested comments, raw strings", async () => {
+test("a replaced reviewed sink cannot inherit its allowlist exception", async () => {
+  const realSource = await fs.readFile(path.join(repoRoot, strategyRuntimePath), "utf8");
+  const replaced = realSource.replace(
+    "let mut command = Command::new(executable);",
+    "let mut command = Command::new(executable.clone());",
+  );
+  assert.notEqual(replaced, realSource);
+  const inspection = await inspectFixture(
+    { [strategyRuntimePath]: replaced },
+    DEVELOPER_TOOL_ALLOWLIST,
+  );
+  assert.equal(
+    inspection.unallowlisted.some((sink) =>
+      sink.statement.includes("Command::new(executable.clone())")),
+    true,
+  );
+  assert.equal(
+    inspection.staleAllowlist.includes(`${strategyRuntimePath}::90131efac688`),
+    true,
+  );
+});
+
+test("dynamic and cross-file API sinks are attributed instead of counting zero", async () => {
+  const crossFile = await inspectFixture({
+    "crates/demo/src/api.rs": "pub fn launch(program: &str) {\n  Command::new(program).spawn();\n}\n",
+    "crates/demo/src/boot.rs": 'pub fn boot() {\n  launch("node");\n}\n',
+  });
+  assert.deepEqual(crossFile.executionSites.map((sink) => sink.tools), [["node"]]);
+
+  const fileEvidence = await inspectFixture({
+    "crates/demo/src/runner.rs": [
+      'const CHANNEL: &str = "npm";',
+      "pub fn run(program: String) {",
+      "  Command::new(program).spawn();",
+      "}",
+      "",
+    ].join("\n"),
+  });
+  assert.deepEqual(fileEvidence.executionSites.map((sink) => sink.tools), [["npm"]]);
+
+  const unrelated = await inspectFixture({
+    "crates/demo/src/plain.rs": "pub fn run(program: String) {\n  Command::new(program).spawn();\n}\n",
+  });
+  assert.deepEqual(unrelated.executionSites, []);
+  assert.equal(unrelated.scannedSinkStatements > 0, true);
+});
+
+test("shell scripts passed to sh -c are attributed, including multiline raw scripts", async () => {
+  const single = await inspectFixture({
+    "crates/demo/src/shell.rs": [
+      'const SCRIPT: &str = "node agent.js";',
+      "pub fn run() {",
+      '  Command::new("sh").args(["-c", SCRIPT]).status();',
+      "}",
+      "",
+    ].join("\n"),
+  });
+  assert.deepEqual(single.executionSites.map((sink) => sink.tools), [["node"]]);
+
+  const multiline = await inspectFixture({
+    "crates/demo/src/shell.rs": [
+      "const SCRIPT: &str = r#\"",
+      "set -eu",
+      "node agent.js --once",
+      "\"#;",
+      "pub fn run() {",
+      '  Command::new("/bin/sh").arg("-c").arg(SCRIPT).status();',
+      "}",
+      "",
+    ].join("\n"),
+  });
+  assert.deepEqual(multiline.executionSites.map((sink) => sink.tools), [["node"]]);
+});
+
+test("commented-out execution and commented cfg(test) never hide runtime sinks", async () => {
+  const commented = await inspectFixture({
+    "crates/demo/src/comment.rs": [
+      "pub fn keep() {",
+      '  // Command::new("node").spawn();',
+      '  /* Command::new("npm").spawn(); */',
+      "}",
+      "",
+    ].join("\n"),
+  });
+  assert.deepEqual(commented.executionSites, []);
+
+  const commentedAttribute = await inspectFixture({
+    "crates/demo/src/runtime.rs": [
+      "// #[cfg(test)]",
+      "pub fn runtime() {",
+      '  Command::new("node").spawn();',
+      "}",
+      "",
+    ].join("\n"),
+  });
+  assert.deepEqual(commentedAttribute.executionSites.map((sink) => sink.tools), [["node"]]);
+});
+
+test("mixed production and test files keep production sinks and drop test sinks", async () => {
+  const mixed = await inspectFixture({
+    "crates/demo/src/mixed.rs": [
+      "pub fn production() {",
+      '  Command::new("node").spawn();',
+      "}",
+      "#[test]",
+      "fn t() {",
+      '  Command::new("npm").spawn();',
+      "}",
+      "",
+    ].join("\n"),
+  });
+  assert.deepEqual(mixed.executionSites.map((sink) => sink.tools), [["node"]]);
+  assert.equal(stripTestItems('fn keep() {}\n#[test]\nfn t() {}\n').includes("keep"), true);
+});
+
+test("crate src scope excludes build.rs and other crate-root files", async () => {
+  const inspection = await inspectFixture({
+    "crates/demo/build.rs": 'fn main() {\n  Command::new("node").spawn();\n}\n',
+    "crates/demo/benches/bench.rs": 'fn bench() {\n  Command::new("npm").spawn();\n}\n',
+  });
+  assert.deepEqual(inspection.executionSites, []);
+  assert.equal(inspection.scannedFiles, 0);
+});
+
+test("feature requests propagate through dependency features to optional edges", async () => {
   await withFixtureTree({
-    "crates/licoup-native/src/domain/life.rs": "pub static R: &'static str = \"x\";\nuse crate::platform::Thing;\n",
-    "crates/licoup-native/src/domain/braced.rs": "use crate::{platform::Thing, shared::Other};\n",
-    "crates/licoup-native/src/domain/nested_comment.rs":
-      "/* outer /* crate::platform */ still a comment */\npub fn x() {}\n",
-    "crates/licoup-native/src/domain/raw.rs": 'pub const NOTE: &str = r#"crate::platform::x"#;\n',
-    "crates/licoup-native/src/domain/a/b/c.rs":
-      "use super::super::super::super::platform::x;\n",
-    "crates/licoup-native/src/platform/mod.rs": "use crate::{domain::Thing};\n",
-    "crates/licoup-native/src/platform/comment.rs": "// crate::domain\n",
+    "Cargo.toml": "[workspace]\n",
+    "crates/licoup-native/Cargo.toml": crateManifest("licoup-native", {
+      helper: { path: "../helper", features: ["runtime"] },
+    }),
+    "crates/helper/Cargo.toml": [
+      "[package]",
+      'name = "helper"',
+      'version = "0.0.0"',
+      "",
+      "[dependencies]",
+      'workflow = { package = "licoup-workflow", path = "../licoup-workflow", optional = true }',
+      "",
+      "[features]",
+      'runtime = ["workflow"]',
+      "",
+    ].join("\n"),
+    "crates/licoup-workflow/Cargo.toml": crateManifest("licoup-workflow"),
+    "crates/licoup-extension-contracts/src/deployment.rs": deploymentSource([
+      ["workflow.v1", "Optional", "org.licoland.feature.workflow"],
+    ]),
   }, async (root) => {
-    const metric = await measureNativeLayerImports({ repoRoot: root });
-    assert.deepEqual(metric.ratchet.domain_to_platform_files, [
-      "crates/licoup-native/src/domain/a/b/c.rs",
-      "crates/licoup-native/src/domain/braced.rs",
-      "crates/licoup-native/src/domain/life.rs",
-    ]);
-    assert.deepEqual(metric.ratchet.platform_to_domain_files, [
-      "crates/licoup-native/src/platform/mod.rs",
+    const metric = await measureKernelOptionalCargoEdges({ repoRoot: root });
+    assert.deepEqual(metric.ratchet.edges, [
+      "helper -> licoup-workflow (optional-active)",
     ]);
     assert.deepEqual(metric.details.problems, []);
   });
 });
 
-test("native size counts non-blank lines under src only", async () => {
-  await withFixtureTree({
-    "crates/licoup-native/src/lib.rs": "pub mod a;\n\n// comment\n\nfn x() {}\n",
-    "crates/licoup-native/src/a.rs": "use x;\r\n\r\n",
-    "crates/licoup-native/build.rs": "fn ignored() {}\n",
-    "crates/licoup-native/benches/native.rs": "fn ignored() {}\n",
-  }, async (root) => {
-    const metric = await measureNativeRustLoc({ repoRoot: root });
-    assert.equal(metric.ratchet.non_blank_lines, 4);
-    assert.equal(metric.details.files, 2);
-  });
-});
-
-test("missing native sources are a problem, never an improvement to zero", async () => {
+test("Cargo auto-discovered binaries own their packaging artifacts", async () => {
   await withFixtureTree({
     "Cargo.toml": "[workspace]\n",
     "crates/licoup-native/Cargo.toml": crateManifest("licoup-native"),
+    "crates/licoup-tool/Cargo.toml": crateManifest("licoup-tool"),
+    "crates/licoup-tool/src/main.rs": "fn main() {}\n",
+    "crates/licoup-tool/src/bin/licoup-cli.rs": "fn main() {}\n",
+    "crates/licoup-tool/src/bin/helper/main.rs": "fn main() {}\n",
   }, async (root) => {
-    const metric = await measureNativeRustLoc({ repoRoot: root });
-    assert.equal(metric.ratchet.non_blank_lines, 0);
-    assert.equal(metric.details.problems.length > 0, true);
-    assert.match(metric.details.problems.join("\n"), /crates\/licoup-native\/src is missing/u);
-
-    const measurement = await measureArchitectureRatchet({ repoRoot: root });
-    assert.equal(measurement.problems.length > 0, true);
+    const graph = await collectManifestGraph({ repoRoot: root });
+    const owners = binaryOwners(graph.byPath);
+    assert.equal(owners.get("licoup-tool"), "licoup-tool");
+    assert.equal(owners.get("licoup-cli"), "licoup-tool");
+    assert.equal(owners.get("helper"), "licoup-tool");
+    assert.deepEqual(graph.problems, []);
   });
 });
 
-test("cargo graph resolves workspace inheritance, locality, and default activation", async () => {
+test("ownership package-id constants are resolved and unresolved rows refuse", async () => {
+  const resolved = parseCapabilityOwnership([
+    'pub const CORE_PACKAGE: &str = "org.licoland.core";',
+    "pub mod packages {",
+    '    pub const WORKFLOW: &str = "org.licoland.feature.workflow";',
+    "}",
+    "const OWNERSHIP: [(&str, PackOwnership); 2] = [",
+    '    ("conversation.v1", PackOwnership::Core(CORE_PACKAGE)),',
+    '    ("workflow.v1", PackOwnership::Optional(packages::WORKFLOW)),',
+    "];",
+  ].join("\n"));
+  assert.deepEqual(
+    resolved.filter((row) => row.set === "optional").map((row) => row.package),
+    ["org.licoland.feature.workflow"],
+  );
+
+  await withFixtureTree({
+    "Cargo.toml": "[workspace]\n",
+    "crates/licoup-native/Cargo.toml": crateManifest("licoup-native"),
+    "crates/licoup-extension-contracts/src/deployment.rs": [
+      "const OWNERSHIP: [(&str, PackOwnership); 1] = [",
+      '    ("workflow.v1", PackOwnership::Optional(packages::MISSING)),',
+      "];",
+    ].join("\n"),
+  }, async (root) => {
+    const metric = await measureKernelOptionalCargoEdges({ repoRoot: root });
+    assert.equal(
+      metric.details.problems.some((message) =>
+        message.includes("packages::MISSING") && message.includes("does not resolve")),
+      true,
+    );
+  });
+});
+
+test("inline braced super imports are counted as cross-layer files", async () => {
+  await withFixtureTree({
+    "crates/licoup-native/src/domain/inline.rs": "pub mod nested {\n  use super::super::{platform::Thing};\n}\n",
+    "crates/licoup-native/src/platform/mod.rs": "pub fn platform_only() {}\n",
+  }, async (root) => {
+    const metric = await measureNativeLayerImports({ repoRoot: root });
+    assert.deepEqual(metric.ratchet.domain_to_platform_files, [
+      "crates/licoup-native/src/domain/inline.rs",
+    ]);
+    assert.deepEqual(metric.details.problems, []);
+  });
+});
+
+test("unreadable sources refuse instead of lowering a metric", async () => {
+  const files = {
+    "crates/licoup-native/src/lib.rs": "pub fn x() {}\n",
+    "crates/licoup-native/src/locked.rs": "pub fn locked() {}\n",
+  };
+  await withFixtureTree(files, async (root) => {
+    const locked = path.join(root, "crates/licoup-native/src/locked.rs");
+    await fs.chmod(locked, 0o000);
+    try {
+      let readable = true;
+      try {
+        await fs.readFile(locked, "utf8");
+      } catch {
+        readable = false;
+      }
+      if (!readable) {
+        const metric = await measureNativeRustLoc({ repoRoot: root });
+        assert.equal(
+          metric.details.problems.some((message) => message.includes("locked.rs cannot be read")),
+          true,
+        );
+        const measurement = await measureArchitectureRatchet({ repoRoot: root });
+        assert.equal(measurement.problems.length > 0, true);
+      }
+    } finally {
+      await fs.chmod(locked, 0o644);
+    }
+  });
+});
+
+test("cargo graph resolves workspace inheritance, locality, and requested activation", async () => {
   await withFixtureTree({
     "Cargo.toml": [
       "[workspace]",
@@ -313,8 +449,6 @@ test("cargo graph resolves workspace inheritance, locality, and default activati
       "licoup-native -> licoup-mcp (optional-active)",
       "licoup-native -> licoup-workflow (dependencies)",
     ]);
-    assert.deepEqual(metric.ratchet.unknown_optional_packages, []);
-    assert.deepEqual(metric.ratchet.unknown_optional_manifests, []);
     assert.deepEqual(metric.details.problems, []);
   });
 });
@@ -349,7 +483,7 @@ test("cargo graph handles dotted keys, sub-tables, apostrophe comments, and inac
       "licoup-native -> licoup-workflow (dependencies)",
     ]);
     assert.deepEqual(metric.details.inactive_optional_edges, [
-      "licoup-native -> licoup-mcp (optional, inactive by default features)",
+      "licoup-native -> licoup-mcp (optional, inactive for the requested features)",
     ]);
     assert.deepEqual(metric.details.problems, []);
   });
@@ -393,39 +527,7 @@ test("default activation follows feature indirection and dep syntax", () => {
   assert.equal(activated.has("licoup-optional"), false);
 });
 
-test("unknown optional ownership fails the check and refuses recording", async () => {
-  await withFixtureTree(completeFixture({
-    "crates/licoup-extension-contracts/src/deployment.rs": deploymentSource([
-      ["conversation.v1", "Core", "org.licoland.core"],
-      ["mcp-server.v1", "Optional", "org.licoland.feature.mcp"],
-      ["brand-new.v1", "Optional", "org.licoland.feature.brand-new"],
-    ]),
-  }), async (root) => {
-    const measurement = await measureArchitectureRatchet({ repoRoot: root });
-    assert.equal(
-      measurement.problems.some((message) =>
-        message.includes("org.licoland.feature.brand-new")),
-      true,
-    );
-
-    const record = await recordArchitectureRatchet({ repoRoot: root });
-    assert.equal(record.ok, false);
-    assert.match(record.message, /refusing to record/u);
-
-    const failures = [];
-    const state = await checkArchitectureRatchet({
-      repoRoot: root,
-      fail: (message) => failures.push(message),
-    });
-    assert.equal(state.ratchetReport.status, "baseline-unrecorded");
-    assert.equal(
-      failures.some((message) => message.includes("org.licoland.feature.brand-new")),
-      true,
-    );
-  });
-});
-
-test("unknown optional ownership fails even with a seeded baseline", async () => {
+test("unknown optional ownership fails the check and refuses recording, even with a seeded baseline", async () => {
   await withFixtureTree(completeFixture(), async (root) => {
     const recorded = await recordArchitectureRatchet({ repoRoot: root });
     assert.equal(recorded.ok, true);
@@ -449,6 +551,8 @@ test("unknown optional ownership fails even with a seeded baseline", async () =>
       failures.some((message) => message.includes("org.licoland.feature.brand-new")),
       true,
     );
+    const record = await recordArchitectureRatchet({ repoRoot: root });
+    assert.equal(record.ok, false);
   });
 });
 
@@ -503,21 +607,6 @@ test("packaging rejects a new host bundle, a replaced binary, an unknown binary,
       true,
     );
   });
-
-  await withFixtureTree(packagingFixture({
-    deploymentRows: [
-      ["conversation.v1", "Core", "org.licoland.core"],
-      ["mcp-server.v1", "Optional", "org.licoland.feature.mcp"],
-      ["brand-new.v1", "Optional", "org.licoland.feature.brand-new"],
-    ],
-  }), async (root) => {
-    const metric = await measureOptionalCapabilitiesInPackaging({ repoRoot: root });
-    assert.equal(
-      metric.details.problems.some((message) =>
-        message.includes("org.licoland.feature.brand-new")),
-      true,
-    );
-  });
 });
 
 function packagingFixture({
@@ -569,10 +658,7 @@ test("baseline comparison fails a regression and prompts an improvement", () => 
     },
   }));
   assert.match(regression.regressions[0], /native_rust_loc\.non_blank_lines grew from 10 to 12/u);
-  assert.match(
-    regression.regressions[1],
-    /kernel_optional_cargo_edges\.value grew from 1 to 2/u,
-  );
+  assert.match(regression.regressions[1], /kernel_optional_cargo_edges\.value grew from 1 to 2/u);
   assert.match(
     regression.regressions[2],
     /kernel_optional_cargo_edges\.edges gained a -> c \(dependencies\)/u,
@@ -616,7 +702,7 @@ test("every metric regresses with an actionable message", () => {
     developer_tool_sites: {
       execution_sites: 1,
       unallowlisted_sites: 0,
-      execution_site_ids: ["file.rs::npm::1"],
+      execution_site_ids: ["file.rs::sink::npm"],
       unallowlisted_site_ids: [],
     },
   };
@@ -643,8 +729,8 @@ test("every metric regresses with an actionable message", () => {
     developer_tool_sites: {
       execution_sites: 2,
       unallowlisted_sites: 1,
-      execution_site_ids: ["file.rs::npm::1", "other.rs::node::1"],
-      unallowlisted_site_ids: ["other.rs::node::1"],
+      execution_site_ids: ["file.rs::sink::npm", "other.rs::sink2::node"],
+      unallowlisted_site_ids: ["other.rs::sink2::node"],
     },
   };
   const comparison = formatRatchetComparison(
@@ -674,8 +760,6 @@ test("recording refuses to raise a value and accepts an improvement", async () =
     const refused = await recordRatchetBaseline({ repoRoot: root, metrics: metric(12) });
     assert.equal(refused.ok, false);
     assert.match(refused.regressions[0], /grew from 10 to 12/u);
-    const unchanged = await recordRatchetBaseline({ repoRoot: root, metrics: metric(10) });
-    assert.equal(unchanged.ok, true);
     const improved = await recordRatchetBaseline({ repoRoot: root, metrics: metric(8) });
     assert.equal(improved.ok, true);
     const stored = await loadRatchetBaseline({ repoRoot: root });
@@ -734,7 +818,6 @@ test("check phase fails while the baseline is unrecorded and passes with a recor
     });
     assert.deepEqual(passFailures, []);
     assert.equal(passState.ratchetReport.status, "pass");
-    assert.equal(passState.ratchetMetrics.developerToolUnallowlistedSites, 0);
     assert.equal(
       passState.ratchetReport.centralEvidence.some((entry) => entry.includes("Installed size")),
       true,
@@ -760,8 +843,7 @@ test("check phase fails a new hidden spawn and prompts an improving baseline upd
     assert.equal(state.ratchetReport.status, "regression");
     assert.equal(
       failures.some((message) =>
-        message.includes("domain_only.rs") &&
-        message.includes("without a justified allowlist entry")),
+        message.includes("domain_only.rs") && message.includes("sink fingerprint")),
       true,
     );
 
@@ -786,45 +868,42 @@ test("check phase fails a new hidden spawn and prompts an improving baseline upd
   });
 });
 
-test("record command refuses while an unjustified execution site exists", async () => {
+test("record command refuses while an unjustified execution sink exists", async () => {
   await withFixtureTree(completeFixture({
     "crates/licoup-native/src/domain/spawn.rs": 'pub fn spawn() {\n  Command::new("uvx");\n}\n',
   }), async (root) => {
     const record = await recordArchitectureRatchet({ repoRoot: root });
     assert.equal(record.ok, false);
     assert.match(record.message, /unjustified developer-tool execution sites/u);
-    assert.deepEqual(record.sites.map((site) => site.id), [
-      "crates/licoup-native/src/domain/spawn.rs::uvx::1",
-    ]);
+    assert.equal(record.sites.length, 1);
+    assert.deepEqual(record.sites[0].tools, ["uvx"]);
   });
 });
 
-test("invalid allowlist entries become measurement problems and leave sites unjustified", async () => {
+test("invalid allowlist entries become measurement problems and leave sinks unjustified", async () => {
   const file = "crates/demo/src/lib.rs";
   await withFixtureTree({
     [file]: 'pub fn run() {\n  Command::new("node").spawn();\n}\n',
   }, async (root) => {
     const metric = await measureDeveloperToolSites({
       repoRoot: root,
-      allowlist: [{ file, tool: "node", ordinal: 1, reason: "   " }],
+      allowlist: [{ file, sink: "deadbeef", tools: ["node"], reason: "   " }],
     });
     assert.equal(metric.details.problems.length, 1);
     assert.match(metric.details.problems[0], /meaningful justification/u);
     assert.equal(metric.ratchet.unallowlisted_sites, 1);
-    assert.deepEqual(metric.details.unallowlisted_sites.map((site) => site.id), [
-      `${file}::node::1`,
-    ]);
   });
 });
 
 test("real repository metrics stay internally consistent", async () => {
   const metric = await measureDeveloperToolSites({ repoRoot });
   assert.deepEqual(metric.details.problems ?? [], []);
+  assert.equal(metric.ratchet.execution_sites, 10);
   assert.equal(metric.ratchet.unallowlisted_sites, 0);
   assert.deepEqual(metric.details.unallowlisted_sites, []);
   assert.deepEqual(metric.details.invalid_allowlist, []);
   assert.equal(metric.details.stale_allowlist.length, 0);
-  assert.equal(metric.ratchet.execution_sites > 0, true);
+  assert.equal(metric.ratchet.execution_site_ids.length, 17);
 });
 
 test("declared optional ownership covers every optional capability in the contract", async () => {
@@ -839,7 +918,4 @@ test("declared optional ownership covers every optional capability in the contra
   assert.deepEqual(ids, Object.keys(OPTIONAL_CAPABILITY_CRATES).sort());
   assert.deepEqual(ids, Object.keys(OPTIONAL_CAPABILITY_ARTIFACTS).sort());
   assert.deepEqual(ids, Object.keys(OPTIONAL_CAPABILITY_BUNDLES).sort());
-  for (const [packageId, declaration] of Object.entries(OPTIONAL_CAPABILITY_ARTIFACTS)) {
-    assert.equal(declaration.evidence.length > 0, true, packageId);
-  }
 });

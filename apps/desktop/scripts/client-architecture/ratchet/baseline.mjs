@@ -6,7 +6,8 @@
  * any set member that appeared; an improvement is any number that fell or any
  * set member that disappeared. Recording refuses to raise a value, so the
  * baseline can only move in the improving direction. The initial baseline is
- * recorded on the integrated candidate; see README.md.
+ * recorded on the integrated candidate; the operating procedure is documented
+ * in the "Static architecture metrics" section of `docs/RUNBOOK.md`.
  */
 
 import fs from "node:fs/promises";

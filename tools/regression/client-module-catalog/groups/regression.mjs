@@ -543,6 +543,8 @@ export const REGRESSION_MODULES = Object.freeze([
         "apps/desktop/scripts/client-architecture/ratchet/developer-tools.mjs",
         "apps/desktop/scripts/client-architecture/ratchet/lexical.mjs",
         "apps/desktop/scripts/client-architecture/ratchet/measure.mjs",
+        "package.json",
+        "package-lock.json",
         "tests/contract/client/client-architecture-ratchet.test.mjs",
       ],
       command: command(
@@ -1327,6 +1329,8 @@ export const REGRESSION_MODULES = Object.freeze([
         "components/analytics/src/**",
         "sdk/usage-source/Cargo.toml",
         "sdk/usage-source/src/**",
+        "package.json",
+        "package-lock.json",
         "packages/contracts/client/semantic-conversation.schema.json",
         "CONTRIBUTING.md",
         "docs/architecture/README.md",

@@ -293,7 +293,8 @@ milestone check results:
 - domain/platform and platform/domain importing files in `licoup-native`,
 - `licoup-native` Rust size over one defined scope,
 - optional capabilities bundled by the packaging module set,
-- developer-tool execution sites in runtime sources.
+- developer-tool execution sinks in runtime sources, each with a reviewed
+  identity fingerprint and its attributed tools.
 
 Exact scopes, the optional-crate and packaging ownership maps, and the
 justified developer-tool allowlist are declared in

@@ -7,9 +7,10 @@
  *
  * - `OPTIONAL_CAPABILITY_CRATES` maps a capability package declared in
  *   `crates/licoup-extension-contracts/src/deployment.rs` to the first-party
- *   crate that implements it. `OPTIONAL_CAPABILITY_PACKAGING` maps the same
- *   package to the packaging modules that bundle it into the installed client.
- *   The measurement fails when a declared optional package has no entry, so a
+ *   crate that implements it. `OPTIONAL_CAPABILITY_ARTIFACTS` and
+ *   `OPTIONAL_CAPABILITY_BUNDLES` map the same package to the binaries that
+ *   carry it and the packaging modules that currently bundle them. The
+ *   measurement fails when a declared optional package has no entry, so a
  *   new optional capability cannot slip through as "unknown ownership".
  * - `DEVELOPER_TOOL_ALLOWLIST` names every runtime execution site that may
  *   reference `node`, `npm`, `npx`, `python3`, `python`, `uvx`, `pip` or
@@ -38,14 +39,16 @@ export const BASELINE_RECORD_COMMAND =
 /**
  * Runtime source scope for the developer-tool scan. These are the first-party
  * sources executed by the installed client or by user-facing tools that ship
- * with it. Developer machines, build scripts and test sources are out of scope
- * because EX-05 constrains what runs on the user's device.
+ * with it. Crate workspaces contribute only their `src` trees, so build
+ * scripts, benches and crate-root files are out of scope. Developer machines,
+ * build scripts and test sources are out of scope because EX-05 constrains
+ * what runs on the user's device.
  */
 export const RUNTIME_SOURCE_ROOTS = Object.freeze([
-  Object.freeze({ root: "crates", extension: ".rs" }),
-  Object.freeze({ root: "components", extension: ".rs" }),
-  Object.freeze({ root: "sdk", extension: ".rs" }),
-  Object.freeze({ root: "apps/desktop/lib", extension: ".dart" }),
+  Object.freeze({ root: "crates", extension: ".rs", layout: "crate-src" }),
+  Object.freeze({ root: "components", extension: ".rs", layout: "crate-src" }),
+  Object.freeze({ root: "sdk", extension: ".rs", layout: "crate-src" }),
+  Object.freeze({ root: "apps/desktop/lib", extension: ".dart", layout: "tree" }),
 ]);
 
 /**
@@ -203,92 +206,86 @@ export const DEVELOPER_TOOL_NAMES = Object.freeze([
 ]);
 
 /**
- * Justified runtime execution sites. Every execution occurrence is a distinct
- * site (`file`, `tool`, and its 1-based `ordinal` within that file), so one
- * entry can never authorize a second call site; a new occurrence, a replaced
- * statement or a shifted site fails until it is reviewed here. Justifications
- * are part of the review: each entry needs a meaningful reason.
+ * Justified runtime execution sinks. Every process-execution statement is one
+ * sink; its reviewed identity is `file` + sink fingerprint, and the entry must
+ * declare every attributed tool. A second sink, a replaced statement or a
+ * changed tool set produces a new identity and fails until it is reviewed here.
+ * Justifications are part of the review: each entry needs a meaningful reason.
  *
- * Cross-file and data-driven execution is covered by the scanner's wrapper and
- * data-flow rules; this list records the reviewed outcome.
+ * Cross-file and data-driven execution is attributed through the scanner's
+ * binding, call-site and file-evidence rules; this list records the reviewed
+ * outcome.
  */
 export const DEVELOPER_TOOL_ALLOWLIST = Object.freeze([
   Object.freeze({
     file: "crates/licoup-native/src/domain/agent_hub/argv.rs",
-    tool: "npm",
-    ordinal: 1,
+    sink: "db471ee64ae2",
+    tools: Object.freeze(["npm"]),
     reason:
       "Agent Hub install channels execute the vendor's own package manager chosen from channel data; LicoUp never requires npm for its own capabilities.",
   }),
   Object.freeze({
     file: "crates/licoup-native/src/domain/agent_usage/agent_usage_native/deepseek.rs",
-    tool: "node",
-    ordinal: 1,
+    sink: "aa789fdbbd01",
+    tools: Object.freeze(["node"]),
     reason:
       "DeepSeek Harness usage reader executes the user-installed agent's own Node runtime against dsh; no LicoUp capability requires Node.",
   }),
   Object.freeze({
     file: "crates/licoup-native/src/domain/targets/model_catalog/deepseek.rs",
-    tool: "node",
-    ordinal: 1,
+    sink: "80743485edcc",
+    tools: Object.freeze(["node"]),
     reason:
-      "DeepSeek Harness model-catalog probe executes the user-installed agent's own Node runtime against dsh.",
+      "DeepSeek Harness model-catalog probe builds the command for the user-installed agent's own Node runtime against dsh.",
+  }),
+  Object.freeze({
+    file: "crates/licoup-native/src/domain/targets/model_catalog/deepseek.rs",
+    sink: "9d312f35c684",
+    tools: Object.freeze(["node"]),
+    reason:
+      "Bounded runner executes the prepared dsh probe command (the same user-installed Node runtime as the constructor sink).",
   }),
   Object.freeze({
     file: "crates/licoup-native/src/domain/targets/virtual_machine_discovery.rs",
-    tool: "python",
-    ordinal: 1,
+    sink: "a6e916bbfa13",
+    tools: Object.freeze(["python", "python3"]),
     reason:
-      "Virtual-machine target discovery probes a user-configured guest with an embedded shell script that locates the agent's own Python runtime; the host does not require Python.",
+      "OrbStack machine probe passes the guest discovery script that locates the agent's own Python runtime inside the user-configured machine; the host does not require Python.",
   }),
   Object.freeze({
     file: "crates/licoup-native/src/domain/targets/virtual_machine_discovery.rs",
-    tool: "python",
-    ordinal: 2,
+    sink: "a6e916bbfa13#2",
+    tools: Object.freeze(["python", "python3"]),
     reason:
-      "Second candidate path in the same guest probe script; it is part of the agent's own runtime discovery inside the configured guest.",
+      "OrbStack machine listing shares the probe runner unit; guest tool names are attributed by file evidence and the listing command executes no guest tool.",
   }),
   Object.freeze({
     file: "crates/licoup-native/src/domain/targets/virtual_machine_discovery.rs",
-    tool: "python3",
-    ordinal: 1,
+    sink: "54ad90f4ce7a",
+    tools: Object.freeze(["python", "python3"]),
     reason:
-      "Third candidate path in the same guest probe script; the host does not require Python.",
+      "Bounded command runner executes prepared OrbStack guest probes, including the discovery script that locates the agent's Python runtime.",
+  }),
+  Object.freeze({
+    file: "crates/licoup-native/src/platform/process_supervisor.rs",
+    sink: "baade34aee90",
+    tools: Object.freeze(["node"]),
+    reason:
+      "Generic bounded runner for untrusted agent CLI commands; the DeepSeek reader's user-installed Node runtime is attributed through caller analysis, and the runner itself requires no developer environment.",
   }),
   Object.freeze({
     file: "crates/licoup-native/src/platform/strategy_runtime/mod.rs",
-    tool: "node",
-    ordinal: 1,
+    sink: "90131efac688",
+    tools: Object.freeze(["node", "python", "python3"]),
     reason:
-      "Adaptive Flywheel PATH discovery enumerates the workflow-author-selected node runtime kind; verification executes the found binary with --version under a bounded untrusted-output runner.",
+      "Adaptive Flywheel runtime verification builds the command for the workflow-author-selected runtime kind (node/python3/python); only the runtime the workflow declares is executed, under a bounded runner.",
   }),
   Object.freeze({
     file: "crates/licoup-native/src/platform/strategy_runtime/mod.rs",
-    tool: "node",
-    ordinal: 2,
+    sink: "b39e0b100c0d",
+    tools: Object.freeze(["node", "python", "python3"]),
     reason:
-      "Wire-name mapping for the node runtime kind used in verified runtime descriptors; escalated by the file-level variable-program rule, not a second execution path.",
-  }),
-  Object.freeze({
-    file: "crates/licoup-native/src/platform/strategy_runtime/mod.rs",
-    tool: "python",
-    ordinal: 1,
-    reason:
-      "Adaptive Flywheel PATH discovery enumerates the python runtime kind; verification executes the found binary with --version under the bounded runner.",
-  }),
-  Object.freeze({
-    file: "crates/licoup-native/src/platform/strategy_runtime/mod.rs",
-    tool: "python",
-    ordinal: 2,
-    reason:
-      "Wire-name mapping for the python runtime kind used in verified runtime descriptors; escalated by the file-level variable-program rule.",
-  }),
-  Object.freeze({
-    file: "crates/licoup-native/src/platform/strategy_runtime/mod.rs",
-    tool: "python3",
-    ordinal: 1,
-    reason:
-      "Alternate executable name for the python runtime kind discovered on PATH and verified under the bounded runner.",
+      "Bounded runner executes the prepared runtime verification command; attributed runtime kinds match the constructor sink.",
   }),
 ]);
 
@@ -303,6 +300,7 @@ export const EXECUTION_TOKENS = Object.freeze([
   ".output(",
   ".status(",
   "run_bounded_untrusted_agent_output(",
+  "run_bounded_command_output(",
   "Process.run(",
   "Process.start(",
   "Process.runSync(",

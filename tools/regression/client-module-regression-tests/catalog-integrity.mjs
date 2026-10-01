@@ -388,6 +388,21 @@ test("architecture and package facades retain precise source-bundle ownership", 
   ];
   const ratchetTest =
     "tests/contract/client/client-architecture-ratchet.test.mjs";
+  const ratchetDependencySelections = new Map([
+    ["package.json", [
+      "regression.infrastructure",
+      "regression.test-artifact-lifecycle",
+      "regression.documentation-governance",
+      "regression.client-architecture-ratchet",
+      "architecture.client-boundaries",
+      "release.workflows",
+    ]],
+    ["package-lock.json", [
+      "regression.infrastructure",
+      "regression.client-architecture-ratchet",
+      "architecture.client-boundaries",
+    ]],
+  ]);
   const packageAssets = [
     "apps/desktop/macos/CustodyHelper/Info.plist",
     "apps/desktop/macos/CustodyHelper/ProductionRelease.entitlements",
@@ -443,6 +458,9 @@ test("architecture and package facades retain precise source-bundle ownership", 
   assert.deepEqual(ids(selectModulesForChangedPaths([ratchetTest])), [
     "regression.client-architecture-ratchet",
   ]);
+  for (const [relativePath, expectedIds] of ratchetDependencySelections) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), expectedIds);
+  }
 
   for (const relativePath of [...packageAssets, ...packageSources]) {
     const expected = [
@@ -489,7 +507,11 @@ test("architecture and package facades retain precise source-bundle ownership", 
     architectureTest,
   ]);
   assert.deepEqual(architectureBundle.command.args, ["--test", architectureTest]);
-  assert.deepEqual(ratchetBundle.inputs, [...ratchetSources, ratchetTest]);
+  assert.deepEqual(ratchetBundle.inputs, [
+    ...ratchetSources,
+    ...ratchetDependencySelections.keys(),
+    ratchetTest,
+  ]);
   assert.deepEqual(ratchetBundle.command.args, ["--test", ratchetTest]);
   assert.deepEqual(packageBundle.inputs, [...packageAssets, ...packageSources, ...packageTests]);
   assert.deepEqual(packageBundle.command.args, ["--test", ...packageTests]);
@@ -527,6 +549,8 @@ test("architecture gate owns every measured manifest and runtime source root", a
     "Cargo.toml",
     "apps/desktop/packaging.modules.json",
     "crates/licoup-extension-contracts/src/deployment.rs",
+    "package.json",
+    "package-lock.json",
   ];
   for (const root of ["crates", "components", "sdk"]) {
     const entries = await fs.readdir(path.join(repoRoot, root), { withFileTypes: true });

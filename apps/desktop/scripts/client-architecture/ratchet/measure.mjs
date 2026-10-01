@@ -13,9 +13,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
-  activeRuntimeDependencies,
   binaryOwners,
   collectManifestGraph,
+  dependencyActivated,
+  featureActivation,
 } from "./cargo-manifest.mjs";
 import { findMatching, inspectDeveloperToolSites } from "./developer-tools.mjs";
 import { lexicalView } from "./lexical.mjs";
@@ -41,13 +42,23 @@ async function readText(repoRoot, relativePath) {
   }
 }
 
-async function walkFiles(repoRoot, relativeRoot, extension, { excludeDirectories = [] } = {}) {
+async function walkFiles(
+  repoRoot,
+  relativeRoot,
+  extension,
+  { excludeDirectories = [], problems = [] } = {},
+) {
   const found = [];
   async function visit(relativeDirectory) {
     let entries = [];
     try {
       entries = await fs.readdir(path.join(repoRoot, relativeDirectory), { withFileTypes: true });
-    } catch {
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        problems.push(
+          `${relativeDirectory} cannot be read: ${error?.code ?? error?.message ?? "unknown"}`,
+        );
+      }
       return;
     }
     for (const entry of [...entries].sort((left, right) => left.name.localeCompare(right.name))) {
@@ -68,22 +79,68 @@ async function walkFiles(repoRoot, relativeRoot, extension, { excludeDirectories
   return found;
 }
 
-/** Extract `CAPABILITY_OWNERSHIP` rows from the deployment contract. */
+/**
+ * Extract `CAPABILITY_OWNERSHIP` rows from the deployment contract, resolving
+ * quoted package ids and package-id constants (`PackOwnership::Optional(
+ * packages::WORKFLOW)`). A row whose package argument cannot be resolved keeps
+ * `package: null` so the caller can refuse instead of silently dropping the
+ * capability.
+ */
 export function parseCapabilityOwnership(source) {
   const normalized = source.replace(/\s+/gu, " ");
-  const pattern =
-    /"([^"]+)"\s*,\s*PackOwnership::(Core|Optional)\(\s*"?([A-Za-z0-9_.-]+)"?\s*\)/gu;
-  return [...normalized.matchAll(pattern)].map((match) => ({
-    capability: match[1],
-    set: match[2] === "Core" ? "core" : "optional",
-    package: match[3],
-  }));
+  const constants = new Map();
+  for (const match of normalized.matchAll(
+    /\bconst\s+([A-Za-z_]\w*)\s*:\s*[^=]{0,160}=\s*"([^"]+)"/gu,
+  )) {
+    constants.set(match[1], match[2]);
+  }
+  const pattern = /"([^"]+)"\s*,\s*PackOwnership::(Core|Optional)\(\s*([^)]+?)\s*\)/gu;
+  const rows = [];
+  for (const match of normalized.matchAll(pattern)) {
+    const raw = match[3].trim();
+    const quoted = raw.match(/^"([^"]+)"$/u);
+    let packageId = quoted ? quoted[1] : null;
+    if (!packageId) {
+      const lastSegment = raw.split("::").pop().trim();
+      packageId = constants.get(lastSegment) ?? null;
+    }
+    rows.push({
+      capability: match[1],
+      set: match[2] === "Core" ? "core" : "optional",
+      package: packageId,
+      raw,
+    });
+  }
+  return rows;
 }
 
-function optionalPackageIds(ownershipRows) {
-  return [...new Set(
-    ownershipRows.filter((row) => row.set === "optional").map((row) => row.package),
-  )].sort();
+function sameStringSet(left, right) {
+  if (left.size !== right.size) {
+    return false;
+  }
+  for (const value of left) {
+    if (!right.has(value)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function optionalPackageIds(ownershipRows, problems) {
+  const ids = new Set();
+  for (const row of ownershipRows) {
+    if (row.set !== "optional") {
+      continue;
+    }
+    if (row.package === null) {
+      problems.push(
+        `optional capability ${row.capability} declares ${row.raw}, which does not resolve to a package id`,
+      );
+      continue;
+    }
+    ids.add(row.package);
+  }
+  return [...ids].sort();
 }
 
 function namingConventionCandidates(packageId) {
@@ -151,7 +208,7 @@ export async function measureKernelOptionalCargoEdges({ repoRoot }) {
     problems.push(`${DEPLOYMENT_SOURCE} is missing; optional capability ownership cannot be read`);
   }
   const ownershipRows = deploymentSource === null ? [] : parseCapabilityOwnership(deploymentSource);
-  const packageIds = optionalPackageIds(ownershipRows);
+  const packageIds = optionalPackageIds(ownershipRows, problems);
 
   const graph = await collectManifestGraph({ repoRoot });
   problems.push(...graph.problems);
@@ -176,43 +233,76 @@ export async function measureKernelOptionalCargoEdges({ repoRoot }) {
   const optionalCrates = new Set(cratesByPackage.keys());
 
   const closure = new Set();
-  const queue = kernelRecord ? [KERNEL_HOST_CRATE] : [];
-  while (queue.length > 0) {
-    const name = queue.shift();
-    if (closure.has(name) || optionalCrates.has(name)) {
-      continue;
-    }
-    const record = graph.records.get(name);
-    if (!record) {
-      continue;
-    }
-    closure.add(name);
-    for (const dependency of activeRuntimeDependencies(record)) {
-      if (dependency.localName && graph.records.has(dependency.localName)) {
-        queue.push(dependency.localName);
-      }
-    }
-  }
-
-  const edges = [];
-  const inactiveOptionalEdges = [];
-  for (const source of [...closure].sort()) {
-    const record = graph.records.get(source);
-    for (const dependency of activeRuntimeDependencies(record)) {
-      if (!dependency.localName || !optionalCrates.has(dependency.localName)) {
+  const edges = new Set();
+  const inactiveOptionalEdges = new Set();
+  if (kernelRecord) {
+    const requestedFeatures = new Map([[KERNEL_HOST_CRATE, new Set(["default"])]]);
+    const activated = new Map();
+    while (requestedFeatures.size > 0) {
+      const [name, request] = requestedFeatures.entries().next().value;
+      requestedFeatures.delete(name);
+      const record = graph.records.get(name);
+      if (!record) {
         continue;
       }
-      const kind = dependency.optional ? "optional-active" : dependency.kind;
-      edges.push(`${source} -> ${dependency.localName} (${kind})`);
-    }
-    for (const dependency of record.deps) {
-      if (dependency.kind === "dev-dependencies" || dependency.active) {
+      const previous = activated.get(name);
+      const mergedRequest = new Set([...(previous?.request ?? []), ...request]);
+      const activation = featureActivation(record.features, mergedRequest, record.deps);
+      const unchanged = previous &&
+        sameStringSet(previous.request, mergedRequest) &&
+        sameStringSet(previous.features, activation.features) &&
+        sameStringSet(previous.optionalDependencies, activation.optionalDependencies);
+      if (unchanged) {
         continue;
       }
-      if (dependency.localName && optionalCrates.has(dependency.localName)) {
-        inactiveOptionalEdges.push(
-          `${source} -> ${dependency.localName} (optional, inactive by default features)`,
+      activated.set(name, {
+        request: mergedRequest,
+        features: activation.features,
+        optionalDependencies: activation.optionalDependencies,
+      });
+      const sourceIsKernel = !optionalCrates.has(name);
+      if (sourceIsKernel) {
+        closure.add(name);
+      }
+      for (const dependency of record.deps) {
+        if (dependency.kind === "dev-dependencies") {
+          continue;
+        }
+        const isActive = dependencyActivated(dependency, activation);
+        if (!isActive) {
+          if (
+            sourceIsKernel &&
+            dependency.localName &&
+            optionalCrates.has(dependency.localName)
+          ) {
+            inactiveOptionalEdges.add(
+              `${name} -> ${dependency.localName} (optional, inactive for the requested features)`,
+            );
+          }
+          continue;
+        }
+        if (!dependency.localName || !graph.records.has(dependency.localName)) {
+          continue;
+        }
+        if (sourceIsKernel && optionalCrates.has(dependency.localName)) {
+          edges.add(
+            `${name} -> ${dependency.localName} (${dependency.optional ? "optional-active" : dependency.kind})`,
+          );
+        }
+        if (optionalCrates.has(dependency.localName)) {
+          continue;
+        }
+        const targetRequest = new Set(
+          Array.isArray(dependency.spec.features) ? dependency.spec.features : [],
         );
+        if (dependency.spec["default-features"] !== false) {
+          targetRequest.add("default");
+        }
+        const pending = requestedFeatures.get(dependency.localName) ?? new Set();
+        for (const feature of targetRequest) {
+          pending.add(feature);
+        }
+        requestedFeatures.set(dependency.localName, pending);
       }
     }
   }
@@ -227,17 +317,17 @@ export async function measureKernelOptionalCargoEdges({ repoRoot }) {
   return {
     id: "kernel_optional_cargo_edges",
     ratchet: {
-      value: edges.length,
+      value: edges.size,
       edges: [...edges].sort(),
       unknown_optional_packages: ownership.unknownPackages,
       unknown_optional_manifests: ownership.unknownManifests,
     },
     details: {
       definition:
-        "Direct normal/build Cargo edges from non-optional first-party crates reachable from licoup-native to crates declared as optional capability implementations. Dependencies resolved through workspace inheritance and path locality; optional dependencies activated by the default feature set count as edges. dev-dependencies and optional dependencies inactive by default are recorded separately.",
+        "Direct normal/build Cargo edges from non-optional first-party crates reachable from licoup-native to crates declared as optional capability implementations. Dependencies are resolved through workspace inheritance and path locality, and optional dependencies activated by the requested feature graph (started from the kernel host default features and propagated per dependency) count as edges. dev-dependencies and optional dependencies inactive for the requested features are recorded separately.",
       kernel_crates: [...closure].sort(),
       optional_crates: [...optionalCrates].sort(),
-      inactive_optional_edges: inactiveOptionalEdges.sort(),
+      inactive_optional_edges: [...inactiveOptionalEdges].sort(),
       ownership_rows: ownershipRows.length,
       problems,
     },
@@ -273,6 +363,25 @@ function bracedCrateUseReferencesLayer(masked, layerName) {
   return false;
 }
 
+function bracedSuperReferencesLayer(masked, layerName, depth) {
+  if (depth < 1) {
+    return false;
+  }
+  const pattern = new RegExp(`(?:super\\s*::\\s*){${depth}}\\{`, "gu");
+  for (const match of masked.matchAll(pattern)) {
+    const open = match.index + match[0].length - 1;
+    const end = findMatching(masked, open, "{", "}");
+    if (end < 0) {
+      continue;
+    }
+    const group = masked.slice(open + 1, end);
+    if (new RegExp(`(^|[^A-Za-z0-9_])${layerName}\\s*(?:::|\\b)`, "u").test(group)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function referencesLayer(source, relativePath, layerRoot, layerName) {
   const masked = sanitizeRustSource(source);
   if (new RegExp(`crate\\s*::\\s*${layerName}\\b`, "u").test(masked)) {
@@ -285,14 +394,18 @@ function referencesLayer(source, relativePath, layerRoot, layerName) {
   if (depth < 1 || depth > 64) {
     return false;
   }
-  return new RegExp(`(?:super\\s*::\\s*){${depth}}${layerName}\\b`, "u").test(masked);
+  if (new RegExp(`(?:super\\s*::\\s*){${depth}}${layerName}\\b`, "u").test(masked)) {
+    return true;
+  }
+  return bracedSuperReferencesLayer(masked, layerName, depth);
 }
 
-async function layerImportFiles(repoRoot, layerRoot, targetLayerName) {
+async function layerImportFiles(repoRoot, layerRoot, targetLayerName, problems) {
   const files = [];
-  for (const relativePath of await walkFiles(repoRoot, layerRoot, ".rs")) {
+  for (const relativePath of await walkFiles(repoRoot, layerRoot, ".rs", { problems })) {
     const source = await readText(repoRoot, relativePath);
     if (source === null) {
+      problems.push(`${relativePath} cannot be read`);
       continue;
     }
     if (referencesLayer(source, relativePath, layerRoot, targetLayerName)) {
@@ -316,8 +429,8 @@ export async function measureNativeLayerImports({ repoRoot }) {
     }
   }
   const [domainToPlatform, platformToDomain] = await Promise.all([
-    layerImportFiles(repoRoot, DOMAIN_ROOT, "platform"),
-    layerImportFiles(repoRoot, PLATFORM_ROOT, "domain"),
+    layerImportFiles(repoRoot, DOMAIN_ROOT, "platform", problems),
+    layerImportFiles(repoRoot, PLATFORM_ROOT, "domain", problems),
   ]);
   return {
     id: "native_layer_imports",
@@ -349,7 +462,9 @@ export async function measureNativeRustLoc({ repoRoot }) {
   if (!nativeSourceExists) {
     problems.push(`${NATIVE_ROOT} is missing; native size cannot be measured`);
   }
-  const files = nativeSourceExists ? await walkFiles(repoRoot, NATIVE_ROOT, ".rs") : [];
+  const files = nativeSourceExists
+    ? await walkFiles(repoRoot, NATIVE_ROOT, ".rs", { problems })
+    : [];
   if (nativeSourceExists && files.length === 0) {
     problems.push(`${NATIVE_ROOT} contains no Rust sources; native size cannot be measured`);
   }
@@ -358,6 +473,7 @@ export async function measureNativeRustLoc({ repoRoot }) {
   for (const relativePath of files) {
     const source = await readText(repoRoot, relativePath);
     if (source === null) {
+      problems.push(`${relativePath} cannot be read; native size is incomplete`);
       continue;
     }
     const lines = source.split(/\r?\n/u).filter((line) => line.trim().length > 0).length;
@@ -407,7 +523,7 @@ export async function measureOptionalCapabilitiesInPackaging({ repoRoot }) {
   problems.push(...graph.problems);
   const owners = binaryOwners(graph.byPath);
   const ownershipRows = deploymentSource === null ? [] : parseCapabilityOwnership(deploymentSource);
-  const packageIds = optionalPackageIds(ownershipRows);
+  const packageIds = optionalPackageIds(ownershipRows, problems);
 
   const artifactsByPackage = new Map();
   for (const packageId of packageIds) {
@@ -525,7 +641,7 @@ export async function measureOptionalCapabilitiesInPackaging({ repoRoot }) {
   };
 }
 
-/** Metric 5: developer-tool execution sites in runtime sources. */
+/** Metric 5: developer-tool execution sinks in runtime sources. */
 export async function measureDeveloperToolSites({ repoRoot, allowlist }) {
   const inspection = await inspectDeveloperToolSites({
     repoRoot,
@@ -533,26 +649,27 @@ export async function measureDeveloperToolSites({ repoRoot, allowlist }) {
     readFile: fs.readFile,
     ...(allowlist === undefined ? {} : { allowlist }),
   });
-  const executionSiteIds = inspection.executionSites.map((site) => site.id);
-  const unallowlistedIds = inspection.unallowlisted.map((site) => site.id);
+  const unallowlistedIds = inspection.unallowlisted.flatMap((sink) =>
+    sink.tools.map((tool) => `${sink.id}::${tool}`));
   return {
     id: "developer_tool_sites",
     ratchet: {
-      execution_sites: executionSiteIds.length,
-      unallowlisted_sites: unallowlistedIds.length,
-      execution_site_ids: executionSiteIds,
-      unallowlisted_site_ids: unallowlistedIds,
+      execution_sites: inspection.executionSites.length,
+      unallowlisted_sites: inspection.unallowlisted.length,
+      execution_site_ids: inspection.siteIds,
+      unallowlisted_site_ids: unallowlistedIds.sort(),
     },
     details: {
       definition:
-        "Runtime execution sites that name node, npm, npx, python3, python, uvx, pip or pip3 in crates/**/src, components/**/src, sdk/**/src and apps/desktop/lib. Every occurrence is a distinct site with its own ordinal, so one allowlist entry cannot authorize a second call site; execution is classified from the enclosing statement, bound programs, wrapper calls, embedded guest scripts, and files that execute a variable program, and commented-out code is ignored. Every execution site must be justified in the declared allowlist. This is a declared-scope static lexical scan, not an exhaustive proof that no other runtime path can execute a developer tool.",
+        "Developer-tool execution sinks in crates/**/src, components/**/src, sdk/**/src and apps/desktop/lib. One statement containing an execution API is one sink; tools are attributed through the sink expression, same-file bindings and identifier chains, cross-file call-site arguments, and file-level tool evidence, so an unresolved operand in a unit that names developer tools is never counted as zero. Every relevant sink needs a reviewed allowlist entry with its fingerprint and attributed tools; a second sink, a replaced statement or a changed tool set cannot inherit an existing exception. The scan is a declared-scope static lexical analysis, not an exhaustive proof.",
       scanned_files: inspection.scannedFiles,
+      scanned_sink_statements: inspection.scannedSinkStatements,
       execution_sites: inspection.executionSites,
       unallowlisted_sites: inspection.unallowlisted,
       stale_allowlist: inspection.staleAllowlist,
       invalid_allowlist: inspection.invalidAllowlist,
       references: inspection.references,
-      problems: [...inspection.invalidAllowlist],
+      problems: [...inspection.problems],
     },
   };
 }
