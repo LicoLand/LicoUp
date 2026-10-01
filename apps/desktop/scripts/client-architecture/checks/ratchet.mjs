@@ -13,18 +13,19 @@ import { measureArchitectureRatchet } from "../ratchet/measure.mjs";
 
 /**
  * Measure the static architecture ratchet, compare against the recorded
- * baseline, and fail only on regression or unjustified developer-tool
+ * baseline, and fail on incomplete inputs, regression or unjustified developer-tool
  * execution. The returned state carries the numeric record for milestone check
  * results and the full report for inspection.
  */
 export async function checkArchitectureRatchet(context) {
-  const measurement = await measureArchitectureRatchet({ repoRoot: context.repoRoot });
+  const measurement = await measureArchitectureRatchet({ repoRoot: context.repoRoot, io: context.io });
   const report = {
     schema: RATCHET_SCHEMA,
     record: measurement.record,
     metrics: measurement.metrics,
     centralEvidence: [...CENTRAL_DELIVERY_EVIDENCE],
     status: "unknown",
+    problems: measurement.problems,
   };
   for (const problem of measurement.problems) {
     context.fail(`architecture ratchet measurement input: ${problem}`);
@@ -38,12 +39,18 @@ export async function checkArchitectureRatchet(context) {
       `architecture ratchet: developer-tool execution sink ${site.id} (line ${site.line}, tools ${site.tools.join(", ")}) is not covered by a justified allowlist entry with this sink fingerprint`,
     );
   }
+  if (measurement.problems.length > 0) {
+    report.status = "measurement-refused";
+    return { ratchetMetrics: null, ratchetReport: report };
+  }
 
   let baseline = null;
   try {
     baseline = await loadRatchetBaseline({ repoRoot: context.repoRoot });
   } catch (error) {
     context.fail(`architecture ratchet baseline: ${error.message}`);
+    report.status = "baseline-invalid";
+    return { ratchetMetrics: measurement.record, ratchetReport: report };
   }
 
   const currentPayloads = Object.fromEntries(
@@ -71,7 +78,7 @@ export async function checkArchitectureRatchet(context) {
       );
     }
     report.status =
-      comparison.regressions.length > 0
+      comparison.regressions.length > 0 || developerTools.ratchet.unallowlisted_sites > 0
         ? "regression"
         : comparison.improvements.length > 0
           ? "improved"
@@ -93,11 +100,14 @@ export async function recordArchitectureRatchet({
   repoRoot,
   writeFile,
   now,
+  io,
 } = {}) {
-  const measurement = await measureArchitectureRatchet({ repoRoot });
+  const measurement = await measureArchitectureRatchet({ repoRoot, io });
   if (measurement.problems.length > 0) {
     return {
       ok: false,
+      status: "measurement-refused",
+      problems: measurement.problems,
       message: `refusing to record: ${measurement.problems.join("; ")}`,
     };
   }
@@ -112,11 +122,10 @@ export async function recordArchitectureRatchet({
       sites: developerTools.details.unallowlisted_sites,
     };
   }
-  const outcome = await recordRatchetBaseline({
-    repoRoot,
-    metrics: measurement.metrics,
-    writeFile,
-    now,
-  });
-  return { ...outcome, record: measurement.record };
+  try {
+    const outcome = await recordRatchetBaseline({ repoRoot, metrics: measurement.metrics, writeFile, now });
+    return { ...outcome, record: measurement.record };
+  } catch (error) {
+    return { ok: false, status: "baseline-refused", message: `refusing to record: ${error.message}` };
+  }
 }

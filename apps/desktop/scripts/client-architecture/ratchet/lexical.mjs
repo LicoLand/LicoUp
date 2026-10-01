@@ -35,7 +35,7 @@ function scanEscapedString(source, start, quote) {
     }
     index += 1;
   }
-  return source.length;
+  return -1;
 }
 
 function scanNestedBlockComment(source, start) {
@@ -52,7 +52,7 @@ function scanNestedBlockComment(source, start) {
       index += 1;
     }
   }
-  return index;
+  return depth === 0 ? index : -1;
 }
 
 function matchRustRawString(source, start) {
@@ -81,7 +81,7 @@ function matchRustRawString(source, start) {
   const terminator = `"${"#".repeat(hashes)}`;
   const end = source.indexOf(terminator, contentStart);
   if (end < 0) {
-    return { end: source.length, contentStart, contentEnd: source.length };
+    return { end: source.length, contentStart, contentEnd: source.length, unterminated: true };
   }
   return { end: end + terminator.length, contentStart, contentEnd: end };
 }
@@ -128,12 +128,13 @@ function scanDartString(source, start, raw) {
     }
     index += 1;
   }
-  return { end: source.length, contentStart, contentEnd: source.length };
+  return { end: source.length, contentStart, contentEnd: source.length, unterminated: true };
 }
 
 function lexRustSource(source) {
   const masked = source.split("");
   const regions = [];
+  const problems = [];
   let index = 0;
   while (index < source.length) {
     const character = source[index];
@@ -146,7 +147,9 @@ function lexRustSource(source) {
       continue;
     }
     if (character === "/" && source[index + 1] === "*") {
-      const end = scanNestedBlockComment(source, index);
+      const close = scanNestedBlockComment(source, index);
+      if (close < 0) problems.push("unterminated block comment");
+      const end = close < 0 ? source.length : close;
       regions.push({ kind: "comment", start: index, end });
       blank(source, masked, index, end);
       index = end;
@@ -154,13 +157,16 @@ function lexRustSource(source) {
     }
     const raw = matchRustRawString(source, index);
     if (raw) {
+      if (raw.unterminated) problems.push("unterminated raw string");
       regions.push({ kind: "string", start: index, end: raw.end, raw: true });
       blank(source, masked, index, raw.end);
       index = raw.end;
       continue;
     }
     if (character === '"') {
-      const end = scanEscapedString(source, index + 1, '"');
+      const close = scanEscapedString(source, index + 1, '"');
+      if (close < 0) problems.push("unterminated string");
+      const end = close < 0 ? source.length : close;
       regions.push({ kind: "string", start: index, end, raw: false });
       blank(source, masked, index, end);
       index = end;
@@ -178,12 +184,13 @@ function lexRustSource(source) {
     }
     index += 1;
   }
-  return { masked: masked.join(""), regions };
+  return { masked: masked.join(""), regions, problems };
 }
 
 function lexDartSource(source) {
   const masked = source.split("");
   const regions = [];
+  const problems = [];
   let index = 0;
   while (index < source.length) {
     const character = source[index];
@@ -196,7 +203,9 @@ function lexDartSource(source) {
       continue;
     }
     if (character === "/" && source[index + 1] === "*") {
-      const end = scanNestedBlockComment(source, index);
+      const close = scanNestedBlockComment(source, index);
+      if (close < 0) problems.push("unterminated block comment");
+      const end = close < 0 ? source.length : close;
       regions.push({ kind: "comment", start: index, end });
       blank(source, masked, index, end);
       index = end;
@@ -208,6 +217,7 @@ function lexDartSource(source) {
     if (character === "'" || character === '"' || rawQuoted) {
       const quoteStart = rawQuoted ? index + 1 : index;
       const scanned = scanDartString(source, quoteStart, rawQuoted);
+      if (scanned.unterminated) problems.push("unterminated string");
       regions.push({
         kind: "string",
         start: index,
@@ -220,7 +230,7 @@ function lexDartSource(source) {
     }
     index += 1;
   }
-  return { masked: masked.join(""), regions };
+  return { masked: masked.join(""), regions, problems };
 }
 
 export function lexRust(source) {

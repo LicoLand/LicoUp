@@ -304,14 +304,31 @@ Cargo manifest graph is resolved with the pinned `smol-toml` devDependency so
 workspace inheritance, renames and path locality are read the way Cargo
 declares them.
 
+Cargo activation includes default features, dependency feature requests and
+strong or weak feature forwarding. Weak forwarding does not activate an absent
+optional dependency. The complete capability ownership table must resolve;
+unsupported expressions or local graph overrides refuse measurement rather than
+silently removing optional debt. Declared binary targets need source files, and
+automatic binary discovery respects `autobins`.
+
+Required input loss, unreadable sources and unresolved process targets produce
+`measurement-refused` in both checks and reports. Partial observations remain
+diagnostic evidence, but the comparable numeric record is null and no improvement
+is reported or recorded. This includes dynamic targets with no developer-tool
+evidence; the scan does not infer that an unknown executable is harmless. It does
+not execute or inspect external Agent protocols to resolve those unknowns.
+Exception fingerprints preserve string-literal bytes and bind the exact tool
+set. A replacement statement or an additional execution cannot reuse an exception.
+
 Tracked numbers and sets move only in the improving direction. A number that
 grows or a set member that appears fails the check with the offending entry; an
 improvement passes and prompts a baseline update. The initial comparable
 baseline is recorded on the integrated candidate with
 `node apps/desktop/scripts/verify-client-architecture.mjs --record-ratchet-baseline`,
 which writes `apps/desktop/scripts/client-architecture/ratchet/baseline.json`
-and refuses to raise a recorded value. An unrecorded baseline fails the check
-by design. Installed size, and the processes, listeners and login items seen
+and refuses incomplete inputs or any increase in a recorded value. A malformed
+or unreadable baseline is not treated as an absent baseline. An unrecorded
+baseline fails the check by design. Installed size, and the processes, listeners and login items seen
 after a fresh minimal install, remain separately assigned installed-candidate
 evidence and are not measured here.
 

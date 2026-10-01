@@ -72,6 +72,10 @@ function mergeDependencySpec(base, local) {
     }
     merged[key] = value;
   }
+  merged.features = [...new Set([...(base.features ?? []), ...(local.features ?? [])])];
+  // Cargo workspace features are additive; a member cannot disable defaults
+  // enabled by the workspace dependency.
+  if (base["default-features"] !== false) merged["default-features"] = true;
   return merged;
 }
 
@@ -85,7 +89,8 @@ export function defaultActivatedDependencies(features, dependencies) {
  * indirection, `dep:` syntax, `dep/feature` activation and implicit optional
  * dependency features all activate optional dependencies.
  *
- * @returns {{features: Set<string>, optionalDependencies: Set<string>}}
+ * Weak `alias?/feature` forwarding never activates an optional dependency.
+ * Forwarding is retained until all activation requests have reached a fixed point.
  */
 export function featureActivation(features, requested, dependencies = []) {
   const featureMap = features && typeof features === "object" ? features : {};
@@ -95,43 +100,48 @@ export function featureActivation(features, requested, dependencies = []) {
   );
   const active = new Set();
   const optionalDependencies = new Set();
-  const queue = [];
-  for (const entry of requested ?? []) {
-    if (typeof entry === "string" && !active.has(entry)) {
-      active.add(entry);
-      queue.push(entry);
-    }
-  }
-  const seenFeatures = new Set();
+  const dependencyFeatures = new Map();
+  const problems = [];
+  const aliases = new Set(dependencies.map((dependency) => dependency.alias));
+  const suppressed = new Set(Object.values(featureMap).flat()
+    .filter((entry) => typeof entry === "string" && entry.startsWith("dep:"))
+    .map((entry) => entry.slice(4)));
+  const queue = [...requested ?? []];
   while (queue.length > 0) {
     const entry = queue.shift();
-    if (typeof entry !== "string") {
-      continue;
-    }
+    if (active.has(entry)) continue;
+    active.add(entry);
+    if (typeof entry !== "string") { problems.push("feature request is not a string"); continue; }
     if (entry.startsWith("dep:")) {
-      optionalDependencies.add(entry.slice(4));
+      const alias = entry.slice(4);
+      if (!optionalAliases.has(alias)) problems.push(`feature ${entry} names no optional dependency`);
+      else optionalDependencies.add(alias);
       continue;
     }
     if (entry.includes("/")) {
-      const [dependencyName, featureName] = entry.split("/", 2);
-      if (!featureName.startsWith("?")) {
-        optionalDependencies.add(dependencyName);
-      } else if (optionalDependencies.has(dependencyName)) {
-        optionalDependencies.add(dependencyName);
+      const forward = entry.match(/^([^/?]+)(\?)?\/([^/?]+)$/u);
+      if (!forward || !aliases.has(forward[1])) {
+        problems.push(`feature forwarding ${entry} names no dependency or is unsupported`);
+        continue;
       }
+      const [, alias, weak, feature] = forward;
+      if (!weak && optionalAliases.has(alias)) optionalDependencies.add(alias);
+      const forwarded = dependencyFeatures.get(alias) ?? new Set();
+      forwarded.add(feature);
+      dependencyFeatures.set(alias, forwarded);
       continue;
     }
-    if (Array.isArray(featureMap[entry]) && !seenFeatures.has(entry)) {
-      seenFeatures.add(entry);
+    if (Array.isArray(featureMap[entry])) {
       queue.push(...featureMap[entry]);
       continue;
     }
-    // An implicit feature exists for every optional dependency.
-    if (optionalAliases.has(entry)) {
+    if (optionalAliases.has(entry) && !suppressed.has(entry)) {
       optionalDependencies.add(entry);
+    } else if (entry !== "default") {
+      problems.push(`feature ${entry} is not declared`);
     }
   }
-  return { features: active, optionalDependencies };
+  return { features: active, optionalDependencies, dependencyFeatures, problems };
 }
 
 /** Whether a declared dependency is part of the activated build. */
@@ -139,10 +149,7 @@ export function dependencyActivated(dependency, activation) {
   if (!dependency.optional) {
     return true;
   }
-  return (
-    activation.optionalDependencies.has(dependency.alias) ||
-    activation.features.has(dependency.alias)
-  );
+  return activation.optionalDependencies.has(dependency.alias);
 }
 
 function resolveDependencyManifestPath(baseDirectory, dependencyPath) {
@@ -168,7 +175,15 @@ async function childManifestPaths(readdir, repoRoot, relativeRoot, problems) {
   }
   for (const entry of [...entries].sort((left, right) => left.name.localeCompare(right.name))) {
     if (entry.isDirectory()) {
-      paths.push(`${relativeRoot}/${entry.name}/Cargo.toml`);
+      const directory = `${relativeRoot}/${entry.name}`;
+      try {
+        const children = await readdir(path.join(repoRoot, directory), { withFileTypes: true });
+        if (children.some((child) => child.name === "Cargo.toml")) paths.push(`${directory}/Cargo.toml`);
+      } catch (error) {
+        problems.push(`${directory} cannot be read: ${error?.code ?? "unknown"}`);
+      }
+    } else if (entry.isSymbolicLink()) {
+      problems.push(`${relativeRoot}/${entry.name} is a symbolic link; manifest scope is unresolved`);
     }
   }
   return paths;
@@ -177,10 +192,13 @@ async function childManifestPaths(readdir, repoRoot, relativeRoot, problems) {
 /** Cargo auto-discovers src/main.rs and src/bin/* as binary targets. */
 async function discoverImplicitBins({
   readdir,
+  stat,
   repoRoot,
   manifestPath,
   packageName,
   autobins,
+  explicitSources,
+  explicitNames,
   problems,
 }) {
   if (!autobins || !packageName) {
@@ -191,7 +209,7 @@ async function discoverImplicitBins({
   const bins = [];
   const mainPath = base ? `${base}/src/main.rs` : "src/main.rs";
   try {
-    if ((await fs.stat(path.join(repoRoot, mainPath))).isFile()) {
+    if ((await stat(path.join(repoRoot, mainPath))).isFile() && !explicitSources.has(mainPath) && !explicitNames.has(packageName)) {
       bins.push(packageName);
     }
   } catch (error) {
@@ -213,10 +231,11 @@ async function discoverImplicitBins({
   }
   for (const entry of [...entries].sort((left, right) => left.name.localeCompare(right.name))) {
     if (entry.isFile() && entry.name.endsWith(".rs")) {
-      bins.push(entry.name.slice(0, -3));
+      if (!explicitSources.has(`${binDirectory}/${entry.name}`) && !explicitNames.has(entry.name.slice(0, -3))) bins.push(entry.name.slice(0, -3));
     } else if (entry.isDirectory()) {
       try {
-        if ((await fs.stat(path.join(repoRoot, binDirectory, entry.name, "main.rs"))).isFile()) {
+        if ((await stat(path.join(repoRoot, binDirectory, entry.name, "main.rs"))).isFile() &&
+            !explicitSources.has(`${binDirectory}/${entry.name}/main.rs`) && !explicitNames.has(entry.name)) {
           bins.push(entry.name);
         }
       } catch (error) {
@@ -244,6 +263,7 @@ export async function collectManifestGraph({
   repoRoot,
   readdir = fs.readdir,
   readFile = fs.readFile,
+  stat = fs.stat,
 }) {
   const problems = [];
   const queue = ["Cargo.toml"];
@@ -251,6 +271,7 @@ export async function collectManifestGraph({
     queue.push(...await childManifestPaths(readdir, repoRoot, root, problems));
   }
   const documents = new Map();
+  const texts = new Map();
   const visited = new Set();
   while (queue.length > 0) {
     const manifestPath = queue.shift();
@@ -262,15 +283,22 @@ export async function collectManifestGraph({
     try {
       text = await readFile(path.join(repoRoot, manifestPath), "utf8");
     } catch (error) {
-      if (error?.code !== "ENOENT") {
-        problems.push(
-          `${manifestPath} cannot be read: ${error?.code ?? error?.message ?? "unknown"}`,
-        );
-      }
+      problems.push(`${manifestPath} cannot be read: ${error?.code ?? "unknown"}`);
       continue;
     }
     try {
       documents.set(manifestPath, parseToml(text));
+      texts.set(manifestPath, text);
+      const directory = path.posix.dirname(manifestPath);
+      for (const member of documents.get(manifestPath).workspace?.members ?? []) {
+        if (typeof member !== "string" || /[*?\[\]{}]/u.test(member)) {
+          problems.push(`${manifestPath}: workspace member pattern is unsupported; manifest graph is incomplete`);
+          continue;
+        }
+        const resolved = resolveDependencyManifestPath(directory, member);
+        if (resolved) queue.push(resolved);
+        else problems.push(`${manifestPath}: workspace member is outside the repository`);
+      }
     } catch (error) {
       problems.push(`${manifestPath} is not valid TOML: ${error.message}`);
     }
@@ -310,6 +338,14 @@ export async function collectManifestGraph({
     if (!document) {
       continue;
     }
+    for (const table of [...Object.values(document.patch ?? {}), document.replace ?? {}]) {
+      if (Object.values(table).some((spec) => typeof spec?.path === "string")) {
+        problems.push(`${manifestPath}: local dependency overrides require explicit graph resolution; refusing a partial graph`);
+      }
+    }
+    if (document.package?.workspace !== undefined) {
+      problems.push(`${manifestPath}: explicit package.workspace is unsupported; workspace inheritance is unresolved`);
+    }
     const workspace = workspaceFor(manifestPath);
     const workspaceDependencies = workspace.dependencies;
     const dependencies = [];
@@ -317,14 +353,21 @@ export async function collectManifestGraph({
       const localDirectory = path.posix.dirname(manifestPath);
       let spec = entry.spec;
       let pathBase = localDirectory === "." ? "" : localDirectory;
+      if (Object.keys(spec).length === 0 ||
+          (spec.features !== undefined && (!Array.isArray(spec.features) || spec.features.some((feature) => typeof feature !== "string")))) {
+        problems.push(`${manifestPath}: dependency ${entry.alias} has an invalid specification`);
+        continue;
+      }
       if (spec.workspace === true) {
-        const inherited =
-          workspaceDependencies[entry.alias] ??
-          (typeof spec.package === "string" ? workspaceDependencies[spec.package] : undefined);
+        const inherited = workspaceDependencies[entry.alias];
         if (!inherited) {
           problems.push(
             `${manifestPath}: dependency ${entry.alias} inherits workspace settings but none are declared`,
           );
+          continue;
+        }
+        if (inherited.features !== undefined && (!Array.isArray(inherited.features) || inherited.features.some((feature) => typeof feature !== "string"))) {
+          problems.push(`${manifestPath}: inherited dependency ${entry.alias} has invalid features`);
           continue;
         }
         spec = mergeDependencySpec(rawSpec(inherited), spec);
@@ -346,16 +389,57 @@ export async function collectManifestGraph({
     const explicitBins = Array.isArray(document.bin)
       ? document.bin.map((entry) => entry?.name).filter((name) => typeof name === "string")
       : [];
+    const explicitSources = new Set();
+    if (document.package?.autobins !== undefined && typeof document.package.autobins !== "boolean") {
+      problems.push(`${manifestPath}: package.autobins must be a boolean`);
+    }
+    if (document.bin !== undefined && (!Array.isArray(document.bin) || explicitBins.length !== document.bin.length)) {
+      problems.push(`${manifestPath}: binary targets must declare names`);
+    }
+    for (const binary of Array.isArray(document.bin) ? document.bin : []) {
+      const base = path.posix.dirname(manifestPath);
+      const candidates = binary.path !== undefined ? [binary.path] : [
+        `src/bin/${binary.name}.rs`, `src/bin/${binary.name}/main.rs`,
+        ...(explicitBins.length === 1 ? ["src/main.rs"] : []),
+      ];
+      let found = false;
+      for (const candidate of candidates) {
+        if (typeof candidate !== "string" || path.posix.isAbsolute(candidate) || path.posix.normalize(candidate).startsWith("../")) {
+          problems.push(`${manifestPath}: binary target ${binary.name} has an unsupported source path`);
+          continue;
+        }
+        const relative = path.posix.join(base, candidate);
+        try {
+          if ((await stat(path.join(repoRoot, relative))).isFile()) {
+            found = true;
+            explicitSources.add(relative);
+            break;
+          }
+        } catch (error) {
+          if (error?.code !== "ENOENT") problems.push(`${relative} cannot be read: ${error?.code ?? "unknown"}`);
+        }
+      }
+      if (!found) problems.push(`${manifestPath}: binary target ${binary.name} has no source file`);
+    }
+    for (const [feature, requests] of Object.entries(document.features ?? {})) {
+      if (!Array.isArray(requests) || requests.some((entry) => typeof entry !== "string")) {
+        problems.push(`${manifestPath}: feature ${feature} must be an array of feature requests`);
+      }
+    }
     const implicitBins = await discoverImplicitBins({
       readdir,
+      stat,
       repoRoot,
       manifestPath,
       packageName,
       autobins: document.package?.autobins !== false,
+      explicitSources,
+      explicitNames: new Set(explicitBins),
       problems,
     });
     const record = {
       path: manifestPath,
+      source: texts.get(manifestPath),
       name: packageName,
       bins: [...new Set([...explicitBins, ...implicitBins])],
       features: document.features && typeof document.features === "object"
@@ -402,6 +486,10 @@ export async function collectManifestGraph({
       }
       try {
         documents.set(resolved, parseToml(text));
+        texts.set(resolved, text);
+        if (documents.get(resolved).workspace) {
+          problems.push(`${resolved}: dependency-owned workspace was not inventoried; workspace inheritance is unresolved`);
+        }
         processQueue.push(resolved);
       } catch (error) {
         problems.push(`${resolved} is not valid TOML: ${error.message}`);
@@ -416,10 +504,22 @@ export async function collectManifestGraph({
       if (typeof dependency.spec.path === "string") {
         const resolved = resolveDependencyManifestPath(dependency.pathBase, dependency.spec.path);
         const target = resolved ? byPath.get(resolved) : null;
-        if (target?.name) {
+        if (target?.name && target.name === (dependency.spec.package ?? dependency.alias)) {
           dependency.localName = target.name;
+        } else {
+          problems.push(`${record.path}: dependency ${dependency.alias} does not match the local package name`);
         }
       }
+    }
+  }
+
+  const bins = new Map();
+  for (const record of byPath.values()) {
+    for (const binary of record.bins) {
+      if (bins.has(binary) && bins.get(binary) !== record.name) {
+        problems.push(`binary target ${binary} has ambiguous first-party owners`);
+      }
+      bins.set(binary, record.name);
     }
   }
 

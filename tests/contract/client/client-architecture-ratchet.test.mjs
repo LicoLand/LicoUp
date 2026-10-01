@@ -20,6 +20,7 @@ import {
   recordRatchetBaseline,
 } from "../../../apps/desktop/scripts/client-architecture/ratchet/baseline.mjs";
 import {
+  BASELINE_PATH,
   DEVELOPER_TOOL_ALLOWLIST,
   OPTIONAL_CAPABILITY_ARTIFACTS,
   OPTIONAL_CAPABILITY_BUNDLES,
@@ -38,6 +39,10 @@ import {
   checkArchitectureRatchet,
   recordArchitectureRatchet,
 } from "../../../apps/desktop/scripts/client-architecture/checks/ratchet.mjs";
+import {
+  recordArchitectureRatchetBaseline,
+  runClientArchitectureVerification,
+} from "../../../apps/desktop/scripts/verify-client-architecture.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const strategyRuntimePath = "crates/licoup-native/src/platform/strategy_runtime/mod.rs";
@@ -208,6 +213,8 @@ test("dynamic and cross-file API sinks are attributed instead of counting zero",
   });
   assert.deepEqual(unrelated.executionSites, []);
   assert.equal(unrelated.scannedSinkStatements > 0, true);
+  assert.equal(unrelated.unresolved.length, 1);
+  assert.match(unrelated.problems[0], /unresolved process target/u);
 });
 
 test("shell scripts passed to sh -c are attributed, including multiline raw scripts", async () => {
@@ -276,6 +283,14 @@ test("mixed production and test files keep production sinks and drop test sinks"
   });
   assert.deepEqual(mixed.executionSites.map((sink) => sink.tools), [["node"]]);
   assert.equal(stripTestItems('fn keep() {}\n#[test]\nfn t() {}\n').includes("keep"), true);
+  const beforeProduction = [
+    "#[cfg(test)] mod checks { fn generic<'a>() {} }",
+    'fn run() { Command::new("node").spawn(); }',
+    "",
+  ].join("\n");
+  const after = await inspectFixture({ "crates/demo/src/mixed.rs": beforeProduction });
+  assert.deepEqual(after.executionSites.map((site) => site.tools), [["node"]]);
+  assert.equal(after.executionSites[0].line, 2);
 });
 
 test("crate src scope excludes build.rs and other crate-root files", async () => {
@@ -336,13 +351,25 @@ test("Cargo auto-discovered binaries own their packaging artifacts", async () =>
   });
 });
 
+test("explicit binary ownership overrides automatic source names", async () => {
+  await withFixtureTree({
+    "Cargo.toml": "[workspace]\n",
+    "crates/tool/Cargo.toml": crateManifest("tool", {}, '[[bin]]\nname = "named-tool"\npath = "src/main.rs"\n'),
+    "crates/tool/src/main.rs": "fn main() {}\n",
+  }, async (root) => {
+    const graph = await collectManifestGraph({ repoRoot: root });
+    assert.deepEqual(graph.problems, []);
+    assert.deepEqual([...binaryOwners(graph.byPath)], [["named-tool", "tool"]]);
+  });
+});
+
 test("ownership package-id constants are resolved and unresolved rows refuse", async () => {
   const resolved = parseCapabilityOwnership([
     'pub const CORE_PACKAGE: &str = "org.licoland.core";',
     "pub mod packages {",
     '    pub const WORKFLOW: &str = "org.licoland.feature.workflow";',
     "}",
-    "const OWNERSHIP: [(&str, PackOwnership); 2] = [",
+    "const CAPABILITY_OWNERSHIP: [(&str, PackOwnership); 2] = [",
     '    ("conversation.v1", PackOwnership::Core(CORE_PACKAGE)),',
     '    ("workflow.v1", PackOwnership::Optional(packages::WORKFLOW)),',
     "];",
@@ -356,7 +383,7 @@ test("ownership package-id constants are resolved and unresolved rows refuse", a
     "Cargo.toml": "[workspace]\n",
     "crates/licoup-native/Cargo.toml": crateManifest("licoup-native"),
     "crates/licoup-extension-contracts/src/deployment.rs": [
-      "const OWNERSHIP: [(&str, PackOwnership); 1] = [",
+      "const CAPABILITY_OWNERSHIP: [(&str, PackOwnership); 1] = [",
       '    ("workflow.v1", PackOwnership::Optional(packages::MISSING)),',
       "];",
     ].join("\n"),
@@ -372,7 +399,7 @@ test("ownership package-id constants are resolved and unresolved rows refuse", a
 
 test("inline braced super imports are counted as cross-layer files", async () => {
   await withFixtureTree({
-    "crates/licoup-native/src/domain/inline.rs": "pub mod nested {\n  use super::super::{platform::Thing};\n}\n",
+    "crates/licoup-native/src/domain/inline.rs": "pub mod nested {\n  use super::super::super::{platform::Thing};\n}\n",
     "crates/licoup-native/src/platform/mod.rs": "pub fn platform_only() {}\n",
   }, async (root) => {
     const metric = await measureNativeLayerImports({ repoRoot: root });
@@ -390,26 +417,14 @@ test("unreadable sources refuse instead of lowering a metric", async () => {
   };
   await withFixtureTree(files, async (root) => {
     const locked = path.join(root, "crates/licoup-native/src/locked.rs");
-    await fs.chmod(locked, 0o000);
-    try {
-      let readable = true;
-      try {
-        await fs.readFile(locked, "utf8");
-      } catch {
-        readable = false;
-      }
-      if (!readable) {
-        const metric = await measureNativeRustLoc({ repoRoot: root });
-        assert.equal(
-          metric.details.problems.some((message) => message.includes("locked.rs cannot be read")),
-          true,
-        );
-        const measurement = await measureArchitectureRatchet({ repoRoot: root });
-        assert.equal(measurement.problems.length > 0, true);
-      }
-    } finally {
-      await fs.chmod(locked, 0o644);
-    }
+    const io = { ...fs, readFile: async (target, ...args) => {
+      if (target === locked) throw Object.assign(new Error("injected read denial"), { code: "EACCES" });
+      return fs.readFile(target, ...args);
+    } };
+    const metric = await measureNativeRustLoc({ repoRoot: root, io });
+    assert.match(metric.details.problems.join("\n"), /locked.rs cannot be read/u);
+    const measurement = await measureArchitectureRatchet({ repoRoot: root, io });
+    assert.equal(measurement.record, null);
   });
 });
 
@@ -464,6 +479,7 @@ test("cargo graph handles dotted keys, sub-tables, apostrophe comments, and inac
       "",
       "[dependencies]",
       'dotted.path = "../licoup-mcp"',
+      'dotted.package = "licoup-mcp"',
       "dotted.optional = true",
       "",
       "[dependencies.delta]",
@@ -635,6 +651,8 @@ function packagingFixture({
     ),
     "crates/licoup-extension-contracts/src/deployment.rs": deploymentSource(deploymentRows),
     "apps/desktop/packaging.modules.json": JSON.stringify({ modules }, null, 2),
+    ...Object.fromEntries(nativeBins.map((name) => [`crates/licoup-native/src/bin/${name}.rs`, "fn main() {}\n"])),
+    "crates/licoup-mcp/src/main.rs": "fn main() {}\n",
   };
 }
 
@@ -784,6 +802,7 @@ function completeFixture(extraFiles = {}) {
       {},
       '[[bin]]\nname = "lico-subagent-mcp"\n',
     ),
+    "crates/licoup-mcp/src/main.rs": "fn main() {}\n",
     "apps/desktop/packaging.modules.json": JSON.stringify({
       modules: {
         "subagents-mcp": { enabled: true, cargoBin: "lico-subagent-mcp" },
@@ -895,15 +914,371 @@ test("invalid allowlist entries become measurement problems and leave sinks unju
   });
 });
 
-test("real repository metrics stay internally consistent", async () => {
+test("real repository raw attribution remains consistent without treating unknown targets as zero", async () => {
   const metric = await measureDeveloperToolSites({ repoRoot });
-  assert.deepEqual(metric.details.problems ?? [], []);
+  assert.ok(metric.details.unresolved_sites.length > 0);
+  assert.equal(metric.details.problems.length, metric.details.unresolved_sites.length);
+  assert.ok(metric.details.problems.every((problem) => problem.includes("unresolved process target")));
   assert.equal(metric.ratchet.execution_sites, 10);
   assert.equal(metric.ratchet.unallowlisted_sites, 0);
   assert.deepEqual(metric.details.unallowlisted_sites, []);
   assert.deepEqual(metric.details.invalid_allowlist, []);
   assert.equal(metric.details.stale_allowlist.length, 0);
   assert.equal(metric.ratchet.execution_site_ids.length, 17);
+});
+
+async function assertMeasurementRefused(root, pattern, io = fs) {
+  const measurement = await measureArchitectureRatchet({ repoRoot: root, io });
+  assert.equal(measurement.record, null, "partial inputs must not emit comparable numeric records");
+  assert.match(measurement.problems.join("\n"), pattern);
+  const failures = [];
+  const state = await checkArchitectureRatchet({ repoRoot: root, io, fail: (message) => failures.push(message) });
+  assert.equal(state.ratchetReport.status, "measurement-refused");
+  assert.equal(state.ratchetMetrics, null);
+  assert.equal(state.ratchetReport.improvements, undefined);
+  assert.match(failures.join("\n"), pattern);
+  const before = await fs.readFile(path.join(root, BASELINE_PATH), "utf8").catch(() => null);
+  const record = await recordArchitectureRatchet({ repoRoot: root, io });
+  assert.equal(record.ok, false);
+  assert.equal(record.status, "measurement-refused");
+  assert.match(record.message, pattern);
+  const after = await fs.readFile(path.join(root, BASELINE_PATH), "utf8").catch(() => null);
+  assert.equal(after, before, "refusal must preserve the existing disposable baseline");
+}
+
+test("unknown known-process targets refuse actual measurement, check and record with and without a baseline", async () => {
+  for (const source of [
+    "pub fn run(program: &str) { Command::new(program).spawn(); }\n",
+    "pub fn run(command: &mut std::process::Command) { command.output(); }\n",
+    "use std::process::Command as Child; pub fn run(program: &str) { Child :: new (program).status(); }\n",
+  ]) {
+    await withFixtureTree(completeFixture(), async (root) => {
+      const file = path.join(root, "crates/licoup-native/src/domain/unknown.rs");
+      assert.equal((await recordArchitectureRatchet({ repoRoot: root })).ok, true);
+      await fs.writeFile(file, source);
+      await assertMeasurementRefused(root, /unresolved process target/u);
+      await fs.rm(path.join(root, BASELINE_PATH));
+      await assertMeasurementRefused(root, /unresolved process target/u);
+    });
+  }
+  await withFixtureTree(completeFixture({
+    "apps/desktop/lib/launch.dart": "void launch(String program) { Process . start (program, []); }\n",
+  }), async (root) => assertMeasurementRefused(root, /launch.dart.*unresolved process target/u));
+});
+
+test("known non-developer targets and unrelated thread APIs remain valid static negatives", async () => {
+  await withFixtureTree(completeFixture({
+    "crates/licoup-native/src/domain/known.rs": [
+      'const PROGRAM: &str = "git";',
+      'pub fn run() { let binary = PROGRAM; let mut command = Command :: new (binary); command.status(); }',
+      'pub fn threads() { scope.spawn(move || {}); }',
+    ].join("\n"),
+  }), async (root) => {
+    const measurement = await measureArchitectureRatchet({ repoRoot: root });
+    assert.deepEqual(measurement.problems, []);
+    assert.equal(measurement.record.developerToolExecutionSites, 0);
+    assert.equal((await recordArchitectureRatchet({ repoRoot: root })).ok, true);
+  });
+});
+
+test("shared Command builders retain each spawn, output and status sink identity", async () => {
+  const file = "crates/demo/src/lib.rs";
+  const source = 'pub fn run() { let mut command = Command::new("node"); command.spawn(); command.output(); command.status(); }\n';
+  const first = await inspectFixture({ [file]: source });
+  assert.equal(first.executionSites.length, 4);
+  assert.equal(new Set(first.siteIds).size, 4);
+  const allowlist = first.executionSites.map((sink) => ({
+    file, sink: sink.sink, tools: sink.tools, reason: "Synthetic exact identity fixture only.",
+  }));
+  assert.equal((await inspectFixture({ [file]: source }, allowlist)).unallowlisted.length, 0);
+  const replaced = await inspectFixture({ [file]: source.replace("command.output()", "command.output().unwrap()") }, allowlist);
+  assert.equal(replaced.executionSites.length, 4);
+  assert.equal(replaced.unallowlisted.length, 1);
+  const duplicate = await inspectFixture({ [file]: source.replace("command.spawn();", "command.spawn(); command.spawn();") }, allowlist);
+  assert.equal(duplicate.executionSites.length, 5);
+  assert.equal(duplicate.unallowlisted.length, 1);
+  const broader = allowlist.map((entry) => ({ ...entry, tools: ["node", "npm"] }));
+  assert.equal((await inspectFixture({ [file]: source }, broader)).unallowlisted.length, 4);
+});
+
+test("all direct sink forms regress through the actual phase and cannot be recorded", async () => {
+  for (const body of [
+    'Command :: new ("node").spawn();',
+    'let mut c = Command::new("npm"); c.output(); c.status();',
+    'let create = Command::new; create("uvx").spawn();',
+  ]) {
+    await withFixtureTree(completeFixture(), async (root) => {
+      assert.equal((await recordArchitectureRatchet({ repoRoot: root })).ok, true);
+      const baseline = await fs.readFile(path.join(root, BASELINE_PATH), "utf8");
+      await fs.writeFile(path.join(root, "crates/licoup-native/src/domain/sink.rs"), `fn run() { ${body} }\n`);
+      const measured = await measureArchitectureRatchet({ repoRoot: root });
+      assert.ok(measured.metrics.find((metric) => metric.id === "developer_tool_sites").ratchet.execution_sites > 0);
+      const failures = [];
+      const checked = await checkArchitectureRatchet({ repoRoot: root, fail: (message) => failures.push(message) });
+      assert.equal(checked.ratchetReport.status, "regression");
+      assert.match(failures.join("\n"), /sink fingerprint/u);
+      assert.equal((await recordArchitectureRatchet({ repoRoot: root })).ok, false);
+      assert.equal(await fs.readFile(path.join(root, BASELINE_PATH), "utf8"), baseline);
+    });
+  }
+});
+
+test("unknown guest commands and malformed lexical input cannot be silently erased", async () => {
+  for (const source of [
+    'fn run(script: &str) { Command::new("sh").arg("-c").arg(script).status(); }',
+    'fn run(script: &str) { let mut cmd = Command::new("sh"); cmd.arg("-c"); cmd.arg(script); cmd.spawn(); }',
+    'fn run(program: &str) { let create = Command::new; create(program); }',
+    '/* unterminated Command::new("node").spawn();',
+    'const SCRIPT: &str = r#"unterminated;',
+  ]) {
+    await withFixtureTree(completeFixture({ "crates/licoup-native/src/domain/unknown.rs": source }), async (root) => {
+      await assertMeasurementRefused(root, /unresolved process target|unterminated/u);
+    });
+  }
+  const inspection = await inspectFixture({
+    "crates/demo/src/lib.rs": [
+      '/* nested /* Command::new("npm"); */ ignored */',
+      '#[ cfg ( test ) ] mod checks { fn t() { Command::new("node").spawn(); } }',
+      'fn run<\'a>(input: &\'a str) { let _ = input; Command::new("pip").status(); }',
+    ].join("\n"),
+  });
+  assert.deepEqual(inspection.executionSites.map((site) => site.tools), [["pip"]]);
+});
+
+test("literal bytes and exact attributed tool sets bind exception identity", async () => {
+  const file = "crates/demo/src/lib.rs";
+  const source = 'fn run() { Command::new("node").arg("two  spaces").spawn(); }';
+  const original = await inspectFixture({ [file]: source });
+  const allowlist = original.executionSites.map((sink) => ({ file, sink: sink.sink, tools: sink.tools, reason: "Exact synthetic fingerprint only." }));
+  const modified = await inspectFixture({ [file]: source.replace("two  spaces", "two spaces") }, allowlist);
+  assert.equal(modified.unallowlisted.length, 1);
+  assert.notEqual(modified.siteIds[0], original.siteIds[0]);
+});
+
+function forwardedFixture({ nativeFeatures = 'default = ["helper/runtime"]', optional = false, helperFeatures = 'runtime = ["dep:workflow"]' } = {}) {
+  return completeFixture({
+    "crates/licoup-native/Cargo.toml": crateManifest("licoup-native", {
+      helper: { path: "../helper", optional, "default-features": false },
+    }, `\n[features]\n${nativeFeatures}\n`),
+    "crates/helper/Cargo.toml": crateManifest("helper", {
+      workflow: { package: "licoup-workflow", path: "../licoup-workflow", optional: true },
+    }, `\n[features]\n${helperFeatures}\n`),
+    "crates/licoup-workflow/Cargo.toml": crateManifest("licoup-workflow"),
+    "crates/licoup-extension-contracts/src/deployment.rs": deploymentSource([
+      ["mcp-server.v1", "Optional", "org.licoland.feature.mcp"],
+      ["workflow.v1", "Optional", "org.licoland.feature.workflow"],
+    ]),
+  });
+}
+
+test("default and weak feature forwarding keep optional debt through actual check and record", async () => {
+  for (const [nativeFeatures, optional, expected] of [
+    ['default = ["helper/runtime"]', false, 1],
+    ['default = ["helper?/runtime", "dep:helper"]', true, 1],
+    ['default = ["dep:helper", "helper?/runtime"]', true, 1],
+    ['default = ["helper?/runtime"]', true, 0],
+    ['default = ["helper?/runtime"]', false, 1],
+  ]) {
+    await withFixtureTree(forwardedFixture({ nativeFeatures, optional }), async (root) => {
+      const measured = await measureArchitectureRatchet({ repoRoot: root });
+      assert.deepEqual(measured.problems, [], nativeFeatures);
+      assert.equal(measured.record.kernelOptionalCargoEdges, expected, nativeFeatures);
+      const recorded = await recordArchitectureRatchet({ repoRoot: root });
+      assert.equal(recorded.ok, true);
+      assert.equal(recorded.record.kernelOptionalCargoEdges, expected);
+      const checked = await checkArchitectureRatchet({ repoRoot: root, fail: assert.fail });
+      assert.equal(checked.ratchetReport.status, "pass");
+    });
+  }
+});
+
+test("workspace feature requests remain additive through a renamed dependency", async () => {
+  await withFixtureTree(forwardedFixture({
+    helperFeatures: 'runtime = ["dep:workflow"]\nextra = []',
+  }), async (root) => {
+    await fs.writeFile(path.join(root, "Cargo.toml"), '[workspace]\n[workspace.dependencies]\nrenamed = { package = "helper", path = "crates/helper", features = ["runtime"] }\n');
+    await fs.writeFile(path.join(root, "crates/licoup-native/Cargo.toml"), crateManifest("licoup-native", {
+      renamed: { workspace: true, features: ["extra"], "default-features": false },
+    }));
+    const measured = await measureArchitectureRatchet({ repoRoot: root });
+    assert.deepEqual(measured.problems, []);
+    assert.equal(measured.record.kernelOptionalCargoEdges, 1);
+    assert.equal((await recordArchitectureRatchet({ repoRoot: root })).record.kernelOptionalCargoEdges, 1);
+  });
+});
+
+test("feature unification traverses optional implementations before deciding kernel edges", async () => {
+  await withFixtureTree(forwardedFixture({ nativeFeatures: "default = []" }), async (root) => {
+    await fs.writeFile(path.join(root, "crates/licoup-native/Cargo.toml"), crateManifest("licoup-native", {
+      helper: { path: "../helper", "default-features": false },
+      "licoup-mcp": { path: "../licoup-mcp" },
+    }));
+    await fs.writeFile(path.join(root, "crates/licoup-mcp/Cargo.toml"), crateManifest("licoup-mcp", {
+      helper: { path: "../helper", features: ["runtime"] },
+    }, '[[bin]]\nname = "lico-subagent-mcp"\n'));
+    const measurement = await measureArchitectureRatchet({ repoRoot: root });
+    assert.deepEqual(measurement.problems, []);
+    const metric = measurement.metrics.find((entry) => entry.id === "kernel_optional_cargo_edges");
+    assert.deepEqual(metric.ratchet.edges, [
+      "helper -> licoup-workflow (optional-active)",
+      "licoup-native -> licoup-mcp (dependencies)",
+    ]);
+    assert.deepEqual(metric.details.inactive_optional_edges, []);
+    assert.equal((await recordArchitectureRatchet({ repoRoot: root })).record.kernelOptionalCargoEdges, 2);
+    assert.equal((await checkArchitectureRatchet({ repoRoot: root, fail: assert.fail })).ratchetReport.status, "pass");
+  });
+});
+
+test("invalid feature requests, unknown local overrides and ambiguous binary owners refuse", async () => {
+  await withFixtureTree(forwardedFixture({ nativeFeatures: 'default = ["helper/missing"]' }), async (root) => {
+    await assertMeasurementRefused(root, /feature missing is not declared/u);
+  });
+  await withFixtureTree(forwardedFixture(), async (root) => {
+    await fs.appendFile(path.join(root, "Cargo.toml"), '\n[patch.crates-io]\nworkflow = { path = "crates/licoup-workflow" }\n');
+    await assertMeasurementRefused(root, /local dependency overrides/u);
+  });
+  await withFixtureTree(completeFixture({
+    "crates/other/Cargo.toml": crateManifest("other", {}, '[[bin]]\nname = "lico-subagent-mcp"\n'),
+    "crates/other/src/main.rs": "fn main() {}\n",
+  }), async (root) => assertMeasurementRefused(root, /ambiguous first-party owners/u));
+});
+
+test("ownership constants and qualified constructors cannot turn one optional edge into an improvement", async () => {
+  await withFixtureTree(forwardedFixture(), async (root) => {
+    assert.equal((await recordArchitectureRatchet({ repoRoot: root })).record.kernelOptionalCargoEdges, 1);
+    const ownerPath = path.join(root, "crates/licoup-extension-contracts/src/deployment.rs");
+    await fs.writeFile(ownerPath, [
+      'const WORKFLOW: &str = "workflow.v1";',
+      'mod packages { pub const PACKAGE: &str = "org.licoland.feature.workflow"; pub const OWNER: PackOwnership = PackOwnership::Optional(PACKAGE); }',
+      'mod unrelated { pub const PACKAGE: &str = "org.licoland.feature.mcp"; }',
+      'pub const CAPABILITY_OWNERSHIP: [(&str, PackOwnership); 2] = [',
+      ' (WORKFLOW, packages::OWNER),',
+      ' ("mcp-server.v1", crate::deployment::PackOwnership :: Optional (unrelated::PACKAGE)),',
+      '];',
+    ].join("\n"));
+    const checked = await checkArchitectureRatchet({ repoRoot: root, fail: assert.fail });
+    assert.equal(checked.ratchetMetrics.kernelOptionalCargoEdges, 1);
+    assert.equal(checked.ratchetReport.status, "pass");
+    const recorded = await recordArchitectureRatchet({ repoRoot: root });
+    assert.equal(recorded.ok, true);
+    assert.equal(recorded.record.kernelOptionalCargoEdges, 1);
+    for (const unsupported of [
+      'pub const CAPABILITY_OWNERSHIP: [(&str, PackOwnership); 2] = generated_ownership!();',
+      'pub const CAPABILITY_OWNERSHIP: [(&str, PackOwnership); 1] = [("workflow.v1", select_owner())];',
+      '// pub const CAPABILITY_OWNERSHIP: [(&str, PackOwnership); 0] = [];',
+    ]) {
+      await fs.writeFile(ownerPath, unsupported);
+      await assertMeasurementRefused(root, /CAPABILITY_OWNERSHIP/u);
+    }
+  });
+});
+
+test("required enumerated source or manifest loss is never a lower-debt success", async () => {
+  await withFixtureTree(completeFixture({
+    "crates/licoup-native/src/domain/child/source.rs": "pub fn retained() {}\n",
+  }), async (root) => {
+    assert.equal((await recordArchitectureRatchet({ repoRoot: root })).ok, true);
+    for (const [method, relative, code] of [
+      ["readdir", "crates/licoup-native/src/domain/child", "ENOENT"],
+      ["readdir", "crates/licoup-native/src/domain/child", "EACCES"],
+      ["readFile", "crates/licoup-native/src/domain/child/source.rs", "ENOENT"],
+      ["readFile", "crates/licoup-native/src/domain/child/source.rs", "EACCES"],
+      ["readFile", "crates/licoup-mcp/Cargo.toml", "ENOENT"],
+      ["readdir", "crates/licoup-mcp", "ENOENT"],
+    ]) {
+      const io = { ...fs, [method]: async (target, ...args) => {
+        if (target === path.join(root, relative)) throw Object.assign(new Error("injected input failure"), { code });
+        return fs[method](target, ...args);
+      } };
+      await assertMeasurementRefused(root, /cannot be read/u, io);
+    }
+  });
+});
+
+test("Cargo automatic target removal and missing explicit sources refuse both entry paths", async () => {
+  await withFixtureTree(completeFixture({
+    "crates/licoup-mcp/Cargo.toml": crateManifest("licoup-mcp"),
+    "crates/licoup-mcp/src/bin/lico-subagent-mcp.rs": "fn main() {}\n",
+  }), async (root) => {
+    assert.equal((await recordArchitectureRatchet({ repoRoot: root })).ok, true);
+    await fs.writeFile(path.join(root, "crates/licoup-mcp/Cargo.toml"), '[package]\nname = "licoup-mcp"\nversion = "0.0.0"\nautobins = false\n');
+    await assertMeasurementRefused(root, /lico-subagent-mcp.*not built|no first-party manifest builds/u);
+    await fs.writeFile(path.join(root, "crates/licoup-mcp/Cargo.toml"), crateManifest("licoup-mcp", {}, '[[bin]]\nname = "lico-subagent-mcp"\npath = "missing.rs"\n'));
+    await assertMeasurementRefused(root, /binary target lico-subagent-mcp has no source/u);
+  });
+});
+
+test("actual report and record wrappers preserve refusal and exit semantics", async () => {
+  await withFixtureTree(completeFixture({
+    "crates/licoup-native/src/domain/unknown.rs": "fn launch(program: &str) { Command::new(program).status(); }\n",
+  }), async (root) => {
+    const events = [];
+    const output = { stdout: (text) => events.push(["stdout", text]), stderr: (text) => events.push(["stderr", text]), exit: (code) => events.push(["exit", code]) };
+    const checks = new Proxy({ checkArchitectureRatchet }, { get: (target, key) => target[key] ?? (async () => ({})) });
+    const checked = await runClientArchitectureVerification({ repoRoot: root, checks, output });
+    assert.equal(checked.ok, false);
+    const report = JSON.parse(checked.text);
+    assert.equal(report.ratchet.status, "measurement-refused");
+    assert.equal(report.ratchet.record, null);
+    assert.equal(report.ratchet.improvements, undefined);
+    assert.deepEqual(events.map(([kind, value]) => kind === "exit" ? value : kind), ["stderr", 1]);
+    events.length = 0;
+    assert.equal((await recordArchitectureRatchetBaseline({ repoRoot: root, output })).ok, false);
+    assert.deepEqual(events.map(([kind, value]) => kind === "exit" ? value : kind), ["stderr", 1]);
+    await assert.rejects(fs.access(path.join(root, BASELINE_PATH)), { code: "ENOENT" });
+  });
+});
+
+test("invalid and unreadable disposable baselines are refused rather than replaced", async (t) => {
+  await withFixtureTree(completeFixture(), async (root) => {
+    assert.equal((await recordArchitectureRatchet({ repoRoot: root })).ok, true);
+    const target = path.join(root, BASELINE_PATH);
+    const valid = await fs.readFile(target, "utf8");
+    for (const content of ["{", JSON.stringify({ ...JSON.parse(valid), metrics: [] })]) {
+      await fs.writeFile(target, content);
+      const failures = [];
+      const checked = await checkArchitectureRatchet({ repoRoot: root, fail: (message) => failures.push(message) });
+      assert.equal(checked.ratchetReport.status, "baseline-invalid");
+      assert.ok(failures.length > 0);
+      assert.equal((await recordArchitectureRatchet({ repoRoot: root })).ok, false);
+      assert.equal(await fs.readFile(target, "utf8"), content);
+    }
+    await fs.writeFile(target, valid);
+    const readFile = fs.readFile;
+    const mock = t.mock.method(fs, "readFile", async (file, ...args) => {
+      if (file === target) throw Object.assign(new Error("injected baseline read denial"), { code: "EACCES" });
+      return readFile(file, ...args);
+    });
+    try {
+      const failures = [];
+      assert.equal((await checkArchitectureRatchet({ repoRoot: root, fail: (message) => failures.push(message) })).ratchetReport.status, "baseline-invalid");
+      assert.match(failures.join("\n"), /EACCES/u);
+      assert.equal((await recordArchitectureRatchet({ repoRoot: root })).ok, false);
+    } finally {
+      mock.mock.restore();
+    }
+    assert.equal(await fs.readFile(target, "utf8"), valid);
+  });
+});
+
+test("layer imports respect lexical regions, grouped path ownership and inline module depth", async () => {
+  await withFixtureTree(completeFixture({
+    "crates/licoup-native/src/domain/mod.rs": [
+      '/* outer /* crate::platform */ comment */',
+      'const TEXT: &str = r###"crate::platform"###;',
+      'fn lifetime<\'a>(text: &\'a str) { let _ = text; }',
+      'use crate::{unrelated::{platform::Thing}};',
+    ].join("\n"),
+    "crates/licoup-native/src/domain/inline.rs": 'pub mod nested { use super::super::super::{platform::Thing}; }\n',
+    "crates/licoup-native/src/domain/wildcard.rs": 'use crate::{*};\n',
+    "crates/licoup-native/src/platform/mod.rs": 'use crate::{domain::{Thing}};\n',
+  }), async (root) => {
+    const metric = await measureNativeLayerImports({ repoRoot: root });
+    assert.deepEqual(metric.details.problems, []);
+    assert.deepEqual(metric.ratchet.domain_to_platform_files, ["crates/licoup-native/src/domain/inline.rs", "crates/licoup-native/src/domain/wildcard.rs"]);
+    assert.deepEqual(metric.ratchet.platform_to_domain_files, ["crates/licoup-native/src/platform/mod.rs"]);
+    assert.equal((await recordArchitectureRatchet({ repoRoot: root })).ok, true);
+  });
 });
 
 test("declared optional ownership covers every optional capability in the contract", async () => {

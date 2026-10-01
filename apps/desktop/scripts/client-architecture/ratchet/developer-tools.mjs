@@ -13,8 +13,9 @@
  * new identity that cannot inherit an existing allowlist entry.
  *
  * The scan is a declared-scope static lexical analysis, not an exhaustive
- * proof: values selected from data structures outside the scanned sources are
- * attributed through file evidence and reviewed as explicit exceptions.
+ * proof: file evidence may attribute an otherwise unresolved operand, but a
+ * known process target with no such evidence is a refusal, not zero debt. No
+ * external Agent protocol is executed or inspected to turn unknown into safe.
  */
 
 import path from "node:path";
@@ -37,43 +38,11 @@ export const MINIMUM_ALLOWLIST_REASON_LENGTH = 12;
 const RUNTIME_LAYOUT_SRC = "crate-src";
 const RESOLUTION_DEPTH = 6;
 
-/** Quote-aware scan for the matching close of an opening bracket. */
+/** Match delimiters in an already lexical-masked source (lifetimes stay code). */
 export function findMatching(text, openIndex, open, close) {
   let depth = 0;
-  let quote = null;
-  let escaped = false;
   for (let index = openIndex; index < text.length; index += 1) {
     const character = text[index];
-    if (quote !== null) {
-      if (escaped) {
-        escaped = false;
-      } else if (character === "\\") {
-        escaped = true;
-      } else if (character === quote) {
-        quote = null;
-      }
-      continue;
-    }
-    if (character === '"' || character === "'" || character === "`") {
-      quote = character;
-      continue;
-    }
-    if (character === "/" && text[index + 1] === "/") {
-      const newline = text.indexOf("\n", index);
-      if (newline < 0) {
-        break;
-      }
-      index = newline;
-      continue;
-    }
-    if (character === "/" && text[index + 1] === "*") {
-      const end = text.indexOf("*/", index + 2);
-      if (end < 0) {
-        break;
-      }
-      index = end + 1;
-      continue;
-    }
     if (character === open) {
       depth += 1;
     } else if (character === close) {
@@ -94,27 +63,25 @@ export function findMatching(text, openIndex, open, close) {
  * removed individually.
  */
 export function stripTestItems(source) {
-  let result = source;
-  for (let iteration = 0; iteration < 500; iteration += 1) {
-    const view = lexicalView(result, "rust");
-    const attribute = /#\[(?:cfg\(test\)|(?:[A-Za-z_]\w*::)?test)\]/u.exec(view.masked);
-    if (!attribute) {
-      return result;
-    }
+  const result = source.split("");
+  const { masked } = lexicalView(source, "rust");
+  let removedThrough = 0;
+  for (const attribute of masked.matchAll(/#\s*\[\s*(?:cfg\s*\(\s*test\s*\)|(?:[A-Za-z_]\w*\s*::\s*)?test(?:\s*\([^\]]*\))?)\s*\]/gu)) {
     const start = attribute.index;
-    const semicolon = view.masked.indexOf(";", start);
-    const brace = view.masked.indexOf("{", start);
+    if (start < removedThrough) continue;
+    const semicolon = masked.indexOf(";", start);
+    const brace = masked.indexOf("{", start);
     if (brace < 0 || (semicolon >= 0 && semicolon < brace)) {
-      result = result.slice(0, start) + result.slice(semicolon + 1);
-      continue;
+      removedThrough = semicolon < 0 ? source.length : semicolon + 1;
+    } else {
+      const end = findMatching(masked, brace, "{", "}");
+      removedThrough = end < 0 ? source.length : end + 1;
     }
-    const end = findMatching(view.masked, brace, "{", "}");
-    if (end < 0) {
-      return result.slice(0, start);
+    for (let index = start; index < removedThrough; index += 1) {
+      if (source[index] !== "\n") result[index] = " ";
     }
-    result = result.slice(0, start) + result.slice(end + 1);
   }
-  return result;
+  return result.join("");
 }
 
 function lineStarts(source) {
@@ -213,20 +180,23 @@ function toolsInRange(source, regions, start, end) {
   return found;
 }
 
-function hasExecutionToken(text) {
-  return EXECUTION_TOKENS.some((token) => text.includes(token));
+function hasExecutionToken(text, aliases = []) {
+  if (new RegExp(`\\b(?:Command|${aliases.map(escapePattern).join("|") || "Command"})\\s*::\\s*(?:new|spawn|output|status)\\b|\\bProcess\\s*\\.\\s*(?:run|runSync|start)\\b`, "u").test(text)) return true;
+  return [...EXECUTION_TOKENS, ...aliases.map((alias) => `${alias}::new(`)]
+    .some((token) => new RegExp(escapePattern(token).replaceAll("::", "\\s*::\\s*")
+      .replaceAll("\\.", "\\.\\s*").replaceAll("\\(", "\\s*\\("), "u").test(text));
 }
 
 /** Recursively collect runtime sources under the declared roots. */
 export async function collectRuntimeSourceFiles(repoRoot, { readdir }) {
   const files = [];
   const problems = [];
-  async function visit(relativeDirectory, extension, { includeSelf = false } = {}) {
+  async function visit(relativeDirectory, extension, { includeSelf = false, required = false } = {}) {
     let entries = [];
     try {
       entries = await readdir(path.join(repoRoot, relativeDirectory), { withFileTypes: true });
     } catch (error) {
-      if (error?.code !== "ENOENT") {
+      if (required || error?.code !== "ENOENT") {
         problems.push(
           `${relativeDirectory} cannot be read: ${error?.code ?? error?.message ?? "unknown"}`,
         );
@@ -239,12 +209,14 @@ export async function collectRuntimeSourceFiles(repoRoot, { readdir }) {
         if (["target", "build", "tests", "test", "__pycache__"].includes(entry.name)) {
           continue;
         }
-        await visit(relativePath, extension, { includeSelf: true });
+        await visit(relativePath, extension, { includeSelf: true, required: true });
       } else if (includeSelf && entry.isFile() && entry.name.endsWith(extension)) {
         if (/^tests?\.(?:rs|dart)$/u.test(entry.name)) {
           continue;
         }
         files.push(relativePath.replaceAll("\\", "/"));
+      } else if (entry.isSymbolicLink()) {
+        problems.push(`${relativePath} is a symbolic link; runtime source scope is unresolved`);
       }
     }
   }
@@ -263,7 +235,17 @@ export async function collectRuntimeSourceFiles(repoRoot, { readdir }) {
       }
       for (const entry of [...entries].sort((left, right) => left.name.localeCompare(right.name))) {
         if (entry.isDirectory()) {
-          await visit(`${root}/${entry.name}/src`, extension, { includeSelf: true });
+          const directory = `${root}/${entry.name}`;
+          try {
+            const children = await readdir(path.join(repoRoot, directory), { withFileTypes: true });
+            if (children.some((child) => child.name === "src")) {
+              await visit(`${directory}/src`, extension, { includeSelf: true, required: true });
+            }
+          } catch (error) {
+            problems.push(`${directory} cannot be read: ${error?.code ?? "unknown"}`);
+          }
+        } else if (entry.isSymbolicLink()) {
+          problems.push(`${root}/${entry.name} is a symbolic link; runtime source scope is unresolved`);
         }
       }
       continue;
@@ -501,8 +483,88 @@ function fileEvidenceTools(file, sources) {
 }
 
 function fingerprintFor(file, source, range) {
-  const statement = normalizeSnippet(source.slice(range.start, range.end));
+  const snippet = source.slice(range.start, range.end);
+  const literals = lexicalView(snippet, file.endsWith(".dart") ? "dart" : "rust").regions
+    .filter((region) => region.kind === "string");
+  let previous = 0;
+  let statement = "";
+  for (const literal of literals) {
+    statement += snippet.slice(previous, literal.start).replace(/\s+/gu, " ");
+    statement += snippet.slice(literal.start, literal.end);
+    previous = literal.end;
+  }
+  statement = (statement + snippet.slice(previous).replace(/\s+/gu, " ")).trim();
   return createHash("sha256").update(`${file}|${statement}`).digest("hex").slice(0, 12);
+}
+
+// Resolve only literal target bindings here. Arbitrary calls, fields and
+// runtime-selected commands are not proof of a non-developer executable.
+function literalTarget(expression, source, entry, seen = new Set()) {
+  const value = expression.trim().replace(/^&\s*/u, "");
+  if (/^(?:r#*)?["'][^"']*["']#*$/u.test(value)) return true;
+  if (!/^[A-Za-z_]\w*$/u.test(value) || seen.has(value)) return false;
+  const bindings = entry.bindings.get(value) ?? [];
+  return bindings.length === 1 && literalTarget(
+    source.slice(bindings[0].start, bindings[0].end).split("=").slice(1).join("=").replace(/;\s*$/u, ""),
+    source, entry, new Set([...seen, value]),
+  );
+}
+
+function unresolvedProcessTarget(file, range, sources, index, aliases) {
+  const { source, masked } = sources.get(file);
+  const entry = index.get(file);
+  const text = masked.slice(range.start, range.end);
+  const commandTypes = ["Command", ...aliases].map(escapePattern).join("|");
+  const constructors = new RegExp(`\\b(?:${commandTypes})\\s*::\\s*new\\s*\\(|\\bProcess\\s*\\.\\s*(?:run|runSync|start)\\s*\\(`, "gu");
+  let found = false;
+  for (const match of text.matchAll(constructors)) {
+    found = true;
+    const start = range.start + match.index + match[0].length;
+    let depth = 0;
+    let end = start;
+    for (; end < masked.length; end += 1) {
+      if ("([{".includes(masked[end])) depth += 1;
+      if (depth === 0 && (masked[end] === ")" || masked[end] === ",")) break;
+      if (")]}".includes(masked[end])) depth -= 1;
+    }
+    const target = source.slice(start, end);
+    if (!literalTarget(target, source, entry)) return true;
+    // A literal shell/launcher is not proof about a dynamic guest command.
+    if (/["'](?:[^"']*[/\\])?(?:sh|bash|zsh|cmd(?:\.exe)?|powershell(?:\.exe)?|pwsh|env)["']/u.test(target)) {
+      const argumentText = masked.slice(end, range.end);
+      for (const argument of argumentText.matchAll(/\.\s*args?\s*\(/gu)) {
+        const open = end + argument.index + argument[0].length - 1;
+        const close = findMatching(masked, open, "(", ")");
+        if (close < 0) return true;
+        const operand = source.slice(open + 1, close).trim();
+        const values = operand.startsWith("[") && operand.endsWith("]")
+          ? operand.slice(1, -1).split(",").map((value) => value.trim()).filter(Boolean)
+          : [operand];
+        if (values.some((value) => !literalTarget(value, source, entry))) return true;
+      }
+      if (/\bProcess\b/u.test(text)) {
+        // Dart's argument list follows the executable positionally.
+        const close = findMatching(masked, start - 1, "(", ")");
+        const argumentsMask = masked.slice(end + 1, close);
+        if (/\b[A-Za-z_]\w*\b/u.test(argumentsMask)) return true;
+      }
+    }
+  }
+  if (found) return false;
+  if (new RegExp(`\\b(?:${commandTypes})\\s*::\\s*(?:new|spawn|output|status)\\b|\\bProcess\\s*\\.\\s*(?:run|runSync|start)\\b`, "u").test(text)) return true;
+  // Member calls count only with Command evidence; task/thread spawn methods
+  // are not process APIs merely because they have the same method name.
+  for (const match of text.matchAll(/\b(\w+)\s*\.\s*(?:spawn|output|status)\s*\(/gu)) {
+    const receiver = match[1];
+    if (new RegExp(`\\b${receiver}\\s*:\\s*(?:&\\s*(?:mut\\s+)?)?(?:[\\w]+\\s*::\\s*)*Command\\b`, "u").test(masked)) return true;
+    for (const binding of entry.bindings.get(receiver) ?? []) {
+      if (binding.start >= range.start) continue;
+      if (new RegExp(`\\b(?:${commandTypes})\\s*::\\s*new\\s*\\(`, "u").test(masked.slice(binding.start, binding.end))) {
+        return unresolvedProcessTarget(file, { start: binding.start, end: range.end }, sources, index, aliases);
+      }
+    }
+  }
+  return false;
 }
 
 /**
@@ -526,6 +588,7 @@ export async function inspectDeveloperToolSites({
       continue;
     }
     const language = file.endsWith(".dart") ? "dart" : "rust";
+    problems.push(...lexicalView(raw, language).problems.map((problem) => `${file}: ${problem}`));
     const source = language === "rust" ? stripTestItems(raw) : raw;
     const lexed = lexicalView(source, language);
     sources.set(file, { language, source, masked: lexed.masked, regions: lexed.regions });
@@ -543,6 +606,7 @@ export async function inspectDeveloperToolSites({
   const callSites = callSitesByName(sources);
 
   const relevantSinks = [];
+  const unresolved = [];
   const references = [];
   let scannedSinkStatements = 0;
   for (const [file, { source, masked, regions }] of sources) {
@@ -553,8 +617,9 @@ export async function inspectDeveloperToolSites({
       masked: masked.slice(range.start, range.end),
     }));
     const fileTools = fileEvidenceTools(file, sources);
+    const aliases = [...masked.matchAll(/\bCommand\s+as\s+(\w+)/gu)].map((match) => match[1]);
     for (const range of rangedRanges) {
-      if (!hasExecutionToken(range.masked)) {
+      if (!hasExecutionToken(range.masked, aliases)) {
         continue;
       }
       scannedSinkStatements += 1;
@@ -565,6 +630,11 @@ export async function inspectDeveloperToolSites({
         }
       }
       if (tools.size === 0) {
+        if (unresolvedProcessTarget(file, range, sources, index, aliases)) {
+          const site = { file, sink: fingerprintFor(file, source, range), line: lineForOffset(starts, range.start) };
+          unresolved.push(site);
+          problems.push(`${file}::${site.sink} (line ${site.line}) has an unresolved process target; developer-tool execution cannot be excluded`);
+        }
         continue;
       }
       relevantSinks.push({
@@ -615,7 +685,7 @@ export async function inspectDeveloperToolSites({
   const unallowlisted = [];
   for (const sink of relevantSinks) {
     const entry = allowedBySink.get(sink.id);
-    if (!entry || sink.tools.some((tool) => !entry.tools.includes(tool))) {
+    if (!entry || sink.tools.length !== new Set(entry.tools).size || sink.tools.some((tool) => !entry.tools.includes(tool))) {
       unallowlisted.push(sink);
     }
   }
@@ -627,6 +697,7 @@ export async function inspectDeveloperToolSites({
     executionSites: relevantSinks,
     siteIds: siteIds.sort(),
     unallowlisted,
+    unresolved,
     staleAllowlist,
     invalidAllowlist: allowlistProblems,
     references,

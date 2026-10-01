@@ -385,6 +385,7 @@ test("architecture and package facades retain precise source-bundle ownership", 
     "apps/desktop/scripts/client-architecture/ratchet/developer-tools.mjs",
     "apps/desktop/scripts/client-architecture/ratchet/lexical.mjs",
     "apps/desktop/scripts/client-architecture/ratchet/measure.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/ownership.mjs",
   ];
   const ratchetTest =
     "tests/contract/client/client-architecture-ratchet.test.mjs";
@@ -443,6 +444,8 @@ test("architecture and package facades retain precise source-bundle ownership", 
   for (const relativePath of architectureSources) {
     assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), [
       "regression.client-architecture-modules",
+      ...(["apps/desktop/scripts/verify-client-architecture.mjs", "apps/desktop/scripts/client-architecture/context.mjs"].includes(relativePath)
+        ? ["regression.client-architecture-ratchet"] : []),
       "architecture.client-boundaries",
     ]);
   }
@@ -510,9 +513,19 @@ test("architecture and package facades retain precise source-bundle ownership", 
   assert.deepEqual(ratchetBundle.inputs, [
     ...ratchetSources,
     ...ratchetDependencySelections.keys(),
+    "apps/desktop/scripts/verify-client-architecture.mjs",
+    "apps/desktop/scripts/client-architecture/context.mjs",
+    "crates/licoup-native/src/platform/strategy_runtime/mod.rs",
+    "crates/licoup-extension-contracts/src/deployment.rs",
     ratchetTest,
   ]);
   assert.deepEqual(ratchetBundle.command.args, ["--test", ratchetTest]);
+  for (const source of [
+    "crates/licoup-native/src/platform/strategy_runtime/mod.rs",
+    "crates/licoup-extension-contracts/src/deployment.rs",
+  ]) {
+    assert.ok(ids(selectModulesForChangedPaths([source])).includes(ratchetBundle.id), source);
+  }
   assert.deepEqual(packageBundle.inputs, [...packageAssets, ...packageSources, ...packageTests]);
   assert.deepEqual(packageBundle.command.args, ["--test", ...packageTests]);
   assert.deepEqual(planBundle.inputs, [...planSources, ...planTests]);

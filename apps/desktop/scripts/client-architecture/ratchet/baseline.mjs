@@ -18,8 +18,9 @@ export async function loadRatchetBaseline({ repoRoot }) {
   let text;
   try {
     text = await fs.readFile(path.join(repoRoot, BASELINE_PATH), "utf8");
-  } catch {
-    return null;
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw new Error(`${BASELINE_PATH} cannot be read: ${error?.code ?? "unknown"}`);
   }
   let document;
   try {
@@ -32,8 +33,16 @@ export async function loadRatchetBaseline({ repoRoot }) {
       `${BASELINE_PATH} has schema ${String(document.schema)}; expected ${BASELINE_SCHEMA}`,
     );
   }
-  if (typeof document.metrics !== "object" || document.metrics === null) {
+  if (typeof document.metrics !== "object" || document.metrics === null || Array.isArray(document.metrics)) {
     throw new Error(`${BASELINE_PATH} does not contain a metrics object`);
+  }
+  for (const [metricId, payload] of Object.entries(document.metrics)) {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+        Object.values(payload).some((value) =>
+          !(Number.isSafeInteger(value) && value >= 0) &&
+          !(Array.isArray(value) && value.every((entry) => typeof entry === "string") && new Set(value).size === value.length))) {
+      throw new Error(`${BASELINE_PATH} contains an invalid metric payload: ${metricId}`);
+    }
   }
   return document;
 }
@@ -160,6 +169,10 @@ export async function recordRatchetBaseline({
   now = () => new Date().toISOString(),
   writeFile = fs.writeFile,
 }) {
+  const problems = metrics.flatMap((metric) => metric.details?.problems ?? []);
+  if (problems.length || metrics.some((metric) => (metric.ratchet.unallowlisted_sites ?? 0) > 0)) {
+    return { ok: false, message: "refusing to record incomplete or unjustified measurements", problems };
+  }
   const current = Object.fromEntries(metrics.map((metric) => [metric.id, metric.ratchet]));
   const existing = await loadRatchetBaseline({ repoRoot });
   if (existing) {

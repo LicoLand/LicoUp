@@ -4,7 +4,7 @@
  * Every measurement is deterministic over the repository source and returns a
  * payload shaped as `{id, ratchet, details}`: `ratchet` contains only numbers
  * and ordered string sets that the baseline comparator tracks; `details`
- * carries evidence for people and never affects pass/fail. Missing required
+ * carries evidence and input problems. Missing required
  * inputs, unresolved ownership, malformed manifests and unjustified execution
  * sites are measurement problems: the check fails and recording refuses, so a
  * broken state can never appear as an improvement.
@@ -20,6 +20,8 @@ import {
 } from "./cargo-manifest.mjs";
 import { findMatching, inspectDeveloperToolSites } from "./developer-tools.mjs";
 import { lexicalView } from "./lexical.mjs";
+import { parseCapabilityOwnership } from "./ownership.mjs";
+export { parseCapabilityOwnership } from "./ownership.mjs";
 import {
   KERNEL_HOST_CRATE,
   KERNEL_PACKAGING_ARTIFACTS,
@@ -34,9 +36,9 @@ const PLATFORM_ROOT = `${NATIVE_ROOT}/platform`;
 const DEPLOYMENT_SOURCE = "crates/licoup-extension-contracts/src/deployment.rs";
 const PACKAGING_MODULES = "apps/desktop/packaging.modules.json";
 
-async function readText(repoRoot, relativePath) {
+async function readText(repoRoot, relativePath, io = fs) {
   try {
-    return await fs.readFile(path.join(repoRoot, relativePath), "utf8");
+    return await io.readFile(path.join(repoRoot, relativePath), "utf8");
   } catch {
     return null;
   }
@@ -46,19 +48,15 @@ async function walkFiles(
   repoRoot,
   relativeRoot,
   extension,
-  { excludeDirectories = [], problems = [] } = {},
+  { excludeDirectories = [], problems = [], io = fs } = {},
 ) {
   const found = [];
   async function visit(relativeDirectory) {
     let entries = [];
     try {
-      entries = await fs.readdir(path.join(repoRoot, relativeDirectory), { withFileTypes: true });
+      entries = await io.readdir(path.join(repoRoot, relativeDirectory), { withFileTypes: true });
     } catch (error) {
-      if (error?.code !== "ENOENT") {
-        problems.push(
-          `${relativeDirectory} cannot be read: ${error?.code ?? error?.message ?? "unknown"}`,
-        );
-      }
+      problems.push(`${relativeDirectory} cannot be read: ${error?.code ?? "unknown"}`);
       return;
     }
     for (const entry of [...entries].sort((left, right) => left.name.localeCompare(right.name))) {
@@ -72,46 +70,13 @@ async function walkFiles(
         await visit(relativePath);
       } else if (entry.isFile() && entry.name.endsWith(extension)) {
         found.push(relativePath.replaceAll("\\", "/"));
+      } else if (entry.isSymbolicLink()) {
+        problems.push(`${relativePath} is a symbolic link; source scope cannot be established`);
       }
     }
   }
   await visit(relativeRoot);
   return found;
-}
-
-/**
- * Extract `CAPABILITY_OWNERSHIP` rows from the deployment contract, resolving
- * quoted package ids and package-id constants (`PackOwnership::Optional(
- * packages::WORKFLOW)`). A row whose package argument cannot be resolved keeps
- * `package: null` so the caller can refuse instead of silently dropping the
- * capability.
- */
-export function parseCapabilityOwnership(source) {
-  const normalized = source.replace(/\s+/gu, " ");
-  const constants = new Map();
-  for (const match of normalized.matchAll(
-    /\bconst\s+([A-Za-z_]\w*)\s*:\s*[^=]{0,160}=\s*"([^"]+)"/gu,
-  )) {
-    constants.set(match[1], match[2]);
-  }
-  const pattern = /"([^"]+)"\s*,\s*PackOwnership::(Core|Optional)\(\s*([^)]+?)\s*\)/gu;
-  const rows = [];
-  for (const match of normalized.matchAll(pattern)) {
-    const raw = match[3].trim();
-    const quoted = raw.match(/^"([^"]+)"$/u);
-    let packageId = quoted ? quoted[1] : null;
-    if (!packageId) {
-      const lastSegment = raw.split("::").pop().trim();
-      packageId = constants.get(lastSegment) ?? null;
-    }
-    rows.push({
-      capability: match[1],
-      set: match[2] === "Core" ? "core" : "optional",
-      package: packageId,
-      raw,
-    });
-  }
-  return rows;
 }
 
 function sameStringSet(left, right) {
@@ -201,20 +166,20 @@ function unknownOwnershipProblems({
 }
 
 /** Metric 1: kernel -> optional capability crate Cargo edges. */
-export async function measureKernelOptionalCargoEdges({ repoRoot }) {
+export async function measureKernelOptionalCargoEdges({ repoRoot, io = fs }) {
   const problems = [];
-  const deploymentSource = await readText(repoRoot, DEPLOYMENT_SOURCE);
+  const deploymentSource = await readText(repoRoot, DEPLOYMENT_SOURCE, io);
   if (deploymentSource === null) {
     problems.push(`${DEPLOYMENT_SOURCE} is missing; optional capability ownership cannot be read`);
   }
-  const ownershipRows = deploymentSource === null ? [] : parseCapabilityOwnership(deploymentSource);
+  const ownershipRows = deploymentSource === null ? [] : parseCapabilityOwnership(deploymentSource, problems);
   const packageIds = optionalPackageIds(ownershipRows, problems);
 
-  const graph = await collectManifestGraph({ repoRoot });
+  const graph = await collectManifestGraph({ repoRoot, ...io });
   problems.push(...graph.problems);
   const manifestTexts = new Map();
   for (const manifestPath of graph.byPath.keys()) {
-    manifestTexts.set(manifestPath, await readText(repoRoot, manifestPath) ?? "");
+    manifestTexts.set(manifestPath, graph.byPath.get(manifestPath).source);
   }
   if (!graph.byPath.has("Cargo.toml")) {
     problems.push("Cargo.toml is missing; the workspace manifest graph cannot be resolved");
@@ -248,6 +213,7 @@ export async function measureKernelOptionalCargoEdges({ repoRoot }) {
       const previous = activated.get(name);
       const mergedRequest = new Set([...(previous?.request ?? []), ...request]);
       const activation = featureActivation(record.features, mergedRequest, record.deps);
+      problems.push(...activation.problems.map((problem) => `${record.path}: ${problem}`));
       const unchanged = previous &&
         sameStringSet(previous.request, mergedRequest) &&
         sameStringSet(previous.features, activation.features) &&
@@ -285,16 +251,17 @@ export async function measureKernelOptionalCargoEdges({ repoRoot }) {
           continue;
         }
         if (sourceIsKernel && optionalCrates.has(dependency.localName)) {
+          inactiveOptionalEdges.delete(`${name} -> ${dependency.localName} (optional, inactive for the requested features)`);
           edges.add(
             `${name} -> ${dependency.localName} (${dependency.optional ? "optional-active" : dependency.kind})`,
           );
         }
-        if (optionalCrates.has(dependency.localName)) {
-          continue;
-        }
         const targetRequest = new Set(
           Array.isArray(dependency.spec.features) ? dependency.spec.features : [],
         );
+        for (const feature of activation.dependencyFeatures.get(dependency.alias) ?? []) {
+          targetRequest.add(feature);
+        }
         if (dependency.spec["default-features"] !== false) {
           targetRequest.add("default");
         }
@@ -324,7 +291,7 @@ export async function measureKernelOptionalCargoEdges({ repoRoot }) {
     },
     details: {
       definition:
-        "Direct normal/build Cargo edges from non-optional first-party crates reachable from licoup-native to crates declared as optional capability implementations. Dependencies are resolved through workspace inheritance and path locality, and optional dependencies activated by the requested feature graph (started from the kernel host default features and propagated per dependency) count as edges. dev-dependencies and optional dependencies inactive for the requested features are recorded separately.",
+        "Direct normal/build Cargo edges from non-optional first-party crates reachable from licoup-native to crates declared as optional capability implementations. Dependencies are resolved through workspace inheritance and path locality across all declared target tables; feature requests are unified through the reachable local graph, including optional implementations. Default, explicit, strong and weak forwarded features determine activation. dev-dependencies are excluded and inactive optional edges are recorded separately.",
       kernel_crates: [...closure].sort(),
       optional_crates: [...optionalCrates].sort(),
       inactive_optional_edges: [...inactiveOptionalEdges].sort(),
@@ -332,10 +299,6 @@ export async function measureKernelOptionalCargoEdges({ repoRoot }) {
       problems,
     },
   };
-}
-
-function sanitizeRustSource(source) {
-  return lexicalView(source, "rust").masked;
 }
 
 function moduleDepth(relativePath, layerRoot) {
@@ -347,68 +310,62 @@ function moduleDepth(relativePath, layerRoot) {
   return segments.length + 1;
 }
 
-function bracedCrateUseReferencesLayer(masked, layerName) {
-  const pattern = /crate\s*::\s*\{/gu;
-  for (const match of masked.matchAll(pattern)) {
-    const open = match.index + match[0].length - 1;
-    const end = findMatching(masked, open, "{", "}");
-    if (end < 0) {
-      continue;
+function referencesLayer(source, relativePath, layerRoot, layerName, problems) {
+  const { masked, problems: lexicalProblems } = lexicalView(source, "rust");
+  problems.push(...lexicalProblems.map((problem) => `${relativePath}: ${problem}`));
+  const inlineModules = [...masked.matchAll(/\bmod\s+\w+\s*\{/gu)].map((match) => {
+    const start = match.index + match[0].length - 1;
+    return { start, end: findMatching(masked, start, "{", "}") };
+  });
+  function crosses(segments, offset) {
+    const depth = moduleDepth(relativePath, layerRoot) +
+      inlineModules.filter((entry) => entry.start < offset && entry.end > offset).length;
+    if (segments[0] === "crate") return segments[1] === layerName;
+    let supers = 0;
+    while (segments[supers] === "super") supers += 1;
+    return supers === depth && segments[supers] === layerName;
+  }
+  function groupCrosses(start, end, prefix, offset) {
+    let index = start;
+    while (index < end) {
+      const match = masked.slice(index, end).match(/^\s*((?:\w+\s*::\s*)*(?:\w+|\*)?)\s*(\{)?/u);
+      if (!match || !match[0].length) { index += 1; continue; }
+      const segments = [...prefix, ...match[1].split(/\s*::\s*/u).filter(Boolean)];
+      if (crosses(segments.map((segment) => segment === "*" ? layerName : segment), offset)) return true;
+      index += match[0].length;
+      if (match[2]) {
+        const close = findMatching(masked, index - 1, "{", "}");
+        if (close < 0) return false;
+        if (groupCrosses(index, close, segments, offset)) return true;
+        index = close + 1;
+      }
+      const comma = masked.indexOf(",", index);
+      index = comma < 0 ? end : comma + 1;
     }
-    const group = masked.slice(open + 1, end);
-    if (new RegExp(`(^|[^A-Za-z0-9_])${layerName}\\s*(?:::|\\b)`, "u").test(group)) {
-      return true;
+    return false;
+  }
+  for (const match of masked.matchAll(/(?<![\w:])(?:crate|super)\s*::\s*(?:(?:\w+)\s*::\s*)*\w*/gu)) {
+    const segments = match[0].split(/\s*::\s*/u).filter(Boolean);
+    if (crosses(segments, match.index)) return true;
+    const open = match.index + match[0].length;
+    if (masked[open] === "*" && crosses([...segments, layerName], match.index)) return true;
+    if (masked[open] === "{") {
+      const end = findMatching(masked, open, "{", "}");
+      if (end >= 0 && groupCrosses(open + 1, end, segments, match.index)) return true;
     }
   }
   return false;
 }
 
-function bracedSuperReferencesLayer(masked, layerName, depth) {
-  if (depth < 1) {
-    return false;
-  }
-  const pattern = new RegExp(`(?:super\\s*::\\s*){${depth}}\\{`, "gu");
-  for (const match of masked.matchAll(pattern)) {
-    const open = match.index + match[0].length - 1;
-    const end = findMatching(masked, open, "{", "}");
-    if (end < 0) {
-      continue;
-    }
-    const group = masked.slice(open + 1, end);
-    if (new RegExp(`(^|[^A-Za-z0-9_])${layerName}\\s*(?:::|\\b)`, "u").test(group)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function referencesLayer(source, relativePath, layerRoot, layerName) {
-  const masked = sanitizeRustSource(source);
-  if (new RegExp(`crate\\s*::\\s*${layerName}\\b`, "u").test(masked)) {
-    return true;
-  }
-  if (bracedCrateUseReferencesLayer(masked, layerName)) {
-    return true;
-  }
-  const depth = moduleDepth(relativePath, layerRoot);
-  if (depth < 1 || depth > 64) {
-    return false;
-  }
-  if (new RegExp(`(?:super\\s*::\\s*){${depth}}${layerName}\\b`, "u").test(masked)) {
-    return true;
-  }
-  return bracedSuperReferencesLayer(masked, layerName, depth);
-}
-
-async function layerImportFiles(repoRoot, layerRoot, targetLayerName, problems) {
+async function layerImportFiles(repoRoot, layerRoot, targetLayerName, problems, io) {
   const files = [];
-  for (const relativePath of await walkFiles(repoRoot, layerRoot, ".rs", { problems })) {
-    const source = await readText(repoRoot, relativePath);
+  for (const relativePath of await walkFiles(repoRoot, layerRoot, ".rs", { problems, io })) {
+    const source = await readText(repoRoot, relativePath, io);
     if (source === null) {
       problems.push(`${relativePath} cannot be read`);
       continue;
     }
-    if (referencesLayer(source, relativePath, layerRoot, targetLayerName)) {
+    if (referencesLayer(source, relativePath, layerRoot, targetLayerName, problems)) {
       files.push(relativePath);
     }
   }
@@ -416,11 +373,11 @@ async function layerImportFiles(repoRoot, layerRoot, targetLayerName, problems) 
 }
 
 /** Metric 2: domain/platform cross-layer importing files. */
-export async function measureNativeLayerImports({ repoRoot }) {
+export async function measureNativeLayerImports({ repoRoot, io = fs }) {
   const problems = [];
   for (const layerRoot of [DOMAIN_ROOT, PLATFORM_ROOT]) {
     try {
-      const stat = await fs.stat(path.join(repoRoot, layerRoot));
+      const stat = await io.stat(path.join(repoRoot, layerRoot));
       if (!stat.isDirectory()) {
         problems.push(`${layerRoot} is missing; cross-layer imports cannot be measured`);
       }
@@ -429,8 +386,8 @@ export async function measureNativeLayerImports({ repoRoot }) {
     }
   }
   const [domainToPlatform, platformToDomain] = await Promise.all([
-    layerImportFiles(repoRoot, DOMAIN_ROOT, "platform", problems),
-    layerImportFiles(repoRoot, PLATFORM_ROOT, "domain", problems),
+    layerImportFiles(repoRoot, DOMAIN_ROOT, "platform", problems, io),
+    layerImportFiles(repoRoot, PLATFORM_ROOT, "domain", problems, io),
   ]);
   return {
     id: "native_layer_imports",
@@ -451,11 +408,11 @@ export async function measureNativeLayerImports({ repoRoot }) {
 }
 
 /** Metric 3: licoup-native Rust size over one defined scope. */
-export async function measureNativeRustLoc({ repoRoot }) {
+export async function measureNativeRustLoc({ repoRoot, io = fs }) {
   const problems = [];
   let nativeSourceExists = false;
   try {
-    nativeSourceExists = (await fs.stat(path.join(repoRoot, NATIVE_ROOT))).isDirectory();
+    nativeSourceExists = (await io.stat(path.join(repoRoot, NATIVE_ROOT))).isDirectory();
   } catch {
     nativeSourceExists = false;
   }
@@ -463,7 +420,7 @@ export async function measureNativeRustLoc({ repoRoot }) {
     problems.push(`${NATIVE_ROOT} is missing; native size cannot be measured`);
   }
   const files = nativeSourceExists
-    ? await walkFiles(repoRoot, NATIVE_ROOT, ".rs", { problems })
+    ? await walkFiles(repoRoot, NATIVE_ROOT, ".rs", { problems, io })
     : [];
   if (nativeSourceExists && files.length === 0) {
     problems.push(`${NATIVE_ROOT} contains no Rust sources; native size cannot be measured`);
@@ -471,7 +428,7 @@ export async function measureNativeRustLoc({ repoRoot }) {
   const perFile = [];
   let nonBlankLines = 0;
   for (const relativePath of files) {
-    const source = await readText(repoRoot, relativePath);
+    const source = await readText(repoRoot, relativePath, io);
     if (source === null) {
       problems.push(`${relativePath} cannot be read; native size is incomplete`);
       continue;
@@ -501,28 +458,32 @@ export async function measureNativeRustLoc({ repoRoot }) {
 }
 
 /** Metric 4: optional capabilities bundled by the packaging module set. */
-export async function measureOptionalCapabilitiesInPackaging({ repoRoot }) {
+export async function measureOptionalCapabilitiesInPackaging({ repoRoot, io = fs }) {
   const problems = [];
-  const deploymentSource = await readText(repoRoot, DEPLOYMENT_SOURCE);
+  const deploymentSource = await readText(repoRoot, DEPLOYMENT_SOURCE, io);
   if (deploymentSource === null) {
     problems.push(`${DEPLOYMENT_SOURCE} is missing; optional capability ownership cannot be read`);
   }
-  const packagingText = await readText(repoRoot, PACKAGING_MODULES);
+  const packagingText = await readText(repoRoot, PACKAGING_MODULES, io);
   if (packagingText === null) {
     problems.push(`${PACKAGING_MODULES} is missing; packaging module set cannot be read`);
   }
   let modules = {};
   if (packagingText !== null) {
     try {
-      modules = JSON.parse(packagingText).modules ?? {};
+      modules = JSON.parse(packagingText).modules;
+      if (!modules || typeof modules !== "object" || Array.isArray(modules)) {
+        problems.push(`${PACKAGING_MODULES} must declare a modules object`);
+        modules = {};
+      }
     } catch (error) {
       problems.push(`${PACKAGING_MODULES} is not valid JSON: ${error.message}`);
     }
   }
-  const graph = await collectManifestGraph({ repoRoot });
+  const graph = await collectManifestGraph({ repoRoot, ...io });
   problems.push(...graph.problems);
   const owners = binaryOwners(graph.byPath);
-  const ownershipRows = deploymentSource === null ? [] : parseCapabilityOwnership(deploymentSource);
+  const ownershipRows = deploymentSource === null ? [] : parseCapabilityOwnership(deploymentSource, problems);
   const packageIds = optionalPackageIds(ownershipRows, problems);
 
   const artifactsByPackage = new Map();
@@ -575,6 +536,10 @@ export async function measureOptionalCapabilitiesInPackaging({ repoRoot }) {
 
   const derived = new Map(packageIds.map((packageId) => [packageId, new Set()]));
   for (const [moduleId, module] of Object.entries(modules)) {
+    if (!module || typeof module !== "object" || Array.isArray(module)) {
+      problems.push(`packaging module ${moduleId} must be an object`);
+      continue;
+    }
     if (module?.enabled === false) {
       continue;
     }
@@ -642,11 +607,11 @@ export async function measureOptionalCapabilitiesInPackaging({ repoRoot }) {
 }
 
 /** Metric 5: developer-tool execution sinks in runtime sources. */
-export async function measureDeveloperToolSites({ repoRoot, allowlist }) {
+export async function measureDeveloperToolSites({ repoRoot, allowlist, io = fs }) {
   const inspection = await inspectDeveloperToolSites({
     repoRoot,
-    readdir: fs.readdir,
-    readFile: fs.readFile,
+    readdir: io.readdir,
+    readFile: io.readFile,
     ...(allowlist === undefined ? {} : { allowlist }),
   });
   const unallowlistedIds = inspection.unallowlisted.flatMap((sink) =>
@@ -661,11 +626,12 @@ export async function measureDeveloperToolSites({ repoRoot, allowlist }) {
     },
     details: {
       definition:
-        "Developer-tool execution sinks in crates/**/src, components/**/src, sdk/**/src and apps/desktop/lib. One statement containing an execution API is one sink; tools are attributed through the sink expression, same-file bindings and identifier chains, cross-file call-site arguments, and file-level tool evidence, so an unresolved operand in a unit that names developer tools is never counted as zero. Every relevant sink needs a reviewed allowlist entry with its fingerprint and attributed tools; a second sink, a replaced statement or a changed tool set cannot inherit an existing exception. The scan is a declared-scope static lexical analysis, not an exhaustive proof.",
+        "Developer-tool execution sinks in crates/**/src, components/**/src, sdk/**/src and apps/desktop/lib. One statement containing an execution API is one sink; tools are attributed through the sink expression, same-file bindings and identifier chains, cross-file call-site arguments, and file-level tool evidence. Known process targets without resolvable attribution refuse measurement instead of becoming zero. Every relevant sink needs a reviewed allowlist entry with its fingerprint and exact attributed tool set; a second sink, replaced statement or changed tool set cannot inherit an exception. Literal bytes are preserved in fingerprints. The scan is static lexical analysis, not a compiler or an exhaustive proof about external runtime protocols.",
       scanned_files: inspection.scannedFiles,
       scanned_sink_statements: inspection.scannedSinkStatements,
       execution_sites: inspection.executionSites,
       unallowlisted_sites: inspection.unallowlisted,
+      unresolved_sites: inspection.unresolved,
       stale_allowlist: inspection.staleAllowlist,
       invalid_allowlist: inspection.invalidAllowlist,
       references: inspection.references,
@@ -675,13 +641,13 @@ export async function measureDeveloperToolSites({ repoRoot, allowlist }) {
 }
 
 /** Run every static metric and build the numeric record for check results. */
-export async function measureArchitectureRatchet({ repoRoot }) {
+export async function measureArchitectureRatchet({ repoRoot, io = fs }) {
   const metrics = [
-    await measureKernelOptionalCargoEdges({ repoRoot }),
-    await measureNativeLayerImports({ repoRoot }),
-    await measureNativeRustLoc({ repoRoot }),
-    await measureOptionalCapabilitiesInPackaging({ repoRoot }),
-    await measureDeveloperToolSites({ repoRoot }),
+    await measureKernelOptionalCargoEdges({ repoRoot, io }),
+    await measureNativeLayerImports({ repoRoot, io }),
+    await measureNativeRustLoc({ repoRoot, io }),
+    await measureOptionalCapabilitiesInPackaging({ repoRoot, io }),
+    await measureDeveloperToolSites({ repoRoot, io }),
   ];
   const byId = Object.fromEntries(metrics.map((metric) => [metric.id, metric]));
   const record = {
@@ -698,5 +664,7 @@ export async function measureArchitectureRatchet({ repoRoot }) {
       byId.developer_tool_sites.ratchet.unallowlisted_sites,
   };
   const problems = metrics.flatMap((metric) => metric.details.problems ?? []);
-  return { metrics, record, problems };
+  // Partial observations remain inspectable, but are not comparable numbers.
+  // Consumers must not chart or record a lower value caused by lost input.
+  return { metrics, record: problems.length ? null : record, problems };
 }

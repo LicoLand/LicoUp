@@ -543,8 +543,13 @@ export const REGRESSION_MODULES = Object.freeze([
         "apps/desktop/scripts/client-architecture/ratchet/developer-tools.mjs",
         "apps/desktop/scripts/client-architecture/ratchet/lexical.mjs",
         "apps/desktop/scripts/client-architecture/ratchet/measure.mjs",
+        "apps/desktop/scripts/client-architecture/ratchet/ownership.mjs",
         "package.json",
         "package-lock.json",
+        "apps/desktop/scripts/verify-client-architecture.mjs",
+        "apps/desktop/scripts/client-architecture/context.mjs",
+        "crates/licoup-native/src/platform/strategy_runtime/mod.rs",
+        "crates/licoup-extension-contracts/src/deployment.rs",
         "tests/contract/client/client-architecture-ratchet.test.mjs",
       ],
       command: command(
