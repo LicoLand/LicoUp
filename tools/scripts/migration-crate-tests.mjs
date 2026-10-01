@@ -1,0 +1,120 @@
+#!/usr/bin/env node
+// Run the standalone migration crate's suites under the planned candidate identity.
+//
+// The released-root fixtures are frozen from the published product v0.2.1, whose ledger
+// records product high-water `0.2.1`. The client's own admission guard refuses a binary
+// older than that high-water, and the delivery never lowers a released fixture to fit a
+// development build. The intended candidate identity therefore comes from the real
+// build-metadata owner: the native build script injects `LICO_CLIENT_PRODUCT_VERSION`,
+// and this runner passes the workspace product version (the planned release) to it.
+//
+// The runner also builds the real `licoup-cli` binary and hands its path to the
+// cross-container interoperability suite, which restores archives produced by the client
+// CLI through the tool and archives produced by the tool through the client CLI. `cargo
+// test` only exports `CARGO_BIN_EXE_*` for the package's own binaries, so the path is
+// constructed here, in the same target directory and under the same identity.
+//
+// Everything runs offline and locked against the checkout's isolated target directory.
+import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+const workspaceRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const jobs = "3";
+
+function fail(message) {
+  process.stderr.write(`migration-crate-tests: ${message}\n`);
+  process.exit(1);
+}
+
+function workspaceProductVersion() {
+  const manifest = readFileSync(path.join(workspaceRoot, "Cargo.toml"), "utf8");
+  const section = manifest.match(/\[workspace\.package\]([\s\S]*?)(?:\n\[|$)/u);
+  if (!section) return "";
+  const version = section[1].match(/^\s*version\s*=\s*"([^"]+)"/mu);
+  return version ? version[1] : "";
+}
+
+function run(command, args, env) {
+  const result = spawnSync(command, args, {
+    cwd: workspaceRoot,
+    env,
+    stdio: "inherit",
+    shell: false
+  });
+  if (result.error) fail(`${command} failed to start: ${result.error.message}`);
+  return result.status ?? 1;
+}
+
+function metadata(env) {
+  const result = spawnSync(
+    "cargo",
+    ["metadata", "--offline", "--locked", "--format-version", "1"],
+    {
+      cwd: workspaceRoot,
+      env,
+      encoding: "utf8",
+      shell: false,
+      maxBuffer: 64 * 1024 * 1024
+    }
+  );
+  if (result.error) fail(`cargo metadata failed to start: ${result.error.message}`);
+  if (result.status !== 0) {
+    process.stderr.write(result.stderr ?? "");
+    fail("cargo metadata refused the workspace; the lockfile is not current");
+  }
+  try {
+    return JSON.parse(result.stdout);
+  } catch (error) {
+    fail(`cargo metadata did not produce JSON: ${error.message}`);
+  }
+}
+
+const productVersion = workspaceProductVersion();
+if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u.test(productVersion)) {
+  fail(`the workspace product version is not a semantic version: ${JSON.stringify(productVersion)}`);
+}
+
+const environment = {
+  ...process.env,
+  CARGO_BUILD_JOBS: jobs,
+  // The real build-metadata owner: the native build script injects this value into the
+  // packaged binary, and the migration suites convert the frozen released root with it.
+  LICO_CLIENT_PRODUCT_VERSION: productVersion
+};
+
+const targetDirectory = metadata(environment).target_directory;
+if (typeof targetDirectory !== "string" || targetDirectory.length === 0) {
+  fail("cargo metadata did not report a target directory");
+}
+
+const cliBinary = path.join(
+  targetDirectory,
+  "debug",
+  process.platform === "win32" ? "licoup-cli.exe" : "licoup-cli"
+);
+
+const buildStatus = run(
+  "cargo",
+  ["build", "--offline", "--locked", "-j", jobs, "-p", "licoup-native", "--bin", "licoup-cli"],
+  environment
+);
+if (buildStatus !== 0) {
+  fail("the client CLI binary did not build; the interoperability oracle cannot run");
+}
+
+environment.LICOUP_MIGRATE_CLIENT_CLI = cliBinary;
+
+process.stdout.write(
+  `migration-crate-tests: candidate identity ${productVersion}, client CLI ${cliBinary}\n`
+);
+
+const forwarded = process.argv.slice(2);
+const testStatus = run(
+  "cargo",
+  ["test", "--offline", "--locked", "-j", jobs, "-p", "licoup-migrate", ...forwarded],
+  environment
+);
+process.exit(testStatus);

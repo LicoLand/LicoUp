@@ -585,6 +585,73 @@ fn local_recovery_missing_credential_metadata_stays_limited() {
 }
 
 // ---------------------------------------------------------------------------
+// AC: a failed owner verification rolls the destination back with checked cleanup
+// ---------------------------------------------------------------------------
+
+/// The owner repair runs after publication, so its failure must not leave a root a
+/// caller could mistake for a recovered one. The destination is restored to the state
+/// the caller left it in — removed when this call created it, emptied when the caller
+/// named an existing empty directory — and the archive that could repeat the attempt is
+/// never touched.
+#[test]
+fn a_failed_owner_verification_rolls_the_imported_destination_back() {
+    let fixture = scratch("checked-cleanup");
+    let source = fixture.join("source");
+    ensure_private_dir(&source).expect("source root");
+    seed_released_source_root(&source);
+    stamp_ledger_to_running_identity(&source);
+    admit(&source).expect("admission");
+    let work = fixture.join("work");
+    fs::create_dir_all(&work).expect("work directory");
+    let revision_digest = arrange_current_owner_content(&source, &work);
+
+    // Corrupt the committed revision content: this is exactly the drift the workflow
+    // package owner refuses when it re-freezes and reads the revision back.
+    let workflow = revision_workflow_path(&source, &revision_digest);
+    let mut permissions = fs::metadata(&workflow)
+        .expect("revision metadata")
+        .permissions();
+    permissions.set_readonly(false);
+    fs::set_permissions(&workflow, permissions).expect("unfreeze the revision for the corruption");
+    fs::write(&workflow, b"{\"drifted\":true}").expect("corrupt the revision content");
+
+    let archive = fixture.join("drifted.zip");
+    let exported = export_data_home(Some(&source), &archive, true)
+        .expect("the archive owner captures bytes; revision validation is the importer's step");
+    assert_eq!(exported.coverage, RecoveryCoverage::Limited);
+
+    // A destination this call creates is removed by the checked cleanup.
+    let created = fixture.join("created-target");
+    let error = import_archive(&archive, &created).expect_err("the drift is refused");
+    assert_eq!(error.to_string(), "strategy_revision_content_drifted");
+    assert!(
+        !created.exists(),
+        "a created destination is rolled back instead of lingering as a false recovery"
+    );
+    assert!(
+        archive.is_file(),
+        "the source archive survives every failed import"
+    );
+
+    // A destination the caller named is emptied back to the state it was in.
+    let named = fixture.join("named-target");
+    ensure_private_dir(&named).expect("caller-named empty destination");
+    let error = import_archive(&archive, &named).expect_err("the drift is refused");
+    assert_eq!(error.to_string(), "strategy_revision_content_drifted");
+    assert!(named.is_dir(), "the caller's own directory is not deleted");
+    assert_eq!(
+        fs::read_dir(&named)
+            .expect("readable caller directory")
+            .count(),
+        0,
+        "the caller's directory holds only the state it had before the import"
+    );
+    assert!(archive.is_file());
+
+    remove_root(&fixture);
+}
+
+// ---------------------------------------------------------------------------
 // AC: a version marker alone never satisfies the oracle
 // ---------------------------------------------------------------------------
 

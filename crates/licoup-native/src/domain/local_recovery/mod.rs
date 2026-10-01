@@ -31,6 +31,14 @@ use std::path::{Path, PathBuf};
 /// The stable refusal when another process still uses the selected data home.
 pub const WRITERS_RUNNING: &str = "backup_writers_running";
 
+/// The stable refusal when an import's failed owner verification could not be rolled
+/// back, so a fully published but unverified root remains at the caller's destination.
+///
+/// The source archive is untouched; the reference rewrite and the revision refreeze and
+/// readback are idempotent owner operations, so the retained root can be repaired forward
+/// instead of being treated as a completed recovery.
+pub const RECOVERY_CLEANUP_FAILED: &str = "recovery_target_cleanup_failed";
+
 /// One completed import, including the owner checks performed after publication.
 #[derive(Clone, Debug)]
 pub struct RecoveryImport {
@@ -82,12 +90,20 @@ pub fn export_data_home(
 
 /// Import one archive into an empty target home.
 ///
-/// The generic restore owns publication and its refusals. Afterwards this composition
-/// rebases owner-managed references when the target differs from the captured logical
-/// source home, then re-establishes and verifies the workflow revision protections
-/// through their owner. A verification failure after publication removes a destination
-/// this call created, so the caller is never told a root is usable when an owner
-/// refused it.
+/// The generic restore owns publication and its refusals: it validates the archive and
+/// every declared member before anything is published, and publishes only into an empty
+/// destination. Afterwards this composition rebases owner-managed references when the
+/// target differs from the captured logical source home, then re-establishes and verifies
+/// the workflow revision protections through their owner.
+///
+/// The owner checks run after publication, so a failure here is rolled back with a checked
+/// cleanup: the destination is restored to the caller's prior state — removed when this
+/// call created it, emptied when the caller named an existing empty directory — and the
+/// original owner refusal is returned. Cleanup that cannot complete is reported as
+/// [`RECOVERY_CLEANUP_FAILED`] instead of being silently ignored, because the caller must
+/// know that a fully published but unverified root remains. The source archive is never
+/// deleted, so that retained root is forward-recoverable: the reference rewrite and the
+/// revision refreeze/readback are idempotent owner operations.
 pub fn import_archive(archive_path: &Path, target_root: &Path) -> Result<RecoveryImport> {
     let archive_path =
         std::path::absolute(archive_path).map_err(|_| anyhow!("backup_archive_unresolved"))?;
@@ -124,10 +140,148 @@ pub fn import_archive(archive_path: &Path, target_root: &Path) -> Result<Recover
             verified_workflow_revisions,
         }),
         Err(error) => {
-            if created_target {
-                let _ = std::fs::remove_dir_all(&target_root);
-            }
+            rollback_published_root(&target_root, created_target)?;
             Err(error)
         }
+    }
+}
+
+/// Restore an import destination to the state the caller left it in.
+///
+/// The caller's prior state is either "absent" (this call created the directory) or "an
+/// empty directory" (the caller named one and the archive owner required it to be empty).
+/// Any other state was refused by the owner before publication, so only these two are
+/// rolled back. A rollback that cannot complete reports the stable cleanup code; it never
+/// pretends the destination is gone.
+fn rollback_published_root(target_root: &Path, created_target: bool) -> Result<()> {
+    if created_target {
+        return remove_published_tree(target_root).map_err(|_| anyhow!(RECOVERY_CLEANUP_FAILED));
+    }
+    let entries = std::fs::read_dir(target_root).map_err(|_| anyhow!(RECOVERY_CLEANUP_FAILED))?;
+    for entry in entries {
+        let entry = entry.map_err(|_| anyhow!(RECOVERY_CLEANUP_FAILED))?;
+        remove_published_tree(&entry.path()).map_err(|_| anyhow!(RECOVERY_CLEANUP_FAILED))?;
+    }
+    Ok(())
+}
+
+/// Remove one file or tree this call published, clearing the read-only hardening the
+/// workflow owner applies to committed revisions.
+///
+/// A partial owner verification can leave some revision trees hardened. That hardening
+/// protects usable revisions; the tree being removed here was never reported as one, and
+/// leaving it behind would make the cleanup claim false. Symbolic links are removed as
+/// links and never followed.
+fn remove_published_tree(path: &Path) -> std::io::Result<()> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    // A hardened directory refuses the removal of its own entries, so its write
+    // permission is restored before the walk continues.
+    let directory = metadata.is_dir() && !metadata.file_type().is_symlink();
+    make_removable(path, &metadata, directory)?;
+    if directory {
+        for entry in std::fs::read_dir(path)? {
+            remove_published_tree(&entry?.path())?;
+        }
+        std::fs::remove_dir(path)
+    } else {
+        std::fs::remove_file(path)
+    }
+}
+
+/// Restore owner write permission on one entry of a tree being discarded.
+///
+/// The workflow owner hardens committed revisions read-only. That tree is being removed
+/// because it was never accepted as a usable recovery, so the hardening is cleared with
+/// an explicit private mode rather than a world-writable one.
+fn make_removable(
+    path: &Path,
+    metadata: &std::fs::Metadata,
+    directory: bool,
+) -> std::io::Result<()> {
+    if !metadata.permissions().readonly() {
+        return Ok(());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = if directory { 0o700 } else { 0o600 };
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+    }
+    #[cfg(not(unix))]
+    {
+        let mut permissions = metadata.permissions();
+        permissions.set_readonly(false);
+        std::fs::set_permissions(path, permissions)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch(label: &str) -> PathBuf {
+        let root = std::env::temp_dir()
+            .canonicalize()
+            .expect("temp dir")
+            .join(format!(
+                "licoup-local-recovery-{label}-{}",
+                std::process::id()
+            ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch");
+        root
+    }
+
+    /// A destination this call created is removed, including read-only revision subtrees
+    /// the workflow owner hardens.
+    #[test]
+    fn checked_cleanup_removes_a_created_destination() {
+        let base = scratch("created");
+        let target = base.join("target");
+        let hardened = target.join("client-state/adaptive-flywheel/strategy-packages/revisions");
+        std::fs::create_dir_all(&hardened).expect("hardened tree");
+        std::fs::write(hardened.join("workflow.json"), b"{}").expect("revision");
+        let mut permissions = std::fs::metadata(&hardened)
+            .expect("metadata")
+            .permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(&hardened, permissions).expect("harden");
+
+        rollback_published_root(&target, true).expect("cleanup completes");
+        assert!(!target.exists(), "the created destination is gone");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A caller's own empty directory is emptied but not deleted.
+    #[test]
+    fn checked_cleanup_restores_a_caller_named_empty_directory() {
+        let base = scratch("pre-existing");
+        let target = base.join("target");
+        std::fs::create_dir_all(target.join("nested")).expect("published tree");
+        std::fs::write(target.join("nested/member.txt"), b"published").expect("member");
+
+        rollback_published_root(&target, false).expect("cleanup completes");
+        assert!(target.is_dir(), "the caller's directory itself survives");
+        assert_eq!(
+            std::fs::read_dir(&target)
+                .expect("readable directory")
+                .count(),
+            0,
+            "the published content is gone"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A cleanup that cannot read the destination reports the stable code instead of
+    /// claiming the destination is gone.
+    #[test]
+    fn checked_cleanup_reports_an_incomplete_rollback() {
+        let base = scratch("failed");
+        let target = base.join("target");
+        std::fs::write(&target, b"not a directory").expect("file destination");
+
+        let error = rollback_published_root(&target, false).expect_err("cannot empty a file");
+        assert_eq!(error.to_string(), RECOVERY_CLEANUP_FAILED);
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

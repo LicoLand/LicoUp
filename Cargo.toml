@@ -14,6 +14,7 @@ members = [
     "crates/licoup-workflow",
     "crates/licoup-conversation",
     "crates/licoup-mcp",
+    "crates/licoup-migrate",
     "crates/licoup-native",
     "crates/trybuild",
 ]

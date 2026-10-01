@@ -40,6 +40,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.ffi.adaptive-flywheel-contract",
   "rust.ffi.secure-mesh-contract",
   "rust.crate.catalog-convergence",
+  "rust.crate.migrate",
   "rust.domain.catalog-convergence-adapter",
   "rust.platform.catalog-cache-store",
   "rust.ffi.catalog-convergence",

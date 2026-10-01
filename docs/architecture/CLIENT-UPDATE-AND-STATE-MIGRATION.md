@@ -25,12 +25,24 @@ build or schema correction does not establish another supported release.
 
 Store owners define physical schemas and conversions. Startup admission and the
 standalone native tool use those owners, rather than separate format writers.
-The standalone tool is a separately downloadable client-release asset, not a
-permanently bundled package, and must run without Node.js or an installed client.
-Its packaging and command delivery are separate from the admission implementation
-described here. Retained repository diagnostics are developer tools, not another
-supported conversion authority. There is no arbitrary historical-target selection
-or downgrade conversion contract.
+The delivered standalone program is `crates/licoup-migrate`: one Rust binary that
+runs without Node.js or an installed client, distributed as a separately
+downloadable client-release asset rather than a permanently bundled package. Its
+verbs are `inspect`, `plan`, `convert`, `resume`, `export`, `import`, and
+`rehearse`. Every invocation prints one JSON report and exits non-zero when the
+run leaves work owed. `inspect` and `plan` are read-only; `convert`, `resume`,
+`export`, and `rehearse` require the operator's `--writers-stopped` statement.
+
+`export` and `import` reach the same Foundation full-data-root archive owner as
+the installed client's `backup` command, so an archive written by either entry
+point restores through the other and neither holds a second archive format.
+`rehearse` drives the same owners over a disposable working root, reports every
+stage it ran, and leaves the source untouched, so a conversion and both
+plaintext container round trips can be proved before an authorized real-data
+transition. The retired Node.js package is not retained as a converter,
+compatibility entry point, or fallback. Retained repository diagnostics are
+developer tools, not another supported conversion authority. There is no
+arbitrary historical-target selection or downgrade conversion contract.
 
 Explicit maintenance requires stopped writers and a recoverable source. The short
 startup `admission.lock` does not prove that runtime writers have stopped. Preserve
