@@ -44,6 +44,15 @@ compatibility entry point, or fallback. Retained repository diagnostics are
 developer tools, not another supported conversion authority. There is no
 arbitrary historical-target selection or downgrade conversion contract.
 
+Obtaining the tool: the client release tags the standalone asset
+`LicoUp-migrate-macos-arm64` with its `.sha256` beside the client assets. It is
+downloaded on demand from that release, runs offline once obtained, and needs
+neither a Node.js runtime nor an installed client. Installing or updating the
+client neither installs, replaces, nor removes it, and the running client never
+selects a bundled migrator. The tool accepts only the published source and the
+planned target the release declares; replace it by downloading the asset of the
+same release again, which is safe because the tool holds no state.
+
 Explicit maintenance requires stopped writers and a recoverable source. The short
 startup `admission.lock` does not prove that runtime writers have stopped. Preserve
 the source before an authorized real-data transition and rehearse in a disposable

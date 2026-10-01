@@ -17,6 +17,7 @@ import {
 } from "./module-selection.mjs";
 import { runPackageProcess } from "./process-runner.mjs";
 import { buildNativeSidecars } from "./build/native.mjs";
+import { buildReleaseTools } from "./build/release-tools.mjs";
 import { buildSwiftSidecars } from "./build/swift.mjs";
 import {
   assertFlutterBuildPrereqs,
@@ -67,6 +68,10 @@ export function packageClient(
   const flutterBuildAttempted = !options.skipFlutterBuild;
   try {
     buildNativeSidecars(selected, options);
+    // The migration tool is a release asset of the same release, never a bundle
+    // resource: it is built here, outside every module selection, and staged in the
+    // unbundled release-tool directory the platform release catalog reads.
+    buildReleaseTools(options);
     buildSwiftSidecars(selected, options);
     if (buildFlutterApp(options)) {
       rmSync(packagedBundleRoot(options), { recursive: true, force: true });

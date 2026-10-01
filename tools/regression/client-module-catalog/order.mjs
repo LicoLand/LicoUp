@@ -816,5 +816,6 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "release.consumer-verification",
   "release.model-pricing",
   "release.contracts",
+  "release.migration-asset",
   "release.workflows",
 ]);

@@ -39,6 +39,16 @@
           "for": "update"
         },
         {
+          "role": "migration-tool",
+          "file": "LicoUp-migrate-macos-arm64",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-migrate-macos-arm64"
+        },
+        {
+          "role": "checksum",
+          "file": "LicoUp-migrate-macos-arm64.sha256",
+          "for": "migration-tool"
+        },
+        {
           "role": "build-manifest",
           "file": "LicoUp-macos-arm64.build.json",
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-macos-arm64.build.json"

@@ -415,6 +415,14 @@ function candidateFiles(target, artifact, version) {
   if (target.platform === "ios") {
     candidates.push(...findByExtension(path.join(workspaceRoot, "build", "apps", "desktop", "native-release", target.id, "export"), ".ipa"));
   }
+  if (artifact.role === "migration-tool") {
+    // The standalone migration tool is built by the packaging pipeline as an
+    // unbundled release tool, not inside the client bundle.
+    candidates.push(path.join(
+      workspaceRoot,
+      "build", "apps", "desktop", "release-tools", target.platform, name,
+    ));
+  }
   candidates.push(path.join(workspaceRoot, name));
   return candidates;
 }
