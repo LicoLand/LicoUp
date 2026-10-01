@@ -451,6 +451,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.core.mcp.transfer",
   "rust.core.safe-archive",
   "rust.core.full-data-root-archive",
+  "rust.core.full-data-root-archive.guards",
   "rust.core.secure-mesh",
   "rust.core.secure-mesh.acp",
   "rust.core.secure-mesh.approval",

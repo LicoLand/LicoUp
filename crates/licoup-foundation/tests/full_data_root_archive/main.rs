@@ -1155,7 +1155,10 @@ fn restore_refuses_a_tar_directory_with_a_body() {
         }),
         "archive_extraction_refused",
     );
-    assert!(fs::read_dir(&target).expect("target").next().is_none());
+    assert!(
+        !target.exists(),
+        "the directory body is refused by raw admission before the destination is created"
+    );
 }
 
 #[test]
@@ -1273,8 +1276,13 @@ fn restore_refuses_a_zip_directory_member_with_a_body() {
     writer
         .write_all(&serde_json::to_vec(&manifest).expect("encode manifest"))
         .expect("write manifest");
+    // Directory-mode external attributes, so this fixture reaches the directory body
+    // guard instead of being refused as a regular file with a directory name.
+    let directory_options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .unix_permissions(0o040755);
     writer
-        .start_file("data/d/", options)
+        .start_file("data/d/", directory_options)
         .expect("add directory member");
     writer.write_all(b"body").expect("write directory body");
     let bytes = writer.finish().expect("finish zip").into_inner();
@@ -1290,6 +1298,104 @@ fn restore_refuses_a_zip_directory_member_with_a_body() {
         "archive_extraction_refused",
     );
     assert!(fs::read_dir(&target).expect("target").next().is_none());
+}
+
+#[test]
+fn restore_refuses_a_member_hidden_behind_the_tar_terminator() {
+    let work = scratch("hidden-member");
+    let manifest = manifest_json("tar.gz", vec![entry_json("a.txt", "file", 1)]);
+    let mut tar_bytes = Vec::new();
+    {
+        let mut builder = tar::Builder::new(&mut tar_bytes);
+        append_tar_member(
+            &mut builder,
+            MANIFEST_MEMBER,
+            tar::EntryType::Regular,
+            &serde_json::to_vec(&manifest).expect("encode manifest"),
+            None,
+        );
+        append_tar_member(
+            &mut builder,
+            "data/a.txt",
+            tar::EntryType::Regular,
+            b"a",
+            None,
+        );
+        builder.finish().expect("finish tar");
+    }
+    // `finish` wrote the zero terminator; append an undeclared member behind it inside
+    // the same GZIP member.
+    let mut hidden = [0_u8; 512];
+    hidden[..10].copy_from_slice(b"hidden.txt");
+    hidden[124..136].copy_from_slice(b"00000000004\0");
+    hidden[156] = b'0';
+    let mut unsigned = 0_u64;
+    for (index, byte) in hidden.iter().enumerate() {
+        let value = if (148..156).contains(&index) {
+            b' '
+        } else {
+            *byte
+        };
+        unsigned += u64::from(value);
+    }
+    hidden[148..156].copy_from_slice(format!("{unsigned:06o}\0 ").as_bytes());
+    tar_bytes.extend_from_slice(&hidden);
+    tar_bytes.extend_from_slice(b"evil");
+    tar_bytes.extend_from_slice(&[0_u8; 508]);
+    let mut gz_bytes = Vec::new();
+    {
+        let mut encoder =
+            flate2::write::GzEncoder::new(&mut gz_bytes, flate2::Compression::default());
+        encoder.write_all(&tar_bytes).expect("compress payload");
+        encoder.finish().expect("finish gzip");
+    }
+    let archive = work.join("hidden.tar.gz");
+    fs::write(&archive, gz_bytes).expect("write archive fixture");
+
+    let target = work.join("hidden-target");
+    refusal(
+        restore_data_root(&RestoreRequest {
+            archive_path: archive,
+            target_root: target.clone(),
+        }),
+        "archive_extraction_refused",
+    );
+    assert!(
+        !target.exists(),
+        "a hidden member is refused before the destination is created"
+    );
+}
+
+#[test]
+fn restore_accepts_a_new_bare_relative_target() {
+    let source = synthetic_data_root("relative-target");
+    let work = scratch("relative-target-out");
+    let archive = work.join("complete.zip");
+    export(&source, &archive);
+
+    let relative = PathBuf::from(format!("lico-relative-target-{}", std::process::id()));
+    struct Cleanup(PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+            if let Ok(entries) = fs::read_dir(".") {
+                for entry in entries.flatten() {
+                    let name = entry.file_name();
+                    if name
+                        .to_string_lossy()
+                        .starts_with(".licoup-restore-staging")
+                    {
+                        let _ = fs::remove_dir_all(entry.path());
+                    }
+                }
+            }
+        }
+    }
+    let _cleanup = Cleanup(relative.clone());
+
+    let restored = restore(&archive, &relative);
+    assert_eq!(restored.coverage, RecoveryCoverage::Limited);
+    assert_eq!(payload(&relative), payload(&source));
 }
 
 #[test]

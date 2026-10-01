@@ -136,6 +136,154 @@ pub(crate) fn finish_tar_gz(
     Ok(())
 }
 
+/// Admit every raw TAR header before the pinned TAR library can buffer anything.
+///
+/// The scanner reads the decoded stream block by block, verifies each header checksum,
+/// parses the size field, and enforces the derived policy on raw metadata, member type
+/// and member size. GNU long-name and PAX extension bodies are bounded by the derived
+/// per-member metadata budget and consumed here, so a hostile header cannot make the
+/// library allocate before the policy refuses it. Sparse and every other unsupported
+/// type is refused here, before the library builds descriptor vectors.
+///
+/// After the zero terminator every remaining decoded byte must be zero TAR padding, so a
+/// member hidden behind the terminator is refused instead of silently discarded.
+pub(crate) fn validate_tar_gz_structure(
+    bytes: &[u8],
+    max_total_bytes: u64,
+    max_entries: usize,
+    max_depth: usize,
+) -> Result<()> {
+    let budget = decoded_tar_gz_budget(max_total_bytes, max_entries, max_depth);
+    let metadata_budget = decoded_tar_gz_metadata_budget(max_depth);
+    let mut stream = BoundedStream::new(tar_gz_decoder(bytes), budget);
+    let mut entry_count = 0_usize;
+    loop {
+        let mut block = [0_u8; TAR_BLOCK_BYTES as usize];
+        read_fully(&mut stream, &mut block)?;
+        if block.iter().all(|byte| *byte == 0) {
+            // End of archive: everything left in the decoded stream must be zero padding.
+            let mut padding = [0_u8; TAR_BLOCK_BYTES as usize];
+            loop {
+                let read = stream.read(&mut padding)?;
+                if read == 0 {
+                    return Ok(());
+                }
+                ensure!(
+                    padding[..read].iter().all(|byte| *byte == 0),
+                    "archive has material after its terminator"
+                );
+            }
+        }
+        let header = RawTarHeader::parse(&block)?;
+        match header.typeflag {
+            b'L' | b'x' | b'g' => {
+                ensure!(
+                    header.size <= metadata_budget,
+                    "archive metadata exceeds the portable header budget"
+                );
+                skip_fully(&mut stream, header.size)?;
+            }
+            b'0' | 0 => {
+                ensure!(
+                    header.size <= max_total_bytes,
+                    "archive byte limit exceeded"
+                );
+                entry_count += 1;
+                ensure!(
+                    entry_count <= max_entries,
+                    "archive entry count exceeds maximum"
+                );
+                skip_fully(&mut stream, header.size)?;
+            }
+            b'5' => {
+                ensure!(header.size == 0, "archive directory entry declares a body");
+                entry_count += 1;
+                ensure!(
+                    entry_count <= max_entries,
+                    "archive entry count exceeds maximum"
+                );
+            }
+            _ => return Err(anyhow!("archive entry has unsupported type")),
+        }
+    }
+}
+
+/// One raw TAR header: the checksum-verified size and type fields.
+struct RawTarHeader {
+    size: u64,
+    typeflag: u8,
+}
+
+impl RawTarHeader {
+    fn parse(block: &[u8; TAR_BLOCK_BYTES as usize]) -> Result<Self> {
+        let stored = parse_tar_number(&block[148..156])?;
+        let mut unsigned = 0_u64;
+        let mut signed = 0_i64;
+        for (index, byte) in block.iter().enumerate() {
+            let value = if (148..156).contains(&index) {
+                b' '
+            } else {
+                *byte
+            };
+            unsigned = unsigned.saturating_add(u64::from(value));
+            signed = signed.saturating_add(i64::from(*byte as i8));
+        }
+        ensure!(
+            stored == unsigned || (signed >= 0 && stored == signed as u64),
+            "archive header checksum does not match"
+        );
+        let size = parse_tar_number(&block[124..136])?;
+        Ok(Self {
+            size,
+            typeflag: block[156],
+        })
+    }
+}
+
+/// Parse one TAR numeric field: NUL/space padded octal, or GNU base-256.
+fn parse_tar_number(field: &[u8]) -> Result<u64> {
+    if field.first().is_some_and(|byte| byte & 0x80 != 0) {
+        let mut value = u64::from(field[0] & 0x7F);
+        for byte in &field[1..] {
+            value = value
+                .checked_mul(256)
+                .and_then(|value| value.checked_add(u64::from(*byte)))
+                .ok_or_else(|| anyhow!("archive numeric field overflowed"))?;
+        }
+        return Ok(value);
+    }
+    let text = std::str::from_utf8(field).map_err(|_| anyhow!("archive numeric field invalid"))?;
+    let text = text.trim_matches(|character| character == '\0' || character == ' ');
+    if text.is_empty() {
+        return Ok(0);
+    }
+    u64::from_str_radix(text, 8).map_err(|_| anyhow!("archive numeric field invalid"))
+}
+
+fn read_fully<R: Read>(reader: &mut R, buffer: &mut [u8]) -> Result<()> {
+    let mut filled = 0_usize;
+    while filled < buffer.len() {
+        let read = reader.read(&mut buffer[filled..])?;
+        ensure!(read > 0, "archive ended before its terminator");
+        filled += read;
+    }
+    Ok(())
+}
+
+fn skip_fully<R: Read>(reader: &mut R, length: u64) -> Result<()> {
+    // Consume the member body and the block padding that follows it.
+    let padding = (TAR_BLOCK_BYTES - (length % TAR_BLOCK_BYTES)) % TAR_BLOCK_BYTES;
+    let mut remaining = length.saturating_add(padding);
+    let mut scratch = [0_u8; 8 * 1024];
+    while remaining > 0 {
+        let take = remaining.min(scratch.len() as u64) as usize;
+        let read = reader.read(&mut scratch[..take])?;
+        ensure!(read > 0, "archive ended inside a member");
+        remaining -= read as u64;
+    }
+    Ok(())
+}
+
 impl<R: Read> Read for BoundedStream<R> {
     fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
         if self.remaining == 0 {
@@ -252,8 +400,18 @@ pub fn extract_zip_safe(
 
         if directory {
             // A directory body is never legitimate: the member is a directory, so its
-            // declared size must be zero and no body bytes are consumed.
+            // declared size must be zero. The stream is consumed and the checksum compared
+            // as well, because a crafted central directory can claim an empty directory
+            // while the member still carries a body.
             ensure!(entry.size() == 0, "zip_entry_directory_body_unsupported");
+            let mut sink = std::io::sink();
+            let body = std::io::copy(&mut entry, &mut sink)?;
+            ensure!(body == 0, "zip_entry_directory_body_unsupported");
+            ensure!(
+                entry.compressed_size() == 0,
+                "zip_entry_directory_body_unsupported"
+            );
+            ensure!(entry.crc32() == 0, "zip_entry_directory_body_unsupported");
             extraction_root.create_directory(&relative)?;
             result.push(ZipEntryInfo {
                 path: relative,
@@ -308,6 +466,11 @@ pub fn extract_tar_gz_safe(
     let max_total_bytes = max_total_bytes.unwrap_or(DEFAULT_MAX_TOTAL_BYTES);
     let max_entries = max_entries.unwrap_or(DEFAULT_MAX_ENTRIES);
     let max_depth = max_depth.unwrap_or(DEFAULT_MAX_DEPTH);
+
+    // Raw admission first: every header, type and metadata size is bounded before the
+    // TAR library parses the stream, so no GNU/PAX body or sparse descriptor can be
+    // buffered ahead of the policy refusal.
+    validate_tar_gz_structure(bytes, max_total_bytes, max_entries, max_depth)?;
 
     let budget = decoded_tar_gz_budget(max_total_bytes, max_entries, max_depth);
     let metadata_budget = decoded_tar_gz_metadata_budget(max_depth);
@@ -979,7 +1142,7 @@ mod tests {
             extract_tar_gz_safe(&oversized, &refused_root, Some(1024), Some(8), Some(4)).is_err(),
             "long-name metadata beyond the decoded budget is refused"
         );
-        assert_eq!(fs::read_dir(&refused_root).unwrap().count(), 0);
+        assert!(!refused_root.exists());
     }
 
     #[test]
@@ -1011,7 +1174,7 @@ mod tests {
             extract_tar_gz_safe(&gz_bytes, &destination, Some(8192), Some(8), Some(4)).is_err(),
             "a directory body is refused"
         );
-        assert_eq!(fs::read_dir(&destination).unwrap().count(), 0);
+        assert!(!destination.exists());
     }
 
     #[test]
@@ -1155,7 +1318,9 @@ mod tests {
         let mut cursor = std::io::Cursor::new(Vec::new());
         {
             let mut writer = zip::ZipWriter::new(&mut cursor);
-            let options = zip::write::SimpleFileOptions::default();
+            // Directory-mode external attributes, so the fixture reaches the body guard
+            // instead of being refused as a regular file with a directory name.
+            let options = zip::write::SimpleFileOptions::default().unix_permissions(0o040755);
             writer.start_file("data/d/", options).unwrap();
             writer.write_all(b"body").unwrap();
             writer.finish().unwrap();
@@ -1164,9 +1329,115 @@ mod tests {
         let destination = temp.join("zip-body");
         assert!(
             extract_zip_safe(&bytes, &destination, default_zip_extraction_limits()).is_err(),
-            "a ZIP directory entry with a body is refused"
+            "a directory-mode ZIP entry with a body is refused"
         );
         assert_eq!(fs::read_dir(&destination).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn zip_directory_with_a_hidden_body_behind_zero_declared_sizes_is_refused() {
+        let temp = temp_dir();
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut cursor);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored)
+                .unix_permissions(0o040755);
+            writer.start_file("data/d/", options).unwrap();
+            writer.write_all(b"bodybody").unwrap();
+            writer.finish().unwrap();
+        }
+        let mut bytes = cursor.into_inner();
+        // Patch the central directory entry's compressed and uncompressed sizes to zero,
+        // leaving the real body and its checksum in place.
+        let central = bytes
+            .windows(4)
+            .position(|window| window == [0x50, 0x4b, 0x01, 0x02])
+            .expect("central directory header");
+        bytes[central + 20..central + 24].fill(0);
+        bytes[central + 24..central + 28].fill(0);
+
+        let destination = temp.join("zip-hidden-body");
+        assert!(
+            extract_zip_safe(&bytes, &destination, default_zip_extraction_limits()).is_err(),
+            "a directory claiming zero sizes while carrying a checksummed body is refused"
+        );
+        assert_eq!(fs::read_dir(&destination).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn raw_admission_refuses_oversized_metadata_before_the_library_buffers_it() {
+        let long_name = format!("data/{}", "l".repeat(8 * 1024));
+        let bytes = gzip(&tar_bytes_with(&[(long_name.as_str(), b"abc")]));
+        // The aggregate budget admits this stream; the raw scanner refuses the 8 KiB
+        // metadata against the 2,560-byte per-member budget before the library parses it.
+        let error = validate_tar_gz_structure(&bytes, 64 * 1024, 8, 4)
+            .expect_err("metadata beyond the per-member budget is refused");
+        assert!(error.to_string().contains("metadata exceeds"), "{error}");
+    }
+
+    #[test]
+    fn raw_admission_refuses_a_sparse_type_before_the_library_parses_it() {
+        let temp = temp_dir();
+        let mut tar_bytes = tar_bytes_with(&[("data/real.txt", b"abc")]);
+        // Replace the archive with a sparse header ('S') ahead of the terminator.
+        let mut sparse = [0_u8; 512];
+        sparse[..4].copy_from_slice(b"spar");
+        sparse[124..136].copy_from_slice(b"00000000000\0");
+        sparse[156] = b'S';
+        // A valid checksum for the crafted header (checksum field read as spaces).
+        let mut unsigned = 0_u64;
+        for (index, byte) in sparse.iter().enumerate() {
+            let value = if (148..156).contains(&index) {
+                b' '
+            } else {
+                *byte
+            };
+            unsigned += u64::from(value);
+        }
+        sparse[148..156].copy_from_slice(format!("{unsigned:06o}\0 ").as_bytes());
+        tar_bytes.truncate(tar_bytes.len() - 1024);
+        tar_bytes.extend_from_slice(&sparse);
+        tar_bytes.extend_from_slice(&[0_u8; 1024]);
+        let bytes = gzip(&tar_bytes);
+
+        let destination = temp.join("sparse");
+        let error = extract_tar_gz_safe(&bytes, &destination, None, None, None)
+            .expect_err("a sparse type is refused");
+        assert!(error.to_string().contains("unsupported type"), "{error}");
+        assert!(!destination.exists());
+    }
+
+    #[test]
+    fn raw_admission_refuses_a_member_hidden_behind_the_terminator() {
+        let mut tar_bytes = tar_bytes_with(&[("data/real.txt", b"abc")]);
+        // `finish` already wrote the zero terminator; append another member behind it
+        // inside the same GZIP member.
+        let mut hidden = [0_u8; 512];
+        hidden[..8].copy_from_slice(b"hidden.t");
+        hidden[124..136].copy_from_slice(b"00000000003\0");
+        hidden[156] = b'0';
+        let mut unsigned = 0_u64;
+        for (index, byte) in hidden.iter().enumerate() {
+            let value = if (148..156).contains(&index) {
+                b' '
+            } else {
+                *byte
+            };
+            unsigned += u64::from(value);
+        }
+        hidden[148..156].copy_from_slice(format!("{unsigned:06o}\0 ").as_bytes());
+        tar_bytes.extend_from_slice(&hidden);
+        tar_bytes.extend_from_slice(b"hid");
+        tar_bytes.extend_from_slice(&[0_u8; 509]);
+        let bytes = gzip(&tar_bytes);
+
+        let temp = temp_dir();
+        let destination = temp.join("hidden");
+        assert!(
+            extract_tar_gz_safe(&bytes, &destination, None, None, None).is_err(),
+            "a member behind the TAR terminator is refused"
+        );
     }
 
     #[test]

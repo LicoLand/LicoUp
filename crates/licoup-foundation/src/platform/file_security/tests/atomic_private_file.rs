@@ -82,8 +82,8 @@ fn replacing_a_hard_link_alias_preserves_the_other_name() {
 
 #[cfg(unix)]
 #[test]
-fn a_post_rename_sync_failure_restores_the_previous_output() {
-    let root = temp_path("atomic-commit-sync-failure");
+fn a_pre_replacement_sync_failure_keeps_the_previous_output() {
+    let root = temp_path("atomic-pre-sync-failure");
     fs::create_dir_all(&root).unwrap();
     let temporary = root.join("temporary.tmp");
     let destination = root.join("destination");
@@ -93,25 +93,58 @@ fn a_post_rename_sync_failure_restores_the_previous_output() {
     fs::write(&destination, b"previous").unwrap();
 
     let error = super::super::atomic_replace::commit_with_sync(&temporary, &destination, |_| {
-        Err(anyhow::anyhow!("injected parent sync failure"))
+        Err(anyhow::anyhow!("injected pre-replacement sync failure"))
     })
-    .expect_err("a failed parent sync must fail the commit");
+    .expect_err("a failed pre-replacement sync must fail the commit");
 
-    assert_eq!(error.to_string(), "injected parent sync failure");
+    assert_eq!(error.to_string(), "injected pre-replacement sync failure");
     assert_eq!(fs::read(&destination).unwrap(), b"previous");
+    assert!(
+        temporary.exists(),
+        "temporary cleanup belongs to the caller's checked abort"
+    );
+    fs::remove_file(&temporary).unwrap();
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_post_replacement_sync_failure_reports_unconfirmed_and_keeps_the_replacement() {
+    let root = temp_path("atomic-post-sync-failure");
+    fs::create_dir_all(&root).unwrap();
+    let temporary = root.join("temporary.tmp");
+    let destination = root.join("destination");
+    fs::write(&temporary, b"replacement").unwrap();
+    fs::set_permissions(&temporary, fs::Permissions::from_mode(0o600)).unwrap();
+    fs::write(&destination, b"previous").unwrap();
+
+    let mut calls = 0_u32;
+    let durability =
+        super::super::atomic_replace::commit_with_sync(&temporary, &destination, |_| {
+            calls += 1;
+            if calls == 2 {
+                Err(anyhow::anyhow!("injected post-replacement sync failure"))
+            } else {
+                Ok(())
+            }
+        })
+        .expect("the replacement completes");
+
+    assert_eq!(durability, super::super::CommitDurability::Unconfirmed);
+    assert_eq!(fs::read(&destination).unwrap(), b"replacement");
     assert!(!temporary.exists());
     assert_eq!(
         fs::read_dir(&root).unwrap().count(),
         1,
-        "only the previous destination remains"
+        "only the confirmed replacement remains"
     );
     fs::remove_dir_all(root).unwrap();
 }
 
 #[cfg(unix)]
 #[test]
-fn a_post_rename_sync_failure_removes_a_previously_absent_destination() {
-    let root = temp_path("atomic-commit-sync-absent");
+fn a_pre_replacement_sync_failure_leaves_a_previously_absent_destination_absent() {
+    let root = temp_path("atomic-pre-sync-absent");
     fs::create_dir_all(&root).unwrap();
     let temporary = root.join("temporary.tmp");
     let destination = root.join("destination");
@@ -119,14 +152,85 @@ fn a_post_rename_sync_failure_removes_a_previously_absent_destination() {
     fs::set_permissions(&temporary, fs::Permissions::from_mode(0o600)).unwrap();
 
     let error = super::super::atomic_replace::commit_with_sync(&temporary, &destination, |_| {
-        Err(anyhow::anyhow!("injected parent sync failure"))
+        Err(anyhow::anyhow!("injected pre-replacement sync failure"))
     })
-    .expect_err("a failed parent sync must fail the commit");
+    .expect_err("a failed pre-replacement sync must fail the commit");
 
-    assert_eq!(error.to_string(), "injected parent sync failure");
+    assert_eq!(error.to_string(), "injected pre-replacement sync failure");
     assert!(!destination.exists());
+    assert!(temporary.exists());
+    fs::remove_file(&temporary).unwrap();
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_post_replacement_sync_failure_publishes_into_a_previously_absent_destination() {
+    let root = temp_path("atomic-post-sync-absent");
+    fs::create_dir_all(&root).unwrap();
+    let temporary = root.join("temporary.tmp");
+    let destination = root.join("destination");
+    fs::write(&temporary, b"replacement").unwrap();
+    fs::set_permissions(&temporary, fs::Permissions::from_mode(0o600)).unwrap();
+
+    let mut calls = 0_u32;
+    let durability =
+        super::super::atomic_replace::commit_with_sync(&temporary, &destination, |_| {
+            calls += 1;
+            if calls == 2 {
+                Err(anyhow::anyhow!("injected post-replacement sync failure"))
+            } else {
+                Ok(())
+            }
+        })
+        .expect("the replacement completes");
+
+    assert_eq!(durability, super::super::CommitDurability::Unconfirmed);
+    assert_eq!(fs::read(&destination).unwrap(), b"replacement");
     assert!(!temporary.exists());
-    assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failed_commit_reports_a_retained_temporary_when_cleanup_cannot_run() {
+    let root = temp_path("atomic-retained-temporary");
+    fs::create_dir_all(&root).unwrap();
+    let destination = root.join("archive.bin");
+    let mut writer = super::super::AtomicPrivateFile::create(&destination).unwrap();
+    writer.file_mut().write_all(b"archive").unwrap();
+    // The destination cannot be replaced and the temporary cannot be removed.
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o500)).unwrap();
+
+    let failure = writer.commit().expect_err("the replacement must fail");
+    let (error, retained) = failure.into_parts();
+    assert!(
+        error.to_string().contains("could not be committed"),
+        "{error}"
+    );
+    assert!(retained.is_some(), "the retained temporary is named");
+    assert!(!destination.exists());
+
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn discarding_reports_a_temporary_that_cannot_be_removed() {
+    let root = temp_path("atomic-retained-discard");
+    fs::create_dir_all(&root).unwrap();
+    let destination = root.join("archive.bin");
+    let writer = super::super::AtomicPrivateFile::create(&destination).unwrap();
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o500)).unwrap();
+
+    let outcome = writer.discard();
+    assert!(
+        matches!(outcome, super::super::CleanupOutcome::Retained(_)),
+        "{outcome:?}"
+    );
+
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
     fs::remove_dir_all(root).unwrap();
 }
 

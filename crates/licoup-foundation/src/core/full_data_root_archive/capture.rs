@@ -21,7 +21,7 @@ use std::io::{BufReader, BufWriter, Seek, Write};
 use std::path::{Path, PathBuf};
 
 use crate::core::safe_archive::default_zip_extraction_limits;
-use crate::platform::file_security::{AtomicPrivateFile, CommitDurability};
+use crate::platform::file_security::{AtomicPrivateFile, CleanupOutcome, CommitDurability};
 
 use super::inventory::{
     ArchiveManifest, InventoryEntry, InventoryKind, RecoveryCoverage, RecoveryLimitation,
@@ -95,9 +95,13 @@ pub fn export_data_root(request: &ExportRequest) -> Result<ExportOutcome> {
         "archive_export_limits_exceeded",
     )?;
 
-    let mut output = AtomicPrivateFile::create(&request.archive_path)
-        .map_err(|_| anyhow!("archive_destination_unwritable"))?;
-    {
+    let mut output = AtomicPrivateFile::create(&request.archive_path).map_err(|failure| {
+        retained_failure(
+            "archive_destination_unwritable",
+            failure.retained_temporary(),
+        )
+    })?;
+    let write_result = (|| -> Result<()> {
         let mut buffered = BufWriter::new(output.file_mut());
         match container {
             ArchiveContainer::Zip => {
@@ -123,6 +127,12 @@ pub fn export_data_root(request: &ExportRequest) -> Result<ExportOutcome> {
                     .map_err(|_| anyhow!("archive_write_failed"))?;
             }
         }
+        Ok(())
+    })();
+    if write_result.is_err() {
+        // Explicit checked abort: report a retained private temporary instead of
+        // relying on Drop, which cannot surface a cleanup failure.
+        return Err(cleanup_failure("archive_write_failed", output.discard()));
     }
     finish_archive(output)?;
 
@@ -205,31 +215,60 @@ fn recovery_limitations(entries: &[InventoryEntry]) -> Vec<RecoveryLimitation> {
     }]
 }
 
+/// Turn a private-write cleanup outcome into the caller's refusal message: a retained
+/// temporary is named as an incomplete cleanup instead of being erased.
+fn cleanup_failure(code: &'static str, cleanup: CleanupOutcome) -> anyhow::Error {
+    match cleanup {
+        CleanupOutcome::Removed => anyhow!("{code}"),
+        CleanupOutcome::Retained(path) => retained_failure(code, Some(&path)),
+    }
+}
+
+/// The same refusal with a retained private temporary already extracted.
+fn retained_failure(code: &'static str, retained: Option<&Path>) -> anyhow::Error {
+    match retained {
+        Some(path) => anyhow!(
+            "{code}; archive_cleanup_incomplete: retained {}",
+            path.display()
+        ),
+        None => anyhow!("{code}"),
+    }
+}
+
 /// Check the finished private artifact against the importer's own byte policy before
 /// committing it, so a successful export is always importable under that policy.
 ///
 /// The check runs after the bytes are written but before the rename that publishes
-/// them; a refusal removes the private temporary file and leaves any prior output in
-/// place.
+/// them; a refusal removes the private temporary file with a checked outcome and leaves
+/// any prior output in place.
 fn finish_archive(mut output: AtomicPrivateFile) -> Result<()> {
-    let artifact_bytes = output
-        .file_mut()
-        .metadata()
-        .map_err(|_| anyhow!("archive_write_failed"))?
-        .len();
-    ensure!(
-        artifact_bytes <= default_zip_extraction_limits().max_archive_bytes,
-        "archive_export_limits_exceeded"
-    );
-    match output
-        .commit()
-        .map_err(|_| anyhow!("archive_write_failed"))?
-    {
-        CommitDurability::Confirmed => Ok(()),
+    let artifact_bytes = match output.file_mut().metadata() {
+        Ok(metadata) => metadata.len(),
+        Err(_) => return Err(cleanup_failure("archive_write_failed", output.discard())),
+    };
+    if artifact_bytes > default_zip_extraction_limits().max_archive_bytes {
+        return Err(cleanup_failure(
+            "archive_export_limits_exceeded",
+            output.discard(),
+        ));
+    }
+    match output.commit() {
+        Ok(CommitDurability::Confirmed) => Ok(()),
         // The archive is complete at its destination and must be kept; only its
         // directory entry could not be confirmed durable. Report that typed incomplete
         // state rather than success or a misleading write failure.
-        CommitDurability::Unconfirmed => Err(anyhow!("archive_commit_durability_unconfirmed")),
+        Ok(CommitDurability::Unconfirmed) => Err(anyhow!("archive_commit_durability_unconfirmed")),
+        Err(failure) => {
+            let (error, retained) = failure.into_parts();
+            if let Some(path) = retained {
+                Err(anyhow!(
+                    "archive_write_failed; archive_cleanup_incomplete: {error}; retained {}",
+                    path.display()
+                ))
+            } else {
+                Err(anyhow!("archive_write_failed"))
+            }
+        }
     }
 }
 
@@ -559,6 +598,33 @@ mod tests {
                 .len(),
             limits.max_archive_bytes
         );
+        std::fs::remove_dir_all(root).expect("remove scratch");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_commit_failure_with_retained_temporary_reports_incomplete_cleanup() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = artifact_scratch("retained-temporary");
+        let destination = root.join("artifact.zip");
+        let mut output = AtomicPrivateFile::create(&destination).expect("create private output");
+        output
+            .file_mut()
+            .write_all(b"archive")
+            .expect("write artifact");
+        // The destination cannot be replaced and the private temporary cannot be removed.
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o500))
+            .expect("restrict parent");
+
+        let error = finish_archive(output).expect_err("the commit must fail");
+        let message = error.to_string();
+        assert!(message.starts_with("archive_write_failed"), "{message}");
+        assert!(message.contains("archive_cleanup_incomplete"), "{message}");
+        assert!(!destination.exists());
+
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))
+            .expect("restore parent");
         std::fs::remove_dir_all(root).expect("remove scratch");
     }
 }

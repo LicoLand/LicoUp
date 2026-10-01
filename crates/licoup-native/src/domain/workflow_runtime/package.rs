@@ -560,9 +560,11 @@ mod tests {
         let mut cursor = std::io::Cursor::new(Vec::new());
         {
             let mut writer = zip::ZipWriter::new(&mut cursor);
+            // Directory-mode external attributes, so the fixture reaches the directory
+            // body guard instead of being refused as a regular file with a directory name.
             let options = SimpleFileOptions::default()
                 .compression_method(zip::CompressionMethod::Deflated)
-                .unix_permissions(0o100600);
+                .unix_permissions(0o040755);
             writer.start_file("workflow.json", options).unwrap();
             writer.write_all(SYNTHETIC_FIXTURE_WORKFLOW).unwrap();
             writer.start_file("data/d/", options).unwrap();

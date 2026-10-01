@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 use crate::core::safe_archive::{
     BoundedStream, ZipExtractionLimits, decoded_tar_gz_budget, decoded_tar_gz_metadata_budget,
     default_zip_extraction_limits, extract_tar_gz_safe, extract_zip_safe, finish_tar_gz,
-    tar_gz_decoder,
+    tar_gz_decoder, validate_tar_gz_structure,
 };
 use crate::platform::file_security::{ensure_private_dir, harden_private_path, sync_directory};
 
@@ -142,9 +142,9 @@ pub fn restore_data_root(request: &RestoreRequest) -> Result<RestoreOutcome> {
     if let Err(error) = staging_directory.cleanup() {
         return Err(publication.fail(error));
     }
-    if let Err(error) =
-        sync_directory(&target_root).map_err(|_| anyhow!("archive_target_unwritable"))
-    {
+    // The scratch is gone: sync the target and the directory that held the scratch so
+    // the removal itself is durable, in that deterministic order.
+    if let Err(error) = sync_final_directories(&target_root, sync_directory) {
         return Err(publication.fail(error));
     }
     publication.disarm();
@@ -190,7 +190,12 @@ fn prepare_target_root(named: &Path, created: &mut BTreeSet<PathBuf>) -> Result<
             }
         }
         fs::create_dir_all(named).map_err(|_| anyhow!("archive_target_unwritable"))?;
-        created.extend(missing);
+        // Record the created chain in the same resolved namespace the target uses, so a
+        // bare relative target never contributes an empty sync path.
+        for directory in missing {
+            let resolved = directory.canonicalize().unwrap_or(directory);
+            created.insert(resolved);
+        }
     }
     let resolved = named
         .canonicalize()
@@ -199,6 +204,24 @@ fn prepare_target_root(named: &Path, created: &mut BTreeSet<PathBuf>) -> Result<
     // caller prepared.
     ensure_private_dir(&resolved).map_err(|_| anyhow!("archive_target_unwritable"))?;
     Ok(resolved)
+}
+
+/// Sync the target and the directory that held the scratch after its removal.
+///
+/// The deterministic order is the target first, then the sibling parent, so the removal
+/// of the operation's scratch is durable; the seam makes both the ordering and a sync
+/// fault observable without a real power loss.
+fn sync_final_directories<S>(target: &Path, mut sync: S) -> Result<()>
+where
+    S: FnMut(&Path) -> Result<()>,
+{
+    for directory in [Some(target), target.parent()].into_iter().flatten() {
+        if directory.as_os_str().is_empty() {
+            continue;
+        }
+        sync(directory).map_err(|_| anyhow!("archive_target_unwritable"))?;
+    }
+    Ok(())
 }
 
 /// Create the operation's scratch directory beside the target root.
@@ -317,6 +340,16 @@ fn inspect_zip(bytes: &[u8], limits: &ZipExtractionLimits) -> Result<InspectedAr
 /// drained through the same stream, and the pass ends only after the GZIP trailer is
 /// verified.
 fn inspect_tar_gz(bytes: &[u8], limits: &ZipExtractionLimits) -> Result<InspectedArchive> {
+    // Raw admission first: every TAR header, type and metadata size is bounded before the
+    // library parses the stream, so GNU/PAX bodies and sparse descriptors cannot be
+    // buffered ahead of the policy refusal.
+    validate_tar_gz_structure(
+        bytes,
+        limits.max_total_bytes,
+        limits.max_entries,
+        limits.max_depth,
+    )
+    .map_err(|_| anyhow!("archive_extraction_refused"))?;
     let budget =
         decoded_tar_gz_budget(limits.max_total_bytes, limits.max_entries, limits.max_depth);
     let metadata_budget = decoded_tar_gz_metadata_budget(limits.max_depth);
@@ -628,12 +661,16 @@ impl<'a> PublicationGuard<'a> {
                 directories.insert(path.clone());
             }
             if let Some(parent) = path.parent() {
-                directories.insert(parent.to_path_buf());
+                if !parent.as_os_str().is_empty() {
+                    directories.insert(parent.to_path_buf());
+                }
             }
         }
         for path in &self.created {
             if let Some(parent) = path.parent() {
-                directories.insert(parent.to_path_buf());
+                if !parent.as_os_str().is_empty() {
+                    directories.insert(parent.to_path_buf());
+                }
             }
         }
         directories
@@ -648,6 +685,9 @@ impl<'a> PublicationGuard<'a> {
         let mut ordered: Vec<PathBuf> = self.sync_plan().into_iter().collect();
         ordered.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
         for directory in ordered {
+            if directory.as_os_str().is_empty() {
+                continue;
+            }
             sync(&directory).map_err(|_| anyhow!("archive_target_unwritable"))?;
         }
         Ok(())
@@ -968,6 +1008,43 @@ mod tests {
         );
         assert!(!root.join("a").exists());
         drop(guard);
+        fs::remove_dir_all(root).expect("remove scratch");
+    }
+
+    #[test]
+    fn final_sync_orders_target_then_scratch_parent_and_reports_faults() {
+        let target = PathBuf::from("/fixture/restored");
+        let mut seen = Vec::new();
+        sync_final_directories(&target, |directory| {
+            seen.push(directory.to_path_buf());
+            Ok(())
+        })
+        .expect("final sync runs");
+        assert_eq!(seen, vec![target.clone(), PathBuf::from("/fixture")]);
+
+        let error = sync_final_directories(&target, |_| Err(anyhow!("injected final sync fault")))
+            .expect_err("a final sync fault is reported");
+        assert_eq!(error.to_string(), "archive_target_unwritable");
+    }
+
+    #[test]
+    fn a_failed_scratch_removal_is_reported_and_names_the_leftover() {
+        let root = scratch("staging-removal-failure");
+        let path = root.join("not-a-directory");
+        fs::write(&path, b"file").expect("fixture");
+        let mut staging = StagingDirectory {
+            path: path.clone(),
+            cleaned: false,
+        };
+        let error = staging.cleanup().expect_err("removal fails");
+        assert!(
+            error.to_string().contains("archive_target_cleanup_failed"),
+            "{error}"
+        );
+        assert!(
+            error.to_string().contains(&path.display().to_string()),
+            "{error}"
+        );
         fs::remove_dir_all(root).expect("remove scratch");
     }
 

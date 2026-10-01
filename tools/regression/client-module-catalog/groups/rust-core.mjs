@@ -160,6 +160,17 @@ export const RUST_CORE_MODULES = Object.freeze([
       ],
       command: rustCrateIntegrationTest("licoup-foundation", "full_data_root_archive"),
     }),
+  defineModule({
+      id: "rust.core.full-data-root-archive.guards",
+      kind: "rust-core",
+      summary: "Archive owner unit and injected-fault guards for capture and restore",
+      inputs: [
+        "crates/licoup-foundation/src/core/full_data_root_archive/capture.rs",
+        "crates/licoup-foundation/src/core/full_data_root_archive/inventory.rs",
+        "crates/licoup-foundation/src/core/full_data_root_archive/restore.rs",
+      ],
+      command: foundationLayer("core::full_data_root_archive"),
+    }),
   secureMeshModule({
       id: "rust.core.secure-mesh",
       summary: "Secure Client Mesh protocol versions and public envelope bounds",
