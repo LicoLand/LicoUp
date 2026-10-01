@@ -386,6 +386,7 @@ test("architecture and package facades retain precise source-bundle ownership", 
     "apps/desktop/scripts/client-architecture/ratchet/lexical.mjs",
     "apps/desktop/scripts/client-architecture/ratchet/measure.mjs",
     "apps/desktop/scripts/client-architecture/ratchet/ownership.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/target-attribution.mjs",
   ];
   const ratchetTest =
     "tests/contract/client/client-architecture-ratchet.test.mjs";
@@ -394,12 +395,14 @@ test("architecture and package facades retain precise source-bundle ownership", 
       "regression.infrastructure",
       "regression.test-artifact-lifecycle",
       "regression.documentation-governance",
+      "regression.development-reports",
       "regression.client-architecture-ratchet",
       "architecture.client-boundaries",
       "release.workflows",
     ]],
     ["package-lock.json", [
       "regression.infrastructure",
+      "regression.development-reports",
       "regression.client-architecture-ratchet",
       "architecture.client-boundaries",
     ]],
@@ -476,6 +479,13 @@ test("architecture and package facades retain precise source-bundle ownership", 
     if (relativePath.includes("/bundle-resolver/") ||
         relativePath.endsWith("/resource-assembly.mjs")) {
       expected.unshift("regression.subagent-mcp-common");
+    }
+    if ([
+      "apps/desktop/scripts/package-client/build/release-tools.mjs",
+      "apps/desktop/scripts/package-client/build/native.mjs",
+      "apps/desktop/scripts/package-client/orchestrator.mjs",
+    ].includes(relativePath)) {
+      expected.push("release.migration-asset");
     }
     assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), expected);
   }

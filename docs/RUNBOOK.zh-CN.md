@@ -218,6 +218,41 @@ npm run client:regression -- \
 `release` 晋升边运行。源码策略只依赖 Node，不安装平台工具链，也不构成对在线服务、
 运行时数据采集、设备安装、签名、发布或商店操作的授权。
 
+### 静态架构指标
+
+`npm run client:verify:architecture` 以架构棘轮阶段收尾，测量五项静态指标，
+并输出用于里程碑检查结果的数值记录：
+
+- 内核 Cargo 对可选能力 crate 的依赖；
+- `licoup-native` 中 domain/platform 与 platform/domain 的跨层导入文件；
+- 单一定义范围内 `licoup-native` 的 Rust 规模；
+- 打包模块集合包含的可选能力；
+- 运行时源码中开发工具的执行落点，以及每个落点的已审阅身份指纹和归属工具。
+
+精确范围、可选 crate 与打包属主映射、已有依据的开发工具例外表位于
+`apps/desktop/scripts/client-architecture/ratchet/definitions.mjs`；每项指标同时
+在验证报告的 `details.definition` 中输出其定义。Cargo 清单图使用固定版本的
+`smol-toml` 开发依赖解析，按 Cargo 声明读取工作区继承、重命名与路径本地性。
+
+Cargo 激活包含默认 feature、依赖的 feature 请求以及强弱转发；弱转发不激活
+尚未启用的可选依赖。能力属主表必须完整解析，无法支持的表达式或本地图覆盖应
+拒绝测量，而不是静默消除可选依赖债务。声明的二进制目标必须有源文件；自动
+发现二进制遵守 `autobins`。
+
+必需输入丢失、源码不可读或进程目标未解析时，检查与报告均输出
+`measurement-refused`。部分观察仍是诊断证据，但可比较数值记录为 null，不报告
+或记录改善。这包括没有开发工具字面量证据的动态目标：不能推断未知可执行文件
+无害，也不得执行或探查外部 Agent 协议来消除未知。例外指纹保留字符串字面量
+字节并绑定精确工具集合；替换语句或新增执行不能沿用原例外。
+
+已记录的数值和集合只能向改善方向移动。数值增加或集合新增成员会报告具体条目
+并使检查失败；改善则通过并提示更新基线。首次可比较基线仅在完整整合候选上用
+`node apps/desktop/scripts/verify-client-architecture.mjs --record-ratchet-baseline`
+记录，写入 `apps/desktop/scripts/client-architecture/ratchet/baseline.json`，拒绝
+不完整输入或提高已记录值。损坏、不可读的基线不能视作不存在；未记录基线按设计
+使检查失败。安装体积、全新最小安装后的进程、监听端口与登录项属于另行指派的
+已安装候选证据，不在这里测量。
+
 ### 诊断失败检查
 
 1. 只重跑失败的定向命令，不重跑完整套件。

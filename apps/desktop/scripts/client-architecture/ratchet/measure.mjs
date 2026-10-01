@@ -608,10 +608,12 @@ export async function measureOptionalCapabilitiesInPackaging({ repoRoot, io = fs
 
 /** Metric 5: developer-tool execution sinks in runtime sources. */
 export async function measureDeveloperToolSites({ repoRoot, allowlist, io = fs }) {
+  const graph = await collectManifestGraph({ repoRoot, ...io });
   const inspection = await inspectDeveloperToolSites({
     repoRoot,
     readdir: io.readdir,
     readFile: io.readFile,
+    manifests: graph.byPath,
     ...(allowlist === undefined ? {} : { allowlist }),
   });
   const unallowlistedIds = inspection.unallowlisted.flatMap((sink) =>
@@ -632,10 +634,13 @@ export async function measureDeveloperToolSites({ repoRoot, allowlist, io = fs }
       execution_sites: inspection.executionSites,
       unallowlisted_sites: inspection.unallowlisted,
       unresolved_sites: inspection.unresolved,
+      resolved_non_tool_sites: inspection.resolvedNonTools,
+      non_process_sites: inspection.nonProcess,
+      non_runtime_crates: inspection.nonRuntimeCrates,
       stale_allowlist: inspection.staleAllowlist,
       invalid_allowlist: inspection.invalidAllowlist,
       references: inspection.references,
-      problems: [...inspection.problems],
+      problems: [...graph.problems, ...inspection.problems],
     },
   };
 }

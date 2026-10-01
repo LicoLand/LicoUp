@@ -131,6 +131,7 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "apps/desktop/scripts/verify-client-architecture.mjs",
   ])), [
     "regression.client-architecture-modules",
+    "regression.client-architecture-ratchet",
     "architecture.client-boundaries",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([

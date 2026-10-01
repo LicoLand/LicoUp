@@ -441,6 +441,10 @@ export async function collectManifestGraph({
       path: manifestPath,
       source: texts.get(manifestPath),
       name: packageName,
+      publish: document.package?.publish,
+      libraryTypes: Array.isArray(document.lib?.["crate-type"])
+        ? [...document.lib["crate-type"]]
+        : document.lib?.["crate-type"] === undefined ? ["lib"] : null,
       bins: [...new Set([...explicitBins, ...implicitBins])],
       features: document.features && typeof document.features === "object"
         ? document.features

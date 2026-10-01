@@ -295,6 +295,7 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
         "apps/desktop/scripts/package-client-self-test.mjs",
         "apps/desktop/scripts/package-client/build/flutter.mjs",
         "apps/desktop/scripts/package-client/build/native.mjs",
+        "apps/desktop/scripts/package-client/build/release-tools.mjs",
         "apps/desktop/scripts/package-client/build/swift.mjs",
         "apps/desktop/scripts/package-client/bundle-resolver/linux.mjs",
         "apps/desktop/scripts/package-client/bundle-resolver/macos.mjs",
@@ -508,6 +509,7 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
       kind: "release",
       summary: "On-demand standalone migration tool asset, its release metadata and unbundled build stage",
       inputs: [
+        "apps/desktop/scripts/package-client/build/native.mjs",
         "apps/desktop/scripts/package-client/build/release-tools.mjs",
         "apps/desktop/scripts/package-client/orchestrator.mjs",
         "apps/desktop/scripts/build-platform-release-package.mjs",

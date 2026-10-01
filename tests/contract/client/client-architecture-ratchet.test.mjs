@@ -902,6 +902,7 @@ test("record command refuses while an unjustified execution sink exists", async 
 test("invalid allowlist entries become measurement problems and leave sinks unjustified", async () => {
   const file = "crates/demo/src/lib.rs";
   await withFixtureTree({
+    "Cargo.toml": "[workspace]\n",
     [file]: 'pub fn run() {\n  Command::new("node").spawn();\n}\n',
   }, async (root) => {
     const metric = await measureDeveloperToolSites({
@@ -969,6 +970,7 @@ test("unknown known-process targets refuse actual measurement, check and record 
 test("known non-developer targets and unrelated thread APIs remain valid static negatives", async () => {
   await withFixtureTree(completeFixture({
     "crates/licoup-native/src/domain/known.rs": [
+      'use std::process::Command;',
       'const PROGRAM: &str = "git";',
       'pub fn run() { let binary = PROGRAM; let mut command = Command :: new (binary); command.status(); }',
       'pub fn threads() { scope.spawn(move || {}); }',
@@ -999,6 +1001,110 @@ test("shared Command builders retain each spawn, output and status sink identity
   assert.equal(duplicate.unallowlisted.length, 1);
   const broader = allowlist.map((entry) => ({ ...entry, tools: ["node", "npm"] }));
   assert.equal((await inspectFixture({ [file]: source }, broader)).unallowlisted.length, 4);
+});
+
+test("source-proven constructed targets retain developer-tool identity", async () => {
+  for (const [expression, tool] of [
+    ['format!("{}{}", "no", "de")', "node"],
+    ['format!("{}{}", "py", "thon3")', "python3"],
+    ['"node.exe"', "node"],
+    ['"NPM.CMD"', "npm"],
+  ]) {
+    await withFixtureTree(completeFixture({
+      "crates/licoup-native/src/domain/target.rs": `use std::process::Command; fn run() { let binary = ${expression}; Command::new(binary).spawn(); }`,
+    }), async (root) => {
+      const metric = await measureDeveloperToolSites({ repoRoot: root });
+      assert.deepEqual(metric.details.problems, [], expression);
+      assert.equal(metric.ratchet.execution_sites, 1, expression);
+      assert.deepEqual(metric.details.execution_sites[0].tools, [tool], expression);
+      assert.equal(metric.details.unallowlisted_sites.length, 1, expression);
+    });
+  }
+});
+
+test("mutated target bindings cannot retain an earlier harmless literal", async () => {
+  for (const body of [
+    'let mut binary = "py".to_owned(); binary.push_str("thon3"); Command::new(binary).spawn();',
+    'let mut binary = "git".to_owned(); binary += suffix; Command::new(binary).spawn();',
+    'let mut base = std::path::PathBuf::from("git"); base.set_file_name(name); Command::new(base).spawn();',
+  ]) {
+    await withFixtureTree(completeFixture({
+      "crates/licoup-native/src/domain/mutated.rs": `use std::process::Command; fn run(name: &str, suffix: &str) { ${body} }`,
+    }), async (root) => assertMeasurementRefused(root, /mutat|reassign/u));
+  }
+});
+
+test("trait signatures are not call-site evidence for implementation parameters", async () => {
+  await withFixtureTree(completeFixture({
+    "crates/licoup-native/src/domain/runner.rs": [
+      'use std::process::Command;',
+      'trait Runner { fn spawn(&self, executable: &str); }',
+      'struct Native;',
+      'impl Runner for Native { fn spawn(&self, executable: &str) { Command::new(executable).spawn(); } }',
+    ].join("\n"),
+  }), async (root) => {
+    const metric = await measureDeveloperToolSites({ repoRoot: root });
+    assert.match(metric.details.problems.join("\n"), /open caller boundary/u);
+    assert.doesNotMatch(metric.details.problems.join("\n"), /expression: executable: &str/u);
+    await assertMeasurementRefused(root, /open caller boundary/u);
+  });
+});
+
+test("private dev-only libraries are excluded by manifest ownership, not by filename", async () => {
+  const helper = "crates/compile-fixtures";
+  const files = completeFixture({
+    "crates/licoup-native/Cargo.toml": crateManifest("licoup-native", {}, '\n[dev-dependencies]\ncompile-fixtures = { path = "../compile-fixtures" }\n'),
+    [`${helper}/Cargo.toml`]: '[package]\nname = "compile-fixtures"\nversion = "0.0.0"\npublish = false\n',
+    [`${helper}/src/lib.rs`]: 'use std::process::Command; pub fn compile(program: &str) { Command::new(program).status(); }',
+  });
+  await withFixtureTree(files, async (root) => {
+    const metric = await measureDeveloperToolSites({ repoRoot: root });
+    assert.deepEqual(metric.details.problems, []);
+    assert.equal(metric.ratchet.execution_sites, 0);
+    assert.deepEqual(metric.details.non_runtime_crates.map((entry) => entry.name), ["compile-fixtures"]);
+    assert.match(metric.details.non_runtime_crates[0].reason, /dev-dependencies/u);
+    assert.equal((await recordArchitectureRatchet({ repoRoot: root })).ok, true);
+    await fs.writeFile(path.join(root, "crates/licoup-native/Cargo.toml"), crateManifest("licoup-native", {
+      "compile-fixtures": { path: "../compile-fixtures", optional: true },
+    }));
+    await assertMeasurementRefused(root, /unresolved process target/u);
+  });
+  for (const declaration of ['\n[[bin]]\nname = "fixture-tool"\n', '\n[lib]\ncrate-type = ["cdylib"]\n']) {
+    await withFixtureTree({ ...files,
+      [`${helper}/Cargo.toml`]: files[`${helper}/Cargo.toml`] + declaration,
+      ...(declaration.includes("[[bin]]") ? { [`${helper}/src/main.rs`]: 'fn main() {}' } : {}),
+    }, async (root) => assertMeasurementRefused(root, /unresolved process target/u));
+  }
+});
+
+test("proven path reads and Command argument builders retain their fixed executable", async () => {
+  for (const source of [
+    'use std::process::Command; fn run() { let binary = std::path::PathBuf::from("git"); let _ = binary.to_str(); Command::new(binary).status(); }',
+    'use std::process::Command; fn build() -> Result<Command, ()> { let mut command = Command::new("git"); command.arg("--version"); Ok(command) } fn run() { let mut command = build().unwrap(); command.status(); }',
+    'use std::process::Command as Child; fn build() -> Result<Child, ()> { let mut command = Child::new("git"); command.arg("--version"); Ok(command) } fn run() { let mut command = build().unwrap(); command.status(); }',
+  ]) {
+    await withFixtureTree(completeFixture({
+      "crates/licoup-native/src/domain/fixed.rs": source,
+    }), async (root) => {
+      const measurement = await measureArchitectureRatchet({ repoRoot: root });
+      assert.deepEqual(measurement.problems, []);
+      assert.equal(measurement.record.developerToolExecutionSites, 0);
+      const detail = measurement.metrics.find((metric) => metric.id === "developer_tool_sites").details;
+      assert.equal(detail.resolved_non_tool_sites.length, source.includes("fn build()") ? 2 : 1,
+        "the returned builder sink must be attributed, not silently omitted");
+    });
+  }
+});
+
+test("open conversions and shadowed path types do not establish a harmless target", async () => {
+  for (const source of [
+    'use std::{process::Command, ffi::OsStr}; struct CustomProgram(String); impl From<&str> for CustomProgram { fn from(_: &str) -> Self { Self(["no", "de"].concat()) } } impl AsRef<OsStr> for CustomProgram { fn as_ref(&self) -> &OsStr { self.0.as_ref() } } fn run() { let program: CustomProgram = "git".into(); Command::new(program).spawn(); }',
+    'use std::process::Command; use std::path::PathBuf; mod inner { use super::*; struct PathBuf; impl PathBuf { fn from(_: &str) -> String { ["no", "de"].concat() } } fn run() { let program = PathBuf::from("git"); Command::new(program).spawn(); } }',
+  ]) {
+    await withFixtureTree(completeFixture({
+      "crates/licoup-native/src/domain/open.rs": source,
+    }), async (root) => assertMeasurementRefused(root, /unsupported|unresolved path/u));
+  }
 });
 
 test("all direct sink forms regress through the actual phase and cannot be recorded", async () => {
