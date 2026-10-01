@@ -2,7 +2,20 @@ use super::*;
 
 #[test]
 fn relocating_copied_data_home_rebases_only_owned_snapshot_references() {
-    let fixture = temp_dir("data-home-relocation");
+    exercise_relocation(false);
+}
+
+#[test]
+fn staged_relocation_verifies_physical_content_but_records_only_final_logical_paths() {
+    exercise_relocation(true);
+}
+
+fn exercise_relocation(staged: bool) {
+    let fixture = temp_dir(if staged {
+        "data-home-preparation"
+    } else {
+        "data-home-relocation"
+    });
     let previous_root = fixture.join("previous");
     let new_root = fixture.join("new");
     let client_state = previous_root.join("client-state");
@@ -10,7 +23,11 @@ fn relocating_copied_data_home_rebases_only_owned_snapshot_references() {
     let internal_archive_root = previous_root.join("archives/internal");
     let external_archive_root = previous_root.join("archives/external");
     let internal_baseline = previous_root.join("baseline/internal.jsonl");
-    let outside = temp_dir("data-home-relocation-outside");
+    let outside = temp_dir(if staged {
+        "data-home-preparation-outside"
+    } else {
+        "data-home-relocation-outside"
+    });
     let home = outside.join("agent-home");
     let external_baseline = outside.join("baseline.jsonl");
     let history = home.join(".codex/history.jsonl");
@@ -96,11 +113,20 @@ fn relocating_copied_data_home_rebases_only_owned_snapshot_references() {
         display_path(&external_baseline)
     );
 
-    copy_dir_all(&previous_root, &new_root).unwrap();
+    let physical_root = if staged {
+        fixture.join("private-staging")
+    } else {
+        new_root.clone()
+    };
+    copy_dir_all(&previous_root, &physical_root).unwrap();
     // The helper must carry forward the previously computed external baseline
     // result without reading the external file during relocation.
     fs::remove_file(&external_baseline).unwrap();
-    relocate_copied_data_home_references(&new_root, &previous_root, &new_root).unwrap();
+    relocate_copied_data_home_references(&physical_root, &previous_root, &new_root).unwrap();
+    if staged {
+        assert!(!new_root.exists(), "owner preparation did not publish");
+        fs::rename(&physical_root, &new_root).unwrap();
+    }
     fs::remove_dir_all(&previous_root).unwrap();
 
     let moved_state = new_root.join("client-state");
@@ -228,6 +254,9 @@ fn relocating_copied_data_home_rebases_only_owned_snapshot_references() {
         assert!(index_markdown.contains(&after.semantic_markdown_path));
         let summary = fs::read_to_string(collection_dir.join(SUMMARY_MD)).unwrap();
         assert!(summary.contains(&display_path(&archive_root)));
+        if staged {
+            assert!(!summary.contains(&display_path(&physical_root)));
+        }
     }
 
     let external_validation_after = read_json_or_default(

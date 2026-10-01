@@ -56,6 +56,7 @@ const OWNER_REFUSALS: &[&str] = &[
     "archive_manifest_unreadable",
     "archive_path_invalid",
     "archive_path_inside_data_root",
+    "archive_prepared_payload_exceeds_limits",
     "archive_payload_missing",
     "archive_source_home_invalid",
     "archive_target_invalid",

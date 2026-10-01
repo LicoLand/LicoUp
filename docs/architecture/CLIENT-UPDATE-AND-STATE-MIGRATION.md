@@ -44,15 +44,18 @@ compatibility entry point, or fallback. Retained repository diagnostics are
 developer tools, not another supported conversion authority. There is no
 arbitrary historical-target selection or downgrade conversion contract.
 
-Import first validates and extracts through Foundation, then prepares custody
-metadata and restores owner-managed references and revision protections. These
-owner checks currently run after publication into the empty destination, not as a
-crash-atomic activation transaction. The entry point holds selected-home writer
-coordination throughout. Reported owner failures use checked, directory-synced
-rollback; interruption or incomplete rollback leaves an unverified destination,
-not a usable recovery. Preserve it for diagnosis and retry from the unchanged
-source archive into a fresh empty home. Import never selects or activates the
-recovered home.
+Import validates and extracts through Foundation, then prepares custody metadata,
+owner-managed references and revision protections in its private staging payload.
+These owner checks finish before any payload is published into the empty destination.
+Physical staging paths are used only for verification; persisted references name the
+final logical home. Foundation revalidates the bounded, no-follow payload and preserves
+verified read-only protections during publication. One owner handles checked scratch
+cleanup, publication rollback and directory synchronization. The entry point holds
+selected-home writer coordination throughout. Multi-file publication is not a
+crash-atomic activation transaction: an interrupted or incompletely rolled-back
+destination is unverified, not a usable recovery. Preserve it for diagnosis and retry
+from the unchanged source archive into a fresh empty home. Import never selects or
+activates the recovered home.
 
 For a release that provides the tool, `LicoUp-migrate-macos-arm64` is downloaded
 on demand with its `.sha256` from that release and runs offline once obtained.

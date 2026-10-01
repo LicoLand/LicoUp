@@ -25,7 +25,9 @@ pub use inventory::{
     ARCHIVE_LAYOUT, ArchiveManifest, InventoryEntry, InventoryKind, RecoveryCoverage,
     RecoveryLimitation,
 };
-pub use restore::{RestoreOutcome, RestoreRequest, restore_data_root};
+pub use restore::{
+    RestoreOutcome, RestoreRequest, restore_data_root, restore_data_root_with_preparation,
+};
 
 use anyhow::{Result, anyhow};
 use std::path::Path;

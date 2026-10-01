@@ -27,7 +27,10 @@ use crate::core::safe_archive::{
 };
 use crate::platform::file_security::{ensure_private_dir, harden_private_path, sync_directory};
 
-use super::inventory::{ArchiveManifest, InventoryEntry, InventoryKind, posix_relative};
+use super::inventory::{
+    ArchiveManifest, InventoryEntry, InventoryKind, ensure_within_archive_limits,
+    inventory_data_root, posix_relative, validate_inventory_structure,
+};
 use super::{ArchiveContainer, DATA_PREFIX, MANIFEST_MEMBER, RecoveryCoverage, RecoveryLimitation};
 
 /// Staging directory base name. The concrete name is chosen so it cannot equal or
@@ -64,6 +67,17 @@ struct InspectedArchive {
 
 /// Extract `archive_path` into `target_root` and verify it against its manifest.
 pub fn restore_data_root(request: &RestoreRequest) -> Result<RestoreOutcome> {
+    restore_data_root_with_preparation(request, |_, _, _| Ok(()))
+}
+
+/// Run trusted application-owner preparation on the verified private payload,
+/// before publishing any payload entry. The source is logical provenance; the
+/// destination is the final resolved home, not the operation's scratch path.
+/// Foundation still owns bounds, no-follow inventory, publication and rollback.
+pub fn restore_data_root_with_preparation(
+    request: &RestoreRequest,
+    prepare: impl FnOnce(&Path, &Path, &Path) -> Result<()>,
+) -> Result<RestoreOutcome> {
     let container = ArchiveContainer::from_path(&request.archive_path)?;
     let limits = default_zip_extraction_limits();
     let bytes = read_archive_bounded(&request.archive_path, &limits)?;
@@ -124,11 +138,31 @@ pub fn restore_data_root(request: &RestoreRequest) -> Result<RestoreOutcome> {
     }
 
     let mut publication = PublicationGuard::new(&target_root, created_target_dirs);
+    let payload = staging.join("data");
+    let preparation = (|| {
+        ensure_private_dir(&payload)?;
+        prepare(
+            &payload,
+            Path::new(&inspected.manifest.source_home),
+            &target_root,
+        )?;
+        // Owner edits may change bytes or add owned files, but cannot escape the
+        // same bounded regular-file/directory policy applied to an archive.
+        let prepared = inventory_data_root(&payload)?;
+        let facts = validate_inventory_structure(&prepared)?;
+        ensure_within_archive_limits(&facts, 0, "archive_prepared_payload_exceeds_limits")?;
+        verify_payload(&staging, &prepared)?;
+        Ok::<_, anyhow::Error>(prepared)
+    })();
+    let prepared = match preparation {
+        Ok(prepared) => prepared,
+        Err(error) => return Err(publication.fail(staging_directory.fail(error))),
+    };
     if let Err(error) = publish_payload(
         &mut publication,
         &target_root,
         &staging,
-        &inspected.manifest.entries,
+        &prepared,
         publish_file,
     ) {
         let error = publication.fail(error);
@@ -576,6 +610,15 @@ where
     F: FnMut(&Path, &Path) -> Result<()>,
 {
     let extracted = staging.join("data");
+    let mut protected = Vec::new();
+    for entry in entries {
+        if fs::symlink_metadata(extracted.join(&entry.path))?
+            .permissions()
+            .readonly()
+        {
+            protected.push(target.join(&entry.path));
+        }
+    }
     for entry in entries {
         let destination = target.join(&entry.path);
         let mut ancestor = destination.parent();
@@ -589,9 +632,27 @@ where
         guard.record(destination.clone(), entry.kind == InventoryKind::Directory);
         match entry.kind {
             InventoryKind::Directory => guard.create_private_directory(&destination)?,
-            InventoryKind::File => publish_file(&extracted.join(&entry.path), &destination)
-                .map_err(|_| anyhow!("archive_target_unwritable"))?,
+            InventoryKind::File => {
+                let source = extracted.join(&entry.path);
+                // Moving a frozen revision member also needs write permission on
+                // its operation-owned source directory. Restore protection only
+                // after the complete publication; the recorded modes above win.
+                if let Some(parent) = source.parent() {
+                    make_operation_path_writable(parent)?;
+                }
+                make_operation_path_writable(&source)?;
+                publish_file(&source, &destination)
+                    .map_err(|_| anyhow!("archive_target_unwritable"))?;
+            }
         }
+    }
+    // Publish privately while parents are writable; then restore protections the
+    // owner verified in staging, deepest first. Archive bytes do not grant modes.
+    protected.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
+    for path in protected {
+        let mut permissions = fs::symlink_metadata(&path)?.permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&path, permissions)?;
     }
     Ok(())
 }
@@ -751,9 +812,20 @@ impl<'a> PublicationGuard<'a> {
             }
         };
         for path in &files {
+            if let Some(parent) = path.parent() {
+                let _ = make_operation_path_writable(parent);
+            }
+            let _ = make_operation_path_writable(path);
             remove(fs::remove_file(path), &mut failure);
         }
         for path in &ordered {
+            if let Some(parent) = path.parent() {
+                // Do not alter an unowned ancestor above the selected target.
+                if parent.starts_with(self.target) {
+                    let _ = make_operation_path_writable(parent);
+                }
+            }
+            let _ = make_operation_path_writable(path);
             remove(fs::remove_dir(path), &mut failure);
         }
         if failure.is_none() {
@@ -825,7 +897,15 @@ impl StagingDirectory {
         S: FnMut(&Path) -> Result<()>,
     {
         self.cleaned = true;
-        fs::remove_dir_all(&self.path).map_err(|error| {
+        let removal = (|| {
+            let metadata = fs::symlink_metadata(&self.path)?;
+            ensure!(
+                metadata.is_dir() && !metadata.file_type().is_symlink(),
+                "operation scratch type changed"
+            );
+            remove_operation_tree(&self.path)
+        })();
+        removal.map_err(|error| {
             anyhow!(
                 "archive_target_cleanup_failed: {} could not be removed: {error}",
                 self.path.display()
@@ -852,9 +932,47 @@ impl Drop for StagingDirectory {
     fn drop(&mut self) {
         if !self.cleaned {
             // Last resort for panics only; every normal failure path cleans up explicitly.
-            let _ = fs::remove_dir_all(&self.path);
+            let _ = self.cleanup();
         }
     }
+}
+
+/// Only operation-owned paths are passed here. Never change a symlink referent.
+fn make_operation_path_writable(path: &Path) -> Result<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if !metadata.file_type().is_symlink() && metadata.permissions().readonly() {
+        harden_private_path(path)?;
+        #[cfg(not(unix))]
+        {
+            let mut permissions = fs::symlink_metadata(path)?.permissions();
+            permissions.set_readonly(false);
+            fs::set_permissions(path, permissions)?;
+        }
+    }
+    Ok(())
+}
+
+fn remove_operation_tree(path: &Path) -> Result<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if metadata.is_dir() && !metadata.file_type().is_symlink() {
+        make_operation_path_writable(path)?;
+        for entry in fs::read_dir(path)? {
+            remove_operation_tree(&entry?.path())?;
+        }
+        fs::remove_dir(path)?;
+    } else {
+        make_operation_path_writable(path)?;
+        fs::remove_file(path)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -882,6 +1000,59 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).expect("create scratch");
         root
+    }
+
+    #[test]
+    fn publication_rollback_removes_prepared_readonly_members_and_reports_sync_failure() {
+        for created in [false, true] {
+            let root = scratch(if created {
+                "prepared-rollback-created"
+            } else {
+                "prepared-rollback-existing"
+            });
+            let staging = root.join("staging");
+            let target = root.join("target");
+            fs::create_dir_all(staging.join("data/revision")).unwrap();
+            fs::create_dir(&target).unwrap();
+            fs::write(staging.join("data/revision/member"), b"x").unwrap();
+            for relative in ["data/revision/member", "data/revision"] {
+                let path = staging.join(relative);
+                let mut permissions = fs::metadata(&path).unwrap().permissions();
+                permissions.set_readonly(true);
+                fs::set_permissions(path, permissions).unwrap();
+            }
+            let mut directories = BTreeSet::new();
+            if created {
+                directories.insert(target.clone());
+            }
+            let mut guard = PublicationGuard::new(&target, directories);
+            publish_payload(
+                &mut guard,
+                &target,
+                &staging,
+                &[
+                    directory_entry("revision"),
+                    file_entry("revision/member", 1),
+                ],
+                publish_file,
+            )
+            .unwrap();
+            assert!(
+                fs::metadata(target.join("revision"))
+                    .unwrap()
+                    .permissions()
+                    .readonly()
+            );
+            let error = guard
+                .rollback_with(|_| Err(anyhow!("synthetic rollback sync failure")))
+                .unwrap_err();
+            assert_eq!(error.to_string(), "synthetic rollback sync failure");
+            assert_eq!(target.exists(), !created);
+            if !created {
+                assert_eq!(fs::read_dir(&target).unwrap().count(), 0);
+            }
+            remove_operation_tree(&root).unwrap();
+        }
     }
 
     #[test]

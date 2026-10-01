@@ -30,6 +30,7 @@ use licoup_foundation::core::full_data_root_archive::{
     RestoreRequest, export_data_root, restore_data_root,
 };
 
+mod owner_preparation;
 mod transport_integrity;
 
 /// The manifest member every archive carries first. The owner's own constant is crate

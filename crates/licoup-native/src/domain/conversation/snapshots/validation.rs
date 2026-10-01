@@ -78,13 +78,14 @@ pub(super) fn validate_archive_collection_for_relocation(
     index_records: &[Value],
     profile: &ArchiveProfile,
     data_root: &Path,
+    logical_root: &Path,
     preserved_external_baseline: Option<Value>,
 ) -> Result<Value> {
     validate_archive_collection_with_options(
         collection_dir,
         index_records,
         profile,
-        Some(data_root),
+        Some((data_root, logical_root)),
         preserved_external_baseline,
     )
 }
@@ -93,7 +94,7 @@ fn validate_archive_collection_with_options(
     collection_dir: &Path,
     index_records: &[Value],
     profile: &ArchiveProfile,
-    data_root: Option<&Path>,
+    data_root: Option<(&Path, &Path)>,
     baseline_override: Option<Value>,
 ) -> Result<Value> {
     let mut issues = Vec::<Value>::new();
@@ -283,6 +284,14 @@ fn validate_archive_collection_with_options(
         for entry in fs::read_dir(&conversations_dir)? {
             let entry = entry?;
             let snapshot_path = entry.path().join(SNAPSHOT_JSON);
+            let snapshot_path = data_root
+                .and_then(|(physical, logical)| {
+                    snapshot_path
+                        .strip_prefix(physical)
+                        .ok()
+                        .map(|relative| logical.join(relative))
+                })
+                .unwrap_or(snapshot_path);
             if validation_file_path(&display_path(&snapshot_path), data_root).is_some()
                 && !indexed_snapshot_paths.contains(display_path(&snapshot_path).as_str())
             {
@@ -327,13 +336,15 @@ fn validate_archive_collection_with_options(
     }))
 }
 
-fn validation_file_path(path: &str, data_root: Option<&Path>) -> Option<PathBuf> {
+fn validation_file_path(path: &str, data_root: Option<(&Path, &Path)>) -> Option<PathBuf> {
     if path.is_empty() {
         return None;
     }
     let path = Path::new(path);
     match data_root {
-        Some(root) => super::relocation::copied_file(root, path),
+        Some((physical, logical)) => {
+            super::relocation::copied_logical_file(physical, logical, path)
+        }
         None if path.exists() => Some(path.to_path_buf()),
         None => None,
     }
@@ -375,12 +386,13 @@ fn baseline_coverage_with_root(
     profile: &ArchiveProfile,
     index_records: &[Value],
     total_bytes: u64,
-    data_root: &Path,
+    data_root: (&Path, &Path),
 ) -> Result<Value> {
     let Some(path) = &profile.baseline_index_path else {
         return Ok(json!({"configured": false}));
     };
-    let Some(copied_path) = super::relocation::copied_file(data_root, path) else {
+    let Some(copied_path) = super::relocation::copied_logical_file(data_root.0, data_root.1, path)
+    else {
         return Ok(json!({
             "configured": true,
             "status": "missing_baseline",
