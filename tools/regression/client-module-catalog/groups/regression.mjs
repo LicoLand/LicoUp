@@ -2,6 +2,34 @@ import { command, node, defineModule } from "../helpers.mjs";
 
 export const REGRESSION_MODULES = Object.freeze([
   defineModule({
+      id: "regression.client-state-migration",
+      kind: "regression-infrastructure",
+      summary: "Actual migration diagnostic and native-owner contract parity",
+      inputs: [
+        "tools/scripts/client-state-migration.mjs",
+        "tools/scripts/client-state-migration/**",
+        "tests/contract/client/client-state-migration.test.mjs",
+        "tests/contract/client/client-state-migration-diagnostic.test.mjs",
+        "tests/fixtures/client_state_migration/**",
+        "crates/licoup-conversation/src/store/schema.rs",
+        "crates/licoup-conversation/src/store/schema/**",
+        "crates/licoup-conversation/src/store/mod.rs",
+        "crates/licoup-conversation/src/store/native_sessions.rs",
+        "crates/licoup-foundation/src/core/sqlite_contract.rs",
+        "crates/licoup-native/src/domain/workflow_store/**",
+        "crates/licoup-native/src/domain/client_state_migration.rs",
+        "crates/licoup-native/src/domain/client_state_migration/**",
+        "crates/licoup-native/src/platform/client_state/**",
+        "crates/licoup-native/resources/client-state-migration-frontier.json",
+        "crates/licoup-native/resources/state-machines/update-handoff.json",
+      ],
+      command: command("node", [
+        "--test",
+        "tests/contract/client/client-state-migration.test.mjs",
+        "tests/contract/client/client-state-migration-diagnostic.test.mjs",
+      ], 60_000),
+    }),
+  defineModule({
       id: "regression.cli-command-admission-source-bundle",
       kind: "regression-infrastructure",
       summary: "Single-registry typed CLI admission source ownership and migration closure",

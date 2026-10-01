@@ -1,4 +1,5 @@
 export const CLIENT_MODULE_ID_ORDER = Object.freeze([
+  "regression.client-state-migration",
   "regression.infrastructure",
   "regression.cli-command-admission-source-bundle",
   "regression.test-artifact-lifecycle",

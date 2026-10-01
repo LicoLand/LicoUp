@@ -5905,6 +5905,14 @@ mod tests {
     use super::*;
     use crate::client_conversation::{EventPartKind, MembershipStatus, PrincipalKind};
 
+    // Shared data includes domains this crate does not own. Only the independent
+    // Conversation layout is used here; the native tests exercise the full root.
+    #[allow(dead_code)]
+    mod released_source {
+        include!("../../../../tests/fixtures/client_state_migration/released_source.rs");
+        include!("../../../../tests/fixtures/client_state_migration/owner_layouts.rs");
+    }
+
     fn owner() -> Principal {
         Principal {
             id: "human:local".into(),
@@ -8323,17 +8331,13 @@ mod tests {
         std::fs::create_dir_all(fixture_database(&root).parent().unwrap()).unwrap();
         let fixture = open_fixture_connection(&root);
         fixture
+            .execute_batch(&released_source::supported_conversation_schema(5))
+            .unwrap();
+        fixture
             .execute_batch(
-                "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-                 INSERT INTO schema_meta(key, value) VALUES ('version', '5');
-                 CREATE TABLE conversations (
-                   id TEXT PRIMARY KEY, title TEXT NOT NULL,
-                   archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)),
-                   pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),
-                   is_group INTEGER NOT NULL DEFAULT 0 CHECK(is_group IN (0,1)),
-                   revision INTEGER NOT NULL DEFAULT 0,
-                   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-                 );",
+                "INSERT INTO schema_meta(key, value) VALUES ('version', '5');
+                 INSERT INTO conversations(id,title,created_at,updated_at)
+                 VALUES ('retained-conversation','Synthetic retained title',1,1);",
             )
             .unwrap();
         fixture.close().unwrap();
@@ -8352,6 +8356,10 @@ mod tests {
             })
             .unwrap();
         assert!(has_strategy_revision);
+        assert_eq!(
+            store.get("retained-conversation").unwrap().title,
+            "Synthetic retained title"
+        );
 
         drop(store);
         let _ = std::fs::remove_dir_all(root);
@@ -9291,32 +9299,16 @@ mod tests {
         std::fs::create_dir_all(fixture_database(&root).parent().unwrap()).unwrap();
         let fixture = open_fixture_connection(&root);
         fixture
+            .execute_batch(&released_source::supported_conversation_schema(6))
+            .unwrap();
+        fixture
             .execute_batch(
-                "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-                 INSERT INTO schema_meta(key, value) VALUES ('version', '6');
-                 CREATE TABLE principals (
-                   id TEXT PRIMARY KEY, kind TEXT NOT NULL, display_name TEXT NOT NULL,
-                   agent_id TEXT, created_at INTEGER NOT NULL
-                 );
-                 CREATE TABLE conversations (
-                   id TEXT PRIMARY KEY, title TEXT NOT NULL,
-                   archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)),
-                   pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),
-                   is_group INTEGER NOT NULL DEFAULT 0 CHECK(is_group IN (0,1)),
-                   strategy_revision TEXT,
-                   revision INTEGER NOT NULL DEFAULT 0,
-                   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-                 );
+                "INSERT INTO schema_meta(key, value) VALUES ('version', '6');
                  INSERT INTO principals(id, kind, display_name, agent_id, created_at)
                    VALUES ('agent:one', 'agent', 'One', 'one', 1),
                           ('human:local', 'human', 'You', NULL, 1);
                  INSERT INTO conversations(id, title, archived, pinned, is_group, revision, created_at, updated_at)
                    VALUES ('legacy-group', 'Legacy', 0, 0, 1, 0, 1, 1);
-                 CREATE TABLE memberships (
-                   id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL,
-                   principal_id TEXT NOT NULL, access TEXT NOT NULL,
-                   status TEXT NOT NULL, joined_at INTEGER NOT NULL, left_at INTEGER
-                 );
                  INSERT INTO memberships(id, conversation_id, principal_id, access, status, joined_at)
                    VALUES ('m-human', 'legacy-group', 'human:local', 'owner', 'active', 1),
                           ('m-agent', 'legacy-group', 'agent:one', 'member', 'active', 1);",

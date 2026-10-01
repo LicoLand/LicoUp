@@ -7,6 +7,8 @@ use std::{collections::BTreeMap, collections::BTreeSet, fs, path::Path};
 // recovery and standalone migration targets include the same file so the
 // released layout is defined exactly once.
 include!("../../../../../tests/fixtures/client_state_migration/released_source.rs");
+include!("../../../../../tests/fixtures/client_state_migration/owner_layouts.rs");
+mod structural;
 
 /// Materialize the shared released source root with the native drivers.
 fn seed_released_source_root(root: &Path) {
@@ -21,6 +23,9 @@ fn seed_released_source_root(root: &Path) {
             continue;
         }
         let document: Value = serde_json::from_str(&content).unwrap();
+        if relative == RELEASED_INVENTORY_FILE {
+            assert_eq!(document["schemaVersion"], RELEASED_INVENTORY_SCHEMA);
+        }
         write_json_atomic(&path, &document).unwrap();
     }
 }
@@ -35,6 +40,14 @@ fn seed_released_conversation_store(root: &Path) {
     connection
         .execute_batch(RELEASED_CONVERSATION_ROWS)
         .unwrap();
+    let version: String = connection
+        .query_row(
+            "SELECT value FROM schema_meta WHERE key='version'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(version, RELEASED_CONVERSATION_SCHEMA_VERSION);
 }
 
 fn seed_released_strategy_store(path: &Path) {
@@ -42,6 +55,14 @@ fn seed_released_strategy_store(path: &Path) {
     let connection = Connection::open(path).unwrap();
     connection.execute_batch(RELEASED_STRATEGY_SCHEMA).unwrap();
     connection.execute_batch(&released_strategy_rows()).unwrap();
+    let version: String = connection
+        .query_row(
+            "SELECT value FROM strategy_meta WHERE key='version'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(version, RELEASED_STRATEGY_META_VERSION);
 }
 
 #[cfg(target_os = "macos")]

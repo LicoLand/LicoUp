@@ -15,9 +15,6 @@ import {
 import {
   ADAPTIVE_FLYWHEEL_SCHEMA_VERSIONS,
   DURABLE_SHAPES,
-  STRATEGY_CORE_TABLES,
-  ownerConversationStatements,
-  releasedConversationStatements,
 } from "../../../tools/scripts/client-state-migration/probe.mjs";
 import {
   evaluateMigrationState,
@@ -194,24 +191,10 @@ function seedLedger(root, frontier, domains) {
   });
 }
 
-/**
- * The current Conversation layout as the owner's own startup contract requires
- * it (its required tables plus the startup columns). The evaluator mirrors the
- * owner, so the fixture is generated from the same mirrored contract.
- */
-/// The current Conversation layout as its owner actually creates it. The
-/// statements are the tool's own owner-DDL derivation, so the fixture cannot
-/// drift from the contract the evaluator checks.
+// Independent frozen producer output, never the evaluator's reference builder.
 function createCurrentConversationStore(database) {
-  for (const statement of ownerConversationStatements()) {
-    try {
-      database.exec(statement);
-    } catch (error) {
-      // The owner's `ensure_column` steps are no-ops when the DDL already
-      // carries the column.
-      if (!String(error?.message ?? "").includes("duplicate column name")) throw error;
-    }
-  }
+  database.exec(rustRawString(ownerSource(RELEASED_FIXTURE), "RELEASED_CONVERSATION_SCHEMA"));
+  database.exec(rustRawString(ownerSource("tests/fixtures/client_state_migration/owner_layouts.rs"), "CURRENT_CONVERSATION_ADDITIONS"));
   database.exec(
     `INSERT INTO schema_meta(key,value) VALUES ('version','${currentConversationSchemaVersion()}');`,
   );
@@ -224,7 +207,7 @@ function createCurrentStrategyStore(database) {
 
 /// The frozen released Conversation layout from the shared fixture.
 function createReleasedConversationStore(database) {
-  for (const statement of releasedConversationStatements()) database.exec(statement);
+  database.exec(rustRawString(ownerSource(RELEASED_FIXTURE), "RELEASED_CONVERSATION_SCHEMA"));
   database.exec(
     "INSERT INTO schema_meta(key,value) VALUES ('version','12');",
   );
@@ -235,6 +218,105 @@ function createReleasedConversationStore(database) {
 function createReleasedStrategyStore(database, options = {}) {
   database.exec(releasedStrategyDdl(options));
   database.exec(releasedStrategyRows());
+}
+
+function supportedConversationSchema(version) {
+  let sql = rustRawString(ownerSource(RELEASED_FIXTURE), "RELEASED_CONVERSATION_SCHEMA");
+  if (version <= 4) sql = sql.replace("runtime_cursor INTEGER, ", "");
+  if (version <= 5) sql = sql.replace(", strategy_revision TEXT", "");
+  if (version <= 6) sql = sql.replace("assistant_membership_id TEXT REFERENCES memberships(id),", "");
+  if (version <= 8) sql = sql.replace(", preferred_reasoning_effort TEXT", "");
+  if (version <= 9) sql = sql.replace(/CREATE TABLE IF NOT EXISTS subagent_dispatch_claims[\s\S]*?(?=CREATE TABLE IF NOT EXISTS subagent_mcp_inbound)/u, "");
+  if (version <= 10) sql = sql.replace(/CREATE TABLE IF NOT EXISTS subagent_mcp_inbound[\s\S]*?(?=CREATE TABLE IF NOT EXISTS migration_provenance)/u, "");
+  if (version < 12) sql = sql.replace("CREATE UNIQUE INDEX IF NOT EXISTS memberships_principal_unique\n            ON memberships(conversation_id, principal_id);", "CREATE UNIQUE INDEX memberships_active_unique ON memberships(conversation_id,principal_id) WHERE status='active';");
+  if (version === 18) sql += rustRawString(ownerSource("tests/fixtures/client_state_migration/owner_layouts.rs"), "CURRENT_CONVERSATION_ADDITIONS");
+  return sql;
+}
+
+const structuralCases = JSON.parse(ownerSource("tests/fixtures/client_state_migration/structural_cases.json"));
+for (const version of [11, 12, 18]) {
+  for (const mutation of structuralCases) {
+    test(`actual evaluator refuses schema${version}: ${mutation.name}`, () => {
+      const root = tempRoot("structural-refusal");
+      try {
+        seedAdmittedRoot(root, loadEmbeddedFrontier());
+        const filename = path.join(root, "client-state/conversations/conversations.sqlite3");
+        fs.unlinkSync(filename);
+        let ddl = supportedConversationSchema(version);
+        if (mutation.from !== undefined) {
+          assert.ok(ddl.includes(mutation.from));
+          ddl = ddl.replaceAll(mutation.from, mutation.to);
+        }
+        if (mutation.before) ddl = ddl.replace("CREATE TABLE subagent_dispatch_deliveries", "CREATE TABLE IF NOT EXISTS subagent_dispatch_deliveries");
+        const database = new DatabaseSync(filename);
+        if (mutation.before) database.exec(mutation.sql);
+        database.exec(ddl);
+        database.prepare("INSERT INTO schema_meta VALUES ('version',?)").run(String(version));
+        if (mutation.sql && !mutation.before) database.exec(mutation.sql);
+        if (mutation.rows) database.exec(mutation.rows);
+        database.close();
+        const before = snapshot(root);
+        const result = evaluateMigrationState({ root, frontier: loadEmbeddedFrontier(), binaryProductVersion: "0.3.0", platform: "darwin" });
+        const domain = result.domains.find((domain) => domain.domainId === "canonical-conversation");
+        assert.ok(domain.codes.includes("unsupported_state_shape"));
+        assert.equal(result.verdict, "invalid");
+        assert.equal(exitCodeForVerdict(result.verdict), 4);
+        assert.equal(result.domains.find((domain) => domain.domainId === "adaptive-flywheel").observedSchemaVersion, 2);
+        assert.equal(snapshot(root), before);
+      } finally { removeRoot(root); }
+    });
+  }
+}
+
+for (const version of [...Array.from({ length: 12 }, (_, index) => index + 1), 18]) {
+  test(`actual evaluator accepts independent supported Conversation schema${version}`, () => {
+    const root = tempRoot("supported-layout");
+    try {
+      seedAdmittedRoot(root, loadEmbeddedFrontier());
+      const filename = path.join(root, "client-state/conversations/conversations.sqlite3");
+      fs.unlinkSync(filename);
+      const database = new DatabaseSync(filename);
+      database.exec(supportedConversationSchema(version));
+      database.prepare("INSERT INTO schema_meta VALUES ('version',?)").run(String(version));
+      database.exec("INSERT INTO principals VALUES ('principal','human','Synthetic principal',NULL,1); INSERT INTO conversations(id,title,created_at,updated_at) VALUES ('conversation','Synthetic retained title',1,1);");
+      database.close();
+      const before = snapshot(root);
+      const result = evaluateMigrationState({ root, frontier: loadEmbeddedFrontier(), binaryProductVersion: "0.3.0", platform: "darwin" });
+      assert.equal(result.verdict, "healthy");
+      assert.equal(exitCodeForVerdict(result.verdict), 0);
+      assert.equal(snapshot(root), before);
+    } finally { removeRoot(root); }
+  });
+}
+
+for (const version of [2, 3]) {
+  for (const [label, from, to, extra] of [
+    ["missing default", "ordinal INTEGER NOT NULL DEFAULT 0", "ordinal INTEGER NOT NULL", ""],
+    ["FK update action", "REFERENCES strategy_definitions(revision_digest) ON DELETE CASCADE", "REFERENCES strategy_definitions(revision_digest) ON DELETE CASCADE ON UPDATE CASCADE", ""],
+    ["changed default", "model TEXT NOT NULL DEFAULT ''", "model TEXT NOT NULL DEFAULT 'unexpected'", ""],
+    ["malformed auxiliary table", null, null, "CREATE TABLE workflow_queue(request_id TEXT PRIMARY KEY);"],
+    ["write trigger", null, null, "CREATE TRIGGER deny_run BEFORE INSERT ON strategy_runs BEGIN SELECT RAISE(ABORT,'synthetic refusal'); END;"],
+  ]) {
+    test(`actual evaluator refuses strategy${version}: ${label}`, () => {
+      const root = tempRoot("strategy-structure");
+      try {
+        seedAdmittedRoot(root, loadEmbeddedFrontier());
+        const filename = path.join(root, "client-state/adaptive-flywheel/strategies.sqlite3");
+        fs.unlinkSync(filename);
+        const database = new DatabaseSync(filename);
+        const ddl = releasedStrategyDdl();
+        database.exec(from === null ? ddl : ddl.replaceAll(from, to));
+        database.exec(extra);
+        database.prepare("UPDATE strategy_meta SET value=?").run(String(version));
+        database.close();
+        const before = snapshot(root);
+        const result = evaluateMigrationState({ root, frontier: loadEmbeddedFrontier(), binaryProductVersion: "0.3.0", platform: "darwin" });
+        assert.equal(result.verdict, "invalid");
+        assert.ok(result.domains.find((domain) => domain.domainId === "adaptive-flywheel").codes.includes("unsupported_state_shape"));
+        assert.equal(snapshot(root), before);
+      } finally { removeRoot(root); }
+    });
+  }
 }
 
 /** The state a completed admission leaves behind, for the healthy verdict. */
@@ -1460,36 +1542,6 @@ test("every mirrored durable shape and constant still matches the Rust admission
     { ...ADAPTIVE_FLYWHEEL_SCHEMA_VERSIONS },
     "the Node strategy-version mapping must mirror the Rust layout registry",
   );
-  // The strategy layout mirror carries the owner's exact columns, keys and
-  // constraints, so a drift in the Rust descriptor breaks this test.
-  for (const table of STRATEGY_CORE_TABLES) {
-    assert.ok(
-      compact.includes(`("${table.name}",`),
-      `the Rust core layout must name ${table.name}`,
-    );
-    for (const [name, type, notNull, pk] of table.columns) {
-      // `null` is the published two-producer variant: the batch's NOT NULL
-      // column and the nullable column `ensure_column` adds must both be
-      // accepted, and the Rust descriptor carries `None` for it.
-      const expectation =
-        notNull === null
-          ? `("${name}","${type}",None,${pk})`
-          : `("${name}","${type}",Some(${notNull}),${pk})`;
-      assert.ok(
-        compact.includes(expectation),
-        `${table.name}.${name} drifted in the Rust core layout`,
-      );
-    }
-    for (const [name, , , , predicate] of table.indexes) {
-      assert.ok(compact.includes(`"${name}"`), `${name} drifted in the Rust core layout`);
-      if (predicate !== "") {
-        assert.ok(
-          compact.includes(`"${predicate}"`),
-          `${name} predicate drifted in the Rust core layout`,
-        );
-      }
-    }
-  }
   // The tool derives the Conversation contract from the owner DDL at runtime,
   // so the anchors it reads must stay present in the owner source.
   const conversationSchema = await fs.promises.readFile(
@@ -1574,6 +1626,7 @@ test("the diagnostic module keeps its facade, its leaf set, and one authority pe
     "probe.mjs",
     "repair.mjs",
     "report.mjs",
+    "sqlite-contract.mjs",
     "util.mjs",
   ]);
   const facade = await fs.promises.readFile(path.join(repoRoot, facadeRef), "utf8");

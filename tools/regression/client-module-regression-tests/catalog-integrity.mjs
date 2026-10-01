@@ -92,6 +92,34 @@ test("both native protocol README languages select documentation governance", ()
   }
 });
 
+test("owner schema and frozen fixture changes select the actual migration diagnostic exactly once", () => {
+  const diagnostic = "tests/contract/client/client-state-migration-diagnostic.test.mjs";
+  for (const changed of [
+    "crates/licoup-conversation/src/store/schema.rs",
+    "crates/licoup-conversation/src/store/native_sessions.rs",
+    "crates/licoup-foundation/src/core/sqlite_contract.rs",
+    "crates/licoup-native/src/domain/workflow_store/store.rs",
+    "crates/licoup-native/src/domain/workflow_store/queue.rs",
+    "crates/licoup-native/src/domain/workflow_store/subscriptions.rs",
+    "crates/licoup-native/src/domain/workflow_store/commit.rs",
+    "crates/licoup-native/src/domain/workflow_store/control.rs",
+    "crates/licoup-native/src/domain/client_state_migration/stores.rs",
+    "crates/licoup-native/src/domain/client_state_migration/tests/structural.rs",
+    "tests/fixtures/client_state_migration/released_source.rs",
+    "tests/fixtures/client_state_migration/owner_layouts.rs",
+    "tests/fixtures/client_state_migration/structural_cases.json",
+    "tools/scripts/client-state-migration/sqlite-contract.mjs",
+    "tools/scripts/client-state-migration/probe.mjs",
+    diagnostic,
+  ]) {
+    const selected = selectModulesForChangedPaths([changed]);
+    const invocations = selected.filter((module) => module.command.program === "node" && module.command.args.includes(diagnostic));
+    assert.equal(invocations.length, 1, changed);
+    assert.deepEqual(invocations[0].command.args, ["--test", "tests/contract/client/client-state-migration.test.mjs", diagnostic]);
+    assert.equal(invocations[0].command.cwd, ".");
+  }
+});
+
 test("catalog validation rejects an implicit aggregate-gate command", () => {
   const invalid = [{
     id: "invalid.full-regression",

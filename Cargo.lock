@@ -2086,6 +2086,7 @@ name = "licoup-conversation"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "licoup-foundation",
  "licoup-state-machine-codegen",
  "proptest",
  "rusqlite",
@@ -2118,6 +2119,7 @@ dependencies = [
  "flate2",
  "fs2",
  "nix",
+ "rusqlite",
  "serde",
  "serde_json",
  "tar",

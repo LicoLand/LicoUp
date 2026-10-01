@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow, bail, ensure};
+use anyhow::{Result, anyhow, ensure};
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -35,8 +35,9 @@ pub struct StrategyStore {
 impl StrategyStore {
     pub fn open(portable_root: &Path) -> Result<Self> {
         let root = portable_root.join("client-state").join("adaptive-flywheel");
-        licoup_foundation::platform::file_security::ensure_private_dir(&root)?;
         let db_path = root.join(DATABASE_FILE);
+        preflight_existing_store(&db_path)?;
+        licoup_foundation::platform::file_security::ensure_private_dir(&root)?;
         let existed = db_path.exists();
         let store = Self {
             db_path,
@@ -56,6 +57,9 @@ impl StrategyStore {
 
     pub(crate) fn open_for_migration(portable_root: &Path) -> Result<Self> {
         let root = portable_root.join("client-state").join("adaptive-flywheel");
+        // Native admission validates the published physical input before this
+        // private conversion entry. Keep the owner's lower-level transforms
+        // testable without turning them into additional admitted endpoints.
         licoup_foundation::platform::file_security::ensure_private_dir(&root)?;
         let store = Self {
             db_path: root.join(DATABASE_FILE),
@@ -1637,210 +1641,29 @@ fn validate_current_schema(connection: &mut Connection) -> Result<()> {
     Ok(())
 }
 
-/// One core table's exact column: name, SQLite type, NOT NULL flag, and
-/// 1-based primary-key position (0 when the column is not part of the key).
-type PublishedCoreColumn = (&'static str, &'static str, Option<bool>, u8);
-/// One exact foreign key: child column, parent table, parent column, ON DELETE.
-type PublishedCoreForeignKey = (&'static str, &'static str, &'static str, &'static str);
-/// One unique column set and whether the uniqueness is partial.
-type PublishedCoreUniqueSet = (&'static [&'static str], bool);
-/// One named index: name, columns, unique, partial, and the partial predicate.
-type PublishedCoreIndex = (
-    &'static str,
-    &'static [&'static str],
-    bool,
-    bool,
-    &'static str,
-);
-
-/// The owner's exact layout for the seven core `strategy_*` tables.
-///
-/// Both published writers create this layout: the released tag stamped
-/// `strategy_meta.version = '2'` and this binary stamps `'3'`; the physical
-/// tables, keys, foreign keys and uniqueness constraints are identical, so one
-/// descriptor validates both. The layout is verified exactly — a version row
-/// on a table subset, a missing ordinal primary key, a weakened unique index or
-/// a renamed column is not the layout a reader can trust, and the admission
-/// must refuse it before any conversion.
-const PUBLISHED_CORE_TABLES: &[(
-    &str,
-    &[PublishedCoreColumn],
-    &[PublishedCoreForeignKey],
-    &[PublishedCoreUniqueSet],
-    &[PublishedCoreIndex],
-)] = &[
-    (
-        "strategy_meta",
-        &[
-            ("key", "TEXT", Some(false), 1),
-            ("value", "TEXT", Some(true), 0),
-        ],
-        &[],
-        &[(&["key"], false)],
-        &[],
-    ),
-    (
-        "strategy_definitions",
-        &[
-            ("definition_id", "TEXT", Some(true), 0),
-            ("revision_digest", "TEXT", Some(false), 1),
-            ("semantics_digest", "TEXT", Some(true), 0),
-            ("name", "TEXT", Some(true), 0),
-            ("version", "TEXT", Some(true), 0),
-            ("workflow_json", "TEXT", Some(true), 0),
-            ("asset_count", "INTEGER", Some(true), 0),
-            ("imported_at", "INTEGER", Some(true), 0),
-        ],
-        &[],
-        &[(&["revision_digest"], false)],
-        &[(
-            "strategy_definitions_id_idx",
-            &["definition_id", "imported_at"],
-            false,
-            false,
-            "",
-        )],
-    ),
-    (
-        "strategy_bindings",
-        &[
-            ("revision_digest", "TEXT", Some(true), 1),
-            ("slot_id", "TEXT", Some(true), 2),
-            ("ordinal", "INTEGER", Some(true), 3),
-            ("value_id", "TEXT", Some(true), 0),
-            ("model", "TEXT", Some(true), 0),
-            ("reasoning_effort", "TEXT", Some(true), 0),
-            ("revision", "INTEGER", Some(true), 0),
-        ],
-        &[(
-            "revision_digest",
-            "strategy_definitions",
-            "revision_digest",
-            "CASCADE",
-        )],
-        &[(&["revision_digest", "slot_id", "ordinal"], false)],
-        &[],
-    ),
-    (
-        "strategy_authorizations",
-        &[
-            ("revision_digest", "TEXT", Some(true), 1),
-            ("revision", "INTEGER", Some(true), 2),
-            ("semantics_digest", "TEXT", Some(true), 0),
-            ("binding_digest", "TEXT", Some(true), 0),
-            ("authorization_digest", "TEXT", Some(true), 0),
-            ("active", "INTEGER", Some(true), 0),
-            ("created_at", "INTEGER", Some(true), 0),
-        ],
-        &[(
-            "revision_digest",
-            "strategy_definitions",
-            "revision_digest",
-            "CASCADE",
-        )],
-        &[
-            (&["revision_digest", "revision"], false),
-            (&["revision_digest"], true),
-        ],
-        &[(
-            "strategy_authorization_active_idx",
-            &["revision_digest"],
-            true,
-            true,
-            "active=1",
-        )],
-    ),
-    (
-        "strategy_runs",
-        &[
-            ("run_id", "TEXT", Some(false), 1),
-            ("revision_digest", "TEXT", Some(true), 0),
-            ("semantics_digest", "TEXT", Some(true), 0),
-            ("idempotency_key", "TEXT", Some(true), 0),
-            ("request_digest", "TEXT", Some(true), 0),
-            ("snapshot_json", "TEXT", Some(true), 0),
-            ("conversation_id", "TEXT", Some(false), 0),
-            ("terminal", "INTEGER", None, 0),
-            ("created_at", "INTEGER", Some(true), 0),
-            ("updated_at", "INTEGER", Some(true), 0),
-        ],
-        &[(
-            "revision_digest",
-            "strategy_definitions",
-            "revision_digest",
-            "NO ACTION",
-        )],
-        &[(&["run_id"], false), (&["idempotency_key"], false)],
-        &[
-            (
-                "strategy_runs_revision_idx",
-                &["revision_digest", "updated_at"],
-                false,
-                false,
-                "",
-            ),
-            (
-                "strategy_runs_active_conversation_idx",
-                &[
-                    "revision_digest",
-                    "conversation_id",
-                    "terminal",
-                    "updated_at",
-                ],
-                false,
-                false,
-                "",
-            ),
-        ],
-    ),
-    (
-        "strategy_run_events",
-        &[
-            ("run_id", "TEXT", Some(true), 1),
-            ("sequence", "INTEGER", Some(true), 2),
-            ("event_type", "TEXT", Some(true), 0),
-            ("event_json", "TEXT", Some(true), 0),
-            ("created_at", "INTEGER", Some(true), 0),
-        ],
-        &[("run_id", "strategy_runs", "run_id", "CASCADE")],
-        &[(&["run_id", "sequence"], false)],
-        &[],
-    ),
-    (
-        "strategy_commands",
-        &[
-            ("command_id", "TEXT", Some(false), 1),
-            ("run_id", "TEXT", Some(true), 0),
-            ("state_id", "TEXT", Some(true), 0),
-            ("kind", "TEXT", Some(true), 0),
-            ("status", "TEXT", Some(true), 0),
-            ("attempt", "INTEGER", Some(true), 0),
-            ("attempt_token", "TEXT", Some(true), 0),
-            ("command_json", "TEXT", Some(true), 0),
-            ("lease_owner", "TEXT", Some(false), 0),
-            ("lease_until", "INTEGER", Some(false), 0),
-            ("updated_at", "INTEGER", Some(true), 0),
-        ],
-        &[("run_id", "strategy_runs", "run_id", "CASCADE")],
-        &[(&["command_id"], false)],
-        &[
-            (
-                "strategy_commands_ready_idx",
-                &["status", "command_id"],
-                false,
-                false,
-                "",
-            ),
-            (
-                "strategy_commands_lease_idx",
-                &["lease_until"],
-                false,
-                true,
-                "statusin('claimed','running')",
-            ),
-        ],
-    ),
-];
+fn preflight_existing_store(path: &Path) -> Result<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    ensure!(
+        metadata.is_file() && !metadata.file_type().is_symlink(),
+        "unsupported_state_shape"
+    );
+    let connection = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let version: String = connection.query_row(
+        "SELECT value FROM strategy_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    ensure!(
+        matches!(version.as_str(), "2" | "3"),
+        "unsupported_state_shape"
+    );
+    ensure!(version == "3", "strategy_schema_migration_required");
+    validate_published_core_layout(&connection, &version)
+}
 
 /// Read-only validation of the published core layout.
 ///
@@ -1865,214 +1688,29 @@ pub(crate) fn validate_published_core_layout(
         version.as_deref() == Some(expected_meta_version),
         "unsupported_state_shape"
     );
-    for (table, columns, foreign_keys, unique_sets, indexes) in PUBLISHED_CORE_TABLES {
-        validate_table_columns(connection, table, columns)?;
-        validate_table_foreign_keys(connection, table, foreign_keys)?;
-        validate_table_uniques(connection, table, unique_sets)?;
-        validate_table_indexes(connection, table, indexes)?;
-    }
-    Ok(())
-}
-
-fn validate_table_columns(
-    connection: &Connection,
-    table: &str,
-    expected: &[PublishedCoreColumn],
-) -> Result<()> {
-    let mut statement = connection.prepare(&format!("PRAGMA table_info({table})"))?;
-    let actual = statement
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, i64>(3)? != 0,
-                row.get::<_, i64>(5)? as u8,
-            ))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    ensure!(actual.len() == expected.len(), "unsupported_state_shape");
-    for (name, type_name, not_null, primary_key) in expected {
-        let Some((_, actual_type, actual_not_null, actual_pk)) =
-            actual.iter().find(|(actual_name, ..)| actual_name == name)
-        else {
-            bail!("unsupported_state_shape");
-        };
-        ensure!(
-            actual_type.eq_ignore_ascii_case(type_name)
-                // `None` accepts the two producer variants: the fresh CREATE
-                // table and the `ensure_column` upgrade output, which added the
-                // column without the NOT NULL that the batch declares.
-                && not_null.is_none_or(|expected| *actual_not_null == expected)
-                && *actual_pk == *primary_key,
-            "unsupported_state_shape"
-        );
-    }
-    Ok(())
-}
-
-fn validate_table_foreign_keys(
-    connection: &Connection,
-    table: &str,
-    expected: &[PublishedCoreForeignKey],
-) -> Result<()> {
-    let mut statement = connection.prepare(&format!("PRAGMA foreign_key_list({table})"))?;
-    let mut actual = statement
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(4)?,
-                row.get::<_, String>(6)?,
-            ))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut expected = expected
-        .iter()
-        .map(|(from, parent, to, on_delete)| {
-            (
-                (*from).to_owned(),
-                (*parent).to_owned(),
-                (*to).to_owned(),
-                (*on_delete).to_owned(),
-            )
-        })
-        .collect::<Vec<_>>();
-    actual.sort();
-    expected.sort();
-    ensure!(actual == expected, "unsupported_state_shape");
-    Ok(())
-}
-
-fn validate_table_uniques(
-    connection: &Connection,
-    table: &str,
-    expected: &[PublishedCoreUniqueSet],
-) -> Result<()> {
-    let mut statement = connection.prepare(&format!("PRAGMA index_list({table})"))?;
-    let listed = statement
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)? != 0,
-                row.get::<_, i64>(4)? != 0,
-            ))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut actual = Vec::new();
-    for (index_name, unique, partial) in listed {
-        if !unique {
+    // Validate all retained write semantics, including tables created on demand
+    // by the current owner. An absent auxiliary table is created by startup; a
+    // malformed existing table is never repaired by CREATE IF NOT EXISTS.
+    let mut reference = Connection::open_in_memory()?;
+    initialize_schema_through(&mut reference)?;
+    let required = licoup_foundation::core::sqlite_contract::tables(&reference)?;
+    super::queue::initialize_schema(&reference)?;
+    super::subscriptions::initialize_schema(&reference)?;
+    super::commit::initialize_schema(&reference)?;
+    super::control::initialize_schema(&reference)?;
+    let existing = licoup_foundation::core::sqlite_contract::tables(connection)?;
+    for table in licoup_foundation::core::sqlite_contract::tables(&reference)? {
+        if !existing.contains(&table) && !required.contains(&table) {
             continue;
         }
-        actual.push((index_columns(connection, &index_name)?, partial));
-    }
-    let mut expected = expected
-        .iter()
-        .map(|(columns, partial)| {
-            (
-                columns
-                    .iter()
-                    .map(|column| (*column).to_owned())
-                    .collect::<Vec<_>>(),
-                *partial,
-            )
-        })
-        .collect::<Vec<_>>();
-    actual.sort();
-    expected.sort();
-    ensure!(actual == expected, "unsupported_state_shape");
-    Ok(())
-}
-
-fn validate_table_indexes(
-    connection: &Connection,
-    table: &str,
-    expected: &[PublishedCoreIndex],
-) -> Result<()> {
-    let mut statement = connection.prepare(&format!("PRAGMA index_list({table})"))?;
-    let listed = statement
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)? != 0,
-                row.get::<_, i64>(4)? != 0,
-            ))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let named = listed
-        .iter()
-        .filter(|(name, ..)| !name.starts_with("sqlite_autoindex_"))
-        .map(|(name, ..)| name.clone())
-        .collect::<BTreeSet<_>>();
-    let expected_names = expected
-        .iter()
-        .map(|(name, ..)| (*name).to_owned())
-        .collect::<BTreeSet<_>>();
-    ensure!(named == expected_names, "unsupported_state_shape");
-    for (name, columns, unique, partial, predicate) in expected {
-        let Some((_, actual_unique, actual_partial)) =
-            listed.iter().find(|(index_name, ..)| index_name == name)
-        else {
-            bail!("unsupported_state_shape");
-        };
-        let expected_columns = columns
-            .iter()
-            .map(|column| (*column).to_owned())
-            .collect::<Vec<_>>();
-        ensure!(
-            index_columns(connection, name)? == expected_columns
-                && *actual_unique == *unique
-                && *actual_partial == *partial,
-            "unsupported_state_shape"
-        );
-        if !predicate.is_empty() {
-            let sql: Option<String> = connection
-                .query_row(
-                    "SELECT sql FROM sqlite_master WHERE type='index' AND name=?1",
-                    params![name],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            let Some(sql) = sql else {
-                bail!("unsupported_state_shape");
-            };
-            // The predicate must be exactly the owner's one, not merely contain
-            // it: `WHERE active=1 AND 0` names the same index but is a different
-            // uniqueness constraint, and `CREATE INDEX IF NOT EXISTS` would
-            // never repair it.
-            ensure!(
-                normalized_index_predicate(&sql).as_deref() == Some(*predicate),
-                "unsupported_state_shape"
-            );
-        }
+        licoup_foundation::core::sqlite_contract::validate_table(
+            connection,
+            &reference,
+            &table,
+            (table == "strategy_runs").then_some("terminal"),
+        )?;
     }
     Ok(())
-}
-
-/// The index predicate as one comparable token: everything after `WHERE`, with
-/// whitespace removed and lowercased. Comparing this for equality rejects a
-/// predicate that merely contains the expected fragment (`active=1 AND 0`).
-fn normalized_index_predicate(sql: &str) -> Option<String> {
-    let lowered = sql.to_ascii_lowercase();
-    let index = lowered.find("where")?;
-    Some(
-        sql[index + "where".len()..]
-            .chars()
-            .filter(|character| !character.is_whitespace())
-            .collect::<String>()
-            .to_ascii_lowercase(),
-    )
-}
-
-fn index_columns(connection: &Connection, index_name: &str) -> Result<Vec<String>> {
-    let mut statement = connection.prepare(&format!("PRAGMA index_info({index_name})"))?;
-    let columns = statement
-        .query_map([], |row| row.get::<_, Option<String>>(2))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    ensure!(
-        columns.iter().all(Option::is_some),
-        "unsupported_state_shape"
-    );
-    Ok(columns.into_iter().flatten().collect())
 }
 
 fn backfill_run_query_columns(connection: &mut Connection) -> Result<()> {
