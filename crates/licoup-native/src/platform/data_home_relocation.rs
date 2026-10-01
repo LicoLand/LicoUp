@@ -3,7 +3,8 @@
 use anyhow::{Result, anyhow, bail};
 use licoup_foundation::platform::{
     data_home_access::{
-        acquire_data_home_relocation_admission, acquire_data_home_relocation_lease,
+        DataHomeRelocationAdmission, acquire_data_home_relocation_admission,
+        acquire_data_home_relocation_lease,
     },
     file_security as security,
     paths::{self, DataHomeSelection, DataHomeSource},
@@ -59,7 +60,7 @@ pub fn relocate(params: &Value) -> Result<Value> {
     // leases remain valid until each writer proves it has drained; then the
     // exclusive access lease covers copy through locator publication.
     let admission = acquire_data_home_relocation_admission()?;
-    stop_root_writers()?;
+    stop_root_writers(&admission)?;
     let _relocation = admission.wait_for_process_access()?;
     let current = paths::selected_data_home()?;
     ensure_user_selectable_root(&current)?;
@@ -231,7 +232,7 @@ pub fn cleanup_previous(params: &Value) -> Result<Value> {
     }
 
     let admission = acquire_data_home_relocation_admission()?;
-    stop_root_writers()?;
+    stop_root_writers(&admission)?;
     let _relocation = admission.wait_for_process_access()?;
 
     let latest = paths::selected_data_home()?;
@@ -355,13 +356,22 @@ fn phase(name: &str) {
     eprintln!("LICOUP_DATA_HOME_PHASE={name}");
 }
 
-fn stop_root_writers() -> Result<()> {
+fn stop_root_writers(admission: &DataHomeRelocationAdmission) -> Result<()> {
     phase("stopping-conversation-host");
     crate::platform::conversation_host_client::stop_existing_and_wait()?;
+    if admission.process_access_drained()? {
+        phase("waiting-for-native-access");
+        return Ok(());
+    }
     phase("stopping-mcp-service");
-    crate::platform::mcp_service_process::stop_for_data_home_transition()?;
+    let mcp_stop = crate::platform::mcp_service_process::stop_for_data_home_transition();
     phase("stopping-gateway");
     crate::platform::gateway_runtime::service_stop_managed()?;
+    // An optional service executable may be absent. Its control failure is
+    // harmless only when the closed-admission OS lock proves no writer remains.
+    if !admission.process_access_drained()? {
+        mcp_stop?;
+    }
     phase("waiting-for-native-access");
     Ok(())
 }

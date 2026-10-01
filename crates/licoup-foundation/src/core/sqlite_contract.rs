@@ -145,14 +145,23 @@ fn columns(
         .collect::<rusqlite::Result<_>>()?)
 }
 
-fn indexes(connection: &Connection, table: &str) -> Result<BTreeMap<String, Vec<String>>> {
-    let rows = connection.prepare("SELECT name,sql FROM sqlite_schema WHERE type='index' AND tbl_name=?1 AND sql IS NOT NULL")?
-        .query_map([table], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+fn definitions(
+    connection: &Connection,
+    table: &str,
+    kind: &str,
+) -> Result<BTreeMap<String, Vec<String>>> {
+    let rows = connection
+        .prepare(
+            "SELECT name,sql FROM sqlite_schema WHERE type=?1 AND tbl_name=?2 AND sql IS NOT NULL",
+        )?
+        .query_map([kind, table], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     rows.into_iter()
         .map(|(name, sql)| {
             let mut tokens = tokens(&sql)?;
-            // IF NOT EXISTS is not part of the resulting index semantics.
+            // IF NOT EXISTS is not part of the resulting object's semantics.
             if let Some(index) = tokens.windows(3).position(|t| t == ["if", "not", "exists"]) {
                 tokens.drain(index..index + 3);
             }
@@ -217,15 +226,13 @@ pub fn validate_table(
         );
     }
     ensure!(
-        indexes(source, name)? == indexes(reference, name)?,
+        definitions(source, name, "index")? == definitions(reference, name, "index")?,
         "unsupported_state_shape"
     );
-    let triggers: i64 = source.query_row(
-        "SELECT count(*) FROM sqlite_schema WHERE type='trigger' AND tbl_name=?1",
-        [name],
-        |row| row.get(0),
-    )?;
-    ensure!(triggers == 0, "unsupported_state_shape");
+    ensure!(
+        definitions(source, name, "trigger")? == definitions(reference, name, "trigger")?,
+        "unsupported_state_shape"
+    );
     // An unowned child table can otherwise prohibit a normal owner delete or
     // attach cascaded writes to it, despite the parent's unchanged definition.
     let owned = tables(reference)?;
@@ -252,6 +259,28 @@ pub fn tables(connection: &Connection) -> Result<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exact_owner_trigger_is_admitted_but_changed_or_extra_effects_are_refused() {
+        let schema = "CREATE TABLE item(id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 0, value TEXT);
+            CREATE TRIGGER owner_revision AFTER UPDATE OF value ON item
+            BEGIN UPDATE item SET revision=revision+1 WHERE id=NEW.id; END;";
+        let reference = Connection::open_in_memory().unwrap();
+        reference.execute_batch(schema).unwrap();
+        let source = Connection::open_in_memory().unwrap();
+        source.execute_batch(schema).unwrap();
+        validate_table(&source, &reference, "item", None).unwrap();
+        source.execute_batch("DROP TRIGGER owner_revision; CREATE TRIGGER owner_revision AFTER UPDATE OF value ON item BEGIN DELETE FROM item WHERE id=NEW.id; END;").unwrap();
+        assert!(validate_table(&source, &reference, "item", None).is_err());
+        source
+            .execute_batch("DROP TRIGGER owner_revision;")
+            .unwrap();
+        assert!(validate_table(&source, &reference, "item", None).is_err());
+        source.execute_batch("CREATE TRIGGER owner_revision AFTER UPDATE OF value ON item BEGIN UPDATE item SET revision=revision+1 WHERE id=NEW.id; END;").unwrap();
+        validate_table(&source, &reference, "item", None).unwrap();
+        source.execute_batch("CREATE TRIGGER foreign_effect BEFORE INSERT ON item BEGIN SELECT RAISE(ABORT, 'blocked'); END;").unwrap();
+        assert!(validate_table(&source, &reference, "item", None).is_err());
+    }
 
     #[test]
     fn formatting_and_column_order_do_not_change_the_contract() {

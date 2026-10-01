@@ -15,6 +15,7 @@ export const REGRESSION_MODULES = Object.freeze([
         "crates/licoup-conversation/src/store/schema/**",
         "crates/licoup-conversation/src/store/mod.rs",
         "crates/licoup-conversation/src/store/native_sessions.rs",
+        "crates/licoup-conversation/src/continuity/migrate.rs",
         "crates/licoup-foundation/src/core/sqlite_contract.rs",
         "crates/licoup-native/src/domain/workflow_store/**",
         "crates/licoup-native/src/domain/client_state_migration.rs",

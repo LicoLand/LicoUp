@@ -344,11 +344,59 @@ fn schema_only_upgrade_copy(source: &Connection, prior: &str) -> StoreResult<Con
 fn validate_owner_contract(connection: &Connection) -> StoreResult<()> {
     let mut reference = Connection::open_in_memory()?;
     create_current_schema(&mut reference)?;
-    for table in licoup_foundation::core::sqlite_contract::tables(&reference)? {
+    let base_tables = licoup_foundation::core::sqlite_contract::tables(&reference)?;
+    let actual_tables = licoup_foundation::core::sqlite_contract::tables(connection)?;
+    let designation_epoch =
+        table_columns(connection, "conversations")?.contains("designation_epoch");
+    crate::continuity::migrate::add_schema_contract(&reference, designation_epoch)?;
+    let owned_tables = licoup_foundation::core::sqlite_contract::tables(&reference)?;
+    let extension_tables: Vec<_> = owned_tables
+        .iter()
+        .filter(|name| !base_tables.contains(name))
+        .collect();
+    let extension_present = designation_epoch
+        || extension_tables
+            .iter()
+            .any(|name| actual_tables.contains(name));
+    let continuity_version = if extension_present {
+        let version: String = connection
+            .query_row(
+                "SELECT value FROM continuity_schema WHERE key='version'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|_| anyhow!("conversation_schema_incomplete"))?;
+        let version = crate::continuity::migrate::parse_continuity_schema_version(&version)?;
+        if version == crate::continuity::migrate::CURRENT_CONTINUITY_SCHEMA_VERSION
+            && !designation_epoch
+        {
+            return Err(anyhow!("conversation_schema_incomplete"));
+        }
+        Some(version)
+    } else {
+        None
+    };
+    for table in &base_tables {
         licoup_foundation::core::sqlite_contract::validate_table(
-            connection, &reference, &table, None,
+            connection, &reference, table, None,
         )
         .map_err(|_| anyhow!("conversation_schema_incomplete"))?;
+    }
+    if let Some(version) = continuity_version {
+        for table in extension_tables {
+            // The existing owner creates new tables while upgrading its older
+            // internal states. Current states must already have the complete
+            // owner contract; a marker cannot manufacture missing structures.
+            if version != crate::continuity::migrate::CURRENT_CONTINUITY_SCHEMA_VERSION
+                && !actual_tables.contains(table)
+            {
+                continue;
+            }
+            licoup_foundation::core::sqlite_contract::validate_table(
+                connection, &reference, table, None,
+            )
+            .map_err(|_| anyhow!("conversation_schema_incomplete"))?;
+        }
     }
     Ok(())
 }

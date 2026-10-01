@@ -22,6 +22,8 @@ import {
 } from "../../../tools/scripts/client-state-migration/report.mjs";
 import { repairDomain } from "../../../tools/scripts/client-state-migration/repair.mjs";
 import { writePrivateJsonAtomic } from "../../../tools/scripts/client-state-migration/util.mjs";
+import { inspectConversationContract } from "../../../tools/scripts/client-state-migration/sqlite-contract.mjs";
+import { selectModulesForChangedPaths } from "../../../tools/regression/client-module-selection.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const facadeRef = "tools/scripts/client-state-migration.mjs";
@@ -199,6 +201,37 @@ function createCurrentConversationStore(database) {
     `INSERT INTO schema_meta(key,value) VALUES ('version','${currentConversationSchemaVersion()}');`,
   );
 }
+
+test("current continuity owner composes with Conversation and malformed effects remain refused", () => {
+  const selected = selectModulesForChangedPaths(["crates/licoup-conversation/src/continuity/migrate.rs"])
+    .filter((module) => module.id === "regression.client-state-migration");
+  assert.equal(selected.length, 1, "the actual continuity producer must select its diagnostic consumer");
+  const fixture = ownerSource("tests/fixtures/client_state_migration/continuity_current.sql");
+  for (const mutation of [
+    null,
+    "DROP TRIGGER continuity_bump_designation_epoch;",
+    "DROP TRIGGER continuity_bump_designation_epoch; CREATE TRIGGER continuity_bump_designation_epoch AFTER UPDATE OF assistant_membership_id ON conversations BEGIN DELETE FROM conversations WHERE id=NEW.id; END;",
+    "CREATE TRIGGER extra_effect BEFORE INSERT ON conversations BEGIN SELECT RAISE(ABORT, 'blocked'); END;",
+    "DROP TABLE continuity_goals;",
+    "DELETE FROM continuity_schema WHERE key='version';",
+  ]) {
+    const database = new DatabaseSync(":memory:");
+    try {
+      createCurrentConversationStore(database);
+      database.exec(fixture);
+      if (mutation) database.exec(mutation);
+      if (mutation) assert.throws(() => inspectConversationContract(database, currentConversationSchemaVersion()), /unsupported_state_shape/u);
+      else assert.equal(inspectConversationContract(database, currentConversationSchemaVersion()).version, currentConversationSchemaVersion());
+    } finally { database.close(); }
+  }
+  const database = new DatabaseSync(":memory:");
+  try {
+    createCurrentConversationStore(database);
+    database.exec("CREATE TABLE continuity_schema(key TEXT PRIMARY KEY,value TEXT NOT NULL); INSERT INTO continuity_schema VALUES ('version','7');");
+    assert.throws(() => inspectConversationContract(database, currentConversationSchemaVersion()), /unsupported_state_shape/u,
+      "an extension marker alone cannot manufacture its owned structures");
+  } finally { database.close(); }
+});
 
 /// The current strategy layout as its owner actually creates it.
 function createCurrentStrategyStore(database) {

@@ -69,8 +69,8 @@ export function tableNames(database) {
   return database.prepare("SELECT name FROM pragma_table_list WHERE schema='main' AND type IN ('table','virtual') AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((row) => row.name);
 }
 
-function indexes(database, table) {
-  return database.prepare("SELECT name,sql FROM sqlite_schema WHERE type='index' AND tbl_name=? AND sql IS NOT NULL ORDER BY name").all(table).map((row) => {
+function definitions(database, table, kind) {
+  return database.prepare("SELECT name,sql FROM sqlite_schema WHERE type=? AND tbl_name=? AND sql IS NOT NULL ORDER BY name").all(kind, table).map((row) => {
     const tokens = sqlTokens(row.sql);
     const index = tokens.findIndex((token, i) => token === "if" && tokens[i + 1] === "not" && tokens[i + 2] === "exists");
     if (index !== -1) tokens.splice(index, 3);
@@ -93,8 +93,8 @@ export function requireTable(database, reference, table, nullableVariant = null)
     if (index !== -1) entry.splice(index, 2);
   }
   requireValue(same(actual, expected) && same(actualColumns, expectedColumns), "unsupported_state_shape");
-  requireValue(same(indexes(database, table), indexes(reference, table)), "unsupported_state_shape");
-  requireValue(database.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE type='trigger' AND tbl_name=?").get(table).count === 0, "unsupported_state_shape");
+  requireValue(same(definitions(database, table, "index"), definitions(reference, table, "index")), "unsupported_state_shape");
+  requireValue(same(definitions(database, table, "trigger"), definitions(reference, table, "trigger")), "unsupported_state_shape");
   const owned = tableNames(reference);
   for (const child of tableNames(database)) {
     if (owned.includes(child)) continue;
@@ -160,13 +160,39 @@ function conversationReference() {
   } catch (error) { database.close(); throw error; }
 }
 
-function copySchema(source) {
+function continuityContract(reference, actual) {
+  const owner = source("crates/licoup-conversation/src/continuity/migrate.rs");
+  const start = owner.indexOf("const STATEMENTS:");
+  const end = owner.indexOf("\n];", start);
+  if (start === -1 || end === -1) throw new MigrationStateError("probe_capability_unavailable");
+  const base = tableNames(reference);
+  for (const match of owner.slice(start, end).matchAll(/"((?:[^"\\]|\\.)*)"/gu)) {
+    reference.exec(match[1].replaceAll("\\n", "\n").replaceAll('\\"', '"'));
+  }
+  const extension = tableNames(reference).filter((table) => !base.includes(table));
+  const existing = tableNames(actual);
+  const epoch = actual.prepare("SELECT name FROM pragma_table_info('conversations')").all().some((column) => column.name === "designation_epoch");
+  if (epoch) {
+    reference.exec(literal(owner, "ALTER TABLE conversations ADD COLUMN designation_epoch"));
+    reference.exec(literal(owner, "CREATE TRIGGER continuity_bump_designation_epoch"));
+  }
+  if (!epoch && !extension.some((table) => existing.includes(table))) return base;
+  const version = actual.prepare("SELECT value FROM continuity_schema WHERE key='version'").get()?.value;
+  const current = Number(owner.match(/CURRENT_CONTINUITY_SCHEMA_VERSION:\s*u32\s*=\s*(\d+)/u)?.[1]);
+  if (!Number.isSafeInteger(current)) throw new MigrationStateError("probe_capability_unavailable");
+  requireValue(/^\d+$/u.test(version ?? "") && Number.isSafeInteger(Number(version)) && Number(version) <= current, "unsupported_state_shape");
+  if (Number(version) === current) requireValue(epoch, "unsupported_state_shape");
+  return [...base, ...extension.filter((table) => Number(version) === current || existing.includes(table))];
+}
+
+function copySchema(databaseSource) {
   const database = memoryDatabase();
   try {
-    const names = new Set(tableNames(source));
-    for (const row of source.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 WHEN 'trigger' THEN 2 ELSE 3 END").all()) {
+    const names = new Set(tableNames(databaseSource));
+    for (const row of databaseSource.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 WHEN 'trigger' THEN 2 ELSE 3 END").all()) {
       if (row.type === "table" && !names.has(row.name)) continue;
       if (row.type === "trigger") refused();
+      requireValue(!sqlTokens(row.sql).includes(";"), "unsupported_state_shape");
       database.exec(row.sql);
     }
     return database;
@@ -212,7 +238,8 @@ export function inspectConversationContract(database, currentVersion) {
       upgraded = copySchema(database);
       upgradeConversationLayout(upgraded, Number(version), conversationSource());
     }
-    for (const table of tableNames(reference)) requireTable(upgraded ?? database, reference, table);
+    const actual = upgraded ?? database;
+    for (const table of continuityContract(reference, actual)) requireTable(actual, reference, table);
     return { version };
   } finally { upgraded?.close(); reference.close(); }
 }

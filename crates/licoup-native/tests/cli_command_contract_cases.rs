@@ -1405,19 +1405,38 @@ fn public_error_surfaces(error: &Error) -> (String, String, String) {
 }
 
 fn run_lico_client(args: &[String]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
+    let home = SyntheticCliHome::new(None);
+    let output = home
+        .command()
         .args(args)
         .env_remove("RUST_LOG")
         .env_remove("RUST_BACKTRACE")
         .output()
-        .expect("the real licoup binary must be runnable")
+        .expect("the real licoup binary must be runnable");
+    home.stop().expect("synthetic CLI host cleanup");
+    output
 }
 
 #[test]
 fn native_cli_starts_and_reuses_its_durable_host_without_flutter() {
+    {
+        let _serial = cli_environment_lock()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let oracle = temporary_directory("licoup-conversation-owner-oracle");
+        let _portable = PortableDataOverride::set(&oracle);
+        let service =
+            licoup_native::domain::client_conversation::ConversationService::open(&oracle)
+                .expect("synthetic Conversation owner opens");
+        service
+            .execute(json!({"action": "conversation.list"}))
+            .expect("synthetic Conversation owner lists before RPC projection");
+    }
     let root = temporary_directory("native-cli-durable-host");
+    let home = SyntheticCliHome::new(Some(&root));
     let run = |args: &[&str], body: Value| {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
+        let mut child = home
+            .command()
             .args(args)
             .args(["--stdin-json", "true"])
             .env("LICOUP_HOME", &root)
@@ -1432,14 +1451,22 @@ fn native_cli_starts_and_reuses_its_durable_host_without_flutter() {
             .unwrap();
         serde_json::to_writer(child.stdin.take().unwrap(), &body).unwrap();
         let output = child.wait_with_output().unwrap();
-        assert!(output.status.success(), "native CLI operation must succeed");
+        assert!(
+            output.status.success(),
+            "synthetic native CLI operation failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
         serde_json::from_slice::<Value>(&output.stdout).unwrap()
     };
     let first = run(
         &["conversation", "execute"],
         json!({"action": "conversation.list"}),
     );
-    assert_eq!(first["ok"], true);
+    assert_eq!(
+        first["ok"], true,
+        "synthetic conversation response: {first}"
+    );
     let response = run(
         &["rpc", "call", "client.conversation.execute"],
         json!({"action": "conversation.list"}),
@@ -1488,11 +1515,14 @@ fn native_cli_starts_and_reuses_its_durable_host_without_flutter() {
     );
     assert_eq!(dispatched["ok"], true);
     assert_eq!(dispatched["result"]["turns"], json!([]));
+    home.stop().expect("synthetic durable host cleanup");
     let _ = fs::remove_dir_all(root);
 }
 
 fn run_lico_client_rpc(args: Vec<String>) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
+    let home = SyntheticCliHome::new(None);
+    let mut child = home
+        .command()
         .args(["rpc", "stdio"])
         .env_remove("RUST_LOG")
         .env_remove("RUST_BACKTRACE")
@@ -1514,13 +1544,17 @@ fn run_lico_client_rpc(args: Vec<String>) -> Output {
         .expect("RPC stdin must be piped")
         .write_all(format!("{request}\n").as_bytes())
         .expect("RPC request must be writable");
-    child
+    let output = child
         .wait_with_output()
-        .expect("the real licoup RPC subprocess must finish")
+        .expect("the real licoup RPC subprocess must finish");
+    home.stop().expect("synthetic RPC host cleanup");
+    output
 }
 
 fn run_lico_client_conversation_rpc(args: Vec<String>, portable_root: &Path) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
+    let home = SyntheticCliHome::new(Some(portable_root));
+    let mut child = home
+        .command()
         .args(["rpc", "conversation"])
         .env("LICOUP_HOME", portable_root)
         .env_remove("RUST_LOG")
@@ -1543,15 +1577,19 @@ fn run_lico_client_conversation_rpc(args: Vec<String>, portable_root: &Path) -> 
         .expect("RPC stdin must be piped")
         .write_all(format!("{request}\n").as_bytes())
         .expect("RPC request must be writable");
-    child
+    let output = child
         .wait_with_output()
-        .expect("the real persistent conversation RPC subprocess must finish")
+        .expect("the real persistent conversation RPC subprocess must finish");
+    home.stop().expect("synthetic conversation host cleanup");
+    output
 }
 
 #[test]
 fn persistent_conversation_rpc_accepts_a_request_after_its_first_response() {
     let portable_root = temporary_directory("licoup-conversation-rpc-sequential");
-    let mut child = Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
+    let home = SyntheticCliHome::new(Some(&portable_root));
+    let mut child = home
+        .command()
         .args(["rpc", "conversation"])
         .env("LICOUP_HOME", &portable_root)
         .env_remove("LICOUP_CLIENT_PID")
@@ -1592,7 +1630,10 @@ fn persistent_conversation_rpc_accepts_a_request_after_its_first_response() {
         );
         let response: Value = serde_json::from_str(&line).expect("RPC response must be JSON");
         assert_eq!(response["id"], request_id);
-        assert_eq!(response["ok"], true);
+        assert_eq!(
+            response["ok"], true,
+            "synthetic conversation response: {response}"
+        );
     }
 
     drop(input);
@@ -1602,6 +1643,7 @@ fn persistent_conversation_rpc_accepts_a_request_after_its_first_response() {
             .expect("the persistent conversation RPC subprocess must finish")
             .success()
     );
+    home.stop().expect("synthetic sequential host cleanup");
     let _ = fs::remove_dir_all(portable_root);
 }
 
@@ -3782,6 +3824,73 @@ fn temporary_directory(label: &str) -> PathBuf {
 struct PortableDataOverride {
     previous: Option<PathBuf>,
     root: PathBuf,
+}
+
+/// Every real subprocess gets a synthetic user home as well as a data root.
+/// This keeps admission/RPC fixtures away from the user's locator and services.
+struct SyntheticCliHome {
+    home: PathBuf,
+    root: PathBuf,
+    stopped: std::cell::Cell<bool>,
+}
+
+impl SyntheticCliHome {
+    fn new(root: Option<&Path>) -> Self {
+        let home = temporary_directory("licoup-cli-home");
+        let root = root
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| home.join("data"));
+        fs::create_dir_all(&root).expect("synthetic CLI data root");
+        Self {
+            home,
+            root,
+            stopped: std::cell::Cell::new(false),
+        }
+    }
+
+    fn command(&self) -> Command {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_licoup-cli"));
+        command
+            .env("HOME", &self.home)
+            .env("USERPROFILE", &self.home)
+            .env("XDG_CONFIG_HOME", self.home.join("config"))
+            .env("XDG_DATA_HOME", self.home.join("data-dir"))
+            .env("APPDATA", self.home.join("appdata"))
+            .env("LOCALAPPDATA", self.home.join("local-appdata"))
+            .env("LICOUP_HOME", &self.root)
+            .env_remove("LICOUP_CLIENT_PID")
+            .env("LICOUP_MCP_AUTOSTART", "0")
+            .env("LICO_MOBILE_RELAY_NATIVE_SECRET_STORE", "disabled")
+            .env_remove("RUST_LOG")
+            .env_remove("RUST_BACKTRACE");
+        command
+    }
+
+    fn stop(&self) -> std::io::Result<()> {
+        if self.stopped.get() {
+            return Ok(());
+        }
+        let output = self
+            .command()
+            .args(["rpc", "conversation-host", "--stop"])
+            .output()?;
+        if output.status.success() {
+            self.stopped.set(true);
+            Ok(())
+        } else {
+            Err(std::io::Error::other(
+                "synthetic conversation host did not stop",
+            ))
+        }
+    }
+}
+
+impl Drop for SyntheticCliHome {
+    fn drop(&mut self) {
+        if self.stop().is_ok() {
+            let _ = fs::remove_dir_all(&self.home);
+        }
+    }
 }
 
 impl PortableDataOverride {

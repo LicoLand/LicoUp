@@ -1,5 +1,43 @@
 use super::*;
 
+#[test]
+fn continuity_owner_contract_is_valid_and_partial_or_changed_effects_are_refused() {
+    const CONTINUITY: &str =
+        include_str!("../../../../../tests/fixtures/client_state_migration/continuity_current.sql");
+    for mutation in [
+        None,
+        Some("DROP TRIGGER continuity_bump_designation_epoch;"),
+        Some(
+            "DROP TRIGGER continuity_bump_designation_epoch; CREATE TRIGGER continuity_bump_designation_epoch AFTER UPDATE OF assistant_membership_id ON conversations BEGIN DELETE FROM conversations WHERE id=NEW.id; END;",
+        ),
+        Some(
+            "CREATE TRIGGER extra_effect BEFORE INSERT ON conversations BEGIN SELECT RAISE(ABORT, 'blocked'); END;",
+        ),
+        Some("DROP TABLE continuity_goals;"),
+        Some("DELETE FROM continuity_schema WHERE key='version';"),
+    ] {
+        let mut connection = Connection::open_in_memory().unwrap();
+        create_current_schema(&mut connection).unwrap();
+        connection.execute_batch(CONTINUITY).unwrap();
+        if let Some(sql) = mutation {
+            connection.execute_batch(sql).unwrap();
+        }
+        let before = layout(&connection);
+        if mutation.is_some() {
+            assert!(preflight_schema(&connection).is_err());
+        } else {
+            preflight_schema(&connection).unwrap();
+        }
+        assert_eq!(layout(&connection), before);
+    }
+    let mut connection = Connection::open_in_memory().unwrap();
+    create_current_schema(&mut connection).unwrap();
+    connection.execute_batch("CREATE TABLE continuity_schema(key TEXT PRIMARY KEY,value TEXT NOT NULL); INSERT INTO continuity_schema VALUES ('version','7');").unwrap();
+    let before = layout(&connection);
+    assert!(preflight_schema(&connection).is_err());
+    assert_eq!(layout(&connection), before);
+}
+
 fn version(connection: &Connection) -> String {
     connection
         .query_row(

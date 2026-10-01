@@ -301,7 +301,7 @@ impl Drop for AtomicPrivateFile {
 }
 
 fn copy_cross_device_then_atomic_replace(tmp: &Path, path: &Path) -> Result<()> {
-    let parent = validation::parent_or_current(path)?;
+    let parent = sync::parent_or_current(path)?;
     validation::validate_private_path_ancestors(parent)?;
     let stage = sibling_temp_path(path);
     validation::validate_regular_file_or_missing_no_follow(&stage, true)?;
