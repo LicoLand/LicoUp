@@ -6,11 +6,61 @@ use super::protocol_reset::ensure_local_pairwise_protocol_compatible;
 use crate::core::secure_mesh_secret_store::SecretBytes;
 use crate::domain::mobile_relay::relay_operations::current_mailbox_rotation_epoch;
 use crate::domain::mobile_relay::secret_custody::{
-    MobileRelayE2eeSecretField, RuntimeSecretMaterial,
+    CUSTODY_NAMESPACE_FIELD, MobileRelayE2eeSecretField, RuntimeSecretMaterial,
 };
 use crate::domain::mobile_relay::support::MOBILE_RELAY_E2EE_PROTOCOL_VERSION;
-use anyhow::Result;
-use serde_json::{Value, json};
+use anyhow::{Result, ensure};
+use serde_json::{Map, Value, json};
+
+/// Presence of identity-bearing fields. Regenerating material over any of
+/// these would silently replace an existing device identity.
+pub(in crate::domain::mobile_relay) fn local_identity_metadata_present(
+    object: &Map<String, Value>,
+) -> bool {
+    const IDENTITY_FIELDS: [&str; 6] = [
+        "endpointId",
+        "publicKeyBase64url",
+        "fingerprint",
+        "signingPublicKeyBase64url",
+        "privateKeyBase64url",
+        "signingKeyBase64url",
+    ];
+    IDENTITY_FIELDS.iter().any(|field| {
+        object
+            .get(*field)
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty())
+    })
+}
+
+/// Refuse identity-bearing metadata that belongs to another data home.
+///
+/// This covers both a relocated restore (custody miss with copied metadata)
+/// and a replacement import that would place source metadata over an active
+/// target identity: the durable document records the home that wrote it, and
+/// a different resolved home is refused without mutation. A same-home custody
+/// miss (for example the documented ephemeral fallback after restart) keeps its
+/// matching binding and may re-provision; a document written before the binding
+/// existed adopts the current home on its next owning write.
+fn ensure_identity_binding_matches_data_home(object: &Map<String, Value>) -> Result<()> {
+    if !local_identity_metadata_present(object) {
+        return Ok(());
+    }
+    let Some(recorded) = object
+        .get(CUSTODY_NAMESPACE_FIELD)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(());
+    };
+    let derived = crate::domain::mobile_relay::secret_custody::native_secret_store_namespace()?;
+    ensure!(
+        recorded == derived,
+        "mobile relay device identity belongs to a different data home; refusing to replace or regenerate it over copied endpoint metadata"
+    );
+    Ok(())
+}
 
 pub(in crate::domain::mobile_relay) fn ensure_mobile_relay_endpoint_material(
     config: &mut Value,
@@ -29,6 +79,7 @@ pub(in crate::domain::mobile_relay) fn ensure_mobile_relay_endpoint_material(
         .get_mut("mobileRelayE2ee")
         .and_then(Value::as_object_mut)
     {
+        ensure_identity_binding_matches_data_home(object)?;
         if secret_material
             .e2ee_secret(MobileRelayE2eeSecretField::PrivateKey)
             .is_none()

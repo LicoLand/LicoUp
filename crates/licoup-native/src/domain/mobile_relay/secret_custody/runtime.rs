@@ -5,6 +5,10 @@ pub(in crate::domain::mobile_relay) const CONFIG_MAX_BYTES: usize = 512 * 1024;
 pub(in crate::domain::mobile_relay) const CONFIG_GENERATION_FIELD: &str = "configGeneration";
 pub(in crate::domain::mobile_relay) const AUTHORITY_GENERATION_FIELD: &str =
     "securityAuthorityGeneration";
+/// Data-home binding recorded by the durable config owner: the config-path
+/// derived custody namespace this document was last written under. A mismatch
+/// means the document was copied from another home.
+pub(in crate::domain::mobile_relay) const CUSTODY_NAMESPACE_FIELD: &str = "custodyNamespace";
 pub(in crate::domain::mobile_relay) const RUNTIME_SECRET_OVERRIDE_TRANSPORT: &str =
     "platform_keyring_to_rust_ffi_memory_override";
 pub(in crate::domain::mobile_relay) const NATIVE_SECRET_STORE_MODE_ENV: &str =

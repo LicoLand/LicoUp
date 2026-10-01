@@ -12,7 +12,9 @@ mod state_codec;
 
 pub(in crate::domain::mobile_relay) use composition::ensure_mobile_relay_endpoint_descriptor;
 pub(in crate::domain::mobile_relay) use descriptor::local_endpoint_public_descriptor;
-pub(in crate::domain::mobile_relay) use material_mutation::ensure_mobile_relay_endpoint_material;
+pub(in crate::domain::mobile_relay) use material_mutation::{
+    ensure_mobile_relay_endpoint_material, local_identity_metadata_present,
+};
 pub(in crate::domain::mobile_relay) use protocol_reset::ensure_local_pairwise_protocol_compatible;
 #[cfg(test)]
 pub(in crate::domain::mobile_relay) use rotation::rotate_mobile_relay_local_identity_for_repair;

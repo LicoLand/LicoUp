@@ -267,6 +267,8 @@ pub(in crate::domain::mobile_relay) fn mobile_relay_e2ee_secret_store_status(
     let capability_report_value = capability_report
         .and_then(|report| serde_json::to_value(report).ok())
         .unwrap_or(Value::Null);
+    let credential_custody =
+        credential_custody_status_projection(config, selected_backend, overrides);
     json!({
         "capabilityReport": capability_report_value,
         "custodyOperational": custody_operational,
@@ -304,7 +306,51 @@ pub(in crate::domain::mobile_relay) fn mobile_relay_e2ee_secret_store_status(
             "appPasswordPromptUsed": app_password_prompt_used
         },
         "keyMaterial": "redacted",
+        "credentialCustody": credential_custody,
     })
+}
+
+/// Redacted credential classification for the current data home. Provider key
+/// metadata is read through its owner without an authorized platform
+/// operation; custody that was not observed is never reported as available.
+fn credential_custody_status_projection(
+    config: &Value,
+    selected_backend: &str,
+    overrides: &RuntimeSecretOverrides,
+) -> Value {
+    let observations = CredentialCustodyObservations {
+        selected_custody_backend: selected_backend.to_string(),
+        identity_material_in_selected_custody: Some(overrides.e2ee_private_key),
+        provider_key_material_in_selected_custody: None,
+        relay_token_material_in_selected_custody: Some(
+            overrides.pc_token
+                || overrides.mobile_token
+                || !overrides.paired_device_tokens.is_empty(),
+        ),
+        opaque_platform_items: Vec::new(),
+    };
+    let data_root = config_path().ok().and_then(|config_file| {
+        let client_state_dir = config_file.parent()?.parent()?;
+        Some(client_state_dir.parent()?.to_path_buf())
+    });
+    let Some(data_root) = data_root else {
+        return json!({
+            "available": false,
+            "reason": "credential_data_root_unavailable",
+            "secretValuesIncluded": false,
+        });
+    };
+    match credential_custody_inventory(&data_root, config, &observations) {
+        Ok(inventory) => json!({
+            "available": true,
+            "inventory": inventory,
+        }),
+        Err(_) => json!({
+            "available": false,
+            "reason": "credential_metadata_unavailable",
+            "secretValuesIncluded": false,
+        }),
+    }
 }
 
 #[cfg(test)]

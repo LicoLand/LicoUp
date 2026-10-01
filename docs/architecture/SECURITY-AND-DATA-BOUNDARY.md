@@ -1,6 +1,6 @@
 # Security Architecture and Data Boundaries
 
-Updated: 2026-09-30
+Updated: 2026-10-01
 
 English (Normative) · [简体中文](SECURITY-AND-DATA-BOUNDARY.zh-CN.md) · [Back to Architecture README](README.md)
 
@@ -106,3 +106,34 @@ known invocation can still settle that invocation under its original identity an
 restricted visibility. Recording the fact does not renew a grant, permit another effect,
 or authorize a successor to read its content. These requirements must be verified at
 the actual adapter and store boundaries; this section makes no new sandbox claim.
+
+## 7. Device Identity Ownership and Credential Custody
+
+One subject may operate several devices, and each device owns a distinct device
+identity. A replacement device provisions new per-device identity material
+through the local custody owner; an active device key is never duplicated,
+exported or installed from a backup. A replacement import that targets a home
+already declaring a device identity is refused without mutating the target's
+custody or identity state. Cross-device
+activation, revocation and wiping remain separate authenticated operations and
+are not provided by local recovery.
+
+Credential classes have distinct custody and reacquisition paths:
+
+| Credential class | Material location | Recovery or reauthorization path |
+| --- | --- | --- |
+| Device identity key | Platform secret custody of the owning device | Provision new per-device identity material; never copy an active key |
+| Provider API key | Platform secret custody, one entry per provider credential | Reauthorize the provider and enter the key again |
+| Relay access token | Platform secret custody keyed by the local custody namespace | Re-pair the device or reauthorize it with its peer |
+| Non-exportable platform credential | Platform secret custody item with no portable form | Reacquire through the platform custody owner |
+
+Relay custody is bound to the data home: the custody namespace is derived from
+the resolved configuration path rather than a fixed name, and the durable
+configuration records the home that wrote it. A restore that keeps the same
+data home and live platform custody continues the same device fingerprint. A
+restore into a different home reports the missing custody and refuses to
+regenerate identity material behind copied endpoint metadata. Credential
+inventory and archive coverage report non-secret metadata only; they never
+include secret values and never present metadata as proof that key material is
+available. Possession of an ordinary backup grants no takeover, revocation or
+wiping authority.

@@ -1832,7 +1832,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.mobile-relay.endpoint-trust.local-material.identity",
       kind: "rust-domain",
-      summary: "Local identity and signing generation separated from endpoint config mutation",
+      summary: "Local endpoint identity generation, data-home binding, and replacement-import refusal",
       inputs: [
         "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/composition.rs",
         "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/identity_generation.rs",
@@ -2054,9 +2054,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.mobile-relay.secret-custody",
       kind: "rust-domain",
-      summary: "Secret custody facade and shared helper projection",
+      summary: "Secret custody facade, redacted credential inventory, and shared helper projection",
       inputs: [
         "crates/licoup-native/src/domain/mobile_relay/secret_custody.rs",
+        "crates/licoup-native/src/domain/mobile_relay/secret_custody/inventory.rs",
         "crates/licoup-native/src/domain/mobile_relay/secret_custody/tests.rs",
       ],
       command: rustLayer("domain::mobile_relay::secret_custody::tests::"),

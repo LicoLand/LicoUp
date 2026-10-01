@@ -313,6 +313,18 @@ pub(in crate::domain::mobile_relay) fn save_config_raw_with_reset_policy(
         .ok_or_else(|| anyhow!("mobile relay config generation overflow"))?;
     config[CONFIG_GENERATION_FIELD] = json!(committed_generation);
     config[AUTHORITY_GENERATION_FIELD] = json!(candidate_authority_generation);
+    // Bind the identity state to the home that wrote it. A later restore or
+    // relocation carries the previous binding and is refused by the identity
+    // owner instead of silently minting a replacement identity.
+    if let Some(e2ee) = config
+        .get_mut("mobileRelayE2ee")
+        .and_then(Value::as_object_mut)
+    {
+        e2ee.insert(
+            CUSTODY_NAMESPACE_FIELD.to_string(),
+            json!(native_secret_store_namespace()?),
+        );
+    }
     let encoded = format!("{}\n", serde_json::to_string_pretty(config)?);
     licoup_foundation::platform::file_security::atomic_write_private_text_bounded(
         &config_path()?,

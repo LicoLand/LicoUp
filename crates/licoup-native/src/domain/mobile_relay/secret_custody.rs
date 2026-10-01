@@ -35,6 +35,7 @@ use super::support::{bool_param, text_param};
 
 mod cleanup;
 mod config_store;
+mod inventory;
 mod persistence;
 mod presentation;
 mod reset_guard;
@@ -48,6 +49,7 @@ mod tests;
 
 pub(in crate::domain::mobile_relay) use cleanup::*;
 pub(in crate::domain::mobile_relay) use config_store::*;
+pub(in crate::domain::mobile_relay) use inventory::*;
 pub(in crate::domain::mobile_relay) use persistence::*;
 pub(in crate::domain::mobile_relay) use presentation::*;
 pub(in crate::domain::mobile_relay) use reset_guard::*;
