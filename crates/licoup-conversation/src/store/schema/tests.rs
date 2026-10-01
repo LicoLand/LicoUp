@@ -1,9 +1,8 @@
 use super::*;
+include!("../../../../../tests/fixtures/client_state_migration/continuity_layout.rs");
 
 #[test]
 fn continuity_owner_contract_is_valid_and_partial_or_changed_effects_are_refused() {
-    const CONTINUITY: &str =
-        include_str!("../../../../../tests/fixtures/client_state_migration/continuity_current.sql");
     for mutation in [
         None,
         Some("DROP TRIGGER continuity_bump_designation_epoch;"),
@@ -18,7 +17,7 @@ fn continuity_owner_contract_is_valid_and_partial_or_changed_effects_are_refused
     ] {
         let mut connection = Connection::open_in_memory().unwrap();
         create_current_schema(&mut connection).unwrap();
-        connection.execute_batch(CONTINUITY).unwrap();
+        connection.execute_batch(CURRENT_CONTINUITY_SCHEMA).unwrap();
         if let Some(sql) = mutation {
             connection.execute_batch(sql).unwrap();
         }

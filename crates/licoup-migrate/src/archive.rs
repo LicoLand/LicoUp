@@ -152,9 +152,9 @@ pub fn export(
 /// Restore one archive into an empty destination through the shared native composition.
 ///
 /// The Foundation owner extracts into its own staging area, verifies every declared
-/// member against the archive manifest, and only then publishes into `target_root`; a
-/// destination that already holds anything is refused. The native composition then
-/// applies the same owner repair the installed client's `backup import` applies: rebase
+/// member against the archive manifest, and prepares native owners before publishing into
+/// `target_root`; a destination that already holds anything is refused. Both this tool
+/// and the client's `backup import` use that shared staging preparation: rebase
 /// owner-managed references when the restored home differs from the captured logical
 /// source home, and re-establish the workflow revision invariants through their owner.
 /// This tool reports that verdict and never promotes a partial restore itself.

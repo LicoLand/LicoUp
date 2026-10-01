@@ -2,6 +2,10 @@
   "schemaVersion": 1,
   "allowedJsonPaths": [
     {
+      "path": "tests/fixtures/client_state_migration/structural_cases.json",
+      "kind": "json"
+    },
+    {
       "path": "crates/licoup-conversation/resources/state-machines.json",
       "kind": "config-object"
     },
@@ -391,6 +395,7 @@
     "claude.com",
     "codeload.github.com",
     "deepseek.com",
+    "developer.mozilla.org",
     "en.wikipedia.org",
     "formulae.brew.sh",
     "licoland.org",

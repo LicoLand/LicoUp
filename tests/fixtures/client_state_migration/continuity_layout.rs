@@ -1,4 +1,6 @@
--- Frozen schema-only output of the actual native ConversationService/continuity owner.
+// Shared Rust/JavaScript producer fixture. The SQL payload is frozen independently
+// from validator expectations and is source code, not a database or user-data dump.
+pub const CURRENT_CONTINUITY_SCHEMA: &str = r#"-- Frozen schema-only output of the actual native ConversationService/continuity owner.
 -- No user records or validator-generated expected layout are included.
 ALTER TABLE conversations ADD COLUMN designation_epoch INTEGER NOT NULL DEFAULT 0;
 CREATE TABLE continuity_agreements (
@@ -99,3 +101,4 @@ CREATE TRIGGER continuity_bump_designation_epoch
   UPDATE conversations SET designation_epoch = designation_epoch + 1 WHERE id = NEW.id;
  END;
 INSERT INTO continuity_schema(key,value) VALUES ('version','7');
+"#;

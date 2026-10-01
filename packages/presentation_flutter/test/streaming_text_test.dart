@@ -7,7 +7,7 @@ void main() {
     tester,
   ) async {
     const doc =
-        'Hello **world** with *italic* and `code` span and [docs](https://licoup.dev)';
+        'Hello **world** with *italic* and `code` span and [docs](https://example.invalid/docs)';
 
     await tester.pumpWidget(
       const MaterialApp(

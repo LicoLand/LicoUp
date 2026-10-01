@@ -206,7 +206,10 @@ test("current continuity owner composes with Conversation and malformed effects 
   const selected = selectModulesForChangedPaths(["crates/licoup-conversation/src/continuity/migrate.rs"])
     .filter((module) => module.id === "regression.client-state-migration");
   assert.equal(selected.length, 1, "the actual continuity producer must select its diagnostic consumer");
-  const fixture = ownerSource("tests/fixtures/client_state_migration/continuity_current.sql");
+  const fixture = rustRawString(
+    ownerSource("tests/fixtures/client_state_migration/continuity_layout.rs"),
+    "CURRENT_CONTINUITY_SCHEMA",
+  );
   for (const mutation of [
     null,
     "DROP TRIGGER continuity_bump_designation_epoch;",

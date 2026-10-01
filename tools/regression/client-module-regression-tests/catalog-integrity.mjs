@@ -107,6 +107,7 @@ test("owner schema and frozen fixture changes select the actual migration diagno
     "crates/licoup-native/src/domain/client_state_migration/tests/structural.rs",
     "tests/fixtures/client_state_migration/released_source.rs",
     "tests/fixtures/client_state_migration/owner_layouts.rs",
+    "tests/fixtures/client_state_migration/continuity_layout.rs",
     "tests/fixtures/client_state_migration/structural_cases.json",
     "tools/scripts/client-state-migration/sqlite-contract.mjs",
     "tools/scripts/client-state-migration/probe.mjs",
@@ -116,6 +117,10 @@ test("owner schema and frozen fixture changes select the actual migration diagno
     const invocations = selected.filter((module) => module.command.program === "node" && module.command.args.includes(diagnostic));
     assert.equal(invocations.length, 1, changed);
     assert.deepEqual(invocations[0].command.args, ["--test", "tests/contract/client/client-state-migration.test.mjs", diagnostic]);
+    if (changed.endsWith("/continuity_layout.rs")) {
+      const owner = selected.find((module) => module.id === "rust.domain.client-conversations");
+      assert.ok(owner?.command.args.includes("store::schema::tests::"), "the frozen producer fixture selects its actual Rust schema consumer");
+    }
     assert.equal(invocations[0].command.cwd, ".");
   }
 });
