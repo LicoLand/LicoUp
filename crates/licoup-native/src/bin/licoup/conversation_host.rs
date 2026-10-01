@@ -804,6 +804,11 @@ mod tests {
                 .args(["--exact", "conversation_host::tests::runtime_bound_empty_service_retains_read_only_conversation_behavior", "--nocapture"])
                 .env("LICOUP_SYNTHETIC_BOUND_OWNER", &root)
                 .env("HOME", root.join("home"))
+                .env("USERPROFILE", root.join("home"))
+                .env("XDG_CONFIG_HOME", root.join("home/config"))
+                .env("XDG_DATA_HOME", root.join("home/share"))
+                .env("APPDATA", root.join("home/appdata"))
+                .env("LOCALAPPDATA", root.join("home/local-appdata"))
                 .env("LICOUP_HOME", &root)
                 .env("LICOUP_MCP_AUTOSTART", "0")
                 .env("LICO_MOBILE_RELAY_NATIVE_SECRET_STORE", "disabled")
@@ -931,6 +936,7 @@ mod tests {
         drop(reader);
         host.join().unwrap().unwrap();
         drop(probe);
+        drop(_access);
         std::fs::remove_dir_all(root).unwrap();
     }
 
