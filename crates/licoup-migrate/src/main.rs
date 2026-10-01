@@ -11,6 +11,7 @@ use licoup_migrate::error::{
 use licoup_migrate::rehearse::{RehearsalRequest, rehearse};
 use licoup_migrate::resume::{ResumeOptions, resume};
 use licoup_migrate::{archive, convert, inspect, plan};
+use licoup_native::domain::local_recovery;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -93,6 +94,18 @@ impl Outcome {
 }
 
 fn run(invocation: &Invocation) -> Result<Outcome, ToolError> {
+    // Use the client's process-lifetime coordination, not merely the migration
+    // owner's short admission lock. Hold it across every nested rehearsal or
+    // recovery operation, without reacquiring it in the library helpers. The
+    // operator statement still covers older/nonparticipating writers.
+    let _selected_home = match invocation.verb {
+        Verb::Inspect | Verb::Plan => None,
+        Verb::Convert | Verb::Resume | Verb::Export | Verb::Import | Verb::Rehearse => Some(
+            local_recovery::acquire_exclusive_selected_home()
+                .map_err(|_| ToolError::new("data_home_coordination_unavailable"))?
+                .ok_or_else(|| ToolError::new(local_recovery::WRITERS_RUNNING))?,
+        ),
+    };
     match invocation.verb {
         Verb::Inspect => {
             let report = inspect::inspect(data_root(invocation)?)?;

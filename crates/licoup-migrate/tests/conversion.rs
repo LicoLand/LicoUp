@@ -4,12 +4,10 @@
 //! contract around the owner: a conversion is reported per domain, a refusal is refused,
 //! nothing outside the root is touched, and a second run does not claim new work.
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+mod support;
 
-fn binary() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_licoup-migrate"))
-}
+use std::path::{Path, PathBuf};
+use support::run_tool as run;
 
 fn scratch(name: &str) -> PathBuf {
     let base = std::env::temp_dir()
@@ -21,17 +19,6 @@ fn scratch(name: &str) -> PathBuf {
     }
     std::fs::create_dir_all(&root).expect("create scratch root");
     root
-}
-
-fn run(arguments: &[&str]) -> (i32, serde_json::Value) {
-    let output = Command::new(binary())
-        .args(arguments)
-        .output()
-        .expect("run the tool");
-    let stdout = String::from_utf8(output.stdout).expect("utf-8 report");
-    let report: serde_json::Value =
-        serde_json::from_str(stdout.trim()).expect("one JSON report per invocation");
-    (output.status.code().unwrap_or(-1), report)
 }
 
 fn fingerprint(root: &Path) -> Vec<(String, u64)> {

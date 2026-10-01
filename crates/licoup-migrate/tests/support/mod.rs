@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use licoup_foundation::platform::file_security::{atomic_write_private_text, ensure_private_dir};
 use rusqlite::Connection;
@@ -175,11 +176,40 @@ pub fn tool_binary() -> PathBuf {
 
 /// Run the standalone tool and parse its single JSON report.
 pub fn run_tool(arguments: &[&str]) -> (i32, serde_json::Value) {
-    let output = Command::new(tool_binary())
+    static NEXT_HOME: AtomicUsize = AtomicUsize::new(0);
+    let home = TestRoot::new(&format!(
+        "tool-home-{}",
+        NEXT_HOME.fetch_add(1, Ordering::Relaxed)
+    ));
+    run_tool_in_home(home.path(), arguments)
+}
+
+/// Use one explicitly owned home when testing coordination across processes.
+pub fn run_tool_in_home(home: &Path, arguments: &[&str]) -> (i32, serde_json::Value) {
+    let output = isolated_command(tool_binary(), home)
         .args(arguments)
         .output()
         .expect("run the tool");
     report_of(output)
+}
+
+/// Neither tool may inherit a developer's locator, custody or service environment.
+pub fn isolated_command(binary: PathBuf, home: &Path) -> Command {
+    fs::create_dir_all(home).expect("isolated process home");
+    let mut command = Command::new(binary);
+    command
+        .env("HOME", home)
+        .env("USERPROFILE", home)
+        .env("APPDATA", home.join("AppData/Roaming"))
+        .env("LOCALAPPDATA", home.join("AppData/Local"))
+        .env("XDG_CONFIG_HOME", home.join(".config"))
+        .env_remove("LICOUP_HOME")
+        .env_remove("LICOUP_PORTABLE_DIR")
+        .env_remove("RUST_LOG")
+        .env_remove("RUST_BACKTRACE")
+        .env("LICO_MOBILE_RELAY_NATIVE_SECRET_STORE", "disabled")
+        .env("LICOUP_MCP_AUTO_START", "0");
+    command
 }
 
 /// The client CLI binary that backs the cross-container oracle.
@@ -206,14 +236,8 @@ pub fn client_cli_binary() -> PathBuf {
 
 /// Run the client CLI with an isolated home, as the CLI contract cases do.
 pub fn run_client_cli(home: &Path, arguments: &[&str]) -> (i32, serde_json::Value) {
-    let output = Command::new(client_cli_binary())
+    let output = isolated_command(client_cli_binary(), home)
         .args(arguments)
-        .env("HOME", home)
-        .env_remove("LICOUP_HOME")
-        .env_remove("LICOUP_PORTABLE_DIR")
-        .env_remove("XDG_CONFIG_HOME")
-        .env_remove("RUST_LOG")
-        .env_remove("RUST_BACKTRACE")
         .output()
         .expect("run the client CLI");
     assert!(
