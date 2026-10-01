@@ -3,6 +3,7 @@ import test from "node:test";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { generateReports } from "../reports.mjs";
 import { renderPlan, planGraphs } from "../reporting/plan.mjs";
 import { stateGraph } from "../reporting/render.mjs";
@@ -436,4 +437,43 @@ test("architecture edges follow runtime package definitions instead of impact co
     ] }]));
     assert.deepEqual(edges(), [["packages/widget/pubspec.yaml", "packages/core/pubspec.yaml"]]);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// The reviewed report sources are reusable repository data, not private evidence.
+// Each one carries an exact admission in the maintained Auditor policy; the policy
+// keeps the published three-key schema instead of a wildcard or privacy exemption.
+test("reviewed report sources keep exact policy admissions", () => {
+  const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+  const policy = JSON.parse(readFileSync(path.join(repoRoot, ".lico-auditor/policy.json"), "utf8"));
+  assert.deepEqual(Object.keys(policy), ["schemaVersion", "allowedJsonPaths", "publicReferenceDomains"]);
+  assert.equal(policy.schemaVersion, 1);
+  const workflowNames = [
+    "01-requirements",
+    "02-milestone",
+    "03-parallel-development",
+    "04-integration-review",
+    "05-engineering-verification",
+    "06-data-transition",
+    "07-engineering-handoff",
+    "08-live-acceptance",
+    "09-defect-repair",
+    "10-privacy-review",
+    "11-contribution",
+    "12-release",
+    "13-installed-milestone-candidate",
+  ];
+  const reviewed = [
+    ["tools/development/architecture-views.json", "json"],
+    ["tools/development/state-machines.json", "json"],
+    ...workflowNames.map((name) => [`tools/development/workflows/${name}.json`, "config-object"]),
+  ];
+  const developmentDeclarations = policy.allowedJsonPaths
+    .filter((entry) => entry.path.startsWith("tools/development/"))
+    .map((entry) => ({ path: entry.path, kind: entry.kind }));
+  assert.deepEqual(developmentDeclarations, reviewed.map(([relativePath, kind]) => ({ path: relativePath, kind })));
+  for (const [relativePath, kind] of reviewed) {
+    const data = JSON.parse(readFileSync(path.join(repoRoot, relativePath), "utf8"));
+    if (kind === "json") assert.ok(Array.isArray(data), `${relativePath} keeps its declared array shape`);
+    else assert.equal(typeof data === "object" && data !== null && !Array.isArray(data), true, `${relativePath} keeps its declared object shape`);
+  }
 });

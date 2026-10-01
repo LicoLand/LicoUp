@@ -304,6 +304,7 @@ export const REGRESSION_MODULES = Object.freeze([
       kind: "regression-infrastructure",
       summary: "Developer report renderer, plan projection adapter, and current delivery fidelity fixtures",
       inputs: [
+        ".lico-auditor/policy.json",
         "package.json",
         "package-lock.json",
         "tools/development/architecture-views.json",

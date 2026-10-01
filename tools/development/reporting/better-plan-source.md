@@ -1,6 +1,6 @@
 # Better Plan report reuse
 
-Updated: 2026-09-30
+Updated: 2026-10-01
 
 The shared `page.mjs`, `graph.mjs`, `graph-layout.mjs`, `style.css` and
 `interaction.js` provide cards, dependency graphs and detail drawers for permanent
@@ -43,7 +43,8 @@ layering cannot represent. Parallel transitions with identical endpoints share a
 line while retaining every event and condition in its detail drawer. State-machine
 authorities remain unchanged. `edge-routing.mjs` retains Better Plan's centered
 ports and cubic curves, with continuous splines for obstacle routes. Arrowheads
-attach to the same SVG path using [automatic marker orientation](https://developer.mozilla.org/en-US/docs/Web/SVG/Reference/Attribute/orient).
+attach to the same SVG path with the marker's automatic orientation
+(`orient="auto"`).
 Node positions, curves and arrowheads are generated from source relationships;
 never patch coordinates into individual reports or edit the generated HTML.
 

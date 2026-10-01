@@ -324,6 +324,66 @@
     {
       "path": "tests/integration/usage_sources/fixtures/otlp-restarted.json",
       "kind": "config-object"
+    },
+    {
+      "path": "tools/development/architecture-views.json",
+      "kind": "json"
+    },
+    {
+      "path": "tools/development/state-machines.json",
+      "kind": "json"
+    },
+    {
+      "path": "tools/development/workflows/01-requirements.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/02-milestone.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/03-parallel-development.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/04-integration-review.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/05-engineering-verification.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/06-data-transition.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/07-engineering-handoff.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/08-live-acceptance.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/09-defect-repair.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/10-privacy-review.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/11-contribution.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/12-release.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/13-installed-milestone-candidate.json",
+      "kind": "config-object"
     }
   ],
   "publicReferenceDomains": [
