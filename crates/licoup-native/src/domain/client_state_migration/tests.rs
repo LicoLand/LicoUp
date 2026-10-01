@@ -859,6 +859,16 @@ fn a_released_source_root_is_admitted_to_the_current_frontier() {
         .unwrap();
     assert_eq!(page.events.len(), 1);
     assert_eq!(page.events[0].id, RELEASED_EVENT_ID);
+    // The retained event sequence uniqueness still holds after conversion.
+    let duplicate = Connection::open(&database).unwrap().execute(
+        "INSERT INTO events(id, conversation_id, sequence, kind, created_at, finalized)
+         VALUES ('released-event-duplicate', ?1, 1, 'message', 1, 1)",
+        rusqlite::params![RELEASED_CONVERSATION_ID],
+    );
+    assert!(
+        duplicate.is_err(),
+        "a duplicate conversation sequence must be rejected"
+    );
 
     // The ledger now names this binary's target and keeps the released step.
     let ledger: Ledger = serde_json::from_slice(&fs::read(&ledger_path).unwrap()).unwrap();
@@ -1339,11 +1349,57 @@ fn remove_conversation_title(root: &Path) {
         .unwrap();
 }
 
+/// Admit the current store, then remove a principal business field every
+/// reader selects.
+fn remove_current_principal_display_name(root: &Path) {
+    admit_as_version(root, "0.3.0").unwrap();
+    let connection = Connection::open(root.join(RELEASED_CONVERSATION_DATABASE)).unwrap();
+    connection
+        .execute_batch("ALTER TABLE principals DROP COLUMN display_name;")
+        .unwrap();
+}
+
+/// Remove a principal business field from the released layout itself.
+fn remove_released_principal_display_name(root: &Path) {
+    let connection = Connection::open(root.join(RELEASED_CONVERSATION_DATABASE)).unwrap();
+    connection
+        .execute_batch("ALTER TABLE principals DROP COLUMN display_name;")
+        .unwrap();
+}
+
+/// Rebuild the released events table without its
+/// `UNIQUE(conversation_id, sequence)` constraint, exactly the shape a
+/// weakened store presents after conversion.
+fn replace_event_sequence_uniqueness(root: &Path) {
+    let connection = Connection::open(root.join(RELEASED_CONVERSATION_DATABASE)).unwrap();
+    connection
+        .execute_batch(
+            "PRAGMA foreign_keys=OFF;
+             CREATE TABLE events_rebuilt (
+               id TEXT PRIMARY KEY,
+               conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+               sequence INTEGER NOT NULL,
+               author_membership_id TEXT REFERENCES memberships(id),
+               kind TEXT NOT NULL, causation_id TEXT, correlation_id TEXT,
+               created_at INTEGER NOT NULL,
+               finalized INTEGER NOT NULL DEFAULT 0 CHECK(finalized IN (0,1)),
+               CHECK(1)
+             );
+             INSERT INTO events_rebuilt
+               SELECT id, conversation_id, sequence, author_membership_id, kind,
+                      causation_id, correlation_id, created_at, finalized
+                 FROM events;
+             DROP TABLE events;
+             ALTER TABLE events_rebuilt RENAME TO events;",
+        )
+        .unwrap();
+}
+
 /// A refusal leaves an existing ledger, high-water and every store byte for
 /// byte as they were.
 #[test]
 fn admission_preserves_existing_ledger_and_stores_when_it_refuses() {
-    let cases: [(&str, fn(&Path), &str); 3] = [
+    let cases: [(&str, fn(&Path), &str); 6] = [
         (
             "a truncated older published store",
             truncate_older_conversation_store,
@@ -1360,6 +1416,21 @@ fn admission_preserves_existing_ledger_and_stores_when_it_refuses() {
             "a current store missing the conversation title",
             remove_conversation_title,
             "licoup-state-0.3.0",
+        ),
+        (
+            "a current store missing a principal business field",
+            remove_current_principal_display_name,
+            "licoup-state-0.3.0",
+        ),
+        (
+            "a released store missing a principal business field",
+            remove_released_principal_display_name,
+            SOURCE_FRONTIER_ID,
+        ),
+        (
+            "a released store without event sequence uniqueness",
+            replace_event_sequence_uniqueness,
+            SOURCE_FRONTIER_ID,
         ),
     ];
     for (label, mutate, expected_frontier) in cases {
@@ -1496,6 +1567,48 @@ fn a_weakened_authorization_predicate_is_refused() {
     );
     assert_eq!(fs::read(&path).unwrap(), before[0]);
     assert_eq!(fs::read(&ledger_path).unwrap(), before[1]);
+    let _ = fs::remove_dir_all(root);
+}
+
+/// The released layout stamped as the adjacent legacy version is still a
+/// legitimate owner-supported source: the in-memory upgrade proof accepts it,
+/// the real upgrade runs, and the owner reads the business rows back.
+#[test]
+fn a_released_layout_stamped_as_legacy_is_upgraded_and_read_back() {
+    let root = std::env::temp_dir().join(format!(
+        "licoup-legacy-stamped-released-{}",
+        uuid::Uuid::new_v4()
+    ));
+    seed_released_source_root(&root);
+    let database = root.join(RELEASED_CONVERSATION_DATABASE);
+    Connection::open(&database)
+        .unwrap()
+        .execute("UPDATE schema_meta SET value='11' WHERE key='version'", [])
+        .unwrap();
+    let result = admit_as_version(&root, "0.3.0").unwrap();
+    assert!(
+        result
+            .skipped_domain_ids
+            .iter()
+            .any(|domain| domain == "canonical-conversation"),
+        "the existing store keeps its domain version while its inner schema is upgraded"
+    );
+    let inner: String = Connection::open(&database)
+        .unwrap()
+        .query_row(
+            "SELECT value FROM schema_meta WHERE key='version'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(inner, licoup_conversation::store::CURRENT_SCHEMA_VERSION);
+    let conversations = crate::domain::client_conversation::ConversationStore::open(&root).unwrap();
+    let conversation = conversations.get(RELEASED_CONVERSATION_ID).unwrap();
+    assert_eq!(conversation.title, "Synthetic released conversation");
+    let page = conversations
+        .page_events(RELEASED_CONVERSATION_ID, None, 10)
+        .unwrap();
+    assert_eq!(page.events.len(), 1);
     let _ = fs::remove_dir_all(root);
 }
 

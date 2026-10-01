@@ -1,6 +1,7 @@
-import { closeSync, constants, lstatSync, openSync, readSync } from "node:fs";
+import { closeSync, constants, lstatSync, openSync, readFileSync, readSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { MigrationStateError } from "./errors.mjs";
 import {
@@ -226,187 +227,217 @@ function collectionsProbe(root, shape) {
   };
 }
 
-// The Conversation owner's own layout contract in
-// `crates/licoup-conversation/src/store/schema.rs`: `validate_current_schema_shape`
-// for the current schema, and the owner's released schema-12 layout
-// (`validate_released_schema_shape`). A version row on anything less than these
-// physical layouts is not a store.
-export const CONVERSATION_CURRENT_TABLES = Object.freeze([
-  "schema_meta",
-  "principals",
-  "conversations",
-  "memberships",
-  "membership_profiles",
-  "events",
-  "event_parts",
-  "direct_turns",
-  "event_search",
-  "source_links",
-  "runtime_bindings",
-  "conversation_dispatches",
-  "subagent_dispatch_claims",
-  "subagent_mcp_inbound",
-  "subagent_dispatch_deliveries",
-  "migration_provenance",
-  "archived_native_sessions",
-  "conversation_native_sessions",
-]);
-export const CONVERSATION_CURRENT_COLUMNS = Object.freeze({
-  schema_meta: Object.freeze(["key", "value"]),
-  conversations: Object.freeze(["id", "revision", "updated_at"]),
-  events: Object.freeze([
-    "id",
-    "conversation_id",
-    "sequence",
-    "author_membership_id",
-    "correlation_id",
-    "kind",
-    "finalized",
-  ]),
-  event_parts: Object.freeze(["event_id", "ordinal", "kind", "content", "created_at"]),
-  direct_turns: Object.freeze(["id", "state"]),
-  event_search: Object.freeze(["event_id", "conversation_id", "content"]),
-  conversation_dispatches: Object.freeze([
-    "id",
-    "conversation_id",
-    "membership_id",
-    "state",
-    "created_at",
-    "error_code",
-    "updated_at",
-  ]),
-  subagent_dispatch_claims: Object.freeze([
-    "id",
-    "conversation_id",
-    "caller_membership_id",
-    "state",
-    "updated_at",
-  ]),
-  subagent_dispatch_deliveries: Object.freeze([
-    "claim_id",
-    "kind",
-    "conversation_id",
-    "recipient_membership_id",
-    "state",
-    "terminal_state",
-    "payload",
-    "attempt_count",
-    "created_at",
-    "updated_at",
-  ]),
-});
+// The Conversation owner's own layout contract, read from the owner's actual
+// DDL when the diagnostic runs. There is no mirrored column list to drift: the
+// reference contract is built by executing the owner's canonical statements in
+// memory, exactly as the Rust admission derives it.
+const REPO_ROOT = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
+const CONVERSATION_SCHEMA_SOURCE = "crates/licoup-conversation/src/store/schema.rs";
+const CONVERSATION_NATIVE_SESSIONS_SOURCE =
+  "crates/licoup-conversation/src/store/native_sessions.rs";
+const RELEASED_SOURCE_FIXTURE = "tests/fixtures/client_state_migration/released_source.rs";
 const CONVERSATION_RELEASED_SCHEMA_VERSION = "12";
-export const CONVERSATION_RELEASED_MEMBERSHIP_INDEX = "memberships_principal_unique";
-export const CONVERSATION_RELEASED_TABLES = Object.freeze({
-  conversation_dispatches: Object.freeze([
-    "id",
-    "conversation_id",
-    "membership_id",
-    "operation",
-    "state",
-    "session_mode",
-    "runtime_conversation_path",
-    "error_code",
-    "created_at",
-    "updated_at",
-  ]),
-  conversations: Object.freeze([
-    "id",
-    "title",
-    "archived",
-    "pinned",
-    "is_group",
-    "strategy_revision",
-    "assistant_membership_id",
-    "revision",
-    "created_at",
-    "updated_at",
-  ]),
-  direct_turns: Object.freeze([
-    "id",
-    "conversation_id",
-    "source_event_id",
-    "membership_id",
-    "state",
-    "ordinal",
-  ]),
-  event_parts: Object.freeze([
-    "id",
-    "event_id",
-    "ordinal",
-    "kind",
-    "content",
-    "runtime_cursor",
-    "created_at",
-  ]),
-  events: Object.freeze([
-    "id",
-    "conversation_id",
-    "sequence",
-    "author_membership_id",
-    "kind",
-    "causation_id",
-    "correlation_id",
-    "created_at",
-    "finalized",
-  ]),
-  membership_profiles: Object.freeze([
-    "membership_id",
-    "revision",
-    "responsibility",
-    "required_capabilities",
-    "preferred_capabilities",
-    "skill_references",
-    "preferred_model",
-    "preferred_reasoning_effort",
-    "preferred_environment",
-    "updated_at",
-  ]),
-  memberships: Object.freeze([
-    "id",
-    "conversation_id",
-    "principal_id",
-    "access",
-    "status",
-    "joined_at",
-    "left_at",
-  ]),
-  migration_provenance: Object.freeze(["source_kind", "source_identity", "conversation_id"]),
-  principals: Object.freeze(["id", "kind", "display_name", "agent_id", "created_at"]),
-  runtime_bindings: Object.freeze([
-    "id",
-    "conversation_id",
-    "membership_id",
-    "lane",
-    "availability",
-    "safe_reason",
-    "runtime_session_id",
-    "runtime_conversation_path",
-    "working_directory",
-  ]),
-  source_links: Object.freeze(["id", "conversation_id", "source_kind", "native_identity"]),
-  subagent_dispatch_claims: Object.freeze([
-    "id",
-    "conversation_id",
-    "caller_membership_id",
-    "target_membership_id",
-    "parent_dispatch_id",
-    "depth",
-    "state",
-    "created_at",
-    "updated_at",
-    "watchdog_deadline_unix_ms",
-  ]),
-  subagent_mcp_inbound: Object.freeze([
-    "id",
-    "conversation_id",
-    "caller_membership_id",
-    "target_membership_id",
-    "tool",
-    "outcome",
-    "created_at",
-  ]),
-});
+const CONVERSATION_MEMBERSHIP_IDENTITY_INDEX = "memberships_principal_unique";
+
+/** A repository source file, refused as a bounded capability failure. */
+function repositorySource(relative) {
+  try {
+    return readFileSync(path.join(REPO_ROOT, relative), "utf8");
+  } catch {
+    throw new MigrationStateError("probe_capability_unavailable");
+  }
+}
+
+/** The quoted Rust string literal containing `anchor`. */
+function rustLiteralContaining(source, anchor) {
+  const index = source.indexOf(anchor);
+  if (index === -1) throw new MigrationStateError("probe_capability_unavailable");
+  const start = source.lastIndexOf('"', index);
+  const end = source.indexOf('"', index);
+  if (start === -1 || end === -1 || end <= start) {
+    throw new MigrationStateError("probe_capability_unavailable");
+  }
+  return source.slice(start + 1, end).replace(/\\n/gu, "\n").replace(/\\"/gu, '"');
+}
+
+/** A `const NAME: &str = r#"..."#` value. */
+function rustRawString(source, name) {
+  const marker = `const ${name}: &str = r#"`;
+  const start = source.indexOf(marker);
+  if (start === -1) throw new MigrationStateError("probe_capability_unavailable");
+  const from = start + marker.length;
+  const end = source.indexOf('"#;', from);
+  if (end === -1) throw new MigrationStateError("probe_capability_unavailable");
+  return source.slice(from, end);
+}
+
+/** The owner's canonical current Conversation statements. */
+export function ownerConversationStatements() {
+  const schema = repositorySource(CONVERSATION_SCHEMA_SOURCE);
+  const statements = [
+    "CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+    rustLiteralContaining(schema, "CREATE TABLE IF NOT EXISTS principals"),
+    rustLiteralContaining(
+      repositorySource(CONVERSATION_NATIVE_SESSIONS_SOURCE),
+      "CREATE TABLE IF NOT EXISTS conversation_native_sessions",
+    ),
+    rustLiteralContaining(schema, "DROP INDEX IF EXISTS memberships_active_unique"),
+  ];
+  const layout = schema.slice(
+    schema.indexOf("fn ensure_current_layout"),
+    schema.indexOf("fn normalize_existing_groups"),
+  );
+  if (layout === "") throw new MigrationStateError("probe_capability_unavailable");
+  for (const match of layout.matchAll(
+    /ensure_column\(\s*connection,\s*"(\w+)",\s*"(\w+)",\s*"([^"]+)"\s*,?\s*\)/gu,
+  )) {
+    statements.push(`ALTER TABLE ${match[1]} ADD COLUMN ${match[2]} ${match[3]};`);
+  }
+  return statements;
+}
+
+/** The frozen released Conversation statements from the shared fixture. */
+export function releasedConversationStatements() {
+  return [rustRawString(repositorySource(RELEASED_SOURCE_FIXTURE), "RELEASED_CONVERSATION_SCHEMA")];
+}
+
+/** The reference contract for a set of canonical statements. */
+function conversationContract(statements) {
+  const module = sqliteOrNull();
+  if (module === null) throw new MigrationStateError("probe_capability_unavailable");
+  let database;
+  try {
+    database = new module.DatabaseSync(":memory:");
+  } catch {
+    throw new MigrationStateError("probe_capability_unavailable");
+  }
+  try {
+    for (const statement of statements) {
+      try {
+        database.exec(statement);
+      } catch (error) {
+        // The owner's `ensure_column` steps are no-ops when the column already
+        // exists in the DDL; the reference mirrors that.
+        if (!String(error?.message ?? "").includes("duplicate column name")) {
+          throw new MigrationStateError("unsupported_state_shape");
+        }
+      }
+    }
+    const virtualTables = database
+      .prepare(
+        "SELECT name FROM sqlite_schema WHERE type='table' AND sql LIKE 'CREATE VIRTUAL TABLE%'",
+      )
+      .all()
+      .map((row) => String(row.name));
+    const tables = [];
+    for (const name of sqliteTableNames(database)) {
+      if (name.startsWith("sqlite_")) continue;
+      if (virtualTables.some((virtual) => name.startsWith(`${virtual}_`))) continue;
+      tables.push({
+        name,
+        columns: sqliteTableInfo(database, name).map((column) => ({
+          name: column.name,
+          type: column.type,
+          pk: column.pk,
+        })),
+        uniqueSets: sqliteIndexList(database, name)
+          .filter((index) => index.unique)
+          .map((index) => [sqliteIndexColumns(database, index.name), index.partial]),
+        foreignKeys: sqliteForeignKeys(database, name),
+      });
+    }
+    return tables;
+  } catch {
+    throw new MigrationStateError("unsupported_state_shape");
+  } finally {
+    database.close();
+  }
+}
+
+let conversationContracts = null;
+function conversationReferences() {
+  if (conversationContracts === null) {
+    conversationContracts = {
+      current: conversationContract(ownerConversationStatements()),
+      released: conversationContract(releasedConversationStatements()),
+    };
+  }
+  return conversationContracts;
+}
+
+/** The identity columns every published Conversation generation carries. */
+const CONVERSATION_LEGACY_BASELINE = Object.freeze([
+  Object.freeze(["schema_meta", Object.freeze(["key", "value"])]),
+  Object.freeze(["principals", Object.freeze(["id"])]),
+  Object.freeze(["conversations", Object.freeze(["id", "title"])]),
+  Object.freeze(["memberships", Object.freeze(["id"])]),
+  Object.freeze(["events", Object.freeze(["id"])]),
+]);
+
+function requireContractTable(database, table) {
+  const info = sqliteTableInfo(database, table.name);
+  if (info.length === 0) throw new MigrationStateError("unsupported_state_shape");
+  for (const column of table.columns) {
+    const present = info.find((entry) => entry.name === column.name);
+    if (
+      present === undefined ||
+      present.type.toUpperCase() !== column.type.toUpperCase() ||
+      present.pk !== column.pk
+    ) {
+      throw new MigrationStateError("unsupported_state_shape");
+    }
+  }
+  const uniqueSets = sqliteIndexList(database, table.name)
+    .filter((index) => index.unique)
+    .map((index) => stableKey([sqliteIndexColumns(database, index.name), index.partial]));
+  for (const uniqueSet of table.uniqueSets) {
+    if (!uniqueSets.includes(stableKey(uniqueSet))) {
+      throw new MigrationStateError("unsupported_state_shape");
+    }
+  }
+  const foreignKeys = sqliteForeignKeys(database, table.name).map((entry) => stableKey(entry));
+  for (const foreignKey of table.foreignKeys) {
+    if (!foreignKeys.includes(stableKey(foreignKey))) {
+      throw new MigrationStateError("unsupported_state_shape");
+    }
+  }
+}
+
+function requireContract(database, contract) {
+  for (const table of contract) requireContractTable(database, table);
+}
+
+/**
+ * An older published store is upgraded by its owner before admission, so its
+ * check mirrors that upgrade: a table the store does not have is created, and
+ * the membership identity index is recreated. Everything else the owner's data
+ * path retains must already be physically present, and any identity index that
+ * does exist must be the real one (`IF NOT EXISTS` never repairs it).
+ */
+function requireUpgradeableContract(database, contract) {
+  const tables = sqliteTableNames(database);
+  for (const table of contract) {
+    if (!tables.has(table.name)) continue;
+    const identityUnique = stableKey([["conversation_id", "principal_id"], false]);
+    requireContractTable(database, {
+      ...table,
+      uniqueSets: table.uniqueSets.filter(
+        (uniqueSet) => stableKey(uniqueSet) !== identityUnique,
+      ),
+    });
+  }
+  const listed = sqliteIndexList(database, "memberships");
+  const identity = listed.find((index) => index.name === CONVERSATION_MEMBERSHIP_IDENTITY_INDEX);
+  if (
+    identity !== undefined &&
+    (!identity.unique ||
+      identity.partial ||
+      stableKey(sqliteIndexColumns(database, CONVERSATION_MEMBERSHIP_IDENTITY_INDEX)) !==
+        stableKey(["conversation_id", "principal_id"]))
+  ) {
+    throw new MigrationStateError("unsupported_state_shape");
+  }
+}
 
 // The strategy store's exact core layout, mirrored from the owner's
 // `validate_published_core_layout` in
@@ -691,97 +722,6 @@ function stableKey(value) {
   return JSON.stringify(value);
 }
 
-/// The index predicate as one comparable token: everything after `WHERE`, with
-/// whitespace removed and lowercased. Equality rejects a predicate that merely
-/// contains the expected fragment (`active=1 AND 0`).
-function normalizedIndexPredicate(sql) {
-  if (sql === null || sql === undefined) return null;
-  const index = String(sql).toLowerCase().indexOf("where");
-  if (index === -1) return null;
-  return String(sql)
-    .slice(index + "where".length)
-    .split(/\s+/u)
-    .join("")
-    .toLowerCase();
-}
-
-/// The identity columns every published Conversation generation carries. Older
-/// published schemas are legitimate sources the owner upgrades in place, but a
-/// stamp on a truncated file (for example a two-table store) is not one of
-/// them.
-const CONVERSATION_LEGACY_BASELINE = Object.freeze([
-  Object.freeze(["schema_meta", Object.freeze(["key", "value"])]),
-  Object.freeze(["principals", Object.freeze(["id"])]),
-  Object.freeze(["conversations", Object.freeze(["id", "title"])]),
-  Object.freeze(["memberships", Object.freeze(["id"])]),
-  Object.freeze(["events", Object.freeze(["id"])]),
-]);
-
-/// The membership identity must be a real unique, non-partial index over the
-/// identity columns, not merely an object with the expected name.
-function requireMembershipIdentityIndex(database) {
-  const listed = sqliteIndexList(database, "memberships");
-  const entry = listed.find((index) => index.name === CONVERSATION_RELEASED_MEMBERSHIP_INDEX);
-  if (entry === undefined || !entry.unique || entry.partial) {
-    throw new MigrationStateError("unsupported_state_shape");
-  }
-  const columns = sqliteIndexColumns(database, CONVERSATION_RELEASED_MEMBERSHIP_INDEX);
-  if (stableKey(columns) !== stableKey(["conversation_id", "principal_id"])) {
-    throw new MigrationStateError("unsupported_state_shape");
-  }
-}
-
-function inspectConversationLayout(database) {
-  const tables = sqliteTableNames(database);
-  if (!tables.has("schema_meta")) {
-    if (tables.size === 0) return { version: null };
-    throw new MigrationStateError("unsupported_state_shape");
-  }
-  const row = database.prepare("SELECT value FROM schema_meta WHERE key='version'").get();
-  if (row === undefined || row.value === null) {
-    throw new MigrationStateError("unsupported_state_shape");
-  }
-  const version = String(row.value);
-  if (version === CONVERSATION_SCHEMA_VERSION) {
-    if (!CONVERSATION_CURRENT_TABLES.every((table) => tables.has(table))) {
-      throw new MigrationStateError("unsupported_state_shape");
-    }
-    for (const [table, columns] of Object.entries(CONVERSATION_CURRENT_COLUMNS)) {
-      const present = sqliteColumns(database, table);
-      if (!columns.every((column) => present.has(column))) {
-        throw new MigrationStateError("unsupported_state_shape");
-      }
-    }
-    // The startup subset alone permits a missing conversation title; the
-    // migration relies on it, and it must be a real column.
-    if (!sqliteColumns(database, "conversations").has("title")) {
-      throw new MigrationStateError("unsupported_state_shape");
-    }
-    requireMembershipIdentityIndex(database);
-    return { version };
-  }
-  if (version === CONVERSATION_RELEASED_SCHEMA_VERSION) {
-    for (const [table, columns] of Object.entries(CONVERSATION_RELEASED_TABLES)) {
-      const present = sqliteColumns(database, table);
-      if (columns.some((column) => !present.has(column))) {
-        throw new MigrationStateError("unsupported_state_shape");
-      }
-    }
-    requireMembershipIdentityIndex(database);
-    return { version };
-  }
-  if (/^(?:[1-9]|10|11)$/u.test(version)) {
-    for (const [table, columns] of CONVERSATION_LEGACY_BASELINE) {
-      const present = sqliteColumns(database, table);
-      if (columns.some((column) => !present.has(column))) {
-        throw new MigrationStateError("unsupported_state_shape");
-      }
-    }
-    return { version };
-  }
-  throw new MigrationStateError("unsupported_state_shape");
-}
-
 function requireStrategyCoreLayout(database, expectedVersion) {
   const row = database.prepare("SELECT value FROM strategy_meta WHERE key='version'").get();
   if (row === undefined || row.value === null || String(row.value) !== expectedVersion) {
@@ -852,6 +792,52 @@ function requireStrategyCoreLayout(database, expectedVersion) {
       }
     }
   }
+}
+
+/// The index predicate as one comparable token: everything after `WHERE`, with
+/// whitespace removed and lowercased. Equality rejects a predicate that merely
+/// contains the expected fragment (`active=1 AND 0`).
+function normalizedIndexPredicate(sql) {
+  if (sql === null || sql === undefined) return null;
+  const index = String(sql).toLowerCase().indexOf("where");
+  if (index === -1) return null;
+  return String(sql)
+    .slice(index + "where".length)
+    .split(/\s+/u)
+    .join("")
+    .toLowerCase();
+}
+
+function inspectConversationLayout(database) {
+  const tables = sqliteTableNames(database);
+  if (!tables.has("schema_meta")) {
+    if (tables.size === 0) return { version: null };
+    throw new MigrationStateError("unsupported_state_shape");
+  }
+  const row = database.prepare("SELECT value FROM schema_meta WHERE key='version'").get();
+  if (row === undefined || row.value === null) {
+    throw new MigrationStateError("unsupported_state_shape");
+  }
+  const version = String(row.value);
+  const references = conversationReferences();
+  if (version === CONVERSATION_SCHEMA_VERSION) {
+    // A current store must already carry the complete owner contract: every
+    // table, business field, key, foreign key and uniqueness constraint its
+    // readers and writers use.
+    requireContract(database, references.current);
+    return { version };
+  }
+  if (version === CONVERSATION_RELEASED_SCHEMA_VERSION || /^(?:[1-9]|10|11)$/u.test(version)) {
+    for (const [table, columns] of CONVERSATION_LEGACY_BASELINE) {
+      const present = sqliteColumns(database, table);
+      if (columns.some((column) => !present.has(column))) {
+        throw new MigrationStateError("unsupported_state_shape");
+      }
+    }
+    requireUpgradeableContract(database, references.released);
+    return { version };
+  }
+  throw new MigrationStateError("unsupported_state_shape");
 }
 
 function conversationStoreProbe(root) {
