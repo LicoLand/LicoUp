@@ -208,7 +208,10 @@ fn a_failed_commit_reports_a_retained_temporary_when_cleanup_cannot_run() {
         error.to_string().contains("could not be committed"),
         "{error}"
     );
-    assert!(retained.is_some(), "the retained temporary is named");
+    assert!(
+        matches!(retained, super::super::CleanupOutcome::Retained(_)),
+        "the retained temporary is named"
+    );
     assert!(!destination.exists());
 
     fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
@@ -251,4 +254,23 @@ fn a_bare_relative_output_path_commits() {
     writer.commit().unwrap();
 
     assert_eq!(fs::read(&relative).unwrap(), b"relative");
+}
+
+#[test]
+fn removed_temporary_sync_failure_is_not_reported_as_retained_or_durable() {
+    let root = temp_path("atomic-cleanup-sync");
+    fs::create_dir_all(&root).unwrap();
+    let temp = root.join("temporary");
+    fs::write(&temp, b"temporary").unwrap();
+    let outcome = super::super::atomic_replace::remove_with_sync(&temp, |path| {
+        assert_eq!(path, temp);
+        assert!(!path.exists(), "sync follows removal");
+        Err(anyhow::anyhow!("injected cleanup sync fault"))
+    });
+    assert_eq!(
+        outcome,
+        super::super::CleanupOutcome::DurabilityUnconfirmed(root.clone())
+    );
+    assert!(!temp.exists());
+    fs::remove_dir_all(root).unwrap();
 }

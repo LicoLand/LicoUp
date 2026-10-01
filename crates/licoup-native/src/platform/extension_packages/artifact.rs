@@ -502,6 +502,18 @@ mod tests {
     }
 
     #[test]
+    fn local_zip_index_disagreement_is_refused_before_package_publication() {
+        let mut bytes = package_bytes();
+        bytes[22..26].copy_from_slice(&0_u32.to_le_bytes());
+        let destination = staging("local-index-mismatch");
+        let failure =
+            ExpandedPackage::expand(&bytes, &destination, &ArtifactLimits::default()).unwrap_err();
+        assert_eq!(failure.code, "package_artifact_invalid");
+        assert!(!destination.join(MANIFEST_FILE).exists());
+        crate::platform::extension_packages::remove_managed_tree(&destination).expect("cleanup");
+    }
+
+    #[test]
     fn a_package_that_points_outside_itself_is_refused() {
         let mut manifest: Value = serde_json::from_str(&manifest_json(
             "example.specialist.echo",

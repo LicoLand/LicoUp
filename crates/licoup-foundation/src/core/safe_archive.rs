@@ -21,6 +21,9 @@ use flate2::bufread::GzDecoder;
 use tar::{Archive, EntryType};
 use zip::ZipArchive;
 
+mod zip_structure;
+pub(crate) use zip_structure::validate_zip_structure;
+
 /// Default maximum total bytes extracted across all entries.
 const DEFAULT_MAX_TOTAL_BYTES: u64 = 512 * 1024 * 1024; // 512 MiB
 
@@ -46,9 +49,11 @@ pub(crate) fn decoded_tar_gz_budget(
     max_entries: usize,
     max_depth: usize,
 ) -> u64 {
-    max_total_bytes.saturating_add(
-        (max_entries as u64).saturating_mul(decoded_tar_gz_metadata_budget(max_depth)),
-    )
+    max_total_bytes
+        .saturating_add(TAR_BLOCK_BYTES * 2)
+        .saturating_add(
+            (max_entries as u64).saturating_mul(decoded_tar_gz_metadata_budget(max_depth)),
+        )
 }
 
 /// The most decoded metadata one member may legally carry: its path twice (an extension
@@ -157,16 +162,22 @@ pub(crate) fn validate_tar_gz_structure(
     let metadata_budget = decoded_tar_gz_metadata_budget(max_depth);
     let mut stream = BoundedStream::new(tar_gz_decoder(bytes), budget);
     let mut entry_count = 0_usize;
+    let mut total_bytes = 0_u64;
+    let mut metadata_bytes = 0_u64;
+    let mut pax_size = None;
+    let mut has_pax = false;
+    let mut has_long_name = false;
     loop {
         let mut block = [0_u8; TAR_BLOCK_BYTES as usize];
         read_fully(&mut stream, &mut block)?;
         if block.iter().all(|byte| *byte == 0) {
+            ensure!(!has_pax && !has_long_name, "archive has orphaned metadata");
             // End of archive: everything left in the decoded stream must be zero padding.
             let mut padding = [0_u8; TAR_BLOCK_BYTES as usize];
             loop {
                 let read = stream.read(&mut padding)?;
                 if read == 0 {
-                    return Ok(());
+                    return finish_tar_gz(stream, bytes.len());
                 }
                 ensure!(
                     padding[..read].iter().all(|byte| *byte == 0),
@@ -176,16 +187,57 @@ pub(crate) fn validate_tar_gz_structure(
         }
         let header = RawTarHeader::parse(&block)?;
         match header.typeflag {
-            b'L' | b'x' | b'g' => {
+            b'L' | b'x' => {
+                metadata_bytes = metadata_bytes
+                    .saturating_add(TAR_BLOCK_BYTES)
+                    .saturating_add(
+                        header
+                            .size
+                            .div_ceil(TAR_BLOCK_BYTES)
+                            .saturating_mul(TAR_BLOCK_BYTES),
+                    );
                 ensure!(
-                    header.size <= metadata_budget,
+                    metadata_bytes.saturating_add(TAR_BLOCK_BYTES) <= metadata_budget,
                     "archive metadata exceeds the portable header budget"
                 );
-                skip_fully(&mut stream, header.size)?;
+                if header.typeflag == b'x' {
+                    ensure!(!has_pax, "archive has duplicate PAX metadata");
+                    has_pax = true;
+                    let mut body = vec![0; header.size as usize];
+                    read_fully(&mut stream, &mut body)?;
+                    // Use the pinned parser's record grammar and first-size semantics,
+                    // but refuse ambiguous or malformed records instead of ignoring them.
+                    for extension in tar::PaxExtensions::new(&body) {
+                        let extension = extension?;
+                        let key = extension.key()?;
+                        ensure!(
+                            !key.starts_with("GNU.sparse."),
+                            "archive entry has unsupported type"
+                        );
+                        if key == "size" {
+                            ensure!(pax_size.is_none(), "archive has duplicate PAX size");
+                            pax_size = Some(extension.value()?.parse::<u64>()?);
+                        }
+                    }
+                    let padding =
+                        (TAR_BLOCK_BYTES - header.size % TAR_BLOCK_BYTES) % TAR_BLOCK_BYTES;
+                    read_fully(&mut stream, &mut [0; 512][..padding as usize])?;
+                } else {
+                    ensure!(!has_long_name, "archive has duplicate long-name metadata");
+                    has_long_name = true;
+                    skip_fully(&mut stream, header.size)?;
+                }
             }
-            b'0' | 0 => {
+            b'0' | 0 | b'5' => {
+                let size = pax_size.take().unwrap_or(header.size);
+                if header.typeflag == b'5' {
+                    ensure!(size == 0, "archive directory entry declares a body");
+                }
+                total_bytes = total_bytes
+                    .checked_add(size)
+                    .ok_or_else(|| anyhow!("archive byte count overflowed"))?;
                 ensure!(
-                    header.size <= max_total_bytes,
+                    total_bytes <= max_total_bytes,
                     "archive byte limit exceeded"
                 );
                 entry_count += 1;
@@ -193,15 +245,10 @@ pub(crate) fn validate_tar_gz_structure(
                     entry_count <= max_entries,
                     "archive entry count exceeds maximum"
                 );
-                skip_fully(&mut stream, header.size)?;
-            }
-            b'5' => {
-                ensure!(header.size == 0, "archive directory entry declares a body");
-                entry_count += 1;
-                ensure!(
-                    entry_count <= max_entries,
-                    "archive entry count exceeds maximum"
-                );
+                skip_fully(&mut stream, size)?;
+                metadata_bytes = 0;
+                has_pax = false;
+                has_long_name = false;
             }
             _ => return Err(anyhow!("archive entry has unsupported type")),
         }
@@ -226,7 +273,7 @@ impl RawTarHeader {
                 *byte
             };
             unsigned = unsigned.saturating_add(u64::from(value));
-            signed = signed.saturating_add(i64::from(*byte as i8));
+            signed = signed.saturating_add(i64::from(value as i8));
         }
         ensure!(
             stored == unsigned || (signed >= 0 && stored == signed as u64),
@@ -286,7 +333,13 @@ fn skip_fully<R: Read>(reader: &mut R, length: u64) -> Result<()> {
 
 impl<R: Read> Read for BoundedStream<R> {
     fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        if buffer.is_empty() {
+            return Ok(0);
+        }
         if self.remaining == 0 {
+            if self.inner.read(&mut [0])? == 0 {
+                return Ok(0);
+            }
             self.exceeded = true;
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -347,6 +400,7 @@ pub fn extract_zip_safe(
         "zip_archive_byte_limit_exceeded"
     );
     ensure!(limits.max_entries > 0, "zip_entry_limit_invalid");
+    validate_zip_structure(bytes, limits)?;
     let cursor = std::io::Cursor::new(bytes);
     let mut archive = ZipArchive::new(cursor).map_err(|_| anyhow!("zip_archive_invalid"))?;
     ensure!(
@@ -407,10 +461,6 @@ pub fn extract_zip_safe(
             let mut sink = std::io::sink();
             let body = std::io::copy(&mut entry, &mut sink)?;
             ensure!(body == 0, "zip_entry_directory_body_unsupported");
-            ensure!(
-                entry.compressed_size() == 0,
-                "zip_entry_directory_body_unsupported"
-            );
             ensure!(entry.crc32() == 0, "zip_entry_directory_body_unsupported");
             extraction_root.create_directory(&relative)?;
             result.push(ZipEntryInfo {
@@ -1325,12 +1375,12 @@ mod tests {
             writer.write_all(b"body").unwrap();
             writer.finish().unwrap();
         }
-        let bytes = cursor.into_inner();
+        let mut bytes = cursor.into_inner();
+        set_zip_directory_mode(&mut bytes);
         let destination = temp.join("zip-body");
-        assert!(
-            extract_zip_safe(&bytes, &destination, default_zip_extraction_limits()).is_err(),
-            "a directory-mode ZIP entry with a body is refused"
-        );
+        let error =
+            extract_zip_safe(&bytes, &destination, default_zip_extraction_limits()).unwrap_err();
+        assert_eq!(error.to_string(), "zip_entry_directory_body_unsupported");
         assert_eq!(fs::read_dir(&destination).unwrap().count(), 0);
     }
 
@@ -1348,6 +1398,7 @@ mod tests {
             writer.finish().unwrap();
         }
         let mut bytes = cursor.into_inner();
+        set_zip_directory_mode(&mut bytes);
         // Patch the central directory entry's compressed and uncompressed sizes to zero,
         // leaving the real body and its checksum in place.
         let central = bytes
@@ -1362,7 +1413,96 @@ mod tests {
             extract_zip_safe(&bytes, &destination, default_zip_extraction_limits()).is_err(),
             "a directory claiming zero sizes while carrying a checksummed body is refused"
         );
-        assert_eq!(fs::read_dir(&destination).unwrap().count(), 0);
+        assert!(
+            !destination.exists(),
+            "local/index mismatch is refused before writes"
+        );
+    }
+
+    fn set_zip_directory_mode(bytes: &mut [u8]) {
+        let central = {
+            let mut archive = ZipArchive::new(std::io::Cursor::new(&*bytes)).unwrap();
+            archive.by_index(0).unwrap().central_header_start() as usize
+        };
+        bytes[central + 38..central + 42]
+            .copy_from_slice(&((0o040755_u32 << 16) | 16).to_le_bytes());
+        let mut archive = ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        assert_eq!(
+            archive.by_index(0).unwrap().unix_mode().unwrap() & 0o170000,
+            0o040000
+        );
+    }
+
+    fn pax_sized_tar(header_size: u64, effective_size: u64, body: &[u8]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut bytes);
+            let size = effective_size.to_string();
+            builder
+                .append_pax_extensions([("size", size.as_bytes())])
+                .unwrap();
+            let mut header = tar::Header::new_ustar();
+            header.set_path("file.txt").unwrap();
+            header.set_size(header_size);
+            header.set_mode(0o600);
+            header.set_cksum();
+            builder.append(&header, body).unwrap();
+            builder.finish().unwrap();
+        }
+        gzip(&bytes)
+    }
+
+    #[test]
+    fn pax_effective_size_controls_admission_and_payload_alignment() {
+        let root = temp_dir();
+        let bytes = pax_sized_tar(0, 3, b"abc");
+        extract_tar_gz_safe(&bytes, &root.join("valid"), Some(3), Some(1), Some(2)).unwrap();
+        assert_eq!(fs::read(root.join("valid/file.txt")).unwrap(), b"abc");
+        let error = extract_tar_gz_safe(&bytes, &root.join("limited"), Some(2), Some(1), Some(2))
+            .unwrap_err();
+        assert!(error.to_string().contains("byte limit"), "{error}");
+        assert!(!root.join("limited").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn empty_transports_and_exact_stream_budget_are_supported() {
+        let root = temp_dir();
+        extract_tar_gz_safe(
+            &gzip(&[0; 1024]),
+            &root.join("tar"),
+            Some(0),
+            Some(0),
+            Some(1),
+        )
+        .unwrap();
+        extract_zip_safe(&create_test_zip(&[]), &root.join("zip"), zip_limits()).unwrap();
+        let mut bounded = BoundedStream::new(std::io::Cursor::new([1, 2]), 2);
+        let mut bytes = Vec::new();
+        bounded.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, [1, 2]);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn accumulated_metadata_is_refused_before_reading_the_next_extension_body() {
+        let mut builder = tar::Builder::new(Vec::new());
+        let mut header = tar::Header::new_gnu();
+        header.set_entry_type(EntryType::GNULongName);
+        header.set_path("long-name").unwrap();
+        header.set_size(800);
+        header.set_cksum();
+        builder.append(&header, &[b'a'; 800][..]).unwrap();
+        let mut bytes = builder.into_inner().unwrap();
+        bytes.truncate(1536);
+        let mut header = tar::Header::new_ustar();
+        header.set_entry_type(EntryType::XHeader);
+        header.set_size(500);
+        header.set_cksum();
+        bytes.extend(header.as_bytes());
+        // No second body is supplied: an EOF error would mean admission was too late.
+        let error = validate_tar_gz_structure(&gzip(&bytes), 4096, 1, 1).unwrap_err();
+        assert!(error.to_string().contains("metadata exceeds"), "{error}");
     }
 
     #[test]

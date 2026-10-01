@@ -30,6 +30,8 @@ use licoup_foundation::core::full_data_root_archive::{
     RestoreRequest, export_data_root, restore_data_root,
 };
 
+mod transport_integrity;
+
 /// The manifest member every archive carries first. The owner's own constant is crate
 /// private, so these fixtures name the fixed member explicitly.
 const MANIFEST_MEMBER: &str = "licoup-data-root.json";
@@ -1285,7 +1287,20 @@ fn restore_refuses_a_zip_directory_member_with_a_body() {
         .start_file("data/d/", directory_options)
         .expect("add directory member");
     writer.write_all(b"body").expect("write directory body");
-    let bytes = writer.finish().expect("finish zip").into_inner();
+    let mut bytes = writer.finish().expect("finish zip").into_inner();
+    let central = {
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).unwrap();
+        archive.by_index(1).unwrap().central_header_start() as usize
+    };
+    // unix_permissions masks file type bits; use actual directory attributes.
+    bytes[central + 38..central + 42].copy_from_slice(&((0o040755_u32 << 16) | 16).to_le_bytes());
+    {
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).unwrap();
+        assert_eq!(
+            archive.by_index(1).unwrap().unix_mode().unwrap() & 0o170000,
+            0o040000
+        );
+    }
     let archive = work.join("directory-body.zip");
     fs::write(&archive, bytes).expect("write archive fixture");
 

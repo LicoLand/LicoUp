@@ -96,20 +96,22 @@ pub enum CommitDurability {
 /// The outcome of abandoning a private atomic write before publication.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CleanupOutcome {
-    /// The operation-owned temporary file is gone.
+    /// The temporary file is gone and its parent entry is confirmed durable.
     Removed,
+    /// Removal completed, but syncing this parent directory failed.
+    DurabilityUnconfirmed(PathBuf),
     /// The temporary file could not be removed and remains recoverable at this path.
     Retained(PathBuf),
 }
 
 /// A private atomic write that did not publish a new artifact.
 ///
-/// The error is the cause; `retained_temporary` names operation-owned scratch the caller
-/// can still recover when its removal could not be performed.
+/// The error is the cause; `cleanup` distinguishes retained scratch from removal whose
+/// directory durability could not be confirmed. Neither state is a successful abort.
 #[derive(Debug)]
 pub struct AtomicWriteFailure {
     error: anyhow::Error,
-    retained_temporary: Option<PathBuf>,
+    cleanup: CleanupOutcome,
 }
 
 impl AtomicWriteFailure {
@@ -117,38 +119,48 @@ impl AtomicWriteFailure {
         &self.error
     }
 
-    pub fn retained_temporary(&self) -> Option<&Path> {
-        self.retained_temporary.as_deref()
+    pub fn cleanup(&self) -> &CleanupOutcome {
+        &self.cleanup
     }
 
-    pub fn into_parts(self) -> (anyhow::Error, Option<PathBuf>) {
-        (self.error, self.retained_temporary)
+    pub fn into_parts(self) -> (anyhow::Error, CleanupOutcome) {
+        (self.error, self.cleanup)
     }
 
     fn not_committed(error: anyhow::Error) -> Self {
         Self {
             error,
-            retained_temporary: None,
+            cleanup: CleanupOutcome::Removed,
         }
     }
 
     fn from_cleanup(error: anyhow::Error, cleanup: CleanupOutcome) -> Self {
-        match cleanup {
-            CleanupOutcome::Removed => Self::not_committed(error),
-            CleanupOutcome::Retained(path) => Self {
-                error,
-                retained_temporary: Some(path),
-            },
-        }
+        Self { error, cleanup }
     }
 }
 
 /// Remove the operation's own temporary file with a checked outcome.
 fn remove_checked(temp: &Path) -> CleanupOutcome {
+    remove_with_sync(temp, sync::parent)
+}
+
+pub(super) fn remove_with_sync<F>(temp: &Path, mut sync_parent: F) -> CleanupOutcome
+where
+    F: FnMut(&Path) -> Result<()>,
+{
     match fs::remove_file(temp) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(_) => return CleanupOutcome::Retained(temp.to_path_buf()),
+    }
+    match sync_parent(temp) {
         Ok(()) => CleanupOutcome::Removed,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => CleanupOutcome::Removed,
-        Err(_) => CleanupOutcome::Retained(temp.to_path_buf()),
+        Err(_) => CleanupOutcome::DurabilityUnconfirmed(
+            temp.parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+                .unwrap_or(Path::new("."))
+                .to_path_buf(),
+        ),
     }
 }
 

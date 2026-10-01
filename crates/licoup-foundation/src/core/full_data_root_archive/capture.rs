@@ -96,10 +96,7 @@ pub fn export_data_root(request: &ExportRequest) -> Result<ExportOutcome> {
     )?;
 
     let mut output = AtomicPrivateFile::create(&request.archive_path).map_err(|failure| {
-        retained_failure(
-            "archive_destination_unwritable",
-            failure.retained_temporary(),
-        )
+        cleanup_failure("archive_destination_unwritable", failure.into_parts().1)
     })?;
     let write_result = (|| -> Result<()> {
         let mut buffered = BufWriter::new(output.file_mut());
@@ -220,6 +217,10 @@ fn recovery_limitations(entries: &[InventoryEntry]) -> Vec<RecoveryLimitation> {
 fn cleanup_failure(code: &'static str, cleanup: CleanupOutcome) -> anyhow::Error {
     match cleanup {
         CleanupOutcome::Removed => anyhow!("{code}"),
+        CleanupOutcome::DurabilityUnconfirmed(parent) => anyhow!(
+            "{code}; archive_cleanup_durability_unconfirmed: {}",
+            parent.display()
+        ),
         CleanupOutcome::Retained(path) => retained_failure(code, Some(&path)),
     }
 }
@@ -258,17 +259,10 @@ fn finish_archive(mut output: AtomicPrivateFile) -> Result<()> {
         // directory entry could not be confirmed durable. Report that typed incomplete
         // state rather than success or a misleading write failure.
         Ok(CommitDurability::Unconfirmed) => Err(anyhow!("archive_commit_durability_unconfirmed")),
-        Err(failure) => {
-            let (error, retained) = failure.into_parts();
-            if let Some(path) = retained {
-                Err(anyhow!(
-                    "archive_write_failed; archive_cleanup_incomplete: {error}; retained {}",
-                    path.display()
-                ))
-            } else {
-                Err(anyhow!("archive_write_failed"))
-            }
-        }
+        Err(failure) => Err(cleanup_failure(
+            "archive_write_failed",
+            failure.into_parts().1,
+        )),
     }
 }
 
@@ -626,5 +620,19 @@ mod tests {
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))
             .expect("restore parent");
         std::fs::remove_dir_all(root).expect("remove scratch");
+    }
+
+    #[test]
+    fn capture_preserves_cleanup_durability_failure_without_claiming_retained_data() {
+        let error = cleanup_failure(
+            "archive_write_failed",
+            CleanupOutcome::DurabilityUnconfirmed(PathBuf::from("fixture")),
+        );
+        assert!(
+            error
+                .to_string()
+                .contains("archive_cleanup_durability_unconfirmed")
+        );
+        assert!(!error.to_string().contains("retained"));
     }
 }

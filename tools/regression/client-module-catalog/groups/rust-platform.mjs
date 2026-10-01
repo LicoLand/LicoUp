@@ -56,6 +56,17 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustIntegrationTest("package_lifecycle"),
     }),
   defineModule({
+      id: "rust.platform.extension-packages.artifact",
+      kind: "rust-platform",
+      summary: "Package archive admission, expansion, and transport integrity",
+      inputs: [
+        "crates/licoup-native/src/platform/extension_packages/artifact.rs",
+        "crates/licoup-foundation/src/core/safe_archive.rs",
+        "crates/licoup-foundation/src/core/safe_archive/**",
+      ],
+      command: rustLayer("platform::extension_packages::artifact::tests::"),
+    }),
+  defineModule({
       id: "rust.ffi.typed-error-chain",
       kind: "rust-ffi",
       summary: "Generated typed conversation errors across runtime, FFI, and stdio terminal frames",

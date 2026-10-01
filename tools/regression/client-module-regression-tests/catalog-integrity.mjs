@@ -26,6 +26,25 @@ import { RUST_COMPONENT_MODULES } from "../client-module-catalog/groups/rust-com
 import { RUST_DOMAIN_MODULES } from "../client-module-catalog/groups/rust-domain.mjs";
 import { RUST_PLATFORM_MODULES } from "../client-module-catalog/groups/rust-platform.mjs";
 
+test("archive transport changes select owner and real extractor consumers", () => {
+  for (const relativePath of [
+    "crates/licoup-foundation/src/core/safe_archive.rs",
+    "crates/licoup-foundation/src/core/safe_archive/zip_structure.rs",
+  ]) {
+    const selected = ids(selectModulesForChangedPaths([relativePath]));
+    for (const owner of [
+      "rust.core.safe-archive", "rust.core.full-data-root-archive",
+      "rust.domain.adaptive-flywheel", "rust.domain.optional-collaboration",
+      "rust.platform.extension-packages.artifact",
+    ]) assert.ok(selected.includes(owner), `${relativePath} must select ${owner}`);
+  }
+  assert.ok(ids(selectModulesForChangedPaths([
+    "crates/licoup-foundation/tests/full_data_root_archive/transport_integrity.rs",
+  ])).includes("rust.core.full-data-root-archive"));
+  const artifact = CLIENT_MODULE_CATALOG.find((module) => module.id === "rust.platform.extension-packages.artifact");
+  assert.ok(artifact.command.args.includes("platform::extension_packages::artifact::tests::"));
+});
+
 test("catalog declares every independently accepted client architecture family", () => {
   assert.equal(validateClientModuleCatalog(), true);
   const kinds = new Set(CLIENT_MODULE_CATALOG.map((module) => module.kind));

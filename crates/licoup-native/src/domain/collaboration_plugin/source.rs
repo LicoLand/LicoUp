@@ -157,14 +157,7 @@ pub(super) fn stage_github_package(
         archive.len() as u64 <= MAX_GITHUB_ARCHIVE_BYTES,
         "collaboration_plugin_github_archive_too_large"
     );
-    licoup_foundation::core::safe_archive::extract_tar_gz_safe(
-        &archive,
-        &archive_root,
-        Some(MAX_GITHUB_ARCHIVE_BYTES),
-        Some(MAX_GITHUB_ARCHIVE_ENTRIES),
-        Some(MAX_GITHUB_ARCHIVE_DEPTH),
-    )?;
-    let repository_root = extracted_repository_root(&archive_root)?;
+    let repository_root = extract_github_archive(&archive, &archive_root)?;
 
     let package_root = source
         .plugin_path
@@ -179,7 +172,15 @@ pub(super) fn stage_github_package(
     Ok(package)
 }
 
-fn extracted_repository_root(archive_root: &Path) -> Result<PathBuf> {
+/// The downloaded-byte boundary, also exercised without network or installation.
+fn extract_github_archive(archive: &[u8], archive_root: &Path) -> Result<PathBuf> {
+    licoup_foundation::core::safe_archive::extract_tar_gz_safe(
+        archive,
+        archive_root,
+        Some(MAX_GITHUB_ARCHIVE_BYTES),
+        Some(MAX_GITHUB_ARCHIVE_ENTRIES),
+        Some(MAX_GITHUB_ARCHIVE_DEPTH),
+    )?;
     let entries = fs::read_dir(archive_root)?.collect::<std::io::Result<Vec<_>>>()?;
     ensure!(
         entries.len() == 1,
@@ -218,6 +219,35 @@ fn text_param<'a>(params: &'a Value, keys: &[&str]) -> Option<&'a str> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn downloaded_archive_extraction_checks_payload_and_gzip_completion_without_network() {
+        use std::io::Write;
+        let root =
+            std::env::temp_dir().join(format!("lico-plugin-archive-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        let name = format!("repository/{}/payload.txt", "p".repeat(150));
+        let mut tar = tar::Builder::new(Vec::new());
+        let mut header = tar::Header::new_gnu();
+        header.set_size(7);
+        header.set_mode(0o600);
+        tar.append_data(&mut header, &name, &b"payload"[..])
+            .unwrap();
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        gz.write_all(&tar.into_inner().unwrap()).unwrap();
+        let archive = gz.finish().unwrap();
+        let output = root.join("valid");
+        assert_eq!(
+            extract_github_archive(&archive, &output).unwrap(),
+            output.join("repository")
+        );
+        assert_eq!(fs::read(output.join(&name)).unwrap(), b"payload");
+        let refused = root.join("truncated");
+        assert!(extract_github_archive(&archive[..archive.len() - 4], &refused).is_err());
+        assert!(!refused.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn github_source_accepts_only_a_repository_origin_and_bounded_ref() {

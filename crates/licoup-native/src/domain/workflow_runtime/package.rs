@@ -571,8 +571,23 @@ mod tests {
             writer.write_all(b"body").unwrap();
             writer.finish().unwrap();
         }
+        let mut bytes = cursor.into_inner();
+        let central = {
+            let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).unwrap();
+            archive.by_index(1).unwrap().central_header_start() as usize
+        };
+        // unix_permissions masks file type bits; set and verify a real directory mode.
+        bytes[central + 38..central + 42]
+            .copy_from_slice(&((0o040755_u32 << 16) | 16).to_le_bytes());
+        {
+            let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).unwrap();
+            assert_eq!(
+                archive.by_index(1).unwrap().unix_mode().unwrap() & 0o170000,
+                0o040000
+            );
+        }
         let error = importer
-            .prepare_bytes(&cursor.into_inner())
+            .prepare_bytes(&bytes)
             .expect_err("a directory member with a body is refused");
         assert_eq!(error.to_string(), "package_entry_invalid");
         remove_root(root);
@@ -666,6 +681,17 @@ mod tests {
                 .join("source.zip")
                 .exists()
         );
+        remove_root(root);
+    }
+
+    #[test]
+    fn local_zip_index_disagreement_is_refused_before_preparation() {
+        let root = root();
+        let importer = StrategyPackageImporter::open(&root).unwrap();
+        let mut bytes = synthetic_fixture_package_bytes().unwrap();
+        bytes[22..26].copy_from_slice(&0_u32.to_le_bytes());
+        let error = importer.prepare_bytes(&bytes).unwrap_err();
+        assert_eq!(error.to_string(), "package_entry_invalid");
         remove_root(root);
     }
 

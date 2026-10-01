@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 use crate::core::safe_archive::{
     BoundedStream, ZipExtractionLimits, decoded_tar_gz_budget, decoded_tar_gz_metadata_budget,
     default_zip_extraction_limits, extract_tar_gz_safe, extract_zip_safe, finish_tar_gz,
-    tar_gz_decoder, validate_tar_gz_structure,
+    tar_gz_decoder, validate_tar_gz_structure, validate_zip_structure,
 };
 use crate::platform::file_security::{ensure_private_dir, harden_private_path, sync_directory};
 
@@ -240,8 +240,11 @@ fn create_sibling_scratch(target_root: &Path) -> Result<PathBuf> {
         match fs::create_dir(&candidate) {
             Ok(()) => {
                 if harden_private_path(&candidate).is_err() {
-                    let _ = fs::remove_dir(&candidate);
-                    return Err(anyhow!("archive_target_unwritable"));
+                    let mut scratch = StagingDirectory {
+                        path: candidate,
+                        cleaned: false,
+                    };
+                    return Err(scratch.fail(anyhow!("archive_target_unwritable")));
                 }
                 return Ok(candidate);
             }
@@ -289,6 +292,7 @@ fn inspect_archive(
 }
 
 fn inspect_zip(bytes: &[u8], limits: &ZipExtractionLimits) -> Result<InspectedArchive> {
+    validate_zip_structure(bytes, *limits).map_err(|_| anyhow!("archive_extraction_refused"))?;
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|_| anyhow!("archive_invalid"))?;
     ensure!(
@@ -809,13 +813,25 @@ impl StagingDirectory {
     /// Checked removal used on the success path and on every handled failure. A failure
     /// names the operation-owned scratch that remains, so the caller can recover it.
     fn cleanup(&mut self) -> Result<()> {
+        self.cleanup_with(sync_directory)
+    }
+
+    fn cleanup_with<S>(&mut self, mut sync: S) -> Result<()>
+    where
+        S: FnMut(&Path) -> Result<()>,
+    {
         self.cleaned = true;
         fs::remove_dir_all(&self.path).map_err(|error| {
             anyhow!(
                 "archive_target_cleanup_failed: {} could not be removed: {error}",
                 self.path.display()
             )
-        })
+        })?;
+        let parent = self
+            .path
+            .parent()
+            .ok_or_else(|| anyhow!("archive_target_invalid"))?;
+        sync(parent).map_err(|_| anyhow!("archive_target_cleanup_durability_unconfirmed"))
     }
 
     /// Return the failure after the checked cleanup, naming cleanup that did not
@@ -1046,6 +1062,33 @@ mod tests {
             "{error}"
         );
         fs::remove_dir_all(root).expect("remove scratch");
+    }
+
+    #[test]
+    fn failed_operation_scratch_cleanup_syncs_after_removal_and_reports_sync_fault() {
+        let root = scratch("staging-cleanup-sync");
+        let path = root.join("scratch");
+        fs::create_dir(&path).unwrap();
+        let mut staging = StagingDirectory {
+            path: path.clone(),
+            cleaned: false,
+        };
+        let error = staging
+            .cleanup_with(|parent| {
+                assert_eq!(parent, root);
+                assert!(
+                    !path.exists(),
+                    "sync must follow removal on failure paths too"
+                );
+                Err(anyhow!("injected parent sync fault"))
+            })
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "archive_target_cleanup_durability_unconfirmed"
+        );
+        assert!(staging.cleaned);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
