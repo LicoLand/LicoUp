@@ -576,6 +576,50 @@ test("independent cross-stage failures settle together and still reach compatibi
   ]);
 });
 
+test("batch progress is emitted at settlement before its concurrent stage completes", async () => {
+  const modules = [
+    graphModule("foundation.fast-failure", "foundation"),
+    graphModule("foundation.slow-pass", "foundation"),
+  ];
+  let releaseSlow;
+  const slow = new Promise((resolve) => { releaseSlow = resolve; });
+  let observeSettlement;
+  const firstSettlement = new Promise((resolve) => { observeSettlement = resolve; });
+  let outputValue = "";
+  const output = {
+    write(chunk) {
+      outputValue += String(chunk);
+      if (/\[client-regression\] exact-[0-9]+: failed\n/u.test(outputValue)) {
+        observeSettlement();
+      }
+    },
+  };
+  let stageCompleted = false;
+  const execution = executeClientModules(modules, {
+    repoRoot,
+    catalog: modules,
+    output,
+    capacities: { global: 2, pools: { node: 2 }, resources: {} },
+    async commandRunner(batch) {
+      if (batch.members[0] === "foundation.slow-pass") await slow;
+      return graphResult(batch,
+        batch.members[0] === "foundation.fast-failure" ? "failed" : "passed");
+    },
+  }).then((result) => {
+    stageCompleted = true;
+    return result;
+  });
+
+  await firstSettlement;
+  assert.equal(stageCompleted, false);
+  assert.match(outputValue, /\[client-regression\] exact-[0-9]+: failed\n/u);
+  assert.equal(outputValue.includes("foundation.fast-failure: failed"), false);
+  releaseSlow();
+  const result = await execution;
+  assert.equal(result.ok, false);
+  assert.match(outputValue, /\[client-regression\] exact-[0-9]+: passed\n/u);
+});
+
 test("Flutter dependency failure blocks only its consumers and remains nonzero", async () => {
   const modules = [
     graphModule("regression.flutter-dependencies", "foundation", {
@@ -630,9 +674,10 @@ test("Flutter dependency failure blocks only its consumers and remains nonzero",
   }
   assert.equal(rows.get("integration.node").status, "passed");
   assert.equal(rows.get("scenarios.node").status, "passed");
-  assert.match(output.value(), /regression\.flutter-dependencies: failed/u);
-  assert.match(output.value(), /foundation\.node: passed/u);
-  assert.match(output.value(), /frontend\.flutter: blocked/u);
+  assert.match(output.value(), new RegExp(`${rows.get("regression.flutter-dependencies").id}: failed`, "u"));
+  assert.match(output.value(), new RegExp(`${rows.get("foundation.node").id}: passed`, "u"));
+  assert.match(output.value(), new RegExp(`${rows.get("frontend.flutter").id}: blocked`, "u"));
+  assert.equal(output.value().includes("regression.flutter-dependencies: failed"), false);
 });
 
 test("argument parser requires one bounded selector", () => {

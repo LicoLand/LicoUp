@@ -398,6 +398,7 @@ function adjustUsage(batch, usage, direction) {
 export async function executeClientRegressionBatches(batches, {
   capacities = defaultRegressionCapacities(),
   commandRunner,
+  onBatchSettled = () => {},
 } = {}) {
   const pending = [...batches];
   const running = new Map();
@@ -454,6 +455,7 @@ export async function executeClientRegressionBatches(batches, {
     const settled = await Promise.race(running.values());
     running.delete(settled.batch.id);
     adjustUsage(settled.batch, usage, -1);
+    onBatchSettled(settled.result);
     results.push(settled.result);
   }
   const order = new Map(batches.map((batch, index) => [batch.id, index]));
@@ -520,11 +522,9 @@ export async function executeClientModules(modules, {
   const concurrency = { maximumWeight: 0, maximumProcesses: 0, poolPeaks: {} };
   const recordResults = (settled) => {
     results.push(...settled);
-    for (const result of settled) {
-      for (const member of result.members) {
-        output.write(`[client-regression] ${member}: ${result.status}\n`);
-      }
-    }
+  };
+  const emitSettlement = (result) => {
+    output.write(`[client-regression] ${result.id}: ${result.status}\n`);
   };
   const merge = (execution) => {
     recordResults(execution.results);
@@ -540,7 +540,11 @@ export async function executeClientModules(modules, {
     }
     const stages = [...new Set(stageBatches.map((batch) => batch.stage))].join(",");
     output.write(`[client-regression] starting ${stages}: ${stageBatches.length} planned invocation(s)\n`);
-    return executeClientRegressionBatches(stageBatches, { capacities, commandRunner: runner });
+    return executeClientRegressionBatches(stageBatches, {
+      capacities,
+      commandRunner: runner,
+      onBatchSettled: emitSettlement,
+    });
   };
 
   const dependencyPreparation = byStage.get("foundation")
@@ -556,7 +560,9 @@ export async function executeClientModules(modules, {
       ? []
       : stageBatches.filter(requiresFlutterDependencies);
     merge(await run(runnable));
-    recordResults(blockedResults(blocked, "flutter_dependencies_failed"));
+    const blockedExecution = blockedResults(blocked, "flutter_dependencies_failed");
+    blockedExecution.forEach(emitSettlement);
+    recordResults(blockedExecution);
   };
 
   await runStage(byStage.get("foundation")
