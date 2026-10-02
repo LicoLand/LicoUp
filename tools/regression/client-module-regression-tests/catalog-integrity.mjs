@@ -583,11 +583,13 @@ test("tracked contribution guides require focused repair and one complete gate",
   assert.match(docs[0], /run the smallest registered check/u);
   assert.match(docs[0], /client:gate:step -- <module-id>/u);
   assert.match(docs[0], /client:gate:verify -- --base origin\/nightly/u);
-  assert.match(docs[0], /Neither command\s+builds, installs, launches, or publishes a client/iu);
+  assert.match(docs[0], /After the engineering result passes, the delivery target uses the existing owners\s+to build, install, and open the local client/iu);
+  assert.match(docs[0], /It never publishes or activates real data/iu);
   assert.match(docs[1], /开发过程中运行负责本次改动的最小已注册检查/u);
   assert.match(docs[1], /client:gate:step -- <module-id>/u);
   assert.match(docs[1], /client:gate:verify -- --base origin\/nightly/u);
-  assert.match(docs[1], /这些命令都不会构建、安装、启动\s+或发布客户端/u);
+  assert.match(docs[1], /构建、安装并打开客户端/u);
+  assert.match(docs[1], /它绝不发布或激活真实数据/u);
   assert.deepEqual(ids(selectModulesForChangedPaths(["CONTRIBUTING.md"])),
     [
       "regression.infrastructure",
@@ -1302,6 +1304,15 @@ test("Subagent MCP route sources select one hermetic verification module", () =>
 });
 
 test("migration runner inventory follows the actual crate and target selectors", () => {
+  assert.ok(migrationCrateTestArgs().includes("--no-fail-fast"));
+  assert.ok(migrationCrateTestArgs(["--native-recovery"]).includes("--no-fail-fast"));
+  for (const module of CLIENT_MODULE_CATALOG) {
+    const { program, args } = module.command;
+    if (program === "cargo" && args[0] === "test" &&
+        !args.some((arg) => ["--lib", "--bin", "--test", "--bench", "--doc"].includes(arg))) {
+      assert.ok(args.includes("--no-fail-fast"), module.id);
+    }
+  }
   const migrate = CLIENT_MODULE_CATALOG.find((module) => module.id === "rust.crate.migrate");
   const recovery = CLIENT_MODULE_CATALOG.find((module) => module.id === "rust.platform.data-home-relocation");
   assert.equal(migrate.regression.toolchain, "rust");

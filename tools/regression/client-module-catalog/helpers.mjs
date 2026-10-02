@@ -69,9 +69,15 @@ export const FAKE_AGENT_SERVICE_INPUTS = Object.freeze([
 ]);
 
 export function command(program, args, timeoutMs) {
+  const singleRustTarget = args.filter((arg) =>
+    ["--lib", "--bin", "--test", "--bench", "--doc"].includes(arg)).length === 1;
+  const commandArgs = program === "cargo" && args[0] === "test" &&
+    !singleRustTarget && !args.includes("--no-fail-fast")
+    ? ["test", "--no-fail-fast", ...args.slice(1)]
+    : args;
   return Object.freeze({
     program,
-    args: Object.freeze([...args]),
+    args: Object.freeze([...commandArgs]),
     cwd: REPO_ROOT,
     timeoutMs,
   });
