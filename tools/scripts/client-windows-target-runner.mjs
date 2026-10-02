@@ -322,7 +322,7 @@ try {
   if($LASTEXITCODE -ne 0){throw 'cargo_executable_preflight_failed'}
   Write-Output '{"event":"bootstrap-complete"}'
   $npm=Join-Path $nodeRoot 'npm.cmd'
-  $command='call "'+$vsDev+'" -arch=x64 -host_arch=x64 >nul && set "PATH='+$cargoBin+';'+$nodeRoot+';%PATH%" && set "CARGO_HOME='+$env:CARGO_HOME+'" && set "RUSTUP_HOME='+$env:RUSTUP_HOME+'" && set "CARGO_BUILD_JOBS=2" && cd /d "'+$repo+'" && "'+$npm+'" run client:gate:verify -- --base ${base} --head ${head} --target ${target} --execution target --host win32 > "'+$log+'" 2>&1'
+  $command='call "'+$vsDev+'" -arch=x64 -host_arch=x64 >nul && set "PATH='+$cargoBin+';'+$nodeRoot+';%PATH%" && set "CARGO_HOME='+$env:CARGO_HOME+'" && set "RUSTUP_HOME='+$env:RUSTUP_HOME+'" && set "CARGO_BUILD_JOBS=2" && cd /d "'+$repo+'" && "'+$cargoExe+'" +${rustVersion} fetch --locked > "'+$log+'" 2>&1 && "'+$npm+'" run client:gate:verify -- --base ${base} --head ${head} --target ${target} --execution target --host win32 >> "'+$log+'" 2>&1'
   Write-Output '{"event":"check-start"}'
   cmd.exe /d /s /c $command
   $gateExit=$LASTEXITCODE
@@ -664,6 +664,7 @@ async function selfTest() {
     assert.match(script, /CARGO_BUILD_JOBS='2'/u);
     assert.match(script, /cargo_executable_preflight_failed/u);
     assert.match(script, /spawnSync\("cargo".*shell:false/u);
+    assert.match(script, /fetch --locked/u);
     assert.doesNotMatch(script, /cargo\.cmd/u);
     assert.doesNotMatch(script, /sshTarget|windows-target\.json/u);
     const syntheticArgs = parseArgs(["run", "--base", base, "--head", head,
