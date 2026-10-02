@@ -25,6 +25,7 @@ import {
   runLocalClientDelivery,
   runLane,
   runClientGateStep,
+  selectTargetModules,
   targetReceiptResults,
   targetResultsCoverSelection,
   reusableLinuxResults,
@@ -521,6 +522,25 @@ test("focused Flutter target execution prepends the registered dependency prereq
     withExecutionPrerequisites([rustTarget], [prerequisite, rustTarget]),
     [rustTarget],
   );
+});
+
+test("focused target execution uses only requested target owners and validates the host", () => {
+  assert.deepEqual(selectTargetModules({
+    moduleIds: ["rust.platform.file-security.windows-acl"],
+    paths: ["unrelated/source.rs"],
+    host: "win32",
+    catalog: CLIENT_MODULE_CATALOG,
+  }).map((module) => module.id), ["rust.platform.file-security.windows-acl"]);
+  assert.throws(() => selectTargetModules({
+    moduleIds: ["rust.platform.file-security.unix-hardening"],
+    host: "win32",
+    catalog: CLIENT_MODULE_CATALOG,
+  }), /does not require evidence from this host/u);
+  assert.throws(() => selectTargetModules({
+    moduleIds: ["regression.documentation-governance"],
+    host: "win32",
+    catalog: CLIENT_MODULE_CATALOG,
+  }), /does not require evidence from this host/u);
 });
 
 test("target evidence rejects a revision that is not the clean checked-out head", async () => {

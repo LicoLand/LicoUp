@@ -746,8 +746,8 @@ function parseVerifyArgs(args) {
   if (values.target === "delivery" && values.execution !== "local") {
     fail("client delivery requires local execution");
   }
-  if (values.moduleIds.length > 0 && values.execution !== "direct") {
-    fail("client gate module selection requires direct execution");
+  if (values.moduleIds.length > 0 && !["direct", "target"].includes(values.execution)) {
+    fail("client gate module selection requires direct or target execution");
   }
   return Object.freeze({ ...values, moduleIds: Object.freeze([...values.moduleIds]) });
 }
@@ -836,6 +836,18 @@ export function withExecutionPrerequisites(selected, catalog) {
   return [prerequisite, ...selected];
 }
 
+export function selectTargetModules({ moduleIds = [], paths = [], host, catalog }) {
+  const requested = moduleIds.length > 0
+    ? selectModulesById(moduleIds, catalog)
+    : selectModulesForChangedPaths(paths, catalog).filter((module) =>
+      (module.regression.targetEvidenceHosts || []).includes(host));
+  if (moduleIds.length > 0 && requested.some((module) =>
+    !(module.regression.targetEvidenceHosts || []).includes(host))) {
+    fail("focused target module does not require evidence from this host");
+  }
+  return withExecutionPrerequisites(requested, catalog);
+}
+
 export function createTargetEvidenceReceipt({ revisions, selected, result }) {
   const report = result.report || null;
   const passed = result.exitCode === 0 &&
@@ -902,11 +914,12 @@ export async function verifyClientGate(args, {
     if (actualHead !== revisions.head.toLowerCase() || worktreeState.length !== 0) {
       fail("target evidence candidate does not match the clean checked-out head");
     }
-    const selected = withExecutionPrerequisites(
-      selectModulesForChangedPaths(paths, catalog).filter((module) =>
-        (module.regression.targetEvidenceHosts || []).includes(revisions.host)),
+    const selected = selectTargetModules({
+      moduleIds: revisions.moduleIds,
+      paths,
+      host: revisions.host,
       catalog,
-    );
+    });
     const result = selected.length === 0
       ? { exitCode: 0, report: { results: [] } }
       : await executor(selected, {
