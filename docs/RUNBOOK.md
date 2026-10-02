@@ -99,6 +99,15 @@ immutable digest, and generation metadata.
 
 ## Run focused verification
 
+The regression catalog is the current module-selection authority. The
+repository is completing the unified verification registry and final local
+merge-readiness command required by
+[`CONTRIBUTING.md`](../CONTRIBUTING.md#verification-coverage-and-escaped-defects).
+Until that implementation is complete, use the catalog and gate commands below
+and report missing registration, stage wiring, aggregation, or local/CI parity
+as an implementation gap. Do not treat the list or a dry run as execution
+evidence.
+
 List the maintained regression modules and preview change-based selection:
 
 ```bash

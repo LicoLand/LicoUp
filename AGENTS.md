@@ -13,6 +13,12 @@ ignored.
 - Report doubts about completion as soon as they are discovered, with the
   specific missing behavior or evidence. Do not submit or merge doubtful work
   as completed, or describe unverified behavior as proven by passing checks.
+- Treat an escaped defect as a verification-workflow defect. Repair the owning
+  registered subcheck and its local, commit, pull-request, CI, or release wiring
+  before fixing the product defect; add a registered check when no owner exists.
+  Run the repaired subcheck directly, then run the complete applicable local
+  workflow before submission. An inventory, partial pass, blocked check, or
+  successful launcher is not merge-readiness evidence.
 - After all writers finish, run the affected [formatters](CONTRIBUTING.md#format-before-final-verification)
   once before the final regression. Review their diff before starting checks.
 - Keep validation within the [available local environment](CONTRIBUTING.md#verification-scope).
@@ -47,7 +53,7 @@ ignored.
 | When | Read |
 | --- | --- |
 | Editing Agent rules or selecting a Skill | [Agent guidance](CONTRIBUTING.md#agent-guidance) |
-| Choosing checks or handling a final regression failure | [Set up](CONTRIBUTING.md#set-up) |
+| Choosing checks or handling a final regression failure | [Verification coverage and escaped defects](CONTRIBUTING.md#verification-coverage-and-escaped-defects) |
 | Completing a client behavior change, including bundled prompts | [Local client verification](CONTRIBUTING.md#local-client-verification) |
 | Creating a commit or pull request | [Agent-assisted contribution](CONTRIBUTING.md#agent-assisted-contribution) |
 | Changing documentation | [Documentation rules](CONTRIBUTING.md#documentation-rules) |
