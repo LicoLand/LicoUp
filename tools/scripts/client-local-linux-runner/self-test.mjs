@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -9,7 +10,11 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "./cli.mjs";
-import { inspectLocalDocker, runnerDockerArgs } from "./docker.mjs";
+import {
+  inspectLocalDocker,
+  resolveRunnerCacheRoot,
+  runnerDockerArgs,
+} from "./docker.mjs";
 import { materializeCandidate } from "./snapshot.mjs";
 
 function git(root, args) {
@@ -47,6 +52,33 @@ function testSnapshot() {
   } finally {
     rmSync(fixture, { recursive: true, force: true });
     rmSync(output, { recursive: true, force: true });
+  }
+}
+
+function testSharedProjectCache() {
+  const fixture = mkdtempSync(path.join(os.tmpdir(), "licoup-linux-ci-cache-fixture-"));
+  const primary = path.join(fixture, "primary");
+  const sibling = path.join(fixture, "sibling");
+  const independent = path.join(fixture, "independent");
+  try {
+    mkdirSync(primary);
+    git(primary, ["init", "-q"]);
+    git(primary, ["config", "user.name", "fixture"]);
+    git(primary, ["config", "user.email", "fixture@invalid.example"]);
+    writeFileSync(path.join(primary, "tracked.txt"), "fixture\n", "utf8");
+    git(primary, ["add", "tracked.txt"]);
+    git(primary, ["commit", "-qm", "fixture"]);
+    git(primary, ["worktree", "add", "-qb", "fixture-sibling", sibling]);
+    mkdirSync(independent);
+    git(independent, ["init", "-q"]);
+    const primaryCache = resolveRunnerCacheRoot(primary);
+    const siblingCache = resolveRunnerCacheRoot(sibling);
+    const independentCache = resolveRunnerCacheRoot(independent);
+    assert.equal(primaryCache, siblingCache);
+    assert.notEqual(primaryCache, independentCache);
+    assert.equal(path.basename(primaryCache), "licoup-local-linux-ci-cache");
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
   }
 }
 
@@ -120,6 +152,7 @@ export function runSelfTest() {
     }
   }
   testSnapshot();
+  testSharedProjectCache();
   return Object.freeze({
     ok: true,
     schemaVersion: "licoup.client-local-linux-ci.self-test.v1",

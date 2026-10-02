@@ -252,12 +252,12 @@ export function runnerDockerArgs({
   ];
 }
 
-export function runnerCacheRoot() {
-  const commonDirectory = command("git", [
+export function resolveRunnerCacheRoot(worktree, run = command) {
+  const commonDirectory = run("git", [
     "rev-parse",
     "--path-format=absolute",
     "--git-common-dir",
-  ]);
+  ], { cwd: worktree });
   if (commonDirectory.status !== 0) {
     commandFailure("git_common_directory_unavailable", commonDirectory);
   }
@@ -267,7 +267,11 @@ export function runnerCacheRoot() {
     error.code = "git_common_directory_invalid";
     throw error;
   }
-  const root = path.join(gitCommonDirectory, "licoup-local-linux-ci-cache");
+  return path.join(gitCommonDirectory, "licoup-local-linux-ci-cache");
+}
+
+export function runnerCacheRoot() {
+  const root = resolveRunnerCacheRoot(repoRoot);
   if (!existsSync(root)) mkdirSync(root, { recursive: true, mode: 0o700 });
   return root;
 }
