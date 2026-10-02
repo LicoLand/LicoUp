@@ -261,6 +261,7 @@ try {
   $vsDev=Join-Path $vsRoot 'Common7\Tools\VsDevCmd.bat'
   if(!$vsRoot -or !(Test-Path -LiteralPath $vsDev -PathType Leaf)){throw 'visual_cpp_environment_missing'}
   Write-Output '{"event":"bootstrap-complete"}'
+  $env:CARGO_BUILD_JOBS='2'
   $npm=Join-Path $nodeRoot 'npm.cmd'
   $command='call "'+$vsDev+'" -arch=x64 -host_arch=x64 >nul && set "PATH='+$nodeRoot+';'+$env:CARGO_HOME+'\bin;%PATH%" && set "CARGO_HOME='+$env:CARGO_HOME+'" && set "RUSTUP_HOME='+$env:RUSTUP_HOME+'" && cd /d "'+$repo+'" && "'+$npm+'" run client:gate:verify -- --base ${base} --head ${head} --target ${target} --execution target --host win32 > "'+$log+'" 2>&1'
   Write-Output '{"event":"check-start"}'
@@ -278,7 +279,7 @@ try {
   if((ConvertTo-Json -Compress $actual) -ne (ConvertTo-Json -Compress $wanted)){throw 'target_module_selection_mismatch'}
   if($summary.head -ne ${quotePowerShell(head)} -or $summary.host -ne 'win32'){throw 'target_summary_binding_mismatch'}
   $preserve=($gateExit -ne 0 -or !$summary.ok)
-  [ordered]@{status=if($gateExit -eq 0 -and $summary.ok){'passed'}else{'failed'};exitCode=$gateExit;summary=$summary;abi='msvc';architecture='x64'}|ConvertTo-Json -Compress -Depth 8
+  [ordered]@{status=if($gateExit -eq 0 -and $summary.ok){'passed'}else{'failed'};exitCode=$gateExit;summary=$summary;abi='msvc';architecture='x64';cargoBuildJobs=2}|ConvertTo-Json -Compress -Depth 8
 } catch {
   $preserve=$true
   [ordered]@{status='blocked';reason=if($_.Exception.Message -match '^[a-z0-9_]+$'){$_.Exception.Message}else{'windows_target_execution_failed'};abi='msvc';architecture='x64'}|ConvertTo-Json -Compress
@@ -302,6 +303,7 @@ function blockedReceipt(args, reason) {
     mergeReady: false,
     status: "blocked",
     reason,
+    cargoBuildJobs: 2,
   });
 }
 
@@ -387,6 +389,7 @@ export async function runWindowsTarget(args) {
       status: envelope.status,
       abi: "msvc",
       architecture: "x64",
+      cargoBuildJobs: 2,
       failureLogStored,
     });
   } finally {
@@ -426,6 +429,7 @@ async function selfTest() {
     assert.match(script, /vswhere\.exe/u);
     assert.match(script, /VsDevCmd\.bat/u);
     assert.match(script, /candidate_not_clean/u);
+    assert.match(script, /CARGO_BUILD_JOBS='2'/u);
     assert.doesNotMatch(script, /sshTarget|windows-target\.json/u);
     assert.deepEqual(parseArgs(["run", "--base", base, "--head", head, "--target", "pr", "--module", "rust.synthetic"]).modules, ["rust.synthetic"]);
     assert.throws(() => parseArgs(["run", "--base", base, "--head", head, "--target", "commit", "--module", "rust.synthetic"]));
