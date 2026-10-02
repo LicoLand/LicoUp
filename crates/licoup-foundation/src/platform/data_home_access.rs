@@ -9,6 +9,7 @@ use anyhow::{Result, anyhow, bail};
 use fs2::FileExt;
 use std::{
     fs::File,
+    io,
     path::{Path, PathBuf},
     sync::atomic::{AtomicUsize, Ordering},
 };
@@ -17,6 +18,14 @@ const ADMISSION_LOCK: &str = "data-home-admission.lock";
 const ACCESS_LOCK: &str = "data-home-access.lock";
 
 static PROCESS_ACCESS_LEASES: AtomicUsize = AtomicUsize::new(0);
+
+/// Whether a failed non-blocking lock attempt means another holder owns the lease.
+/// `fs2` defines the native error on every supported platform; comparing that value
+/// keeps contention distinct from permissions and other I/O failures.
+fn lock_is_contended(error: &io::Error) -> bool {
+    let expected = fs2::lock_contended_error();
+    error.raw_os_error().is_some() && error.raw_os_error() == expected.raw_os_error()
+}
 
 /// A shared process lease. Keep this value alive for the lifetime of every
 /// process that can read or write application-owned state.
@@ -52,7 +61,7 @@ impl DataHomeRelocationAdmission {
         let access = open_lock(&self.access_path)?;
         match FileExt::try_lock_exclusive(&access) {
             Ok(()) => Ok(true),
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(false),
+            Err(error) if lock_is_contended(&error) => Ok(false),
             Err(_) => Err(anyhow!("data-home relocation lease failed")),
         }
     }
@@ -140,7 +149,7 @@ fn acquire_data_home_access_at(locator: &Path) -> Result<DataHomeAccessLease> {
     // LICOUP_HOME and write the source after the locator has switched.
     match FileExt::try_lock_shared(&admission) {
         Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+        Err(error) if lock_is_contended(&error) => {
             bail!("data-home relocation is in progress")
         }
         Err(_) => bail!("data-home access admission failed"),
@@ -180,13 +189,13 @@ fn try_acquire_data_home_access_at(locator: &Path) -> Result<Option<DataHomeAcce
     let admission = open_lock(&admission_path)?;
     match FileExt::try_lock_shared(&admission) {
         Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(None),
+        Err(error) if lock_is_contended(&error) => return Ok(None),
         Err(_) => return Err(anyhow!("data-home access admission failed")),
     }
     let access = open_lock(&access_path)?;
     match FileExt::try_lock_shared(&access) {
         Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(None),
+        Err(error) if lock_is_contended(&error) => return Ok(None),
         Err(_) => return Err(anyhow!("data-home access lease failed")),
     }
     FileExt::unlock(&admission).map_err(|_| anyhow!("data-home access admission failed"))?;
@@ -200,13 +209,13 @@ fn try_acquire_data_home_relocation_lease_at(
     let admission = open_lock(&admission_path)?;
     match FileExt::try_lock_exclusive(&admission) {
         Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(None),
+        Err(error) if lock_is_contended(&error) => return Ok(None),
         Err(_) => return Err(anyhow!("data-home relocation admission failed")),
     }
     let access = open_lock(&access_path)?;
     match FileExt::try_lock_exclusive(&access) {
         Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(None),
+        Err(error) if lock_is_contended(&error) => return Ok(None),
         Err(_) => return Err(anyhow!("data-home relocation lease failed")),
     }
     Ok(Some(DataHomeRelocationLease {
@@ -240,6 +249,14 @@ mod tests {
 
     const HELPER_ACTION: &str = "LICOUP_TEST_DATA_HOME_LEASE_ACTION";
     const HELPER_LOCATOR: &str = "LICOUP_TEST_DATA_HOME_LEASE_LOCATOR";
+
+    #[test]
+    fn native_lock_contention_is_distinct_from_other_io_failures() {
+        assert!(lock_is_contended(&fs2::lock_contended_error()));
+        assert!(!lock_is_contended(&std::io::Error::from(
+            std::io::ErrorKind::PermissionDenied
+        )));
+    }
 
     #[test]
     fn separate_process_lease_blocks_copy_until_released_and_admission_blocks_new_access() {
