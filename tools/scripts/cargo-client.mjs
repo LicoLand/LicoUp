@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { sanitizeError } from "./lib/sanitize-error.mjs";
+import { clientProductVersion } from "../../apps/desktop/scripts/package-client/build/native.mjs";
 import {
   acquireTestArtifactLease,
   NATIVE_CARGO_TEST_TARGET,
@@ -43,6 +44,12 @@ try {
     cwd: repoRoot,
     env: {
       ...process.env,
+      // Complete native test runs include frozen released-root admission cases.
+      // Use the same candidate identity as packaging and retain an explicit
+      // caller identity for tests that intentionally exercise another version.
+      ...(args[0] === "test" ? {
+        LICO_CLIENT_PRODUCT_VERSION: process.env.LICO_CLIENT_PRODUCT_VERSION || clientProductVersion(),
+      } : {}),
       CARGO_TARGET_DIR: targetDir,
     },
     stdio: "inherit",

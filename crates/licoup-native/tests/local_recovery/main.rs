@@ -93,7 +93,7 @@ fn seed_released_source_root(root: &Path) {
     assert_eq!(
         running_product_version().expect("embedded product identity"),
         "0.3.0",
-        "run through tools/scripts/migration-crate-tests.mjs --native-recovery; never lower the released ledger"
+        "run through the candidate-identity Cargo or migration test entry; never lower the released ledger"
     );
     seed_released_conversation_store(root);
     seed_released_strategy_store(&root.join(RELEASED_STRATEGY_DATABASE));
@@ -584,16 +584,13 @@ fn local_recovery_missing_credential_metadata_stays_limited() {
 }
 
 // ---------------------------------------------------------------------------
-// AC: a failed owner verification rolls the destination back with checked cleanup
+// AC: failed owner preparation preserves the destination before publication
 // ---------------------------------------------------------------------------
 
-/// The owner repair runs after publication, so its failure must not leave a root a
-/// caller could mistake for a recovered one. The destination is restored to the state
-/// the caller left it in — removed when this call created it, emptied when the caller
-/// named an existing empty directory — and the archive that could repeat the attempt is
-/// never touched.
+/// Owner preparation occurs before publication. Failure leaves no created root,
+/// preserves the caller's existing empty directory and never changes the source archive.
 #[test]
-fn a_failed_owner_verification_rolls_the_imported_destination_back() {
+fn failed_owner_preparation_preserves_the_destination_before_publication() {
     let fixture = scratch("checked-cleanup");
     let source = fixture.join("source");
     ensure_private_dir(&source).expect("source root");
@@ -616,20 +613,20 @@ fn a_failed_owner_verification_rolls_the_imported_destination_back() {
         .expect("the archive owner captures bytes; revision validation is the importer's step");
     assert_eq!(exported.coverage, RecoveryCoverage::Limited);
 
-    // A destination this call creates is removed by the checked cleanup.
+    // A failed preparation never publishes a newly created destination.
     let created = fixture.join("created-target");
     let error = import_archive(&archive, &created).expect_err("the drift is refused");
     assert_eq!(error.to_string(), "strategy_revision_content_drifted");
     assert!(
         !created.exists(),
-        "a created destination is rolled back instead of lingering as a false recovery"
+        "a failed preparation never leaves a false recovered destination"
     );
     assert!(
         archive.is_file(),
         "the source archive survives every failed import"
     );
 
-    // A destination the caller named is emptied back to the state it was in.
+    // A destination the caller named remains in its original empty state.
     let named = fixture.join("named-target");
     ensure_private_dir(&named).expect("caller-named empty destination");
     let error = import_archive(&archive, &named).expect_err("the drift is refused");
