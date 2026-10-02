@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   appendFileSync,
@@ -600,7 +600,7 @@ export function changedPaths({ base, head, target = "commit" }) {
         },
       );
       const rootPaths = rootDiff.toString("utf8").split("\0").filter(Boolean);
-      return target === "commit"
+      return ["commit", "delivery"].includes(target)
         ? [...new Set([...rootPaths, ...workingTreePaths(safeHead)])]
         : rootPaths;
     }
@@ -617,7 +617,7 @@ export function changedPaths({ base, head, target = "commit" }) {
     },
   );
   const committed = diff.toString("utf8").split("\0").filter(Boolean);
-  return target === "commit"
+  return ["commit", "delivery"].includes(target)
     ? [...new Set([...committed, ...workingTreePaths(safeHead)])]
     : committed;
 }
@@ -718,8 +718,8 @@ function parseVerifyArgs(args) {
     index += 1;
   }
   if (!values.base) fail("client gate verify requires --base");
-  if (!["commit", "pr", "release"].includes(values.target)) {
-    fail("client gate verify requires --target commit, pr, or release");
+  if (!["commit", "pr", "release", "delivery"].includes(values.target)) {
+    fail("client gate verify requires --target commit, pr, release, or delivery");
   }
   if (!["direct", "local", "target"].includes(values.execution)) {
     fail("client gate verify execution must be direct, local, or target");
@@ -730,6 +730,9 @@ function parseVerifyArgs(args) {
   }
   if (["direct", "target"].includes(values.execution) && values.host !== process.platform) {
     fail("client gate verification host must match the actual runtime host");
+  }
+  if (values.target === "delivery" && values.execution !== "local") {
+    fail("client delivery requires local execution");
   }
   return Object.freeze(values);
 }
@@ -744,6 +747,70 @@ function reportIsMergeReady(report) {
     report.compatibility.every((result) => result.status === "passed");
 }
 
+const localDeliveryAdapters = Object.freeze({
+  macos: Object.freeze({
+    install: Object.freeze([
+      "npm", "run", "client:install:macos", "--", "--launch-installed",
+    ]),
+  }),
+});
+
+export function runLocalClientDelivery({
+  host = process.platform,
+  architecture = process.arch,
+  releaseCatalog = readJson("tools/client-release-targets.json"),
+  releaseTargets = CLIENT_RELEASE_TARGETS,
+  spawnImpl = spawnSync,
+  output = process.stdout,
+} = {}) {
+  const hostId = `${host}-${architecture}`;
+  const target = releaseCatalog.targets?.find((candidate) =>
+    releaseTargets[candidate.id]?.localOnly === true &&
+    candidate.packageBuildSupported === true &&
+    candidate.releaseSupported === true && candidate.buildHost === hostId);
+  const adapter = target ? localDeliveryAdapters[target.platform] : null;
+  if (!target || !adapter) fail("local client delivery target is unsupported on this host");
+  const stages = [
+    Object.freeze({
+      id: "build",
+      argv: Object.freeze(["npm", "run", "client:build", "--", "--platform", target.platform]),
+    }),
+    Object.freeze({ id: "install-and-launch", argv: adapter.install }),
+  ];
+  for (const stage of stages) {
+    const [command, ...args] = stage.argv;
+    const result = spawnImpl(command, args, {
+      cwd: repoRoot,
+      env: process.env,
+      shell: false,
+      stdio: "inherit",
+    });
+    if (result.error || result.status !== 0) {
+      output.write(`${JSON.stringify({
+        ok: false,
+        schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
+        target: "delivery",
+        stage: stage.id,
+        reason: `delivery_${stage.id.replaceAll("-", "_")}_failed`,
+      })}\n`);
+      return 1;
+    }
+  }
+  output.write(`${JSON.stringify({
+    ok: true,
+    schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
+    target: "delivery",
+    deliveryTargetId: target.id,
+    platform: target.platform,
+    built: true,
+    installed: true,
+    launchRequested: true,
+    uiInspected: false,
+    published: false,
+  })}\n`);
+  return 0;
+}
+
 export function withExecutionPrerequisites(selected, catalog) {
   const requiresFlutterDependencies = selected.some((module) =>
     ["flutter", "gradle"].includes(module.regression.toolchain));
@@ -752,6 +819,25 @@ export function withExecutionPrerequisites(selected, catalog) {
   const prerequisite = catalog.find((module) => module.id === "regression.flutter-dependencies");
   if (!prerequisite) fail("Flutter dependency prerequisite is not registered");
   return [prerequisite, ...selected];
+}
+
+export function createTargetEvidenceReceipt({ revisions, selected, result }) {
+  const report = result.report || null;
+  const passed = result.exitCode === 0 &&
+    targetResultsCoverSelection(selected, report?.results || []);
+  return Object.freeze({
+    ok: passed,
+    schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
+    target: revisions.target,
+    execution: revisions.execution,
+    host: revisions.host,
+    head: revisions.head,
+    stepIds: selected.map((module) => module.id),
+    selectedStepCount: selected.length,
+    complete: false,
+    mergeReady: false,
+    report,
+  });
 }
 
 export async function verifyClientGate(args, {
@@ -769,7 +855,11 @@ export async function verifyClientGate(args, {
       .includes(revisions.host))
     : catalog;
   if (revisions.execution === "local") {
-    return verifyLocalClientGate({ revisions, paths, plan, catalog, executor, output, reportPath });
+    const verification = await verifyLocalClientGate({
+      revisions, paths, plan, catalog, executor, output, reportPath,
+    });
+    if (verification !== 0 || revisions.target !== "delivery") return verification;
+    return runLocalClientDelivery({ output });
   }
   if (revisions.execution === "target") {
     if (!["pr", "release"].includes(revisions.target)) {
@@ -804,25 +894,13 @@ export async function verifyClientGate(args, {
         repoRoot,
         catalog,
         output,
-        reportPath: null,
+        reportPath,
         runKind: "focused",
         compatibilityRunner: async () => [],
       });
-    const passed = result.exitCode === 0 &&
-      targetResultsCoverSelection(selected, result.report?.results || []);
-    output.write(`${JSON.stringify({
-      ok: passed,
-      schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
-      target: revisions.target,
-      execution: revisions.execution,
-      host: revisions.host,
-      head: revisions.head,
-      stepIds: selected.map((module) => module.id),
-      selectedStepCount: selected.length,
-      complete: false,
-      mergeReady: false,
-    })}\n`);
-    return passed ? 0 : 1;
+    const receipt = createTargetEvidenceReceipt({ revisions, selected, result });
+    output.write(`${JSON.stringify(receipt)}\n`);
+    return receipt.ok ? 0 : 1;
   }
   const result = await executor(modules, {
     repoRoot,
@@ -894,6 +972,109 @@ function blockedTargetResult(module, host) {
   });
 }
 
+export function targetReceiptResults(receipt, modules, host, { head, processStatus } = {}) {
+  const expected = modules.map((module) => module.id).sort();
+  const actual = Array.isArray(receipt?.stepIds) ? [...receipt.stepIds].sort() : [];
+  const bound = receipt?.schemaVersion === CLIENT_GATE_SCHEMA_VERSION &&
+    receipt?.execution === "target" && receipt?.host === host &&
+    receipt?.head === head && JSON.stringify(actual) === JSON.stringify(expected);
+  if (bound && Array.isArray(receipt?.report?.results) && receipt.report.results.length > 0) {
+    const results = receipt.report.results.map((result) => labelResultHost(result, host));
+    const covered = new Set(results.flatMap(resultMembers));
+    for (const module of modules) {
+      if (!covered.has(module.id)) {
+        results.push(Object.freeze({
+          ...blockedTargetResult(module, host),
+          reason: "target_result_missing",
+        }));
+      }
+    }
+    if ((processStatus !== 0 || receipt.ok !== true) &&
+        results.every((result) => result.status === "passed")) {
+      results.push(Object.freeze({
+        id: `target-runner.${host}`,
+        stage: "foundation",
+        lane: "foundation",
+        toolchain: "node",
+        status: "failed",
+        reason: "target_runner_failed",
+        durationMs: 0,
+        members: Object.freeze([]),
+        metrics: null,
+      }));
+    }
+    return results;
+  }
+  const reason = bound
+    ? (typeof receipt?.reason === "string" ? receipt.reason : "target_result_missing")
+    : (receipt ? "target_receipt_binding_invalid" : "target_host_unavailable");
+  return modules.map((module) => Object.freeze({
+    ...blockedTargetResult(module, host),
+    reason,
+  }));
+}
+
+function readTargetRunnerReceipt(stdout) {
+  for (const line of String(stdout || "").trim().split(/\r?\n/u).reverse()) {
+    try {
+      const receipt = JSON.parse(line);
+      if (receipt?.schemaVersion === CLIENT_GATE_SCHEMA_VERSION &&
+          receipt?.execution === "target") return receipt;
+    } catch {}
+  }
+  return null;
+}
+
+function spawnClientGateProcess(command, args, { capture = false, output } = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd: repoRoot,
+      env: process.env,
+      shell: false,
+      stdio: capture ? ["ignore", "pipe", "ignore"] : "inherit",
+    });
+    let stdout = "";
+    if (capture) {
+      child.stdout.setEncoding("utf8");
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk;
+        output?.write(chunk);
+      });
+    }
+    child.once("error", (error) => resolve({ status: null, error, stdout }));
+    child.once("close", (status) => resolve({ status, error: null, stdout }));
+  });
+}
+
+async function runWindowsTargetEvidence({ revisions, modules, output }) {
+  if (modules.length === 0) return [];
+  const base = run("git", ["rev-parse", revisions.base], {
+    capture: true,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    errorMessage: "unable to resolve Windows target base revision",
+  }).trim().toLowerCase();
+  const head = run("git", ["rev-parse", revisions.head], {
+    capture: true,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    errorMessage: "unable to resolve Windows target head revision",
+  }).trim().toLowerCase();
+  const args = [
+    "tools/scripts/client-windows-target-runner.mjs",
+    "run",
+    "--base", base,
+    "--head", head,
+    "--target", revisions.target === "release" ? "release" : "pr",
+    ...modules.flatMap((module) => ["--module", module.id]),
+  ];
+  const execution = await spawnClientGateProcess(process.execPath, args, { capture: true, output });
+  return targetReceiptResults(readTargetRunnerReceipt(execution.stdout), modules, "win32", {
+    head,
+    processStatus: execution.status,
+  });
+}
+
 async function verifyLocalClientGate({
   revisions,
   paths,
@@ -924,18 +1105,29 @@ async function verifyLocalClientGate({
     runKind: "focused",
     compatibilityRunner: async () => [],
   });
+  const missingTargets = [];
+  const windowsTargets = [];
+  for (const module of affected) {
+    for (const targetHost of module.regression.targetEvidenceHosts || []) {
+      if (targetHost !== "linux" && targetHost !== host) {
+        if (targetHost === "win32") windowsTargets.push(module);
+        else missingTargets.push(blockedTargetResult(module, targetHost));
+      }
+    }
+  }
+  const uniqueWindowsTargets = withExecutionPrerequisites([
+    ...new Map(windowsTargets.map((module) => [module.id, module])).values(),
+  ], catalog);
   rmSync(reportPath, { force: true });
-  const runner = spawnSync(process.execPath, [
-    "tools/scripts/client-local-linux-runner.mjs",
-    "run",
-    "--profile",
-    "engineering",
-  ], {
-    cwd: repoRoot,
-    env: process.env,
-    shell: false,
-    stdio: "inherit",
-  });
+  const [runner, targetResults] = await Promise.all([
+    spawnClientGateProcess(process.execPath, [
+      "tools/scripts/client-local-linux-runner.mjs",
+      "run",
+      "--profile",
+      "engineering",
+    ]),
+    runWindowsTargetEvidence({ revisions, modules: uniqueWindowsTargets, output }),
+  ]);
   let linuxReport = null;
   if (existsSync(reportPath)) {
     try {
@@ -949,16 +1141,9 @@ async function verifyLocalClientGate({
     hostResult.report?.results || [],
     host,
   );
-  const missingTargets = [];
-  for (const module of affected) {
-    for (const targetHost of module.regression.targetEvidenceHosts || []) {
-      if (targetHost !== "linux" && targetHost !== host) {
-        missingTargets.push(blockedTargetResult(module, targetHost));
-      }
-    }
-  }
   const results = [
     ...combinedResults,
+    ...targetResults,
     ...missingTargets,
   ];
   const coveredIds = new Set(results.flatMap(resultMembers));
@@ -1001,7 +1186,8 @@ async function verifyLocalClientGate({
     lanes: plan.lanes,
     selectedStepCount: applicableIds.size,
     complete: report.complete,
-    missingTargetEvidenceCount: missingTargets.length,
+    missingTargetEvidenceCount: results.filter((result) =>
+      result.status === "blocked" && result.id.startsWith("target-evidence.")).length,
   })}\n`);
   return mergeReady ? 0 : 1;
 }

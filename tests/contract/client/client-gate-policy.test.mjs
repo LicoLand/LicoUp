@@ -21,8 +21,11 @@ import {
   changedPaths,
   clientGateTaskEvent,
   combineLocalRegressionResults,
+  createTargetEvidenceReceipt,
+  runLocalClientDelivery,
   runLane,
   runClientGateStep,
+  targetReceiptResults,
   targetResultsCoverSelection,
   validateClientGateTopology,
   verifyClientGate,
@@ -181,6 +184,7 @@ test("local planning includes working tree and untracked paths while PR planning
   writeFileSync(absolute, "synthetic\n", { mode: 0o600 });
   try {
     assert.equal(changedPaths({ base: "HEAD", head: "HEAD", target: "commit" }).includes(relative), true);
+    assert.equal(changedPaths({ base: "HEAD", head: "HEAD", target: "delivery" }).includes(relative), true);
     assert.equal(changedPaths({ base: "HEAD", head: "HEAD", target: "pr" }).includes(relative), false);
   } finally {
     unlinkSync(absolute);
@@ -240,6 +244,62 @@ test("complete verification passes only complete settled engineering evidence", 
   assert.equal(receipt.mergeReady, false);
 });
 
+test("local delivery builds, installs, and launches only after each prior stage passes", () => {
+  const releaseCatalog = { targets: [{
+    id: "macos-direct-arm64",
+    platform: "macos",
+    buildHost: "darwin-arm64",
+    packageBuildSupported: true,
+    releaseSupported: true,
+  }] };
+  const releaseTargets = { "macos-direct-arm64": { localOnly: true } };
+  const calls = [];
+  let output = "";
+  const code = runLocalClientDelivery({
+    host: "darwin",
+    architecture: "arm64",
+    releaseCatalog,
+    releaseTargets,
+    output: { write(value) { output += value; } },
+    spawnImpl(command, args) {
+      calls.push([command, ...args]);
+      return { status: 0, error: null };
+    },
+  });
+  assert.equal(code, 0);
+  assert.deepEqual(calls, [
+    ["npm", "run", "client:build", "--", "--platform", "macos"],
+    ["npm", "run", "client:install:macos", "--", "--launch-installed"],
+  ]);
+  assert.deepEqual(JSON.parse(output), {
+    ok: true,
+    schemaVersion: "licomesh.client-gate-policy.v1",
+    target: "delivery",
+    deliveryTargetId: "macos-direct-arm64",
+    platform: "macos",
+    built: true,
+    installed: true,
+    launchRequested: true,
+    uiInspected: false,
+    published: false,
+  });
+
+  calls.length = 0;
+  const failed = runLocalClientDelivery({
+    host: "darwin",
+    architecture: "arm64",
+    releaseCatalog,
+    releaseTargets,
+    output: { write() {} },
+    spawnImpl(command, args) {
+      calls.push([command, ...args]);
+      return { status: 7, error: null };
+    },
+  });
+  assert.equal(failed, 1);
+  assert.equal(calls.length, 1);
+});
+
 test("local aggregation replaces only the exact delegated hygiene result", () => {
   const linux = [
     { id: "hygiene", status: "passed", members: ["regression.repository-local-info-hygiene"] },
@@ -269,6 +329,97 @@ test("target evidence requires one passed result for every selected module", () 
     { status: "passed", members: ["module.a", "module.b"] },
     { status: "failed", members: ["module.c"] },
   ]), false);
+});
+
+test("target evidence receipt preserves the existing per-batch report", () => {
+  const selected = [{ id: "module.a" }, { id: "module.b" }];
+  const report = {
+    complete: false,
+    status: "failed",
+    results: [{
+      id: "batch.one",
+      status: "failed",
+      reason: "command_failed",
+      members: ["module.a", "module.b"],
+    }],
+    compatibility: [],
+  };
+  const receipt = createTargetEvidenceReceipt({
+    revisions: { target: "pr", execution: "target", host: "win32", head: "a".repeat(40) },
+    selected,
+    result: { exitCode: 1, report },
+  });
+  assert.equal(receipt.ok, false);
+  assert.equal(receipt.report, report);
+  assert.deepEqual(receipt.report.results[0], report.results[0]);
+});
+
+test("local target aggregation uses real batch results and blocks missing receipts", () => {
+  const head = "a".repeat(40);
+  const modules = [
+    { id: "module.a", regression: { stage: "foundation", lane: "foundation", toolchain: "rust" } },
+    { id: "module.b", regression: { stage: "foundation", lane: "foundation", toolchain: "rust" } },
+  ];
+  const reportResult = {
+    id: "rust-target-1",
+    stage: "foundation",
+    lane: "foundation",
+    toolchain: "rust",
+    status: "failed",
+    reason: "command_failed",
+    members: ["module.a"],
+  };
+  const partial = targetReceiptResults({
+    ok: false,
+    schemaVersion: "licomesh.client-gate-policy.v1",
+    execution: "target",
+    host: "win32",
+    head,
+    stepIds: ["module.a", "module.b"],
+    report: { results: [reportResult] },
+  }, modules, "win32", { head, processStatus: 1 });
+  assert.deepEqual(partial[0], { ...reportResult, id: "host.win32.rust-target-1" });
+  assert.equal(partial[1].members[0], "module.b");
+  assert.equal(partial[1].reason, "target_result_missing");
+
+  assert.deepEqual(targetReceiptResults(null, modules.slice(0, 1), "win32", {
+    head,
+    processStatus: null,
+  }).map((result) => ({
+    status: result.status,
+    reason: result.reason,
+    members: result.members,
+  })), [{ status: "blocked", reason: "target_host_unavailable", members: ["module.a"] }]);
+  assert.equal(targetReceiptResults({
+    schemaVersion: "licomesh.client-gate-policy.v1",
+    execution: "target",
+    host: "win32",
+    head,
+    stepIds: ["module.a"],
+    status: "failed",
+  }, modules.slice(0, 1), "win32", { head, processStatus: 1 })[0].reason, "target_result_missing");
+
+  const stale = targetReceiptResults({
+    ok: true,
+    schemaVersion: "licomesh.client-gate-policy.v1",
+    execution: "target",
+    host: "win32",
+    head: "b".repeat(40),
+    stepIds: ["module.a"],
+    report: { results: [{ ...reportResult, status: "passed" }] },
+  }, modules.slice(0, 1), "win32", { head, processStatus: 0 });
+  assert.equal(stale[0].reason, "target_receipt_binding_invalid");
+
+  const exitConflict = targetReceiptResults({
+    ok: true,
+    schemaVersion: "licomesh.client-gate-policy.v1",
+    execution: "target",
+    host: "win32",
+    head,
+    stepIds: ["module.a"],
+    report: { results: [{ ...reportResult, status: "passed" }] },
+  }, modules.slice(0, 1), "win32", { head, processStatus: 1 });
+  assert.equal(exitConflict.at(-1).reason, "target_runner_failed");
 });
 
 test("focused Flutter target execution prepends the registered dependency prerequisite", () => {

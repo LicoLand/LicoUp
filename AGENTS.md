@@ -13,14 +13,18 @@ ignored.
 - Report doubts about completion as soon as they are discovered, with the
   specific missing behavior or evidence. Do not submit or merge doubtful work
   as completed, or describe unverified behavior as proven by passing checks.
-- Treat an escaped defect as a verification-workflow defect. Repair the owning
-  registered subcheck and its local, commit, pull-request, CI, or release wiring
-  before fixing the product defect; add a registered check when no owner exists.
-  Run the repaired subcheck with `npm run client:gate:step -- <module-id>`, then
-  run `npm run client:gate:verify -- --base <base> --head HEAD --target commit`
-  as the complete applicable local workflow before submission. An inventory,
-  partial pass, blocked check, or
-  successful launcher is not merge-readiness evidence.
+- After development, run
+  `npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery`.
+  This is the canonical verified delivery entry, independent of plans or
+  milestones. It runs the applicable checks before it builds, installs, and opens
+  the client through the existing owners. It does not publish, migrate real data,
+  inspect the interface, or run live Agent tasks.
+- Only a failed delivery entry or an incorrect authorized observation triggers
+  diagnosis. Repair an actual workflow omission through its registered subcheck
+  and wiring before repairing the affected product; otherwise fix the product
+  without manufacturing a tool change. Run the owning focused check, reuse valid
+  evidence, return to the same delivery entry, and stop after successful delivery.
+  An inventory, partial pass, blocked check, or launcher call is not delivery evidence.
 - Use a portable capability whenever the supported platforms can share one.
   Keep host-OS assumptions out of shared Rust, Flutter, and Node code; isolate
   real OS differences behind an explicit platform adapter. A single-platform

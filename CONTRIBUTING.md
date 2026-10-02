@@ -46,7 +46,7 @@ fixed directly. Promotion failures follow the separate
 
 ```bash
 npm run client:gate:step -- <module-id>
-npm run client:gate:verify -- --base origin/nightly --head HEAD --target commit
+npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery
 ```
 
 ### Verification coverage and escaped defects
@@ -79,13 +79,15 @@ applicable local workflow once, and only then commit, open the pull request, or
 start a publication workflow. Do not substitute a read-only inventory, a
 partial pass, launcher success, or a cloud-only first execution for that result.
 
-`client:gate:verify` is the sole merge-readiness entry. It runs the canonical
+`client:gate:verify` is the sole verified delivery entry. It runs the canonical
 privacy check on the real host, executes the complete applicable engineering
 catalog in an isolated Linux environment that matches CI, and requires actual
 target-host evidence for affected platform owners. It writes the canonical
 module report to `build/reports/client-module-regression.json`. Live Agent,
 device, credential, signing, installation, launch, and publication checks remain
 separate explicit workflows and are never converted into engineering passes.
+After the engineering result passes, the delivery target uses the existing owners
+to build, install, and open the local client. It never publishes or activates real data.
 No verification tool can promise to detect unknown defects exhaustively.
 
 ### Cross-platform ownership

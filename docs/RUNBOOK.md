@@ -171,18 +171,32 @@ that registry.
 | Native bridges and target integration | `bridge.*` | same registered command | Actual declared target for affected adapters |
 | Packaging and release-policy engineering contracts | `packaging.*`, `release.*` | same registered command; promotion adds release policy | Declared package target |
 
-After every focused repair passes, run the complete local profile once:
+After development and every focused repair, run the verified delivery entry:
 
 ```bash
-npm run client:gate:verify -- --base origin/nightly --head HEAD --target commit
+npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery
 ```
 
 The command runs canonical host privacy, the complete applicable catalog in the
 isolated Linux CI environment, and affected target modules on their actual host.
-An unavailable required target is `blocked`; a missing or incomplete result is
-never merge-ready. Static and live compatibility observations remain separate
-from required engineering evidence and are not reported as passes when they
-were not run.
+Only after those checks pass does it use the existing target catalog, build owner,
+and installer to build, install, and open the local client. A failed stage exits
+nonzero and blocks its dependents. The entry does not publish, sign, notarize,
+migrate real data, inspect the interface, or run live Agent tasks. An unavailable
+required target is `blocked`; a missing or incomplete result is never ready.
+
+If the entry or an authorized observation fails, determine whether a declared
+check did not run or the product is wrong. Repair a real workflow omission through
+its existing owner before repairing the affected product; when the workflow is
+correct, fix the product without inventing a tooling change. Run the owning focused
+step, reuse valid evidence, and return to the same delivery entry. Stop after a
+successful delivery instead of repeating unchanged checks or adding unrelated work.
+Static and live compatibility observations remain separate from required engineering
+evidence and are not reported as passes when they were not run.
+
+A change to the delivery tooling itself uses `--target pr` for its own pull request
+and must not install a client that does not contain the product candidate. After the
+tooling reaches `nightly`, the integrated product candidate uses `--target delivery`.
 
 Redispatch only the failed, attribution-pending, or blocked core members and
 failed compatibility targets:

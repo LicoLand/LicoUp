@@ -38,7 +38,7 @@ Node 测试通过匿名输入索引定位失败，因此单个 Agent 或测试�
 
 ```bash
 npm run client:gate:step -- <module-id>
-npm run client:gate:verify -- --base origin/nightly --head HEAD --target commit
+npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery
 ```
 
 ### 验证覆盖与漏检缺陷
@@ -61,11 +61,12 @@ npm run client:gate:verify -- --base origin/nightly --head HEAD --target commit
 工作流；只有通过后，才能提交、创建 Pull Request 或启动发布流程。只读清单、部分通过、
 启动器成功或首次只在云端执行，均不能替代这一结果。
 
-`client:gate:verify` 是唯一的合并就绪入口。它在真实主机上运行权威隐私检查，在与 CI
+`client:gate:verify` 是唯一的已验证交付入口。它在真实主机上运行权威隐私检查，在与 CI
 一致的隔离 Linux 环境中执行全部适用工程目录，并对受影响的平台所有者要求真实目标
 主机证据。权威模块报告写入 `build/reports/client-module-regression.json`。实时 Agent、
 设备、凭据、签名、安装、启动和发布检查仍属于单独的显式流程，不得转换为工程通过。
-任何验证工具也不得承诺穷尽尚未知晓的缺陷。
+任何验证工具也不得承诺穷尽尚未知晓的缺陷。工程结果通过后，交付目标使用既有属主构建、
+安装并打开本地客户端；它绝不发布或激活真实数据。
 
 ### 跨平台归属
 

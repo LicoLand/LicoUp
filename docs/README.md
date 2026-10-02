@@ -74,6 +74,7 @@ authority.
 ## Operations and configuration
 
 - [Runbook](RUNBOOK.md)
+- [Change closure](CLOSURE.md)
 - [Parallel development map](parallel/PARALLEL-DEVELOPMENT-MAP.md) ·
   [并行开发地图](parallel/PARALLEL-DEVELOPMENT-MAP.zh-CN.md)
 - [Compatibility](COMPATIBILITY.md) ·
