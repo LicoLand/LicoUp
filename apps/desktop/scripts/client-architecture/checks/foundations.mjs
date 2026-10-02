@@ -25,6 +25,7 @@ const packageClientSourceBundleTestPath =
 const packageClientLeafResponsibilities = new Map([
   ["build/flutter.mjs", "function buildFlutterApp("],
   ["build/native.mjs", "function buildNativeSidecars("],
+  ["build/release-tools.mjs", "function buildReleaseTools("],
   ["build/swift.mjs", "function buildSwiftSidecars("],
   ["bundle-resolver/linux.mjs", "function findLinuxBundleSource("],
   ["bundle-resolver/macos.mjs", "function findMacosBundleSource("],
@@ -146,7 +147,7 @@ export async function checkPackageDryRuns(context, { futureModules, modules }) {
   );
   assert(
     sameSet(discoveredPackageClientLeaves, packageClientLeafPaths),
-    "package-client must own exactly the architecture-approved nineteen-leaf source bundle",
+    "package-client must own exactly the architecture-approved source bundle",
   );
   const packageClientFacadeSource = await readText(packageClientFacadePath);
   assert(
@@ -218,7 +219,7 @@ export async function checkPackageDryRuns(context, { futureModules, modules }) {
     );
     assert(
       packageClientSourceBundleTest.includes(
-        "package client migration owns exactly nineteen bounded ordinary modules",
+        "package client keeps an exact bounded module inventory",
       ) &&
         packageClientSourceBundleTest.includes(
           "assert.deepEqual(await collectModules(moduleRoot), [...leaves]);",
