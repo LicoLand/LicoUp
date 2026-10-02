@@ -716,14 +716,17 @@ function planGate(args) {
 }
 
 function parseVerifyArgs(args) {
-  const values = { base: "", execution: "local", head: "HEAD", host: "", target: "" };
+  const values = {
+    base: "", execution: "local", head: "HEAD", host: "", target: "", moduleIds: [],
+  };
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index];
-    if (!["--base", "--execution", "--head", "--host", "--target"].includes(flag)) {
+    if (!["--base", "--execution", "--head", "--host", "--target", "--module"].includes(flag)) {
       fail(`unknown verify argument: ${flag}`);
     }
     if (index + 1 >= args.length) fail(`missing value for ${flag}`);
-    values[flag.slice(2)] = args[index + 1];
+    if (flag === "--module") values.moduleIds.push(args[index + 1]);
+    else values[flag.slice(2)] = args[index + 1];
     index += 1;
   }
   if (!values.base) fail("client gate verify requires --base");
@@ -743,7 +746,10 @@ function parseVerifyArgs(args) {
   if (values.target === "delivery" && values.execution !== "local") {
     fail("client delivery requires local execution");
   }
-  return Object.freeze(values);
+  if (values.moduleIds.length > 0 && values.execution !== "direct") {
+    fail("client gate module selection requires direct execution");
+  }
+  return Object.freeze({ ...values, moduleIds: Object.freeze([...values.moduleIds]) });
 }
 
 function reportIsMergeReady(report) {
@@ -859,9 +865,13 @@ export async function verifyClientGate(args, {
   const paths = changedPaths(revisions);
   const plan = classifyClientGatePaths(paths);
   validateClientModuleCatalog(catalog);
+  const directSelection = revisions.moduleIds.length > 0
+    ? withExecutionPrerequisites(selectModulesById(revisions.moduleIds, catalog), catalog)
+    : catalog;
   const modules = revisions.execution === "direct"
-    ? catalog.filter((module) => (module.regression.runnableHosts || ["darwin", "linux", "win32"])
-      .includes(revisions.host))
+    ? directSelection.filter((module) =>
+      (module.regression.runnableHosts || ["darwin", "linux", "win32"])
+        .includes(revisions.host))
     : catalog;
   if (revisions.execution === "local") {
     const verification = await verifyLocalClientGate({
@@ -916,7 +926,7 @@ export async function verifyClientGate(args, {
     catalog,
     output,
     reportPath,
-    runKind: "complete",
+    runKind: revisions.moduleIds.length > 0 ? "focused" : "complete",
     compatibilityRunner: async () => [],
   });
   const mergeReady = result.exitCode === 0 && reportIsMergeReady(result.report);
@@ -1084,6 +1094,49 @@ async function runWindowsTargetEvidence({ revisions, modules, output }) {
   });
 }
 
+export function reusableLinuxResults(previousReport, {
+  currentHead,
+  changedPaths: evidenceChangedPaths,
+  catalog,
+}) {
+  if (previousReport?.schemaVersion !== "licoup.client-regression-report.v1" ||
+      previousReport?.complete !== true ||
+      !/^[a-f0-9]{40}$/u.test(previousReport?.candidateHead || "") ||
+      !/^sha256:[a-f0-9]{64}$/u.test(previousReport?.sourceStateDigest || "") ||
+      !Array.isArray(previousReport.results)) return [];
+  const affected = new Set(selectModulesForChangedPaths(evidenceChangedPaths, catalog)
+    .map((module) => module.id));
+  const known = new Set(catalog
+    .filter((module) => (module.regression.runnableHosts || ["darwin", "linux", "win32"])
+      .includes("linux"))
+    .map((module) => module.id));
+  const reused = [];
+  for (const result of previousReport.results) {
+    if (result?.status !== "passed" || !String(result.id || "").startsWith("host.linux.") ||
+        result.evidenceHead !== previousReport.candidateHead || !Array.isArray(result.members)) continue;
+    const members = result.members.filter((id) => known.has(id) && !affected.has(id));
+    if (members.length === 0) continue;
+    reused.push(Object.freeze({
+      ...result,
+      id: `reused.${result.id}`,
+      members: Object.freeze(members),
+      evidenceHead: previousReport.candidateHead,
+    }));
+  }
+  return Object.freeze(reused);
+}
+
+function readLinuxRunnerReceipt(stdout) {
+  for (const line of String(stdout || "").trim().split(/\r?\n/u).reverse()) {
+    try {
+      const receipt = JSON.parse(line);
+      if (receipt?.schemaVersion === "licoup.client-local-linux-ci.v1" &&
+          receipt?.profile === "engineering") return receipt;
+    } catch {}
+  }
+  return null;
+}
+
 async function verifyLocalClientGate({
   revisions,
   paths,
@@ -1127,14 +1180,61 @@ async function verifyLocalClientGate({
   const uniqueWindowsTargets = withExecutionPrerequisites([
     ...new Map(windowsTargets.map((module) => [module.id, module])).values(),
   ], catalog);
+  const currentHead = run("git", ["rev-parse", revisions.head], {
+    capture: true,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    errorMessage: "unable to resolve local verification head",
+  }).trim().toLowerCase();
+  const clean = run("git", ["status", "--porcelain=v1", "--untracked-files=all"], {
+    capture: true,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    errorMessage: "unable to inspect local verification worktree",
+  }).length === 0;
+  let previousReport = null;
+  if (clean && existsSync(reportPath)) {
+    try {
+      previousReport = JSON.parse(readFileSync(reportPath, "utf8"));
+    } catch {}
+  }
+  let reusedResults = [];
+  if (previousReport && /^[a-f0-9]{40}$/u.test(previousReport.candidateHead || "")) {
+    const ancestor = previousReport.candidateHead === currentHead || spawnSync(
+      "git", ["merge-base", "--is-ancestor", previousReport.candidateHead, currentHead],
+      { cwd: repoRoot, stdio: "ignore", shell: false },
+    ).status === 0;
+    if (ancestor) {
+      reusedResults = reusableLinuxResults(previousReport, {
+        currentHead,
+        changedPaths: changedPaths({
+          base: previousReport.candidateHead,
+          head: currentHead,
+          target: "pr",
+        }),
+        catalog,
+      });
+    }
+  }
+  const reusedIds = new Set(reusedResults.flatMap(resultMembers));
+  const linuxModules = withExecutionPrerequisites(
+    catalog.filter((module) => linuxIds.has(module.id) && !reusedIds.has(module.id)),
+    catalog,
+  );
+  const focusedLinuxRetry = reusedResults.length > 0;
   rmSync(reportPath, { force: true });
   const [runner, targetResults] = await Promise.all([
-    spawnClientGateProcess(process.execPath, [
-      "tools/scripts/client-local-linux-runner.mjs",
-      "run",
-      "--profile",
-      "engineering",
-    ]),
+    linuxModules.length === 0
+      ? Promise.resolve({ status: 0, error: null, stdout: "" })
+      : spawnClientGateProcess(process.execPath, [
+        "tools/scripts/client-local-linux-runner.mjs",
+        "run",
+        "--profile",
+        "engineering",
+        ...(focusedLinuxRetry
+          ? linuxModules.flatMap((module) => ["--module", module.id])
+          : []),
+      ], { capture: true, output }),
     runWindowsTargetEvidence({ revisions, modules: uniqueWindowsTargets, output }),
   ]);
   let linuxReport = null;
@@ -1151,6 +1251,7 @@ async function verifyLocalClientGate({
     host,
   );
   const results = [
+    ...reusedResults,
     ...combinedResults,
     ...targetResults,
     ...missingTargets,
@@ -1173,17 +1274,24 @@ async function verifyLocalClientGate({
   }
   const startedAt = linuxReport?.startedAt || hostResult.report?.startedAt || new Date().toISOString();
   const completedAt = new Date().toISOString();
+  const evidencedResults = results.map((result) => result.evidenceHead
+    ? result
+    : Object.freeze({ ...result, evidenceHead: currentHead }));
   const report = createClientRegressionReport({
     runKind: "complete",
     startedAt,
     completedAt,
     durationMs: Math.max(0, Date.parse(completedAt) - Date.parse(startedAt)),
-    results,
+    results: evidencedResults,
     concurrency: linuxReport?.concurrency || hostResult.report?.concurrency || {},
     compatibility: [],
+    candidateHead: currentHead,
+    sourceStateDigest: readLinuxRunnerReceipt(runner.stdout)?.sourceStateDigest || null,
   });
   await writeClientRegressionReport(report, reportPath);
-  const runnerPassed = !runner.error && runner.status === 0 && linuxReport?.complete === true;
+  const runnerPassed = !runner.error && runner.status === 0 &&
+    (linuxModules.length === 0 || linuxReport?.results?.every((result) =>
+      result.status === "passed"));
   const mergeReady = runnerPassed && hostResult.exitCode === 0 && reportIsMergeReady(report);
   output.write(`${JSON.stringify({
     ok: mergeReady,

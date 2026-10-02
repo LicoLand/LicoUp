@@ -110,11 +110,21 @@ export async function runSelfTest() {
     command: "run",
     lane: "rust",
     profile: null,
+    moduleIds: [],
   });
   assert.deepEqual(parseArgs(["run", "--profile", "engineering"]), {
     command: "run",
     lane: null,
     profile: "engineering",
+    moduleIds: [],
+  });
+  assert.deepEqual(parseArgs([
+    "run", "--profile", "engineering", "--module", "release.model-pricing",
+  ]), {
+    command: "run",
+    lane: null,
+    profile: "engineering",
+    moduleIds: ["release.model-pricing"],
   });
   assert.throws(() => parseArgs(["run", "--lane", "unknown"]));
   assert.deepEqual(inspectLocalDocker((command, args) => {
@@ -154,6 +164,17 @@ export async function runSelfTest() {
       rmSync(path.dirname(root), { recursive: true, force: true });
     }
   }
+  const focusedArgs = runnerDockerArgs({
+    image: { tag: "synthetic:image" },
+    lane: null,
+    profile: "engineering",
+    moduleIds: ["release.model-pricing"],
+    candidateRoot: "/synthetic/candidate",
+    cacheRoot: mkdtempSync(path.join(os.tmpdir(), "licoup-linux-ci-cache-")),
+    outputRoot: "/synthetic/output",
+    cargoAuditVersion: "0.22.2",
+  });
+  assert.match(focusedArgs.at(-1), /--host linux --module release\.model-pricing/u);
   const androidArgs = runnerDockerArgs({
     image: { tag: "synthetic:image" },
     lane: "android",

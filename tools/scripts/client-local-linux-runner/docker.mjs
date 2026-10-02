@@ -143,6 +143,7 @@ export function runnerDockerArgs({
   cacheRoot,
   outputRoot,
   cargoAuditVersion,
+  moduleIds = [],
 }) {
   const npmCache = path.join(cacheRoot, "npm");
   const cargoRegistry = path.join(cacheRoot, "cargo-registry");
@@ -185,8 +186,15 @@ export function runnerDockerArgs({
       `--command-line-tools-root ${containerAndroidCommandLineToolsRoot} ` +
       `--flutter-root ${containerFlutterRoot}`
     : ":";
+  const moduleArgs = moduleIds.map((id) => {
+    if (!/^[a-z0-9][a-z0-9.-]+$/u.test(id)) {
+      throw new Error("client_local_linux_runner_module_id_invalid");
+    }
+    return ` --module ${id}`;
+  }).join("");
   const invocation = profile === "engineering"
-    ? "npm run client:gate:verify -- --base HEAD --head HEAD --target pr --execution direct --host linux"
+    ? "npm run client:gate:verify -- --base HEAD --head HEAD --target pr --execution direct --host linux" +
+      moduleArgs
     : `npm run client:gate:${lane}`;
   const setup = [
     "set -euo pipefail",

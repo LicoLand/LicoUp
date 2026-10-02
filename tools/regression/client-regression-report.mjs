@@ -107,6 +107,14 @@ function safeDiagnosticLog(value, status) {
   return value;
 }
 
+function safeEvidenceHead(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string" || !/^[a-f0-9]{40}$/u.test(value)) {
+    throw new Error("client regression evidence head is invalid");
+  }
+  return value;
+}
+
 export function createClientRegressionReport({
   runKind,
   startedAt,
@@ -115,9 +123,18 @@ export function createClientRegressionReport({
   results,
   concurrency,
   compatibility = [],
+  candidateHead = null,
+  sourceStateDigest = null,
 }) {
+  if (candidateHead !== null && !/^[a-f0-9]{40}$/u.test(candidateHead)) {
+    throw new Error("client regression candidate head is invalid");
+  }
+  if (sourceStateDigest !== null && !/^sha256:[a-f0-9]{64}$/u.test(sourceStateDigest)) {
+    throw new Error("client regression source-state digest is invalid");
+  }
   const safeResults = results.map((result) => {
     const diagnosticLog = safeDiagnosticLog(result.diagnosticLog, result.status);
+    const evidenceHead = safeEvidenceHead(result.evidenceHead);
     return Object.freeze({
       id: result.id,
       stage: result.stage,
@@ -128,6 +145,7 @@ export function createClientRegressionReport({
       durationMs: result.durationMs,
       members: Object.freeze([...result.members]),
       metrics: safeMetrics(result.metrics),
+      ...(evidenceHead ? { evidenceHead } : {}),
       ...(diagnosticLog ? { diagnosticLog } : {}),
     });
   });
@@ -142,6 +160,8 @@ export function createClientRegressionReport({
   }));
   return Object.freeze({
     schemaVersion: CLIENT_REGRESSION_REPORT_SCHEMA,
+    ...(candidateHead ? { candidateHead } : {}),
+    ...(sourceStateDigest ? { sourceStateDigest } : {}),
     runKind,
     complete: runKind === "complete",
     status: terminalStatus(safeResults, safeCompatibility),

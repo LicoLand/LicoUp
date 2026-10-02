@@ -139,7 +139,7 @@ function importEngineeringReport(outputRoot) {
 }
 
 async function runSelection(selection) {
-  const { lane, profile } = selection;
+  const { lane, profile, moduleIds = [] } = selection;
   if (!supportedLanes.includes(lane)) {
     if (profile === "engineering") {
       // The engineering profile is supplied by the integrated client gate.
@@ -170,6 +170,7 @@ async function runSelection(selection) {
       cacheRoot: runnerCacheRoot(),
       outputRoot,
       cargoAuditVersion: cargoAuditVersion(),
+      moduleIds,
     });
     const exitCode = await streamingCommand("docker", args);
     const moduleRegressionReportImported = profile === "engineering"
@@ -221,7 +222,11 @@ export async function main(argv = process.argv.slice(2)) {
       })}\n`);
       return;
     }
-    await runSelection({ lane: options.lane, profile: options.profile });
+    await runSelection({
+      lane: options.lane,
+      profile: options.profile,
+      moduleIds: options.moduleIds || [],
+    });
   } catch (error) {
     process.stderr.write(`${sanitizeLine(error?.message || error)}\n`);
     process.exitCode = 1;

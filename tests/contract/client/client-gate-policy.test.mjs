@@ -27,10 +27,12 @@ import {
   runClientGateStep,
   targetReceiptResults,
   targetResultsCoverSelection,
+  reusableLinuxResults,
   validateClientGateTopology,
   verifyClientGate,
   withExecutionPrerequisites,
 } from "../../../tools/scripts/client-gate.mjs";
+import { CLIENT_MODULE_CATALOG } from "../../../tools/regression/client-module-catalog.mjs";
 
 function selectedOptionalLanes(paths) {
   const plan = classifyClientGatePaths(paths);
@@ -314,6 +316,55 @@ test("local aggregation replaces only the exact delegated hygiene result", () =>
     { ...host[0], id: "host.darwin.host-hygiene" },
     { ...host[1], id: "host.darwin.host-target" },
   ]);
+});
+
+test("reuse keeps only passed unchanged Linux members and preserves their evidence head", () => {
+  const previousHead = "a".repeat(40);
+  const currentHead = "b".repeat(40);
+  const changedModule = CLIENT_MODULE_CATALOG.find((module) =>
+    module.id === "release.model-pricing");
+  const unchangedModule = CLIENT_MODULE_CATALOG.find((module) =>
+    module.id === "regression.documentation-governance");
+  assert.ok(changedModule);
+  assert.ok(unchangedModule);
+  const results = reusableLinuxResults({
+    schemaVersion: "licoup.client-regression-report.v1",
+    complete: true,
+    candidateHead: previousHead,
+    sourceStateDigest: `sha256:${"c".repeat(64)}`,
+    results: [{
+      id: "host.linux.batch",
+      status: "passed",
+      members: [changedModule.id, unchangedModule.id],
+      evidenceHead: previousHead,
+    }, {
+      id: "host.linux.failed",
+      status: "failed",
+      members: ["regression.contracts-client"],
+      evidenceHead: previousHead,
+    }, {
+      id: "host.win32.target",
+      status: "passed",
+      members: [unchangedModule.id],
+      evidenceHead: previousHead,
+    }, {
+      id: "host.linux.stale",
+      status: "passed",
+      members: ["regression.contracts-client"],
+      evidenceHead: "d".repeat(40),
+    }],
+  }, {
+    currentHead,
+    changedPaths: [changedModule.inputs[0]],
+    catalog: CLIENT_MODULE_CATALOG,
+  });
+  assert.deepEqual(results.map((result) => result.members), [[unchangedModule.id]]);
+  assert.equal(results[0].evidenceHead, previousHead);
+  assert.deepEqual(reusableLinuxResults({ complete: true, results: [] }, {
+    currentHead,
+    changedPaths: [],
+    catalog: CLIENT_MODULE_CATALOG,
+  }), []);
 });
 
 test("target evidence requires one passed result for every selected module", () => {
