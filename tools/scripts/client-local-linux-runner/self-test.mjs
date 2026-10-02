@@ -102,6 +102,7 @@ async function testAndroidBootstrapArguments() {
       "ARG ANDROID_COMMAND_LINE_TOOLS_SHA256=2d2d50857e4eb553af5a6dc3ad507a17adf43d115264b1afc116f95c92e5e258",
       "ARG ANDROID_PLATFORM_PACKAGE=platforms;android-33",
       "ARG ANDROID_COMPAT_NDK_PACKAGE=ndk;27.0.12077973",
+      "ARG ANDROID_CI_NDK_PACKAGE=ndk;28.2.13676358",
       "ARG ANDROID_PRIMARY_NDK_PACKAGE=ndk;30.0.14904198",
       "",
     ].join("\n"), "utf8");
@@ -122,6 +123,7 @@ async function testAndroidBootstrapArguments() {
         `--sdk_root=${sdkRoot}`,
         "platforms;android-33",
         "ndk;27.0.12077973",
+        "ndk;28.2.13676358",
         "ndk;30.0.14904198",
       ],
     ]);

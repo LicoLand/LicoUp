@@ -93,6 +93,7 @@ export function readAndroidPackages(dockerfile) {
   const names = [
     "ANDROID_PLATFORM_PACKAGE",
     "ANDROID_COMPAT_NDK_PACKAGE",
+    "ANDROID_CI_NDK_PACKAGE",
     "ANDROID_PRIMARY_NDK_PACKAGE",
   ];
   return Object.freeze(names.map((name) => {
