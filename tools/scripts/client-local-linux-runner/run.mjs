@@ -109,18 +109,37 @@ function sanitizeLine(value) {
     .replaceAll(os.homedir(), "<home>");
 }
 
-function streamingCommand(command, args, cwd = repoRoot) {
+const toolchainEnvironmentKeys = Object.freeze([
+  "ANDROID_HOME",
+  "ANDROID_SDK_ROOT",
+  "CARGO_BUILD_JOBS",
+  "CARGO_HOME",
+  "CARGO_TARGET_DIR",
+  "CI",
+  "FLUTTER_SUPPRESS_ANALYTICS",
+  "GRADLE_USER_HOME",
+  "JAVA_HOME",
+  "PUB_CACHE",
+  "RUST_TEST_THREADS",
+  "RUSTUP_HOME",
+  "npm_config_cache",
+]);
+
+export function streamingCommand(command, args, cwd = repoRoot) {
   return new Promise((resolve) => {
-    const env = Object.fromEntries(Object.entries({
+    const env = {
       PATH: process.env.PATH,
       HOME: process.env.HOME,
       DOCKER_HOST: process.env.DOCKER_HOST,
       DOCKER_CONTEXT: process.env.DOCKER_CONTEXT,
       DOCKER_CONFIG: process.env.DOCKER_CONFIG,
-    }).filter(([, value]) => typeof value === "string" && value.length > 0));
+    };
+    for (const key of toolchainEnvironmentKeys) env[key] = process.env[key];
+    const childEnvironment = Object.fromEntries(Object.entries(env)
+      .filter(([, value]) => typeof value === "string" && value.length > 0));
     const child = spawn(command, args, {
       cwd,
-      env,
+      env: childEnvironment,
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });

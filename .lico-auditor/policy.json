@@ -479,6 +479,48 @@
     },
     {
       "rule": "system-or-deployment-path",
+      "path": "tools/scripts/client-local-linux-runner/docker.mjs",
+      "value": "/root/.rustup",
+      "reason": "Fixed public Rustup home inside the isolated repository-owned Linux client toolchain container."
+    },
+    {
+      "rule": "system-or-deployment-path",
+      "path": "tools/scripts/client-local-linux-runner/self-test.mjs",
+      "value": "/root/.cargo",
+      "reason": "Fixed public Cargo home assertion for the isolated repository-owned Linux client toolchain container."
+    },
+    {
+      "rule": "system-or-deployment-path",
+      "path": "tools/scripts/client-local-linux-runner/self-test.mjs",
+      "value": "/root/.rustup",
+      "reason": "Fixed public Rustup home assertion for the isolated repository-owned Linux client toolchain container."
+    },
+    {
+      "rule": "system-or-deployment-path",
+      "path": "tools/scripts/client-local-linux-runner/self-test.mjs",
+      "value": "/synthetic/cache/cargo",
+      "reason": "Fixed artificial cache path used to prove the isolated engineering dependency process receives the declared Cargo environment."
+    },
+    {
+      "rule": "system-or-deployment-path",
+      "path": "tools/scripts/client-local-linux-runner/self-test.mjs",
+      "value": "/synthetic/cache/target",
+      "reason": "Fixed artificial cache path used to prove the isolated engineering dependency process receives the declared Cargo target environment."
+    },
+    {
+      "rule": "system-or-deployment-path",
+      "path": "tools/scripts/client-local-linux-runner/self-test.mjs",
+      "value": "/synthetic/cache/pub",
+      "reason": "Fixed artificial cache path used to prove the isolated engineering dependency process receives the declared Flutter package environment."
+    },
+    {
+      "rule": "system-or-deployment-path",
+      "path": "tools/scripts/client-local-linux-runner/self-test.mjs",
+      "value": "/synthetic/toolchains/rustup",
+      "reason": "Fixed artificial toolchain path used to prove the isolated engineering dependency process receives the declared Rustup environment."
+    },
+    {
+      "rule": "system-or-deployment-path",
       "path": "tools/regression/client-module-regression-tests/runner-safety.mjs",
       "value": "/tmp/private.log",
       "reason": "Fixed synthetic invalid diagnostic-log reference used to prove that public regression reports reject absolute private paths."

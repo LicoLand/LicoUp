@@ -25,6 +25,7 @@ import {
   importEngineeringReport,
   prepareEngineeringDependencies,
   selectedFlutterPackageRoots,
+  streamingCommand,
 } from "./run.mjs";
 
 function git(root, args) {
@@ -219,6 +220,11 @@ export async function runSelfTest() {
   assert.match(focusedArgs.at(-1), /output\/private\/client-regression/u);
   assert.match(focusedArgs.at(-1), /export JAVA_HOME=\$java_home/u);
   assert.match(focusedArgs.at(-1), /openjdk version "17/u);
+  const expectedCargoHome = "/root/.cargo";
+  const expectedRustupHome = "/root/.rustup";
+  assert.equal(focusedArgs.includes(`CARGO_HOME=${expectedCargoHome}`), true);
+  assert.equal(focusedArgs.includes(`RUSTUP_HOME=${expectedRustupHome}`), true);
+  assert.equal(focusedArgs.includes("PUB_CACHE=/cache/pub"), true);
   const androidArgs = runnerDockerArgs({
     image: { tag: "synthetic:image" },
     lane: "android",
@@ -267,6 +273,28 @@ export async function runSelfTest() {
   ]);
   assert.equal(prepared.every(([, commandArgs]) =>
     commandArgs.join(" ") === "pub get --enforce-lockfile"), true);
+  const requiredEnvironment = Object.freeze({
+    CARGO_HOME: "/synthetic/cache/cargo",
+    CARGO_TARGET_DIR: "/synthetic/cache/target",
+    PUB_CACHE: "/synthetic/cache/pub",
+    RUSTUP_HOME: "/synthetic/toolchains/rustup",
+  });
+  const previousEnvironment = Object.fromEntries(Object.keys(requiredEnvironment)
+    .map((key) => [key, process.env[key]]));
+  try {
+    Object.assign(process.env, requiredEnvironment);
+    assert.equal(await streamingCommand(process.execPath, [
+      "-e",
+      `const expected = ${JSON.stringify(requiredEnvironment)}; ` +
+        "for (const [key, value] of Object.entries(expected)) { " +
+        "if (process.env[key] !== value) process.exit(9); }",
+    ]), 0);
+  } finally {
+    for (const [key, value] of Object.entries(previousEnvironment)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
   const completePreparation = [];
   assert.equal(await prepareEngineeringDependencies([], async (command, commandArgs, cwd) => {
     completePreparation.push([command, commandArgs, path.relative(process.cwd(), cwd)]);

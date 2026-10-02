@@ -134,6 +134,7 @@ function mount(source, target, readOnly = false) {
 const containerAndroidCommandLineToolsRoot = "/opt/android-command-line-tools/latest";
 const containerFlutterRoot = "/opt/flutter";
 const containerCargoHome = "/root/.cargo";
+const containerRustupHome = "/root/.rustup";
 
 export function runnerDockerArgs({
   image,
@@ -259,6 +260,7 @@ export function runnerDockerArgs({
     "--env", "HOME=/root",
     "--env", "npm_config_cache=/cache/npm",
     "--env", `CARGO_HOME=${containerCargoHome}`,
+    "--env", `RUSTUP_HOME=${containerRustupHome}`,
     "--env", "CARGO_BUILD_JOBS=3",
     "--env", "RUST_TEST_THREADS=3",
     "--env", "CARGO_TARGET_DIR=/workspace/build/crates/licoup-native/target",
