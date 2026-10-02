@@ -5,6 +5,8 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -32,6 +34,8 @@ function git(root, args) {
 function testSnapshot() {
   const fixture = mkdtempSync(path.join(os.tmpdir(), "licoup-linux-ci-fixture-"));
   const output = mkdtempSync(path.join(os.tmpdir(), "licoup-linux-ci-snapshot-"));
+  const repeatedOutput = mkdtempSync(path.join(os.tmpdir(), "licoup-linux-ci-snapshot-"));
+  const changedOutput = mkdtempSync(path.join(os.tmpdir(), "licoup-linux-ci-snapshot-"));
   try {
     git(fixture, ["init", "-q"]);
     git(fixture, ["config", "user.name", "fixture"]);
@@ -42,6 +46,8 @@ function testSnapshot() {
     git(fixture, ["add", "--all"]);
     git(fixture, ["commit", "-qm", "fixture"]);
     writeFileSync(path.join(fixture, "tracked.txt"), "after\n", "utf8");
+    utimesSync(path.join(fixture, "tracked.txt"), new Date(1_700_000_000_000),
+      new Date(1_700_000_000_000));
     writeFileSync(path.join(fixture, "untracked.txt"), "candidate\n", "utf8");
     writeFileSync(path.join(fixture, "ignored.txt"), "private\n", "utf8");
     rmSync(path.join(fixture, "deleted.txt"));
@@ -53,9 +59,23 @@ function testSnapshot() {
     assert.match(result.sourceStateDigest, /^sha256:[a-f0-9]{64}$/u);
     assert.throws(() => readFileSync(path.join(output, "ignored.txt")));
     assert.throws(() => readFileSync(path.join(output, "deleted.txt")));
+    materializeCandidate(fixture, repeatedOutput);
+    const initialSourceMtime = statSync(path.join(fixture, "tracked.txt")).mtimeMs;
+    assert.equal(statSync(path.join(output, "tracked.txt")).mtimeMs, initialSourceMtime);
+    assert.equal(statSync(path.join(repeatedOutput, "tracked.txt")).mtimeMs, initialSourceMtime);
+    writeFileSync(path.join(fixture, "tracked.txt"), "changed again\n", "utf8");
+    utimesSync(path.join(fixture, "tracked.txt"), new Date(1_700_000_100_000),
+      new Date(1_700_000_100_000));
+    materializeCandidate(fixture, changedOutput);
+    assert.equal(statSync(path.join(changedOutput, "tracked.txt")).mtimeMs,
+      statSync(path.join(fixture, "tracked.txt")).mtimeMs);
+    assert.notEqual(statSync(path.join(changedOutput, "tracked.txt")).mtimeMs,
+      initialSourceMtime);
   } finally {
     rmSync(fixture, { recursive: true, force: true });
     rmSync(output, { recursive: true, force: true });
+    rmSync(repeatedOutput, { recursive: true, force: true });
+    rmSync(changedOutput, { recursive: true, force: true });
   }
 }
 

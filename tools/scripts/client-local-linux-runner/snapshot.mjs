@@ -7,6 +7,7 @@ import {
   readFileSync,
   readlinkSync,
   symlinkSync,
+  utimesSync,
 } from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -72,6 +73,7 @@ export function materializeCandidate(root, destination, options = {}) {
     } else {
       copyFileSync(source, target);
       chmodSync(target, metadata.mode & 0o777);
+      utimesSync(target, metadata.atime, metadata.mtime);
       digestFile(hash, source, relative, metadata.mode & 0o111);
     }
     fileCount += 1;
