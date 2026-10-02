@@ -11,7 +11,9 @@ const sourcePaths = new Set([
 ]);
 
 export function isReviewedPrivacyFixture({ file, rule, source, start, match }) {
-  if (rule !== "FORBIDDEN_MACOS_HOME_PATH" || !sourcePaths.has(file)) return false;
+  const policyValue = file === ".lico-auditor/policy.json" &&
+    /"value"\s*:\s*"$/u.test(source.slice(0, start));
+  if (rule !== "FORBIDDEN_MACOS_HOME_PATH" || (!sourcePaths.has(file) && !policyValue)) return false;
   return migrationPaths.some((value) => value.startsWith(match) &&
     source.startsWith(value, start) &&
     /^(?:$|[\r\n"'`),;:])/.test(source.slice(start + value.length)));
