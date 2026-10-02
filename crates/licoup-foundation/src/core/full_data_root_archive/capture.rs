@@ -677,9 +677,11 @@ mod tests {
             "archive_write_failed",
             CleanupOutcome::DurabilityUnconfirmed(PathBuf::from("fixture")),
         );
-        assert!(error
-            .to_string()
-            .contains("archive_cleanup_durability_unconfirmed"));
+        assert!(
+            error
+                .to_string()
+                .contains("archive_cleanup_durability_unconfirmed")
+        );
         assert!(!error.to_string().contains("retained"));
     }
 }

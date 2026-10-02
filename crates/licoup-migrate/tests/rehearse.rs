@@ -22,10 +22,10 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use licoup_native::core::full_data_root_archive::ADMISSION_LOCK_PATH;
 use licoup_native::platform::llm_api_key_vault::{
     LegacyCredentialMigrationDisposition, PlatformLlmApiKeyVault,
 };
-use licoup_native::core::full_data_root_archive::ADMISSION_LOCK_PATH;
 use support::*;
 
 /// The stage list the report must carry on every run.

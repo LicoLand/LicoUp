@@ -844,7 +844,9 @@ mod tests {
     #![allow(dead_code)]
 
     use super::*;
-    use licoup_foundation::platform::file_security::{atomic_write_private_text, ensure_private_dir};
+    use licoup_foundation::platform::file_security::{
+        atomic_write_private_text, ensure_private_dir,
+    };
 
     include!("../../../tests/fixtures/client_state_migration/released_source.rs");
 
