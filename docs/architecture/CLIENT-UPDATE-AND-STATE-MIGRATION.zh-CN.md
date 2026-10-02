@@ -36,6 +36,26 @@ LicoUp 只有一个应用身份、安装名称和数据根目录。`nightly` 与
 诊断是开发工具，不是另一个受支持的转换权威。没有任意历史目标选择或降级
 转换合同。
 
+对于未发布的协作快照，`recover-peer-snapshot --data-root <source>
+--target-root <new-output> --writers-stopped` 提供显式离线恢复。它把包含三张
+不受支持的 peer 表及其父记录的完整一致 Conversation SQLite 快照保留为
+`preserved-conversations.sqlite3`。第二份副本仅移除精确认出的
+`peer_bindings`、`peer_inbox`、`peer_effect_intents`，通过当前 Conversation
+owner、外键及完整性检查后才命名为 `recovered-conversations.sqlite3`。
+未知结构或入向引用将拒绝操作；准备失败不会留下已完成候选的文件名。
+
+这是有界恢复映射，不建立受支持的中间发布格式或启动兼容路径。默认模式不
+激活候选。显式 `--activate` 要求同一停写声明，并在完整操作期间持有一个独占
+恢复 lease：通过既有归档 owner 保存完整原根，准备并验证两份快照，由 SQLite
+自行 checkpoint 原日志，再通过私有文件 owner 原子替换唯一的 Conversation
+数据库。策略数据、其他存储、根定位器及受保护密钥保管均不改变。私有
+`original-data-root.zip` 与完整保留数据库始终作为回滚资产保留。
+
+验证或发布失败保留原逻辑数据库。已替换但目录同步未确认时，报告
+`activation-durability-unconfirmed`、`activated: true` 并以非零状态退出，不能
+误认为未发生变更。`prepared` 和 `activated` 仅报告数据操作，不证明客户端可用。
+真实用户数据激活需要明确授权；普通启动是独立步骤。
+
 导入先由 Foundation 验证并解包，再在其私有暂存载荷中准备保管元数据、属主
 管理的引用和修订保护。这些属主检查在任何载荷发布到空目标目录之前完成。
 物理暂存路径只用于验证；持久化引用指向最终逻辑主目录。Foundation 重新验证

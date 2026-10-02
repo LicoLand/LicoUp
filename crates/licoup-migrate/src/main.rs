@@ -100,13 +100,36 @@ fn run(invocation: &Invocation) -> Result<Outcome, ToolError> {
     // operator statement still covers older/nonparticipating writers.
     let _selected_home = match invocation.verb {
         Verb::Inspect | Verb::Plan => None,
-        Verb::Convert | Verb::Resume | Verb::Export | Verb::Import | Verb::Rehearse => Some(
+        Verb::Convert
+        | Verb::Resume
+        | Verb::Export
+        | Verb::Import
+        | Verb::Rehearse
+        | Verb::RecoverPeerSnapshot => Some(
             local_recovery::acquire_exclusive_selected_home()
                 .map_err(|_| ToolError::new("data_home_coordination_unavailable"))?
                 .ok_or_else(|| ToolError::new(local_recovery::WRITERS_RUNNING))?,
         ),
     };
     match invocation.verb {
+        Verb::RecoverPeerSnapshot => {
+            let operation = if invocation.activate {
+                local_recovery::activate_peer_snapshot
+            } else {
+                local_recovery::recover_peer_snapshot
+            };
+            let report = operation(
+                data_root(invocation)?,
+                target_root(invocation)?,
+                invocation.writers_stopped,
+            )
+            .map_err(|_| ToolError::new("peer_snapshot_recovery_refused"))?;
+            if report.activation_durable == Some(false) {
+                Ok(Outcome::unfinished(render(&report)?))
+            } else {
+                Ok(Outcome::done(render(&report)?))
+            }
+        }
         Verb::Inspect => {
             let report = inspect::inspect(data_root(invocation)?)?;
             // A read that preserved another domain's refusal is still an unfinished

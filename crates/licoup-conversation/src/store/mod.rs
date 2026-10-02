@@ -29,6 +29,7 @@ mod execution;
 mod lifecycle;
 mod native_sessions;
 mod path_security;
+mod peer_snapshot_recovery;
 mod recovery;
 mod schema;
 
@@ -45,6 +46,7 @@ pub use execution::{
     RuntimeExecutionSnapshot, RuntimeFrameRecord,
 };
 pub use native_sessions::NativeSessionReference;
+pub use peer_snapshot_recovery::recover_peer_snapshot_copy;
 pub use recovery::{ColdRecoverableConversationStore, ColdRecoveryReport};
 pub use schema::validate_migration_source;
 

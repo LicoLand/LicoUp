@@ -97,6 +97,15 @@ fn mutating_verbs_refuse_a_live_writer_without_touching_roots_and_resume_after_r
     let work_arg = work.to_str().unwrap();
 
     for args in [
+        vec![
+            "recover-peer-snapshot",
+            "--data-root",
+            source_arg,
+            "--target-root",
+            target_arg,
+            "--writers-stopped",
+            "--activate",
+        ],
         vec!["convert", "--data-root", source_arg, "--writers-stopped"],
         vec!["resume", "--data-root", source_arg, "--writers-stopped"],
         vec![
