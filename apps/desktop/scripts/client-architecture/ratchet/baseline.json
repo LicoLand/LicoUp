@@ -1,6 +1,6 @@
 {
   "schema": "licoup-architecture-ratchet-baseline.v1",
-  "recordedAt": "2026-10-02T08:07:25.907Z",
+  "recordedAt": "2026-10-02T08:39:36.395Z",
   "metrics": {
     "kernel_optional_cargo_edges": {
       "value": 1,
@@ -160,7 +160,7 @@
       ]
     },
     "native_rust_loc": {
-      "non_blank_lines": 351635
+      "non_blank_lines": 351645
     },
     "optional_capabilities_in_packaging": {
       "bundled_bindings": 4,
