@@ -693,10 +693,10 @@ function planGate(args) {
 }
 
 function parseVerifyArgs(args) {
-  const values = { base: "", head: "HEAD", target: "" };
+  const values = { base: "", execution: "direct", head: "HEAD", target: "" };
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index];
-    if (!["--base", "--head", "--target"].includes(flag)) {
+    if (!["--base", "--execution", "--head", "--target"].includes(flag)) {
       fail(`unknown verify argument: ${flag}`);
     }
     if (index + 1 >= args.length) fail(`missing value for ${flag}`);
@@ -706,6 +706,9 @@ function parseVerifyArgs(args) {
   if (!values.base) fail("client gate verify requires --base");
   if (!["commit", "pr", "release"].includes(values.target)) {
     fail("client gate verify requires --target commit, pr, or release");
+  }
+  if (values.execution !== "direct") {
+    fail("client gate verify execution must be direct");
   }
   return Object.freeze(values);
 }
@@ -743,6 +746,7 @@ export async function verifyClientGate(args, {
     ok: mergeReady,
     schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
     target: revisions.target,
+    execution: revisions.execution,
     changedCount: plan.changedCount,
     lanes: plan.lanes,
     selectedStepCount: catalog.length,

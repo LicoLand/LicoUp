@@ -207,7 +207,9 @@ test("complete verification rejects blocked, unverified, failed, or incomplete e
 });
 
 test("complete verification passes only complete settled engineering evidence", async () => {
-  const code = await verifyClientGate(["--base", "HEAD", "--target", "commit"], {
+  const code = await verifyClientGate([
+    "--base", "HEAD", "--target", "commit", "--execution", "direct",
+  ], {
     output: { write() {} },
     reportPath: null,
     executor: async () => ({
