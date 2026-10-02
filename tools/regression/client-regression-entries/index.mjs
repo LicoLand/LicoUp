@@ -66,6 +66,14 @@ export function validateClientRegressionEntries() {
     if (entry.stage !== "compatibility" || typeof entry.probe !== "function") {
       throw new Error("compatibility regression entry is invalid");
     }
+    if (!Array.isArray(entry.inputs) || !Object.isFrozen(entry.inputs) ||
+        !Array.isArray(entry.unverifiedInputs) || !Object.isFrozen(entry.unverifiedInputs)) {
+      throw new Error(`compatibility input classification is invalid: ${entry.kind}:${entry.id}`);
+    }
+    const classified = [...entry.inputs, ...entry.unverifiedInputs];
+    if (new Set(classified).size !== classified.length) {
+      throw new Error(`duplicate compatibility input classification: ${entry.kind}:${entry.id}`);
+    }
   }
   return true;
 }

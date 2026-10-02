@@ -2,6 +2,7 @@ import {
   FLUTTER_COMPOSITION_INPUTS,
   FAKE_AGENT_SERVICE_INPUTS,
   flutterTests,
+  flutterPackageTests,
   flutterAnalyze,
   defineModule,
 } from "../helpers.mjs";
@@ -133,6 +134,42 @@ export const FLUTTER_MODULES = Object.freeze([
         "test/mobile_relay_feature_composition_test.dart",
         "test/settings_feature_composition_test.dart",
       ]),
+    }),
+  defineModule({
+      id: "flutter.package.presentation-contract",
+      kind: "flutter-contract",
+      summary: "Renderer-independent presentation primitives and package purity",
+      inputs: [
+        "packages/presentation_contract/lib/**",
+        "packages/presentation_contract/pubspec.yaml",
+        "packages/presentation_contract/pubspec.lock",
+        "packages/presentation_contract/test/**",
+      ],
+      command: flutterPackageTests("packages/presentation_contract"),
+    }),
+  defineModule({
+      id: "flutter.package.presentation-runtime",
+      kind: "flutter-contract",
+      summary: "Presentation state, scheduling, preparation, and cache runtime",
+      inputs: [
+        "packages/presentation_runtime/lib/**",
+        "packages/presentation_runtime/pubspec.yaml",
+        "packages/presentation_runtime/pubspec.lock",
+        "packages/presentation_runtime/test/**",
+      ],
+      command: flutterPackageTests("packages/presentation_runtime"),
+    }),
+  defineModule({
+      id: "flutter.package.presentation-flutter",
+      kind: "flutter-contract",
+      summary: "Flutter Region assembly, input, collection, and streaming behavior",
+      inputs: [
+        "packages/presentation_flutter/lib/**",
+        "packages/presentation_flutter/pubspec.yaml",
+        "packages/presentation_flutter/pubspec.lock",
+        "packages/presentation_flutter/test/**",
+      ],
+      command: flutterPackageTests("packages/presentation_flutter"),
     }),
   defineModule({
       id: "flutter.feature.mcp-transfer",

@@ -11,6 +11,9 @@ import {
   ids,
   sourceFiles,
 } from "./support.mjs";
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { CLIENT_COMPATIBILITY_ENTRIES } from "../client-regression-entries/index.mjs";
 import {
   assembleClientModuleCatalog,
   defineModule,
@@ -22,8 +25,138 @@ import { FLUTTER_MODULES } from "../client-module-catalog/groups/flutter.mjs";
 import { REGRESSION_MODULES } from "../client-module-catalog/groups/regression.mjs";
 import { RUST_CORE_MODULES } from "../client-module-catalog/groups/rust-core.mjs";
 import { RUST_CATALOG_CONVERGENCE_MODULES } from "../client-module-catalog/groups/rust-catalog-convergence.mjs";
+import { RUST_COMPONENT_MODULES } from "../client-module-catalog/groups/rust-components.mjs";
 import { RUST_DOMAIN_MODULES } from "../client-module-catalog/groups/rust-domain.mjs";
 import { RUST_PLATFORM_MODULES } from "../client-module-catalog/groups/rust-platform.mjs";
+
+function trackedTestEntrypoints() {
+  const result = spawnSync("git", ["ls-files", "-z"], {
+    cwd: repoRoot,
+    encoding: "buffer",
+    shell: false,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert.equal(result.status, 0, "tracked test inventory requires git ls-files");
+  return result.stdout.toString("utf8").split("\0").filter((file) =>
+    file.endsWith(".test.mjs") ||
+    /(?:^|\/)test\/.*_test\.dart$/u.test(file) ||
+    /(?:^|\/)integration_test\/.*_test\.dart$/u.test(file) ||
+    /^crates\/[^/]+\/tests\/[^/]+\.rs$/u.test(file) ||
+    /\/src\/(?:test|androidTest)\/.*Test\.kt$/u.test(file));
+}
+
+function moduleSelects(module, file) {
+  return module.inputs.some((input) => input.endsWith("/**")
+    ? file === input.slice(0, -3) || file.startsWith(input.slice(0, -2))
+    : file === input);
+}
+
+const nodeReachability = new WeakMap();
+
+function nodeReachableFiles(module) {
+  if (module.command.program !== "node") return new Set();
+  const cached = nodeReachability.get(module);
+  if (cached) return cached;
+  const pending = module.command.args.filter((argument) =>
+    argument.endsWith(".mjs") && !argument.startsWith("-") &&
+    !argument.includes("*") && !argument.includes("?"));
+  const found = new Set();
+  while (pending.length > 0) {
+    const relativePath = pending.pop();
+    if (found.has(relativePath)) continue;
+    const absolutePath = path.join(repoRoot, relativePath);
+    try {
+      const source = requireText(absolutePath);
+      found.add(relativePath);
+      for (const match of source.matchAll(/["']([^"']+\.mjs)["']/gmu)) {
+        const reference = match[1];
+        const candidate = reference.startsWith(".")
+          ? path.posix.normalize(path.posix.join(path.posix.dirname(relativePath), reference))
+          : reference;
+        if (!candidate.startsWith("../") && !found.has(candidate)) pending.push(candidate);
+      }
+    } catch {
+      // Non-file command arguments are not JavaScript entry points.
+    }
+  }
+  nodeReachability.set(module, found);
+  return found;
+}
+
+function requireText(absolutePath) {
+  return readFileSync(absolutePath, "utf8");
+}
+
+function flutterCommandExecutes(module, file) {
+  const args = module.command.args;
+  const separator = args.indexOf("--");
+  if (separator < 0 || args[separator + 1] !== "flutter" || args[separator + 2] !== "test") {
+    return false;
+  }
+  const cwdIndex = args.indexOf("--cwd");
+  const commandRoot = cwdIndex >= 0 ? args[cwdIndex + 1] : ".";
+  if (!file.startsWith(`${commandRoot}/`)) return false;
+  const localPath = file.slice(commandRoot.length + 1);
+  const selections = args.slice(separator + 3).filter((argument, index, tail) =>
+    !argument.startsWith("-") && tail[index - 1] !== "--name");
+  return selections.length === 0
+    ? localPath.startsWith("test/")
+    : selections.some((selection) =>
+      localPath === selection || localPath.startsWith(`${selection}/`));
+}
+
+function rustCommandExecutes(module, file) {
+  if (module.command.program !== "cargo" || module.command.args[0] !== "test") return false;
+  const match = /^(crates\/[^/]+)\/tests\/([^/]+)\.rs$/u.exec(file);
+  if (!match || module.command.args.includes("--lib") || module.command.args.includes("--bin")) {
+    return false;
+  }
+  const [, crateRoot, target] = match;
+  const manifestIndex = module.command.args.indexOf("--manifest-path");
+  if (manifestIndex < 0 || module.command.args[manifestIndex + 1] !== `${crateRoot}/Cargo.toml`) {
+    return false;
+  }
+  const targetIndex = module.command.args.indexOf("--test");
+  return targetIndex < 0 || module.command.args[targetIndex + 1] === target;
+}
+
+function nodeCommandExecutesRust(module, file) {
+  if (module.command.program !== "node" || !file.endsWith(".rs")) return false;
+  const target = path.posix.basename(file, ".rs");
+  for (const source of nodeReachableFiles(module)) {
+    try {
+      const text = readFileSync(path.join(repoRoot, source), "utf8");
+      if (text.includes(file) || text.includes(`"${target}"`) || text.includes(`'${target}'`)) {
+        return true;
+      }
+    } catch {
+      // Non-source command arguments are ignored by the reachability scan.
+    }
+  }
+  return false;
+}
+
+function androidCommandExecutes(module, file) {
+  if (!file.endsWith("Test.kt")) return false;
+  const args = module.command.args;
+  if (args[0] === "tools/scripts/client-android-native-tests.mjs") return true;
+  const separator = args.indexOf("--");
+  if (separator < 0 || !["./gradlew", "gradlew.bat"].includes(args[separator + 1])) return false;
+  if (!args.includes(":app:testDebugUnitTest")) return false;
+  const className = path.posix.basename(file, ".kt");
+  const filters = args.flatMap((argument, index) => args[index - 1] === "--tests" ? [argument] : []);
+  return filters.length === 0 || filters.some((filter) => filter.endsWith(`.${className}`));
+}
+
+function moduleExecutes(module, file) {
+  if (module.command.program === "node" && nodeReachableFiles(module).has(file)) return true;
+  if (nodeCommandExecutesRust(module, file)) return true;
+  if (flutterCommandExecutes(module, file)) return true;
+  if (rustCommandExecutes(module, file)) return true;
+  if (androidCommandExecutes(module, file)) return true;
+  return module.id === "regression.continuous-assistant-ux" &&
+    file.startsWith("apps/desktop/test/continuous_assistant_journeys/");
+}
 
 test("catalog declares every independently accepted client architecture family", () => {
   assert.equal(validateClientModuleCatalog(), true);
@@ -211,6 +344,31 @@ test("catalog maps every Flutter, Rust, and platform-host source file", async ()
     selectModulesForChangedPaths([candidate]).every((module) =>
       module.id === "architecture.client-boundaries"));
   assert.deepEqual(unmatched, []);
+});
+
+test("every tracked test entry has an executing engineering owner or explicit live classification", () => {
+  const live = new Map();
+  for (const entry of CLIENT_COMPATIBILITY_ENTRIES) {
+    for (const input of entry.inputs) live.set(input, `${entry.kind}:${entry.id}:live`);
+    for (const input of entry.unverifiedInputs) {
+      live.set(input, `${entry.kind}:${entry.id}:unverified`);
+    }
+  }
+  const missingSelection = [];
+  const selectorOnly = [];
+  const unclassified = [];
+  for (const file of trackedTestEntrypoints()) {
+    const selected = CLIENT_MODULE_CATALOG.filter((module) => moduleSelects(module, file));
+    const executing = CLIENT_MODULE_CATALOG.filter((module) => moduleExecutes(module, file));
+    if (executing.length > 0 && selected.length === 0 && !live.has(file)) missingSelection.push(file);
+    if (selected.length > 0 && executing.length === 0 && !live.has(file)) selectorOnly.push(file);
+    if (selected.length === 0 && executing.length === 0 && !live.has(file)) unclassified.push(file);
+  }
+  assert.deepEqual({ missingSelection, selectorOnly, unclassified }, {
+    missingSelection: [],
+    selectorOnly: [],
+    unclassified: [],
+  });
 });
 
 test("shared Flutter and Rust manifests select their own technology families", () => {
@@ -433,6 +591,7 @@ test("catalog physical groups retain a thin barrel and complete source ownership
     "flutter.mjs",
     "regression.mjs",
     "rust-catalog-convergence.mjs",
+    "rust-components.mjs",
     "rust-core.mjs",
     "rust-domain.mjs",
     "rust-platform.mjs",
@@ -455,6 +614,7 @@ test("catalog physical groups retain a thin barrel and complete source ownership
       "rust-platform",
       "rust-ffi",
     ])],
+    [RUST_COMPONENT_MODULES, new Set(["rust-crate"])],
     [RUST_PLATFORM_MODULES, new Set([
       "rust-composition",
       "rust-platform",

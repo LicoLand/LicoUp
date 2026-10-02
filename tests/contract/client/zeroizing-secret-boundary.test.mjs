@@ -134,7 +134,7 @@ test("platform and mobile bridges have no String compatibility secret payload", 
   assert.ok(android.includes("AndroidSecretByteArrayGuard"));
   assert.match(
     android,
-    /impl Drop for AndroidSecretByteArrayGuard[\s\S]*set_byte_array_region/u,
+    /impl Drop for AndroidSecretByteArrayGuard[\s\S]*\.set_region\(self\.env, 0, &zeros\)/u,
   );
   assert.ok(android.includes("MAX_SECRET_BYTES"));
   assert.match(
@@ -361,13 +361,13 @@ test("cryptographic and relay consumers borrow explicit typed secret views", asy
   assert.match(secureCreate, /secure_command_payload\s*\(/u);
   assert.match(
     secureCreate,
-    /seal_mobile_relay_payload_with_pairwise_operation\s*\(/u,
+    /seal_mobile_relay_payload_deferred\s*\(/u,
   );
   const secureResult = rustFunctionBlock(relayResult, "command_result_secure");
   assert.ok(secureResult.includes("&secret_context.material"));
   assert.match(
     secureResult,
-    /open_mobile_relay_payload_with_pairwise_operation\s*\(/u,
+    /open_mobile_relay_payload_deferred\s*\(/u,
   );
 });
 

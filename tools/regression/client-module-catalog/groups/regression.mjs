@@ -1,6 +1,116 @@
 import { command, node, defineModule } from "../helpers.mjs";
 
+function nodeTestModule(id, summary, testFiles, extraInputs = []) {
+  return defineModule({
+    id,
+    kind: "regression-infrastructure",
+    summary,
+    inputs: [...extraInputs, ...testFiles],
+    command: command("node", ["--test", ...testFiles], 10 * 60_000),
+  });
+}
+
 export const REGRESSION_MODULES = Object.freeze([
+  defineModule({
+    id: "regression.repository-local-info-hygiene",
+    kind: "regression-infrastructure",
+    summary: "Canonical publication-candidate local-information and privacy hygiene scan",
+    inputs: [
+      "tools/scripts/repo-local-info-hygiene.mjs",
+      "tests/contract/client/repository-identity-policy.test.mjs",
+      "package.json",
+      "package-lock.json",
+    ],
+    command: node("tools/scripts/repo-local-info-hygiene.mjs", [], 5 * 60_000),
+  }),
+  nodeTestModule(
+    "regression.agent-boundary-contracts",
+    "Agent admission, attachment, lifecycle, parser, capability, and secret-boundary contracts",
+    [
+      "tests/contract/client/acp-verification-settings.test.mjs",
+      "tests/contract/client/agent-auth-status.test.mjs",
+      "tests/contract/client/antigravity-subagent-mcp.test.mjs",
+      "tests/contract/client/client-lifecycle-authority.test.mjs",
+      "tests/contract/client/client-state-contract.test.mjs",
+      "tests/contract/client/conversation-attachment-wire.test.mjs",
+      "tests/contract/client/cursor-subagent-mcp.test.mjs",
+      "tests/contract/client/internal-capability-surface.test.mjs",
+      "tests/contract/client/native-agent-parser-boundary.test.mjs",
+      "tests/contract/client/secure-mesh-contract.test.mjs",
+      "tests/contract/client/typed-client-error-chain.test.mjs",
+      "tests/contract/client/zeroizing-secret-boundary.test.mjs",
+    ],
+  ),
+  nodeTestModule(
+    "regression.release-workflow-contracts",
+    "Build, gate, identity, promotion, release, update, and README routing contracts",
+    [
+      "tests/contract/client/client-build.test.mjs",
+      "tests/contract/client/client-gate-policy.test.mjs",
+      "tests/contract/client/client-promotion.test.mjs",
+      "tests/contract/client/client-release-packages.test.mjs",
+      "tests/contract/client/client-source-release.test.mjs",
+      "tests/contract/client/client-version.test.mjs",
+      "tests/contract/client/client-weekly-release.test.mjs",
+      "tests/contract/client/macos-release-adapters.test.mjs",
+      "tests/contract/client/macos-release-candidate.test.mjs",
+      "tests/contract/client/readme-fast-path.test.mjs",
+      "tests/contract/client/repository-identity-policy.test.mjs",
+    ],
+  ),
+  nodeTestModule(
+    "regression.client-state-contracts",
+    "Client-state migration, diagnostic, and native-owner parity contracts",
+    [
+      "tests/contract/client/client-state-migration.test.mjs",
+      "tests/contract/client/client-state-migration-diagnostic.test.mjs",
+    ],
+  ),
+  nodeTestModule(
+    "regression.native-performance-contract",
+    "Native benchmark ownership and performance-governance contract",
+    ["tests/contract/client/native-performance-governance.test.mjs"],
+  ),
+  nodeTestModule(
+    "regression.extension-ui-schema",
+    "Strict published extension UI schema admission",
+    ["crates/licoup-extension-contracts/tests/ui_schema.test.mjs"],
+    ["schemas/extensions/ui.schema.json"],
+  ),
+  nodeTestModule(
+    "regression.cargo-test-filter-runner",
+    "Cargo filter execution attribution and redacted failure diagnostics",
+    ["tools/scripts/lib/cargo-test-filter-runner.test.mjs"],
+    ["tools/scripts/lib/cargo-test-filter-runner.mjs"],
+  ),
+  nodeTestModule(
+    "regression.project-temporary-directory-lifecycle",
+    "Exact owned temporary-directory retirement and fail-closed cleanup",
+    ["tools/scripts/lib/project-temporary-directory-lifecycle.test.mjs"],
+    ["tools/scripts/lib/project-temporary-directory-lifecycle.mjs"],
+  ),
+  nodeTestModule(
+    "regression.data-migration-tool",
+    "Current standalone data-migration catalog, codecs, conversion, recovery, packaging, and Rust admission",
+    [
+      "tools/data-migration/tests/catalog.test.mjs",
+      "tools/data-migration/tests/cli.test.mjs",
+      "tools/data-migration/tests/codecs.test.mjs",
+      "tools/data-migration/tests/conversion-and-preservation.test.mjs",
+      "tools/data-migration/tests/lock.test.mjs",
+      "tools/data-migration/tests/packaging.test.mjs",
+      "tools/data-migration/tests/probe-and-plan.test.mjs",
+      "tools/data-migration/tests/resume-interrupted.test.mjs",
+      "tools/data-migration/tests/rust-admission-compatibility.test.mjs",
+    ],
+    [
+      "tools/data-migration/bin/**",
+      "tools/data-migration/lib/**",
+      "tools/data-migration/scripts/**",
+      "tools/data-migration/index.mjs",
+      "tools/data-migration/package.json",
+    ],
+  ),
   defineModule({
       id: "regression.cli-command-admission-source-bundle",
       kind: "regression-infrastructure",

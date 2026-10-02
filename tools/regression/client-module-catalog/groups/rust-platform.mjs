@@ -1659,6 +1659,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/codex_app_server/error.rs",
         "crates/licoup-native/src/platform/codex_app_server/limits.rs",
         "crates/licoup-native/src/platform/codex_app_server/model.rs",
+        "crates/licoup-native/src/platform/codex_app_server/reserve.rs",
         "crates/licoup-native/src/platform/codex_app_server/tests.rs",
         "crates/licoup-native/src/platform/codex_app_server/tests/model_catalog.rs",
         "crates/licoup-native/src/platform/codex_app_server/tests/support.rs",

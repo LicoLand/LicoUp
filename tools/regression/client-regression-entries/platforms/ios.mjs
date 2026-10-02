@@ -1,6 +1,8 @@
 import { definePlatformEntry, readOnlyCommandOutput } from "../factory.mjs";
 export default definePlatformEntry({
   id: "ios",
+  inputs: ["apps/desktop/integration_test/mobile_simulator_closure_test.dart"],
+  unverifiedInputs: ["apps/desktop/integration_test/mobile_relay_ios_e2e_test.dart"],
   hosts: ["darwin"],
   tools: ["flutter", "xcrun"],
   async capabilityProbe() {

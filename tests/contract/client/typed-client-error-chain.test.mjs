@@ -11,6 +11,7 @@ const repoRoot = path.resolve(
 );
 
 const production = {
+  manifest: "schemas/client_bridge/manifest.json",
   schema: "schemas/client_bridge/client_error.schema.json",
   generator: "tools/scripts/generate-client-bridge-contracts.mjs",
   rustGenerated:
@@ -74,14 +75,21 @@ test("one schema deterministically owns both generated ClientError values", asyn
   );
 
   const generator = await read(production.generator);
-  for (const ownedPath of [
-    production.schema,
-    production.rustGenerated,
-    production.dartGenerated,
-  ]) {
+  assert.ok(generator.includes(production.manifest));
+  const manifest = JSON.parse(await read(production.manifest));
+  const family = manifest.families.find(({ id }) => id === "client_error");
+  assert.deepEqual(family, {
+    id: "client_error",
+    status: "active",
+    schema: production.schema,
+    rustOutput: production.rustGenerated,
+    dartOutput: production.dartGenerated,
+  });
+  for (const ownedPath of Object.values(family).filter((value) =>
+    typeof value === "string" && value.includes("/"))) {
     assert.ok(
-      generator.includes(ownedPath),
-      `generator must own ${ownedPath}`,
+      await fs.access(path.join(repoRoot, ownedPath)).then(() => true, () => false),
+      `manifest path must exist: ${ownedPath}`,
     );
   }
   assert.match(generator, /--check/);

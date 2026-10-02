@@ -94,6 +94,23 @@ export function flutterTests(testPaths) {
   );
 }
 
+export function flutterPackageTests(packageRoot, testPaths = ["test"]) {
+  return node(
+    "tools/scripts/client-toolchain-runner.mjs",
+    [
+      "--check",
+      "flutter",
+      "--cwd",
+      packageRoot,
+      "--",
+      "flutter",
+      "test",
+      ...testPaths,
+    ],
+    5 * 60_000,
+  );
+}
+
 export function flutterTestsMatching(testPaths, namePattern) {
   return node(
     "tools/scripts/client-toolchain-runner.mjs",
