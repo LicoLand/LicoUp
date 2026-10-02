@@ -90,7 +90,6 @@ async function testAndroidBootstrapArguments() {
   const flutterRoot = path.join(fixture, "flutter");
   const projectRoot = path.join(fixture, "project");
   const dockerfile = path.join(fixture, "Dockerfile");
-  const workflow = path.join(fixture, "client-ci.yml");
   const calls = [];
   try {
     mkdirSync(toolsRoot);
@@ -101,20 +100,15 @@ async function testAndroidBootstrapArguments() {
       "ARG ANDROID_COMMAND_LINE_TOOLS_REVISION=11076708",
       "ARG ANDROID_COMMAND_LINE_TOOLS_VERSION=12.0",
       "ARG ANDROID_COMMAND_LINE_TOOLS_SHA256=2d2d50857e4eb553af5a6dc3ad507a17adf43d115264b1afc116f95c92e5e258",
-      "",
-    ].join("\n"), "utf8");
-    writeFileSync(workflow, [
-      "  android:",
-      "    run: |",
-      "      sdkmanager \"platforms;android-33\" \"ndk;27.0.12077973\" \"ndk;30.0.14904198\"",
-      "  dependencies:",
+      "ARG ANDROID_PLATFORM_PACKAGE=platforms;android-33",
+      "ARG ANDROID_COMPAT_NDK_PACKAGE=ndk;27.0.12077973",
+      "ARG ANDROID_PRIMARY_NDK_PACKAGE=ndk;30.0.14904198",
       "",
     ].join("\n"), "utf8");
     const receipt = await bootstrapAndroidSdk({
       sdk_root: sdkRoot,
       command_line_tools_root: toolsRoot,
       dockerfile,
-      workflow,
       flutter_root: flutterRoot,
       project_root: projectRoot,
     }, (command, args, options = {}) => {

@@ -245,7 +245,7 @@ function validateCiTopology() {
     "ref: ${{ github.event.pull_request.head.sha || github.sha }}",
     "LICO_AUDITOR_GATE_DELEGATED",
     "cargo install cargo-audit --version 0.22.2 --locked",
-    '"platforms;android-33"',
+    "node tools/scripts/client-android-sdk-bootstrap.mjs",
   ]) {
     assertIncludes(engineering, token, `complete CI engineering profile is missing: ${token}`);
   }
@@ -744,6 +744,16 @@ function reportIsMergeReady(report) {
     report.compatibility.every((result) => result.status === "passed");
 }
 
+export function withExecutionPrerequisites(selected, catalog) {
+  const requiresFlutterDependencies = selected.some((module) =>
+    ["flutter", "gradle"].includes(module.regression.toolchain));
+  if (!requiresFlutterDependencies || selected.some((module) =>
+    module.id === "regression.flutter-dependencies")) return selected;
+  const prerequisite = catalog.find((module) => module.id === "regression.flutter-dependencies");
+  if (!prerequisite) fail("Flutter dependency prerequisite is not registered");
+  return [prerequisite, ...selected];
+}
+
 export async function verifyClientGate(args, {
   catalog = CLIENT_MODULE_CATALOG,
   executor = executeClientModules,
@@ -783,8 +793,11 @@ export async function verifyClientGate(args, {
     if (actualHead !== revisions.head.toLowerCase() || worktreeState.length !== 0) {
       fail("target evidence candidate does not match the clean checked-out head");
     }
-    const selected = selectModulesForChangedPaths(paths, catalog).filter((module) =>
-      (module.regression.targetEvidenceHosts || []).includes(revisions.host));
+    const selected = withExecutionPrerequisites(
+      selectModulesForChangedPaths(paths, catalog).filter((module) =>
+        (module.regression.targetEvidenceHosts || []).includes(revisions.host)),
+      catalog,
+    );
     const result = selected.length === 0
       ? { exitCode: 0, report: { results: [] } }
       : await executor(selected, {
@@ -796,7 +809,7 @@ export async function verifyClientGate(args, {
         compatibilityRunner: async () => [],
       });
     const passed = result.exitCode === 0 &&
-      (result.report?.results || []).every((entry) => entry.status === "passed");
+      targetResultsCoverSelection(selected, result.report?.results || []);
     output.write(`${JSON.stringify({
       ok: passed,
       schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
@@ -846,12 +859,25 @@ function resultMembers(result) {
   return Array.isArray(result?.members) ? result.members : [];
 }
 
-export function combineLocalRegressionResults(linuxResults, hostResults) {
+export function targetResultsCoverSelection(selected, results) {
+  if (!Array.isArray(results) || results.some((entry) => entry.status !== "passed")) return false;
+  const covered = new Set(results.flatMap(resultMembers));
+  return selected.every((module) => covered.has(module.id));
+}
+
+function labelResultHost(result, host) {
+  return Object.freeze({ ...result, id: `host.${host}.${result.id}` });
+}
+
+export function combineLocalRegressionResults(linuxResults, hostResults, host) {
   const retainedLinux = linuxResults.filter((result) => {
     const members = resultMembers(result);
     return !(members.length === 1 && members[0] === "regression.repository-local-info-hygiene");
   });
-  return [...retainedLinux, ...hostResults];
+  return [
+    ...retainedLinux.map((result) => labelResultHost(result, "linux")),
+    ...hostResults.map((result) => labelResultHost(result, host)),
+  ];
 }
 
 function blockedTargetResult(module, host) {
@@ -883,13 +909,13 @@ async function verifyLocalClientGate({
     .filter((module) => (module.regression.runnableHosts || ["darwin", "linux", "win32"])
       .includes("linux"))
     .map((module) => module.id));
-  const supplemental = catalog.filter((module) => {
+  const supplemental = withExecutionPrerequisites(catalog.filter((module) => {
     const runnable = module.regression.runnableHosts || ["darwin", "linux", "win32"];
     const targets = module.regression.targetEvidenceHosts || [];
     return module.id === "regression.repository-local-info-hygiene" ||
       (runnable.includes(host) && !linuxIds.has(module.id)) ||
       (affected.includes(module) && targets.includes(host));
-  });
+  }), catalog);
   const hostResult = await executor(supplemental, {
     repoRoot,
     catalog,
@@ -921,6 +947,7 @@ async function verifyLocalClientGate({
   const combinedResults = combineLocalRegressionResults(
     linuxReport?.results || [],
     hostResult.report?.results || [],
+    host,
   );
   const missingTargets = [];
   for (const module of affected) {

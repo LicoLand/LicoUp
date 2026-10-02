@@ -131,6 +131,10 @@ function mount(source, target, readOnly = false) {
   return `type=bind,src=${source},dst=${target}${readOnly ? ",readonly" : ""}`;
 }
 
+const containerAndroidCommandLineToolsRoot = "/opt/android-command-line-tools/latest";
+const containerFlutterRoot = "/opt/flutter";
+const containerCargoHome = "/root/.cargo";
+
 export function runnerDockerArgs({
   image,
   lane,
@@ -175,14 +179,11 @@ export function runnerDockerArgs({
       `CARGO_TARGET_DIR=/cache/cargo-audit-target cargo install --root /cache/cargo-audit ` +
       `cargo-audit --version ${cargoAuditVersion} --locked; fi`
     : ":";
-  const flutterBootstrap = profile === "engineering"
-    ? "npm run client:get"
-    : ":";
   const androidBootstrap = lane === "android" || profile === "engineering"
     ? "node tools/scripts/client-android-sdk-bootstrap.mjs " +
       "--sdk-root /cache/android-sdk " +
-      "--command-line-tools-root /opt/android-command-line-tools/latest " +
-      "--flutter-root /opt/flutter"
+      `--command-line-tools-root ${containerAndroidCommandLineToolsRoot} ` +
+      `--flutter-root ${containerFlutterRoot}`
     : ":";
   const invocation = profile === "engineering"
     ? "npm run client:gate:verify -- --base HEAD --head HEAD --target pr --execution direct --host linux"
@@ -210,8 +211,6 @@ export function runnerDockerArgs({
     `${dependencyBootstrap} || status=$?; ` +
     `android_status=0; ${androidBootstrap} || android_status=$?; ` +
     `[ "$status" -ne 0 ] || status=$android_status; ` +
-    `flutter_status=0; ${flutterBootstrap} || flutter_status=$?; ` +
-    `[ "$status" -ne 0 ] || status=$flutter_status; ` +
     `gate_status=0; ${invocation} || gate_status=$?; ` +
     `[ "$status" -ne 0 ] || status=$gate_status; ` +
     `${copyReport}; exit "$status"`;
@@ -225,7 +224,7 @@ export function runnerDockerArgs({
     "--env", "CI=true",
     "--env", "HOME=/root",
     "--env", "npm_config_cache=/cache/npm",
-    "--env", "CARGO_HOME=/root/.cargo",
+    "--env", `CARGO_HOME=${containerCargoHome}`,
     "--env", "CARGO_BUILD_JOBS=3",
     "--env", "RUST_TEST_THREADS=3",
     "--env", "CARGO_TARGET_DIR=/workspace/build/crates/licoup-native/target",
@@ -237,8 +236,8 @@ export function runnerDockerArgs({
     ...sourceDelegation,
     "--mount", mount(candidateRoot, "/candidate", true),
     "--mount", mount(npmCache, "/cache/npm"),
-    "--mount", mount(cargoRegistry, "/root/.cargo/registry"),
-    "--mount", mount(cargoGit, "/root/.cargo/git"),
+    "--mount", mount(cargoRegistry, `${containerCargoHome}/registry`),
+    "--mount", mount(cargoGit, `${containerCargoHome}/git`),
     "--mount", mount(cargoTarget, "/workspace/build/crates/licoup-native/target"),
     "--mount", mount(cargoAuditRoot, "/cache/cargo-audit"),
     "--mount", mount(cargoAuditTarget, "/cache/cargo-audit-target"),

@@ -23,8 +23,10 @@ import {
   combineLocalRegressionResults,
   runLane,
   runClientGateStep,
+  targetResultsCoverSelection,
   validateClientGateTopology,
   verifyClientGate,
+  withExecutionPrerequisites,
 } from "../../../tools/scripts/client-gate.mjs";
 
 function selectedOptionalLanes(paths) {
@@ -247,7 +249,44 @@ test("local aggregation replaces only the exact delegated hygiene result", () =>
     { id: "host-hygiene", status: "passed", members: ["regression.repository-local-info-hygiene"] },
     { id: "host-target", status: "passed", members: ["module.a"] },
   ];
-  assert.deepEqual(combineLocalRegressionResults(linux, host), [linux[1], ...host]);
+  assert.deepEqual(combineLocalRegressionResults(linux, host, "darwin"), [
+    { ...linux[1], id: "host.linux.batch" },
+    { ...host[0], id: "host.darwin.host-hygiene" },
+    { ...host[1], id: "host.darwin.host-target" },
+  ]);
+});
+
+test("target evidence requires one passed result for every selected module", () => {
+  const selected = [{ id: "module.a" }, { id: "module.b" }];
+  assert.equal(targetResultsCoverSelection(selected, [
+    { status: "passed", members: ["module.a", "module.b"] },
+  ]), true);
+  assert.equal(targetResultsCoverSelection(selected, []), false);
+  assert.equal(targetResultsCoverSelection(selected, [
+    { status: "passed", members: ["module.a"] },
+  ]), false);
+  assert.equal(targetResultsCoverSelection(selected, [
+    { status: "passed", members: ["module.a", "module.b"] },
+    { status: "failed", members: ["module.c"] },
+  ]), false);
+});
+
+test("focused Flutter target execution prepends the registered dependency prerequisite", () => {
+  const prerequisite = { id: "regression.flutter-dependencies", regression: { toolchain: "flutter" } };
+  const flutterTarget = { id: "bridge.macos", regression: { toolchain: "flutter" } };
+  const rustTarget = { id: "rust.target", regression: { toolchain: "rust" } };
+  assert.deepEqual(
+    withExecutionPrerequisites([flutterTarget], [prerequisite, flutterTarget]),
+    [prerequisite, flutterTarget],
+  );
+  assert.deepEqual(
+    withExecutionPrerequisites([prerequisite, flutterTarget], [prerequisite, flutterTarget]),
+    [prerequisite, flutterTarget],
+  );
+  assert.deepEqual(
+    withExecutionPrerequisites([rustTarget], [prerequisite, rustTarget]),
+    [rustTarget],
+  );
 });
 
 test("target evidence rejects a revision that is not the clean checked-out head", async () => {

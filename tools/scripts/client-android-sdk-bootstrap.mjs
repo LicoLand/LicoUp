@@ -20,7 +20,6 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const defaultDockerfile = path.join(repoRoot, "apps/desktop/docker/ubuntu-client.Dockerfile");
-const defaultWorkflow = path.join(repoRoot, ".github/workflows/client-ci.yml");
 
 function fail(code) {
   const error = new Error(code);
@@ -31,7 +30,6 @@ function fail(code) {
 function parseArgs(argv) {
   const options = {
     dockerfile: defaultDockerfile,
-    workflow: defaultWorkflow,
     project_root: path.join(repoRoot, "apps", "desktop"),
   };
   for (let index = 0; index < argv.length; index += 2) {
@@ -41,7 +39,6 @@ function parseArgs(argv) {
       "--sdk-root",
       "--command-line-tools-root",
       "--dockerfile",
-      "--workflow",
       "--project-root",
       "--flutter-root",
     ].includes(key)) {
@@ -91,13 +88,20 @@ export function readAndroidToolAuthority(dockerfile) {
   });
 }
 
-export function readAndroidPackages(workflow) {
-  const source = readFileSync(workflow, "utf8");
-  const lane = source.match(/^  android:\n(?<body>[\s\S]*?)^  dependencies:/mu)?.groups?.body || "";
-  const packages = [...lane.matchAll(/"((?:platforms|ndk);[a-zA-Z0-9._-]+)"/gu)]
-    .map((match) => match[1]);
-  if (packages.length === 0) fail("client_ci_android_packages_missing");
-  return Object.freeze(packages);
+export function readAndroidPackages(dockerfile) {
+  const source = readFileSync(dockerfile, "utf8");
+  const names = [
+    "ANDROID_PLATFORM_PACKAGE",
+    "ANDROID_COMPAT_NDK_PACKAGE",
+    "ANDROID_PRIMARY_NDK_PACKAGE",
+  ];
+  return Object.freeze(names.map((name) => {
+    const matches = [...source.matchAll(new RegExp(
+      `^ARG ${name}=((?:platforms|ndk);[a-zA-Z0-9._-]+)$`, "gmu",
+    ))];
+    if (matches.length !== 1) fail("client_ci_android_packages_missing");
+    return matches[0][1];
+  }));
 }
 
 function installedVersion(root) {
@@ -151,7 +155,7 @@ async function installTools(sdkRoot, authority, runCommand) {
 
 export async function bootstrapAndroidSdk(options, runCommand = run) {
   const authority = readAndroidToolAuthority(options.dockerfile);
-  const packages = readAndroidPackages(options.workflow);
+  const packages = readAndroidPackages(options.dockerfile);
   mkdirSync(options.sdk_root, { recursive: true, mode: 0o700 });
   const toolsRoot = options.command_line_tools_root ||
     await installTools(options.sdk_root, authority, runCommand);

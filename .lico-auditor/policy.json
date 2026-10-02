@@ -339,5 +339,25 @@
     "pi.dev",
     "scripts.sil.org",
     "www.adobe.com"
+  ],
+  "reviewedUnixPathLiterals": [
+    {
+      "rule": "system-or-deployment-path",
+      "path": "tools/scripts/client-local-linux-runner/docker.mjs",
+      "value": "/opt/android-command-line-tools/latest",
+      "reason": "Fixed public path inside the isolated repository-owned Linux client toolchain image."
+    },
+    {
+      "rule": "system-or-deployment-path",
+      "path": "tools/scripts/client-local-linux-runner/docker.mjs",
+      "value": "/opt/flutter",
+      "reason": "Fixed public path inside the isolated repository-owned Linux client toolchain image."
+    },
+    {
+      "rule": "system-or-deployment-path",
+      "path": "tools/scripts/client-local-linux-runner/docker.mjs",
+      "value": "/root/.cargo",
+      "reason": "Fixed public Cargo home inside the isolated repository-owned Linux client toolchain container."
+    }
   ]
 }

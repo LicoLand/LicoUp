@@ -113,29 +113,6 @@ function canonicalFailureReason(rule) {
   return suffix ? `LICOMESH_DEV_${suffix}` : "LICOMESH_DEV_FINDING";
 }
 
-function validateCanonicalFinding(finding) {
-  if (!finding || typeof finding !== "object" || Array.isArray(finding)) {
-    return null;
-  }
-  const relativePath = safeRelativePath(repoRoot, finding.file);
-  if (
-    !relativePath ||
-    typeof finding.rule !== "string" ||
-    !/^[a-z0-9-]+$/u.test(finding.rule) ||
-    !Number.isInteger(finding.line) ||
-    finding.line < 1 ||
-    typeof finding.digest !== "string" ||
-    !/^[a-f0-9]{16,64}$/u.test(finding.digest)
-  ) {
-    return null;
-  }
-  return {
-    reasonCode: canonicalFailureReason(finding.rule),
-    path: relativePath,
-    digest: finding.digest
-  };
-}
-
 function parseCanonicalResult(stdout, exitCode, scanRoot) {
   let result;
   try {
@@ -147,18 +124,7 @@ function parseCanonicalResult(stdout, exitCode, scanRoot) {
       failures: [redactedFailure("LICOMESH_DEV_PROTOCOL_ERROR", ".", `${exitCode}\0${sha256(stdout)}`)]
     };
   }
-  const validShape =
-    result &&
-    typeof result === "object" &&
-    !Array.isArray(result) &&
-    typeof result.ok === "boolean" &&
-    Number.isInteger(result.scannedFiles) &&
-    result.scannedFiles >= 0 &&
-    Number.isInteger(result.findingCount) &&
-    result.findingCount >= 0 &&
-    Array.isArray(result.findings) &&
-    result.findingCount === result.findings.length;
-  if (!validShape || (result.ok ? exitCode !== 0 : exitCode !== 1)) {
+  if (!Array.isArray(result)) {
     return {
       ok: false,
       scannedFiles: 0,
@@ -166,72 +132,50 @@ function parseCanonicalResult(stdout, exitCode, scanRoot) {
     };
   }
   const failures = [];
-  for (const finding of result.findings) {
-    const validated = validateCanonicalFindingForRoot(finding, scanRoot);
+  for (const finding of result) {
+    const validated = validateAuditorFinding(finding, scanRoot);
     if (!validated) {
       return {
         ok: false,
-        scannedFiles: result.scannedFiles,
+        scannedFiles: 0,
         failures: [redactedFailure("LICOMESH_DEV_UNSAFE_OUTPUT", ".", sha256(stdout))]
       };
     }
-    failures.push(validated);
+    if (["high-risk", "error"].includes(finding.severity)) failures.push(validated);
   }
-  if (!result.ok && failures.length === 0) {
-    failures.push(redactedFailure("LICOMESH_DEV_SCAN_FAILED", ".", result.error || sha256(stdout)));
+  const expectedExitCode = failures.length === 0 ? 0 : 1;
+  if (exitCode !== expectedExitCode) {
+    return {
+      ok: false,
+      scannedFiles: 0,
+      failures: [redactedFailure("LICOMESH_DEV_PROTOCOL_ERROR", ".", `${exitCode}\0${sha256(stdout)}`)]
+    };
   }
   return {
-    ok: result.ok && failures.length === 0,
-    scannedFiles: result.scannedFiles,
+    ok: failures.length === 0,
+    scope: "tracked-and-untracked-nonignored-working-tree",
     failures
   };
 }
 
-export function excludeValidatedWorktreePointerFindings(canonical, pointerValid) {
-  if (!pointerValid) return canonical;
-  const worktreeMetadataReasons = new Set([
-    "LICOMESH_DEV_MACHINE_HOST",
-    "LICOMESH_DEV_MACHINE_PATH",
-    "LICOMESH_DEV_MACHINE_USER",
-  ]);
-  const failures = canonical.failures.filter((failure) =>
-    failure.path !== ".git" || !worktreeMetadataReasons.has(failure.reasonCode));
-  return { ...canonical, ok: failures.length === 0, failures };
-}
-
-async function hasValidatedWorktreePointer(scanRoot) {
-  const metadataPath = path.join(scanRoot, ".git");
-  const metadata = await lstat(metadataPath).catch(() => null);
-  if (!metadata?.isFile() || metadata.isSymbolicLink() || metadata.size > 4096) return false;
-  const text = await readFile(metadataPath, "utf8").catch(() => "");
-  const match = /^gitdir: ([^\0\r\n]+)\n?$/u.exec(text);
-  return Boolean(match && path.isAbsolute(match[1]));
-}
-
-function validateCanonicalFindingForRoot(finding, scanRoot) {
-  if (scanRoot === repoRoot) {
-    return validateCanonicalFinding(finding);
-  }
-  if (!finding || typeof finding !== "object" || Array.isArray(finding)) {
-    return null;
-  }
-  const relativePath = safeRelativePath(scanRoot, finding.file);
+function validateAuditorFinding(finding, scanRoot) {
+  if (!finding || typeof finding !== "object" || Array.isArray(finding)) return null;
+  const relativePath = safeRelativePath(scanRoot, finding.path);
   if (
-    !relativePath ||
+    relativePath === null ||
     typeof finding.rule !== "string" ||
     !/^[a-z0-9-]+$/u.test(finding.rule) ||
     !Number.isInteger(finding.line) ||
-    finding.line < 1 ||
-    typeof finding.digest !== "string" ||
-    !/^[a-f0-9]{16,64}$/u.test(finding.digest)
-  ) {
-    return null;
-  }
-  return {
-    reasonCode: canonicalFailureReason(finding.rule),
-    path: relativePath,
-    digest: finding.digest
-  };
+    finding.line < 0 ||
+    !["warning", "high-risk", "error"].includes(finding.severity) ||
+    typeof finding.fingerprint !== "string" ||
+    !/^(?:[a-f0-9]{16,64})?$/u.test(finding.fingerprint)
+  ) return null;
+  return redactedFailure(
+    canonicalFailureReason(finding.rule),
+    relativePath || ".",
+    finding.fingerprint,
+  );
 }
 
 function isAuditorDelegationEnabled(environment = process.env) {
@@ -243,22 +187,24 @@ function isAuditorDelegationEnabled(environment = process.env) {
   );
 }
 
-async function runCanonicalScan(scanRoot, command = "lico-dev", options = {}) {
+async function runCanonicalScan(scanRoot, command = "lico-auditor", options = {}) {
   if (
     options.allowAuditorDelegation === true &&
     isAuditorDelegationEnabled()
   ) {
     return {
       ok: true,
-      scannedFiles: 0,
+      scope: "ci-auditor-gate",
       failures: []
     };
   }
   let stdout = "";
   let exitCode = 0;
   try {
-    const result = await execFileAsync(command, ["privacy", "scan", ".", "--format", "json"], {
-      cwd: scanRoot,
+    const result = await execFileAsync(command, [
+      "gate", "--repo", scanRoot, "--profile", "licoup", "--no-contribution", "--format", "json",
+    ], {
+      cwd: repoRoot,
       encoding: "utf8",
       maxBuffer: 16 * 1024 * 1024
     });
@@ -274,11 +220,7 @@ async function runCanonicalScan(scanRoot, command = "lico-dev", options = {}) {
     stdout = typeof error?.stdout === "string" ? error.stdout : "";
     exitCode = Number.isInteger(error?.code) ? error.code : -1;
   }
-  const parsed = parseCanonicalResult(stdout, exitCode, scanRoot);
-  return excludeValidatedWorktreePointerFindings(
-    parsed,
-    scanRoot === repoRoot && await hasValidatedWorktreePointer(scanRoot),
-  );
+  return parseCanonicalResult(stdout, exitCode, scanRoot);
 }
 
 function isRedacted(value) {
@@ -381,13 +323,13 @@ async function scanEvidenceFiles(root) {
   return { scannedFiles, failures: unique };
 }
 
-function buildReport(canonical, local, authoritativeScanner = "lico-dev") {
+function buildReport(canonical, local, authoritativeScanner = "lico-auditor") {
   const failures = [...canonical.failures, ...local.failures];
   return {
     schemaVersion,
     ok: failures.length === 0,
     authoritativeScanner,
-    authoritativeScannedFiles: canonical.scannedFiles,
+    authoritativeScope: canonical.scope || "execution-error",
     localEvidenceScannedFiles: local.scannedFiles,
     findingCount: failures.length,
     failures
@@ -406,29 +348,11 @@ async function runSelfTest() {
   const temporary = await mkdtemp(path.join(tmpdir(), "lico-up-hygiene-"));
   try {
     const cleanProtocolResult = parseCanonicalResult(
-      JSON.stringify({
-        ok: true,
-        scannedFiles: 3,
-        findingCount: 0,
-        findings: []
-      }),
+      "[]",
       0,
       temporary
     );
     requireSelfTest(cleanProtocolResult.ok === true, "SELF_TEST_CLEAN_PROTOCOL_RESULT_REJECTED");
-    const worktreeFiltered = excludeValidatedWorktreePointerFindings({
-      ok: false,
-      scannedFiles: 2,
-      failures: [
-        redactedFailure("LICOMESH_DEV_MACHINE_PATH", ".git", "fixture"),
-        redactedFailure("LICOMESH_DEV_MACHINE_PATH", "source.mjs", "fixture"),
-      ],
-    }, true);
-    requireSelfTest(
-      worktreeFiltered.ok === false && worktreeFiltered.failures.length === 1 &&
-      worktreeFiltered.failures[0].path === "source.mjs",
-      "SELF_TEST_WORKTREE_POINTER_SCOPE_TOO_BROAD",
-    );
 
     const fixtureDirectory = path.join(temporary, "build", "reports");
     await mkdir(fixtureDirectory, { recursive: true });
@@ -451,25 +375,22 @@ async function runSelfTest() {
     );
 
     const canonical = parseCanonicalResult(
-      JSON.stringify({
-        ok: false,
-        scannedFiles: 1,
-        findingCount: 2,
-        findings: [
+      JSON.stringify([
           {
-            file: "build/reports/local-info-fixture.json",
-            rule: "machine-path",
+            path: "build/reports/local-info-fixture.json",
+            rule: "system-or-deployment-path",
+            severity: "high-risk",
             line: 2,
-            digest: sha256("self-test-machine-path")
+            fingerprint: sha256("self-test-machine-path").slice(0, 16)
           },
           {
-            file: "build/reports/local-info-fixture.json",
-            rule: "inline-secret",
+            path: "build/reports/local-info-fixture.json",
+            rule: "secret-assignment",
+            severity: "high-risk",
             line: 3,
-            digest: sha256("self-test-inline-secret")
+            fingerprint: sha256("self-test-inline-secret").slice(0, 16)
           }
-        ]
-      }),
+      ]),
       1,
       temporary
     );
@@ -477,9 +398,9 @@ async function runSelfTest() {
     const report = buildReport(canonical, local);
     const reasonCodes = new Set(report.failures.map((failure) => failure.reasonCode));
     requireSelfTest(report.ok === false, "SELF_TEST_DID_NOT_REJECT_FIXTURE");
-    requireSelfTest(reasonCodes.has("LICOMESH_DEV_MACHINE_PATH"), "SELF_TEST_HOME_PATH_NOT_REJECTED");
+    requireSelfTest(reasonCodes.has("LICOMESH_DEV_SYSTEM_OR_DEPLOYMENT_PATH"), "SELF_TEST_HOME_PATH_NOT_REJECTED");
     requireSelfTest(
-      reasonCodes.has("LICOMESH_DEV_INLINE_SECRET") || reasonCodes.has("LICOMESH_DEV_CREDENTIAL_TOKEN"),
+      reasonCodes.has("LICOMESH_DEV_SECRET_ASSIGNMENT"),
       "SELF_TEST_SECRET_NOT_REJECTED"
     );
     requireSelfTest(reasonCodes.has("LOCAL_IDENTITY_FIELD"), "SELF_TEST_IDENTITY_NOT_REJECTED");
@@ -554,7 +475,7 @@ async function runSelfTest() {
         reportDidNotRediscloseMatches: true,
         missingCanonicalScannerFailedClosed: true,
         auditorDelegationRestrictedToClientGitHubJob: true,
-        validatedWorktreePointerMetadataExcluded: true
+        exactAuditorProtocolAccepted: true
       }
     };
   } finally {
@@ -581,7 +502,7 @@ if (selfTestOnly) {
   let local;
   try {
     candidateRoot = await materializePublicationCandidateRoot();
-    canonical = await runCanonicalScan(candidateRoot, "lico-dev", {
+    canonical = await runCanonicalScan(candidateRoot, "lico-auditor", {
       allowAuditorDelegation: true
     });
     local = await scanEvidenceFiles(candidateRoot);
@@ -600,7 +521,7 @@ if (selfTestOnly) {
   const report = buildReport(
     canonical,
     local,
-    delegatedToAuditor ? "lico-auditor-gate" : "lico-dev"
+    delegatedToAuditor ? "lico-auditor-gate" : "lico-auditor"
   );
   await mkdir(path.dirname(reportPath), { recursive: true });
   await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
