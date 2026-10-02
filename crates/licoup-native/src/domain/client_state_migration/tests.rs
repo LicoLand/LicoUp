@@ -913,14 +913,24 @@ fn a_released_source_root_is_admitted_to_the_current_frontier() {
         embedded_frontier().unwrap().domains.len()
     );
 
-    // The root-level inventory is metadata. Admission neither rewrites it nor
-    // fabricates the custody marker the released client never wrote.
+    // Admission preserves the released inventory. Only macOS has the protected
+    // Keychain transition: it stays pending there, while other platforms record
+    // the inapplicable custody domain as current without touching credentials.
     assert_eq!(fs::read(&inventory_path).unwrap(), inventory_before);
-    assert!(
-        !root
-            .join("client-state/migrations/domain-state/gateway-credential-custody.json")
-            .exists()
-    );
+    let custody_marker =
+        root.join("client-state/migrations/domain-state/gateway-credential-custody.json");
+    assert_eq!(custody_marker.exists(), !cfg!(target_os = "macos"));
+    #[cfg(not(target_os = "macos"))]
+    {
+        let marker: DomainMarker =
+            serde_json::from_slice(&fs::read(custody_marker).unwrap()).unwrap();
+        assert_eq!(marker.domain_id, GATEWAY_CUSTODY_DOMAIN);
+        assert_eq!(
+            marker.authoritative_schema_version,
+            ledger.domains[GATEWAY_CUSTODY_DOMAIN].schema_version
+        );
+        assert!(!gateway_credential_migration_pending(&root).unwrap());
+    }
     #[cfg(target_os = "macos")]
     {
         assert!(
