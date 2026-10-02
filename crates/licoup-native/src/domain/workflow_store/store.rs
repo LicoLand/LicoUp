@@ -12,6 +12,7 @@ use super::{
     StrategyDefinition, StrategyDefinitionSummary, StrategyDiagnostic, StrategyProjection,
 };
 use crate::domain::workflow_runtime::ASSISTANT_TEMPORARY_DEFINITION_PREFIX;
+use licoup_foundation::core::sqlite_contract::ColumnVariant;
 use licoup_workflow::{
     BindingKind, CommandStatus, FailureClass, GraphState, GraphStateKind, ReducerEvent, RunCommand,
     RunSnapshot, StrategyRunStatus, Transition, TransitionEvent, TransitionMode,
@@ -1707,7 +1708,13 @@ pub(crate) fn validate_published_core_layout(
             connection,
             &reference,
             &table,
-            (table == "strategy_runs").then_some("terminal"),
+            match table.as_str() {
+                "strategy_runs" => Some(ColumnVariant::Nullable("terminal")),
+                // v0.2.1's ordinal-key conversion omitted the fresh-store
+                // DEFAULT 0. Both published producers supply ordinal values.
+                "strategy_bindings" => Some(ColumnVariant::MissingZeroDefault("ordinal")),
+                _ => None,
+            },
         )?;
     }
     Ok(())
@@ -2446,6 +2453,7 @@ mod tests {
         assert_eq!(ordinal, 0);
         assert_eq!(active, 0);
         assert_eq!(version, "3");
+        validate_published_core_layout(&connection, "3").unwrap();
     }
 
     #[test]

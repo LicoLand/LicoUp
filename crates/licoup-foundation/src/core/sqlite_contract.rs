@@ -170,14 +170,21 @@ fn definitions(
         .collect()
 }
 
-/// Compare one required table. A nullable-column exception identifies an actual
+/// A physical column difference emitted by an actual supported producer.
+#[derive(Clone, Copy)]
+pub enum ColumnVariant<'a> {
+    Nullable(&'a str),
+    MissingZeroDefault(&'a str),
+}
+
+/// Compare one required table. A column exception identifies an actual
 /// producer variant, not permission to weaken other columns. Absent optional
 /// tables are handled by the caller, which owns whether startup creates them.
 pub fn validate_table(
     source: &Connection,
     reference: &Connection,
     name: &str,
-    nullable_variant: Option<&str>,
+    variant: Option<ColumnVariant<'_>>,
 ) -> Result<()> {
     let actual_sql =
         table_sql(source, name)?.ok_or_else(|| anyhow::anyhow!("unsupported_state_shape"))?;
@@ -187,7 +194,7 @@ pub fn validate_table(
     let actual = declaration(&actual_sql)?;
     let actual_columns = columns(source, name)?;
     let mut expected_columns = columns(reference, name)?;
-    if let Some(column) = nullable_variant {
+    if let Some(ColumnVariant::Nullable(column)) = variant {
         if actual_columns.get(column).is_some_and(|value| !value.1) {
             if let Some(value) = expected_columns.get_mut(column) {
                 value.1 = false;
@@ -195,6 +202,27 @@ pub fn validate_table(
             for entry in &mut expected {
                 if entry.first().is_some_and(|name| name == column) {
                     if let Some(index) = entry.windows(2).position(|t| t == ["not", "null"]) {
+                        entry.drain(index..index + 2);
+                    }
+                }
+            }
+        }
+    }
+    if let Some(ColumnVariant::MissingZeroDefault(column)) = variant {
+        if actual_columns
+            .get(column)
+            .is_some_and(|value| value.2.is_none())
+        {
+            if let Some(value) = expected_columns.get_mut(column) {
+                ensure!(
+                    value.2.as_deref().map(tokens).transpose()? == Some(vec!["0".into()]),
+                    "unsupported_state_shape"
+                );
+                value.2 = None;
+            }
+            for entry in &mut expected {
+                if entry.first().is_some_and(|name| name == column) {
+                    if let Some(index) = entry.windows(2).position(|t| t == ["default", "0"]) {
                         entry.drain(index..index + 2);
                     }
                 }
@@ -307,9 +335,23 @@ mod tests {
             )
             .unwrap();
         assert!(validate_table(&source, &reference, "sample", None).is_err());
-        validate_table(&source, &reference, "sample", Some("terminal")).unwrap();
+        validate_table(
+            &source,
+            &reference,
+            "sample",
+            Some(ColumnVariant::Nullable("terminal")),
+        )
+        .unwrap();
         source.execute_batch("DROP TABLE sample; CREATE TABLE sample(id TEXT PRIMARY KEY, terminal INTEGER, value TEXT);").unwrap();
-        assert!(validate_table(&source, &reference, "sample", Some("terminal")).is_err());
+        assert!(
+            validate_table(
+                &source,
+                &reference,
+                "sample",
+                Some(ColumnVariant::Nullable("terminal"))
+            )
+            .is_err()
+        );
     }
 
     #[test]

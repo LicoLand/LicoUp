@@ -78,7 +78,7 @@ function definitions(database, table, kind) {
   });
 }
 
-export function requireTable(database, reference, table, nullableVariant = null) {
+export function requireTable(database, reference, table, variant = {}) {
   const sql = tableSql(database, table);
   if (sql === null) refused();
   const expected = declarations(tableSql(reference, table));
@@ -86,11 +86,22 @@ export function requireTable(database, reference, table, nullableVariant = null)
   const columns = (db) => db.prepare("SELECT name,type,\"notnull\",dflt_value,pk,hidden FROM pragma_table_xinfo(?) ORDER BY name").all(table).map((row) => [row.name, row.type.toUpperCase(), Number(row.notnull), row.dflt_value === null ? null : sqlTokens(row.dflt_value), Number(row.pk), Number(row.hidden)]);
   const actualColumns = columns(database);
   const expectedColumns = columns(reference);
+  const nullableVariant = variant.nullable ?? null;
   if (nullableVariant !== null && actualColumns.find((row) => row[0] === nullableVariant)?.[2] === 0) {
     expectedColumns.find((row) => row[0] === nullableVariant)[2] = 0;
     const entry = expected.find((entry) => entry[0] === nullableVariant);
     const index = entry.findIndex((token, i) => token === "not" && entry[i + 1] === "null");
     if (index !== -1) entry.splice(index, 2);
+  }
+  const missingZeroDefault = variant.missingZeroDefault ?? null;
+  if (missingZeroDefault !== null && actualColumns.find((row) => row[0] === missingZeroDefault)?.[3] === null) {
+    const column = expectedColumns.find((row) => row[0] === missingZeroDefault);
+    requireValue(same(column?.[3], ["0"]), "unsupported_state_shape");
+    column[3] = null;
+    const entry = expected.find((entry) => entry[0] === missingZeroDefault);
+    const index = entry.findIndex((token, i) => token === "default" && entry[i + 1] === "0");
+    requireValue(index !== -1, "unsupported_state_shape");
+    entry.splice(index, 2);
   }
   requireValue(same(actual, expected) && same(actualColumns, expectedColumns), "unsupported_state_shape");
   requireValue(same(definitions(database, table, "index"), definitions(reference, table, "index")), "unsupported_state_shape");
@@ -258,7 +269,9 @@ export function inspectStrategyContract(database) {
     const existing = tableNames(database);
     for (const table of tableNames(reference)) {
       if (!required.includes(table) && !existing.includes(table)) continue;
-      requireTable(database, reference, table, table === "strategy_runs" ? "terminal" : null);
+      requireTable(database, reference, table, table === "strategy_runs"
+        ? { nullable: "terminal" }
+        : table === "strategy_bindings" ? { missingZeroDefault: "ordinal" } : {});
     }
   } finally { reference.close(); }
 }

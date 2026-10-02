@@ -22,7 +22,7 @@ import {
 } from "../../../tools/scripts/client-state-migration/report.mjs";
 import { repairDomain } from "../../../tools/scripts/client-state-migration/repair.mjs";
 import { writePrivateJsonAtomic } from "../../../tools/scripts/client-state-migration/util.mjs";
-import { inspectConversationContract } from "../../../tools/scripts/client-state-migration/sqlite-contract.mjs";
+import { inspectConversationContract, inspectStrategyContract } from "../../../tools/scripts/client-state-migration/sqlite-contract.mjs";
 import { selectModulesForChangedPaths } from "../../../tools/regression/client-module-selection.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
@@ -114,6 +114,26 @@ function releasedStrategyDdl({ producerUpgraded = false } = {}) {
   }
   return ddl;
 }
+
+test("strategy admission recognizes both published ordinal producers without relaxing other defaults", () => {
+  for (const version of ["2", "3"]) {
+    for (const ordinal of ["ordinal INTEGER NOT NULL DEFAULT 0,", "ordinal INTEGER NOT NULL,"]) {
+      const database = new DatabaseSync(":memory:");
+      try {
+        database.exec(releasedStrategyDdl().replace("ordinal INTEGER NOT NULL DEFAULT 0,", ordinal));
+        database.prepare("UPDATE strategy_meta SET value=? WHERE key='version'").run(version);
+        assert.doesNotThrow(() => inspectStrategyContract(database));
+      } finally { database.close(); }
+    }
+  }
+  for (const ordinal of ["ordinal INTEGER NOT NULL DEFAULT 1,", "ordinal INTEGER DEFAULT 0,"]) {
+    const database = new DatabaseSync(":memory:");
+    try {
+      database.exec(releasedStrategyDdl().replace("ordinal INTEGER NOT NULL DEFAULT 0,", ordinal));
+      assert.throws(() => inspectStrategyContract(database), /unsupported_state_shape/u);
+    } finally { database.close(); }
+  }
+});
 
 /** The shared fixture's business rows with its own constants substituted. */
 function releasedStrategyRows() {
@@ -327,7 +347,7 @@ for (const version of [...Array.from({ length: 12 }, (_, index) => index + 1), 1
 
 for (const version of [2, 3]) {
   for (const [label, from, to, extra] of [
-    ["missing default", "ordinal INTEGER NOT NULL DEFAULT 0", "ordinal INTEGER NOT NULL", ""],
+    ["missing required default", "model TEXT NOT NULL DEFAULT ''", "model TEXT NOT NULL", ""],
     ["FK update action", "REFERENCES strategy_definitions(revision_digest) ON DELETE CASCADE", "REFERENCES strategy_definitions(revision_digest) ON DELETE CASCADE ON UPDATE CASCADE", ""],
     ["changed default", "model TEXT NOT NULL DEFAULT ''", "model TEXT NOT NULL DEFAULT 'unexpected'", ""],
     ["malformed auxiliary table", null, null, "CREATE TABLE workflow_queue(request_id TEXT PRIMARY KEY);"],
