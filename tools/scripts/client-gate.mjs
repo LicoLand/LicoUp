@@ -1,14 +1,8 @@
 #!/usr/bin/env node
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  appendFileSync,
-  existsSync,
-  readFileSync,
-  rmSync,
-  writeSync,
-} from "node:fs";
+import { appendFileSync, readFileSync, writeSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -30,6 +24,7 @@ import {
   CLIENT_RELEASE_TARGETS,
   classifyClientGatePaths,
 } from "./client-gate-policy.mjs";
+import { runLocalClientDelivery } from "./client-macos-deliver.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const verificationReportPath = path.join(
@@ -249,7 +244,11 @@ function validateCiTopology() {
   ]) {
     assertIncludes(engineering, token, `complete CI engineering profile is missing: ${token}`);
   }
-  for (const [job, host] of [["target-darwin", "darwin"], ["target-win32", "win32"]]) {
+  for (const [job, host] of [
+    ["target-linux", "linux"],
+    ["target-darwin", "darwin"],
+    ["target-win32", "win32"],
+  ]) {
     const block = jobBlock(workflow, job);
     assertIncludes(block, `needs.plan.outputs.target_${host}`,
       `${job} must be selected from the catalog target ownership`);
@@ -263,7 +262,7 @@ function validateCiTopology() {
   const required = jobBlock(workflow, "client-required");
   assertIncludes(
     required,
-    "needs: [plan, engineering, target-darwin, target-win32]",
+    "needs: [plan, engineering, target-linux, target-darwin, target-win32]",
     "required CI reducer must observe the complete profile and affected targets",
   );
   assertIncludes(required, "if: always()", "required CI reducer must always report lane failures");
@@ -271,6 +270,7 @@ function validateCiTopology() {
     "PLAN_RESULT",
     "README_FAST_SELECTED",
     "ENGINEERING_RESULT",
+    "TARGET_LINUX_RESULT",
     "TARGET_DARWIN_RESULT",
     "TARGET_WIN32_RESULT",
     "An ordinary client gate ran for an author README update",
@@ -762,70 +762,6 @@ function reportIsMergeReady(report) {
     report.compatibility.every((result) => result.status === "passed");
 }
 
-const localDeliveryAdapters = Object.freeze({
-  macos: Object.freeze({
-    install: Object.freeze([
-      "npm", "run", "client:install:macos", "--", "--launch-installed",
-    ]),
-  }),
-});
-
-export function runLocalClientDelivery({
-  host = process.platform,
-  architecture = process.arch,
-  releaseCatalog = readJson("tools/client-release-targets.json"),
-  releaseTargets = CLIENT_RELEASE_TARGETS,
-  spawnImpl = spawnSync,
-  output = process.stdout,
-} = {}) {
-  const hostId = `${host}-${architecture}`;
-  const target = releaseCatalog.targets?.find((candidate) =>
-    releaseTargets[candidate.id]?.localOnly === true &&
-    candidate.packageBuildSupported === true &&
-    candidate.releaseSupported === true && candidate.buildHost === hostId);
-  const adapter = target ? localDeliveryAdapters[target.platform] : null;
-  if (!target || !adapter) fail("local client delivery target is unsupported on this host");
-  const stages = [
-    Object.freeze({
-      id: "build",
-      argv: Object.freeze(["npm", "run", "client:build", "--", "--platform", target.platform]),
-    }),
-    Object.freeze({ id: "install-and-launch", argv: adapter.install }),
-  ];
-  for (const stage of stages) {
-    const [command, ...args] = stage.argv;
-    const result = spawnImpl(command, args, {
-      cwd: repoRoot,
-      env: process.env,
-      shell: false,
-      stdio: "inherit",
-    });
-    if (result.error || result.status !== 0) {
-      output.write(`${JSON.stringify({
-        ok: false,
-        schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
-        target: "delivery",
-        stage: stage.id,
-        reason: `delivery_${stage.id.replaceAll("-", "_")}_failed`,
-      })}\n`);
-      return 1;
-    }
-  }
-  output.write(`${JSON.stringify({
-    ok: true,
-    schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
-    target: "delivery",
-    deliveryTargetId: target.id,
-    platform: target.platform,
-    built: true,
-    installed: true,
-    launchRequested: true,
-    uiInspected: false,
-    published: false,
-  })}\n`);
-  return 0;
-}
-
 export function withExecutionPrerequisites(selected, catalog) {
   const requiresFlutterDependencies = selected.some((module) =>
     ["flutter", "gradle"].includes(module.regression.toolchain));
@@ -853,7 +789,15 @@ export function selectDirectModules({ moduleIds = [], host, catalog }) {
     return withExecutionPrerequisites(selectModulesById(moduleIds, catalog), catalog);
   }
   return catalog.filter((module) =>
-    (module.regression.runnableHosts || ["darwin", "linux", "win32"]).includes(host));
+    (module.regression.runnableHosts || ["darwin", "linux", "win32"]).includes(host) &&
+    (module.regression.targetEvidenceHosts || []).length === 0);
+}
+
+export function selectLocalHostModules({ host, catalog }) {
+  return withExecutionPrerequisites(catalog.filter((module) =>
+    (module.regression.runnableHosts || ["darwin", "linux", "win32"]).includes(host) &&
+    ((module.regression.targetEvidenceHosts || []).length === 0 ||
+      module.regression.targetEvidenceHosts.includes(host))), catalog);
 }
 
 export function createTargetEvidenceReceipt({ revisions, selected, result }) {
@@ -894,7 +838,7 @@ export async function verifyClientGate(args, {
     : catalog;
   if (revisions.execution === "local") {
     const verification = await verifyLocalClientGate({
-      revisions, paths, plan, catalog, executor, output, reportPath,
+      revisions, plan, catalog, executor, output, reportPath,
     });
     if (verification !== 0 || revisions.target !== "delivery") return verification;
     return runLocalClientDelivery({ output });
@@ -986,192 +930,8 @@ function labelResultHost(result, host) {
   return Object.freeze({ ...result, id: `host.${host}.${result.id}` });
 }
 
-export function combineLocalRegressionResults(linuxResults, hostResults, host) {
-  const retainedLinux = linuxResults.filter((result) => {
-    const members = resultMembers(result);
-    return !(members.length === 1 && members[0] === "regression.repository-local-info-hygiene");
-  });
-  return [
-    ...retainedLinux.map((result) => labelResultHost(result, "linux")),
-    ...hostResults.map((result) => labelResultHost(result, host)),
-  ];
-}
-
-function blockedTargetResult(module, host) {
-  return Object.freeze({
-    id: `target-evidence.${host}.${module.id}`,
-    stage: module.regression.stage,
-    lane: module.regression.lane,
-    toolchain: module.regression.toolchain,
-    status: "blocked",
-    reason: "target_host_unavailable",
-    durationMs: 0,
-    members: Object.freeze([module.id]),
-    metrics: null,
-  });
-}
-
-export function targetReceiptResults(receipt, modules, host, { head, processStatus } = {}) {
-  const expected = modules.map((module) => module.id).sort();
-  const actual = Array.isArray(receipt?.stepIds) ? [...receipt.stepIds].sort() : [];
-  const bound = receipt?.schemaVersion === CLIENT_GATE_SCHEMA_VERSION &&
-    receipt?.execution === "target" && receipt?.host === host &&
-    receipt?.head === head && JSON.stringify(actual) === JSON.stringify(expected);
-  if (bound && Array.isArray(receipt?.report?.results) && receipt.report.results.length > 0) {
-    const results = receipt.report.results.map((result) => labelResultHost(result, host));
-    const covered = new Set(results.flatMap(resultMembers));
-    for (const module of modules) {
-      if (!covered.has(module.id)) {
-        results.push(Object.freeze({
-          ...blockedTargetResult(module, host),
-          reason: "target_result_missing",
-        }));
-      }
-    }
-    if ((processStatus !== 0 || receipt.ok !== true) &&
-        results.every((result) => result.status === "passed")) {
-      results.push(Object.freeze({
-        id: `target-runner.${host}`,
-        stage: "foundation",
-        lane: "foundation",
-        toolchain: "node",
-        status: "failed",
-        reason: "target_runner_failed",
-        durationMs: 0,
-        members: Object.freeze([]),
-        metrics: null,
-      }));
-    }
-    return results;
-  }
-  const reason = bound
-    ? (typeof receipt?.reason === "string" ? receipt.reason : "target_result_missing")
-    : (receipt ? "target_receipt_binding_invalid" : "target_host_unavailable");
-  return modules.map((module) => Object.freeze({
-    ...blockedTargetResult(module, host),
-    reason,
-  }));
-}
-
-function readTargetRunnerReceipt(stdout) {
-  for (const line of String(stdout || "").trim().split(/\r?\n/u).reverse()) {
-    try {
-      const receipt = JSON.parse(line);
-      if (receipt?.schemaVersion === CLIENT_GATE_SCHEMA_VERSION &&
-          receipt?.execution === "target") return receipt;
-    } catch {}
-  }
-  return null;
-}
-
-function spawnClientGateProcess(command, args, { capture = false, output } = {}) {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, {
-      cwd: repoRoot,
-      env: process.env,
-      shell: false,
-      stdio: capture ? ["ignore", "pipe", "ignore"] : "inherit",
-    });
-    let stdout = "";
-    if (capture) {
-      child.stdout.setEncoding("utf8");
-      child.stdout.on("data", (chunk) => {
-        stdout += chunk;
-        output?.write(chunk);
-      });
-    }
-    child.once("error", (error) => resolve({ status: null, error, stdout }));
-    child.once("close", (status) => resolve({ status, error: null, stdout }));
-  });
-}
-
-async function runWindowsTargetEvidence({ revisions, modules, output }) {
-  if (modules.length === 0) return [];
-  const base = run("git", ["rev-parse", revisions.base], {
-    capture: true,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    errorMessage: "unable to resolve Windows target base revision",
-  }).trim().toLowerCase();
-  const head = run("git", ["rev-parse", revisions.head], {
-    capture: true,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    errorMessage: "unable to resolve Windows target head revision",
-  }).trim().toLowerCase();
-  const args = [
-    "tools/scripts/client-windows-target-runner.mjs",
-    "run",
-    "--base", base,
-    "--head", head,
-    "--target", revisions.target === "release" ? "release" : "pr",
-    ...modules.flatMap((module) => ["--module", module.id]),
-  ];
-  const execution = await spawnClientGateProcess(process.execPath, args, { capture: true, output });
-  return targetReceiptResults(readTargetRunnerReceipt(execution.stdout), modules, "win32", {
-    head,
-    processStatus: execution.status,
-  });
-}
-
-export function reusableLinuxResults(previousReport, {
-  currentHead,
-  changedPaths: evidenceChangedPaths,
-  catalog,
-  validEvidenceHeads = new Set([previousReport?.candidateHead]),
-}) {
-  if (previousReport?.schemaVersion !== "licoup.client-regression-report.v1" ||
-      previousReport?.complete !== true ||
-      !/^[a-f0-9]{40}$/u.test(previousReport?.candidateHead || "") ||
-      !/^sha256:[a-f0-9]{64}$/u.test(previousReport?.sourceStateDigest || "") ||
-      !Array.isArray(previousReport.results)) return [];
-  if (evidenceChangedPaths.some((candidate) =>
-    candidate === "tools/scripts/client-gate.mjs" ||
-    candidate.startsWith("tools/scripts/client-local-linux-runner/") ||
-    candidate === "tools/scripts/client-local-linux-runner.mjs" ||
-    candidate === "tools/regression/client-module-execution.mjs" ||
-    candidate === "tools/regression/client-regression-batching.mjs" ||
-    candidate === "tools/regression/client-regression-metadata.mjs" ||
-    candidate.startsWith("tools/regression/client-module-catalog/"))) return [];
-  const affected = new Set(selectModulesForChangedPaths(evidenceChangedPaths, catalog)
-    .map((module) => module.id));
-  const known = new Set(catalog
-    .filter((module) => (module.regression.runnableHosts || ["darwin", "linux", "win32"])
-      .includes("linux"))
-    .map((module) => module.id));
-  const reused = [];
-  for (const result of previousReport.results) {
-    if (result?.status !== "passed" ||
-        !/^(?:reused\.)*host\.linux\./u.test(String(result.id || "")) ||
-        !/^[a-f0-9]{40}$/u.test(result.evidenceHead || "") ||
-        !validEvidenceHeads.has(result.evidenceHead) ||
-        !Array.isArray(result.members)) continue;
-    const members = result.members.filter((id) => known.has(id) && !affected.has(id));
-    if (members.length === 0) continue;
-    reused.push(Object.freeze({
-      ...result,
-      id: result.id.startsWith("reused.") ? result.id : `reused.${result.id}`,
-      members: Object.freeze(members),
-      evidenceHead: result.evidenceHead,
-    }));
-  }
-  return Object.freeze(reused);
-}
-
-function readLinuxRunnerReceipt(stdout) {
-  for (const line of String(stdout || "").trim().split(/\r?\n/u).reverse()) {
-    try {
-      const receipt = JSON.parse(line);
-      if (receipt?.schemaVersion === "licoup.client-local-linux-ci.v1" &&
-          receipt?.profile === "engineering") return receipt;
-    } catch {}
-  }
-  return null;
-}
-
 async function verifyLocalClientGate({
   revisions,
-  paths,
   plan,
   catalog,
   executor,
@@ -1179,175 +939,54 @@ async function verifyLocalClientGate({
   reportPath,
 }) {
   const host = localHost();
-  const affected = selectModulesForChangedPaths(paths, catalog);
-  const linuxIds = new Set(catalog
-    .filter((module) => (module.regression.runnableHosts || ["darwin", "linux", "win32"])
-      .includes("linux"))
-    .map((module) => module.id));
-  const supplemental = withExecutionPrerequisites(catalog.filter((module) => {
-    const runnable = module.regression.runnableHosts || ["darwin", "linux", "win32"];
-    const targets = module.regression.targetEvidenceHosts || [];
-    return module.id === "regression.repository-local-info-hygiene" ||
-      (runnable.includes(host) && !linuxIds.has(module.id)) ||
-      (affected.includes(module) && targets.includes(host));
-  }), catalog);
-  const hostResult = await executor(supplemental, {
+  const modules = selectLocalHostModules({ host, catalog });
+  const result = await executor(modules, {
     repoRoot,
     catalog,
     output,
     reportPath: null,
-    runKind: "focused",
+    runKind: "complete",
     compatibilityRunner: async () => [],
   });
-  const missingTargets = [];
-  const windowsTargets = [];
-  for (const module of affected) {
-    for (const targetHost of module.regression.targetEvidenceHosts || []) {
-      if (targetHost !== "linux" && targetHost !== host) {
-        if (targetHost === "win32") windowsTargets.push(module);
-        else missingTargets.push(blockedTargetResult(module, targetHost));
-      }
-    }
-  }
-  const uniqueWindowsTargets = withExecutionPrerequisites([
-    ...new Map(windowsTargets.map((module) => [module.id, module])).values(),
-  ], catalog);
   const currentHead = run("git", ["rev-parse", revisions.head], {
     capture: true,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     errorMessage: "unable to resolve local verification head",
   }).trim().toLowerCase();
-  const clean = run("git", ["status", "--porcelain=v1", "--untracked-files=all"], {
-    capture: true,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    errorMessage: "unable to inspect local verification worktree",
-  }).length === 0;
-  let previousReport = null;
-  if (clean && existsSync(reportPath)) {
-    try {
-      previousReport = JSON.parse(readFileSync(reportPath, "utf8"));
-    } catch {}
-  }
-  let reusedResults = [];
-  if (previousReport && /^[a-f0-9]{40}$/u.test(previousReport.candidateHead || "")) {
-    const ancestor = previousReport.candidateHead === currentHead || spawnSync(
-      "git", ["merge-base", "--is-ancestor", previousReport.candidateHead, currentHead],
-      { cwd: repoRoot, stdio: "ignore", shell: false },
-    ).status === 0;
-    if (ancestor) {
-      const validEvidenceHeads = new Set((previousReport.results || [])
-        .map((result) => result.evidenceHead)
-        .filter((head) => /^[a-f0-9]{40}$/u.test(head || ""))
-        .filter((head) => head === previousReport.candidateHead || spawnSync(
-          "git", ["merge-base", "--is-ancestor", head, previousReport.candidateHead],
-          { cwd: repoRoot, stdio: "ignore", shell: false },
-        ).status === 0));
-      reusedResults = reusableLinuxResults(previousReport, {
-        currentHead,
-        changedPaths: changedPaths({
-          base: previousReport.candidateHead,
-          head: currentHead,
-          target: "pr",
-        }),
-        catalog,
-        validEvidenceHeads,
-      });
-    }
-  }
-  const reusedIds = new Set(reusedResults.flatMap(resultMembers));
-  const linuxModules = withExecutionPrerequisites(
-    catalog.filter((module) => linuxIds.has(module.id) && !reusedIds.has(module.id)),
-    catalog,
-  );
-  const focusedLinuxRetry = reusedResults.length > 0;
-  rmSync(reportPath, { force: true });
-  const [runner, targetResults] = await Promise.all([
-    linuxModules.length === 0
-      ? Promise.resolve({ status: 0, error: null, stdout: "" })
-      : spawnClientGateProcess(process.execPath, [
-        "tools/scripts/client-local-linux-runner.mjs",
-        "run",
-        "--profile",
-        "engineering",
-        ...(focusedLinuxRetry
-          ? linuxModules.flatMap((module) => ["--module", module.id])
-          : []),
-      ], { capture: true, output }),
-    runWindowsTargetEvidence({ revisions, modules: uniqueWindowsTargets, output }),
-  ]);
-  let linuxReport = null;
-  if (existsSync(reportPath)) {
-    try {
-      linuxReport = JSON.parse(readFileSync(reportPath, "utf8"));
-    } catch {
-      linuxReport = null;
-    }
-  }
-  const combinedResults = combineLocalRegressionResults(
-    linuxReport?.results || [],
-    hostResult.report?.results || [],
-    host,
-  );
-  const results = [
-    ...reusedResults,
-    ...combinedResults,
-    ...targetResults,
-    ...missingTargets,
-  ];
-  const coveredIds = new Set(results.flatMap(resultMembers));
-  const applicableIds = new Set([
-    ...linuxIds,
-    ...supplemental.map((module) => module.id),
-    ...affected.flatMap((module) =>
-      (module.regression.targetEvidenceHosts || []).length > 0 ? [module.id] : []),
-  ]);
-  for (const module of catalog.filter((entry) => applicableIds.has(entry.id))) {
-    if (!coveredIds.has(module.id)) {
-      results.push(Object.freeze({
-        ...blockedTargetResult(module, host),
-        id: `execution-result.${module.id}`,
-        reason: "execution_result_missing",
-      }));
-    }
-  }
-  const startedAt = linuxReport?.startedAt || hostResult.report?.startedAt || new Date().toISOString();
+  const startedAt = result.report?.startedAt || new Date().toISOString();
   const completedAt = new Date().toISOString();
-  const evidencedResults = results.map((result) => result.evidenceHead
-    ? result
-    : Object.freeze({ ...result, evidenceHead: currentHead }));
+  const results = (result.report?.results || []).map((entry) => {
+    const labelled = labelResultHost(entry, host);
+    return labelled.evidenceHead
+      ? labelled
+      : Object.freeze({ ...labelled, evidenceHead: currentHead });
+  });
   const report = createClientRegressionReport({
     runKind: "complete",
     startedAt,
     completedAt,
     durationMs: Math.max(0, Date.parse(completedAt) - Date.parse(startedAt)),
-    results: evidencedResults,
-    concurrency: linuxReport?.concurrency || hostResult.report?.concurrency || {},
+    results,
+    concurrency: result.report?.concurrency || {},
     compatibility: [],
     candidateHead: currentHead,
-    sourceStateDigest: readLinuxRunnerReceipt(runner.stdout)?.sourceStateDigest ||
-      (reusedResults.length > 0 && linuxModules.length === 0
-        ? previousReport?.sourceStateDigest || null
-        : null),
+    sourceStateDigest: result.report?.sourceStateDigest ?? null,
   });
-  await writeClientRegressionReport(report, reportPath);
-  const runnerPassed = !runner.error && runner.status === 0 &&
-    (linuxModules.length === 0 || linuxReport?.results?.every((result) =>
-      result.status === "passed"));
-  const mergeReady = runnerPassed && hostResult.exitCode === 0 && reportIsMergeReady(report);
+  if (reportPath) await writeClientRegressionReport(report, reportPath);
+  const mergeReady = result.exitCode === 0 && reportIsMergeReady(report);
   output.write(`${JSON.stringify({
     ok: mergeReady,
     schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
     target: revisions.target,
     execution: revisions.execution,
+    scope: "host-complete-profile",
     host,
     changedCount: plan.changedCount,
     lanes: plan.lanes,
-    selectedStepCount: applicableIds.size,
+    selectedStepCount: modules.length,
     complete: report.complete,
-    missingTargetEvidenceCount: results.filter((result) =>
-      result.status === "blocked" && result.id.startsWith("target-evidence.")).length,
+    mergeReady,
   })}\n`);
   return mergeReady ? 0 : 1;
 }

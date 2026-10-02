@@ -100,20 +100,6 @@ test("complete catalog delegates valid Cargo concurrency to the shared runner bu
 
 test("merge-readiness target runners execute their own registered self-tests", () => {
   const expected = new Map([
-    ["regression.local-linux-runner-self-test", {
-      args: ["tools/scripts/client-local-linux-runner.mjs", "self-test"],
-      inputs: [
-        ".github/workflows/client-ci.yml",
-        "apps/desktop/docker/ubuntu-client.Dockerfile",
-        "tools/scripts/client-android-sdk-bootstrap.mjs",
-        "tools/scripts/client-local-linux-runner.mjs",
-        "tools/scripts/client-local-linux-runner/**",
-      ],
-    }],
-    ["regression.windows-target-runner-self-test", {
-      args: ["tools/scripts/client-windows-target-runner.mjs", "self-test"],
-      inputs: ["tools/scripts/client-windows-target-runner.mjs"],
-    }],
     ["regression.android-sdk-bootstrap-self-test", {
       args: ["tools/scripts/client-android-sdk-bootstrap.mjs", "self-test"],
       inputs: [
@@ -583,7 +569,7 @@ test("tracked contribution guides require focused repair and one complete gate",
   assert.match(docs[0], /run the smallest registered check/u);
   assert.match(docs[0], /client:gate:step -- <module-id>/u);
   assert.match(docs[0], /client:gate:verify -- --base origin\/nightly/u);
-  assert.match(docs[0], /After the engineering result passes, the delivery target uses the existing owners\s+to build, install, and open the local client/iu);
+  assert.match(docs[0], /After the host profile\s+passes, the delivery target uses the existing owners\s+to build, install, and open\s+the local client/iu);
   assert.match(docs[0], /It never publishes or activates real data/iu);
   assert.match(docs[1], /开发过程中运行负责本次改动的最小已注册检查/u);
   assert.match(docs[1], /client:gate:step -- <module-id>/u);

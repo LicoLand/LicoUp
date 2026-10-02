@@ -46,7 +46,7 @@ export async function checkProductContractsAndPortableData(context, { modules })
   assert(
     normalizedContributingSource.includes("is the sole verified delivery entry") &&
       normalizedContributingSource.includes("Independent checks must settle and report their failures together") &&
-      normalizedContributingSource.includes("run the complete applicable local workflow once"),
+      normalizedContributingSource.includes("run the complete host profile in the local workflow once"),
     "CONTRIBUTING.md must preserve focused repair and complete local verification"
   );
   const portableDirs = modules["portable-data"]?.portableDirectories || [];

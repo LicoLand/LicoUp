@@ -1,9 +1,21 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import {
+  acquireTestArtifactLease,
+  NATIVE_CARGO_TEST_TARGET,
+} from "../../../tools/scripts/lib/test-artifact-lifecycle.mjs";
 import {
   clientBuildInvocation,
   parseClientBuildArgs,
@@ -76,67 +88,35 @@ test("desktop and Android builds route through their existing package owners", (
   );
 });
 
-test("compiler cache cleanup runs after successful and failed builds", () => {
-  for (const status of [0, 1]) {
-    const events = [];
+test("builds retain the registered compiler cache across success and failure", (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "licoup-client-build-cache-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const lease = acquireTestArtifactLease({
+    repoRoot: root,
+    scope: "client-build-contract",
+    targetPath: NATIVE_CARGO_TEST_TARGET,
+  });
+  const cacheMarker = path.join(lease.targetPath, "debug", "deps", "cache-marker");
+  mkdirSync(path.dirname(cacheMarker), { recursive: true });
+  writeFileSync(cacheMarker, "reusable compiler output");
+  assert.deepEqual(lease.release(), { state: "reclaimable" });
+
+  for (const status of [0, 0, 1]) {
     const result = runClientBuild(
       parseClientBuildArgs(["--platform", "macos"]),
       {
-        root: repoRoot,
-        spawnBuild: () => {
-          events.push("build");
-          return { status };
-        },
-        pruneArtifacts: () => {
-          events.push("cleanup");
-          return { active: 0, failed: 0, removed: 2 };
-        },
+        root,
+        spawnBuild: () => ({ status }),
       },
     );
-    assert.deepEqual(events, ["build", "cleanup"]);
-    assert.equal(result.buildSucceeded, status === 0);
-    assert.equal(result.cleanupSucceeded, true);
-    assert.equal(result.ok, status === 0);
-    assert.equal(result.removedCompilerCaches, 2);
+    assert.deepEqual(result, {
+      ok: status === 0,
+      platform: "macos",
+      mode: "release",
+      buildSucceeded: status === 0,
+      privatePathsIncluded: false,
+    });
+    assert.equal(existsSync(cacheMarker), true);
   }
-});
-
-test("a cleanup failure fails an otherwise successful build closure", () => {
-  let cleanupAttempts = 0;
-  const result = runClientBuild(
-    parseClientBuildArgs(["--platform", "windows"]),
-    {
-      root: repoRoot,
-      spawnBuild: () => ({ status: 0 }),
-      pruneArtifacts: () => {
-        cleanupAttempts += 1;
-        return { active: 0, failed: 1, removed: 0 };
-      },
-    },
-  );
-  assert.equal(result.buildSucceeded, true);
-  assert.equal(result.cleanupSucceeded, false);
-  assert.equal(result.ok, false);
-  assert.equal(cleanupAttempts, 2);
-});
-
-test("one bounded retry closes a transient compiler cleanup failure", () => {
-  let cleanupAttempts = 0;
-  const result = runClientBuild(
-    parseClientBuildArgs(["--platform", "macos"]),
-    {
-      root: repoRoot,
-      spawnBuild: () => ({ status: 0 }),
-      pruneArtifacts: () => {
-        cleanupAttempts += 1;
-        return cleanupAttempts === 1
-          ? { active: 0, failed: 1, removed: 2 }
-          : { active: 0, failed: 0, removed: 1 };
-      },
-    },
-  );
-  assert.equal(result.ok, true);
-  assert.equal(result.cleanupSucceeded, true);
-  assert.equal(result.removedCompilerCaches, 3);
-  assert.equal(cleanupAttempts, 2);
 });

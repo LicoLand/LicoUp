@@ -242,11 +242,15 @@ npm run client:gate:verify -- --base origin/nightly --head HEAD --target deliver
 ```
 
 This is the canonical local delivery entry for every development change, with or
-without a plan or milestone. It must execute all applicable required checks, then
-use the existing build and installation owners to build, install and open the
-client. A failed stage exits nonzero and blocks dependent stages. Local checks
-cover required CI behavior that can run locally; unavailable required target
-checks remain explicit. The entry does not publish a release. Do not substitute
+without a plan or milestone, and the same command on every platform device. It
+executes the complete host profile: every generic check the host supports plus
+every check specific to the host platform, and never another platform's checks.
+Once the host profile passes, it uses the existing build and installation owners
+to build, install and open the local client; it never waits for, spawns or
+requires another platform's result. A failed stage exits nonzero and blocks
+dependent stages. A generic check the host cannot execute is covered by the cloud
+engineering job and remains explicit locally; the host profile still executes
+every check the host owns. The entry does not publish a release. Do not substitute
 manual command chains, partial checks or a successful launch call for its result.
 
 If the entry fails or the authorized observation finds incorrect behavior, first
@@ -272,30 +276,29 @@ focused development, the final local command, and Client CI. A list or dry run
 is inventory evidence only; it does not execute a check.
 
 Platform selection comes from the maintained regression catalog and platform
-entries, not from the developer's current host. Run a shared module through its
-registered command. Run a target adapter on the actual target system named by
-its platform entry. When a change affects several target adapters, every one is
-required before the final workflow can pass; a missing runner is recorded as
-blocked or unverified. Source scanning is diagnostic evidence and cannot replace
-execution on an affected target.
+entries. A generic check carries no platform-specific target evidence and runs on
+any platform device that supports it; a platform-specific check runs only on its
+declared target system. One machine never runs another platform's checks. Run a
+shared module through its registered command. A missing check or target result is
+recorded as blocked or unverified and cannot count as passed. Source scanning is
+diagnostic evidence and cannot replace execution on an affected target.
 
 The registry separates portable contracts from platform adapters within each
 functional module. `runnableHosts` declares where a check can execute;
 `targetEvidenceHosts` declares the actual target systems required when its inputs
 change. Portable tests construct paths and fixtures through their production
-owners and run on every declared applicable system. Do not narrow a portable
-check to Unix merely because its fixture assumes Unix paths. Repair that fixture
-and retain the cross-platform contract. A parser fixture may deliberately contain
-a foreign-platform string; it must not treat that string as a host filesystem resource.
-Platform-specific checks execute only on
-their declared system; an unsupported host, unrun check or missing target result
-cannot count as passed. The focused and complete entries consume these same
-classifications, so contributors do not maintain a separate platform command list.
-Platform dispatch and batch completeness must use the same applicable module set.
-Broad batches still exclude foreign-platform owners; overlapping filters that
-cannot be safely subtracted retain their exact commands. Keep a representative
-aggregation regression so adding one platform owner cannot turn a shared target
-into one invocation per module.
+owners and are declared for every system they support; each device runs the ones
+its host supports. Do not narrow a portable check to Unix merely because its
+fixture assumes Unix paths. Repair that fixture and retain the cross-platform
+contract. A parser fixture may deliberately contain a foreign-platform string; it
+must not treat that string as a host filesystem resource. Platform-specific checks
+execute only on their declared system; an unsupported host, unrun check or missing
+target result cannot count as passed. The focused and complete entries consume
+these same classifications, so contributors do not maintain a separate platform
+command list. Broad batches exclude foreign-platform owners; overlapping filters
+that cannot be safely subtracted retain their exact commands. Keep a
+representative aggregation regression so adding one platform owner cannot turn a
+shared target into one invocation per module.
 
 List the maintained regression modules and preview change-based selection:
 
@@ -328,8 +331,9 @@ npm run client:regression:environment -- --agent codex
 ```
 
 Frontend and backend work run concurrently after the shared foundation.
-Locally eligible platform and Agent targets run concurrently after the core
-stages settle. Missing optional hosts, SDKs, devices, or Agent executables are
+Locally eligible Agent targets run concurrently after the core stages settle.
+Platform targets run only on their own platform device or runner, never on a
+foreign platform. Missing optional hosts, SDKs, devices, or Agent executables are
 recorded as `unverified`; they do not become false passes or fail the core.
 Agent static validation runs one shared inventory/schema contract followed by
 independent per-Agent contracts, so one broken adapter blocks only its own live
@@ -363,13 +367,15 @@ After development and every focused repair, run the verified delivery entry:
 npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery
 ```
 
-The command runs canonical host privacy, the complete applicable catalog in the
-isolated Linux CI environment, and affected target modules on their actual host.
-Only after those checks pass does it use the existing target catalog, build owner,
-and installer to build, install, and open the local client. A failed stage exits
-nonzero and blocks its dependents. The entry does not publish, sign, notarize,
-migrate real data, inspect the interface, or run live Agent tasks. An unavailable
-required target is `blocked`; a missing or incomplete result is never ready.
+The command runs canonical host privacy and the complete host profile: every
+generic check the host supports plus every check specific to the host platform. It
+never runs another platform's checks. Only after the host profile passes does it
+use the existing target catalog, build owner, and installer to build, install, and
+open the local client; it never waits for or requires another platform's result. A
+failed stage exits nonzero and blocks its dependents. The entry does not publish,
+sign, notarize, migrate real data, inspect the interface, or run live Agent tasks.
+A generic check the host cannot execute is covered by the cloud engineering job; a
+missing or incomplete result is never ready.
 
 If the entry or an authorized observation fails, determine whether a declared
 check did not run or the product is wrong. Repair a real workflow omission through

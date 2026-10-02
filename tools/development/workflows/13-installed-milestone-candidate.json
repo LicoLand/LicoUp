@@ -19,8 +19,8 @@
   },
   "steps": [
     {
-      "en": "Run npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery on the integrated candidate; the canonical entry executes applicable checks, then build, install and launch through their existing owners.",
-      "zh": "在集成候选执行 npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery；统一入口实际执行适用检查，再调用已有属主构建、安装和启动。"
+      "en": "Run npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery on the integrated candidate; the canonical entry executes the complete host profile (generic checks plus the host platform's checks), then builds, installs and launches through their existing owners.",
+      "zh": "在集成候选执行 npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery；统一入口先执行完整宿主档案（通用检查加宿主平台检查），再调用已有属主构建、安装和启动。"
     },
     {
       "en": "Observe the requested result only within explicit acceptance authority; launch alone does not prove usability. Stop after successful delivery.",

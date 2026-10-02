@@ -107,20 +107,27 @@ delivery is recorded; without such an assignment, stop at the engineering handof
 ## Requirements and routes
 
 After development, run `npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery`.
-Follow the [verified delivery loop](docs/RUNBOOK.md#verified-delivery-loop) for every
-change, with or without a plan or milestone. Only a failed entry or incorrect
-observed result triggers workflow diagnosis and repair of the responsible owner.
-Reuse valid evidence, return to the same entry, and stop after successful delivery.
+This canonical entry is the same command on every platform device, with or without
+a plan or milestone. It executes the complete host profile, then builds, installs
+and opens the local client through the existing owners. Follow the
+[verified delivery loop](docs/RUNBOOK.md#verified-delivery-loop). Only a failed
+entry or incorrect observed result triggers workflow diagnosis and repair of the
+responsible owner. Reuse valid evidence, return to the same entry, and stop after
+successful delivery.
 
 Separate portable contracts and platform-specific adapters in the existing module
-registry. Use the declared host and target scopes for focused and complete checks;
-repair host-dependent fixtures instead of reducing a portable contract to one OS.
-An unsupported host or missing required target result is not a pass. Follow the
+registry. The catalog classifies every check: generic checks carry no
+platform-specific target evidence and run on any platform device that supports
+them; platform-specific checks run only on that platform's own device or runner.
+One machine never runs another platform's checks. The local entry runs the
+complete host profile: every generic check the host supports plus every check
+specific to the host platform. A generic check the host cannot execute is covered
+by the cloud engineering job; an unsupported host or missing required target
+result is still not a pass. Merge readiness is the cloud aggregate of
+per-platform evidence, separate from local delivery success. Follow the
 [verification scope](docs/RUNBOOK.md#run-focused-verification).
-Platform dispatch and batch completeness use the same applicable module set;
-batch execution still excludes foreign-platform owners. Retain a representative
-aggregation regression so adding one platform owner cannot split a shared target
-into one invocation per module.
+Retain a representative aggregation regression so adding one platform owner
+cannot split a shared target into one invocation per module.
 
 Complete every implementation obligation in the approved delivery scope, including
 production wiring and deterministic engineering verification, before handing over

@@ -9,11 +9,15 @@ checks before final delivery. After all writers have stopped, run:
 npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery
 ```
 
-This is the canonical closure entry for every development change. It executes all
-applicable registered checks before the existing owners build, install, and open the
-client. A failed, blocked, missing, or incomplete result exits nonzero and prevents
-dependent delivery stages. The entry does not publish, sign, notarize, activate real
-data, inspect the interface, or perform live Agent acceptance.
+This is the canonical closure entry for every development change, and the same
+command on every platform device. It executes the complete host profile: every
+generic check the host supports plus every check specific to the host platform. It
+never runs another platform's checks. Once the host profile passes, the existing
+owners build, install, and open the local client. A failed, blocked, missing, or
+incomplete result exits nonzero and prevents dependent delivery stages. A generic
+check the host cannot execute is covered by the cloud engineering job; a device
+never skips its own platform's checks. The entry does not publish, sign, notarize,
+activate real data, inspect the interface, or perform live Agent acceptance.
 
 If the entry or an authorized observation fails, first establish whether required
 coverage was missing or the product was wrong. Repair an actual workflow omission

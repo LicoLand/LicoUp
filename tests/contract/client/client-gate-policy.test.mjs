@@ -20,20 +20,18 @@ import {
 import {
   changedPaths,
   clientGateTaskEvent,
-  combineLocalRegressionResults,
   createTargetEvidenceReceipt,
-  runLocalClientDelivery,
   runLane,
   runClientGateStep,
   selectDirectModules,
+  selectLocalHostModules,
   selectTargetModules,
-  targetReceiptResults,
   targetResultsCoverSelection,
-  reusableLinuxResults,
   validateClientGateTopology,
   verifyClientGate,
   withExecutionPrerequisites,
 } from "../../../tools/scripts/client-gate.mjs";
+import { runLocalClientDelivery } from "../../../tools/scripts/client-macos-deliver.mjs";
 import { CLIENT_MODULE_CATALOG } from "../../../tools/regression/client-module-catalog.mjs";
 
 function selectedOptionalLanes(paths) {
@@ -304,101 +302,48 @@ test("local delivery builds, installs, and launches only after each prior stage 
   assert.equal(calls.length, 1);
 });
 
-test("local aggregation replaces only the exact delegated hygiene result", () => {
-  const linux = [
-    { id: "hygiene", status: "passed", members: ["regression.repository-local-info-hygiene"] },
-    { id: "batch", status: "failed", members: ["module.a", "module.b"] },
-  ];
-  const host = [
-    { id: "host-hygiene", status: "passed", members: ["regression.repository-local-info-hygiene"] },
-    { id: "host-target", status: "passed", members: ["module.a"] },
-  ];
-  assert.deepEqual(combineLocalRegressionResults(linux, host, "darwin"), [
-    { ...linux[1], id: "host.linux.batch" },
-    { ...host[0], id: "host.darwin.host-hygiene" },
-    { ...host[1], id: "host.darwin.host-target" },
-  ]);
+test("local host selection keeps generic modules and only the host's own target owners", () => {
+  for (const host of ["darwin", "linux", "win32"]) {
+    const selected = selectLocalHostModules({ host, catalog: CLIENT_MODULE_CATALOG });
+    const ids = new Set(selected.map((module) => module.id));
+    for (const module of CLIENT_MODULE_CATALOG) {
+      const runnable = module.regression.runnableHosts.includes(host);
+      const targets = module.regression.targetEvidenceHosts;
+      const expected = runnable && (targets.length === 0 || targets.includes(host));
+      assert.equal(ids.has(module.id), expected, `${host}:${module.id}`);
+    }
+  }
 });
 
-test("reuse keeps only passed unchanged Linux members and preserves their evidence head", () => {
-  const previousHead = "a".repeat(40);
-  const currentHead = "b".repeat(40);
-  const changedModule = CLIENT_MODULE_CATALOG.find((module) =>
-    module.id === "release.model-pricing");
-  const unchangedModule = CLIENT_MODULE_CATALOG.find((module) =>
-    module.id === "regression.documentation-governance");
-  assert.ok(changedModule);
-  assert.ok(unchangedModule);
-  const results = reusableLinuxResults({
-    schemaVersion: "licoup.client-regression-report.v1",
-    complete: true,
-    candidateHead: previousHead,
-    sourceStateDigest: `sha256:${"c".repeat(64)}`,
-    results: [{
-      id: "host.linux.batch",
-      status: "passed",
-      members: [changedModule.id, unchangedModule.id],
-      evidenceHead: previousHead,
-    }, {
-      id: "host.linux.failed",
-      status: "failed",
-      members: ["regression.contracts-client"],
-      evidenceHead: previousHead,
-    }, {
-      id: "host.win32.target",
-      status: "passed",
-      members: [unchangedModule.id],
-      evidenceHead: previousHead,
-    }, {
-      id: "host.linux.stale",
-      status: "passed",
-      members: ["regression.contracts-client"],
-      evidenceHead: "d".repeat(40),
-    }],
-  }, {
-    currentHead,
-    changedPaths: [changedModule.inputs[0]],
+test("local host selection excludes every foreign target owner", () => {
+  const foreign = CLIENT_MODULE_CATALOG.filter((module) =>
+    module.regression.targetEvidenceHosts.length > 0 &&
+    !module.regression.targetEvidenceHosts.includes("linux"));
+  assert.equal(foreign.length > 0, true);
+  const linuxIds = new Set(selectLocalHostModules({
+    host: "linux",
     catalog: CLIENT_MODULE_CATALOG,
-  });
-  assert.deepEqual(results.map((result) => result.members), [[unchangedModule.id]]);
-  assert.equal(results[0].evidenceHead, previousHead);
-  const thirdHead = "e".repeat(40);
-  const reusedAgain = reusableLinuxResults({
-    schemaVersion: "licoup.client-regression-report.v1",
-    complete: true,
-    candidateHead: currentHead,
-    sourceStateDigest: `sha256:${"c".repeat(64)}`,
-    results,
-  }, {
-    currentHead: thirdHead,
-    changedPaths: [],
-    catalog: CLIENT_MODULE_CATALOG,
-    validEvidenceHeads: new Set([previousHead]),
-  });
-  assert.deepEqual(reusedAgain.map((result) => result.members), [[unchangedModule.id]]);
-  assert.equal(reusedAgain[0].id, "reused.host.linux.batch");
-  assert.equal(reusedAgain[0].evidenceHead, previousHead);
-  assert.deepEqual(reusableLinuxResults({ complete: true, results: [] }, {
-    currentHead,
-    changedPaths: [],
-    catalog: CLIENT_MODULE_CATALOG,
-  }), []);
-  assert.deepEqual(reusableLinuxResults({
-    schemaVersion: "licoup.client-regression-report.v1",
-    complete: true,
-    candidateHead: previousHead,
-    sourceStateDigest: `sha256:${"c".repeat(64)}`,
-    results: [{
-      id: "host.linux.batch",
-      status: "passed",
-      members: [unchangedModule.id],
-      evidenceHead: previousHead,
-    }],
-  }, {
-    currentHead,
-    changedPaths: ["tools/regression/client-module-execution.mjs"],
-    catalog: CLIENT_MODULE_CATALOG,
-  }), []);
+  }).map((module) => module.id));
+  for (const module of foreign) assert.equal(linuxIds.has(module.id), false, module.id);
+  const hostTargets = CLIENT_MODULE_CATALOG.filter((module) =>
+    module.regression.targetEvidenceHosts.includes("linux"));
+  assert.equal(hostTargets.length > 0, true);
+  for (const module of hostTargets) assert.equal(linuxIds.has(module.id), true, module.id);
+});
+
+test("direct selection without a module id keeps only generic host-runnable modules", () => {
+  for (const host of ["darwin", "linux", "win32"]) {
+    const selected = selectDirectModules({ host, catalog: CLIENT_MODULE_CATALOG });
+    for (const module of selected) {
+      assert.equal(module.regression.targetEvidenceHosts.length, 0, module.id);
+      assert.equal(module.regression.runnableHosts.includes(host), true, module.id);
+    }
+    for (const module of CLIENT_MODULE_CATALOG) {
+      if (module.regression.targetEvidenceHosts.length !== 0) {
+        assert.equal(selected.includes(module), false, `${host}:${module.id}`);
+      }
+    }
+  }
 });
 
 test("target evidence requires one passed result for every selected module", () => {
@@ -437,74 +382,6 @@ test("target evidence receipt preserves the existing per-batch report", () => {
   assert.equal(receipt.ok, false);
   assert.equal(receipt.report, report);
   assert.deepEqual(receipt.report.results[0], report.results[0]);
-});
-
-test("local target aggregation uses real batch results and blocks missing receipts", () => {
-  const head = "a".repeat(40);
-  const modules = [
-    { id: "module.a", regression: { stage: "foundation", lane: "foundation", toolchain: "rust" } },
-    { id: "module.b", regression: { stage: "foundation", lane: "foundation", toolchain: "rust" } },
-  ];
-  const reportResult = {
-    id: "rust-target-1",
-    stage: "foundation",
-    lane: "foundation",
-    toolchain: "rust",
-    status: "failed",
-    reason: "command_failed",
-    members: ["module.a"],
-  };
-  const partial = targetReceiptResults({
-    ok: false,
-    schemaVersion: "licomesh.client-gate-policy.v1",
-    execution: "target",
-    host: "win32",
-    head,
-    stepIds: ["module.a", "module.b"],
-    report: { results: [reportResult] },
-  }, modules, "win32", { head, processStatus: 1 });
-  assert.deepEqual(partial[0], { ...reportResult, id: "host.win32.rust-target-1" });
-  assert.equal(partial[1].members[0], "module.b");
-  assert.equal(partial[1].reason, "target_result_missing");
-
-  assert.deepEqual(targetReceiptResults(null, modules.slice(0, 1), "win32", {
-    head,
-    processStatus: null,
-  }).map((result) => ({
-    status: result.status,
-    reason: result.reason,
-    members: result.members,
-  })), [{ status: "blocked", reason: "target_host_unavailable", members: ["module.a"] }]);
-  assert.equal(targetReceiptResults({
-    schemaVersion: "licomesh.client-gate-policy.v1",
-    execution: "target",
-    host: "win32",
-    head,
-    stepIds: ["module.a"],
-    status: "failed",
-  }, modules.slice(0, 1), "win32", { head, processStatus: 1 })[0].reason, "target_result_missing");
-
-  const stale = targetReceiptResults({
-    ok: true,
-    schemaVersion: "licomesh.client-gate-policy.v1",
-    execution: "target",
-    host: "win32",
-    head: "b".repeat(40),
-    stepIds: ["module.a"],
-    report: { results: [{ ...reportResult, status: "passed" }] },
-  }, modules.slice(0, 1), "win32", { head, processStatus: 0 });
-  assert.equal(stale[0].reason, "target_receipt_binding_invalid");
-
-  const exitConflict = targetReceiptResults({
-    ok: true,
-    schemaVersion: "licomesh.client-gate-policy.v1",
-    execution: "target",
-    host: "win32",
-    head,
-    stepIds: ["module.a"],
-    report: { results: [{ ...reportResult, status: "passed" }] },
-  }, modules.slice(0, 1), "win32", { head, processStatus: 1 });
-  assert.equal(exitConflict.at(-1).reason, "target_runner_failed");
 });
 
 test("focused Flutter target execution prepends the registered dependency prerequisite", () => {

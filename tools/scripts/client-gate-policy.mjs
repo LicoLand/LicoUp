@@ -104,6 +104,7 @@ export const CLIENT_RELEASE_TARGETS = Object.freeze({
 export const CLIENT_CI_JOBS = Object.freeze([
   "plan",
   "engineering",
+  "target-linux",
   "target-darwin",
   "target-win32",
   "client-required",
