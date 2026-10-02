@@ -90,6 +90,29 @@ contract is already fully implemented. Any missing registration, stage wiring,
 aggregation, or local/CI parity is an implementation gap and must be reported as
 such; no tool can promise to detect unknown defects exhaustively.
 
+### Cross-platform ownership
+
+Use a portable implementation when the supported targets provide the required
+capability. Shared Rust, Flutter, and Node modules must not derive product
+behavior from the development host or embed an operating-system path, command,
+permission, lifecycle, or storage assumption. Put a real target difference
+behind an explicit platform adapter contract and keep the shared caller in
+terms of that contract.
+
+Scope platform work to the targets it changes. A routine fix for one platform
+must not modify or revalidate unrelated adapters. A refactor that changes shared
+behavior or several adapters must register every affected target and run the
+required engineering checks on each actual target system. If an affected target
+cannot run, its required result is `blocked` or `unverified` and the change is
+not merge-ready. Live acceptance remains separate where deterministic
+engineering checks cannot establish the behavior.
+
+The verification registry owns each module's platform applicability and the
+workflow owns the corresponding runner. Selection, focused execution, the final
+local workflow, and CI must consume those same owners. Static source inspection
+may find a suspicious host assumption, but keyword or path scanning alone does
+not prove that shared code is portable or that a platform adapter works.
+
 **One crate, one version.** The dependency graph must not carry two versions of
 the same crate. Duplicates bloat the binary, split types across versions, and
 hide unmaintained generations behind the pin of another consumer. When a new

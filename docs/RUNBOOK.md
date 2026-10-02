@@ -108,6 +108,14 @@ and report missing registration, stage wiring, aggregation, or local/CI parity
 as an implementation gap. Do not treat the list or a dry run as execution
 evidence.
 
+Platform selection comes from the maintained regression catalog and platform
+entries, not from the developer's current host. Run a shared module through its
+registered command. Run a target adapter on the actual target system named by
+its platform entry. When a change affects several target adapters, every one is
+required before the final workflow can pass; a missing runner is recorded as
+blocked or unverified. Source scanning is diagnostic evidence and cannot replace
+execution on an affected target.
+
 List the maintained regression modules and preview change-based selection:
 
 ```bash
