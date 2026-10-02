@@ -131,6 +131,31 @@ function mount(source, target, readOnly = false) {
   return `type=bind,src=${source},dst=${target}${readOnly ? ",readonly" : ""}`;
 }
 
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", `'"'"'`)}'`;
+}
+
+const defaultAndroidSdkManager = path.posix.join(
+  "/", "opt", "android-command-line-tools", "latest", "bin", "sdkmanager",
+);
+
+export function androidBootstrapScript(
+  androidPackages,
+  sdkmanager = defaultAndroidSdkManager,
+) {
+  const packages = androidPackages.map((value) => {
+    if (!/^(?:platforms|ndk);[a-zA-Z0-9._-]+$/u.test(value)) {
+      throw new Error("client_ci_android_package_invalid");
+    }
+    return shellQuote(value);
+  }).join(" ");
+  const executable = shellQuote(sdkmanager);
+  return "set +o pipefail; yes | " + executable +
+    " --sdk_root=/cache/android-sdk --licenses >/dev/null; license_status=$?; " +
+    "set -o pipefail; [ \"$license_status\" -eq 0 ]; " +
+    `${executable} --sdk_root=/cache/android-sdk ${packages} < /dev/null`;
+}
+
 export function runnerDockerArgs({
   image,
   lane,
@@ -142,9 +167,6 @@ export function runnerDockerArgs({
   androidPackages,
 }) {
   const containerRoot = path.posix.join("/", "root");
-  const androidSdkManager = path.posix.join(
-    "/", "opt", "android-command-line-tools", "latest", "bin", "sdkmanager",
-  );
   const npmCache = path.join(cacheRoot, "npm");
   const cargoRegistry = path.join(cacheRoot, "cargo-registry");
   const cargoGit = path.join(cacheRoot, "cargo-git");
@@ -178,18 +200,14 @@ export function runnerDockerArgs({
     ? `if ! /cache/cargo-audit/bin/cargo-audit --version 2>/dev/null | ` +
       `grep -Fq \"cargo-audit ${cargoAuditVersion}\"; then ` +
       `CARGO_TARGET_DIR=/cache/cargo-audit-target cargo install --root /cache/cargo-audit ` +
-      `cargo-audit --version ${cargoAuditVersion} --locked; fi && `
-    : "";
+      `cargo-audit --version ${cargoAuditVersion} --locked; fi`
+    : ":";
   const flutterBootstrap = profile === "engineering"
-    ? "npm run client:get && "
-    : "";
+    ? "npm run client:get"
+    : ":";
   const androidBootstrap = lane === "android" || profile === "engineering"
-    ? `set +o pipefail; yes | ${androidSdkManager} ` +
-      "--sdk_root=/cache/android-sdk --licenses >/dev/null; license_status=$?; " +
-      "set -o pipefail; [ \"$license_status\" -eq 0 ]; " +
-      `${androidSdkManager} --sdk_root=/cache/android-sdk ${androidPackages
-        .map((value) => `'${value}'`).join(" ")} < /dev/null && `
-    : "";
+    ? androidBootstrapScript(androidPackages)
+    : ":";
   const invocation = profile === "engineering"
     ? "npm run client:gate:verify -- --base HEAD --head HEAD --target pr --execution direct --host linux"
     : `npm run client:gate:${lane}`;
@@ -212,7 +230,14 @@ export function runnerDockerArgs({
       "install -m 0600 build/reports/client-module-regression.json " +
       "/output/client-module-regression.json; fi"
     : ":";
-  const script = `${setup} && status=0; ${dependencyBootstrap}${androidBootstrap}${flutterBootstrap}${invocation} || status=$?; ` +
+  const script = `${setup}; set +e; status=0; ` +
+    `${dependencyBootstrap} || status=$?; ` +
+    `android_status=0; ${androidBootstrap} || android_status=$?; ` +
+    `[ "$status" -ne 0 ] || status=$android_status; ` +
+    `flutter_status=0; ${flutterBootstrap} || flutter_status=$?; ` +
+    `[ "$status" -ne 0 ] || status=$flutter_status; ` +
+    `gate_status=0; ${invocation} || gate_status=$?; ` +
+    `[ "$status" -ne 0 ] || status=$gate_status; ` +
     `${copyReport}; exit "$status"`;
   return [
     "run",

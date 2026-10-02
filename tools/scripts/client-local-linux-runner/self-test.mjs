@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -12,6 +13,7 @@ import path from "node:path";
 import { parseArgs } from "./cli.mjs";
 import {
   inspectLocalDocker,
+  androidBootstrapScript,
   resolveRunnerCacheRoot,
   runnerDockerArgs,
 } from "./docker.mjs";
@@ -82,6 +84,30 @@ function testSharedProjectCache() {
   }
 }
 
+function testAndroidBootstrapArguments() {
+  const fixture = mkdtempSync(path.join(os.tmpdir(), "licoup-linux-ci-android-bootstrap-"));
+  const sdkmanager = path.join(fixture, "sdkmanager");
+  const capture = path.join(fixture, "argv.txt");
+  try {
+    writeFileSync(sdkmanager, "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$CAPTURE\"\n", "utf8");
+    chmodSync(sdkmanager, 0o700);
+    execFileSync("bash", ["-c", androidBootstrapScript([
+      "platforms;android-33",
+      "ndk;27.0.12077973",
+      "ndk;30.0.14904198",
+    ], sdkmanager)], {
+      env: { PATH: process.env.PATH, CAPTURE: capture },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    assert.deepEqual(readFileSync(capture, "utf8").trim().split("\n"), [
+      "--sdk_root=/cache/android-sdk --licenses",
+      "--sdk_root=/cache/android-sdk platforms;android-33 ndk;27.0.12077973 ndk;30.0.14904198",
+    ]);
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
+  }
+}
+
 export function runSelfTest() {
   assert.deepEqual(parseArgs(["run", "--lane", "rust"]), {
     command: "run",
@@ -142,7 +168,9 @@ export function runSelfTest() {
     androidPackages: ["platforms;android-33", "ndk;27.0.12077973", "ndk;30.0.14904198"],
   });
   try {
-    assert.equal(androidArgs.some((arg) => arg.includes("sdkmanager --sdk_root=/cache/android-sdk")), true);
+    assert.equal(androidArgs.some((arg) => arg.includes(
+      path.posix.join("/", "opt", "android-command-line-tools", "latest", "bin", "sdkmanager"),
+    )), true);
     assert.equal(androidArgs.some((arg) => arg.includes("npm run client:gate:android")), true);
   } finally {
     const cacheArgument = androidArgs.find((arg) => arg.includes("/licoup-linux-ci-android-cache-"));
@@ -153,6 +181,7 @@ export function runSelfTest() {
   }
   testSnapshot();
   testSharedProjectCache();
+  testAndroidBootstrapArguments();
   return Object.freeze({
     ok: true,
     schemaVersion: "licoup.client-local-linux-ci.self-test.v1",
