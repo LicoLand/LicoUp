@@ -20,6 +20,7 @@ import {
 import {
   changedPaths,
   clientGateTaskEvent,
+  combineLocalRegressionResults,
   runLane,
   runClientGateStep,
   validateClientGateTopology,
@@ -215,10 +216,11 @@ test("complete verification rejects blocked, unverified, failed, or incomplete e
 });
 
 test("complete verification passes only complete settled engineering evidence", async () => {
+  let output = "";
   const code = await verifyClientGate([
     "--base", "HEAD", "--target", "commit", "--execution", "direct", "--host", process.platform,
   ], {
-    output: { write() {} },
+    output: { write(value) { output += value; } },
     reportPath: null,
     executor: async () => ({
       exitCode: 0,
@@ -231,6 +233,39 @@ test("complete verification passes only complete settled engineering evidence", 
     }),
   });
   assert.equal(code, 0);
+  const receipt = JSON.parse(output.trim());
+  assert.equal(receipt.scope, "host-engineering-profile");
+  assert.equal(receipt.mergeReady, false);
+});
+
+test("local aggregation replaces only the exact delegated hygiene result", () => {
+  const linux = [
+    { id: "hygiene", status: "passed", members: ["regression.repository-local-info-hygiene"] },
+    { id: "batch", status: "failed", members: ["module.a", "module.b"] },
+  ];
+  const host = [
+    { id: "host-hygiene", status: "passed", members: ["regression.repository-local-info-hygiene"] },
+    { id: "host-target", status: "passed", members: ["module.a"] },
+  ];
+  assert.deepEqual(combineLocalRegressionResults(linux, host), [linux[1], ...host]);
+});
+
+test("target evidence rejects a revision that is not the clean checked-out head", async () => {
+  const parent = spawnSync("git", ["rev-parse", "HEAD^"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    shell: false,
+  }).stdout.trim();
+  await assert.rejects(
+    verifyClientGate([
+      "--base", parent,
+      "--head", parent,
+      "--target", "pr",
+      "--execution", "target",
+      "--host", process.platform,
+    ], { output: { write() {} }, reportPath: null }),
+    /candidate does not match the clean checked-out head/u,
+  );
 });
 
 test("lane execution settles every independent step and returns all failures", () => {

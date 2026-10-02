@@ -187,7 +187,8 @@ export function runnerDockerArgs({
     ? `set +o pipefail; yes | ${androidSdkManager} ` +
       "--sdk_root=/cache/android-sdk --licenses >/dev/null; license_status=$?; " +
       "set -o pipefail; [ \"$license_status\" -eq 0 ]; " +
-      `${androidSdkManager} --sdk_root=/cache/android-sdk ${androidPackages.join(" ")} < /dev/null && `
+      `${androidSdkManager} --sdk_root=/cache/android-sdk ${androidPackages
+        .map((value) => `'${value}'`).join(" ")} < /dev/null && `
     : "";
   const invocation = profile === "engineering"
     ? "npm run client:gate:verify -- --base HEAD --head HEAD --target pr --execution direct --host linux"

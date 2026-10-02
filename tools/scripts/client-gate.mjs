@@ -242,6 +242,7 @@ function validateCiTopology() {
   for (const token of [
     "npm run client:gate:verify",
     "--execution direct --host linux",
+    "ref: ${{ github.event.pull_request.head.sha || github.sha }}",
     "LICO_AUDITOR_GATE_DELEGATED",
     "cargo install cargo-audit --version 0.22.2 --locked",
     '"platforms;android-33"',
@@ -256,6 +257,8 @@ function validateCiTopology() {
       `${job} must invoke the canonical client gate`);
     assertIncludes(block, `--execution target --host ${host}`,
       `${job} must bind evidence to its actual target host`);
+    assertIncludes(block, "ref: ${{ github.event.pull_request.head.sha || github.sha }}",
+      `${job} must check out the exact candidate head`);
   }
   const required = jobBlock(workflow, "client-required");
   assertIncludes(
@@ -759,8 +762,26 @@ export async function verifyClientGate(args, {
     return verifyLocalClientGate({ revisions, paths, plan, catalog, executor, output, reportPath });
   }
   if (revisions.execution === "target") {
+    if (!["pr", "release"].includes(revisions.target)) {
+      fail("target evidence requires an immutable PR or release candidate");
+    }
     if (!/^[a-f0-9]{40}$/u.test(revisions.head)) {
       fail("target evidence requires an immutable candidate head SHA");
+    }
+    const actualHead = run("git", ["rev-parse", "HEAD"], {
+      capture: true,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      errorMessage: "unable to verify target candidate revision",
+    }).trim().toLowerCase();
+    const worktreeState = run("git", ["status", "--porcelain=v1", "--untracked-files=all"], {
+      capture: true,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      errorMessage: "unable to verify target candidate worktree",
+    });
+    if (actualHead !== revisions.head.toLowerCase() || worktreeState.length !== 0) {
+      fail("target evidence candidate does not match the clean checked-out head");
     }
     const selected = selectModulesForChangedPaths(paths, catalog).filter((module) =>
       (module.regression.targetEvidenceHosts || []).includes(revisions.host));
@@ -804,10 +825,12 @@ export async function verifyClientGate(args, {
     schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
     target: revisions.target,
     execution: revisions.execution,
+    scope: "host-engineering-profile",
     changedCount: plan.changedCount,
     lanes: plan.lanes,
     selectedStepCount: modules.length,
     complete: result.report?.complete === true,
+    mergeReady: false,
   })}\n`);
   return mergeReady ? 0 : 1;
 }
@@ -821,6 +844,14 @@ function localHost() {
 
 function resultMembers(result) {
   return Array.isArray(result?.members) ? result.members : [];
+}
+
+export function combineLocalRegressionResults(linuxResults, hostResults) {
+  const retainedLinux = linuxResults.filter((result) => {
+    const members = resultMembers(result);
+    return !(members.length === 1 && members[0] === "regression.repository-local-info-hygiene");
+  });
+  return [...retainedLinux, ...hostResults];
 }
 
 function blockedTargetResult(module, host) {
@@ -887,12 +918,10 @@ async function verifyLocalClientGate({
       linuxReport = null;
     }
   }
-  const byMember = new Map();
-  for (const result of hostResult.report?.results || []) {
-    for (const member of resultMembers(result)) byMember.set(member, result);
-  }
-  const linuxResults = (linuxReport?.results || []).filter((result) =>
-    !resultMembers(result).some((member) => byMember.has(member)));
+  const combinedResults = combineLocalRegressionResults(
+    linuxReport?.results || [],
+    hostResult.report?.results || [],
+  );
   const missingTargets = [];
   for (const module of affected) {
     for (const targetHost of module.regression.targetEvidenceHosts || []) {
@@ -902,8 +931,7 @@ async function verifyLocalClientGate({
     }
   }
   const results = [
-    ...linuxResults,
-    ...(hostResult.report?.results || []),
+    ...combinedResults,
     ...missingTargets,
   ];
   const coveredIds = new Set(results.flatMap(resultMembers));

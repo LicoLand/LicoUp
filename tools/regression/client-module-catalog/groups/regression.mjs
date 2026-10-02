@@ -23,6 +23,45 @@ export const REGRESSION_MODULES = Object.freeze([
     ],
     command: node("tools/scripts/repo-local-info-hygiene.mjs", [], 5 * 60_000),
   }),
+  defineModule({
+    id: "regression.flutter-format",
+    kind: "regression-infrastructure",
+    summary: "Flutter production and test source formatting",
+    inputs: ["package.json"],
+    command: node("tools/scripts/client-toolchain-runner.mjs", [
+      "--check", "flutter", "--cwd", "apps/desktop", "--",
+      "dart", "format", "--output=none", "--set-exit-if-changed", "lib", "test",
+    ], 5 * 60_000),
+  }),
+  defineModule({
+    id: "regression.rust-format",
+    kind: "regression-infrastructure",
+    summary: "Rust workspace formatting",
+    inputs: ["package.json"],
+    command: command("cargo", ["fmt", "--all", "--", "--check"], 5 * 60_000),
+  }),
+  defineModule({
+    id: "regression.rust-clippy",
+    kind: "regression-infrastructure",
+    summary: "Rust workspace lint and type analysis",
+    inputs: ["package.json"],
+    command: command("cargo", [
+      "clippy", "--workspace", "--all-targets", "--", "-D", "warnings",
+      "-A", "clippy::style", "-A", "clippy::complexity",
+    ], 15 * 60_000),
+  }),
+  defineModule({
+    id: "regression.dependency-audit",
+    kind: "regression-infrastructure",
+    summary: "Locked Node, Rust, Flutter, and Gradle dependency audit",
+    inputs: [
+      "package.json", "package-lock.json", "Cargo.toml", "Cargo.lock",
+      "apps/desktop/pubspec.yaml", "apps/desktop/pubspec.lock",
+      "apps/desktop/android/build.gradle.kts",
+      "apps/desktop/android/settings.gradle.kts",
+    ],
+    command: node("tools/scripts/client-deps-audit.mjs", [], 10 * 60_000),
+  }),
   nodeTestModule(
     "regression.agent-boundary-contracts",
     "Agent admission, attachment, lifecycle, parser, capability, and secret-boundary contracts",

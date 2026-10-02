@@ -1,5 +1,9 @@
 export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "regression.repository-local-info-hygiene",
+  "regression.flutter-format",
+  "regression.rust-format",
+  "regression.rust-clippy",
+  "regression.dependency-audit",
   "regression.agent-boundary-contracts",
   "regression.release-workflow-contracts",
   "regression.client-state-contracts",

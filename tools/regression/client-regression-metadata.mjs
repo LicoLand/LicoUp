@@ -53,7 +53,7 @@ function innerToolchain(args) {
   const separator = args.indexOf("--");
   if (separator < 0) return null;
   const executable = args[separator + 1] || "";
-  if (executable === "flutter") return "flutter";
+  if (["flutter", "dart"].includes(executable)) return "flutter";
   if (["./gradlew", "gradlew.bat"].includes(executable)) return "gradle";
   return null;
 }

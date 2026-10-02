@@ -243,6 +243,9 @@ test("catalog commands reference existing dedicated scripts and test targets", a
         }
       }
     } else {
+      if (["regression.rust-format", "regression.rust-clippy"].includes(module.id)) {
+        continue;
+      }
       const manifestIndex = moduleCommand.args.indexOf("--manifest-path");
       if (manifestIndex >= 0) {
         await fs.access(path.join(repoRoot, moduleCommand.args[manifestIndex + 1]));
@@ -298,6 +301,19 @@ test("package aliases remain thin and cannot route to an aggregate gate", async 
   assert.equal(Object.entries(packageJson.scripts)
     .filter(([name]) => name.startsWith("client:regression"))
     .some(([, commandValue]) => commandValue.includes("client:gate:")), false);
+});
+
+test("complete catalog owns format lint analysis and dependency audit", () => {
+  const commands = new Map(CLIENT_MODULE_CATALOG.map((module) => [
+    module.id,
+    [module.command.program, ...module.command.args].join(" "),
+  ]));
+  assert.match(commands.get("regression.flutter-format"), /dart format .*--set-exit-if-changed/u);
+  assert.equal(commands.get("regression.rust-format"), "cargo fmt --all -- --check");
+  assert.match(commands.get("regression.rust-clippy"), /^cargo clippy --workspace --all-targets/u);
+  assert.equal(commands.get("regression.dependency-audit"),
+    "node tools/scripts/client-deps-audit.mjs");
+  assert.match(commands.get("flutter.composition.dependencies"), /flutter analyze --no-pub/u);
 });
 
 test("tracked contribution guides require focused repair and one complete gate", async () => {
@@ -375,10 +391,13 @@ test("every tracked test entry has an executing engineering owner or explicit li
 
 test("shared Flutter and Rust manifests select their own technology families", () => {
   const flutter = selectModulesForChangedPaths(["apps/desktop/pubspec.yaml"]);
-  assert.deepEqual(ids(flutter), ["flutter.composition.dependencies"]);
+  assert.deepEqual(ids(flutter), [
+    "regression.dependency-audit",
+    "flutter.composition.dependencies",
+  ]);
 
   const rust = selectModulesForChangedPaths(["Cargo.lock"]);
-  assert.deepEqual(ids(rust), ["rust.composition"]);
+  assert.deepEqual(ids(rust), ["regression.dependency-audit", "rust.composition"]);
 });
 
 test("target-owned changes retain runnable hosts and exact target evidence obligations", () => {
