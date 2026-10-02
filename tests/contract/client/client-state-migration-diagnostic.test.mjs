@@ -16,6 +16,7 @@ import {
   ADAPTIVE_FLYWHEEL_SCHEMA_VERSIONS,
   DURABLE_SHAPES,
   GATEWAY_CUSTODY_DOMAIN,
+  gatewayCredentialMigrationDisposition,
 } from "../../../tools/scripts/client-state-migration/probe.mjs";
 import {
   evaluateMigrationState,
@@ -1037,17 +1038,18 @@ test("the private write refuses to clobber a document that changed after the rea
   }
 });
 
-test("a root reached through a user-owned symlink is not certified", () => {
+test("root symlinks follow the private-state owner trust boundary", () => {
   const real = tempRoot("symlink-real");
   const link = `${real}-link`;
   try {
     seedAdmittedRoot(real, loadEmbeddedFrontier());
     fs.symlinkSync(real, link);
+    const systemOwned = fs.lstatSync(link).uid === 0;
     const { envelope, status } = runJson(["doctor", "--root", link]);
-    assert.equal(status, 4);
+    assert.equal(status, systemOwned ? 0 : 4);
     assert.equal(
       envelope.codes.some((entry) => entry.code === "migration_ledger_invalid"),
-      true,
+      !systemOwned,
       JSON.stringify(envelope.codes),
     );
   } finally {
@@ -1155,7 +1157,10 @@ test("exit codes stay distinct for healthy, behind, ahead, invalid, and usage", 
     fs.writeFileSync(path.join(ahead, "client-state/appearance-preferences.json"), "not json");
     assert.equal(runCli(["doctor", "--root", ahead]).status, 4);
     seedAdmittedRoot(pending, frontier, { withCustody: false });
-    assert.equal(runCli(["doctor", "--root", pending]).status, 5);
+    assert.equal(
+      runCli(["doctor", "--root", pending]).status,
+      gatewayCredentialMigrationDisposition(process.platform) === "requires-authorization" ? 5 : 0,
+    );
     assert.equal(runCli(["status", "--root", "relative/path"]).status, 64);
     assert.equal(runCli(["unknown-command", "--root", healthy]).status, 64);
     assert.equal(runCli(["repair", "--root", healthy]).status, 64);

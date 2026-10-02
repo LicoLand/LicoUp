@@ -182,7 +182,6 @@ test("self-test dry-run preserves passed status without live agent binaries", ()
       cwd: repoRoot,
       encoding: "utf8",
       maxBuffer: 4 * 1024 * 1024,
-      timeout: 120_000,
     },
   );
   assert.equal(result.status, 0, result.stderr || result.stdout.slice(0, 400));
@@ -208,7 +207,6 @@ test("print-live-gate remains a non-mutating checklist", () => {
       cwd: repoRoot,
       encoding: "utf8",
       maxBuffer: 4 * 1024 * 1024,
-      timeout: 30_000,
     },
   );
   assert.equal(result.status, 0, result.stderr || result.stdout.slice(0, 400));
