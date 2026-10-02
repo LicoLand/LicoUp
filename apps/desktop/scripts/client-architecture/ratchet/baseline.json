@@ -1,6 +1,6 @@
 {
   "schema": "licoup-architecture-ratchet-baseline.v1",
-  "recordedAt": "2026-10-02T07:40:47.470Z",
+  "recordedAt": "2026-10-02T08:07:25.907Z",
   "metrics": {
     "kernel_optional_cargo_edges": {
       "value": 1,
