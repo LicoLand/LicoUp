@@ -15,6 +15,47 @@ const _localId = ClientConversation.defaultLocalAgentGroupId;
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  testWidgets(
+    'refused data admission leaves an opaque failure surface without starting product services',
+    (tester) async {
+      final directory = Directory.systemTemp.createTempSync(
+        'licoup-admission-ui-',
+      );
+      final native = _StartupConversationNative();
+      final controller = _AdmissionFailureClient(
+        portableData: PortableDataRoot(dataDirectoryOverride: directory),
+        conversationNativePort: native,
+      );
+      final composition = ClientAppComposition(controller: controller);
+      addTearDown(() async {
+        await tester.runAsync(composition.dispose);
+        directory.deleteSync(recursive: true);
+      });
+
+      await tester.runAsync(composition.initialize);
+      await tester.pumpWidget(LicoApp(compositionFactory: () => composition));
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump();
+
+      expect(composition.bootstrapFailed, isTrue);
+      expect(
+        controller.lifecycleController.lastFailureStepId,
+        'client_state_migration',
+      );
+      expect(controller.gatewayStarts, 0);
+      expect(native.actions, isEmpty);
+      expect(find.text('Local data initialization failed.'), findsOneWidget);
+      expect(find.text('synthetic_admission_refusal'), findsNothing);
+      final surface = find.byKey(const Key('client-startup-surface'));
+      expect(tester.widget<ColoredBox>(surface).color.a, 1);
+      expect(tester.getSize(surface), tester.getSize(find.byType(LicoApp)));
+      expect(tester.takeException(), isNull);
+      await tester.runAsync(composition.dispose);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   testWidgets('missing saved root shows retry and choose recovery actions', (
     tester,
   ) async {
@@ -288,6 +329,30 @@ final class _FirstFrameClient extends ClientController {
   Future<void> initializeLlmGateway() async {
     gatewayStarts += 1;
   }
+}
+
+final class _AdmissionFailureClient extends ClientController {
+  _AdmissionFailureClient({
+    required super.portableData,
+    required super.conversationNativePort,
+  }) : super(agentService: _AdmissionFailureService());
+
+  int gatewayStarts = 0;
+
+  @override
+  Future<void> initializeLlmGateway() async {
+    gatewayStarts += 1;
+  }
+}
+
+final class _AdmissionFailureService extends FakeAgentService {
+  @override
+  Future<Map<String, dynamic>> dataHomeStatus() async => {};
+
+  @override
+  Future<Map<String, dynamic>> admitClientStateMigration(
+    String dataRoot,
+  ) async => throw StateError('synthetic_admission_refusal');
 }
 
 final class _StartupViewStore implements ClientCurrentViewStore {

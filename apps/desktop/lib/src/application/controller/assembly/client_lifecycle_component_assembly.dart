@@ -11,8 +11,12 @@ final class ClientLifecycleComponentAssembly {
              return;
            }
            reportStatus(
-             chinese: '初始化失败。',
-             english: 'Initialization failed.',
+             chinese: report.stepId == 'client_state_migration'
+                 ? '本地数据初始化失败。'
+                 : '初始化失败。',
+             english: report.stepId == 'client_state_migration'
+                 ? 'Local data initialization failed.'
+                 : 'Initialization failed.',
              caption: 'Error',
              errorCode: report.code,
            );

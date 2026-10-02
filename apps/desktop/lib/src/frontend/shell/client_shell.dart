@@ -228,6 +228,16 @@ NavigationProjection _navigationProjection(NavigationProjection value) => value;
 StatusProjection _statusProjection(StatusProjection value) => value;
 
 Widget _startupLoading(BuildContext context, StatusProjection status) {
+  // No layout surface exists before storage admission. Keep both progress
+  // and terminal bootstrap errors readable in a transparent native window.
+  return ColoredBox(
+    key: const Key('client-startup-surface'),
+    color: Theme.of(context).colorScheme.surface.withValues(alpha: 1),
+    child: _startupContent(context, status),
+  );
+}
+
+Widget _startupContent(BuildContext context, StatusProjection status) {
   if (status.errorCode.isEmpty) {
     return const Center(child: LicoLoadingIndicator());
   }
