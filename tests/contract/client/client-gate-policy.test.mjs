@@ -360,6 +360,22 @@ test("reuse keeps only passed unchanged Linux members and preserves their eviden
   });
   assert.deepEqual(results.map((result) => result.members), [[unchangedModule.id]]);
   assert.equal(results[0].evidenceHead, previousHead);
+  const thirdHead = "e".repeat(40);
+  const reusedAgain = reusableLinuxResults({
+    schemaVersion: "licoup.client-regression-report.v1",
+    complete: true,
+    candidateHead: currentHead,
+    sourceStateDigest: `sha256:${"c".repeat(64)}`,
+    results,
+  }, {
+    currentHead: thirdHead,
+    changedPaths: [],
+    catalog: CLIENT_MODULE_CATALOG,
+    validEvidenceHeads: new Set([previousHead]),
+  });
+  assert.deepEqual(reusedAgain.map((result) => result.members), [[unchangedModule.id]]);
+  assert.equal(reusedAgain[0].id, "reused.host.linux.batch");
+  assert.equal(reusedAgain[0].evidenceHead, previousHead);
   assert.deepEqual(reusableLinuxResults({ complete: true, results: [] }, {
     currentHead,
     changedPaths: [],

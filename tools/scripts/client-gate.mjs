@@ -1098,6 +1098,7 @@ export function reusableLinuxResults(previousReport, {
   currentHead,
   changedPaths: evidenceChangedPaths,
   catalog,
+  validEvidenceHeads = new Set([previousReport?.candidateHead]),
 }) {
   if (previousReport?.schemaVersion !== "licoup.client-regression-report.v1" ||
       previousReport?.complete !== true ||
@@ -1120,15 +1121,18 @@ export function reusableLinuxResults(previousReport, {
     .map((module) => module.id));
   const reused = [];
   for (const result of previousReport.results) {
-    if (result?.status !== "passed" || !String(result.id || "").startsWith("host.linux.") ||
-        result.evidenceHead !== previousReport.candidateHead || !Array.isArray(result.members)) continue;
+    if (result?.status !== "passed" ||
+        !/^(?:reused\.)*host\.linux\./u.test(String(result.id || "")) ||
+        !/^[a-f0-9]{40}$/u.test(result.evidenceHead || "") ||
+        !validEvidenceHeads.has(result.evidenceHead) ||
+        !Array.isArray(result.members)) continue;
     const members = result.members.filter((id) => known.has(id) && !affected.has(id));
     if (members.length === 0) continue;
     reused.push(Object.freeze({
       ...result,
-      id: `reused.${result.id}`,
+      id: result.id.startsWith("reused.") ? result.id : `reused.${result.id}`,
       members: Object.freeze(members),
-      evidenceHead: previousReport.candidateHead,
+      evidenceHead: result.evidenceHead,
     }));
   }
   return Object.freeze(reused);
@@ -1213,6 +1217,13 @@ async function verifyLocalClientGate({
       { cwd: repoRoot, stdio: "ignore", shell: false },
     ).status === 0;
     if (ancestor) {
+      const validEvidenceHeads = new Set((previousReport.results || [])
+        .map((result) => result.evidenceHead)
+        .filter((head) => /^[a-f0-9]{40}$/u.test(head || ""))
+        .filter((head) => head === previousReport.candidateHead || spawnSync(
+          "git", ["merge-base", "--is-ancestor", head, previousReport.candidateHead],
+          { cwd: repoRoot, stdio: "ignore", shell: false },
+        ).status === 0));
       reusedResults = reusableLinuxResults(previousReport, {
         currentHead,
         changedPaths: changedPaths({
@@ -1221,6 +1232,7 @@ async function verifyLocalClientGate({
           target: "pr",
         }),
         catalog,
+        validEvidenceHeads,
       });
     }
   }
@@ -1294,7 +1306,10 @@ async function verifyLocalClientGate({
     concurrency: linuxReport?.concurrency || hostResult.report?.concurrency || {},
     compatibility: [],
     candidateHead: currentHead,
-    sourceStateDigest: readLinuxRunnerReceipt(runner.stdout)?.sourceStateDigest || null,
+    sourceStateDigest: readLinuxRunnerReceipt(runner.stdout)?.sourceStateDigest ||
+      (reusedResults.length > 0 && linuxModules.length === 0
+        ? previousReport?.sourceStateDigest || null
+        : null),
   });
   await writeClientRegressionReport(report, reportPath);
   const runnerPassed = !runner.error && runner.status === 0 &&
