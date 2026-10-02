@@ -23,6 +23,9 @@ use licoup_native::domain::client_conversation::ConversationStore;
 use licoup_native::domain::workflow_runtime::{StrategyService, synthetic_fixture_package_bytes};
 use licoup_native::domain::workflow_store::StrategyStore;
 use licoup_native::platform::client_state::ClientStateStore;
+use licoup_native::platform::llm_api_key_vault::{
+    LegacyCredentialMigrationDisposition, PlatformLlmApiKeyVault,
+};
 use serde_json::json;
 use support::*;
 
@@ -31,6 +34,12 @@ const SNAPSHOT_ROOT_KEY: &str = "conversationSnapshotRoot";
 const UNRELATED_USER_PATH: &str = "/tmp/unrelated-user-project";
 const REVISION_STORE: &str = "client-state/adaptive-flywheel/strategy-packages/revisions";
 const CREDENTIAL_DOMAIN: &str = "gateway-credential-custody";
+
+fn requires_credential_authorization() -> bool {
+    PlatformLlmApiKeyVault::legacy_credential_migration_disposition()
+        .expect("platform credential disposition")
+        == LegacyCredentialMigrationDisposition::RequiresAuthorization
+}
 
 /// Arrange current-format owner content the released producers also write: one settings
 /// collection with an owner-managed reference, and one genuine committed workflow revision.
@@ -206,26 +215,32 @@ fn the_client_cli_and_the_tool_restore_each_others_archives() {
     fs::create_dir_all(&work).expect("work directory");
 
     // Bring the frozen released root to the candidate format through the client's own
-    // owner, driven by the tool's `convert` verb. Credential custody stays pending on this
-    // platform, which is exactly what the report must say.
+    // owner, driven by the tool's `convert` verb. The platform credential owner decides
+    // whether custody requires a separate authorization step.
     let (code, converted_report) = run_tool(&[
         "convert",
         "--data-root",
         source.to_str().expect("utf-8 source"),
         "--writers-stopped",
     ]);
+    let requires_authorization = requires_credential_authorization();
+    assert_eq!(code, if requires_authorization { 1 } else { 0 });
     assert_eq!(
-        code, 1,
-        "a pending credential domain leaves the conversion unfinished: {converted_report}"
+        converted_report["status"],
+        if requires_authorization {
+            "pendingAuthorization"
+        } else {
+            "converted"
+        }
     );
-    assert_eq!(converted_report["status"], "pendingAuthorization");
-    assert!(
+    assert_eq!(
         converted_report["stillOwed"]
             .as_array()
             .expect("stillOwed")
             .iter()
             .any(|domain| domain == CREDENTIAL_DOMAIN),
-        "pending custody is named, not hidden: {converted_report}"
+        requires_authorization,
+        "the report follows the credential owner's platform verdict: {converted_report}"
     );
 
     let revision_digest = arrange_current_owner_content(&source, &work);
@@ -510,7 +525,15 @@ fn every_verb_returns_one_json_report() {
         source.to_str().expect("source"),
         "--writers-stopped",
     ]);
-    assert_eq!(code, 1, "pending custody leaves the conversion unfinished");
-    assert_eq!(report["status"], "pendingAuthorization");
+    let requires_authorization = requires_credential_authorization();
+    assert_eq!(code, if requires_authorization { 1 } else { 0 });
+    assert_eq!(
+        report["status"],
+        if requires_authorization {
+            "pendingAuthorization"
+        } else {
+            "converted"
+        }
+    );
     assert!(report["domains"].is_array());
 }
