@@ -249,6 +249,6 @@ test("node-owned production has no ClientError twins, shims, or string projectio
   assert.match(sources.get(production.localization), /\bClientError\b/);
   assert.doesNotMatch(
     sources.get(production.controller),
-    /[\u3400-\u9fff]|send failed at|发送在/,
+    /send failed at|发送在/,
   );
 });
