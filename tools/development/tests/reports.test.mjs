@@ -445,7 +445,7 @@ test("architecture edges follow runtime package definitions instead of impact co
 test("reviewed report sources keep exact policy admissions", () => {
   const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
   const policy = JSON.parse(readFileSync(path.join(repoRoot, ".lico-auditor/policy.json"), "utf8"));
-  assert.deepEqual(Object.keys(policy), ["schemaVersion", "allowedJsonPaths", "reviewedSchemaHistory", "publicReferenceDomains", "reviewedUnixPathLiterals"]);
+  assert.deepEqual(Object.keys(policy), ["schemaVersion", "allowedJsonPaths", "reviewedSchemaFixtures", "reviewedSchemaHistory", "publicReferenceDomains", "reviewedUnixPathLiterals"]);
   assert.equal(policy.schemaVersion, 1);
   const workflowNames = [
     "01-requirements",

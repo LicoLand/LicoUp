@@ -404,6 +404,16 @@
     {
       "path": "tests/integration/v71_usage_sources/fixtures/otlp-restarted.json",
       "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/gateway-credential-migration.json",
+      "kind": "string-map"
+    }
+  ],
+  "reviewedSchemaFixtures": [
+    {
+      "path": "tests/fixtures/client_state_migration/retained_related_tables.sql",
+      "reason": "Synthetic schema-only fixture proving that current initialization preserves unrelated retained tables without reading or altering runtime rows."
     }
   ],
   "reviewedSchemaHistory": [
@@ -466,6 +476,12 @@
       "path": "tools/scripts/client-local-linux-runner/docker.mjs",
       "value": "/root/.cargo",
       "reason": "Fixed public Cargo home inside the isolated repository-owned Linux client toolchain container."
+    },
+    {
+      "rule": "system-or-deployment-path",
+      "path": "tools/regression/client-module-regression-tests/runner-safety.mjs",
+      "value": "/tmp/private.log",
+      "reason": "Fixed synthetic invalid diagnostic-log reference used to prove that public regression reports reject absolute private paths."
     }
   ]
 }
