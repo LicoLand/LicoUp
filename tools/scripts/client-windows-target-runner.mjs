@@ -31,6 +31,8 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const shaPattern = /^[a-f0-9]{40}$/u;
 const modulePattern = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/u;
 const targetPattern = /^[a-z0-9][a-z0-9._-]{0,127}$/u;
+const diagnosticLogRoot = "build/private/client-regression";
+const diagnosticLogNamePattern = /^[a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*\.log$/u;
 const nodeArchiveSha256 = "6e50ce5498c0cebc20fd39ab3ff5df836ed2f8a31aa093cecad8497cff126d70";
 const rustupSha256 = "88d8258dcf6ae4f7a80c7d1088e1f36fa7025a1cfd1343731b4ee6f385121fc0";
 const sshOptions = Object.freeze([
@@ -370,31 +372,106 @@ function parseRemoteEnvelope(stdout) {
   return null;
 }
 
-function collectFailureLog(config, nonce, head) {
-  const source = String.raw`$root=Join-Path $env:TEMP ${quotePowerShell(`LicoUpEngineering-${nonce}`)}
-$log=Join-Path $root 'gate.log'
-try{if(Test-Path -LiteralPath $log -PathType Leaf){[Convert]::ToBase64String([IO.File]::ReadAllBytes($log))}}finally{Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue}`;
-  const result = spawnSync("ssh", [...sshOptions, config.sshTarget,
-    `powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPowerShell(source)}`], {
-    encoding: "utf8",
-    maxBuffer: 16 * 1024 * 1024,
-  });
-  if (result.status !== 0 || !result.stdout.trim()) return false;
-  let bytes;
-  try {
-    bytes = Buffer.from(result.stdout.trim().split(/\r?\n/u).at(-1), "base64");
-  } catch {
-    return false;
+export function validatedDiagnosticLogRef(value) {
+  if (typeof value !== "string" || value.includes("\\")) return "";
+  const normalized = path.posix.normalize(value);
+  if (normalized !== value || path.posix.dirname(normalized) !== diagnosticLogRoot ||
+      !diagnosticLogNamePattern.test(path.posix.basename(normalized))) {
+    return "";
   }
-  if (bytes.length === 0 || bytes.length > 8 * 1024 * 1024) return false;
-  const directory = path.join(repoRoot, "build", "private", "windows-target");
-  mkdirSync(directory, { recursive: true, mode: 0o700 });
-  const destination = path.join(directory, `${head}.log`);
-  const temporary = `${destination}.tmp`;
+  return normalized;
+}
+
+function writePrivateFailureFile(destination, bytes) {
+  mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 });
+  const temporary = `${destination}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
   writeFileSync(temporary, bytes, { mode: 0o600 });
   chmodSync(temporary, 0o600);
   renameSync(temporary, destination);
+}
+
+function decodePrivateBase64(value) {
+  if (typeof value !== "string" || value.length === 0 ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(value)) {
+    throw new Error("windows_target_failure_log_encoding_invalid");
+  }
+  const bytes = Buffer.from(value, "base64");
+  if (bytes.toString("base64") !== value) {
+    throw new Error("windows_target_failure_log_encoding_invalid");
+  }
+  return bytes;
+}
+
+export function storeFailureBundle(head, bundle, root = repoRoot) {
+  if (!shaPattern.test(head) || typeof bundle?.gateLog !== "string" ||
+      !Array.isArray(bundle?.diagnostics) || bundle.diagnostics.length > 64) {
+    return false;
+  }
+  let gateLog;
+  const diagnostics = [];
+  let totalBytes = 0;
+  try {
+    gateLog = decodePrivateBase64(bundle.gateLog);
+    totalBytes += gateLog.length;
+    if (gateLog.length === 0 || gateLog.length > 8 * 1024 * 1024) return false;
+    const seen = new Set();
+    for (const item of bundle.diagnostics) {
+      const ref = validatedDiagnosticLogRef(item?.ref);
+      if (!ref || seen.has(ref) || typeof item?.content !== "string") return false;
+      seen.add(ref);
+      const bytes = decodePrivateBase64(item.content);
+      totalBytes += bytes.length;
+      if (bytes.length === 0 || bytes.length > 8 * 1024 * 1024 ||
+          totalBytes > 16 * 1024 * 1024) return false;
+      diagnostics.push({ name: path.posix.basename(ref), bytes });
+    }
+  } catch {
+    return false;
+  }
+  const directory = path.join(root, "build", "private", "windows-target");
+  writePrivateFailureFile(path.join(directory, `${head}.log`), gateLog);
+  for (const diagnostic of diagnostics) {
+    writePrivateFailureFile(path.join(directory, head, diagnostic.name), diagnostic.bytes);
+  }
   return true;
+}
+
+function collectFailureLog(config, nonce, head) {
+  const source = String.raw`$root=Join-Path $env:TEMP ${quotePowerShell(`LicoUpEngineering-${nonce}`)}
+$log=Join-Path $root 'gate.log'
+try{
+  if(Test-Path -LiteralPath $log -PathType Leaf){
+    $summary=$null
+    foreach($line in (Get-Content -LiteralPath $log -ErrorAction SilentlyContinue)){
+      try{$candidate=$line|ConvertFrom-Json -ErrorAction Stop;if($candidate.schemaVersion -eq ${quotePowerShell(schemaVersion)} -and $candidate.execution -eq 'target'){$summary=$candidate}}catch{}
+    }
+    $diagnostics=@()
+    if($null -ne $summary){
+      foreach($result in @($summary.report.results)){
+        $ref=[string]$result.diagnosticLog
+        if(!$ref){continue}
+        if($ref -notmatch '^build/private/client-regression/[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*\.log$'){throw 'target_diagnostic_log_ref_invalid'}
+        $candidate=Join-Path (Join-Path $root 'candidate') ($ref -replace '/', '\\')
+        if(!(Test-Path -LiteralPath $candidate -PathType Leaf)){throw 'target_diagnostic_log_missing'}
+        $diagnostics+=,[ordered]@{ref=$ref;content=[Convert]::ToBase64String([IO.File]::ReadAllBytes($candidate))}
+      }
+    }
+    [ordered]@{gateLog=[Convert]::ToBase64String([IO.File]::ReadAllBytes($log));diagnostics=$diagnostics}|ConvertTo-Json -Compress -Depth 4
+  }
+}finally{Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue}`;
+  const result = spawnSync("ssh", [...sshOptions, config.sshTarget,
+    `powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPowerShell(source)}`], {
+    encoding: "utf8",
+    maxBuffer: 24 * 1024 * 1024,
+  });
+  if (result.status !== 0 || !result.stdout.trim()) return false;
+  let bundle;
+  try {
+    bundle = JSON.parse(result.stdout.trim().split(/\r?\n/u).at(-1));
+  } catch {
+    return false;
+  }
+  return storeFailureBundle(head, bundle);
 }
 
 function cleanupRemoteRoot(config, nonce) {
@@ -603,7 +680,46 @@ async function selfTest() {
     }, pending), true);
     assert.deepEqual(parseArgs(["recover"]), { command: "recover" });
     assert.throws(() => parseArgs(["run", "--base", base, "--head", head, "--target", "commit", "--module", "rust.synthetic"]));
-    return { ok: true, schemaVersion: "licoup.client-windows-target-runner.self-test.v1", exactCandidatePack: true, privateTransportConfig: true, msvcOwnerDiscovery: true };
+    assert.equal(validatedDiagnosticLogRef(
+      "build/private/client-regression/rust.synthetic.log"),
+    "build/private/client-regression/rust.synthetic.log");
+    for (const invalid of [
+      "build/private/client-regression/../escaped.log",
+      "build/private/client-regression/nested/escaped.log",
+      "build\\private\\client-regression\\escaped.log",
+      "/build/private/client-regression/escaped.log",
+    ]) assert.equal(validatedDiagnosticLogRef(invalid), "");
+    const diagnosticHead = "1".repeat(40);
+    assert.equal(storeFailureBundle(diagnosticHead, {
+      gateLog: Buffer.from("synthetic gate\n").toString("base64"),
+      diagnostics: [{
+        ref: "build/private/client-regression/rust.synthetic.log",
+        content: Buffer.from("synthetic diagnostic\n").toString("base64"),
+      }],
+    }, fixture), true);
+    const storedGate = path.join(fixture, "build", "private", "windows-target",
+      `${diagnosticHead}.log`);
+    const storedDiagnostic = path.join(fixture, "build", "private", "windows-target",
+      diagnosticHead, "rust.synthetic.log");
+    assert.equal(readFileSync(storedGate, "utf8"), "synthetic gate\n");
+    assert.equal(readFileSync(storedDiagnostic, "utf8"), "synthetic diagnostic\n");
+    assert.equal(statSync(storedGate).mode & 0o077, 0);
+    assert.equal(statSync(storedDiagnostic).mode & 0o077, 0);
+    assert.equal(storeFailureBundle(diagnosticHead, {
+      gateLog: Buffer.from("synthetic gate\n").toString("base64"),
+      diagnostics: [{
+        ref: "build/private/client-regression/../escaped.log",
+        content: Buffer.from("must not be stored\n").toString("base64"),
+      }],
+    }, fixture), false);
+    return {
+      ok: true,
+      schemaVersion: "licoup.client-windows-target-runner.self-test.v1",
+      exactCandidatePack: true,
+      privateTransportConfig: true,
+      msvcOwnerDiscovery: true,
+      privateFailureDiagnostics: true,
+    };
   } finally {
     rmSync(fixture, { recursive: true, force: true });
   }

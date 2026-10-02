@@ -501,21 +501,25 @@ mod tests {
 
     #[test]
     fn relative_environment_roots_become_absolute_without_changing_source() {
-        let cwd = Path::new("/fixture/current-directory");
+        let cwd = std::env::temp_dir()
+            .canonicalize()
+            .unwrap()
+            .join("fixture-current-directory");
+        let expected_root = cwd.parent().unwrap().join("licoup-data");
         for (selection, expected, source) in [
             (
                 environment_data_home(Some("../licoup-data/./new-root".to_string()), None).unwrap(),
-                PathBuf::from("/fixture/licoup-data/new-root"),
+                expected_root.join("new-root"),
                 DataHomeSource::Environment,
             ),
             (
                 environment_data_home(None, Some("../licoup-data/./legacy-root".to_string()))
                     .unwrap(),
-                PathBuf::from("/fixture/licoup-data/legacy-root"),
+                expected_root.join("legacy-root"),
                 DataHomeSource::LegacyEnvironment,
             ),
         ] {
-            let selection = absolutize_data_home_selection(selection, Some(cwd));
+            let selection = absolutize_data_home_selection(selection, Some(&cwd));
             assert!(selection.path.is_absolute());
             assert_eq!(selection.path, expected);
             assert_eq!(selection.source, source);
