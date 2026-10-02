@@ -223,6 +223,8 @@
     "client:gate:android": "node tools/scripts/client-gate.mjs run android",
     "client:gate:dependencies": "node tools/scripts/client-gate.mjs run dependencies",
     "client:gate:release-policy": "node tools/scripts/client-gate.mjs run release-policy",
+    "client:gate:verify": "node tools/scripts/client-gate.mjs verify",
+    "client:gate:step": "node tools/scripts/client-gate.mjs step",
     "client:test:ui": "node tools/scripts/client-ui-state-machine.mjs"
   }
 }

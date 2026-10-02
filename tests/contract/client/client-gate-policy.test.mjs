@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -17,8 +18,12 @@ import {
   classifyClientGatePaths,
 } from "../../../tools/scripts/client-gate-policy.mjs";
 import {
+  changedPaths,
   clientGateTaskEvent,
+  runLane,
+  runClientGateStep,
   validateClientGateTopology,
+  verifyClientGate,
 } from "../../../tools/scripts/client-gate.mjs";
 
 function selectedOptionalLanes(paths) {
@@ -35,6 +40,7 @@ test("source policy is mandatory without selecting platform toolchains", () => {
     rust: false,
     android: false,
     dependencies: false,
+    "release-policy": false,
   });
   assert.deepEqual(selectedOptionalLanes(["docs/RUNBOOK.md"]), []);
   for (const forbidden of [
@@ -71,7 +77,7 @@ test("changed paths select only their independent technology lanes", () => {
   );
   assert.deepEqual(
     selectedOptionalLanes(["tools/apple-release/macos-direct-arm64.json"]),
-    [],
+    ["release-policy"],
   );
   assert.deepEqual(
     selectedOptionalLanes(["tools/scripts/client-device-demo.mjs"]),
@@ -84,6 +90,10 @@ test("changed paths select only their independent technology lanes", () => {
   assert.deepEqual(
     selectedOptionalLanes(["tools/scripts/client-gate-policy.mjs"]),
     [],
+  );
+  assert.deepEqual(
+    selectedOptionalLanes([".github/workflows/client-release-ready.yml"]),
+    ["release-policy"],
   );
 });
 
@@ -147,6 +157,7 @@ test("change planner emits only bounded booleans, counts, and a digest", () => {
       "rust",
       "android",
       "dependencies",
+      "release_policy",
       "changed_count",
       "change_digest",
     ]);
@@ -155,6 +166,102 @@ test("change planner emits only bounded booleans, counts, and a digest", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("local planning includes working tree and untracked paths while PR planning stays immutable", () => {
+  const relative = "tools/apple-release/.gate-local-selection.tmp";
+  const absolute = path.join(process.cwd(), relative);
+  writeFileSync(absolute, "synthetic\n", { mode: 0o600 });
+  try {
+    assert.equal(changedPaths({ base: "HEAD", head: "HEAD", target: "commit" }).includes(relative), true);
+    assert.equal(changedPaths({ base: "HEAD", head: "HEAD", target: "pr" }).includes(relative), false);
+  } finally {
+    unlinkSync(absolute);
+  }
+});
+
+test("complete verification rejects blocked, unverified, failed, or incomplete evidence", async () => {
+  const statuses = ["blocked", "unverified", "failed"];
+  for (const status of statuses) {
+    const code = await verifyClientGate(["--base", "HEAD", "--target", "commit"], {
+      output: { write() {} },
+      reportPath: null,
+      executor: async () => ({
+        exitCode: 0,
+        report: { complete: true, status: "passed", results: [{ status }], compatibility: [] },
+      }),
+    });
+    assert.equal(code, 1, status);
+  }
+  for (const report of [
+    { complete: false, status: "passed", results: [], compatibility: [] },
+    { complete: true, status: "passed", results: [], compatibility: [{ status: "unverified" }] },
+  ]) {
+    const code = await verifyClientGate(["--base", "HEAD", "--target", "commit"], {
+      output: { write() {} },
+      reportPath: null,
+      executor: async () => ({ exitCode: 0, report }),
+    });
+    assert.equal(code, 1);
+  }
+});
+
+test("complete verification passes only complete settled engineering evidence", async () => {
+  const code = await verifyClientGate(["--base", "HEAD", "--target", "commit"], {
+    output: { write() {} },
+    reportPath: null,
+    executor: async () => ({
+      exitCode: 0,
+      report: {
+        complete: true,
+        status: "passed",
+        results: [{ status: "passed" }],
+        compatibility: [],
+      },
+    }),
+  });
+  assert.equal(code, 0);
+});
+
+test("lane execution settles every independent step and returns all failures", () => {
+  const invoked = [];
+  const events = [];
+  let output = "";
+  const code = runLane("source", {
+    output: { write(value) { output += value; } },
+    eventEmitter(event) { events.push(event); },
+    spawnImpl(command, args) {
+      invoked.push([command, ...args]);
+      return { status: 7, error: null };
+    },
+  });
+  assert.equal(code, 1);
+  assert.equal(invoked.length, CLIENT_GATE_LANES.source.length);
+  assert.equal(events.filter((event) => event.type === "step-failure").length,
+    CLIENT_GATE_LANES.source.length);
+  const receipt = JSON.parse(output.trim().split("\n").at(-1));
+  assert.equal(receipt.ok, false);
+  assert.equal(receipt.results.every((result) => result.status === "failed"), true);
+});
+
+test("single registered step stays focused and cannot claim merge readiness", async () => {
+  let output = "";
+  const code = await runClientGateStep("regression.public-client-docs", {
+    output: { write(value) { output += value; } },
+    executor: async () => ({
+      exitCode: 0,
+      report: { results: [{ status: "passed" }] },
+    }),
+  });
+  assert.equal(code, 0);
+  assert.deepEqual(JSON.parse(output.trim()), {
+    ok: true,
+    schemaVersion: "licomesh.client-gate-policy.v1",
+    scope: "focused-step",
+    stepId: "regression.public-client-docs",
+    complete: false,
+    mergeReady: false,
+  });
 });
 
 test("client gate emits bounded typed failure events without raw diagnostics", () => {

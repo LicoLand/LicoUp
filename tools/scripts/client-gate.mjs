@@ -10,6 +10,12 @@ import {
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { CLIENT_MODULE_CATALOG } from "../regression/client-module-catalog.mjs";
+import { executeClientModules } from "../regression/client-module-execution.mjs";
+import {
+  selectModulesById,
+  validateClientModuleCatalog,
+} from "../regression/client-module-selection.mjs";
 import {
   CLIENT_CI_JOBS,
   CLIENT_GATE_LANES,
@@ -19,6 +25,10 @@ import {
 } from "./client-gate-policy.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const verificationReportPath = path.join(
+  repoRoot,
+  "build/reports/client-module-regression.json",
+);
 const taskEventPrefix = "::lico-dev-task-event::";
 const taskEventSchemaVersion = "v0.0.1:lico-dev:task-event-1";
 const safeTaskEventValue = /^[a-z0-9][a-z0-9:._-]{0,127}$/u;
@@ -117,6 +127,8 @@ function validatePackageTopology() {
     "client:gate:android": "node tools/scripts/client-gate.mjs run android",
     "client:gate:dependencies": "node tools/scripts/client-gate.mjs run dependencies",
     "client:gate:release-policy": "node tools/scripts/client-gate.mjs run release-policy",
+    "client:gate:verify": "node tools/scripts/client-gate.mjs verify",
+    "client:gate:step": "node tools/scripts/client-gate.mjs step",
   };
   for (const [script, expected] of Object.entries(expectedGateCommands)) {
     if (scripts[script] !== expected) {
@@ -556,7 +568,7 @@ function validateRevision(value, label) {
   return value;
 }
 
-function changedPaths({ base, head }) {
+export function changedPaths({ base, head, target = "commit" }) {
   const safeHead = validateRevision(head || "HEAD", "head");
   const zeroRevision = /^0+$/u.test(base || "");
   if (!base || zeroRevision) {
@@ -579,7 +591,10 @@ function changedPaths({ base, head }) {
           errorMessage: "unable to inspect initial client revision",
         },
       );
-      return rootDiff.toString("utf8").split("\0").filter(Boolean);
+      const rootPaths = rootDiff.toString("utf8").split("\0").filter(Boolean);
+      return target === "commit"
+        ? [...new Set([...rootPaths, ...workingTreePaths(safeHead)])]
+        : rootPaths;
     }
   }
   const safeBase = validateRevision(base, "base");
@@ -593,7 +608,37 @@ function changedPaths({ base, head }) {
       errorMessage: "unable to inspect client changes",
     },
   );
-  return diff.toString("utf8").split("\0").filter(Boolean);
+  const committed = diff.toString("utf8").split("\0").filter(Boolean);
+  return target === "commit"
+    ? [...new Set([...committed, ...workingTreePaths(safeHead)])]
+    : committed;
+}
+
+function workingTreePaths(head) {
+  const tracked = run(
+    "git",
+    ["diff", "--no-renames", "--name-only", "-z", head, "--"],
+    {
+      capture: true,
+      encoding: "buffer",
+      stdio: ["ignore", "pipe", "pipe"],
+      errorMessage: "unable to inspect local client changes",
+    },
+  );
+  const untracked = run(
+    "git",
+    ["ls-files", "--others", "--exclude-standard", "-z", "--"],
+    {
+      capture: true,
+      encoding: "buffer",
+      stdio: ["ignore", "pipe", "pipe"],
+      errorMessage: "unable to inspect untracked client changes",
+    },
+  );
+  return Buffer.concat([tracked, untracked])
+    .toString("utf8")
+    .split("\0")
+    .filter(Boolean);
 }
 
 function writePlanOutput(plan, digest) {
@@ -621,13 +666,18 @@ function writePlanOutput(plan, digest) {
 }
 
 function parsePlanArgs(args) {
-  const values = { base: "", head: "HEAD" };
+  const values = { base: "", head: "HEAD", target: "commit" };
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index];
-    if (flag !== "--base" && flag !== "--head") fail(`unknown plan argument: ${flag}`);
+    if (!["--base", "--head", "--target"].includes(flag)) {
+      fail(`unknown plan argument: ${flag}`);
+    }
     if (index + 1 >= args.length) fail(`missing value for ${flag}`);
     values[flag.slice(2)] = args[index + 1];
     index += 1;
+  }
+  if (!["commit", "pr", "release"].includes(values.target)) {
+    fail("client gate target must be commit, pr, or release");
   }
   return values;
 }
@@ -642,37 +692,153 @@ function planGate(args) {
   writePlanOutput(plan, digest);
 }
 
-function runLane(lane) {
-  if (lane === "release-policy") run(process.execPath, ["--test",
-    "tests/contract/client/client-source-release.test.mjs",
-    "tests/contract/client/macos-release-adapters.test.mjs",
-    "tests/contract/client/macos-release-candidate.test.mjs",
-    "tests/contract/client/apple-release-integration.test.mjs"]);
+function parseVerifyArgs(args) {
+  const values = { base: "", head: "HEAD", target: "" };
+  for (let index = 0; index < args.length; index += 1) {
+    const flag = args[index];
+    if (!["--base", "--head", "--target"].includes(flag)) {
+      fail(`unknown verify argument: ${flag}`);
+    }
+    if (index + 1 >= args.length) fail(`missing value for ${flag}`);
+    values[flag.slice(2)] = args[index + 1];
+    index += 1;
+  }
+  if (!values.base) fail("client gate verify requires --base");
+  if (!["commit", "pr", "release"].includes(values.target)) {
+    fail("client gate verify requires --target commit, pr, or release");
+  }
+  return Object.freeze(values);
+}
+
+function reportIsMergeReady(report) {
+  return report?.complete === true &&
+    report?.status === "passed" &&
+    Array.isArray(report.results) &&
+    report.results.length > 0 &&
+    report.results.every((result) => result.status === "passed") &&
+    Array.isArray(report.compatibility) &&
+    report.compatibility.every((result) => result.status === "passed");
+}
+
+export async function verifyClientGate(args, {
+  catalog = CLIENT_MODULE_CATALOG,
+  executor = executeClientModules,
+  output = process.stdout,
+  reportPath = verificationReportPath,
+} = {}) {
+  const revisions = parseVerifyArgs(args);
+  const paths = changedPaths(revisions);
+  const plan = classifyClientGatePaths(paths);
+  validateClientModuleCatalog(catalog);
+  const result = await executor(catalog, {
+    repoRoot,
+    catalog,
+    output,
+    reportPath,
+    runKind: "complete",
+    compatibilityRunner: async () => [],
+  });
+  const mergeReady = result.exitCode === 0 && reportIsMergeReady(result.report);
+  output.write(`${JSON.stringify({
+    ok: mergeReady,
+    schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
+    target: revisions.target,
+    changedCount: plan.changedCount,
+    lanes: plan.lanes,
+    selectedStepCount: catalog.length,
+    complete: result.report?.complete === true,
+  })}\n`);
+  return mergeReady ? 0 : 1;
+}
+
+export async function runClientGateStep(stepId, {
+  catalog = CLIENT_MODULE_CATALOG,
+  executor = executeClientModules,
+  output = process.stdout,
+} = {}) {
+  const selected = selectModulesById([stepId], catalog);
+  const result = await executor(selected, {
+    repoRoot,
+    catalog,
+    output,
+    reportPath: null,
+    runKind: "focused",
+    compatibilityRunner: async () => [],
+  });
+  const passed = result.exitCode === 0 &&
+    result.report?.results?.every((entry) => entry.status === "passed") === true;
+  output.write(`${JSON.stringify({
+    ok: passed,
+    schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
+    scope: "focused-step",
+    stepId,
+    complete: false,
+    mergeReady: false,
+  })}\n`);
+  return passed ? 0 : 1;
+}
+
+export function runLane(lane, {
+  spawnImpl = spawnSync,
+  output = process.stdout,
+  eventEmitter = emitClientGateTaskEvent,
+} = {}) {
   const scripts = CLIENT_GATE_LANES[lane];
   if (!scripts) fail(`unknown client gate lane: ${lane || "<missing>"}`);
-  for (const script of scripts) {
-    emitClientGateTaskEvent({ type: "step-start", stage: script });
-    process.stdout.write(`\n[client-gate:${lane}] npm run ${script}\n`);
-    run("npm", ["run", script], {
-      onFailure: (result) => emitClientGateTaskEvent({
+  const steps = lane === "release-policy"
+    ? [Object.freeze({
+      id: "release-policy.contract-tests",
+      command: process.execPath,
+      args: ["--test",
+        "tests/contract/client/client-source-release.test.mjs",
+        "tests/contract/client/macos-release-adapters.test.mjs",
+        "tests/contract/client/macos-release-candidate.test.mjs",
+        "tests/contract/client/apple-release-integration.test.mjs"],
+    }), ...scripts.map((script) => Object.freeze({
+      id: script,
+      command: "npm",
+      args: ["run", script],
+    }))]
+    : scripts.map((script) => Object.freeze({
+      id: script,
+      command: "npm",
+      args: ["run", script],
+    }));
+  const results = [];
+  for (const step of steps) {
+    eventEmitter({ type: "step-start", stage: step.id });
+    output.write(`\n[client-gate:${lane}] ${step.id}\n`);
+    const result = spawnImpl(step.command, step.args, {
+      cwd: repoRoot,
+      env: process.env,
+      shell: false,
+      stdio: "inherit",
+    });
+    const status = !result.error && result.status === 0 ? "passed" : "failed";
+    results.push(Object.freeze({ id: step.id, status }));
+    if (status === "failed") {
+      eventEmitter({
         type: "step-failure",
-        stage: script,
+        stage: step.id,
         code: result.error ? "command-launch-failed" : "command-exit-nonzero",
         exitCode: result.status ?? 1,
         retryable: false,
         recovery: "inspect-failed-step",
-      }),
-    });
+      });
+    }
   }
-  process.stdout.write(`${JSON.stringify({
-    ok: true,
+  const ok = results.every((result) => result.status === "passed");
+  output.write(`${JSON.stringify({
+    ok,
     schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
     lane,
-    stepCount: scripts.length,
+    stepCount: steps.length,
+    results,
   })}\n`);
+  return ok ? 0 : 1;
 }
 
-export function main(args = process.argv.slice(2)) {
+export async function main(args = process.argv.slice(2)) {
   const [command, ...rest] = args;
   if (command === "topology") {
     process.stdout.write(`${JSON.stringify(validateClientGateTopology())}\n`);
@@ -684,15 +850,24 @@ export function main(args = process.argv.slice(2)) {
   }
   if (command === "run") {
     if (rest.length !== 1) fail("client gate run requires exactly one lane");
-    runLane(rest[0]);
+    process.exitCode = runLane(rest[0]);
     return;
   }
-  fail("usage: client-gate.mjs <topology|plan|run LANE>");
+  if (command === "verify") {
+    process.exitCode = await verifyClientGate(rest);
+    return;
+  }
+  if (command === "step") {
+    if (rest.length !== 1) fail("client gate step requires exactly one module id");
+    process.exitCode = await runClientGateStep(rest[0]);
+    return;
+  }
+  fail("usage: client-gate.mjs <topology|plan|run LANE|verify|step MODULE_ID>");
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    main();
+    await main();
   } catch (error) {
     process.stderr.write(`${error?.message || error}\n`);
     process.exitCode = 1;
