@@ -6,6 +6,9 @@
 
 mod support;
 
+use licoup_native::platform::llm_api_key_vault::{
+    LegacyCredentialMigrationDisposition, PlatformLlmApiKeyVault,
+};
 use std::path::{Path, PathBuf};
 use support::run_tool as run;
 
@@ -111,7 +114,7 @@ fn convert_reports_every_owed_domain_and_claims_no_more_than_the_owner() {
 }
 
 #[test]
-fn a_conversion_that_still_owes_a_domain_is_named_in_its_status() {
+fn a_fresh_conversion_reports_the_platform_credential_owners_verdict() {
     let root = scratch("owed");
     let (code, report) = run(&[
         "convert",
@@ -120,14 +123,19 @@ fn a_conversion_that_still_owes_a_domain_is_named_in_its_status() {
         "--writers-stopped",
     ]);
     let still_owed = report["stillOwed"].as_array().expect("stillOwed");
-    assert!(
-        !still_owed.is_empty(),
-        "a fresh root owes at least the protected credential domain: {report}"
-    );
-    assert_eq!(code, 1, "the run did not finish, so the status is non-zero");
+    let requires_authorization = PlatformLlmApiKeyVault::legacy_credential_migration_disposition()
+        .expect("platform credential disposition")
+        == LegacyCredentialMigrationDisposition::RequiresAuthorization;
+    assert_eq!(!still_owed.is_empty(), requires_authorization);
+    assert_eq!(code, if requires_authorization { 1 } else { 0 });
     assert_eq!(
-        report["status"], "pendingAuthorization",
-        "the only remaining work is platform authorization: {report}"
+        report["status"],
+        if requires_authorization {
+            "pendingAuthorization"
+        } else {
+            "converted"
+        },
+        "the report follows the credential owner's platform verdict: {report}"
     );
 }
 
