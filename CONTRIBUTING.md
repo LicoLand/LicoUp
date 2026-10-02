@@ -16,14 +16,12 @@ Rust, Java, and Android tooling for affected checks within the scope below.
 npm ci
 ```
 
-During development, run the smallest relevant checks. Before handoff, run the
-targeted tests for the changed module. After every intended change is confirmed
-effective, run the mandatory Node-only source policy once and only the affected
-technology lanes: Flutter, Rust, Android, or dependency regression. These lanes
-are independent and may run in parallel. Release policy is not a changed-path
-lane; it runs only at the `stable` → `release` promotion edge described in the
-[client promotion authority](docs/releases/PROMOTION-GATES.md). The commit gate
-never builds or publishes every platform.
+During development, run the smallest registered check that owns the change.
+After every intended change is confirmed effective, run the complete local
+engineering profile once. Release policy remains a separate `stable` →
+`release` obligation described in the
+[client promotion authority](docs/releases/PROMOTION-GATES.md). Neither command
+builds, installs, launches, or publishes a client.
 
 The maintained complete client regression is a bounded dependency graph. It
 runs the shared foundation once, overlaps frontend and backend work, settles
@@ -48,12 +46,73 @@ depends on that decision. Promotion failures follow the separate
 [promotion gates](docs/releases/PROMOTION-GATES.md).
 
 ```bash
-npm run client:gate:source
-npm run client:gate:flutter         # Flutter changes only
-npm run client:gate:rust            # Rust changes only
-npm run client:gate:android         # Android changes only
-npm run client:gate:dependencies    # dependency authority changes only
+npm run client:gate:step -- <module-id>
+npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery
 ```
+
+### Verification coverage and escaped defects
+
+The final local workflow is the merge-readiness authority. It must use one
+maintained registry that assigns every required check to a functional module
+and failure category, names the owning subcheck and dependencies, and records
+where that check runs: focused local development, the final local workflow,
+commit and push hooks, pull requests, CI, or release promotion. Each entry must
+state what it proves. Tests, scripts, and platform checks that are not
+registered, not wired into every applicable stage, not run, or blocked cannot
+support a merge-ready result.
+
+The final local command must execute every applicable required registry entry
+before a commit, pull request, or publication handoff. Independent checks must
+settle and report their failures together. A check whose real dependency did
+not complete must report `blocked` and make the command fail; it must not hide
+the blocked work behind a passed parent or an inventory-only result. Platform,
+device, credential, live-service, and other external limits remain explicit
+unverified evidence where the local environment cannot establish them. They do
+not turn into passes, but local checks must not be deferred to CI merely because
+CI also runs them.
+
+When a defect escapes, first determine why this workflow did not detect it.
+Repair the owning subcheck and its registry and stage wiring before repairing
+the product defect. If no existing category owns the failure, add one registered
+subcheck with a clear boundary. Run that subcheck directly while developing the
+repair. After all scoped repairs and focused checks pass, run the complete
+applicable local workflow once, and only then commit, open the pull request, or
+start a publication workflow. Do not substitute a read-only inventory, a
+partial pass, launcher success, or a cloud-only first execution for that result.
+
+`client:gate:verify` is the sole verified delivery entry. It runs the canonical
+privacy check on the real host, executes the complete applicable engineering
+catalog in an isolated Linux environment that matches CI, and requires actual
+target-host evidence for affected platform owners. It writes the canonical
+module report to `build/reports/client-module-regression.json`. Live Agent,
+device, credential, signing, installation, launch, and publication checks remain
+separate explicit workflows and are never converted into engineering passes.
+After the engineering result passes, the delivery target uses the existing owners
+to build, install, and open the local client. It never publishes or activates real data.
+No verification tool can promise to detect unknown defects exhaustively.
+
+### Cross-platform ownership
+
+Use a portable implementation when the supported targets provide the required
+capability. Shared Rust, Flutter, and Node modules must not derive product
+behavior from the development host or embed an operating-system path, command,
+permission, lifecycle, or storage assumption. Put a real target difference
+behind an explicit platform adapter contract and keep the shared caller in
+terms of that contract.
+
+Scope platform work to the targets it changes. A routine fix for one platform
+must not modify or revalidate unrelated adapters. A refactor that changes shared
+behavior or several adapters must register every affected target and run the
+required engineering checks on each actual target system. If an affected target
+cannot run, its required result is `blocked` or `unverified` and the change is
+not merge-ready. Live acceptance remains separate where deterministic
+engineering checks cannot establish the behavior.
+
+The verification registry owns each module's platform applicability and the
+workflow owns the corresponding runner. Selection, focused execution, the final
+local workflow, and CI must consume those same owners. Static source inspection
+may find a suspicious host assumption, but keyword or path scanning alone does
+not prove that shared code is portable or that a platform adapter works.
 
 **One crate, one version.** The dependency graph must not carry two versions of
 the same crate. Duplicates bloat the binary, split types across versions, and
@@ -103,11 +162,11 @@ verified. Formatting does not stage files or create a commit.
 ### Verification scope
 
 Test the affected behavior using the environments already available locally.
-The developer organizes additional devices and cross-platform testing. Do not
-require a device matrix, a minimum hardware tier, or a missing host, simulator,
-SDK, or device to complete local development and delivery. Record unavailable
-checks as not run, with their limits; they do not fail or block local delivery
-and do not establish support for an untested platform.
+The developer organizes optional device and live acceptance. Do not invent a
+device matrix or minimum hardware tier for a change that does not affect it.
+An unavailable optional acceptance check is recorded as not run and does not
+establish support. An actual target named by an affected registered engineering
+owner remains required and blocks merge readiness until that target executes.
 
 Reuse existing checks and run shared work once. Do not add approval gates,
 verification frameworks, repeated regressions, or device provisioning merely

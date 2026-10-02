@@ -275,7 +275,7 @@ test("unused related tables and their rows coexist with the current Conversation
 
 test("current continuity owner composes with Conversation and malformed effects remain refused", () => {
   const selected = selectModulesForChangedPaths(["crates/licoup-conversation/src/continuity/migrate.rs"])
-    .filter((module) => module.id === "regression.client-state-migration");
+    .filter((module) => module.id === "regression.client-state-contracts");
   assert.equal(selected.length, 1, "the actual continuity producer must select its diagnostic consumer");
   const fixture = rustRawString(
     ownerSource("tests/fixtures/client_state_migration/continuity_layout.rs"),

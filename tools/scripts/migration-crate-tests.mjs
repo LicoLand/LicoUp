@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
 import { acquireTestArtifactLease, NATIVE_CARGO_TEST_TARGET } from "./lib/test-artifact-lifecycle.mjs";
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const jobs = "3";
+const jobs = process.env.CARGO_BUILD_JOBS || "3";
 
 function fail(message) {
   throw new Error(`migration-crate-tests: ${message}`);
@@ -74,6 +74,16 @@ function metadata(env) {
   }
 }
 
+export function migrationCrateTestArgs(forwarded = []) {
+  const args = [...forwarded];
+  const nativeRecovery = args[0] === "--native-recovery";
+  if (nativeRecovery) args.shift();
+  const selection = nativeRecovery
+    ? ["-p", "licoup-native", "--test", "local_recovery", "--test", "data_home_process"]
+    : ["-p", "licoup-migrate"];
+  return ["test", "--offline", "--locked", ...selection, ...args];
+}
+
 function main() {
   const productVersion = workspaceProductVersion();
   if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u.test(productVersion)) {
@@ -117,15 +127,9 @@ function main() {
 
     environment.LICOUP_MIGRATE_CLIENT_CLI = cliBinary;
     process.stdout.write(`migration-crate-tests: candidate identity ${productVersion}\n`);
-    const forwarded = process.argv.slice(2);
-    const nativeRecovery = forwarded[0] === "--native-recovery";
-    if (nativeRecovery) forwarded.shift();
-    const selection = nativeRecovery
-      ? ["-p", "licoup-native", "--test", "local_recovery", "--test", "data_home_process"]
-      : ["-p", "licoup-migrate"];
     return run(
       "cargo",
-      ["test", "--offline", "--locked", "-j", jobs, ...selection, ...forwarded],
+      ["test", "-j", jobs, ...migrationCrateTestArgs(process.argv.slice(2)).slice(1)],
       environment
     );
   } finally {
@@ -133,9 +137,11 @@ function main() {
   }
 }
 
-try {
-  process.exitCode = main();
-} catch (error) {
-  process.stderr.write(`${error.message}\n`);
-  process.exitCode = 1;
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    process.exitCode = main();
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 1;
+  }
 }

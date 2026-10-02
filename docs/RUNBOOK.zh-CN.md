@@ -170,6 +170,11 @@ DSL 解析与语义、配置驱动的状态转移和守卫、调度、取消、�
 
 ### 定向验证
 
+回归目录是定向开发、本地最终命令与 Client CI 共用的模块选择和执行权威。
+列表和 dry-run 只提供清单证据，不执行检查。平台选择来自维护中的目录和平台条目，
+不来自开发者当前宿主。共享模块运行已登记命令，目标适配器在条目指定的真实目标
+系统执行；缺失的必需执行器记为 blocked 或 unverified，源码扫描不能替代目标执行。
+
 列出维护中的回归模块并预览按变更选择的结果：
 
 ```bash
@@ -177,10 +182,10 @@ npm run client:regression:list
 npm run client:regression -- --changed-from <ref> --dry-run
 ```
 
-运行最小的所属模块：
+通过最终 profile 共用的 gate 运行最小所属模块：
 
 ```bash
-npm run client:regression -- --module <module-id>
+npm run client:gate:step -- <module-id>
 ```
 
 完整客户端回归是一张限并发分阶段依赖图：
@@ -210,6 +215,25 @@ npm run client:regression:environment -- --agent codex
 `build/reports/client-module-regression.json`，不含命令输出、路径、参数、环境值、
 PID 或运行时负载。
 
+目录命名空间是维护中的覆盖映射；模块 ID、inputs、commands、stages、runnable hosts
+和 affected targets 仍由 `tools/regression/client-module-catalog.mjs` 管理。
+
+| 范围及常见故障类别 | 登记 ID | 执行 | 平台归属 |
+| --- | --- | --- | --- |
+| 登记完整性、隐私、源码契约和工作流接线 | `regression.*` | `client:gate:step -- <id>`；完整 profile | 宿主隐私和目录声明的目标 |
+| Flutter 组合、功能和契约 | `flutter.*` | 同一登记命令 | 默认可移植；条目可声明目标 |
+| Rust crate、领域、core、FFI 和平台适配器 | `rust.*` | 同一登记命令 | `runnableHosts` 和 `targetEvidenceHosts` |
+| Native bridge 和目标集成 | `bridge.*` | 同一登记命令 | 受影响适配器声明的真实目标 |
+| 打包和发布策略工程契约 | `packaging.*`、`release.*` | 同一登记命令；晋升另加发布策略 | 声明的打包目标 |
+
+开发和定向修复结束后执行下方的唯一本地交付入口。它先运行宿主隐私、隔离 Linux CI
+环境中的完整适用目录及受影响真实目标检查，通过后才由目标目录、构建属主和安装器
+构建、安装并打开本地客户端。失败、blocked、缺失或不完整的结果不能声明就绪。
+静态和在线兼容性观察与必需工程证据保持区别，未运行不能标为通过。
+
+交付工具自身的 PR 使用 `--target pr`，不能安装缺少完整产品候选的客户端。
+工具源码与完整产品候选整合后，该候选使用 `--target delivery`。
+
 只重派发失败、归属待定或阻塞的核心成员，以及失败的兼容性目标：
 
 ```bash
@@ -231,12 +255,10 @@ npm run client:regression -- \
 | 架构边界 | `npm run client:verify:architecture` |
 | 版本与生成兼容性 | `npm run client:version:check` |
 
-所有定向检查通过后只运行一次 `npm run client:gate:source`，然后只运行受影响的
-`client:gate:flutter`、`client:gate:rust`、`client:gate:android` 或
-`client:gate:dependencies` 通道。这些回归通道相互独立，可以并行。发布策略只在
+旧技术通道命令保留为有界诊断子工具，不构成合并就绪结果。发布策略仅在
 [`releases/PROMOTION-GATES.md`](releases/PROMOTION-GATES.md) 所述的 `stable` →
-`release` 晋升边运行。源码策略只依赖 Node，不安装平台工具链，也不构成对在线服务、
-运行时数据采集、设备安装、签名、发布或商店操作的授权。
+`release` 晋升边运行。完整工程 profile 不授权在线服务、运行时数据采集、设备安装、
+签名、发布或商店操作。
 
 ### 经验证的交付闭环
 

@@ -11,8 +11,8 @@ const contract = JSON.parse(read("schemas/client_bridge/conversation.json"));
 const manifest = JSON.parse(read("schemas/client_bridge/manifest.json"));
 const state = JSON.parse(read("schemas/client_bridge/state.json"));
 const canonicalDomain = read("crates/licoup-conversation/src/client_conversation/mod.rs");
-const canonicalStore = ["mod.rs", "schema.rs"]
-  .map((file) => read(`crates/licoup-conversation/src/store/${file}`)).join("\n");
+const canonicalStore = read("crates/licoup-conversation/src/store/mod.rs");
+const canonicalSchema = read("crates/licoup-conversation/src/store/schema.rs");
 const nativeFacade = read("crates/licoup-native/src/domain/client_conversation/mod.rs");
 const service = read("crates/licoup-native/src/domain/client_conversation/service.rs");
 const migration = read("crates/licoup-native/src/domain/client_conversation/migration.rs");
@@ -89,7 +89,7 @@ test("Canonical Conversation crate owns messaging and membership facts only", ()
     "subagent_mcp_inbound",
   ]) {
     assert.match(
-      canonicalStore,
+      canonicalSchema,
       new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`, "u"),
     );
   }
@@ -102,14 +102,15 @@ test("Canonical Conversation crate owns messaging and membership facts only", ()
     "run_candidate_snapshots",
   ]) {
     assert.doesNotMatch(
-      canonicalStore,
+      canonicalSchema,
       new RegExp(`CREATE TABLE IF NOT EXISTS ${retired}`, "u"),
     );
   }
-  assert.match(canonicalStore, /DROP TABLE IF EXISTS flywheels/u);
-  assert.match(canonicalStore, /PRAGMA journal_mode=WAL/u);
+  assert.match(canonicalStore, /mod schema;/u);
+  assert.match(canonicalSchema, /DROP TABLE IF EXISTS flywheels/u);
+  assert.match(canonicalSchema, /PRAGMA journal_mode=WAL/u);
   assert.match(
-    canonicalStore,
+    canonicalSchema,
     /CREATE VIRTUAL TABLE IF NOT EXISTS event_search USING fts5/u,
   );
   assert.match(canonicalDomain, /pub enum PrincipalKind/u);
@@ -130,7 +131,7 @@ test("retired ordinal configuration is cleaned without reinterpretation", () => 
     /LegacyMigrationRoleSpec|LegacyMigrationFlywheelSpec|migrate_flywheel/u,
   );
   assert.doesNotMatch(canonicalStore, /migrate_legacy_flywheel_configuration/u);
-  assert.match(canonicalStore, /migration_provenance/u);
+  assert.match(canonicalSchema, /migration_provenance/u);
 });
 
 test("superseded operational stores and fixed workflow owners stay removed", () => {

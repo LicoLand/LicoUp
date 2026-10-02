@@ -135,6 +135,8 @@ history. Maintained translations follow the repository's documentation conventio
 | Develop, design, test, or edit documentation | [Developer guide](docs/RUNBOOK.md) |
 | Create a branch, commit, or pull request | [Contributing](CONTRIBUTING.md) |
 | Finish a change, before final verification | [Closure](docs/CLOSURE.md) |
+| Select verification or diagnose an escaped defect | [Coverage and escaped defects](CONTRIBUTING.md#verification-coverage-and-escaped-defects) |
+| Change shared or platform-specific code | [Cross-platform ownership](CONTRIBUTING.md#cross-platform-ownership) |
 
 Preserve others' changes and existing authorization. Production, publication,
 protected keys, private-data transfer and irreversible effects need authorization

@@ -12,8 +12,8 @@ const decision0004 = read("docs/adrs/0004-assistant-authored-flexible-workflows.
 const decision0005 = read("docs/adrs/0005-assistant-auto-adaptation-and-deepseek-harness.md");
 const domain = read("crates/licoup-native/src/domain/client_conversation/mod.rs");
 const conversationDomain = read("crates/licoup-conversation/src/client_conversation/mod.rs");
-const store = ["mod.rs", "schema.rs"]
-  .map((file) => read(`crates/licoup-conversation/src/store/${file}`)).join("\n");
+const store = read("crates/licoup-conversation/src/store/mod.rs");
+const schema = read("crates/licoup-conversation/src/store/schema.rs");
 const profile = read("crates/licoup-native/src/domain/client_conversation/profile_snapshot.rs");
 const assistant = read("crates/licoup-native/src/domain/workflow_runtime/assistant.rs");
 const flywheelService = read("crates/licoup-native/src/domain/workflow_runtime/service.rs");
@@ -48,17 +48,18 @@ test("ADR 0003 is historical and ADR 0004 freezes the Assistant boundary", () =>
 test("conversation migration v8 cuts over to intent-only Assistant Profiles idempotently", () => {
   assert.equal(conversationDomain.includes('LICOUP_GUIDE_SKILL_ID: &str = "licoup-guide"'), true);
   assert.match(domain, /include_str!\([\s\S]*licoup-guide\/SKILL\.md/u);
-  assert.match(store, /CREATE TABLE IF NOT EXISTS membership_profiles/u);
-  assert.match(store, /CREATE INDEX IF NOT EXISTS membership_profiles_membership_idx/u);
-  assert.match(store, /assistant_membership_id TEXT REFERENCES memberships\(id\)/u);
-  assert.match(store, /INSERT INTO schema_meta\(key, value\) VALUES \('version', '8'\)/u);
+  assert.match(store, /mod schema;/u);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS membership_profiles/u);
+  assert.match(schema, /CREATE INDEX IF NOT EXISTS membership_profiles_membership_idx/u);
+  assert.match(schema, /assistant_membership_id TEXT REFERENCES memberships\(id\)/u);
+  assert.match(schema, /INSERT INTO schema_meta\(key, value\) VALUES \('version', '8'\)/u);
   assert.match(store, /pub fn set_conversation_assistant/u);
   assert.match(store, /pub fn set_membership_profile/u);
   assert.match(store, /pub fn membership_profiles/u);
   // Migration is applied before any store read and repeated opens replay it
   // without reinterpretation; the retired ordinal generation has no table.
   assert.match(store, /normalize_reserved_default_group_after_legacy_import/u);
-  assert.match(store, /DROP TABLE IF EXISTS flywheels/u);
+  assert.match(schema, /DROP TABLE IF EXISTS flywheels/u);
 });
 
 test("Profile snapshots derive only from named existing authorities", () => {

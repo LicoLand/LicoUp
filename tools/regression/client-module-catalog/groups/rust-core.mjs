@@ -10,6 +10,13 @@ import {
 
 export const RUST_CORE_MODULES = Object.freeze([
   defineModule({
+    id: "rust.core.sqlite-contract",
+    kind: "rust-core",
+    summary: "Owned SQLite structure validation and harmless retained table coexistence",
+    inputs: ["crates/licoup-foundation/src/core/sqlite_contract.rs"],
+    command: foundationLayer("core::sqlite_contract::tests::"),
+  }),
+  defineModule({
       id: "rust.core.workflow",
       kind: "rust-core",
       summary: "Pure workflow parsing, analysis, compilation, and transition machine",

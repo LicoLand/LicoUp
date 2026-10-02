@@ -53,7 +53,7 @@ function innerToolchain(args) {
   const separator = args.indexOf("--");
   if (separator < 0) return null;
   const executable = args[separator + 1] || "";
-  if (executable === "flutter") return "flutter";
+  if (["flutter", "dart"].includes(executable)) return "flutter";
   if (["./gradlew", "gradlew.bat"].includes(executable)) return "gradle";
   return null;
 }
@@ -89,7 +89,10 @@ function nodeTestFiles(args) {
 }
 
 export function regressionToolchain(command) {
-  if (command.program === "cargo") return "rust";
+  if (command.program === "cargo" ||
+      (command.program === "node" && command.args[0] === "tools/scripts/migration-crate-tests.mjs")) {
+    return "rust";
+  }
   const nested = innerToolchain(command.args);
   if (nested) return nested;
   if (command.program === "node" && command.args[0] === "--test") {
@@ -106,7 +109,7 @@ export function regressionToolchain(command) {
 }
 
 const TOOLCHAIN_WEIGHT = Object.freeze({
-  rust: 4,
+  rust: 3,
   flutter: 3,
   gradle: 4,
   "node-test": 2,
@@ -122,6 +125,10 @@ const TOOLCHAIN_RESOURCES = Object.freeze({
 });
 
 function wrapperResources(command) {
+  if (command.program === "node" &&
+      command.args[0] === "tests/smoke/native-client-smoke.mjs") {
+    return ["cargo-target"];
+  }
   if (command.program === "node" &&
       command.args[0] === "tools/scripts/client-android-native-tests.mjs") {
     // This bounded wrapper owns a Gradle test run, two Cargo FFI filters, and

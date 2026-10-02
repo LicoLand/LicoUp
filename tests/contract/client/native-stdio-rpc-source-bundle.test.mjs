@@ -203,8 +203,11 @@ test("native conversation RPC uses a client-local persistent owner", async () =>
     "rpc\", \"conversation-host",
     "serve_stdio_rpc_with_persistent_conversation",
     "client_disconnected",
-    "runtime.idle()",
+    "runtime.request_host_stop()",
+    "runtime.wait_for_admitted_turns()",
+    "runtime.wait_for_clients_to_disconnect()",
   ]) assert.ok(host.includes(token), `missing persistent host contract: ${token}`);
+  assert.equal(host.includes("runtime.idle()"), false);
   for (const token of [
     "PersistentConversationRuntime",
     "turnHandle",

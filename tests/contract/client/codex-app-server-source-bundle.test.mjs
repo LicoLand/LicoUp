@@ -18,6 +18,7 @@ const productionLeaves = Object.freeze([
   "limits.rs",
   "model.rs",
   "model_catalog.rs",
+  "reserve.rs",
   "supervision.rs",
   "transport.rs",
 ]);
@@ -58,7 +59,7 @@ test("Codex app-server uses a thin facade with no retired monolith", async () =>
       .map((match) => match[1])
       .filter((name) => name !== "tests")
       .sort(),
-    ["active_control", "config", "contract", "error", "io", "launch", "limits", "model", "model_catalog", "supervision", "transport"],
+    ["active_control", "config", "contract", "error", "io", "launch", "limits", "model", "model_catalog", "reserve", "supervision", "transport"],
   );
   for (const implementationToken of [
     "struct CodexProtocol",
@@ -94,6 +95,8 @@ test("Codex protocol, state, events, and approval control have single owners", a
   assert.ok(sources["error.rs"].includes('message: &\'static str'));
   assert.ok(sources["parser/session.rs"].includes("self.session_id = Some(thread_id.to_string())"));
   assert.ok(sources["parser.rs"].includes("fn parse_line"));
+  assert.ok(sources["reserve.rs"].includes("authorized_luna_reserve_model"));
+  assert.ok(sources["reserve.rs"].includes("ordinaryUsageAllowed"));
   assert.equal(sources["io.rs"].includes("serde_json::from"), false);
 
   for (const duplicatedCodec of ["AcpProtocol", "AcpSessionPlan", '"session/new"']) {

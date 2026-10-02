@@ -24,7 +24,8 @@ import {
   ids,
   stringSink,
 } from "./support.mjs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createClientRegressionReport } from "../client-regression-report.mjs";
 
 test("selection normalizes separators, deduplicates paths, and never falls back", () => {
   const windowsRunnerPath = [
@@ -83,17 +84,25 @@ test("changed-from collection uses parallel argv-safe git calls and includes unt
   assert.deepEqual(parseNulDelimitedPaths(Buffer.from("a/b\0a/b\0")), ["a/b", "a/b"]);
 });
 
-function syntheticChild({ code = 0, stdout = "", stderr = "" } = {}) {
+function syntheticChild({
+  code = 0,
+  stdout = "",
+  stderr = "",
+  closeDelayMs = 0,
+  onKill = () => {},
+} = {}) {
   const child = new EventEmitter();
   child.pid = 4242;
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
-  child.kill = () => {};
-  process.nextTick(() => {
+  child.kill = onKill;
+  const close = () => {
     child.stdout.end(stdout);
     child.stderr.end(stderr);
     child.emit("close", code, null);
-  });
+  };
+  if (closeDelayMs > 0) setTimeout(close, closeDelayMs);
+  else process.nextTick(close);
   return child;
 }
 
@@ -151,6 +160,144 @@ test("async command runner uses static argv, drains private output, and records 
   assert.equal(JSON.stringify(result).includes("private"), false);
 });
 
+test("failed commands keep private diagnostics outside the public report and successes retain none", async () => {
+  await mkdir(path.join(repoRoot, "build"), { recursive: true });
+  const isolatedRoot = await mkdtemp(path.join(repoRoot, "build", "private-diagnostic-"));
+  const batch = syntheticBatch({ id: "synthetic-private-diagnostic" });
+  try {
+    const failed = await runClientRegressionCommand(batch, {
+      repoRoot: isolatedRoot,
+      spawnImpl() {
+        return syntheticChild({
+          code: 7,
+          stdout: "private stdout marker",
+          stderr: "private stderr marker",
+        });
+      },
+    });
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.reason, "command_failed");
+    assert.equal(failed.diagnosticLog,
+      "build/private/client-regression/synthetic.node.log");
+    assert.equal(JSON.stringify(failed).includes("private stdout marker"), false);
+    const diagnosticPath = path.join(isolatedRoot, failed.diagnosticLog);
+    const diagnostic = await readFile(diagnosticPath, "utf8");
+    assert.match(diagnostic, /private stdout marker/u);
+    assert.match(diagnostic, /private stderr marker/u);
+    assert.equal((await stat(diagnosticPath)).mode & 0o777, 0o600);
+
+    const report = createClientRegressionReport({
+      runKind: "complete",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:00:01.000Z",
+      durationMs: 1,
+      results: [failed],
+      concurrency: {},
+    });
+    assert.equal(report.results[0].diagnosticLog, failed.diagnosticLog);
+    assert.equal(report.failures[0].diagnosticLog, failed.diagnosticLog);
+    assert.equal(JSON.stringify(report).includes("private stdout marker"), false);
+    assert.equal(JSON.stringify(report).includes(isolatedRoot), false);
+
+    const passed = await runClientRegressionCommand(batch, {
+      repoRoot: isolatedRoot,
+      spawnImpl() { return syntheticChild(); },
+    });
+    assert.equal(passed.status, "passed");
+    assert.equal(Object.hasOwn(passed, "diagnosticLog"), false);
+    await assert.rejects(access(diagnosticPath), { code: "ENOENT" });
+  } finally {
+    await rm(isolatedRoot, { recursive: true, force: true });
+  }
+});
+
+test("focused failures retain diagnostics by stable member instead of reused batch id", async () => {
+  await mkdir(path.join(repoRoot, "build"), { recursive: true });
+  const isolatedRoot = await mkdtemp(path.join(repoRoot, "build", "focused-diagnostic-"));
+  try {
+    const run = (member, marker) => runClientRegressionCommand(syntheticBatch({
+      id: "exact-1",
+      members: Object.freeze([member]),
+    }), {
+      repoRoot: isolatedRoot,
+      spawnImpl() { return syntheticChild({ code: 1, stderr: marker }); },
+    });
+    const first = await run("owner.one", "first private failure");
+    const second = await run("owner.two", "second private failure");
+    assert.equal(first.diagnosticLog,
+      "build/private/client-regression/owner.one.log");
+    assert.equal(second.diagnosticLog,
+      "build/private/client-regression/owner.two.log");
+    assert.match(await readFile(path.join(isolatedRoot, first.diagnosticLog), "utf8"),
+      /first private failure/u);
+    assert.match(await readFile(path.join(isolatedRoot, second.diagnosticLog), "utf8"),
+      /second private failure/u);
+  } finally {
+    await rm(isolatedRoot, { recursive: true, force: true });
+  }
+});
+
+test("public reports reject unsafe or non-failure diagnostic references", () => {
+  const result = {
+    id: "synthetic",
+    stage: "foundation",
+    lane: "foundation",
+    toolchain: "node",
+    status: "failed",
+    reason: "command_failed",
+    durationMs: 1,
+    members: ["synthetic.node"],
+    metrics: {},
+  };
+  const create = (entry) => createClientRegressionReport({
+    runKind: "complete",
+    startedAt: "2026-01-01T00:00:00.000Z",
+    completedAt: "2026-01-01T00:00:01.000Z",
+    durationMs: 1,
+    results: [entry],
+    concurrency: {},
+  });
+  for (const diagnosticLog of [
+    "/tmp/private.log",
+    "../private.log",
+    "build/private/client-regression/../private.log",
+  ]) {
+    assert.throws(() => create({ ...result, diagnosticLog }), /reference is invalid/u);
+  }
+  assert.throws(() => create({
+    ...result,
+    status: "passed",
+    reason: null,
+    diagnosticLog: "build/private/client-regression/synthetic.log",
+  }), /reference is invalid/u);
+  const blocked = create({ ...result, status: "blocked", diagnosticLog: null });
+  assert.equal(Object.hasOwn(blocked.results[0], "diagnosticLog"), false);
+  assert.equal(Object.hasOwn(blocked.failures[0], "diagnosticLog"), false);
+});
+
+test("runner does not terminate long commands or create the parent-kill orphan path", async () => {
+  let killCount = 0;
+  const result = await runClientRegressionCommand(syntheticBatch({
+    command: Object.freeze({
+      program: "node",
+      args: Object.freeze(["--version"]),
+      cwd: ".",
+      timeoutMs: 1,
+    }),
+  }), {
+    repoRoot,
+    spawnImpl() {
+      return syntheticChild({
+        closeDelayMs: 25,
+        onKill() { killCount += 1; },
+      });
+    },
+  });
+  assert.equal(result.status, "passed");
+  assert.equal(killCount, 0);
+  assert.equal(Object.hasOwn(result, "diagnosticLog"), false);
+});
+
 test("compatibility commands retain only a bounded safe receipt error code", async () => {
   const batch = syntheticBatch({
     toolchain: "compatibility",
@@ -168,7 +315,7 @@ test("compatibility commands retain only a bounded safe receipt error code", asy
   });
   assert.equal(safe.status, "failed");
   assert.equal(safe.reason, "adapter_contract_failed");
-  assert.equal(JSON.stringify(safe).includes("private"), false);
+  assert.equal(JSON.stringify(safe).includes("private diagnostic output"), false);
 
   const unsafe = await runClientRegressionCommand(batch, {
     repoRoot,
@@ -220,11 +367,40 @@ test("aggregated Node tests attribute failure to module ids without retaining fi
     });
     assert.equal(result.status, "failed");
     assert.deepEqual(result.members, ["module.failing"]);
-    assert.equal(JSON.stringify(result).includes("private"), false);
-    assert.equal(JSON.stringify(result).includes("node-attribution"), false);
+    assert.deepEqual(result.attributedPassedMembers, ["module.passing"]);
+    assert.equal(JSON.stringify(result).includes("private stack"), false);
+    assert.equal(JSON.stringify(result).includes(directory), false);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("complete Node attribution retains independently passed members in the summary", async () => {
+  const modules = selectModulesById([
+    "regression.release-workflow-contracts",
+    "regression.client-state-contracts",
+  ]);
+  const passing = "regression.release-workflow-contracts";
+  const failing = "regression.client-state-contracts";
+  const result = await executeClientModules(modules, {
+    repoRoot,
+    catalog: modules,
+    output: stringSink(),
+    async commandRunner(batch) {
+      assert.deepEqual(batch.members, [passing, failing]);
+      return Object.freeze({
+        ...graphResult(batch, "failed"),
+        members: Object.freeze([failing]),
+        attributedPassedMembers: Object.freeze([passing]),
+      });
+    },
+  });
+  const statuses = new Map(result.report.results.flatMap((entry) =>
+    entry.members.map((member) => [member, entry.status])));
+  assert.equal(statuses.get(passing), "passed");
+  assert.equal(statuses.get(failing), "failed");
+  assert.deepEqual(result.completed, [passing]);
+  assert.deepEqual(result.failures.map((failure) => failure.members), [[failing]]);
 });
 
 test("Rust command uses the managed target, native concurrency, and releases on failure", async () => {
@@ -235,6 +411,7 @@ test("Rust command uses the managed target, native concurrency, and releases on 
   const managedTarget = path.join(repoRoot, "build", "managed-native-target");
   const environment = { ...process.env };
   delete environment.RUST_TEST_THREADS;
+  delete environment.CARGO_BUILD_JOBS;
   const result = await runClientRegressionCommand(batch, {
     repoRoot,
     environment,
@@ -254,8 +431,49 @@ test("Rust command uses the managed target, native concurrency, and releases on 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].options.env.CARGO_TARGET_DIR, managedTarget);
   assert.equal(calls[0].args.includes("--timings"), true);
-  assert.equal(calls[0].args.includes("--jobs=4"), true);
+  assert.equal(calls[0].args.includes("--jobs=3"), true);
   assert.equal(releases, 1);
+});
+
+test("Rust command caps module concurrency to the shared runner budget", async () => {
+  const module = selectModulesById(["rust.domain.agent-usage"])[0];
+  const [batch] = planClientRegressionBatches([module]);
+  const calls = [];
+  await runClientRegressionCommand(batch, {
+    repoRoot,
+    environment: { ...process.env, CARGO_BUILD_JOBS: "2" },
+    leaseFactory() {
+      return {
+        targetPath: path.join(repoRoot, "build", "managed-native-target"),
+        release() {},
+      };
+    },
+    spawnImpl(program, args, options) {
+      calls.push({ program, args, options });
+      return syntheticChild();
+    },
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].args.includes("--jobs=2"), true);
+  assert.equal(calls[0].args.some((argument) => argument === "--jobs=3"), false);
+});
+
+test("Rust command rejects an invalid shared runner budget before launch", async () => {
+  const module = selectModulesById(["rust.domain.agent-usage"])[0];
+  const [batch] = planClientRegressionBatches([module]);
+  let launched = false;
+  await assert.rejects(
+    runClientRegressionCommand(batch, {
+      repoRoot,
+      environment: { ...process.env, CARGO_BUILD_JOBS: "unbounded" },
+      spawnImpl() {
+        launched = true;
+        return syntheticChild();
+      },
+    }),
+    /CARGO_BUILD_JOBS must be a positive integer/u,
+  );
+  assert.equal(launched, false);
 });
 
 test("test child processes exempt loopback from inherited proxies", async () => {
@@ -349,6 +567,7 @@ test("explicit serial libtest is prepared independently of Cargo jobs", async ()
     environment: {
       ...process.env,
       RUST_TEST_THREADS: "1",
+      CARGO_BUILD_JOBS: "3",
     },
     leaseFactory() {
       return {
@@ -362,7 +581,7 @@ test("explicit serial libtest is prepared independently of Cargo jobs", async ()
     },
   });
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].args.includes("--jobs=4"), true);
+  assert.equal(calls[0].args.includes("--jobs=3"), true);
   assert.equal(calls[0].args.includes("--test-threads=1"), true);
   assert.equal(calls[0].args.includes("--test-threads=4"), false);
 });
@@ -422,7 +641,10 @@ test("bounded scheduler settles siblings after a failure and admits work concurr
   ]);
 });
 
-function graphModule(id, stage) {
+function graphModule(id, stage, {
+  toolchain = "node",
+  resources = [],
+} = {}) {
   return Object.freeze({
     id,
     kind: "synthetic",
@@ -437,10 +659,10 @@ function graphModule(id, stage) {
     regression: Object.freeze({
       stage,
       lane: stage,
-      environment: "node",
-      toolchain: "node",
+      environment: toolchain,
+      toolchain,
       weight: 1,
-      resources: Object.freeze([]),
+      resources: Object.freeze(resources),
       internalParallelism: false,
       batchKey: `node:${id}`,
     }),
@@ -493,7 +715,7 @@ test("staged graph overlaps frontend/backend and preserves dependency order", as
   assert.ok(events.indexOf("integration:end") < events.indexOf("scenarios:start"));
 });
 
-test("a core branch failure blocks only descendants and still reaches compatibility", async () => {
+test("independent cross-stage failures settle together and still reach compatibility", async () => {
   const modules = [
     graphModule("foundation", "foundation"),
     graphModule("frontend", "frontend"),
@@ -509,7 +731,7 @@ test("a core branch failure blocks only descendants and still reaches compatibil
     capacities: { global: 2, pools: { node: 2 }, resources: {} },
     async commandRunner(batch) {
       return graphResult(batch,
-        batch.members[0] === "frontend" ? "failed" : "passed");
+        ["foundation", "integration"].includes(batch.members[0]) ? "failed" : "passed");
     },
     async compatibilityRunner() {
       compatibilityReached = true;
@@ -519,9 +741,119 @@ test("a core branch failure blocks only descendants and still reaches compatibil
   assert.equal(result.ok, false);
   assert.equal(compatibilityReached, true);
   const statuses = new Map(result.report.results.map((entry) => [entry.members[0], entry.status]));
+  assert.equal(statuses.get("foundation"), "failed");
+  assert.equal(statuses.get("frontend"), "passed");
   assert.equal(statuses.get("backend"), "passed");
-  assert.equal(statuses.get("integration"), "blocked");
-  assert.equal(statuses.get("scenarios"), "blocked");
+  assert.equal(statuses.get("integration"), "failed");
+  assert.equal(statuses.get("scenarios"), "passed");
+  assert.deepEqual(result.report.failures.map((failure) => failure.members[0]), [
+    "foundation",
+    "integration",
+  ]);
+});
+
+test("batch progress is emitted at settlement before its concurrent stage completes", async () => {
+  const modules = [
+    graphModule("foundation.fast-failure", "foundation"),
+    graphModule("foundation.slow-pass", "foundation"),
+  ];
+  let releaseSlow;
+  const slow = new Promise((resolve) => { releaseSlow = resolve; });
+  let observeSettlement;
+  const firstSettlement = new Promise((resolve) => { observeSettlement = resolve; });
+  let outputValue = "";
+  const output = {
+    write(chunk) {
+      outputValue += String(chunk);
+      if (/\[client-regression\] exact-[0-9]+: failed\n/u.test(outputValue)) {
+        observeSettlement();
+      }
+    },
+  };
+  let stageCompleted = false;
+  const execution = executeClientModules(modules, {
+    repoRoot,
+    catalog: modules,
+    output,
+    capacities: { global: 2, pools: { node: 2 }, resources: {} },
+    async commandRunner(batch) {
+      if (batch.members[0] === "foundation.slow-pass") await slow;
+      return graphResult(batch,
+        batch.members[0] === "foundation.fast-failure" ? "failed" : "passed");
+    },
+  }).then((result) => {
+    stageCompleted = true;
+    return result;
+  });
+
+  await firstSettlement;
+  assert.equal(stageCompleted, false);
+  assert.match(outputValue, /\[client-regression\] exact-[0-9]+: failed\n/u);
+  assert.equal(outputValue.includes("foundation.fast-failure: failed"), false);
+  releaseSlow();
+  const result = await execution;
+  assert.equal(result.ok, false);
+  assert.match(outputValue, /\[client-regression\] exact-[0-9]+: passed\n/u);
+});
+
+test("Flutter dependency failure blocks only its consumers and remains nonzero", async () => {
+  const modules = [
+    graphModule("regression.flutter-dependencies", "foundation", {
+      toolchain: "flutter",
+      resources: ["flutter-cache"],
+    }),
+    graphModule("foundation.node", "foundation"),
+    graphModule("frontend.flutter", "frontend", {
+      toolchain: "flutter",
+      resources: ["flutter-cache"],
+    }),
+    graphModule("backend.rust", "backend", {
+      toolchain: "rust",
+      resources: ["cargo-target"],
+    }),
+    graphModule("integration.gradle-wrapper", "integration", {
+      resources: ["flutter-cache", "gradle-cache"],
+    }),
+    graphModule("integration.node", "integration"),
+    graphModule("scenarios.node", "scenarios"),
+  ];
+  const executed = [];
+  const output = stringSink();
+  const result = await executeClientModules(modules, {
+    repoRoot,
+    catalog: modules,
+    output,
+    capacities: {
+      global: 3,
+      pools: { node: 2, flutter: 3, rust: 3 },
+      resources: { "flutter-cache": 1, "gradle-cache": 1, "cargo-target": 1 },
+    },
+    async commandRunner(batch) {
+      executed.push(batch.members[0]);
+      return graphResult(batch,
+        batch.members[0] === "regression.flutter-dependencies" ? "failed" : "passed");
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.exitCode, 1);
+  assert.deepEqual(executed, [
+    "regression.flutter-dependencies",
+    "foundation.node",
+    "backend.rust",
+    "integration.node",
+    "scenarios.node",
+  ]);
+  const rows = new Map(result.report.results.map((entry) => [entry.members[0], entry]));
+  for (const id of ["frontend.flutter", "integration.gradle-wrapper"]) {
+    assert.equal(rows.get(id).status, "blocked");
+    assert.equal(rows.get(id).reason, "flutter_dependencies_failed");
+  }
+  assert.equal(rows.get("integration.node").status, "passed");
+  assert.equal(rows.get("scenarios.node").status, "passed");
+  assert.match(output.value(), new RegExp(`${rows.get("regression.flutter-dependencies").id}: failed`, "u"));
+  assert.match(output.value(), new RegExp(`${rows.get("foundation.node").id}: passed`, "u"));
+  assert.match(output.value(), new RegExp(`${rows.get("frontend.flutter").id}: blocked`, "u"));
+  assert.equal(output.value().includes("regression.flutter-dependencies: failed"), false);
 });
 
 test("argument parser requires one bounded selector", () => {

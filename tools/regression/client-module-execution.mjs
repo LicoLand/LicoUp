@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { planClientRegressionBatches } from "./client-regression-batching.mjs";
@@ -30,6 +31,11 @@ import {
 const NODE_TEST_ATTRIBUTION_REPORTER = "tools/regression/client-node-test-attribution-reporter.mjs";
 const NODE_TEST_INPUTS_ENV = "LICO_CLIENT_NODE_TEST_INPUTS";
 const NODE_TEST_ATTRIBUTION_SCHEMA = "licoup.node-test-attribution.v1";
+const FLUTTER_DEPENDENCY_MODULE_ID = "regression.flutter-dependencies";
+const FLUTTER_DEPENDENCY_RESOURCES = new Set(["flutter-cache", "gradle-cache"]);
+const DEFAULT_CARGO_JOBS_BUDGET = 3;
+const PRIVATE_DIAGNOSTIC_DIRECTORY = "build/private/client-regression";
+const PRIVATE_DIAGNOSTIC_LIMIT = 2 * 1024 * 1024;
 
 function containedWorkingDirectory(repoRoot, relativeCwd) {
   const root = path.resolve(repoRoot);
@@ -62,6 +68,33 @@ function createTailCollector(limit = 4 * 1024 * 1024) {
       return output;
     },
   });
+}
+
+function diagnosticLogReference(batch) {
+  const stableId = batch.members.length === 1 ? batch.members[0] : batch.id;
+  const safeId = String(stableId || "batch")
+    .replace(/[^a-z0-9_.-]+/giu, "_")
+    .slice(0, 160) || "batch";
+  return path.posix.join(PRIVATE_DIAGNOSTIC_DIRECTORY, `${safeId}.log`);
+}
+
+async function clearPrivateDiagnostic(repoRoot, reference) {
+  await rm(path.resolve(repoRoot, reference), { force: true });
+}
+
+async function writePrivateDiagnostic(repoRoot, reference, { stdout, stderr }) {
+  const destination = path.resolve(repoRoot, reference);
+  const directory = path.dirname(destination);
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await chmod(directory, 0o700);
+  await writeFile(destination, [
+    "[stdout]",
+    stdout,
+    "[stderr]",
+    stderr,
+    "",
+  ].join("\n"), { mode: 0o600 });
+  await chmod(destination, 0o600);
 }
 
 function createSafeReceiptCollector(limit = 1024 * 1024) {
@@ -141,12 +174,25 @@ function relativeReporterPath(repoRoot, commandCwd) {
   return normalized.startsWith(".") ? normalized : `./${normalized}`;
 }
 
+function cargoJobsBudget(environment) {
+  const configured = environment?.CARGO_BUILD_JOBS;
+  if (configured === undefined || String(configured).trim() === "") {
+    return DEFAULT_CARGO_JOBS_BUDGET;
+  }
+  const normalized = String(configured).trim();
+  if (!/^[1-9][0-9]*$/u.test(normalized)) {
+    throw new Error("CARGO_BUILD_JOBS must be a positive integer");
+  }
+  return Number(normalized);
+}
+
 function prepareToolchainCommand(batch, { repoRoot, environment = process.env } = {}) {
   if (isRustToolchainCommand(batch.command)) {
     const stdout = createTailCollector(2 * 1024 * 1024);
     const stderr = createTailCollector(2 * 1024 * 1024);
+    const runnerBudget = cargoJobsBudget(environment);
     const decorated = decorateRustToolchainCommand(batch.command, {
-      cargoJobs: batch.internalConcurrency,
+      cargoJobs: Math.min(batch.internalConcurrency || runnerBudget, runnerBudget),
       libtestThreads: resolveRustLibtestThreads({
         internalConcurrency: batch.internalConcurrency,
         environment,
@@ -269,7 +315,7 @@ export async function runClientRegressionCommand(batch, {
   metricsAdapter = defaultProcessTreeMetricsAdapter(),
 } = {}) {
   const prepared = prepareToolchainCommand(batch, { repoRoot, environment });
-  const { program, args, cwd, timeoutMs } = prepared.command;
+  const { program, args, cwd } = prepared.command;
   const executable = program === "node" ? process.execPath : program;
   const lease = program === "cargo"
     ? leaseFactory({ repoRoot, scope: batch.id, targetPath: NATIVE_CARGO_TEST_TARGET })
@@ -279,14 +325,16 @@ export async function runClientRegressionCommand(batch, {
   let status = "passed";
   let exitCode = null;
   let childPid = null;
+  const diagnosticReference = diagnosticLogReference(batch);
+  const diagnosticStdout = createTailCollector(PRIVATE_DIAGNOSTIC_LIMIT);
+  const diagnosticStderr = createTailCollector(PRIVATE_DIAGNOSTIC_LIMIT);
   try {
+    await clearPrivateDiagnostic(repoRoot, diagnosticReference);
     await new Promise((resolve) => {
       let settled = false;
-      let timer = null;
       const finish = (nextStatus, nextReason) => {
         if (settled) return;
         settled = true;
-        if (timer) clearTimeout(timer);
         status = nextStatus;
         reason = nextReason;
         resolve();
@@ -309,21 +357,29 @@ export async function runClientRegressionCommand(batch, {
         finish("failed", "process_start_failed");
         return;
       }
-      child.stdout?.on?.("data", prepared.pushStdout);
-      child.stderr?.on?.("data", prepared.pushStderr);
+      child.stdout?.on?.("data", (chunk) => {
+        diagnosticStdout.push(chunk);
+        prepared.pushStdout(chunk);
+      });
+      child.stderr?.on?.("data", (chunk) => {
+        diagnosticStderr.push(chunk);
+        prepared.pushStderr(chunk);
+      });
       child.once?.("error", () => finish("failed", "process_start_failed"));
       child.once?.("close", (code, signal) => {
         exitCode = Number.isInteger(code) ? code : null;
         if (code === 0) finish("passed", null);
         else finish("failed", signal ? "command_signaled" : "command_failed");
       });
-      timer = setTimeout(() => {
-        child.kill?.("SIGTERM");
-        finish("failed", "command_timeout");
-      }, timeoutMs);
-      timer.unref?.();
     });
     const durationMs = Math.round(monotonicMilliseconds(started));
+    const privateOutput = Object.freeze({
+      stdout: diagnosticStdout.finish(),
+      stderr: diagnosticStderr.finish(),
+    });
+    if (status === "failed") {
+      await writePrivateDiagnostic(repoRoot, diagnosticReference, privateOutput);
+    }
     const processTree = await metricsAdapter.measure({
       batchId: batch.id,
       childPid,
@@ -344,6 +400,9 @@ export async function runClientRegressionCommand(batch, {
       toolchain.failedMembers.length > 0
       ? toolchain.failedMembers
       : null;
+    const attributedPassedMembers = attributedMembers
+      ? batch.members.filter((member) => !attributedMembers.includes(member))
+      : [];
     return Object.freeze({
       id: batch.id,
       stage: batch.stage,
@@ -356,10 +415,43 @@ export async function runClientRegressionCommand(batch, {
       durationMs,
       members: attributedMembers || batch.members,
       metrics,
+      ...(status === "failed" ? { diagnosticLog: diagnosticReference } : {}),
+      ...(attributedPassedMembers.length > 0
+        ? { attributedPassedMembers: Object.freeze(attributedPassedMembers) }
+        : {}),
     });
   } finally {
     lease?.release();
   }
+}
+
+function expandAttributedResult(batch, result) {
+  const { attributedPassedMembers, ...primaryFields } = result;
+  const primary = Object.freeze(primaryFields);
+  if (result.status !== "failed" || !Array.isArray(attributedPassedMembers) ||
+      attributedPassedMembers.length === 0) {
+    return Object.freeze([primary]);
+  }
+  const passedSet = new Set(attributedPassedMembers);
+  const passedMembers = batch.members.filter((member) => passedSet.has(member));
+  if (passedMembers.length !== attributedPassedMembers.length ||
+      passedMembers.some((member) => result.members.includes(member))) {
+    return Object.freeze([primary]);
+  }
+  return Object.freeze([
+    primary,
+    Object.freeze({
+      id: `${batch.id}.passed`,
+      stage: result.stage,
+      lane: result.lane,
+      toolchain: result.toolchain,
+      status: "passed",
+      reason: null,
+      durationMs: result.durationMs,
+      members: Object.freeze(passedMembers),
+      metrics: result.metrics,
+    }),
+  ]);
 }
 
 function fits(batch, usage, capacities) {
@@ -382,6 +474,7 @@ function adjustUsage(batch, usage, direction) {
 export async function executeClientRegressionBatches(batches, {
   capacities = defaultRegressionCapacities(),
   commandRunner,
+  onBatchSettled = () => {},
 } = {}) {
   const pending = [...batches];
   const running = new Map();
@@ -438,10 +531,14 @@ export async function executeClientRegressionBatches(batches, {
     const settled = await Promise.race(running.values());
     running.delete(settled.batch.id);
     adjustUsage(settled.batch, usage, -1);
-    results.push(settled.result);
+    onBatchSettled(settled.result);
+    results.push(...expandAttributedResult(settled.batch, settled.result));
   }
-  const order = new Map(batches.map((batch, index) => [batch.id, index]));
-  results.sort((left, right) => order.get(left.id) - order.get(right.id));
+  const memberOrder = new Map(batches.flatMap((batch) => batch.members)
+    .map((member, index) => [member, index]));
+  results.sort((left, right) =>
+    Math.min(...left.members.map((member) => memberOrder.get(member))) -
+    Math.min(...right.members.map((member) => memberOrder.get(member))));
   return Object.freeze({
     results: Object.freeze(results),
     concurrency: Object.freeze({
@@ -470,6 +567,16 @@ function blockedResults(batches, reason) {
   }));
 }
 
+function batchContains(batch, moduleId) {
+  return batch.members.includes(moduleId);
+}
+
+function requiresFlutterDependencies(batch) {
+  if (batchContains(batch, FLUTTER_DEPENDENCY_MODULE_ID)) return false;
+  return ["flutter", "gradle"].includes(batch.toolchain)
+    || batch.resources.some((resource) => FLUTTER_DEPENDENCY_RESOURCES.has(resource));
+}
+
 export async function executeClientModules(modules, {
   repoRoot,
   catalog = modules,
@@ -492,8 +599,14 @@ export async function executeClientModules(modules, {
   const startedMono = process.hrtime.bigint();
   const results = [];
   const concurrency = { maximumWeight: 0, maximumProcesses: 0, poolPeaks: {} };
+  const recordResults = (settled) => {
+    results.push(...settled);
+  };
+  const emitSettlement = (result) => {
+    output.write(`[client-regression] ${result.id}: ${result.status}\n`);
+  };
   const merge = (execution) => {
-    results.push(...execution.results);
+    recordResults(execution.results);
     concurrency.maximumWeight = Math.max(concurrency.maximumWeight, execution.concurrency.maximumWeight);
     concurrency.maximumProcesses = Math.max(concurrency.maximumProcesses, execution.concurrency.maximumProcesses);
     for (const [pool, peak] of Object.entries(execution.concurrency.poolPeaks)) {
@@ -506,36 +619,36 @@ export async function executeClientModules(modules, {
     }
     const stages = [...new Set(stageBatches.map((batch) => batch.stage))].join(",");
     output.write(`[client-regression] starting ${stages}: ${stageBatches.length} planned invocation(s)\n`);
-    return executeClientRegressionBatches(stageBatches, { capacities, commandRunner: runner });
+    return executeClientRegressionBatches(stageBatches, {
+      capacities,
+      commandRunner: runner,
+      onBatchSettled: emitSettlement,
+    });
   };
 
-  const foundation = await run(byStage.get("foundation"));
-  merge(foundation);
-  let branchesPassed = false;
-  if (resultsPassed(foundation.results)) {
-    const branches = await run([...byStage.get("frontend"), ...byStage.get("backend")]);
-    merge(branches);
-    branchesPassed = resultsPassed(branches.results);
-  } else {
-    results.push(...blockedResults(
-      [...byStage.get("frontend"), ...byStage.get("backend")],
-      "foundation_failed",
-    ));
-  }
+  const dependencyPreparation = byStage.get("foundation")
+    .filter((batch) => batchContains(batch, FLUTTER_DEPENDENCY_MODULE_ID));
+  const dependencyExecution = await run(dependencyPreparation);
+  merge(dependencyExecution);
+  const dependenciesAvailable = resultsPassed(dependencyExecution.results);
+  const runStage = async (stageBatches) => {
+    const runnable = dependenciesAvailable
+      ? stageBatches
+      : stageBatches.filter((batch) => !requiresFlutterDependencies(batch));
+    const blocked = dependenciesAvailable
+      ? []
+      : stageBatches.filter(requiresFlutterDependencies);
+    merge(await run(runnable));
+    const blockedExecution = blockedResults(blocked, "flutter_dependencies_failed");
+    blockedExecution.forEach(emitSettlement);
+    recordResults(blockedExecution);
+  };
 
-  let integrationPassed = false;
-  if (branchesPassed) {
-    const integration = await run(byStage.get("integration"));
-    merge(integration);
-    integrationPassed = resultsPassed(integration.results);
-  } else {
-    results.push(...blockedResults(byStage.get("integration"), "core_branch_failed"));
-  }
-  if (integrationPassed) {
-    merge(await run(byStage.get("scenarios")));
-  } else {
-    results.push(...blockedResults(byStage.get("scenarios"), "integration_failed"));
-  }
+  await runStage(byStage.get("foundation")
+    .filter((batch) => !batchContains(batch, FLUTTER_DEPENDENCY_MODULE_ID)));
+  await runStage([...byStage.get("frontend"), ...byStage.get("backend")]);
+  await runStage(byStage.get("integration"));
+  await runStage(byStage.get("scenarios"));
 
   const compatibilityExecution = await compatibilityRunner({ capacities, output });
   const compatibility = Array.isArray(compatibilityExecution)

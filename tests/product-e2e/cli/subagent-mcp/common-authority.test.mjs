@@ -10,6 +10,10 @@ const store = readFileSync(
   "crates/licoup-conversation/src/store/mod.rs",
   "utf8",
 );
+const schema = readFileSync(
+  "crates/licoup-conversation/src/store/schema.rs",
+  "utf8",
+);
 const application = readFileSync(
   "crates/licoup-native/src/domain/subagents/mod.rs",
   "utf8",
@@ -29,7 +33,8 @@ test("authority admits only exact active same-conversation agent memberships", (
   assert.match(claims, /subagent_self_call_rejected/u);
   assert.match(claims, /subagent_cross_conversation_rejected/u);
   assert.match(claims, /subagent_duplicate_active_edge/u);
-  assert.match(store, /CREATE UNIQUE INDEX IF NOT EXISTS subagent_dispatch_claims_active_edge/u);
+  assert.match(store, /mod schema;/u);
+  assert.match(schema, /CREATE UNIQUE INDEX IF NOT EXISTS subagent_dispatch_claims_active_edge/u);
 });
 
 test("claim precedes PersistentTurn effect and uncertain cancel reconciles", () => {

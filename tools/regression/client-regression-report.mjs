@@ -3,6 +3,8 @@ import path from "node:path";
 
 export const CLIENT_REGRESSION_REPORT_SCHEMA = "licoup.client-regression-report.v1";
 export const LEGACY_INCOMPLETE_BASELINE_MS = 1_161_000;
+const PRIVATE_DIAGNOSTIC_PATTERN =
+  /^build\/private\/client-regression\/[a-z0-9_.-]+\.log$/iu;
 
 function terminalStatus(results, compatibility) {
   return results.some((result) => result.status !== "passed") ||
@@ -96,6 +98,15 @@ function safeMetrics(value) {
   });
 }
 
+function safeDiagnosticLog(value, status) {
+  if (value === undefined || value === null) return null;
+  if (!["failed", "attribution-pending"].includes(status) ||
+      typeof value !== "string" || !PRIVATE_DIAGNOSTIC_PATTERN.test(value)) {
+    throw new Error("client regression diagnostic log reference is invalid");
+  }
+  return value;
+}
+
 export function createClientRegressionReport({
   runKind,
   startedAt,
@@ -105,17 +116,21 @@ export function createClientRegressionReport({
   concurrency,
   compatibility = [],
 }) {
-  const safeResults = results.map((result) => Object.freeze({
-    id: result.id,
-    stage: result.stage,
-    lane: result.lane,
-    toolchain: result.toolchain,
-    status: result.status,
-    reason: result.reason ? reason(result.reason, "execution_failed") : null,
-    durationMs: result.durationMs,
-    members: Object.freeze([...result.members]),
-    metrics: safeMetrics(result.metrics),
-  }));
+  const safeResults = results.map((result) => {
+    const diagnosticLog = safeDiagnosticLog(result.diagnosticLog, result.status);
+    return Object.freeze({
+      id: result.id,
+      stage: result.stage,
+      lane: result.lane,
+      toolchain: result.toolchain,
+      status: result.status,
+      reason: result.reason ? reason(result.reason, "execution_failed") : null,
+      durationMs: result.durationMs,
+      members: Object.freeze([...result.members]),
+      metrics: safeMetrics(result.metrics),
+      ...(diagnosticLog ? { diagnosticLog } : {}),
+    });
+  });
   const safeCompatibility = compatibility.map((row) => Object.freeze({
     id: row.id,
     kind: row.kind,
@@ -137,7 +152,12 @@ export function createClientRegressionReport({
     results: Object.freeze(safeResults),
     failures: Object.freeze(safeResults
       .filter((result) => ["failed", "attribution-pending", "blocked"].includes(result.status))
-      .map((result) => Object.freeze({ id: result.id, reason: result.reason, members: result.members }))),
+      .map((result) => Object.freeze({
+        id: result.id,
+        reason: result.reason,
+        members: result.members,
+        ...(result.diagnosticLog ? { diagnosticLog: result.diagnosticLog } : {}),
+      }))),
     compatibility: Object.freeze(safeCompatibility),
     legacyBaseline: Object.freeze({
       status: "incomplete",

@@ -267,6 +267,18 @@ boundaries; the delivery entry does not perform them automatically.
 
 ### Run focused verification
 
+The regression catalog is the module-selection and execution authority used by
+focused development, the final local command, and Client CI. A list or dry run
+is inventory evidence only; it does not execute a check.
+
+Platform selection comes from the maintained regression catalog and platform
+entries, not from the developer's current host. Run a shared module through its
+registered command. Run a target adapter on the actual target system named by
+its platform entry. When a change affects several target adapters, every one is
+required before the final workflow can pass; a missing runner is recorded as
+blocked or unverified. Source scanning is diagnostic evidence and cannot replace
+execution on an affected target.
+
 List the maintained regression modules and preview change-based selection:
 
 ```bash
@@ -274,10 +286,10 @@ npm run client:regression:list
 npm run client:regression -- --changed-from <ref> --dry-run
 ```
 
-Run the smallest owning module:
+Run the smallest owning module through the same gate used by the final profile:
 
 ```bash
-npm run client:regression -- --module <module-id>
+npm run client:gate:step -- <module-id>
 ```
 
 The complete client regression is one capability-aware staged run:
@@ -314,6 +326,46 @@ The report is written privately to
 `build/reports/client-module-regression.json` without command output, paths,
 arguments, environment values, PIDs, or runtime payloads.
 
+The catalog namespaces provide the maintained coverage map. Individual module
+IDs, inputs, commands, stages, runnable hosts, and affected target hosts remain
+in `tools/regression/client-module-catalog.mjs`; this table does not duplicate
+that registry.
+
+| Area and common failure category | Registered IDs | Execution | Platform ownership |
+| --- | --- | --- | --- |
+| Registry integrity, privacy, source contracts, and workflow wiring | `regression.*` | `client:gate:step -- <id>`; complete profile | Host privacy plus catalog-declared hosts |
+| Flutter composition, features, and contracts | `flutter.*` | same registered command | Portable unless the entry declares a target |
+| Rust crates, domains, core, FFI, and platform adapters | `rust.*` | same registered command | `runnableHosts` and `targetEvidenceHosts` |
+| Native bridges and target integration | `bridge.*` | same registered command | Actual declared target for affected adapters |
+| Packaging and release-policy engineering contracts | `packaging.*`, `release.*` | same registered command; promotion adds release policy | Declared package target |
+
+After development and every focused repair, run the verified delivery entry:
+
+```bash
+npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery
+```
+
+The command runs canonical host privacy, the complete applicable catalog in the
+isolated Linux CI environment, and affected target modules on their actual host.
+Only after those checks pass does it use the existing target catalog, build owner,
+and installer to build, install, and open the local client. A failed stage exits
+nonzero and blocks its dependents. The entry does not publish, sign, notarize,
+migrate real data, inspect the interface, or run live Agent tasks. An unavailable
+required target is `blocked`; a missing or incomplete result is never ready.
+
+If the entry or an authorized observation fails, determine whether a declared
+check did not run or the product is wrong. Repair a real workflow omission through
+its existing owner before repairing the affected product; when the workflow is
+correct, fix the product without inventing a tooling change. Run the owning focused
+step, reuse valid evidence, and return to the same delivery entry. Stop after a
+successful delivery instead of repeating unchanged checks or adding unrelated work.
+Static and live compatibility observations remain separate from required engineering
+evidence and are not reported as passes when they were not run.
+
+A change to the delivery tooling itself uses `--target pr` for its own pull request
+and must not install a client that does not contain the product candidate. After the
+tooling is integrated with the product candidate, that candidate uses `--target delivery`.
+
 Redispatch only the failed, attribution-pending, or blocked core members and
 failed compatibility targets:
 
@@ -336,15 +388,12 @@ Common focused checks are:
 | Architecture boundaries | `npm run client:verify:architecture` |
 | Version and generated compatibility | `npm run client:version:check` |
 
-Run `npm run client:gate:source` once after all focused checks pass. Then run
-only the affected `client:gate:flutter`, `client:gate:rust`,
-`client:gate:android`, or `client:gate:dependencies` lane. These regression
-lanes are independent and may run in parallel. Release policy runs only on the
-`stable` → `release` promotion edge described in
-[`releases/PROMOTION-GATES.md`](releases/PROMOTION-GATES.md). Source policy is
-Node-only; it does not install platform toolchains
-and is not authorization for live services, runtime-data capture, device
-installation, signing, publication, or store operations.
+The older technology lane commands remain bounded diagnostic subtools and are
+not merge-readiness results. Release policy runs only on the `stable` →
+`release` promotion edge described in
+[`releases/PROMOTION-GATES.md`](releases/PROMOTION-GATES.md). The complete
+engineering profile is not authorization for live services, runtime-data
+capture, device installation, signing, publication, or store operations.
 
 ### Static architecture metrics
 

@@ -33,8 +33,10 @@ RUN apt-get update \
       file \
       fonts-noto-cjk \
       git \
+      libdbus-1-dev \
       libgtk-3-dev \
       liblzma-dev \
+      libsecret-1-dev \
       libstdc++-12-dev \
       ninja-build \
       pkg-config \
@@ -77,11 +79,35 @@ RUN set -eux; \
     chmod 0700 "${BUILD_TEMP_ROOT}/rustup-init"; \
     "${BUILD_TEMP_ROOT}/rustup-init" -y --profile minimal --default-toolchain "${RUST_VERSION}" --no-modify-path; \
     rm "${BUILD_TEMP_ROOT}/rustup-init"; \
-    rustup component add llvm-tools-preview --toolchain "${RUST_VERSION}"
+    rustup component add clippy rustfmt llvm-tools-preview --toolchain "${RUST_VERSION}"
+
+RUN chown -R 0:0 "${INSTALL_ROOT}/flutter"
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends lld-18 llvm-18 \
+    && apt-get install -y --no-install-recommends lld-18 llvm-18 openjdk-17-jdk-headless \
     && rm -rf "/${APT_LISTS_ROOT_NAME}/lib/apt/lists"/*
+
+ARG ANDROID_COMMAND_LINE_TOOLS_REVISION=11076708
+ARG ANDROID_COMMAND_LINE_TOOLS_VERSION=12.0
+ARG ANDROID_COMMAND_LINE_TOOLS_SHA256=2d2d50857e4eb553af5a6dc3ad507a17adf43d115264b1afc116f95c92e5e258
+ARG ANDROID_PLATFORM_PACKAGE=platforms;android-33
+ARG ANDROID_COMPAT_NDK_PACKAGE=ndk;27.0.12077973
+ARG ANDROID_CI_NDK_PACKAGE=ndk;28.2.13676358
+ARG ANDROID_PRIMARY_NDK_PACKAGE=ndk;30.0.14904198
+
+RUN set -eux; \
+    android_archive="${BUILD_TEMP_ROOT}/android-command-line-tools.zip"; \
+    curl --retry 3 --retry-connrefused --retry-delay 2 -fsSL \
+      "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_COMMAND_LINE_TOOLS_REVISION}_latest.zip" \
+      -o "${android_archive}"; \
+    printf '%s  %s\n' "${ANDROID_COMMAND_LINE_TOOLS_SHA256}" "${android_archive}" | sha256sum -c -; \
+    mkdir -p "${INSTALL_ROOT}/android-command-line-tools/latest"; \
+    unzip -q "${android_archive}" -d "${BUILD_TEMP_ROOT}/android-command-line-tools"; \
+    grep -Eq "^Pkg.Revision[[:space:]]*=[[:space:]]*${ANDROID_COMMAND_LINE_TOOLS_VERSION}$" \
+      "${BUILD_TEMP_ROOT}/android-command-line-tools/cmdline-tools/source.properties"; \
+    mv "${BUILD_TEMP_ROOT}/android-command-line-tools/cmdline-tools"/* \
+      "${INSTALL_ROOT}/android-command-line-tools/latest/"; \
+    rm "${android_archive}"
 
 WORKDIR /workspace
 
