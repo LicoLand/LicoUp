@@ -367,11 +367,40 @@ test("aggregated Node tests attribute failure to module ids without retaining fi
     });
     assert.equal(result.status, "failed");
     assert.deepEqual(result.members, ["module.failing"]);
+    assert.deepEqual(result.attributedPassedMembers, ["module.passing"]);
     assert.equal(JSON.stringify(result).includes("private stack"), false);
     assert.equal(JSON.stringify(result).includes(directory), false);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("complete Node attribution retains independently passed members in the summary", async () => {
+  const modules = selectModulesById([
+    "regression.release-workflow-contracts",
+    "regression.client-state-contracts",
+  ]);
+  const passing = "regression.release-workflow-contracts";
+  const failing = "regression.client-state-contracts";
+  const result = await executeClientModules(modules, {
+    repoRoot,
+    catalog: modules,
+    output: stringSink(),
+    async commandRunner(batch) {
+      assert.deepEqual(batch.members, [passing, failing]);
+      return Object.freeze({
+        ...graphResult(batch, "failed"),
+        members: Object.freeze([failing]),
+        attributedPassedMembers: Object.freeze([passing]),
+      });
+    },
+  });
+  const statuses = new Map(result.report.results.flatMap((entry) =>
+    entry.members.map((member) => [member, entry.status])));
+  assert.equal(statuses.get(passing), "passed");
+  assert.equal(statuses.get(failing), "failed");
+  assert.deepEqual(result.completed, [passing]);
+  assert.deepEqual(result.failures.map((failure) => failure.members), [[failing]]);
 });
 
 test("Rust command uses the managed target, native concurrency, and releases on failure", async () => {

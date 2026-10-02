@@ -400,6 +400,9 @@ export async function runClientRegressionCommand(batch, {
       toolchain.failedMembers.length > 0
       ? toolchain.failedMembers
       : null;
+    const attributedPassedMembers = attributedMembers
+      ? batch.members.filter((member) => !attributedMembers.includes(member))
+      : [];
     return Object.freeze({
       id: batch.id,
       stage: batch.stage,
@@ -413,10 +416,42 @@ export async function runClientRegressionCommand(batch, {
       members: attributedMembers || batch.members,
       metrics,
       ...(status === "failed" ? { diagnosticLog: diagnosticReference } : {}),
+      ...(attributedPassedMembers.length > 0
+        ? { attributedPassedMembers: Object.freeze(attributedPassedMembers) }
+        : {}),
     });
   } finally {
     lease?.release();
   }
+}
+
+function expandAttributedResult(batch, result) {
+  const { attributedPassedMembers, ...primaryFields } = result;
+  const primary = Object.freeze(primaryFields);
+  if (result.status !== "failed" || !Array.isArray(attributedPassedMembers) ||
+      attributedPassedMembers.length === 0) {
+    return Object.freeze([primary]);
+  }
+  const passedSet = new Set(attributedPassedMembers);
+  const passedMembers = batch.members.filter((member) => passedSet.has(member));
+  if (passedMembers.length !== attributedPassedMembers.length ||
+      passedMembers.some((member) => result.members.includes(member))) {
+    return Object.freeze([primary]);
+  }
+  return Object.freeze([
+    primary,
+    Object.freeze({
+      id: `${batch.id}.passed`,
+      stage: result.stage,
+      lane: result.lane,
+      toolchain: result.toolchain,
+      status: "passed",
+      reason: null,
+      durationMs: result.durationMs,
+      members: Object.freeze(passedMembers),
+      metrics: result.metrics,
+    }),
+  ]);
 }
 
 function fits(batch, usage, capacities) {
@@ -497,10 +532,13 @@ export async function executeClientRegressionBatches(batches, {
     running.delete(settled.batch.id);
     adjustUsage(settled.batch, usage, -1);
     onBatchSettled(settled.result);
-    results.push(settled.result);
+    results.push(...expandAttributedResult(settled.batch, settled.result));
   }
-  const order = new Map(batches.map((batch, index) => [batch.id, index]));
-  results.sort((left, right) => order.get(left.id) - order.get(right.id));
+  const memberOrder = new Map(batches.flatMap((batch) => batch.members)
+    .map((member, index) => [member, index]));
+  results.sort((left, right) =>
+    Math.min(...left.members.map((member) => memberOrder.get(member))) -
+    Math.min(...right.members.map((member) => memberOrder.get(member))));
   return Object.freeze({
     results: Object.freeze(results),
     concurrency: Object.freeze({
