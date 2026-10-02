@@ -32,7 +32,11 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { buildReleaseTools, releaseToolsDirectory } from
+import {
+  buildReleaseTools,
+  releaseToolsDirectory,
+  selectReleaseToolDescriptor,
+} from
   "../../../apps/desktop/scripts/package-client/build/release-tools.mjs";
 import {
   loadClientReleaseTargetCatalog,
@@ -243,11 +247,13 @@ test("the client bundle selection never carries a migrator", () => {
 });
 
 test("the release tool build stage is unbundled and identity-bound", () => {
+  const descriptor = selectReleaseToolDescriptor("macos");
   const calls = [];
   const copied = [];
   const removed = [];
   const staged = buildReleaseTools(
     { mode: "release", platform: "macos" },
+    descriptor,
     {
       runProcess: (command, args, options) => calls.push({ command, args, options }),
       copy: (source, destination) => copied.push({ source, destination }),
@@ -287,8 +293,9 @@ test("the release tool build stage is unbundled and identity-bound", () => {
   ]) {
     let invoked = 0;
     const invalidated = [];
+    const selectedDescriptor = options.platform === "macos" ? descriptor : null;
     assert.equal(
-      buildReleaseTools(options, {
+      buildReleaseTools(options, selectedDescriptor, {
         runProcess: () => { invoked += 1; },
         copy: () => { invoked += 1; },
         mkdir: () => { invoked += 1; },
@@ -302,11 +309,13 @@ test("the release tool build stage is unbundled and identity-bound", () => {
 });
 
 test("a failed tool build or partial copy cannot leave a publishable staged tool", () => {
+  const descriptor = selectReleaseToolDescriptor("macos");
   for (const failure of ["build", "copy"]) {
     const removed = [];
     let copies = 0;
     assert.throws(() => buildReleaseTools(
       { mode: "release", platform: "macos" },
+      descriptor,
       {
         runProcess: () => { if (failure === "build") throw new Error("synthetic build failure"); },
         copy: () => { copies += 1; throw new Error("synthetic copy failure"); },
@@ -318,6 +327,53 @@ test("a failed tool build or partial copy cannot leave a publishable staged tool
     assert.equal(removed.length, failure === "copy" ? 2 : 1);
     assert.ok(removed.every((destination) => destination === removed[0]));
   }
+});
+
+test("the target catalog selects release-tool capability and asset identity", () => {
+  const catalog = readCatalogDocument();
+  const macos = selectReleaseToolDescriptor("macos", catalog);
+  assert.deepEqual(macos, {
+    assetName: migrationToolAsset,
+    platform: "macos",
+    releaseSource:
+      `build/apps/desktop/native-release/macos-direct-arm64/${migrationToolAsset}`,
+    targetId: "macos-direct-arm64",
+  });
+  assert.equal(selectReleaseToolDescriptor("linux", catalog), null);
+  assert.equal(selectReleaseToolDescriptor("windows", catalog), null);
+
+  const renamed = structuredClone(catalog);
+  const target = renamed.targets.find((candidate) =>
+    candidate.id === "macos-direct-arm64");
+  const tool = target.artifacts.find((artifact) =>
+    artifact.role === "migration-tool");
+  tool.file = "LicoUp-migrate-custom-arm64";
+  tool.source =
+    `build/apps/desktop/native-release/${target.id}/${tool.file}`;
+  const renamedDescriptor = selectReleaseToolDescriptor("macos", renamed);
+  const renamedStaged = buildReleaseTools(
+    { mode: "release", platform: "macos" },
+    renamedDescriptor,
+    {
+      runProcess: () => undefined,
+      copy: () => undefined,
+      mkdir: () => undefined,
+      remove: () => undefined,
+    },
+  );
+  assert.ok(
+    renamedStaged.endsWith(path.join("release-tools", "macos", tool.file)),
+    "the shared builder must not own platform asset names",
+  );
+
+  const mismatched = structuredClone(catalog);
+  mismatched.targets.find((candidate) => candidate.id === "macos-direct-arm64")
+    .artifacts.find((artifact) => artifact.role === "migration-tool").source =
+      `build/apps/desktop/native-release/macos-app-store-arm64/${migrationToolAsset}`;
+  assert.throws(
+    () => selectReleaseToolDescriptor("macos", mismatched),
+    /migration_tool_release_source_invalid/u,
+  );
 });
 
 test("the release catalog keeps the asset and the guidance names it", () => {

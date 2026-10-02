@@ -2,8 +2,15 @@ import { copyFileSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-import { packageClientRuntime } from "../cli-policy.mjs";
+import {
+  packageClientRuntime,
+  packageFailure,
+} from "../cli-policy.mjs";
 import { runPackageProcess } from "../process-runner.mjs";
+import {
+  loadClientReleaseTargetCatalog,
+  validateClientReleaseTargetCatalog,
+} from "../../../../../tools/scripts/lib/client-release-targets.mjs";
 import {
   cargoTargetDir,
   clientProductVersion,
@@ -19,20 +26,60 @@ import {
 // publication is a separate consumer contract, not proved by this local build stage.
 const MIGRATION_TOOL_MANIFEST = path.join("crates", "licoup-migrate", "Cargo.toml");
 const MIGRATION_TOOL_BINARY = "licoup-migrate";
-export const MIGRATION_TOOL_ASSET_NAME = "LicoUp-migrate-macos-arm64";
 
 /// The unbundled release-tool directory for one platform.
 export function releaseToolsDirectory(platform) {
   return path.join("build", "apps", "desktop", "release-tools", platform);
 }
 
+/// Resolve the optional migration-tool capability from the release target catalog.
+///
+/// Platform adapters own public asset identity and final release source paths. The
+/// shared client builder only receives a descriptor when one selected platform target
+/// declares this capability.
+export function selectReleaseToolDescriptor(
+  platform,
+  catalog = loadClientReleaseTargetCatalog(),
+) {
+  const validated = validateClientReleaseTargetCatalog(catalog);
+  const matches = validated.targets.flatMap((target) =>
+    target.platform === platform
+      ? target.artifacts
+        .filter((artifact) => artifact.role === "migration-tool")
+        .map((artifact) => ({ artifact, target }))
+      : []);
+  if (matches.length === 0) return null;
+  if (matches.length !== 1) {
+    packageFailure("migration_tool_release_target_ambiguous");
+  }
+  const [{ artifact, target }] = matches;
+  const expectedSource = path.posix.join(
+    "build",
+    "apps",
+    "desktop",
+    "native-release",
+    target.id,
+    artifact.file,
+  );
+  if (artifact.source !== expectedSource) {
+    packageFailure("migration_tool_release_source_invalid");
+  }
+  return Object.freeze({
+    assetName: artifact.file,
+    platform: target.platform,
+    releaseSource: artifact.source,
+    targetId: target.id,
+  });
+}
+
 /// Build the on-demand migration tool and stage it outside the client bundles.
 ///
-/// Release-mode macOS packaging only. An actual macOS invocation of this stage
-/// invalidates the previous tool before building or skipping it. Dry runs and other platforms
-/// leave the macOS output untouched; neither claims to refresh it.
+/// An actual invocation for a catalog-declared tool invalidates the previous output
+/// before building or skipping it. Dry runs and platforms without the capability leave
+/// release-tool output untouched; neither claims to refresh it.
 export function buildReleaseTools(
   options,
+  releaseTool,
   {
     runProcess = runPackageProcess,
     copy = copyFileSync,
@@ -40,13 +87,14 @@ export function buildReleaseTools(
     remove = rmSync,
   } = {},
 ) {
-  if (options.dryRun || options.platform !== "macos") {
-    return null;
+  if (options.dryRun || !releaseTool) return null;
+  if (releaseTool.platform !== options.platform) {
+    packageFailure("migration_tool_release_platform_mismatch");
   }
   const staged = path.join(
     packageClientRuntime.workspaceRoot,
     releaseToolsDirectory(options.platform),
-    MIGRATION_TOOL_ASSET_NAME,
+    releaseTool.assetName,
   );
   remove(staged, { force: true });
   if (options.skipNativeBuild || options.mode !== "release") return null;
