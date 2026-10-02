@@ -235,6 +235,7 @@ test("Rust command uses the managed target, native concurrency, and releases on 
   const managedTarget = path.join(repoRoot, "build", "managed-native-target");
   const environment = { ...process.env };
   delete environment.RUST_TEST_THREADS;
+  delete environment.CARGO_BUILD_JOBS;
   const result = await runClientRegressionCommand(batch, {
     repoRoot,
     environment,
@@ -256,6 +257,47 @@ test("Rust command uses the managed target, native concurrency, and releases on 
   assert.equal(calls[0].args.includes("--timings"), true);
   assert.equal(calls[0].args.includes("--jobs=3"), true);
   assert.equal(releases, 1);
+});
+
+test("Rust command caps module concurrency to the shared runner budget", async () => {
+  const module = selectModulesById(["rust.domain.agent-usage"])[0];
+  const [batch] = planClientRegressionBatches([module]);
+  const calls = [];
+  await runClientRegressionCommand(batch, {
+    repoRoot,
+    environment: { ...process.env, CARGO_BUILD_JOBS: "2" },
+    leaseFactory() {
+      return {
+        targetPath: path.join(repoRoot, "build", "managed-native-target"),
+        release() {},
+      };
+    },
+    spawnImpl(program, args, options) {
+      calls.push({ program, args, options });
+      return syntheticChild();
+    },
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].args.includes("--jobs=2"), true);
+  assert.equal(calls[0].args.some((argument) => argument === "--jobs=3"), false);
+});
+
+test("Rust command rejects an invalid shared runner budget before launch", async () => {
+  const module = selectModulesById(["rust.domain.agent-usage"])[0];
+  const [batch] = planClientRegressionBatches([module]);
+  let launched = false;
+  await assert.rejects(
+    runClientRegressionCommand(batch, {
+      repoRoot,
+      environment: { ...process.env, CARGO_BUILD_JOBS: "unbounded" },
+      spawnImpl() {
+        launched = true;
+        return syntheticChild();
+      },
+    }),
+    /CARGO_BUILD_JOBS must be a positive integer/u,
+  );
+  assert.equal(launched, false);
 });
 
 test("test child processes exempt loopback from inherited proxies", async () => {
@@ -349,6 +391,7 @@ test("explicit serial libtest is prepared independently of Cargo jobs", async ()
     environment: {
       ...process.env,
       RUST_TEST_THREADS: "1",
+      CARGO_BUILD_JOBS: "3",
     },
     leaseFactory() {
       return {
@@ -555,10 +598,11 @@ test("Flutter dependency failure blocks only its consumers and remains nonzero",
     graphModule("scenarios.node", "scenarios"),
   ];
   const executed = [];
+  const output = stringSink();
   const result = await executeClientModules(modules, {
     repoRoot,
     catalog: modules,
-    output: stringSink(),
+    output,
     capacities: {
       global: 3,
       pools: { node: 2, flutter: 3, rust: 3 },
@@ -586,6 +630,9 @@ test("Flutter dependency failure blocks only its consumers and remains nonzero",
   }
   assert.equal(rows.get("integration.node").status, "passed");
   assert.equal(rows.get("scenarios.node").status, "passed");
+  assert.match(output.value(), /regression\.flutter-dependencies: failed/u);
+  assert.match(output.value(), /foundation\.node: passed/u);
+  assert.match(output.value(), /frontend\.flutter: blocked/u);
 });
 
 test("argument parser requires one bounded selector", () => {

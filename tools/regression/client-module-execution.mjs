@@ -32,6 +32,7 @@ const NODE_TEST_INPUTS_ENV = "LICO_CLIENT_NODE_TEST_INPUTS";
 const NODE_TEST_ATTRIBUTION_SCHEMA = "licoup.node-test-attribution.v1";
 const FLUTTER_DEPENDENCY_MODULE_ID = "regression.flutter-dependencies";
 const FLUTTER_DEPENDENCY_RESOURCES = new Set(["flutter-cache", "gradle-cache"]);
+const DEFAULT_CARGO_JOBS_BUDGET = 3;
 
 function containedWorkingDirectory(repoRoot, relativeCwd) {
   const root = path.resolve(repoRoot);
@@ -143,12 +144,25 @@ function relativeReporterPath(repoRoot, commandCwd) {
   return normalized.startsWith(".") ? normalized : `./${normalized}`;
 }
 
+function cargoJobsBudget(environment) {
+  const configured = environment?.CARGO_BUILD_JOBS;
+  if (configured === undefined || String(configured).trim() === "") {
+    return DEFAULT_CARGO_JOBS_BUDGET;
+  }
+  const normalized = String(configured).trim();
+  if (!/^[1-9][0-9]*$/u.test(normalized)) {
+    throw new Error("CARGO_BUILD_JOBS must be a positive integer");
+  }
+  return Number(normalized);
+}
+
 function prepareToolchainCommand(batch, { repoRoot, environment = process.env } = {}) {
   if (isRustToolchainCommand(batch.command)) {
     const stdout = createTailCollector(2 * 1024 * 1024);
     const stderr = createTailCollector(2 * 1024 * 1024);
+    const runnerBudget = cargoJobsBudget(environment);
     const decorated = decorateRustToolchainCommand(batch.command, {
-      cargoJobs: batch.internalConcurrency,
+      cargoJobs: Math.min(batch.internalConcurrency || runnerBudget, runnerBudget),
       libtestThreads: resolveRustLibtestThreads({
         internalConcurrency: batch.internalConcurrency,
         environment,
@@ -504,8 +518,16 @@ export async function executeClientModules(modules, {
   const startedMono = process.hrtime.bigint();
   const results = [];
   const concurrency = { maximumWeight: 0, maximumProcesses: 0, poolPeaks: {} };
+  const recordResults = (settled) => {
+    results.push(...settled);
+    for (const result of settled) {
+      for (const member of result.members) {
+        output.write(`[client-regression] ${member}: ${result.status}\n`);
+      }
+    }
+  };
   const merge = (execution) => {
-    results.push(...execution.results);
+    recordResults(execution.results);
     concurrency.maximumWeight = Math.max(concurrency.maximumWeight, execution.concurrency.maximumWeight);
     concurrency.maximumProcesses = Math.max(concurrency.maximumProcesses, execution.concurrency.maximumProcesses);
     for (const [pool, peak] of Object.entries(execution.concurrency.poolPeaks)) {
@@ -534,7 +556,7 @@ export async function executeClientModules(modules, {
       ? []
       : stageBatches.filter(requiresFlutterDependencies);
     merge(await run(runnable));
-    results.push(...blockedResults(blocked, "flutter_dependencies_failed"));
+    recordResults(blockedResults(blocked, "flutter_dependencies_failed"));
   };
 
   await runStage(byStage.get("foundation")

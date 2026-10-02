@@ -67,15 +67,12 @@ function explicitCargoJobs(command) {
   return null;
 }
 
-test("complete catalog respects the three-process Cargo budget", () => {
+test("complete catalog delegates valid Cargo concurrency to the shared runner budget", () => {
   for (const module of CLIENT_MODULE_CATALOG) {
-    const explicitJobs = explicitCargoJobs(module.command);
-    if (explicitJobs !== null) {
-      assert.ok(Number.isInteger(explicitJobs) && explicitJobs > 0, module.id);
-      assert.ok(explicitJobs <= 3, module.id);
-    }
+    assert.equal(explicitCargoJobs(module.command), null, module.id);
     if (module.regression.toolchain === "rust" && module.regression.internalParallelism) {
-      assert.ok(module.regression.weight <= 3, module.id);
+      assert.ok(Number.isInteger(module.regression.weight), module.id);
+      assert.ok(module.regression.weight > 0, module.id);
     }
   }
 });
