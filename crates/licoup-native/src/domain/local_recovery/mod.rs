@@ -1,8 +1,8 @@
 //! Native composition for complete local recovery through the archive owner.
 //!
 //! [`export_data_home`] and [`import_archive`] are the reusable native composition a
-//! caller uses instead of marshalling a second restore policy: the client CLI today,
-//! the standalone migration tool later. The archive owner in `licoup-foundation` owns
+//! caller uses instead of marshalling a second restore policy: both the client CLI
+//! and the standalone migration tool. The archive owner in `licoup-foundation` owns
 //! the container, manifest, extraction and publication; this module owns only the two
 //! steps that need the application's own owners:
 //!
@@ -31,15 +31,13 @@ use std::path::{Path, PathBuf};
 /// The stable refusal when another process still uses the selected data home.
 pub const WRITERS_RUNNING: &str = "backup_writers_running";
 
-/// The stable refusal when an import's failed owner verification could not be rolled
-/// back, so a fully published but unverified root remains at the caller's destination.
+/// The stable refusal when failed publication cannot be completely rolled back.
 ///
-/// The source archive is untouched; the reference rewrite and the revision refreeze and
-/// readback are idempotent owner operations, so the retained root can be repaired forward
-/// instead of being treated as a completed recovery.
+/// The source archive is untouched. The retained destination is unverified and must
+/// not be activated; retry from the archive into a fresh empty home.
 pub const RECOVERY_CLEANUP_FAILED: &str = "recovery_target_cleanup_failed";
 
-/// One completed import, including the owner checks performed after publication.
+/// One completed import, including the owner checks performed before publication.
 #[derive(Clone, Debug)]
 pub struct RecoveryImport {
     pub outcome: RestoreOutcome,
