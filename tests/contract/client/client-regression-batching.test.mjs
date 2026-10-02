@@ -13,6 +13,7 @@ import {
   sdkOwnedContractTestFiles,
 } from "../../../tools/regression/client-contract-selection.mjs";
 import { selectModulesById } from "../../../tools/regression/client-module-selection.mjs";
+import { flutterTestInputPaths } from "../../../tools/regression/client-regression-toolchain-stats/flutter.mjs";
 
 test("complete selection batches native targets and Node test files before scheduling", () => {
   const batches = planClientRegressionBatches(CLIENT_MODULE_CATALOG, {
@@ -39,6 +40,12 @@ test("complete selection batches native targets and Node test files before sched
     const paths = flutter.command.args.slice(separator + 3).filter((value) =>
       !value.startsWith("--") && value.endsWith(".dart"));
     assert.ok(new Set(paths).size <= 64);
+    if (flutter.attribution !== "files") continue;
+    assert.ok(Array.isArray(flutter.inputOwners));
+    const ownedIndexes = new Set(flutter.inputOwners.flatMap((owner) => owner.indexes));
+    const inputs = flutterTestInputPaths(flutter.command);
+    assert.deepEqual([...ownedIndexes].sort((left, right) => left - right),
+      inputs.map((_, index) => index));
   }
 });
 

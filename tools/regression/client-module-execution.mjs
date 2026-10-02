@@ -12,6 +12,7 @@ import { defaultProcessTreeMetricsAdapter } from "./client-regression-metrics.mj
 import {
   createFlutterJsonStatsCollector,
   decorateFlutterTestCommand,
+  flutterTestInputPaths,
 } from "./client-regression-toolchain-stats/flutter.mjs";
 import {
   collectRustToolchainNativeMetrics,
@@ -187,6 +188,14 @@ function cargoJobsBudget(environment) {
   return Number(normalized);
 }
 
+function flutterCommandWorkingDirectory(repoRoot, command) {
+  const separator = command.args.indexOf("--");
+  const runnerArgs = separator >= 0 ? command.args.slice(0, separator) : [];
+  const cwdIndex = runnerArgs.indexOf("--cwd");
+  const relative = cwdIndex >= 0 ? runnerArgs[cwdIndex + 1] : command.cwd;
+  return containedWorkingDirectory(repoRoot, relative || ".");
+}
+
 function prepareToolchainCommand(batch, { repoRoot, environment = process.env } = {}) {
   if (isRustToolchainCommand(batch.command)) {
     const stdout = createTailCollector(2 * 1024 * 1024);
@@ -219,7 +228,12 @@ function prepareToolchainCommand(batch, { repoRoot, environment = process.env } 
     concurrency: batch.internalConcurrency || batch.weight,
   });
   if (decorated.supported) {
-    const collector = createFlutterJsonStatsCollector();
+    const inputs = flutterTestInputPaths(decorated.command);
+    const collector = createFlutterJsonStatsCollector({
+      repoRoot,
+      commandCwd: flutterCommandWorkingDirectory(repoRoot, decorated.command),
+      inputFiles: inputs,
+    });
     return Object.freeze({
       command: decorated.command,
       pushStdout: collector.push,
@@ -227,7 +241,20 @@ function prepareToolchainCommand(batch, { repoRoot, environment = process.env } 
       // prevents wrapper chatter from corrupting a partial JSON line.
       pushStderr() {},
       finish() {
-        return Object.freeze({ kind: "flutter", metrics: collector.finish() });
+        const metrics = collector.finish();
+        const attribution = collector.attribution();
+        const failedIndexes = new Set(attribution.failedInputIndexes);
+        const failedMembers = attribution.attributionComplete && batch.inputOwners
+          ? batch.inputOwners
+            .filter((owner) => owner.indexes.some((index) => failedIndexes.has(index)))
+            .map((owner) => owner.member)
+          : [];
+        return Object.freeze({
+          kind: "flutter",
+          metrics,
+          attributionComplete: attribution.attributionComplete,
+          failedMembers: Object.freeze([...new Set(failedMembers)]),
+        });
       },
     });
   }

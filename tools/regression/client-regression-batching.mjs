@@ -223,11 +223,21 @@ export function planClientRegressionBatches(selected, {
     }
     for (const [index, chunk] of moduleChunks.entries()) {
       const members = chunk.members;
+      const inputIndex = new Map(chunk.paths.map((file, pathIndex) => [file, pathIndex]));
+      const inputOwners = members.map((module) => ({
+        member: module.id,
+        indexes: stableUnique(flutterTestShape(module).paths)
+          .filter((file) => inputIndex.has(file))
+          .map((file) => inputIndex.get(file)),
+      }));
       append(makeBatch(`flutter-test-${batches.length + 1}-${index + 1}`, members, {
         ...members[0].command,
         args: [...shape.prefix, ...chunk.paths, ...shape.options],
         timeoutMs: members.reduce((total, module) => total + module.command.timeoutMs, 0),
-      }, "files", { internalConcurrency: members[0].regression.weight }));
+      }, "files", {
+        inputOwners,
+        internalConcurrency: members[0].regression.weight,
+      }));
     }
   }
 

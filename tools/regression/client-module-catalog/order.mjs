@@ -95,6 +95,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.platform.secure-mesh-secret-store.backend-common",
   "rust.platform.secure-mesh-secret-store.backend-linux",
   "rust.platform.secure-mesh-secret-store.backend-macos",
+  "rust.platform.secure-mesh-secret-store.backend-macos.runtime-state",
   "rust.platform.secure-mesh-secret-store.backend-windows",
   "flutter.feature.agents",
   "flutter.feature.adaptive-flywheel",

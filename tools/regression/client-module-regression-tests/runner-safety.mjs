@@ -417,6 +417,68 @@ test("complete Node attribution retains independently passed members in the summ
   assert.deepEqual(result.failures.map((failure) => failure.members), [[failing]]);
 });
 
+test("complete Flutter JSON attribution retains only actually completed passing inputs", async () => {
+  const files = ["test/startup_test.dart", "test/dock_test.dart"];
+  const batch = syntheticBatch({
+    id: "synthetic-flutter-attribution",
+    toolchain: "flutter",
+    weight: 2,
+    internalConcurrency: 2,
+    members: Object.freeze(["module.startup", "module.dock"]),
+    inputOwners: Object.freeze([
+      Object.freeze({ member: "module.startup", indexes: Object.freeze([0]) }),
+      Object.freeze({ member: "module.dock", indexes: Object.freeze([1]) }),
+    ]),
+    command: Object.freeze({
+      program: "node",
+      args: Object.freeze([
+        "tools/scripts/client-toolchain-runner.mjs",
+        "--cwd", "apps/desktop",
+        "--", "flutter", "test", ...files,
+      ]),
+      cwd: ".",
+      timeoutMs: 5_000,
+    }),
+  });
+  const absolute = files.map((file) => path.join(repoRoot, "apps/desktop", file));
+  const events = [
+    { type: "start", time: 0, protocolVersion: "0.1.1", pid: 7 },
+    { type: "suite", time: 1, suite: { id: 1, path: absolute[0] } },
+    { type: "suite", time: 2, suite: { id: 2, path: absolute[1] } },
+    { type: "testStart", time: 3, test: { id: 10, suiteID: 1, name: "startup passes" } },
+    { type: "testDone", time: 4, testID: 10, result: "success", hidden: false, skipped: false },
+    { type: "testStart", time: 5, test: { id: 20, suiteID: 2, name: "dock fails" } },
+    { type: "testDone", time: 6, testID: 20, result: "failure", hidden: false, skipped: false },
+    { type: "done", time: 7, success: false },
+  ];
+  const result = await runClientRegressionCommand(batch, {
+    repoRoot,
+    spawnImpl() {
+      return syntheticChild({
+        code: 1,
+        stdout: `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
+      });
+    },
+  });
+  assert.equal(result.status, "failed");
+  assert.deepEqual(result.members, ["module.dock"]);
+  assert.deepEqual(result.attributedPassedMembers, ["module.startup"]);
+  assert.equal(JSON.stringify(result).includes(absolute[0]), false);
+
+  const interrupted = await runClientRegressionCommand(batch, {
+    repoRoot,
+    spawnImpl() {
+      return syntheticChild({
+        code: 1,
+        stdout: `${events.slice(0, -1).map((event) => JSON.stringify(event)).join("\n")}\n`,
+      });
+    },
+  });
+  assert.equal(interrupted.status, "attribution-pending");
+  assert.deepEqual(interrupted.members, ["module.startup", "module.dock"]);
+  assert.equal(Object.hasOwn(interrupted, "attributedPassedMembers"), false);
+});
+
 test("an explicit module on the wrong host is blocked without executing", async () => {
   const [module] = selectModulesById([
     "rust.platform.secure-mesh-secret-store.backend-windows",

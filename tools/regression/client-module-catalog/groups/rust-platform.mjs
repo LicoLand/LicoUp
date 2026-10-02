@@ -358,6 +358,20 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::secure_mesh_secret_store::tests::platform_backends::macos"),
     }),
   defineModule({
+      id: "rust.platform.secure-mesh-secret-store.backend-macos.runtime-state",
+      kind: "rust-platform",
+      summary: "macOS native secret-store runtime remains unverified before measurement",
+      runnableHosts: ["darwin"],
+      targetEvidenceHosts: ["darwin"],
+      inputs: [
+        "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/macos.rs",
+        "crates/licoup-native/src/platform/secure_mesh_secret_store/tests/platform_backends.rs",
+      ],
+      command: rustLayer(
+        "platform::secure_mesh_secret_store::tests::platform_backends::desktop_store_without_runtime_round_trip_stays_unverified",
+      ),
+    }),
+  defineModule({
       id: "rust.platform.secure-mesh-secret-store.backend-windows",
       kind: "rust-platform",
       summary: "Windows Credential Manager disabled until measured native user authorization exists",

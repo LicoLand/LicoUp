@@ -739,6 +739,14 @@ test("host classification separates portable coverage from native adapters", () 
       .map((module) => module.id),
     ["rust.platform.secure-mesh-secret-store.capability-ui"],
   );
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/macos.rs",
+  ])).filter((id) => id.startsWith(
+    "rust.platform.secure-mesh-secret-store.backend-macos",
+  )), [
+    "rust.platform.secure-mesh-secret-store.backend-macos",
+    "rust.platform.secure-mesh-secret-store.backend-macos.runtime-state",
+  ]);
 });
 
 test("shared module roots select composition without leaf-regression fanout", () => {
