@@ -19,6 +19,12 @@ ignored.
   Run the repaired subcheck directly, then run the complete applicable local
   workflow before submission. An inventory, partial pass, blocked check, or
   successful launcher is not merge-readiness evidence.
+- Use a portable capability whenever the supported platforms can share one.
+  Keep host-OS assumptions out of shared Rust, Flutter, and Node code; isolate
+  real OS differences behind an explicit platform adapter. A single-platform
+  change must not modify unrelated adapters. A cross-platform refactor must run
+  the registered checks on every affected target system; an unavailable required
+  target is blocked, not passed.
 - After all writers finish, run the affected [formatters](CONTRIBUTING.md#format-before-final-verification)
   once before the final regression. Review their diff before starting checks.
 - Keep validation within the [available local environment](CONTRIBUTING.md#verification-scope).
@@ -54,6 +60,7 @@ ignored.
 | --- | --- |
 | Editing Agent rules or selecting a Skill | [Agent guidance](CONTRIBUTING.md#agent-guidance) |
 | Choosing checks or handling a final regression failure | [Verification coverage and escaped defects](CONTRIBUTING.md#verification-coverage-and-escaped-defects) |
+| Changing shared or platform-specific implementation | [Cross-platform ownership](CONTRIBUTING.md#cross-platform-ownership) |
 | Completing a client behavior change, including bundled prompts | [Local client verification](CONTRIBUTING.md#local-client-verification) |
 | Creating a commit or pull request | [Agent-assisted contribution](CONTRIBUTING.md#agent-assisted-contribution) |
 | Changing documentation | [Documentation rules](CONTRIBUTING.md#documentation-rules) |
