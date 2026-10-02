@@ -462,7 +462,10 @@ function validateDelegatedApplePublicationTopology() {
   ]) {
     if (Object.hasOwn(scripts, retired)) fail(`retired Apple Release command remains: ${retired}`);
   }
-  const roles = ["installer", "installer-digest", "update-archive", "update-digest", "update-manifest"];
+  const roles = ["installer", "installer-digest", "update-archive", "update-digest", "update-manifest", "independent-tool", "independent-tool-digest"];
+  const publication = readJson("tools/client-release-template.json").publication;
+  if (JSON.stringify(publication?.assetRoles) !== JSON.stringify(roles) ||
+      publication.independentToolSignatureNotaryAndPublicDigestRequired !== true) fail("LicoUp independent-tool publication contract is incomplete");
   for (const [file, sourceBranch, candidateBranch, releaseTrack] of [
     ["tools/apple-release/macos-direct-arm64.json", "release",
       "macos-release-candidate", "stable"],
@@ -488,10 +491,16 @@ function validateDelegatedApplePublicationTopology() {
               ["node", "tools/scripts/macos-release/gate-release-policy.mjs"]])
           : !Array.isArray(config.update?.command) || !config.update.command.includes("--release-track") ||
             !config.update.command.includes(releaseTrack)) ||
-        artifacts.length !== 5 ||
+         artifacts.length !== roles.length ||
         roles.some((role) => artifacts.filter((entry) => entry.role === role).length !== 1) ||
         artifacts.find((entry) => entry.role === "update-manifest")?.publicName !==
-          "LicoUp-update-manifest.json") {
+           "LicoUp-update-manifest.json" ||
+         artifacts.find((entry) => entry.role === "independent-tool")?.source !==
+           "build/apps/desktop/release-tools/macos/LicoUp-migrate-macos-arm64" ||
+         artifacts.find((entry) => entry.role === "independent-tool")?.publicName !== "LicoUp-migrate-macos-arm64" ||
+         artifacts.find((entry) => entry.role === "independent-tool")?.path !== "build/apple-release/LicoUp-migrate-macos-arm64" ||
+         artifacts.find((entry) => entry.role === "independent-tool-digest")?.publicName !== "LicoUp-migrate-macos-arm64.sha256" ||
+         artifacts.find((entry) => entry.role === "independent-tool-digest")?.path !== "build/apple-release/LicoUp-migrate-macos-arm64.sha256") {
       fail(`LicoUp delegated Apple publication configuration is invalid: ${file}`);
     }
   }

@@ -66,6 +66,15 @@ running client never selects a bundled migrator. Use a release whose declared
 source and target match the required conversion. Replacing the executable does
 not reset progress: conversion journals remain in the selected data root.
 
+Both macOS publication profiles select the governed `independent-tool` and
+`independent-tool-digest` pair. Their source is the separate release-tool build
+output, never the app bundle. Apple Release owns Developer ID signing, independent
+notarization, immutable materialization and public byte/checksum verification for
+that pair. It does not run the migration tool as an acceptance probe. Source
+configuration and synthetic checks do not establish published availability or
+first-run operating-system acceptance; the corresponding owner contract must be
+legitimately adopted before the governed release can consume it.
+
 Explicit maintenance requires stopped writers and a recoverable source. The short
 startup `admission.lock` does not prove that runtime writers have stopped. The
 standalone tool holds the client's selected-home exclusive process lease across

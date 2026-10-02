@@ -59,11 +59,14 @@
       "installer-digest",
       "update-archive",
       "update-digest",
-      "update-manifest"
+      "update-manifest",
+      "independent-tool",
+      "independent-tool-digest"
     ],
     "exactDraftAssetSetRequired": true,
     "anonymousPublicInstallerDownloadRequired": true,
     "publicInstallerDigestRequired": true,
+    "independentToolSignatureNotaryAndPublicDigestRequired": true,
     "publicInstallAndStableLaunchRequired": true
   }
 }
