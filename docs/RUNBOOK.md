@@ -291,6 +291,11 @@ Platform-specific checks execute only on
 their declared system; an unsupported host, unrun check or missing target result
 cannot count as passed. The focused and complete entries consume these same
 classifications, so contributors do not maintain a separate platform command list.
+Platform dispatch and batch completeness must use the same applicable module set.
+Broad batches still exclude foreign-platform owners; overlapping filters that
+cannot be safely subtracted retain their exact commands. Keep a representative
+aggregation regression so adding one platform owner cannot turn a shared target
+into one invocation per module.
 
 List the maintained regression modules and preview change-based selection:
 

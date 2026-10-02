@@ -24,6 +24,7 @@ function rustBatchShape(module) {
   return Object.freeze({
     key: JSON.stringify([module.command.program, module.command.cwd, args.slice(0, filterIndex)]),
     broadArgs: Object.freeze(args.slice(0, filterIndex)),
+    filter: args[filterIndex],
   });
 }
 
@@ -112,6 +113,7 @@ function makeBatch(id, members, command, attribution = "group", {
 
 export function planClientRegressionBatches(selected, {
   catalog = selected,
+  excludedCatalog = [],
   availableParallelism = os.availableParallelism(),
   narrow = false,
 } = {}) {
@@ -138,6 +140,15 @@ export function planClientRegressionBatches(selected, {
     group.push(module);
     catalogRustGroups.set(key, group);
   }
+  const excludedRustFilters = new Map();
+  for (const module of excludedCatalog) {
+    const shape = rustBatchShape(module);
+    if (!shape) continue;
+    const key = `${module.regression.stage}:${shape.key}`;
+    const filters = excludedRustFilters.get(key) || new Set();
+    filters.add(shape.filter);
+    excludedRustFilters.set(key, filters);
+  }
 
   const consumed = new Set();
   const batches = [];
@@ -147,15 +158,26 @@ export function planClientRegressionBatches(selected, {
   };
 
   // A broad Rust target invocation is allowed only when the complete
-  // registered target group is selected. Focused selections retain filters.
+  // host-applicable target group is selected. Exclude foreign-platform filters;
+  // a foreign scope covering a required narrow owner cannot be subtracted.
   for (const [key, group] of catalogRustGroups) {
     if (group.length < 2 || !group.every((module) => selectedIds.has(module.id))) continue;
     const selectedGroup = selected.filter((module) => group.some((candidate) => candidate.id === module.id));
     const shape = rustBatchShape(selectedGroup[0]);
+    const selectedFilters = selectedGroup.map((module) => rustBatchShape(module).filter);
+    const skipFilters = [...(excludedRustFilters.get(key) || [])]
+      // The same case may have distinct owners for two supported platforms.
+      .filter((filter) => !selectedFilters.includes(filter));
+    // General owners cover all applicable descendants. A narrower foreign
+    // owner can be excluded, but never erase a complete selected narrow owner.
+    if (skipFilters.some((excluded) => selectedFilters.some((included) =>
+      included.includes(excluded)))) continue;
+    const args = skipFilters.length === 0 ? shape.broadArgs
+      : [...shape.broadArgs, "--", ...skipFilters.flatMap((filter) => ["--skip", filter])];
     append(makeBatch(
       `rust-target-${batches.length + 1}`,
       selectedGroup,
-      { ...selectedGroup[0].command, args: shape.broadArgs, timeoutMs: Math.max(...selectedGroup.map((m) => m.command.timeoutMs)) },
+      { ...selectedGroup[0].command, args, timeoutMs: Math.max(...selectedGroup.map((m) => m.command.timeoutMs)) },
       "target",
       { internalConcurrency: selectedGroup[0].regression.weight },
     ));

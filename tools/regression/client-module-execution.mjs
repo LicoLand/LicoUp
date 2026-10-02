@@ -618,8 +618,10 @@ export async function executeClientModules(modules, {
 } = {}) {
   if (!Array.isArray(modules)) throw new Error("client modules must be an array");
   const hostSelection = partitionModulesByRunnableHost(modules, host);
+  const hostCatalog = partitionModulesByRunnableHost(catalog, host);
   const batches = planClientRegressionBatches(hostSelection.runnable, {
-    catalog,
+    catalog: hostCatalog.runnable,
+    excludedCatalog: hostCatalog.unsupported,
     narrow: runKind === "retry",
   });
   const byStage = new Map(CLIENT_REGRESSION_STAGES.map((stage) => [stage, []]));

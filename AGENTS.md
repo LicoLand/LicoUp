@@ -117,6 +117,10 @@ registry. Use the declared host and target scopes for focused and complete check
 repair host-dependent fixtures instead of reducing a portable contract to one OS.
 An unsupported host or missing required target result is not a pass. Follow the
 [verification scope](docs/RUNBOOK.md#run-focused-verification).
+Platform dispatch and batch completeness use the same applicable module set;
+batch execution still excludes foreign-platform owners. Retain a representative
+aggregation regression so adding one platform owner cannot split a shared target
+into one invocation per module.
 
 Complete every implementation obligation in the approved delivery scope, including
 production wiring and deterministic engineering verification, before handing over

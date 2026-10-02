@@ -12,7 +12,8 @@ import {
   nodeOnlyContractTestFiles,
   sdkOwnedContractTestFiles,
 } from "../../../tools/regression/client-contract-selection.mjs";
-import { selectModulesById } from "../../../tools/regression/client-module-selection.mjs";
+import { partitionModulesByRunnableHost, selectModulesById } from "../../../tools/regression/client-module-selection.mjs";
+import { executeClientModules } from "../../../tools/regression/client-module-execution.mjs";
 import { flutterTestInputPaths } from "../../../tools/regression/client-regression-toolchain-stats/flutter.mjs";
 
 test("complete selection batches native targets and Node test files before scheduling", () => {
@@ -58,6 +59,74 @@ test("focused Rust selection keeps its exact filter while a complete target dele
   assert.equal(batch.attribution, "exact");
   assert.equal(batch.command.args.at(-1), selected[0].command.args.at(-1));
   assert.equal(batch.internalConcurrency, selected[0].regression.weight);
+});
+
+test("complete Linux selection retains one batch per native library after platform partition", () => {
+  const { runnable, unsupported } = partitionModulesByRunnableHost(CLIENT_MODULE_CATALOG, "linux");
+  const batches = planClientRegressionBatches(runnable, {
+    catalog: runnable,
+    excludedCatalog: unsupported,
+  });
+  assert.deepEqual(new Set(batches.flatMap((batch) => batch.members)), new Set(runnable.map((module) => module.id)));
+  for (const crate of ["licoup-native", "licoup-foundation"]) {
+    const manifest = `crates/${crate}/Cargo.toml`;
+    const members = runnable.filter((module) => module.regression.stage === "backend" && module.command.program === "cargo" &&
+      module.command.args.includes(manifest) && module.command.args.includes("--lib") &&
+      !module.command.args.includes("--") && module.command.args.at(-2) === "--lib");
+    const covering = batches.filter((batch) => members.some((module) => batch.members.includes(module.id)));
+    assert.equal(covering.length, 1, `${crate} must not degrade to one Cargo invocation per member`);
+    assert.equal(covering[0].attribution, "target");
+    const excluded = unsupported.filter((module) => module.regression.stage === "backend" && module.command.program === "cargo" &&
+      module.command.args.includes(manifest) && module.command.args.at(-2) === "--lib");
+    for (const module of excluded) {
+      const filter = module.command.args.at(-1);
+      const index = covering[0].command.args.indexOf(filter);
+      assert.ok(index > 0);
+      assert.equal(covering[0].command.args[index - 1], "--skip");
+      assert.equal(covering[0].members.includes(module.id), false);
+    }
+  }
+});
+
+function platformBatchFixture(filter, id, hosts = ["linux"]) {
+  const source = selectModulesById(["rust.domain.agent-usage"])[0];
+  return { ...source, id, command: { ...source.command, args: [...source.command.args.slice(0, -1), filter] },
+    regression: { ...source.regression, runnableHosts: hosts } };
+}
+
+test("executor uses one host partition for batching and excludes foreign owner filters", async () => {
+  const shared = [platformBatchFixture("domain::one::", "synthetic.one"),
+    platformBatchFixture("domain::two::", "synthetic.two")];
+  const foreign = platformBatchFixture("platform::windows::", "synthetic.windows", ["win32"]);
+  const calls = [];
+  const result = await executeClientModules(shared, {
+    repoRoot: ".", catalog: [...shared, foreign], host: "linux", output: { write() {} },
+    async commandRunner(batch) {
+      calls.push(batch);
+      return { ...batch, status: "passed", reason: null, durationMs: 0 };
+    },
+  });
+  assert.equal(result.exitCode, 0);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].members, shared.map((module) => module.id));
+  assert.deepEqual(calls[0].command.args.slice(-3), ["--", "--skip", "platform::windows::"]);
+  const incomplete = planClientRegressionBatches(shared.slice(0, 1), {
+    catalog: shared, excludedCatalog: [foreign],
+  });
+  assert.equal(incomplete[0].attribution, "exact");
+});
+
+test("overlapping foreign filters retain narrow commands and shared exact cases retain their host owner", () => {
+  const shared = [platformBatchFixture("domain::one::", "synthetic.one"),
+    platformBatchFixture("domain::two::", "synthetic.two")];
+  const overlap = platformBatchFixture("domain::", "synthetic.windows", ["win32"]);
+  const narrow = planClientRegressionBatches(shared, { catalog: shared, excludedCatalog: [overlap] });
+  assert.deepEqual(narrow.map((batch) => batch.command), shared.map((module) => module.command));
+  const sameCase = platformBatchFixture("domain::one::", "synthetic.other-host", ["darwin"]);
+  const [broad] = planClientRegressionBatches(shared, { catalog: shared, excludedCatalog: [sameCase] });
+  assert.equal(broad.attribution, "target");
+  assert.equal(broad.command.args.includes("--skip"), false);
+  assert.deepEqual(broad.members, shared.map((module) => module.id));
 });
 
 test("retry planning narrows every failed aggregate member to an exact command", () => {
