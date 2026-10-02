@@ -347,6 +347,54 @@ test("catalog inputs exist and exclude local-only document roots", async () => {
   }
 });
 
+test("startup and client-state checks select every production owner they execute", () => {
+  const bootstrap = CLIENT_MODULE_CATALOG.find((module) =>
+    module.id === "flutter.controller.scenario.bootstrap");
+  const clientState = CLIENT_MODULE_CATALOG.find((module) =>
+    module.id === "regression.client-state-contracts");
+  for (const input of [
+    "apps/desktop/lib/src/application/controller/client_lifecycle_coordinator.dart",
+    "apps/desktop/lib/src/application/controller/client_lifecycle_facade.dart",
+    "apps/desktop/lib/src/application/features/agents/conversation/conversation_session_state_controller.dart",
+    "apps/desktop/lib/src/application/features/layout/layout_manager.dart",
+    "crates/licoup-native/resources/client-state-migration-frontier.json",
+    "crates/licoup-native/src/domain/client_state_migration.rs",
+  ]) {
+    assert.equal(bootstrap.inputs.includes(input), true, input);
+    assert.equal(selectModulesForChangedPaths([input]).some((module) =>
+      module.id === bootstrap.id), true, input);
+  }
+  for (const input of [
+    "apps/desktop/lib/src/application/controller/client_lifecycle_facade.dart",
+    "apps/desktop/lib/src/platform/storage/portable_data_root.dart",
+    "crates/licoup-conversation/src/store/mod.rs",
+    "crates/licoup-native/resources/client-state-migration-frontier.json",
+    "crates/licoup-native/src/domain/client_state_migration.rs",
+    "crates/licoup-native/src/domain/client_state_migration/stores.rs",
+    "crates/licoup-native/src/domain/client_state_migration/strategy_store.rs",
+    "crates/licoup-native/src/platform/client_state/migration.rs",
+    "crates/licoup-native/src/platform/client_state/policy.rs",
+    "schemas/client_bridge/state.json",
+    "tools/scripts/client-state-migration/frontier.mjs",
+    "tools/scripts/client-state-migration/probe.mjs",
+    "tools/scripts/client-state-migration/report.mjs",
+  ]) {
+    assert.equal(selectModulesForChangedPaths([input]).some((module) =>
+      module.id === clientState.id), true, input);
+  }
+  assert.equal(clientState.inputs.includes(
+    "crates/licoup-native/src/domain/client_state_migration/**"), true);
+  assert.equal(clientState.inputs.includes("tools/scripts/client-state-migration/**"), true);
+  assert.deepEqual(clientState.command.args, [
+    "--test",
+    "tests/contract/client/client-state-migration.test.mjs",
+    "tests/contract/client/client-state-migration-diagnostic.test.mjs",
+  ]);
+  assert.equal(selectModulesForChangedPaths([
+    "crates/licoup-native/src/domain/client_state_migration/tests/structural.rs",
+  ]).some((module) => module.id === "rust.domain.client-state-migration"), true);
+});
+
 test("package aliases remain thin and cannot route to an aggregate gate", async () => {
   const packageJson = JSON.parse(await fs.readFile(path.join(repoRoot, "package.json"), "utf8"));
   assert.deepEqual({

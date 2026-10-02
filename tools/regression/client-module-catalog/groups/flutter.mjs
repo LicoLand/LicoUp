@@ -2022,6 +2022,12 @@ export const FLUTTER_MODULES = Object.freeze([
       kind: "flutter-controller",
       summary: "Client bootstrap, portable data, and initial relay behavior",
       inputs: [
+        "apps/desktop/lib/src/application/controller/client_lifecycle_coordinator.dart",
+        "apps/desktop/lib/src/application/controller/client_lifecycle_facade.dart",
+        "apps/desktop/lib/src/application/features/agents/conversation/conversation_session_state_controller.dart",
+        "apps/desktop/lib/src/application/features/layout/layout_manager.dart",
+        "crates/licoup-native/resources/client-state-migration-frontier.json",
+        "crates/licoup-native/src/domain/client_state_migration.rs",
         "apps/desktop/test/client_bootstrap_test.dart",
         "apps/desktop/test/local_conversation_startup_priority_test.dart",
         "apps/desktop/test/fixtures/client_controller_scenarios.dart",
