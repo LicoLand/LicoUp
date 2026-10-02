@@ -1345,6 +1345,57 @@ fn an_interrupted_released_store_conversion_resumes_from_its_artifact() {
     let _ = fs::remove_dir_all(root);
 }
 
+/// Completed history never selects a runtime format or certifies store health.
+#[test]
+fn completed_conversion_history_does_not_override_the_current_store() {
+    let root = std::env::temp_dir().join(format!(
+        "licoup-completed-conversion-history-{}",
+        uuid::Uuid::new_v4()
+    ));
+    seed_released_source_root(&root);
+    admit_as_version(&root, "0.3.0").unwrap();
+    let database = root.join(strategy_store::STRATEGY_STORE_DATABASE);
+    let store_before = fs::read(&database).unwrap();
+    let artifact_path = strategy_store::strategy_store_artifact_path(&root);
+    let mut artifact: strategy_store::StrategyStoreArtifact =
+        serde_json::from_slice(&fs::read(&artifact_path).unwrap()).unwrap();
+    // An unpublished conversion can leave a completed historical receipt after
+    // its implementation is corrected. It is not a supported physical format.
+    artifact.target_format = "retired-strategy-layout".to_owned();
+    artifact.applied_step_ids = vec!["retired-strategy-conversion".to_owned()];
+    write_json_atomic(&artifact_path, &artifact).unwrap();
+    let history_before = fs::read(&artifact_path).unwrap();
+
+    assert_eq!(admit_as_version(&root, "0.3.0").unwrap().status, "ready");
+    assert_eq!(fs::read(&database).unwrap(), store_before);
+    assert_eq!(fs::read(&artifact_path).unwrap(), history_before);
+
+    // An unfinished record still needs a known conversion path; completion is
+    // not inferred from a malformed or unknown pending request.
+    artifact.status = "pending".to_owned();
+    write_json_atomic(&artifact_path, &artifact).unwrap();
+    assert_eq!(
+        admit_as_version(&root, "0.3.0").unwrap_err().to_string(),
+        "migration_frontier_incomplete"
+    );
+    assert_eq!(fs::read(&database).unwrap(), store_before);
+
+    // A historical success never certifies the current physical schema.
+    artifact.status = "applied".to_owned();
+    write_json_atomic(&artifact_path, &artifact).unwrap();
+    let connection = Connection::open(&database).unwrap();
+    connection
+        .execute_batch("DROP TABLE strategy_bindings;")
+        .unwrap();
+    drop(connection);
+    assert_eq!(
+        admit_as_version(&root, "0.3.0").unwrap_err().to_string(),
+        "unsupported_state_shape"
+    );
+    assert_eq!(fs::read(&artifact_path).unwrap(), history_before);
+    fs::remove_dir_all(root).unwrap();
+}
+
 /// A stop between the owner's committed store and this module's record: the
 /// store is current, the journal is pending, and only the record may be
 /// rewritten when the next run reconciles it.

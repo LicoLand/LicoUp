@@ -341,6 +341,13 @@ fn reconcile_strategy_store_artifact(
             && artifact.domain_id == STRATEGY_STORE_DOMAIN,
         "migration_step_failed"
     );
+    // The physical store has already been validated by its owner. A completed
+    // receipt is retained history, not another format authority: a corrected
+    // unpublished conversion may no longer have an executable path. Only an
+    // unfinished receipt needs reconciliation against the current graph.
+    if artifact.status == "applied" {
+        return Ok(Vec::new());
+    }
     ensure!(
         strategy_format_position(&artifact.target_format)?
             >= strategy_format_position(observed.format_id)?,
