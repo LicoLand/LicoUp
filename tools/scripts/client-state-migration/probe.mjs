@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 import { MigrationStateError } from "./errors.mjs";
+import { REPO_ROOT } from "./frontier.mjs";
 import { inspectConversationContract, inspectStrategyContract } from "./sqlite-contract.mjs";
 import {
   asText,
@@ -15,6 +16,15 @@ import {
 } from "./util.mjs";
 
 export const GATEWAY_CUSTODY_DOMAIN = "gateway-credential-custody";
+
+/** Platform-owner projection; Node's platform names are only transport aliases. */
+export function gatewayCredentialMigrationDisposition(platform) {
+  const platformId = ({ darwin: "macos", win32: "windows" })[platform] ?? platform;
+  const policy = readJsonArtifact(path.join(REPO_ROOT, "crates/licoup-native/resources/gateway-credential-migration.json"));
+  const disposition = policy?.[platformId];
+  requireValue(["requires-authorization", "not-applicable"].includes(disposition), "probe_capability_unavailable");
+  return disposition;
+}
 
 // The diagnostic contract test compares these domain constants to the owners.
 const CLIENT_STATE_SCHEMA_VERSION = "v0.0.1:schema:definition-1";

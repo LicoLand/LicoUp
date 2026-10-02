@@ -9,6 +9,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::platform::llm_api_key_vault::{
+    LegacyCredentialMigrationDisposition, PlatformLlmApiKeyVault,
+};
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use fs2::FileExt;
 use semver::Version;
@@ -212,6 +215,18 @@ fn admit_as_version(data_root: &Path, running_version: &str) -> Result<Admission
 }
 
 fn admit_inner(data_root: &Path, running_version: &str) -> Result<AdmissionResult> {
+    admit_with_credential_migration_disposition(
+        data_root,
+        running_version,
+        PlatformLlmApiKeyVault::legacy_credential_migration_disposition()?,
+    )
+}
+
+fn admit_with_credential_migration_disposition(
+    data_root: &Path,
+    running_version: &str,
+    custody: LegacyCredentialMigrationDisposition,
+) -> Result<AdmissionResult> {
     ensure!(data_root.is_absolute(), "unsupported_state_shape");
     fs::create_dir_all(data_root).context("migration_lock_unavailable")?;
     let migration_root = data_root.join("client-state").join("migrations");
@@ -261,7 +276,7 @@ fn admit_inner(data_root: &Path, running_version: &str) -> Result<AdmissionResul
         // Keychain items. Only the explicit protected operation can complete
         // this domain; startup never reads secrets or opens a native dialog.
         if domain.domain_id == GATEWAY_CUSTODY_DOMAIN && version == 0 {
-            if cfg!(target_os = "macos") {
+            if custody == LegacyCredentialMigrationDisposition::RequiresAuthorization {
                 observed.insert(domain.domain_id.clone(), version);
                 pending_authorization.push(domain.domain_id.clone());
                 continue;
@@ -386,8 +401,11 @@ pub fn gateway_credential_migration_pending(root: &Path) -> Result<bool> {
         .find(|domain| domain.domain_id == GATEWAY_CUSTODY_DOMAIN)
         .ok_or_else(|| anyhow!("migration_frontier_incomplete"))?;
     let marker_root = root.join("client-state/migrations/domain-state");
-    Ok(cfg!(target_os = "macos")
-        && probe_domain(&marker_root, domain)? < domain.target_schema_version)
+    Ok(
+        PlatformLlmApiKeyVault::legacy_credential_migration_disposition()?
+            == LegacyCredentialMigrationDisposition::RequiresAuthorization
+            && probe_domain(&marker_root, domain)? < domain.target_schema_version,
+    )
 }
 
 /// Explicit protected continuation of the embedded migration frontier.
@@ -397,8 +415,7 @@ pub fn migrate_gateway_credentials(
     root: &Path,
 ) -> Result<crate::domain::llm_api_key_vault::LlmApiKeyInventory> {
     migrate_gateway_credentials_with(root, || {
-        crate::platform::llm_api_key_vault::PlatformLlmApiKeyVault::at_state_root(root)?
-            .migrate_legacy_credentials()
+        PlatformLlmApiKeyVault::at_state_root(root)?.migrate_legacy_credentials()
     })
 }
 
@@ -419,8 +436,7 @@ fn migrate_gateway_credentials_with(
         .lock_exclusive()
         .context("migration_lock_unavailable")?;
     if !gateway_credential_migration_pending(root)? {
-        return crate::platform::llm_api_key_vault::PlatformLlmApiKeyVault::at_state_root(root)?
-            .list();
+        return PlatformLlmApiKeyVault::at_state_root(root)?.list();
     }
     let inventory = migrate()?;
     complete_gateway_custody_migration(root)?;

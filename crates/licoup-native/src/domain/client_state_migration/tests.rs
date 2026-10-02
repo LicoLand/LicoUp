@@ -913,15 +913,25 @@ fn a_released_source_root_is_admitted_to_the_current_frontier() {
         embedded_frontier().unwrap().domains.len()
     );
 
-    // Admission preserves the released inventory. Only macOS has the protected
-    // Keychain transition: it stays pending there, while other platforms record
-    // the inapplicable custody domain as current without touching credentials.
+    // The platform owner alone declares whether this root awaits protected custody.
     assert_eq!(fs::read(&inventory_path).unwrap(), inventory_before);
+    let requires_authorization = PlatformLlmApiKeyVault::legacy_credential_migration_disposition()
+        .unwrap()
+        == LegacyCredentialMigrationDisposition::RequiresAuthorization;
     let custody_marker =
         root.join("client-state/migrations/domain-state/gateway-credential-custody.json");
-    assert_eq!(custody_marker.exists(), !cfg!(target_os = "macos"));
-    #[cfg(not(target_os = "macos"))]
-    {
+    assert_eq!(custody_marker.exists(), !requires_authorization);
+    assert_eq!(
+        gateway_credential_migration_pending(&root).unwrap(),
+        requires_authorization
+    );
+    assert_eq!(
+        result
+            .pending_authorization_domain_ids
+            .contains(&GATEWAY_CUSTODY_DOMAIN.to_owned()),
+        requires_authorization
+    );
+    if !requires_authorization {
         let marker: DomainMarker =
             serde_json::from_slice(&fs::read(custody_marker).unwrap()).unwrap();
         assert_eq!(marker.domain_id, GATEWAY_CUSTODY_DOMAIN);
@@ -929,18 +939,6 @@ fn a_released_source_root_is_admitted_to_the_current_frontier() {
             marker.authoritative_schema_version,
             ledger.domains[GATEWAY_CUSTODY_DOMAIN].schema_version
         );
-        assert!(!gateway_credential_migration_pending(&root).unwrap());
-    }
-    #[cfg(target_os = "macos")]
-    {
-        assert!(
-            result
-                .pending_authorization_domain_ids
-                .iter()
-                .any(|domain| domain == "gateway-credential-custody"),
-            "custody stays pending until the protected operation runs"
-        );
-        assert!(gateway_credential_migration_pending(&root).unwrap());
     }
     let _ = fs::remove_dir_all(root);
 }
@@ -2182,4 +2180,36 @@ fn the_signed_update_wire_is_closed_and_keeps_the_released_prefixes() {
     // The internal source endpoint is not part of the signed wire.
     assert!(!projection.to_string().contains("sourceFrontierId"));
     assert!(!projection.to_string().contains(SOURCE_FRONTIER_ID));
+}
+
+#[test]
+fn custody_disposition_is_consumed_independently_of_the_test_host() {
+    for disposition in [
+        LegacyCredentialMigrationDisposition::RequiresAuthorization,
+        LegacyCredentialMigrationDisposition::NotApplicable,
+    ] {
+        let root = std::env::temp_dir().join(format!(
+            "licoup-custody-disposition-{}",
+            uuid::Uuid::new_v4()
+        ));
+        seed_released_source_root(&root);
+        let inventory_path = root.join(RELEASED_INVENTORY_FILE);
+        let before = fs::read(&inventory_path).unwrap();
+        let result =
+            admit_with_credential_migration_disposition(&root, "0.3.0", disposition).unwrap();
+        let pending = disposition == LegacyCredentialMigrationDisposition::RequiresAuthorization;
+        assert_eq!(
+            result
+                .pending_authorization_domain_ids
+                .contains(&GATEWAY_CUSTODY_DOMAIN.to_owned()),
+            pending
+        );
+        assert_eq!(
+            root.join("client-state/migrations/domain-state/gateway-credential-custody.json")
+                .exists(),
+            !pending
+        );
+        assert_eq!(fs::read(inventory_path).unwrap(), before);
+        fs::remove_dir_all(root).unwrap();
+    }
 }

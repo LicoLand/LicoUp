@@ -3271,14 +3271,12 @@ mod recovery_cli {
     }
 
     fn locator_path(home: &Path) -> PathBuf {
-        #[cfg(target_os = "macos")]
-        {
-            home.join("Library/Application Support/LicoUp/data-home")
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            home.join(".config/licoup/data-home")
-        }
+        licoup_foundation::platform::paths::data_home_locator_path_for(
+            licoup_foundation::platform::paths::DataHomePlatform::current(),
+            home,
+            Some(home.join("AppData/Roaming").into_os_string()),
+            Some(home.join(".config").into_os_string()),
+        )
     }
 
     fn save_locator(home: &Path, root: &Path) {

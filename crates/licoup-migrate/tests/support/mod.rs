@@ -257,10 +257,12 @@ fn report_of(output: Output) -> (i32, serde_json::Value) {
 
 /// Save the selected data-home locator for an isolated home, exactly as the CLI reads it.
 pub fn save_data_home_locator(home: &Path, root: &Path) {
-    #[cfg(target_os = "macos")]
-    let locator = home.join("Library/Application Support/LicoUp/data-home");
-    #[cfg(not(target_os = "macos"))]
-    let locator = home.join(".config/licoup/data-home");
+    let locator = licoup_foundation::platform::paths::data_home_locator_path_for(
+        licoup_foundation::platform::paths::DataHomePlatform::current(),
+        home,
+        Some(home.join("AppData/Roaming").into_os_string()),
+        Some(home.join(".config").into_os_string()),
+    );
     fs::create_dir_all(locator.parent().expect("locator parent")).expect("locator directory");
     fs::write(&locator, format!("{}\n", root.display())).expect("locator document");
 }

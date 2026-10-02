@@ -5,7 +5,7 @@ import {
   planSteps,
 } from "./frontier.mjs";
 import { loadDomainMarker, loadLedger, updateHandoffState } from "./ledger.mjs";
-import { GATEWAY_CUSTODY_DOMAIN, isRepairableShape, probeDomain, shapeFor } from "./probe.mjs";
+import { GATEWAY_CUSTODY_DOMAIN, gatewayCredentialMigrationDisposition, isRepairableShape, probeDomain, shapeFor } from "./probe.mjs";
 import { compareProductVersion } from "./util.mjs";
 
 export const REPORT_SCHEMA = "v0.0.1:client-state-migration-report-1";
@@ -173,19 +173,11 @@ function evaluateDomain({ root, domain, ledgerDocument, platform }) {
   // fail-closed finding, not a footnote next to a green verdict.
   if (observation.unverified !== null) domainCodes.push("probe_capability_unavailable");
   let observedSchemaVersion = resolved.version;
-  // The admission cannot prove from a data root alone that the account holds no
-  // legacy Keychain items, so on macOS it reports the domain as awaiting the
-  // explicit protected operation instead of migrating it.
-  const pendingAuthorization =
-    domain.domainId === GATEWAY_CUSTODY_DOMAIN &&
-    platform === "darwin" &&
-    observedSchemaVersion === 0;
-  if (
-    domain.domainId === GATEWAY_CUSTODY_DOMAIN &&
-    platform !== "darwin" &&
-    observedSchemaVersion === 0
-  ) {
-    observedSchemaVersion = domain.targetSchemaVersion;
+  let pendingAuthorization = false;
+  if (domain.domainId === GATEWAY_CUSTODY_DOMAIN && observedSchemaVersion === 0) {
+    const disposition = gatewayCredentialMigrationDisposition(platform);
+    pendingAuthorization = disposition === "requires-authorization";
+    if (disposition === "not-applicable") observedSchemaVersion = domain.targetSchemaVersion;
   }
 
   const ledgerEntry = ledgerDocument?.domains[domain.domainId] ?? null;

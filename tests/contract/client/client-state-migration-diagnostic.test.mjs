@@ -15,6 +15,7 @@ import {
 import {
   ADAPTIVE_FLYWHEEL_SCHEMA_VERSIONS,
   DURABLE_SHAPES,
+  GATEWAY_CUSTODY_DOMAIN,
 } from "../../../tools/scripts/client-state-migration/probe.mjs";
 import {
   evaluateMigrationState,
@@ -114,6 +115,23 @@ function releasedStrategyDdl({ producerUpgraded = false } = {}) {
   }
   return ddl;
 }
+
+test("custody applicability follows the platform owner's shared disposition", () => {
+  const root = tempRoot("custody-platform-policy");
+  try {
+    const frontier = loadEmbeddedFrontier();
+    seedAdmittedRoot(root, frontier, { withCustody: false });
+    const before = snapshot(root);
+    const policy = JSON.parse(ownerSource("crates/licoup-native/resources/gateway-credential-migration.json"));
+    for (const [platform, ownerPlatform] of [["darwin", "macos"], ["linux", "linux"], ["win32", "windows"]]) {
+      const report = evaluateMigrationState({ root, frontier, binaryProductVersion: "0.3.0", platform });
+      const custody = report.domains.find((domain) => domain.domainId === GATEWAY_CUSTODY_DOMAIN);
+      assert.equal(custody.pendingAuthorization, policy[ownerPlatform] === "requires-authorization");
+      assert.equal(snapshot(root), before);
+    }
+    assert.throws(() => evaluateMigrationState({ root, frontier, binaryProductVersion: "0.3.0", platform: "unrecognized" }), /probe_capability_unavailable/u);
+  } finally { removeRoot(root); }
+});
 
 test("strategy admission recognizes both published ordinal producers without relaxing other defaults", () => {
   for (const version of ["2", "3"]) {
