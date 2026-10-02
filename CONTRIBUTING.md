@@ -1,6 +1,6 @@
 # Contributing
 
-Updated: 2026-10-01
+Updated: 2026-10-02
 
 English · [简体中文](CONTRIBUTING.zh-CN.md) · [Home](README.md)
 
@@ -17,11 +17,11 @@ npm ci
 ```
 
 During development, run the smallest registered check that owns the change.
-After every intended change is confirmed effective, run the complete local
-engineering profile once. Release policy remains a separate `stable` →
-`release` obligation described in the
-[client promotion authority](docs/releases/PROMOTION-GATES.md). Neither command
-builds, installs, launches, or publishes a client.
+After all intended changes are confirmed effective, run the verified delivery
+entry below. It executes the complete applicable engineering profile before
+building, installing and opening the client. Release publication remains a
+separate `stable` → `release` obligation described in the
+[client promotion authority](docs/releases/PROMOTION-GATES.md).
 
 The maintained complete client regression is a bounded dependency graph. It
 runs the shared foundation once, overlaps frontend and backend work, settles
