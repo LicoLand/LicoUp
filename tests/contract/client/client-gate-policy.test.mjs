@@ -365,6 +365,22 @@ test("reuse keeps only passed unchanged Linux members and preserves their eviden
     changedPaths: [],
     catalog: CLIENT_MODULE_CATALOG,
   }), []);
+  assert.deepEqual(reusableLinuxResults({
+    schemaVersion: "licoup.client-regression-report.v1",
+    complete: true,
+    candidateHead: previousHead,
+    sourceStateDigest: `sha256:${"c".repeat(64)}`,
+    results: [{
+      id: "host.linux.batch",
+      status: "passed",
+      members: [unchangedModule.id],
+      evidenceHead: previousHead,
+    }],
+  }, {
+    currentHead,
+    changedPaths: ["tools/regression/client-module-execution.mjs"],
+    catalog: CLIENT_MODULE_CATALOG,
+  }), []);
 });
 
 test("target evidence requires one passed result for every selected module", () => {

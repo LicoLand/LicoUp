@@ -1104,6 +1104,14 @@ export function reusableLinuxResults(previousReport, {
       !/^[a-f0-9]{40}$/u.test(previousReport?.candidateHead || "") ||
       !/^sha256:[a-f0-9]{64}$/u.test(previousReport?.sourceStateDigest || "") ||
       !Array.isArray(previousReport.results)) return [];
+  if (evidenceChangedPaths.some((candidate) =>
+    candidate === "tools/scripts/client-gate.mjs" ||
+    candidate.startsWith("tools/scripts/client-local-linux-runner/") ||
+    candidate === "tools/scripts/client-local-linux-runner.mjs" ||
+    candidate === "tools/regression/client-module-execution.mjs" ||
+    candidate === "tools/regression/client-regression-batching.mjs" ||
+    candidate === "tools/regression/client-regression-metadata.mjs" ||
+    candidate.startsWith("tools/regression/client-module-catalog/"))) return [];
   const affected = new Set(selectModulesForChangedPaths(evidenceChangedPaths, catalog)
     .map((module) => module.id));
   const known = new Set(catalog
