@@ -74,10 +74,11 @@ pub enum StageOutcome {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RootFingerprint {
-    /// Every directory and every regular file below the root, recursively.
+    /// Every directory and regular file below the root except the archive owner's
+    /// ephemeral admission-coordination file.
     pub entries: u64,
     pub bytes: u64,
-    /// A stable digest over every entry's relative name, kind and size.
+    /// A stable digest over every included entry's relative name, kind and size.
     ///
     /// The same tree always folds to the same value, and any rewrite that changes a name, an
     /// entry's kind or a size changes it. It is not a cryptographic commitment and is never
