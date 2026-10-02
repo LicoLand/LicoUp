@@ -77,6 +77,32 @@ test("complete catalog delegates valid Cargo concurrency to the shared runner bu
   }
 });
 
+test("merge-readiness target runners execute their own registered self-tests", () => {
+  const expected = new Map([
+    ["regression.local-linux-runner-self-test", {
+      args: ["tools/scripts/client-local-linux-runner.mjs", "self-test"],
+      inputs: [
+        ".github/workflows/client-ci.yml",
+        "apps/desktop/docker/ubuntu-client.Dockerfile",
+        "tools/scripts/client-android-sdk-bootstrap.mjs",
+        "tools/scripts/client-local-linux-runner.mjs",
+        "tools/scripts/client-local-linux-runner/**",
+      ],
+    }],
+    ["regression.windows-target-runner-self-test", {
+      args: ["tools/scripts/client-windows-target-runner.mjs", "self-test"],
+      inputs: ["tools/scripts/client-windows-target-runner.mjs"],
+    }],
+  ]);
+  for (const [id, contract] of expected) {
+    const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
+    assert.ok(module, id);
+    assert.equal(module.command.program, "node", id);
+    assert.deepEqual(module.command.args, contract.args, id);
+    assert.deepEqual(module.inputs, contract.inputs, id);
+  }
+});
+
 const nodeReachability = new WeakMap();
 
 function nodeReachableFiles(module) {

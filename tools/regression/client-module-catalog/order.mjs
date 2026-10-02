@@ -11,6 +11,8 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "regression.agent-conversation-product-e2e-self-test",
   "regression.client-update-release",
   "regression.native-client-smoke",
+  "regression.local-linux-runner-self-test",
+  "regression.windows-target-runner-self-test",
   "regression.flutter-format",
   "regression.rust-format",
   "regression.rust-clippy",
