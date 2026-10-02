@@ -160,9 +160,13 @@ test("change planner emits only bounded booleans, counts, and a digest", () => {
       "release_policy",
       "changed_count",
       "change_digest",
+      "target_darwin",
+      "target_linux",
+      "target_win32",
     ]);
     assert.equal(entries.some((entry) => entry.includes("/")), false);
-    assert.match(entries.at(-1), /^change_digest=[a-f0-9]{64}$/u);
+    assert.match(entries.find((entry) => entry.startsWith("change_digest=")),
+      /^change_digest=[a-f0-9]{64}$/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -183,7 +187,9 @@ test("local planning includes working tree and untracked paths while PR planning
 test("complete verification rejects blocked, unverified, failed, or incomplete evidence", async () => {
   const statuses = ["blocked", "unverified", "failed"];
   for (const status of statuses) {
-    const code = await verifyClientGate(["--base", "HEAD", "--target", "commit"], {
+    const code = await verifyClientGate([
+      "--base", "HEAD", "--target", "commit", "--execution", "direct", "--host", process.platform,
+    ], {
       output: { write() {} },
       reportPath: null,
       executor: async () => ({
@@ -197,7 +203,9 @@ test("complete verification rejects blocked, unverified, failed, or incomplete e
     { complete: false, status: "passed", results: [], compatibility: [] },
     { complete: true, status: "passed", results: [], compatibility: [{ status: "unverified" }] },
   ]) {
-    const code = await verifyClientGate(["--base", "HEAD", "--target", "commit"], {
+    const code = await verifyClientGate([
+      "--base", "HEAD", "--target", "commit", "--execution", "direct", "--host", process.platform,
+    ], {
       output: { write() {} },
       reportPath: null,
       executor: async () => ({ exitCode: 0, report }),
@@ -208,7 +216,7 @@ test("complete verification rejects blocked, unverified, failed, or incomplete e
 
 test("complete verification passes only complete settled engineering evidence", async () => {
   const code = await verifyClientGate([
-    "--base", "HEAD", "--target", "commit", "--execution", "direct",
+    "--base", "HEAD", "--target", "commit", "--execution", "direct", "--host", process.platform,
   ], {
     output: { write() {} },
     reportPath: null,

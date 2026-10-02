@@ -46,8 +46,7 @@ function cargoAuditVersion() {
 
 function androidPackages() {
   const workflow = readFileSync(path.join(repoRoot, ".github/workflows/client-ci.yml"), "utf8");
-  const lane = workflow.match(/^  android:\n(?<body>[\s\S]*?)^  dependencies:/mu)?.groups?.body || "";
-  const packages = [...lane.matchAll(/"((?:platforms|ndk);[a-zA-Z0-9._-]+)"/gu)]
+  const packages = [...workflow.matchAll(/"((?:platforms|ndk);[a-zA-Z0-9._-]+)"/gu)]
     .map((match) => match[1]);
   if (packages.length === 0 || packages.some((value) => !/^(?:platforms|ndk);[a-zA-Z0-9._-]+$/u.test(value))) {
     throw new Error("client_ci_android_packages_missing");

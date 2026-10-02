@@ -4,7 +4,9 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   appendFileSync,
+  existsSync,
   readFileSync,
+  rmSync,
   writeSync,
 } from "node:fs";
 import path from "node:path";
@@ -13,9 +15,14 @@ import { fileURLToPath } from "node:url";
 import { CLIENT_MODULE_CATALOG } from "../regression/client-module-catalog.mjs";
 import { executeClientModules } from "../regression/client-module-execution.mjs";
 import {
+  selectModulesForChangedPaths,
   selectModulesById,
   validateClientModuleCatalog,
 } from "../regression/client-module-selection.mjs";
+import {
+  createClientRegressionReport,
+  writeClientRegressionReport,
+} from "../regression/client-regression-report.mjs";
 import {
   CLIENT_CI_JOBS,
   CLIENT_GATE_LANES,
@@ -214,12 +221,14 @@ function validateCiTopology() {
   const workflow = readText(".github/workflows/client-ci.yml");
   for (const job of CLIENT_CI_JOBS) jobBlock(workflow, job);
   const plan = jobBlock(workflow, "plan");
-  const source = jobBlock(workflow, "source");
+  const engineering = jobBlock(workflow, "engineering");
   for (const token of [
     "github.event.pull_request.base.sha",
     "github.event.pull_request.head.sha",
     "readme-fast-path.mjs classify",
     "readme_fast: ${{ steps.readme.outputs.readme_fast }}",
+    "target_darwin: ${{ steps.plan.outputs.target_darwin }}",
+    "target_win32: ${{ steps.plan.outputs.target_win32 }}",
   ]) {
     assertIncludes(plan, token, `CI README classifier is missing: ${token}`);
   }
@@ -229,42 +238,38 @@ function validateCiTopology() {
     "Client required must not repeat the Auditor privacy scan");
   for (const token of forbiddenSourceTokens) {
     assertExcludes(plan, token, `CI plan job must not contain ${token}`);
-    assertExcludes(source, token, `CI source job must not contain ${token}`);
   }
-  assertIncludes(
-    source,
-    "npm run client:gate:source",
-    "CI source job must invoke the canonical source gate",
-  );
-  for (const lane of ["flutter", "rust", "android", "dependencies"]) {
-    const block = jobBlock(workflow, lane);
-    const outputName = lane.replaceAll("-", "_");
-    assertIncludes(
-      block,
-      `needs: plan`,
-      `CI ${lane} lane must depend only on the change plan`,
-    );
-    assertIncludes(
-      block,
-      `needs.plan.outputs.${outputName}`,
-      `CI ${lane} lane must be selected by the change plan`,
-    );
-    assertIncludes(
-      block,
-      `npm run client:gate:${lane}`,
-      `CI ${lane} lane must invoke its canonical gate`,
-    );
+  for (const token of [
+    "npm run client:gate:verify",
+    "--execution direct --host linux",
+    "LICO_AUDITOR_GATE_DELEGATED",
+    "cargo install cargo-audit --version 0.22.2 --locked",
+    '"platforms;android-33"',
+  ]) {
+    assertIncludes(engineering, token, `complete CI engineering profile is missing: ${token}`);
+  }
+  for (const [job, host] of [["target-darwin", "darwin"], ["target-win32", "win32"]]) {
+    const block = jobBlock(workflow, job);
+    assertIncludes(block, `needs.plan.outputs.target_${host}`,
+      `${job} must be selected from the catalog target ownership`);
+    assertIncludes(block, "npm run client:gate:verify",
+      `${job} must invoke the canonical client gate`);
+    assertIncludes(block, `--execution target --host ${host}`,
+      `${job} must bind evidence to its actual target host`);
   }
   const required = jobBlock(workflow, "client-required");
   assertIncludes(
     required,
-    "needs: [plan, source, flutter, rust, android, dependencies]",
-    "required CI reducer must observe every independent lane",
+    "needs: [plan, engineering, target-darwin, target-win32]",
+    "required CI reducer must observe the complete profile and affected targets",
   );
   assertIncludes(required, "if: always()", "required CI reducer must always report lane failures");
   for (const token of [
     "PLAN_RESULT",
     "README_FAST_SELECTED",
+    "ENGINEERING_RESULT",
+    "TARGET_DARWIN_RESULT",
+    "TARGET_WIN32_RESULT",
     "An ordinary client gate ran for an author README update",
     "README path selection was ambiguous",
   ]) {
@@ -641,13 +646,16 @@ function workingTreePaths(head) {
     .filter(Boolean);
 }
 
-function writePlanOutput(plan, digest) {
+function writePlanOutput(plan, digest, targetHosts = []) {
   const lines = [
     ...Object.entries(plan.lanes).map(
       ([lane, selected]) => `${lane.replaceAll("-", "_")}=${selected}`,
     ),
     `changed_count=${plan.changedCount}`,
     `change_digest=${digest}`,
+    ...["darwin", "linux", "win32"].map(
+      (host) => `target_${host}=${targetHosts.includes(host)}`,
+    ),
   ];
   const outputPath = process.env.GITHUB_OUTPUT;
   if (outputPath) {
@@ -662,6 +670,7 @@ function writePlanOutput(plan, digest) {
     changedCount: plan.changedCount,
     lanes: plan.lanes,
     changeDigest: digest,
+    targetHosts,
   })}\n`);
 }
 
@@ -686,17 +695,19 @@ function planGate(args) {
   const revisions = parsePlanArgs(args);
   const paths = changedPaths(revisions);
   const plan = classifyClientGatePaths(paths);
+  const targetHosts = [...new Set(selectModulesForChangedPaths(paths)
+    .flatMap((module) => module.regression.targetEvidenceHosts || []))].sort();
   const digest = createHash("sha256")
     .update([...new Set(paths)].sort().join("\0"))
     .digest("hex");
-  writePlanOutput(plan, digest);
+  writePlanOutput(plan, digest, targetHosts);
 }
 
 function parseVerifyArgs(args) {
-  const values = { base: "", execution: "direct", head: "HEAD", target: "" };
+  const values = { base: "", execution: "local", head: "HEAD", host: "", target: "" };
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index];
-    if (!["--base", "--execution", "--head", "--target"].includes(flag)) {
+    if (!["--base", "--execution", "--head", "--host", "--target"].includes(flag)) {
       fail(`unknown verify argument: ${flag}`);
     }
     if (index + 1 >= args.length) fail(`missing value for ${flag}`);
@@ -707,8 +718,15 @@ function parseVerifyArgs(args) {
   if (!["commit", "pr", "release"].includes(values.target)) {
     fail("client gate verify requires --target commit, pr, or release");
   }
-  if (values.execution !== "direct") {
-    fail("client gate verify execution must be direct");
+  if (!["direct", "local", "target"].includes(values.execution)) {
+    fail("client gate verify execution must be direct, local, or target");
+  }
+  if (["direct", "target"].includes(values.execution) &&
+      !["darwin", "linux", "win32"].includes(values.host)) {
+    fail("direct and target client gate verification require --host darwin, linux, or win32");
+  }
+  if (["direct", "target"].includes(values.execution) && values.host !== process.platform) {
+    fail("client gate verification host must match the actual runtime host");
   }
   return Object.freeze(values);
 }
@@ -733,7 +751,46 @@ export async function verifyClientGate(args, {
   const paths = changedPaths(revisions);
   const plan = classifyClientGatePaths(paths);
   validateClientModuleCatalog(catalog);
-  const result = await executor(catalog, {
+  const modules = revisions.execution === "direct"
+    ? catalog.filter((module) => (module.regression.runnableHosts || ["darwin", "linux", "win32"])
+      .includes(revisions.host))
+    : catalog;
+  if (revisions.execution === "local") {
+    return verifyLocalClientGate({ revisions, paths, plan, catalog, executor, output, reportPath });
+  }
+  if (revisions.execution === "target") {
+    if (!/^[a-f0-9]{40}$/u.test(revisions.head)) {
+      fail("target evidence requires an immutable candidate head SHA");
+    }
+    const selected = selectModulesForChangedPaths(paths, catalog).filter((module) =>
+      (module.regression.targetEvidenceHosts || []).includes(revisions.host));
+    const result = selected.length === 0
+      ? { exitCode: 0, report: { results: [] } }
+      : await executor(selected, {
+        repoRoot,
+        catalog,
+        output,
+        reportPath: null,
+        runKind: "focused",
+        compatibilityRunner: async () => [],
+      });
+    const passed = result.exitCode === 0 &&
+      (result.report?.results || []).every((entry) => entry.status === "passed");
+    output.write(`${JSON.stringify({
+      ok: passed,
+      schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
+      target: revisions.target,
+      execution: revisions.execution,
+      host: revisions.host,
+      head: revisions.head,
+      stepIds: selected.map((module) => module.id),
+      selectedStepCount: selected.length,
+      complete: false,
+      mergeReady: false,
+    })}\n`);
+    return passed ? 0 : 1;
+  }
+  const result = await executor(modules, {
     repoRoot,
     catalog,
     output,
@@ -749,8 +806,141 @@ export async function verifyClientGate(args, {
     execution: revisions.execution,
     changedCount: plan.changedCount,
     lanes: plan.lanes,
-    selectedStepCount: catalog.length,
+    selectedStepCount: modules.length,
     complete: result.report?.complete === true,
+  })}\n`);
+  return mergeReady ? 0 : 1;
+}
+
+function localHost() {
+  if (!["darwin", "linux", "win32"].includes(process.platform)) {
+    fail("local client gate host is unsupported");
+  }
+  return process.platform;
+}
+
+function resultMembers(result) {
+  return Array.isArray(result?.members) ? result.members : [];
+}
+
+function blockedTargetResult(module, host) {
+  return Object.freeze({
+    id: `target-evidence.${host}.${module.id}`,
+    stage: module.regression.stage,
+    lane: module.regression.lane,
+    toolchain: module.regression.toolchain,
+    status: "blocked",
+    reason: "target_host_unavailable",
+    durationMs: 0,
+    members: Object.freeze([module.id]),
+    metrics: null,
+  });
+}
+
+async function verifyLocalClientGate({
+  revisions,
+  paths,
+  plan,
+  catalog,
+  executor,
+  output,
+  reportPath,
+}) {
+  const host = localHost();
+  const affected = selectModulesForChangedPaths(paths, catalog);
+  const linuxIds = new Set(catalog
+    .filter((module) => (module.regression.runnableHosts || ["darwin", "linux", "win32"])
+      .includes("linux"))
+    .map((module) => module.id));
+  const supplemental = catalog.filter((module) => {
+    const runnable = module.regression.runnableHosts || ["darwin", "linux", "win32"];
+    const targets = module.regression.targetEvidenceHosts || [];
+    return module.id === "regression.repository-local-info-hygiene" ||
+      (runnable.includes(host) && !linuxIds.has(module.id)) ||
+      (affected.includes(module) && targets.includes(host));
+  });
+  const hostResult = await executor(supplemental, {
+    repoRoot,
+    catalog,
+    output,
+    reportPath: null,
+    runKind: "focused",
+    compatibilityRunner: async () => [],
+  });
+  rmSync(reportPath, { force: true });
+  const runner = spawnSync(process.execPath, [
+    "tools/scripts/client-local-linux-runner.mjs",
+    "run",
+    "--profile",
+    "engineering",
+  ], {
+    cwd: repoRoot,
+    env: process.env,
+    shell: false,
+    stdio: "inherit",
+  });
+  let linuxReport = null;
+  if (existsSync(reportPath)) {
+    try {
+      linuxReport = JSON.parse(readFileSync(reportPath, "utf8"));
+    } catch {
+      linuxReport = null;
+    }
+  }
+  const byMember = new Map();
+  for (const result of hostResult.report?.results || []) {
+    for (const member of resultMembers(result)) byMember.set(member, result);
+  }
+  const linuxResults = (linuxReport?.results || []).filter((result) =>
+    !resultMembers(result).some((member) => byMember.has(member)));
+  const missingTargets = [];
+  for (const module of affected) {
+    for (const targetHost of module.regression.targetEvidenceHosts || []) {
+      if (targetHost !== "linux" && targetHost !== host) {
+        missingTargets.push(blockedTargetResult(module, targetHost));
+      }
+    }
+  }
+  const results = [
+    ...linuxResults,
+    ...(hostResult.report?.results || []),
+    ...missingTargets,
+  ];
+  const coveredIds = new Set(results.flatMap(resultMembers));
+  for (const module of catalog) {
+    if (!coveredIds.has(module.id)) {
+      results.push(Object.freeze({
+        ...blockedTargetResult(module, host),
+        id: `execution-result.${module.id}`,
+        reason: "execution_result_missing",
+      }));
+    }
+  }
+  const startedAt = linuxReport?.startedAt || hostResult.report?.startedAt || new Date().toISOString();
+  const completedAt = new Date().toISOString();
+  const report = createClientRegressionReport({
+    runKind: "complete",
+    startedAt,
+    completedAt,
+    durationMs: Math.max(0, Date.parse(completedAt) - Date.parse(startedAt)),
+    results,
+    concurrency: linuxReport?.concurrency || hostResult.report?.concurrency || {},
+    compatibility: [],
+  });
+  await writeClientRegressionReport(report, reportPath);
+  const runnerPassed = !runner.error && runner.status === 0 && linuxReport?.complete === true;
+  const mergeReady = runnerPassed && hostResult.exitCode === 0 && reportIsMergeReady(report);
+  output.write(`${JSON.stringify({
+    ok: mergeReady,
+    schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
+    target: revisions.target,
+    execution: revisions.execution,
+    host,
+    changedCount: plan.changedCount,
+    lanes: plan.lanes,
+    selectedStepCount: catalog.length,
+    complete: report.complete,
+    missingTargetEvidenceCount: missingTargets.length,
   })}\n`);
   return mergeReady ? 0 : 1;
 }

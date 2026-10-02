@@ -177,6 +177,9 @@ export function runnerDockerArgs({
       `CARGO_TARGET_DIR=/cache/cargo-audit-target cargo install --root /cache/cargo-audit ` +
       `cargo-audit --version ${cargoAuditVersion} --locked; fi && `
     : "";
+  const flutterBootstrap = profile === "engineering"
+    ? "npm run client:get && "
+    : "";
   const androidBootstrap = lane === "android" || profile === "engineering"
     ? "set +o pipefail; yes | /opt/android-command-line-tools/latest/bin/sdkmanager " +
       "--sdk_root=/cache/android-sdk --licenses >/dev/null; license_status=$?; " +
@@ -184,7 +187,7 @@ export function runnerDockerArgs({
       `/opt/android-command-line-tools/latest/bin/sdkmanager --sdk_root=/cache/android-sdk ${androidPackages.join(" ")} < /dev/null && `
     : "";
   const invocation = profile === "engineering"
-    ? "npm run client:gate:verify -- --base HEAD --head HEAD --target pr --execution direct"
+    ? "npm run client:gate:verify -- --base HEAD --head HEAD --target pr --execution direct --host linux"
     : `npm run client:gate:${lane}`;
   const setup = [
     "set -euo pipefail",
@@ -205,7 +208,7 @@ export function runnerDockerArgs({
       "install -m 0600 build/reports/client-module-regression.json " +
       "/output/client-module-regression.json; fi"
     : ":";
-  const script = `${setup} && status=0; ${dependencyBootstrap}${androidBootstrap}${invocation} || status=$?; ` +
+  const script = `${setup} && status=0; ${dependencyBootstrap}${androidBootstrap}${flutterBootstrap}${invocation} || status=$?; ` +
     `${copyReport}; exit "$status"`;
   return [
     "run",

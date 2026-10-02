@@ -103,11 +103,9 @@ export const CLIENT_RELEASE_TARGETS = Object.freeze({
 
 export const CLIENT_CI_JOBS = Object.freeze([
   "plan",
-  "source",
-  "flutter",
-  "rust",
-  "android",
-  "dependencies",
+  "engineering",
+  "target-darwin",
+  "target-win32",
   "client-required",
 ]);
 
