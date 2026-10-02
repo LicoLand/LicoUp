@@ -29,7 +29,7 @@
 use crate::archive;
 use crate::error::{ToolError, ToolResult, WORK_ROOT_INSIDE_DATA_ROOT, WRITERS_RUNNING};
 use crate::journal::ledger::LedgerSnapshot;
-use licoup_native::core::full_data_root_archive::RecoveryCoverage;
+use licoup_native::core::full_data_root_archive::{ADMISSION_LOCK_PATH, RecoveryCoverage};
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -806,6 +806,12 @@ fn collect(root: &Path, directory: &Path, entries: &mut Vec<(String, u8, u64)>) 
             .strip_prefix(root)
             .map(|value| value.to_string_lossy().replace('\\', "/"))
             .unwrap_or_default();
+        // Admission recreates this ephemeral coordination file when a root is opened.
+        // It is not archive payload, so it cannot make the same logical root appear to
+        // change between restore and owner readback.
+        if relative == ADMISSION_LOCK_PATH {
+            continue;
+        }
         if metadata.is_dir() {
             entries.push((relative, b'd', 0));
             collect(root, &path, entries);
@@ -837,9 +843,7 @@ mod tests {
     #![allow(dead_code)]
 
     use super::*;
-    use licoup_foundation::platform::file_security::{
-        atomic_write_private_text, ensure_private_dir,
-    };
+    use licoup_foundation::platform::file_security::{atomic_write_private_text, ensure_private_dir};
 
     include!("../../../tests/fixtures/client_state_migration/released_source.rs");
 
@@ -946,6 +950,20 @@ mod tests {
             before.entries,
             "the entry count follows the tree, not the contents"
         );
+    }
+
+    #[test]
+    fn the_fingerprint_excludes_only_the_ephemeral_admission_lock() {
+        let base = scratch("fingerprint-admission-lock");
+        fs::write(base.join("document.json"), b"{}").expect("application file");
+        let admission_lock = base.join(ADMISSION_LOCK_PATH);
+        fs::create_dir_all(admission_lock.parent().expect("lock parent")).expect("lock directory");
+        let before = fingerprint(&base);
+        fs::write(admission_lock, b"").expect("admission lock");
+        assert_eq!(before, fingerprint(&base));
+
+        fs::write(base.join("application.lock"), b"state").expect("application state");
+        assert_ne!(before, fingerprint(&base), "other files remain payload");
     }
 
     #[test]

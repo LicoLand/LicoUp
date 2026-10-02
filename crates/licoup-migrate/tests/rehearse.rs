@@ -22,6 +22,10 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use licoup_native::platform::llm_api_key_vault::{
+    LegacyCredentialMigrationDisposition, PlatformLlmApiKeyVault,
+};
+use licoup_native::core::full_data_root_archive::ADMISSION_LOCK_PATH;
 use support::*;
 
 /// The stage list the report must carry on every run.
@@ -104,6 +108,9 @@ fn collect_fingerprint(root: &Path, directory: &Path, entries: &mut Vec<(String,
             .expect("entry below the root")
             .to_string_lossy()
             .replace('\\', "/");
+        if relative == ADMISSION_LOCK_PATH {
+            continue;
+        }
         if metadata.is_dir() {
             entries.push((relative, 'd', 0));
             collect_fingerprint(root, &path, entries);
@@ -176,13 +183,17 @@ fn the_rehearsal_converts_and_round_trips_both_containers() {
             .any(|domain| domain == "adaptive-flywheel"),
         "the released strategy store was moved to the current format: {report}"
     );
-    assert!(
+    let requires_authorization = PlatformLlmApiKeyVault::legacy_credential_migration_disposition()
+        .expect("platform credential disposition")
+        == LegacyCredentialMigrationDisposition::RequiresAuthorization;
+    assert_eq!(
         report["pendingAuthorization"]
             .as_array()
             .expect("pendingAuthorization")
             .iter()
             .any(|domain| domain == "gateway-credential-custody"),
-        "pending credential custody stays visible: {report}"
+        requires_authorization,
+        "the report follows the credential owner's platform verdict: {report}"
     );
 
     // Every stage is named exactly once, in the declared order.

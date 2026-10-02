@@ -27,16 +27,12 @@ use super::inventory::{
     ArchiveManifest, InventoryEntry, InventoryKind, RecoveryCoverage, RecoveryLimitation,
     ensure_within_archive_limits, inventory_data_root, validate_inventory_structure,
 };
-use super::{ArchiveContainer, DATA_PREFIX, MANIFEST_MEMBER};
+use super::{ADMISSION_LOCK_PATH, ArchiveContainer, DATA_PREFIX, MANIFEST_MEMBER};
 
 /// Credential custody domain whose key material never travels in a plaintext archive.
 const CREDENTIAL_DOMAIN: &str = "gateway-credential-custody";
 /// Non-secret inventory document at the data-root-relative path its owner reads.
 const CREDENTIAL_INVENTORY_PATH: &str = "llm-api-key-inventory.json";
-/// Ephemeral writer-coordination state. Admission recreates it when needed; restoring
-/// an old lock has no data meaning and Windows cannot read it while this capture holds it.
-const ADMISSION_LOCK_PATH: &str = "client-state/migrations/admission.lock";
-
 #[derive(Clone, Debug)]
 pub struct ExportRequest {
     /// Absolute data root to capture.
@@ -681,11 +677,9 @@ mod tests {
             "archive_write_failed",
             CleanupOutcome::DurabilityUnconfirmed(PathBuf::from("fixture")),
         );
-        assert!(
-            error
-                .to_string()
-                .contains("archive_cleanup_durability_unconfirmed")
-        );
+        assert!(error
+            .to_string()
+            .contains("archive_cleanup_durability_unconfirmed"));
         assert!(!error.to_string().contains("retained"));
     }
 }

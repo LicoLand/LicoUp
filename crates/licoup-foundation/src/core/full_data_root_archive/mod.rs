@@ -29,6 +29,10 @@ pub use restore::{
     RestoreOutcome, RestoreRequest, restore_data_root, restore_data_root_with_preparation,
 };
 
+/// Ephemeral writer-coordination state excluded from archive payload and logical
+/// data-root fingerprints. Admission recreates it whenever a root is opened.
+pub const ADMISSION_LOCK_PATH: &str = "client-state/migrations/admission.lock";
+
 use anyhow::{Result, anyhow};
 use std::path::Path;
 
