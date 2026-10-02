@@ -15,9 +15,9 @@ const execFileAsync = promisify(execFile);
 const healthy = async () => ({ result: "passed", reason: "service_healthy" });
 
 const facts = {
-  codex: { version: "5.3.0", availableModels: ["auto", "gpt-5.4-mini", "gpt-5.3-codex-spark"], runtimeAvailable: true },
-  cursor: { version: "2.5.0", availableModels: ["composer-2.5"], runtimeAvailable: true },
-  antigravity: { version: "3.7.0", availableModels: ["gemini-3.7-flash-medium"], runtimeAvailable: true },
+  codex: { version: "5.3.0", availableModels: ["auto", ...APPROVED_TARGET_MODELS.codex], runtimeAvailable: true },
+  cursor: { version: "2.5.0", availableModels: [...APPROVED_TARGET_MODELS.cursor], runtimeAvailable: true },
+  antigravity: { version: "3.7.0", availableModels: [...APPROVED_TARGET_MODELS.antigravity], runtimeAvailable: true },
 };
 const passedEdge = { inbound: { delegate: true }, outcomes: { delegate: "accepted" }, claimState: "running", dispatchState: "accepted" };
 
@@ -28,9 +28,9 @@ test("default mode is a zero-effect preflight with exact low-cost model order", 
     acquireLease: () => { effects.lease += 1; }, prepareConversation: () => { effects.prepare += 1; },
     directDelegate: () => { effects.call += 1; }, persistRecord: () => { effects.write += 1; } });
   assert.equal(receipt.mode, "preflight"); assert.deepEqual(effects, { lease: 0, prepare: 0, call: 0, write: 0 });
-  assert.equal(selectApprovedModel("codex", facts.codex.availableModels), "gpt-5.3-codex-spark");
+  assert.equal(selectApprovedModel("codex", facts.codex.availableModels), verificationModelForAgent("codex"));
   assert.doesNotMatch(JSON.stringify(receipt), /gpt-|composer-|gemini-/u);
-  assert.deepEqual(APPROVED_TARGET_MODELS.cursor, ["composer-2.5"]);
+  assert.deepEqual(APPROVED_TARGET_MODELS.cursor, [verificationModelForAgent("cursor")]);
   assert.equal(selectApprovedModel("codex", ["gpt-5.4-mini"]), "gpt-5.4-mini");
   assert.equal(selectApprovedModel("codex", ["auto", "gpt-5.9-expensive"]), "");
 });

@@ -9,6 +9,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   prepareStagedFlutterSource,
   stagedPresentationContractRoot,
+  stagedPresentationFlutterRoot,
+  stagedPresentationRuntimeRoot,
 } from "../../../../apps/desktop/scripts/package-client/source-staging.mjs";
 
 const repoRoot = path.resolve(
@@ -51,7 +53,7 @@ async function sources() {
   );
 }
 
-test("clean Flutter staging closes the pure presentation package boundary", async () => {
+test("clean Flutter staging closes the complete presentation package boundary", async () => {
   const cleanBuildRoot = await fs.mkdtemp(
     path.join(os.tmpdir(), "lico-package-client-stage-"),
   );
@@ -60,6 +62,8 @@ test("clean Flutter staging closes the pure presentation package boundary", asyn
     process.env.LICO_CLIENT_CLEAN_BUILD_ROOT = cleanBuildRoot;
     const stagedFlutterRoot = prepareStagedFlutterSource();
     const stagedContractRoot = stagedPresentationContractRoot();
+    const stagedRuntimeRoot = stagedPresentationRuntimeRoot();
+    const stagedFlutterPresentationRoot = stagedPresentationFlutterRoot();
     const expectedContractRoot = path.resolve(
       stagedFlutterRoot,
       "..",
@@ -68,35 +72,37 @@ test("clean Flutter staging closes the pure presentation package boundary", asyn
       "presentation_contract",
     );
     assert.equal(stagedContractRoot, expectedContractRoot);
-    assert.equal(
-      await fileExists(path.join(stagedContractRoot, "pubspec.yaml")),
-      true,
-    );
-    assert.equal(
-      await fileExists(
-        path.join(stagedContractRoot, "lib", "presentation_contract.dart"),
-      ),
-      true,
-    );
-    for (const generatedState of [
-      ".dart_tool",
-      ".flutter-plugins",
-      ".flutter-plugins-dependencies",
-      ".idea",
-      "build",
+    for (const [packageRoot, library] of [
+      [stagedContractRoot, "presentation_contract.dart"],
+      [stagedRuntimeRoot, "presentation_runtime.dart"],
+      [stagedFlutterPresentationRoot, "presentation_flutter.dart"],
     ]) {
-      assert.equal(
-        await fileExists(path.join(stagedContractRoot, generatedState)),
-        false,
-        generatedState,
-      );
+      assert.equal(await fileExists(path.join(packageRoot, "pubspec.yaml")), true);
+      assert.equal(await fileExists(path.join(packageRoot, "lib", library)), true);
+      for (const generatedState of [
+        ".dart_tool",
+        ".flutter-plugins",
+        ".flutter-plugins-dependencies",
+        ".idea",
+        "build",
+      ]) {
+        assert.equal(
+          await fileExists(path.join(packageRoot, generatedState)),
+          false,
+          `${path.basename(packageRoot)}:${generatedState}`,
+        );
+      }
     }
     const stagedPackages = await fs.readdir(path.dirname(stagedContractRoot), {
       withFileTypes: true,
     });
     assert.deepEqual(
       stagedPackages.map((entry) => `${entry.name}:${entry.isDirectory()}`).sort(),
-      ["presentation_contract:true"],
+      [
+        "presentation_contract:true",
+        "presentation_flutter:true",
+        "presentation_runtime:true",
+      ],
     );
   } finally {
     if (previousCleanBuildRoot === undefined) {

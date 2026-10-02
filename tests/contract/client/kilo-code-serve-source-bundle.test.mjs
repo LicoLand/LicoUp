@@ -24,7 +24,8 @@ test("Kilo Code serve is a thin facade plus one target policy leaf", async () =>
     false,
     "the facade must route through the readiness-checked attachment, not the retired endpoint-only attach",
   );
-  assert.match(facade, /local_service::sse::watch_data/u);
+  assert.match(facade, /local_service::sse::watch_frames/u);
+  assert.doesNotMatch(facade, /local_service::sse::watch_data/u);
   assert.match(facade, /adapters::kilo_code/u);
   assert.match(policy, /default_port: DEFAULT_PORT/u);
   assert.match(policy, /default_executable: "kilo"/u);

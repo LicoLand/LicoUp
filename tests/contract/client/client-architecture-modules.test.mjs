@@ -191,7 +191,6 @@ test("source and architecture gates share one required Flutter layer catalog", a
   assert.deepEqual(REQUIRED_FLUTTER_TOP_LEVEL_DIRS, [
     "events",
     "projections",
-    "display",
     "protocol",
     "shared",
     "presentation",
@@ -822,6 +821,12 @@ test("retired paths, symbols, annotations, and path-count substitution stay abse
     "apps/desktop/lib/src/frontend/shared/appearance/appearance_preset_config.dart",
     "apps/desktop/lib/src/projections/listenable_projection_consumer.dart",
     "apps/desktop/lib/src/projections/adapters/legacy_projection_consumer_source_adapter.dart",
+    "apps/desktop/lib/src/projections/composite_application_projection_source.dart",
+    "apps/desktop/lib/src/projections/projection_consumer.dart",
+    "apps/desktop/lib/src/projections/conversation/conversation_projection_consumer.dart",
+    "apps/desktop/lib/src/display/agent_hub/agent_hub_display.dart",
+    "apps/desktop/lib/src/display/settings/settings_display.dart",
+    "apps/desktop/lib/src/display/targets/targets_display.dart",
   ]);
   assert.equal(Object.isFrozen(RETIRED_PRESENTATION_PATHS), true);
   assert.ok(rulesFor(withSource(tree, RETIRED_PRESENTATION_PATHS[0], ""))
