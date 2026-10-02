@@ -106,7 +106,7 @@ export function regressionToolchain(command) {
 }
 
 const TOOLCHAIN_WEIGHT = Object.freeze({
-  rust: 4,
+  rust: 3,
   flutter: 3,
   gradle: 4,
   "node-test": 2,

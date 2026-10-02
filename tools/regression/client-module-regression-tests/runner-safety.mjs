@@ -254,7 +254,7 @@ test("Rust command uses the managed target, native concurrency, and releases on 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].options.env.CARGO_TARGET_DIR, managedTarget);
   assert.equal(calls[0].args.includes("--timings"), true);
-  assert.equal(calls[0].args.includes("--jobs=4"), true);
+  assert.equal(calls[0].args.includes("--jobs=3"), true);
   assert.equal(releases, 1);
 });
 
@@ -362,7 +362,7 @@ test("explicit serial libtest is prepared independently of Cargo jobs", async ()
     },
   });
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].args.includes("--jobs=4"), true);
+  assert.equal(calls[0].args.includes("--jobs=3"), true);
   assert.equal(calls[0].args.includes("--test-threads=1"), true);
   assert.equal(calls[0].args.includes("--test-threads=4"), false);
 });
@@ -422,7 +422,10 @@ test("bounded scheduler settles siblings after a failure and admits work concurr
   ]);
 });
 
-function graphModule(id, stage) {
+function graphModule(id, stage, {
+  toolchain = "node",
+  resources = [],
+} = {}) {
   return Object.freeze({
     id,
     kind: "synthetic",
@@ -437,10 +440,10 @@ function graphModule(id, stage) {
     regression: Object.freeze({
       stage,
       lane: stage,
-      environment: "node",
-      toolchain: "node",
+      environment: toolchain,
+      toolchain,
       weight: 1,
-      resources: Object.freeze([]),
+      resources: Object.freeze(resources),
       internalParallelism: false,
       batchKey: `node:${id}`,
     }),
@@ -493,7 +496,7 @@ test("staged graph overlaps frontend/backend and preserves dependency order", as
   assert.ok(events.indexOf("integration:end") < events.indexOf("scenarios:start"));
 });
 
-test("a core branch failure blocks only descendants and still reaches compatibility", async () => {
+test("independent cross-stage failures settle together and still reach compatibility", async () => {
   const modules = [
     graphModule("foundation", "foundation"),
     graphModule("frontend", "frontend"),
@@ -509,7 +512,7 @@ test("a core branch failure blocks only descendants and still reaches compatibil
     capacities: { global: 2, pools: { node: 2 }, resources: {} },
     async commandRunner(batch) {
       return graphResult(batch,
-        batch.members[0] === "frontend" ? "failed" : "passed");
+        ["foundation", "integration"].includes(batch.members[0]) ? "failed" : "passed");
     },
     async compatibilityRunner() {
       compatibilityReached = true;
@@ -519,9 +522,70 @@ test("a core branch failure blocks only descendants and still reaches compatibil
   assert.equal(result.ok, false);
   assert.equal(compatibilityReached, true);
   const statuses = new Map(result.report.results.map((entry) => [entry.members[0], entry.status]));
+  assert.equal(statuses.get("foundation"), "failed");
+  assert.equal(statuses.get("frontend"), "passed");
   assert.equal(statuses.get("backend"), "passed");
-  assert.equal(statuses.get("integration"), "blocked");
-  assert.equal(statuses.get("scenarios"), "blocked");
+  assert.equal(statuses.get("integration"), "failed");
+  assert.equal(statuses.get("scenarios"), "passed");
+  assert.deepEqual(result.report.failures.map((failure) => failure.members[0]), [
+    "foundation",
+    "integration",
+  ]);
+});
+
+test("Flutter dependency failure blocks only its consumers and remains nonzero", async () => {
+  const modules = [
+    graphModule("regression.flutter-dependencies", "foundation", {
+      toolchain: "flutter",
+      resources: ["flutter-cache"],
+    }),
+    graphModule("foundation.node", "foundation"),
+    graphModule("frontend.flutter", "frontend", {
+      toolchain: "flutter",
+      resources: ["flutter-cache"],
+    }),
+    graphModule("backend.rust", "backend", {
+      toolchain: "rust",
+      resources: ["cargo-target"],
+    }),
+    graphModule("integration.gradle-wrapper", "integration", {
+      resources: ["flutter-cache", "gradle-cache"],
+    }),
+    graphModule("integration.node", "integration"),
+    graphModule("scenarios.node", "scenarios"),
+  ];
+  const executed = [];
+  const result = await executeClientModules(modules, {
+    repoRoot,
+    catalog: modules,
+    output: stringSink(),
+    capacities: {
+      global: 3,
+      pools: { node: 2, flutter: 3, rust: 3 },
+      resources: { "flutter-cache": 1, "gradle-cache": 1, "cargo-target": 1 },
+    },
+    async commandRunner(batch) {
+      executed.push(batch.members[0]);
+      return graphResult(batch,
+        batch.members[0] === "regression.flutter-dependencies" ? "failed" : "passed");
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.exitCode, 1);
+  assert.deepEqual(executed, [
+    "regression.flutter-dependencies",
+    "foundation.node",
+    "backend.rust",
+    "integration.node",
+    "scenarios.node",
+  ]);
+  const rows = new Map(result.report.results.map((entry) => [entry.members[0], entry]));
+  for (const id of ["frontend.flutter", "integration.gradle-wrapper"]) {
+    assert.equal(rows.get(id).status, "blocked");
+    assert.equal(rows.get(id).reason, "flutter_dependencies_failed");
+  }
+  assert.equal(rows.get("integration.node").status, "passed");
+  assert.equal(rows.get("scenarios.node").status, "passed");
 });
 
 test("argument parser requires one bounded selector", () => {

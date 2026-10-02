@@ -30,6 +30,8 @@ import {
 const NODE_TEST_ATTRIBUTION_REPORTER = "tools/regression/client-node-test-attribution-reporter.mjs";
 const NODE_TEST_INPUTS_ENV = "LICO_CLIENT_NODE_TEST_INPUTS";
 const NODE_TEST_ATTRIBUTION_SCHEMA = "licoup.node-test-attribution.v1";
+const FLUTTER_DEPENDENCY_MODULE_ID = "regression.flutter-dependencies";
+const FLUTTER_DEPENDENCY_RESOURCES = new Set(["flutter-cache", "gradle-cache"]);
 
 function containedWorkingDirectory(repoRoot, relativeCwd) {
   const root = path.resolve(repoRoot);
@@ -470,6 +472,16 @@ function blockedResults(batches, reason) {
   }));
 }
 
+function batchContains(batch, moduleId) {
+  return batch.members.includes(moduleId);
+}
+
+function requiresFlutterDependencies(batch) {
+  if (batchContains(batch, FLUTTER_DEPENDENCY_MODULE_ID)) return false;
+  return ["flutter", "gradle"].includes(batch.toolchain)
+    || batch.resources.some((resource) => FLUTTER_DEPENDENCY_RESOURCES.has(resource));
+}
+
 export async function executeClientModules(modules, {
   repoRoot,
   catalog = modules,
@@ -509,33 +521,27 @@ export async function executeClientModules(modules, {
     return executeClientRegressionBatches(stageBatches, { capacities, commandRunner: runner });
   };
 
-  const foundation = await run(byStage.get("foundation"));
-  merge(foundation);
-  let branchesPassed = false;
-  if (resultsPassed(foundation.results)) {
-    const branches = await run([...byStage.get("frontend"), ...byStage.get("backend")]);
-    merge(branches);
-    branchesPassed = resultsPassed(branches.results);
-  } else {
-    results.push(...blockedResults(
-      [...byStage.get("frontend"), ...byStage.get("backend")],
-      "foundation_failed",
-    ));
-  }
+  const dependencyPreparation = byStage.get("foundation")
+    .filter((batch) => batchContains(batch, FLUTTER_DEPENDENCY_MODULE_ID));
+  const dependencyExecution = await run(dependencyPreparation);
+  merge(dependencyExecution);
+  const dependenciesAvailable = resultsPassed(dependencyExecution.results);
+  const runStage = async (stageBatches) => {
+    const runnable = dependenciesAvailable
+      ? stageBatches
+      : stageBatches.filter((batch) => !requiresFlutterDependencies(batch));
+    const blocked = dependenciesAvailable
+      ? []
+      : stageBatches.filter(requiresFlutterDependencies);
+    merge(await run(runnable));
+    results.push(...blockedResults(blocked, "flutter_dependencies_failed"));
+  };
 
-  let integrationPassed = false;
-  if (branchesPassed) {
-    const integration = await run(byStage.get("integration"));
-    merge(integration);
-    integrationPassed = resultsPassed(integration.results);
-  } else {
-    results.push(...blockedResults(byStage.get("integration"), "core_branch_failed"));
-  }
-  if (integrationPassed) {
-    merge(await run(byStage.get("scenarios")));
-  } else {
-    results.push(...blockedResults(byStage.get("scenarios"), "integration_failed"));
-  }
+  await runStage(byStage.get("foundation")
+    .filter((batch) => !batchContains(batch, FLUTTER_DEPENDENCY_MODULE_ID)));
+  await runStage([...byStage.get("frontend"), ...byStage.get("backend")]);
+  await runStage(byStage.get("integration"));
+  await runStage(byStage.get("scenarios"));
 
   const compatibilityExecution = await compatibilityRunner({ capacities, output });
   const compatibility = Array.isArray(compatibilityExecution)

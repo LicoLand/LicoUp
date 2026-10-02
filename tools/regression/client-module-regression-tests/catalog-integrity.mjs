@@ -52,6 +52,34 @@ function moduleSelects(module, file) {
     : file === input);
 }
 
+function explicitCargoJobs(command) {
+  if (command.program !== "cargo") return null;
+  const boundary = command.args.indexOf("--");
+  const args = command.args.slice(0, boundary < 0 ? command.args.length : boundary);
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (["-j", "--jobs"].includes(argument)) return Number(args[index + 1]);
+    const compact = argument.match(/^-j([0-9]+)$/u);
+    if (compact) return Number(compact[1]);
+    const long = argument.match(/^--jobs=([0-9]+)$/u);
+    if (long) return Number(long[1]);
+  }
+  return null;
+}
+
+test("complete catalog respects the three-process Cargo budget", () => {
+  for (const module of CLIENT_MODULE_CATALOG) {
+    const explicitJobs = explicitCargoJobs(module.command);
+    if (explicitJobs !== null) {
+      assert.ok(Number.isInteger(explicitJobs) && explicitJobs > 0, module.id);
+      assert.ok(explicitJobs <= 3, module.id);
+    }
+    if (module.regression.toolchain === "rust" && module.regression.internalParallelism) {
+      assert.ok(module.regression.weight <= 3, module.id);
+    }
+  }
+});
+
 const nodeReachability = new WeakMap();
 
 function nodeReachableFiles(module) {
