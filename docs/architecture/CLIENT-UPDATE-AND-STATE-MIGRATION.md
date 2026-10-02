@@ -44,33 +44,6 @@ compatibility entry point, or fallback. Retained repository diagnostics are
 developer tools, not another supported conversion authority. There is no
 arbitrary historical-target selection or downgrade conversion contract.
 
-For an unpublished collaboration snapshot, `recover-peer-snapshot --data-root
-<source> --target-root <new-output> --writers-stopped` prepares an explicit
-offline recovery. It retains a complete, consistent Conversation SQLite snapshot
-as `preserved-conversations.sqlite3`, including the three unsupported peer tables
-and their parent rows. A second copy removes only the precisely recognized
-`peer_bindings`, `peer_inbox` and `peer_effect_intents` tables, then passes the
-current Conversation owner, foreign-key and integrity checks before it is named
-`recovered-conversations.sqlite3`. Unknown shapes or incoming references refuse
-the operation. Failed preparation leaves no completed candidate name.
-
-This operation is a bounded recovery mapping, not a supported intermediate
-release format or a startup compatibility path. Its default mode does not activate
-the candidate. Explicit `--activate` requires the same stopped-writer statement
-and holds one exclusive recovery lease across the complete operation: capture the
-original root through the existing archive owner, prepare and validate both
-snapshots, let SQLite checkpoint the original journal, and atomically replace only
-the Conversation database through the private-file owner. Strategy data, other
-stores, the root locator and protected key custody are unchanged. The private
-`original-data-root.zip` and complete preserved database remain rollback assets.
-
-Validation or publication failure preserves the original logical database. A
-published replacement whose directory sync is unconfirmed is reported as
-`activation-durability-unconfirmed`, with `activated: true` and a nonzero exit;
-it must not be mistaken for an operation that changed nothing. `prepared` and
-`activated` report data operations only, never application usability. Actual user
-data activation requires explicit authorization; ordinary launch is separate.
-
 Import validates and extracts through Foundation, then prepares custody metadata,
 owner-managed references and revision protections in its private staging payload.
 These owner checks finish before any payload is published into the empty destination.

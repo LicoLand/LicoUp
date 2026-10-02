@@ -28,9 +28,6 @@ use licoup_foundation::platform::data_home_access::{
 use licoup_foundation::platform::paths;
 use std::path::{Path, PathBuf};
 
-mod peer_snapshot;
-pub use peer_snapshot::{PeerSnapshotRecovery, activate_peer_snapshot, recover_peer_snapshot};
-
 /// The stable refusal when another process still uses the selected data home.
 pub const WRITERS_RUNNING: &str = "backup_writers_running";
 

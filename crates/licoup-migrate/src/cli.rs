@@ -22,14 +22,12 @@ pub struct Invocation {
     pub writers_stopped: bool,
     /// The archive named by `--archive`, for the two archive verbs.
     pub archive: Option<PathBuf>,
-    /// The destination named by `--target-root`, for import or snapshot preparation.
+    /// The empty destination named by `--target-root`, for `import`.
     pub target_root: Option<PathBuf>,
     /// The disposable working directory named by `--work-root`, for `rehearse`.
     pub work_root: Option<PathBuf>,
     /// Keep the rehearsal's disposable working root instead of removing it after the run.
     pub keep_work_root: bool,
-    /// Explicitly activate a prepared peer recovery under the same exclusive lease.
-    pub activate: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -41,7 +39,6 @@ pub enum Verb {
     Export,
     Import,
     Rehearse,
-    RecoverPeerSnapshot,
 }
 
 /// What the caller asked for that the tool cannot honour.
@@ -89,7 +86,6 @@ Usage:
   licoup-migrate export   --data-root <path> --archive <path>.zip|.tar.gz --writers-stopped [--json]
   licoup-migrate import   --archive <path> --target-root <empty directory> [--json]
   licoup-migrate rehearse --data-root <path> --work-root <directory> --writers-stopped [--keep-work-root] [--json]
-  licoup-migrate recover-peer-snapshot --data-root <path> --target-root <new directory> --writers-stopped [--activate] [--json]
 
 Commands:
   inspect  Report the domain state the client's own owners observe.
@@ -100,10 +96,6 @@ Commands:
   import   Restore one archive into an empty destination.
   rehearse Convert a disposable copy of a released root, round-trip it through
            both plaintext containers, and report each stage it observed.
-  recover-peer-snapshot
-           Preserve an unpublished peer snapshot and prepare a separate current
-           Conversation database. --activate also archives the complete original
-           root and replaces only its Conversation database under the same lease.
 
 Options:
   --data-root <path>  The data root to read. Required by every verb but import.
@@ -112,17 +104,14 @@ Options:
                       the name. Required by export and import.
   --target-root <path>
                       The empty directory an import publishes into. Required by
-                      import; a non-empty destination is refused. Snapshot recovery
-                      instead requires a new output directory outside the source.
+                      import; a non-empty destination is refused.
   --work-root <path>  The disposable directory a rehearsal stages, converts,
                       archives and restores in. Required by rehearse; the named
                       data root is never written to.
   --keep-work-root    Keep the rehearsal's working root after the run so a caller
                       can compare the roots each stage left on disk.
-  --activate         Explicitly activate peer snapshot recovery. Without this flag,
-                      recovery only prepares separate output and never changes source data.
   --writers-stopped   State that no writer is running against the data root. A
-                      convert, resume, export, rehearsal and snapshot recovery require it: the
+                      convert, a resume, an export and a rehearsal require it: the
                       move, the capture and the rehearsal are only legitimate while
                       every writer is stopped.
   --json              Print JSON (the default; the flag is accepted for symmetry).
@@ -139,7 +128,6 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, Usage> {
     let mut target_root: Option<PathBuf> = None;
     let mut work_root: Option<PathBuf> = None;
     let mut keep_work_root = false;
-    let mut activate = false;
 
     let mut index = 0;
     while index < arguments.len() {
@@ -150,7 +138,6 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, Usage> {
             "--json" => json = true,
             "--writers-stopped" => writers_stopped = true,
             "--keep-work-root" => keep_work_root = true,
-            "--activate" => activate = true,
             "--data-root" | "--target" | "--archive" | "--target-root" | "--work-root" => {
                 let value = arguments
                     .get(index + 1)
@@ -183,7 +170,6 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, Usage> {
                     "export" => Verb::Export,
                     "import" => Verb::Import,
                     "rehearse" => Verb::Rehearse,
-                    "recover-peer-snapshot" => Verb::RecoverPeerSnapshot,
                     unknown => return Err(Usage::UnknownVerb(unknown.to_string())),
                 };
                 if verb.is_some() {
@@ -196,17 +182,7 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, Usage> {
     }
 
     let verb = verb.ok_or(Usage::Help)?;
-    if activate && verb != Verb::RecoverPeerSnapshot {
-        return Err(Usage::UnknownOption("--activate".to_owned()));
-    }
     match verb {
-        Verb::RecoverPeerSnapshot => {
-            data_root.as_ref().ok_or(Usage::DataRootRequired)?;
-            target_root.as_ref().ok_or(Usage::TargetRootRequired)?;
-            if !writers_stopped {
-                return Err(Usage::WritersStoppedRequired);
-            }
-        }
         // The archive verbs name the inputs their own boundary requires, and only those:
         // an import has no data root to read, and an export has no destination to publish.
         Verb::Import => {
@@ -250,7 +226,6 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, Usage> {
         target_root,
         work_root,
         keep_work_root,
-        activate,
     })
 }
 
