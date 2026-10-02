@@ -193,6 +193,9 @@ pub fn convert(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use licoup_native::platform::llm_api_key_vault::{
+        LegacyCredentialMigrationDisposition, PlatformLlmApiKeyVault,
+    };
 
     fn scratch(name: &str) -> std::path::PathBuf {
         let base = std::env::temp_dir().canonicalize().expect("temp dir");
@@ -233,10 +236,10 @@ mod tests {
     }
 
     #[test]
-    fn a_root_that_keeps_owing_a_domain_is_reported_as_unfinished() {
+    fn a_fresh_root_reports_the_platform_credential_owners_verdict() {
         let root = scratch("owed");
-        // Every domain the client's frontier declares, so the run is asked about the one
-        // domain this platform cannot complete without platform authority as well.
+        // Every domain the client's frontier declares, including the credential domain
+        // whose owner decides whether this platform needs separate authorization.
         let owed: Vec<String> =
             licoup_native::domain::client_state_migration::frontier_projection_struct()
                 .expect("frontier")
@@ -245,14 +248,20 @@ mod tests {
                 .map(|domain| domain.domain_id)
                 .collect();
         let report = convert(&root, &owed, true).expect("the owner runs");
-        assert!(
-            !report.still_owed.is_empty(),
-            "a fresh root owes a credential domain"
-        );
-        assert!(!report.is_complete());
+        let requires_authorization =
+            PlatformLlmApiKeyVault::legacy_credential_migration_disposition()
+                .expect("platform credential disposition")
+                == LegacyCredentialMigrationDisposition::RequiresAuthorization;
+        assert_eq!(!report.still_owed.is_empty(), requires_authorization);
+        assert_eq!(!report.is_complete(), requires_authorization);
         assert_eq!(
-            report.status, "pendingAuthorization",
-            "an owed domain is never rendered as a finished conversion: {report:?}"
+            report.status,
+            if requires_authorization {
+                "pendingAuthorization"
+            } else {
+                "converted"
+            },
+            "the report follows the credential owner's platform verdict: {report:?}"
         );
     }
 

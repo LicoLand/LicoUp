@@ -854,7 +854,16 @@ fn create_directory_path_no_follow(path: &Path) -> Result<()> {
     let mut current = PathBuf::new();
     for component in absolute.components() {
         match component {
-            Component::Prefix(_) | Component::RootDir | Component::Normal(_) => {
+            // A Windows drive or UNC prefix is not a filesystem location by itself.
+            // Probing `C:` before the following root component means "the current
+            // directory on drive C" and can reject an otherwise valid absolute
+            // destination. Build the rooted anchor first, then validate it and every
+            // descendant without following links.
+            Component::Prefix(_) => {
+                current.push(component.as_os_str());
+                continue;
+            }
+            Component::RootDir | Component::Normal(_) => {
                 current.push(component.as_os_str());
             }
             Component::CurDir => continue,

@@ -33,6 +33,9 @@ use super::{ArchiveContainer, DATA_PREFIX, MANIFEST_MEMBER};
 const CREDENTIAL_DOMAIN: &str = "gateway-credential-custody";
 /// Non-secret inventory document at the data-root-relative path its owner reads.
 const CREDENTIAL_INVENTORY_PATH: &str = "llm-api-key-inventory.json";
+/// Ephemeral writer-coordination state. Admission recreates it when needed; restoring
+/// an old lock has no data meaning and Windows cannot read it while this capture holds it.
+const ADMISSION_LOCK_PATH: &str = "client-state/migrations/admission.lock";
 
 #[derive(Clone, Debug)]
 pub struct ExportRequest {
@@ -85,7 +88,8 @@ pub fn export_data_root(request: &ExportRequest) -> Result<ExportOutcome> {
     let _admission = AdmissionGuard::acquire(&request.data_root)?;
 
     // Inventory and policy first: a refused capture publishes nothing and mutates nothing.
-    let entries = inventory_data_root(&request.data_root)?;
+    let mut entries = inventory_data_root(&request.data_root)?;
+    entries.retain(|entry| entry.path != ADMISSION_LOCK_PATH);
     let facts = validate_inventory_structure(&entries)
         .map_err(|_| anyhow!("data_root_path_not_portable"))?;
     let limitations = recovery_limitations(&entries);
@@ -407,10 +411,7 @@ struct AdmissionGuard {
 
 impl AdmissionGuard {
     fn acquire(data_root: &Path) -> Result<Self> {
-        let path = data_root
-            .join("client-state")
-            .join("migrations")
-            .join("admission.lock");
+        let path = data_root.join(ADMISSION_LOCK_PATH);
         match OpenOptions::new().read(true).open(&path) {
             Ok(file) => {
                 file.try_lock_exclusive()
@@ -568,6 +569,39 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("create scratch");
         root
+    }
+
+    #[test]
+    fn capture_excludes_the_ephemeral_admission_lock() {
+        let fixture = artifact_scratch("admission-lock");
+        let root = fixture.join("source");
+        let migration_root = root.join("client-state/migrations");
+        std::fs::create_dir_all(&migration_root).expect("create migration root");
+        std::fs::write(migration_root.join("admission.lock"), b"").expect("create admission lock");
+        std::fs::write(root.join("document.json"), b"{}").expect("create application document");
+        let archive = fixture.join("capture.zip");
+
+        export_data_root(&ExportRequest {
+            data_root: root,
+            archive_path: archive.clone(),
+            writers_stopped: true,
+        })
+        .expect("capture while holding the admission lock");
+
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(archive).expect("open capture"))
+            .expect("read capture");
+        let names = (0..zip.len())
+            .map(|index| {
+                zip.by_index(index)
+                    .expect("archive member")
+                    .name()
+                    .to_owned()
+            })
+            .collect::<Vec<_>>();
+        assert!(names.contains(&format!("{DATA_PREFIX}document.json")));
+        assert!(!names.contains(&format!("{DATA_PREFIX}{ADMISSION_LOCK_PATH}")));
+
+        std::fs::remove_dir_all(fixture).expect("remove scratch");
     }
 
     #[test]
