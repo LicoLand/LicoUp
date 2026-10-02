@@ -2,6 +2,10 @@
   "schemaVersion": 1,
   "allowedJsonPaths": [
     {
+      "path": "apps/desktop/scripts/client-architecture/ratchet/baseline.json",
+      "kind": "config-object"
+    },
+    {
       "path": "tests/fixtures/client_state_migration/structural_cases.json",
       "kind": "json"
     },
@@ -419,5 +423,19 @@
     "pi.dev",
     "scripts.sil.org",
     "www.adobe.com"
+  ],
+  "reviewedUnixPathLiterals": [
+    {
+      "rule": "developer-macos-home-path",
+      "path": "tools/scripts/lib/privacy-test-fixtures.mjs",
+      "value": "/Users/maintainer/Library/Application Support/LicoUp",
+      "reason": "Fixed artificial migration refusal input declared by the source-boundary checker. The exact complete value is required to verify safe error redaction; no machine or user data is represented."
+    },
+    {
+      "rule": "developer-macos-home-path",
+      "path": "tools/scripts/lib/privacy-test-fixtures.mjs",
+      "value": "/Users/maintainer/private/state.db",
+      "reason": "Fixed artificial migration refusal input declared by the source-boundary checker. The exact complete value is required to verify safe error redaction; no machine or user data is represented."
+    }
   ]
 }

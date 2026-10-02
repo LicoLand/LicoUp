@@ -171,6 +171,7 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "domain::client_conversation::",
     "store::execution::tests::",
     "store::native_sessions::tests::",
+    "store::schema::tests::",
   ]);
   const rpc = CLIENT_MODULE_CATALOG.find((module) =>
     module.id === "rust.bin.licoup.rpc");

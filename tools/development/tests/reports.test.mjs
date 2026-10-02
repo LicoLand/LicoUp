@@ -441,11 +441,11 @@ test("architecture edges follow runtime package definitions instead of impact co
 
 // The reviewed report sources are reusable repository data, not private evidence.
 // Each one carries an exact admission in the maintained Auditor policy; the policy
-// keeps the published three-key schema instead of a wildcard or privacy exemption.
+// uses the published exact policy declarations without wildcard admissions.
 test("reviewed report sources keep exact policy admissions", () => {
   const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
   const policy = JSON.parse(readFileSync(path.join(repoRoot, ".lico-auditor/policy.json"), "utf8"));
-  assert.deepEqual(Object.keys(policy), ["schemaVersion", "allowedJsonPaths", "publicReferenceDomains"]);
+  assert.deepEqual(Object.keys(policy), ["schemaVersion", "allowedJsonPaths", "reviewedSchemaHistory", "publicReferenceDomains", "reviewedUnixPathLiterals"]);
   assert.equal(policy.schemaVersion, 1);
   const workflowNames = [
     "01-requirements",
