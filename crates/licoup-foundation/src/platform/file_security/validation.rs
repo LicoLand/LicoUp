@@ -205,6 +205,9 @@ pub fn validate_no_symlink_ancestors(path: &Path) -> Result<()> {
     let mut current = PathBuf::new();
     for component in absolute.components() {
         current.push(component.as_os_str());
+        if matches!(component, std::path::Component::Prefix(_)) {
+            continue;
+        }
         match fs::symlink_metadata(&current) {
             Ok(metadata) => ensure!(
                 !metadata.file_type().is_symlink(),
