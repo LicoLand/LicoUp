@@ -123,6 +123,10 @@ const TOOLCHAIN_RESOURCES = Object.freeze({
 
 function wrapperResources(command) {
   if (command.program === "node" &&
+      command.args[0] === "tests/smoke/native-client-smoke.mjs") {
+    return ["cargo-target"];
+  }
+  if (command.program === "node" &&
       command.args[0] === "tools/scripts/client-android-native-tests.mjs") {
     // This bounded wrapper owns a Gradle test run, two Cargo FFI filters, and
     // may consult Flutter Doctor while resolving Java. Charge every shared

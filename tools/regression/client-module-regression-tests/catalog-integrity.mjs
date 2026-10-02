@@ -14,6 +14,7 @@ import {
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { CLIENT_COMPATIBILITY_ENTRIES } from "../client-regression-entries/index.mjs";
+import { CLIENT_GATE_LANES } from "../../scripts/client-gate-policy.mjs";
 import {
   assembleClientModuleCatalog,
   defineModule,
@@ -314,6 +315,90 @@ test("complete catalog owns format lint analysis and dependency audit", () => {
   assert.equal(commands.get("regression.dependency-audit"),
     "node tools/scripts/client-deps-audit.mjs");
   assert.match(commands.get("flutter.composition.dependencies"), /flutter analyze --no-pub/u);
+  assert.equal(CLIENT_MODULE_CATALOG[0].id, "regression.flutter-dependencies");
+  assert.deepEqual(CLIENT_MODULE_CATALOG[0].regression.resources, ["flutter-cache"]);
+  assert.deepEqual(
+    CLIENT_MODULE_CATALOG.find((module) => module.id === "regression.native-client-smoke")
+      .regression.resources,
+    ["cargo-target"],
+  );
+});
+
+const LEGACY_LANE_EQUIVALENT_MODULES = Object.freeze({
+  "client:gate:topology": ["regression.release-workflow-contracts"],
+  "client:gate:self-test": ["regression.release-workflow-contracts"],
+  "client:verify:build-entry:self-test": ["regression.release-workflow-contracts"],
+  "client:version:check": [
+    "regression.release-workflow-contracts",
+    "regression.client-version",
+    "regression.client-support-matrix",
+  ],
+  "client:verify:agent-conversation-parity": [
+    "regression.agent-conversation-parity-reducer",
+    "regression.agent-conversation-parity-reducer-source-bundle",
+    "regression.acp-conversation-parity-source-bundle",
+  ],
+  "client:format:check": ["regression.flutter-format"],
+  "client:analyze": ["flutter.composition.dependencies"],
+  "client:test": ["@tracked-flutter-test-partitions"],
+  "client:native:clippy": ["regression.rust-clippy"],
+  "client:native:test:helpers": ["rust.core.mcp-server"],
+  "client:native:test": ["@catalog-rust-test-partitions"],
+  "client:promotion:self-test": ["regression.release-workflow-contracts"],
+  "client:pricing:check": ["release.model-pricing"],
+  "client:release:packages:self-test": ["regression.release-workflow-contracts"],
+  "client:verify:android-physical-install-launch:self-test": [
+    "regression.android-physical-install-launch-source-bundle",
+  ],
+  "client:cli:vm:self-test": ["regression.cli-vm-source-bundle"],
+  "client:state:migration:self-test": ["regression.client-state-contracts"],
+  "client:verify:artifact-verification-receipts:self-test": [
+    "regression.artifact-verification-receipts-source-bundle",
+  ],
+  "client:verify:secure-mesh-e2ee-evidence:leak-scan-self-test": [
+    "regression.e2ee-evidence-bundle-source-bundle",
+  ],
+});
+
+function catalogCommand(module) {
+  return [module.command.program, ...module.command.args].join(" ");
+}
+
+test("every legacy lane command has one real catalog execution or declared partition equivalence", async () => {
+  const packageJson = JSON.parse(await fs.readFile(path.join(repoRoot, "package.json"), "utf8"));
+  const catalogCommands = new Set(CLIENT_MODULE_CATALOG.map(catalogCommand));
+  const legacyScripts = Object.values(CLIENT_GATE_LANES).flat();
+  const unmatched = [];
+  for (const script of legacyScripts) {
+    const packageCommand = packageJson.scripts[script];
+    assert.equal(typeof packageCommand, "string", `legacy lane script is missing: ${script}`);
+    if (catalogCommands.has(packageCommand)) continue;
+    const equivalents = LEGACY_LANE_EQUIVALENT_MODULES[script];
+    if (!equivalents) {
+      unmatched.push(script);
+      continue;
+    }
+    for (const moduleId of equivalents) {
+      if (moduleId === "@tracked-flutter-test-partitions") {
+        assert.equal(CLIENT_MODULE_CATALOG.some((module) =>
+          module.command.args.includes("flutter") && module.command.args.includes("test")), true);
+        continue;
+      }
+      if (moduleId === "@catalog-rust-test-partitions") {
+        assert.equal(CLIENT_MODULE_CATALOG.some((module) =>
+          module.command.program === "cargo" && module.command.args[0] === "test"), true);
+        continue;
+      }
+      assert.ok(CLIENT_MODULE_CATALOG.find((module) => module.id === moduleId),
+        `${script} references missing equivalent module ${moduleId}`);
+    }
+  }
+  assert.deepEqual(unmatched, []);
+  const legacyNames = new Set(legacyScripts);
+  assert.deepEqual(
+    Object.keys(LEGACY_LANE_EQUIVALENT_MODULES).filter((script) => !legacyNames.has(script)),
+    [],
+  );
 });
 
 test("tracked contribution guides require focused repair and one complete gate", async () => {
@@ -392,12 +477,18 @@ test("every tracked test entry has an executing engineering owner or explicit li
 test("shared Flutter and Rust manifests select their own technology families", () => {
   const flutter = selectModulesForChangedPaths(["apps/desktop/pubspec.yaml"]);
   assert.deepEqual(ids(flutter), [
+    "regression.flutter-dependencies",
+    "regression.client-version",
     "regression.dependency-audit",
     "flutter.composition.dependencies",
   ]);
 
   const rust = selectModulesForChangedPaths(["Cargo.lock"]);
-  assert.deepEqual(ids(rust), ["regression.dependency-audit", "rust.composition"]);
+  assert.deepEqual(ids(rust), [
+    "regression.client-version",
+    "regression.dependency-audit",
+    "rust.composition",
+  ]);
 });
 
 test("target-owned changes retain runnable hosts and exact target evidence obligations", () => {
@@ -547,10 +638,14 @@ test("architecture and package facades retain precise source-bundle ownership", 
   ];
 
   for (const relativePath of architectureSources) {
-    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), [
+    const expected = [
       "regression.client-architecture-modules",
       "architecture.client-boundaries",
-    ]);
+    ];
+    if (relativePath === "tools/verify-client-boundary.mjs") {
+      expected.unshift("regression.client-boundary");
+    }
+    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), expected);
   }
   assert.deepEqual(ids(selectModulesForChangedPaths([architectureTest])), [
     "regression.client-architecture-modules",

@@ -10,6 +10,16 @@ import {
   defineModule,
 } from "../helpers.mjs";
 
+function releaseScriptModule({ id, summary, script, args = [], inputs = [] }) {
+  return defineModule({
+    id,
+    kind: "release",
+    summary,
+    inputs: [script, ...inputs],
+    command: node(script, args, 5 * 60_000),
+  });
+}
+
 export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
   defineModule({
       id: "bridge.native-mcp-command",
@@ -431,6 +441,103 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
       ],
       command: node("tools/scripts/windows-pe-facts-self-test.mjs"),
     }),
+  releaseScriptModule({
+    id: "release.artifact-io",
+    summary: "Release artifact writer atomicity, bounds, and cleanup",
+    script: "tools/scripts/client-release-artifact-io-self-test.mjs",
+  }),
+  releaseScriptModule({
+    id: "release.dependency-receipts",
+    summary: "Release dependency receipt validation and fail-closed lineage",
+    script: "tools/scripts/client-release-dependency-receipts-self-test.mjs",
+  }),
+  releaseScriptModule({
+    id: "release.source-state-digest",
+    summary: "Canonical release source-state digest stability and privacy",
+    script: "tools/scripts/client-source-state-digest-self-test.mjs",
+  }),
+  releaseScriptModule({
+    id: "release.bounded-child-process",
+    summary: "Bounded release child-process termination and output handling",
+    script: "tools/scripts/client-bounded-child-process-self-test.mjs",
+  }),
+  releaseScriptModule({
+    id: "release.update-manifest",
+    summary: "Update manifest validation, artifact lineage, and deterministic self-test",
+    script: "tools/scripts/client-update-manifest.mjs",
+    args: ["--self-test", "true"],
+  }),
+  releaseScriptModule({
+    id: "release.review-signoff",
+    summary: "Release review signoff verification and rejection contracts",
+    script: "tools/scripts/client-review-signoff-verifier-self-test.mjs",
+  }),
+  releaseScriptModule({
+    id: "release.target-evidence",
+    summary: "Release target evidence ownership and receipt validation",
+    script: "tools/scripts/client-release-target-evidence-self-test.mjs",
+  }),
+  releaseScriptModule({
+    id: "release.report-schemas",
+    summary: "Release report schema coverage and strict validation",
+    script: "tools/scripts/client-release-report-schema-self-test.mjs",
+  }),
+  releaseScriptModule({
+    id: "release.native-smoke-policy",
+    summary: "Native smoke command policy and runtime-data boundary",
+    script: "tests/smoke/native-client-smoke-policy-self-test.mjs",
+  }),
+  releaseScriptModule({
+    id: "release.closure-producer-writer",
+    summary: "Release closure producers use the canonical bounded writer",
+    script: "tools/scripts/client-closure-producer-writer-self-test.mjs",
+  }),
+  releaseScriptModule({
+    id: "release.secure-mesh-capability-model",
+    summary: "Secure Mesh capability report model self-test",
+    script: "tools/scripts/client-secure-mesh-capability-model.mjs",
+    args: ["--self-test"],
+  }),
+  releaseScriptModule({
+    id: "release.secure-mesh-trust-ux",
+    summary: "Secure Mesh trust UX reducer and report self-test",
+    script: "tools/scripts/client-secure-mesh-trust-ux.mjs",
+    args: ["--self-test"],
+  }),
+  releaseScriptModule({
+    id: "release.secure-mesh-report-redaction",
+    summary: "Secure Mesh report redaction and privacy self-test",
+    script: "tools/scripts/client-secure-mesh-report-redaction-verify.mjs",
+    args: ["--self-test"],
+  }),
+  releaseScriptModule({
+    id: "release.secure-mesh-e2ee-contract-binding",
+    summary: "Secure Mesh E2EE evidence contract binding",
+    script: "tools/scripts/client-secure-mesh-e2ee-evidence-bundle.mjs",
+    args: ["--contract-binding-check"],
+    inputs: ["tools/scripts/client-secure-mesh-e2ee-evidence-bundle/**"],
+  }),
+  releaseScriptModule({
+    id: "release.secure-mesh-e2ee-authority-proof",
+    summary: "Secure Mesh E2EE authority-proof validation self-test",
+    script: "tools/scripts/client-secure-mesh-e2ee-evidence-bundle.mjs",
+    args: ["--authority-proof-self-test"],
+    inputs: ["tools/scripts/client-secure-mesh-e2ee-evidence-bundle/**"],
+  }),
+  releaseScriptModule({
+    id: "release.secure-mesh-e2ee-readiness",
+    summary: "Secure Mesh E2EE readiness reduction self-test",
+    script: "tools/scripts/client-secure-mesh-e2ee-evidence-bundle.mjs",
+    args: ["--readiness-self-test"],
+    inputs: ["tools/scripts/client-secure-mesh-e2ee-evidence-bundle/**"],
+  }),
+  releaseScriptModule({
+    id: "release.device-demo",
+    summary: "Real-device demonstration orchestrator synthetic self-test",
+    script: "tools/scripts/client-device-demo.mjs",
+    args: ["--self-test"],
+    inputs: ["tools/client-release-targets.json", "tools/scripts/client-agent-conversation-product-e2e.mjs"],
+  }),
   defineModule({
       id: "release.consumer-verification",
       kind: "release",
