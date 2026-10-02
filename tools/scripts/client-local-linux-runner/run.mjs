@@ -37,6 +37,9 @@ import {
 import { runSelfTest } from "./self-test.mjs";
 import { materializeCandidate } from "./snapshot.mjs";
 
+const privateDiagnosticMaxBytes = 2 * 1024 * 1024;
+const diagnosticReferencePattern = /^build\/private\/client-regression\/(?<name>[a-z0-9][a-z0-9.-]*\.log)$/u;
+
 function cargoAuditVersion() {
   const workflow = readFileSync(path.join(repoRoot, ".github/workflows/client-ci.yml"), "utf8");
   const match = workflow.match(/cargo install cargo-audit --version ([0-9]+\.[0-9]+\.[0-9]+) --locked/u);
@@ -117,9 +120,9 @@ function streamingCommand(command, args) {
   });
 }
 
-function importEngineeringReport(outputRoot) {
+export function importEngineeringReport(outputRoot, destinationRoot = buildRoot) {
   const source = path.join(outputRoot, "client-module-regression.json");
-  if (!existsSync(source)) return false;
+  if (!existsSync(source)) return Object.freeze({ reportImported: false, diagnosticCount: 0 });
   const info = lstatSync(source);
   if (!info.isFile() || info.isSymbolicLink() || (info.mode & 0o077) !== 0) {
     throw new Error("client_module_regression_report_unsafe");
@@ -128,14 +131,37 @@ function importEngineeringReport(outputRoot) {
   if (value.length > DEFAULT_MAX_REPORT_JSON_BYTES) {
     throw new Error("client_module_regression_report_oversized");
   }
-  JSON.parse(value.toString("utf8"));
+  const report = JSON.parse(value.toString("utf8"));
+  const references = new Set();
+  for (const result of Array.isArray(report?.results) ? report.results : []) {
+    if (typeof result?.diagnosticLog !== "string") continue;
+    const match = diagnosticReferencePattern.exec(result.diagnosticLog);
+    if (!match) throw new Error("client_module_regression_diagnostic_reference_unsafe");
+    references.add(match.groups.name);
+  }
+  for (const name of references) {
+    const diagnosticSource = path.join(outputRoot, "private", "client-regression", name);
+    if (!existsSync(diagnosticSource)) {
+      throw new Error("client_module_regression_diagnostic_missing");
+    }
+    const diagnosticInfo = lstatSync(diagnosticSource);
+    if (!diagnosticInfo.isFile() || diagnosticInfo.isSymbolicLink() || (diagnosticInfo.mode & 0o077) !== 0) {
+      throw new Error("client_module_regression_diagnostic_unsafe");
+    }
+    atomicReplaceContainedFileSnapshot(
+      destinationRoot,
+      `private/client-regression/${name}`,
+      diagnosticSource,
+      { maxBytes: privateDiagnosticMaxBytes },
+    );
+  }
   atomicReplaceContainedFileSnapshot(
-    buildRoot,
+    destinationRoot,
     "reports/client-module-regression.json",
     source,
     { maxBytes: DEFAULT_MAX_REPORT_JSON_BYTES },
   );
-  return true;
+  return Object.freeze({ reportImported: true, diagnosticCount: references.size });
 }
 
 async function runSelection(selection) {
@@ -173,9 +199,9 @@ async function runSelection(selection) {
       moduleIds,
     });
     const exitCode = await streamingCommand("docker", args);
-    const moduleRegressionReportImported = profile === "engineering"
+    const imported = profile === "engineering"
       ? importEngineeringReport(outputRoot)
-      : false;
+      : Object.freeze({ reportImported: false, diagnosticCount: 0 });
     const status = exitCode === 0 ? "passed" : "failed";
     const receipt = baseReceipt(selection, status, {
       sourceFileCount: candidate.fileCount,
@@ -183,7 +209,8 @@ async function runSelection(selection) {
       localDockerVerified: true,
       containerArchitectureVerified: true,
       canonicalAuditorDelegated: lane === "source" || profile === "engineering",
-      moduleRegressionReportImported,
+      moduleRegressionReportImported: imported.reportImported,
+      privateDiagnosticCount: imported.diagnosticCount,
       exitCode,
     });
     writeReceipt(receipt);

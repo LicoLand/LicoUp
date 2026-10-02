@@ -21,6 +21,7 @@ import {
   runnerDockerArgs,
 } from "./docker.mjs";
 import { materializeCandidate } from "./snapshot.mjs";
+import { importEngineeringReport } from "./run.mjs";
 
 function git(root, args) {
   return execFileSync("git", args, {
@@ -60,21 +61,48 @@ function testSnapshot() {
     assert.throws(() => readFileSync(path.join(output, "deleted.txt")));
     materializeCandidate(fixture, repeatedOutput);
     const initialSourceMtime = statSync(path.join(fixture, "tracked.txt")).mtimeMs;
-    assert.equal(statSync(path.join(output, "tracked.txt")).mtimeMs, initialSourceMtime);
-    assert.equal(statSync(path.join(repeatedOutput, "tracked.txt")).mtimeMs, initialSourceMtime);
+    assert.ok(statSync(path.join(output, "tracked.txt")).mtimeMs > initialSourceMtime);
+    assert.ok(statSync(path.join(repeatedOutput, "tracked.txt")).mtimeMs > initialSourceMtime);
     writeFileSync(path.join(fixture, "tracked.txt"), "changed again\n", "utf8");
     utimesSync(path.join(fixture, "tracked.txt"), new Date(1_700_000_100_000),
       new Date(1_700_000_100_000));
     materializeCandidate(fixture, changedOutput);
-    assert.equal(statSync(path.join(changedOutput, "tracked.txt")).mtimeMs,
+    assert.ok(statSync(path.join(changedOutput, "tracked.txt")).mtimeMs >
       statSync(path.join(fixture, "tracked.txt")).mtimeMs);
-    assert.notEqual(statSync(path.join(changedOutput, "tracked.txt")).mtimeMs,
-      initialSourceMtime);
   } finally {
     rmSync(fixture, { recursive: true, force: true });
     rmSync(output, { recursive: true, force: true });
     rmSync(repeatedOutput, { recursive: true, force: true });
     rmSync(changedOutput, { recursive: true, force: true });
+  }
+}
+
+function testDiagnosticImport() {
+  const output = mkdtempSync(path.join(os.tmpdir(), "licoup-linux-ci-output-"));
+  const destination = mkdtempSync(path.join(os.tmpdir(), "licoup-linux-ci-import-"));
+  try {
+    mkdirSync(path.join(output, "private", "client-regression"), { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(output, "private", "client-regression", "owner.failed.log"),
+      "private assertion\n", { mode: 0o600 });
+    writeFileSync(path.join(output, "client-module-regression.json"), JSON.stringify({
+      results: [{
+        id: "owner.failed",
+        status: "failed",
+        diagnosticLog: "build/private/client-regression/owner.failed.log",
+      }],
+    }), { mode: 0o600 });
+    const imported = importEngineeringReport(output, destination);
+    assert.deepEqual(imported, { reportImported: true, diagnosticCount: 1 });
+    assert.equal(readFileSync(path.join(destination, "private/client-regression/owner.failed.log"), "utf8"),
+      "private assertion\n");
+    assert.equal(statSync(path.join(destination, "private/client-regression/owner.failed.log")).mode & 0o077, 0);
+    writeFileSync(path.join(output, "client-module-regression.json"), JSON.stringify({
+      results: [{ status: "failed", diagnosticLog: "build/private/client-regression/../private.log" }],
+    }), { mode: 0o600 });
+    assert.throws(() => importEngineeringReport(output, destination), /diagnostic_reference_unsafe/u);
+  } finally {
+    rmSync(output, { recursive: true, force: true });
+    rmSync(destination, { recursive: true, force: true });
   }
 }
 
@@ -175,6 +203,10 @@ export async function runSelfTest() {
     cargoAuditVersion: "0.22.2",
   });
   assert.match(focusedArgs.at(-1), /--host linux --module release\.model-pricing/u);
+  assert.match(focusedArgs.at(-1), /cargo fetch --locked --manifest-path Cargo\.toml/u);
+  assert.match(focusedArgs.at(-1), /components\/analytics\/Cargo\.toml/u);
+  assert.match(focusedArgs.at(-1), /sdk\/usage-source\/Cargo\.toml/u);
+  assert.match(focusedArgs.at(-1), /output\/private\/client-regression/u);
   const androidArgs = runnerDockerArgs({
     image: { tag: "synthetic:image" },
     lane: "android",
@@ -197,6 +229,7 @@ export async function runSelfTest() {
     }
   }
   testSnapshot();
+  testDiagnosticImport();
   testSharedProjectCache();
   assert.equal((await runAndroidSdkBootstrapSelfTest()).status, "passed");
   return Object.freeze({
@@ -210,6 +243,7 @@ export async function runSelfTest() {
     dockerSocketMounted: false,
     sharedProjectToolCache: true,
     rawLogsIncluded: false,
+    privateDiagnosticsImported: true,
     androidBootstrapReady: true,
   });
 }

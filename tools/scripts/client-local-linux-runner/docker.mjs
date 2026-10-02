@@ -180,6 +180,13 @@ export function runnerDockerArgs({
       `CARGO_TARGET_DIR=/cache/cargo-audit-target cargo install --root /cache/cargo-audit ` +
       `cargo-audit --version ${cargoAuditVersion} --locked; fi`
     : ":";
+  const cargoDependencyBootstrap = ["rust", "dependencies", "android"].includes(lane) || profile === "engineering"
+    ? [
+      "cargo fetch --locked --manifest-path Cargo.toml",
+      "cargo fetch --locked --manifest-path components/analytics/Cargo.toml",
+      "cargo fetch --locked --manifest-path sdk/usage-source/Cargo.toml",
+    ].map((command) => `${command} || cargo_dependency_status=$?`).join("; ")
+    : ":";
   const androidBootstrap = lane === "android" || profile === "engineering"
     ? "node tools/scripts/client-android-sdk-bootstrap.mjs " +
       "--sdk-root /cache/android-sdk " +
@@ -213,10 +220,16 @@ export function runnerDockerArgs({
   const copyReport = profile === "engineering"
     ? "if [ -f build/reports/client-module-regression.json ]; then " +
       "install -m 0600 build/reports/client-module-regression.json " +
-      "/output/client-module-regression.json; fi"
+      "/output/client-module-regression.json; fi; " +
+      "if [ -d build/private/client-regression ]; then " +
+      "install -d -m 0700 /output/private/client-regression; " +
+      "find build/private/client-regression -maxdepth 1 -type f -name '*.log' " +
+      "-exec sh -c 'for file do install -m 0600 \"$file\" \"/output/private/client-regression/$(basename \"$file\")\"; done' sh {} +; fi"
     : ":";
   const script = `${setup}; set +e; status=0; ` +
     `${dependencyBootstrap} || status=$?; ` +
+    `cargo_dependency_status=0; ${cargoDependencyBootstrap}; ` +
+    `[ "$status" -ne 0 ] || status=$cargo_dependency_status; ` +
     `android_status=0; ${androidBootstrap} || android_status=$?; ` +
     `[ "$status" -ne 0 ] || status=$android_status; ` +
     `gate_status=0; ${invocation} || gate_status=$?; ` +
