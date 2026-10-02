@@ -162,7 +162,7 @@ test("Rust and release commands consume only the canonical catalog", () => {
     "crates/licoup-native/src/domain/provider_model_pricing/pricing_catalog.json",
     "tools/scripts/model-pricing-facts.mjs",
   ]);
-  assert.equal(selection.lanes["release-policy"], undefined);
+  assert.equal(selection.lanes["release-policy"], false);
 });
 
 test("read-only validator self-test is deterministic", () => {
