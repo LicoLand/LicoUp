@@ -300,17 +300,19 @@ test("package aliases remain thin and cannot route to an aggregate gate", async 
     .some(([, commandValue]) => commandValue.includes("client:gate:")), false);
 });
 
-test("tracked contribution guides require targeted closure and independent gates", async () => {
+test("tracked contribution guides require focused repair and one complete gate", async () => {
   const docs = await Promise.all([
     "CONTRIBUTING.md",
     "CONTRIBUTING.zh-CN.md",
   ].map((relativePath) => fs.readFile(path.join(repoRoot, relativePath), "utf8")));
-  assert.match(docs[0], /run the smallest relevant checks/u);
-  assert.match(docs[0], /mandatory Node-only source policy once/u);
-  assert.match(docs[0], /commit\s+gate\s+never\s+builds\s+or\s+publishes\s+every\s+platform/iu);
-  assert.match(docs[1], /开发过程中只运行与改动直接相关的最小检查/u);
-  assert.match(docs[1], /只运行一次必需的 Node 源码策略/u);
-  assert.match(docs[1], /提交门禁不会构建或发布所有平台/u);
+  assert.match(docs[0], /run the smallest registered check/u);
+  assert.match(docs[0], /client:gate:step -- <module-id>/u);
+  assert.match(docs[0], /client:gate:verify -- --base origin\/nightly/u);
+  assert.match(docs[0], /Neither command\s+builds, installs, launches, or publishes a client/iu);
+  assert.match(docs[1], /开发过程中运行负责本次改动的最小已注册检查/u);
+  assert.match(docs[1], /client:gate:step -- <module-id>/u);
+  assert.match(docs[1], /client:gate:verify -- --base origin\/nightly/u);
+  assert.match(docs[1], /这些命令都不会构建、安装、启动\s+或发布客户端/u);
   assert.deepEqual(ids(selectModulesForChangedPaths(["CONTRIBUTING.md"])),
     [
       "regression.infrastructure",

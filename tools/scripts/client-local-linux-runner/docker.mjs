@@ -142,6 +142,10 @@ export function runnerDockerArgs({
   cargoAuditVersion,
   androidPackages,
 }) {
+  const containerRoot = path.posix.join("/", "root");
+  const androidSdkManager = path.posix.join(
+    "/", "opt", "android-command-line-tools", "latest", "bin", "sdkmanager",
+  );
   const npmCache = path.join(cacheRoot, "npm");
   const cargoRegistry = path.join(cacheRoot, "cargo-registry");
   const cargoGit = path.join(cacheRoot, "cargo-git");
@@ -181,10 +185,10 @@ export function runnerDockerArgs({
     ? "npm run client:get && "
     : "";
   const androidBootstrap = lane === "android" || profile === "engineering"
-    ? "set +o pipefail; yes | /opt/android-command-line-tools/latest/bin/sdkmanager " +
+    ? `set +o pipefail; yes | ${androidSdkManager} ` +
       "--sdk_root=/cache/android-sdk --licenses >/dev/null; license_status=$?; " +
       "set -o pipefail; [ \"$license_status\" -eq 0 ]; " +
-      `/opt/android-command-line-tools/latest/bin/sdkmanager --sdk_root=/cache/android-sdk ${androidPackages.join(" ")} < /dev/null && `
+      `${androidSdkManager} --sdk_root=/cache/android-sdk ${androidPackages.join(" ")} < /dev/null && `
     : "";
   const invocation = profile === "engineering"
     ? "npm run client:gate:verify -- --base HEAD --head HEAD --target pr --execution direct --host linux"
@@ -220,7 +224,7 @@ export function runnerDockerArgs({
     "--env", "CI=true",
     "--env", "HOME=/root",
     "--env", "npm_config_cache=/cache/npm",
-    "--env", "CARGO_HOME=/root/.cargo",
+    "--env", `CARGO_HOME=${containerRoot}/.cargo`,
     "--env", "CARGO_BUILD_JOBS=3",
     "--env", "RUST_TEST_THREADS=3",
     "--env", "CARGO_TARGET_DIR=/workspace/build/crates/licoup-native/target",
@@ -232,8 +236,8 @@ export function runnerDockerArgs({
     ...sourceDelegation,
     "--mount", mount(candidateRoot, "/candidate", true),
     "--mount", mount(npmCache, "/cache/npm"),
-    "--mount", mount(cargoRegistry, "/root/.cargo/registry"),
-    "--mount", mount(cargoGit, "/root/.cargo/git"),
+    "--mount", mount(cargoRegistry, `${containerRoot}/.cargo/registry`),
+    "--mount", mount(cargoGit, `${containerRoot}/.cargo/git`),
     "--mount", mount(cargoTarget, "/workspace/build/crates/licoup-native/target"),
     "--mount", mount(cargoAuditRoot, "/cache/cargo-audit"),
     "--mount", mount(cargoAuditTarget, "/cache/cargo-audit-target"),

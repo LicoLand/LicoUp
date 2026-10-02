@@ -907,7 +907,13 @@ async function verifyLocalClientGate({
     ...missingTargets,
   ];
   const coveredIds = new Set(results.flatMap(resultMembers));
-  for (const module of catalog) {
+  const applicableIds = new Set([
+    ...linuxIds,
+    ...supplemental.map((module) => module.id),
+    ...affected.flatMap((module) =>
+      (module.regression.targetEvidenceHosts || []).length > 0 ? [module.id] : []),
+  ]);
+  for (const module of catalog.filter((entry) => applicableIds.has(entry.id))) {
     if (!coveredIds.has(module.id)) {
       results.push(Object.freeze({
         ...blockedTargetResult(module, host),
@@ -938,7 +944,7 @@ async function verifyLocalClientGate({
     host,
     changedCount: plan.changedCount,
     lanes: plan.lanes,
-    selectedStepCount: catalog.length,
+    selectedStepCount: applicableIds.size,
     complete: report.complete,
     missingTargetEvidenceCount: missingTargets.length,
   })}\n`);

@@ -14,14 +14,12 @@ Rust, Java, and Android tooling for affected checks within the scope below.
 npm ci
 ```
 
-During development, run the smallest relevant checks. Before handoff, run the
-targeted tests for the changed module. After every intended change is confirmed
-effective, run the mandatory Node-only source policy once and only the affected
-technology lanes: Flutter, Rust, Android, or dependency regression. These lanes
-are independent and may run in parallel. Release policy is not a changed-path
-lane; it runs only at the `stable` → `release` promotion edge described in the
-[client promotion authority](docs/releases/PROMOTION-GATES.md). The commit gate
-never builds or publishes every platform.
+During development, run the smallest registered check that owns the change.
+After every intended change is confirmed effective, run the complete local
+engineering profile once. Release policy remains a separate `stable` →
+`release` obligation described in the
+[client promotion authority](docs/releases/PROMOTION-GATES.md). Neither command
+builds, installs, launches, or publishes a client.
 
 The maintained complete client regression is a bounded dependency graph. It
 runs the shared foundation once, overlaps frontend and backend work, settles
@@ -47,11 +45,8 @@ fixed directly. Promotion failures follow the separate
 [promotion gates](docs/releases/PROMOTION-GATES.md).
 
 ```bash
-npm run client:gate:source
-npm run client:gate:flutter         # Flutter changes only
-npm run client:gate:rust            # Rust changes only
-npm run client:gate:android         # Android changes only
-npm run client:gate:dependencies    # dependency authority changes only
+npm run client:gate:step -- <module-id>
+npm run client:gate:verify -- --base origin/nightly --head HEAD --target commit
 ```
 
 ### Verification coverage and escaped defects
@@ -84,11 +79,14 @@ applicable local workflow once, and only then commit, open the pull request, or
 start a publication workflow. Do not substitute a read-only inventory, a
 partial pass, launcher success, or a cloud-only first execution for that result.
 
-The current commands above remain required while the unified registry and final
-local command are being completed. Their existence does not claim that this
-contract is already fully implemented. Any missing registration, stage wiring,
-aggregation, or local/CI parity is an implementation gap and must be reported as
-such; no tool can promise to detect unknown defects exhaustively.
+`client:gate:verify` is the sole merge-readiness entry. It runs the canonical
+privacy check on the real host, executes the complete applicable engineering
+catalog in an isolated Linux environment that matches CI, and requires actual
+target-host evidence for affected platform owners. It writes the canonical
+module report to `build/reports/client-module-regression.json`. Live Agent,
+device, credential, signing, installation, launch, and publication checks remain
+separate explicit workflows and are never converted into engineering passes.
+No verification tool can promise to detect unknown defects exhaustively.
 
 ### Cross-platform ownership
 
@@ -161,11 +159,11 @@ verified. Formatting does not stage files or create a commit.
 ### Verification scope
 
 Test the affected behavior using the environments already available locally.
-The developer organizes additional devices and cross-platform testing. Do not
-require a device matrix, a minimum hardware tier, or a missing host, simulator,
-SDK, or device to complete local development and delivery. Record unavailable
-checks as not run, with their limits; they do not fail or block local delivery
-and do not establish support for an untested platform.
+The developer organizes optional device and live acceptance. Do not invent a
+device matrix or minimum hardware tier for a change that does not affect it.
+An unavailable optional acceptance check is recorded as not run and does not
+establish support. An actual target named by an affected registered engineering
+owner remains required and blocks merge readiness until that target executes.
 
 Reuse existing checks and run shared work once. Do not add approval gates,
 verification frameworks, repeated regressions, or device provisioning merely

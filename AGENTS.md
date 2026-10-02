@@ -16,8 +16,10 @@ ignored.
 - Treat an escaped defect as a verification-workflow defect. Repair the owning
   registered subcheck and its local, commit, pull-request, CI, or release wiring
   before fixing the product defect; add a registered check when no owner exists.
-  Run the repaired subcheck directly, then run the complete applicable local
-  workflow before submission. An inventory, partial pass, blocked check, or
+  Run the repaired subcheck with `npm run client:gate:step -- <module-id>`, then
+  run `npm run client:gate:verify -- --base <base> --head HEAD --target commit`
+  as the complete applicable local workflow before submission. An inventory,
+  partial pass, blocked check, or
   successful launcher is not merge-readiness evidence.
 - Use a portable capability whenever the supported platforms can share one.
   Keep host-OS assumptions out of shared Rust, Flutter, and Node code; isolate
@@ -28,8 +30,9 @@ ignored.
 - After all writers finish, run the affected [formatters](CONTRIBUTING.md#format-before-final-verification)
   once before the final regression. Review their diff before starting checks.
 - Keep validation within the [available local environment](CONTRIBUTING.md#verification-scope).
-  The developer organizes additional device testing; do not add unavailable
-  platforms or redundant gates as prerequisites for local delivery.
+  The developer organizes optional device and live acceptance; do not add
+  unaffected platforms or redundant gates. A target named by an affected
+  registered engineering owner remains required.
 - Judge UI changes through [ordinary user interactions](CONTRIBUTING.md#ui-acceptance).
   Keep visible states and click outcomes independent of implementation, and
   measure response and frame performance on those same state transitions.
