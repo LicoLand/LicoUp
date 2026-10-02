@@ -46,6 +46,17 @@ pub struct DataHomeRelocationAdmission {
 }
 
 impl DataHomeRelocationAdmission {
+    /// Prove that existing participants have drained while admission remains
+    /// closed. The barrier prevents a new reader from racing this observation.
+    pub fn process_access_drained(&self) -> Result<bool> {
+        let access = open_lock(&self.access_path)?;
+        match FileExt::try_lock_exclusive(&access) {
+            Ok(()) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(false),
+            Err(_) => Err(anyhow!("data-home relocation lease failed")),
+        }
+    }
+
     pub fn wait_for_process_access(self) -> Result<DataHomeRelocationLease> {
         let access = open_lock(&self.access_path)?;
         FileExt::lock_exclusive(&access)
@@ -320,6 +331,7 @@ mod tests {
 
         let admission = acquire_data_home_relocation_admission_at(&locator).unwrap();
         assert!(try_acquire_data_home_access_at(&locator).unwrap().is_none());
+        assert!(!admission.process_access_drained().unwrap());
 
         child
             .stdin
@@ -329,6 +341,7 @@ mod tests {
             .unwrap();
         child.stdin.as_mut().unwrap().flush().unwrap();
         assert!(child.wait().unwrap().success());
+        assert!(admission.process_access_drained().unwrap());
         let relocation = admission.wait_for_process_access().unwrap();
 
         assert!(try_acquire_data_home_access_at(&locator).unwrap().is_none());
