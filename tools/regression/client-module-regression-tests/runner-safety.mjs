@@ -26,6 +26,41 @@ import {
 } from "./support.mjs";
 import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createClientRegressionReport } from "../client-regression-report.mjs";
+import { runClientModuleRegressionSelfTest } from
+  "../../scripts/client-module-regression-self-test.mjs";
+
+test("infrastructure wrapper preserves failed assertions for private diagnostics", async () => {
+  const output = new PassThrough();
+  const errorOutput = new PassThrough();
+  let publicOutput = "";
+  let privateOutput = "";
+  output.on("data", (chunk) => {
+    publicOutput += chunk.toString("utf8");
+  });
+  errorOutput.on("data", (chunk) => {
+    privateOutput += chunk.toString("utf8");
+  });
+  const exitCode = await runClientModuleRegressionSelfTest({
+    output,
+    errorOutput,
+    spawnImpl() {
+      const child = new EventEmitter();
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      queueMicrotask(() => {
+        child.stdout.write("private failing assertion\n");
+        child.stderr.write("private stack detail\n");
+        child.emit("close", 1);
+      });
+      return child;
+    },
+  });
+  assert.equal(exitCode, 1);
+  assert.equal(publicOutput, "");
+  assert.match(privateOutput, /private failing assertion/u);
+  assert.match(privateOutput, /private stack detail/u);
+  assert.match(privateOutput, /"reason":"contract_test_failed"/u);
+});
 
 test("selection normalizes separators, deduplicates paths, and never falls back", () => {
   const windowsRunnerPath = [

@@ -62,6 +62,7 @@ test("catalog convergence crate and native adapters retain bounded closures", ()
     module.id === "rust.crate.catalog-convergence");
   assert.deepEqual(crateModule.command.args, [
     "test",
+    "--no-fail-fast",
     "--manifest-path",
     "crates/lico-catalog-convergence/Cargo.toml",
   ]);
@@ -114,7 +115,12 @@ test("Independent MCP lifecycle tests use the standalone crate regression", () =
   ])), ["regression.subagent-mcp-common", "rust.core.mcp-server"]);
   const module = CLIENT_MODULE_CATALOG.find((candidate) =>
     candidate.id === "rust.core.mcp-server");
-  assert.deepEqual(module.command.args, ["test", "--manifest-path", "crates/licoup-mcp/Cargo.toml"]);
+  assert.deepEqual(module.command.args, [
+    "test",
+    "--no-fail-fast",
+    "--manifest-path",
+    "crates/licoup-mcp/Cargo.toml",
+  ]);
 });
 
 test("Rust domain changes select a precise cargo-filtered slice", () => {

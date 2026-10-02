@@ -518,7 +518,12 @@ test("protocol bindings own and test the complete Lico Arc relay codec", async (
     candidate.id === "rust.core.protocol-bindings");
   assert.ok(module);
   assert.equal(module.command.program, "cargo");
-  assert.deepEqual(module.command.args, ["test", "-p", "licoup-protocol-bindings"]);
+  assert.deepEqual(module.command.args, [
+    "test",
+    "--no-fail-fast",
+    "-p",
+    "licoup-protocol-bindings",
+  ]);
 
   const relaySources = await sourceFiles(
     "crates/licoup-protocol-bindings/src/licoarc_relay",
