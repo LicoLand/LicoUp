@@ -390,6 +390,21 @@
       "kind": "config-object"
     }
   ],
+  "reviewedSchemaHistory": [
+    {
+      "path": "tests/fixtures/client_state_migration/continuity_current.sql",
+      "sha256": "dfb804b35027aba9251b420c60238ed951ff3282cd0429e815051d4a3127d0e2",
+      "successor": {
+        "path": "tests/fixtures/client_state_migration/continuity_layout.rs",
+        "constant": "CURRENT_CONTINUITY_SCHEMA"
+      },
+      "producer": {
+        "path": "crates/licoup-conversation/src/continuity/migrate.rs",
+        "revision": "3ff72be20819e42feeee3cb74b76fa8e19b1979a"
+      },
+      "reason": "Reviewed schema-only output captured from synthetic native Conversation and continuity initialization. The compiled fixture preserves the exact bytes and both Rust and JavaScript structural admission oracles."
+    }
+  ],
   "publicReferenceDomains": [
     "claude.ai",
     "claude.com",
