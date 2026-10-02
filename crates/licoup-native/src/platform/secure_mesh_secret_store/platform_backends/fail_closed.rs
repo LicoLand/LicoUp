@@ -1,13 +1,13 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 
 use super::super::platform_store::PlatformSecretStore;
 use crate::core::secure_mesh_secret_store::{
     SecretBytes, SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession,
-    SecretStoreHandle,
+    SecretStoreHandle, SecretStorePresenceError,
 };
 
 fn unavailable() -> anyhow::Error {
-    anyhow!("secure mesh native secret store lacks measured platform user authorization")
+    SecretStorePresenceError::authorization_required().into()
 }
 
 pub(in crate::platform::secure_mesh_secret_store) fn begin_authorized_session(
