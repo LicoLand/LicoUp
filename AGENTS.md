@@ -61,6 +61,16 @@ ignored.
   the same session. Delete only that one branch, and only after the merge is
   confirmed. Keep unmerged work and other authors' branches.
 
+## Startup necessity and retained state
+
+Reject whole-client startup only when a proven fatal condition prevents core
+initialization. Optional feature state remains durable but must not become a
+global prerequisite. Preserve unavailable optional documents; use the owning
+feature's in-memory defaults or disable that feature without granting permissions.
+Current owners initialize their required structures and preserve unused historical
+tables. Follow the [startup and retained-data policy](docs/RUNBOOK.md#startup-and-retained-data)
+for validation, inheritance and cleanup.
+
 ## Task routes
 
 | When | Read |

@@ -97,6 +97,37 @@ Formal artifacts come from the exact accepted `origin/release` source through
 an explicitly authorized publication owner and bind source, package target,
 immutable digest, and generation metadata.
 
+## Startup and retained data
+
+Whole-client startup refusal requires a demonstrated fatal failure of core
+initialization: for example an unavailable selected data root, invalid root
+identity or coordination state, an unsupported core data format, or a broken
+structure required by current core readers and writers. Do not promote a local
+feature failure or a nonessential structural difference into a global refusal.
+Permission and protected-key contracts remain enforced at their owning operations.
+
+Each current data owner loads or initializes its required tables. An empty store
+is a normal initialization input. Unused historical tables may coexist unchanged;
+their presence or incoming relationships alone do not prevent startup, and SQLite
+still enforces constraints when an operation actually touches related data. Validate
+the current owner's required columns, constraints and effects. Reconstruct missing
+version metadata only after proving the complete current structure; a version label
+alone neither proves validity nor justifies refusing reconstructible state.
+
+Preserve user data independently of retiring incorrect code. When current behavior
+must inherit old data, migrate that data into the current structure and verify the
+result before cleaning up superseded structures. Do not discard old tables merely
+to make startup pass, and do not substitute a fresh database for data that must be
+inherited. Retaining unused data does not retain its obsolete runtime implementation.
+
+The migration frontier declares each domain's startup scope independently of its
+durability. Unreadable or future optional preferences, ordering, view restoration,
+and feature configuration remain intact; their owners use memory-only defaults or
+stay unavailable. An unreadable tool allowlist grants nothing. Unavailable Mobile
+Relay configuration leaves relay disabled and preserves pairing state and keys.
+Diagnostics still report these domain failures; successful core admission does not
+certify every optional store or authorize its replacement.
+
 ## Run focused verification
 
 The regression catalog is the module-selection and execution authority used by
