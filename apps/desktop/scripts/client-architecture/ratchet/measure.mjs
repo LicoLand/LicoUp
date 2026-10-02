@@ -444,12 +444,12 @@ export async function measureNativeRustLoc({ repoRoot, io = fs }) {
     right.lines - left.lines || left.file.localeCompare(right.file));
   return {
     id: "native_rust_loc",
-    ratchet: {
+    observation: {
       non_blank_lines: nonBlankLines,
     },
     details: {
       definition:
-        "Non-blank lines (any non-whitespace content) of every .rs file under crates/licoup-native/src, including inline tests and test modules. No exclusions; the count is a size proxy, not a reviewed quality score.",
+        "Non-blank lines (any non-whitespace content) of every .rs file under crates/licoup-native/src, including inline tests and test modules. No exclusions; this observation is a size proxy, not a quality score or a gate on necessary code growth.",
       files: files.length,
       largest_files: perFile.slice(0, 10),
       problems,
@@ -670,7 +670,7 @@ export async function measureArchitectureRatchet({ repoRoot, io = fs, runtimeRev
       byId.native_layer_imports.ratchet.domain_to_platform,
     nativePlatformToDomainImportFiles:
       byId.native_layer_imports.ratchet.platform_to_domain,
-    nativeRustNonBlankLines: byId.native_rust_loc.ratchet.non_blank_lines,
+    nativeRustNonBlankLines: byId.native_rust_loc.observation.non_blank_lines,
     optionalCapabilitiesBundledInPackaging:
       byId.optional_capabilities_in_packaging.ratchet.bundled_bindings,
     processExecutionBoundaries: byId.developer_tool_sites.ratchet.execution_sites,

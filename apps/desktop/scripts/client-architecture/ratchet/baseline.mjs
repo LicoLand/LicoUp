@@ -8,11 +8,20 @@
  * baseline can only move in the improving direction. The initial baseline is
  * recorded on the integrated candidate; the operating procedure is documented
  * in the "Static architecture metrics" section of `docs/RUNBOOK.md`.
+ * Observation-only metrics, including total Rust size, never enter the baseline.
  */
 
 import fs from "node:fs/promises";
 import path from "node:path";
 import { BASELINE_PATH, BASELINE_RECORD_COMMAND, BASELINE_SCHEMA } from "./definitions.mjs";
+
+/** Only declared constraints participate in comparison and recording. */
+export function ratchetPayloads(metrics) {
+  return Object.fromEntries(
+    metrics.filter((metric) => metric.ratchet !== undefined)
+      .map((metric) => [metric.id, metric.ratchet]),
+  );
+}
 
 export async function loadRatchetBaseline({ repoRoot }) {
   let text;
@@ -170,10 +179,10 @@ export async function recordRatchetBaseline({
   writeFile = fs.writeFile,
 }) {
   const problems = metrics.flatMap((metric) => metric.details?.problems ?? []);
-  if (problems.length || metrics.some((metric) => (metric.ratchet.unallowlisted_sites ?? 0) > 0)) {
+  if (problems.length || metrics.some((metric) => (metric.ratchet?.unallowlisted_sites ?? 0) > 0)) {
     return { ok: false, message: "refusing to record incomplete or unjustified measurements", problems };
   }
-  const current = Object.fromEntries(metrics.map((metric) => [metric.id, metric.ratchet]));
+  const current = ratchetPayloads(metrics);
   const existing = await loadRatchetBaseline({ repoRoot });
   if (existing) {
     const comparison = compareRatchetPayloads(existing.metrics, current);

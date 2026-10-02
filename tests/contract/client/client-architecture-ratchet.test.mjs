@@ -697,7 +697,6 @@ function packagingFixture({
 
 test("baseline comparison fails a regression and prompts an improvement", () => {
   const baseline = {
-    native_rust_loc: { non_blank_lines: 10 },
     kernel_optional_cargo_edges: {
       value: 1,
       edges: ["a -> b (dependencies)"],
@@ -706,7 +705,6 @@ test("baseline comparison fails a regression and prompts an improvement", () => 
     },
   };
   const regression = formatRatchetComparison(compareRatchetPayloads(baseline, {
-    native_rust_loc: { non_blank_lines: 12 },
     kernel_optional_cargo_edges: {
       value: 2,
       edges: ["a -> b (dependencies)", "a -> c (dependencies)"],
@@ -714,15 +712,13 @@ test("baseline comparison fails a regression and prompts an improvement", () => 
       unknown_optional_manifests: [],
     },
   }));
-  assert.match(regression.regressions[0], /native_rust_loc\.non_blank_lines grew from 10 to 12/u);
-  assert.match(regression.regressions[1], /kernel_optional_cargo_edges\.value grew from 1 to 2/u);
+  assert.match(regression.regressions[0], /kernel_optional_cargo_edges\.value grew from 1 to 2/u);
   assert.match(
-    regression.regressions[2],
+    regression.regressions[1],
     /kernel_optional_cargo_edges\.edges gained a -> c \(dependencies\)/u,
   );
 
   const improvement = formatRatchetComparison(compareRatchetPayloads(baseline, {
-    native_rust_loc: { non_blank_lines: 8 },
     kernel_optional_cargo_edges: {
       value: 0,
       edges: [],
@@ -731,11 +727,11 @@ test("baseline comparison fails a regression and prompts an improvement", () => 
     },
   }));
   assert.equal(improvement.regressions.length, 0);
-  assert.equal(improvement.improvements.length, 3);
+  assert.equal(improvement.improvements.length, 2);
   assert.match(improvement.improvements[0], /update the baseline/u);
 });
 
-test("every metric regresses with an actionable message", () => {
+test("every constrained metric regresses with an actionable message", () => {
   const baselineMetrics = {
     kernel_optional_cargo_edges: {
       value: 1,
@@ -749,7 +745,6 @@ test("every metric regresses with an actionable message", () => {
       domain_to_platform_files: ["domain/x.rs"],
       platform_to_domain_files: [],
     },
-    native_rust_loc: { non_blank_lines: 100 },
     optional_capabilities_in_packaging: {
       bundled_bindings: 1,
       bindings: ["pkg -> module"],
@@ -776,7 +771,6 @@ test("every metric regresses with an actionable message", () => {
       domain_to_platform_files: ["domain/x.rs", "domain/y.rs"],
       platform_to_domain_files: ["platform/z.rs"],
     },
-    native_rust_loc: { non_blank_lines: 101 },
     optional_capabilities_in_packaging: {
       bundled_bindings: 2,
       bindings: ["pkg -> module", "pkg -> module-two"],
@@ -800,13 +794,13 @@ test("every metric regresses with an actionable message", () => {
   }
   assert.match(joined, /needs removal or an explicit reviewed decision/u);
   assert.match(joined, /grew from 1 to 2/u);
-  assert.match(joined, /grew from 100 to 101/u);
 });
 
 test("recording refuses to raise a value and accepts an improvement", async () => {
   await withFixtureTree({}, async (root) => {
-    const metric = (nonBlankLines) => [
-      { id: "native_rust_loc", ratchet: { non_blank_lines: nonBlankLines } },
+    const metric = (edges) => [
+      { id: "kernel_optional_cargo_edges", ratchet: { value: edges } },
+      { id: "native_rust_loc", observation: { non_blank_lines: 1000 } },
     ];
     const first = await recordRatchetBaseline({
       repoRoot: root,
@@ -820,7 +814,8 @@ test("recording refuses to raise a value and accepts an improvement", async () =
     const improved = await recordRatchetBaseline({ repoRoot: root, metrics: metric(8) });
     assert.equal(improved.ok, true);
     const stored = await loadRatchetBaseline({ repoRoot: root });
-    assert.deepEqual(stored.metrics.native_rust_loc, { non_blank_lines: 8 });
+    assert.deepEqual(stored.metrics.kernel_optional_cargo_edges, { value: 8 });
+    assert.equal(Object.hasOwn(stored.metrics, "native_rust_loc"), false);
     assert.equal(stored.schema, "licoup-architecture-ratchet-baseline.v1");
   });
 });
@@ -880,6 +875,27 @@ test("check phase fails while the baseline is unrecorded and passes with a recor
       passState.ratchetReport.centralEvidence.some((entry) => entry.includes("Installed size")),
       true,
     );
+  });
+});
+
+test("native Rust size remains observable without gating growth or baseline recording", async () => {
+  await withFixtureTree(completeFixture(), async (root) => {
+    const initial = await recordArchitectureRatchet({ repoRoot: root });
+    assert.equal(initial.ok, true);
+    const extra = path.join(root, "crates/licoup-native/src/domain/additional.rs");
+    await fs.writeFile(extra, "pub fn additional_owner_behavior() {\n  let _value = 1;\n}\n");
+    const grown = await checkArchitectureRatchet({ repoRoot: root, fail: assert.fail });
+    assert.equal(grown.ratchetReport.status, "pass");
+    assert.equal(grown.ratchetMetrics.nativeRustNonBlankLines, initial.record.nativeRustNonBlankLines + 3);
+    const recorded = await recordArchitectureRatchet({ repoRoot: root });
+    assert.equal(recorded.ok, true);
+    assert.equal(Object.hasOwn(recorded.metrics, "native_rust_loc"), false);
+    assert.equal(Object.hasOwn((await loadRatchetBaseline({ repoRoot: root })).metrics, "native_rust_loc"), false);
+    await fs.rm(extra);
+    const shrunk = await checkArchitectureRatchet({ repoRoot: root, fail: assert.fail });
+    assert.equal(shrunk.ratchetReport.status, "pass");
+    assert.deepEqual(shrunk.ratchetReport.improvements, []);
+    assert.equal(shrunk.ratchetMetrics.nativeRustNonBlankLines, initial.record.nativeRustNonBlankLines);
   });
 });
 

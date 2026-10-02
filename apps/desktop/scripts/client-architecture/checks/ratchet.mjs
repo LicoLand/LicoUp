@@ -7,6 +7,7 @@ import {
   compareRatchetPayloads,
   formatRatchetComparison,
   loadRatchetBaseline,
+  ratchetPayloads,
   recordRatchetBaseline,
 } from "../ratchet/baseline.mjs";
 import { measureArchitectureRatchet } from "../ratchet/measure.mjs";
@@ -53,9 +54,7 @@ export async function checkArchitectureRatchet(context) {
     return { ratchetMetrics: measurement.record, ratchetReport: report };
   }
 
-  const currentPayloads = Object.fromEntries(
-    measurement.metrics.map((metric) => [metric.id, metric.ratchet]),
-  );
+  const currentPayloads = ratchetPayloads(measurement.metrics);
   if (baseline === null) {
     report.status = "baseline-unrecorded";
     context.fail(

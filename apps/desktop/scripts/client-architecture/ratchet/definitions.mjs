@@ -19,8 +19,9 @@
  *
  * Definitions are code, not baseline: changing them changes what is measured.
  * The measurement values live beside this file in `baseline.json`, which is
- * recorded on the integrated candidate. Tracked values move only in the
- * improving direction; the operating procedure is documented in the
+ * recorded on the integrated candidate. Constrained values move only in the
+ * improving direction; total Rust size is observation-only and is not recorded
+ * in that baseline. The operating procedure is documented in the
  * "Static architecture metrics" section of `docs/RUNBOOK.md`, and the
  * comparison and recording semantics live in `baseline.mjs`.
  */

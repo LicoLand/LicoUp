@@ -159,9 +159,6 @@
         "crates/licoup-native/src/platform/work_context_ports/host_driver.rs"
       ]
     },
-    "native_rust_loc": {
-      "non_blank_lines": 351645
-    },
     "optional_capabilities_in_packaging": {
       "bundled_bindings": 4,
       "bindings": [

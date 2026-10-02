@@ -291,7 +291,7 @@ milestone check results:
 
 - kernel Cargo dependencies on optional capability crates,
 - domain/platform and platform/domain importing files in `licoup-native`,
-- `licoup-native` Rust size over one defined scope,
+- `licoup-native` Rust size over one defined scope, as an observation only,
 - optional capabilities bundled by the packaging module set,
 - source-resolved developer-tool sinks and individually reviewed runtime-selected
   process interfaces, retaining each boundary's identity, purpose and provenance.
@@ -340,7 +340,13 @@ harmless and does not execute or probe external Agent protocols to resolve it.
 Resolved-tool review fingerprints preserve string-literal bytes and bind the exact
 tool set; they do not classify intentional dynamic interfaces by neighbouring names.
 
-Tracked numbers and sets move only in the improving direction. A number that
+Total Rust line count is descriptive, not a merge or release constraint. Necessary
+code growth is allowed; normal module source review explains why the implementation
+and its coverage are needed. It requires no separate growth declaration or exemption.
+Do not compress formatting, move tests or omit behavior to reduce the count. The
+observation remains in reports but is absent from baseline comparison and recording.
+
+Constrained architecture numbers and sets move only in the improving direction. A number that
 grows or a set member that appears fails the check with the offending entry; an
 improvement passes and prompts a baseline update. The initial comparable
 baseline is recorded only on the complete reviewed integrated candidate with

@@ -225,7 +225,7 @@ npm run client:regression -- \
 
 - 内核 Cargo 对可选能力 crate 的依赖；
 - `licoup-native` 中 domain/platform 与 platform/domain 的跨层导入文件；
-- 单一定义范围内 `licoup-native` 的 Rust 规模；
+- 单一定义范围内 `licoup-native` 的 Rust 规模，仅作为观察指标；
 - 打包模块集合包含的可选能力；
 - 源码已解析的开发工具落点，以及逐项审阅的运行时选择进程接口；保留各边界的身份、用途和来源。
 
@@ -259,7 +259,11 @@ Cargo 激活包含默认 feature、依赖的 feature 请求以及强弱转发；
 消除未知。已解析工具的审阅指纹保留字符串字面量字节并绑定精确工具集合；不得
 用附近出现的名称给有意保留的动态接口强行指定工具类别。
 
-已记录的数值和集合只能向改善方向移动。数值增加或集合新增成员会报告具体条目
+Rust 总行数仅描述规模，不是合并或发布约束。允许必要的代码增长，由正常模块
+源码审阅说明实现及覆盖的必要性，不要求独立的增长声明或豁免。不得为了减少
+行数压缩格式、搬移测试或遗漏行为。报告保留观察值，基线比较和记录不包含它。
+
+受约束的架构数值和集合只能向改善方向移动。数值增加或集合新增成员会报告具体条目
 并使检查失败；改善则通过并提示更新基线。首次可比较基线仅在完整整合候选上用
 `node apps/desktop/scripts/verify-client-architecture.mjs --record-ratchet-baseline`
 记录，写入 `apps/desktop/scripts/client-architecture/ratchet/baseline.json`，拒绝
