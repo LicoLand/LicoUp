@@ -1022,8 +1022,8 @@ fn execute_legacy_classic_delete(
 }
 
 fn keychain_public_error(error: anyhow::Error, fallback: &'static str) -> anyhow::Error {
-    if error.downcast_ref::<SecretStorePresenceError>().is_some() {
-        return error;
+    if let Some(presence) = error.downcast_ref::<SecretStorePresenceError>() {
+        return anyhow::Error::new(*presence);
     }
     match error.to_string().as_str() {
         "secure_mesh_keychain_classic_access_requires_user_action" => {
@@ -1982,6 +1982,7 @@ mod tests {
                 projected.downcast_ref::<SecretStorePresenceError>(),
                 Some(&presence)
             );
+            assert_eq!(projected.to_string(), presence.code());
         }
         for status in [errSecAuthFailed, ERR_SEC_INTERACTION_NOT_ALLOWED] {
             let error = keychain_effect_status(MacosKeychainBackend::Classic, status).unwrap_err();
