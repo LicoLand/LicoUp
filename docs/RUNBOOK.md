@@ -1,6 +1,6 @@
 # LicoUp developer guide
 
-Updated: 2026-10-01
+Updated: 2026-10-02
 
 [简体中文](RUNBOOK.zh-CN.md) · [Documentation](README.md) · [Contributing](../CONTRIBUTING.md) · [Security](../SECURITY.md)
 
@@ -278,6 +278,19 @@ its platform entry. When a change affects several target adapters, every one is
 required before the final workflow can pass; a missing runner is recorded as
 blocked or unverified. Source scanning is diagnostic evidence and cannot replace
 execution on an affected target.
+
+The registry separates portable contracts from platform adapters within each
+functional module. `runnableHosts` declares where a check can execute;
+`targetEvidenceHosts` declares the actual target systems required when its inputs
+change. Portable tests construct paths and fixtures through their production
+owners and run on every declared applicable system. Do not narrow a portable
+check to Unix merely because its fixture assumes Unix paths. Repair that fixture
+and retain the cross-platform contract. A parser fixture may deliberately contain
+a foreign-platform string; it must not treat that string as a host filesystem resource.
+Platform-specific checks execute only on
+their declared system; an unsupported host, unrun check or missing target result
+cannot count as passed. The focused and complete entries consume these same
+classifications, so contributors do not maintain a separate platform command list.
 
 List the maintained regression modules and preview change-based selection:
 

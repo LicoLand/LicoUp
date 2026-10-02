@@ -1,6 +1,6 @@
 # LicoUp Agent Guide
 
-Updated: 2026-10-01
+Updated: 2026-10-02
 
 Identify your role first: designer, module implementer, or reviewer/integrator.
 Read the applicable route before making changes; follow its affected module only.
@@ -111,6 +111,12 @@ Follow the [verified delivery loop](docs/RUNBOOK.md#verified-delivery-loop) for 
 change, with or without a plan or milestone. Only a failed entry or incorrect
 observed result triggers workflow diagnosis and repair of the responsible owner.
 Reuse valid evidence, return to the same entry, and stop after successful delivery.
+
+Separate portable contracts and platform-specific adapters in the existing module
+registry. Use the declared host and target scopes for focused and complete checks;
+repair host-dependent fixtures instead of reducing a portable contract to one OS.
+An unsupported host or missing required target result is not a pass. Follow the
+[verification scope](docs/RUNBOOK.md#run-focused-verification).
 
 Complete every implementation obligation in the approved delivery scope, including
 production wiring and deterministic engineering verification, before handing over
