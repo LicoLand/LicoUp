@@ -391,10 +391,13 @@ test("architecture and package facades retain precise source-bundle ownership", 
     "apps/desktop/scripts/client-architecture/ratchet/lexical.mjs",
     "apps/desktop/scripts/client-architecture/ratchet/measure.mjs",
     "apps/desktop/scripts/client-architecture/ratchet/ownership.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/runtime-interfaces.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/runtime-review.mjs",
     "apps/desktop/scripts/client-architecture/ratchet/target-attribution.mjs",
   ];
   const ratchetTest =
     "tests/contract/client/client-architecture-ratchet.test.mjs";
+  const runtimeReviewTest = "tests/contract/client/client-architecture-runtime-review.test.mjs";
   const ratchetDependencySelections = new Map([
     ["package.json", [
       "regression.infrastructure",
@@ -469,6 +472,7 @@ test("architecture and package facades retain precise source-bundle ownership", 
   assert.deepEqual(ids(selectModulesForChangedPaths([ratchetTest])), [
     "regression.client-architecture-ratchet",
   ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([runtimeReviewTest])), ["regression.client-architecture-ratchet"]);
   for (const [relativePath, expectedIds] of ratchetDependencySelections) {
     assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), expectedIds);
   }
@@ -533,8 +537,9 @@ test("architecture and package facades retain precise source-bundle ownership", 
     "crates/licoup-native/src/platform/strategy_runtime/mod.rs",
     "crates/licoup-extension-contracts/src/deployment.rs",
     ratchetTest,
+    runtimeReviewTest,
   ]);
-  assert.deepEqual(ratchetBundle.command.args, ["--test", ratchetTest]);
+  assert.deepEqual(ratchetBundle.command.args, ["--test", ratchetTest, runtimeReviewTest]);
   for (const source of [
     "crates/licoup-native/src/platform/strategy_runtime/mod.rs",
     "crates/licoup-extension-contracts/src/deployment.rs",

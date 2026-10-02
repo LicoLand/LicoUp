@@ -293,8 +293,8 @@ milestone check results:
 - domain/platform and platform/domain importing files in `licoup-native`,
 - `licoup-native` Rust size over one defined scope,
 - optional capabilities bundled by the packaging module set,
-- developer-tool execution sinks in runtime sources, each with a reviewed
-  identity fingerprint and its attributed tools.
+- source-resolved developer-tool sinks and individually reviewed runtime-selected
+  process interfaces, retaining each boundary's identity, purpose and provenance.
 
 Exact scopes, the optional-crate and packaging ownership maps, and the
 justified developer-tool allowlist are declared in
@@ -304,6 +304,26 @@ Cargo manifest graph is resolved with the pinned `smol-toml` devDependency so
 workspace inheritance, renames and path locality are read the way Cargo
 declares them.
 
+Process boundaries have three explicit outcomes: a source-resolved tool target,
+an individually reviewed runtime-selected interface, or a genuine analysis failure.
+File-wide tool names are diagnostic hints, never target attribution. The reviewed
+runtime inventory in `ratchet/runtime-interfaces.mjs` pins each exact sink, its
+implementation/selector/script source digests and its purpose; it is not a broad
+path/tool allowlist or permission to execute that process. Configuration and
+discovery return summaries require matching source declarations and real selector
+operations. They cannot discharge unrelated unsupported finite expressions,
+unresolved API identity, malformed source, missing bindings or I/O failure.
+
+Runtime interfaces remain counted in `processExecutionBoundaries` and separately
+reported as `reviewedRuntimeSelectedInterfaces`; resolved tools have their own count.
+Zero resolved literal tools does not mean zero dependency or zero process-boundary
+debt. Comparable identities retain reviewed purposes and selector/provenance
+contracts. A source or template change invalidates its proof until reviewed; a new,
+replaced or duplicated sink cannot inherit another record. Metadata is not refreshed
+automatically. Review the affected source and consumers before updating its exact
+digest or contract. Do not constrain legitimate runtime selection to make a metric
+finite, and do not infer complete deployment readiness from this bounded analysis.
+
 Cargo activation includes default features, dependency feature requests and
 strong or weak feature forwarding. Weak forwarding does not activate an absent
 optional dependency. The complete capability ownership table must resolve;
@@ -311,19 +331,19 @@ unsupported expressions or local graph overrides refuse measurement rather than
 silently removing optional debt. Declared binary targets need source files, and
 automatic binary discovery respects `autobins`.
 
-Required input loss, unreadable sources and unresolved process targets produce
+Required input loss, unreadable sources, unreviewed runtime interfaces and genuine
+process-analysis failures produce
 `measurement-refused` in both checks and reports. Partial observations remain
 diagnostic evidence, but the comparable numeric record is null and no improvement
-is reported or recorded. This includes dynamic targets with no developer-tool
-evidence; the scan does not infer that an unknown executable is harmless. It does
-not execute or inspect external Agent protocols to resolve those unknowns.
-Exception fingerprints preserve string-literal bytes and bind the exact tool
-set. A replacement statement or an additional execution cannot reuse an exception.
+is reported or recorded. The scan does not infer that an unknown executable is
+harmless and does not execute or probe external Agent protocols to resolve it.
+Resolved-tool review fingerprints preserve string-literal bytes and bind the exact
+tool set; they do not classify intentional dynamic interfaces by neighbouring names.
 
 Tracked numbers and sets move only in the improving direction. A number that
 grows or a set member that appears fails the check with the offending entry; an
 improvement passes and prompts a baseline update. The initial comparable
-baseline is recorded on the integrated candidate with
+baseline is recorded only on the complete reviewed integrated candidate with
 `node apps/desktop/scripts/verify-client-architecture.mjs --record-ratchet-baseline`,
 which writes `apps/desktop/scripts/client-architecture/ratchet/baseline.json`
 and refuses incomplete inputs or any increase in a recorded value. A malformed

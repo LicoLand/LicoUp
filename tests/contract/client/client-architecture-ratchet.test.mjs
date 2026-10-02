@@ -6,8 +6,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   parseCapabilityOwnership,
-  measureArchitectureRatchet,
-  measureDeveloperToolSites,
+  measureArchitectureRatchet as measureArchitectureOwner,
+  measureDeveloperToolSites as measureDeveloperOwner,
   measureKernelOptionalCargoEdges,
   measureNativeLayerImports,
   measureNativeRustLoc,
@@ -36,13 +36,23 @@ import {
   defaultActivatedDependencies,
 } from "../../../apps/desktop/scripts/client-architecture/ratchet/cargo-manifest.mjs";
 import {
-  checkArchitectureRatchet,
-  recordArchitectureRatchet,
+  checkArchitectureRatchet as checkArchitectureOwner,
+  recordArchitectureRatchet as recordArchitectureOwner,
 } from "../../../apps/desktop/scripts/client-architecture/checks/ratchet.mjs";
 import {
   recordArchitectureRatchetBaseline,
   runClientArchitectureVerification,
 } from "../../../apps/desktop/scripts/verify-client-architecture.mjs";
+import {RUNTIME_INTERFACE_REVIEWS} from "../../../apps/desktop/scripts/client-architecture/ratchet/runtime-interfaces.mjs";
+import {sourceDigest} from "../../../apps/desktop/scripts/client-architecture/ratchet/runtime-review.mjs";
+import {lexicalView} from "../../../apps/desktop/scripts/client-architecture/ratchet/lexical.mjs";
+
+// Synthetic repositories supply their own reviewed interfaces. The real-source
+// case below explicitly selects the maintained production inventory.
+const measureArchitectureRatchet = (options) => measureArchitectureOwner({runtimeReviews: [], ...options});
+const measureDeveloperToolSites = (options) => measureDeveloperOwner({runtimeReviews: [], ...options});
+const recordArchitectureRatchet = (options) => recordArchitectureOwner({runtimeReviews: [], ...options});
+const checkArchitectureRatchet = (options) => checkArchitectureOwner({runtimeReviews: [], ...options});
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const strategyRuntimePath = "crates/licoup-native/src/platform/strategy_runtime/mod.rs";
@@ -50,7 +60,18 @@ const strategyRuntimePath = "crates/licoup-native/src/platform/strategy_runtime/
 async function withFixtureTree(files, run) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "licoup-ratchet-"));
   try {
-    for (const [relativePath, content] of Object.entries(files)) {
+    for (const [relativePath, input] of Object.entries(files)) {
+      let content = input;
+      // Older small fixtures used Command as a prelude shorthand. Make that
+      // intended standard type explicit; production analysis must never guess
+      // it from a spelling or neighbouring tool name. Explicit imports/types
+      // remain untouched, including unresolved/shadowed API negative controls.
+      if (relativePath.endsWith(".rs")) {
+        const masked = lexicalView(content, "rust").masked;
+        const declaresCommand = /\b(?:struct|enum|type|mod)\s+Command\b/u.test(masked) ||
+          [...masked.matchAll(/\buse\b[^;]+;/gu)].some((match) => /\bCommand\b/u.test(match[0]));
+        if (!declaresCommand && /(?<![\w:])Command\s*::\s*new\s*\(/u.test(masked)) content = `use std::process::Command;\n${content}`;
+      }
       const absolute = path.join(root, relativePath);
       await fs.mkdir(path.dirname(absolute), { recursive: true });
       await fs.writeFile(absolute, content, "utf8");
@@ -81,24 +102,34 @@ function crateManifest(name, dependencies = {}, extra = "") {
   return `[package]\nname = "${name}"\nversion = "0.0.0"\n\n[dependencies]\n${lines}\n${extra}`;
 }
 
-async function inspectFixture(files, allowlist = []) {
+async function inspectFixture(files, allowlist = [], runtimeReviews = []) {
   return withFixtureTree(files, async (root) =>
     inspectDeveloperToolSites({
       repoRoot: root,
       readdir: fs.readdir,
       readFile: fs.readFile,
       allowlist,
+      runtimeReviews,
     }));
 }
 
-test("actual-native same-line second spawn adds an unauthorized sink and regresses an in-memory baseline", async () => {
-  const realSource = await fs.readFile(path.join(repoRoot, strategyRuntimePath), "utf8");
-  const baseline = await inspectFixture({ [strategyRuntimePath]: realSource });
-  assert.equal(baseline.executionSites.length, 2);
-  assert.deepEqual(
-    baseline.executionSites.map((sink) => sink.tools),
-    [["node", "python", "python3"], ["node", "python", "python3"]],
-  );
+async function nativeReviewFixture() {
+  const supervisor = "crates/licoup-native/src/platform/process_supervisor.rs";
+  const files = Object.fromEntries(await Promise.all([strategyRuntimePath, supervisor].map(async (file) => [file, await fs.readFile(path.join(repoRoot, file), "utf8")])));
+  const reviews = RUNTIME_INTERFACE_REVIEWS.filter((review) => [strategyRuntimePath, supervisor].includes(review.id.split("::")[0]));
+  return {files, reviews};
+}
+
+function refreshedFixtureReviews(reviews, files) {
+  return reviews.map((review) => ({...review, provenance: review.provenance.map((proof) => ({...proof, digest: files[proof.file] === undefined ? proof.digest : sourceDigest(files[proof.file])}))}));
+}
+
+test("actual-native same-line second spawn cannot inherit an individually reviewed interface", async () => {
+  const {files, reviews} = await nativeReviewFixture();
+  const realSource = files[strategyRuntimePath];
+  const baseline = await inspectFixture(files, [], reviews);
+  assert.equal(baseline.runtimeInterfaces.length, 3);
+  assert.equal(baseline.executionSites.length, 0);
   assert.deepEqual(baseline.problems, []);
 
   const mutatedSource = realSource.replace(
@@ -107,11 +138,12 @@ test("actual-native same-line second spawn adds an unauthorized sink and regress
   );
   assert.notEqual(mutatedSource, realSource);
   const mutated = await inspectFixture(
-    { [strategyRuntimePath]: mutatedSource },
+    {...files, [strategyRuntimePath]: mutatedSource}, [],
+    refreshedFixtureReviews(reviews, {...files, [strategyRuntimePath]: mutatedSource}),
   );
-  assert.equal(mutated.executionSites.length, 3);
+  assert.equal(mutated.runtimeInterfaces.length, 3);
   assert.equal(
-    mutated.unallowlisted.some((sink) =>
+    mutated.unreviewedRuntimeInterfaces.some((sink) =>
       sink.statement.includes("Command::new(executable).arg(\"--version\").spawn()")),
     true,
   );
@@ -119,17 +151,17 @@ test("actual-native same-line second spawn adds an unauthorized sink and regress
   const comparison = formatRatchetComparison(compareRatchetPayloads(
     {
       developer_tool_sites: {
-        execution_sites: baseline.executionSites.length,
+         execution_sites: baseline.runtimeInterfaces.length,
         unallowlisted_sites: 0,
-        execution_site_ids: baseline.siteIds,
+         execution_site_ids: baseline.runtimeSiteIds,
         unallowlisted_site_ids: [],
       },
     },
     {
       developer_tool_sites: {
-        execution_sites: mutated.executionSites.length,
-        unallowlisted_sites: mutated.unallowlisted.length,
-        execution_site_ids: mutated.siteIds,
+         execution_sites: mutated.runtimeInterfaces.length + mutated.unreviewedRuntimeInterfaces.length,
+         unallowlisted_sites: 0,
+         execution_site_ids: mutated.runtimeSiteIds,
         unallowlisted_site_ids: [],
       },
     },
@@ -138,12 +170,14 @@ test("actual-native same-line second spawn adds an unauthorized sink and regress
   assert.match(comparison.regressions.join("\n"), /developer_tool_sites/u);
 });
 
-test("entry-level baseline fails the actual-native second spawn", async () => {
-  const realSource = await fs.readFile(path.join(repoRoot, strategyRuntimePath), "utf8");
-  await withFixtureTree(completeFixture({ [strategyRuntimePath]: realSource }), async (root) => {
-    const recorded = await recordArchitectureRatchet({ repoRoot: root });
+test("entry-level baseline refuses changed and new native interfaces before comparison", async () => {
+  const {files, reviews} = await nativeReviewFixture();
+  const realSource = files[strategyRuntimePath];
+  await withFixtureTree(completeFixture(files), async (root) => {
+    const recorded = await recordArchitectureRatchet({ repoRoot: root, runtimeReviews: reviews });
     assert.equal(recorded.ok, true);
-    assert.equal(recorded.record.developerToolExecutionSites, 2);
+    assert.equal(recorded.record.processExecutionBoundaries, 3);
+    assert.equal(recorded.record.reviewedRuntimeSelectedInterfaces, 3);
     assert.equal(recorded.record.developerToolUnallowlistedSites, 0);
 
     const mutatedSource = realSource.replace(
@@ -154,48 +188,51 @@ test("entry-level baseline fails the actual-native second spawn", async () => {
     const failures = [];
     const state = await checkArchitectureRatchet({
       repoRoot: root,
+      runtimeReviews: reviews,
       fail: (message) => failures.push(message),
     });
-    assert.equal(state.ratchetReport.status, "regression");
+    assert.equal(state.ratchetReport.status, "measurement-refused");
     assert.equal(
-      failures.some((message) => message.includes("sink fingerprint")),
+      failures.some((message) => message.includes("source changed")),
       true,
     );
     assert.equal(
-      failures.some((message) => message.includes("developer_tool_sites.execution_sites grew")),
+      failures.some((message) => message.includes("unreviewed runtime-selected interface")),
       true,
     );
   });
 });
 
-test("a replaced reviewed sink cannot inherit its allowlist exception", async () => {
-  const realSource = await fs.readFile(path.join(repoRoot, strategyRuntimePath), "utf8");
+test("a replaced reviewed interface cannot inherit its source-bound review", async () => {
+  const {files, reviews} = await nativeReviewFixture();
+  const realSource = files[strategyRuntimePath];
   const replaced = realSource.replace(
     "let mut command = Command::new(executable);",
     "let mut command = Command::new(executable.clone());",
   );
   assert.notEqual(replaced, realSource);
   const inspection = await inspectFixture(
-    { [strategyRuntimePath]: replaced },
-    DEVELOPER_TOOL_ALLOWLIST,
+    {...files, [strategyRuntimePath]: replaced}, [],
+    refreshedFixtureReviews(reviews, {...files, [strategyRuntimePath]: replaced}),
   );
   assert.equal(
-    inspection.unallowlisted.some((sink) =>
+    inspection.unreviewedRuntimeInterfaces.some((sink) =>
       sink.statement.includes("Command::new(executable.clone())")),
     true,
   );
   assert.equal(
-    inspection.staleAllowlist.includes(`${strategyRuntimePath}::90131efac688`),
+    inspection.problems.some((message) => message.includes(`${strategyRuntimePath}::90131efac688`) && message.includes("stale")),
     true,
   );
 });
 
-test("dynamic and cross-file API sinks are attributed instead of counting zero", async () => {
+test("cross-file mentions cannot make a public runtime parameter a resolved tool", async () => {
   const crossFile = await inspectFixture({
     "crates/demo/src/api.rs": "pub fn launch(program: &str) {\n  Command::new(program).spawn();\n}\n",
     "crates/demo/src/boot.rs": 'pub fn boot() {\n  launch("node");\n}\n',
   });
-  assert.deepEqual(crossFile.executionSites.map((sink) => sink.tools), [["node"]]);
+  assert.deepEqual(crossFile.executionSites, []);
+  assert.equal(crossFile.unreviewedRuntimeInterfaces.length, 1);
 
   const fileEvidence = await inspectFixture({
     "crates/demo/src/runner.rs": [
@@ -206,7 +243,9 @@ test("dynamic and cross-file API sinks are attributed instead of counting zero",
       "",
     ].join("\n"),
   });
-  assert.deepEqual(fileEvidence.executionSites.map((sink) => sink.tools), [["npm"]]);
+  assert.deepEqual(fileEvidence.executionSites, []);
+  assert.equal(fileEvidence.unreviewedRuntimeInterfaces.length, 1);
+  assert.deepEqual(fileEvidence.unreviewedRuntimeInterfaces[0].fileHints, ["npm"]);
 
   const unrelated = await inspectFixture({
     "crates/demo/src/plain.rs": "pub fn run(program: String) {\n  Command::new(program).spawn();\n}\n",
@@ -290,7 +329,7 @@ test("mixed production and test files keep production sinks and drop test sinks"
   ].join("\n");
   const after = await inspectFixture({ "crates/demo/src/mixed.rs": beforeProduction });
   assert.deepEqual(after.executionSites.map((site) => site.tools), [["node"]]);
-  assert.equal(after.executionSites[0].line, 2);
+  assert.equal(after.executionSites[0].line, 3, "the explicit standard Command import precedes the preserved production line");
 });
 
 test("crate src scope excludes build.rs and other crate-root files", async () => {
@@ -851,7 +890,7 @@ test("check phase fails a new hidden spawn and prompts an improving baseline upd
 
     await fs.writeFile(
       path.join(root, "crates/licoup-native/src/domain/domain_only.rs"),
-      'pub fn hidden() {\n  Command::new(\n    "npm",\n  );\n}\n',
+      'use std::process::Command;\npub fn hidden() {\n  Command::new(\n    "npm",\n  );\n}\n',
       "utf8",
     );
     const failures = [];
@@ -915,17 +954,19 @@ test("invalid allowlist entries become measurement problems and leave sinks unju
   });
 });
 
-test("real repository raw attribution remains consistent without treating unknown targets as zero", async () => {
-  const metric = await measureDeveloperToolSites({ repoRoot });
-  assert.ok(metric.details.unresolved_sites.length > 0);
-  assert.equal(metric.details.problems.length, metric.details.unresolved_sites.length);
-  assert.ok(metric.details.problems.every((problem) => problem.includes("unresolved process target")));
-  assert.equal(metric.ratchet.execution_sites, 10);
+test("real repository retains every reviewed runtime interface as visible comparable debt", async () => {
+  const metric = await measureDeveloperOwner({ repoRoot });
+  assert.deepEqual(metric.details.problems, []);
+  assert.deepEqual(metric.details.unresolved_sites, []);
+  assert.equal(metric.ratchet.reviewed_runtime_interfaces, RUNTIME_INTERFACE_REVIEWS.length);
+  assert.ok(metric.ratchet.reviewed_runtime_interfaces > 0);
+  assert.equal(metric.ratchet.execution_sites, metric.ratchet.resolved_tool_sites + metric.ratchet.reviewed_runtime_interfaces);
   assert.equal(metric.ratchet.unallowlisted_sites, 0);
   assert.deepEqual(metric.details.unallowlisted_sites, []);
   assert.deepEqual(metric.details.invalid_allowlist, []);
   assert.equal(metric.details.stale_allowlist.length, 0);
-  assert.equal(metric.ratchet.execution_site_ids.length, 17);
+  assert.equal(metric.ratchet.runtime_interface_ids.length, RUNTIME_INTERFACE_REVIEWS.length);
+  assert.ok(metric.details.reviewed_runtime_interfaces.every((site) => site.purpose.length >= 40 && site.provenance.length > 0 && site.contract));
 });
 
 async function assertMeasurementRefused(root, pattern, io = fs) {
@@ -978,7 +1019,7 @@ test("known non-developer targets and unrelated thread APIs remain valid static 
   }), async (root) => {
     const measurement = await measureArchitectureRatchet({ repoRoot: root });
     assert.deepEqual(measurement.problems, []);
-    assert.equal(measurement.record.developerToolExecutionSites, 0);
+    assert.equal(measurement.record.processExecutionBoundaries, 0);
     assert.equal((await recordArchitectureRatchet({ repoRoot: root })).ok, true);
   });
 });
@@ -1088,7 +1129,7 @@ test("proven path reads and Command argument builders retain their fixed executa
     }), async (root) => {
       const measurement = await measureArchitectureRatchet({ repoRoot: root });
       assert.deepEqual(measurement.problems, []);
-      assert.equal(measurement.record.developerToolExecutionSites, 0);
+      assert.equal(measurement.record.processExecutionBoundaries, 0);
       const detail = measurement.metrics.find((metric) => metric.id === "developer_tool_sites").details;
       assert.equal(detail.resolved_non_tool_sites.length, source.includes("fn build()") ? 2 : 1,
         "the returned builder sink must be attributed, not silently omitted");
@@ -1116,7 +1157,7 @@ test("all direct sink forms regress through the actual phase and cannot be recor
     await withFixtureTree(completeFixture(), async (root) => {
       assert.equal((await recordArchitectureRatchet({ repoRoot: root })).ok, true);
       const baseline = await fs.readFile(path.join(root, BASELINE_PATH), "utf8");
-      await fs.writeFile(path.join(root, "crates/licoup-native/src/domain/sink.rs"), `fn run() { ${body} }\n`);
+      await fs.writeFile(path.join(root, "crates/licoup-native/src/domain/sink.rs"), `use std::process::Command;\nfn run() { ${body} }\n`);
       const measured = await measureArchitectureRatchet({ repoRoot: root });
       assert.ok(measured.metrics.find((metric) => metric.id === "developer_tool_sites").ratchet.execution_sites > 0);
       const failures = [];

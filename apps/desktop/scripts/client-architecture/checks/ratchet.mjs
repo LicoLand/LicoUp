@@ -18,7 +18,7 @@ import { measureArchitectureRatchet } from "../ratchet/measure.mjs";
  * results and the full report for inspection.
  */
 export async function checkArchitectureRatchet(context) {
-  const measurement = await measureArchitectureRatchet({ repoRoot: context.repoRoot, io: context.io });
+  const measurement = await measureArchitectureRatchet({ repoRoot: context.repoRoot, io: context.io, runtimeReviews: context.runtimeReviews, allowlist: context.allowlist });
   const report = {
     schema: RATCHET_SCHEMA,
     record: measurement.record,
@@ -101,8 +101,10 @@ export async function recordArchitectureRatchet({
   writeFile,
   now,
   io,
+  runtimeReviews,
+  allowlist,
 } = {}) {
-  const measurement = await measureArchitectureRatchet({ repoRoot, io });
+  const measurement = await measureArchitectureRatchet({ repoRoot, io, runtimeReviews, allowlist });
   if (measurement.problems.length > 0) {
     return {
       ok: false,

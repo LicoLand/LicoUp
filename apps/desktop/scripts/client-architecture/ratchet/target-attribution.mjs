@@ -4,12 +4,16 @@ import { lexicalView } from "./lexical.mjs";
 // Bounded source interpretation, not execution. A union is complete only when
 // every successful branch/caller is complete. Environment and object fields are
 // never assigned a target merely because their names sound trustworthy.
-const unknown = (reason) => ({ targets: [], reasons: [reason], evidence: [] });
-const known = (targets, evidence) => ({ targets, reasons: [], evidence: [evidence] });
+const unknown = (reason) => ({ targets: [], reasons: [reason], evidence: [], failures: [reason], runtimeOrigins: [] });
+const known = (targets, evidence) => ({ targets, reasons: [], evidence: [evidence], failures: [], runtimeOrigins: [] });
+const runtime = (reason, origin) => ({ targets: [], reasons: [reason], evidence: [origin.evidence], failures: [], runtimeOrigins: [origin] });
 const union = (values) => ({
   targets: [...new Set(values.flatMap((value) => value.targets))].sort(),
   reasons: [...new Set(values.flatMap((value) => value.reasons))],
   evidence: [...new Set(values.flatMap((value) => value.evidence))],
+  failures: [...new Set(values.flatMap((value) => value.failures ?? value.reasons))],
+  runtimeOrigins: values.flatMap((value) => value.runtimeOrigins ?? []),
+  absent: values.some((value) => value.absent),
 });
 const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 
@@ -79,7 +83,10 @@ export function createTargetAttribution(sources, manifests = new Map()) {
     }
     const scopes = (offset) => braces.filter((scope) => scope.start < offset && offset < scope.end);
     const functions = [];
-    for (const match of mask.matchAll(/\bfn\s+(\w+)\s*(?:<[^{}]*?>)?\s*\(/gu)) {
+    const functionPattern = language === "dart"
+      ? /\b(?:static\s+)?(?:Future\s*<[^;{}\n]+>|[A-Za-z_]\w*(?:<[^;{}\n]+>)?\??)\s+(\w+)\s*\(/gu
+      : /\bfn\s+(\w+)\s*(?:<[^{}]*?>)?\s*\(/gu;
+    for (const match of mask.matchAll(functionPattern)) {
       const open = match.index + match[0].length - 1;
       const close = closeAt(mask, open);
       const after = mask.slice(close + 1).search(/[;{]/u);
@@ -87,10 +94,12 @@ export function createTargetAttribution(sources, manifests = new Map()) {
       if (close < 0 || after < 0 || mask[bodyStart] !== "{") continue;
       const bodyEnd = closeAt(mask, bodyStart);
       const declarations = parts(mask, open + 1, close).map(([start, end]) => mask.slice(start, end).trim());
-      const parameters = declarations.map((declaration) => declaration.match(/^(?:mut\s+)?(\w+)\s*:/u)?.[1] ?? null);
+      const parameters = declarations.map((declaration) => language === "dart"
+        ? declaration.match(/\b(\w+)\s*(?:=[\s\S]*)?$/u)?.[1] ?? null
+        : declaration.match(/^(?:mut\s+)?(\w+)\s*:/u)?.[1] ?? null);
       const prefix = mask.slice(Math.max(0, match.index - 80), match.index);
       functions.push({ name: match[1], start: match.index, open, close, bodyStart, bodyEnd, parameters,
-        private: !declarations.some((declaration) => /\bself\b/u.test(declaration)) &&
+        private: language !== "dart" && !declarations.some((declaration) => /\bself\b/u.test(declaration)) &&
           !/pub(?:\s*\([^)]*\))?\s*(?:async\s+)?$/u.test(prefix) });
     }
     const bindings = [];
@@ -102,7 +111,28 @@ export function createTargetAttribution(sources, manifests = new Map()) {
       const [range] = parts(mask, start, mask.length, ";");
       bindings.push({ name: match[1], start: match.index, expression: range, scopes: scopes(match.index) });
     }
-    const result = { ...entry, mask, braces, scopes, functions, bindings, imports: importsFor(mask) };
+    if (language === "rust") for (const match of mask.matchAll(/\blet\s+(?:Some|Ok)\s*\(\s*(\w+)\s*\)\s*=/gu)) {
+      const start = match.index + match[0].length;
+      const [range] = parts(mask, start, mask.length, ";");
+      let end = range[1];
+      for (let offset = start; offset < end; offset += 1) {
+        if ("([{".includes(mask[offset])) { const close = closeAt(mask, offset); if (close < 0) break; offset = close; }
+        else if (/^\belse\b/u.test(mask.slice(offset))) { end = offset; break; }
+      }
+      bindings.push({ name: match[1], start: match.index, expression: [start, end], scopes: scopes(match.index) });
+    }
+    const closures = [];
+    if (language === "rust") for (const match of mask.matchAll(/(?:\bBox\s*::\s*new|\.\s*(?:map|and_then|filter_map|or_else))\s*\(\s*(?:move\s+)?\|([^|]*)\|\s*/gu)) {
+      const bodyStart = match.index + match[0].length;
+      let bodyEnd = bodyStart;
+      if (mask[bodyStart] === "{") bodyEnd = closeAt(mask, bodyStart);
+      else for (; bodyEnd < mask.length; bodyEnd += 1) {
+        if ("([{".includes(mask[bodyEnd])) { const close = closeAt(mask, bodyEnd); if (close < 0) break; bodyEnd = close; }
+        else if (",);}".includes(mask[bodyEnd])) break;
+      }
+      closures.push({start: match.index, bodyStart, bodyEnd, parameters: match[1].split(",").map((part) => part.trim().match(/^(\w+)/u)?.[1]).filter(Boolean)});
+    }
+    const result = { ...entry, mask, braces, scopes, functions, bindings, closures, imports: importsFor(mask) };
     models.set(file, result);
     return result;
   }
@@ -159,7 +189,11 @@ export function createTargetAttribution(sources, manifests = new Map()) {
     const text = source.slice(start, end);
     const code = mask.slice(start, end);
     const proof = reference(file, start, text.replace(/\s+/gu, " ").slice(0, 180));
-    if (source[start] === "&") return recurse(start + 1, end);
+    if (code === "None") return {...known([], proof), absent: true};
+    if (source[start] === "&") {
+      const borrow = text.match(/^&\s*(?:mut\s+)?/u);
+      return recurse(start + borrow[0].length, end);
+    }
     if (source[start] === "(" && closeAt(mask, start) === end - 1) return recurse(start + 1, end - 1);
     const literal = lexicalView(text, language).regions;
     if (literal.length === 1 && literal[0].kind === "string" && literal[0].start === 0 && literal[0].end === text.length) {
@@ -242,18 +276,21 @@ export function createTargetAttribution(sources, manifests = new Map()) {
       return known(owner.bins.map((binary) => `native:${owner.name}/${binary}`), reference(file, start, `std::env::current_exe; ${owner.path}`));
     }
     if (/^\w+$/u.test(code)) {
-      const visible = entry.bindings.filter((binding) => binding.name === code && binding.start < start &&
+      const visible = entry.bindings.filter((binding) => binding.name === code && binding.expression[1] <= start &&
         binding.scopes.every((scope) => scope.start < start && start < scope.end));
       const binding = visible.sort((a, b) => b.start - a.start)[0];
+      const closure = entry.closures.filter((item) => item.bodyStart <= start && start < item.bodyEnd && item.parameters.includes(code))
+        .sort((a, b) => b.start - a.start)[0];
+      if (closure && (!binding || binding.start < closure.start)) return runtime(`callback parameter ${code} has an open caller boundary`, {kind: "parameter", file, selector: `callback.${code}`, evidence: reference(file, closure.start, "source-declared callback parameter")});
       if (binding) {
         const between = mask.slice(binding.expression[1] + 1, start);
         if (new RegExp(`\\b${escape(code)}\\s*(?:[+*/%&|^\\-]|<<|>>)?=(?!=)|&\\s*mut\\s+${escape(code)}\\b`, "u").test(between)) return unknown(`target binding ${code} is reassigned or mutably borrowed`);
-        const readOnlyMethods = new Set(["clone", "to_owned", "to_string", "to_path_buf", "as_str", "as_os_str", "as_ref", "to_str", "to_string_lossy", "len", "is_empty", "exists", "is_file", "is_dir", "display", "file_name", "parent", "extension"]);
+        const readOnlyMethods = new Set(["clone", "to_owned", "to_string", "to_path_buf", "as_str", "as_os_str", "as_ref", "to_str", "to_string_lossy", "len", "is_empty", "exists", "is_file", "is_dir", "is_absolute", "display", "file_name", "parent", "extension"]);
         const constructor = mask.slice(...binding.expression).trim().match(/^((?:\w+\s*::\s*)*\w+)\s*::\s*new\s*\(/u);
         if (constructor && /^(?:std|tokio)::process::Command$/u.test(api(file, constructor[1]))) {
           // These Command methods configure arguments/environment, not the
           // executable. Shell guest arguments are inspected by the sink owner.
-          for (const method of ["arg", "args", "env", "envs", "env_clear", "env_remove", "current_dir", "stdin", "stdout", "stderr", "uid", "gid", "groups", "process_group", "creation_flags", "kill_on_drop"]) readOnlyMethods.add(method);
+          for (const method of ["arg", "args", "env", "envs", "env_clear", "env_remove", "current_dir", "stdin", "stdout", "stderr", "uid", "gid", "groups", "process_group", "creation_flags", "kill_on_drop", "pre_exec"]) readOnlyMethods.add(method);
         }
         for (const use of between.matchAll(new RegExp(`\\b${escape(code)}\\s*\\.\\s*(\\w+)\\s*\\(`, "gu"))) {
           if (!readOnlyMethods.has(use[1])) return unknown(`target binding ${code} may be mutated by ${use[1]}`);
@@ -291,8 +328,32 @@ export function createTargetAttribution(sources, manifests = new Map()) {
       const open = start + command[0].length - 1;
       return recurse(...parts(mask, open + 1, closeAt(mask, open))[0]);
     }
-    if (/\b(?:var_os|var|environment)\b/u.test(code)) return unknown("environment-selected target has no closed source value set");
-    if (/\b(?:self|config|record|params|registration)\s*\./u.test(code)) return unknown("runtime-selected field has no closed source value set");
+    const pipeline = code.match(/^(\w+)\s*\.\s*(?:map|filter|unwrap_or|unwrap_or_else|or_else|and_then)\s*\(/u);
+    const maps = [...code.matchAll(/\.map\s*\(\s*([^()]+)\s*\)/gu)];
+    const safeMaps = maps.length === [...code.matchAll(/\.map\s*\(/gu)].length && maps.every((item) => /^(?:str\s*::\s*(?:trim|to_owned|to_string)|Path\s*::\s*to_owned|PathBuf\s*::\s*from|Ok)$/u.test(item[1].trim()));
+    let safeFilters = true;
+    for (const filter of code.matchAll(/\.filter\s*\(/gu)) {
+      const open = start + filter.index + filter[0].length - 1;
+      const close = closeAt(mask, open);
+      const body = close < 0 ? "" : mask.slice(open + 1, close).replace(/\s/gu, "");
+      if (!/^\|(?<name>\w+)\|(?:!\k<name>\.is_empty\(\)|\k<name>\.(?:is_file|is_dir|exists|is_absolute)\(\))$/u.test(body)) safeFilters = false;
+    }
+    if (!safeMaps || !safeFilters || (pipeline && /\.and_then\s*\(/u.test(code))) return unknown("unsupported target selection transform");
+    if (pipeline && safeMaps && !/\.map\s*\(\s*\|/u.test(code)) {
+      const input = recurse(start, start + pipeline[1].length);
+      if (input.runtimeOrigins.length && input.failures.length === 0) return input;
+    }
+    const canonical = code.match(/^((?:std\s*::\s*)?fs)\s*::\s*canonicalize\s*\(/u);
+    if (canonical && (canonical[1].replace(/\s/gu, "") === "std::fs" || imported(file, "fs") === "std::fs")) {
+      return runtime("filesystem-selected executable path has no closed source identity", {kind: "discovery", file, selector: text, evidence: proof});
+    }
+    const environment = code.match(/^((?:std\s*::\s*)?env)\s*::\s*var(?:_os)?\s*\(/u);
+    if (environment && (environment[1].replace(/\s/gu, "") === "std::env" || imported(file, "env") === "std::env")) {
+      return runtime("environment-selected target has no closed source value set", { kind: "environment", file, selector: text, evidence: proof });
+    }
+    if (/^\w+(?:\s*\.\s*\w+)+$/u.test(code)) {
+      return runtime("runtime-selected field has no closed source value set", { kind: "field", file, selector: text, evidence: proof });
+    }
     return unknown(`unsupported or dynamic target expression: ${text.replace(/\s+/gu, " ").slice(0, 140)}`);
   }
   function pathExpression(file, start, end, seen) {
@@ -307,7 +368,7 @@ export function createTargetAttribution(sources, manifests = new Map()) {
     if (ctor && type(ctor[1].replace(/\s/gu, ""))) return true;
     if (/^(?:std\s*::\s*)?env\s*::\s*current_exe\s*\(/u.test(code) && (code.startsWith("std") || imported(file, "env") === "std::env")) return true;
     if (/^\w+$/u.test(code)) {
-      const binding = entry.bindings.filter((binding) => binding.name === code && binding.start < start &&
+      const binding = entry.bindings.filter((binding) => binding.name === code && binding.expression[1] <= start &&
         binding.scopes.every((scope) => scope.start < start && start < scope.end)).sort((a, b) => b.start - a.start)[0];
       if (binding) return pathExpression(file, ...binding.expression, next);
       const fn = entry.functions.find((fn) => fn.bodyStart < start && start < fn.bodyEnd);
@@ -341,15 +402,22 @@ export function createTargetAttribution(sources, manifests = new Map()) {
     }
     // Require an explicit fall-through result; do not infer returns from just
     // the conveniently parseable branch of a match or nested expression.
-    const tail = source.slice(fn.bodyStart + 1, fn.bodyEnd).match(/(?:^|[;}])\s*((?:Ok|Err)\s*\([^;]*\))\s*$/u);
+    const tail = source.slice(fn.bodyStart + 1, fn.bodyEnd).match(/(?:^|[;}])\s*((?:(?:Ok|Err|Some)\s*\([^;]*\)|None|[\w.]+\(\)\.then_some\([^;]*\)))\s*$/u);
     if (!tail) return unknown(`function ${fn.name} has an unsupported fall-through target`);
     const start = fn.bodyEnd - tail[1].length - (tail[0].match(/\s*$/u)?.[0].length ?? 0);
-    if (!tail[1].startsWith("Err")) values.push(resolve(file, start, start + tail[1].length, seen));
+    if (!tail[1].startsWith("Err") && tail[1] !== "None") {
+      const some = tail[1].match(/\.then_some\s*\(/u);
+      values.push(some ? resolve(file, start + some.index + some[0].length, start + tail[1].length - 1, seen)
+        : resolve(file, start, start + tail[1].length, seen));
+    }
     return values.length ? union(values) : unknown(`function ${fn.name} has no successful target`);
   }
   function parameterTargets(file, fn, position, seen, head = false) {
     const { mask, source, functions } = model(file);
-    if (!fn.private || functions.filter((other) => other.name === fn.name).length !== 1) return unknown(`parameter ${fn.name}.${fn.parameters[position]} has an open caller boundary`);
+    if (!fn.private || functions.filter((other) => other.name === fn.name).length !== 1) {
+      const selector = `${fn.name}.${fn.parameters[position]}`;
+      return runtime(`parameter ${selector} has an open caller boundary`, { kind: "parameter", file, selector, evidence: reference(file, fn.open, selector) });
+    }
     const evidence = [];
     let references = 0;
     let calls = 0;
@@ -414,5 +482,43 @@ export function createTargetAttribution(sources, manifests = new Map()) {
     }
     return values.length ? union(values) : unknown("callback has no source-proven invocation");
   }
-  return { resolve, api, model, reference, known, unknown, union, closeAt, parts };
+  function functionSource(file, spelling, seen = new Set()) {
+    if (typeof spelling !== "string") return null;
+    const normalized = spelling.replace(/\s/gu, "");
+    const key = `${file}:${normalized}`;
+    if (seen.has(key) || seen.size > 16 || !sources.has(file)) return null;
+    seen = new Set(seen).add(key);
+    const entry = model(file);
+    const stemOf = (value) => /\/(?:mod|lib|main)\.rs$/u.test(value) ? path.posix.dirname(value) : value.replace(/\.rs$/u, "");
+    const selectModule = (stem) => {
+      const candidates = [`${stem}.rs`, `${stem}/mod.rs`, `${stem}/lib.rs`].filter((candidate) => sources.has(candidate));
+      return candidates.length === 1 ? candidates[0] : null;
+    };
+    const segments = normalized.split("::");
+    const symbol = segments.pop();
+    if (!segments.length) {
+      const definitions = entry.functions.filter((fn) => fn.name === symbol);
+      if (definitions.length) return definitions.length === 1 ? {file, symbol} : null;
+      const targets = entry.imports.get(symbol);
+      if (targets?.size > 1) return null;
+      const target = targets?.values().next().value;
+      if (target && target !== symbol) return functionSource(file, target, seen);
+      if (/\buse\s+super\s*::\s*\*/u.test(entry.mask)) {
+        const parent = selectModule(path.posix.dirname(stemOf(file)));
+        return parent ? functionSource(parent, symbol, seen) : null;
+      }
+      return null;
+    }
+    let stem = stemOf(file);
+    if (segments[0] === "crate") {
+      const marker = file.lastIndexOf("/src/");
+      if (marker < 0) return null;
+      stem = file.slice(0, marker + 4); segments.shift();
+    } else if (segments[0] === "self") segments.shift();
+    else while (segments[0] === "super") { stem = path.posix.dirname(stem); segments.shift(); }
+    const selected = selectModule(path.posix.join(stem, ...segments));
+    return selected ? functionSource(selected, symbol, seen) : null;
+  }
+
+  return { resolve, api, model, reference, known, unknown, runtime, union, closeAt, parts, imported, functionSource };
 }

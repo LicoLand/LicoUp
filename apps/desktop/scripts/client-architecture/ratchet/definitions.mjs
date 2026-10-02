@@ -206,88 +206,12 @@ export const DEVELOPER_TOOL_NAMES = Object.freeze([
 ]);
 
 /**
- * Justified runtime execution sinks. Every process-execution statement is one
- * sink; its reviewed identity is `file` + sink fingerprint, and the entry must
- * declare every attributed tool. A second sink, a replaced statement or a
- * changed tool set produces a new identity and fails until it is reviewed here.
- * Justifications are part of the review: each entry needs a meaningful reason.
- *
- * Cross-file and data-driven execution is attributed through the scanner's
- * binding, call-site and file-evidence rules; this list records the reviewed
- * outcome.
+ * Exact reviews for source-resolved developer-tool targets only. File-wide
+ * names never supply target identity. Runtime-selected interfaces are recorded
+ * separately with exact source/provenance in runtime-interfaces.mjs; they are
+ * counted and compared, not admitted through a tool-name or path exception.
  */
-export const DEVELOPER_TOOL_ALLOWLIST = Object.freeze([
-  Object.freeze({
-    file: "crates/licoup-native/src/domain/agent_hub/argv.rs",
-    sink: "db471ee64ae2",
-    tools: Object.freeze(["npm"]),
-    reason:
-      "Agent Hub install channels execute the vendor's own package manager chosen from channel data; LicoUp never requires npm for its own capabilities.",
-  }),
-  Object.freeze({
-    file: "crates/licoup-native/src/domain/agent_usage/agent_usage_native/deepseek.rs",
-    sink: "aa789fdbbd01",
-    tools: Object.freeze(["node"]),
-    reason:
-      "DeepSeek Harness usage reader executes the user-installed agent's own Node runtime against dsh; no LicoUp capability requires Node.",
-  }),
-  Object.freeze({
-    file: "crates/licoup-native/src/domain/targets/model_catalog/deepseek.rs",
-    sink: "80743485edcc",
-    tools: Object.freeze(["node"]),
-    reason:
-      "DeepSeek Harness model-catalog probe builds the command for the user-installed agent's own Node runtime against dsh.",
-  }),
-  Object.freeze({
-    file: "crates/licoup-native/src/domain/targets/model_catalog/deepseek.rs",
-    sink: "9d312f35c684",
-    tools: Object.freeze(["node"]),
-    reason:
-      "Bounded runner executes the prepared dsh probe command (the same user-installed Node runtime as the constructor sink).",
-  }),
-  Object.freeze({
-    file: "crates/licoup-native/src/domain/targets/virtual_machine_discovery.rs",
-    sink: "a6e916bbfa13",
-    tools: Object.freeze(["python", "python3"]),
-    reason:
-      "OrbStack machine probe passes the guest discovery script that locates the agent's own Python runtime inside the user-configured machine; the host does not require Python.",
-  }),
-  Object.freeze({
-    file: "crates/licoup-native/src/domain/targets/virtual_machine_discovery.rs",
-    sink: "a6e916bbfa13#2",
-    tools: Object.freeze(["python", "python3"]),
-    reason:
-      "OrbStack machine listing shares the probe runner unit; guest tool names are attributed by file evidence and the listing command executes no guest tool.",
-  }),
-  Object.freeze({
-    file: "crates/licoup-native/src/domain/targets/virtual_machine_discovery.rs",
-    sink: "54ad90f4ce7a",
-    tools: Object.freeze(["python", "python3"]),
-    reason:
-      "Bounded command runner executes prepared OrbStack guest probes, including the discovery script that locates the agent's Python runtime.",
-  }),
-  Object.freeze({
-    file: "crates/licoup-native/src/platform/process_supervisor.rs",
-    sink: "baade34aee90",
-    tools: Object.freeze(["node"]),
-    reason:
-      "Generic bounded runner for untrusted agent CLI commands; the DeepSeek reader's user-installed Node runtime is attributed through caller analysis, and the runner itself requires no developer environment.",
-  }),
-  Object.freeze({
-    file: "crates/licoup-native/src/platform/strategy_runtime/mod.rs",
-    sink: "90131efac688",
-    tools: Object.freeze(["node", "python", "python3"]),
-    reason:
-      "Adaptive Flywheel runtime verification builds the command for the workflow-author-selected runtime kind (node/python3/python); only the runtime the workflow declares is executed, under a bounded runner.",
-  }),
-  Object.freeze({
-    file: "crates/licoup-native/src/platform/strategy_runtime/mod.rs",
-    sink: "b39e0b100c0d",
-    tools: Object.freeze(["node", "python", "python3"]),
-    reason:
-      "Bounded runner executes the prepared runtime verification command; attributed runtime kinds match the constructor sink.",
-  }),
-]);
+export const DEVELOPER_TOOL_ALLOWLIST = Object.freeze([]);
 
 /**
  * The scan's deterministic execution classification. The token lists are

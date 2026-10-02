@@ -3,24 +3,22 @@
  *
  * The metric is defined on process-execution *sinks*, not on tool-name string
  * occurrences: a statement that contains an execution API is one sink, and its
- * reviewed identity is its fingerprint. Every tool that can flow into the sink
- * is attributed through, in order, the sink expression, same-file bindings and
- * identifier chains, cross-file call-site arguments of the enclosing function,
- * and finally file-level tool evidence. A sink whose operands cannot be
- * resolved at all in a source unit that names developer tools is still a
- * relevant sink with the file's attributed tools; it can never silently count
- * as zero. A second sink, a replaced statement or a changed tool set produces a
- * new identity that cannot inherit an existing allowlist entry.
+ * reviewed identity is its fingerprint. Bounded source interpretation proves
+ * literal tool targets; individually reviewed source-bound contracts describe
+ * intentionally runtime-selected interfaces. File-wide names are hints only.
+ * Neither those names nor review metadata can clear API, syntax or I/O errors.
+ * Runtime interfaces remain counted and comparable, not zero-debt exceptions.
  *
  * The scan is a declared-scope static lexical analysis, not an exhaustive
- * proof: file evidence may attribute an otherwise unresolved operand, but a
- * known process target with no such evidence is a refusal, not zero debt. No
+ * proof: unreviewed interfaces and genuine analysis failures refuse. No
  * external Agent protocol is executed or inspected to turn unknown into safe.
  */
 
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { createTargetAttribution } from "./target-attribution.mjs";
+import { reviewRuntimeInterfaces } from "./runtime-review.mjs";
+import { RUNTIME_INTERFACE_REVIEWS } from "./runtime-interfaces.mjs";
 import {
   lexicalView,
   normalizeSnippet,
@@ -39,7 +37,6 @@ import {
 export const MINIMUM_ALLOWLIST_REASON_LENGTH = 12;
 
 const RUNTIME_LAYOUT_SRC = "crate-src";
-const RESOLUTION_DEPTH = 6;
 
 function nonRuntimeLibraries(manifests) {
   const records = [...manifests.values()];
@@ -219,7 +216,8 @@ function toolsInRange(source, regions, start, end) {
   return found;
 }
 
-function hasExecutionToken(text, aliases = []) {
+function hasExecutionToken(text, aliases = [], factories = []) {
+  if (factories.some((name) => new RegExp(`\\b${escapePattern(name)}\\s*\\(`, "u").test(text))) return true;
   if (new RegExp(`\\b(?:Command|${aliases.map(escapePattern).join("|") || "Command"})\\s*::\\s*(?:new|spawn|output|status)\\b|\\bProcess\\s*\\.\\s*(?:run|runSync|start)\\b`, "u").test(text)) return true;
   return [...EXECUTION_TOKENS, ...aliases.map((alias) => `${alias}::new(`)]
     .some((token) => new RegExp(escapePattern(token).replaceAll("::", "\\s*::\\s*")
@@ -229,6 +227,7 @@ function hasExecutionToken(text, aliases = []) {
 /** Recursively collect runtime sources under the declared roots. */
 export async function collectRuntimeSourceFiles(repoRoot, { readdir }) {
   const files = [];
+  const sourceArtifacts = new Set();
   const problems = [];
   async function visit(relativeDirectory, extension, { includeSelf = false, required = false } = {}) {
     let entries = [];
@@ -254,6 +253,9 @@ export async function collectRuntimeSourceFiles(repoRoot, { readdir }) {
           continue;
         }
         files.push(relativePath.replaceAll("\\", "/"));
+        sourceArtifacts.add(relativePath.replaceAll("\\", "/"));
+      } else if (includeSelf && entry.isFile() && /\.(?:sh|ps1)$/u.test(entry.name)) {
+        sourceArtifacts.add(relativePath.replaceAll("\\", "/"));
       } else if (entry.isSymbolicLink()) {
         problems.push(`${relativePath} is a symbolic link; runtime source scope is unresolved`);
       }
@@ -291,232 +293,10 @@ export async function collectRuntimeSourceFiles(repoRoot, { readdir }) {
     }
     await visit(root, extension, { includeSelf: true });
   }
-  return { files: files.sort(), problems };
+  return { files: files.sort(), sourceArtifacts, problems };
 }
 
-function collectFunctionRanges(masked) {
-  const ranges = [];
-  const pattern = /\bfn\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:<[^>{}]*>)?\s*\(/gu;
-  for (const match of masked.matchAll(pattern)) {
-    const open = masked.indexOf("(", match.index);
-    const paramsEnd = findMatching(masked, open, "(", ")");
-    if (paramsEnd < 0) {
-      continue;
-    }
-    const between = masked.slice(paramsEnd + 1);
-    const braceOffset = between.search(/[;{]/u);
-    if (braceOffset < 0 || between[braceOffset] === ";") {
-      continue;
-    }
-    const braceStart = paramsEnd + 1 + braceOffset;
-    const bodyEnd = findMatching(masked, braceStart, "{", "}");
-    if (bodyEnd < 0) {
-      continue;
-    }
-    ranges.push({
-      name: match[1],
-      parameters: masked
-        .slice(open + 1, paramsEnd)
-        .split(",")
-        .map((parameter) => parameter.trim().match(/([A-Za-z_]\w*)\s*:/u)?.[1])
-        .filter(Boolean),
-      bodyStart: braceStart,
-      bodyEnd,
-    });
-  }
-  return ranges;
-}
-
-function enclosingFunction(ranges, offset) {
-  return ranges.find((range) => offset >= range.bodyStart && offset <= range.bodyEnd) ?? null;
-}
-
-function bindingAssignments(masked, ranges) {
-  const bindings = new Map();
-  const pattern = /\b(?:const|static|let)\s+(?:mut\s+)?([A-Za-z_]\w*)[^;=]*=/gu;
-  for (const match of masked.matchAll(pattern)) {
-    const statement = statementAt(ranges, match.index);
-    const list = bindings.get(match[1]) ?? [];
-    list.push(statement);
-    bindings.set(match[1], list);
-  }
-  return bindings;
-}
-
-function callSitesByName(sources) {
-  const sites = new Map();
-  for (const [file, { masked }] of sources) {
-    for (const match of masked.matchAll(/\b([A-Za-z_]\w*)\s*\(/gu)) {
-      const name = match[1];
-      if (["fn", "if", "for", "while", "match", "return", "let", "const", "static"].includes(name)) {
-        continue;
-      }
-      const open = match.index + match[0].length - 1;
-      const end = findMatching(masked, open, "(", ")");
-      if (end < 0) {
-        continue;
-      }
-      const list = sites.get(name) ?? [];
-      list.push({ file, start: open + 1, end });
-      sites.set(name, list);
-    }
-  }
-  return sites;
-}
-
-const identifierDenylist = new Set([
-  "let", "mut", "const", "static", "fn", "if", "for", "in", "match", "return",
-  "Some", "None", "Ok", "Err", "true", "false", "str", "String", "self", "Self",
-  "use", "pub", "async", "await", "move", "ref", "as", "where", "impl", "trait",
-]);
-
-function nestedIdentifiers(masked, start, end) {
-  const identifiers = new Set();
-  for (const match of masked.slice(start, end).matchAll(/\b([A-Za-z_]\w*)\b/gu)) {
-    if (!identifierDenylist.has(match[1])) {
-      identifiers.add(match[1]);
-    }
-  }
-  return identifiers;
-}
-
-function sinkContinuationStatements(masked, ranges, statement) {
-  const text = masked.slice(statement.start, statement.end);
-  const binding = text.match(/\b(?:const|static|let)\s+(?:mut\s+)?([A-Za-z_]\w*)[^;=]*=/u)?.[1];
-  if (!binding) {
-    return [];
-  }
-  const pattern = new RegExp(`\\b${binding}\\b`, "u");
-  return ranges.filter((range) =>
-    range.start > statement.end && pattern.test(masked.slice(range.start, range.end)));
-}
-
-function runnerArgumentIdentifiers(masked, range) {
-  const identifiers = [];
-  for (const match of masked.slice(range.start, range.end)
-    .matchAll(/&mut\s+([A-Za-z_]\w*)|\(\s*&?([A-Za-z_]\w*)\s*,/gu)) {
-    identifiers.push(match[1] ?? match[2]);
-  }
-  return identifiers.filter(Boolean);
-}
-
-function resolveIdentifierTools({
-  identifier,
-  sources,
-  file,
-  index,
-  callSites,
-  depth,
-  visited,
-}) {
-  if (depth > RESOLUTION_DEPTH) {
-    return new Set();
-  }
-  const key = `${file}::${identifier}`;
-  if (visited.has(key)) {
-    return new Set();
-  }
-  visited.add(key);
-  const tools = new Set();
-  const { source, regions } = sources.get(file);
-  const entry = index.get(file);
-  for (const statement of entry.bindings.get(identifier) ?? []) {
-    for (const tool of toolsInRange(source, regions, statement.start, statement.end)) {
-      tools.add(tool);
-    }
-    for (const inner of nestedIdentifiers(
-      sources.get(file).masked,
-      statement.start,
-      statement.end,
-    )) {
-      if (inner === identifier) {
-        continue;
-      }
-      for (const tool of resolveIdentifierTools({
-        identifier: inner,
-        sources,
-        file,
-        index,
-        callSites,
-        depth: depth + 1,
-        visited,
-      })) {
-        tools.add(tool);
-      }
-    }
-  }
-  return tools;
-}
-
-/**
- * Attribute developer tools to one sink statement.
- */
-function sinkTools({
-  file,
-  sinkRange,
-  sources,
-  index,
-  callSites,
-}) {
-  const { source, regions, masked } = sources.get(file);
-  const tools = new Set();
-  for (const tool of toolsInRange(source, regions, sinkRange.start, sinkRange.end)) {
-    tools.add(tool);
-  }
-  const entry = index.get(file);
-  const functionRange = enclosingFunction(entry.functions, sinkRange.start);
-  const identifiers = nestedIdentifiers(masked, sinkRange.start, sinkRange.end);
-  for (const identifier of runnerArgumentIdentifiers(masked, sinkRange)) {
-    identifiers.add(identifier);
-    for (const statement of entry.bindings.get(identifier) ?? []) {
-      for (const tool of toolsInRange(source, regions, statement.start, statement.end)) {
-        tools.add(tool);
-      }
-      for (const continuation of sinkContinuationStatements(masked, entry.statements, statement)) {
-        for (const tool of toolsInRange(source, regions, continuation.start, continuation.end)) {
-          tools.add(tool);
-        }
-      }
-    }
-  }
-  for (const identifier of identifiers) {
-    for (const tool of resolveIdentifierTools({
-      identifier,
-      sources,
-      file,
-      index,
-      callSites,
-      depth: 0,
-      visited: new Set(),
-    })) {
-      tools.add(tool);
-    }
-    if (functionRange && functionRange.parameters.includes(identifier)) {
-      for (const site of callSites.get(functionRange.name) ?? []) {
-        const siteSource = sources.get(site.file);
-        for (const tool of toolsInRange(siteSource.source, siteSource.regions, site.start, site.end)) {
-          tools.add(tool);
-        }
-        for (const nested of nestedIdentifiers(siteSource.masked, site.start, site.end)) {
-          for (const tool of resolveIdentifierTools({
-            identifier: nested,
-            sources,
-            file: site.file,
-            index,
-            callSites,
-            depth: 0,
-            visited: new Set(),
-          })) {
-            tools.add(tool);
-          }
-        }
-      }
-    }
-  }
-  return tools;
-}
-
-function fileEvidenceTools(file, sources) {
+function fileToolHints(file, sources) {
   const { source, regions } = sources.get(file);
   return toolsInRange(source, regions, 0, source.length);
 }
@@ -545,7 +325,21 @@ function processTargetAttribution(file, range, sources, aliases, resolver, visit
   const commandTypes = ["Command", ...aliases].map(escapePattern).join("|");
   const constructors = new RegExp(`\\b((?:\\w+\\s*::\\s*)*(?:${commandTypes}))\\s*::\\s*new\\s*\\(|\\b((?:\\w+\\s*\\.\\s*)?Process)\\s*\\.\\s*(?:run|runSync|start)\\s*\\(`, "gu");
   const observations = [];
-  for (const match of text.matchAll(constructors)) {
+  const constructorCalls = [...text.matchAll(constructors)];
+  for (const binding of entry.bindings) {
+    if (binding.expression[1] > range.start || !binding.scopes.every((scope) => scope.start <= range.start && range.start <= scope.end)) continue;
+    const rhs = masked.slice(...binding.expression).trim().replace(/\s/gu, "");
+    if (!/^(?:(?:\w+::)*\w+::new|(?:\w+\.)?Process\.(?:run|runSync|start))$/u.test(rhs)) continue;
+    const type = rhs.replace(/::new$/u, "").replace(/\.(?:run|runSync|start)$/u, "");
+    if (!/^(?:std::process::Command|tokio::process::Command|dart:io\.Process)$/u.test(resolver.api(file, type))) continue;
+    for (const call of text.matchAll(new RegExp(`\\b${escapePattern(binding.name)}\\s*\\(`, "gu"))) {
+      const visible = entry.bindings.filter((other) => other.name === binding.name && other.expression[1] <= range.start + call.index && other.scopes.every((scope) => scope.start <= range.start + call.index && range.start + call.index <= scope.end)).at(-1);
+      if (visible !== binding) continue;
+      const match = [call[0], type, undefined]; match.index = call.index;
+      constructorCalls.push(match);
+    }
+  }
+  for (const match of constructorCalls.sort((left, right) => left.index - right.index)) {
     const api = resolver.api(file, match[1] ?? match[2]);
     const start = range.start + match.index + match[0].length;
     const close = findMatching(masked, start - 1, "(", ")");
@@ -555,7 +349,11 @@ function processTargetAttribution(file, range, sources, aliases, resolver, visit
       continue;
     }
     const result = close < 0 ? resolver.unknown("unclosed process constructor") : resolver.resolve(file, ...target);
-    if (api.startsWith("unresolved-api:")) result.reasons.push(api);
+    if (!result.targets.length && !result.runtimeOrigins.length && !result.failures.length) {
+      result.reasons.push("process target has no executable value");
+      result.failures.push("process target has no executable value");
+    }
+    if (api.startsWith("unresolved-api:")) { result.reasons.push(api); result.failures.push(api); }
     const observation = { ...result, api, offset: range.start + match.index };
     observations.push(observation);
     if (result.targets.some((value) => /^(?:sh|bash|zsh|cmd(?:\.exe)?|powershell(?:\.exe)?|pwsh|env|sandbox-exec)$/u.test(path.posix.basename(value)))) {
@@ -575,7 +373,7 @@ function processTargetAttribution(file, range, sources, aliases, resolver, visit
           operands.push(guest);
         }
       }
-      if (/\bProcess\b/u.test(text)) {
+      if (api === "dart:io.Process") {
         const args = resolver.parts(masked, start, close)[1];
         if (args) {
           const open = masked.indexOf("[", args[0]);
@@ -599,12 +397,16 @@ function processTargetAttribution(file, range, sources, aliases, resolver, visit
           const inlineScript = (["sh", "bash", "zsh"].includes(executable) && value?.startsWith("-") && value.includes("c")) || ["-Command", "/c"].includes(value);
           const scriptFile = value === "-File";
           const guest = inlineScript || scriptFile ? operands[++index] : operand;
-          if (!guest) observation.reasons.push("launcher omits its guest target");
-          else {
-            observation.reasons.push(...guest.reasons.map((reason) => `guest target: ${reason}`));
+           if (!guest) { observation.reasons.push("launcher omits its guest target"); observation.failures.push("launcher omits its guest target"); }
+           else {
+             observation.reasons.push(...guest.reasons.map((reason) => `guest target: ${reason}`));
+             observation.failures.push(...guest.failures.map((reason) => `guest target: ${reason}`));
+             observation.runtimeOrigins.push(...guest.runtimeOrigins);
             observation.evidence.push(...guest.evidence);
             if (scriptFile || (["sh", "bash", "zsh"].includes(executable) && !inlineScript)) {
-              observation.reasons.push("script-file contents require source-owned provenance");
+               observation.reasons.push("script-file contents require source-owned provenance");
+               if (guest.runtimeOrigins.length) observation.runtimeOrigins.push({kind: "materialized-script", file, selector: guest.runtimeOrigins.map((origin) => origin.selector).join(", "), evidence: resolver.reference(file, start, "source-owned script preparation must be reviewed")});
+               else observation.failures.push("script-file contents require source-owned provenance");
             }
             if (inlineScript) for (const script of guest.targets) {
               for (const tool of new Set([...toolsInText(script), ...toolsInContent(script)])) observation.targets.push(tool);
@@ -614,16 +416,51 @@ function processTargetAttribution(file, range, sources, aliases, resolver, visit
           selected = true;
           break;
         }
-        if (!selected) observation.reasons.push("launcher guest command is not present in the bounded source expression");
+         if (!selected) { observation.reasons.push("launcher guest command is not present in the bounded source expression"); observation.failures.push("launcher guest command is not present in the bounded source expression"); }
       }
     }
   }
   if (observations.length) return { ...resolver.union(observations), api: [...new Set(observations.map((entry) => entry.api))].join(", "), offset: observations[0].offset };
-  if (new RegExp(`\\b(?:${commandTypes})\\s*::\\s*(?:new|spawn|output|status)\\b|\\bProcess\\s*\\.\\s*(?:run|runSync|start)\\b`, "u").test(text)) return resolver.unknown("process API referenced without a resolved call");
+  if (new RegExp(`\\b(?:${commandTypes})\\s*::\\s*(?:new|spawn|output|status)\\b|\\bProcess\\s*\\.\\s*(?:run|runSync|start)\\b`, "u").test(text)) {
+    const alias = entry.bindings.find((binding) => binding.start >= range.start && binding.start < range.end &&
+      /^(?:(?:\w+\s*::\s*)*\w+\s*::\s*new|(?:\w+\.)?Process\.(?:run|runSync|start))$/u.test(masked.slice(...binding.expression).trim()));
+    if (alias && entry.functions.some((fn) => fn.bodyStart < alias.start && alias.start < fn.bodyEnd)) {
+      const rhs = masked.slice(...alias.expression).trim().replace(/\s/gu, "");
+      const type = rhs.replace(/::new$/u, "").replace(/\.(?:run|runSync|start)$/u, "");
+      const api = resolver.api(file, type);
+      const uses = [...masked.matchAll(new RegExp(`\\b${escapePattern(alias.name)}\\b`, "gu"))].filter((match) => match.index > alias.expression[1]);
+      if (/^(?:std::process::Command|tokio::process::Command|dart:io\.Process)$/u.test(api) &&
+          uses.every((match) => /^\s*\(/u.test(masked.slice(match.index + alias.name.length)))) return null;
+    }
+    return resolver.unknown("process API referenced without a resolved call");
+  }
+  const bounded = text.match(/\b((?:\w+\s*::\s*)*)(run_bounded_(?:untrusted_agent_output|command_output))\s*\(/u);
+  if (bounded) {
+    if (/\bfn\s*$/u.test(text.slice(0, bounded.index))) return null;
+    const owner = "crates/licoup-native/src/platform/process_supervisor.rs";
+    const imported = bounded[1] ? `${bounded[1]}${bounded[2]}`.replace(/\s/gu, "") : resolver.imported(file, bounded[2]);
+    const localOwner = file === owner && entry.functions.some((fn) => fn.name === bounded[2]);
+    const qualified = /^(?:crate::platform(?:::process_supervisor)?|super::process_supervisor)::run_bounded_(?:untrusted_agent_output|command_output)$/u.test(imported) ||
+      (path.posix.dirname(file) === "crates/licoup-native/src/platform" && /^super::run_bounded_(?:untrusted_agent_output|command_output)$/u.test(imported));
+    if (!sources.has(owner) || (!localOwner && !qualified) ||
+        (!bounded[1] && file !== owner && entry.functions.some((fn) => fn.name === bounded[2]))) {
+      return { ...resolver.unknown("unresolved source-owned process wrapper API"), api: "unresolved-api:bounded-runner", offset: range.start + bounded.index };
+    }
+    const open = range.start + bounded.index + bounded[0].length - 1;
+    const close = findMatching(masked, open, "(", ")");
+    if (close < 0) return resolver.unknown("unclosed bounded process invocation");
+    const [argument] = resolver.parts(masked, open + 1, close);
+    if (!argument || !source.slice(...argument).trim()) return resolver.unknown("bounded process invocation omits its Command object");
+    const supplied = resolver.resolve(file, ...argument);
+    if (supplied.failures.length === 0 || supplied.failures.some((reason) => !/^target binding \w+ is reassigned or mutably borrowed$/u.test(reason))) {
+      return {...supplied, api: `source-owned:${bounded[2]}`, offset: range.start + bounded.index};
+    }
+    return { ...resolver.runtime("bounded process interface accepts a caller-prepared Command object after explicit mutable configuration", {kind: "command", file, selector: source.slice(...argument).trim(), evidence: resolver.reference(owner, sources.get(owner).masked.indexOf(`fn ${bounded[2]}`), "typed caller-prepared Command boundary")}), api: `source-owned:${bounded[2]}`, offset: range.start + bounded.index };
+  }
   // Member calls count only with Command evidence; task/thread spawn methods
   // are not process APIs merely because they have the same method name.
-  for (const match of text.matchAll(/\b(\w+)\s*\.\s*(?:spawn|output|status)\s*\(/gu)) {
-    const receiver = match[1];
+  for (const match of text.matchAll(/\b(\w+(?:\s*\.\s*\w+)*)\s*\.\s*(?:spawn|output|status)\s*\(/gu)) {
+    const receiver = match[1].replace(/\s/gu, "");
     const visible = entry.bindings.filter((binding) => binding.name === receiver && binding.start < range.start &&
       binding.scopes.every((scope) => scope.start < range.start && range.start < scope.end));
     const binding = visible.sort((a, b) => b.start - a.start)[0];
@@ -644,7 +481,28 @@ function processTargetAttribution(file, range, sources, aliases, resolver, visit
         return { ...resolver.resolve(file, start, findMatching(masked, open, "(", ")") + 1), api: "source-returned Command", offset: range.start + match.index };
       }
     }
-    if (new RegExp(`\\b${receiver}\\s*:\\s*(?:&\\s*(?:mut\\s+)?)?(?:[\\w]+\\s*::\\s*)*Command\\b`, "u").test(masked)) return { ...resolver.unknown("Command receiver is supplied by an unresolved caller or field"), offset: range.start + match.index };
+    const field = receiver.split(".").at(-1);
+    const scope = entry.functions.filter((fn) => fn.bodyStart < range.start + match.index && range.start + match.index < fn.bodyEnd)
+      .sort((left, right) => (left.bodyEnd - left.bodyStart) - (right.bodyEnd - right.bodyStart))[0];
+    let typeSource = !binding && scope ? masked.slice(scope.open + 1, scope.close) : "";
+    let typeOffset = scope ? scope.open + 1 : 0;
+    if (receiver.includes(".")) {
+      const base = receiver.split(".")[0];
+      const value = entry.bindings.filter((candidate) => candidate.name === base && candidate.start < range.start && candidate.scopes.every((scope) => scope.start < range.start && range.start < scope.end)).at(-1);
+      const expression = value && masked.slice(...value.expression).trim().match(/^(\w+)\s*\(/u);
+      const factory = expression && entry.functions.find((fn) => fn.name === expression[1]);
+      const returned = factory && masked.slice(factory.close + 1, factory.bodyStart).match(/->\s*(?:Result\s*<\s*)?(\w+)/u)?.[1];
+      const structure = returned && new RegExp(`\\bstruct\\s+${escapePattern(returned)}\\s*\\{`, "u").exec(masked);
+      if (structure) {
+        const open = structure.index + structure[0].length - 1;
+        typeSource = masked.slice(open + 1, findMatching(masked, open, "{", "}"));
+        typeOffset = open + 1;
+      } else typeSource = "";
+    }
+    const declaration = typeSource.match(new RegExp(`\\b${escapePattern(field)}\\s*:\\s*(?:&\\s*(?:mut\\s+)?)?((?:[\\w]+\\s*::\\s*)*Command)\\b`, "u"));
+    if (declaration && /^(?:std|tokio)::process::Command$/u.test(resolver.api(file, declaration[1]))) {
+      return { ...resolver.runtime("Command receiver is supplied by a source-declared caller or field", {kind: "command", file, selector: receiver, evidence: resolver.reference(file, typeOffset + declaration.index, declaration[0])}), api: resolver.api(file, declaration[1]), offset: range.start + match.index };
+    }
   }
   return null;
 }
@@ -658,9 +516,11 @@ export async function inspectDeveloperToolSites({
   readFile,
   allowlist = DEVELOPER_TOOL_ALLOWLIST,
   manifests = new Map(),
+  runtimeReviews,
 }) {
   const collected = await collectRuntimeSourceFiles(repoRoot, { readdir });
   const problems = [...collected.problems];
+  const reviewInput = runtimeReviews ?? RUNTIME_INTERFACE_REVIEWS;
   const sources = new Map();
   const nonRuntimeCrates = nonRuntimeLibraries(manifests);
   for (const file of collected.files) {
@@ -676,7 +536,7 @@ export async function inspectDeveloperToolSites({
     problems.push(...lexicalView(raw, language).problems.map((problem) => `${file}: ${problem}`));
     const source = language === "rust" ? stripTestItems(raw) : raw;
     const lexed = lexicalView(source, language);
-    sources.set(file, { language, source, masked: lexed.masked, regions: lexed.regions });
+    sources.set(file, { language, source, raw, masked: lexed.masked, regions: lexed.regions });
   }
 
   const index = new Map();
@@ -684,15 +544,13 @@ export async function inspectDeveloperToolSites({
     const statements = statementRanges(masked);
     index.set(file, {
       statements,
-      functions: collectFunctionRanges(masked),
-      bindings: bindingAssignments(masked, statements),
     });
   }
-  const callSites = callSitesByName(sources);
   const resolver = createTargetAttribution(sources, manifests);
 
   const relevantSinks = [];
-  const unresolved = [];
+  const uncertain = [];
+  const observedOccurrences = new Map();
   const resolvedNonTools = [];
   const nonProcess = [];
   const references = [];
@@ -704,10 +562,11 @@ export async function inspectDeveloperToolSites({
       ...range,
       masked: masked.slice(range.start, range.end),
     }));
-    const fileTools = fileEvidenceTools(file, sources);
+    const fileTools = fileToolHints(file, sources);
     const aliases = [...masked.matchAll(/\bCommand\s+as\s+(\w+)/gu)].map((match) => match[1]);
+    const factories = resolver.model(file).bindings.filter((binding) => /^(?:(?:\w+\s*::\s*)*\w+\s*::\s*new|(?:\w+\.)?Process\.(?:run|runSync|start))$/u.test(masked.slice(...binding.expression).trim())).map((binding) => binding.name);
     for (const range of rangedRanges) {
-      if (!hasExecutionToken(range.masked, aliases)) {
+      if (!hasExecutionToken(range.masked, aliases, factories)) {
         continue;
       }
       scannedSinkStatements += 1;
@@ -717,30 +576,36 @@ export async function inspectDeveloperToolSites({
         line: lineForOffset(starts, attribution.offset ?? range.start),
         api: attribution.api ?? "process member/reference",
         targets: attribution.targets, reasons: attribution.reasons, evidence: attribution.evidence,
+        failures: attribution.failures, runtimeOrigins: attribution.runtimeOrigins,
+        statement: normalizeSnippet(source.slice(range.start, range.end)),
       };
-      if (attribution?.api?.startsWith("non-process:") && attribution.reasons.length === 0) {
+      if (attribution?.api?.split(", ").every((api) => api.startsWith("non-process:")) && attribution.reasons.length === 0) {
         nonProcess.push(observation);
         continue;
       }
-      const tools = sinkTools({ file, sinkRange: range, sources, index, callSites });
+      if (!observation) continue;
+      const identity = `${file}::${observation.sink}`;
+      const occurrence = (observedOccurrences.get(identity) ?? 0) + 1;
+      observedOccurrences.set(identity, occurrence);
+      if (occurrence > 1) observation.sink += `#${occurrence}`;
+      observation.id = `${file}::${observation.sink}`;
+      const tools = new Set();
       for (const target of attribution?.targets ?? []) {
         if (!target.startsWith("native:")) {
           for (const tool of DEVELOPER_TOOL_NAMES) if (toolInLiteral(target, tool)) tools.add(tool);
         }
       }
-      if (tools.size === 0) {
-        for (const tool of fileTools) {
-          tools.add(tool);
-        }
+      if (attribution.failures.length || attribution.runtimeOrigins.length) {
+        uncertain.push({...observation, observedTools: [...tools].sort(), fileHints: [...fileTools].sort()});
+        continue;
       }
       if (tools.size === 0) {
-        if (attribution?.reasons.length) unresolved.push(observation);
-        else if (attribution) resolvedNonTools.push(observation);
+        resolvedNonTools.push(observation);
         continue;
       }
       relevantSinks.push({
-        file,
-        fingerprint: fingerprintFor(file, source, range),
+        ...observation,
+        category: "resolved-tool",
         tools: [...tools].sort(),
         line: lineForOffset(starts, range.start),
         statement: normalizeSnippet(source.slice(range.start, range.end)).slice(0, 200),
@@ -767,23 +632,9 @@ export async function inspectDeveloperToolSites({
     }
   }
 
-  const unresolvedOccurrences = new Map();
-  for (const site of unresolved) {
-    const key = `${site.file}::${site.sink}`;
-    const occurrence = (unresolvedOccurrences.get(key) ?? 0) + 1;
-    unresolvedOccurrences.set(key, occurrence);
-    if (occurrence > 1) site.sink += `#${occurrence}`;
-    problems.push(`${site.file}:${site.line} [${site.sink}] has an unresolved process target (${site.api}): ${site.reasons.join("; ")}; developer-tool execution cannot be excluded`);
-  }
-
-  const duplicates = new Map();
-  for (const sink of relevantSinks) {
-    const count = (duplicates.get(sink.fingerprint) ?? 0) + 1;
-    duplicates.set(sink.fingerprint, count);
-    sink.sink = count === 1 ? sink.fingerprint : `${sink.fingerprint}#${count}`;
-    delete sink.fingerprint;
-    sink.id = `${sink.file}::${sink.sink}`;
-  }
+  const runtimeReview = await reviewRuntimeInterfaces({repoRoot, observations: uncertain, reviews: reviewInput,
+    sources, sourceArtifacts: collected.sourceArtifacts, readFile, functionSource: resolver.functionSource});
+  problems.push(...runtimeReview.problems);
   relevantSinks.sort((left, right) => left.id.localeCompare(right.id));
 
   const siteIds = relevantSinks.flatMap((sink) =>
@@ -802,12 +653,17 @@ export async function inspectDeveloperToolSites({
   const staleAllowlist = [...allowedBySink.keys()]
     .filter((key) => !relevantSinks.some((sink) => sink.id === key))
     .sort();
+  problems.push(...staleAllowlist.map((id) => `resolved-tool review ${id} is stale; file-level mentions cannot justify execution`));
 
   return {
     executionSites: relevantSinks,
     siteIds: siteIds.sort(),
     unallowlisted,
-    unresolved,
+    unresolved: [...runtimeReview.unreviewed, ...runtimeReview.failures],
+    runtimeInterfaces: runtimeReview.reviewed,
+    runtimeSiteIds: runtimeReview.reviewed.map((site) => `${site.id}::${site.contract}`).sort(),
+    unreviewedRuntimeInterfaces: runtimeReview.unreviewed,
+    analysisFailures: runtimeReview.failures,
     resolvedNonTools,
     nonProcess,
     nonRuntimeCrates,

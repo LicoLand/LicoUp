@@ -607,13 +607,14 @@ export async function measureOptionalCapabilitiesInPackaging({ repoRoot, io = fs
 }
 
 /** Metric 5: developer-tool execution sinks in runtime sources. */
-export async function measureDeveloperToolSites({ repoRoot, allowlist, io = fs }) {
+export async function measureDeveloperToolSites({ repoRoot, allowlist, runtimeReviews, io = fs }) {
   const graph = await collectManifestGraph({ repoRoot, ...io });
   const inspection = await inspectDeveloperToolSites({
     repoRoot,
     readdir: io.readdir,
     readFile: io.readFile,
     manifests: graph.byPath,
+    runtimeReviews,
     ...(allowlist === undefined ? {} : { allowlist }),
   });
   const unallowlistedIds = inspection.unallowlisted.flatMap((sink) =>
@@ -621,17 +622,25 @@ export async function measureDeveloperToolSites({ repoRoot, allowlist, io = fs }
   return {
     id: "developer_tool_sites",
     ratchet: {
-      execution_sites: inspection.executionSites.length,
+      execution_sites: inspection.executionSites.length + inspection.runtimeInterfaces.length + inspection.unresolved.length,
+      resolved_tool_sites: inspection.executionSites.length,
+      reviewed_runtime_interfaces: inspection.runtimeInterfaces.length,
+      unreviewed_runtime_interfaces: inspection.unreviewedRuntimeInterfaces.length,
+      analysis_failures: inspection.analysisFailures.length,
       unallowlisted_sites: inspection.unallowlisted.length,
-      execution_site_ids: inspection.siteIds,
+      execution_site_ids: [...inspection.siteIds, ...inspection.runtimeSiteIds].sort(),
+      runtime_interface_ids: inspection.runtimeSiteIds,
       unallowlisted_site_ids: unallowlistedIds.sort(),
     },
     details: {
       definition:
-        "Developer-tool execution sinks in crates/**/src, components/**/src, sdk/**/src and apps/desktop/lib. One statement containing an execution API is one sink; tools are attributed through the sink expression, same-file bindings and identifier chains, cross-file call-site arguments, and file-level tool evidence. Known process targets without resolvable attribution refuse measurement instead of becoming zero. Every relevant sink needs a reviewed allowlist entry with its fingerprint and exact attributed tool set; a second sink, replaced statement or changed tool set cannot inherit an exception. Literal bytes are preserved in fingerprints. The scan is static lexical analysis, not a compiler or an exhaustive proof about external runtime protocols.",
+        "Process boundaries in the declared Rust/Dart runtime source scope are resolved tool targets, individually reviewed runtime-selected interfaces, or genuine analysis failures. File-level names are hints only, never target attribution. Reviewed interfaces retain exact site/source identity, purpose and selector/script provenance. New, changed or unreviewed interfaces and any API, syntax, manifest or I/O failure refuse a comparable measurement. Counts and identities retain runtime interfaces rather than treating them as zero debt. This bounded source analysis is not a compiler or an exhaustive proof about external runtime protocols.",
       scanned_files: inspection.scannedFiles,
       scanned_sink_statements: inspection.scannedSinkStatements,
       execution_sites: inspection.executionSites,
+      reviewed_runtime_interfaces: inspection.runtimeInterfaces,
+      unreviewed_runtime_interfaces: inspection.unreviewedRuntimeInterfaces,
+      analysis_failures: inspection.analysisFailures,
       unallowlisted_sites: inspection.unallowlisted,
       unresolved_sites: inspection.unresolved,
       resolved_non_tool_sites: inspection.resolvedNonTools,
@@ -646,13 +655,13 @@ export async function measureDeveloperToolSites({ repoRoot, allowlist, io = fs }
 }
 
 /** Run every static metric and build the numeric record for check results. */
-export async function measureArchitectureRatchet({ repoRoot, io = fs }) {
+export async function measureArchitectureRatchet({ repoRoot, io = fs, runtimeReviews, allowlist }) {
   const metrics = [
     await measureKernelOptionalCargoEdges({ repoRoot, io }),
     await measureNativeLayerImports({ repoRoot, io }),
     await measureNativeRustLoc({ repoRoot, io }),
     await measureOptionalCapabilitiesInPackaging({ repoRoot, io }),
-    await measureDeveloperToolSites({ repoRoot, io }),
+    await measureDeveloperToolSites({ repoRoot, io, runtimeReviews, allowlist }),
   ];
   const byId = Object.fromEntries(metrics.map((metric) => [metric.id, metric]));
   const record = {
@@ -664,7 +673,9 @@ export async function measureArchitectureRatchet({ repoRoot, io = fs }) {
     nativeRustNonBlankLines: byId.native_rust_loc.ratchet.non_blank_lines,
     optionalCapabilitiesBundledInPackaging:
       byId.optional_capabilities_in_packaging.ratchet.bundled_bindings,
-    developerToolExecutionSites: byId.developer_tool_sites.ratchet.execution_sites,
+    processExecutionBoundaries: byId.developer_tool_sites.ratchet.execution_sites,
+    resolvedDeveloperToolExecutionSites: byId.developer_tool_sites.ratchet.resolved_tool_sites,
+    reviewedRuntimeSelectedInterfaces: byId.developer_tool_sites.ratchet.reviewed_runtime_interfaces,
     developerToolUnallowlistedSites:
       byId.developer_tool_sites.ratchet.unallowlisted_sites,
   };
