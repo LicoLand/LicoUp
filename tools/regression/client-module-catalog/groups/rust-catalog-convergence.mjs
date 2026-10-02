@@ -39,6 +39,7 @@ export const RUST_CATALOG_CONVERGENCE_MODULES = Object.freeze([
     id: "rust.crate.migrate",
     kind: "rust-crate",
     summary: "Standalone migration binary and its released-root conversion, archive and cross-container suites",
+    targetEvidenceHosts: ["darwin", "linux", "win32"],
     inputs: [
       "crates/licoup-migrate/**",
       "tools/scripts/migration-crate-tests.mjs",

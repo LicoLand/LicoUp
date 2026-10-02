@@ -1234,6 +1234,7 @@ test("migration runner inventory follows the actual crate and target selectors",
   const migrate = CLIENT_MODULE_CATALOG.find((module) => module.id === "rust.crate.migrate");
   const recovery = CLIENT_MODULE_CATALOG.find((module) => module.id === "rust.platform.data-home-relocation");
   assert.equal(migrate.regression.toolchain, "rust");
+  assert.deepEqual(migrate.regression.targetEvidenceHosts, ["darwin", "linux", "win32"]);
   assert.ok(migrate.regression.resources.includes("cargo-target"));
   assert.equal(nodeCommandExecutesRust(migrate, "crates/licoup-migrate/tests/interoperability.rs"), true);
   assert.equal(nodeCommandExecutesRust(migrate, "crates/licoup-native/tests/data_home_process.rs"), false);
