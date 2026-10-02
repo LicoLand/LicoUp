@@ -170,7 +170,7 @@ export function runnerDockerArgs({
       "--env", "LICO_AUDITOR_GATE_DELEGATED=1",
       "--env", "GITHUB_ACTIONS=true",
       "--env", "GITHUB_WORKFLOW=Client CI",
-      "--env", "GITHUB_JOB=source",
+      "--env", "GITHUB_JOB=engineering",
     ]
     : [];
   const dependencyBootstrap = lane === "dependencies" || profile === "engineering"

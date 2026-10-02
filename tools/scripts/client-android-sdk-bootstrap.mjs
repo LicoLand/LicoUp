@@ -21,6 +21,12 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const defaultDockerfile = path.join(repoRoot, "apps/desktop/docker/ubuntu-client.Dockerfile");
 
+// This adapter reproduces the Ubuntu engineering job. Other target hosts own
+// their platform toolchain setup and must not reuse the Linux archive flow.
+export function assertLinuxEngineeringHost(platform = process.platform) {
+  if (platform !== "linux") fail("android_sdk_bootstrap_linux_required");
+}
+
 function fail(code) {
   const error = new Error(code);
   error.code = code;
@@ -174,6 +180,7 @@ export async function bootstrapAndroidSdk(options, runCommand = run) {
     ok: true,
     schemaVersion: "licoup.android-sdk-bootstrap.v1",
     status: "passed",
+    executionScope: "linux-engineering",
     commandLineToolsVersion: authority.version,
     packageCount: packages.length,
     rawLogsIncluded: false,
@@ -182,6 +189,7 @@ export async function bootstrapAndroidSdk(options, runCommand = run) {
 
 export async function main(argv = process.argv.slice(2)) {
   try {
+    assertLinuxEngineeringHost();
     const receipt = await bootstrapAndroidSdk(parseArgs(argv));
     process.stdout.write(`${JSON.stringify(receipt)}\n`);
   } catch (error) {

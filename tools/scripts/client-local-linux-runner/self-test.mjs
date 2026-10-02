@@ -9,7 +9,10 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { bootstrapAndroidSdk } from "../client-android-sdk-bootstrap.mjs";
+import {
+  assertLinuxEngineeringHost,
+  bootstrapAndroidSdk,
+} from "../client-android-sdk-bootstrap.mjs";
 import { parseArgs } from "./cli.mjs";
 import {
   inspectLocalDocker,
@@ -136,6 +139,9 @@ async function testAndroidBootstrapArguments() {
 }
 
 export async function runSelfTest() {
+  assert.doesNotThrow(() => assertLinuxEngineeringHost("linux"));
+  assert.throws(() => assertLinuxEngineeringHost("darwin"), /android_sdk_bootstrap_linux_required/u);
+  assert.throws(() => assertLinuxEngineeringHost("win32"), /android_sdk_bootstrap_linux_required/u);
   assert.deepEqual(parseArgs(["run", "--lane", "rust"]), {
     command: "run",
     lane: "rust",
