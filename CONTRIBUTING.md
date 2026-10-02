@@ -39,13 +39,12 @@ contract, and aggregated Node tests attribute failures through anonymous input
 indexes, so one Agent or test file does not invalidate its whole peer batch.
 
 After all intended changes, source review, in-scope repairs, and focused checks
-are complete, run the selected complete regression once. If it fails, diagnose
-and report the cause, effect, and concrete repair and verification proposal.
-The developer decides subsequent repairs and whether to rerun that regression;
-do not automatically widen scope, repair, or repeat it. Continue independent
-authorized work and report required checks that remain incomplete. Ordinary
-implementation and focused-test failures within the accepted scope can be
-fixed directly. Promotion failures follow the separate
+are complete, run the selected complete regression once. Diagnose failures at
+the responsible boundary and repair ordinary in-scope errors, including format,
+type and static-check omissions. Reuse valid passing evidence and repeat only
+affected checks. Escalate changes to the approved objective, published contracts
+or risk boundary with a concrete investigation and options; pause only work that
+depends on that decision. Promotion failures follow the separate
 [promotion gates](docs/releases/PROMOTION-GATES.md).
 
 ```bash
