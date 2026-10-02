@@ -96,6 +96,12 @@ delivery is recorded; without such an assignment, stop at the engineering handof
 
 ## Requirements and routes
 
+After development, run `npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery`.
+Follow the [verified delivery loop](docs/RUNBOOK.md#verified-delivery-loop) for every
+change, with or without a plan or milestone. Only a failed entry or incorrect
+observed result triggers workflow diagnosis and repair of the responsible owner.
+Reuse valid evidence, return to the same entry, and stop after successful delivery.
+
 Complete every implementation obligation in the approved delivery scope, including
 production wiring and deterministic engineering verification, before handing over
 the client. Classify requirements by whether live Agent behavior is actually needed.

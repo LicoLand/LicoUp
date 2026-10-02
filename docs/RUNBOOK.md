@@ -202,6 +202,38 @@ Keep each change independently verifiable. Before final checks read
 [Closure](CLOSURE.md), resolve findings in the changed scope, and finish source review.
 All writers must finish before global regression. Unavailable checks stay unverified.
 
+### Verified delivery loop
+
+After development, run:
+
+```bash
+npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery
+```
+
+This is the canonical local delivery entry for every development change, with or
+without a plan or milestone. It must execute all applicable required checks, then
+use the existing build and installation owners to build, install and open the
+client. A failed stage exits nonzero and blocks dependent stages. Local checks
+cover required CI behavior that can run locally; unavailable required target
+checks remain explicit. The entry does not publish a release. Do not substitute
+manual command chains, partial checks or a successful launch call for its result.
+
+If the entry fails or the authorized observation finds incorrect behavior, first
+inspect the workflow: did the canonical command build the correct complete client,
+did its declared checks actually run, and was required coverage missing? Repair an
+actual workflow omission through its existing owner before repairing the affected
+product. When the workflow is already correct, fix the product without manufacturing
+a tooling change. Verify the owning check independently, then rerun this same entry
+using still-valid evidence and the maintained retry support. Observe the authorized
+result again. After successful delivery, stop; do not add unrelated checks, repeat
+unchanged successful work or expand workflow governance beyond a concrete defect.
+
+Keep reviewed source, verification and installed output attributable to the same
+delivered implementation. A build made before final verification is an engineering
+artifact, not completed delivery. Real-data activation, protected-key operations,
+interface inspection and real Agent tasks retain their distinct authorization
+boundaries; the delivery entry does not perform them automatically.
+
 ### Run focused verification
 
 List the maintained regression modules and preview change-based selection:

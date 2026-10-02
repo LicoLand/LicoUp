@@ -4,6 +4,13 @@ Updated: 2026-10-01
 
 Before final verification, inspect the complete changed scope:
 
+After development, run `npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery`.
+The [verified delivery loop](RUNBOOK.md#verified-delivery-loop) owns this procedure
+for every change, without requiring a plan or milestone. Investigate workflow or
+product defects when that entry or the authorized observation fails, repair the
+responsible owner, and return to the same entry with valid evidence reused. After
+the approved result succeeds, close the delivery and stop adding unrelated work.
+
 Engineering delivery requires the complete approved implementation and its
 production wiring, supported by all applicable non-live verification. A real Agent
 demonstration cannot substitute for unfinished code, DSL semantics, state-machine
