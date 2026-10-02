@@ -40,9 +40,9 @@ use crate::core::secure_mesh_secret_store::{
     MAX_SECRET_STORE_PRESENCE_GRANT_TTL, PresenceDecision, SecretBytes,
     SecretStoreApprovedPresenceBatch, SecretStoreAuthorizationRequest,
     SecretStoreAuthorizationSession, SecretStoreConsumedPresence, SecretStoreHandle,
-    SecretStoreOperation, SecretStorePresenceBatchRequest, SecretStorePresenceNonce,
-    SecretStorePresenceProvider, SecretStorePresencePurpose, SecretStorePresenceScope,
-    derive_presence_binding_digest, digest_matches,
+    SecretStoreOperation, SecretStorePresenceBatchRequest, SecretStorePresenceError,
+    SecretStorePresenceNonce, SecretStorePresenceProvider, SecretStorePresencePurpose,
+    SecretStorePresenceScope, derive_presence_binding_digest, digest_matches,
 };
 
 macro_rules! security_framework_static {
@@ -1022,6 +1022,9 @@ fn execute_legacy_classic_delete(
 }
 
 fn keychain_public_error(error: anyhow::Error, fallback: &'static str) -> anyhow::Error {
+    if error.downcast_ref::<SecretStorePresenceError>().is_some() {
+        return error;
+    }
     match error.to_string().as_str() {
         "secure_mesh_keychain_classic_access_requires_user_action" => {
             anyhow!("secure_mesh_keychain_classic_access_requires_user_action")
@@ -1029,7 +1032,6 @@ fn keychain_public_error(error: anyhow::Error, fallback: &'static str) -> anyhow
         "secure_mesh_keychain_interaction_control_failed" => {
             anyhow!("secure_mesh_keychain_interaction_control_failed")
         }
-        "secure_mesh_authorization_required" => anyhow!("secure_mesh_authorization_required"),
         _ => anyhow!(fallback),
     }
 }
@@ -1560,7 +1562,7 @@ fn status_result(operation: &'static str, status: i32) -> Result<()> {
         // the process-scoped grant. The next explicit operation authenticates
         // again instead of silently falling back to a password prompt.
         crate::platform::user_presence::invalidate();
-        return Err(anyhow!("secure_mesh_authorization_required"));
+        return Err(SecretStorePresenceError::authorization_required().into());
     }
     let code = match operation {
         "write" => "secure_mesh_keychain_write_failed",
@@ -1598,7 +1600,7 @@ impl MacosPresencePromptPort for LocalAuthenticationPrompt {
                 Ok(PresenceDecision::Approved)
             }
             Err(error) if user_presence_was_cancelled(&error) => Ok(PresenceDecision::Cancelled),
-            Err(_) => Err(anyhow!("secure_mesh_presence_native_authentication_failed")),
+            Err(_) => Err(SecretStorePresenceError::authorization_failed().into()),
         }
     }
 
@@ -1968,6 +1970,19 @@ mod tests {
 
     #[test]
     fn classic_access_denial_is_actionable_without_exposing_platform_errors() {
+        for presence in [
+            SecretStorePresenceError::authorization_required(),
+            SecretStorePresenceError::authorization_failed(),
+        ] {
+            let projected = keychain_public_error(
+                anyhow::Error::new(presence).context("synthetic private detail"),
+                "secure_mesh_keychain_read_failed",
+            );
+            assert_eq!(
+                projected.downcast_ref::<SecretStorePresenceError>(),
+                Some(&presence)
+            );
+        }
         for status in [errSecAuthFailed, ERR_SEC_INTERACTION_NOT_ALLOWED] {
             let error = keychain_effect_status(MacosKeychainBackend::Classic, status).unwrap_err();
             assert_eq!(
