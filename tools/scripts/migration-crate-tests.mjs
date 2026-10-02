@@ -81,7 +81,7 @@ export function migrationCrateTestArgs(forwarded = []) {
   const selection = nativeRecovery
     ? ["-p", "licoup-native", "--test", "local_recovery", "--test", "data_home_process"]
     : ["-p", "licoup-migrate"];
-  return ["test", "--offline", "--locked", ...selection, ...args];
+  return ["test", "--offline", "--locked", "--no-fail-fast", ...selection, ...args];
 }
 
 function main() {
