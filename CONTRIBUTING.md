@@ -54,6 +54,65 @@ npm run client:gate:android         # Android changes only
 npm run client:gate:dependencies    # dependency authority changes only
 ```
 
+### Verification coverage and escaped defects
+
+The final local workflow is the merge-readiness authority. It must use one
+maintained registry that assigns every required check to a functional module
+and failure category, names the owning subcheck and dependencies, and records
+where that check runs: focused local development, the final local workflow,
+commit and push hooks, pull requests, CI, or release promotion. Each entry must
+state what it proves. Tests, scripts, and platform checks that are not
+registered, not wired into every applicable stage, not run, or blocked cannot
+support a merge-ready result.
+
+The final local command must execute every applicable required registry entry
+before a commit, pull request, or publication handoff. Independent checks must
+settle and report their failures together. A check whose real dependency did
+not complete must report `blocked` and make the command fail; it must not hide
+the blocked work behind a passed parent or an inventory-only result. Platform,
+device, credential, live-service, and other external limits remain explicit
+unverified evidence where the local environment cannot establish them. They do
+not turn into passes, but local checks must not be deferred to CI merely because
+CI also runs them.
+
+When a defect escapes, first determine why this workflow did not detect it.
+Repair the owning subcheck and its registry and stage wiring before repairing
+the product defect. If no existing category owns the failure, add one registered
+subcheck with a clear boundary. Run that subcheck directly while developing the
+repair. After all scoped repairs and focused checks pass, run the complete
+applicable local workflow once, and only then commit, open the pull request, or
+start a publication workflow. Do not substitute a read-only inventory, a
+partial pass, launcher success, or a cloud-only first execution for that result.
+
+The current commands above remain required while the unified registry and final
+local command are being completed. Their existence does not claim that this
+contract is already fully implemented. Any missing registration, stage wiring,
+aggregation, or local/CI parity is an implementation gap and must be reported as
+such; no tool can promise to detect unknown defects exhaustively.
+
+### Cross-platform ownership
+
+Use a portable implementation when the supported targets provide the required
+capability. Shared Rust, Flutter, and Node modules must not derive product
+behavior from the development host or embed an operating-system path, command,
+permission, lifecycle, or storage assumption. Put a real target difference
+behind an explicit platform adapter contract and keep the shared caller in
+terms of that contract.
+
+Scope platform work to the targets it changes. A routine fix for one platform
+must not modify or revalidate unrelated adapters. A refactor that changes shared
+behavior or several adapters must register every affected target and run the
+required engineering checks on each actual target system. If an affected target
+cannot run, its required result is `blocked` or `unverified` and the change is
+not merge-ready. Live acceptance remains separate where deterministic
+engineering checks cannot establish the behavior.
+
+The verification registry owns each module's platform applicability and the
+workflow owns the corresponding runner. Selection, focused execution, the final
+local workflow, and CI must consume those same owners. Static source inspection
+may find a suspicious host assumption, but keyword or path scanning alone does
+not prove that shared code is portable or that a platform adapter works.
+
 **One crate, one version.** The dependency graph must not carry two versions of
 the same crate. Duplicates bloat the binary, split types across versions, and
 hide unmaintained generations behind the pin of another consumer. When a new
