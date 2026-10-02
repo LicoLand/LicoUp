@@ -355,7 +355,17 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
         "crates/licoup-native/src/platform/secure_mesh_secret_store/tests/platform_backends.rs",
       ],
-      command: rustLayer("platform::secure_mesh_secret_store::tests::platform_backends::macos"),
+      command: rustLayer(
+        "platform::secure_mesh_secret_store::tests::platform_backends::",
+        [
+          "--skip", "secret_store_handle_rejects_empty_or_key_separator_values",
+          "--skip", "platform_store_builds_opaque_account_handle",
+          "--skip", "platform_store_unit_test_io_is_noninteractive_and_fail_closed",
+          "--skip", "unmeasured_platform_backend_rejects_authorization_and_every_io_shape",
+          "--skip", "desktop_store_without_runtime_round_trip_stays_unverified",
+          "--skip", "class_persistence_report_shape_is_redacted",
+        ],
+      ),
     }),
   defineModule({
       id: "rust.platform.secure-mesh-secret-store.backend-macos.runtime-state",

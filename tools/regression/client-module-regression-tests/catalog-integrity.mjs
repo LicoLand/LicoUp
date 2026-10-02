@@ -747,6 +747,27 @@ test("host classification separates portable coverage from native adapters", () 
     "rust.platform.secure-mesh-secret-store.backend-macos",
     "rust.platform.secure-mesh-secret-store.backend-macos.runtime-state",
   ]);
+  const macosBackend = CLIENT_MODULE_CATALOG.find(
+    (module) => module.id === "rust.platform.secure-mesh-secret-store.backend-macos",
+  );
+  const separator = macosBackend.command.args.indexOf("--");
+  const skippedTests = macosBackend.command.args
+    .slice(separator + 1)
+    .filter((argument, index, args) => args[index - 1] === "--skip");
+  assert.equal(
+    macosBackend.command.args[separator - 1],
+    "platform::secure_mesh_secret_store::tests::platform_backends::",
+  );
+  assert.equal(
+    skippedTests.includes("macos_local_authentication_is_never_enabled_inside_unit_tests"),
+    false,
+  );
+  assert.equal(
+    skippedTests.includes(
+      "platform_store_trait_session_dispatches_one_exact_presence_batch_to_macos_consumers",
+    ),
+    false,
+  );
 });
 
 test("shared module roots select composition without leaf-regression fanout", () => {
