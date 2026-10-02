@@ -45,8 +45,8 @@ jobs:
       - name: Select the author README fast path
         id: readme
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node tools/scripts/readme-fast-path.mjs classify --base "$BASE_SHA" --head "$HEAD_SHA"
       - name: Verify client gate topology
         if: steps.readme.outputs.readme_fast != 'true'
@@ -141,8 +141,8 @@ jobs:
       - run: npm run client:get
       - name: Run affected macOS target modules
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: npm run client:gate:verify -- --base "$BASE_SHA" --head "$HEAD_SHA" --target pr --execution target --host darwin
 
   target-win32:
@@ -168,8 +168,8 @@ jobs:
       - run: npm run client:get
       - name: Run affected Windows target modules
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: npm run client:gate:verify -- --base "$env:BASE_SHA" --head "$env:HEAD_SHA" --target pr --execution target --host win32
 
   client-required:
