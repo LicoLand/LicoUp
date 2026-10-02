@@ -379,6 +379,41 @@ test("shared Flutter and Rust manifests select their own technology families", (
   assert.deepEqual(ids(rust), ["rust.composition"]);
 });
 
+test("target-owned changes retain runnable hosts and exact target evidence obligations", () => {
+  const cases = [
+    [
+      "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/linux.rs",
+      "rust.platform.secure-mesh-secret-store.backend-linux",
+      ["linux"],
+    ],
+    [
+      "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/macos.rs",
+      "rust.platform.secure-mesh-secret-store.backend-macos",
+      ["darwin"],
+    ],
+    [
+      "crates/licoup-foundation/src/platform/file_security/windows_acl.rs",
+      "rust.platform.file-security.windows-acl",
+      ["win32"],
+    ],
+    [
+      "crates/licoup-native/src/domain/targets/platform_paths.rs",
+      "rust.domain.targets.platform-paths",
+      ["darwin", "linux", "win32"],
+    ],
+  ];
+  for (const [input, moduleId, targetEvidenceHosts] of cases) {
+    const module = selectModulesForChangedPaths([input])
+      .find(({ id }) => id === moduleId);
+    assert.ok(module, `${input} must select ${moduleId}`);
+    assert.deepEqual(module.regression.runnableHosts, ["darwin", "linux", "win32"]);
+    assert.deepEqual(module.regression.targetEvidenceHosts, targetEvidenceHosts);
+  }
+  const portable = CLIENT_MODULE_CATALOG.find(({ id }) =>
+    id === "regression.repository-local-info-hygiene");
+  assert.deepEqual(portable.regression.targetEvidenceHosts, []);
+});
+
 test("shared module roots select composition without leaf-regression fanout", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/core/mod.rs",

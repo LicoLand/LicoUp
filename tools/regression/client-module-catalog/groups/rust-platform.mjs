@@ -20,6 +20,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       id: "rust.platform.paths",
       kind: "rust-platform",
       summary: "Lexical home and data-root resolution with one scoped override",
+      targetEvidenceHosts: ["darwin", "linux", "win32"],
       inputs: [
         "crates/licoup-foundation/src/platform/paths.rs",
       ],
@@ -225,6 +226,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       id: "rust.platform.secure-mesh-secret-store.capability-ui",
       kind: "rust-platform",
       summary: "External compile-fail proof that presence capabilities cannot be forged",
+      targetEvidenceHosts: ["darwin"],
       inputs: [
         "crates/licoup-native/tests/macos_presence_capability_ui.rs",
         "crates/licoup-native/tests/ui/macos_presence_capability_forgery.rs",
@@ -236,6 +238,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       id: "rust.platform.secure-mesh-secret-store.capability-linux",
       kind: "rust-platform",
       summary: "Platform capability projection and Linux Secret Service runtime probing",
+      targetEvidenceHosts: ["linux"],
       inputs: [
         "crates/licoup-native/src/platform/secure_mesh_secret_store/capability.rs",
         "crates/licoup-native/src/platform/secure_mesh_secret_store/linux_secret_service.rs",
@@ -292,6 +295,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       id: "rust.platform.secure-mesh-secret-store.backend-linux",
       kind: "rust-platform",
       summary: "Linux Secret Service probe with unmeasured user-authorization fail-closed fallback",
+      targetEvidenceHosts: ["linux"],
       inputs: [
         "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/linux.rs",
         "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/fail_closed.rs",
@@ -305,6 +309,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       id: "rust.platform.secure-mesh-secret-store.backend-macos",
       kind: "rust-platform",
       summary: "macOS Keychain user-presence backend with one shared authorization context",
+      targetEvidenceHosts: ["darwin"],
       inputs: [
         "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/macos.rs",
         "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
@@ -316,6 +321,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       id: "rust.platform.secure-mesh-secret-store.backend-windows",
       kind: "rust-platform",
       summary: "Windows Credential Manager disabled until measured native user authorization exists",
+      targetEvidenceHosts: ["win32"],
       inputs: [
         "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/windows.rs",
         "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/fail_closed.rs",
@@ -481,6 +487,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       id: "rust.platform.file-security.atomic-replace",
       kind: "rust-platform",
       summary: "Atomic private replacement and safe cross-device staging",
+      targetEvidenceHosts: ["darwin", "linux"],
       inputs: [
         "crates/licoup-foundation/src/platform/file_security/atomic_replace.rs",
         "crates/licoup-foundation/src/platform/file_security/tests/atomic_replace.rs",
@@ -531,6 +538,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       id: "rust.platform.file-security.unix-hardening",
       kind: "rust-platform",
       summary: "Unix owner, mode, descriptor, inode, and safe system-symlink policy",
+      targetEvidenceHosts: ["darwin", "linux"],
       inputs: [
         "crates/licoup-foundation/src/platform/file_security/unix_hardening.rs",
         "crates/licoup-foundation/src/platform/file_security/tests/unix_hardening.rs",
@@ -541,6 +549,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       id: "rust.platform.file-security.windows-acl",
       kind: "rust-platform",
       summary: "Windows owner-rights ACL application with suppressed tool output",
+      targetEvidenceHosts: ["win32"],
       inputs: [
         "crates/licoup-foundation/src/platform/file_security/windows_acl.rs",
         "crates/licoup-foundation/src/platform/file_security/tests/windows_acl.rs",
@@ -2148,6 +2157,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       id: "rust.platform.data-home-relocation",
       kind: "rust-platform",
       summary: "Coordinated data-root relocation and its dedicated-process lifecycle proof",
+      targetEvidenceHosts: ["darwin", "linux", "win32"],
       inputs: [
         "crates/licoup-native/src/platform/data_home_relocation.rs",
         "crates/licoup-native/tests/data_home_process.rs",

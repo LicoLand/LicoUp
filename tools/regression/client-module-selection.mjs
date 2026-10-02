@@ -5,6 +5,7 @@ import { CLIENT_REGRESSION_STAGES } from "./client-regression-metadata.mjs";
 
 const compiledCatalogs = new WeakMap();
 const allowedPrograms = new Set(["cargo", "node"]);
+const allowedHosts = new Set(["darwin", "linux", "win32"]);
 
 export function normalizeRepoPath(value) {
   if (typeof value !== "string" || value.length === 0) {
@@ -105,6 +106,20 @@ export function validateClientModuleCatalog(catalog = CLIENT_MODULE_CATALOG) {
     if (typeof regression.batchKey !== "string" || regression.batchKey.length === 0 ||
         typeof regression.internalParallelism !== "boolean") {
       throw new Error(`client module regression batching metadata is invalid: ${module.id}`);
+    }
+    for (const [field, hosts] of [
+      ["runnableHosts", regression.runnableHosts],
+      ["targetEvidenceHosts", regression.targetEvidenceHosts],
+    ]) {
+      if (!Array.isArray(hosts) || !Object.isFrozen(hosts) ||
+          hosts.some((host) => !allowedHosts.has(host)) ||
+          new Set(hosts).size !== hosts.length) {
+        throw new Error(`client module ${field} is invalid: ${module.id}`);
+      }
+    }
+    if (regression.runnableHosts.length === 0 ||
+        regression.targetEvidenceHosts.some((host) => !regression.runnableHosts.includes(host))) {
+      throw new Error(`client module host coverage is invalid: ${module.id}`);
     }
   }
   return true;

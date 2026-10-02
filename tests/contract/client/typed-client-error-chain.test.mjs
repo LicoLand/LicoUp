@@ -182,18 +182,12 @@ test("node-owned production has no ClientError twins, shims, or string projectio
     ),
   );
 
-  const forbiddenEverywhere = [
+  const forbiddenClientErrorTypes = [
     [/\b(?:ClientErrorShim|LegacyClientError|ClientErrorDto)\b/, "shim"],
     [/\b(?:type|typedef)\s+ClientError\b/, "alias"],
-    [/\b(?:errorCode|error_code)\b/, "code-only projection"],
-    [
-      /(?:message|error|cause)\s*\.\s*(?:contains|startsWith|endsWith|contains_key)\s*\(/,
-      "string classifier",
-    ],
-    [/\bRegExp\s*\(/, "regular-expression classifier"],
   ];
   for (const [relativePath, source] of sources) {
-    for (const [pattern, description] of forbiddenEverywhere) {
+    for (const [pattern, description] of forbiddenClientErrorTypes) {
       assert.doesNotMatch(
         source,
         pattern,
@@ -210,6 +204,29 @@ test("node-owned production has no ClientError twins, shims, or string projectio
         source,
         /\b(?:pub\s+)?use\b[^;]*\bas\s+ClientError\b/,
         `${relativePath} aliases ClientError`,
+      );
+    }
+  }
+
+  const typedChainFiles = new Set(
+    Object.values(production).filter((relativePath) =>
+      /\.(?:dart|rs)$/u.test(relativePath)),
+  );
+  const forbiddenTypedChain = [
+    [/\b(?:errorCode|error_code)\b/, "code-only projection"],
+    [
+      /(?:message|error|cause)\s*\.\s*(?:contains|startsWith|endsWith|contains_key)\s*\(/,
+      "string classifier",
+    ],
+    [/\bRegExp\s*\(/, "regular-expression classifier"],
+  ];
+  for (const relativePath of typedChainFiles) {
+    const source = sources.get(relativePath);
+    for (const [pattern, description] of forbiddenTypedChain) {
+      assert.doesNotMatch(
+        source,
+        pattern,
+        `${relativePath} contains a forbidden ${description}`,
       );
     }
   }

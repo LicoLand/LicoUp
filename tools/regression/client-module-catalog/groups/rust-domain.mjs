@@ -258,6 +258,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.provider-quota",
       kind: "rust-domain",
       summary: "Provider-quota snapshot contract, per-provider sources, refresh scheduler, and retained store",
+      targetEvidenceHosts: ["darwin", "linux", "win32"],
       inputs: [
         "crates/licoup-native/src/domain/provider_quota.rs",
         "crates/licoup-native/src/domain/provider_quota/**",
@@ -2275,6 +2276,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.targets.scan-paths",
       kind: "rust-domain",
       summary: "Agent Scan Path Manifest: allowlisted discovery, lexical deny, unused-agent other-app skip",
+      targetEvidenceHosts: ["darwin", "linux", "win32"],
       inputs: [
         "crates/licoup-native/src/domain/targets/scan_paths.rs",
         "crates/licoup-foundation/src/platform/paths.rs",
@@ -2286,6 +2288,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.targets.binaries",
       kind: "rust-domain",
       summary: "Bounded platform executable discovery and source classification",
+      targetEvidenceHosts: ["darwin", "linux", "win32"],
       inputs: [
         "crates/licoup-native/src/domain/targets/binaries.rs",
         "crates/licoup-native/src/domain/targets/scan_paths.rs",
@@ -2315,6 +2318,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.targets.platform-paths",
       kind: "rust-domain",
       summary: "Cross-platform target configuration and evidence paths",
+      targetEvidenceHosts: ["darwin", "linux", "win32"],
       inputs: [
         "crates/licoup-native/src/domain/targets/platform_paths.rs",
         "crates/licoup-native/src/domain/targets/scan_paths.rs",
@@ -2336,6 +2340,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.targets.platform-integration",
       kind: "rust-domain",
       summary: "Cross-platform path, process, and executable integration projections",
+      targetEvidenceHosts: ["darwin", "linux", "win32"],
       inputs: [
         "crates/licoup-native/src/domain/targets/binaries.rs",
         "crates/licoup-native/src/domain/targets/platform_paths.rs",
@@ -2783,6 +2788,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.client-update",
       kind: "rust-domain",
       summary: "Cross-cutting client update selection, metadata, receipts, and aggregate regression",
+      targetEvidenceHosts: ["darwin", "linux"],
       inputs: [
         "crates/licoup-native/src/domain/client_update.rs",
         "crates/licoup-native/src/domain/client_update/constants.rs",
@@ -2869,6 +2875,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.client-update.native-runner",
       kind: "rust-domain",
       summary: "Safe signed archive extraction and redacted macOS app lifecycle",
+      targetEvidenceHosts: ["darwin"],
       inputs: [
         "crates/licoup-native/src/domain/client_update/native_runner/**",
         "crates/licoup-native/src/domain/client_update/tests/native_runner.rs",

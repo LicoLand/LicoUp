@@ -20,7 +20,10 @@ import { writePrivateJsonAtomic } from "../../../tools/scripts/client-state-migr
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const facadeRef = "tools/scripts/client-state-migration.mjs";
 const moduleRoot = "tools/scripts/client-state-migration";
-const MIGRATION_MODULE = "crates/licoup-native/src/domain/client_state_migration.rs";
+const MIGRATION_MODULE =
+  "crates/licoup-native/src/domain/client_state_migration/stores.rs";
+const STRATEGY_STORE =
+  "crates/licoup-native/src/domain/client_state_migration/strategy_store.rs";
 const CLIENT_STATE_POLICY = "crates/licoup-native/src/platform/client_state/policy.rs";
 const CLIENT_STATE_MIGRATION =
   "crates/licoup-native/src/platform/client_state/migration.rs";
@@ -830,14 +833,17 @@ test("exit codes stay distinct for healthy, behind, ahead, invalid, and usage", 
 });
 
 test("every mirrored durable shape and constant still matches the Rust admission", async () => {
-  const [migration, policy, migrationPlatform, conversationStore] = await Promise.all([
-    fs.promises.readFile(path.join(repoRoot, MIGRATION_MODULE), "utf8"),
-    fs.promises.readFile(path.join(repoRoot, CLIENT_STATE_POLICY), "utf8"),
-    fs.promises.readFile(path.join(repoRoot, CLIENT_STATE_MIGRATION), "utf8"),
-    fs.promises.readFile(path.join(repoRoot, CONVERSATION_STORE), "utf8"),
-  ]);
+  const [migration, strategyStore, policy, migrationPlatform, conversationStore] =
+    await Promise.all([
+      fs.promises.readFile(path.join(repoRoot, MIGRATION_MODULE), "utf8"),
+      fs.promises.readFile(path.join(repoRoot, STRATEGY_STORE), "utf8"),
+      fs.promises.readFile(path.join(repoRoot, CLIENT_STATE_POLICY), "utf8"),
+      fs.promises.readFile(path.join(repoRoot, CLIENT_STATE_MIGRATION), "utf8"),
+      fs.promises.readFile(path.join(repoRoot, CONVERSATION_STORE), "utf8"),
+    ]);
   // Whitespace is stripped so the binding survives any rustfmt layout.
   const compact = migration.replace(/\s+/gu, "");
+  const compactStrategyStore = strategyStore.replace(/\s+/gu, "");
 
   const jsonDocuments = new Map();
   const pattern =
@@ -875,9 +881,13 @@ test("every mirrored durable shape and constant still matches the Rust admission
   assert.ok(
     compact.includes(probeRoute("probe_mobile_relay", DURABLE_SHAPES["mobile-relay"].document)),
   );
-  assert.ok(compact.includes('root.join("client-state/adaptive-flywheel/strategies.sqlite3")'));
-  assert.ok(compact.includes('Some("3")=>Ok(AuthoritativeProbe{version:2,present:true,})'));
-  assert.ok(compact.includes('Some("2")=>Ok(AuthoritativeProbe{version:1,present:true,})'));
+  assert.ok(
+    compactStrategyStore.includes(
+      'root.join("client-state/adaptive-flywheel/strategies.sqlite3")',
+    ),
+  );
+  assert.ok(compactStrategyStore.includes('Some("3")=>Ok(Some(State::Current))'));
+  assert.ok(compactStrategyStore.includes('Some("2")=>Ok(Some(State::WorkflowRouted))'));
   assert.ok(compact.includes('root.join("client-state/conversations/conversations.sqlite3")'));
   assert.ok(compact.includes('root.join("client-state/conversations/migration-v5.complete")'));
   const completionSource =

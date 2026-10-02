@@ -37,7 +37,7 @@ const CLIENT_STATE_COLLECTIONS = Object.freeze([
   "local-server-assembly-transaction",
   "mcp-install-transactions",
 ]);
-const CONVERSATION_SCHEMA_VERSION = "15";
+const CONVERSATION_SCHEMA_VERSION = "18";
 const CONVERSATION_COMPLETION_MARKER = "schema=v5\nstatus=complete\n";
 const ADAPTIVE_FLYWHEEL_SCHEMA_VERSIONS = Object.freeze({ "3": 2, "2": 1 });
 const MOBILE_RELAY_SCHEMA_VERSION = 2;
