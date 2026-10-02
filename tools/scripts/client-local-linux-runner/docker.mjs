@@ -16,7 +16,6 @@ import {
   repoRoot,
   runnerArchitecture,
   runnerPlatform,
-  runnerRoot,
 } from "./constants.mjs";
 
 function command(command, args, options = {}) {
@@ -254,7 +253,21 @@ export function runnerDockerArgs({
 }
 
 export function runnerCacheRoot() {
-  const root = path.join(runnerRoot, "cache");
+  const commonDirectory = command("git", [
+    "rev-parse",
+    "--path-format=absolute",
+    "--git-common-dir",
+  ]);
+  if (commonDirectory.status !== 0) {
+    commandFailure("git_common_directory_unavailable", commonDirectory);
+  }
+  const gitCommonDirectory = path.resolve(output(commonDirectory));
+  if (path.basename(gitCommonDirectory) !== ".git") {
+    const error = new Error("git_common_directory_invalid");
+    error.code = "git_common_directory_invalid";
+    throw error;
+  }
+  const root = path.join(gitCommonDirectory, "licoup-local-linux-ci-cache");
   if (!existsSync(root)) mkdirSync(root, { recursive: true, mode: 0o700 });
   return root;
 }

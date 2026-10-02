@@ -15,6 +15,5 @@ export const supportedLanes = Object.freeze([
 ]);
 export const knownLanes = supportedLanes;
 export const buildRoot = path.join(repoRoot, "build");
-export const runnerRoot = path.join(buildRoot, "local-linux-ci");
 export const reportRoot = path.join(buildRoot, "reports");
 export const reportSchemaVersion = "licoup.client-local-linux-ci.v1";

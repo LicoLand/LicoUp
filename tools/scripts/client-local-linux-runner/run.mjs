@@ -69,6 +69,7 @@ function baseReceipt({ lane = null, profile = null }, status, extra = {}) {
     sourceCandidate: "tracked-and-untracked-nonignored-working-tree",
     hostHomeMounted: false,
     dockerSocketMounted: false,
+    sharedProjectToolCache: true,
     runtimeDataIncluded: false,
     rawLogsIncluded: false,
     ...extra,

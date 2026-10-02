@@ -129,6 +129,7 @@ export function runSelfTest() {
     deletedPathExcluded: true,
     linuxAmd64Required: true,
     dockerSocketMounted: false,
+    sharedProjectToolCache: true,
     rawLogsIncluded: false,
     androidBootstrapReady: true,
   });
