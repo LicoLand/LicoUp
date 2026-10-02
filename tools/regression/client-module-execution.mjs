@@ -70,8 +70,9 @@ function createTailCollector(limit = 4 * 1024 * 1024) {
   });
 }
 
-function diagnosticLogReference(batchId) {
-  const safeId = String(batchId || "batch")
+function diagnosticLogReference(batch) {
+  const stableId = batch.members.length === 1 ? batch.members[0] : batch.id;
+  const safeId = String(stableId || "batch")
     .replace(/[^a-z0-9_.-]+/giu, "_")
     .slice(0, 160) || "batch";
   return path.posix.join(PRIVATE_DIAGNOSTIC_DIRECTORY, `${safeId}.log`);
@@ -324,7 +325,7 @@ export async function runClientRegressionCommand(batch, {
   let status = "passed";
   let exitCode = null;
   let childPid = null;
-  const diagnosticReference = diagnosticLogReference(batch.id);
+  const diagnosticReference = diagnosticLogReference(batch);
   const diagnosticStdout = createTailCollector(PRIVATE_DIAGNOSTIC_LIMIT);
   const diagnosticStderr = createTailCollector(PRIVATE_DIAGNOSTIC_LIMIT);
   try {

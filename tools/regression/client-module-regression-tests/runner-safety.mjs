@@ -178,7 +178,7 @@ test("failed commands keep private diagnostics outside the public report and suc
     assert.equal(failed.status, "failed");
     assert.equal(failed.reason, "command_failed");
     assert.equal(failed.diagnosticLog,
-      "build/private/client-regression/synthetic-private-diagnostic.log");
+      "build/private/client-regression/synthetic.node.log");
     assert.equal(JSON.stringify(failed).includes("private stdout marker"), false);
     const diagnosticPath = path.join(isolatedRoot, failed.diagnosticLog);
     const diagnostic = await readFile(diagnosticPath, "utf8");
@@ -206,6 +206,32 @@ test("failed commands keep private diagnostics outside the public report and suc
     assert.equal(passed.status, "passed");
     assert.equal(Object.hasOwn(passed, "diagnosticLog"), false);
     await assert.rejects(access(diagnosticPath), { code: "ENOENT" });
+  } finally {
+    await rm(isolatedRoot, { recursive: true, force: true });
+  }
+});
+
+test("focused failures retain diagnostics by stable member instead of reused batch id", async () => {
+  await mkdir(path.join(repoRoot, "build"), { recursive: true });
+  const isolatedRoot = await mkdtemp(path.join(repoRoot, "build", "focused-diagnostic-"));
+  try {
+    const run = (member, marker) => runClientRegressionCommand(syntheticBatch({
+      id: "exact-1",
+      members: Object.freeze([member]),
+    }), {
+      repoRoot: isolatedRoot,
+      spawnImpl() { return syntheticChild({ code: 1, stderr: marker }); },
+    });
+    const first = await run("owner.one", "first private failure");
+    const second = await run("owner.two", "second private failure");
+    assert.equal(first.diagnosticLog,
+      "build/private/client-regression/owner.one.log");
+    assert.equal(second.diagnosticLog,
+      "build/private/client-regression/owner.two.log");
+    assert.match(await readFile(path.join(isolatedRoot, first.diagnosticLog), "utf8"),
+      /first private failure/u);
+    assert.match(await readFile(path.join(isolatedRoot, second.diagnosticLog), "utf8"),
+      /second private failure/u);
   } finally {
     await rm(isolatedRoot, { recursive: true, force: true });
   }
