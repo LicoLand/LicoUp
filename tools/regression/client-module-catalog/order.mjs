@@ -13,6 +13,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "regression.native-client-smoke",
   "regression.local-linux-runner-self-test",
   "regression.windows-target-runner-self-test",
+  "regression.android-sdk-bootstrap-self-test",
   "regression.flutter-format",
   "regression.rust-format",
   "regression.rust-clippy",

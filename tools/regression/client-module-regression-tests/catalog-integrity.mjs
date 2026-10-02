@@ -93,6 +93,14 @@ test("merge-readiness target runners execute their own registered self-tests", (
       args: ["tools/scripts/client-windows-target-runner.mjs", "self-test"],
       inputs: ["tools/scripts/client-windows-target-runner.mjs"],
     }],
+    ["regression.android-sdk-bootstrap-self-test", {
+      args: ["tools/scripts/client-android-sdk-bootstrap.mjs", "self-test"],
+      inputs: [
+        ".github/workflows/client-ci.yml",
+        "apps/desktop/docker/ubuntu-client.Dockerfile",
+        "tools/scripts/client-android-sdk-bootstrap.mjs",
+      ],
+    }],
   ]);
   for (const [id, contract] of expected) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);

@@ -174,6 +174,17 @@ export const REGRESSION_MODULES = Object.freeze([
     command: node("tools/scripts/client-windows-target-runner.mjs", ["self-test"], 2 * 60_000),
   }),
   defineModule({
+    id: "regression.android-sdk-bootstrap-self-test",
+    kind: "regression-infrastructure",
+    summary: "Pinned Android command-line tools, SDK packages, host admission, and local properties bootstrap contracts",
+    inputs: [
+      ".github/workflows/client-ci.yml",
+      "apps/desktop/docker/ubuntu-client.Dockerfile",
+      "tools/scripts/client-android-sdk-bootstrap.mjs",
+    ],
+    command: node("tools/scripts/client-android-sdk-bootstrap.mjs", ["self-test"], 60_000),
+  }),
+  defineModule({
     id: "regression.flutter-format",
     kind: "regression-infrastructure",
     summary: "Flutter production and test source formatting",
