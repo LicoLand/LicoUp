@@ -143,6 +143,7 @@ export function runnerDockerArgs({
   cacheRoot,
   outputRoot,
   cargoAuditVersion,
+  javaMajorVersion,
   moduleIds = [],
 }) {
   const npmCache = path.join(cacheRoot, "npm");
@@ -180,13 +181,16 @@ export function runnerDockerArgs({
       `CARGO_TARGET_DIR=/cache/cargo-audit-target cargo install --root /cache/cargo-audit ` +
       `cargo-audit --version ${cargoAuditVersion} --locked; fi`
     : ":";
-  const cargoDependencyBootstrap = ["rust", "dependencies", "android"].includes(lane) || profile === "engineering"
+  const cargoDependencyBootstrap = ["rust", "dependencies", "android"].includes(lane)
     ? [
       "cargo fetch --locked --manifest-path Cargo.toml",
       "cargo fetch --locked --manifest-path components/analytics/Cargo.toml",
       "cargo fetch --locked --manifest-path sdk/usage-source/Cargo.toml",
     ].map((command) => `${command} || cargo_dependency_status=$?`).join("; ")
     : ":";
+  if (!/^[0-9]{1,2}$/u.test(javaMajorVersion)) {
+    throw new Error("client_local_linux_runner_java_version_invalid");
+  }
   const androidBootstrap = lane === "android" || profile === "engineering"
     ? "node tools/scripts/client-android-sdk-bootstrap.mjs " +
       "--sdk-root /cache/android-sdk " +
@@ -199,6 +203,9 @@ export function runnerDockerArgs({
     }
     return ` --module ${id}`;
   }).join("");
+  const engineeringDependencyBootstrap = profile === "engineering"
+    ? `node tools/scripts/client-local-linux-runner.mjs prepare${moduleArgs}`
+    : ":";
   const invocation = profile === "engineering"
     ? "npm run client:gate:verify -- --base HEAD --head HEAD --target pr --execution direct --host linux" +
       moduleArgs
@@ -215,6 +222,10 @@ export function runnerDockerArgs({
     "git add --all",
     "git commit -q --no-gpg-sign -m candidate",
     "npm ci",
+    "java_home=$(dirname $(dirname $(readlink -f $(command -v java))))",
+    "[ -x \"$java_home/bin/java\" ]",
+    `\"$java_home/bin/java\" -version 2>&1 | grep -Eq '^openjdk version \"${javaMajorVersion}([.]|\")'`,
+    "export JAVA_HOME=$java_home",
     "export PATH=/cache/cargo-audit/bin:$PATH",
   ].join("; ");
   const copyReport = profile === "engineering"
@@ -230,6 +241,8 @@ export function runnerDockerArgs({
     `${dependencyBootstrap} || status=$?; ` +
     `cargo_dependency_status=0; ${cargoDependencyBootstrap}; ` +
     `[ "$status" -ne 0 ] || status=$cargo_dependency_status; ` +
+    `engineering_dependency_status=0; ${engineeringDependencyBootstrap} || engineering_dependency_status=$?; ` +
+    `[ "$status" -ne 0 ] || status=$engineering_dependency_status; ` +
     `android_status=0; ${androidBootstrap} || android_status=$?; ` +
     `[ "$status" -ne 0 ] || status=$android_status; ` +
     `gate_status=0; ${invocation} || gate_status=$?; ` +

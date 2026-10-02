@@ -21,7 +21,11 @@ import {
   runnerDockerArgs,
 } from "./docker.mjs";
 import { materializeCandidate } from "./snapshot.mjs";
-import { importEngineeringReport } from "./run.mjs";
+import {
+  importEngineeringReport,
+  prepareEngineeringDependencies,
+  selectedFlutterPackageRoots,
+} from "./run.mjs";
 
 function git(root, args) {
   return execFileSync("git", args, {
@@ -146,6 +150,12 @@ export async function runSelfTest() {
     profile: "engineering",
     moduleIds: [],
   });
+  assert.deepEqual(parseArgs(["prepare", "--module", "flutter.package.presentation-contract"]), {
+    command: "prepare",
+    lane: null,
+    profile: null,
+    moduleIds: ["flutter.package.presentation-contract"],
+  });
   assert.deepEqual(parseArgs([
     "run", "--profile", "engineering", "--module", "release.model-pricing",
   ]), {
@@ -172,6 +182,7 @@ export async function runSelfTest() {
     cacheRoot: mkdtempSync(path.join(os.tmpdir(), "licoup-linux-ci-cache-")),
     outputRoot: "/synthetic/output",
     cargoAuditVersion: "0.22.2",
+    javaMajorVersion: "17",
     androidPackages: [
       "platforms;android-33",
       "ndk;27.0.12077973",
@@ -201,12 +212,13 @@ export async function runSelfTest() {
     cacheRoot: mkdtempSync(path.join(os.tmpdir(), "licoup-linux-ci-cache-")),
     outputRoot: "/synthetic/output",
     cargoAuditVersion: "0.22.2",
+    javaMajorVersion: "17",
   });
   assert.match(focusedArgs.at(-1), /--host linux --module release\.model-pricing/u);
-  assert.match(focusedArgs.at(-1), /cargo fetch --locked --manifest-path Cargo\.toml/u);
-  assert.match(focusedArgs.at(-1), /components\/analytics\/Cargo\.toml/u);
-  assert.match(focusedArgs.at(-1), /sdk\/usage-source\/Cargo\.toml/u);
+  assert.match(focusedArgs.at(-1), /client-local-linux-runner\.mjs prepare --module release\.model-pricing/u);
   assert.match(focusedArgs.at(-1), /output\/private\/client-regression/u);
+  assert.match(focusedArgs.at(-1), /export JAVA_HOME=\$java_home/u);
+  assert.match(focusedArgs.at(-1), /openjdk version "17/u);
   const androidArgs = runnerDockerArgs({
     image: { tag: "synthetic:image" },
     lane: "android",
@@ -215,6 +227,7 @@ export async function runSelfTest() {
     cacheRoot: mkdtempSync(path.join(os.tmpdir(), "licoup-linux-ci-android-cache-")),
     outputRoot: "/synthetic/output",
     cargoAuditVersion: "0.22.2",
+    javaMajorVersion: "17",
   });
   try {
     assert.equal(androidArgs.some((arg) => arg.includes(
@@ -229,6 +242,48 @@ export async function runSelfTest() {
     }
   }
   testSnapshot();
+  assert.deepEqual(selectedFlutterPackageRoots([
+    "flutter.package.presentation-contract",
+    "flutter.package.presentation-runtime",
+    "flutter.package.presentation-flutter",
+  ]), [
+    "packages/presentation_contract",
+    "packages/presentation_flutter",
+    "packages/presentation_runtime",
+  ]);
+  const prepared = [];
+  assert.equal(await prepareEngineeringDependencies([
+    "flutter.package.presentation-contract",
+    "flutter.package.presentation-runtime",
+    "flutter.package.presentation-flutter",
+  ], async (command, commandArgs, cwd) => {
+    prepared.push([command, commandArgs, path.relative(process.cwd(), cwd)]);
+    return 0;
+  }), 0);
+  assert.deepEqual(prepared.map(([command, , cwd]) => [command, cwd]), [
+    ["flutter", "packages/presentation_contract"],
+    ["flutter", "packages/presentation_flutter"],
+    ["flutter", "packages/presentation_runtime"],
+  ]);
+  assert.equal(prepared.every(([, commandArgs]) =>
+    commandArgs.join(" ") === "pub get --enforce-lockfile"), true);
+  const completePreparation = [];
+  assert.equal(await prepareEngineeringDependencies([], async (command, commandArgs, cwd) => {
+    completePreparation.push([command, commandArgs, path.relative(process.cwd(), cwd)]);
+    return 0;
+  }), 0);
+  assert.deepEqual(completePreparation.filter(([command]) => command === "cargo")
+    .map(([, commandArgs]) => commandArgs.at(-1)), [
+    "Cargo.toml",
+    "components/analytics/Cargo.toml",
+    "sdk/usage-source/Cargo.toml",
+  ]);
+  assert.deepEqual(completePreparation.filter(([command]) => command === "flutter")
+    .map(([, , cwd]) => cwd), [
+    "packages/presentation_contract",
+    "packages/presentation_flutter",
+    "packages/presentation_runtime",
+  ]);
   testDiagnosticImport();
   testSharedProjectCache();
   assert.equal((await runAndroidSdkBootstrapSelfTest()).status, "passed");

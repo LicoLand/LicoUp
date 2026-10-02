@@ -25,6 +25,7 @@ import {
   runLocalClientDelivery,
   runLane,
   runClientGateStep,
+  selectDirectModules,
   selectTargetModules,
   targetReceiptResults,
   targetResultsCoverSelection,
@@ -541,6 +542,48 @@ test("focused target execution uses only requested target owners and validates t
     host: "win32",
     catalog: CLIENT_MODULE_CATALOG,
   }), /does not require evidence from this host/u);
+});
+
+test("focused direct execution preserves an explicitly requested unsupported-host owner", async () => {
+  const selectedId = "regression.documentation-governance";
+  const unsupportedHost = process.platform === "win32" ? "linux" : "win32";
+  const catalog = CLIENT_MODULE_CATALOG.map((module) => module.id === selectedId
+    ? Object.freeze({
+      ...module,
+      regression: Object.freeze({
+        ...module.regression,
+        runnableHosts: Object.freeze([unsupportedHost]),
+      }),
+    })
+    : module);
+  assert.deepEqual(selectDirectModules({
+    moduleIds: [selectedId],
+    host: process.platform,
+    catalog,
+  }).map((module) => module.id), [selectedId]);
+  let executed = [];
+  const code = await verifyClientGate([
+    "--base", "HEAD", "--target", "commit", "--execution", "direct",
+    "--host", process.platform, "--module", selectedId,
+  ], {
+    catalog,
+    output: { write() {} },
+    reportPath: null,
+    executor: async (modules) => {
+      executed = modules.map((module) => module.id);
+      return {
+        exitCode: 1,
+        report: {
+          complete: true,
+          status: "blocked",
+          results: [{ status: "blocked", reason: "unsupported_host", members: [selectedId] }],
+          compatibility: [],
+        },
+      };
+    },
+  });
+  assert.deepEqual(executed, [selectedId]);
+  assert.equal(code, 1);
 });
 
 test("target evidence rejects a revision that is not the clean checked-out head", async () => {

@@ -848,6 +848,14 @@ export function selectTargetModules({ moduleIds = [], paths = [], host, catalog 
   return withExecutionPrerequisites(requested, catalog);
 }
 
+export function selectDirectModules({ moduleIds = [], host, catalog }) {
+  if (moduleIds.length > 0) {
+    return withExecutionPrerequisites(selectModulesById(moduleIds, catalog), catalog);
+  }
+  return catalog.filter((module) =>
+    (module.regression.runnableHosts || ["darwin", "linux", "win32"]).includes(host));
+}
+
 export function createTargetEvidenceReceipt({ revisions, selected, result }) {
   const report = result.report || null;
   const passed = result.exitCode === 0 &&
@@ -877,13 +885,12 @@ export async function verifyClientGate(args, {
   const paths = changedPaths(revisions);
   const plan = classifyClientGatePaths(paths);
   validateClientModuleCatalog(catalog);
-  const directSelection = revisions.moduleIds.length > 0
-    ? withExecutionPrerequisites(selectModulesById(revisions.moduleIds, catalog), catalog)
-    : catalog;
   const modules = revisions.execution === "direct"
-    ? directSelection.filter((module) =>
-      (module.regression.runnableHosts || ["darwin", "linux", "win32"])
-        .includes(revisions.host))
+    ? selectDirectModules({
+      moduleIds: revisions.moduleIds,
+      host: revisions.host,
+      catalog,
+    })
     : catalog;
   if (revisions.execution === "local") {
     const verification = await verifyLocalClientGate({

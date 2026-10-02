@@ -16,6 +16,7 @@ import {
   DEFAULT_MAX_REPORT_JSON_BYTES,
 } from "../lib/safe-report-io.mjs";
 import { sanitizeError } from "../lib/sanitize-error.mjs";
+import { CLIENT_MODULE_CATALOG } from "../../regression/client-module-catalog.mjs";
 import { parseArgs } from "./cli.mjs";
 import {
   buildRoot,
@@ -45,6 +46,29 @@ function cargoAuditVersion() {
   const match = workflow.match(/cargo install cargo-audit --version ([0-9]+\.[0-9]+\.[0-9]+) --locked/u);
   if (!match) throw new Error("client_ci_cargo_audit_version_missing");
   return match[1];
+}
+
+function javaMajorVersion() {
+  const dockerfile = readFileSync(path.join(repoRoot, dockerfileRef), "utf8");
+  const match = dockerfile.match(/\bopenjdk-([0-9]+)-jdk-headless\b/u);
+  if (!match) throw new Error("client_linux_java_version_missing");
+  return match[1];
+}
+
+export function selectedFlutterPackageRoots(moduleIds, catalog = CLIENT_MODULE_CATALOG) {
+  const selectedIds = new Set(moduleIds);
+  const selected = moduleIds.length > 0
+    ? catalog.filter((module) => selectedIds.has(module.id))
+    : catalog;
+  const roots = new Set();
+  for (const module of selected) {
+    const args = module.command?.args || [];
+    const cwdIndex = args.indexOf("--cwd");
+    const root = cwdIndex >= 0 ? args[cwdIndex + 1] : "";
+    if (typeof root === "string" && /^packages\/[a-z0-9_-]+$/u.test(root) &&
+        existsSync(path.join(repoRoot, root, "pubspec.lock"))) roots.add(root);
+  }
+  return Object.freeze([...roots].sort());
 }
 
 function baseReceipt({ lane = null, profile = null }, status, extra = {}) {
@@ -85,7 +109,7 @@ function sanitizeLine(value) {
     .replaceAll(os.homedir(), "<home>");
 }
 
-function streamingCommand(command, args) {
+function streamingCommand(command, args, cwd = repoRoot) {
   return new Promise((resolve) => {
     const env = Object.fromEntries(Object.entries({
       PATH: process.env.PATH,
@@ -95,7 +119,7 @@ function streamingCommand(command, args) {
       DOCKER_CONFIG: process.env.DOCKER_CONFIG,
     }).filter(([, value]) => typeof value === "string" && value.length > 0));
     const child = spawn(command, args, {
-      cwd: repoRoot,
+      cwd,
       env,
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
@@ -118,6 +142,31 @@ function streamingCommand(command, args) {
     child.on("error", () => resolve(1));
     child.on("close", (code) => resolve(code ?? 1));
   });
+}
+
+export async function prepareEngineeringDependencies(moduleIds = [], execute = streamingCommand) {
+  const selectedIds = new Set(moduleIds);
+  const selected = moduleIds.length > 0
+    ? CLIENT_MODULE_CATALOG.filter((module) => selectedIds.has(module.id))
+    : CLIENT_MODULE_CATALOG;
+  const needsCargo = selected.some((module) =>
+    ["rust", "gradle"].includes(module.regression.toolchain));
+  const commands = needsCargo
+    ? [
+      ["cargo", ["fetch", "--locked", "--manifest-path", "Cargo.toml"], repoRoot],
+      ["cargo", ["fetch", "--locked", "--manifest-path", "components/analytics/Cargo.toml"], repoRoot],
+      ["cargo", ["fetch", "--locked", "--manifest-path", "sdk/usage-source/Cargo.toml"], repoRoot],
+    ]
+    : [];
+  for (const root of selectedFlutterPackageRoots(moduleIds)) {
+    commands.push(["flutter", ["pub", "get", "--enforce-lockfile"], path.join(repoRoot, root)]);
+  }
+  let status = 0;
+  for (const [command, args, cwd] of commands) {
+    const result = await execute(command, args, cwd);
+    if (result !== 0) status = result;
+  }
+  return status;
 }
 
 export function importEngineeringReport(outputRoot, destinationRoot = buildRoot) {
@@ -196,6 +245,7 @@ async function runSelection(selection) {
       cacheRoot: runnerCacheRoot(),
       outputRoot,
       cargoAuditVersion: cargoAuditVersion(),
+      javaMajorVersion: javaMajorVersion(),
       moduleIds,
     });
     const exitCode = await streamingCommand("docker", args);
@@ -232,6 +282,10 @@ export async function main(argv = process.argv.slice(2)) {
     const options = parseArgs(argv);
     if (options.command === "self-test") {
       process.stdout.write(`${JSON.stringify(await runSelfTest())}\n`);
+      return;
+    }
+    if (options.command === "prepare") {
+      process.exitCode = await prepareEngineeringDependencies(options.moduleIds || []);
       return;
     }
     if (options.command === "inspect") {

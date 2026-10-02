@@ -10,7 +10,18 @@ export function parseArgs(argv) {
     if (rest.length !== 0) invalid(`${command}_takes_no_arguments`);
     return Object.freeze({ command, lane: null });
   }
-  if (command !== "run") invalid("expected_inspect_run_or_self_test");
+  if (command === "prepare") {
+    const moduleIds = [];
+    for (let index = 0; index < rest.length; index += 2) {
+      if (rest[index] !== "--module" || index + 1 >= rest.length ||
+          !/^[a-z0-9][a-z0-9.-]+$/u.test(rest[index + 1])) {
+        invalid("prepare_modules_invalid");
+      }
+      moduleIds.push(rest[index + 1]);
+    }
+    return Object.freeze({ command, lane: null, profile: null, moduleIds });
+  }
+  if (command !== "run") invalid("expected_inspect_prepare_run_or_self_test");
   if (rest.length < 2) invalid("run_requires_lane_or_profile");
   if (rest[0] === "--profile" && rest[1] === "engineering") {
     const moduleIds = [];

@@ -95,6 +95,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends libdbus-1-dev pkg-config
       - run: npm ci
+      - name: Prepare registered engineering dependencies
+        run: |
+          test -x "$JAVA_HOME_17_X64/bin/java"
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+          node tools/scripts/client-local-linux-runner.mjs prepare
       - name: Bootstrap the pinned Android SDK
         run: |
           echo "ANDROID_HOME=$RUNNER_TEMP/licoup-android-sdk" >> "$GITHUB_ENV"
