@@ -13,6 +13,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -24,9 +25,9 @@ import {
   linuxProductRustVersion as rustVersion,
   linuxProductRustupVersion as rustupVersion,
 } from "./client-cli-vm/constants.mjs";
+import { CLIENT_GATE_SCHEMA_VERSION as schemaVersion } from "./client-gate-policy.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const schemaVersion = "licoup.client-gate.v1";
 const shaPattern = /^[a-f0-9]{40}$/u;
 const modulePattern = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/u;
 const targetPattern = /^[a-z0-9][a-z0-9._-]{0,127}$/u;
@@ -56,6 +57,7 @@ function runGit(args, options = {}) {
 
 export function parseArgs(argv) {
   if (argv.length === 1 && argv[0] === "self-test") return Object.freeze({ command: "self-test" });
+  if (argv.length === 1 && argv[0] === "recover") return Object.freeze({ command: "recover" });
   if (argv[0] !== "run") fail("windows_target_usage_invalid");
   const values = { command: "run", base: "", head: "", target: "", modules: [], config: "" };
   for (let index = 1; index < argv.length; index += 2) {
@@ -105,6 +107,52 @@ export function readPrivateTargetConfig(explicit) {
   const config = JSON.parse(readFileSync(configPath, "utf8"));
   if (!targetPattern.test(config.sshTarget || "")) fail("windows_target_config_invalid");
   return Object.freeze({ sshTarget: config.sshTarget });
+}
+
+function pendingStatePath() {
+  return path.join(repoRoot, "build", "private", "windows-target", "pending.json");
+}
+
+function readPendingState() {
+  try {
+    const value = JSON.parse(readFileSync(pendingStatePath(), "utf8"));
+    if (value.schemaVersion !== "licoup.client-windows-target.pending.v1" ||
+        !/^[a-f0-9]{24}$/u.test(value.nonce || "") ||
+        !shaPattern.test(value.base || "") || !shaPattern.test(value.head || "") ||
+        !["pr", "release"].includes(value.target) ||
+        !Array.isArray(value.modules) || value.modules.length === 0 ||
+        value.modules.some((id) => !modulePattern.test(id))) {
+      fail("windows_target_pending_state_invalid");
+    }
+    return Object.freeze({ ...value, modules: Object.freeze([...value.modules]) });
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function writePendingState(args, nonce) {
+  const destination = pendingStatePath();
+  mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 });
+  const temporary = `${destination}.tmp`;
+  writeFileSync(temporary, `${JSON.stringify({
+    schemaVersion: "licoup.client-windows-target.pending.v1",
+    nonce,
+    base: args.base,
+    head: args.head,
+    target: args.target,
+    modules: args.modules,
+  })}\n`, { mode: 0o600 });
+  chmodSync(temporary, 0o600);
+  renameSync(temporary, destination);
+}
+
+function clearPendingState() {
+  try {
+    unlinkSync(pendingStatePath());
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
 }
 
 function treeObjectIds(revision, cwd = repoRoot) {
@@ -208,7 +256,6 @@ $cache=Join-Path $env:TEMP 'LicoUpEngineeringCache'
 $repo=Join-Path $root 'candidate'
 $pack=Join-Path $root 'candidate.pack'
 $log=Join-Path $root 'gate.log'
-$preserve=$false
 try {
   New-Item -ItemType Directory -Path $cache,$repo -Force | Out-Null
   git init -q $repo
@@ -260,10 +307,20 @@ try {
   $vsRoot=& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1
   $vsDev=Join-Path $vsRoot 'Common7\Tools\VsDevCmd.bat'
   if(!$vsRoot -or !(Test-Path -LiteralPath $vsDev -PathType Leaf)){throw 'visual_cpp_environment_missing'}
-  Write-Output '{"event":"bootstrap-complete"}'
   $env:CARGO_BUILD_JOBS='2'
+  $cargoBin=Join-Path $env:CARGO_HOME 'bin'
+  $cargoExe=Join-Path $cargoBin 'cargo.exe'
+  if(!(Test-Path -LiteralPath $cargoExe -PathType Leaf)){throw 'cargo_executable_missing'}
+  $env:PATH=$cargoBin+';'+$nodeRoot+';'+$env:PATH
+  $cargoVersion=& $cargoExe +${rustVersion} --version
+  if($LASTEXITCODE -ne 0 -or [string]$cargoVersion -notmatch ${quotePowerShell(`^cargo ${rustVersion.replaceAll(".", "\\.")} `)}){throw 'cargo_version_preflight_failed'}
+  $cargoProbePath=Join-Path $root 'cargo-preflight.cjs'
+  [IO.File]::WriteAllText($cargoProbePath,'const{spawnSync}=require("node:child_process");const r=spawnSync("cargo",["+${rustVersion}","--version"],{shell:false,encoding:"utf8"});process.exit(r.status===0?0:1)',(New-Object Text.UTF8Encoding($false)))
+  & $nodeExe $cargoProbePath
+  if($LASTEXITCODE -ne 0){throw 'cargo_executable_preflight_failed'}
+  Write-Output '{"event":"bootstrap-complete"}'
   $npm=Join-Path $nodeRoot 'npm.cmd'
-  $command='call "'+$vsDev+'" -arch=x64 -host_arch=x64 >nul && set "PATH='+$nodeRoot+';'+$env:CARGO_HOME+'\bin;%PATH%" && set "CARGO_HOME='+$env:CARGO_HOME+'" && set "RUSTUP_HOME='+$env:RUSTUP_HOME+'" && cd /d "'+$repo+'" && "'+$npm+'" run client:gate:verify -- --base ${base} --head ${head} --target ${target} --execution target --host win32 > "'+$log+'" 2>&1'
+  $command='call "'+$vsDev+'" -arch=x64 -host_arch=x64 >nul && set "PATH='+$cargoBin+';'+$nodeRoot+';%PATH%" && set "CARGO_HOME='+$env:CARGO_HOME+'" && set "RUSTUP_HOME='+$env:RUSTUP_HOME+'" && set "CARGO_BUILD_JOBS=2" && cd /d "'+$repo+'" && "'+$npm+'" run client:gate:verify -- --base ${base} --head ${head} --target ${target} --execution target --host win32 > "'+$log+'" 2>&1'
   Write-Output '{"event":"check-start"}'
   cmd.exe /d /s /c $command
   $gateExit=$LASTEXITCODE
@@ -278,13 +335,9 @@ try {
   $wanted=@($expected|Sort-Object)
   if((ConvertTo-Json -Compress $actual) -ne (ConvertTo-Json -Compress $wanted)){throw 'target_module_selection_mismatch'}
   if($summary.head -ne ${quotePowerShell(head)} -or $summary.host -ne 'win32'){throw 'target_summary_binding_mismatch'}
-  $preserve=($gateExit -ne 0 -or !$summary.ok)
   [ordered]@{status=if($gateExit -eq 0 -and $summary.ok){'passed'}else{'failed'};exitCode=$gateExit;summary=$summary;abi='msvc';architecture='x64';cargoBuildJobs=2}|ConvertTo-Json -Compress -Depth 8
 } catch {
-  $preserve=$true
   [ordered]@{status='blocked';reason=if($_.Exception.Message -match '^[a-z0-9_]+$'){$_.Exception.Message}else{'windows_target_execution_failed'};abi='msvc';architecture='x64'}|ConvertTo-Json -Compress
-} finally {
-  if(!$preserve){Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue}
 }
 `;
 }
@@ -344,8 +397,109 @@ try{if(Test-Path -LiteralPath $log -PathType Leaf){[Convert]::ToBase64String([IO
   return true;
 }
 
+function cleanupRemoteRoot(config, nonce) {
+  const source = `$root=Join-Path $env:TEMP ${quotePowerShell(`LicoUpEngineering-${nonce}`)};Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue`;
+  spawnSync("ssh", [...sshOptions, config.sshTarget,
+    `powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPowerShell(source)}`], {
+    stdio: ["ignore", "ignore", "ignore"],
+  });
+}
+
+function remoteRunState(config, pending) {
+  const marker = `LicoUpEngineering-${pending.nonce}`;
+  const source = String.raw`$root=Join-Path $env:TEMP ${quotePowerShell(marker)}
+$log=Join-Path $root 'gate.log'
+$active=0
+foreach($process in @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue)){
+  if($process.CommandLine -match '-EncodedCommand\s+([A-Za-z0-9+/=]+)'){
+    try{$decoded=[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($Matches[1]));if($decoded -match ${quotePowerShell(marker)} -and $decoded -match 'client:gate:verify'){$active++}}catch{}
+  }
+}
+$summary=$null
+if(Test-Path -LiteralPath $log -PathType Leaf){
+  foreach($line in (Get-Content -LiteralPath $log -ErrorAction SilentlyContinue)){
+    try{$candidate=$line|ConvertFrom-Json -ErrorAction Stop;if($candidate.schemaVersion -eq ${quotePowerShell(schemaVersion)} -and $candidate.execution -eq 'target'){$summary=$candidate}}catch{}
+  }
+}
+$status=if($null -ne $summary){'completed'}elseif($active -gt 0){'running'}elseif(Test-Path -LiteralPath $root){'incomplete'}else{'missing'}
+[ordered]@{status=$status;activeRuns=$active;summary=$summary}|ConvertTo-Json -Compress -Depth 8`;
+  const result = spawnSync("ssh", [...sshOptions, config.sshTarget,
+    `powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPowerShell(source)}`], {
+    encoding: "utf8",
+    maxBuffer: 4 * 1024 * 1024,
+  });
+  if (result.status !== 0) return null;
+  for (const line of result.stdout.trim().split(/\r?\n/u).reverse()) {
+    try {
+      const value = JSON.parse(line);
+      if (["completed", "running", "incomplete", "missing"].includes(value.status)) return value;
+    } catch {}
+  }
+  return null;
+}
+
+function pendingMatches(args, pending) {
+  return args.base === pending.base && args.head === pending.head &&
+    args.target === pending.target &&
+    JSON.stringify([...args.modules].sort()) === JSON.stringify([...pending.modules].sort());
+}
+
+function validateRecoveredSummary(summary, pending) {
+  return summary?.schemaVersion === schemaVersion && summary.execution === "target" &&
+    summary.host === "win32" && summary.head === pending.head &&
+    JSON.stringify([...(summary.stepIds || [])].sort()) ===
+      JSON.stringify([...pending.modules].sort());
+}
+
+function recoverPendingRun(config, pending) {
+  const state = remoteRunState(config, pending);
+  if (!state) return blockedReceipt(pending, "windows_target_reconnect_failed");
+  if (state.status === "running") {
+    return blockedReceipt(pending, "windows_target_run_active");
+  }
+  if (state.status === "completed" && validateRecoveredSummary(state.summary, pending)) {
+    const passed = state.summary.ok === true;
+    const failureLogStored = passed
+      ? (cleanupRemoteRoot(config, pending.nonce), false)
+      : collectFailureLog(config, pending.nonce, pending.head);
+    clearPendingState();
+    return Object.freeze({
+      ...state.summary,
+      status: passed ? "passed" : "failed",
+      abi: "msvc",
+      architecture: "x64",
+      cargoBuildJobs: 2,
+      recovered: true,
+      failureLogStored,
+    });
+  }
+  const failureLogStored = state.status === "incomplete"
+    ? collectFailureLog(config, pending.nonce, pending.head)
+    : false;
+  if (state.status === "missing") cleanupRemoteRoot(config, pending.nonce);
+  clearPendingState();
+  return Object.freeze({
+    ...blockedReceipt(pending, state.status === "incomplete"
+      ? "windows_target_run_incomplete"
+      : "windows_target_run_missing"),
+    failureLogStored,
+  });
+}
+
+function recoverWindowsTarget() {
+  const pending = readPendingState();
+  if (!pending) fail("windows_target_pending_run_missing");
+  return recoverPendingRun(readPrivateTargetConfig(""), pending);
+}
+
 export async function runWindowsTarget(args) {
   const config = readPrivateTargetConfig(args.config);
+  const pending = readPendingState();
+  if (pending) {
+    return pendingMatches(args, pending)
+      ? recoverPendingRun(config, pending)
+      : blockedReceipt(args, "windows_target_other_candidate_pending");
+  }
   const actualHead = runGit(["rev-parse", "HEAD"]).trim().toLowerCase();
   const state = runGit(["status", "--porcelain=v1", "--untracked-files=all"]);
   if (actualHead !== args.head || state.length !== 0) fail("windows_target_source_not_clean_candidate");
@@ -363,27 +517,28 @@ export async function runWindowsTarget(args) {
       encoding: "utf8",
     });
     if (upload.status !== 0) {
-      collectFailureLog(config, nonce, args.head);
+      cleanupRemoteRoot(config, nonce);
       return blockedReceipt(args, "windows_target_transport_failed");
     }
     emitStage("upload-complete", { bytes: statSync(pack).size });
+    writePendingState(args, nonce);
     const execution = await executeRemote(config, executionScript({ ...args, nonce }));
     if (execution.status !== 0) {
-      return Object.freeze({
-        ...blockedReceipt(args, "windows_target_transport_failed"),
-        failureLogStored: collectFailureLog(config, nonce, args.head),
-      });
+      return recoverPendingRun(config, { ...args, nonce });
     }
     const envelope = parseRemoteEnvelope(execution.stdout);
     if (!envelope || envelope.status === "blocked") {
-      return Object.freeze({
+      const result = Object.freeze({
         ...blockedReceipt(args, envelope?.reason || "windows_target_receipt_missing"),
         failureLogStored: collectFailureLog(config, nonce, args.head),
       });
+      clearPendingState();
+      return result;
     }
     const failureLogStored = envelope.status === "failed"
       ? collectFailureLog(config, nonce, args.head)
-      : false;
+      : (cleanupRemoteRoot(config, nonce), false);
+    clearPendingState();
     return Object.freeze({
       ...envelope.summary,
       status: envelope.status,
@@ -430,8 +585,23 @@ async function selfTest() {
     assert.match(script, /VsDevCmd\.bat/u);
     assert.match(script, /candidate_not_clean/u);
     assert.match(script, /CARGO_BUILD_JOBS='2'/u);
+    assert.match(script, /cargo_executable_preflight_failed/u);
+    assert.match(script, /spawnSync\("cargo".*shell:false/u);
+    assert.doesNotMatch(script, /cargo\.cmd/u);
     assert.doesNotMatch(script, /sshTarget|windows-target\.json/u);
-    assert.deepEqual(parseArgs(["run", "--base", base, "--head", head, "--target", "pr", "--module", "rust.synthetic"]).modules, ["rust.synthetic"]);
+    const syntheticArgs = parseArgs(["run", "--base", base, "--head", head,
+      "--target", "pr", "--module", "rust.synthetic"]);
+    assert.deepEqual(syntheticArgs.modules, ["rust.synthetic"]);
+    const pending = { ...syntheticArgs, nonce: "0".repeat(24) };
+    assert.equal(pendingMatches(syntheticArgs, pending), true);
+    assert.equal(validateRecoveredSummary({
+      schemaVersion,
+      execution: "target",
+      host: "win32",
+      head,
+      stepIds: ["rust.synthetic"],
+    }, pending), true);
+    assert.deepEqual(parseArgs(["recover"]), { command: "recover" });
     assert.throws(() => parseArgs(["run", "--base", base, "--head", head, "--target", "commit", "--module", "rust.synthetic"]));
     return { ok: true, schemaVersion: "licoup.client-windows-target-runner.self-test.v1", exactCandidatePack: true, privateTransportConfig: true, msvcOwnerDiscovery: true };
   } finally {
@@ -443,7 +613,11 @@ async function main() {
   let args;
   try {
     args = parseArgs(process.argv.slice(2));
-    const result = args.command === "self-test" ? await selfTest() : await runWindowsTarget(args);
+    const result = args.command === "self-test"
+      ? await selfTest()
+      : args.command === "recover"
+        ? recoverWindowsTarget()
+        : await runWindowsTarget(args);
     process.stdout.write(`${JSON.stringify(result)}\n`);
     if (result.ok === false || ["failed", "blocked"].includes(result.status)) process.exitCode = 1;
   } catch (error) {

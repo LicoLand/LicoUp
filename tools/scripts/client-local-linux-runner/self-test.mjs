@@ -12,8 +12,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import {
-  assertLinuxEngineeringHost,
-  bootstrapAndroidSdk,
+  runAndroidSdkBootstrapSelfTest,
 } from "../client-android-sdk-bootstrap.mjs";
 import { parseArgs } from "./cli.mjs";
 import {
@@ -106,62 +105,7 @@ function testSharedProjectCache() {
   }
 }
 
-async function testAndroidBootstrapArguments() {
-  const fixture = mkdtempSync(path.join(os.tmpdir(), "licoup-linux-ci-android-bootstrap-"));
-  const toolsRoot = path.join(fixture, "tools");
-  const sdkRoot = path.join(fixture, "sdk");
-  const flutterRoot = path.join(fixture, "flutter");
-  const projectRoot = path.join(fixture, "project");
-  const dockerfile = path.join(fixture, "Dockerfile");
-  const calls = [];
-  try {
-    mkdirSync(toolsRoot);
-    mkdirSync(path.join(flutterRoot, "packages", "flutter_tools", "gradle"), { recursive: true });
-    mkdirSync(path.join(projectRoot, "android"), { recursive: true });
-    writeFileSync(path.join(toolsRoot, "source.properties"), "Pkg.Revision=12.0\n", "utf8");
-    writeFileSync(dockerfile, [
-      "ARG ANDROID_COMMAND_LINE_TOOLS_REVISION=11076708",
-      "ARG ANDROID_COMMAND_LINE_TOOLS_VERSION=12.0",
-      "ARG ANDROID_COMMAND_LINE_TOOLS_SHA256=2d2d50857e4eb553af5a6dc3ad507a17adf43d115264b1afc116f95c92e5e258",
-      "ARG ANDROID_PLATFORM_PACKAGE=platforms;android-33",
-      "ARG ANDROID_COMPAT_NDK_PACKAGE=ndk;27.0.12077973",
-      "ARG ANDROID_CI_NDK_PACKAGE=ndk;28.2.13676358",
-      "ARG ANDROID_PRIMARY_NDK_PACKAGE=ndk;30.0.14904198",
-      "",
-    ].join("\n"), "utf8");
-    const receipt = await bootstrapAndroidSdk({
-      sdk_root: sdkRoot,
-      command_line_tools_root: toolsRoot,
-      dockerfile,
-      flutter_root: flutterRoot,
-      project_root: projectRoot,
-    }, (command, args, options = {}) => {
-      calls.push({ command, args, input: options.input });
-      return { status: 0, stdout: "", stderr: "" };
-    });
-    assert.equal(receipt.status, "passed");
-    assert.deepEqual(calls.map(({ args }) => args), [
-      [`--sdk_root=${sdkRoot}`, "--licenses"],
-      [
-        `--sdk_root=${sdkRoot}`,
-        "platforms;android-33",
-        "ndk;27.0.12077973",
-        "ndk;28.2.13676358",
-        "ndk;30.0.14904198",
-      ],
-    ]);
-    assert.equal(calls[0].input.startsWith("y\n"), true);
-    assert.equal(readFileSync(path.join(projectRoot, "android", "local.properties"), "utf8"),
-      `sdk.dir=${sdkRoot}\nflutter.sdk=${flutterRoot}\n`);
-  } finally {
-    rmSync(fixture, { recursive: true, force: true });
-  }
-}
-
 export async function runSelfTest() {
-  assert.doesNotThrow(() => assertLinuxEngineeringHost("linux"));
-  assert.throws(() => assertLinuxEngineeringHost("darwin"), /android_sdk_bootstrap_linux_required/u);
-  assert.throws(() => assertLinuxEngineeringHost("win32"), /android_sdk_bootstrap_linux_required/u);
   assert.deepEqual(parseArgs(["run", "--lane", "rust"]), {
     command: "run",
     lane: "rust",
@@ -233,7 +177,7 @@ export async function runSelfTest() {
   }
   testSnapshot();
   testSharedProjectCache();
-  await testAndroidBootstrapArguments();
+  assert.equal((await runAndroidSdkBootstrapSelfTest()).status, "passed");
   return Object.freeze({
     ok: true,
     schemaVersion: "licoup.client-local-linux-ci.self-test.v1",
