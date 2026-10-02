@@ -44,16 +44,6 @@ function cargoAuditVersion() {
   return match[1];
 }
 
-function androidPackages() {
-  const workflow = readFileSync(path.join(repoRoot, ".github/workflows/client-ci.yml"), "utf8");
-  const packages = [...workflow.matchAll(/"((?:platforms|ndk);[a-zA-Z0-9._-]+)"/gu)]
-    .map((match) => match[1]);
-  if (packages.length === 0 || packages.some((value) => !/^(?:platforms|ndk);[a-zA-Z0-9._-]+$/u.test(value))) {
-    throw new Error("client_ci_android_packages_missing");
-  }
-  return Object.freeze(packages);
-}
-
 function baseReceipt({ lane = null, profile = null }, status, extra = {}) {
   return Object.freeze({
     ok: status === "passed",
@@ -180,7 +170,6 @@ async function runSelection(selection) {
       cacheRoot: runnerCacheRoot(),
       outputRoot,
       cargoAuditVersion: cargoAuditVersion(),
-      androidPackages: androidPackages(),
     });
     const exitCode = await streamingCommand("docker", args);
     const moduleRegressionReportImported = profile === "engineering"
@@ -214,7 +203,7 @@ export async function main(argv = process.argv.slice(2)) {
   try {
     const options = parseArgs(argv);
     if (options.command === "self-test") {
-      process.stdout.write(`${JSON.stringify(runSelfTest())}\n`);
+      process.stdout.write(`${JSON.stringify(await runSelfTest())}\n`);
       return;
     }
     if (options.command === "inspect") {

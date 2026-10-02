@@ -85,8 +85,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends lld-18 llvm-18 openjdk-17-jdk-headless \
     && rm -rf "/${APT_LISTS_ROOT_NAME}/lib/apt/lists"/*
 
-ARG ANDROID_COMMAND_LINE_TOOLS_REVISION=16111833
-ARG ANDROID_COMMAND_LINE_TOOLS_SHA256=0877a1d048fe4a24efe2eff536ca4223f7adeb58648bb81909d33c446918cfa8
+ARG ANDROID_COMMAND_LINE_TOOLS_REVISION=11076708
+ARG ANDROID_COMMAND_LINE_TOOLS_VERSION=12.0
+ARG ANDROID_COMMAND_LINE_TOOLS_SHA256=2d2d50857e4eb553af5a6dc3ad507a17adf43d115264b1afc116f95c92e5e258
 
 RUN set -eux; \
     android_archive="${BUILD_TEMP_ROOT}/android-command-line-tools.zip"; \
@@ -96,6 +97,8 @@ RUN set -eux; \
     printf '%s  %s\n' "${ANDROID_COMMAND_LINE_TOOLS_SHA256}" "${android_archive}" | sha256sum -c -; \
     mkdir -p "${INSTALL_ROOT}/android-command-line-tools/latest"; \
     unzip -q "${android_archive}" -d "${BUILD_TEMP_ROOT}/android-command-line-tools"; \
+    grep -Eq "^Pkg.Revision[[:space:]]*=[[:space:]]*${ANDROID_COMMAND_LINE_TOOLS_VERSION}$" \
+      "${BUILD_TEMP_ROOT}/android-command-line-tools/cmdline-tools/source.properties"; \
     mv "${BUILD_TEMP_ROOT}/android-command-line-tools/cmdline-tools"/* \
       "${INSTALL_ROOT}/android-command-line-tools/latest/"; \
     rm "${android_archive}"

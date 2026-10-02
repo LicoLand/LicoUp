@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
-  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -10,10 +9,10 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { bootstrapAndroidSdk } from "../client-android-sdk-bootstrap.mjs";
 import { parseArgs } from "./cli.mjs";
 import {
   inspectLocalDocker,
-  androidBootstrapScript,
   resolveRunnerCacheRoot,
   runnerDockerArgs,
 } from "./docker.mjs";
@@ -84,31 +83,55 @@ function testSharedProjectCache() {
   }
 }
 
-function testAndroidBootstrapArguments() {
+async function testAndroidBootstrapArguments() {
   const fixture = mkdtempSync(path.join(os.tmpdir(), "licoup-linux-ci-android-bootstrap-"));
-  const sdkmanager = path.join(fixture, "sdkmanager");
-  const capture = path.join(fixture, "argv.txt");
+  const toolsRoot = path.join(fixture, "tools");
+  const sdkRoot = path.join(fixture, "sdk");
+  const dockerfile = path.join(fixture, "Dockerfile");
+  const workflow = path.join(fixture, "client-ci.yml");
+  const calls = [];
   try {
-    writeFileSync(sdkmanager, "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$CAPTURE\"\n", "utf8");
-    chmodSync(sdkmanager, 0o700);
-    execFileSync("bash", ["-c", androidBootstrapScript([
-      "platforms;android-33",
-      "ndk;27.0.12077973",
-      "ndk;30.0.14904198",
-    ], sdkmanager)], {
-      env: { PATH: process.env.PATH, CAPTURE: capture },
-      stdio: ["ignore", "pipe", "pipe"],
+    mkdirSync(toolsRoot);
+    writeFileSync(path.join(toolsRoot, "source.properties"), "Pkg.Revision=12.0\n", "utf8");
+    writeFileSync(dockerfile, [
+      "ARG ANDROID_COMMAND_LINE_TOOLS_REVISION=11076708",
+      "ARG ANDROID_COMMAND_LINE_TOOLS_VERSION=12.0",
+      "ARG ANDROID_COMMAND_LINE_TOOLS_SHA256=2d2d50857e4eb553af5a6dc3ad507a17adf43d115264b1afc116f95c92e5e258",
+      "",
+    ].join("\n"), "utf8");
+    writeFileSync(workflow, [
+      "  android:",
+      "    run: |",
+      "      sdkmanager \"platforms;android-33\" \"ndk;27.0.12077973\" \"ndk;30.0.14904198\"",
+      "  dependencies:",
+      "",
+    ].join("\n"), "utf8");
+    const receipt = await bootstrapAndroidSdk({
+      sdk_root: sdkRoot,
+      command_line_tools_root: toolsRoot,
+      dockerfile,
+      workflow,
+    }, (command, args, options = {}) => {
+      calls.push({ command, args, input: options.input });
+      return { status: 0, stdout: "", stderr: "" };
     });
-    assert.deepEqual(readFileSync(capture, "utf8").trim().split("\n"), [
-      "--sdk_root=/cache/android-sdk --licenses",
-      "--sdk_root=/cache/android-sdk platforms;android-33 ndk;27.0.12077973 ndk;30.0.14904198",
+    assert.equal(receipt.status, "passed");
+    assert.deepEqual(calls.map(({ args }) => args), [
+      ["--sdk_root", sdkRoot, "--licenses"],
+      [
+        "--sdk_root", sdkRoot,
+        "platforms;android-33",
+        "ndk;27.0.12077973",
+        "ndk;30.0.14904198",
+      ],
     ]);
+    assert.equal(calls[0].input.startsWith("y\n"), true);
   } finally {
     rmSync(fixture, { recursive: true, force: true });
   }
 }
 
-export function runSelfTest() {
+export async function runSelfTest() {
   assert.deepEqual(parseArgs(["run", "--lane", "rust"]), {
     command: "run",
     lane: "rust",
@@ -165,11 +188,10 @@ export function runSelfTest() {
     cacheRoot: mkdtempSync(path.join(os.tmpdir(), "licoup-linux-ci-android-cache-")),
     outputRoot: "/synthetic/output",
     cargoAuditVersion: "0.22.2",
-    androidPackages: ["platforms;android-33", "ndk;27.0.12077973", "ndk;30.0.14904198"],
   });
   try {
     assert.equal(androidArgs.some((arg) => arg.includes(
-      path.posix.join("/", "opt", "android-command-line-tools", "latest", "bin", "sdkmanager"),
+      "node tools/scripts/client-android-sdk-bootstrap.mjs",
     )), true);
     assert.equal(androidArgs.some((arg) => arg.includes("npm run client:gate:android")), true);
   } finally {
@@ -181,7 +203,7 @@ export function runSelfTest() {
   }
   testSnapshot();
   testSharedProjectCache();
-  testAndroidBootstrapArguments();
+  await testAndroidBootstrapArguments();
   return Object.freeze({
     ok: true,
     schemaVersion: "licoup.client-local-linux-ci.self-test.v1",

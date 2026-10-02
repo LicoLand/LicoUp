@@ -131,31 +131,6 @@ function mount(source, target, readOnly = false) {
   return `type=bind,src=${source},dst=${target}${readOnly ? ",readonly" : ""}`;
 }
 
-function shellQuote(value) {
-  return `'${String(value).replaceAll("'", `'"'"'`)}'`;
-}
-
-const defaultAndroidSdkManager = path.posix.join(
-  "/", "opt", "android-command-line-tools", "latest", "bin", "sdkmanager",
-);
-
-export function androidBootstrapScript(
-  androidPackages,
-  sdkmanager = defaultAndroidSdkManager,
-) {
-  const packages = androidPackages.map((value) => {
-    if (!/^(?:platforms|ndk);[a-zA-Z0-9._-]+$/u.test(value)) {
-      throw new Error("client_ci_android_package_invalid");
-    }
-    return shellQuote(value);
-  }).join(" ");
-  const executable = shellQuote(sdkmanager);
-  return "set +o pipefail; yes | " + executable +
-    " --sdk_root=/cache/android-sdk --licenses >/dev/null; license_status=$?; " +
-    "set -o pipefail; [ \"$license_status\" -eq 0 ]; " +
-    `${executable} --sdk_root=/cache/android-sdk ${packages} < /dev/null`;
-}
-
 export function runnerDockerArgs({
   image,
   lane,
@@ -164,9 +139,7 @@ export function runnerDockerArgs({
   cacheRoot,
   outputRoot,
   cargoAuditVersion,
-  androidPackages,
 }) {
-  const containerRoot = path.posix.join("/", "root");
   const npmCache = path.join(cacheRoot, "npm");
   const cargoRegistry = path.join(cacheRoot, "cargo-registry");
   const cargoGit = path.join(cacheRoot, "cargo-git");
@@ -206,7 +179,9 @@ export function runnerDockerArgs({
     ? "npm run client:get"
     : ":";
   const androidBootstrap = lane === "android" || profile === "engineering"
-    ? androidBootstrapScript(androidPackages)
+    ? "node tools/scripts/client-android-sdk-bootstrap.mjs " +
+      "--sdk-root /cache/android-sdk " +
+      "--command-line-tools-root /opt/android-command-line-tools/latest"
     : ":";
   const invocation = profile === "engineering"
     ? "npm run client:gate:verify -- --base HEAD --head HEAD --target pr --execution direct --host linux"
@@ -249,7 +224,7 @@ export function runnerDockerArgs({
     "--env", "CI=true",
     "--env", "HOME=/root",
     "--env", "npm_config_cache=/cache/npm",
-    "--env", `CARGO_HOME=${containerRoot}/.cargo`,
+    "--env", "CARGO_HOME=/root/.cargo",
     "--env", "CARGO_BUILD_JOBS=3",
     "--env", "RUST_TEST_THREADS=3",
     "--env", "CARGO_TARGET_DIR=/workspace/build/crates/licoup-native/target",
@@ -261,8 +236,8 @@ export function runnerDockerArgs({
     ...sourceDelegation,
     "--mount", mount(candidateRoot, "/candidate", true),
     "--mount", mount(npmCache, "/cache/npm"),
-    "--mount", mount(cargoRegistry, `${containerRoot}/.cargo/registry`),
-    "--mount", mount(cargoGit, `${containerRoot}/.cargo/git`),
+    "--mount", mount(cargoRegistry, "/root/.cargo/registry"),
+    "--mount", mount(cargoGit, "/root/.cargo/git"),
     "--mount", mount(cargoTarget, "/workspace/build/crates/licoup-native/target"),
     "--mount", mount(cargoAuditRoot, "/cache/cargo-audit"),
     "--mount", mount(cargoAuditTarget, "/cache/cargo-audit-target"),
