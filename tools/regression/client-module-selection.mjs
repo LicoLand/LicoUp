@@ -7,6 +7,21 @@ const compiledCatalogs = new WeakMap();
 const allowedPrograms = new Set(["cargo", "node"]);
 const allowedHosts = new Set(["darwin", "linux", "win32"]);
 
+export function partitionModulesByRunnableHost(modules, host) {
+  if (!Array.isArray(modules)) throw new Error("client modules must be an array");
+  if (!allowedHosts.has(host)) throw new Error("client module execution host is unsupported");
+  const runnable = [];
+  const unsupported = [];
+  for (const module of modules) {
+    if (module?.regression?.runnableHosts?.includes(host)) runnable.push(module);
+    else unsupported.push(module);
+  }
+  return Object.freeze({
+    runnable: Object.freeze(runnable),
+    unsupported: Object.freeze(unsupported),
+  });
+}
+
 export function normalizeRepoPath(value) {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error("repository path must be a non-empty string");

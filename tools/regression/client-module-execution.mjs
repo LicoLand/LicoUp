@@ -3,6 +3,7 @@ import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { planClientRegressionBatches } from "./client-regression-batching.mjs";
+import { partitionModulesByRunnableHost } from "./client-module-selection.mjs";
 import {
   CLIENT_REGRESSION_STAGES,
   defaultRegressionCapacities,
@@ -586,9 +587,11 @@ export async function executeClientModules(modules, {
   reportPath = null,
   runKind = "complete",
   compatibilityRunner = async () => [],
+  host = process.platform,
 } = {}) {
   if (!Array.isArray(modules)) throw new Error("client modules must be an array");
-  const batches = planClientRegressionBatches(modules, {
+  const hostSelection = partitionModulesByRunnableHost(modules, host);
+  const batches = planClientRegressionBatches(hostSelection.runnable, {
     catalog,
     narrow: runKind === "retry",
   });
@@ -605,6 +608,19 @@ export async function executeClientModules(modules, {
   const emitSettlement = (result) => {
     output.write(`[client-regression] ${result.id}: ${result.status}\n`);
   };
+  const unsupportedResults = hostSelection.unsupported.map((module) => Object.freeze({
+    id: `unsupported-host.${module.id}`,
+    stage: module.regression.stage,
+    lane: module.regression.lane,
+    toolchain: module.regression.toolchain,
+    status: "blocked",
+    reason: "unsupported_host",
+    durationMs: 0,
+    members: Object.freeze([module.id]),
+    metrics: Object.freeze({}),
+  }));
+  unsupportedResults.forEach(emitSettlement);
+  results.push(...unsupportedResults);
   const merge = (execution) => {
     recordResults(execution.results);
     concurrency.maximumWeight = Math.max(concurrency.maximumWeight, execution.concurrency.maximumWeight);

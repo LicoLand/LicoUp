@@ -236,16 +236,32 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustIntegrationTest("secret_bytes_ui"),
     }),
   defineModule({
+      id: "rust.platform.secure-mesh-secret-store.capability-ui-common",
+      kind: "rust-platform",
+      summary: "Portable external dependency proof for sealed presence capability types",
+      inputs: [
+        "crates/licoup-native/tests/macos_presence_capability_ui.rs",
+      ],
+      command: rustIntegrationTest(
+        "macos_presence_capability_ui",
+        "sealed_presence_types_and_default_platform_dispatch_compile_as_an_ordinary_dependency",
+      ),
+    }),
+  defineModule({
       id: "rust.platform.secure-mesh-secret-store.capability-ui",
       kind: "rust-platform",
       summary: "External compile-fail proof that presence capabilities cannot be forged",
+      runnableHosts: ["darwin"],
       targetEvidenceHosts: ["darwin"],
       inputs: [
         "crates/licoup-native/tests/macos_presence_capability_ui.rs",
         "crates/licoup-native/tests/ui/macos_presence_capability_forgery.rs",
         "crates/licoup-native/tests/ui/macos_presence_capability_forgery.stderr",
       ],
-      command: rustIntegrationTest("macos_presence_capability_ui"),
+      command: rustIntegrationTest(
+        "macos_presence_capability_ui",
+        "presence_capabilities_cannot_be_forged_outside_the_library",
+      ),
     }),
   defineModule({
       id: "rust.platform.secure-mesh-secret-store.capability-linux",
@@ -302,12 +318,20 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/unsupported.rs",
         "crates/licoup-native/src/platform/secure_mesh_secret_store/tests/platform_backends.rs",
       ],
-      command: rustLayer("platform::secure_mesh_secret_store::tests::platform_backends::"),
+      command: rustLayer(
+        "platform::secure_mesh_secret_store::tests::platform_backends::",
+        [
+          "--skip", "desktop_store_without_runtime_round_trip_stays_unverified",
+          "--skip", "macos_local_authentication_is_never_enabled_inside_unit_tests",
+          "--skip", "platform_store_trait_session_dispatches_one_exact_presence_batch_to_macos_consumers",
+        ],
+      ),
     }),
   defineModule({
       id: "rust.platform.secure-mesh-secret-store.backend-linux",
       kind: "rust-platform",
       summary: "Linux Secret Service probe with unmeasured user-authorization fail-closed fallback",
+      runnableHosts: ["linux"],
       targetEvidenceHosts: ["linux"],
       inputs: [
         "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/linux.rs",
@@ -316,31 +340,37 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/secure_mesh_secret_store/tests/linux_secret_service.rs",
         "crates/licoup-native/src/platform/secure_mesh_secret_store/tests/support.rs",
       ],
-      command: rustLayer("platform::secure_mesh_secret_store::tests::linux_secret_service::"),
+      command: rustLayer(
+        "platform::secure_mesh_secret_store::tests::linux_secret_service::linux_runtime_failure_marker_is_consumed_once_before_service_recovery",
+      ),
     }),
   defineModule({
       id: "rust.platform.secure-mesh-secret-store.backend-macos",
       kind: "rust-platform",
       summary: "macOS Keychain user-presence backend with one shared authorization context",
+      runnableHosts: ["darwin"],
       targetEvidenceHosts: ["darwin"],
       inputs: [
         "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/macos.rs",
         "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
         "crates/licoup-native/src/platform/secure_mesh_secret_store/tests/platform_backends.rs",
       ],
-      command: rustLayer("platform::secure_mesh_secret_store::tests::platform_backends::"),
+      command: rustLayer("platform::secure_mesh_secret_store::tests::platform_backends::macos"),
     }),
   defineModule({
       id: "rust.platform.secure-mesh-secret-store.backend-windows",
       kind: "rust-platform",
       summary: "Windows Credential Manager disabled until measured native user authorization exists",
+      runnableHosts: ["win32"],
       targetEvidenceHosts: ["win32"],
       inputs: [
         "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/windows.rs",
         "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/fail_closed.rs",
         "crates/licoup-native/src/platform/secure_mesh_secret_store/tests/platform_backends.rs",
       ],
-      command: rustLayer("platform::secure_mesh_secret_store::tests::platform_backends::"),
+      command: rustLayer(
+        "platform::secure_mesh_secret_store::tests::platform_backends::desktop_store_without_runtime_round_trip_stays_unverified",
+      ),
     }),
   defineModule({
       id: "rust.platform.local-service.composition",
@@ -500,7 +530,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       id: "rust.platform.file-security.atomic-replace",
       kind: "rust-platform",
       summary: "Atomic private replacement and safe cross-device staging",
-      targetEvidenceHosts: ["darwin", "linux"],
+      targetEvidenceHosts: ["darwin", "linux", "win32"],
       inputs: [
         "crates/licoup-foundation/src/platform/file_security/atomic_replace.rs",
         "crates/licoup-foundation/src/platform/file_security/validation.rs",
@@ -554,6 +584,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       id: "rust.platform.file-security.unix-hardening",
       kind: "rust-platform",
       summary: "Unix owner, mode, descriptor, inode, and safe system-symlink policy",
+      runnableHosts: ["darwin", "linux"],
       targetEvidenceHosts: ["darwin", "linux"],
       inputs: [
         "crates/licoup-foundation/src/platform/file_security/unix_hardening.rs",
@@ -565,6 +596,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       id: "rust.platform.file-security.windows-acl",
       kind: "rust-platform",
       summary: "Windows owner-rights ACL application with suppressed tool output",
+      runnableHosts: ["win32"],
       targetEvidenceHosts: ["win32"],
       inputs: [
         "crates/licoup-foundation/src/platform/file_security/windows_acl.rs",

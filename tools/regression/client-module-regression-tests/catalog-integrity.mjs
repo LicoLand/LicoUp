@@ -30,6 +30,7 @@ import { RUST_CATALOG_CONVERGENCE_MODULES } from "../client-module-catalog/group
 import { RUST_COMPONENT_MODULES } from "../client-module-catalog/groups/rust-components.mjs";
 import { RUST_DOMAIN_MODULES } from "../client-module-catalog/groups/rust-domain.mjs";
 import { RUST_PLATFORM_MODULES } from "../client-module-catalog/groups/rust-platform.mjs";
+import { partitionModulesByRunnableHost } from "../client-module-selection.mjs";
 
 test("archive transport changes select owner and real extractor consumers", () => {
   for (const relativePath of [
@@ -670,33 +671,74 @@ test("target-owned changes retain runnable hosts and exact target evidence oblig
       "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/linux.rs",
       "rust.platform.secure-mesh-secret-store.backend-linux",
       ["linux"],
+      ["linux"],
     ],
     [
       "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/macos.rs",
       "rust.platform.secure-mesh-secret-store.backend-macos",
+      ["darwin"],
       ["darwin"],
     ],
     [
       "crates/licoup-foundation/src/platform/file_security/windows_acl.rs",
       "rust.platform.file-security.windows-acl",
       ["win32"],
+      ["win32"],
     ],
     [
       "crates/licoup-native/src/domain/targets/platform_paths.rs",
       "rust.domain.targets.platform-paths",
       ["darwin", "linux", "win32"],
+      ["darwin", "linux", "win32"],
+    ],
+    [
+      "crates/licoup-foundation/src/platform/file_security/atomic_replace.rs",
+      "rust.platform.file-security.atomic-replace",
+      ["darwin", "linux", "win32"],
+      ["darwin", "linux", "win32"],
     ],
   ];
-  for (const [input, moduleId, targetEvidenceHosts] of cases) {
+  for (const [input, moduleId, runnableHosts, targetEvidenceHosts] of cases) {
     const module = selectModulesForChangedPaths([input])
       .find(({ id }) => id === moduleId);
     assert.ok(module, `${input} must select ${moduleId}`);
-    assert.deepEqual(module.regression.runnableHosts, ["darwin", "linux", "win32"]);
+    assert.deepEqual(module.regression.runnableHosts, runnableHosts);
     assert.deepEqual(module.regression.targetEvidenceHosts, targetEvidenceHosts);
   }
   const portable = CLIENT_MODULE_CATALOG.find(({ id }) =>
     id === "regression.repository-local-info-hygiene");
   assert.deepEqual(portable.regression.targetEvidenceHosts, []);
+});
+
+test("host classification separates portable coverage from native adapters", () => {
+  for (const module of CLIENT_MODULE_CATALOG) {
+    for (const host of ["darwin", "linux", "win32"]) {
+      const partition = partitionModulesByRunnableHost([module], host);
+      assert.equal(partition.runnable.length + partition.unsupported.length, 1);
+      assert.equal(partition.runnable.includes(module),
+        module.regression.runnableHosts.includes(host));
+    }
+  }
+
+  const uiModules = selectModulesForChangedPaths([
+    "crates/licoup-native/tests/macos_presence_capability_ui.rs",
+  ]);
+  assert.deepEqual(ids(uiModules).filter((id) => id.includes("capability-ui")), [
+    "rust.platform.secure-mesh-secret-store.capability-ui-common",
+    "rust.platform.secure-mesh-secret-store.capability-ui",
+  ]);
+  assert.deepEqual(
+    partitionModulesByRunnableHost(uiModules, "linux").runnable
+      .filter((module) => module.id.includes("capability-ui"))
+      .map((module) => module.id),
+    ["rust.platform.secure-mesh-secret-store.capability-ui-common"],
+  );
+  assert.deepEqual(
+    partitionModulesByRunnableHost(uiModules, "linux").unsupported
+      .filter((module) => module.id.includes("capability-ui"))
+      .map((module) => module.id),
+    ["rust.platform.secure-mesh-secret-store.capability-ui"],
+  );
 });
 
 test("shared module roots select composition without leaf-regression fanout", () => {

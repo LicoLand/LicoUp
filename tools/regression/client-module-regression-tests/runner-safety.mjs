@@ -417,6 +417,31 @@ test("complete Node attribution retains independently passed members in the summ
   assert.deepEqual(result.failures.map((failure) => failure.members), [[failing]]);
 });
 
+test("an explicit module on the wrong host is blocked without executing", async () => {
+  const [module] = selectModulesById([
+    "rust.platform.secure-mesh-secret-store.backend-windows",
+  ]);
+  let commandRuns = 0;
+  const result = await executeClientModules([module], {
+    repoRoot,
+    catalog: [module],
+    host: "linux",
+    output: stringSink(),
+    async commandRunner() {
+      commandRuns += 1;
+      throw new Error("unsupported module must not execute");
+    },
+  });
+  assert.equal(commandRuns, 0);
+  assert.equal(result.exitCode, 1);
+  assert.deepEqual(result.report.results.map(({ status, reason, members }) =>
+    ({ status, reason, members })), [{
+    status: "blocked",
+    reason: "unsupported_host",
+    members: [module.id],
+  }]);
+});
+
 test("Rust command uses the managed target, native concurrency, and releases on failure", async () => {
   const module = selectModulesById(["rust.domain.agent-usage"])[0];
   const [batch] = planClientRegressionBatches([module]);
@@ -679,6 +704,8 @@ function graphModule(id, stage, {
       resources: Object.freeze(resources),
       internalParallelism: false,
       batchKey: `node:${id}`,
+      runnableHosts: Object.freeze(["darwin", "linux", "win32"]),
+      targetEvidenceHosts: Object.freeze([]),
     }),
   });
 }

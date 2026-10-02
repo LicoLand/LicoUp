@@ -2812,6 +2812,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.client-update",
       kind: "rust-domain",
       summary: "Cross-cutting client update selection, metadata, receipts, and aggregate regression",
+      runnableHosts: ["darwin", "linux"],
       targetEvidenceHosts: ["darwin", "linux"],
       inputs: [
         "crates/licoup-native/src/domain/client_update.rs",
@@ -2824,7 +2825,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/client_update/tests/support.rs",
         "crates/licoup-native/src/domain/client_update/verify.rs",
       ],
-      command: rustLayer("domain::client_update::tests::"),
+      command: rustLayer("domain::client_update::tests::", ["--skip", "native_runner::"]),
     }),
   defineModule({
       id: "rust.domain.client-update.signature-roles",
@@ -2899,6 +2900,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.client-update.native-runner",
       kind: "rust-domain",
       summary: "Safe signed archive extraction and redacted macOS app lifecycle",
+      runnableHosts: ["darwin"],
       targetEvidenceHosts: ["darwin"],
       inputs: [
         "crates/licoup-native/src/domain/client_update/native_runner/**",

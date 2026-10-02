@@ -1782,6 +1782,7 @@ export const FLUTTER_MODULES = Object.freeze([
         "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_sidebar_navigation.dart",
         "apps/desktop/lib/src/frontend/layout/profiles/desktop/**",
         "apps/desktop/lib/src/platform/layout/**",
+        "apps/desktop/lib/src/platform/mobile_relay/mobile_relay_json_store.dart",
         "apps/desktop/test/layout/fixtures/**",
         "apps/desktop/test/layout/layout_manager_file_repository_test.dart",
         "apps/desktop/test/layout/layout_manager_production_catalog_test.dart",

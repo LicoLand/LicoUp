@@ -86,6 +86,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.platform.secure-mesh-secret-store.authorization",
   "rust.platform.secure-mesh-secret-store.zeroizing-secret",
   "rust.platform.secure-mesh-secret-store.secret-bytes-ui",
+  "rust.platform.secure-mesh-secret-store.capability-ui-common",
   "rust.platform.secure-mesh-secret-store.capability-ui",
   "rust.platform.secure-mesh-secret-store.capability-linux",
   "rust.platform.secure-mesh-secret-store.ephemeral",

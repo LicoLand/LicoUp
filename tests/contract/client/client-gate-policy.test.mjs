@@ -544,15 +544,31 @@ test("focused target execution uses only requested target owners and validates t
 });
 
 test("target evidence rejects a revision that is not the clean checked-out head", async () => {
-  const parent = spawnSync("git", ["rev-parse", "HEAD^"], {
+  const tree = spawnSync("git", ["rev-parse", "HEAD^{tree}"], {
     cwd: process.cwd(),
     encoding: "utf8",
     shell: false,
   }).stdout.trim();
+  const differentHead = spawnSync("git", ["commit-tree", tree, "-p", "HEAD"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Synthetic Client Gate",
+      GIT_AUTHOR_EMAIL: "client-gate@example.invalid",
+      GIT_AUTHOR_DATE: "2000-01-01T00:00:00Z",
+      GIT_COMMITTER_NAME: "Synthetic Client Gate",
+      GIT_COMMITTER_EMAIL: "client-gate@example.invalid",
+      GIT_COMMITTER_DATE: "2000-01-01T00:00:00Z",
+    },
+    input: "synthetic different candidate\n",
+    shell: false,
+  }).stdout.trim();
+  assert.match(differentHead, /^[a-f0-9]{40}$/u);
   await assert.rejects(
     verifyClientGate([
-      "--base", parent,
-      "--head", parent,
+      "--base", differentHead,
+      "--head", differentHead,
       "--target", "pr",
       "--execution", "target",
       "--host", process.platform,

@@ -640,7 +640,8 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
   assert.equal(skillHub.command.args.at(-1), "domain::skill_hub::tests");
   assert.equal(optionalCollaboration.command.args.at(-1),
     "domain::collaboration_plugin");
-  assert.equal(clientUpdate.command.args.at(-1), "domain::client_update::tests::");
+  assert.ok(clientUpdate.command.args.includes("domain::client_update::tests::"));
+  assert.deepEqual(clientUpdate.command.args.slice(-3), ["--", "--skip", "native_runner::"]);
 });
 
 test("foundation and security modules retain exact narrow command filters", () => {
@@ -958,7 +959,7 @@ test("client update leaves retain exact narrow regression filters", () => {
   ]);
   for (const [moduleId, filter] of filters) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === moduleId);
-    assert.equal(module.command.args.at(-1), filter);
+    assert.ok(module.command.args.includes(filter));
   }
   const sourceBundle = CLIENT_MODULE_CATALOG.find((candidate) =>
     candidate.id === sourceBundleId);
