@@ -8,8 +8,10 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -27,17 +29,52 @@ function fail(code) {
 }
 
 function parseArgs(argv) {
-  const options = { dockerfile: defaultDockerfile, workflow: defaultWorkflow };
+  const options = {
+    dockerfile: defaultDockerfile,
+    workflow: defaultWorkflow,
+    project_root: path.join(repoRoot, "apps", "desktop"),
+  };
   for (let index = 0; index < argv.length; index += 2) {
     const key = argv[index];
     const value = argv[index + 1];
-    if (!value || !["--sdk-root", "--command-line-tools-root", "--dockerfile", "--workflow"].includes(key)) {
+    if (!value || ![
+      "--sdk-root",
+      "--command-line-tools-root",
+      "--dockerfile",
+      "--workflow",
+      "--project-root",
+      "--flutter-root",
+    ].includes(key)) {
       fail("android_sdk_bootstrap_usage");
     }
     options[key.slice(2).replaceAll("-", "_")] = path.resolve(value);
   }
   if (!options.sdk_root) fail("android_sdk_root_required");
   return Object.freeze(options);
+}
+
+function resolveFlutterRoot(options, runCommand) {
+  const configured = options.flutter_root || process.env.FLUTTER_ROOT;
+  if (configured) return path.resolve(configured);
+  const which = runCommand("which", ["flutter"]);
+  if (which.status !== 0 || !String(which.stdout || "").trim()) fail("flutter_root_unavailable");
+  return path.dirname(path.dirname(realpathSync(String(which.stdout).trim().split(/\r?\n/u)[0])));
+}
+
+function writeAndroidLocalProperties(options, flutterRoot) {
+  if ([options.sdk_root, flutterRoot].some((value) => /[\r\n]/u.test(value))) {
+    fail("android_local_properties_path_invalid");
+  }
+  if (!existsSync(path.join(flutterRoot, "packages", "flutter_tools", "gradle"))) {
+    fail("flutter_root_invalid");
+  }
+  const androidRoot = path.join(options.project_root, "android");
+  if (!existsSync(androidRoot)) fail("android_project_root_invalid");
+  writeFileSync(
+    path.join(androidRoot, "local.properties"),
+    `sdk.dir=${options.sdk_root}\nflutter.sdk=${flutterRoot}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
 }
 
 export function readAndroidToolAuthority(dockerfile) {
@@ -120,12 +157,14 @@ export async function bootstrapAndroidSdk(options, runCommand = run) {
     await installTools(options.sdk_root, authority, runCommand);
   if (installedVersion(toolsRoot) !== authority.version) fail("android_command_line_tools_version_mismatch");
   const sdkmanager = path.join(toolsRoot, "bin", "sdkmanager");
-  const licenses = runCommand(sdkmanager, ["--sdk_root", options.sdk_root, "--licenses"], {
+  const sdkRootArgument = `--sdk_root=${options.sdk_root}`;
+  const licenses = runCommand(sdkmanager, [sdkRootArgument, "--licenses"], {
     input: "y\n".repeat(200),
   });
   if (licenses.status !== 0) fail("android_sdk_licenses_failed");
-  const install = runCommand(sdkmanager, ["--sdk_root", options.sdk_root, ...packages], { input: "" });
+  const install = runCommand(sdkmanager, [sdkRootArgument, ...packages], { input: "" });
   if (install.status !== 0) fail("android_sdk_packages_failed");
+  writeAndroidLocalProperties(options, resolveFlutterRoot(options, runCommand));
   return Object.freeze({
     ok: true,
     schemaVersion: "licoup.android-sdk-bootstrap.v1",

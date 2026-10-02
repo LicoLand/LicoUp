@@ -87,11 +87,15 @@ async function testAndroidBootstrapArguments() {
   const fixture = mkdtempSync(path.join(os.tmpdir(), "licoup-linux-ci-android-bootstrap-"));
   const toolsRoot = path.join(fixture, "tools");
   const sdkRoot = path.join(fixture, "sdk");
+  const flutterRoot = path.join(fixture, "flutter");
+  const projectRoot = path.join(fixture, "project");
   const dockerfile = path.join(fixture, "Dockerfile");
   const workflow = path.join(fixture, "client-ci.yml");
   const calls = [];
   try {
     mkdirSync(toolsRoot);
+    mkdirSync(path.join(flutterRoot, "packages", "flutter_tools", "gradle"), { recursive: true });
+    mkdirSync(path.join(projectRoot, "android"), { recursive: true });
     writeFileSync(path.join(toolsRoot, "source.properties"), "Pkg.Revision=12.0\n", "utf8");
     writeFileSync(dockerfile, [
       "ARG ANDROID_COMMAND_LINE_TOOLS_REVISION=11076708",
@@ -111,21 +115,25 @@ async function testAndroidBootstrapArguments() {
       command_line_tools_root: toolsRoot,
       dockerfile,
       workflow,
+      flutter_root: flutterRoot,
+      project_root: projectRoot,
     }, (command, args, options = {}) => {
       calls.push({ command, args, input: options.input });
       return { status: 0, stdout: "", stderr: "" };
     });
     assert.equal(receipt.status, "passed");
     assert.deepEqual(calls.map(({ args }) => args), [
-      ["--sdk_root", sdkRoot, "--licenses"],
+      [`--sdk_root=${sdkRoot}`, "--licenses"],
       [
-        "--sdk_root", sdkRoot,
+        `--sdk_root=${sdkRoot}`,
         "platforms;android-33",
         "ndk;27.0.12077973",
         "ndk;30.0.14904198",
       ],
     ]);
     assert.equal(calls[0].input.startsWith("y\n"), true);
+    assert.equal(readFileSync(path.join(projectRoot, "android", "local.properties"), "utf8"),
+      `sdk.dir=${sdkRoot}\nflutter.sdk=${flutterRoot}\n`);
   } finally {
     rmSync(fixture, { recursive: true, force: true });
   }

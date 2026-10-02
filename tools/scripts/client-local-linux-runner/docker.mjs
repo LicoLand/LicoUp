@@ -181,7 +181,8 @@ export function runnerDockerArgs({
   const androidBootstrap = lane === "android" || profile === "engineering"
     ? "node tools/scripts/client-android-sdk-bootstrap.mjs " +
       "--sdk-root /cache/android-sdk " +
-      "--command-line-tools-root /opt/android-command-line-tools/latest"
+      "--command-line-tools-root /opt/android-command-line-tools/latest " +
+      "--flutter-root /opt/flutter"
     : ":";
   const invocation = profile === "engineering"
     ? "npm run client:gate:verify -- --base HEAD --head HEAD --target pr --execution direct --host linux"

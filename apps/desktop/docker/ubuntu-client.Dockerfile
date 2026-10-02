@@ -81,6 +81,8 @@ RUN set -eux; \
     rm "${BUILD_TEMP_ROOT}/rustup-init"; \
     rustup component add clippy rustfmt llvm-tools-preview --toolchain "${RUST_VERSION}"
 
+RUN chown -R 0:0 "${INSTALL_ROOT}/flutter"
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends lld-18 llvm-18 openjdk-17-jdk-headless \
     && rm -rf "/${APT_LISTS_ROOT_NAME}/lib/apt/lists"/*
