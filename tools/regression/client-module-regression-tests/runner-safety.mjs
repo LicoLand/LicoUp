@@ -370,6 +370,20 @@ test("aggregated Node tests attribute failure to module ids without retaining fi
     assert.deepEqual(result.attributedPassedMembers, ["module.passing"]);
     assert.equal(JSON.stringify(result).includes("private stack"), false);
     assert.equal(JSON.stringify(result).includes(directory), false);
+    const diagnostic = await readFile(path.join(repoRoot, result.diagnosticLog), "utf8");
+    assert.match(diagnostic, /node-test-private-diagnostic input=1 category=err_test_failure/u);
+    assert.match(diagnostic, /private stack/u);
+    assert.equal((await stat(path.join(repoRoot, result.diagnosticLog))).mode & 0o777, 0o600);
+    const report = createClientRegressionReport({
+      runKind: "focused",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:00:01.000Z",
+      durationMs: 1,
+      results: [result],
+      concurrency: {},
+    });
+    assert.equal(JSON.stringify(report).includes("private stack"), false);
+    assert.equal(JSON.stringify(report).includes(directory), false);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
