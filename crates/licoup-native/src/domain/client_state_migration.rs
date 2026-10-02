@@ -125,8 +125,18 @@ impl MigrationFrontier {
 pub struct DomainFrontier {
     pub domain_id: String,
     durability: Durability,
+    startup_scope: StartupScope,
     pub target_schema_version: u32,
     pub steps: Vec<MigrationEdge>,
+}
+
+/// Persistence and startup necessity are independent: optional feature state
+/// remains durable even when the current client cannot interpret it.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum StartupScope {
+    Core,
+    Feature,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
@@ -183,6 +193,7 @@ pub struct AdmissionResult {
     pub applied_domain_ids: Vec<String>,
     pub skipped_domain_ids: Vec<String>,
     pub pending_authorization_domain_ids: Vec<String>,
+    pub unavailable_feature_domain_ids: Vec<String>,
 }
 
 struct PlannedStep<'a> {
@@ -270,8 +281,16 @@ fn admit_with_credential_migration_disposition(
     let mut plan = Vec::new();
     let mut skipped = Vec::new();
     let mut pending_authorization = Vec::new();
+    let mut unavailable_features = BTreeSet::new();
     for domain in &frontier.domains {
-        let mut version = probe_domain(&marker_root, domain)?;
+        let Some(mut version) = startup_domain_result(
+            probe_domain(&marker_root, domain),
+            domain,
+            &mut unavailable_features,
+        )?
+        else {
+            continue;
+        };
         // A data root alone cannot prove that this account has no legacy
         // Keychain items. Only the explicit protected operation can complete
         // this domain; startup never reads secrets or opens a native dialog.
@@ -343,7 +362,15 @@ fn admit_with_credential_migration_disposition(
                 strategy_store::strategy_format_for_domain_version(domain.target_schema_version)?,
             )?;
         }
-        reconcile_current_marker(&marker_root, domain)?;
+        if startup_domain_result(
+            reconcile_current_marker(&marker_root, domain),
+            domain,
+            &mut unavailable_features,
+        )?
+        .is_none()
+        {
+            continue;
+        }
         for edge in &domain.steps {
             reconciled_current_domain |= reconcile_ledger(&mut ledger, domain, edge);
         }
@@ -353,6 +380,9 @@ fn admit_with_credential_migration_disposition(
     }
     let mut applied = BTreeSet::new();
     for item in plan {
+        if unavailable_features.contains(&item.domain.domain_id) {
+            continue;
+        }
         let authoritative = observed
             .get_mut(&item.domain.domain_id)
             .ok_or_else(|| anyhow!("migration_step_failed"))?;
@@ -366,12 +396,23 @@ fn admit_with_credential_migration_disposition(
             "migration_step_failed"
         );
         migration_failpoint("before-store")?;
-        apply_marker_step(&marker_root, item.domain, item.edge)?;
+        if startup_domain_result(
+            apply_marker_step(&marker_root, item.domain, item.edge),
+            item.domain,
+            &mut unavailable_features,
+        )?
+        .is_none()
+        {
+            continue;
+        }
         *authoritative = item.edge.to_schema_version;
-        ensure!(
-            probe_domain(&marker_root, item.domain)? == *authoritative,
-            "migration_postcondition_failed"
-        );
+        let postcondition = probe_domain(&marker_root, item.domain).and_then(|version| {
+            ensure!(version == *authoritative, "migration_postcondition_failed");
+            Ok(())
+        });
+        if startup_domain_result(postcondition, item.domain, &mut unavailable_features)?.is_none() {
+            continue;
+        }
         migration_failpoint("after-store")?;
         reconcile_ledger(&mut ledger, item.domain, item.edge);
         write_json_atomic(&ledger_path, &ledger).context("migration_ledger_invalid")?;
@@ -388,7 +429,26 @@ fn admit_with_credential_migration_disposition(
         applied_domain_ids: applied.into_iter().collect(),
         skipped_domain_ids: skipped,
         pending_authorization_domain_ids: pending_authorization,
+        unavailable_feature_domain_ids: unavailable_features.into_iter().collect(),
     })
+}
+
+// Optional state is never replaced by a default document during admission.
+// Its owner may use an in-memory default or disable that feature; diagnostics
+// continue to report the unreadable document instead of certifying it current.
+fn startup_domain_result<T>(
+    result: Result<T>,
+    domain: &DomainFrontier,
+    unavailable: &mut BTreeSet<String>,
+) -> Result<Option<T>> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(_) if domain.startup_scope == StartupScope::Feature => {
+            unavailable.insert(domain.domain_id.clone());
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 /// Metadata-only projection of the deferred upgrade. The completion marker
@@ -482,10 +542,14 @@ fn validate_ledger_reconciliation(
             .iter()
             .find(|domain| &domain.domain_id == domain_id)
             .ok_or_else(|| anyhow!("migration_ledger_invalid"))?;
-        let authoritative = observed
-            .get(domain_id)
-            .copied()
-            .ok_or_else(|| anyhow!("migration_ledger_invalid"))?;
+        let Some(authoritative) = observed.get(domain_id).copied() else {
+            ensure!(
+                domain.startup_scope == StartupScope::Feature,
+                "migration_ledger_invalid"
+            );
+            // Preserve this unavailable feature's ledger entry unchanged.
+            continue;
+        };
         ensure!(
             entry.schema_version <= authoritative
                 && entry.schema_version <= domain.target_schema_version,

@@ -240,6 +240,39 @@ function createCurrentConversationStore(database) {
   );
 }
 
+test("empty stores initialize and complete current stores can reconstruct only missing metadata", () => {
+  for (const seed of ["", "CREATE TABLE retained_fixture(value TEXT); INSERT INTO retained_fixture VALUES ('retained');"]) {
+    const database = new DatabaseSync(":memory:");
+    try {
+      database.exec(seed);
+      assert.equal(inspectConversationContract(database, currentConversationSchemaVersion()).version, null);
+    } finally { database.close(); }
+  }
+  for (const mutation of ["DROP TABLE schema_meta;", "DELETE FROM schema_meta WHERE key='version';"]) {
+    const database = new DatabaseSync(":memory:");
+    try {
+      createCurrentConversationStore(database);
+      database.exec(mutation);
+      assert.equal(inspectConversationContract(database, currentConversationSchemaVersion()).version, currentConversationSchemaVersion());
+      database.exec("DROP TABLE events;");
+      assert.throws(() => inspectConversationContract(database, currentConversationSchemaVersion()), /unsupported_state_shape/u);
+    } finally { database.close(); }
+  }
+});
+
+test("unused related tables and their rows coexist with the current Conversation owner", () => {
+  const database = new DatabaseSync(":memory:");
+  try {
+    createCurrentConversationStore(database);
+    database.exec(ownerSource("tests/fixtures/client_state_migration/retained_related_tables.sql"));
+    database.exec("INSERT INTO conversations(id,title,created_at,updated_at) VALUES ('kept','Synthetic retained title',1,1); INSERT INTO peer_bindings VALUES (x'01',x'02','kept','member','provider',1);");
+    assert.equal(inspectConversationContract(database, currentConversationSchemaVersion()).version, currentConversationSchemaVersion());
+    assert.equal(database.prepare("SELECT count(*) AS count FROM peer_bindings").get().count, 1);
+    database.exec("CREATE TRIGGER deny_current_insert BEFORE INSERT ON conversations BEGIN SELECT RAISE(ABORT,'blocked'); END;");
+    assert.throws(() => inspectConversationContract(database, currentConversationSchemaVersion()), /unsupported_state_shape/u);
+  } finally { database.close(); }
+});
+
 test("current continuity owner composes with Conversation and malformed effects remain refused", () => {
   const selected = selectModulesForChangedPaths(["crates/licoup-conversation/src/continuity/migrate.rs"])
     .filter((module) => module.id === "regression.client-state-migration");

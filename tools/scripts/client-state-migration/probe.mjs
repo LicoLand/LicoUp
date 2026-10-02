@@ -162,10 +162,8 @@ function conversationStoreProbe(root) {
     return { storeSchemaVersion: 0, present: legacyPresent, documentSchemaVersion: null };
   }
   const layout = withReadOnlyDatabase(database, (connection) => inspectConversationContract(connection, CONVERSATION_SCHEMA_VERSION));
-  // Native's metadata probe refuses an existing versionless SQLite file too.
-  requireValue(layout.version !== null, "unsupported_state_shape");
   if (!completionPresent) return { storeSchemaVersion: 0, present: true, documentSchemaVersion: null };
-  requireValue(!legacyPresent, "unsupported_state_shape");
+  requireValue(layout.version !== null && !legacyPresent, "unsupported_state_shape");
   requireValue(readBoundedText(completion) === CONVERSATION_COMPLETION_MARKER, "unsupported_state_shape");
   return { storeSchemaVersion: 1, present: true, documentSchemaVersion: null };
 }

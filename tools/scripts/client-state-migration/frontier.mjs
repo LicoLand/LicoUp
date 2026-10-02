@@ -62,6 +62,7 @@ export function validateFrontier(document) {
         DOMAIN_ID_PATTERN.test(domain.domainId) &&
         !domainIds.has(domain.domainId) &&
         (domain.durability === "durable" || domain.durability === "derived") &&
+        (domain.startupScope === "core" || domain.startupScope === "feature") &&
         Number.isInteger(domain.targetSchemaVersion) &&
         domain.targetSchemaVersion > 0 &&
         Array.isArray(domain.steps) &&
@@ -94,6 +95,7 @@ export function validateFrontier(document) {
     return Object.freeze({
       domainId: domain.domainId,
       durability: domain.durability,
+      startupScope: domain.startupScope,
       targetSchemaVersion: domain.targetSchemaVersion,
       steps: Object.freeze(steps),
     });

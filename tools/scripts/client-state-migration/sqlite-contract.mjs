@@ -106,11 +106,8 @@ export function requireTable(database, reference, table, variant = {}) {
   requireValue(same(actual, expected) && same(actualColumns, expectedColumns), "unsupported_state_shape");
   requireValue(same(definitions(database, table, "index"), definitions(reference, table, "index")), "unsupported_state_shape");
   requireValue(same(definitions(database, table, "trigger"), definitions(reference, table, "trigger")), "unsupported_state_shape");
-  const owned = tableNames(reference);
-  for (const child of tableNames(database)) {
-    if (owned.includes(child)) continue;
-    requireValue(database.prepare("SELECT count(*) AS count FROM pragma_foreign_key_list(?) WHERE \"table\"=?").get(child, table).count === 0, "unsupported_state_shape");
-  }
+  // Unowned relations constrain their own operations, not admission of this
+  // owner's required layout. Do not inspect or modify their retained rows.
 }
 
 function source(relative) {
@@ -232,15 +229,24 @@ function upgradeConversationLayout(database, version, text) {
 
 export function inspectConversationContract(database, currentVersion) {
   const names = tableNames(database);
-  if (!names.includes("schema_meta")) {
-    if (names.length === 0) return { version: null };
-    refused();
-  }
-  const version = database.prepare("SELECT value FROM schema_meta WHERE key='version'").get()?.value;
-  if (version !== currentVersion && !/^(?:[1-9]|10|11|12)$/u.test(version ?? "")) refused();
   const reference = conversationReference();
+  let version = names.includes("schema_meta")
+    ? database.prepare("SELECT value FROM schema_meta WHERE key='version'").get()?.value
+    : null;
+  const missingMarker = version == null;
+  let required;
   let upgraded;
   try {
+    if (missingMarker) {
+      required = continuityContract(reference, database);
+      if (!required.some((table) => table !== "schema_meta" && names.includes(table))) {
+        if (names.includes("schema_meta")) requireTable(database, reference, "schema_meta");
+        return { version: null };
+      }
+      // Reconstructible metadata is not a reason to reject a complete current layout.
+      version = currentVersion;
+    }
+    if (version !== currentVersion && !/^(?:[1-9]|10|11|12)$/u.test(version ?? "")) refused();
     if (version !== currentVersion) {
       for (const [table, columns] of [["schema_meta", ["key", "value"]], ["principals", ["id"]], ["conversations", ["id", "title"]], ["memberships", ["id"]], ["events", ["id"]]]) {
         const found = database.prepare("SELECT name FROM pragma_table_info(?)").all(table).map((row) => row.name);
@@ -250,7 +256,10 @@ export function inspectConversationContract(database, currentVersion) {
       upgradeConversationLayout(upgraded, Number(version), conversationSource());
     }
     const actual = upgraded ?? database;
-    for (const table of continuityContract(reference, actual)) requireTable(actual, reference, table);
+    for (const table of required ?? continuityContract(reference, actual)) {
+      if (missingMarker && table === "schema_meta" && !names.includes(table)) continue;
+      requireTable(actual, reference, table);
+    }
     return { version };
   } finally { upgraded?.close(); reference.close(); }
 }

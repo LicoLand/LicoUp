@@ -121,6 +121,109 @@ fn protected_custody_upgrade_defers_until_success_and_retries_without_reset() {
 }
 
 #[test]
+fn unavailable_optional_documents_preserve_bytes_and_do_not_refuse_core_startup() {
+    let cases = [
+        ("agent-tab-order", "client-state/agent-tab-order.json"),
+        (
+            "agent-tool-allowlist",
+            "client-state/agent-tool-allowlists.json",
+        ),
+        (
+            "appearance-presentation",
+            "client-state/appearance-preferences.json",
+        ),
+        ("current-view", "client-state/current-client-view.json"),
+        ("mobile-home-layout", "client-state/mobile-home-layout.json"),
+        ("mobile-relay", "client-state/mobile-relay/config.json"),
+        (
+            "skill-hub-preferences",
+            "client-state/skill-hub-preferences.json",
+        ),
+    ];
+    for raw in [
+        b"{broken".as_slice(),
+        br#"{"schemaVersion":999,"retained":"synthetic"}"#.as_slice(),
+    ] {
+        let root =
+            std::env::temp_dir().join(format!("licoup-optional-startup-{}", uuid::Uuid::new_v4()));
+        admit(&root).unwrap();
+        let before = fs::read(root.join("client-state/migrations/ledger.json")).unwrap();
+        for (_, relative) in cases {
+            let file = root.join(relative);
+            fs::create_dir_all(file.parent().unwrap()).unwrap();
+            licoup_foundation::platform::file_security::atomic_write_private_text(
+                &file,
+                std::str::from_utf8(raw).unwrap(),
+            )
+            .unwrap();
+        }
+        let result = admit(&root).unwrap();
+        assert_eq!(result.status, "ready");
+        assert_eq!(result.unavailable_feature_domain_ids.len(), cases.len());
+        for (domain, relative) in cases {
+            assert!(
+                result
+                    .unavailable_feature_domain_ids
+                    .iter()
+                    .any(|id| id == domain)
+            );
+            assert_eq!(fs::read(root.join(relative)).unwrap(), raw);
+        }
+        assert_eq!(
+            fs::read(root.join("client-state/migrations/ledger.json")).unwrap(),
+            before
+        );
+        // A broken core owner's data is still fatal, independently of optional state.
+        fs::write(root.join(".licoup-workspace.json"), b"{broken").unwrap();
+        assert!(admit(&root).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn conversation_marker_reconstruction_preserves_unowned_relations_on_admission() {
+    for mutation in [
+        "DROP TABLE schema_meta;",
+        "DELETE FROM schema_meta WHERE key='version';",
+    ] {
+        let root =
+            std::env::temp_dir().join(format!("licoup-marker-startup-{}", uuid::Uuid::new_v4()));
+        admit(&root).unwrap();
+        let path = root.join("client-state/conversations/conversations.sqlite3");
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(include_str!(
+                "../../../../../tests/fixtures/client_state_migration/retained_related_tables.sql"
+            ))
+            .unwrap();
+        connection.execute_batch("INSERT INTO conversations(id,title,created_at,updated_at) VALUES ('kept','Retained',1,1); INSERT INTO peer_bindings VALUES (x'01',x'02','kept','member','provider',1);").unwrap();
+        connection.execute_batch(mutation).unwrap();
+        drop(connection);
+        admit(&root).unwrap();
+        let connection = Connection::open(&path).unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM peer_bindings", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT value FROM schema_meta WHERE key='version'",
+                    [],
+                    |row| row.get::<_, String>(0)
+                )
+                .unwrap(),
+            licoup_conversation::store::CURRENT_SCHEMA_VERSION
+        );
+        drop(connection);
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
 fn admission_is_incremental_and_rerun_is_a_noop() {
     let root = std::env::temp_dir().join(format!("licoup-migration-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
@@ -236,9 +339,13 @@ fn current_marker_cannot_hide_a_reintroduced_legacy_store() {
     .unwrap();
     let before = fs::read(&config).unwrap();
 
-    assert_eq!(
-        admit(&root).unwrap_err().to_string(),
-        "unsupported_state_shape"
+    let admitted = admit(&root).unwrap();
+    assert_eq!(admitted.unavailable_feature_domain_ids, ["mobile-relay"]);
+    assert!(
+        !admitted
+            .skipped_domain_ids
+            .iter()
+            .any(|id| id == "mobile-relay")
     );
     assert_eq!(fs::read(&config).unwrap(), before);
     let _ = fs::remove_dir_all(root);
@@ -340,7 +447,7 @@ fn client_state_collection_adoption_preserves_items_and_adds_current_authority()
 }
 
 #[test]
-fn incompatible_mobile_relay_protocol_fails_before_mutating_the_store() {
+fn incompatible_mobile_relay_protocol_disables_feature_without_mutating_the_store() {
     let root = std::env::temp_dir().join(format!("licoup-migration-{}", uuid::Uuid::new_v4()));
     let path = root.join("client-state/mobile-relay/config.json");
     fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -352,13 +459,15 @@ fn incompatible_mobile_relay_protocol_fails_before_mutating_the_store() {
     });
     write_json_atomic(&path, &original).unwrap();
 
-    assert_eq!(
-        admit(&root).unwrap_err().to_string(),
-        "unsupported_state_shape"
-    );
+    let admitted = admit(&root).unwrap();
+    assert_eq!(admitted.unavailable_feature_domain_ids, ["mobile-relay"]);
     let after: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
     assert_eq!(after, original);
-    assert!(!root.join("client-state/migrations/ledger.json").exists());
+    assert!(
+        !root
+            .join("client-state/migrations/domain-state/mobile-relay.json")
+            .exists()
+    );
     let _ = fs::remove_dir_all(root);
 }
 

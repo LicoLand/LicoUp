@@ -212,6 +212,7 @@ function evaluateDomain({ root, domain, ledgerDocument, platform }) {
   const evaluated = Object.freeze({
     domainId: domain.domainId,
     durability: domain.durability,
+    startupScope: domain.startupScope,
     shape: observation.shape,
     targetSchemaVersion: domain.targetSchemaVersion,
     observedSchemaVersion,
@@ -290,6 +291,7 @@ export function migrationEnvelope({ command, report, mutations = [] }) {
     domains: report.domains.map((domain) => ({
       domainId: domain.domainId,
       durability: domain.durability,
+      startupScope: domain.startupScope,
       shape: domain.shape,
       targetSchemaVersion: domain.targetSchemaVersion,
       observedSchemaVersion: domain.observedSchemaVersion,

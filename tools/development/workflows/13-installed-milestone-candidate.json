@@ -19,24 +19,12 @@
   },
   "steps": [
     {
-      "en": "Build the integrated candidate",
-      "zh": "构建集成候选"
+      "en": "Run npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery on the integrated candidate; the canonical entry executes applicable checks, then build, install and launch through their existing owners.",
+      "zh": "在集成候选执行 npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery；统一入口实际执行适用检查，再调用已有属主构建、安装和启动。"
     },
     {
-      "en": "Package the macOS release artifact",
-      "zh": "打包 macOS 发行产物"
-    },
-    {
-      "en": "Install the built application into the Applications directory",
-      "zh": "把已构建应用安装到 Applications"
-    },
-    {
-      "en": "Launch the exact installed bundle",
-      "zh": "启动刚刚安装的那一份应用"
-    },
-    {
-      "en": "Stop and hand the running build to the maintainer for fine-tuning",
-      "zh": "停止并把运行中的应用交给维护者微调"
+      "en": "Observe the requested result only within explicit acceptance authority; launch alone does not prove usability. Stop after successful delivery.",
+      "zh": "仅在明确验收权限内观察要求的结果；启动返回不证明可用。成功交付后停止。"
     }
   ],
   "exit": {
@@ -44,8 +32,8 @@
     "zh": "指派的交付负责人把该里程碑的已安装构建及其微调结果交给维护者。安装验证本身不会启动下一个里程碑。"
   },
   "failure": {
-    "en": "A defect found here repairs the current milestone; it never activates the next. The next dependency-satisfied milestone starts only under an explicit finite programme assignment.",
-    "zh": "此阶段发现的缺陷在当前里程碑内修复，绝不激活下一个。下一个依赖已满足的里程碑仅在显式有限程序安排下启动。"
+    "en": "If the entry fails or authorized observation exposes a defect, identify whether the workflow missed required execution or the feature owner is faulty. Repair an actual workflow omission first when present; otherwise repair the feature. Run focused verification, reuse valid evidence, then run the same canonical entry again. This repairs the current milestone without activating the next.",
+    "zh": "入口失败或已授权观察发现缺陷时，先归因工作流是否漏执行必要检查或功能属主是否错误。确有工作流遗漏时先修遗漏，否则修功能；定向验证并复用有效证据后，再运行同一统一入口。此流程修复当前里程碑，不激活下一个。"
   },
   "boundary": {
     "en": "Build, install and launch belong to this explicitly assigned central delivery step, never to an ordinary engineering handoff. Driving the interface, user-scenario acceptance and Computer Use stay separate and are not implied; signing, notarization and publication keep their own authorization.",

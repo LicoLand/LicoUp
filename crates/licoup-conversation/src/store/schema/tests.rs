@@ -167,13 +167,40 @@ fn unsupported_schema_versions_are_rejected_before_schema_writes() {
 }
 
 #[test]
-fn missing_schema_version_is_rejected_without_writes() {
+fn missing_current_marker_is_reconstructed_without_losing_rows() {
+    for mutation in [
+        "DROP TABLE schema_meta;",
+        "DELETE FROM schema_meta WHERE key='version';",
+    ] {
+        let mut connection = Connection::open_in_memory().unwrap();
+        initialize_schema(&mut connection).unwrap();
+        connection.execute_batch("INSERT INTO conversations(id,title,created_at,updated_at) VALUES ('kept','Synthetic retained title',1,1);").unwrap();
+        connection.execute_batch(mutation).unwrap();
+        assert_eq!(
+            validate_migration_source(&connection).unwrap().as_deref(),
+            Some(CURRENT_SCHEMA_VERSION)
+        );
+        assert!(recorded_schema_version(&connection).unwrap().is_none());
+        validate_current_schema(&mut connection).unwrap();
+        assert_eq!(version(&connection), CURRENT_SCHEMA_VERSION);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT title FROM conversations WHERE id='kept'",
+                    [],
+                    |row| row.get::<_, String>(0)
+                )
+                .unwrap(),
+            "Synthetic retained title"
+        );
+    }
+}
+
+#[test]
+fn incomplete_owned_layout_without_marker_is_rejected_without_writes() {
     let mut connection = Connection::open_in_memory().unwrap();
     connection
-        .execute_batch(
-            "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
-             INSERT INTO schema_meta VALUES ('format', 'synthetic');",
-        )
+        .execute_batch("CREATE TABLE conversations(id TEXT PRIMARY KEY, title TEXT);")
         .unwrap();
     let before = layout(&connection);
     assert!(initialize_schema(&mut connection).is_err());
@@ -181,21 +208,54 @@ fn missing_schema_version_is_rejected_without_writes() {
 }
 
 #[test]
-fn application_tables_without_schema_metadata_are_rejected_without_writes() {
+fn empty_and_unrelated_stores_initialize_without_replacing_retained_data() {
+    for seed in [
+        "",
+        "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO schema_meta VALUES ('format','synthetic');",
+        "CREATE TABLE retained_fixture(value TEXT NOT NULL); INSERT INTO retained_fixture VALUES ('synthetic retained data');",
+    ] {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch(seed).unwrap();
+        assert_eq!(validate_migration_source(&connection).unwrap(), None);
+        validate_current_schema(&mut connection).unwrap();
+        assert_eq!(version(&connection), CURRENT_SCHEMA_VERSION);
+        if seed.contains("retained_fixture") {
+            let retained: String = connection
+                .query_row("SELECT value FROM retained_fixture", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(retained, "synthetic retained data");
+        }
+    }
+}
+
+#[test]
+fn unused_related_tables_survive_current_initialization_and_writes() {
     let mut connection = Connection::open_in_memory().unwrap();
+    initialize_schema(&mut connection).unwrap();
     connection
-        .execute_batch(
-            "CREATE TABLE retained_fixture(value TEXT NOT NULL);
-             INSERT INTO retained_fixture VALUES ('synthetic retained data');",
+        .execute_batch(include_str!(
+            "../../../../../tests/fixtures/client_state_migration/retained_related_tables.sql"
+        ))
+        .unwrap();
+    connection.execute_batch("INSERT INTO conversations(id,title,created_at,updated_at) VALUES ('kept','Retained',1,1); INSERT INTO events(id,conversation_id,sequence,kind,created_at) VALUES ('event','kept',1,'message',1); INSERT INTO peer_bindings VALUES (x'01',x'02','kept','member','provider',1); INSERT INTO peer_inbox VALUES (x'01',x'02','kept',x'03','event'); INSERT INTO peer_effect_intents VALUES ('effect','event',0,'kept','member','provider','{}',0);").unwrap();
+    let before = layout(&connection);
+    validate_current_schema(&mut connection).unwrap();
+    connection
+        .execute(
+            "UPDATE conversations SET title='Current owner edit' WHERE id='kept'",
+            [],
         )
         .unwrap();
-    let before = layout(&connection);
-    assert!(initialize_schema(&mut connection).is_err());
+    for table in ["peer_bindings", "peer_inbox", "peer_effect_intents"] {
+        assert_eq!(
+            connection
+                .query_row(&format!("SELECT count(*) FROM {table}"), [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+    }
     assert_eq!(layout(&connection), before);
-    let retained: String = connection
-        .query_row("SELECT value FROM retained_fixture", [], |row| row.get(0))
-        .unwrap();
-    assert_eq!(retained, "synthetic retained data");
 }
 
 #[test]

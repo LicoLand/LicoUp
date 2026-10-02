@@ -261,20 +261,9 @@ pub fn validate_table(
         definitions(source, name, "trigger")? == definitions(reference, name, "trigger")?,
         "unsupported_state_shape"
     );
-    // An unowned child table can otherwise prohibit a normal owner delete or
-    // attach cascaded writes to it, despite the parent's unchanged definition.
-    let owned = tables(reference)?;
-    for table in tables(source)? {
-        if owned.contains(&table) {
-            continue;
-        }
-        let incoming: i64 = source.query_row(
-            "SELECT count(*) FROM pragma_foreign_key_list(?1) WHERE \"table\"=?2",
-            [&table, name],
-            |row| row.get(0),
-        )?;
-        ensure!(incoming == 0, "unsupported_state_shape");
-    }
+    // Relationships declared by another table belong to that table. SQLite
+    // enforces them on the affected operation; their presence does not make
+    // this owner's required layout unusable for initialization or reads.
     Ok(())
 }
 
@@ -355,7 +344,7 @@ mod tests {
     }
 
     #[test]
-    fn independent_extra_data_is_allowed_but_incoming_constraints_are_not() {
+    fn unowned_relations_do_not_prevent_owner_admission() {
         let reference = Connection::open_in_memory().unwrap();
         reference
             .execute_batch("CREATE TABLE sample(id TEXT PRIMARY KEY);")
@@ -370,6 +359,18 @@ mod tests {
         source
             .execute_batch("CREATE TABLE child(id TEXT REFERENCES sample(id) ON DELETE RESTRICT);")
             .unwrap();
-        assert!(validate_table(&source, &reference, "sample", None).is_err());
+        validate_table(&source, &reference, "sample", None).unwrap();
+        source.execute_batch("PRAGMA foreign_keys=ON; INSERT INTO sample VALUES ('kept'); INSERT INTO child VALUES ('kept');").unwrap();
+        assert!(
+            source
+                .execute("DELETE FROM sample WHERE id='kept'", [])
+                .is_err()
+        );
+        assert_eq!(
+            source
+                .query_row("SELECT count(*) FROM child", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
     }
 }

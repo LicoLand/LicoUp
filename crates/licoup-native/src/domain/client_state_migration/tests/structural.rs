@@ -268,11 +268,7 @@ fn structural_defects_refuse_before_any_durable_admission_write() {
 #[test]
 fn strategy_retained_defaults_actions_and_auxiliary_tables_refuse_without_writes() {
     for (from, to, extra) in [
-        (
-            "ordinal INTEGER NOT NULL DEFAULT 0",
-            "ordinal INTEGER NOT NULL",
-            "",
-        ),
+        ("model TEXT NOT NULL DEFAULT ''", "model TEXT NOT NULL", ""),
         (
             "REFERENCES strategy_definitions(revision_digest) ON DELETE CASCADE",
             "REFERENCES strategy_definitions(revision_digest) ON DELETE CASCADE ON UPDATE CASCADE",

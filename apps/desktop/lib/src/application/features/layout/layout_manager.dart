@@ -70,10 +70,12 @@ final class LayoutManager {
   Stream<ApplicationChange> get changes => _changes.stream;
   Stream<ApplicationChange> get selectionChanges => _selectionChanges.stream;
 
-  Future<void> initialize() =>
-      _initialization ??= _enqueuePreferenceOperation(_initialize);
+  Future<void> initialize({bool loadStoredState = true}) =>
+      _initialization ??= _enqueuePreferenceOperation(
+        () => _initialize(loadStoredState: loadStoredState),
+      );
 
-  Future<void> _initialize() async {
+  Future<void> _initialize({required bool loadStoredState}) async {
     if (_preferences != null || _disposed) {
       return;
     }
@@ -86,6 +88,10 @@ final class LayoutManager {
         operationEpoch: epoch,
       ),
     );
+    if (!loadStoredState) {
+      _useCanonicalFallback(epoch);
+      return;
+    }
     try {
       final loaded = await _preferencesRepository.load().timeout(
         persistenceTimeout,
@@ -118,20 +124,23 @@ final class LayoutManager {
         ),
       );
     } catch (_) {
-      if (_isCurrent(epoch)) {
-        _preferences = _canonicalFallback;
-        _needsCanonicalPersistence = true;
-        _emit(
-          LayoutPreferenceState(
-            committedId: _preferredDefaultId,
-            effectiveId: _preferredDefaultId,
-            status: LayoutSelectionStatus.error,
-            operationEpoch: epoch,
-            errorCode: LayoutSelectionErrorCode.persistenceFailed,
-          ),
-        );
-      }
+      _useCanonicalFallback(epoch);
     }
+  }
+
+  void _useCanonicalFallback(int epoch) {
+    if (!_isCurrent(epoch)) return;
+    _preferences = _canonicalFallback;
+    _needsCanonicalPersistence = true;
+    _emit(
+      LayoutPreferenceState(
+        committedId: _preferredDefaultId,
+        effectiveId: _preferredDefaultId,
+        status: LayoutSelectionStatus.error,
+        operationEpoch: epoch,
+        errorCode: LayoutSelectionErrorCode.persistenceFailed,
+      ),
+    );
   }
 
   /// Selects a layout directly: the candidate becomes effective immediately

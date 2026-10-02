@@ -131,14 +131,18 @@ data downgrade.
 After resolving the raw data directory, the desktop lifecycle invokes native
 state admission before loading the workspace, preferences, conversations,
 Adaptive Flywheel, Mobile Relay, or another product-state consumer. Admission
-locks the root, probes every domain, proves a contiguous plan, and persists the
+locks the root, probes every domain under its declared startup scope, proves a contiguous plan, and persists the
 product-version high-water before the first schema mutation. Each durable step
 commits through an atomic file replacement or its owning database transaction;
 the bounded ledger is updated only after its authoritative postcondition.
 Conversation and Adaptive Flywheel SQLite metadata, workspace and presentation
 documents, Mobile Relay configuration, and the remaining declared preference
 documents are probed at their owning stores. Markers record reconciliation for
-an absent store; they never substitute for probing an existing store.
+an absent store; they never substitute for probing an existing store. Optional feature failures
+are returned in `unavailableFeatureDomainIds` without marking their data current or
+replacing their files. The corresponding Flutter bootstrap steps preserve defaults
+or leave the feature disabled. Core state failures remain fatal. Durability alone
+does not make a feature a prerequisite; see the [startup policy](../RUNBOOK.md#startup-and-retained-data).
 
 Before high-water, frontier or domain-marker advancement, SQLite admission checks
 the complete retained owner layout: columns, nullability, defaults, primary and
@@ -148,7 +152,10 @@ DDL. Older supported Conversation layouts are upgraded schema-only in memory and
 compared to that full contract, not to a startup column subset. Workflow tables
 created on demand may be absent; malformed existing tables are refused. The
 released nullable-terminal producer variant remains valid. Unrecognized structural
-definitions are refused, not silently repaired or treated as equivalent SQL.
+definitions within the current owner are refused, not silently repaired or treated
+as equivalent SQL. Unowned historical tables and incoming relations coexist without
+being read or removed. Empty stores initialize normally; complete validated current
+structures may reconstruct a missing version marker without replacing their rows.
 
 The retained JavaScript evaluator uses the same owner DDL and structural upgrade
 steps. SQLite inspection errors remain bounded per-domain refusals; they never
@@ -168,8 +175,8 @@ its completion marker and reconciles the same migration ledger. Failed or
 cancelled work remains pending. The custody operation holds a separate lock,
 so a native approval dialog does not block unrelated startup admission.
 
-Current domains are skipped and a rerun is a no-op. State ahead of the binary,
-unknown shapes, gaps, and incomplete or failed steps keep startup closed with a
+Current domains are skipped and a rerun is a no-op. Core state ahead of the binary,
+unknown core shapes, gaps, and incomplete or failed core steps refuse startup with a
 stable privacy-safe error code. A committed step is reconciled and not replayed
 after a crash. Durable user and security state is never silently reset.
 

@@ -265,7 +265,11 @@ fn preflight_database_path(db_path: &Path, migration_admission: bool) -> StoreRe
         Connection::open_with_flags(db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(|_| anyhow!("conversation_database_preflight_failed"))?;
     let schema_version = preflight_schema(&connection)?;
-    if !migration_admission && schema_version.as_deref() != Some(CURRENT_SCHEMA_VERSION) {
+    if !migration_admission
+        && schema_version
+            .as_deref()
+            .is_some_and(|version| version != CURRENT_SCHEMA_VERSION)
+    {
         return Err(anyhow!("conversation_schema_migration_required"));
     }
     Ok(true)
@@ -7769,17 +7773,43 @@ mod tests {
     }
 
     #[test]
-    fn open_rejects_missing_schema_version_before_configuring_sqlite() {
-        let root = std::env::temp_dir().join(format!("lico-conv-malformed-{}", Uuid::new_v4()));
-        assert_open_refuses_without_database_changes(
-            &root,
-            "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
-             INSERT INTO schema_meta VALUES ('format', 'synthetic');
-             CREATE TABLE retained_fixture(value TEXT NOT NULL);
-             INSERT INTO retained_fixture VALUES ('synthetic retained data');",
-            "conversation_schema_version_missing",
-            ConversationStore::open,
-        );
+    fn open_initializes_existing_empty_or_unrelated_store_without_losing_rows() {
+        for seed in [
+            "",
+            "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO schema_meta VALUES ('format', 'synthetic'); CREATE TABLE retained_fixture(value TEXT NOT NULL); INSERT INTO retained_fixture VALUES ('synthetic retained data');",
+        ] {
+            let root = std::env::temp_dir().join(format!("lico-conv-empty-{}", Uuid::new_v4()));
+            let database = fixture_database(&root);
+            std::fs::create_dir_all(database.parent().unwrap()).unwrap();
+            let connection = Connection::open(&database).unwrap();
+            connection.execute_batch(seed).unwrap();
+            drop(connection);
+            let store = ConversationStore::open(&root).unwrap();
+            store.checkpoint().unwrap();
+            let connection = Connection::open(&database).unwrap();
+            assert_eq!(
+                connection
+                    .query_row(
+                        "SELECT value FROM schema_meta WHERE key='version'",
+                        [],
+                        |row| row.get::<_, String>(0)
+                    )
+                    .unwrap(),
+                CURRENT_SCHEMA_VERSION
+            );
+            if !seed.is_empty() {
+                assert_eq!(
+                    connection
+                        .query_row("SELECT value FROM retained_fixture", [], |row| row
+                            .get::<_, String>(0))
+                        .unwrap(),
+                    "synthetic retained data"
+                );
+            }
+            drop(connection);
+            drop(store);
+            std::fs::remove_dir_all(root).unwrap();
+        }
     }
 
     #[test]

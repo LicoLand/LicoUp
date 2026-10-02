@@ -17,6 +17,5 @@
   {"name":"additional uniqueness","from":"display_name TEXT NOT NULL","to":"display_name TEXT NOT NULL UNIQUE"},
   {"name":"disabled active edge","from":"WHERE state IN ('claimed','running','cancel-requested','reconciliation-required');","to":"WHERE state IN ('claimed','running','cancel-requested','reconciliation-required') AND 0;"},
   {"name":"additional write trigger","sql":"CREATE TRIGGER deny_principal BEFORE INSERT ON principals BEGIN SELECT RAISE(ABORT,'synthetic refusal'); END;"},
-  {"name":"unowned incoming foreign key","sql":"CREATE TABLE unowned_child(parent TEXT REFERENCES principals(id) ON DELETE RESTRICT);"},
   {"name":"malformed upgrade-created deliveries","sql":"CREATE TABLE IF NOT EXISTS subagent_dispatch_deliveries(claim_id TEXT, kind TEXT, conversation_id TEXT, recipient_membership_id TEXT, state TEXT, terminal_state TEXT, payload TEXT, attempt_count INTEGER, created_at INTEGER, updated_at INTEGER, delivered_at INTEGER, admitted_turn_id TEXT);","before":true}
 ]

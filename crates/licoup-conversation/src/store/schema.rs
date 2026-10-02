@@ -178,50 +178,67 @@ pub(super) fn configure_connection(connection: &Connection) -> StoreResult<()> {
 
 pub(super) fn validate_current_schema(connection: &mut Connection) -> StoreResult<()> {
     let schema_version = preflight_schema(connection)?;
-    if schema_version.as_deref() != Some(CURRENT_SCHEMA_VERSION) {
+    if schema_version
+        .as_deref()
+        .is_some_and(|version| version != CURRENT_SCHEMA_VERSION)
+    {
         return Err(anyhow!("conversation_schema_migration_required"));
     }
     configure_connection(connection)?;
+    if recorded_schema_version(connection)?.is_none() {
+        // Empty stores initialize normally; complete current structures may
+        // reconstruct only their missing marker without replacing any rows.
+        create_current_schema(connection)?;
+    }
     ensure_search_index(connection)?;
     Ok(())
 }
 
-/// Read and classify version metadata before connection setup can change the
-/// SQLite journal mode. Fresh stores and the documented migration sources are
-/// accepted; malformed metadata and unsupported development snapshots fail
-/// without altering the database.
-pub(super) fn preflight_schema(connection: &Connection) -> StoreResult<Option<String>> {
+fn recorded_schema_version(connection: &Connection) -> StoreResult<Option<String>> {
     let has_metadata: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='schema_meta')",
         [],
         |row| row.get(0),
     )?;
-    let prior_schema_version: Option<String> = if has_metadata {
-        connection
-            .query_row(
-                "SELECT value FROM schema_meta WHERE key='version'",
-                [],
-                |row| row.get(0),
-            )
-            .optional()?
-    } else {
-        None
-    };
-    if has_metadata && prior_schema_version.is_none() {
-        return Err(anyhow!("conversation_schema_version_missing"));
-    }
     if !has_metadata {
-        let has_existing_tables: bool = connection.query_row(
-            "SELECT EXISTS(
-               SELECT 1 FROM sqlite_schema
-               WHERE type='table' AND name NOT LIKE 'sqlite_%'
-             )",
+        return Ok(None);
+    }
+    Ok(connection
+        .query_row(
+            "SELECT value FROM schema_meta WHERE key='version'",
             [],
             |row| row.get(0),
-        )?;
-        if has_existing_tables {
-            return Err(anyhow!("conversation_schema_metadata_missing"));
+        )
+        .optional()?)
+}
+
+/// Classify the current owner's data without modifying retained unrelated data.
+/// Missing labels are reconstructible only when the complete current layout
+/// validates. Incomplete owned structures and unknown recorded semantics refuse.
+pub(super) fn preflight_schema(connection: &Connection) -> StoreResult<Option<String>> {
+    let prior_schema_version = recorded_schema_version(connection)?;
+    if prior_schema_version.is_none() {
+        let mut reference = Connection::open_in_memory()?;
+        create_current_schema(&mut reference)?;
+        crate::continuity::migrate::add_schema_contract(&reference, false)?;
+        let owned = licoup_foundation::core::sqlite_contract::tables(&reference)?;
+        let actual = licoup_foundation::core::sqlite_contract::tables(connection)?;
+        if actual
+            .iter()
+            .any(|table| table != "schema_meta" && owned.contains(table))
+        {
+            validate_owner_contract(connection)?;
+            return Ok(Some(CURRENT_SCHEMA_VERSION.to_owned()));
         }
+        if actual.contains(&"schema_meta".to_owned()) {
+            licoup_foundation::core::sqlite_contract::validate_table(
+                connection,
+                &reference,
+                "schema_meta",
+                None,
+            )?;
+        }
+        return Ok(None);
     }
     if let Some(version) = prior_schema_version.as_deref()
         && !matches!(
@@ -377,6 +394,9 @@ fn validate_owner_contract(connection: &Connection) -> StoreResult<()> {
         None
     };
     for table in &base_tables {
+        if table == "schema_meta" && !actual_tables.contains(table) {
+            continue;
+        }
         licoup_foundation::core::sqlite_contract::validate_table(
             connection, &reference, table, None,
         )

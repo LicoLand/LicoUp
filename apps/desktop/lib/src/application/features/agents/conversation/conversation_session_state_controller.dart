@@ -203,7 +203,8 @@ mixin AgentConversationSessionStateController
       );
       replaceConversationToolAllowlists(restored);
     } on Object {
-      // A damaged allowlist file must not block the client.
+      // A damaged allowlist grants nothing and never blocks the client.
+      replaceConversationToolAllowlists(const {});
     }
   }
 

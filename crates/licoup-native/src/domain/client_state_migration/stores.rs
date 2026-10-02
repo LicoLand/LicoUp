@@ -212,12 +212,6 @@ pub(super) fn probe_canonical_conversation(root: &Path) -> Result<AuthoritativeP
             ensure!(inner_version.is_some(), "unsupported_state_shape");
         }
     }
-    probe_sqlite_meta(
-        &database,
-        "schema_meta",
-        "version",
-        licoup_conversation::store::CURRENT_SCHEMA_VERSION,
-    )?;
     if !database_present {
         ensure!(!completion_present, "unsupported_state_shape");
         return Ok(AuthoritativeProbe {
@@ -259,12 +253,13 @@ pub(super) fn upgrade_canonical_conversation_schema(root: &Path) -> Result<()> {
         "schema_meta",
         "version",
         licoup_conversation::store::CURRENT_SCHEMA_VERSION,
-    )?
-    .version
-        == 1
+    )
+    .is_ok_and(|probe| probe.version == 1)
     {
         return Ok(());
     }
+    // The owner validates empty stores and reconstructible current metadata;
+    // a raw missing marker is not an independent startup refusal.
     crate::domain::client_conversation::ConversationStore::open_for_migration(root)
         .context("migration_step_failed")?;
     ensure!(
