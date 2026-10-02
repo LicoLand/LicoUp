@@ -24,7 +24,8 @@ import {
   ids,
   stringSink,
 } from "./support.mjs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createClientRegressionReport } from "../client-regression-report.mjs";
 
 test("selection normalizes separators, deduplicates paths, and never falls back", () => {
   const windowsRunnerPath = [
@@ -83,17 +84,25 @@ test("changed-from collection uses parallel argv-safe git calls and includes unt
   assert.deepEqual(parseNulDelimitedPaths(Buffer.from("a/b\0a/b\0")), ["a/b", "a/b"]);
 });
 
-function syntheticChild({ code = 0, stdout = "", stderr = "" } = {}) {
+function syntheticChild({
+  code = 0,
+  stdout = "",
+  stderr = "",
+  closeDelayMs = 0,
+  onKill = () => {},
+} = {}) {
   const child = new EventEmitter();
   child.pid = 4242;
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
-  child.kill = () => {};
-  process.nextTick(() => {
+  child.kill = onKill;
+  const close = () => {
     child.stdout.end(stdout);
     child.stderr.end(stderr);
     child.emit("close", code, null);
-  });
+  };
+  if (closeDelayMs > 0) setTimeout(close, closeDelayMs);
+  else process.nextTick(close);
   return child;
 }
 
@@ -151,6 +160,118 @@ test("async command runner uses static argv, drains private output, and records 
   assert.equal(JSON.stringify(result).includes("private"), false);
 });
 
+test("failed commands keep private diagnostics outside the public report and successes retain none", async () => {
+  await mkdir(path.join(repoRoot, "build"), { recursive: true });
+  const isolatedRoot = await mkdtemp(path.join(repoRoot, "build", "private-diagnostic-"));
+  const batch = syntheticBatch({ id: "synthetic-private-diagnostic" });
+  try {
+    const failed = await runClientRegressionCommand(batch, {
+      repoRoot: isolatedRoot,
+      spawnImpl() {
+        return syntheticChild({
+          code: 7,
+          stdout: "private stdout marker",
+          stderr: "private stderr marker",
+        });
+      },
+    });
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.reason, "command_failed");
+    assert.equal(failed.diagnosticLog,
+      "build/private/client-regression/synthetic-private-diagnostic.log");
+    assert.equal(JSON.stringify(failed).includes("private stdout marker"), false);
+    const diagnosticPath = path.join(isolatedRoot, failed.diagnosticLog);
+    const diagnostic = await readFile(diagnosticPath, "utf8");
+    assert.match(diagnostic, /private stdout marker/u);
+    assert.match(diagnostic, /private stderr marker/u);
+    assert.equal((await stat(diagnosticPath)).mode & 0o777, 0o600);
+
+    const report = createClientRegressionReport({
+      runKind: "complete",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:00:01.000Z",
+      durationMs: 1,
+      results: [failed],
+      concurrency: {},
+    });
+    assert.equal(report.results[0].diagnosticLog, failed.diagnosticLog);
+    assert.equal(report.failures[0].diagnosticLog, failed.diagnosticLog);
+    assert.equal(JSON.stringify(report).includes("private stdout marker"), false);
+    assert.equal(JSON.stringify(report).includes(isolatedRoot), false);
+
+    const passed = await runClientRegressionCommand(batch, {
+      repoRoot: isolatedRoot,
+      spawnImpl() { return syntheticChild(); },
+    });
+    assert.equal(passed.status, "passed");
+    assert.equal(Object.hasOwn(passed, "diagnosticLog"), false);
+    await assert.rejects(access(diagnosticPath), { code: "ENOENT" });
+  } finally {
+    await rm(isolatedRoot, { recursive: true, force: true });
+  }
+});
+
+test("public reports reject unsafe or non-failure diagnostic references", () => {
+  const result = {
+    id: "synthetic",
+    stage: "foundation",
+    lane: "foundation",
+    toolchain: "node",
+    status: "failed",
+    reason: "command_failed",
+    durationMs: 1,
+    members: ["synthetic.node"],
+    metrics: {},
+  };
+  const create = (entry) => createClientRegressionReport({
+    runKind: "complete",
+    startedAt: "2026-01-01T00:00:00.000Z",
+    completedAt: "2026-01-01T00:00:01.000Z",
+    durationMs: 1,
+    results: [entry],
+    concurrency: {},
+  });
+  for (const diagnosticLog of [
+    "/tmp/private.log",
+    "../private.log",
+    "build/private/client-regression/../private.log",
+  ]) {
+    assert.throws(() => create({ ...result, diagnosticLog }), /reference is invalid/u);
+  }
+  assert.throws(() => create({
+    ...result,
+    status: "passed",
+    reason: null,
+    diagnosticLog: "build/private/client-regression/synthetic.log",
+  }), /reference is invalid/u);
+  const blocked = create({ ...result, status: "blocked", diagnosticLog: null });
+  assert.equal(Object.hasOwn(blocked.results[0], "diagnosticLog"), false);
+  assert.equal(Object.hasOwn(blocked.failures[0], "diagnosticLog"), false);
+});
+
+test("runner does not terminate long commands or create the parent-kill orphan path", async () => {
+  let killCount = 0;
+  const result = await runClientRegressionCommand(syntheticBatch({
+    command: Object.freeze({
+      program: "node",
+      args: Object.freeze(["--version"]),
+      cwd: ".",
+      timeoutMs: 1,
+    }),
+  }), {
+    repoRoot,
+    spawnImpl() {
+      return syntheticChild({
+        closeDelayMs: 25,
+        onKill() { killCount += 1; },
+      });
+    },
+  });
+  assert.equal(result.status, "passed");
+  assert.equal(killCount, 0);
+  assert.equal(Object.hasOwn(result, "diagnosticLog"), false);
+});
+
 test("compatibility commands retain only a bounded safe receipt error code", async () => {
   const batch = syntheticBatch({
     toolchain: "compatibility",
@@ -168,7 +289,7 @@ test("compatibility commands retain only a bounded safe receipt error code", asy
   });
   assert.equal(safe.status, "failed");
   assert.equal(safe.reason, "adapter_contract_failed");
-  assert.equal(JSON.stringify(safe).includes("private"), false);
+  assert.equal(JSON.stringify(safe).includes("private diagnostic output"), false);
 
   const unsafe = await runClientRegressionCommand(batch, {
     repoRoot,
@@ -220,8 +341,8 @@ test("aggregated Node tests attribute failure to module ids without retaining fi
     });
     assert.equal(result.status, "failed");
     assert.deepEqual(result.members, ["module.failing"]);
-    assert.equal(JSON.stringify(result).includes("private"), false);
-    assert.equal(JSON.stringify(result).includes("node-attribution"), false);
+    assert.equal(JSON.stringify(result).includes("private stack"), false);
+    assert.equal(JSON.stringify(result).includes(directory), false);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

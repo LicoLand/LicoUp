@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { planClientRegressionBatches } from "./client-regression-batching.mjs";
@@ -33,6 +34,8 @@ const NODE_TEST_ATTRIBUTION_SCHEMA = "licoup.node-test-attribution.v1";
 const FLUTTER_DEPENDENCY_MODULE_ID = "regression.flutter-dependencies";
 const FLUTTER_DEPENDENCY_RESOURCES = new Set(["flutter-cache", "gradle-cache"]);
 const DEFAULT_CARGO_JOBS_BUDGET = 3;
+const PRIVATE_DIAGNOSTIC_DIRECTORY = "build/private/client-regression";
+const PRIVATE_DIAGNOSTIC_LIMIT = 2 * 1024 * 1024;
 
 function containedWorkingDirectory(repoRoot, relativeCwd) {
   const root = path.resolve(repoRoot);
@@ -65,6 +68,32 @@ function createTailCollector(limit = 4 * 1024 * 1024) {
       return output;
     },
   });
+}
+
+function diagnosticLogReference(batchId) {
+  const safeId = String(batchId || "batch")
+    .replace(/[^a-z0-9_.-]+/giu, "_")
+    .slice(0, 160) || "batch";
+  return path.posix.join(PRIVATE_DIAGNOSTIC_DIRECTORY, `${safeId}.log`);
+}
+
+async function clearPrivateDiagnostic(repoRoot, reference) {
+  await rm(path.resolve(repoRoot, reference), { force: true });
+}
+
+async function writePrivateDiagnostic(repoRoot, reference, { stdout, stderr }) {
+  const destination = path.resolve(repoRoot, reference);
+  const directory = path.dirname(destination);
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await chmod(directory, 0o700);
+  await writeFile(destination, [
+    "[stdout]",
+    stdout,
+    "[stderr]",
+    stderr,
+    "",
+  ].join("\n"), { mode: 0o600 });
+  await chmod(destination, 0o600);
 }
 
 function createSafeReceiptCollector(limit = 1024 * 1024) {
@@ -285,7 +314,7 @@ export async function runClientRegressionCommand(batch, {
   metricsAdapter = defaultProcessTreeMetricsAdapter(),
 } = {}) {
   const prepared = prepareToolchainCommand(batch, { repoRoot, environment });
-  const { program, args, cwd, timeoutMs } = prepared.command;
+  const { program, args, cwd } = prepared.command;
   const executable = program === "node" ? process.execPath : program;
   const lease = program === "cargo"
     ? leaseFactory({ repoRoot, scope: batch.id, targetPath: NATIVE_CARGO_TEST_TARGET })
@@ -295,14 +324,16 @@ export async function runClientRegressionCommand(batch, {
   let status = "passed";
   let exitCode = null;
   let childPid = null;
+  const diagnosticReference = diagnosticLogReference(batch.id);
+  const diagnosticStdout = createTailCollector(PRIVATE_DIAGNOSTIC_LIMIT);
+  const diagnosticStderr = createTailCollector(PRIVATE_DIAGNOSTIC_LIMIT);
   try {
+    await clearPrivateDiagnostic(repoRoot, diagnosticReference);
     await new Promise((resolve) => {
       let settled = false;
-      let timer = null;
       const finish = (nextStatus, nextReason) => {
         if (settled) return;
         settled = true;
-        if (timer) clearTimeout(timer);
         status = nextStatus;
         reason = nextReason;
         resolve();
@@ -325,21 +356,29 @@ export async function runClientRegressionCommand(batch, {
         finish("failed", "process_start_failed");
         return;
       }
-      child.stdout?.on?.("data", prepared.pushStdout);
-      child.stderr?.on?.("data", prepared.pushStderr);
+      child.stdout?.on?.("data", (chunk) => {
+        diagnosticStdout.push(chunk);
+        prepared.pushStdout(chunk);
+      });
+      child.stderr?.on?.("data", (chunk) => {
+        diagnosticStderr.push(chunk);
+        prepared.pushStderr(chunk);
+      });
       child.once?.("error", () => finish("failed", "process_start_failed"));
       child.once?.("close", (code, signal) => {
         exitCode = Number.isInteger(code) ? code : null;
         if (code === 0) finish("passed", null);
         else finish("failed", signal ? "command_signaled" : "command_failed");
       });
-      timer = setTimeout(() => {
-        child.kill?.("SIGTERM");
-        finish("failed", "command_timeout");
-      }, timeoutMs);
-      timer.unref?.();
     });
     const durationMs = Math.round(monotonicMilliseconds(started));
+    const privateOutput = Object.freeze({
+      stdout: diagnosticStdout.finish(),
+      stderr: diagnosticStderr.finish(),
+    });
+    if (status === "failed") {
+      await writePrivateDiagnostic(repoRoot, diagnosticReference, privateOutput);
+    }
     const processTree = await metricsAdapter.measure({
       batchId: batch.id,
       childPid,
@@ -372,6 +411,7 @@ export async function runClientRegressionCommand(batch, {
       durationMs,
       members: attributedMembers || batch.members,
       metrics,
+      ...(status === "failed" ? { diagnosticLog: diagnosticReference } : {}),
     });
   } finally {
     lease?.release();
