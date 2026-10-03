@@ -22,12 +22,11 @@
 
 use crate::error::{
     CONVERTER_ENDPOINT_MISMATCH, CONVERTER_ENTRY_MISSING, CONVERTER_ENTRY_OUTSIDE_PACKAGE,
-    CONVERTER_INCOMPLETE, CONVERTER_INVALID, CONVERTER_MANIFEST_INVALID, CONVERTER_MANIFEST_UNREADABLE,
-    CONVERTER_MISSING, CONVERTER_NOT_NATIVE, FRONTIER_UNAVAILABLE, ToolError, ToolResult,
+    CONVERTER_INCOMPLETE, CONVERTER_INVALID, CONVERTER_MANIFEST_INVALID,
+    CONVERTER_MANIFEST_UNREADABLE, CONVERTER_MISSING, CONVERTER_NOT_NATIVE, FRONTIER_UNAVAILABLE,
+    ToolError, ToolResult,
 };
-use licoup_extension_contracts::manifest::{
-    FrozenEndpoints, PackageManifest, conversion_code,
-};
+use licoup_extension_contracts::manifest::{FrozenEndpoints, PackageManifest, conversion_code};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -146,8 +145,7 @@ fn read_manifest(manifest_path: &Path) -> ToolResult<serde_json::Value> {
     if !metadata.is_file() || metadata.len() > MAX_MANIFEST_BYTES {
         return Err(CONVERTER_MANIFEST_UNREADABLE);
     }
-    let text =
-        std::fs::read_to_string(manifest_path).map_err(|_| CONVERTER_MANIFEST_UNREADABLE)?;
+    let text = std::fs::read_to_string(manifest_path).map_err(|_| CONVERTER_MANIFEST_UNREADABLE)?;
     serde_json::from_str(&text).map_err(|_| CONVERTER_MANIFEST_UNREADABLE)
 }
 

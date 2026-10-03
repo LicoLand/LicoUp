@@ -36,8 +36,9 @@ const UI: &str = include_str!("../../../schemas/extensions/ui.schema.json");
 const GRAPH_RESOURCE: &str = include_str!("../../../schemas/extensions/graph-resource.schema.json");
 const DEPLOYMENT: &str = include_str!("../../../schemas/extensions/deployment.schema.json");
 /// The committed release fixture the release tool packages and signs.
-const RELEASE_FIXTURE_MANIFEST: &str =
-    include_str!("../../../tests/fixtures/client_package_release/fixture-native-converter/manifest.json");
+const RELEASE_FIXTURE_MANIFEST: &str = include_str!(
+    "../../../tests/fixtures/client_package_release/fixture-native-converter/manifest.json"
+);
 const RELEASE_FIXTURE_RELEASE: &str = include_str!(
     "../../../tests/fixtures/client_package_release/fixture-native-converter/package-release.json"
 );
@@ -396,7 +397,9 @@ fn the_release_fixture_declares_the_converter_its_release_metadata_publishes() {
     let declaration: Value =
         serde_json::from_str(RELEASE_FIXTURE_RELEASE).expect("release declaration");
     let converter = &declaration["converter"];
-    let entry = converter["entry"].as_str().expect("release converter entry");
+    let entry = converter["entry"]
+        .as_str()
+        .expect("release converter entry");
     let source_format = converter["sourceFormat"]
         .as_str()
         .expect("release converter source format");
@@ -415,7 +418,10 @@ fn the_release_fixture_declares_the_converter_its_release_metadata_publishes() {
             .any(|declared| *declared == converter["sourceFormat"]),
         "the manifest lists every source format its release declaration names"
     );
-    assert_eq!(manifest["conversion"]["targetFormat"], converter["targetFormat"]);
+    assert_eq!(
+        manifest["conversion"]["targetFormat"],
+        converter["targetFormat"]
+    );
     assert!(
         is_converter_entry(entry),
         "the release converter entry is an entry inside the package"
@@ -468,7 +474,10 @@ fn the_published_conversion_declaration_is_the_one_this_crate_validates() {
         conversion["properties"]["sourceFormats"]["maxItems"], MAX_SOURCE_FORMATS,
         "the published bound is the native bound"
     );
-    assert_eq!(conversion["properties"]["sourceFormats"]["uniqueItems"], true);
+    assert_eq!(
+        conversion["properties"]["sourceFormats"]["uniqueItems"],
+        true
+    );
     assert_eq!(
         conversion["properties"]["targetFormat"]["$ref"],
         "#/$defs/formatIdentity"

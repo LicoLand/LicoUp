@@ -402,9 +402,9 @@ pub fn is_converter_entry(value: &str) -> bool {
         && value.split('/').all(|segment| {
             segment.split('.').all(|word| {
                 !word.is_empty()
-                    && word.bytes().all(|byte| {
-                        byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-'
-                    })
+                    && word
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
             })
         })
 }
@@ -493,9 +493,14 @@ impl ConversionDeclaration {
         }
         // One format cannot be both endpoints of the same conversion: a converter
         // that produced the format it reads would have nothing to move.
-        if self.source_formats.iter().any(|format| format == &self.target_format) {
-            return Err(refusal::new(conversion_code::INVALID, STAGE)
-                .with_field("conversion.targetFormat"));
+        if self
+            .source_formats
+            .iter()
+            .any(|format| format == &self.target_format)
+        {
+            return Err(
+                refusal::new(conversion_code::INVALID, STAGE).with_field("conversion.targetFormat")
+            );
         }
         Ok(())
     }
@@ -627,9 +632,11 @@ impl PackageManifest {
         endpoints: &FrozenEndpoints,
     ) -> Result<&ConversionDeclaration, ApplicationFailure> {
         let Some(declaration) = self.conversion.as_ref() else {
-            return Err(refusal::actionable(conversion_code::MISSING, STAGE, "conversion")
-                .with_presentation_arg("package", &self.id)
-                .with_presentation_arg("sourceFormat", endpoints.source_format()));
+            return Err(
+                refusal::actionable(conversion_code::MISSING, STAGE, "conversion")
+                    .with_presentation_arg("package", &self.id)
+                    .with_presentation_arg("sourceFormat", endpoints.source_format()),
+            );
         };
         if !declaration.converts_from(endpoints.source_format()) {
             return Err(refusal::actionable(
@@ -1139,15 +1146,17 @@ mod tests {
 
         // The published bound is a bound here too.
         let mut oversized = conversion();
-        oversized.source_formats =
-            (0..=MAX_SOURCE_FORMATS).map(|index| format!("agent-session.v{index}")).collect();
+        oversized.source_formats = (0..=MAX_SOURCE_FORMATS)
+            .map(|index| format!("agent-session.v{index}"))
+            .collect();
         assert_eq!(
             oversized.validate().expect_err("over the bound").code,
             "manifest_conversion_invalid"
         );
 
         let mut duplicated = conversion();
-        duplicated.source_formats = vec!["agent-session.v1".to_owned(), "agent-session.v1".to_owned()];
+        duplicated.source_formats =
+            vec!["agent-session.v1".to_owned(), "agent-session.v1".to_owned()];
         assert_eq!(
             duplicated.validate().expect_err("duplicate").code,
             "manifest_conversion_invalid"

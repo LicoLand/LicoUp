@@ -77,7 +77,8 @@ pub const ARCHIVE_INSIDE_DATA_ROOT: ToolError = ToolError::new("archive_path_ins
 /// The rehearsal's disposable working root sits inside the source it promised only to read.
 pub const WORK_ROOT_INSIDE_DATA_ROOT: ToolError = ToolError::new("work_root_inside_data_root");
 /// The named package manifest could not be read as a manifest document.
-pub const CONVERTER_MANIFEST_UNREADABLE: ToolError = ToolError::new("converter_manifest_unreadable");
+pub const CONVERTER_MANIFEST_UNREADABLE: ToolError =
+    ToolError::new("converter_manifest_unreadable");
 /// The manifest is not a valid package manifest, so no conversion was read from it.
 pub const CONVERTER_MANIFEST_INVALID: ToolError = ToolError::new("converter_manifest_invalid");
 /// The package declares no conversion, so this conversion has no owner here.

@@ -76,8 +76,11 @@ impl PackageRoot {
             manifest["conversion"] = declaration;
         }
         let path = self.path.join(licoup_migrate::converter::MANIFEST_NAME);
-        fs::write(&path, serde_json::to_string_pretty(&manifest).expect("manifest"))
-            .expect("write the manifest");
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&manifest).expect("manifest"),
+        )
+        .expect("write the manifest");
         path
     }
 
@@ -159,10 +162,10 @@ fn the_declaration_is_read_rather_than_recognised() {
         "a package that declares another pair is refused, not recognised by name"
     );
     assert_eq!(
-        refused(identify_owner_in_root(owns.path(), &FrozenEndpoints::new(
-            "kilo.agent-session.v9",
-            "licoup.conversation.v9"
-        ))),
+        refused(identify_owner_in_root(
+            owns.path(),
+            &FrozenEndpoints::new("kilo.agent-session.v9", "licoup.conversation.v9")
+        )),
         CONVERTER_ENDPOINT_MISMATCH,
         "and the first package is refused for the pair it does not declare"
     );
@@ -397,12 +400,8 @@ fn the_committed_release_fixture_owns_the_conversion_its_release_metadata_publis
     // The fixture's own pair is the one its release declaration publishes, so the
     // manifest contract and the authenticated artifact metadata agree.
     let published = FrozenEndpoints::new(
-        converter["sourceFormat"]
-            .as_str()
-            .expect("source format"),
-        converter["targetFormat"]
-            .as_str()
-            .expect("target format"),
+        converter["sourceFormat"].as_str().expect("source format"),
+        converter["targetFormat"].as_str().expect("target format"),
     );
     let owner = identify_owner_in_root(&fixture, &published)
         .expect("the committed fixture owns the conversion its release metadata publishes");
