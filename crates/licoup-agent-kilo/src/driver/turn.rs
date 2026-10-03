@@ -21,7 +21,7 @@ use super::projection::{ProtocolOutcome, project_turn};
 use super::{DRIVER_ID, ProtocolFailure, RUNTIME_PROTOCOL};
 use crate::parser;
 use crate::policy;
-use crate::port::serve::{self, ServeFramingFailure, ServeTurnAdmission};
+use crate::port::serve::{self, ServeFramingFailure};
 use crate::port::turn_event;
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -46,14 +46,10 @@ pub fn execute_via_serve(
     let session_id = open_session(endpoint, config, deadline)?;
     let message_body = build_message_body(config);
     let turn_id = Uuid::new_v4().to_string();
-    if serve::admit_turn(&endpoint.attach_url, &session_id) == ServeTurnAdmission::AtCapacity {
-        return Err(ProtocolFailure::new(
-            "acp_control_capacity",
-            "The Kilo active-turn control registry is at capacity.",
-            "turn/control",
-        )
-        .with_session(Some(&session_id)));
-    }
+    // Admission is the host's answer, not this package's: the host registers the
+    // active turn before calling here, because the active-turn registry and force
+    // stop belong to the engine that owns the endpoint. Reaching this point means
+    // the host admitted the turn.
     turn_event::emit_turn_event("dispatch.turn.bound", &session_id, &turn_id, json!({}));
 
     let watch_stop = Arc::new(AtomicBool::new(false));
@@ -183,7 +179,14 @@ fn watch_session_events(
     let mut parser = parser::ServeEventParser::new(session_id);
     let mut decode_failure = false;
     let result = serve::watch_frames(url, stop, &mut |data, frame| {
-        serve::observe_bytes("kilo-code.sse", serve::ServeByteDirection::Received, frame);
+        if data.len() <= 4096 {
+            serve::observe_bytes(
+                "kilo-code.sse",
+                serve::ServeByteDirection::Received,
+                Some(session_id),
+                frame,
+            );
+        }
         match parser.observe(data) {
             Ok(Some(text)) => {
                 let _ = chunks.try_send(text);
@@ -256,7 +259,7 @@ fn open_session(
             &endpoint.attach_url,
             &format!("/session/{}", config.requested_session_id),
         );
-        return match serve::get_session_json(&url) {
+        return match serve::get_json(&url, true) {
             Ok(payload) => match parser::session_id(&payload) {
                 Some(id) if id == config.requested_session_id => Ok(id.to_string()),
                 Some(_) => Err(load_identity_mismatch(&config.requested_session_id)),

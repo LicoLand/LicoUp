@@ -2,6 +2,11 @@
   "schemaVersion": "licomesh.client-release-package-set.v1",
   "packages": [
     {
+      "packageId": "org.licoland.adapter.kilo",
+      "source": "crates/licoup-agent-kilo/package",
+      "payloadRole": "kilo-adapter-package-payload"
+    },
+    {
       "packageId": "org.licoland.adapter.codex",
       "source": "crates/licoup-agent-codex/package",
       "payloadRole": "codex-adapter-package-payload"

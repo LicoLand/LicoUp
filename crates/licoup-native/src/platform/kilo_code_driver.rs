@@ -1,25 +1,52 @@
-//! Kilo Code `serve` adapter.
+//! The Kilo Code `serve` driver, composed from the Kilo Code adapter package.
 //!
-//! The adapter owns only Kilo's fixed endpoint contract. Configuration,
-//! capability probing, execution/HTTP transport, and result projection are
-//! separate leaves so each can be changed and accepted independently.
+//! The Agent's own half of a turn — the launch configuration, the request shape,
+//! the session-open protocol, the stream classification, the result projection,
+//! the capability probe and the endpoint policy — belongs to Kilo Code and lives
+//! in `licoup-agent-kilo` now. What is left here is the composition: the client's
+//! serve engine answered through the package's ports
+//! ([`super::kilo_code_host`]), the shared ACP result vocabulary the driver table
+//! reads, and the force-stop lane.
+//!
+//! The protocol reader is re-exported at its former path so the leaves below keep
+//! reading it, and so the client carries one copy of the vocabulary rather than
+//! two. It is the same parser the package's own replay arm drives, which is what
+//! makes a recorded transcript a statement about the production ingress.
 
-mod config;
-mod execution;
-mod probe;
-mod projection;
-mod transport;
+pub(crate) mod execution;
+pub(crate) mod probe;
 
 use super::acp_driver_runtime::AcpDriverSpec;
+use licoup_agent_kilo::driver::{DRIVER_ID, ERROR_PREFIX};
 
-pub(super) const RUNTIME_PROTOCOL: &str = "kilo-code-serve-http-v1";
-pub(super) const KILO_CODE_DRIVER: AcpDriverSpec = AcpDriverSpec::new(RUNTIME_PROTOCOL, &["serve"])
-    .with_identity("kilo-code-serve", "kilo_code_serve");
+/// This Agent's adapter parser, read from the package that owns it.
+///
+/// `health_ready`, `session_collection`, `session_id`, `message` and
+/// `ServeEventParser` are the same functions the package's driver and its replay
+/// arm call, so a divergence between the two cannot be expressed.
+pub(crate) use licoup_agent_kilo::parser as parser;
 
-pub(super) use execution::execute;
-pub(super) use probe::capability_probe;
+pub(super) const KILO_CODE_DRIVER: AcpDriverSpec = AcpDriverSpec::new(
+    licoup_agent_kilo::driver::RUNTIME_PROTOCOL,
+    &["serve"],
+)
+.with_identity(DRIVER_ID, ERROR_PREFIX);
 
-pub(in crate::platform) fn cancel(
+/// The runtime protocol stamp this Agent's results carry.
+pub(super) const RUNTIME_PROTOCOL: &str = licoup_agent_kilo::driver::RUNTIME_PROTOCOL;
+
+/// The durable serve owner descriptor force stop reads.
+pub(crate) const CONTROL_SPEC: super::local_service::ServeSpec =
+    super::kilo_code_host::CONTROL_SPEC;
+
+pub(crate) use execution::execute;
+pub(crate) use probe::capability_probe;
+
+/// Reach the endpoint's active turn for force stop.
+///
+/// The active-turn registry belongs to the serve engine, not to the package: it
+/// is the same registry every serve-family Agent's stop uses.
+pub(crate) fn cancel(
     session_id: &str,
 ) -> super::local_service::turn_control::ControlDisposition {
     super::local_service::turn_control::cancel(KILO_CODE_DRIVER.agent_id, session_id)

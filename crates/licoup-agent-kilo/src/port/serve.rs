@@ -104,13 +104,15 @@ pub struct ServePort {
     /// `Err` carries the engine's own stable failure code.
     pub ensure_attachment: fn(executable: &str) -> Result<ServeAttachment, String>,
     /// Read one document from the endpoint.
-    pub get_json: fn(url: &str) -> Result<Value, String>,
-    /// Read one session document, recorded for the diagnostic record.
-    pub get_session_json: fn(url: &str) -> Result<Value, String>,
+    ///
+    /// `observed` asks the engine to file this read in its diagnostic record;
+    /// the package decides *which* reads are worth recording, the engine decides
+    /// where they go.
+    pub get_json: fn(url: &str, observed: bool) -> Result<Value, String>,
     /// Write one document to the endpoint.
     pub post_json: fn(url: &str, body: &Value) -> Result<Value, String>,
     /// Read the endpoint's event stream until `stop`, offering each decoded
-    /// frame's data payload to `on_frame`.
+    /// frame to `on_frame` as its data payload and its whole framed text.
     ///
     /// `on_frame` answers whether to keep reading. The engine performs the
     /// framing; the package decides what a frame means and whether the turn is
@@ -121,8 +123,16 @@ pub struct ServePort {
         on_frame: &mut dyn FnMut(&str, &str) -> bool,
     ) -> Result<(), ServeFramingFailure>,
     /// Record one observed byte range for the diagnostic record, when the host
-    /// keeps one.
-    pub observe_bytes: fn(source: &str, direction: ServeByteDirection, bytes: &str),
+    /// keeps one and when `session_id` decides this frame belongs to the turn.
+    ///
+    /// A host with no record ignores the call, which is the same shape of answer
+    /// as a return the host has no consumer for.
+    pub observe_bytes: fn(
+        source: &str,
+        direction: ServeByteDirection,
+        session_id: Option<&str>,
+        bytes: &str,
+    ),
     /// Admit one active turn so force stop can reach it.
     pub admit_turn: fn(attach_url: &str, session_id: &str) -> ServeTurnAdmission,
 }
@@ -147,16 +157,10 @@ pub fn ensure_attachment(executable: &str) -> Result<ServeAttachment, String> {
         .and_then(|port| (port.ensure_attachment)(executable))
 }
 
-pub(crate) fn get_json(url: &str) -> Result<Value, String> {
+pub(crate) fn get_json(url: &str, observed: bool) -> Result<Value, String> {
     PORT.get()
         .ok_or_else(|| "the serve port is not installed".to_owned())
-        .and_then(|port| (port.get_json)(url))
-}
-
-pub(crate) fn get_session_json(url: &str) -> Result<Value, String> {
-    PORT.get()
-        .ok_or_else(|| "the serve port is not installed".to_owned())
-        .and_then(|port| (port.get_session_json)(url))
+        .and_then(|port| (port.get_json)(url, observed))
 }
 
 pub(crate) fn post_json(url: &str, body: &Value) -> Result<Value, String> {
@@ -178,9 +182,14 @@ pub(crate) fn watch_frames(
     }
 }
 
-pub(crate) fn observe_bytes(source: &str, direction: ServeByteDirection, bytes: &str) {
+pub(crate) fn observe_bytes(
+    source: &str,
+    direction: ServeByteDirection,
+    session_id: Option<&str>,
+    bytes: &str,
+) {
     if let Some(port) = PORT.get() {
-        (port.observe_bytes)(source, direction, bytes);
+        (port.observe_bytes)(source, direction, session_id, bytes);
     }
 }
 

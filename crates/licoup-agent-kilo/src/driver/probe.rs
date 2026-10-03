@@ -32,18 +32,17 @@ const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(50);
 #[derive(Clone, Copy)]
 pub struct EndpointProbe {
     pub get_json: fn(&str) -> Result<serde_json::Value, String>,
-    pub observe_bytes: fn(source: &str, direction: serve::ServeByteDirection, bytes: &str),
     pub is_absolute: fn(&Path) -> bool,
 }
 
 impl EndpointProbe {
     /// The probe an installed host answers with.
+    ///
+    /// Readiness reads are ordinary documents: they are not part of a turn's
+    /// diagnostic record, so none of them asks the engine to observe bytes.
     pub fn installed() -> Self {
         Self {
-            get_json: |url| serve::get_json(url),
-            observe_bytes: |source, direction, bytes| {
-                serve::observe_bytes(source, direction, bytes)
-            },
+            get_json: |url| serve::get_json(url, false),
             is_absolute: Path::is_absolute,
         }
     }
@@ -218,7 +217,6 @@ mod tests {
     fn silent_probe() -> EndpointProbe {
         EndpointProbe {
             get_json: |_| Err("the probe must not read before it is ready".to_owned()),
-            observe_bytes: |_, _, _| {},
             is_absolute: Path::is_absolute,
         }
     }

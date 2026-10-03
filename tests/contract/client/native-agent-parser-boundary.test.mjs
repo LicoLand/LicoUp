@@ -31,8 +31,20 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     composition.indexOf('/// The parser registrations this host injects'),
   );
   // Every entry names its Agent's declaration exactly once, and none inherits
-  // another Agent's answer.
-  assert.equal((registrations.match(/ParserRegistration::(?:unanswered|new)\(/g) ?? []).length, 13);
+  // another Agent's answer. Two Agents' parsers have moved into their own
+  // packages, so a moved Agent's entry is the package's own registration
+  // constant rather than a `ParserRegistration::` constructor here.
+  const inline = (registrations.match(/ParserRegistration::(?:unanswered|new)\(/g) ?? []).length;
+  const moved = (registrations.match(/licoup_agent_\w+::registration::REGISTRATION/g) ?? []).length;
+  assert.equal(inline + moved, 13);
+  assert.equal(moved, 2, 'the two moved parsers are named by their own packages');
+  for (const crate of ['licoup_agent_codex', 'licoup_agent_kilo']) {
+    assert.match(
+      composition,
+      new RegExp(`^pub\\(in crate::platform\\) use ${crate}::parser as (\\w+);`, 'mu'),
+      `${crate} must be named as a package, not kept as a second copy`,
+    );
+  }
   // The queries a reader reaches are answered by the Agent that owns the fact:
   // Hermes' normalized transitions, and the exact-resume identity of the four
   // Agents the Subagent mesh dispatches. Every other entry stays declared and
@@ -40,22 +52,44 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
   const answered = {
     antigravity: ['no_transitions', 'antigravity_identity'],
     claude_code: ['no_transitions', 'claude_code_identity'],
-    codex: ['codex_transitions', 'codex_identity'],
     cursor: ['no_transitions', 'cursor_identity'],
     hermes: ['hermes_transitions', 'no_identity'],
   };
   // One entry per Agent, so a per-Agent answer is read from its own entry
   // rather than from a neighbouring one that happens to name the same helper.
+  // A moved Agent's entry is its package's registration constant, which the
+  // package's own suite proves answers both queries.
   const entries = new Map();
   for (const chunk of registrations.split('    ParserRegistration::').slice(1)) {
     const contract = chunk.match(/(\w+)::CONTRACT/);
     if (contract) entries.set(contract[1], chunk);
   }
+  for (const [adapter, module] of [
+    ['codex', 'licoup_agent_codex'],
+    ['kilo_code', 'licoup_agent_kilo'],
+  ]) {
+    entries.set(adapter, `${module}::registration::REGISTRATION`);
+  }
   assert.equal(entries.size, 13);
+  // A moved Agent's declaration lives in its own package, at the path that
+  // package chose for its protocol module.
+  const movedAdapters = new Map([
+    ['codex', ['licoup_agent_codex', 'crates/licoup-agent-codex/src/parser.rs']],
+    ['kilo_code', ['licoup_agent_kilo', 'crates/licoup-agent-kilo/src/parser/mod.rs']],
+  ]);
   for (const adapter of adapters) {
-    assert.match(composition, new RegExp(`mod ${adapter};`));
+    if (!movedAdapters.has(adapter)) assert.match(composition, new RegExp(`mod ${adapter};`));
     const entry = entries.get(adapter);
     assert.ok(entry, `no registration entry for ${adapter}`);
+    if (movedAdapters.has(adapter)) {
+      // A moved Agent's entry is its package's registration constant, and the
+      // package's own suite proves it answers both protocol-agnostic queries
+      // rather than inheriting a neighbour's answer.
+      assert.match(entry, /registration::REGISTRATION$/u);
+      const movedContract = readFileSync(movedAdapters.get(adapter)[1], 'utf8');
+      assert.match(movedContract, /AdapterContract::new/u);
+      continue;
+    }
     if (answered[adapter]) {
       assert.match(entry, /^new\(/u);
       for (const answer of answered[adapter]) {
@@ -121,23 +155,36 @@ test('serve HTTP and SSE frames decode only in target parser components', () => 
   );
   assert.doesNotMatch(neutralServe, /message\.updated|message\.part\.updated|serde_json::from_str/);
 
-  for (const adapter of ['opencode', 'kilo_code']) {
-    const parser = readFileSync(`${parserRoot}/adapters/${adapter}.rs`, 'utf8');
-    assert.match(parser, /struct ServeEventParser/);
-    assert.match(parser, /fn session_id/);
-    assert.match(parser, /fn message/);
-    assert.match(parser, /message\.part\.updated/);
-  }
+  // Kilo Code's parser moved into its own package, so its protocol text is read
+  // from the package root; OpenCode's is still composed by the client.
+  const kiloParser = readFileSync(
+    'crates/licoup-agent-kilo/src/parser/serve.rs',
+    'utf8',
+  );
+  assert.match(kiloParser, /struct ServeEventParser/);
+  assert.match(kiloParser, /message\.part\.updated/);
+  const kiloProtocol = readFileSync('crates/licoup-agent-kilo/src/parser/mod.rs', 'utf8');
+  assert.match(kiloProtocol, /fn session_id/);
+  assert.match(kiloProtocol, /fn message/);
+  const openCodeParser = readFileSync(`${parserRoot}/adapters/opencode.rs`, 'utf8');
+  assert.match(openCodeParser, /struct ServeEventParser/);
+  assert.match(openCodeParser, /fn session_id/);
+  assert.match(openCodeParser, /fn message/);
+  assert.match(openCodeParser, /message\.part\.updated/);
   const openCodeTransport = readFileSync(
     'crates/licoup-native/src/platform/opencode_driver/serve_transport.rs',
     'utf8',
   );
+  // The client's Kilo turn is the composition that asks the package to perform
+  // it, not a transport that classifies frames of its own.
   const kiloTransport = readFileSync(
-    'crates/licoup-native/src/platform/kilo_code_driver/transport.rs',
+    'crates/licoup-native/src/platform/kilo_code_driver/execution.rs',
     'utf8',
   );
   assert.match(openCodeTransport, /adapters::opencode as serve_parser/);
-  assert.match(kiloTransport, /adapters::kilo_code as serve_parser/);
+  // The client's Kilo turn reads the package's own parser rather than a local
+  // copy, which is what makes the corpus a statement about the shipped ingress.
+  assert.match(kiloTransport, /driver::execute_via_serve|licoup_agent_kilo/);
 });
 
 test('Cursor PTY isolation precedes its strict NDJSON parser', () => {

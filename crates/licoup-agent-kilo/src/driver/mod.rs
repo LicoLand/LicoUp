@@ -23,6 +23,11 @@ pub mod turn;
 
 pub use config::{ServeTurnConfig, timestamp};
 pub use probe::{EndpointProbe, capability_probe};
+// The Agent's own material, re-exported at the names its client used to read it
+// by, so a composition that moves in slices names one path throughout. A moved
+// spelling is not a second copy: these are the same functions.
+pub use licoup_agent_adapter_sdk::{LifecycleStage, Transition};
+pub use probe as protocol;
 pub use projection::{CapabilityProbe, EffectiveSettings, ProtocolOutcome, serve_capabilities};
 pub use turn::{build_message_body, execute_via_serve};
 

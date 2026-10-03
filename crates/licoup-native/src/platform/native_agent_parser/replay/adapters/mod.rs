@@ -16,7 +16,6 @@ mod claude_code;
 mod cursor;
 mod deepseek_harness;
 mod hermes;
-mod kilo_code;
 mod lico_agent;
 mod opencode;
 mod pi;
@@ -46,7 +45,7 @@ pub(in crate::platform) fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameR
         "cursor" => Box::new(cursor::Replay::new()?),
         "deepseek-harness" => Box::new(deepseek_harness::Replay::new()?),
         "hermes" => Box::new(hermes::Replay::new()?),
-        "kilo-code" => Box::new(kilo_code::Replay::new()?),
+        "kilo-code" => licoup_agent_kilo::replay::replay_arm(adapter_id)?,
         "lico-agent" => Box::new(lico_agent::Replay::new()?),
         "openclaw" => Box::new(openclaw_driver::replay::Replay::new()?),
         "opencode" => Box::new(opencode::Replay::new()?),

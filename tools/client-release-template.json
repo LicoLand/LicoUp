@@ -4,7 +4,11 @@
     "path": "tools/client-version.json"
   },
   "promotion": {
-    "branches": ["nightly", "stable", "release"],
+    "branches": [
+      "nightly",
+      "stable",
+      "release"
+    ],
     "mergeMethod": "merge",
     "rulesetMutation": "forbidden",
     "linearHistory": false,
@@ -66,6 +70,7 @@
     "exactDraftAssetSetRequired": true,
     "independentPackageAssets": {
       "payloadRoles": [
+        "kilo-adapter-package-payload",
         "codex-adapter-package-payload",
         "mcp-package-payload",
         "package-payload"

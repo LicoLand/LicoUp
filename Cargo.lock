@@ -2331,6 +2331,7 @@ dependencies = [
  "licoup-agent-adapters",
  "licoup-agent-codex",
  "licoup-agent-drivers",
+ "licoup-agent-kilo",
  "licoup-agent-runtime",
  "licoup-agent-targets",
  "licoup-application",

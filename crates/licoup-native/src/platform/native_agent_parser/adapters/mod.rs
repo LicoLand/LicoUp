@@ -18,10 +18,12 @@ pub(in crate::platform) use licoup_agent_adapter_sdk::{
     LifecycleStage, Transition, TransitionReducer,
 };
 
-// One Agent's parser has moved: Codex's vendor protocol now lives in its own package
-// (`licoup-agent-codex`), parsed once below this port, and this composition names the
-// package rather than keeping a second copy.
+// Two Agents' parsers have moved: Codex's and Kilo Code's vendor protocols now live
+// in their own packages (`licoup-agent-codex`, `licoup-agent-kilo`), each parsed once
+// below this port, and this composition names the package rather than keeping a
+// second copy. The remaining eleven move the same way, one package each.
 pub(in crate::platform) use licoup_agent_codex::parser as codex;
+pub(in crate::platform) use licoup_agent_kilo::parser as kilo_code;
 
 pub(in crate::platform) mod antigravity;
 pub(in crate::platform) mod claude_code;
@@ -29,7 +31,6 @@ pub(in crate::platform) mod copilot;
 pub(in crate::platform) mod cursor;
 pub(in crate::platform) mod deepseek_harness;
 pub(in crate::platform) mod hermes;
-pub(in crate::platform) mod kilo_code;
 pub(in crate::platform) mod kimi_code;
 pub(in crate::platform) mod lico_agent;
 pub(in crate::platform) mod openclaw;
@@ -127,7 +128,10 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     ParserRegistration::unanswered(copilot::CONTRACT),
     ParserRegistration::new(cursor::CONTRACT, no_transitions, cursor_identity),
     ParserRegistration::new(hermes::CONTRACT, hermes_transitions, no_identity),
-    ParserRegistration::unanswered(kilo_code::CONTRACT),
+    // The Kilo Code package answers both protocol-agnostic queries from its own
+    // parser, so this entry is the package's own registration rather than a
+    // fail-closed placeholder.
+    licoup_agent_kilo::registration::REGISTRATION,
     ParserRegistration::unanswered(kimi_code::CONTRACT),
     ParserRegistration::unanswered(openclaw::CONTRACT),
     ParserRegistration::unanswered(opencode::CONTRACT),

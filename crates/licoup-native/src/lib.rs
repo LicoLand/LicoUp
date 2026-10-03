@@ -67,7 +67,16 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     // here for its registration while its binary route is completed by the
     // agent-execution port, and a host that never installs this port leaves the
     // package's emitters silent rather than inventing a consumer.
-    licoup_agent_codex::port::turn_event::install(platform::codex_turn_event_port())
+    licoup_agent_codex::port::turn_event::install(platform::codex_turn_event_port())?;
+    // The Kilo Code adapter package owns what one Kilo turn is — the request
+    // shape, the session protocol, the stream classification and the projection —
+    // and this host owns the serve engine it runs on and the consumer its events
+    // reach. Both ports are installed together because a package with an engine
+    // and no consumer, or a consumer and no engine, is half-wired. The package's
+    // binary route is completed by the agent-execution port; until then the client
+    // still performs the turn, and removing that is the named remainder on
+    // VENDOR-CODE-REMOVAL.
+    licoup_agent_kilo::host::install(platform::kilo_code_host::host_ports())
 }
 
 /// The composition's answer for the package-generation admission port: the
