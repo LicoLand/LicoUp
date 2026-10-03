@@ -50,6 +50,17 @@ export const RUST_CORE_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "rust.core.agent-cursor-package",
+      kind: "rust-core",
+      summary: "Cursor adapter package program, vendor protocol, registration, and replay corpus",
+      inputs: ["crates/licoup-agent-cursor/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-cursor/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
       id: "rust.core.acp.composition",
       kind: "rust-core",
       summary: "ACP facade, shared protocol types, validation, and error boundaries",

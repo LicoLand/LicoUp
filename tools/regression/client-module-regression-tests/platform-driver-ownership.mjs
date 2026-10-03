@@ -694,6 +694,84 @@ test("Codex app-server leaves retain exact narrow regression ownership", async (
   ]);
 });
 
+test("Cursor leaves and the Cursor adapter package retain exact regression ownership", async () => {
+  const packageModuleId = "rust.core.agent-cursor-package";
+  const subagentMcpId = "regression.subagent-mcp-common";
+  // The process half is still composed by the client, under the platform
+  // fallback that owns the driver it launches; the wire half moved into the
+  // Cursor adapter package, and the Subagent MCP caller contract reaches the
+  // package's own parser and registration. A source that moved selects the
+  // package's own module, and the contract that names it selects the verifier.
+  // The kernel sources the process half still owns are measured roots, so they
+  // select the client-boundary architecture module as well.
+  const hostSelections = new Map([
+    ["crates/licoup-native/src/platform/cursor_driver.rs",
+      ["rust.platform"]],
+    ["crates/licoup-native/src/platform/cursor_driver/model.rs",
+      ["rust.platform"]],
+    ["crates/licoup-native/src/platform/cursor_driver/errors.rs",
+      ["rust.platform"]],
+    ["crates/licoup-native/src/platform/cursor_driver/probe.rs",
+      ["rust.platform"]],
+    ["crates/licoup-native/src/platform/cursor_driver/update_watcher.rs",
+      ["rust.platform"]],
+  ]);
+  for (const [source, moduleIds] of hostSelections) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([
+      source,
+    ])), ["architecture.client-boundaries", ...moduleIds]);
+  }
+  // The package's own sources select the package's module, and the two the
+  // Subagent MCP caller contract reads select that contract's verifier too.
+  const packageSelections = new Map([
+    ["crates/licoup-agent-cursor/package/manifest.json", [packageModuleId]],
+    ["crates/licoup-agent-cursor/tests/package_artifact.rs", [packageModuleId]],
+    ["crates/licoup-agent-cursor/src/replay.rs",
+      ["architecture.client-boundaries", packageModuleId]],
+    ["crates/licoup-agent-cursor/src/parser.rs",
+      [subagentMcpId, "architecture.client-boundaries", packageModuleId]],
+    ["crates/licoup-agent-cursor/src/registration.rs",
+      [subagentMcpId, "architecture.client-boundaries", packageModuleId]],
+  ]);
+  for (const [source, moduleIds] of packageSelections) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([
+      source,
+    ])), moduleIds);
+  }
+
+  // The package runs its own tests against its own manifest, and the module
+  // owns the crate tree as a whole rather than a list that can drift from it.
+  const packageModule = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === packageModuleId);
+  assert.deepEqual(packageModule.inputs, ["crates/licoup-agent-cursor/**"]);
+  assert.deepEqual(packageModule.command.args, [
+    "test",
+    "--no-fail-fast",
+    "--manifest-path",
+    "crates/licoup-agent-cursor/Cargo.toml",
+  ]);
+
+  // Every source the package ships has a regression owner, and the kernel
+  // sources it left behind keep one too.
+  const owns = (relativePath) => CLIENT_MODULE_CATALOG.some((module) =>
+    module.inputs.some((input) => input.endsWith("/**")
+      ? relativePath.startsWith(input.slice(0, -2))
+      : input === relativePath));
+  const packageSources = await sourceFiles("crates/licoup-agent-cursor", ".rs");
+  assert.ok(packageSources.length > 0);
+  for (const relativePath of packageSources) {
+    assert.equal(owns(relativePath), true,
+      `Cursor package source must have a regression owner: ${relativePath}`);
+  }
+  for (const relativePath of [
+    "crates/licoup-native/src/platform/cursor_driver.rs",
+    ...await sourceFiles("crates/licoup-native/src/platform/cursor_driver", ".rs"),
+  ]) {
+    assert.equal(owns(relativePath), true,
+      `Cursor process-half source must keep a regression owner: ${relativePath}`);
+  }
+});
+
 test("local service leaves retain exact tests and complete source ownership", async () => {
   const filters = new Map([
     ["rust.platform.local-service.composition", "platform::local_service::tests::composition::"],

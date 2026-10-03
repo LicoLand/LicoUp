@@ -13,7 +13,6 @@
 
 mod antigravity;
 mod claude_code;
-mod cursor;
 mod deepseek_harness;
 mod hermes;
 mod kilo_code;
@@ -43,7 +42,7 @@ pub(in crate::platform) fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameR
         "claude-code" => Box::new(claude_code::Replay::new()?),
         "codex" => licoup_agent_codex::replay::replay_arm(adapter_id)?,
         "copilot" | "kimi-code" => Box::new(acp_driver_runtime::replay::Replay::new(adapter_id)?),
-        "cursor" => Box::new(cursor::Replay::new()?),
+        "cursor" => licoup_agent_cursor::replay::replay_arm(adapter_id)?,
         "deepseek-harness" => Box::new(deepseek_harness::Replay::new()?),
         "hermes" => Box::new(hermes::Replay::new()?),
         "kilo-code" => Box::new(kilo_code::Replay::new()?),

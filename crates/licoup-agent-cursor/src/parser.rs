@@ -1,18 +1,44 @@
-use super::{AdapterContract, NativeLineParser};
-use crate::platform::cursor_driver::errors::CursorFailureKind;
-use crate::platform::cursor_driver::model::EffectiveSettings;
-use crate::platform::cursor_driver::model::{MAX_SESSION_ID_LEN, MIN_SESSION_ID_LEN};
-use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
-use crate::platform::native_agent_parser::{TextForm, TextReconciler};
+//! The Cursor Agent CLI turn dialect, classified exactly once below the port.
+//!
+//! This is the sole ingress for Cursor's `strict-lf-ndjson` turn stream, per
+//! ADR-0008: one raw line becomes this Agent's effects here and is never
+//! re-parsed above. The parser reports what the protocol reported — delivery
+//! acknowledgement, streamed text, structured tool calls, application tool
+//! errors and a terminal result — and it settles no turn, imposes no implicit
+//! timeout, and hides no content. The conversation layer remains the sole turn
+//! authority.
+//!
+//! Two Cursor protocol facts are load-bearing and stated here rather than
+//! inferred by a reader:
+//!
+//! - **Delivery is the exact prompt echo.** A system/init frame proves only
+//!   that the process started, so assistant output, tool activity and a
+//!   terminal result are refused until the turn's own user frame carries the
+//!   exact prompt this parser was built with.
+//! - **Identity is bound, never relabeled.** The turn runs against the native
+//!   chat it was launched with; a frame naming another conversation is a
+//!   protocol failure rather than a silent rebind.
+//!
+//! The Subagent MCP caller surface Cursor speaks is part of this dialect: the
+//! application error codes an installed Cursor client returns for a delegated
+//! turn are classified here, where the wire frame is read, instead of by a
+//! second reader above the port.
+
+use licoup_agent_adapter_sdk::adapters::{AdapterContract, NativeLineParser};
+use licoup_agent_adapter_sdk::{LifecycleStage, TextForm, TextReconciler, Transition, TransitionReducer};
 use serde_json::Value;
 use std::collections::BTreeSet;
-pub(super) const CONTRACT: AdapterContract = AdapterContract::new("cursor", "strict-lf-ndjson");
 
-pub(in crate::platform) fn completed_transitions(output: &str) -> Vec<Transition> {
+use crate::errors::CursorFailureKind;
+use crate::model::{EffectiveSettings, MAX_SESSION_ID_LEN, MIN_SESSION_ID_LEN};
+
+pub const CONTRACT: AdapterContract = AdapterContract::new("cursor", "strict-lf-ndjson");
+
+pub fn completed_transitions(output: &str) -> Vec<Transition> {
     terminal_transitions("cursor:reply", output)
 }
 
-pub(in crate::platform) fn failure_transitions(
+pub fn failure_transitions(
     code: &str,
     stage: &str,
     message: &str,
@@ -25,12 +51,12 @@ pub(in crate::platform) fn failure_transitions(
     transitions
 }
 
-pub(in crate::platform) enum CreatedSessionFailure {
+pub enum CreatedSessionFailure {
     Missing,
     Invalid,
 }
 
-pub(in crate::platform) fn parse_created_session(
+pub fn parse_created_session(
     output: &str,
 ) -> Result<String, CreatedSessionFailure> {
     let session_id = output
@@ -44,7 +70,7 @@ pub(in crate::platform) fn parse_created_session(
     Ok(session_id.to_owned())
 }
 
-pub(in crate::platform) fn safe_session_id(session_id: &str) -> bool {
+pub fn safe_session_id(session_id: &str) -> bool {
     let len = session_id.len();
     len >= MIN_SESSION_ID_LEN
         && len <= MAX_SESSION_ID_LEN
@@ -66,7 +92,7 @@ fn terminal_transitions(unit_id: &str, output: &str) -> Vec<Transition> {
     transitions
 }
 
-pub(in crate::platform) struct CursorParser {
+pub struct CursorParser {
     requested_session: String,
     expected_prompt: String,
     observed_session: String,
@@ -78,7 +104,7 @@ pub(in crate::platform) struct CursorParser {
     observed_tool_error_ids: BTreeSet<String>,
 }
 
-pub(in crate::platform) enum CursorEffect {
+pub enum CursorEffect {
     Accepted {
         session_id: String,
         turn_id: String,
@@ -102,15 +128,15 @@ pub(in crate::platform) enum CursorEffect {
     Complete(CursorOutcome),
 }
 
-pub(in crate::platform) struct CursorOutcome {
-    pub(in crate::platform) output: String,
-    pub(in crate::platform) session_id: String,
-    pub(in crate::platform) turn_id: String,
-    pub(in crate::platform) effective: EffectiveSettings,
+pub struct CursorOutcome {
+    pub output: String,
+    pub session_id: String,
+    pub turn_id: String,
+    pub effective: EffectiveSettings,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum CursorParseFailure {
+pub enum CursorParseFailure {
     InvalidJson,
     IdentityMismatch,
     PromptAcknowledgementMissing,
@@ -119,7 +145,7 @@ pub(in crate::platform) enum CursorParseFailure {
 }
 
 impl CursorParser {
-    pub(in crate::platform) fn new(
+    pub fn new(
         requested_session: &str,
         expected_prompt: &str,
         effective: EffectiveSettings,
@@ -137,7 +163,7 @@ impl CursorParser {
         }
     }
 
-    pub(in crate::platform) fn session_id(&self) -> &str {
+    pub fn session_id(&self) -> &str {
         if self.observed_session.is_empty() {
             &self.requested_session
         } else {
@@ -145,7 +171,7 @@ impl CursorParser {
         }
     }
 
-    pub(in crate::platform) fn parse_line(
+    pub fn parse_line(
         &mut self,
         line: &[u8],
     ) -> Result<Vec<CursorEffect>, CursorParseFailure> {

@@ -2,7 +2,9 @@
 //!
 //! One real [`CursorParser`] — the same parser a live turn drives — consumes the
 //! recorded strict-NDJSON frames, so every projection is the parser's own report
-//! and never a re-derivation of the payload.
+//! and never a re-derivation of the payload. The arm travels with the parser: a
+//! program that composes this package's parser set gets the arm that can only
+//! fail when *this* parser regresses.
 //!
 //! A replay boundary has no invocation, so the parser's launch context comes
 //! from the transcript's own handshake: Cursor always runs a turn against an
@@ -11,26 +13,46 @@
 //! frame naming another conversation is still rejected by the parser's own
 //! identity check instead of being silently relabeled.
 
-use super::super::{FrameReplay, RecordedFrame};
-use crate::platform::cursor_driver::errors::CursorFailureKind;
-use crate::platform::cursor_driver::model::EffectiveSettings;
-use crate::platform::native_agent_parser::adapters::cursor::{
-    CursorEffect, CursorOutcome, CursorParseFailure, CursorParser,
-};
+use licoup_agent_adapter_sdk::replay::{FrameReplay, RecordedFrame};
 use serde_json::{Value, json};
+
+use crate::errors::CursorFailureKind;
+use crate::model::EffectiveSettings;
+use crate::parser::{CursorEffect, CursorOutcome, CursorParseFailure, CursorParser};
+use crate::registration::{ADAPTER_ID, FRAMING};
 
 /// The turn being replayed delivers exactly this synthetic prompt. The parser's
 /// acknowledgement check stays real because the expectation is fixed here
 /// rather than read back out of the transcript it is checking.
 const REPLAY_PROMPT: &str = "synthetic-user-prompt";
 
-pub(super) struct Replay {
+/// Build the replay arm of this package's parser.
+///
+/// An adapter this package does not carry is refused rather than defaulted, so a
+/// fixture can never pass against a parser that was never constructed.
+pub fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameReplay>, String> {
+    if adapter_id != ADAPTER_ID {
+        return Err(format!(
+            "no replayable parser is registered for adapter {adapter_id}"
+        ));
+    }
+    Ok(Box::new(Replay::new()))
+}
+
+/// The parser this package's own driver constructs, built for one transcript.
+pub struct Replay {
     parser: Option<CursorParser>,
 }
 
 impl Replay {
-    pub(super) fn new() -> Result<Self, String> {
-        Ok(Self { parser: None })
+    pub fn new() -> Self {
+        Self { parser: None }
+    }
+}
+
+impl Default for Replay {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -39,6 +61,12 @@ impl FrameReplay for Replay {
         // The strict-NDJSON channel is Cursor's agent-to-client turn stream.
         // Nothing the driver writes crosses it, so an outbound frame here
         // cannot be consumed rather than silently mis-parsed.
+        if frame.channel != FRAMING {
+            return Err(format!(
+                "the cursor turn transcript records the {:?} channel; this parser speaks {FRAMING}",
+                frame.channel
+            ));
+        }
         if frame.direction != "agent-to-client" {
             return Err(format!(
                 "cursor turn frames arrive on its agent-to-client NDJSON stream; a {:?} frame is \
