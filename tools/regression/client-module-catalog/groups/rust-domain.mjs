@@ -2288,6 +2288,8 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-agent-targets/src/domain/targets/support.rs",
         "crates/licoup-agent-targets/src/domain/targets/tests.rs",
         "crates/licoup-agent-targets/src/domain/targets/tests/test_support.rs",
+        "crates/licoup-agent-targets/src/domain/targets/tests/dependency_direction.rs",
+        "crates/licoup-agent-targets/src/domain/targets/tests/synthetic_home.rs",
       ],
       command: agentTargetsLayer("domain::targets::tests::"),
     }),
