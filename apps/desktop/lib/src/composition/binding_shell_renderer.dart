@@ -52,10 +52,10 @@ import 'package:licoup/src/presentation/targets/targets_binding.dart';
 /// Concrete renderer factory assembled only at the composition boundary.
 ///
 /// The renderer owns no destination dispatch of its own: [ShellDestinations]
-/// resolves each section against the composition declaration and the bindings
-/// this factory was handed, and an optional binding is null exactly when its
-/// feature composition is not named by [composition]. The renderer therefore
-/// cannot render a surface for a capability the client does not have.
+/// resolves each section against the [ClientCompositionSet] declaration and the
+/// bindings this factory was handed, and an optional binding is null exactly
+/// when its feature composition is not named by that declaration. The renderer
+/// therefore cannot render a surface for a capability the client does not have.
 final class BindingShellRenderer implements ShellRendererPort {
   BindingShellRenderer({
     required ClientCompositionSet composition,
