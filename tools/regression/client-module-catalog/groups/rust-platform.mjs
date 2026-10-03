@@ -1921,12 +1921,27 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.deepseek-harness-driver",
       kind: "rust-platform",
-      summary: "Official DeepSeek Harness SDK JSON-RPC transport and bounded protocol projection",
+      summary: "Client-composed DeepSeek Harness process half: the SDK JSON-RPC transport and its bounded protocol projection",
       inputs: [
         "crates/licoup-native/src/platform/deepseek_harness_driver.rs",
         "packages/contracts/client/fixtures/agent-conversation-adapter/manifests/deepseek-harness.json",
       ],
       command: rustLayer("platform::deepseek_harness_driver::tests::"),
+    }),
+  defineModule({
+      id: "rust.platform.deepseek-harness-package-protocol",
+      kind: "rust-platform",
+      summary: "The Harness SDK wire vocabulary the package owns and the process half reads: framing, turn attribution, and its corpus arm",
+      inputs: [
+        "crates/licoup-agent-deepseek/src/parser.rs",
+        "crates/licoup-agent-deepseek/src/replay.rs",
+        "crates/licoup-agent-deepseek/src/registration.rs",
+      ],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-deepseek/Cargo.toml"],
+        10 * 60_000,
+      ),
     }),
   defineModule({
       id: "rust.platform.runtime-adapters",
@@ -2018,7 +2033,6 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/conversation_lane.rs",
         "crates/licoup-foundation/src/platform/native_agent_interaction/mod.rs",
         "crates/licoup-native/src/platform/native_agent_parser/adapters/antigravity.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/deepseek_harness.rs",
         "crates/licoup-native/src/platform/native_agent_parser/adapters/kilo_code.rs",
         "crates/licoup-native/src/platform/native_agent_parser/adapters/lico_agent.rs",
         "crates/licoup-native/src/platform/native_agent_parser/adapters/mod.rs",

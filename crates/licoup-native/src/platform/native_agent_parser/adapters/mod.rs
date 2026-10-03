@@ -18,16 +18,16 @@ pub(in crate::platform) use licoup_agent_adapter_sdk::{
     LifecycleStage, Transition, TransitionReducer,
 };
 
-// One Agent's parser has moved: Codex's vendor protocol now lives in its own package
-// (`licoup-agent-codex`), parsed once below this port, and this composition names the
-// package rather than keeping a second copy.
+// Two Agents' parsers have moved: Codex's vendor protocol lives in
+// `licoup-agent-codex` and the DeepSeek Harness SDK's in
+// `licoup-agent-deepseek`, each parsed once below this port, and this
+// composition names the packages rather than keeping a second copy.
 pub(in crate::platform) use licoup_agent_codex::parser as codex;
 
 pub(in crate::platform) mod antigravity;
 pub(in crate::platform) mod claude_code;
 pub(in crate::platform) mod copilot;
 pub(in crate::platform) mod cursor;
-pub(in crate::platform) mod deepseek_harness;
 pub(in crate::platform) mod hermes;
 pub(in crate::platform) mod kilo_code;
 pub(in crate::platform) mod kimi_code;
@@ -133,7 +133,10 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     ParserRegistration::unanswered(opencode::CONTRACT),
     ParserRegistration::unanswered(pi::CONTRACT),
     ParserRegistration::unanswered(lico_agent::CONTRACT),
-    ParserRegistration::unanswered(deepseek_harness::CONTRACT),
+    // The DeepSeek Harness package answers its own registration, from the parser
+    // and the session reader it owns; the mesh never dispatches this Agent, so
+    // both SDK queries stay declared and unanswered exactly as before.
+    licoup_agent_deepseek::registration::REGISTRATION,
 ];
 
 /// The parser registrations this host injects into the adapter SDK.

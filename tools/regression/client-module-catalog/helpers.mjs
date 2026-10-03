@@ -19,6 +19,7 @@ export const MODEL_CATALOG_MANIFEST = "crates/licoup-model-catalog/Cargo.toml";
 // An Agent adapter package is its own crate and program, so the modules that
 // own its protocol and its document run against its manifest rather than the host.
 export const AGENT_CODEX_MANIFEST = "crates/licoup-agent-codex/Cargo.toml";
+export const AGENT_DEEPSEEK_MANIFEST = "crates/licoup-agent-deepseek/Cargo.toml";
 
 export const FLUTTER_COMPOSITION_INPUTS = Object.freeze([
   "apps/desktop/analysis_options.yaml",

@@ -350,7 +350,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cache_variant_tests.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cursor.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/deepseek.rs",
-        "crates/licoup-native/src/domain/agent_usage/agent_usage_native/deepseek_reader.mjs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/files.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/identity_refresh.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/models.rs",
@@ -368,12 +367,17 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.agent-usage.deepseek-reader",
       kind: "rust-domain",
-      summary: "Official DeepSeek session persistence usage extraction and attempt accounting",
+      summary: "DeepSeek session-log usage extraction and attempt accounting, read natively by the package that owns the format",
       inputs: [
-        "crates/licoup-native/src/domain/agent_usage/agent_usage_native/deepseek_reader.mjs",
-        "crates/licoup-native/src/domain/agent_usage/agent_usage_native/deepseek_reader.test.mjs",
+        "crates/licoup-agent-deepseek/src/session_store.rs",
+        "crates/licoup-agent-deepseek/src/bin/lico-agent-deepseek.rs",
+        "crates/licoup-agent-deepseek/tests/package_artifact.rs",
       ],
-      command: command("node", ["--test", "crates/licoup-native/src/domain/agent_usage/agent_usage_native/deepseek_reader.test.mjs"], 60_000),
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-deepseek/Cargo.toml"],
+        10 * 60_000,
+      ),
     }),
   defineModule({
       id: "rust.domain.agent-usage-cache",

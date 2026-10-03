@@ -18,19 +18,33 @@
 //! first, which the driver numbers `prompt-1` (`format!("prompt-{}",
 //! next_request_id)`, counted from one).
 
-use super::super::{FrameReplay, RecordedFrame};
-use crate::platform::native_agent_parser::Transition;
-use crate::platform::native_agent_parser::adapters::NativeLineParser;
-use crate::platform::native_agent_parser::adapters::deepseek_harness::{
+use crate::parser::{
     FrameError, FrameParser, ProtocolFrame, TurnParseError, TurnParser, initialize_accepted,
 };
-use crate::platform::runtime_adapters::RuntimeAdapter;
+use licoup_agent_adapter_sdk::Transition;
+use licoup_agent_adapter_sdk::adapters::NativeLineParser;
+use licoup_agent_adapter_sdk::replay::{FrameReplay, RecordedFrame};
 use serde_json::{Value, json};
+
+use crate::registration::{ADAPTER_ID, FRAMING};
 
 /// The request id a transport's first turn is sent as.
 const FIRST_TURN_REQUEST_ID: &str = "prompt-1";
 
-pub(super) struct Replay {
+/// Build the replay arm of this package's parser.
+///
+/// An adapter this package does not carry is refused rather than defaulted, so a
+/// fixture can never pass against a parser that was never constructed.
+pub fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameReplay>, String> {
+    if adapter_id != ADAPTER_ID {
+        return Err(format!(
+            "no replayable parser is registered for adapter {adapter_id}"
+        ));
+    }
+    Ok(Box::new(Replay::new()?))
+}
+
+struct Replay {
     parser: FrameParser,
     /// The request id the turn was admitted under, when the transcript admitted
     /// one. Launch context only: it is never projected.
@@ -43,7 +57,7 @@ pub(super) struct Replay {
 }
 
 impl Replay {
-    pub(super) fn new() -> Result<Self, String> {
+    fn new() -> Result<Self, String> {
         Ok(Self {
             parser: FrameParser,
             request_id: None,
@@ -53,13 +67,11 @@ impl Replay {
         })
     }
 
-    /// The framing this boundary consumes, taken from the adapter's own
-    /// contract so a frame recorded under another channel cannot pass.
+    /// The framing this boundary consumes, taken from this package's own
+    /// adapter declaration so a frame recorded under another channel cannot
+    /// pass.
     fn framing() -> &'static str {
-        crate::platform::native_agent_parser::adapters::contract_for(
-            RuntimeAdapter::DeepSeekHarness,
-        )
-        .framing
+        FRAMING
     }
 
     /// Binds the turn the driver is about to replay, then constructs the parser

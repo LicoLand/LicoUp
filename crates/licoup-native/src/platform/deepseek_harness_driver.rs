@@ -5,9 +5,16 @@ use std::process::{ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
-use super::native_agent_parser::Transition;
-use super::native_agent_parser::adapters::NativeLineParser;
-use super::native_agent_parser::adapters::deepseek_harness::{
+use licoup_agent_adapter_sdk::Transition;
+use licoup_agent_adapter_sdk::adapters::NativeLineParser;
+// The Harness SDK's wire vocabulary belongs to the package that owns the
+// protocol (`licoup-agent-deepseek`), parsed once below the adapter port. This
+// module keeps only the *process* half the client still composes: spawning the
+// transport, supervising the turn and answering control requests. That half
+// moves to the package next, through the agent-execution port the package will
+// declare; until it does, the client reads the protocol from the package and
+// owns only the process.
+use licoup_agent_deepseek::parser::{
     FrameError, FrameParser, ProtocolFrame, TurnParseError, TurnParser, encode_request,
     initialize_accepted, initialize_request, prompt_request, shutdown_request,
 };
@@ -97,12 +104,11 @@ pub(super) struct RunResult {
 
 impl RunResult {
     fn failed(failure: ProtocolFailure, started_at: String) -> Self {
-        let transitions =
-            super::native_agent_parser::adapters::deepseek_harness::failure_transitions(
-                failure.code,
-                failure.stage,
-                failure.message,
-            );
+        let transitions = licoup_agent_deepseek::parser::failure_transitions(
+            failure.code,
+            failure.stage,
+            failure.message,
+        );
         Self {
             ok: false,
             output: String::new(),
@@ -479,7 +485,7 @@ fn execute_turn(
     output_limit: Option<usize>,
     deadline: Option<Instant>,
 ) -> std::result::Result<
-    super::native_agent_parser::adapters::deepseek_harness::TurnResult,
+    licoup_agent_deepseek::parser::TurnResult,
     ProtocolFailure,
 > {
     let request_id = format!("prompt-{}", state.next_request_id);

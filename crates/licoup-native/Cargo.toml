@@ -39,6 +39,11 @@ licoup-agent-drivers = { path = "../licoup-agent-drivers" }
 # registration and its turn-event port while the extension host's binary
 # route is completed by the agent-execution port.
 licoup-agent-codex = { path = "../licoup-agent-codex" }
+# The DeepSeek Harness adapter package. Composition names it for its parser
+# registration, its replay arm and the session-log reader that replaced the
+# Node worker, while the extension host's binary route is completed by the
+# agent-execution port.
+licoup-agent-deepseek = { path = "../licoup-agent-deepseek" }
 licoup-agent-runtime = { path = "../licoup-agent-runtime" }
 licoup-application = { path = "../licoup-application" }
 licoup-project = { path = "../licoup-project" }
