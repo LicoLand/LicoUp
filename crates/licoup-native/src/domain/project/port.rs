@@ -15,12 +15,14 @@
 use super::authority::VerifiedClaimAuthority;
 use crate::domain::project::{portable_store, store_at};
 use licoup_application::{
-    ActorClaim, ApplicationFailure, CommandOutcome, FailureNormalization, Operation,
-    OperationReference, OperationState, ProjectCommand, ProjectPort, ProjectRegistrationRequest,
+    ActorClaim, ApplicationFailure, ArtifactInputRequest, CommandOutcome,
+    DependencyDeclarationRequest, FailureNormalization, Operation, OperationReference,
+    OperationState, ProjectCommand, ProjectPort, ProjectRegistrationRequest,
 };
 use licoup_project::{
-    AuthorityKind, AuthorityReference, ProjectFailure, ProjectId, ProjectIdentitySource,
-    ProjectIdentityStore, ProjectRegistration, RegisteredProject,
+    ArtifactReference, AuthorityKind, AuthorityReference, DeclaredDependency, ProjectFailure,
+    ProjectId, ProjectIdentitySource, ProjectIdentityStore, ProjectRegistration, RegisteredProject,
+    WorkDependency, WorkItemId, WorkRef,
 };
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -97,6 +99,56 @@ impl ProjectPort for NativeProjectApplication {
                     json!({"projects": projects}),
                 ))
             }
+            ProjectCommand::DeclareDependency(request) => self.declare_dependency(claim, request),
+            ProjectCommand::Dependencies { project_id } => {
+                let declared = self
+                    .store()
+                    .map_err(failure)?
+                    .dependencies(&declared_project(project_id).map_err(failure)?)
+                    .map_err(failure)?;
+                Ok(read_outcome(
+                    Operation::ProjectDependencies,
+                    json!({
+                        "projectId": project_id,
+                        "dependencies": declared.iter().map(dependency_wire).collect::<Vec<_>>(),
+                    }),
+                ))
+            }
+            ProjectCommand::UnresolvedArtifacts { project_id } => {
+                let unresolved = self
+                    .store()
+                    .map_err(failure)?
+                    .unresolved_artifacts(&declared_project(project_id).map_err(failure)?)
+                    .map_err(failure)?;
+                Ok(read_outcome(
+                    Operation::ProjectUnresolvedArtifacts,
+                    json!({
+                        "projectId": project_id,
+                        "unresolvedArtifacts": unresolved.iter().map(dependency_wire).collect::<Vec<_>>(),
+                    }),
+                ))
+            }
+            ProjectCommand::BlockedConsumers {
+                project_id,
+                work_item_id,
+            } => {
+                let producer = WorkRef::new(
+                    declared_project(project_id).map_err(failure)?,
+                    declared_item(work_item_id).map_err(failure)?,
+                );
+                let blocked = self
+                    .store()
+                    .map_err(failure)?
+                    .blocked_consumers(&producer)
+                    .map_err(failure)?;
+                Ok(read_outcome(
+                    Operation::ProjectBlockedConsumers,
+                    json!({
+                        "producer": work_ref_wire(&producer),
+                        "blockedConsumers": blocked.iter().map(work_ref_wire).collect::<Vec<_>>(),
+                    }),
+                ))
+            }
         }
     }
 }
@@ -144,6 +196,55 @@ impl NativeProjectApplication {
         ))
         .with_payload(project_wire(&registered)))
     }
+
+    /// Admit one declared artifact input on behalf of an authorized caller.
+    ///
+    /// Two authorization rules run before the store admits the edge, and both
+    /// are decisions this port owns rather than rules the store restates: the
+    /// caller must hold the authority the *declaring* project was registered
+    /// under, because the edge is stored in that project's index. A
+    /// cross-project reference does not need the referenced project's authority
+    /// — naming a registered project is the disclosure check the owner already
+    /// makes — so a shared result can be referenced without a second grant.
+    fn declare_dependency(
+        &self,
+        claim: &ActorClaim,
+        request: &DependencyDeclarationRequest,
+    ) -> Result<CommandOutcome, ApplicationFailure> {
+        let dependency = declared_dependency(request).map_err(failure)?;
+        let store = self.store().map_err(failure)?;
+        let caller = claim
+            .membership_id()
+            .and_then(|membership_id| AuthorityReference::membership(membership_id).ok())
+            .ok_or_else(|| {
+                failure(ProjectFailure::dependency(
+                    "project_dependency_authority_unauthorized",
+                ))
+            })?;
+        match store.read(&dependency.project_id).map_err(failure)? {
+            Some(project) if project.authority == caller => {}
+            // A registered project under another authority and an unregistered
+            // project are both refused before the store's own admission, so a
+            // caller cannot write into an index it does not own.
+            Some(_) => {
+                return Err(failure(ProjectFailure::dependency(
+                    "project_dependency_authority_unauthorized",
+                )));
+            }
+            None => {
+                return Err(failure(ProjectFailure::dependency(
+                    "project_dependency_project_unauthorized",
+                )));
+            }
+        }
+        let declared = store.admit_dependency(&dependency).map_err(failure)?;
+        Ok(CommandOutcome::new(OperationReference::new(
+            Operation::ProjectDeclareDependency,
+            declared.consumer().to_string(),
+            OperationState::Completed,
+        ))
+        .with_payload(dependency_wire(&declared)))
+    }
 }
 
 /// One registered project as both interfaces publish it.
@@ -173,16 +274,110 @@ fn read_outcome(operation: Operation, payload: Value) -> CommandOutcome {
     .with_payload(payload)
 }
 
+/// One declared dependency as both interfaces publish it.
+///
+/// The declared reference travels exactly as the caller declared it, beside the
+/// explicit state read from the declared roots. No field here is a resolution:
+/// a missing result is published as `missing` rather than as an absent entry.
+fn dependency_wire(declared: &DeclaredDependency) -> Value {
+    json!({
+        "dependencySequence": declared.dependency_sequence,
+        "consumer": work_ref_wire(&declared.consumer()),
+        "producer": work_ref_wire(&declared.producer()),
+        "artifact": artifact_wire(&declared.dependency.artifact),
+        "artifactState": declared.artifact_state.as_str(),
+    })
+}
+
+/// One work item reference, project-qualified because an identity is unique
+/// inside its project rather than globally.
+fn work_ref_wire(work: &WorkRef) -> Value {
+    json!({
+        "projectId": work.project_id.as_str(),
+        "workItemId": work.work_item_id.as_str(),
+    })
+}
+
+/// The declared artifact reference, in the shape the declaration used.
+fn artifact_wire(artifact: &ArtifactReference) -> Value {
+    match artifact {
+        ArtifactReference::Local {
+            producer_work_item_id,
+            path,
+        } => json!({
+            "kind": "local",
+            "producerWorkItemId": producer_work_item_id.as_str(),
+            "path": path,
+        }),
+        ArtifactReference::CrossProject {
+            project_id,
+            work_item_id,
+        } => json!({
+            "kind": "cross-project",
+            "projectId": project_id.as_str(),
+            "workItemId": work_item_id.as_str(),
+        }),
+    }
+}
+
+/// One bounded request as the owner's own declaration.
+///
+/// The surface bounds the fields; the owner's identity and location alphabets
+/// are stricter, so an unusable identity is refused here with the owner's own
+/// code rather than re-spelled as a second vocabulary.
+fn declared_dependency(
+    request: &DependencyDeclarationRequest,
+) -> Result<WorkDependency, ProjectFailure> {
+    let artifact = match &request.artifact {
+        ArtifactInputRequest::Local {
+            producer_work_item_id,
+            path,
+        } => ArtifactReference::local(declared_item(producer_work_item_id)?, path.clone())?,
+        ArtifactInputRequest::CrossProject {
+            project_id,
+            work_item_id,
+        } => ArtifactReference::cross_project(
+            declared_project(project_id)?,
+            declared_item(work_item_id)?,
+        ),
+    };
+    Ok(WorkDependency {
+        project_id: declared_project(&request.project_id)?,
+        work_item_id: declared_item(&request.work_item_id)?,
+        artifact,
+    })
+}
+
+fn declared_project(project_id: &str) -> Result<ProjectId, ProjectFailure> {
+    ProjectId::declare(project_id.to_owned())
+}
+
+fn declared_item(work_item_id: &str) -> Result<WorkItemId, ProjectFailure> {
+    WorkItemId::declare(work_item_id.to_owned())
+}
+
 /// A project refusal in the neutral failure model.
 ///
 /// An unavailable store is the one failure a caller may retry unchanged; every
 /// other refusal names a request the caller has to correct, so it is permanent
 /// rather than a blind retry.
+///
+/// The actionable path of a refused cycle is the one detail that travels: it is
+/// the work-item path a caller has to break, and it is a public display value
+/// built from identities the caller declared. Every other detail stays with the
+/// owner, because it is a diagnostic — an escaping location's detail names
+/// filesystem paths, which are not public failure arguments.
 fn failure(error: ProjectFailure) -> ApplicationFailure {
     let normalization = if error.code() == "project_identity_store_unavailable" {
         FailureNormalization::RETRYABLE
     } else {
         FailureNormalization::PERMANENT
     };
-    normalization.into_failure(error.code(), error.stage())
+    let failure = normalization.into_failure(error.code(), error.stage());
+    match error.detail() {
+        Some(path) if error.code() == "project_dependency_cycle" => {
+            failure.with_presentation_arg("dependencyPath", path)
+        }
+        _ => failure,
+    }
 }
