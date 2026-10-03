@@ -85,3 +85,199 @@ fn deserializing_an_identity_applies_the_declaration_rule() {
     let refused_id: Result<ProjectId, _> = serde_json::from_value(serde_json::json!("../etc"));
     assert!(refused_id.is_err());
 }
+
+#[test]
+fn a_declared_work_item_identity_refuses_a_location_or_an_empty_value() {
+    assert!(WorkItemId::declare("build").is_ok());
+    assert!(WorkItemId::declare("item:package-1").is_ok());
+    for refused in ["", "   ", "../etc", "a/b", "with space", "with\0nul"] {
+        let failure = WorkItemId::declare(refused).expect_err("must be refused");
+        assert_eq!(failure.code(), "project_work_item_identity_required");
+        assert_eq!(failure.stage(), IDENTITY_STAGE);
+    }
+    assert!(WorkItemId::declare("x".repeat(MAX_WORK_ITEM_ID_BYTES + 1)).is_err());
+}
+
+#[test]
+fn a_declared_artifact_reference_keeps_its_two_shapes() {
+    let item = WorkItemId::declare("build").expect("a bounded identity");
+    let local = ArtifactReference::local(item.clone(), "dist/out.bin").expect("a bounded location");
+    assert_eq!(local.kind(), "local");
+    assert_eq!(local.local_path(), Some("dist/out.bin"));
+    assert_eq!(
+        local.producer(&ProjectId::declare("alpha").expect("a bounded identity")),
+        WorkRef::new(
+            ProjectId::declare("alpha").expect("a bounded identity"),
+            item.clone()
+        )
+    );
+    assert_eq!(local.to_string(), "local dist/out.bin");
+
+    let cross = ArtifactReference::cross_project(
+        ProjectId::declare("bravo").expect("a bounded identity"),
+        item,
+    );
+    assert_eq!(cross.kind(), "cross-project");
+    assert_eq!(cross.local_path(), None);
+    assert_eq!(
+        cross.producer(&ProjectId::declare("alpha").expect("a bounded identity")),
+        WorkRef::new(
+            ProjectId::declare("bravo").expect("a bounded identity"),
+            WorkItemId::declare("build").expect("a bounded identity")
+        )
+    );
+    assert_eq!(cross.to_string(), "cross-project bravo/build");
+}
+
+#[test]
+fn a_declared_location_is_bounded_and_must_stay_inside_its_authorized_root() {
+    let root = AuthorizedRoot::declare("/synthetic/authorized/alpha").expect("an absolute root");
+    for accepted in ["out.bin", "build/out.bin", "./build/out.bin"] {
+        assert!(
+            stays_inside_authorized_root(&root, accepted),
+            "{accepted} stays inside the root"
+        );
+    }
+    for refused in [
+        "",
+        "   ",
+        "..",
+        "../alpha-secret",
+        "build/../../outside",
+        "build/..",
+        "/etc/passwd",
+        "with\0nul",
+    ] {
+        assert!(
+            !stays_inside_authorized_root(&root, refused),
+            "{refused} must be refused"
+        );
+    }
+    let too_long = "x".repeat(MAX_ARTIFACT_PATH_BYTES + 1);
+    assert!(!stays_inside_authorized_root(&root, &too_long));
+
+    let item = WorkItemId::declare("build").expect("a bounded identity");
+    for refused in ["", "   ", &"x".repeat(MAX_ARTIFACT_PATH_BYTES + 1)] {
+        let failure = ArtifactReference::local(item.clone(), refused).expect_err("must be refused");
+        assert_eq!(failure.code(), "project_artifact_path_required");
+        assert_eq!(failure.stage(), IDENTITY_STAGE);
+    }
+}
+
+/// A dependency payload is validated on the same path as a constructed one, and
+/// a field this owner did not declare is refused rather than dropped.
+#[test]
+fn deserializing_a_dependency_applies_the_declaration_rule() {
+    let decoded: Result<WorkDependency, _> = serde_json::from_value(serde_json::json!({
+        "projectId": "alpha",
+        "workItemId": "test",
+        "artifact": {
+            "kind": "local",
+            "producerWorkItemId": "build",
+            "path": "dist/out.bin",
+        },
+    }));
+    assert_eq!(
+        decoded.expect("a declared local dependency decodes"),
+        WorkDependency {
+            project_id: ProjectId::declare("alpha").expect("a bounded identity"),
+            work_item_id: WorkItemId::declare("test").expect("a bounded identity"),
+            artifact: ArtifactReference::local(
+                WorkItemId::declare("build").expect("a bounded identity"),
+                "dist/out.bin",
+            )
+            .expect("a bounded location"),
+        }
+    );
+
+    let cross: Result<WorkDependency, _> = serde_json::from_value(serde_json::json!({
+        "projectId": "alpha",
+        "workItemId": "test",
+        "artifact": {"kind": "cross-project", "projectId": "bravo", "workItemId": "build"},
+    }));
+    assert_eq!(
+        cross
+            .expect("a declared cross-project dependency decodes")
+            .producer(),
+        WorkRef::new(
+            ProjectId::declare("bravo").expect("a bounded identity"),
+            WorkItemId::declare("build").expect("a bounded identity")
+        )
+    );
+
+    let empty_path: Result<WorkDependency, _> = serde_json::from_value(serde_json::json!({
+        "projectId": "alpha",
+        "workItemId": "test",
+        "artifact": {"kind": "local", "producerWorkItemId": "build", "path": ""},
+    }));
+    assert!(empty_path.is_err());
+
+    let smuggled: Result<WorkDependency, _> = serde_json::from_value(serde_json::json!({
+        "projectId": "alpha",
+        "workItemId": "test",
+        "artifact": {
+            "kind": "local",
+            "producerWorkItemId": "build",
+            "path": "dist/out.bin",
+            "credential": "synthetic-secret-material",
+        },
+    }));
+    assert!(
+        smuggled.is_err(),
+        "an undeclared field is refused rather than dropped"
+    );
+
+    let refused_location: Result<WorkDependency, _> = serde_json::from_value(serde_json::json!({
+        "projectId": "alpha",
+        "workItemId": "test",
+        "artifact": {"kind": "local", "producerWorkItemId": "../etc", "path": "dist/out.bin"},
+    }));
+    assert!(refused_location.is_err());
+}
+
+/// The read side never joins a location that would replace the declared root,
+/// so even a stored row that named one stays inside the declaration.
+#[test]
+fn reading_a_declared_location_never_leaves_its_authorized_root() {
+    let root = AuthorizedRoot::declare("/synthetic/authorized/alpha").expect("an absolute root");
+    for unusable in [
+        "/etc/passwd",
+        "../outside/secret.txt",
+        "dist/../../outside.txt",
+    ] {
+        assert_eq!(
+            read_local_artifact(&root, unusable),
+            ArtifactState::Unavailable,
+            "{unusable} must not be joined onto the root"
+        );
+    }
+    assert_eq!(read_local_artifact(&root, ""), ArtifactState::Missing);
+    assert_eq!(
+        read_local_artifact(&root, "dist/out.bin"),
+        ArtifactState::Missing,
+        "a location under an absent root is explicitly missing"
+    );
+}
+
+#[test]
+fn reading_a_declared_location_reports_materialization_from_the_declared_root() {
+    let base = std::env::temp_dir().join(format!(
+        "licoup-project-artifact-read-{}",
+        std::process::id()
+    ));
+    let directory = base.join("alpha");
+    std::fs::create_dir_all(directory.join("dist")).expect("the synthetic root is creatable");
+    std::fs::write(directory.join("dist/out.bin"), b"synthetic").expect("the artifact is writable");
+    let root = AuthorizedRoot::declare(directory.to_string_lossy().into_owned())
+        .expect("an absolute root");
+
+    assert_eq!(
+        read_local_artifact(&root, "dist/out.bin"),
+        ArtifactState::Materialized
+    );
+    assert_eq!(
+        read_local_artifact(&root, "dist/absent.bin"),
+        ArtifactState::Missing
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}

@@ -17,6 +17,8 @@ pub const MAX_PROJECT_ID_BYTES: usize = 128;
 pub const MAX_WORKSPACE_ID_BYTES: usize = 128;
 /// Largest declared plan identity.
 pub const MAX_PLAN_ID_BYTES: usize = 128;
+/// Largest declared work-item identity.
+pub const MAX_WORK_ITEM_ID_BYTES: usize = 128;
 /// Largest project display name.
 pub const MAX_DISPLAY_NAME_BYTES: usize = 256;
 /// Largest declared authorized root.
@@ -105,6 +107,12 @@ declared_identity!(
     "project_plan_identity_required",
     MAX_PLAN_ID_BYTES,
     "plan identity"
+);
+declared_identity!(
+    WorkItemId,
+    "project_work_item_identity_required",
+    MAX_WORK_ITEM_ID_BYTES,
+    "work-item identity"
 );
 
 /// The declared root this project is authorized to operate in.
