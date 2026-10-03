@@ -78,13 +78,14 @@ export const RUST_COMPONENT_MODULES = Object.freeze([
   ),
   crateTests(
     "rust.crate.model-catalog",
-    "Declared model identity, observed availability and recorded price facts behind the catalogue port",
+    "Declared model identity, observed availability, recorded price facts and non-learning candidate routing behind the catalogue ports",
     "licoup-model-catalog",
     [
       "crates/licoup-model-catalog/src/lib.rs",
       "crates/licoup-model-catalog/src/port.rs",
       "crates/licoup-model-catalog/src/availability.rs",
       "crates/licoup-model-catalog/src/selection.rs",
+      "crates/licoup-model-catalog/src/candidate_policy.rs",
       "crates/licoup-model-catalog/src/planning.rs",
       "crates/licoup-model-catalog/src/pricing.rs",
       "crates/licoup-model-catalog/src/pricing/pricing_catalog.json",

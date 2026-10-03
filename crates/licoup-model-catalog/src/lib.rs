@@ -22,6 +22,13 @@
 //! available, and an observed model with no declared identity is still
 //! observed.
 //!
+//! [`candidate_policy`] is the non-learning routing query over those facts:
+//! given an admitted request and the alternatives its effective grants already
+//! allow, it ranks the survivors deterministically and names one exclusion for
+//! every candidate that may not run — a requirement (capability or model)
+//! mismatch, an unusable credential, a spent quota window, or a model no live
+//! source reported. It recommends within the allowed set and never widens it.
+//!
 //! The crate reads nothing owned above it directly. Probes, credential states
 //! and source generations arrive through [`port::ModelCatalogPort`], which this
 //! crate declares and the `licoup-native` crate root composes; the crate's own
@@ -33,6 +40,7 @@
 //! primitives every consumer of these facts already stands on.
 
 pub mod availability;
+pub mod candidate_policy;
 pub mod identity;
 pub mod planning;
 pub mod port;
@@ -41,6 +49,13 @@ pub mod selection;
 
 pub use availability::{
     ObservedAvailability, ObservedCatalog, ObservedCatalogCache, ObservedModel, now_unix_ms,
+};
+pub use candidate_policy::{
+    CandidateAvailability, CandidateCredential, CandidateDecision, CandidateExclusion,
+    CandidateId, CandidatePolicyPort, CandidateQuota, CandidateRelation, CandidateRequest,
+    CandidateRequirement, CandidateUnavailable, ExclusionCategory, ExclusionCode,
+    ExcludedCandidate, QuotaState, RankedCandidate, RequirementAnswer, RequirementState,
+    select_candidates,
 };
 pub use identity::{
     CanonicalModel, RegistrySnapshot, SnapshotProvenance, model_display_name, snapshot_report,
