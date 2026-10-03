@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-pub(in crate::platform) fn sanitized_event(message: &Value) -> Option<Value> {
+pub fn sanitized_event(message: &Value) -> Option<Value> {
     let event_type = message.get("type").and_then(Value::as_str)?;
     match event_type {
         "agent_start" | "agent_end" | "agent_settled" | "turn_start" | "turn_end"
@@ -22,7 +22,7 @@ pub(in crate::platform) fn sanitized_event(message: &Value) -> Option<Value> {
     }
 }
 
-pub(in crate::platform) fn processing_evidence_kind(message: &Value) -> Option<&'static str> {
+pub fn processing_evidence_kind(message: &Value) -> Option<&'static str> {
     match message.get("type").and_then(Value::as_str)? {
         "tool_execution_start" => Some("tool"),
         "agent_start" | "turn_start" | "message_start" | "compaction_start"

@@ -19,7 +19,6 @@ mod hermes;
 mod kilo_code;
 mod lico_agent;
 mod opencode;
-mod pi;
 
 use super::FrameReplay;
 use crate::platform::acp_driver_runtime;
@@ -50,7 +49,7 @@ pub(in crate::platform) fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameR
         "lico-agent" => Box::new(lico_agent::Replay::new()?),
         "openclaw" => Box::new(openclaw_driver::replay::Replay::new()?),
         "opencode" => Box::new(opencode::Replay::new()?),
-        "pi" => Box::new(pi::Replay::new()?),
+        "pi" => licoup_agent_pi::replay::replay_arm(adapter_id)?,
         other => {
             return Err(format!(
                 "no replayable parser is registered for adapter {other}"

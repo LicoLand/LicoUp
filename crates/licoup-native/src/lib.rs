@@ -67,7 +67,10 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     // here for its registration while its binary route is completed by the
     // agent-execution port, and a host that never installs this port leaves the
     // package's emitters silent rather than inventing a consumer.
-    licoup_agent_codex::port::turn_event::install(platform::codex_turn_event_port())
+    licoup_agent_codex::port::turn_event::install(platform::codex_turn_event_port())?;
+    // The Pi adapter package answers the same way, for the same reason: one
+    // consumer per process, installed once, and the package silent until then.
+    licoup_agent_pi::port::turn_event::install(platform::pi_turn_event_port())
 }
 
 /// The composition's answer for the package-generation admission port: the

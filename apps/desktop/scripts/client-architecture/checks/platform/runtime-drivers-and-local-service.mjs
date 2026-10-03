@@ -283,15 +283,21 @@ export async function checkRuntimeDriversAndLocalService(context, {
   );
   const piDriverSource = await readJoinedText([
     "crates/licoup-native/src/platform/pi_driver.rs",
-    ...piDriverFiles
+    ...piDriverFiles,
+    // The wire half moved into the Pi adapter package: the parser, its protocol
+    // state machine and the driver vocabulary the kernel facade names.
+    "crates/licoup-agent-pi/src/parser.rs",
+    ...(await collectSourceFiles("crates/licoup-agent-pi/src/parser", ".rs")),
+    "crates/licoup-agent-pi/src/driver.rs",
+    ...(await collectSourceFiles("crates/licoup-agent-pi/src/driver", ".rs"))
   ]);
   const piDriverFoundationSource = await readJoinedText([
-    "crates/licoup-native/src/platform/pi_driver/errors.rs",
-    "crates/licoup-native/src/platform/pi_driver/model.rs",
-    "crates/licoup-native/src/platform/pi_driver/params.rs"
+    "crates/licoup-agent-pi/src/driver/errors.rs",
+    "crates/licoup-agent-pi/src/driver/model.rs",
+    "crates/licoup-agent-pi/src/driver/params.rs"
   ]);
   const piDriverSessionSource = await readText(
-    "crates/licoup-native/src/platform/pi_driver/sessions.rs"
+    "crates/licoup-agent-pi/src/driver/sessions.rs"
   );
   const piDriverSupervisionSource = await readText(
     "crates/licoup-native/src/platform/pi_driver/supervision.rs"

@@ -22,6 +22,9 @@ pub(in crate::platform) use licoup_agent_adapter_sdk::{
 // (`licoup-agent-codex`), parsed once below this port, and this composition names the
 // package rather than keeping a second copy.
 pub(in crate::platform) use licoup_agent_codex::parser as codex;
+// Pi's vendor protocol moved the same way, into `licoup-agent-pi`, and this
+// composition names that package's parser at the path the driver leaves read.
+pub(in crate::platform) use licoup_agent_pi::parser as pi;
 
 pub(in crate::platform) mod antigravity;
 pub(in crate::platform) mod claude_code;
@@ -34,7 +37,6 @@ pub(in crate::platform) mod kimi_code;
 pub(in crate::platform) mod lico_agent;
 pub(in crate::platform) mod openclaw;
 pub(in crate::platform) mod opencode;
-pub(in crate::platform) mod pi;
 
 use licoup_agent_adapter_sdk::port::{
     AdapterParserSet, DurableIdentityRequest, ExecutionOutcome, ParserRegistration,
@@ -131,7 +133,9 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     ParserRegistration::unanswered(kimi_code::CONTRACT),
     ParserRegistration::unanswered(openclaw::CONTRACT),
     ParserRegistration::unanswered(opencode::CONTRACT),
-    ParserRegistration::unanswered(pi::CONTRACT),
+    // Pi's driver carries the parser's own transition list and the Subagent mesh
+    // never dispatches it, so the package declares both queries unanswered.
+    licoup_agent_pi::registration::REGISTRATION,
     ParserRegistration::unanswered(lico_agent::CONTRACT),
     ParserRegistration::unanswered(deepseek_harness::CONTRACT),
 ];

@@ -54,6 +54,11 @@
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.codex.licopkg"
         },
         {
+          "role": "pi-adapter-package-payload",
+          "file": "LicoUp-package-org.licoland.adapter.pi.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.pi.licopkg"
+        },
+        {
           "role": "mcp-package-payload",
           "file": "LicoUp-package-org.licoland.feature.mcp.licopkg",
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.feature.mcp.licopkg"

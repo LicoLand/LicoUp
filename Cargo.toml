@@ -13,6 +13,7 @@ members = [
     "crates/licoup-agent-adapter-sdk",
     "crates/licoup-agent-drivers",
     "crates/licoup-agent-codex",
+    "crates/licoup-agent-pi",
     "crates/licoup-agent-runtime",
     "crates/licoup-application",
     "crates/licoup-extension-contracts",

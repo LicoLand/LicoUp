@@ -1157,15 +1157,40 @@ test("Pi driver leaves retain exact tests and complete source ownership", async 
   for (const relativePath of [
     "crates/licoup-native/src/platform/pi_driver.rs",
     ...splitSources,
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/pi.rs",
-    ...await sourceFiles(
-      "crates/licoup-native/src/platform/native_agent_parser/adapters/pi",
-      ".rs",
-    ),
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
-      `Pi driver source must have a precise regression owner: ${relativePath}`);
+      `Pi driver process source must have a precise regression owner: ${relativePath}`);
   }
+
+  // The protocol vocabulary moved into the Pi adapter package, where a source
+  // is owned by a precise narrow group or by the package's own module. The
+  // kernel keeps only the process half and names the package from its facade.
+  const packageModuleId = "rust.core.agent-pi-package";
+  const narrowInputs = new Set([
+    ...modules.flatMap((module) => module.inputs),
+    ...sourceCheck.inputs,
+  ]);
+  for (const relativePath of [
+    "crates/licoup-agent-pi/src/parser.rs",
+    ...await sourceFiles("crates/licoup-agent-pi/src/parser", ".rs"),
+    ...await sourceFiles("crates/licoup-agent-pi/src/driver", ".rs"),
+  ]) {
+    assert.equal(narrowInputs.has(relativePath), true,
+      `Pi protocol source must have a precise regression owner: ${relativePath}`);
+  }
+  const owns = (relativePath) => CLIENT_MODULE_CATALOG.some((module) =>
+    module.inputs.some((input) => input.endsWith("/**")
+      ? relativePath.startsWith(input.slice(0, -2))
+      : input === relativePath));
+  const packageSources = await sourceFiles("crates/licoup-agent-pi/src", ".rs");
+  assert.ok(packageSources.length > 0);
+  for (const relativePath of packageSources) {
+    assert.equal(owns(relativePath), true,
+      `Pi package source must have a regression owner: ${relativePath}`);
+  }
+  const packageModule = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === packageModuleId);
+  assert.deepEqual(packageModule.inputs, ["crates/licoup-agent-pi/**"]);
 });
 
 test("OpenCode driver leaves retain exact tests and complete source ownership", async () => {
