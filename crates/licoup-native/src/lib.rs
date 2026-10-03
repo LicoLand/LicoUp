@@ -67,7 +67,13 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     // here for its registration while its binary route is completed by the
     // agent-execution port, and a host that never installs this port leaves the
     // package's emitters silent rather than inventing a consumer.
-    licoup_agent_codex::port::turn_event::install(platform::codex_turn_event_port())
+    licoup_agent_codex::port::turn_event::install(platform::codex_turn_event_port())?;
+    // The OpenClaw adapter package asks the same question about its own turns,
+    // and this host answers it with the same emitters. Its agent-execution port
+    // stays declared and fail-closed for the same reason: the kernel still
+    // executes OpenClaw through its own transport, so no admission is claimed
+    // for a binary route that is not completed yet.
+    licoup_agent_openclaw::port::turn_event::install(platform::openclaw_turn_event_port())
 }
 
 /// The composition's answer for the package-generation admission port: the

@@ -38,6 +38,7 @@ fn active_gateway_session_accepts_acp_cancel_before_exact_resume() {
     let run_directory = directory.clone();
     let run_executable = executable.clone();
     let run = std::thread::spawn(move || {
+        install_openclaw_turn_event_port();
         crate::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
             if event.get("event").and_then(Value::as_str) == Some("dispatch.turn.bound") {
                 let _ = bound_sender.try_send(());
@@ -105,6 +106,7 @@ fn fresh_session_stream_events_always_carry_bound_identity() {
     let (directory, executable) = compile_fake_openclaw("lico-openclaw-stream-identity");
     let captured = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
     let sink_target = Arc::clone(&captured);
+    install_openclaw_turn_event_port();
     crate::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
         sink_target.lock().unwrap().push(event);
     }));

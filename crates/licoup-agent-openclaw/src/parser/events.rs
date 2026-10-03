@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 
 /// Project only fields needed by the client. OpenClaw metadata, session keys,
 /// tool arguments, paths, thoughts, and user-message echoes remain private.
-pub(super) fn projected_event(update: &AcpSessionUpdate) -> Option<Value> {
+pub fn projected_event(update: &AcpSessionUpdate) -> Option<Value> {
     let event = match update.kind {
         AcpSessionUpdateKind::AgentMessageChunk => json!({
             "sessionUpdate": "agent_message_chunk",

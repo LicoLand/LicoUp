@@ -18,9 +18,12 @@ pub(in crate::platform) use licoup_agent_adapter_sdk::{
     LifecycleStage, Transition, TransitionReducer,
 };
 
-// One Agent's parser has moved: Codex's vendor protocol now lives in its own package
-// (`licoup-agent-codex`), parsed once below this port, and this composition names the
-// package rather than keeping a second copy.
+// Two Agents' parsers have moved: Codex's and OpenClaw's vendor protocols now live
+// in their own packages (`licoup-agent-codex`, `licoup-agent-openclaw`), parsed once
+// below this port, and this composition names each package rather than keeping a
+// second copy. Codex's declaration is read through a module alias because its
+// driver leaves still name it; OpenClaw's is reached only through the registration
+// below, so no second name for it is kept here.
 pub(in crate::platform) use licoup_agent_codex::parser as codex;
 
 pub(in crate::platform) mod antigravity;
@@ -32,7 +35,6 @@ pub(in crate::platform) mod hermes;
 pub(in crate::platform) mod kilo_code;
 pub(in crate::platform) mod kimi_code;
 pub(in crate::platform) mod lico_agent;
-pub(in crate::platform) mod openclaw;
 pub(in crate::platform) mod opencode;
 pub(in crate::platform) mod pi;
 
@@ -129,7 +131,10 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     ParserRegistration::new(hermes::CONTRACT, hermes_transitions, no_identity),
     ParserRegistration::unanswered(kilo_code::CONTRACT),
     ParserRegistration::unanswered(kimi_code::CONTRACT),
-    ParserRegistration::unanswered(openclaw::CONTRACT),
+    // The OpenClaw package owns both of this Agent's protocol-agnostic answers
+    // and leaves both fail-closed for its own stated reasons, so this entry is
+    // the package's own registration rather than a second reading of it.
+    licoup_agent_openclaw::registration::REGISTRATION,
     ParserRegistration::unanswered(opencode::CONTRACT),
     ParserRegistration::unanswered(pi::CONTRACT),
     ParserRegistration::unanswered(lico_agent::CONTRACT),

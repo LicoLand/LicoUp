@@ -3,37 +3,37 @@ use super::codec::{
     INITIALIZE_REQUEST_ID, MODE_REQUEST_ID, PROMPT_REQUEST_ID, SESSION_REQUEST_ID,
     request_id_matches, response_is_error,
 };
-use super::continuity::{SessionBinding, session_method, session_request};
-use super::errors::ProtocolFailure;
+use crate::gateway_acp::continuity::{SessionBinding, session_method, session_request};
+use crate::gateway_acp::errors::ProtocolFailure;
 use super::events::projected_event;
-use super::model::EffectiveSettings;
-use super::params::ProtocolConfig;
+use crate::gateway_acp::model::EffectiveSettings;
+use crate::gateway_acp::params::ProtocolConfig;
 use licoup_foundation::core::acp::{self, AcpClientCapabilities, AcpImplementation};
 use serde_json::{Value, json};
 
 #[derive(Clone, Debug)]
-pub(super) struct ProtocolOutcome {
-    pub(super) output: String,
-    pub(super) session_id: String,
-    pub(super) turn_id: String,
-    pub(super) turn_status: String,
-    pub(super) effective: EffectiveSettings,
-    pub(super) transitions: Vec<crate::platform::native_agent_parser::Transition>,
+pub struct ProtocolOutcome {
+    pub output: String,
+    pub session_id: String,
+    pub turn_id: String,
+    pub turn_status: String,
+    pub effective: EffectiveSettings,
+    pub transitions: Vec<licoup_agent_adapter_sdk::Transition>,
 }
 
 #[derive(Debug)]
-pub(super) enum ProtocolEffect {
+pub enum ProtocolEffect {
     Send(Value),
     Complete(Box<ProtocolOutcome>),
     Fail(ProtocolFailure),
 }
 
-pub(super) struct ParsedProtocolFrame {
-    pub(super) effects: Vec<ProtocolEffect>,
+pub struct ParsedProtocolFrame {
+    pub effects: Vec<ProtocolEffect>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ProtocolPhase {
+pub enum ProtocolPhase {
     AwaitInitialize,
     AwaitSession,
     AwaitMode,
@@ -42,17 +42,17 @@ pub(super) enum ProtocolPhase {
 }
 
 #[derive(Debug)]
-pub(super) struct OpenClawProtocol {
-    pub(super) config: ProtocolConfig,
-    pub(super) phase: ProtocolPhase,
-    pub(super) binding: SessionBinding,
-    pub(super) output: String,
-    pub(super) events: Vec<Value>,
-    pub(super) effective: EffectiveSettings,
+pub struct OpenClawProtocol {
+    pub config: ProtocolConfig,
+    pub phase: ProtocolPhase,
+    pub binding: SessionBinding,
+    pub output: String,
+    pub events: Vec<Value>,
+    pub effective: EffectiveSettings,
 }
 
 impl OpenClawProtocol {
-    pub(super) fn new(config: ProtocolConfig) -> Self {
+    pub fn new(config: ProtocolConfig) -> Self {
         let effective = EffectiveSettings {
             cwd: Some(config.cwd.clone()),
             reasoning_effort: config.reasoning_effort.clone(),
@@ -69,7 +69,7 @@ impl OpenClawProtocol {
         }
     }
 
-    pub(super) fn initial_request(&self) -> Result<Value, ProtocolFailure> {
+    pub fn initial_request(&self) -> Result<Value, ProtocolFailure> {
         acp::initialize_request(
             INITIALIZE_REQUEST_ID,
             &AcpImplementation::new("lico-up", env!("CARGO_PKG_VERSION")).title("LicoUp"),
@@ -78,7 +78,7 @@ impl OpenClawProtocol {
         .map_err(|error| ProtocolFailure::from_acp(error, acp::INITIALIZE_METHOD))
     }
 
-    pub(super) fn handle_message(&mut self, message: Value) -> Vec<ProtocolEffect> {
+    pub fn handle_message(&mut self, message: Value) -> Vec<ProtocolEffect> {
         if let Some(effects) = self.handle_server_request(&message) {
             self.phase = ProtocolPhase::Finished;
             return effects;
@@ -105,7 +105,7 @@ impl OpenClawProtocol {
         }
     }
 
-    pub(super) fn handle_frame(&mut self, line: &[u8]) -> ParsedProtocolFrame {
+    pub fn handle_frame(&mut self, line: &[u8]) -> ParsedProtocolFrame {
         let message = match super::codec::decode_message(line) {
             Ok(message) => message,
             Err(super::codec::DecodeFailure::TooLarge) => {
@@ -332,7 +332,7 @@ impl OpenClawProtocol {
             turn_status: stop_reason,
             effective: self.effective.clone(),
             transitions:
-                crate::platform::native_agent_parser::adapters::openclaw::completed_transitions(
+                crate::parser::completed_transitions(
                     &self.output,
                 ),
         }))]
@@ -387,7 +387,7 @@ impl OpenClawProtocol {
                     .native_id()
                     .or(self.binding.protocol_id())
                     .unwrap_or_default();
-                super::super::turn_event_emit::emit_agent_processing(
+                crate::port::turn_event::emit_agent_processing(
                     session_for_emit,
                     &self.config.turn_id,
                     evidence_kind,
@@ -410,7 +410,7 @@ impl OpenClawProtocol {
                     .native_id()
                     .or(self.binding.protocol_id())
                     .unwrap_or_default();
-                super::super::turn_event_emit::emit_agent_message_chunk(
+                crate::port::turn_event::emit_agent_message_chunk(
                     session_for_emit,
                     &self.config.turn_id,
                     &text,
@@ -435,7 +435,7 @@ impl OpenClawProtocol {
         }
     }
 
-    pub(super) fn failure_with_ids(
+    pub fn failure_with_ids(
         &self,
         code: &'static str,
         message: &'static str,

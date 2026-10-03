@@ -7,6 +7,11 @@
       "payloadRole": "codex-adapter-package-payload"
     },
     {
+      "packageId": "org.licoland.adapter.openclaw",
+      "source": "crates/licoup-agent-openclaw/package",
+      "payloadRole": "openclaw-adapter-package-payload"
+    },
+    {
       "packageId": "org.licoland.feature.mcp",
       "source": "crates/licoup-mcp/package",
       "payloadRole": "mcp-package-payload"

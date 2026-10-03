@@ -19,6 +19,7 @@ export const MODEL_CATALOG_MANIFEST = "crates/licoup-model-catalog/Cargo.toml";
 // An Agent adapter package is its own crate and program, so the modules that
 // own its protocol and its document run against its manifest rather than the host.
 export const AGENT_CODEX_MANIFEST = "crates/licoup-agent-codex/Cargo.toml";
+export const AGENT_OPENCLAW_MANIFEST = "crates/licoup-agent-openclaw/Cargo.toml";
 
 export const FLUTTER_COMPOSITION_INPUTS = Object.freeze([
   "apps/desktop/analysis_options.yaml",
@@ -243,6 +244,24 @@ export function rustAgentPackageLayer(filter, harnessArgs = []) {
       "test",
       "--manifest-path",
       AGENT_CODEX_MANIFEST,
+      "--lib",
+      filter,
+      ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),
+    ],
+    10 * 60_000,
+  );
+}
+
+/// One module of the OpenClaw adapter package's library. The package is its own
+/// crate and program, so its leaves run against its own manifest rather than
+/// against the host that composes it.
+export function rustOpenClawPackageLayer(filter, harnessArgs = []) {
+  return command(
+    "cargo",
+    [
+      "test",
+      "--manifest-path",
+      AGENT_OPENCLAW_MANIFEST,
       "--lib",
       filter,
       ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),

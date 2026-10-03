@@ -6,6 +6,7 @@ import {
   foundationLayer,
   node,
   rustLayer,
+  rustOpenClawPackageLayer,
   gatewayCoreLayer,
   gatewayIntegrationTest,
   gatewayLayer,
@@ -1362,6 +1363,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "OpenClaw result, effective setting, and capability projections",
       inputs: [
         "crates/licoup-native/src/platform/openclaw_driver/model.rs",
+        "crates/licoup-agent-openclaw/src/gateway_acp/model.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/model.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::model::"),
@@ -1372,6 +1374,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "OpenClaw static redacted failures and minimum identifier binding",
       inputs: [
         "crates/licoup-native/src/platform/openclaw_driver/errors.rs",
+        "crates/licoup-agent-openclaw/src/gateway_acp/errors.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/errors.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::errors::"),
@@ -1382,6 +1385,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "OpenClaw request, session, private-value, and optional MCP registration validation",
       inputs: [
         "crates/licoup-native/src/platform/openclaw_driver/params.rs",
+        "crates/licoup-agent-openclaw/src/gateway_acp/params.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/params.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::params::"),
@@ -1391,7 +1395,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "OpenClaw ACP JSON-line codec and request identifier matching",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/codec.rs",
+        "crates/licoup-native/src/platform/openclaw_driver/codec.rs",
+        "crates/licoup-agent-openclaw/src/parser/codec.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/codec.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::codec::"),
@@ -1402,6 +1407,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "OpenClaw exact Gateway continuation with bounded MCP server initialization options",
       inputs: [
         "crates/licoup-native/src/platform/openclaw_driver/continuity.rs",
+        "crates/licoup-agent-openclaw/src/gateway_acp/continuity.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/continuity.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::continuity::"),
@@ -1411,7 +1417,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "OpenClaw allowlisted event projection without metadata, tool input, or thought leakage",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/events.rs",
+        "crates/licoup-native/src/platform/openclaw_driver/events.rs",
+        "crates/licoup-agent-openclaw/src/parser/events.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/events.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::events::"),
@@ -1421,8 +1428,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "OpenClaw ACP state machine, exact session association, mode, and prompt completion",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/protocol.rs",
+        "crates/licoup-agent-openclaw/src/parser.rs",
+        "crates/licoup-agent-openclaw/src/parser/protocol.rs",
+        "crates/licoup-native/src/platform/openclaw_driver/protocol.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/protocol.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::protocol::"),
@@ -1432,8 +1440,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "OpenClaw permission requests fail closed into explicit user interaction",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/protocol.rs",
+        "crates/licoup-agent-openclaw/src/parser.rs",
+        "crates/licoup-agent-openclaw/src/parser/protocol.rs",
+        "crates/licoup-native/src/platform/openclaw_driver/protocol.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/interaction.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::interaction::"),
@@ -1483,9 +1492,10 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Recorded Gateway ACP transcript replay arm for the openclaw protocol state machine",
       inputs: [
-        "crates/licoup-native/src/platform/openclaw_driver/replay.rs",
+        "crates/licoup-agent-openclaw/src/replay.rs",
+        "crates/licoup-agent-adapter-sdk/src/replay/mod.rs",
       ],
-      command: rustLayer("platform::native_agent_parser::replay::"),
+      command: rustOpenClawPackageLayer("replay::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.composition",

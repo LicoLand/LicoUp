@@ -1,16 +1,19 @@
 //! Replay arm for the openclaw adapter.
 //!
-//! The gateway protocol state machine is module-private here, so the arm lives
-//! with it rather than in the parser tree.
+//! The Gateway ACP protocol state machine is this package's own ingress, so the
+//! arm lives with the package rather than in the composition: a host that
+//! composes no OpenClaw package answers no OpenClaw transcript, and one that
+//! composes it gets the arm built exactly as the package's own driver builds it.
 
-use crate::platform::native_agent_parser::Transition;
-use crate::platform::native_agent_parser::replay::{FrameReplay, RecordedFrame};
+use licoup_agent_adapter_sdk::Transition;
+use licoup_agent_adapter_sdk::replay::{FrameReplay, RecordedFrame};
 use serde_json::{Value, json};
 
-use super::ProtocolFailure;
-use super::model::EffectiveSettings;
-use super::params::ProtocolConfig;
-use super::protocol::{OpenClawProtocol, ProtocolEffect};
+use crate::gateway_acp::errors::ProtocolFailure;
+use crate::gateway_acp::model::EffectiveSettings;
+use crate::gateway_acp::params::ProtocolConfig;
+use crate::parser::protocol::{OpenClawProtocol, ProtocolEffect};
+use crate::registration::ADAPTER_ID;
 
 /// The Gateway conversation key the recorded transcripts resume. OpenClaw
 /// derives its resumable identity from `sessionKey`, and a resume request may
@@ -24,12 +27,25 @@ const CWD: &str = "/workspace/synthetic-project";
 /// keeps it fixed; it is never projected.
 const TURN_ID: &str = "synthetic-turn";
 
-pub(in crate::platform) struct Replay {
+/// Build this adapter's replay arm for the composed parser set.
+///
+/// Another adapter is refused rather than defaulted: this program carries one
+/// Agent, and a corpus that names a different channel must not replay here.
+pub fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameReplay>, String> {
+    if adapter_id != ADAPTER_ID {
+        return Err(format!(
+            "no replayable parser is registered for adapter {adapter_id}"
+        ));
+    }
+    Ok(Box::new(Replay::new()?))
+}
+
+pub struct Replay {
     protocol: OpenClawProtocol,
 }
 
 impl Replay {
-    pub(in crate::platform) fn new() -> Result<Self, String> {
+    pub fn new() -> Result<Self, String> {
         Ok(Self {
             protocol: OpenClawProtocol::new(ProtocolConfig {
                 prompt: PROMPT.to_owned(),

@@ -67,6 +67,7 @@
     "independentPackageAssets": {
       "payloadRoles": [
         "codex-adapter-package-payload",
+        "openclaw-adapter-package-payload",
         "mcp-package-payload",
         "package-payload"
       ],

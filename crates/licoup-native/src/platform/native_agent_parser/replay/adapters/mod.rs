@@ -4,9 +4,10 @@
 //! parser. An Agent whose parser has moved into its own package also moved the
 //! arm that drives it, because an arm is only meaningful beside the parser it
 //! constructs; this composition reaches it through the SDK's parser-set port.
-//! Two Agents keep their protocol state machine outside this module tree
-//! (`acp_driver_runtime` for copilot and kimi-code, `openclaw_driver` for
-//! openclaw), so those arms live next to the code they replay.
+//! Codex's and OpenClaw's arms are built by their own packages for the same
+//! reason. One Agent keeps its protocol state machine outside this module tree
+//! (`acp_driver_runtime` for copilot and kimi-code), so those arms live next to
+//! the code they replay.
 //!
 //! The arms are `pub(in crate::platform)` to this module's parent — it is the
 //! only reader, and it hands them to the SDK's harness through the parser set.
@@ -23,7 +24,6 @@ mod pi;
 
 use super::FrameReplay;
 use crate::platform::acp_driver_runtime;
-use crate::platform::openclaw_driver;
 
 /// Build the replay arm for one Agent parser this host composes.
 ///
@@ -48,7 +48,7 @@ pub(in crate::platform) fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameR
         "hermes" => Box::new(hermes::Replay::new()?),
         "kilo-code" => Box::new(kilo_code::Replay::new()?),
         "lico-agent" => Box::new(lico_agent::Replay::new()?),
-        "openclaw" => Box::new(openclaw_driver::replay::Replay::new()?),
+        "openclaw" => licoup_agent_openclaw::replay::replay_arm(adapter_id)?,
         "opencode" => Box::new(opencode::Replay::new()?),
         "pi" => Box::new(pi::Replay::new()?),
         other => {
