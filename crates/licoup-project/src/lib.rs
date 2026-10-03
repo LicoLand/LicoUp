@@ -41,19 +41,21 @@
 //! workflow store follows, with the same private-directory, schema-version and
 //! connection rules. Identities and dependency inputs share that one database.
 
+mod activity;
 mod authority;
 mod dependency;
 mod failure;
 mod identity;
 mod store;
 
+pub use activity::{NoWorkActivityDirectory, WorkActivity, WorkActivityDirectory};
 pub use authority::{NoAuthorityDirectory, ProjectAuthorityDirectory};
 pub use dependency::{
     ArtifactReference, ArtifactState, DeclaredDependency, MAX_ARTIFACT_PATH_BYTES, WorkDependency,
     WorkRef, read_local_artifact, render_dependency_path, stays_inside_authorized_root,
 };
 pub use failure::{
-    DEPENDENCY_STAGE, IDENTITY_STAGE, ProjectFailure, REGISTRATION_STAGE, STORE_STAGE,
+    CHANGE_STAGE, DEPENDENCY_STAGE, IDENTITY_STAGE, ProjectFailure, REGISTRATION_STAGE, STORE_STAGE,
 };
 pub use identity::{
     AuthorityKind, AuthorityReference, AuthorizedRoot, MAX_AUTHORITY_REFERENCE_BYTES,
