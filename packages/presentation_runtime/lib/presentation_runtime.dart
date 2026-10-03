@@ -3,6 +3,9 @@
 library presentation_runtime;
 
 export 'src/cache/byte_lru_cache.dart';
+export 'src/cache/markdown_preparation_cache.dart';
+export 'src/preparation/markdown/markdown_preparation_engine.dart';
+export 'src/preparation/markdown/message_markdown_decomposition.dart';
 export 'src/preparation/markdown/message_markdown_models.dart';
 export 'src/preparation/markdown/message_markdown_parser.dart';
 export 'src/preparation/preparation_manager.dart';
