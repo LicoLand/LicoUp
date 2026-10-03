@@ -8,6 +8,27 @@ use crate::domain::agent_hub::ownership;
 use crate::platform::client_state::ClientStateStore;
 
 #[test]
+fn catalog_projects_channel_classes_and_toolchain_admission() {
+    let mut params = portable_params("catalog-channel-classes").1;
+    params["agentId"] = serde_json::json!("codex");
+    params["discoveryCandidates"] = serde_json::json!([]);
+    let catalog = catalog(&params).unwrap();
+    let card = &catalog["cards"][0];
+    assert_eq!(card["toolchainOnly"], false);
+    assert_eq!(card["firstLaunchEligible"], true);
+    let channels = card["installChannels"].as_array().unwrap();
+    let first = &channels[0];
+    assert_eq!(first["class"], "binary");
+    assert_eq!(first["requiresDeveloperToolchain"], false);
+    let npm = channels
+        .iter()
+        .find(|channel| channel["kind"] == "npm")
+        .unwrap();
+    assert_eq!(npm["class"], "vendor-script");
+    assert_eq!(npm["requiresDeveloperToolchain"], true);
+}
+
+#[test]
 fn catalog_joins_one_discovery_snapshot_onto_supported_cards() {
     let mut params = portable_params("catalog").1;
     params["discoveryCandidates"] = serde_json::json!([

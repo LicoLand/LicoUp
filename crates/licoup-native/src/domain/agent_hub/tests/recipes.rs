@@ -332,3 +332,169 @@ fn contract_surface_keeps_plugin_management_out_of_hub() {
     assert_eq!(surface["hostScope"], "desktop");
     assert!(surface.get("firstBatchIds").is_none());
 }
+
+fn capabilities(
+    os: &str,
+    architecture: &str,
+    managers: &[&str],
+) -> crate::domain::agent_hub::contract::PlatformInstallCapabilities {
+    crate::domain::agent_hub::contract::PlatformInstallCapabilities {
+        os: os.to_string(),
+        architecture: architecture.to_string(),
+        managers: managers.iter().map(|item| (*item).to_string()).collect(),
+        scan_generation: 1,
+    }
+}
+
+fn synthetic_channel(id: &str, kind: &str, manager: &str) -> crate::domain::agent_hub::contract::InstallChannel {
+    crate::domain::agent_hub::contract::InstallChannel {
+        id: id.to_string(),
+        kind: kind.to_string(),
+        oses: vec!["macos".to_string(), "linux".to_string(), "windows".to_string()],
+        architectures: Vec::new(),
+        priority: 10,
+        official_recommended: true,
+        licoup_verified: true,
+        requires_manager: manager.to_string(),
+        elevation: "none".to_string(),
+        scope: "user".to_string(),
+        selectable: true,
+        unsupported_reason: None,
+        package_coordinate: id.to_string(),
+        package_form: None,
+        official_source: "https://example.invalid/agent".to_string(),
+        version_policy: "latest-stable".to_string(),
+        artifact: None,
+        install_argv: Vec::new(),
+        windows_install_argv: Vec::new(),
+        update_argv: Vec::new(),
+        uninstall_argv: Vec::new(),
+        verify_argv: Vec::new(),
+    }
+}
+
+fn synthetic_recipe(
+    id: &str,
+    channels: Vec<crate::domain::agent_hub::contract::InstallChannel>,
+) -> crate::domain::agent_hub::contract::AgentRecipe {
+    crate::domain::agent_hub::contract::AgentRecipe {
+        id: id.to_string(),
+        label: id.to_string(),
+        adaptation: crate::domain::agent_hub::contract::ADAPTATION_DEEP.to_string(),
+        binary_names: vec![id.to_string()],
+        protocol: "synthetic".to_string(),
+        license: "MIT".to_string(),
+        summary: "synthetic recipe".to_string(),
+        homepage: "https://example.invalid/agent".to_string(),
+        requires_login: false,
+        connection_modes: vec!["local".to_string()],
+        official_docs: "https://example.invalid/docs".to_string(),
+        channels,
+        unsupported: Vec::new(),
+    }
+}
+
+#[test]
+fn the_hub_presents_a_vendor_binary_before_a_toolchain_channel() {
+    let registry = registry().unwrap();
+    let codex = registry
+        .agents
+        .iter()
+        .find(|agent| agent.id == "codex")
+        .unwrap();
+    let offered = selector::available_channels(codex, &capabilities("macos", "aarch64", &["homebrew", "npm"]));
+    let kinds = offered
+        .iter()
+        .map(|channel| channel.kind.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(kinds.first().copied(), Some("official-artifact"), "{kinds:?}");
+    let classes = offered
+        .iter()
+        .map(|channel| crate::domain::agent_hub::contract::channel_class(channel))
+        .collect::<Vec<_>>();
+    let mut sorted = classes.clone();
+    sorted.sort_by_key(|class| match *class {
+        "binary" => 0,
+        "package-manager" => 1,
+        _ => 2,
+    });
+    assert_eq!(classes, sorted, "binary channels come first: {classes:?}");
+}
+
+#[test]
+fn a_host_without_node_offers_no_npm_channel_and_no_failing_recipe() {
+    let registry = registry().unwrap();
+    let snapshot = capabilities("macos", "aarch64", &["homebrew"]);
+    for agent in &registry.agents {
+        let offered = selector::available_channels(agent, &snapshot);
+        assert!(
+            offered.iter().all(|channel| channel.kind != "npm"),
+            "{} still offers npm without node",
+            agent.id
+        );
+        if offered.is_empty() {
+            // A recipe with nothing installable on this host is marked, not
+            // presented as an offer that would fail when confirmed.
+            assert!(
+                selector::toolchain_only(agent),
+                "{} has no channel but is not marked",
+                agent.id
+            );
+            assert!(!selector::first_launch_eligible(agent, &snapshot));
+            continue;
+        }
+        let selected = selector::select_channel(agent, &snapshot).unwrap();
+        assert!(
+            !crate::domain::agent_hub::contract::channel_requires_developer_toolchain(
+                selected.channel
+            ),
+            "{} selected a toolchain channel while none was offered",
+            agent.id
+        );
+    }
+}
+
+#[test]
+fn a_toolchain_only_recipe_is_marked_and_never_recommended() {
+    let npm_only = synthetic_recipe("synthetic-npm", vec![synthetic_channel("npm", "npm", "npm")]);
+    let without_node = capabilities("linux", "x86_64", &[]);
+    assert!(selector::available_channels(&npm_only, &without_node).is_empty());
+    assert!(selector::toolchain_only(&npm_only));
+    assert!(!selector::first_launch_eligible(&npm_only, &without_node));
+    assert!(
+        selector::select_channel(&npm_only, &without_node)
+            .unwrap_err()
+            .to_string()
+            .contains("channel_unavailable")
+    );
+
+    // Installing the runtime does not turn a runtime-only recipe into an
+    // ordinary recommendation: the recipe itself still needs a toolchain.
+    let with_node = capabilities("linux", "x86_64", &["npm"]);
+    assert!(selector::toolchain_only(&npm_only));
+    assert!(!selector::first_launch_eligible(&npm_only, &with_node));
+    assert!(selector::select_channel(&npm_only, &with_node).is_ok());
+}
+
+#[test]
+fn a_vendor_binary_installs_without_a_developer_toolchain() {
+    let binary_only = synthetic_recipe(
+        "synthetic-binary",
+        vec![synthetic_channel("official-artifact", "official-artifact", "none")],
+    );
+    let bare_host = capabilities("linux", "x86_64", &[]);
+    let selected = selector::select_channel(&binary_only, &bare_host).unwrap();
+    assert_eq!(selected.channel.kind, "official-artifact");
+    assert!(!crate::domain::agent_hub::contract::channel_requires_developer_toolchain(selected.channel));
+    assert!(!selector::toolchain_only(&binary_only));
+    assert!(selector::first_launch_eligible(&binary_only, &bare_host));
+}
+
+#[test]
+fn the_contract_surface_declares_the_channel_classes() {
+    let surface = contract_surface();
+    assert_eq!(
+        surface["channelClasses"],
+        serde_json::json!(["binary", "package-manager", "vendor-script"])
+    );
+}

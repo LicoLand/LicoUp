@@ -199,6 +199,8 @@ fn project_manifest_card(
         installed_version,
         latest_version,
         Vec::new(),
+        None,
+        None,
     )
 }
 
@@ -253,12 +255,17 @@ fn project_recipe_card(
             json!({
                 "id": channel.id,
                 "kind": channel.kind,
+                "class": super::contract::channel_class(channel),
+                "requiresDeveloperToolchain":
+                    super::contract::channel_requires_developer_toolchain(channel),
                 "versionPolicy": channel.version_policy,
                 "officialSource": channel.official_source,
                 "commandPreview": command_preview(&capabilities.os, channel)
             })
         })
         .collect::<Vec<_>>();
+    let toolchain_only = selector::toolchain_only(agent);
+    let first_launch_eligible = selector::first_launch_eligible(agent, capabilities);
     card_json(
         agent.id.as_str(),
         agent.label.as_str(),
@@ -281,6 +288,8 @@ fn project_recipe_card(
         installed_version,
         latest_version,
         install_channels,
+        Some(toolchain_only),
+        Some(first_launch_eligible),
     )
 }
 
@@ -335,6 +344,8 @@ fn project_registry_card(
         installed_version,
         latest_version,
         Vec::new(),
+        None,
+        None,
     )
 }
 
@@ -360,6 +371,8 @@ fn card_json(
     installed_version: String,
     latest_version: String,
     install_channels: Vec<Value>,
+    toolchain_only: Option<bool>,
+    first_launch_eligible: Option<bool>,
 ) -> Value {
     let update_available = version::update_available(&installed_version, &latest_version);
     json!({
@@ -387,6 +400,8 @@ fn card_json(
         "latestVersion": latest_version,
         "updateAvailable": update_available,
         "version": installed_version,
+        "toolchainOnly": toolchain_only,
+        "firstLaunchEligible": first_launch_eligible,
         "installChannels": install_channels
     })
 }

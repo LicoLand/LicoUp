@@ -41,6 +41,85 @@ pub const CHANNEL_NPM: &str = "npm";
 pub const CHANNEL_WINGET: &str = "winget";
 pub const CHANNEL_OFFICIAL_ARTIFACT: &str = "official-artifact";
 
+/// Install channel classes, in the order the Hub presents them.
+///
+/// A binary channel ships the vendor's own program and needs nothing else on
+/// the machine; a package-manager channel needs an operating-system package
+/// manager; a vendor-script channel needs a language runtime, which is a
+/// developer toolchain on a user's machine.
+pub const CHANNEL_CLASS_BINARY: &str = "binary";
+pub const CHANNEL_CLASS_PACKAGE_MANAGER: &str = "package-manager";
+pub const CHANNEL_CLASS_VENDOR_SCRIPT: &str = "vendor-script";
+
+/// Channel kinds that ship the vendor's own program.
+pub const BINARY_CHANNEL_KINDS: [&str; 2] = [CHANNEL_OFFICIAL_ARTIFACT, "binary"];
+
+/// Channel kinds installed through a language runtime rather than through an
+/// operating system package manager. A recipe that only offers these cannot be
+/// installed on a machine without a developer toolchain.
+pub const VENDOR_SCRIPT_CHANNEL_KINDS: [&str; 11] = [
+    CHANNEL_NPM,
+    "pnpm",
+    "yarn",
+    "bun",
+    "deno",
+    "pip",
+    "pip3",
+    "cargo",
+    "gem",
+    "go",
+    "vendor-script",
+];
+
+/// Managers that only exist alongside a developer toolchain.
+pub const DEVELOPER_TOOLCHAIN_MANAGERS: [&str; 16] = [
+    CHANNEL_NPM,
+    "pnpm",
+    "yarn",
+    "bun",
+    "deno",
+    "pip",
+    "pip3",
+    "python",
+    "python3",
+    "cargo",
+    "rustup",
+    "gem",
+    "go",
+    "dotnet",
+    "maven",
+    "gradle",
+];
+
+/// The class one install channel belongs to.
+pub fn channel_class(channel: &InstallChannel) -> &'static str {
+    let kind = channel.kind.as_str();
+    if BINARY_CHANNEL_KINDS.contains(&kind) {
+        CHANNEL_CLASS_BINARY
+    } else if VENDOR_SCRIPT_CHANNEL_KINDS.contains(&kind)
+        || DEVELOPER_TOOLCHAIN_MANAGERS.contains(&channel.requires_manager.as_str())
+    {
+        CHANNEL_CLASS_VENDOR_SCRIPT
+    } else {
+        CHANNEL_CLASS_PACKAGE_MANAGER
+    }
+}
+
+/// The rank the Hub presents channels in: binary first, then an operating
+/// system package manager, then a developer toolchain.
+pub fn channel_class_rank(channel: &InstallChannel) -> i32 {
+    match channel_class(channel) {
+        CHANNEL_CLASS_BINARY => 0,
+        CHANNEL_CLASS_PACKAGE_MANAGER => 1,
+        _ => 2,
+    }
+}
+
+/// Whether installing through one channel needs a developer toolchain.
+pub fn channel_requires_developer_toolchain(channel: &InstallChannel) -> bool {
+    channel_class(channel) == CHANNEL_CLASS_VENDOR_SCRIPT
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct AgentHubManifest {
@@ -241,6 +320,11 @@ pub fn contract_surface() -> Value {
             "pendingEvaluation": ADAPTATION_PENDING
         },
         "channelKinds": [CHANNEL_HOMEBREW, CHANNEL_NPM, CHANNEL_WINGET, CHANNEL_OFFICIAL_ARTIFACT],
+        "channelClasses": [
+            CHANNEL_CLASS_BINARY,
+            CHANNEL_CLASS_PACKAGE_MANAGER,
+            CHANNEL_CLASS_VENDOR_SCRIPT
+        ],
         "ownership": [OWNERSHIP_NONE, OWNERSHIP_EXTERNAL, OWNERSHIP_OWNED],
         "lifecycle": [
             LIFECYCLE_DISCOVERED,
