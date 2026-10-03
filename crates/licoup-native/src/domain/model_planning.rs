@@ -1,15 +1,20 @@
 //! Comparable rankings for Agent + Model + Thinking planning options, a
 //! replaceable planning/qualification strategy boundary, and revocable learned
 //! defaults that can only select from the caller's candidate set.
+//!
+//! Planning behaviour stays here: the ranking basis, the comparison contract,
+//! the qualification policy and the learned defaults are this module's own.
+//! The facts it reads come from their owners — the curated intelligence catalog
+//! and the catalogue's planning inputs — and never from a reader of its own. A
+//! missing price or intelligence score fails the ranking; it is never replaced
+//! by a zero, an average or a similar name.
 
-use super::{
-    agent_intelligence_catalog::{
-        agent_model_benchmark, model_intelligence,
-        qualification::{EvidenceClass, QualificationPolicy},
-    },
-    provider_model_pricing::{
-        PlanningModelPrice, agent_model_planning_price, model_planning_price,
-    },
+use super::agent_intelligence_catalog::{
+    agent_model_benchmark, model_intelligence,
+    qualification::{EvidenceClass, QualificationPolicy},
+};
+use licoup_model_catalog::planning::{
+    PlanningModelPrice, agent_model_planning_price, model_planning_price,
 };
 use std::{
     cmp::Ordering,

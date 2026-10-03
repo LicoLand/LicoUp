@@ -1,272 +1,37 @@
-//! Shared canonical model identities from public catalog facts. Native Agent
-//! selectors remain untouched; the registry supplies identity, not entitlement.
+//! The native paths the canonical model identities' callers already use.
+//!
+//! The registry itself moved to `licoup-model-catalog`, which owns declared
+//! canonical identity, the provider and historical aliases, the private catalog
+//! cache and the refresh of the public source. Every former path stays
+//! reachable through this re-export for the consumers that still live in
+//! `licoup-native`: the FFI command layer, the usage projection, the workflow
+//! runtime and the Agent inventory port this host composes.
+//!
+//! Identity is a declaration, not entitlement: this module supplies which model
+//! a selector names. Observed availability is a separate fact, and the probe
+//! that produces it arrives through the catalogue port the crate root composes.
+//!
+//! A native unit test states its expectations against a synthetic snapshot. The
+//! seam stays here rather than in the catalogue because the two disagree about
+//! what a test build is: `cfg(test)` is true for this crate's own test build and
+//! false for a dependency, and it must stay false for an integration test,
+//! which exercises the real file-backed cache on purpose.
 
-mod index;
-mod source;
+#[cfg(not(test))]
+pub use licoup_model_catalog::identity::{
+    CanonicalModel, RegistrySnapshot, model_display_name, read, refresh, refresh_cached_snapshot,
+    refresh_cached_snapshot_for_state_root, snapshot,
+};
 
-use anyhow::{Result, anyhow};
-// Display typography is shared vocabulary rather than registry behaviour: the
-// Agent inventory, the usage projection and this registry format the same model
-// names, so the formatter lives below all of them and its former path stays.
-pub use index::RegistrySnapshot;
-pub use licoup_foundation::core::model_naming::model_display_name;
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(test)]
+pub use licoup_model_catalog::identity::{CanonicalModel, RegistrySnapshot, model_display_name};
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CanonicalModel {
-    pub id: String,
-    pub display_name: String,
-    pub lab_id: String,
-    pub family: Option<String>,
-}
-
-#[derive(Clone, Default, Deserialize, Serialize)]
-pub(crate) struct CatalogDocument {
-    pub models: BTreeMap<String, Value>,
-    pub providers: BTreeMap<String, ProviderDocument>,
-}
-
-#[derive(Clone, Default, Deserialize, Serialize)]
-pub(crate) struct ProviderDocument {
-    #[serde(default)]
-    pub name: String,
-    #[serde(default)]
-    pub models: BTreeMap<String, Value>,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PersistedCatalog {
-    source: String,
-    fetched_at: String,
-    skipped_entries: usize,
-    catalog: CatalogDocument,
-}
-
-struct RegistryState {
-    snapshot: Arc<RegistrySnapshot>,
-    signature: Option<(PathBuf, SystemTime, u64)>,
-    source: String,
-    fetched_at: Option<String>,
-    skipped_entries: usize,
-}
-
-impl Default for RegistryState {
-    fn default() -> Self {
-        Self {
-            snapshot: Arc::new(RegistrySnapshot::empty()),
-            signature: None,
-            source: String::new(),
-            fetched_at: None,
-            skipped_entries: 0,
-        }
-    }
-}
-
-#[derive(Default)]
-struct RegistryRuntime {
-    state: RwLock<RegistryState>,
-    reload: Mutex<()>,
-    refresh: Mutex<()>,
-}
-
-fn runtime() -> &'static RegistryRuntime {
-    static REGISTRY: OnceLock<RegistryRuntime> = OnceLock::new();
-    REGISTRY.get_or_init(RegistryRuntime::default)
-}
-
-/// No file or network work. Capture one Arc at each report boundary.
-pub fn snapshot() -> Arc<RegistrySnapshot> {
-    #[cfg(test)]
-    {
-        return test_snapshot();
-    }
-    #[cfg(not(test))]
-    runtime().snapshot()
-}
-
-/// One metadata check per request observes refreshes performed by another
-/// native process. Resolvers on the returned Arc perform no I/O.
-pub fn refresh_cached_snapshot() -> Arc<RegistrySnapshot> {
-    #[cfg(test)]
-    {
-        return test_snapshot();
-    }
-    #[cfg(not(test))]
-    {
-        if let Ok(root) = licoup_foundation::platform::paths::portable_data_dir_read_only() {
-            let _ = runtime().reload_at(&root.join("model-registry/catalog.json"));
-        }
-        runtime().snapshot()
-    }
-}
-
-/// An explicitly selected state store owns its catalog too. Keep this
-/// request's snapshot separate so an empty store cannot inherit the host
-/// catalog or another concurrently inspected store's identities.
-pub fn refresh_cached_snapshot_for_state_root(state_root: Option<&Path>) -> Arc<RegistrySnapshot> {
-    #[cfg(test)]
-    {
-        let _ = state_root;
-        test_snapshot()
-    }
-    #[cfg(not(test))]
-    {
-        match state_root {
-            Some(root) => {
-                let isolated = RegistryRuntime::default();
-                let _ = isolated.reload_at(&root.join("model-registry/catalog.json"));
-                isolated.snapshot()
-            }
-            None => refresh_cached_snapshot(),
-        }
-    }
-}
-
-pub fn read() -> Value {
-    let _ = refresh_cached_snapshot();
-    runtime().summary(true, "ready", None)
-}
-
-/// Only explicit local refresh performs public network requests. A download,
-/// parse, or cache-write failure leaves the previous valid snapshot intact.
-pub fn refresh() -> Value {
-    let _ = refresh_cached_snapshot();
-    let result =
-        licoup_foundation::platform::paths::portable_data_dir_read_only().and_then(|root| {
-            runtime().refresh_at(&root.join("model-registry/catalog.json"), source::download)
-        });
-    match result {
-        Ok(changed) => {
-            runtime().summary(true, if changed { "refreshed" } else { "unchanged" }, None)
-        }
-        Err(_) => runtime().summary(false, "unavailable", Some("model_registry_refresh_failed")),
-    }
-}
-
-impl RegistryRuntime {
-    fn snapshot(&self) -> Arc<RegistrySnapshot> {
-        Arc::clone(
-            &self
-                .state
-                .read()
-                .unwrap_or_else(|error| error.into_inner())
-                .snapshot,
-        )
-    }
-
-    fn reload_at(&self, path: &Path) -> Result<()> {
-        let _reload = self
-            .reload
-            .lock()
-            .map_err(|_| anyhow!("model_registry_reload_lock_failed"))?;
-        let metadata = match fs::metadata(path) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(_) => return Err(anyhow!("model_registry_cache_unavailable")),
-        };
-        let signature = (path.to_owned(), metadata.modified()?, metadata.len());
-        if self
-            .state
-            .read()
-            .map_err(|_| anyhow!("model_registry_lock_failed"))?
-            .signature
-            .as_ref()
-            == Some(&signature)
-        {
-            return Ok(());
-        }
-        let persisted: PersistedCatalog = serde_json::from_slice(&fs::read(path)?)?;
-        let snapshot = Arc::new(RegistrySnapshot::from_document(&persisted.catalog)?);
-        let mut state = self
-            .state
-            .write()
-            .map_err(|_| anyhow!("model_registry_lock_failed"))?;
-        *state = RegistryState {
-            snapshot,
-            signature: Some(signature),
-            source: persisted.source,
-            fetched_at: Some(persisted.fetched_at),
-            skipped_entries: persisted.skipped_entries,
-        };
-        Ok(())
-    }
-
-    fn refresh_at(
-        &self,
-        path: &Path,
-        fetch: impl FnOnce() -> Result<source::DownloadedCatalog>,
-    ) -> Result<bool> {
-        let _refresh = self
-            .refresh
-            .lock()
-            .map_err(|_| anyhow!("model_registry_refresh_lock_failed"))?;
-        let downloaded = fetch()?;
-        let next = RegistrySnapshot::from_document(&downloaded.catalog)?;
-        let changed = next.revision() != self.snapshot().revision();
-        let persisted = PersistedCatalog {
-            source: downloaded.source,
-            fetched_at: SystemTime::now()
-                .duration_since(UNIX_EPOCH)?
-                .as_millis()
-                .to_string(),
-            skipped_entries: downloaded.skipped_entries,
-            catalog: downloaded.catalog,
-        };
-        let parent = path
-            .parent()
-            .ok_or_else(|| anyhow!("model_registry_cache_path_invalid"))?;
-        licoup_foundation::platform::file_security::ensure_private_dir(parent)?;
-        licoup_foundation::platform::file_security::atomic_write_private_text(
-            path,
-            &serde_json::to_string(&persisted)?,
-        )?;
-        let _reload = self
-            .reload
-            .lock()
-            .map_err(|_| anyhow!("model_registry_reload_lock_failed"))?;
-        let mut state = self
-            .state
-            .write()
-            .map_err(|_| anyhow!("model_registry_lock_failed"))?;
-        *state = RegistryState {
-            snapshot: Arc::new(next),
-            // Another process can replace the file immediately after our
-            // atomic write. Do not attach its metadata to our own snapshot;
-            // the next request verifies the on-disk catalog once.
-            signature: None,
-            source: persisted.source,
-            fetched_at: Some(persisted.fetched_at),
-            skipped_entries: persisted.skipped_entries,
-        };
-        Ok(changed)
-    }
-
-    fn summary(&self, ok: bool, status: &str, error: Option<&str>) -> Value {
-        let state = self
-            .state
-            .read()
-            .unwrap_or_else(|poison| poison.into_inner());
-        json!({
-            "ok": ok,
-            "status": if status == "ready" && state.snapshot.models.is_empty() { "empty" } else { status },
-            "revision": state.snapshot.revision(),
-            "modelCount": state.snapshot.models.len(),
-            "providerCount": state.snapshot.provider_count,
-            "source": state.source,
-            "fetchedAt": state.fetched_at,
-            "skippedEntries": state.skipped_entries,
-            "errorCode": error,
-        })
-    }
-}
+#[cfg(test)]
+use licoup_model_catalog::identity::{SnapshotProvenance, snapshot_report};
+#[cfg(test)]
+use std::path::Path;
+#[cfg(test)]
+use std::sync::Arc;
 
 #[cfg(test)]
 thread_local! {
@@ -279,6 +44,47 @@ fn test_snapshot() -> Arc<RegistrySnapshot> {
     TEST_SNAPSHOT.with(|snapshot| Arc::clone(&snapshot.borrow()))
 }
 
+/// No file or network work. Capture one Arc at each report boundary.
+#[cfg(test)]
+pub fn snapshot() -> Arc<RegistrySnapshot> {
+    test_snapshot()
+}
+
+/// The synthetic snapshot is the current one for the rest of the call scope.
+#[cfg(test)]
+pub fn refresh_cached_snapshot() -> Arc<RegistrySnapshot> {
+    test_snapshot()
+}
+
+/// A synthetic test build reads no state root: the same snapshot answers every
+/// request, which is what makes an isolated-store assertion meaningful.
+#[cfg(test)]
+pub fn refresh_cached_snapshot_for_state_root(_state_root: Option<&Path>) -> Arc<RegistrySnapshot> {
+    test_snapshot()
+}
+
+/// The report a test build reads describes its own snapshot and states no
+/// provenance, because no source was read.
+#[cfg(test)]
+pub fn read() -> serde_json::Value {
+    snapshot_report(
+        &test_snapshot(),
+        true,
+        "ready",
+        &SnapshotProvenance::default(),
+        None,
+    )
+}
+
+/// An explicit refresh is a public-network operation; a test build reports the
+/// unchanged synthetic snapshot instead of performing one.
+#[cfg(test)]
+pub fn refresh() -> serde_json::Value {
+    read()
+}
+
+/// Run one closure against a synthetic snapshot, restoring the previous one
+/// afterwards.
 #[cfg(test)]
 pub fn with_test_snapshot<T>(snapshot: RegistrySnapshot, action: impl FnOnce() -> T) -> T {
     struct Restore(Option<Arc<RegistrySnapshot>>);
@@ -295,6 +101,3 @@ pub fn with_test_snapshot<T>(snapshot: RegistrySnapshot, action: impl FnOnce() -
     let _restore = Restore(Some(previous));
     action()
 }
-
-#[cfg(test)]
-mod tests;

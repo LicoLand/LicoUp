@@ -2229,6 +2229,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-model-catalog"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "flate2",
+ "licoup-foundation",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tar",
+ "toml",
+ "ureq",
+ "url",
+]
+
+[[package]]
 name = "licoup-native"
 version = "0.3.0"
 dependencies = [
@@ -2267,6 +2284,7 @@ dependencies = [
  "licoup-foundation",
  "licoup-gateway",
  "licoup-gateway-core",
+ "licoup-model-catalog",
  "licoup-platform-bridges",
  "licoup-project",
  "licoup-protocol-bindings",

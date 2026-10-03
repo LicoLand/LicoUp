@@ -588,8 +588,9 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
       kind: "release",
       summary: "Single current model pricing catalog and freshness guard",
       inputs: [
+        "crates/licoup-model-catalog/src/pricing.rs",
+        "crates/licoup-model-catalog/src/pricing/pricing_catalog.json",
         "crates/licoup-native/src/domain/provider_model_pricing.rs",
-        "crates/licoup-native/src/domain/provider_model_pricing/pricing_catalog.json",
         "tools/scripts/model-pricing-facts.mjs",
         "tests/contract/client/model-pricing.test.mjs",
       ],

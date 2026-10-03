@@ -77,6 +77,22 @@ export const RUST_COMPONENT_MODULES = Object.freeze([
     ],
   ),
   crateTests(
+    "rust.crate.model-catalog",
+    "Declared model identity, observed availability and recorded price facts behind the catalogue port",
+    "licoup-model-catalog",
+    [
+      "crates/licoup-model-catalog/src/lib.rs",
+      "crates/licoup-model-catalog/src/port.rs",
+      "crates/licoup-model-catalog/src/availability.rs",
+      "crates/licoup-model-catalog/src/selection.rs",
+      "crates/licoup-model-catalog/src/planning.rs",
+      "crates/licoup-model-catalog/src/pricing.rs",
+      "crates/licoup-model-catalog/src/pricing/pricing_catalog.json",
+      "crates/licoup-model-catalog/src/identity/**",
+      "crates/licoup-model-catalog/tests/composition_port.rs",
+    ],
+  ),
+  crateTests(
     "rust.crate.state-machine-codegen",
     "Deterministic state-machine generation and invalid transition rejection",
     "licoup-state-machine-codegen",

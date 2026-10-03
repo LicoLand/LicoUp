@@ -82,11 +82,19 @@ test("catalog convergence crate and native adapters retain bounded closures", ()
 });
 
 test("model registry and typed usage reuse their existing Rust closures", () => {
-  for (const leaf of ["mod", "index", "source", "tests"]) {
+  for (const leaf of ["index", "source", "tests"]) {
     assert.deepEqual(ids(selectModulesForChangedPaths([
-      `crates/licoup-native/src/domain/model_registry/${leaf}.rs`,
-    ])), ["architecture.client-boundaries", "rust.domain.model-planning"]);
+      `crates/licoup-model-catalog/src/identity/${leaf}.rs`,
+    ])), ["architecture.client-boundaries", "rust.crate.model-catalog"]);
   }
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-model-catalog/src/identity/mod.rs",
+  ])), ["architecture.client-boundaries", "rust.crate.model-catalog"]);
+  // The native shim keeps every former identity path reachable for the
+  // consumers that still live in the kernel.
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-native/src/domain/model_registry/mod.rs",
+  ])), ["architecture.client-boundaries", "rust.domain.model-planning"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/agent_usage/variant.rs",
   ])), ["architecture.client-boundaries", "rust.domain.agent-usage"]);
