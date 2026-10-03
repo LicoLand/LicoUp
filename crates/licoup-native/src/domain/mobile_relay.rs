@@ -1,5 +1,6 @@
 mod command_sync;
 mod config;
+pub mod endpoint_transport;
 mod endpoint_trust;
 mod key_transparency;
 mod pairing;

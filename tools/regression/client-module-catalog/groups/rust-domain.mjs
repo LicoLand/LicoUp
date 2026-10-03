@@ -2308,6 +2308,17 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::mobile_relay::tests::badtower_acceptance::"),
     }),
   defineModule({
+      id: "rust.domain.endpoint-peer-ingress",
+      kind: "rust-domain",
+      summary: "Verified peer-unit mapping, replay bookkeeping, and Canonical Conversation admission",
+      inputs: [
+        "crates/licoup-native/src/domain/mobile_relay/endpoint_transport/**",
+        "crates/licoup-native/src/domain/client_conversation/peer_ingress/**",
+        "crates/licoup-native/tests/peer_ingress/**",
+      ],
+      command: rustCrateIntegrationTest("licoup-native", "peer_ingress"),
+    }),
+  defineModule({
       id: "rust.domain.targets",
       kind: "rust-domain",
       summary: "Target public facade, shared support, and test composition",

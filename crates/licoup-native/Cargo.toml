@@ -111,6 +111,10 @@ windows-sys = { version = "0.61", features = [
 nix = { version = "0.27", default-features = false, features = ["fs", "user", "signal", "socket"] }
 
 [dev-dependencies]
+# The two-endpoint peer-ingress suite drives the pinned SDK's own endpoint and
+# state entries directly, exactly as the platform adapters do behind the
+# `licoup-protocol-bindings` boundary.
+licoarc.workspace = true
 licoup-conversation = { path = "../licoup-conversation", features = ["test-counters"] }
 # The scan-isolation seam and the packaged driver fixtures the target fixtures
 # read travel behind an explicit feature, because `cfg(test)` is false for a
@@ -163,6 +167,14 @@ required-features = ["test-support"]
 name = "continuity_native"
 path = "tests/continuity_native.rs"
 required-features = ["test-support"]
+
+# The two-endpoint peer-ingress suite mounts the exact `peer_ingress` and
+# `endpoint_transport` production sources and drives them through real SDK
+# protected records; the fixed Candidate arrives only as an explicit
+# `LICOARC_AUTHORITY_BUNDLE` input.
+[[test]]
+name = "peer_ingress"
+path = "tests/peer_ingress/main.rs"
 
 # Real untrusted-extension process isolation: the suite starts real programs
 # under the production `IsolatedProcessCarrier`, so it reads its fixtures from
