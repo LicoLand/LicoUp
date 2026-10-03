@@ -216,8 +216,9 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     ["crates/licoup-gateway-core/src/control/inventory.rs", "Unix peer credential verification"],
     ["crates/licoup-native/src/platform/llm_gateway_service.rs", "bounded sidecar pipe and process lifecycle"],
     ["crates/licoup-native/src/platform/pty_transport.rs", "PTY descriptor and ioctl ownership"],
-    ["crates/licoup-foundation/src/platform/process_supervisor.rs", "Unix supervised-child wait identity and process-tree lifecycle"],
+    ["crates/licoup-foundation/src/platform/process_supervisor.rs", "Unix supervised-child wait identity, owned process-group verification, and process-tree lifecycle"],
     ["crates/licoup-native/src/platform/extension_host/isolation/limits.rs", "Unix pre-exec resource-limit application for one isolated extension instance"],
+    ["crates/licoup-native/src/platform/stop_control.rs", "Unix owned-process-group liveness probe in the force-stop test fixture"],
     ["crates/licoup-native/src/bin/licoup/conversation_host.rs", "process termination signal registration for graceful host shutdown"],
   ]);
   const reviewedRustUnsafeFiles = new Set(reviewedRustUnsafeResponsibilities.keys());
