@@ -2344,12 +2344,23 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/extension_packages/discovery.rs",
         "crates/licoup-native/src/platform/extension_packages/install.rs",
         "crates/licoup-native/src/platform/extension_packages/journal.rs",
+        "crates/licoup-native/src/platform/extension_packages/resources.rs",
         "crates/licoup-native/src/platform/extension_packages/scenarios/**",
         "crates/licoup-native/src/platform/extension_packages/state.rs",
         "crates/licoup-native/src/platform/extension_packages/storage.rs",
         "crates/licoup-native/src/platform/extension_packages/uninstall.rs",
       ],
       command: rustLayer("platform::extension_packages::"),
+    }),
+  defineModule({
+      id: "rust.platform.extension-resource-lifecycle",
+      kind: "rust-platform",
+      summary: "Ordinary resource selection, guarded package-generation replacement, and deterministic system-default fallback",
+      inputs: [
+        "crates/licoup-native/src/platform/extension_packages/resources.rs",
+        "crates/licoup-extension-contracts/src/manifest.rs",
+      ],
+      command: rustLayer("platform::extension_packages::resources::tests::"),
     }),
   defineModule({
       id: "rust.platform.data-home-relocation",

@@ -56,6 +56,7 @@ pub mod artifact;
 pub mod discovery;
 pub mod install;
 pub mod journal;
+pub mod resources;
 pub mod state;
 pub mod storage;
 pub mod uninstall;
@@ -80,6 +81,14 @@ pub use journal::{
 };
 pub use licoup_extension_contracts::deployment::{
     InstanceLifecycle, PackageFacts, PackageLifecycle,
+};
+pub use resources::{
+    ADMISSION_BLOCKED, ADMISSION_CLOSED, ADMISSION_RELEASE_FAILED, ADMISSION_UNAVAILABLE,
+    AdmissionRelease, AvailableResource, FallbackReason, GenerationReplacement,
+    MaintenanceAdmission, MaintenanceAdmissionPort, PreparedGeneration, ReplacementOutcome,
+    ResourceBinding, ResourceBindings, ResourceChange, ResourceFallback, ResourceHost,
+    SelectionOutcome, SystemDefault, declared_default, install_maintenance_admission,
+    maintenance_admission_port,
 };
 pub use state::{
     Admission, InstallActivation, InstanceIdentity, InstanceMachine, InstanceRegistry,

@@ -295,7 +295,7 @@ impl Runtime {
 /// carries, and [`ResourceKind::format`] is the shape identifier the document
 /// must repeat. A kind this client does not publish is refused rather than
 /// preserved, because a resource the host cannot type is not one it could mount.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ResourceKind {
     Theme,

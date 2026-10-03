@@ -22,19 +22,23 @@
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use licoup_extension_contracts::deployment::{
     CORE_PACKAGE, LocalCatalogue, PackageEntry, PackageLifecycle, PackageSource, install_closure,
 };
-use licoup_extension_contracts::manifest::{Dependency, PermissionRequest, ResourceKind};
+use licoup_extension_contracts::manifest::{
+    Dependency, PermissionRequest, ResourceDeclaration, ResourceKind,
+};
 use licoup_extension_contracts::wire;
 use licoup_native::platform::extension_packages::{
-    Admission, ArtifactLimits, CatalogEntry, CatalogIndex, DependentsDecision, Detector,
-    DiscoveryEnvironment, Drained, FaultPlan, InFlightPins, InstallPhase, InstallRequest,
-    InstanceIdentity, InstanceLifecycle, InstanceMachine, InstanceRegistry, OffFrameLane,
-    PackageMachine, PackageStore, RecommendationLog, RemainingWork, StorageKind, TrustRecord,
-    UninstallTransaction, account_store, close_surface, plan_gc, preview, running_client_version,
-    scan,
+    ADMISSION_BLOCKED, ADMISSION_CLOSED, Admission, ArtifactLimits, CatalogEntry, CatalogIndex,
+    DependentsDecision, Detector, DiscoveryEnvironment, Drained, FallbackReason, FaultPlan,
+    InFlightPins, InstallPhase, InstallRequest, InstanceIdentity, InstanceLifecycle,
+    InstanceMachine, InstanceRegistry, MaintenanceAdmission, OffFrameLane, PackageMachine,
+    PackageStore, PreparedGeneration, RecommendationLog, RemainingWork, ResourceBinding,
+    ResourceChange, ResourceHost, StorageKind, SystemDefault, TrustRecord, UninstallTransaction,
+    account_store, close_surface, plan_gc, preview, running_client_version, scan,
 };
 
 // ---------------------------------------------------------------------------
@@ -1652,6 +1656,262 @@ fn the_store_refuses_every_invalid_data_package_shape() {
             .expect("record")
             .is_none()
     );
+
+    cleanup(&root);
+}
+
+// ---------------------------------------------------------------------------
+// RESOURCE-LIFECYCLE — an ordinary selection is a preference; a package
+// generation entering served state is an admitted update
+// ---------------------------------------------------------------------------
+
+/// The admission seam as a test decides it, recording every call it receives.
+///
+/// It stands in for the host-wide decision owner the composition installs: the
+/// platform layer asks one question, and the answer is the only thing that
+/// decides whether a generation may switch.
+struct SeamAnswer {
+    answer: Mutex<&'static str>,
+    calls: Mutex<Vec<&'static str>>,
+}
+
+impl SeamAnswer {
+    /// An empty answer means the switch may begin.
+    fn answering(answer: &'static str) -> Arc<Self> {
+        Arc::new(Self {
+            answer: Mutex::new(answer),
+            calls: Mutex::new(Vec::new()),
+        })
+    }
+
+    fn set(&self, answer: &'static str) {
+        *self.answer.lock().expect("answer") = answer;
+    }
+
+    fn calls(&self) -> Vec<&'static str> {
+        self.calls.lock().expect("calls").clone()
+    }
+}
+
+impl MaintenanceAdmission for SeamAnswer {
+    fn hold(&self, _data_root: &Path) -> Result<(), &'static str> {
+        self.calls.lock().expect("calls").push("hold");
+        let answer = *self.answer.lock().expect("answer");
+        if answer.is_empty() {
+            Ok(())
+        } else {
+            Err(answer)
+        }
+    }
+
+    fn release(&self, _data_root: &Path) -> Result<(), &'static str> {
+        self.calls.lock().expect("calls").push("release");
+        Ok(())
+    }
+}
+
+/// Install the synthetic data package through the real store and read the typed
+/// resources the published content carries.
+fn installed_data_package(
+    store: &PackageStore,
+    id: &str,
+    version: &str,
+) -> Vec<ResourceDeclaration> {
+    let bytes = data_package_bytes(id, version, &covering_client_versions());
+    store
+        .install_local_import(id, version, trust_for(&bytes), &bytes)
+        .expect("a data package installs through the formal store");
+    store
+        .installed_resources(id, version)
+        .expect("typed installed resources")
+}
+
+/// The namespaced identity of one kind in an installed generation.
+fn resource_id_of(resources: &[ResourceDeclaration], kind: ResourceKind) -> String {
+    resources
+        .iter()
+        .find(|resource| resource.kind() == kind)
+        .unwrap_or_else(|| panic!("the synthetic package declares a {kind:?} resource"))
+        .id()
+        .to_owned()
+}
+
+#[test]
+fn an_ordinary_selection_serves_while_admitted_work_is_unfinished_and_a_switch_refuses() {
+    let (root, store) = store("resource-selection-under-work");
+    let id = "org.licoland.appearance.synthetic";
+    let version = "1.0.0";
+    let resources = installed_data_package(&store, id, version);
+
+    let seam = SeamAnswer::answering("");
+    let admission = Arc::clone(&seam) as Arc<dyn MaintenanceAdmission>;
+    let mut host = ResourceHost::with_admission(root.clone(), admission);
+    let prepared = PreparedGeneration::new(id, version, 1, resources.clone()).expect("prepared");
+    let outcome = host
+        .begin_replacement(&prepared)
+        .expect("an idle host admits the switch")
+        .commit();
+    assert_eq!(outcome.replaced_generation, None);
+    assert_eq!(outcome.revision, 1);
+    assert!(outcome.admission_released);
+    assert_eq!(host.served_generation(id), Some(1));
+
+    // A real instance of the same installed package now holds admitted work.
+    let mut instance = active_instance(&store, id, version, 1);
+    instance.begin_in_flight().expect("admitted work");
+    let in_flight = instance.in_flight();
+
+    // The same seam now reports unfinished local work.
+    seam.set(ADMISSION_BLOCKED);
+
+    // The user's ordinary selection completes: it replaces no generation, so
+    // it never asks the admission question and never waits for the task.
+    let font = resource_id_of(&resources, ResourceKind::Font);
+    let selected = host
+        .select(ResourceKind::Font, &font)
+        .expect("an ordinary selection is available during unrelated work");
+    assert_eq!(selected.binding.resource_id(), Some(font.as_str()));
+
+    // A generation switch does not.
+    let next = PreparedGeneration::new(id, version, 2, resources.clone()).expect("prepared");
+    let failure = host
+        .begin_replacement(&next)
+        .expect_err("unfinished admitted work refuses the switch");
+    assert_eq!(failure.code, "package_generation_work_unsettled");
+    assert_eq!(host.served_generation(id), Some(1));
+    assert!(!host.bindings().serves_package_generation(id, 2));
+    assert_eq!(
+        host.bindings().binding(ResourceKind::Font).resource_id(),
+        Some(font.as_str()),
+        "the refused switch moved no binding"
+    );
+    assert_eq!(
+        seam.calls(),
+        vec!["hold", "release", "hold"],
+        "a selection asks nothing; a refused switch holds nothing to release"
+    );
+
+    // The unrelated task was neither stopped nor changed, and its admission is
+    // still open: the package guard and the project's own work are separate.
+    assert_eq!(instance.in_flight(), in_flight);
+    assert_eq!(instance.state(), InstanceLifecycle::Active);
+    assert_eq!(instance.admission(), Admission::Open);
+
+    cleanup(&root);
+}
+
+#[test]
+fn a_removed_data_package_falls_back_to_the_system_default_and_reports_it() {
+    let (root, store) = store("resource-fallback");
+    let id = "org.licoland.appearance.synthetic";
+    let version = "1.0.0";
+    let resources = installed_data_package(&store, id, version);
+    let font = resource_id_of(&resources, ResourceKind::Font);
+    let language = resource_id_of(&resources, ResourceKind::Language);
+
+    let seam = SeamAnswer::answering("");
+    let admission = Arc::clone(&seam) as Arc<dyn MaintenanceAdmission>;
+    let mut host = ResourceHost::with_admission(root.clone(), admission);
+    let prepared = PreparedGeneration::new(id, version, 1, resources.clone()).expect("prepared");
+    host.begin_replacement(&prepared)
+        .expect("admitted")
+        .commit();
+    host.select(ResourceKind::Font, &font).expect("selected");
+    host.select(ResourceKind::Language, &language)
+        .expect("selected");
+
+    // A switch another maintenance operation already closed is refused, and the
+    // generation it refused to replace is still the one being served.
+    seam.set(ADMISSION_CLOSED);
+    let theme_only = resources
+        .iter()
+        .filter(|resource| resource.kind() == ResourceKind::Theme)
+        .cloned()
+        .collect::<Vec<_>>();
+    let next = PreparedGeneration::new(id, version, 2, theme_only).expect("prepared");
+    let failure = host
+        .begin_replacement(&next)
+        .expect_err("another switch holds the barrier");
+    assert_eq!(failure.code, "package_generation_admission_closed");
+    let intact = host.bindings();
+    assert!(intact.serves_package_generation(id, 1));
+    assert!(!intact.serves_package_generation(id, 2));
+    assert_eq!(
+        intact.binding(ResourceKind::Font).resource_id(),
+        Some(font.as_str())
+    );
+    assert_eq!(
+        intact.binding(ResourceKind::Language).resource_id(),
+        Some(language.as_str())
+    );
+    assert_eq!(host.available().count(), ResourceKind::ALL.len());
+
+    // The user uninstalls through the real transaction: admission is withdrawn
+    // on the package's instances, the admitted work is settled as Unknown rather
+    // than hidden, and only a Drained value may reclaim the bytes.
+    seam.set("");
+    let installed = store.installed().expect("installed").remove(0);
+    let mut registry = InstanceRegistry::new();
+    let mut instance = active_instance(&store, id, version, 1);
+    instance.begin_in_flight().expect("admitted work");
+    registry.insert(instance);
+    let catalogue = LocalCatalogue::new();
+    let plan = preview(&store, &catalogue, &installed, &registry).expect("preview");
+    let drained =
+        UninstallTransaction::begin(&mut registry, plan, DependentsDecision::SelectedOnly)
+            .expect("begin")
+            .drain(&mut registry, RemainingWork::Cancel)
+            .expect("drain");
+    let removed = drained.collect(&store, &registry).expect("collect");
+    assert_eq!(removed.unknown_work, 1);
+    assert!(!store.installed_path(id, version).exists());
+
+    // What the removed package served falls back in one step, and the fallback
+    // names the resource, the package and the change that caused it.
+    let recorded = host.withdraw(id, ResourceChange::Uninstalled);
+    assert_eq!(recorded.len(), 2);
+    let bindings = host.bindings();
+    assert_eq!(
+        bindings.binding(ResourceKind::Font),
+        &ResourceBinding::Default {
+            system: SystemDefault::Font
+        },
+        "a removed font package serves the system base font, never a half-applied binding"
+    );
+    assert_eq!(
+        bindings.binding(ResourceKind::Language),
+        &ResourceBinding::Default {
+            system: SystemDefault::Locale
+        }
+    );
+    let fallback = bindings.fallback(ResourceKind::Font).expect("recorded");
+    assert_eq!(fallback.reason, FallbackReason::Uninstalled);
+    assert_eq!(fallback.resource_id, font);
+    assert_eq!(fallback.package_id, id);
+    assert_eq!(host.available().count(), 0);
+    assert_eq!(host.served_generation(id), None);
+    assert_eq!(
+        host.selection(ResourceKind::Font),
+        Some(font.as_str()),
+        "the preference is the user's and survives the removal"
+    );
+
+    // Reinstalling the same package restores the user's choice instead of
+    // silently resetting it to the system font.
+    let reinstalled = installed_data_package(&store, id, version);
+    let again = PreparedGeneration::new(id, version, 4, reinstalled).expect("prepared");
+    host.begin_replacement(&again).expect("admitted").commit();
+    let bindings = host.bindings();
+    assert_eq!(
+        bindings.binding(ResourceKind::Font).resource_id(),
+        Some(font.as_str())
+    );
+    assert_eq!(
+        bindings.binding(ResourceKind::Font).package_generation(),
+        Some(4)
+    );
+    assert!(bindings.fallback(ResourceKind::Font).is_none());
+    assert_eq!(store.installed().expect("installed").len(), 1);
 
     cleanup(&root);
 }
