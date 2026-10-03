@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 
 import '../cache/byte_lru_cache.dart';
+import 'preparation_worker_pool.dart';
 
 /// Work that is useful to a visible frame is dispatched before background
 /// preparation, while still yielding after a bounded foreground batch.
@@ -31,12 +32,18 @@ final class PreparationBackpressureException implements Exception {
 
 typedef PreparationOperation<Value> = FutureOr<Value> Function();
 
-/// A bounded, single-owner preparation executor.
+/// A bounded, single-owner admission queue for work the caller already owns.
 ///
-/// The default is one worker. [maxWorkers] can be raised by a caller that has
-/// measured a useful parallel workload; it is never increased automatically.
-/// Foreground tasks are selected for at most [batchSize] consecutive dispatches
-/// before one background task gets a turn.
+/// This runs the operation it is handed on the calling isolate, so it may only
+/// order, bound, and prioritise work: it is not an offload boundary. CPU
+/// preparation, such as Markdown parsing, must be dispatched to a real worker
+/// isolate instead ([PreparationWorkerPool]); [maxWorkers] here is the number
+/// of operations this queue keeps in flight, not a thread count.
+///
+/// The default is one in-flight operation. [maxWorkers] can be raised by a
+/// caller that has measured a useful parallel workload; it is never increased
+/// automatically. Foreground tasks are selected for at most [batchSize]
+/// consecutive dispatches before one background task gets a turn.
 final class BoundedPreparationExecutor {
   BoundedPreparationExecutor({
     int maxWorkers = 1,
