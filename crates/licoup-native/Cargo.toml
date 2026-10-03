@@ -31,6 +31,10 @@ licoup-endpoint-core = { path = "../licoup-endpoint-core" }
 licoup-platform-bridges = { path = "../licoup-platform-bridges" }
 licoup-agent-adapters = { path = "../licoup-agent-adapters" }
 licoup-agent-adapter-sdk = { path = "../licoup-agent-adapter-sdk" }
+# The Codex adapter package. Composition names it for its parser
+# registration and its turn-event port while the extension host's binary
+# route is completed by the agent-execution port.
+licoup-agent-codex = { path = "../licoup-agent-codex" }
 licoup-agent-runtime = { path = "../licoup-agent-runtime" }
 licoup-application = { path = "../licoup-application" }
 licoup-project = { path = "../licoup-project" }

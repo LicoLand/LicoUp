@@ -16,6 +16,9 @@ export const GATEWAY_MANIFEST = "crates/licoup-gateway/Cargo.toml";
 export const CLIENT_STATE_MANIFEST = "crates/licoup-client-state/Cargo.toml";
 export const AGENT_TARGETS_MANIFEST = "crates/licoup-agent-targets/Cargo.toml";
 export const MODEL_CATALOG_MANIFEST = "crates/licoup-model-catalog/Cargo.toml";
+// An Agent adapter package is its own crate and program, so the modules that
+// own its protocol and its document run against its manifest rather than the host.
+export const AGENT_CODEX_MANIFEST = "crates/licoup-agent-codex/Cargo.toml";
 
 export const FLUTTER_COMPOSITION_INPUTS = Object.freeze([
   "apps/desktop/analysis_options.yaml",

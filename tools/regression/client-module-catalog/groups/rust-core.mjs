@@ -39,6 +39,17 @@ export const RUST_CORE_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "rust.core.agent-codex-package",
+      kind: "rust-core",
+      summary: "Codex adapter package program, vendor protocol, registration, and replay corpus",
+      inputs: ["crates/licoup-agent-codex/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-codex/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
       id: "rust.core.acp.composition",
       kind: "rust-core",
       summary: "ACP facade, shared protocol types, validation, and error boundaries",

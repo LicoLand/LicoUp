@@ -2,9 +2,7 @@ use super::CodexParser;
 use super::helpers::{
     final_agent_message, matches_current_ids, mcp_tool_application_error, mcp_tool_name,
 };
-use crate::platform::codex_app_server::model::{
-    ProtocolEffect, ProtocolFailure, ProtocolOutcome, ProtocolPhase,
-};
+use crate::app_server::model::{ProtocolEffect, ProtocolFailure, ProtocolOutcome, ProtocolPhase};
 use serde_json::Value;
 
 impl CodexParser {
@@ -44,7 +42,7 @@ impl CodexParser {
             if item.get("type").and_then(Value::as_str) == Some("agentMessage")
                 && let Some(text) = item.get("text").and_then(Value::as_str)
             {
-                crate::platform::turn_event_emit::emit_agent_message_completed(
+                crate::port::turn_event::emit_agent_message_completed(
                     self.thread_id.as_deref().unwrap_or_default(),
                     self.turn_id.as_deref().unwrap_or_default(),
                     text,
@@ -100,7 +98,7 @@ impl CodexParser {
         } else {
             "activity"
         };
-        crate::platform::turn_event_emit::emit_agent_processing(
+        crate::port::turn_event::emit_agent_processing(
             self.thread_id.as_deref().unwrap_or_default(),
             self.turn_id.as_deref().unwrap_or_default(),
             evidence_kind,
@@ -112,7 +110,7 @@ impl CodexParser {
         let Some((tool_name, error_code)) = mcp_tool_application_error(item) else {
             return;
         };
-        crate::platform::turn_event_emit::emit_agent_tool_error(
+        crate::port::turn_event::emit_agent_tool_error(
             self.thread_id.as_deref().unwrap_or_default(),
             self.turn_id.as_deref().unwrap_or_default(),
             tool_name,
@@ -142,7 +140,7 @@ impl CodexParser {
             })
             .unwrap_or_default();
         if !text.is_empty() {
-            crate::platform::turn_event_emit::emit_agent_message_chunk(
+            crate::port::turn_event::emit_agent_message_chunk(
                 self.thread_id.as_deref().unwrap_or_default(),
                 self.turn_id.as_deref().unwrap_or_default(),
                 text,
@@ -190,7 +188,7 @@ impl CodexParser {
             let class = closed_codex_error_class(turn);
             let (code, message) = turn_failure(status.as_str(), class);
             let turn_status = turn_status_token(status.as_str(), class);
-            crate::platform::turn_event_emit::emit_turn_event(
+            crate::port::turn_event::emit_turn_event(
                 "dispatch.turn.failed",
                 self.thread_id.as_deref().unwrap_or_default(),
                 self.turn_id.as_deref().unwrap_or_default(),
@@ -214,7 +212,7 @@ impl CodexParser {
             return vec![ProtocolEffect::Fail(failure)];
         }
         let Some(output) = final_message else {
-            crate::platform::turn_event_emit::emit_turn_event(
+            crate::port::turn_event::emit_turn_event(
                 "dispatch.turn.failed",
                 self.thread_id.as_deref().unwrap_or_default(),
                 self.turn_id.as_deref().unwrap_or_default(),
@@ -231,7 +229,7 @@ impl CodexParser {
             failure.turn_status = Some(status);
             return vec![ProtocolEffect::Fail(failure)];
         };
-        crate::platform::turn_event_emit::emit_turn_event(
+        crate::port::turn_event::emit_turn_event(
             "dispatch.turn.completed",
             self.thread_id.as_deref().unwrap_or_default(),
             self.turn_id.as_deref().unwrap_or_default(),

@@ -1,10 +1,10 @@
 use serde_json::Value;
 
-pub(in crate::platform) const LUNA_RESERVE_MODEL: &str = "gpt-reserve";
+pub const LUNA_RESERVE_MODEL: &str = "gpt-reserve";
 const LUNA_RESERVE_BANNER: &str = "luna_reserve";
 const RESERVE_LIMIT_ID: &str = "base_model_inference";
 
-pub(in crate::platform) fn is_luna_model(model: &str) -> bool {
+pub fn is_luna_model(model: &str) -> bool {
     let model = model.trim();
     model.eq_ignore_ascii_case("gpt-5.6-luna") || model.eq_ignore_ascii_case("gpt-5-6-luna")
 }
@@ -40,7 +40,7 @@ fn reserve_limit_snapshot(result: &Value) -> Option<&Value> {
 /// catalog. A row is exposed only when ordinary usage is unavailable, the
 /// backend advertises the Luna Reserve banner, and the reserve bucket exists.
 /// This deliberately does not infer availability from a local percentage alone.
-pub(in crate::platform) fn reserve_model_available(result: &Value) -> bool {
+pub fn reserve_model_available(result: &Value) -> bool {
     if result
         .get("ordinaryUsageAllowed")
         .or_else(|| result.get("ordinary_usage_allowed"))
@@ -64,7 +64,7 @@ pub(in crate::platform) fn reserve_model_available(result: &Value) -> bool {
 
 /// Resolve the native fallback model for a selected Luna turn. The stricter
 /// model matching remains separate from the catalog visibility rule above.
-pub(in crate::platform) fn authorized_luna_reserve_model(
+pub fn authorized_luna_reserve_model(
     result: &Value,
     requested_model: Option<&str>,
 ) -> Option<String> {

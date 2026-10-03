@@ -1,29 +1,27 @@
 use super::CodexParser;
 use super::helpers::response_is_error;
-use crate::platform::codex_app_server::config::spark_default_reasoning_effort;
-use crate::platform::codex_app_server::limits::{
+use crate::app_server::config::spark_default_reasoning_effort;
+use crate::app_server::limits::{
     ACCOUNT_RATE_LIMITS_REQUEST_ID, THREAD_REQUEST_ID, THREAD_UNARCHIVE_REQUEST_ID, TURN_REQUEST_ID,
 };
-use crate::platform::codex_app_server::model::{
+use crate::app_server::model::{
     EffectiveSettings, ProtocolEffect, ProtocolFailure, ProtocolOutcome, ProtocolPhase,
 };
-use crate::platform::codex_app_server::reserve::{authorized_luna_reserve_model, is_luna_model};
+use crate::app_server::reserve::{authorized_luna_reserve_model, is_luna_model};
 use serde_json::{Map, Value, json};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum RolloutIdentityError {
+pub enum RolloutIdentityError {
     Unavailable,
     Missing,
 }
 
 /// Resolve the native identity from the rollout record itself. A source path is
 /// only a locator: its file name never authorizes a resume.
-pub(in crate::platform) fn rollout_record_identity(
-    path: &Path,
-) -> Result<String, RolloutIdentityError> {
+pub fn rollout_record_identity(path: &Path) -> Result<String, RolloutIdentityError> {
     let file = File::open(path).map_err(|_| RolloutIdentityError::Unavailable)?;
     for line in BufReader::new(file).lines() {
         let line = line.map_err(|_| RolloutIdentityError::Unavailable)?;
@@ -388,7 +386,7 @@ impl CodexParser {
         };
 
         self.turn_id = Some(turn_id.to_string());
-        crate::platform::turn_event_emit::emit_turn_event(
+        crate::port::turn_event::emit_turn_event(
             "agent.turn.accepted",
             self.thread_id.as_deref().unwrap_or_default(),
             turn_id,

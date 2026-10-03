@@ -1,34 +1,28 @@
 mod control;
 mod events;
 mod helpers;
-pub(in crate::platform) mod session;
+pub mod session;
 
 use self::helpers::request_id_matches;
-use super::{AdapterContract, NativeLineParser};
-use crate::platform::codex_app_server::config::ProtocolConfig;
-use crate::platform::codex_app_server::limits::{
+use crate::app_server::config::ProtocolConfig;
+use crate::app_server::limits::{
     ACCOUNT_RATE_LIMITS_REQUEST_ID, INITIALIZE_REQUEST_ID, THREAD_REQUEST_ID,
     THREAD_UNARCHIVE_REQUEST_ID, TURN_REQUEST_ID,
 };
-use crate::platform::codex_app_server::model::{
-    EffectiveSettings, ProtocolEffect, ProtocolFailure, ProtocolPhase,
-};
-use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
+use crate::app_server::model::{EffectiveSettings, ProtocolEffect, ProtocolFailure, ProtocolPhase};
+use licoup_agent_adapter_sdk::adapters::{AdapterContract, NativeLineParser};
+use licoup_agent_adapter_sdk::{LifecycleStage, Transition, TransitionReducer};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::io;
 
 pub(super) const CONTRACT: AdapterContract = AdapterContract::new("codex", "stdio-jsonrpc");
 
-pub(in crate::platform) fn completed_transitions(output: &str) -> Vec<Transition> {
+pub fn completed_transitions(output: &str) -> Vec<Transition> {
     terminal_transitions("codex:reply", output)
 }
 
-pub(in crate::platform) fn failure_transitions(
-    code: &str,
-    stage: &str,
-    message: &str,
-) -> Vec<Transition> {
+pub fn failure_transitions(code: &str, stage: &str, message: &str) -> Vec<Transition> {
     let mut reducer = TransitionReducer::default();
     let mut transitions = reducer.advance(LifecycleStage::Submitted);
     if let Some(failure) = reducer.fail(code, stage, message) {
@@ -51,7 +45,7 @@ fn terminal_transitions(unit_id: &str, output: &str) -> Vec<Transition> {
 }
 
 #[derive(Debug)]
-pub(in crate::platform) struct CodexParser {
+pub struct CodexParser {
     config: ProtocolConfig,
     phase: ProtocolPhase,
     session_id: Option<String>,
@@ -66,16 +60,13 @@ pub(in crate::platform) struct CodexParser {
     turn_model_override: Option<String>,
 }
 
-pub(in crate::platform) enum CodexEffect {
+pub enum CodexEffect {
     Protocol(ProtocolEffect),
     SteerResponse { request_id: String, accepted: bool },
 }
 
 /// Decode a model-catalog response at the same parser-owned wire boundary.
-pub(in crate::platform) fn parse_response_line(
-    line: &[u8],
-    expected_id: i64,
-) -> Result<Option<Value>, ()> {
+pub fn parse_response_line(line: &[u8], expected_id: i64) -> Result<Option<Value>, ()> {
     let message: Value = serde_json::from_slice(line).map_err(|_| ())?;
     if message.get("id").and_then(Value::as_i64) != Some(expected_id) {
         return Ok(None);
@@ -83,17 +74,13 @@ pub(in crate::platform) fn parse_response_line(
     message.get("result").cloned().map(Some).ok_or(())
 }
 
-pub(in crate::platform) fn encode_message(message: &Value) -> io::Result<Vec<u8>> {
+pub fn encode_message(message: &Value) -> io::Result<Vec<u8>> {
     let mut bytes = serde_json::to_vec(message).map_err(io::Error::other)?;
     bytes.push(b'\n');
     Ok(bytes)
 }
 
-pub(in crate::platform) fn steer_request(
-    thread_id: &str,
-    turn_id: &str,
-    text: &str,
-) -> (String, Value) {
+pub fn steer_request(thread_id: &str, turn_id: &str, text: &str) -> (String, Value) {
     let request_id = format!("lico-steer-{}", uuid::Uuid::new_v4().simple());
     let message = json!({
         "id": request_id,
@@ -107,7 +94,7 @@ pub(in crate::platform) fn steer_request(
     (request_id, message)
 }
 
-pub(in crate::platform) fn interrupt_request(thread_id: &str, turn_id: &str) -> (String, Value) {
+pub fn interrupt_request(thread_id: &str, turn_id: &str) -> (String, Value) {
     let request_id = format!("lico-interrupt-{}", uuid::Uuid::new_v4().simple());
     let message = json!({
         "id": request_id,
@@ -121,7 +108,7 @@ pub(in crate::platform) fn interrupt_request(thread_id: &str, turn_id: &str) -> 
 }
 
 impl CodexParser {
-    pub(in crate::platform) fn new(config: ProtocolConfig) -> Self {
+    pub fn new(config: ProtocolConfig) -> Self {
         Self {
             config,
             phase: ProtocolPhase::AwaitInitialize,
@@ -138,7 +125,7 @@ impl CodexParser {
         }
     }
 
-    pub(in crate::platform) fn initial_request(&self) -> Value {
+    pub fn initial_request(&self) -> Value {
         json!({
             "id": INITIALIZE_REQUEST_ID,
             "method": "initialize",
@@ -149,7 +136,7 @@ impl CodexParser {
         })
     }
 
-    pub(in crate::platform) fn handle_message(&mut self, message: Value) -> Vec<ProtocolEffect> {
+    pub fn handle_message(&mut self, message: Value) -> Vec<ProtocolEffect> {
         if let Some(effects) = self.reject_server_request(&message) {
             return effects;
         }
@@ -182,10 +169,7 @@ impl CodexParser {
         }
     }
 
-    pub(in crate::platform) fn contextualize(
-        &self,
-        mut failure: ProtocolFailure,
-    ) -> ProtocolFailure {
+    pub fn contextualize(&self, mut failure: ProtocolFailure) -> ProtocolFailure {
         if failure.session_id.is_none() {
             failure.session_id = self.session_id.clone();
         }
@@ -198,15 +182,12 @@ impl CodexParser {
         failure
     }
 
-    pub(in crate::platform) fn active_turn_binding(&self) -> Option<(&str, &str)> {
+    pub fn active_turn_binding(&self) -> Option<(&str, &str)> {
         (self.phase == ProtocolPhase::AwaitTurnCompleted)
             .then_some((self.thread_id.as_deref()?, self.turn_id.as_deref()?))
     }
 
-    pub(in crate::platform) fn parse_line(
-        &mut self,
-        line: &[u8],
-    ) -> Result<Vec<CodexEffect>, ProtocolFailure> {
+    pub fn parse_line(&mut self, line: &[u8]) -> Result<Vec<CodexEffect>, ProtocolFailure> {
         NativeLineParser::parse_line(self, line)
     }
 }

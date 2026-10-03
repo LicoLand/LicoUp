@@ -1,11 +1,20 @@
+//! The constructors one Codex app-server failure and one failed run are built
+//! from.
+//!
+//! They live beside the vocabulary they construct rather than beside the driver
+//! that reports them: a failure's shape, its resolution hint and the transitions
+//! a failed execution produces are all this Agent's own answers, and the client
+//! only decides *when* to build one.
+//!
+//! A failed run's transitions come from this package's own parser, so the
+//! failure a driver reports and the failure a replayed transcript reports are
+//! the same transition, produced by the same code.
+
 use super::model::{EffectiveSettings, ProtocolFailure, ProtocolFailurePayload, RunResult};
 
 impl ProtocolFailure {
-    pub(in crate::platform) fn new(
-        code: &'static str,
-        message: &'static str,
-        stage: &'static str,
-    ) -> Self {
+    /// One failure with no resolution hint and no bound identity.
+    pub fn new(code: &'static str, message: &'static str, stage: &'static str) -> Self {
         Self::from_payload(ProtocolFailurePayload {
             code,
             message,
@@ -22,7 +31,8 @@ impl ProtocolFailure {
         })
     }
 
-    pub(in crate::platform) fn with_resolution(
+    /// The same failure, with the resolution a caller can act on.
+    pub fn with_resolution(
         mut self,
         component: &'static str,
         retryable: bool,
@@ -36,7 +46,8 @@ impl ProtocolFailure {
 }
 
 impl RunResult {
-    pub(in crate::platform) fn failed(
+    /// One failed run, in the shape every Codex execution reports.
+    pub fn failed(
         failure: ProtocolFailure,
         started_at: String,
         status_code: Option<i32>,
@@ -44,11 +55,7 @@ impl RunResult {
         stderr_truncated: bool,
     ) -> Self {
         let transitions =
-            crate::platform::native_agent_parser::adapters::codex::failure_transitions(
-                failure.code,
-                failure.stage,
-                failure.message,
-            );
+            crate::parser::failure_transitions(failure.code, failure.stage, failure.message);
         Self {
             ok: false,
             output: String::new(),

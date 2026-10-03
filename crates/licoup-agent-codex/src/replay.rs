@@ -2,7 +2,9 @@
 //!
 //! One real [`CodexParser`] — the same parser a live app-server turn drives —
 //! consumes the recorded `stdio-jsonrpc` frames, so every projection is the
-//! parser's own report and never a re-derivation of the payload.
+//! parser's own report and never a re-derivation of the payload. The arm travels
+//! with the parser: a program that composes this package's parser set gets the
+//! arm that can only fail when *this* parser regresses.
 //!
 //! The parser is built hermetically: the config is a struct literal with a
 //! synthetic prompt, no model, and an empty requested session, which is the
@@ -17,20 +19,36 @@
 //! so a projection names the wrapped report variant the driver actually
 //! consumes alongside the wrapper that reported it.
 
-use super::super::{FrameReplay, RecordedFrame};
-use crate::platform::codex_app_server::config::ProtocolConfig;
-use crate::platform::codex_app_server::model::{
-    EffectiveSettings, ProtocolEffect, ProtocolFailure, ProtocolOutcome,
-};
-use crate::platform::native_agent_parser::adapters::codex::{CodexEffect, CodexParser};
+use licoup_agent_adapter_sdk::replay::{FrameReplay, RecordedFrame};
 use serde_json::{Map, Value, json};
 
-pub(super) struct Replay {
+use crate::app_server::config::ProtocolConfig;
+use crate::app_server::model::{
+    EffectiveSettings, ProtocolEffect, ProtocolFailure, ProtocolOutcome,
+};
+use crate::parser::{CodexEffect, CodexParser};
+use crate::registration::{ADAPTER_ID, FRAMING};
+
+/// Build the replay arm of this package's parser.
+///
+/// An adapter this package does not carry is refused rather than defaulted, so a
+/// fixture can never pass against a parser that was never constructed.
+pub fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameReplay>, String> {
+    if adapter_id != ADAPTER_ID {
+        return Err(format!(
+            "no replayable parser is registered for adapter {adapter_id}"
+        ));
+    }
+    Ok(Box::new(Replay::new()?))
+}
+
+/// The parser this package's own driver constructs, built for one transcript.
+pub struct Replay {
     parser: CodexParser,
 }
 
 impl Replay {
-    pub(super) fn new() -> Result<Self, String> {
+    pub fn new() -> Result<Self, String> {
         Ok(Self {
             parser: CodexParser::new(ProtocolConfig {
                 prompt: "synthetic-user-prompt".to_owned(),
@@ -50,6 +68,13 @@ impl Replay {
 
 impl FrameReplay for Replay {
     fn feed(&mut self, frame: &RecordedFrame) -> Result<Vec<Value>, String> {
+        if frame.channel != FRAMING {
+            return Err(format!(
+                "the codex app-server transcript records the {:?} channel; this parser speaks \
+                 {FRAMING}",
+                frame.channel
+            ));
+        }
         if frame.direction != "agent-to-client" {
             return Err(format!(
                 "the codex app-server transcript records the agent's side of the session; a {:?} \

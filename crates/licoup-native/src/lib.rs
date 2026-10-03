@@ -39,8 +39,9 @@ pub(crate) mod model_catalog_port;
 /// It lives at the crate root, above both layers, so neither layer has to know
 /// the other: a layer declares the port it needs, the other owns the fact, and
 /// this function joins them once per process. That covers the environment
-/// ports the domain asks, the gateway runtime's ports, and the stop control's
-/// Subagent-claim dispatcher, which the domain answers. A process that never
+/// ports the domain asks, the gateway runtime's ports, the stop control's
+/// Subagent-claim dispatcher, which the domain answers, and the progressive
+/// turn-event port the Codex adapter package asks for. A process that never
 /// calls it keeps every port fail-closed.
 pub fn install_environment_ports() -> Result<(), &'static str> {
     domain::conversation::history::install_open_codex_rollouts(
@@ -51,7 +52,13 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     licoup_model_catalog::install_model_catalog_port(model_catalog_port::model_catalog_port())?;
     platform::extension_packages::install_maintenance_admission(std::sync::Arc::new(
         PackageGenerationAdmission,
-    ))
+    ))?;
+    // The Codex adapter package owns what one Codex turn emits; this host owns
+    // where it goes, because the host owns the consumer. The package is linked
+    // here for its registration while its binary route is completed by the
+    // agent-execution port, and a host that never installs this port leaves the
+    // package's emitters silent rather than inventing a consumer.
+    licoup_agent_codex::port::turn_event::install(platform::codex_turn_event_port())
 }
 
 /// The composition's answer for the package-generation admission port: the

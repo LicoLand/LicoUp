@@ -2071,6 +2071,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-agent-codex"
+version = "0.14.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-extension-contracts",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "licoup-agent-runtime"
 version = "0.3.0"
 dependencies = [
@@ -2275,6 +2286,7 @@ dependencies = [
  "licoarc-rust",
  "licoup-agent-adapter-sdk",
  "licoup-agent-adapters",
+ "licoup-agent-codex",
  "licoup-agent-runtime",
  "licoup-agent-targets",
  "licoup-application",
