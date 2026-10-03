@@ -208,26 +208,38 @@ void main() {
         ),
         track(composition.conversation.archive.changes, 'conversation-archive'),
         track(composition.conversation.effects.effects, 'conversation-effects'),
-        track(composition.mobileRelay.projection.changes, 'mobile-relay'),
-        track(composition.mobileRelay.effects.effects, 'mobile-relay-effects'),
-        track(composition.models.projection.changes, 'models'),
-        track(composition.models.effects.effects, 'models-effects'),
-        track(composition.skillHub.projection.changes, 'skill-hub'),
-        track(composition.skillHub.effects.effects, 'skill-hub-effects'),
         track(
-          composition.pluginManagement.projection.changes,
+          _present(composition.mobileRelay).projection.changes,
+          'mobile-relay',
+        ),
+        track(
+          _present(composition.mobileRelay).effects.effects,
+          'mobile-relay-effects',
+        ),
+        track(_present(composition.models).projection.changes, 'models'),
+        track(_present(composition.models).effects.effects, 'models-effects'),
+        track(_present(composition.skillHub).projection.changes, 'skill-hub'),
+        track(
+          _present(composition.skillHub).effects.effects,
+          'skill-hub-effects',
+        ),
+        track(
+          _present(composition.pluginManagement).projection.changes,
           'plugin-management',
         ),
         track(
-          composition.pluginManagement.effects.effects,
+          _present(composition.pluginManagement).effects.effects,
           'plugin-management-effects',
         ),
-        track(composition.agentHub.projection.changes, 'agent-hub'),
-        track(composition.agentHub.effects.effects, 'agent-hub-effects'),
+        track(_present(composition.agentHub).projection.changes, 'agent-hub'),
+        track(
+          _present(composition.agentHub).effects.effects,
+          'agent-hub-effects',
+        ),
         track(composition.targets.projection.changes, 'targets'),
         track(composition.targets.effects.effects, 'targets-effects'),
-        track(composition.search.projection.changes, 'search'),
-        track(composition.search.effects.effects, 'search-effects'),
+        track(_present(composition.search).projection.changes, 'search'),
+        track(_present(composition.search).effects.effects, 'search-effects'),
         track(composition.chrome.projection.changes, 'chrome'),
         track(composition.chrome.effects.effects, 'chrome-effects'),
         track(composition.settings.projection.changes, 'settings'),
@@ -305,4 +317,16 @@ final class _TrackingClientController extends ClientController {
     events.add('controller');
     await super.close();
   }
+}
+
+/// Reads an optional feature binding of a full composition in a test.
+///
+/// The composition tests here exercise the full declaration, so every feature
+/// binding is present; this keeps the failure legible if a declaration change
+/// removes one.
+T _present<T>(T? binding) {
+  if (binding == null) {
+    throw StateError('full composition expected a bound feature');
+  }
+  return binding;
 }

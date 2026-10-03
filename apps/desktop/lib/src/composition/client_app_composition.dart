@@ -10,7 +10,9 @@ import 'package:riverpod/riverpod.dart' show Ref;
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/composition/binding_shell_renderer.dart';
+import 'package:licoup/src/composition/binding_shell_renderer/shell_destinations.dart';
 import 'package:licoup/src/composition/built_in_layout_composition.dart';
+import 'package:licoup/src/composition/client_composition_set.dart';
 import 'package:licoup/src/composition/dispose_all.dart';
 import 'package:licoup/src/composition/features/agent_hub/agent_hub_feature_composition.dart';
 import 'package:licoup/src/composition/features/agents/agents_feature_composition.dart';
@@ -26,6 +28,8 @@ import 'package:licoup/src/composition/features/skill_hub/skill_hub_feature_comp
 import 'package:licoup/src/composition/features/targets/targets_feature_composition.dart';
 import 'package:licoup/src/composition/shell_intent_adapter.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/mounted_destination_set.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/user_home_directory.dart';
@@ -69,6 +73,7 @@ final class ClientAppComposition {
     ClientController? controller,
     CausalFrameTelemetry? telemetry,
     Stream<bool>? systemReduceMotionChanges,
+    ClientCompositionSet compositionSet = ClientCompositionSet.full,
   }) {
     final resolvedTelemetry = telemetry ?? createOptInCausalFrameTelemetry();
     final layout = controller == null
@@ -95,6 +100,7 @@ final class ClientAppComposition {
       resolvedController,
       layout,
       resolvedTelemetry,
+      compositionSet,
       systemReduceMotionChanges ??
           (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS
               ? const MacosReduceMotionChannel().changes
@@ -139,6 +145,7 @@ final class ClientAppComposition {
     this._controller,
     this._layout,
     this.telemetry,
+    this.compositionSet,
     Stream<bool> systemReduceMotionChanges,
   ) : _projectionTracing = CausalProjectionSourceRegistry(telemetry) {
     final beginRendererIntent = telemetry?.beginRendererIntent;
@@ -166,6 +173,7 @@ final class ClientAppComposition {
       navigation: _controller.navigationController,
       layoutManager: _controller.layoutManager,
       environment: _environment,
+      mountedDestinations: mountedDestinations,
     );
     _systemReduceMotionSubscription = systemReduceMotionChanges.listen(
       _environment.replaceSystemReduceMotion,
@@ -240,6 +248,13 @@ final class ClientAppComposition {
       beginRendererIntent: beginRendererIntent,
     );
 
+    /// The binding a feature contributes only when the declaration names it.
+    ///
+    /// An undeclared feature therefore reaches the renderer as null and has no
+    /// surface, while its composition is still torn down with the container.
+    T? mounted<T>(bool installed, T Function() binding) =>
+        installed ? binding() : null;
+
     final rawAgents = _agents.binding;
     agents = AgentsBinding(
       projection: _projectionTracing.wrap(rawAgents.projection),
@@ -271,34 +286,49 @@ final class ClientAppComposition {
       effects: rawConversation.effects,
     );
     final rawMobileRelay = _mobileRelay.binding;
-    mobileRelay = MobileRelayBinding(
-      projection: _projectionTracing.wrap(rawMobileRelay.projection),
-      intents: rawMobileRelay.intents,
-      effects: rawMobileRelay.effects,
+    mobileRelay = mounted(
+      compositionSet.mobileRelay,
+      () => MobileRelayBinding(
+        projection: _projectionTracing.wrap(rawMobileRelay.projection),
+        intents: rawMobileRelay.intents,
+        effects: rawMobileRelay.effects,
+      ),
     );
     final rawModels = _models.binding;
-    models = ModelsBinding(
-      projection: _projectionTracing.wrap(rawModels.projection),
-      intents: rawModels.intents,
-      effects: rawModels.effects,
+    models = mounted(
+      compositionSet.models,
+      () => ModelsBinding(
+        projection: _projectionTracing.wrap(rawModels.projection),
+        intents: rawModels.intents,
+        effects: rawModels.effects,
+      ),
     );
     final rawSkillHub = _skillHub.binding;
-    skillHub = SkillHubBinding(
-      projection: _projectionTracing.wrap(rawSkillHub.projection),
-      intents: rawSkillHub.intents,
-      effects: rawSkillHub.effects,
+    skillHub = mounted(
+      compositionSet.skillHub,
+      () => SkillHubBinding(
+        projection: _projectionTracing.wrap(rawSkillHub.projection),
+        intents: rawSkillHub.intents,
+        effects: rawSkillHub.effects,
+      ),
     );
     final rawPluginManagement = _pluginManagement.binding;
-    pluginManagement = PluginManagementBinding(
-      projection: _projectionTracing.wrap(rawPluginManagement.projection),
-      intents: rawPluginManagement.intents,
-      effects: rawPluginManagement.effects,
+    pluginManagement = mounted(
+      compositionSet.pluginManagement,
+      () => PluginManagementBinding(
+        projection: _projectionTracing.wrap(rawPluginManagement.projection),
+        intents: rawPluginManagement.intents,
+        effects: rawPluginManagement.effects,
+      ),
     );
     final rawAgentHub = _agentHub.binding;
-    agentHub = AgentHubBinding(
-      projection: _projectionTracing.wrap(rawAgentHub.projection),
-      intents: rawAgentHub.intents,
-      effects: rawAgentHub.effects,
+    agentHub = mounted(
+      compositionSet.agentHub,
+      () => AgentHubBinding(
+        projection: _projectionTracing.wrap(rawAgentHub.projection),
+        intents: rawAgentHub.intents,
+        effects: rawAgentHub.effects,
+      ),
     );
     final rawTargets = _targets.binding;
     targets = TargetsBinding(
@@ -307,10 +337,13 @@ final class ClientAppComposition {
       effects: rawTargets.effects,
     );
     final rawSearch = _search.binding;
-    search = SearchBinding(
-      projection: _projectionTracing.wrap(rawSearch.projection),
-      intents: rawSearch.intents,
-      effects: rawSearch.effects,
+    search = mounted(
+      compositionSet.search,
+      () => SearchBinding(
+        projection: _projectionTracing.wrap(rawSearch.projection),
+        intents: rawSearch.intents,
+        effects: rawSearch.effects,
+      ),
     );
     final rawChrome = _chrome.binding;
     chrome = ChromeBinding(
@@ -328,6 +361,7 @@ final class ClientAppComposition {
     );
 
     _renderer = BindingShellRenderer(
+      composition: compositionSet,
       layout: _layout,
       shellIntents: _shellIntents,
       status: binding.status,
@@ -340,9 +374,9 @@ final class ClientAppComposition {
       pluginManagement: pluginManagement,
       mobileRelay: mobileRelay,
       models: models,
-      settings: settings,
+      settings: compositionSet.settings ? settings : null,
       agentHub: agentHub,
-      search: search,
+      search: compositionSet.search ? search : null,
       targets: targets,
       openExternalUri: _controller.runtimePlatformBridge.openHttps,
       workspaceHomeDirectory: userHomeDirectory(),
@@ -350,10 +384,20 @@ final class ClientAppComposition {
     renderer = _renderer;
   }
 
+  /// The destination owner the renderer delegates section dispatch to.
+  ///
+  /// Exposing it here keeps the destination-to-surface decision at the same
+  /// boundary that decides which features exist, so a test can ask which
+  /// surface a declaration produces without building the shell.
+  ShellDestinations get shellDestinations => _renderer.destinations;
+
   final ClientController _controller;
   final BuiltInLayoutComposition _layout;
   final CausalFrameTelemetry? telemetry;
   final CausalProjectionSourceRegistry _projectionTracing;
+
+  /// The declaration naming every feature composition this client owns.
+  final ClientCompositionSet compositionSet;
   late final ShellProjectionProducer _shellProjection;
   late final EnvironmentProjectionSource _environment;
   late final StreamSubscription<bool> _systemReduceMotionSubscription;
@@ -377,14 +421,19 @@ final class ClientAppComposition {
   late final AgentsBinding agents;
   late final MonitoringBinding monitoring;
   late final ConversationBinding conversation;
-  late final MobileRelayBinding mobileRelay;
-  late final ModelsBinding models;
-  late final SkillHubBinding skillHub;
-  late final PluginManagementBinding pluginManagement;
-  late final AgentHubBinding agentHub;
+  late final MobileRelayBinding? mobileRelay;
+  late final ModelsBinding? models;
+  late final SkillHubBinding? skillHub;
+  late final PluginManagementBinding? pluginManagement;
+  late final AgentHubBinding? agentHub;
   late final TargetsBinding targets;
-  late final SearchBinding search;
+  late final SearchBinding? search;
   late final ChromeBinding chrome;
+
+  /// The settings composition is part of the shell's own minimum: the
+  /// settings feature serves the relocation effects the application root
+  /// consumes, so it is always bound even when the declaration leaves the
+  /// settings destination optional.
   late final SettingsBinding settings;
   late final ShellRendererPort renderer;
   Future<void>? _disposal;
@@ -399,6 +448,16 @@ final class ClientAppComposition {
     ..._skillHub.providerOverrides,
     ..._mobileRelay.providerOverrides,
   ];
+
+  /// The catalogue projection of the destinations this declaration mounts.
+  ///
+  /// The shell navigation plane reads it so an uninstalled capability is
+  /// absent from the offered destinations and a request for it recovers to a
+  /// mounted one, instead of rendering a surface no feature owns.
+  MountedDestinationSet get mountedDestinations => MountedDestinationSet([
+    for (final destination in ClientSection.values)
+      if (compositionSet.isInstalled(destination)) destination,
+  ]);
 
   /// Binds the conversation markdown port to the container's runtime.
   ///
