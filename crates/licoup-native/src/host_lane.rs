@@ -7,6 +7,13 @@
 //! ships, and the installation-state projection reduces the manager's answer to
 //! one word. They arrive through the port for the same reason the per-Agent
 //! halves do — the moved crate names no module above it.
+//!
+//! It is the crate root's composition rather than a `platform` module, because
+//! answering two of these lanes reads domain facts — the integration state the
+//! Codex plugin manager reports and the collaboration plugin's ACP server
+//! registration. The platform layer may not reach the domain layer, so the
+//! composition that joins them lives above both, exactly as [`crate::target_port`]
+//! does for the Agent inventory.
 
 use licoup_agent_drivers::runtime_adapters::port::{
     CallerConfigPort, CallerManagerPort, CollaborationMcpPort, ConversationHostPort, GenericCliPort,

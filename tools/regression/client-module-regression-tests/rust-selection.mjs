@@ -158,7 +158,7 @@ test("Independent MCP lifecycle tests use the standalone crate regression", () =
 
 test("Rust domain changes select a precise cargo-filtered slice", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/raw_execution.rs",
+    "crates/licoup-foundation/src/platform/raw_execution.rs",
   ])), ["architecture.client-boundaries", "rust.platform"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/conversation/history/execution_provenance.rs",

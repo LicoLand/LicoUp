@@ -30,6 +30,14 @@ use crate::platform::openclaw_driver;
 /// An adapter this host composes no arm for is refused rather than defaulted,
 /// so a fixture can never pass against a parser that was never constructed.
 pub(in crate::platform) fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameReplay>, String> {
+    // The two shared ACP arms read their Agent's frame dialect through the same
+    // installed port the production transport reads, so the host's composition
+    // installs it here exactly as a production entry point does. Installation is
+    // idempotent and first-wins, so an arm built after a running turn cannot
+    // replace the dialects that turn is reading.
+    if matches!(adapter_id, "copilot" | "kimi-code") {
+        crate::platform::runtime_adapters::install();
+    }
     Ok(match adapter_id {
         "antigravity" => Box::new(antigravity::Replay::new()?),
         "claude-code" => Box::new(claude_code::Replay::new()?),

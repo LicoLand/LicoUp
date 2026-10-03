@@ -430,7 +430,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
       "crates/licoup-native/src/platform/codex_app_server",
       ".rs"
     ),
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/codex/control.rs",
+    "crates/licoup-agent-codex/src/parser/control.rs",
   ]);
   assert(runtimeAdaptersRustSource.includes("enum RuntimeAdapter") &&
     runtimeAdaptersRustSource.includes('"runtime-adapter"') &&

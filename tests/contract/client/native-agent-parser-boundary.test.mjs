@@ -30,13 +30,40 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     composition.indexOf('pub(in crate::platform) static REGISTRATIONS'),
     composition.indexOf('/// The parser registrations this host injects'),
   );
-  assert.equal((registrations.match(/ParserRegistration::unanswered\(/g) ?? []).length, 13);
+  // Every entry names its Agent's declaration exactly once, and none inherits
+  // another Agent's answer.
+  assert.equal((registrations.match(/ParserRegistration::(?:unanswered|new)\(/g) ?? []).length, 13);
+  // The queries a reader reaches are answered by the Agent that owns the fact:
+  // Hermes' normalized transitions, and the exact-resume identity of the four
+  // Agents the Subagent mesh dispatches. Every other entry stays declared and
+  // unanswered rather than inheriting a neighbouring Agent's answer.
+  const answered = {
+    antigravity: ['no_transitions', 'antigravity_identity'],
+    claude_code: ['no_transitions', 'claude_code_identity'],
+    codex: ['codex_transitions', 'codex_identity'],
+    cursor: ['no_transitions', 'cursor_identity'],
+    hermes: ['hermes_transitions', 'no_identity'],
+  };
+  // One entry per Agent, so a per-Agent answer is read from its own entry
+  // rather than from a neighbouring one that happens to name the same helper.
+  const entries = new Map();
+  for (const chunk of registrations.split('    ParserRegistration::').slice(1)) {
+    const contract = chunk.match(/(\w+)::CONTRACT/);
+    if (contract) entries.set(contract[1], chunk);
+  }
+  assert.equal(entries.size, 13);
   for (const adapter of adapters) {
     assert.match(composition, new RegExp(`mod ${adapter};`));
-    assert.match(
-      registrations,
-      new RegExp(`ParserRegistration::unanswered\\(${adapter}::CONTRACT\\)`),
-    );
+    const entry = entries.get(adapter);
+    assert.ok(entry, `no registration entry for ${adapter}`);
+    if (answered[adapter]) {
+      assert.match(entry, /^new\(/u);
+      for (const answer of answered[adapter]) {
+        assert.match(entry, new RegExp(`\\b${answer}\\b`, 'u'));
+      }
+    } else {
+      assert.match(entry, /^unanswered\(/u);
+    }
     const component = readFileSync(
       `${parserRoot}/adapters/${adapter}.rs`,
       'utf8',
@@ -61,7 +88,7 @@ test('the shared adapter contract names no Agent', () => {
 
 test('normalized runtime responses cross the typed final parser boundary', () => {
   const normalization = readFileSync(
-    'crates/licoup-native/src/platform/runtime_adapters/normalization.rs',
+    'crates/licoup-agent-drivers/src/runtime_adapters/normalization.rs',
     'utf8',
   );
   assert.match(normalization, /execution\s*\.transitions/);
@@ -89,7 +116,7 @@ test('normalized runtime responses cross the typed final parser boundary', () =>
 
 test('serve HTTP and SSE frames decode only in target parser components', () => {
   const neutralServe = readFileSync(
-    'crates/licoup-native/src/platform/local_service/serve.rs',
+    'crates/licoup-agent-drivers/src/local_service/serve.rs',
     'utf8',
   );
   assert.doesNotMatch(neutralServe, /message\.updated|message\.part\.updated|serde_json::from_str/);
@@ -126,7 +153,7 @@ test('Cursor PTY isolation precedes its strict NDJSON parser', () => {
 
 test('interaction and lifecycle authorities are unbounded and write-once', () => {
   const interaction = readFileSync(
-    'crates/licoup-native/src/platform/native_agent_interaction/mod.rs',
+    'crates/licoup-foundation/src/platform/native_agent_interaction/mod.rs',
     'utf8',
   );
   assert.match(interaction, /in-process-one-shot/);
@@ -136,7 +163,7 @@ test('interaction and lifecycle authorities are unbounded and write-once', () =>
   );
   assert.doesNotMatch(productionInteraction, /expires_at|deadline:/i);
   const approvalRoute = readFileSync(
-    'crates/licoup-native/src/platform/acp_session_transport/approval_store.rs',
+    'crates/licoup-agent-drivers/src/acp_session_transport/approval_store.rs',
     'utf8',
   );
   assert.doesNotMatch(approvalRoute, /PARKED_PERMISSIONS|ParkedPermission/);

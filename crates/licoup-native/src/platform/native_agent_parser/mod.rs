@@ -18,16 +18,16 @@
 //! composition are what remain, because they are what names thirteen parsers
 //! and, later, thirteen crates.
 //!
-//! Two members of the SDK's `port::ParserRegistration` are declared and not yet
-//! answered here: `execution_transitions`, which projects one execution outcome
-//! into the shared transition vocabulary, and `valid_identity`, which answers
-//! whether a durable native session identity is valid for one Agent. The host
-//! reads those facts through one Agent's own functions today
-//! (`adapters/{hermes,codex,cursor,antigravity}`); composing the per-Agent
-//! answers into `REGISTRATIONS` and calling them through the port is the work
-//! of the Nodes that own those call sites and those crates. Until then every
-//! entry answers fail-closed and nothing reads them, so no behaviour depends on
-//! the gap.
+//! The SDK's two protocol-agnostic `port::ParserRegistration` queries are
+//! answered in `adapters::REGISTRATIONS` by the Agents whose facts a reader
+//! actually reaches: Hermes answers `execution_transitions`, because it reports
+//! no transition list of its own and the host's Hermes normalization reads that
+//! query; and the four Agents the Subagent mesh dispatches — Codex, Cursor,
+//! Antigravity and Claude Code — answer `valid_identity` from their own
+//! recorded evidence. Twelve of the thirteen entries leave
+//! `execution_transitions` unanswered because their driver carries the parser's
+//! own transition list, and the identity query stays fail-closed for an Agent
+//! the mesh never dispatches. No entry inherits a neighbouring Agent's answer.
 
 pub(in crate::platform) mod adapters;
 #[cfg(test)]

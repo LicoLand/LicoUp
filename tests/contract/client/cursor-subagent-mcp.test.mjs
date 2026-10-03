@@ -8,7 +8,8 @@ const manager = read("crates/licoup-native/src/platform/cursor_subagent_mcp_mana
 const driver = read("crates/licoup-native/src/platform/cursor_driver/execution.rs");
 const model = read("crates/licoup-native/src/platform/cursor_driver/model.rs");
 const parser = read("crates/licoup-native/src/platform/native_agent_parser/adapters/cursor.rs");
-const runtime = read("crates/licoup-native/src/platform/runtime_adapters/subagent_mesh.rs");
+const runtime = read("crates/licoup-agent-drivers/src/runtime_adapters/subagent_mesh.rs");
+const adapters = read("crates/licoup-native/src/platform/native_agent_parser/adapters/mod.rs");
 const startup = read("tests/product-e2e/cli/subagent-mcp/upstream/cursor-startup-recognition.mjs");
 
 test("Cursor registration is namespaced, digest-bound, owned, and ambiguity-closed", () => {
@@ -38,13 +39,17 @@ test("Cursor target keeps exact create/resume, workspace, PTY, acknowledgement a
   assert.match(driver, /PromptAcknowledgementMissing/u);
   assert.match(driver, /register_active_turn/u);
   assert.match(driver, /apply_mcp_runtime_root/u);
-  assert.match(runtime, /ExactIdentityKind::CursorChat/u);
+  // Exact resume asks the Agent's own parser through the shared port, and the
+  // host's Cursor registration answers with Cursor's session-id rule.
+  assert.match(runtime, /parser\.valid_identity/u);
+  assert.match(adapters, /cursor_identity/u);
+  assert.match(adapters, /cursor::safe_session_id/u);
   assert.match(runtime, /active_cancel: true/u);
   assert.match(parser, /safe_session_id/u);
 });
 
 test("Cursor generated guidance is one ordinary unmarked wire prefix", () => {
-  const policy = read("crates/licoup-native/src/platform/runtime_adapters.rs");
+  const policy = read("crates/licoup-agent-drivers/src/runtime_adapters.rs");
   assert.match(policy, /RuntimeAdapter::Cursor \| RuntimeAdapter::Antigravity/u);
   assert.match(policy, /OrdinaryWirePrefix/u);
   assert.match(driver, /cursor_cli_private_instructions_unsupported/u);

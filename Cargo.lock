@@ -2095,7 +2095,6 @@ dependencies = [
  "licoup-application",
  "licoup-conversation",
  "licoup-foundation",
- "licoup-mcp",
  "licoup-state-machine-codegen",
  "serde",
  "serde_json",

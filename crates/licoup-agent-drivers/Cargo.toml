@@ -40,9 +40,6 @@ licoup-application = { path = "../licoup-application" }
 # Process, path and bounded-command primitives. They are the host's own
 # machinery, below every Agent.
 licoup-foundation = { path = "../licoup-foundation" }
-# The Subagent caller managers of the Agents that ship an MCP integration. They
-# are Agents' integration machinery and already live below this crate.
-licoup-mcp = { path = "../licoup-mcp" }
 # The durable binding row the host reads before it reaches an Agent. Reading it
 # is the seam's job; the adapter it is handed to is not.
 licoup-conversation = { path = "../licoup-conversation" }

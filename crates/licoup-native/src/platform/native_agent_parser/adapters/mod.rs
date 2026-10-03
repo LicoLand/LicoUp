@@ -18,10 +18,9 @@ pub(in crate::platform) use licoup_agent_adapter_sdk::{
     LifecycleStage, Transition, TransitionReducer,
 };
 
-// One Agent's parser has moved: Codex's vendor protocol now lives in its own
-// package (`licoup-agent-codex`), parsed once below this port, and this
-// composition names the package rather than keeping a second copy. The
-// remaining twelve move the same way, one package each.
+// One Agent's parser has moved: Codex's vendor protocol now lives in its own package
+// (`licoup-agent-codex`), parsed once below this port, and this composition names the
+// package rather than keeping a second copy.
 pub(in crate::platform) use licoup_agent_codex::parser as codex;
 
 pub(in crate::platform) mod antigravity;
@@ -37,27 +36,97 @@ pub(in crate::platform) mod openclaw;
 pub(in crate::platform) mod opencode;
 pub(in crate::platform) mod pi;
 
-use licoup_agent_adapter_sdk::port::{AdapterParserSet, ParserRegistration};
+use licoup_agent_adapter_sdk::port::{
+    AdapterParserSet, DurableIdentityRequest, ExecutionOutcome, ParserRegistration,
+};
+
+/// The fail-closed transition answer, for an Agent parser that reports its
+/// transitions with its own execution result rather than through this query.
+///
+/// Twelve of the thirteen parsers answer that way: their driver carries the
+/// `transitions` list the parser's own reducer built, so the query stays
+/// declared and unanswered for them, exactly as
+/// [`ParserRegistration::unanswered`] states.
+fn no_transitions(_: &ExecutionOutcome<'_>) -> Vec<Transition> {
+    Vec::new()
+}
+
+/// The fail-closed identity answer, for an Agent the Subagent mesh never
+/// dispatches.
+///
+/// The mesh reaches exact resume for four Agents; an Agent it does not dispatch
+/// has no durable dispatch identity for this query to validate, so the answer
+/// stays the one [`ParserRegistration::unanswered`] states.
+fn no_identity(_: &DurableIdentityRequest<'_>) -> bool {
+    false
+}
+
+/// Hermes' normalized transitions for one execution outcome.
+///
+/// Hermes reports no transition list of its own, so it is the one Agent whose
+/// transitions the host reads through the shared query. The host's Hermes
+/// normalization read these two builders directly before the query moved behind
+/// the contract, so the answer is the same one, reached without naming Hermes
+/// above the parser boundary.
+fn hermes_transitions(outcome: &ExecutionOutcome<'_>) -> Vec<Transition> {
+    match outcome.failure {
+        Some(failure) => hermes::failed_transitions(failure.code, failure.stage, failure.message),
+        None => hermes::completed_transitions(outcome.output),
+    }
+}
+
+/// Whether a Cursor chat identity is one that Agent's protocol accepts.
+fn cursor_identity(request: &DurableIdentityRequest<'_>) -> bool {
+    cursor::safe_session_id(request.session_id)
+}
+
+/// Whether an Antigravity Agent Hooks receipt identity is one that Agent's
+/// protocol accepts.
+fn antigravity_identity(request: &DurableIdentityRequest<'_>) -> bool {
+    antigravity::valid_session_id(request.session_id)
+}
+
+/// Whether a Claude Code session identity is one that Agent's protocol accepts.
+fn claude_code_identity(request: &DurableIdentityRequest<'_>) -> bool {
+    opaque_identity(request.session_id)
+}
+
+/// The shared opaque-identity rule the mesh states for the Agents whose
+/// protocols record no further evidence than the identity itself.
+fn opaque_identity(session_id: &str) -> bool {
+    licoup_agent_drivers::runtime_adapters::subagent_mesh::valid_opaque_identity(session_id)
+}
 
 /// The adapter declarations this host's thirteen Agent parsers report, in
 /// `RuntimeAdapter` order.
 ///
 /// This is the single list of the parsers this host carries: the registry
 /// lookup, the dispatch admission and the packaged-inventory check all read it,
-/// so an Agent parser is one entry rather than four lists that can drift. Each
-/// entry names its Agent's declaration and answers fail-closed on the two
-/// protocol-agnostic queries — see `native_agent_parser`'s authority statement
-/// for which Node composes those answers.
+/// so an Agent parser is one entry rather than four lists that can drift.
+///
+/// An entry answers the two protocol-agnostic queries when a reader reaches it:
+/// Hermes answers its normalized transitions, and the four Agents the Subagent
+/// mesh dispatches answer whether a durable identity is theirs. Every other
+/// entry declares its Agent's transition answer as *the parser's own execution
+/// result* rather than through the query, and answers the identity query
+/// fail-closed because the mesh never dispatches that Agent.
 pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
-    ParserRegistration::unanswered(antigravity::CONTRACT),
-    ParserRegistration::unanswered(claude_code::CONTRACT),
-    // The Codex package answers both protocol-agnostic queries from its own
-    // recorded evidence, so this entry is the package's own registration rather
-    // than a fail-closed placeholder.
+    ParserRegistration::new(
+        antigravity::CONTRACT,
+        no_transitions,
+        antigravity_identity,
+    ),
+    ParserRegistration::new(
+        claude_code::CONTRACT,
+        no_transitions,
+        claude_code_identity,
+    ),
+    // The Codex package answers both protocol-agnostic queries from its own recorded
+    // evidence, so this entry is the package's own registration.
     licoup_agent_codex::registration::REGISTRATION,
     ParserRegistration::unanswered(copilot::CONTRACT),
-    ParserRegistration::unanswered(cursor::CONTRACT),
-    ParserRegistration::unanswered(hermes::CONTRACT),
+    ParserRegistration::new(cursor::CONTRACT, no_transitions, cursor_identity),
+    ParserRegistration::new(hermes::CONTRACT, hermes_transitions, no_identity),
     ParserRegistration::unanswered(kilo_code::CONTRACT),
     ParserRegistration::unanswered(kimi_code::CONTRACT),
     ParserRegistration::unanswered(openclaw::CONTRACT),
