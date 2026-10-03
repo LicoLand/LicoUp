@@ -2838,6 +2838,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/resources/client-state-migration-frontier.json",
         "crates/licoup-native/resources/state-machines/update-handoff.json",
         "crates/licoup-native/src/domain/client_state_migration.rs",
+        "crates/licoup-native/src/domain/client_state_migration/appearance.rs",
         "crates/licoup-native/src/domain/client_state_migration/handoff.rs",
         "crates/licoup-native/src/domain/client_state_migration/stores.rs",
         "crates/licoup-native/src/domain/client_state_migration/strategy_store.rs",

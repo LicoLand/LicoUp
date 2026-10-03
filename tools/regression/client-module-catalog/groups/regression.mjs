@@ -1619,6 +1619,8 @@ export const REGRESSION_MODULES = Object.freeze([
         "crates/trybuild/src/**",
         "components/analytics/Cargo.toml",
         "components/analytics/src/**",
+        "components/appearance/Cargo.toml",
+        "components/appearance/src/**",
         "sdk/usage-source/Cargo.toml",
         "sdk/usage-source/src/**",
         "package.json",

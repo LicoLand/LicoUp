@@ -15,13 +15,13 @@ use super::{
 /// together with whether a readable store is present, so a projection can tell
 /// an absent authority from a present store that records no version.
 pub(super) fn probe_authority(root: &Path, domain: &DomainFrontier) -> Result<(u32, bool)> {
-    let present = probe_authoritative_store(root, &domain.domain_id)?.present;
+    let present = probe_authoritative_store(root, domain)?.present;
     Ok((probe_domain(root, domain)?, present))
 }
 
 pub(super) fn probe_domain(root: &Path, domain: &DomainFrontier) -> Result<u32> {
     let marker = load_domain_marker(root, domain)?;
-    let authoritative = probe_authoritative_store(root, &domain.domain_id)?;
+    let authoritative = probe_authoritative_store(root, domain)?;
     ensure!(
         authoritative.version <= domain.target_schema_version,
         "state_newer_than_binary"
@@ -116,9 +116,16 @@ fn portable_root(marker_root: &Path) -> Result<&Path> {
 /// still reconciled in the ledger. Presence stays separate from the version:
 /// an existing legacy store can never be hidden by an already-current domain
 /// marker after an unsupported old writer or external replacement.
-fn probe_authoritative_store(marker_root: &Path, domain_id: &str) -> Result<AuthoritativeProbe> {
+///
+/// The domain is passed whole rather than by id because a store owner resolves
+/// its own "current" shape against the frontier's declared target for the
+/// domain, not against a constant repeated here.
+fn probe_authoritative_store(
+    marker_root: &Path,
+    domain: &DomainFrontier,
+) -> Result<AuthoritativeProbe> {
     let root = portable_root(marker_root)?;
-    match domain_id {
+    match domain.domain_id.as_str() {
         "gateway-credential-custody" => Ok(AuthoritativeProbe {
             version: 0,
             present: false,
@@ -129,38 +136,25 @@ fn probe_authoritative_store(marker_root: &Path, domain_id: &str) -> Result<Auth
         }
         "canonical-conversation" => probe_canonical_conversation(root),
         "adaptive-flywheel" => probe_adaptive_flywheel(root),
-        "workspace-manifest" => probe_json_schema(
-            &root.join(".licoup-workspace.json"),
-            1,
-            JsonSchemaPolicy::CurrentOnly,
-        ),
-        "appearance-presentation" => probe_json_schema(
-            &root.join("client-state/appearance-preferences.json"),
-            1,
-            JsonSchemaPolicy::MissingIsLegacy,
-        ),
+        "workspace-manifest" => probe_json_schema(&root.join(".licoup-workspace.json"), 1),
+        // The appearance store's published shapes, its bounded read and its
+        // refusal vocabulary belong to its own owner; this match only routes the
+        // domain to it.
+        super::appearance::DOMAIN_ID => {
+            super::appearance::probe(root, domain.target_schema_version)
+        }
         "mobile-relay" => probe_mobile_relay(&root.join("client-state/mobile-relay/config.json")),
         "agent-tab-order" => probe_agent_tab_order(&root.join("client-state/agent-tab-order.json")),
-        "agent-tool-allowlist" => probe_json_schema(
-            &root.join("client-state/agent-tool-allowlists.json"),
-            1,
-            JsonSchemaPolicy::CurrentOnly,
-        ),
-        "current-view" => probe_json_schema(
-            &root.join("client-state/current-client-view.json"),
-            1,
-            JsonSchemaPolicy::CurrentOnly,
-        ),
-        "mobile-home-layout" => probe_json_schema(
-            &root.join("client-state/mobile-home-layout.json"),
-            2,
-            JsonSchemaPolicy::CurrentOnly,
-        ),
-        "skill-hub-preferences" => probe_json_schema(
-            &root.join("client-state/skill-hub-preferences.json"),
-            1,
-            JsonSchemaPolicy::CurrentOnly,
-        ),
+        "agent-tool-allowlist" => {
+            probe_json_schema(&root.join("client-state/agent-tool-allowlists.json"), 1)
+        }
+        "current-view" => probe_json_schema(&root.join("client-state/current-client-view.json"), 1),
+        "mobile-home-layout" => {
+            probe_json_schema(&root.join("client-state/mobile-home-layout.json"), 2)
+        }
+        "skill-hub-preferences" => {
+            probe_json_schema(&root.join("client-state/skill-hub-preferences.json"), 1)
+        }
         _ => bail!("migration_frontier_incomplete"),
     }
 }
@@ -182,7 +176,7 @@ fn probe_agent_tab_order(path: &Path) -> Result<AuthoritativeProbe> {
             present: true,
         });
     }
-    probe_json_schema(path, 1, JsonSchemaPolicy::CurrentOnly)
+    probe_json_schema(path, 1)
 }
 
 pub(super) fn probe_canonical_conversation(root: &Path) -> Result<AuthoritativeProbe> {
@@ -357,17 +351,7 @@ fn probe_sqlite_meta(
     }
 }
 
-#[derive(Clone, Copy)]
-enum JsonSchemaPolicy {
-    CurrentOnly,
-    MissingIsLegacy,
-}
-
-fn probe_json_schema(
-    path: &Path,
-    current: u64,
-    policy: JsonSchemaPolicy,
-) -> Result<AuthoritativeProbe> {
+fn probe_json_schema(path: &Path, current: u64) -> Result<AuthoritativeProbe> {
     if !regular_file_present(path)? {
         return Ok(AuthoritativeProbe {
             version: 0,
@@ -385,10 +369,6 @@ fn probe_json_schema(
     {
         Some(version) if version == current => Ok(AuthoritativeProbe {
             version: 1,
-            present: true,
-        }),
-        None if matches!(policy, JsonSchemaPolicy::MissingIsLegacy) => Ok(AuthoritativeProbe {
-            version: 0,
             present: true,
         }),
         Some(version) if version > current => bail!("state_newer_than_binary"),
@@ -470,42 +450,31 @@ pub(super) fn apply_authoritative_store(
             let target = strategy_format_for_domain_version(edge.to_schema_version)?;
             advance_strategy_store(root, target)?;
         }
-        "workspace-manifest" => migrate_json_schema(
-            &root.join(".licoup-workspace.json"),
-            1,
-            JsonSchemaPolicy::CurrentOnly,
-        )?,
-        "appearance-presentation" => migrate_json_schema(
-            &root.join("client-state/appearance-preferences.json"),
-            1,
-            JsonSchemaPolicy::MissingIsLegacy,
-        )?,
+        "workspace-manifest" => {
+            require_current_json_schema(&root.join(".licoup-workspace.json"), 1)?
+        }
+        // The move, its published source shape and its refusal vocabulary are
+        // the appearance store owner's; the coordinator only routes the domain
+        // to it and commits the edge the owner produced.
+        super::appearance::DOMAIN_ID => super::appearance::migrate(root, edge.to_schema_version)?,
         "mobile-relay" => {
             migrate_mobile_relay(&root.join("client-state/mobile-relay/config.json"))?
         }
         "agent-tab-order" => {
             migrate_agent_tab_order(&root.join("client-state/agent-tab-order.json"))?
         }
-        "agent-tool-allowlist" => migrate_json_schema(
-            &root.join("client-state/agent-tool-allowlists.json"),
-            1,
-            JsonSchemaPolicy::CurrentOnly,
-        )?,
-        "current-view" => migrate_json_schema(
-            &root.join("client-state/current-client-view.json"),
-            1,
-            JsonSchemaPolicy::CurrentOnly,
-        )?,
-        "mobile-home-layout" => migrate_json_schema(
-            &root.join("client-state/mobile-home-layout.json"),
-            2,
-            JsonSchemaPolicy::CurrentOnly,
-        )?,
-        "skill-hub-preferences" => migrate_json_schema(
-            &root.join("client-state/skill-hub-preferences.json"),
-            1,
-            JsonSchemaPolicy::CurrentOnly,
-        )?,
+        "agent-tool-allowlist" => {
+            require_current_json_schema(&root.join("client-state/agent-tool-allowlists.json"), 1)?
+        }
+        "current-view" => {
+            require_current_json_schema(&root.join("client-state/current-client-view.json"), 1)?
+        }
+        "mobile-home-layout" => {
+            require_current_json_schema(&root.join("client-state/mobile-home-layout.json"), 2)?
+        }
+        "skill-hub-preferences" => {
+            require_current_json_schema(&root.join("client-state/skill-hub-preferences.json"), 1)?
+        }
         _ => bail!("migration_frontier_incomplete"),
     }
     Ok(())
@@ -548,7 +517,7 @@ fn migrate_agent_tab_order(path: &Path) -> Result<()> {
         return write_json_atomic(path, &json!({"schemaVersion": 1, "order": order}))
             .context("migration_step_failed");
     }
-    migrate_json_schema(path, 1, JsonSchemaPolicy::CurrentOnly)
+    require_current_json_schema(path, 1)
 }
 
 fn migrate_mobile_relay(path: &Path) -> Result<()> {
@@ -564,27 +533,35 @@ fn migrate_mobile_relay(path: &Path) -> Result<()> {
     write_json_atomic(path, &value).context("migration_step_failed")
 }
 
-fn migrate_json_schema(path: &Path, current: u64, policy: JsonSchemaPolicy) -> Result<()> {
+/// Confirm a current-only JSON domain already carries its one published shape.
+///
+/// These stores have exactly one published shape and no legacy document: a store that is
+/// present in any other shape is refused — `state_newer_than_binary` when it records a
+/// version ahead of this binary, `unsupported_state_shape` otherwise — and an absent
+/// store is not created. So the edge's move for them is the confirmation itself, and
+/// nothing is written here.
+///
+/// The one domain with a *published legacy* source shape is the appearance store, and its
+/// move belongs to its own owner in [`super::appearance`] rather than to this lane.
+fn require_current_json_schema(path: &Path, current: u64) -> Result<()> {
     if !path.exists() {
         return Ok(());
     }
     let raw = fs::read(path).context("migration_step_failed")?;
     ensure!(raw.len() <= 4 * 1024 * 1024, "unsupported_state_shape");
-    let mut value: serde_json::Value =
+    let value: serde_json::Value =
         serde_json::from_slice(&raw).context("unsupported_state_shape")?;
-    let object = value
-        .as_object_mut()
-        .ok_or_else(|| anyhow!("unsupported_state_shape"))?;
-    match object
+    ensure!(value.is_object(), "unsupported_state_shape");
+    match recorded_json_schema(&value) {
+        Some(version) if version == current => Ok(()),
+        Some(version) if version > current => bail!("state_newer_than_binary"),
+        Some(_) | None => bail!("unsupported_state_shape"),
+    }
+}
+
+/// The schema version a current-only document records, when it records one.
+fn recorded_json_schema(value: &serde_json::Value) -> Option<u64> {
+    value
         .get("schemaVersion")
         .and_then(serde_json::Value::as_u64)
-    {
-        None if matches!(policy, JsonSchemaPolicy::MissingIsLegacy) => {}
-        Some(version) if version == current => return Ok(()),
-        Some(version) if version > current => bail!("state_newer_than_binary"),
-        Some(_) => bail!("unsupported_state_shape"),
-        None => bail!("unsupported_state_shape"),
-    }
-    object.insert("schemaVersion".to_owned(), json!(current));
-    write_json_atomic(path, &value).context("migration_step_failed")
 }

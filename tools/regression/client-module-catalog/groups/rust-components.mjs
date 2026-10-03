@@ -17,6 +17,27 @@ function crateTests(id, summary, crate, inputs) {
 
 export const RUST_COMPONENT_MODULES = Object.freeze([
   defineModule({
+    id: "rust.component.appearance",
+    kind: "rust-crate",
+    summary: "Native appearance converter package: the declared conversion, the coordinator-driven entry, and the synthetic convert/interrupt/refuse suites",
+    inputs: [
+      "components/appearance/**",
+      "crates/licoup-native/src/domain/client_state_migration/appearance.rs",
+      "crates/licoup-native/resources/client-state-migration-frontier.json",
+    ],
+    command: command(
+      "cargo",
+      [
+        "test",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "components/appearance/Cargo.toml",
+      ],
+      20 * 60_000,
+    ),
+  }),
+  defineModule({
     id: "rust.component.analytics",
     kind: "rust-crate",
     summary: "Optional metrics correction/correlation and borrowed core-fact preservation on removal",

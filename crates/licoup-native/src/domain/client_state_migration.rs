@@ -18,6 +18,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+mod appearance;
 mod handoff;
 mod stores;
 mod strategy_store;

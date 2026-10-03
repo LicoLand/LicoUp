@@ -77,6 +77,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.platform.catalog-cache-store",
   "rust.ffi.catalog-convergence",
   "rust.component.analytics",
+  "rust.component.appearance",
   "rust.platform.skill-invocation-projection",
   "rust.platform.agent-adapter-sdk",
   "rust.platform.mcp-approval-plan-store",
