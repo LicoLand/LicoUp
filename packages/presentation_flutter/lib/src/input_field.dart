@@ -16,6 +16,8 @@ class InputField extends StatefulWidget {
   const InputField({
     super.key,
     this.controller,
+    this.value,
+    this.onValueChanged,
     this.focusNode,
     this.hintText,
     this.enabled = true,
@@ -33,7 +35,16 @@ class InputField extends StatefulWidget {
     this.suffix,
     this.autofocus = false,
     this.textInputAction = TextInputAction.send,
-  });
+  }) : assert(
+         controller == null || value == null,
+         'Use a controlled value or a controller, not both.',
+       );
+
+  /// Controlled editing value. Unchanged parent values never reset local echo.
+  /// Selection and composing ranges travel with the text, not through a second
+  /// business-state channel. The owner clears a controlled value after submit.
+  final TextEditingValue? value;
+  final ValueChanged<TextEditingValue>? onValueChanged;
 
   /// Optional external text editing controller. If omitted, an internal
   /// controller is managed for the lifetime of this widget.
@@ -99,18 +110,49 @@ class _InputFieldState extends State<InputField> {
   FocusNode? _internalFocusNode;
 
   TextEditingController get _effectiveController =>
-      widget.controller ?? (_internalController ??= TextEditingController());
+      widget.controller ??
+      (_internalController ??= TextEditingController.fromValue(widget.value));
 
   FocusNode get _effectiveFocusNode =>
       widget.focusNode ?? (_internalFocusNode ??= FocusNode());
 
   @override
+  void initState() {
+    super.initState();
+    _effectiveController.addListener(_editingChanged);
+  }
+
+  bool _installingValue = false;
+
+  void _editingChanged() {
+    if (!_installingValue) {
+      widget.onValueChanged?.call(_effectiveController.value);
+    }
+  }
+
+  @override
   void didUpdateWidget(covariant InputField oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.controller != oldWidget.controller &&
-        oldWidget.controller == null) {
-      _internalController?.dispose();
-      _internalController = null;
+    if (widget.controller != oldWidget.controller) {
+      final previous = oldWidget.controller ?? _internalController!;
+      final previousValue = previous.value;
+      previous.removeListener(_editingChanged);
+      if (oldWidget.controller == null) {
+        _internalController?.dispose();
+        _internalController = null;
+      } else if (widget.controller == null) {
+        _internalController = TextEditingController.fromValue(
+          widget.value ?? previousValue,
+        );
+      }
+      _effectiveController.addListener(_editingChanged);
+    }
+    if (widget.value != null &&
+        widget.value != oldWidget.value &&
+        widget.value != _effectiveController.value) {
+      _installingValue = true;
+      _effectiveController.value = widget.value!;
+      _installingValue = false;
     }
     if (widget.focusNode != oldWidget.focusNode &&
         oldWidget.focusNode == null) {
@@ -121,6 +163,7 @@ class _InputFieldState extends State<InputField> {
 
   @override
   void dispose() {
+    _effectiveController.removeListener(_editingChanged);
     _internalController?.dispose();
     _internalFocusNode?.dispose();
     super.dispose();
@@ -145,13 +188,15 @@ class _InputFieldState extends State<InputField> {
 
       if (isEnter) {
         // IME composition check: If user is actively selecting IME candidate, ignore enter
-        if (_effectiveController.value.isComposingRangeValid) {
+        if (_isComposing) {
           return KeyEventResult.ignored;
         }
 
         final isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
 
-        if (widget.submitOnEnter && !isShiftPressed) {
+        if (widget.submitOnEnter &&
+            !isShiftPressed &&
+            widget.onSubmit != null) {
           _submit();
           return KeyEventResult.handled;
         }
@@ -161,22 +206,26 @@ class _InputFieldState extends State<InputField> {
     return KeyEventResult.ignored;
   }
 
+  bool get _isComposing => _effectiveController.value.isComposingRangeValid;
+
   int _lastSubmitTime = 0;
 
   void _submit() {
-    if (!widget.enabled) return;
-
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastSubmitTime < 50) return;
+    if (!widget.enabled || _isComposing || widget.onSubmit == null) return;
 
     final text = _effectiveController.text;
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
 
+    // One Enter can arrive through both the key handler and the platform
+    // submit action; this frame-local guard keeps one press from sending twice.
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastSubmitTime < 50) return;
     _lastSubmitTime = now;
-    widget.onSubmit?.call(trimmed);
 
-    if (widget.clearOnSubmit) {
+    widget.onSubmit!(trimmed);
+
+    if (widget.clearOnSubmit && widget.value == null) {
       _effectiveController.clear();
     }
   }
@@ -223,8 +272,7 @@ class _InputFieldState extends State<InputField> {
         decoration: effectiveDecoration,
         onChanged: widget.onChanged,
         onSubmitted: (_) {
-          if (widget.submitOnEnter &&
-              !_effectiveController.value.isComposingRangeValid) {
+          if (widget.submitOnEnter && !_isComposing) {
             _submit();
           }
         },
