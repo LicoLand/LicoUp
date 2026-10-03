@@ -48,7 +48,24 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     )?;
     platform::gateway_composition::install_readiness()?;
     platform::stop_control::install_subagent_claim_stop(stop_subagent_claim)?;
-    licoup_model_catalog::install_model_catalog_port(model_catalog_port::model_catalog_port())
+    licoup_model_catalog::install_model_catalog_port(model_catalog_port::model_catalog_port())?;
+    platform::extension_packages::install_maintenance_admission(std::sync::Arc::new(
+        PackageGenerationAdmission,
+    ))
+}
+
+/// The composition's answer for the package-generation admission port: the
+/// host-wide idle decision and its barrier, which live in the domain layer.
+struct PackageGenerationAdmission;
+
+impl platform::extension_packages::MaintenanceAdmission for PackageGenerationAdmission {
+    fn hold(&self, data_root: &std::path::Path) -> Result<(), &'static str> {
+        domain::work_admission::hold_package_activation_admission(data_root)
+    }
+
+    fn release(&self, data_root: &std::path::Path) -> Result<(), &'static str> {
+        domain::work_admission::release_maintenance_admission(data_root)
+    }
 }
 
 /// The composition's answer for the stop control's Subagent-claim port: the
