@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://licoland.com/schemas/extensions/manifest.schema.json",
   "title": "LicoUp extension package manifest",
-  "description": "What a package says about itself before the host runs anything. It carries no artifact digest and no signature: those are produced from the bytes by packaging and by the update mechanism. `requires` is the install closure; `optionalRequires` enables extra capability only when the user already has it, and never installs anything by itself. `compatibility` is the package's own list of supported client versions: the kernel loads a package only when that list covers the running client, and `hostProtocol` is the separate wire contract range.",
+  "description": "What a package says about itself before the host runs anything. It carries no artifact digest and no signature: those are produced from the bytes by packaging and by the update mechanism. `requires` is the install closure; `optionalRequires` enables extra capability only when the user already has it, and never installs anything by itself. `compatibility` is the package's own list of supported client versions: the kernel loads a package only when that list covers the running client, and `hostProtocol` is the separate wire contract range. `conversion` is the package's own claim about the persisted formats it owns: the published source formats it reads, the target format it produces and the native entry inside its payload that performs the move. It is absent from a package that owns no format, and a package that was asked for a conversion it does not declare is refused.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -68,6 +68,34 @@
             "minLength": 1,
             "maxLength": 64
           }
+        }
+      }
+    },
+    "conversion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "entry", "sourceFormats", "targetFormat"],
+      "description": "The native format conversion this package owns. The field is optional: a package that owns no persisted format carries nothing here, so an absent field is complete. A package that was asked for a conversion and declares none is refused by the caller that required it, with the package and the required source format named. The declaration names format identities, never a client version: which client builds may load the package is `compatibility`, and this field says which formats it converts. The vocabulary is the one the release index publishes for its per-package `converter` entry.",
+      "properties": {
+        "kind": {
+          "const": "native-executable",
+          "description": "The only converter kind this contract publishes: a program inside the package payload, run directly by its host. A converter that needs an interpreter would borrow a runtime the package does not carry, so no other kind is expressible."
+        },
+        "entry": {
+          "$ref": "#/$defs/converterEntry"
+        },
+        "sourceFormats": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "description": "The published source formats this converter reads. An empty list converts nothing, so it is refused rather than read as `no source is supported`.",
+          "items": {
+            "$ref": "#/$defs/formatIdentity"
+          }
+        },
+        "targetFormat": {
+          "$ref": "#/$defs/formatIdentity"
         }
       }
     },
@@ -235,6 +263,20 @@
       "type": "string",
       "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)+(?:[./-][A-Za-z0-9_-]+)*$",
       "maxLength": 160
+    },
+    "converterEntry": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^(?:[A-Za-z0-9_-]+\\.)*[A-Za-z0-9_-]+(?:/(?:[A-Za-z0-9_-]+\\.)*[A-Za-z0-9_-]+)+$",
+      "description": "A converter entry inside the package payload: a relative path with at least one directory component and no empty, `.` or `..` segment. An entry outside the payload is not this package's entry, and the release declaration refuses the same shapes."
+    },
+    "formatIdentity": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$",
+      "description": "A published format identity: lowercase alphanumeric words joined by `.` or `-`, such as `licoup.conversation.v1`. It is an identity rather than an ordering, and it is never a client version."
     },
     "semver": {
       "type": "string",

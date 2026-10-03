@@ -15,7 +15,10 @@ use licoup_extension_contracts::agent::{AgentEventKind, CancelOutcome, UsageSupp
 use licoup_extension_contracts::deployment::{
     CapabilityAvailability, PackageLifecycle, PackageSource,
 };
-use licoup_extension_contracts::manifest::MAX_RANGE_BYTES;
+use licoup_extension_contracts::manifest::{
+    ConverterKind, FrozenEndpoints, MAX_CONVERTER_ENTRY_BYTES, MAX_FORMAT_BYTES, MAX_RANGE_BYTES,
+    MAX_SOURCE_FORMATS, PackageManifest, is_converter_entry, is_format_identity,
+};
 use licoup_extension_contracts::profile::ExtensionProfile;
 use licoup_extension_contracts::provider::COMPATIBLE_DIALECTS;
 use licoup_extension_contracts::ui::{
@@ -32,6 +35,12 @@ const USAGE: &str = include_str!("../../../schemas/extensions/usage.schema.json"
 const UI: &str = include_str!("../../../schemas/extensions/ui.schema.json");
 const GRAPH_RESOURCE: &str = include_str!("../../../schemas/extensions/graph-resource.schema.json");
 const DEPLOYMENT: &str = include_str!("../../../schemas/extensions/deployment.schema.json");
+/// The committed release fixture the release tool packages and signs.
+const RELEASE_FIXTURE_MANIFEST: &str =
+    include_str!("../../../tests/fixtures/client_package_release/fixture-native-converter/manifest.json");
+const RELEASE_FIXTURE_RELEASE: &str = include_str!(
+    "../../../tests/fixtures/client_package_release/fixture-native-converter/package-release.json"
+);
 
 fn schemas() -> Vec<(&'static str, Value)> {
     [
@@ -373,6 +382,160 @@ fn the_published_compatibility_list_is_the_one_this_crate_evaluates() {
         assert!(
             description.contains(token),
             "the published rule must name {token} as the separate fact it is"
+        );
+    }
+}
+
+/// The committed release fixture is the one package the release tool packages and
+/// signs. Its host manifest and its own release declaration must say the same
+/// thing, so the manifest contract cannot drift from the authenticated artifact
+/// metadata that names the same converter.
+#[test]
+fn the_release_fixture_declares_the_converter_its_release_metadata_publishes() {
+    let manifest: Value = serde_json::from_str(RELEASE_FIXTURE_MANIFEST).expect("manifest");
+    let declaration: Value =
+        serde_json::from_str(RELEASE_FIXTURE_RELEASE).expect("release declaration");
+    let converter = &declaration["converter"];
+    let entry = converter["entry"].as_str().expect("release converter entry");
+    let source_format = converter["sourceFormat"]
+        .as_str()
+        .expect("release converter source format");
+    let target_format = converter["targetFormat"]
+        .as_str()
+        .expect("release converter target format");
+
+    assert_eq!(manifest["conversion"]["kind"], converter["kind"]);
+    assert_eq!(manifest["conversion"]["entry"], converter["entry"]);
+    assert_eq!(manifest["runtime"]["entry"], converter["entry"]);
+    assert!(
+        manifest["conversion"]["sourceFormats"]
+            .as_array()
+            .expect("source formats")
+            .iter()
+            .any(|declared| *declared == converter["sourceFormat"]),
+        "the manifest lists every source format its release declaration names"
+    );
+    assert_eq!(manifest["conversion"]["targetFormat"], converter["targetFormat"]);
+    assert!(
+        is_converter_entry(entry),
+        "the release converter entry is an entry inside the package"
+    );
+
+    // The published manifest contract reads the fixture as one package, and the
+    // package owns the conversion its release metadata publishes.
+    let package = PackageManifest::from_value(manifest).expect("the fixture manifest is valid");
+    let owned = package
+        .conversion_owner(&FrozenEndpoints::new(source_format, target_format))
+        .expect("the fixture owns the conversion it publishes");
+    assert_eq!(owned.entry, entry);
+    assert!(owned.converts_from(source_format));
+}
+
+#[test]
+fn the_published_conversion_declaration_is_the_one_this_crate_validates() {
+    let manifest: Value = serde_json::from_str(MANIFEST).expect("manifest");
+
+    // The decision this pin states: the declaration is optional, because a
+    // package that owns no persisted format carries none, and required only of
+    // the package a caller asks for one conversion.
+    assert!(
+        !manifest["required"]
+            .as_array()
+            .expect("required list")
+            .iter()
+            .any(|key| key == "conversion"),
+        "a package that owns no format must stay expressible"
+    );
+    let conversion = &manifest["properties"]["conversion"];
+    assert_eq!(
+        conversion["additionalProperties"], false,
+        "the declaration carries the converter and nothing else"
+    );
+    assert_eq!(
+        conversion["required"],
+        json!(["kind", "entry", "sourceFormats", "targetFormat"])
+    );
+    assert_eq!(
+        conversion["properties"]["kind"]["const"],
+        ConverterKind::NativeExecutable.as_str(),
+        "the schema publishes exactly the converter kinds this crate accepts"
+    );
+    assert_eq!(
+        conversion["properties"]["sourceFormats"]["minItems"], 1,
+        "a converter that reads nothing converts nothing"
+    );
+    assert_eq!(
+        conversion["properties"]["sourceFormats"]["maxItems"], MAX_SOURCE_FORMATS,
+        "the published bound is the native bound"
+    );
+    assert_eq!(conversion["properties"]["sourceFormats"]["uniqueItems"], true);
+    assert_eq!(
+        conversion["properties"]["targetFormat"]["$ref"],
+        "#/$defs/formatIdentity"
+    );
+    assert_eq!(
+        conversion["properties"]["entry"]["$ref"], "#/$defs/converterEntry",
+        "an entry outside the package payload must not be expressible"
+    );
+
+    let entry_definition = &manifest["$defs"]["converterEntry"];
+    assert_eq!(entry_definition["maxLength"], MAX_CONVERTER_ENTRY_BYTES);
+    let format_definition = &manifest["$defs"]["formatIdentity"];
+    assert_eq!(format_definition["maxLength"], MAX_FORMAT_BYTES);
+
+    // The published patterns and this crate's predicates accept one corpus: a
+    // schema a third party validates against must refuse what the host refuses.
+    let entry_pattern = Regex::new(
+        entry_definition["pattern"]
+            .as_str()
+            .expect("converter entry pattern"),
+    )
+    .expect("compiles");
+    for value in [
+        "bin/converter",
+        "bin/licoup-fixture-converter",
+        "bin/native/convert.v2",
+        "converter",
+        "/bin/converter",
+        "bin/",
+        "bin//converter",
+        "../bin/converter",
+        "bin/../converter",
+        "bin/converter.exe",
+        "bin\\converter",
+        "bin/con verter",
+        "",
+    ] {
+        assert_eq!(
+            entry_pattern.is_match(value),
+            is_converter_entry(value),
+            "the published entry pattern and is_converter_entry disagree on {value:?}"
+        );
+    }
+
+    let format_pattern = Regex::new(
+        format_definition["pattern"]
+            .as_str()
+            .expect("format identity pattern"),
+    )
+    .expect("compiles");
+    for value in [
+        "licoup.conversation.v1",
+        "licoup-state-0.1.1",
+        "fixture.agent-session.v1",
+        "agent-session.v2",
+        "v1",
+        "Licoup.conversation.v1",
+        "licoup..v1",
+        ".licoup.v1",
+        "licoup.v1.",
+        "licoup_conversation_v1",
+        "",
+    ] {
+        assert_eq!(
+            format_pattern.is_match(value),
+            is_format_identity(value),
+            "the published format pattern and is_format_identity disagree on {value:?}"
         );
     }
 }

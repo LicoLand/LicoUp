@@ -26,6 +26,16 @@
 //! package's own version: a package version that differs from the client is not
 //! itself a refusal. The kernel loads a package only when the list covers the
 //! running client, and refuses it at install and at activation when it does not.
+//!
+//! `conversion` is a fourth claim, and the one that says which persisted formats
+//! the package owns ([`ConversionDeclaration`]). A package that converts data
+//! publishes the source formats it reads, the target format it produces and the
+//! native entry inside its own payload that performs the move. It is absent from
+//! a package that owns no format, so the field is optional; a *required*
+//! conversion is refused when the package that was asked for it declares none
+//! ([`PackageManifest::conversion_owner`]). The declaration names format
+//! identities, never a client version: which client builds may load a package is
+//! `compatibility`, and which formats it converts is this field.
 
 use crate::profile::ProfileDeclaration;
 use crate::refusal;
@@ -42,6 +52,18 @@ const STAGE: &str = "extension/manifest";
 
 /// The longest range expression accepted.
 pub const MAX_RANGE_BYTES: usize = 64;
+
+/// The longest converter entry or format identity accepted, in bytes.
+pub const MAX_CONVERTER_ENTRY_BYTES: usize = 160;
+
+/// The longest published format identity accepted, in bytes.
+pub const MAX_FORMAT_BYTES: usize = 160;
+
+/// The most source formats one converter may declare.
+///
+/// A bound is published rather than implied: a converter that reads more than
+/// this is a catalog, not one package's endpoint set.
+pub const MAX_SOURCE_FORMATS: usize = 8;
 
 /// Fields a manifest may not carry, because they are facts about the *bytes* or
 /// about the host's decision rather than about the package's own plan.
@@ -300,6 +322,196 @@ impl ClientCompatibility {
     }
 }
 
+/// How a package performs one format conversion.
+///
+/// One kind is published, and the reason is the same one that makes the release
+/// index refuse an interpreter for an official package: the package carries the
+/// program. A converter that needs a runtime the package does not carry would
+/// borrow the client's own runtime, and the migration would then depend on what
+/// happens to be installed instead of on the package that declared the format.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConverterKind {
+    /// A program inside the package payload, run directly by its host.
+    NativeExecutable,
+    /// A kind this contract does not publish. It is read rather than rejected at
+    /// parse time so the refusal names the rule — which converter kinds exist —
+    /// instead of reporting an unreadable manifest. It is never a valid
+    /// declaration.
+    #[default]
+    #[serde(other)]
+    Unsupported,
+}
+
+impl ConverterKind {
+    /// The wire string this kind is published as.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NativeExecutable => "native-executable",
+            Self::Unsupported => "unsupported",
+        }
+    }
+}
+
+/// A published format identity: lowercase alphanumeric words joined by `.` or
+/// `-`, such as `licoup.conversation.v1` or `licoup-state-0.1.1`.
+///
+/// It is an identity, not a version of the client: two format names are equal or
+/// they are not, and nothing here orders them.
+pub fn is_format_identity(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_FORMAT_BYTES
+        && value.split(['.', '-']).all(|word| {
+            !word.is_empty()
+                && word
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        })
+}
+
+/// Whether one value is an entry inside the package payload.
+///
+/// An entry is a relative path with at least one directory component. It never
+/// starts at the root, never climbs out of the package and never carries a
+/// backslash: an entry that leaves the payload is not this package's entry, and
+/// the published release declaration refuses exactly the same shapes.
+pub fn is_converter_entry(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_CONVERTER_ENTRY_BYTES
+        && value.contains('/')
+        && value.split('/').all(|segment| {
+            segment.split('.').all(|word| {
+                !word.is_empty()
+                    && word.bytes().all(|byte| {
+                        byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-'
+                    })
+            })
+        })
+}
+
+/// The native format conversion a package provides.
+///
+/// It answers one question: given a persisted format, which package owns moving
+/// it to which produced format, and where is the program that does it. It is a
+/// claim about the package's own payload, so it is read here and verified against
+/// those bytes by packaging and by the host that installs them.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversionDeclaration {
+    /// The converter kind. Only [`ConverterKind::NativeExecutable`] is valid.
+    #[serde(default)]
+    pub kind: ConverterKind,
+    /// The converter entry, relative to the package root.
+    #[serde(default)]
+    pub entry: String,
+    /// The published source formats this converter reads.
+    #[serde(default)]
+    pub source_formats: Vec<String>,
+    /// The published target format it produces.
+    #[serde(default)]
+    pub target_format: String,
+}
+
+impl ConversionDeclaration {
+    pub fn new(
+        entry: impl Into<String>,
+        source_formats: impl IntoIterator<Item = impl Into<String>>,
+        target_format: impl Into<String>,
+    ) -> Self {
+        Self {
+            kind: ConverterKind::NativeExecutable,
+            entry: entry.into(),
+            source_formats: source_formats.into_iter().map(Into::into).collect(),
+            target_format: target_format.into(),
+        }
+    }
+
+    /// Whether this converter reads one published source format.
+    pub fn converts_from(&self, source_format: &str) -> bool {
+        self.source_formats
+            .iter()
+            .any(|declared| declared == source_format)
+    }
+
+    /// Structural validation of one declaration.
+    ///
+    /// Every refusal names the rule it broke, so a package author learns which
+    /// field to correct instead of that "the manifest is invalid".
+    pub fn validate(&self) -> Result<(), ApplicationFailure> {
+        if self.kind != ConverterKind::NativeExecutable {
+            return Err(
+                refusal::new("manifest_converter_not_native", STAGE).with_field("conversion.kind")
+            );
+        }
+        if !is_converter_entry(&self.entry) {
+            return Err(refusal::new("manifest_converter_entry_outside_package", STAGE)
+                .with_field("conversion.entry"));
+        }
+        if self.source_formats.is_empty() {
+            return Err(refusal::new("manifest_conversion_incomplete", STAGE)
+                .with_field("conversion.sourceFormats"));
+        }
+        if self.source_formats.len() > MAX_SOURCE_FORMATS
+            || !self
+                .source_formats
+                .iter()
+                .all(|format| is_format_identity(format))
+        {
+            return Err(refusal::new("manifest_conversion_invalid", STAGE)
+                .with_field("conversion.sourceFormats"));
+        }
+        let mut unique = self.source_formats.clone();
+        unique.sort();
+        unique.dedup();
+        if unique.len() != self.source_formats.len() {
+            return Err(refusal::new("manifest_conversion_invalid", STAGE)
+                .with_field("conversion.sourceFormats"));
+        }
+        if !is_format_identity(&self.target_format) {
+            return Err(refusal::new("manifest_conversion_incomplete", STAGE)
+                .with_field("conversion.targetFormat"));
+        }
+        // One format cannot be both endpoints of the same conversion: a converter
+        // that produced the format it reads would have nothing to move.
+        if self.source_formats.iter().any(|format| format == &self.target_format) {
+            return Err(refusal::new("manifest_conversion_invalid", STAGE)
+                .with_field("conversion.targetFormat"));
+        }
+        Ok(())
+    }
+}
+
+/// The source and target formats one required conversion spans.
+///
+/// A caller that needs a conversion names the pair it requires; the package then
+/// answers whether it owns that pair. The pair is an identity pair, never a
+/// client version, so a caller can require the same conversion of a package
+/// released independently of the client it runs on.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FrozenEndpoints {
+    source_format: String,
+    target_format: String,
+}
+
+impl FrozenEndpoints {
+    pub fn new(source_format: impl Into<String>, target_format: impl Into<String>) -> Self {
+        Self {
+            source_format: source_format.into(),
+            target_format: target_format.into(),
+        }
+    }
+
+    /// The format a required conversion reads.
+    pub fn source_format(&self) -> &str {
+        &self.source_format
+    }
+
+    /// The format a required conversion produces.
+    pub fn target_format(&self) -> &str {
+        &self.target_format
+    }
+}
+
 /// The package manifest.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -317,6 +529,11 @@ pub struct PackageManifest {
     /// that declares none is admitted by nothing.
     #[serde(default)]
     pub compatibility: Compatibility,
+    /// The native format conversion this package provides, when it provides one.
+    /// A package that owns no persisted format carries nothing here, so an
+    /// absent field is complete rather than an empty declaration.
+    #[serde(default)]
+    pub conversion: Option<ConversionDeclaration>,
     #[serde(default)]
     pub profiles: Vec<ProfileDeclaration>,
     pub runtime: Runtime,
@@ -374,6 +591,47 @@ impl PackageManifest {
         }
     }
 
+    /// The declaration that owns one required conversion, or the refusal that
+    /// says this package does not.
+    ///
+    /// This is the question a migration caller asks, and it is deliberately not
+    /// the same question as [`PackageManifest::admit_client`]: which client builds
+    /// may load a package and which formats it owns are separate claims, so a
+    /// package whose compatibility list covers nothing is still the owner of the
+    /// formats it declares. A package that declares no conversion at all is
+    /// refused here — the conversion was required, and this package does not
+    /// provide it — with the package and the source format named so the caller
+    /// knows which package to obtain instead.
+    pub fn conversion_owner(
+        &self,
+        endpoints: &FrozenEndpoints,
+    ) -> Result<&ConversionDeclaration, ApplicationFailure> {
+        let Some(declaration) = self.conversion.as_ref() else {
+            return Err(refusal::actionable("manifest_conversion_missing", STAGE, "conversion")
+                .with_presentation_arg("package", &self.id)
+                .with_presentation_arg("sourceFormat", endpoints.source_format()));
+        };
+        if !declaration.converts_from(endpoints.source_format()) {
+            return Err(refusal::actionable(
+                "manifest_conversion_endpoint_mismatch",
+                STAGE,
+                "conversion.sourceFormats",
+            )
+            .with_presentation_arg("package", &self.id)
+            .with_presentation_arg("sourceFormat", endpoints.source_format()));
+        }
+        if declaration.target_format != endpoints.target_format() {
+            return Err(refusal::actionable(
+                "manifest_conversion_endpoint_mismatch",
+                STAGE,
+                "conversion.targetFormat",
+            )
+            .with_presentation_arg("package", &self.id)
+            .with_presentation_arg("targetFormat", endpoints.target_format()));
+        }
+        Ok(declaration)
+    }
+
     /// Structural validation of every field the host reads before it runs
     /// anything.
     pub fn validate(&self) -> Result<(), ApplicationFailure> {
@@ -390,6 +648,9 @@ impl PackageManifest {
             return Err(refusal::new("manifest_invalid", STAGE).with_field("hostProtocol"));
         }
         self.compatibility.validate()?;
+        if let Some(conversion) = self.conversion.as_ref() {
+            conversion.validate()?;
+        }
         self.runtime.validate()?;
         for declaration in &self.profiles {
             declaration.validate()?;
@@ -476,6 +737,7 @@ mod tests {
                 minimum_minor: 0,
             },
             compatibility: Compatibility::new(["0"]),
+            conversion: None,
             profiles: vec![
                 ProfileDeclaration::new(ExtensionProfile::AgentExecution.id(), 1)
                     .with_capabilities(["example.specialist/stream"]),
@@ -713,5 +975,214 @@ mod tests {
         let failure = PackageManifest::from_value(wire).expect_err("no compatibility list");
         assert_eq!(failure.code, "manifest_invalid");
         assert_eq!(failure.field.as_deref(), Some("compatibility"));
+    }
+
+    /// The frozen pair a migration caller requires of a converter.
+    fn endpoints() -> FrozenEndpoints {
+        FrozenEndpoints::new("agent-session.v2", "licoup.conversation.v1")
+    }
+
+    fn conversion() -> ConversionDeclaration {
+        ConversionDeclaration::new(
+            "bin/licoup-kilo-converter",
+            ["agent-session.v2", "agent-session.v1"],
+            "licoup.conversation.v1",
+        )
+    }
+
+    #[test]
+    fn a_package_declares_the_conversion_it_owns_and_round_trips_it() {
+        let mut package = manifest();
+        package.conversion = Some(conversion());
+        assert!(package.validate().is_ok());
+
+        let wire = serde_json::to_value(&package).expect("serialize");
+        assert_eq!(
+            wire["conversion"],
+            serde_json::json!({
+                "kind": "native-executable",
+                "entry": "bin/licoup-kilo-converter",
+                "sourceFormats": ["agent-session.v2", "agent-session.v1"],
+                "targetFormat": "licoup.conversation.v1",
+            }),
+            "the declaration publishes the release index's converter vocabulary"
+        );
+        let read = PackageManifest::from_value(wire).expect("the manifest reads back");
+        assert_eq!(read, package, "a declared conversion round-trips");
+
+        let declaration = package
+            .conversion_owner(&endpoints())
+            .expect("the package owns the required conversion");
+        assert!(declaration.converts_from("agent-session.v1"));
+        assert!(!declaration.converts_from("agent-session.v3"));
+        assert_eq!(declaration.entry, "bin/licoup-kilo-converter");
+        assert_eq!(declaration.kind, ConverterKind::NativeExecutable);
+    }
+
+    #[test]
+    fn a_manifest_that_owns_no_format_carries_no_declaration_and_is_admitted() {
+        // The field is optional: most packages convert nothing, and refusing them
+        // for not publishing a conversion would refuse the ordinary package. Only
+        // a package that was *asked* for a conversion and declares none is refused.
+        let package = manifest();
+        assert!(package.conversion.is_none());
+        assert!(package.validate().is_ok());
+
+        let failure = package
+            .conversion_owner(&endpoints())
+            .expect_err("the required conversion has no owner here");
+        assert_eq!(failure.code, "manifest_conversion_missing");
+        assert_eq!(failure.field.as_deref(), Some("conversion"));
+        assert_eq!(
+            failure.presentation_args.get("package"),
+            Some("example.specialist.echo")
+        );
+        assert_eq!(
+            failure.presentation_args.get("sourceFormat"),
+            Some("agent-session.v2")
+        );
+        assert_eq!(
+            failure.recovery,
+            licoup_application::RecoveryAction::InstallOrRetryRuntime
+        );
+    }
+
+    #[test]
+    fn a_conversion_declaration_refuses_each_invalid_shape() {
+        // An interpreter is not a converter: the package would borrow a runtime
+        // it does not carry.
+        let mut interpreter = conversion();
+        interpreter.kind = ConverterKind::Unsupported;
+        let failure = interpreter.validate().expect_err("not native");
+        assert_eq!(failure.code, "manifest_converter_not_native");
+        assert_eq!(failure.field.as_deref(), Some("conversion.kind"));
+
+        // The same refusal answers a wire declaration that names an interpreter,
+        // rather than reporting the manifest as unreadable.
+        let mut wire = serde_json::to_value(manifest()).expect("serialize");
+        wire["conversion"] = serde_json::json!({
+            "kind": "node-module",
+            "entry": "bin/convert.js",
+            "sourceFormats": ["agent-session.v2"],
+            "targetFormat": "licoup.conversation.v1",
+        });
+        let failure =
+            PackageManifest::from_value(wire).expect_err("an interpreter is not a converter");
+        assert_eq!(failure.code, "manifest_converter_not_native");
+        assert_eq!(failure.field.as_deref(), Some("conversion.kind"));
+
+        // An entry outside the package payload is not this package's entry.
+        for escaping in [
+            "/usr/local/bin/convert",
+            "../outside/convert",
+            "bin/../../convert",
+            "bin\\convert.exe",
+            "convert",
+        ] {
+            let mut entry = conversion();
+            entry.entry = escaping.to_owned();
+            let failure = entry.validate().expect_err(escaping);
+            assert_eq!(
+                failure.code, "manifest_converter_entry_outside_package",
+                "{escaping} must not be accepted as a package entry"
+            );
+        }
+
+        // A converter that reads nothing converts nothing.
+        let mut no_sources = conversion();
+        no_sources.source_formats = Vec::new();
+        let failure = no_sources.validate().expect_err("no source formats");
+        assert_eq!(failure.code, "manifest_conversion_incomplete");
+        assert_eq!(failure.field.as_deref(), Some("conversion.sourceFormats"));
+
+        // A missing target format is an incomplete declaration, named as such.
+        let mut no_target = conversion();
+        no_target.target_format = String::new();
+        let failure = no_target.validate().expect_err("no target format");
+        assert_eq!(failure.code, "manifest_conversion_incomplete");
+        assert_eq!(failure.field.as_deref(), Some("conversion.targetFormat"));
+
+        // A format that is not an identity is not a published format.
+        let mut malformed = conversion();
+        malformed.source_formats = vec!["Agent Session v2".to_owned()];
+        assert_eq!(
+            malformed.validate().expect_err("not an identity").code,
+            "manifest_conversion_invalid"
+        );
+
+        // A converter cannot produce the format it reads.
+        let mut circular = conversion();
+        circular.target_format = "agent-session.v1".to_owned();
+        let failure = circular.validate().expect_err("circular conversion");
+        assert_eq!(failure.code, "manifest_conversion_invalid");
+        assert_eq!(failure.field.as_deref(), Some("conversion.targetFormat"));
+
+        // The published bound is a bound here too.
+        let mut oversized = conversion();
+        oversized.source_formats =
+            (0..=MAX_SOURCE_FORMATS).map(|index| format!("agent-session.v{index}")).collect();
+        assert_eq!(
+            oversized.validate().expect_err("over the bound").code,
+            "manifest_conversion_invalid"
+        );
+
+        let mut duplicated = conversion();
+        duplicated.source_formats = vec!["agent-session.v1".to_owned(), "agent-session.v1".to_owned()];
+        assert_eq!(
+            duplicated.validate().expect_err("duplicate").code,
+            "manifest_conversion_invalid"
+        );
+    }
+
+    #[test]
+    fn a_declared_conversion_the_caller_did_not_require_is_refused_by_endpoint() {
+        let mut package = manifest();
+        package.conversion = Some(conversion());
+
+        let wrong_source = FrozenEndpoints::new("agent-session.v3", "licoup.conversation.v1");
+        let failure = package
+            .conversion_owner(&wrong_source)
+            .expect_err("this converter does not read that format");
+        assert_eq!(failure.code, "manifest_conversion_endpoint_mismatch");
+        assert_eq!(failure.field.as_deref(), Some("conversion.sourceFormats"));
+
+        let wrong_target = FrozenEndpoints::new("agent-session.v2", "licoup.conversation.v2");
+        let failure = package
+            .conversion_owner(&wrong_target)
+            .expect_err("this converter does not produce that format");
+        assert_eq!(failure.code, "manifest_conversion_endpoint_mismatch");
+        assert_eq!(failure.field.as_deref(), Some("conversion.targetFormat"));
+    }
+
+    #[test]
+    fn which_client_may_load_a_package_takes_no_part_in_which_formats_it_owns() {
+        // The two claims are independent: a package released for another client
+        // line still owns its formats, and owning no format is not a client
+        // compatibility question either.
+        let mut future = manifest();
+        future.conversion = Some(conversion());
+        future.compatibility = Compatibility::new([">=99.0.0"]);
+        assert!(!future.client_compatibility("0.3.0").is_covered());
+        assert!(future.conversion_owner(&endpoints()).is_ok());
+        assert_eq!(
+            future.conversion_owner(&endpoints()).expect("owner").entry,
+            "bin/licoup-kilo-converter"
+        );
+    }
+
+    #[test]
+    fn an_absent_conversion_in_a_wire_manifest_is_read_rather_than_refused_at_parse_time() {
+        let wire = serde_json::json!({
+            "schema": crate::wire::MANIFEST,
+            "id": "example.specialist.echo",
+            "version": "1.0.0",
+            "displayName": "Echo specialist",
+            "hostProtocol": { "major": 1, "minimumMinor": 0 },
+            "compatibility": { "clientVersions": ["0"] },
+            "profiles": [],
+            "runtime": { "mode": "process", "entry": "agent.py" },
+        });
+        let package = PackageManifest::from_value(wire).expect("an optional field may be absent");
+        assert!(package.conversion.is_none());
     }
 }

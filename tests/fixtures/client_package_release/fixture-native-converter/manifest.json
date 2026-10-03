@@ -22,6 +22,14 @@
     "mode": "process",
     "entry": "bin/licoup-fixture-converter"
   },
+  "conversion": {
+    "kind": "native-executable",
+    "entry": "bin/licoup-fixture-converter",
+    "sourceFormats": [
+      "fixture.agent-session.v1"
+    ],
+    "targetFormat": "licoup.conversation.v1"
+  },
   "activation": "on-demand",
   "requires": [],
   "optionalRequires": [],
