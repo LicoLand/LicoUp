@@ -42,12 +42,12 @@ test("LicoUp is one declarative Apple Release use case", () => {
   assert.equal(tool.source.startsWith(`${config.build.app}/`), false);
   assert.equal(config.build.materials.some((entry) => entry.path === tool.source), false);
   // The publication authority owns a closed draft asset contract. The
-  // independently released package payload and its signed index are declared in
-  // the client release template beside that draft, never inside it, and the
+  // independently released package payloads and their signed index are declared
+  // in the client release template beside that draft, never inside it, and the
   // package index tool produces them outside the application bundle.
   const template = readJson("tools/client-release-template.json");
   assert.deepEqual(template.publication.independentPackageAssets, {
-    payloadRole: "package-payload",
+    payloadRoles: ["gateway-package-payload", "package-payload"],
     indexRole: "package-index",
     producer: "tools/scripts/client-release-package-index.mjs",
     clientDraftCarries: false,
@@ -55,14 +55,15 @@ test("LicoUp is one declarative Apple Release use case", () => {
   });
   assert.deepEqual(template.publication.assetRoles,
     config.artifacts.map((entry) => entry.role));
-  for (const role of ["package-payload", "package-index"]) {
+  const independentRoles = [...template.publication.independentPackageAssets.payloadRoles,
+    template.publication.independentPackageAssets.indexRole];
+  for (const role of independentRoles) {
     assert.equal(config.artifacts.some((entry) => entry.role === role), false,
       `the client draft must not carry the independent package asset: ${role}`);
   }
   const packageTarget = readJson("tools/client-release-targets.json").targets
     .find((target) => target.id === "macos-direct-arm64");
-  for (const role of [template.publication.independentPackageAssets.payloadRole,
-    template.publication.independentPackageAssets.indexRole]) {
+  for (const role of independentRoles) {
     const declared = packageTarget.artifacts.filter((artifact) => artifact.role === role);
     assert.equal(declared.length, 1, `${role} must be declared once for its target`);
     assert.equal(declared[0].source.startsWith("build/apps/desktop/native-release/"), true);

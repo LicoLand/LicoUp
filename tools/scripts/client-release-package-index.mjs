@@ -87,6 +87,10 @@ const ONLINE_SIGNING_KEY_ENV = "LICO_PACKAGE_INDEX_ONLINE_SIGNING_KEY";
 
 const idPattern = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/u;
 const namespacedPattern = /^[a-z][a-z0-9]*(?:[./-][A-Za-z0-9_-]+)+$/u;
+// One declared package is published as one payload asset, and the asset's
+// release role names that payload rather than the package that happens to be
+// first. A role that does not end this way is not a package payload.
+const payloadRolePattern = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*-payload$/u;
 const semverPattern =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:[0-9A-Za-z-]+\.)*[0-9A-Za-z-]+))?(?:\+[0-9A-Za-z.-]+)?$/u;
 const digestPattern = /^sha256:[0-9a-f]{64}$/u;
@@ -328,6 +332,11 @@ function readJsonFile(filePath, code) {
   }
 }
 
+/**
+ * Read the declared package set: every package names the release payload role
+ * its own asset is published as, so two packages cannot claim one file and a
+ * payload asset cannot appear without a package behind it.
+ */
 export function loadPackageSet(
   setPath = path.join(repoRoot, defaultPackageSetPath),
   { root = repoRoot } = {},
@@ -340,20 +349,25 @@ export function loadPackageSet(
     fail("package_index_set_invalid");
   }
   const seen = new Set();
+  const seenRoles = new Set();
   const packages = document.packages.map((entry) => {
-    requireExactKeys(entry, ["packageId", "source"], "package_index_set_invalid");
+    requireExactKeys(entry, ["packageId", "payloadRole", "source"], "package_index_set_invalid");
     const packageId = text(entry.packageId);
+    const payloadRole = text(entry.payloadRole);
     const source = text(entry.source);
     if (!namespacedPattern.test(packageId) || seen.has(packageId) ||
+      !payloadRolePattern.test(payloadRole) || payloadRole === PACKAGE_INDEX_ROLE ||
+      seenRoles.has(payloadRole) ||
       !source || path.isAbsolute(source) ||
       source.split("/").some((component) =>
         !component || component === ".." || component === ".")) {
       fail("package_index_set_invalid");
     }
     seen.add(packageId);
+    seenRoles.add(payloadRole);
     const absolute = path.resolve(root, source);
     if (!absolute.startsWith(`${root}${path.sep}`)) fail("package_index_set_invalid");
-    return Object.freeze({ packageId, source, sourceRoot: absolute });
+    return Object.freeze({ packageId, payloadRole, source, sourceRoot: absolute });
   });
   return Object.freeze({
     schemaVersion: PACKAGE_SET_SCHEMA,
@@ -705,20 +719,26 @@ function containedOutputRoot(value) {
   fail("package_index_output_invalid");
 }
 
+/**
+ * The release target declares the asset names. One role carries the signed index
+ * every package is published in; one role carries each package's own payload, and
+ * the role is what the declared set and the release closure agree on.
+ */
 export function packageRoleNames(target) {
   const payloadRoles = target.artifacts.filter((artifact) =>
-    artifact.role === PACKAGE_PAYLOAD_ROLE);
+    payloadRolePattern.test(artifact.role));
   const indexRoles = target.artifacts.filter((artifact) =>
     artifact.role === PACKAGE_INDEX_ROLE);
   if (payloadRoles.length === 0 || indexRoles.length === 0) {
     fail("package_index_release_role_missing");
   }
-  if (payloadRoles.length !== 1 || indexRoles.length !== 1) {
+  if (indexRoles.length !== 1) {
     fail("package_index_release_role_invalid");
   }
   return Object.freeze({
-    payloadFile: payloadRoles[0].file,
     indexFile: indexRoles[0].file,
+    payloadRoles: Object.freeze(payloadRoles.map((artifact) =>
+      Object.freeze({ role: artifact.role, file: artifact.file }))),
   });
 }
 
@@ -734,14 +754,25 @@ export function resolvePackageTarget(targetId = defaultTargetId, productVersion)
 }
 
 /**
- * One declared payload role carries one package today. A later adapter Node
- * declares its own asset role under the same contract instead of overloading
- * this one, so a mismatch is refused rather than silently ignored.
+ * One declared payload role carries exactly one package today, and every declared
+ * package names its own role. A role without a package would publish an asset
+ * nobody declared, and two packages on one role would collide on one file name, so
+ * either mismatch is refused rather than silently ignored.
  */
-function resolveDeclaredPackage(set, target) {
-  const names = packageRoleNames(target);
-  if (set.packages.length !== 1) fail("package_index_payload_role_count_mismatch");
-  return Object.freeze({ names, declared: set.packages[0] });
+function resolveDeclaredPackages(set, target) {
+  const { indexFile, payloadRoles } = packageRoleNames(target);
+  const byRole = new Map(payloadRoles.map((entry) => [entry.role, entry]));
+  const packages = set.packages.map((declared) => {
+    const role = byRole.get(declared.payloadRole);
+    if (!role) fail("package_index_release_role_missing", { role: declared.payloadRole });
+    return Object.freeze({
+      declared,
+      payloadRole: role.role,
+      payloadFile: role.file,
+    });
+  });
+  if (byRole.size !== packages.length) fail("package_index_payload_role_count_mismatch");
+  return Object.freeze({ indexFile, packages: Object.freeze(packages) });
 }
 
 function writeNewFile(filePath, bytes) {
@@ -761,11 +792,15 @@ function requireWritableOutputs(outputRoot, names) {
 }
 
 function writeIndexAssets({ set, target, releaseTrack, keys, outputRoot }) {
-  const { names, declared } = resolveDeclaredPackage(set, target);
-  const produced = producePackagePayload(declared);
+  const { indexFile, packages } = resolveDeclaredPackages(set, target);
+  const produced = packages.map((entry) => Object.freeze({
+    ...entry,
+    payload: producePackagePayload(entry.declared),
+  }));
   const index = buildIndex({
     releaseTrack,
-    packages: [indexEntry(produced, names.payloadFile)],
+    packages: produced.map((entry) =>
+      indexEntry(entry.payload, entry.payloadFile)),
     offlineRootKeyId: keys[0].keyId,
     onlineSigningKeyId: keys[1].keyId,
   });
@@ -775,21 +810,36 @@ function writeIndexAssets({ set, target, releaseTrack, keys, outputRoot }) {
     fail("package_index_too_large");
   }
   mkdirSync(outputRoot, { recursive: true, mode: 0o755 });
-  const payloadPath = path.join(outputRoot, names.payloadFile);
-  const indexPath = path.join(outputRoot, names.indexFile);
-  requireWritableOutputs(outputRoot, [names.payloadFile, names.indexFile]);
-  writeNewFile(payloadPath, produced.payload);
+  const indexPath = path.join(outputRoot, indexFile);
+  requireWritableOutputs(outputRoot,
+    [...produced.map((entry) => entry.payloadFile), indexFile]);
+  const payloads = produced.map((entry) => {
+    const payloadPath = path.join(outputRoot, entry.payloadFile);
+    writeNewFile(payloadPath, entry.payload.payload);
+    if (`sha256:${sha256File(payloadPath)}` !== entry.payload.sha256) {
+      fail("package_index_payload_write_mismatch");
+    }
+    return Object.freeze({
+      packageId: entry.payload.manifest.packageId,
+      packageVersion: entry.payload.manifest.packageVersion,
+      payloadRole: entry.payloadRole,
+      payloadFile: entry.payloadFile,
+      payloadPath,
+      payloadDigest: entry.payload.sha256,
+      payloadByteSize: entry.payload.byteSize,
+      source: entry.declared.source,
+      clientCompatibility: publicClientCompatibility(
+        entry.payload.declaration.clientCompatibility,
+      ),
+      converterEntry: entry.payload.declaration.converter.entry,
+    });
+  });
   writeNewFile(indexPath, indexText);
-  if (`sha256:${sha256File(payloadPath)}` !== produced.sha256) {
-    fail("package_index_payload_write_mismatch");
-  }
   return Object.freeze({
-    names,
-    signed,
+    indexFile,
     indexPath,
-    payloadPath,
-    payloadDigest: produced.sha256,
-    payloadByteSize: produced.byteSize,
+    payloads: Object.freeze(payloads),
+    signed,
   });
 }
 
@@ -798,28 +848,30 @@ export function planPackageRelease({
 } = {}) {
   const set = loadPackageSet(setPath ? path.resolve(repoRoot, setPath) : undefined);
   const target = resolvePackageTarget(targetId);
-  const { names, declared } = resolveDeclaredPackage(set, target);
-  const produced = producePackagePayload(declared);
+  const { indexFile, packages } = resolveDeclaredPackages(set, target);
+  const produced = packages.map((entry) => Object.freeze({
+    ...entry,
+    payload: producePackagePayload(entry.declared),
+  }));
   return Object.freeze({
     ok: true,
     command: "plan",
     targetId,
     releaseTrack,
-    indexFile: names.indexFile,
-    packages: Object.freeze([
-      Object.freeze({
-        packageId: produced.manifest.packageId,
-        packageVersion: produced.manifest.packageVersion,
-        source: declared.source,
-        payloadFile: names.payloadFile,
-        payloadByteSize: produced.byteSize,
-        payloadDigest: produced.sha256,
-        clientCompatibility: publicClientCompatibility(
-          produced.declaration.clientCompatibility,
-        ),
-        converterEntry: produced.declaration.converter.entry,
-      }),
-    ]),
+    indexFile,
+    packages: Object.freeze(produced.map((entry) => Object.freeze({
+      packageId: entry.payload.manifest.packageId,
+      packageVersion: entry.payload.manifest.packageVersion,
+      source: entry.declared.source,
+      payloadRole: entry.payloadRole,
+      payloadFile: entry.payloadFile,
+      payloadByteSize: entry.payload.byteSize,
+      payloadDigest: entry.payload.sha256,
+      clientCompatibility: publicClientCompatibility(
+        entry.payload.declaration.clientCompatibility,
+      ),
+      converterEntry: entry.payload.declaration.converter.entry,
+    }))),
     writesPerformed: false,
     publicationPerformed: false,
     privatePathsIncluded: false,
@@ -863,9 +915,13 @@ export function buildPackageRelease({
     targetId,
     releaseTrack,
     indexPath: path.relative(repoRoot, result.indexPath).split(path.sep).join("/"),
-    payloadPath: path.relative(repoRoot, result.payloadPath).split(path.sep).join("/"),
-    payloadDigest: result.payloadDigest,
-    payloadByteSize: result.payloadByteSize,
+    payloads: Object.freeze(result.payloads.map((entry) => Object.freeze({
+      packageId: entry.packageId,
+      payloadRole: entry.payloadRole,
+      payloadPath: path.relative(repoRoot, entry.payloadPath).split(path.sep).join("/"),
+      payloadDigest: entry.payloadDigest,
+      payloadByteSize: entry.payloadByteSize,
+    }))),
     packageCount: result.signed.packages.length,
     signingKeysFromEnvironment: true,
     publicationPerformed: false,
@@ -929,10 +985,14 @@ export function fixturePackageRelease({
     targetId,
     releaseTrack,
     indexPath: path.relative(repoRoot, result.indexPath).split(path.sep).join("/"),
-    payloadPath: path.relative(repoRoot, result.payloadPath).split(path.sep).join("/"),
+    payloads: Object.freeze(result.payloads.map((entry) => Object.freeze({
+      packageId: entry.packageId,
+      payloadRole: entry.payloadRole,
+      payloadPath: path.relative(repoRoot, entry.payloadPath).split(path.sep).join("/"),
+      payloadDigest: entry.payloadDigest,
+      payloadByteSize: entry.payloadByteSize,
+    }))),
     publicKeysPath: path.relative(repoRoot, publicKeysPath).split(path.sep).join("/"),
-    payloadDigest: result.payloadDigest,
-    payloadByteSize: result.payloadByteSize,
     packageIds: verifiedPackages,
     signingKeysGeneratedInMemory: true,
     protectedKeysUsed: false,
@@ -990,6 +1050,7 @@ function selfTestSet(root, overrides = {}) {
     packages: [{
       packageId: "org.licoland.fixture.native-converter",
       source: "package",
+      payloadRole: PACKAGE_PAYLOAD_ROLE,
     }],
   }, null, 2)}\n`);
   return Object.freeze({ setPath, sourceRoot: destination });
@@ -1018,22 +1079,29 @@ function expectRejected(code, run) {
 export function selfTest() {
   const root = mkdtempSync(path.join(realpathSync(os.tmpdir()), "lico-package-index-"));
   try {
-    // The committed fixture packages deterministically and self-describes.
-    const declared = loadPackageSet().packages[0];
-    const first = producePackagePayload(declared);
-    const second = producePackagePayload(declared);
-    if (first.sha256 !== second.sha256 || !first.payload.equals(second.payload)) {
-      fail("package_index_self_test_not_deterministic");
-    }
-    if (first.manifest.packageId !== declared.packageId ||
-      first.declaration.packageVersion !== first.manifest.packageVersion) {
-      fail("package_index_self_test_identity_invalid");
-    }
-    const entries = readPackagePayload(first.payload);
-    nativeConverterEntry(entries, first.declaration.converter.entry);
-
-    // Both compatibility forms decide against a client version.
-    const fixtureRange = publicClientCompatibility(first.declaration.clientCompatibility);
+    // Every declared package packages deterministically and self-describes.
+    const set = loadPackageSet();
+    const first = set.packages.map((declared) => {
+      const produced = producePackagePayload(declared);
+      const repeated = producePackagePayload(declared);
+      if (produced.sha256 !== repeated.sha256 || !produced.payload.equals(repeated.payload)) {
+        fail("package_index_self_test_not_deterministic", { packageId: declared.packageId });
+      }
+      if (produced.manifest.packageId !== declared.packageId ||
+        produced.declaration.packageVersion !== produced.manifest.packageVersion) {
+        fail("package_index_self_test_identity_invalid", { packageId: declared.packageId });
+      }
+      // Each declared role is the role its own asset is published as, and the
+      // payload carries the declared native entry and no interpreter.
+      if (declared.payloadRole !== PACKAGE_PAYLOAD_ROLE &&
+        !payloadRolePattern.test(declared.payloadRole)) {
+        fail("package_index_self_test_role_invalid", { packageId: declared.packageId });
+      }
+      nativeConverterEntry(readPackagePayload(produced.payload),
+        produced.declaration.converter.entry);
+      return produced;
+    });
+    const fixtureRange = publicClientCompatibility(first[0].declaration.clientCompatibility);
     if (!clientVersionSatisfies(fixtureRange, "0.3.0") ||
       clientVersionSatisfies(fixtureRange, "1.0.0") ||
       !clientVersionSatisfies({ kind: "major", majors: [1, 2] }, "1.4.0") ||
@@ -1061,14 +1129,20 @@ export function selfTest() {
         [onlineSigningKeyId]: { publicKey: rawPublic(onlineSigning.publicKey) },
       },
     });
+    const selfTestAssets = first.map((produced, position) =>
+      indexEntry(produced, `LicoUp-package-self-test-${position}.licopkg`));
     const index = signIndex(buildIndex({
       releaseTrack: "stable",
-      packages: [indexEntry(first, "LicoUp-package-fixture.licopkg")],
+      packages: selfTestAssets,
       offlineRootKeyId,
       onlineSigningKeyId,
     }), keys);
     const verified = verifyPackageIndex(JSON.stringify(index), publicKeysText);
-    if (verified.packages.length !== 1) fail("package_index_self_test_index_invalid");
+    if (verified.packages.length !== selfTestAssets.length ||
+      JSON.stringify(verified.packages.map((entry) => entry.packageId)) !==
+        JSON.stringify(selfTestAssets.map((entry) => entry.packageId))) {
+      fail("package_index_self_test_index_invalid");
+    }
     const tampered = JSON.parse(JSON.stringify(index));
     tampered.packages[0].payload.sha256 = `sha256:${"0".repeat(64)}`;
     expectRejected("package_index_signature_invalid", () =>
@@ -1087,7 +1161,7 @@ export function selfTest() {
       verifyPackageIndex(JSON.stringify(rewrittenRange), publicKeysText));
     expectRejected("package_index_key_policy_invalid", () => buildIndex({
       releaseTrack: "stable",
-      packages: [indexEntry(first, "LicoUp-package-fixture.licopkg")],
+      packages: selfTestAssets,
       offlineRootKeyId: "same-role",
       onlineSigningKeyId: "same-role",
     }));
@@ -1172,16 +1246,24 @@ export function selfTest() {
         { expectedPackageId: "org.licoland.fixture.native-converter" },
       ));
 
-    // A payload that is not the one the index describes is refused.
+    // A payload that is not the one the index describes is refused, and the
+    // refusal names the package whose bytes disagree.
     const payloadRoot = path.join(root, "payloads");
     mkdirSync(payloadRoot, { recursive: true });
-    const payloadPath = path.join(payloadRoot, "LicoUp-package-fixture.licopkg");
-    writeFileSync(payloadPath, first.payload);
-    verifyIndexPayloads(verified, payloadRoot);
-    writeFileSync(payloadPath, Buffer.concat([first.payload, Buffer.from("tampered")]));
+    const payloadPaths = selfTestAssets.map((entry) =>
+      path.join(payloadRoot, entry.payload.fileName));
+    for (const [position, entry] of selfTestAssets.entries()) {
+      writeFileSync(payloadPaths[position], first[position].payload);
+    }
+    if (JSON.stringify(verifyIndexPayloads(verified, payloadRoot)) !==
+      JSON.stringify(selfTestAssets.map((entry) => entry.packageId))) {
+      fail("package_index_self_test_index_invalid");
+    }
+    const tamperedContent = Buffer.concat([first[0].payload, Buffer.from("tampered")]);
+    writeFileSync(payloadPaths[0], tamperedContent);
     expectRejected("package_index_payload_invalid", () =>
       verifyIndexPayloads(verified, payloadRoot));
-    writeFileSync(payloadPath, first.payload);
+    writeFileSync(payloadPaths[0], first[0].payload);
     const selfDescribed = JSON.parse(JSON.stringify(verified));
     selfDescribed.packages[0].converter.sourceFormat = "rewritten.format.v9";
     expectRejected("package_index_payload_self_description_mismatch", () =>

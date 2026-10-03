@@ -37,6 +37,10 @@ use licoup_native::platform::extension_packages::{
     scan,
 };
 
+/// GATEWAY-PACKAGE-LIFECYCLE: the Gateway login item and the package that owns
+/// it, driven through the real store and the real registration owner.
+mod gateway_package;
+
 // ---------------------------------------------------------------------------
 // Fixtures: a real archive, a real store, a real root
 // ---------------------------------------------------------------------------

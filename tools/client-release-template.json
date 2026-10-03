@@ -65,7 +65,10 @@
     ],
     "exactDraftAssetSetRequired": true,
     "independentPackageAssets": {
-      "payloadRole": "package-payload",
+      "payloadRoles": [
+        "gateway-package-payload",
+        "package-payload"
+      ],
       "indexRole": "package-index",
       "producer": "tools/scripts/client-release-package-index.mjs",
       "clientDraftCarries": false,

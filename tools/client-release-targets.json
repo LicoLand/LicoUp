@@ -49,6 +49,11 @@
           "for": "migration-tool"
         },
         {
+          "role": "gateway-package-payload",
+          "file": "LicoUp-package-org.licoland.feature.gateway.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.feature.gateway.licopkg"
+        },
+        {
           "role": "package-payload",
           "file": "LicoUp-package-fixture-native-converter.licopkg",
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-fixture-native-converter.licopkg"

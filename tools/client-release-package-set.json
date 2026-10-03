@@ -3,7 +3,13 @@
   "packages": [
     {
       "packageId": "org.licoland.fixture.native-converter",
-      "source": "tests/fixtures/client_package_release/fixture-native-converter"
+      "source": "tests/fixtures/client_package_release/fixture-native-converter",
+      "payloadRole": "package-payload"
+    },
+    {
+      "packageId": "org.licoland.feature.gateway",
+      "source": "crates/licoup-gateway/package",
+      "payloadRole": "gateway-package-payload"
     }
   ]
 }
