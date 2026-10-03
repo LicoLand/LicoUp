@@ -427,16 +427,20 @@ export const RUST_CORE_MODULES = Object.freeze([
   defineModule({
       id: "rust.core.protocol-bindings",
       kind: "rust-core",
-      summary: "Fixed-input admission and canonical Lico Arc relay encoding",
+      summary: "Fixed-input admission, frozen Line version, and verified peer ingress",
       inputs: [
         "crates/licoup-protocol-bindings/Cargo.toml",
         "crates/licoup-protocol-bindings/src/admission.rs",
+        "crates/licoup-protocol-bindings/src/inbound.rs",
         "crates/licoup-protocol-bindings/src/lib.rs",
         "crates/licoup-protocol-bindings/src/licoarc_relay.rs",
         "crates/licoup-protocol-bindings/src/licoarc_relay/**",
         "crates/licoup-protocol-bindings/src/padding.rs",
         "crates/licoup-protocol-bindings/src/tests.rs",
+        "crates/licoup-protocol-bindings/src/version.rs",
+        "crates/licoup-protocol-bindings/tests/dependency_direction.rs",
         "crates/licoup-protocol-bindings/tests/endpoint_consumer.rs",
+        "crates/licoup-protocol-bindings/tests/inbound_contracts.rs",
       ],
       command: command(
         "cargo",

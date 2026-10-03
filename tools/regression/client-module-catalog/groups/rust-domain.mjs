@@ -1476,6 +1476,17 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("mobile_relay::config"),
     }),
   defineModule({
+      id: "rust.domain.mobile-relay.endpoint-ports",
+      kind: "rust-domain",
+      summary: "Caller-owned port spine composed with the fixed SDK's endpoint traits",
+      inputs: [
+        "crates/licoup-native/src/domain/mobile_relay.rs",
+        "crates/licoup-native/src/domain/mobile_relay/endpoint_ports.rs",
+        "crates/licoup-native/src/domain/mobile_relay/endpoint_ports/tests.rs",
+      ],
+      command: rustLayer("domain::mobile_relay::endpoint_ports::tests::"),
+    }),
+  defineModule({
       id: "rust.domain.mobile-relay.pairing",
       kind: "rust-domain",
       summary: "Directly approved endpoint pairing and invitation policy",

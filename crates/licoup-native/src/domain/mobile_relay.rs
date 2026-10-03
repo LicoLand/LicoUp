@@ -1,6 +1,7 @@
 mod command_sync;
 mod config;
 pub mod endpoint_transport;
+mod endpoint_ports;
 mod endpoint_trust;
 mod key_transparency;
 mod pairing;
@@ -12,7 +13,15 @@ mod support;
 pub use command_sync::commands_sync;
 pub use config::{config_get, config_set};
 pub(crate) use config::{migrate_config_document, validate_current_config_document};
+/// The caller-owned port spine the fixed SDK endpoint is composed from: the
+/// custody, durable-state, clock, and carrier adapters, the admitted-only
+/// composition point, and the SDK's own verified-fact consumer.
+pub use endpoint_ports::{
+    AdmittedProtocolWork, AtomicStateAdapter, ClockAdapter, CustodyHandles, KeyCustodyAdapter,
+    PacketCarrierAdapter, ProtocolAdmissionRefusal, ProtocolPorts, ProtocolWorkSetup,
+};
 pub use key_transparency::{SECURE_MESH_KT_NATIVE_ACTIONS, dispatch_key_transparency_action};
+pub use licoup_protocol_bindings::EndpointConsumer;
 pub use pairing::{pairing_claim, pairing_create, pairing_revoke, pairing_status};
 pub use relay_operations::{
     command_create, command_create_secure, command_result, command_result_replay_proof,

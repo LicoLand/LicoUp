@@ -334,6 +334,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.domain.agent-conversations.streaming",
   "rust.domain.agent-conversations.usage",
   "rust.domain.mobile-relay.configuration",
+  "rust.domain.mobile-relay.endpoint-ports",
   "rust.domain.mobile-relay.pairing",
   "rust.domain.mobile-relay.pairwise-session",
   "rust.domain.mobile-relay.pairwise-session.scenarios",

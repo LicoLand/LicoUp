@@ -7,6 +7,17 @@
 //! authorized bundle is supplied explicitly through `LICOARC_AUTHORITY_BUNDLE`;
 //! they are marked `#[ignore]` so an absent artifact is reported as not run
 //! instead of passing silently.
+//!
+//! # Why the doubles here are not the adapter composition
+//!
+//! `NoKeyCustody` and `SyntheticStore` exist only to reach `Endpoint`
+//! construction and fail closed on every operation; they compose nothing and
+//! hold no caller-owned port. The production adapters that satisfy these same
+//! SDK traits from the caller-owned ports live in `licoup-native`'s
+//! `domain::mobile_relay::endpoint_ports`, because this crate may not depend on
+//! the platform adapter: the direction is
+//! `platform adapter → protocol bindings → fixed SDK`, and
+//! `tests/dependency_direction.rs` proves this crate declares no such edge.
 
 use std::{env, fs};
 

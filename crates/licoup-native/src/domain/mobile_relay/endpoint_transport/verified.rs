@@ -102,3 +102,34 @@ pub trait VerifiedUnit {
     /// under.
     fn verified_record(&self) -> Option<Self::RecordKey>;
 }
+
+/// The pinned SDK's verified facts are the production answer for this port.
+///
+/// The trait is generic over the record key precisely so the SDK's own replay
+/// identity is carried through unchanged: nothing here re-derives, hashes or
+/// re-encodes it, and a handshake (which binds no record) answers `None`.
+impl VerifiedUnit for licoup_protocol_bindings::TrustFacts {
+    type RecordKey = licoup_protocol_bindings::ReplayIdentity;
+
+    fn verified_author(&self) -> [u8; 32] {
+        self.author().user_authority_state_digest
+    }
+
+    fn verified_device(&self) -> VerifiedDevice {
+        let device = self.device();
+        VerifiedDevice::new(
+            device.identity_state_digest,
+            device.ed25519_key_id,
+            device.ml_dsa_65_key_id,
+        )
+    }
+
+    fn verified_record(&self) -> Option<Self::RecordKey> {
+        match self.replay_identity() {
+            licoup_protocol_bindings::ReplayIdentity::Handshake { .. } => None,
+            licoup_protocol_bindings::ReplayIdentity::ProtectedRecord { .. } => {
+                Some(self.replay_identity().clone())
+            }
+        }
+    }
+}
