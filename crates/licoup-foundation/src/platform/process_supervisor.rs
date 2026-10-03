@@ -361,6 +361,185 @@ impl SupervisedChild {
     }
 }
 
+/// The observed end of one owned process group after a control-lane
+/// termination. `Unconfirmed` is never reported as an exit: a signal that was
+/// delivered without an observed exit stays unconfirmed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OwnedGroupExit {
+    ObservedExit { forced: bool, already_exited: bool },
+    Unconfirmed,
+}
+
+/// One LicoUp-owned detached execution group, identified by the group leader
+/// pid LicoUp recorded when it spawned the process detached. Control-lane
+/// force stop terminates exactly this group; verification refuses a pid that
+/// does not lead its own group, so a shared or external process is never
+/// widened into the signal.
+#[derive(Clone, Copy, Debug)]
+pub struct OwnedProcessGroup {
+    pid: u32,
+}
+
+impl OwnedProcessGroup {
+    /// Verify the ownership record before any signal. The pid must be live and
+    /// must be the leader of its own process group.
+    pub fn verify(pid: u32) -> Option<Self> {
+        let group = Self { pid };
+        (pid != 0 && group.leads_own_group()).then_some(group)
+    }
+
+    fn leads_own_group(&self) -> bool {
+        if !owned_process_alive(self.pid) {
+            return false;
+        }
+        #[cfg(unix)]
+        {
+            // SAFETY: getpgid only queries the process table.
+            let group = unsafe { libc::getpgid(self.pid as libc::pid_t) };
+            group > 0 && group as u32 == self.pid
+        }
+        #[cfg(not(unix))]
+        {
+            // Windows creates the detached group through the spawn flags; the
+            // durable pid record is the ownership proof and the tree kill is
+            // bounded to that pid.
+            true
+        }
+    }
+
+    /// Terminate this owned group with a bounded graceful window, then a
+    /// bounded forced window, and report only what was observed.
+    pub fn terminate_and_observe(&self, bound: Duration) -> OwnedGroupExit {
+        if !self.leads_own_group() {
+            return OwnedGroupExit::ObservedExit {
+                forced: false,
+                already_exited: true,
+            };
+        }
+        let graceful = self.signal_group(false);
+        if self.await_exit(bound) {
+            return OwnedGroupExit::ObservedExit {
+                forced: false,
+                already_exited: false,
+            };
+        }
+        if graceful {
+            let _ = self.signal_group(true);
+        } else {
+            // A refused graceful signal must not turn into a silent forced one.
+            return OwnedGroupExit::Unconfirmed;
+        }
+        if self.await_exit(bound) {
+            OwnedGroupExit::ObservedExit {
+                forced: true,
+                already_exited: false,
+            }
+        } else {
+            OwnedGroupExit::Unconfirmed
+        }
+    }
+
+    fn await_exit(&self, bound: Duration) -> bool {
+        let deadline = Instant::now() + bound;
+        loop {
+            if !self.leads_own_group() {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            thread::sleep(PROCESS_POLL_INTERVAL);
+        }
+    }
+
+    /// Signal the whole group, never a single member: `-pid` addresses the
+    /// group LicoUp created at spawn.
+    fn signal_group(&self, force: bool) -> bool {
+        #[cfg(unix)]
+        {
+            let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
+            // SAFETY: killpg with a negative pid addresses the verified group.
+            unsafe { libc::kill(-(self.pid as libc::pid_t), signal) == 0 }
+        }
+        #[cfg(windows)]
+        {
+            let mut command = Command::new("taskkill");
+            command
+                .args(["/PID", &self.pid.to_string(), "/T"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+            if force {
+                command.arg("/F");
+            }
+            command
+                .status()
+                .map(|status| status.success())
+                .unwrap_or(false)
+        }
+    }
+}
+
+fn owned_process_alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        // A zombie still answers kill(pid, 0); for lifecycle purposes it has
+        // already exited and its group no longer runs work.
+        if unsafe { libc::kill(pid as libc::pid_t, 0) } != 0
+            && io::Error::last_os_error().raw_os_error() != Some(libc::EPERM)
+        {
+            return false;
+        }
+        !owned_process_is_zombie(pid)
+    }
+    #[cfg(windows)]
+    {
+        Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {}", pid)])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .map(|output| {
+                output.status.success()
+                    && output.stdout.len() <= 64 * 1024
+                    && String::from_utf8_lossy(&output.stdout).contains(&pid.to_string())
+            })
+            .unwrap_or(false)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn owned_process_is_zombie(pid: u32) -> bool {
+    // XNU drops zombies from proc_pidinfo's view while they still answer
+    // kill(pid, 0), so a successful kill followed by ESRCH here means zombie.
+    let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+    let size = std::mem::size_of::<libc::proc_bsdinfo>() as i32;
+    let written = unsafe {
+        libc::proc_pidinfo(
+            pid as i32,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            (&mut info as *mut libc::proc_bsdinfo).cast(),
+            size,
+        )
+    };
+    written <= 0 && io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+}
+
+#[cfg(target_os = "linux")]
+fn owned_process_is_zombie(pid: u32) -> bool {
+    let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
+        return false;
+    };
+    stat.rsplit_once(')')
+        .and_then(|(_, rest)| rest.split_whitespace().next())
+        == Some("Z")
+}
+
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "linux"))))]
+fn owned_process_is_zombie(_pid: u32) -> bool {
+    false
+}
+
 fn process_group_is_gone(error: &io::Error) -> bool {
     if matches!(
         error.kind(),

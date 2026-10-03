@@ -61,6 +61,69 @@ pub use workspace::{
     SubagentWorkspacePort, verify_resume_working_directory,
 };
 
+/// Stop one active Subagent dispatch claim from the client control plane.
+///
+/// The MCP edge remains the single claim owner: the request is dispatched as
+/// the same `lico_subagent_cancel` tool call, attributed to the claim's own
+/// durable caller membership read from the Conversation store. A Conversation
+/// without an active claim for the target reports `subagent_cancel_unavailable`,
+/// which the stop dispatcher maps to not-active instead of fabricating a
+/// cancellation.
+pub fn stop_active_claim(
+    conversation_id: &str,
+    caller_membership_id: &str,
+    target_membership_id: &str,
+) -> Result<Value, SubagentError> {
+    let caller = client_caller_context(conversation_id, caller_membership_id)?;
+    let mut arguments = Map::new();
+    arguments.insert("conversationId".to_owned(), json!(conversation_id));
+    arguments.insert("membershipId".to_owned(), json!(target_membership_id));
+    let application = production_application()?;
+    application.call_tool(
+        SubagentCallContext {
+            caller: &caller,
+            cancelled: Arc::new(AtomicBool::new(false)),
+        },
+        "lico_subagent_cancel",
+        &arguments,
+    )
+}
+
+/// The caller scope one client stop request acts as: the claim's durable
+/// caller membership and its Agent provider, read from the Conversation store.
+fn client_caller_context(
+    conversation_id: &str,
+    caller_membership_id: &str,
+) -> Result<CallerContext, SubagentError> {
+    let root = licoup_foundation::platform::paths::portable_data_dir()
+        .map_err(|_| permanent("conversation_state_unavailable", "conversation/load"))?;
+    let store = crate::domain::client_conversation::ConversationStore::open(&root)
+        .map_err(|_| permanent("conversation_state_unavailable", "conversation/load"))?;
+    let conversation = store
+        .get(conversation_id)
+        .map_err(|_| permanent("conversation_not_found", "conversation/load"))?;
+    let provider_id = conversation
+        .memberships
+        .iter()
+        .find(|membership| membership.id == caller_membership_id)
+        .and_then(|membership| membership.principal.agent_id.clone())
+        .ok_or_else(|| {
+            permanent(
+                "caller_membership_binding_required",
+                "conversation/authorize",
+            )
+        })?;
+    let provider_id = licoup_agent_runtime::ProviderId::parse(provider_id)
+        .map_err(|_| permanent("subagents_caller_invalid", "conversation/authorize"))?;
+    Ok(CallerContext {
+        provider_id,
+        conversation_id: Some(conversation_id.to_owned()),
+        membership_id: Some(caller_membership_id.to_owned()),
+        parent_dispatch_id: None,
+        authenticated: true,
+    })
+}
+
 pub const MAX_PROMPT_BYTES: usize = 48 * 1024;
 pub const MAX_ID_BYTES: usize = 256;
 pub const MAX_WORKING_DIRECTORY_BYTES: usize = 4096;

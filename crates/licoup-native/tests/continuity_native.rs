@@ -948,3 +948,60 @@ fn host_driver_transport_forwards_developer_instructions_to_fake_codex_process()
     let _ = std::fs::remove_dir_all(executable.parent().unwrap());
     let _ = std::fs::remove_dir_all(cwd);
 }
+
+/// The manual-stop control plane records its request and its unconfirmed
+/// outcome through the private diagnostic owner, and a reader opened after the
+/// writing process finished retrieves the same redacted record.
+#[test]
+fn stop_anomaly_records_survive_the_writing_process_and_stay_redacted() {
+    let root = std::env::temp_dir().join(format!(
+        "licoup-stop-control-native-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let previous =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+
+    // A lane session with no live owner is a real manual-stop request whose
+    // owner cannot be reached: the request is recorded, and the outcome is an
+    // anomaly rather than a fabricated stop.
+    let response = licoup_native::platform::stop_control::stop_work(
+        &serde_json::json!({
+            "agent": "codex",
+            "sessionId": "session:not-bound",
+            "reason": "user-stop",
+        }),
+        &licoup_native::platform::stop_control::WorkStopPorts::default(),
+    );
+    assert_eq!(response["ok"], false, "{response}");
+    assert_eq!(response["status"], "owner-unavailable");
+    assert_eq!(response["diagnostics"]["recorded"], true);
+    let correlation_id = response["correlationId"].as_str().unwrap().to_owned();
+    assert!(correlation_id.starts_with("stop-"));
+
+    // A later reader of the durable diagnostic store sees the same record.
+    let listed = licoup_native::platform::client_state::activity_list(
+        &serde_json::json!({"limit": 100}),
+    )
+    .unwrap();
+    let events = listed["events"].as_array().unwrap();
+    let recorded = events
+        .iter()
+        .find(|event| event["payload"]["correlationId"] == serde_json::json!(correlation_id))
+        .expect("the stop request is durable");
+    assert_eq!(recorded["type"], "work.stop.requested");
+    assert!(
+        events.iter().any(|event| {
+            event["type"] == "work.stop.anomaly"
+                && event["payload"]["correlationId"] == serde_json::json!(correlation_id)
+        }),
+        "the unreachable owner is recorded as the anomaly it is"
+    );
+    let encoded = serde_json::to_string(&events).unwrap();
+    assert!(!encoded.contains("session:not-bound"), "{encoded}");
+    assert!(!encoded.contains(&root.to_string_lossy().to_string()), "{encoded}");
+
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
+    let _ = std::fs::remove_dir_all(&root);
+}

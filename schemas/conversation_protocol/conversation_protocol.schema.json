@@ -206,6 +206,33 @@
       }
     },
     {
+      "name": "agent.conversation.stop",
+      "kind": "command",
+      "lane": "conversation",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": true,
+      "cli": null
+    },
+    {
+      "name": "agent.conversation.force.preview",
+      "kind": "command",
+      "lane": "conversation",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": true,
+      "cli": null
+    },
+    {
+      "name": "agent.conversation.force.confirm",
+      "kind": "command",
+      "lane": "conversation",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": true,
+      "cli": null
+    },
+    {
       "name": "agent.conversation.steer",
       "kind": "command",
       "lane": "conversation",

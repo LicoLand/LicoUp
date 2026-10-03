@@ -53,7 +53,7 @@ pub use routing::{
     QueueCapacityExceeded, QueuedItem, RecipientEffectStatus, Subscription, SubscriptionPredicate,
     SubscriptionRegistry, SubscriptionScope, TargetSelector,
 };
-pub use service::{ActorTurnPort, AssistantWakePort, StrategyService};
+pub use service::{ActorTurnPort, AssistantWakePort, StrategyService, TurnCancelDisposition};
 
 pub use crate::domain::workflow_store::{
     BindingCandidate, BindingValue, STRATEGY_SCHEMA_VERSION, StrategyAuthorization,
