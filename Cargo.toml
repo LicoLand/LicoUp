@@ -16,6 +16,8 @@ members = [
     "crates/licoup-conversation",
     "crates/licoup-mcp",
     "crates/licoup-migrate",
+    "crates/licoup-gateway-core",
+    "crates/licoup-gateway",
     "crates/licoup-native",
     "crates/trybuild",
 ]

@@ -1,11 +1,11 @@
 //! Bounded outbound transport for the local LLM gateway.
 
-use crate::domain::llm_api_key_vault::GatewayCredentialSlot;
-use crate::domain::llm_gateway::{
+use licoup_gateway_core::credentials::llm_api_key_vault::GatewayCredentialSlot;
+use licoup_gateway_core::model::llm_gateway::{
     CompiledGateway, CredentialStyle, GatewayError, GatewayProvider, GatewayResponse,
     MAX_GATEWAY_BODY_BYTES, UpstreamProtocol, models_endpoint_for, namespaced_model_id,
 };
-use crate::domain::llm_gateway_stream::GatewayStreamTransformer;
+use licoup_gateway_core::model::llm_gateway_stream::GatewayStreamTransformer;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
@@ -240,7 +240,7 @@ fn project_provider_models(
 fn fetch_provider_models(
     agent: &ureq::Agent,
     provider: &GatewayProvider,
-    credentials: Vec<crate::core::secure_mesh_secret_store::SecretBytes>,
+    credentials: Vec<licoup_foundation::core::secret_bytes::SecretBytes>,
     deadline: Instant,
 ) -> Result<ProviderCatalog, GatewayTransportError> {
     let endpoint = models_endpoint_for(provider).map_err(GatewayTransportError::Gateway)?;
@@ -617,15 +617,15 @@ impl Drop for Permit {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::secure_mesh_secret_store::SecretBytes;
-    use crate::domain::llm_api_key_vault::{
+    use anyhow::Result;
+    use licoup_foundation::core::secret_bytes::SecretBytes;
+    use licoup_gateway_core::credentials::llm_api_key_vault::{
         GatewayCredential, GatewayCredentialEpochSource, GatewayCredentialLease,
         GatewayCredentialLeaseDays, LlmApiKeyProvider,
     };
-    use crate::domain::llm_gateway::{
+    use licoup_gateway_core::model::llm_gateway::{
         ClientProtocol, CredentialStyle, GatewayConfig, GatewayProvider, ModelRoute,
     };
-    use anyhow::Result;
     use std::collections::BTreeMap;
     use std::io::Write as _;
     use std::net::TcpListener;

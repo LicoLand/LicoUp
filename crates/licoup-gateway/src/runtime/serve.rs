@@ -1,19 +1,18 @@
 //! Single-process Gateway Runtime: LLM Gateway (lower) + Communication Channels (upper).
 
-use crate::core::secure_mesh_secret_store::SecretBytes;
-use crate::domain::llm_api_key_vault::GatewayCredentialSlot;
-use crate::domain::llm_gateway::CompiledGateway;
-use crate::platform::gateway_runtime::channels::telegram::{
-    BindingStore, LiveBotTransport, RuntimeConfig, clear_ready, load_bot_token, run_channel_loop,
-};
-use crate::platform::llm_gateway_credentials_control::serve_credentials_control;
-use crate::platform::llm_gateway_inventory_control::{
+use crate::channels::telegram::{LiveBotTransport, RuntimeConfig, run_channel_loop};
+use crate::http::server::serve_loopback;
+use anyhow::{Result, anyhow};
+use licoup_foundation::core::secret_bytes::SecretBytes;
+use licoup_gateway_core::channels::telegram::{BindingStore, clear_ready, load_bot_token};
+use licoup_gateway_core::control::credentials::serve_credentials_control;
+use licoup_gateway_core::control::inventory::{
     control_socket_path as inventory_control_socket_path, load_inventory_overlay_if_present,
     overlay_path as inventory_overlay_path, serve_inventory_control,
 };
-use crate::platform::llm_gateway_server::serve_loopback;
-use crate::platform::llm_gateway_usage::GatewayUsageRecorder;
-use anyhow::{Result, anyhow};
+use licoup_gateway_core::credentials::llm_api_key_vault::GatewayCredentialSlot;
+use licoup_gateway_core::model::llm_gateway::CompiledGateway;
+use licoup_gateway_core::usage::GatewayUsageRecorder;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::Arc;

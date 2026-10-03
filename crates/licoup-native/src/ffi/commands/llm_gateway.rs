@@ -2,7 +2,7 @@ use super::{AdmittedCommand, CliExecution};
 use anyhow::{Result, anyhow, ensure};
 use serde_json::{Value, json};
 
-use crate::domain::llm_api_key_vault::{
+use licoup_gateway_core::credentials::llm_api_key_vault::{
     GatewayCredentialLeaseDays, LlmApiKeyCredentialUpdate, LlmApiKeyProvider, NewLlmApiKey,
 };
 
@@ -119,7 +119,7 @@ pub(super) fn handle_lease(command: AdmittedCommand) -> Result<CliExecution> {
 }
 
 pub(super) fn handle_agent_plan(command: AdmittedCommand) -> Result<CliExecution> {
-    let target = crate::domain::llm_gateway_agent_config::GatewayAgentTarget::parse(
+    let target = licoup_gateway_core::model::llm_gateway_agent_config::GatewayAgentTarget::parse(
         command.required_text("agent"),
     )?;
     let root = std::path::PathBuf::from(command.required_text("config-root"));
@@ -133,14 +133,14 @@ pub(super) fn handle_agent_plan(command: AdmittedCommand) -> Result<CliExecution
     } else {
         Vec::new()
     };
-    let plan = crate::domain::llm_gateway_agent_config::plan_agent_config(
+    let plan = licoup_gateway_core::model::llm_gateway_agent_config::plan_agent_config(
         target, &root, port, &helper, &models,
     )?;
     Ok(CliExecution::Json(serde_json::to_value(plan)?))
 }
 
 pub(super) fn handle_agent_apply(mut command: AdmittedCommand) -> Result<CliExecution> {
-    let target = crate::domain::llm_gateway_agent_config::GatewayAgentTarget::parse(
+    let target = licoup_gateway_core::model::llm_gateway_agent_config::GatewayAgentTarget::parse(
         command.required_text("agent"),
     )?;
     let root = std::path::PathBuf::from(command.required_text("config-root"));
@@ -150,7 +150,7 @@ pub(super) fn handle_agent_apply(mut command: AdmittedCommand) -> Result<CliExec
         .parse::<u16>()?;
     let helper = local_token_helper()?;
     let models = confirmed_agent_models(command.take_option_json("stdin-json"), target)?;
-    let plan = crate::domain::llm_gateway_agent_config::plan_agent_config(
+    let plan = licoup_gateway_core::model::llm_gateway_agent_config::plan_agent_config(
         target, &root, port, &helper, &models,
     )?;
     let confirmation = command
@@ -164,22 +164,23 @@ pub(super) fn handle_agent_apply(mut command: AdmittedCommand) -> Result<CliExec
         .parent()
         .ok_or_else(|| anyhow!("llm_gateway_agent_config_path_invalid"))?;
     licoup_foundation::platform::file_security::ensure_private_dir(parent)?;
-    let content = if plan
-        .content
-        .contains(crate::domain::llm_gateway_agent_config::LOCAL_CLIENT_TOKEN_PLACEHOLDER)
-    {
-        let token = crate::platform::llm_gateway_client_auth::ensure_default_token()?;
+    let content = if plan.content.contains(
+        licoup_gateway_core::model::llm_gateway_agent_config::LOCAL_CLIENT_TOKEN_PLACEHOLDER,
+    ) {
+        let token = licoup_gateway_core::control::client_auth::ensure_default_token()?;
         let token = token
             .expose_utf8()
             .map_err(|_| anyhow!("gateway_client_token_invalid"))?;
         plan.content.replace(
-            crate::domain::llm_gateway_agent_config::LOCAL_CLIENT_TOKEN_PLACEHOLDER,
+            licoup_gateway_core::model::llm_gateway_agent_config::LOCAL_CLIENT_TOKEN_PLACEHOLDER,
             token,
         )
     } else {
         plan.content.clone()
     };
-    if content.contains(crate::domain::llm_gateway_agent_config::LOCAL_CLIENT_TOKEN_PLACEHOLDER) {
+    if content.contains(
+        licoup_gateway_core::model::llm_gateway_agent_config::LOCAL_CLIENT_TOKEN_PLACEHOLDER,
+    ) {
         return Err(anyhow!("gateway_client_token_invalid"));
     }
     licoup_foundation::platform::file_security::atomic_write_private_text(
@@ -194,8 +195,8 @@ pub(super) fn handle_agent_apply(mut command: AdmittedCommand) -> Result<CliExec
 
 fn confirmed_agent_models(
     supplied: Option<Value>,
-    target: crate::domain::llm_gateway_agent_config::GatewayAgentTarget,
-) -> Result<Vec<crate::domain::llm_gateway_agent_config::GatewayAgentModel>> {
+    target: licoup_gateway_core::model::llm_gateway_agent_config::GatewayAgentTarget,
+) -> Result<Vec<licoup_gateway_core::model::llm_gateway_agent_config::GatewayAgentModel>> {
     if !target.embeds_model_catalog() {
         ensure!(
             supplied.is_none(),
@@ -231,7 +232,8 @@ fn confirmed_agent_models(
                 .and_then(|value| value.as_str().map(str::to_owned))
                 .ok_or_else(|| anyhow!("llm_gateway_agent_config_model_catalog_invalid"))?;
             let valid_id = id.split_once(':').is_some_and(|(provider, upstream)| {
-                crate::domain::llm_gateway::namespaced_model_id(provider, upstream).as_deref()
+                licoup_gateway_core::model::llm_gateway::namespaced_model_id(provider, upstream)
+                    .as_deref()
                     == Some(id.as_str())
             });
             ensure!(
@@ -242,7 +244,12 @@ fn confirmed_agent_models(
                     && !name.chars().any(char::is_control),
                 "llm_gateway_agent_config_model_catalog_invalid"
             );
-            Ok(crate::domain::llm_gateway_agent_config::GatewayAgentModel { id, name })
+            Ok(
+                licoup_gateway_core::model::llm_gateway_agent_config::GatewayAgentModel {
+                    id,
+                    name,
+                },
+            )
         })
         .collect()
 }

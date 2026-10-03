@@ -1,6 +1,8 @@
 use super::*;
-use crate::domain::llm_api_key_vault::{LLM_API_KEY_INVENTORY_SCHEMA, LlmApiKeyProvider};
 use crate::domain::mobile_relay::endpoint_trust::local_identity_metadata_present;
+use licoup_gateway_core::credentials::llm_api_key_vault::{
+    LLM_API_KEY_INVENTORY_SCHEMA, LlmApiKeyProvider,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 

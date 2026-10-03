@@ -209,12 +209,12 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     ["crates/licoup-native/src/platform/antigravity_driver/tests.rs", "isolated process environment fixture"],
     ["crates/licoup-native/src/platform/client_autostart.rs", "launchd user identity"],
     ["crates/licoup-native/src/platform/cursor_driver/tests.rs", "isolated process environment fixtures"],
-    ["crates/licoup-native/src/platform/gateway_runtime/channels/telegram/credentials.rs", "isolated credential environment fixture"],
+    ["crates/licoup-gateway-core/src/channels/telegram/credentials.rs", "isolated credential environment fixture"],
     ["crates/licoup-native/src/platform/lico_agent_driver/tests.rs", "isolated process environment fixtures"],
     ["crates/licoup-native/src/platform/llm_gateway_autostart.rs", "launchd user identity"],
     ["crates/licoup-native/src/platform/data_home_relocation.rs", "atomic selected-root publication and process-safe relocation"],
-    ["crates/licoup-native/src/platform/llm_gateway_credentials_control.rs", "Unix peer credential verification"],
-    ["crates/licoup-native/src/platform/llm_gateway_inventory_control.rs", "Unix peer credential verification"],
+    ["crates/licoup-gateway-core/src/control/credentials.rs", "Unix peer credential verification"],
+    ["crates/licoup-gateway-core/src/control/inventory.rs", "Unix peer credential verification"],
     ["crates/licoup-native/src/platform/llm_gateway_service.rs", "bounded sidecar pipe and process lifecycle"],
     ["crates/licoup-native/src/platform/pty_transport.rs", "PTY descriptor and ioctl ownership"],
     ["crates/licoup-native/src/platform/process_supervisor.rs", "Unix supervised-child wait identity and process-tree lifecycle"],
@@ -226,6 +226,8 @@ export async function checkCrateCoreAndFacadeBounds(context) {
   const rustCliUnsafeFiles = (await Promise.all([
     collectRustUnsafeFiles(rustCliRoot),
     collectRustUnsafeFiles("crates/licoup-foundation/src"),
+    collectRustUnsafeFiles("crates/licoup-gateway-core/src"),
+    collectRustUnsafeFiles("crates/licoup-gateway/src"),
   ])).flat()
     .filter((relativePath) => !reviewedRustUnsafeFiles.has(relativePath));
   assert(

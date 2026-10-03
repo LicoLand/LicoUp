@@ -9,7 +9,6 @@
 mod authorization;
 mod handle;
 mod port;
-mod secret_bytes;
 
 pub use authorization::{
     MAX_SECRET_STORE_PRESENCE_GRANT_TTL, PresenceDecision, SecretStoreApprovedPresenceBatch,
@@ -21,9 +20,11 @@ pub use authorization::{
 };
 pub use handle::SecretStoreHandle;
 pub use port::SecureMeshSecretStore;
+// The zeroizing secret buffer lives in `licoup-foundation` so the Gateway
+// model and the custody backends share one owner.
 #[cfg(test)]
-pub use secret_bytes::SecretZeroizeProbe;
-pub use secret_bytes::{MAX_SECRET_BYTES, SecretBytes, SecretBytesError};
+pub use licoup_foundation::core::secret_bytes::SecretZeroizeProbe;
+pub use licoup_foundation::core::secret_bytes::{MAX_SECRET_BYTES, SecretBytes, SecretBytesError};
 
 #[cfg(target_os = "macos")]
 pub(crate) use authorization::{derive_presence_binding_digest, digest_matches};

@@ -582,11 +582,10 @@ pub(super) fn serve_host() -> Result<()> {
     // restarted host cannot fall back to the packaged readiness snapshot.
     let readiness_overlay = root
         .join("llm-gateway")
-        .join(licoup_native::platform::llm_gateway_inventory_control::OVERLAY_FILE_NAME);
-    let _ =
-        licoup_native::platform::llm_gateway_inventory_control::load_inventory_overlay_if_present(
-            &readiness_overlay,
-        );
+        .join(licoup_gateway_core::control::inventory::OVERLAY_FILE_NAME);
+    let _ = licoup_gateway_core::control::inventory::load_inventory_overlay_if_present(
+        &readiness_overlay,
+    );
     let service = licoup_native::domain::client_conversation::ConversationService::open(&root)?;
     let runtime = PersistentConversationRuntime::new(service.store().clone());
     let service = super::stdio_rpc::bind_conversation_runtime(service, &runtime, None);

@@ -1,15 +1,15 @@
 //! Legacy binary name for the Gateway Runtime.
 //! Prefer `lico-gateway`. Kept so installs that still look for this name work.
 
-use licoup_native::{
-    domain::llm_api_key_vault::{GatewayCredentialHandoff, GatewayCredentialSlot},
-    domain::llm_gateway::{CompiledGateway, GatewayConfig},
-    platform::gateway_runtime::{GatewayServeArgs, serve_gateway_runtime},
-    platform::llm_api_key_vault::PlatformLlmApiKeyVault,
-    platform::llm_gateway_client_auth,
-    platform::llm_gateway_server::bind_address,
-    platform::llm_gateway_usage::GatewayUsageRecorder,
+use licoup_gateway::http::server::bind_address;
+use licoup_gateway::{GatewayServeArgs, serve_gateway_runtime};
+use licoup_gateway_core::control::client_auth;
+use licoup_gateway_core::credentials::llm_api_key_vault::{
+    GatewayCredentialHandoff, GatewayCredentialSlot,
 };
+use licoup_gateway_core::model::llm_gateway::{CompiledGateway, GatewayConfig};
+use licoup_gateway_core::usage::GatewayUsageRecorder;
+use licoup_native::platform::{gateway_composition, llm_api_key_vault::PlatformLlmApiKeyVault};
 use std::{
     env, fs,
     net::TcpListener,
@@ -97,6 +97,7 @@ fn run(raw: Vec<String>) -> Result<(), ()> {
     let _data_home_access =
         licoup_foundation::platform::data_home_access::acquire_process_data_home_access()
             .map_err(|_| ())?;
+    gateway_composition::install().map_err(|_| ())?;
     let credentials = Arc::new(match credentials_fd {
         Some(fd) => {
             let vault = PlatformLlmApiKeyVault::production().map_err(|_| ())?;
@@ -108,10 +109,8 @@ fn run(raw: Vec<String>) -> Result<(), ()> {
         }
         None => GatewayCredentialSlot::disconnected(),
     });
-    let client_token = Arc::new(
-        llm_gateway_client_auth::read_token(client_token_file.as_deref().ok_or(())?)
-            .map_err(|_| ())?,
-    );
+    let client_token =
+        Arc::new(client_auth::read_token(client_token_file.as_deref().ok_or(())?).map_err(|_| ())?);
     let listener = TcpListener::bind(bind_address(port)).map_err(|_| ())?;
     let usage = Arc::new(GatewayUsageRecorder::open(usage).map_err(|_| ())?);
     serve_gateway_runtime(

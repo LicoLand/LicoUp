@@ -5,10 +5,8 @@
 //! clear. Secrets never land on disk; only the live socket carries them.
 
 #[cfg(unix)]
-use crate::domain::llm_api_key_vault::GatewayCredentialHandoff;
-use crate::domain::llm_api_key_vault::GatewayCredentialSlot;
-#[cfg(unix)]
-use crate::platform::llm_api_key_vault::PlatformLlmApiKeyVault;
+use crate::credentials::llm_api_key_vault::GatewayCredentialHandoff;
+use crate::credentials::llm_api_key_vault::GatewayCredentialSlot;
 use anyhow::{Result, anyhow, ensure};
 use serde_json::{Value, json};
 use std::io::{Read, Write};
@@ -144,8 +142,7 @@ fn handle_control_message(
         return Ok(false);
     }
     let handoff = GatewayCredentialHandoff::from_json(&payload)?;
-    let vault = PlatformLlmApiKeyVault::production()?;
-    let lease = vault.gateway_lease_from_handoff(handoff)?;
+    let lease = crate::ports::vault::require()?.lease_from_handoff(handoff)?;
     credentials.replace(lease)?;
     Ok(credentials.connected())
 }

@@ -88,6 +88,7 @@ requireValue(
     sidecarBuilds[0].includes(path.join("crates", "licoup-native", "Cargo.toml")) &&
     sidecarBuilds[0].includes("licoup-cli") &&
     sidecarBuilds[0].includes("lico-gateway") &&
+    sidecarBuilds[0].includes("gateway") &&
     !sidecarBuilds[0].includes("lico-subagent-mcp") &&
     sidecarBuilds[1].includes(path.join("crates", "licoup-mcp", "Cargo.toml")) &&
     sidecarBuilds[1].filter((arg) => arg === "lico-subagent-mcp").length === 1 &&

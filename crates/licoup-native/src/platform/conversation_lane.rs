@@ -1028,6 +1028,17 @@ pub fn lane_capabilities(params: &Value) -> Result<Value> {
     }))
 }
 
+/// Verified agent discovery for channel admission. Discovery is not admission:
+/// callers still apply their own readiness and executable gate.
+pub fn lane_target_scan() -> Result<Value> {
+    crate::domain::targets::scan_targets()
+}
+
+/// Bounded conversation listing for one agent, as the lane sees it.
+pub fn lane_conversation_list(params: &Value) -> Result<Value> {
+    crate::domain::conversations::conversation_list(params)
+}
+
 /// Dispatch a conversation lane RPC/CLI operation by name.
 pub fn dispatch_lane_operation(
     operation: &str,

@@ -1,8 +1,8 @@
 //! Private client authentication for the loopback LLM Gateway.
 
-use crate::core::secure_mesh_secret_store::SecretBytes;
 use anyhow::{Result, anyhow, ensure};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use licoup_foundation::core::secret_bytes::SecretBytes;
 use licoup_foundation::platform::{file_security, paths};
 use rand_core::{OsRng, RngCore};
 use std::path::{Path, PathBuf};

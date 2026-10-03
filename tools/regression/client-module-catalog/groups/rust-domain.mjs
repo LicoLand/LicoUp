@@ -1,4 +1,4 @@
-import { command, rustLayer, rustIntegrationTest, rustCrateIntegrationTest, defineModule } from "../helpers.mjs";
+import { command, gatewayCoreLayer, rustLayer, rustIntegrationTest, rustCrateIntegrationTest, defineModule } from "../helpers.mjs";
 
 export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
@@ -55,14 +55,11 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.llm-gateway",
       kind: "rust-domain",
-      summary: "Local LLM gateway policy, credentials, catalog, configuration, and streaming",
+      summary: "Local LLM gateway policy, credential lease, catalog, configuration, and streaming",
       inputs: [
-        "crates/licoup-native/src/domain/llm_api_key_vault.rs",
-        "crates/licoup-native/src/domain/llm_gateway.rs",
-        "crates/licoup-native/src/domain/llm_gateway_agent_config.rs",
-        "crates/licoup-native/src/domain/llm_gateway_stream.rs",
+        "crates/licoup-gateway-core/src/model/**",
       ],
-      command: rustLayer("domain::llm_"),
+      command: gatewayCoreLayer("model::"),
     }),
   defineModule({
       id: "rust.domain.model-planning",

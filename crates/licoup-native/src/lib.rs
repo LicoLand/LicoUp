@@ -19,7 +19,8 @@ pub mod platform;
 pub fn install_environment_ports() -> Result<(), &'static str> {
     domain::conversation::history::install_open_codex_rollouts(
         platform::codex_runtime_observation::open_rollout_paths,
-    )
+    )?;
+    platform::gateway_composition::install_readiness()
 }
 
 /// The product version this binary was built with.

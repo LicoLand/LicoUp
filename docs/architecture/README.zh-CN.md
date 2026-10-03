@@ -170,6 +170,8 @@ flowchart TB
 |:---|:---|
 | `apps/desktop/` | Flutter 桌面与移动客户端（第 1 层与部分第 2 层） |
 | `crates/licoup-native/` | Rust 客户端核心、命令与平台桥接（第 3 层与第 4 层） |
+| `crates/licoup-gateway/` | Gateway Runtime 进程 crate（由宿主的 `gateway` 特性组合） |
+| `crates/licoup-gateway-core/` | 共享 gateway 模型、凭证租约、控制通道与端口 |
 | `crates/licoup-workflow/` | 纯工作流定义、诊断、编译索引和状态转换机 |
 | `crates/licoup-conversation/` | Canonical Conversation 领域 crate（已是 workspace 成员，抽取进行中） |
 | `crates/licoup-agent-runtime/` | Agent Runtime 与 adapter crate（已是 workspace 成员，抽取进行中） |
@@ -351,6 +353,8 @@ crates/
 ├── licoup-native/              # 宿主二进制 + FFI 入口
 │   ├── src/bin/                # licoup-cli、lico-gateway、lico-agent 等
 │   └── src/ffi/                # 移动平台 FFI（Android/iOS）
+├── licoup-gateway/             # Gateway Runtime 进程：回环模型服务与 channel
+├── licoup-gateway-core/        # 共享 gateway 模型、凭证租约、控制通道与端口
 ├── licoup-conversation/        # L3: Conversation 领域（状态机、事件、投影）
 ├── licoup-workflow/            # 纯工作流编译器与状态转换机
 ├── licoup-agent-runtime/       # L4+L5: 智能体适配器 + settlement 仲裁器
