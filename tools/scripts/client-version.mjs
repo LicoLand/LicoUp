@@ -9,8 +9,12 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const versionManifestPath = path.join(repoRoot, "tools", "client-version.json");
 const versionManifestSchema = "v0.0.1:client-version-manifest-1";
 export const cargoWorkspaceVersionPackages = Object.freeze([
+  // licoup-native declares a literal version but is version-synced with the
+  // workspace, exactly as the contract test states.
+  "licoup-native",
   "licoup-agent-adapter-sdk",
   "licoup-agent-adapters",
+  "licoup-agent-drivers",
   "licoup-agent-runtime",
   "licoup-agent-targets",
   "licoup-application",
@@ -21,7 +25,6 @@ export const cargoWorkspaceVersionPackages = Object.freeze([
   "licoup-gateway",
   "licoup-gateway-core",
   "licoup-model-catalog",
-  "licoup-native",
   "licoup-platform-bridges",
   "licoup-project",
   "licoup-protocol-bindings",
