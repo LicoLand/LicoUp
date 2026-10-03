@@ -1,6 +1,6 @@
 # Client update and state migration
 
-Updated: 2026-10-01
+Updated: 2026-10-03
 
 | Related document | Path | Authority |
 | --- | --- | --- |
@@ -91,6 +91,53 @@ repeating it. There is no atomic transaction spanning all databases, files and
 operating-system credential stores. Data-dependent conversion failures remain
 forward-only `migration_step_failed` apply/retry work; a read-only structural
 preflight does not certify every stored business value.
+
+## Package-owned conversion declarations
+
+A package that owns a persisted format says so in its own manifest. The optional
+`conversion` declaration names the converter kind, the entry inside the package payload,
+the published source formats the converter reads and the target format it produces. Only
+one converter kind is published, `native-executable`: the package carries the program, and
+a converter that needed an interpreter would borrow a runtime the package does not carry.
+The field is absent from a package that owns no format — most packages convert nothing —
+so an absent declaration is complete rather than empty; a package that was asked for a
+conversion and declares none is refused, with its own id and the required source format
+named and no private data in the report.
+
+The declaration is validated structurally before anything runs, and each refusal names the
+rule it broke: a non-native converter kind, an entry outside the package payload, an empty
+source-format list, and a missing or malformed target format are separate stable codes.
+[manifest schema](../../schemas/extensions/manifest.schema.json)
+publishes the same fields, patterns and bounds, and the schema-agreement suite pins them
+against the crate, so a third party validating against the schema is refused by the rules
+the host applies.
+
+The declaration and the authenticated release metadata name the same facts. A released
+package carries a `licoup.package-release.v1` declaration whose `converter` object holds the
+converter kind, entry, one source format and the target format, and the release index
+publishes that object per package. The committed fixture under
+`tests/fixtures/client_package_release/fixture-native-converter/` declares the same
+converter in both documents, and its manifest lists the source format its release
+declaration names.
+
+The standalone tool reads the declaration instead of recognising formats it was compiled
+with. `licoup-migrate`'s `converter` module takes the required pair from the client's
+embedded frontier catalogue — the same single source/target pair startup admission uses —
+reads a package manifest and answers which package owns that pair. Identification consults
+no client version: which client builds may load a package (`compatibility`) and which
+formats it owns are separate claims, so a package released for another client line still
+owns its formats, and source support is never inferred from the version of the installed
+old client. A package whose declared formats are not the required pair is refused even when
+it carries a native converter, and the tool holds no table of package names or format
+aliases. With a package root the tool also checks that the entry the manifest promises is a
+file inside that root.
+
+Not implemented in this contract: obtaining and verifying a package, running its converter,
+reading the signed release index, and coordinating one migration across supported skipped
+releases. That acquisition, verification and end-to-end coordination belongs to
+PACKAGE-MIGRATION-COORDINATOR. The `inspect`, `plan`, `convert`, `resume`, `export`,
+`import` and `rehearse` verbs keep driving the client's own migration owner exactly as
+before, and no package converter entry is executed.
 
 ## Client update selection
 
