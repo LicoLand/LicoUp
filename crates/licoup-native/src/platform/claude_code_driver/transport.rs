@@ -36,7 +36,7 @@ impl PersistentTransport {
         control_receiver: Receiver<ControlRequest>,
         max_stderr: usize,
     ) -> Result<Self, ProtocolFailure> {
-        let mut child = identity.spawn().map_err(|error| {
+        let mut child = super::launch::spawn(identity).map_err(|error| {
             let message = match error.kind() {
                 std::io::ErrorKind::NotFound => "The Claude Code executable is not available.",
                 std::io::ErrorKind::PermissionDenied => {
