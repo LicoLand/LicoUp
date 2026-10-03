@@ -17,6 +17,8 @@ import 'package:licoup/src/application/features/catalog_convergence/controller/c
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
 import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_center_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_recommendation_controller.dart';
 import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_controller.dart';
 import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
@@ -47,6 +49,8 @@ mixin ClientLifecycleFacade
   @override
   SkillHubController get skillHubController;
   CatalogConvergenceController get catalogConvergenceController;
+  PackageCenterController get packageCenterController;
+  PackageRecommendationController get packageRecommendationController;
   @override
   LlmGatewayLifecycleController get llmGatewayLifecycleController;
   LlmVaultAuthorization get llmVaultAuthorization;
@@ -127,6 +131,15 @@ mixin ClientLifecycleFacade
       ),
     ),
     ClientBootstrapStep(id: 'client_catalog', action: _initializeClientCatalog),
+    // First launch settles the package center after the catalogue, never before
+    // it. The step is optional twice over: it never throws, and the coordinator
+    // treats any failure as an unavailable optional step rather than a failed
+    // startup.
+    ClientBootstrapStep(
+      id: 'client_package_recommendation',
+      requiredForStartup: false,
+      action: _initializePackageRecommendation,
+    ),
   ];
 
   List<ClientBootstrapStep> get _clientBackgroundSteps =>
@@ -264,6 +277,26 @@ mixin ClientLifecycleFacade
 
   Future<void> _initializeClientCatalog() =>
       catalogConvergenceController.bootstrap();
+
+  /// First launch: read the native package catalogue, scan for detected Agents
+  /// off the frame, and offer the recommended packages as one confirmation.
+  ///
+  /// The durable first-launch marker is written by the recommendation
+  /// controller before the offer is shown, so a quit, a crash or a refusal never
+  /// repeats the offer. Nothing here throws: a failed scan or a failed install
+  /// leaves the client fully usable and only the optional step unavailable.
+  Future<void> _initializePackageRecommendation() async {
+    if (mobileClientRuntimePlatform) return;
+    final dataRoot = portableDataPath.trim();
+    if (dataRoot.isEmpty) return;
+    packageCenterController.useDataRoot(dataRoot);
+    await packageRecommendationController.load();
+    await packageCenterController.refresh();
+    await adapterPluginController.refresh();
+    await packageRecommendationController.runFirstLaunch(
+      adapters: adapterPluginController.adapters,
+    );
+  }
 
   /// Startup auto-check: silently checks the GitHub release source once.
   /// Failures are non-blocking and never disturb the user; when an update is

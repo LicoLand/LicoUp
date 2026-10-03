@@ -26,4 +26,9 @@ abstract interface class ShellRendererPort {
   });
 
   void resetAgentsHome(GlobalKey agentsHomeKey);
+
+  /// Wraps the rendered shell content with the features that must be reachable
+  /// from every destination, such as the one package-recommendation
+  /// confirmation. A renderer that owns no such feature returns [child].
+  Widget wrapShellContent(BuildContext context, Widget child) => child;
 }

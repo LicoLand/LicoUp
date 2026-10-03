@@ -29,6 +29,7 @@ import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel.
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_pairing_channels.dart';
 import 'package:licoup/src/frontend/features/models/ui/models_panel.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/package_recommendation_sheet_host.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_panel.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -141,6 +142,10 @@ final class BindingShellRenderer implements ShellRendererPort {
 
   @override
   GlobalKey createAgentsHomeKey() => GlobalKey<MobileAgentsHomeState>();
+
+  @override
+  Widget wrapShellContent(BuildContext context, Widget child) =>
+      PackageRecommendationSheetHost(binding: _pluginManagement, child: child);
 
   @override
   Widget buildDestination(

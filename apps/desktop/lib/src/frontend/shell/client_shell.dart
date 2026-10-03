@@ -145,25 +145,28 @@ class _ClientShellState extends State<ClientShell>
     StatusProjection status,
   ) {
     final colors = context.licoColors;
-    return LayoutChromeFeaturesScope(
-      features: _chromeFeatures,
-      child: LayoutHost(
-        selection: selection,
-        registry: widget.renderer.layoutRegistry,
-        stateStore: widget.renderer.layoutStateStore,
-        environment: environment,
-        destination: navigation.destination,
-        availableDestinations: navigation.destinations,
-        onSelectDestination: (destination) =>
-            widget.binding.intents.send(SelectShellDestination(destination)),
-        destinationLabel: (destination) =>
-            _destinationLabel(LicoStrings.of(context), destination),
-        content: this,
-        focusCoordinator: _focusCoordinator,
-        primaryFocusTarget: LayoutFocusTargets.primaryLandmark,
-        loadingBuilder: (context) => _startupLoading(context, status),
-        palette: layoutPaletteFromColors(colors),
-        chrome: _layoutChrome,
+    return widget.renderer.wrapShellContent(
+      context,
+      LayoutChromeFeaturesScope(
+        features: _chromeFeatures,
+        child: LayoutHost(
+          selection: selection,
+          registry: widget.renderer.layoutRegistry,
+          stateStore: widget.renderer.layoutStateStore,
+          environment: environment,
+          destination: navigation.destination,
+          availableDestinations: navigation.destinations,
+          onSelectDestination: (destination) =>
+              widget.binding.intents.send(SelectShellDestination(destination)),
+          destinationLabel: (destination) =>
+              _destinationLabel(LicoStrings.of(context), destination),
+          content: this,
+          focusCoordinator: _focusCoordinator,
+          primaryFocusTarget: LayoutFocusTargets.primaryLandmark,
+          loadingBuilder: (context) => _startupLoading(context, status),
+          palette: layoutPaletteFromColors(colors),
+          chrome: _layoutChrome,
+        ),
       ),
     );
   }

@@ -21,6 +21,8 @@ final class PluginManagementFeatureComposition {
        _beginRendererIntent = beginRendererIntent {
     _projection = PluginManagementProjectionProducer(
       plugins: controller.adapterPluginController,
+      packages: controller.packageCenterController,
+      recommendations: controller.packageRecommendationController,
       collaboration: controller.optionalCollaborationController,
     );
     _effects = SemanticEffectChannel<PluginManagementEffect>();
@@ -65,6 +67,62 @@ final class PluginManagementFeatureComposition {
     switch (intent) {
       case RefreshPlugins():
         await _controller.adapterPluginController.refresh();
+        await _controller.packageCenterController.refresh();
+      case InstallPackage(:final packageId, :final archive):
+        if (packageId.isEmpty || archive.isEmpty) {
+          // The archive is the bytes the user holds; without one there is
+          // nothing to review and nothing to apply.
+          _effects.emit(
+            PluginActionRejected(
+              'packages',
+              'package_install_source_missing',
+              trace: trace,
+            ),
+          );
+          break;
+        }
+        if (!await _controller.packageCenterController.installFromArchive(
+          archive,
+        )) {
+          _effects.emit(
+            PluginActionRejected(
+              'packages',
+              'package_install_failed',
+              trace: trace,
+            ),
+          );
+        }
+      case UninstallPackage(:final packageId, :final version):
+        if (!await _controller.packageCenterController.uninstall(
+          packageId: packageId,
+          version: version,
+        )) {
+          _effects.emit(
+            PluginActionRejected(
+              'packages',
+              'package_uninstall_failed',
+              trace: trace,
+            ),
+          );
+        }
+      case SetPackageEnabled(:final packageId, :final version, :final enabled):
+        if (!await _controller.packageCenterController.setEnabled(
+          packageId: packageId,
+          version: version,
+          enabled: enabled,
+        )) {
+          _effects.emit(
+            PluginActionRejected(
+              'packages',
+              enabled ? 'package_enable_failed' : 'package_disable_failed',
+              trace: trace,
+            ),
+          );
+        }
+      case ResolvePackageRecommendation(:final accepted):
+        await _controller.packageRecommendationController.resolveOffer(
+          accepted: accepted,
+        );
       case PlanPluginInstall(:final agentId, :final pluginId):
         await _planPluginLifecycle(
           agentId: agentId,
