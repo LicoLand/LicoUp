@@ -1,5 +1,6 @@
 import {
   NATIVE_MANIFEST,
+  rustAgentPackageLayer,
   RUST_COMPOSITION_INPUTS,
   command,
   foundationLayer,
@@ -1820,9 +1821,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Read-only cross-process Codex rollout ownership observation",
       inputs: [
-        "crates/licoup-native/src/platform/codex_runtime_observation.rs",
+        "crates/licoup-agent-codex/src/observation.rs",
       ],
-      command: rustLayer("platform::codex_runtime_observation::tests::"),
+      command: rustAgentPackageLayer("observation::"),
     }),
   defineModule({
       id: "rust.platform.codex-app-server.config",

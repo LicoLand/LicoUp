@@ -22,6 +22,10 @@ default = []
 
 [dependencies]
 licoup-agent-adapter-sdk = { path = "../licoup-agent-adapter-sdk" }
+# The shared bounded-process owner a read-only observation asks for; the package
+# supervises no child of its own and this is the same bounded runner the client
+# uses, so an observation cannot outlive its bound.
+licoup-foundation = { path = "../licoup-foundation" }
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true

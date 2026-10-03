@@ -2076,6 +2076,7 @@ version = "0.14.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
  "licoup-extension-contracts",
+ "licoup-foundation",
  "serde",
  "serde_json",
  "uuid",

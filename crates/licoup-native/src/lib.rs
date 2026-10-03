@@ -45,7 +45,7 @@ pub(crate) mod model_catalog_port;
 /// calls it keeps every port fail-closed.
 pub fn install_environment_ports() -> Result<(), &'static str> {
     domain::conversation::history::install_open_codex_rollouts(
-        platform::codex_runtime_observation::open_rollout_paths,
+        licoup_agent_codex::observation::open_rollout_paths,
     )?;
     platform::gateway_composition::install_readiness()?;
     platform::stop_control::install_subagent_claim_stop(stop_subagent_claim)?;

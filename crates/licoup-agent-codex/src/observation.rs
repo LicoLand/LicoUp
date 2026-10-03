@@ -1,5 +1,11 @@
 //! Read-only evidence for Codex conversations owned by another app-server.
 //!
+//! It is this package's observation, not the client's: that Codex retains a
+//! rollout file for an active app-server is a Codex protocol fact, so a client
+//! that carries no Codex package carries no Codex process scan either. The
+//! client asks this package for the answer and combines it with its own
+//! conversation state.
+//!
 //! Codex `thread/list` reports another app-server's threads as `notLoaded`, so
 //! it cannot answer whether the Codex desktop client is still running a turn.
 //! On Unix, an active or loaded app-server retains its rollout file. This
@@ -16,14 +22,14 @@ use std::process::Command;
 use std::time::Duration;
 
 #[cfg(unix)]
-use super::run_bounded_command_output;
+use licoup_foundation::platform::process_supervisor::run_bounded_command_output;
 
 #[cfg(unix)]
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(3);
 #[cfg(unix)]
 const MAX_CAPTURE_BYTES: usize = 4 * 1024 * 1024;
 
-pub(crate) fn open_rollout_paths() -> BTreeSet<PathBuf> {
+pub fn open_rollout_paths() -> BTreeSet<PathBuf> {
     capture_open_rollout_paths()
         .into_iter()
         .map(|path| fs::canonicalize(&path).unwrap_or(path))

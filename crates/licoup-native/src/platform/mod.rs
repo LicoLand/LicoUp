@@ -7,7 +7,6 @@ pub mod authorized_secure_record;
 pub(crate) mod badtower_station;
 mod claude_code_driver;
 mod codex_app_server;
-pub(crate) mod codex_runtime_observation;
 pub(crate) mod conversation_lane;
 mod copilot_driver;
 mod cursor_driver;

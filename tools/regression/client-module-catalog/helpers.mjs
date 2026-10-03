@@ -233,6 +233,24 @@ export function rustAdapterSdkLayer(filter, harnessArgs = []) {
   );
 }
 
+/// One module of the Codex adapter package's library. The package is its own
+/// crate and program, so its leaves run against its own manifest rather than
+/// against the host that composes it.
+export function rustAgentPackageLayer(filter, harnessArgs = []) {
+  return command(
+    "cargo",
+    [
+      "test",
+      "--manifest-path",
+      AGENT_CODEX_MANIFEST,
+      "--lib",
+      filter,
+      ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),
+    ],
+    10 * 60_000,
+  );
+}
+
 export function gatewayCoreLayer(filter, harnessArgs = []) {
   return command(
     "cargo",

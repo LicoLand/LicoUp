@@ -73,6 +73,10 @@ fn a_completed_execution_becomes_the_reply_transitions_of_this_agent() {
     assert_eq!(
         completed,
         vec![
+            Transition::Lifecycle(LifecycleStage::Submitted),
+            Transition::Lifecycle(LifecycleStage::Accepted),
+            Transition::Lifecycle(LifecycleStage::Processing),
+            Transition::Lifecycle(LifecycleStage::Responding),
             Transition::Text {
                 unit_id: "codex:reply".to_owned(),
                 text: "answer".to_owned(),
@@ -81,15 +85,21 @@ fn a_completed_execution_becomes_the_reply_transitions_of_this_agent() {
         ]
     );
 
-    // An empty output is not a text transition: the parser reports the stage and
-    // nothing it did not receive.
+    // An empty output is not a text transition: the parser reports the stages it
+    // reached and nothing it did not receive.
     let empty = transitions(&ExecutionOutcome {
         output: "",
         failure: None,
     });
     assert_eq!(
         empty,
-        vec![Transition::Lifecycle(LifecycleStage::Completed)]
+        vec![
+            Transition::Lifecycle(LifecycleStage::Submitted),
+            Transition::Lifecycle(LifecycleStage::Accepted),
+            Transition::Lifecycle(LifecycleStage::Processing),
+            Transition::Lifecycle(LifecycleStage::Responding),
+            Transition::Lifecycle(LifecycleStage::Completed),
+        ]
     );
 }
 

@@ -32,6 +32,7 @@
 //! execution port is fail-closed.
 
 pub mod app_server;
+pub mod observation;
 pub mod parser;
 pub mod port;
 pub mod registration;
