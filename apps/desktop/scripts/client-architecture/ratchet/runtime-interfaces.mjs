@@ -62,9 +62,9 @@ const SOURCES = Object.freeze({
   [N + "platform/lico_agent_driver/probe.rs"]: "b968dbfd55ec7e1ca7c83aa5d5fedfc244c6b554d8fe96a441923fa22e0d3179",
   [N + "platform/local_service/process.rs"]: "ab1a749eeffbdca47267a6c888882e033eb2c647da48a0beef7fa79399e38adc",
   [MIGRATE_CONVERTER]: "1a468623ec8a3a0d23371c0dad7fdfdcb145f5cd6886cb306776c6f3acc59277",
-  [N + "platform/mcp_service_process.rs"]: "9d99d104e078e13197dc21676a5eb50a25ac23be8906292a9b96c7128f75b8ff",
+  [N + "platform/mcp_service_process.rs"]: "2489fdf68618b2aeb3e803114636017898ff2e805aa0d947e693085599a204e9",
   [N + "platform/local_service/process.rs"]: "ab1a749eeffbdca47267a6c888882e033eb2c647da48a0beef7fa79399e38adc",
-  [N + "platform/mcp_service_process.rs"]: "7f86d3232b4ead80180bd520f8e4e82979c52cedce8e612fbc178a2f98bb6d12",
+  [N + "platform/mcp_service_process.rs"]: "2489fdf68618b2aeb3e803114636017898ff2e805aa0d947e693085599a204e9",
   [N + "platform/openclaw_driver/probe.rs"]: "49a1e80055550a28d5de652f4236dfbf3c99ba53ea53c86692b44810f0d23862",
   [N + "platform/openclaw_driver/supervision.rs"]: "c41128bbbaf81904d6c263ea97988ea1265dd74fa30d8867be73cdce134079bd",
   [N + "platform/openclaw_gateway/command.rs"]: "5b747fa62fa6cd21074aa05990cf195377eeafed75907262598c40a1ac842601",
@@ -248,7 +248,7 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
     ["7e16ee355cb6", "Detach a source-declared caller-prepared std Command with platform process-group flags; the selected program cannot be inferred from the receiver name alone."],
   ]),
   ...entries(N + "platform/mcp_service_process.rs", parameter("binary: Option<&Path>"), [
-    ["25b8c55d297b", "Run the independently built MCP service lifecycle using the optional caller binary or packaged sibling default, supplying the owning CLI and selected home without linking the service into the kernel."],
+    ["25b8c55d297b", "Run the MCP service generation the installed package store selects, supplying the owning CLI and selected home without linking the service into the kernel; a caller-supplied binary must canonicalize to that generation entry."],
   ]),
   ...entries(N + "platform/openclaw_driver/probe.rs", parameter("executable: &str"), [
     ["298e735358b7", "Construct OpenClaw's bounded capability probe from the selected local executable with the source-owned untrusted-Agent preparation."],

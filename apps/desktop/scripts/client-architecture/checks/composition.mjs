@@ -149,7 +149,7 @@ export async function checkConversationBridges(context, { packagedTargets, conve
       agentConversationWorkspaceSource.includes("buildConversationTimelineItems(") &&
       agentConversationWorkspaceSource.includes("PostConversationMessage(") &&
       agentConversationComposerSource.includes("class RuntimeMessageComposer") &&
-      agentConversationComposerSource.includes("TextField(") &&
+      agentConversationComposerSource.includes("InputField(") &&
       agentConversationComposerSource.includes("widget.onSend(text)") &&
       agentConversationTimelineSource.includes("class ConversationExecutionMenu") &&
       agentConversationTimelineSource.includes("ProjectionSource<ConversationExecutionProjection>") &&
