@@ -30,12 +30,24 @@ pub(super) fn ensure_private_state_parent(path: &Path) -> Result<()> {
 }
 
 pub(super) fn ensure_atomic_write_parent(path: &Path) -> Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| anyhow!("private state file parent is missing"))?;
+    let parent = sync::parent_or_current(path)?;
     validate_private_path_ancestors(parent)?;
     if !parent.try_exists()? {
+        // Record the missing chain before creating it, then sync each created
+        // directory's parent so the new entries are durable, not only their contents.
+        let mut missing = Vec::new();
+        let mut current = parent.to_path_buf();
+        while fs::symlink_metadata(&current).is_err() {
+            missing.push(current.clone());
+            match current.parent() {
+                Some(next) if !next.as_os_str().is_empty() => current = next.to_path_buf(),
+                _ => break,
+            }
+        }
         fs::create_dir_all(parent)?;
+        for directory in &missing {
+            sync::parent(directory)?;
+        }
     }
     let metadata = fs::symlink_metadata(parent)
         .map_err(|_| anyhow!("private state file parent is unavailable"))?;
@@ -193,6 +205,9 @@ pub fn validate_no_symlink_ancestors(path: &Path) -> Result<()> {
     let mut current = PathBuf::new();
     for component in absolute.components() {
         current.push(component.as_os_str());
+        if matches!(component, std::path::Component::Prefix(_)) {
+            continue;
+        }
         match fs::symlink_metadata(&current) {
             Ok(metadata) => ensure!(
                 !metadata.file_type().is_symlink(),

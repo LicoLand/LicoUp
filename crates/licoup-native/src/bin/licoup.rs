@@ -36,10 +36,18 @@ fn main() -> Result<()> {
         .target(env_logger::Target::Stderr)
         .init();
     let args = env::args().skip(1).collect::<Vec<_>>();
-    // Relocation uses a dedicated, otherwise idle RPC process: its command
-    // must acquire the exclusive coordinator lease rather than wait on its
-    // own process-lifetime shared lease.
-    let _data_home_access = if args.as_slice() == ["rpc", "data-home"] {
+    // Relocation and archive recovery use dedicated, otherwise idle processes: they
+    // must acquire the exclusive coordinator lease rather than wait on their own
+    // process-lifetime shared lease.
+    let host_stop_control = matches!(args.as_slice(), [rpc, host, action]
+        if rpc == "rpc" && host == "conversation-host"
+            && matches!(action.as_str(), "--stop" | "stop" | "--shutdown" | "shutdown"));
+    let exclusive_data_home_process = args.as_slice() == ["rpc", "data-home"]
+        // A stop request only controls an already owned host. Taking a shared
+        // data lease here would prevent it from draining an exclusive barrier.
+        || host_stop_control
+        || args.first().map(String::as_str) == Some("backup");
+    let _data_home_access = if exclusive_data_home_process {
         None
     } else {
         Some(licoup_foundation::platform::data_home_access::acquire_process_data_home_access()?)

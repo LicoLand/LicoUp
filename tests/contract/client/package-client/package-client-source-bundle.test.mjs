@@ -20,6 +20,7 @@ const moduleRoot = "apps/desktop/scripts/package-client";
 const leaves = Object.freeze([
   "build/flutter.mjs",
   "build/native.mjs",
+  "build/release-tools.mjs",
   "build/swift.mjs",
   "bundle-resolver/linux.mjs",
   "bundle-resolver/macos.mjs",
@@ -51,7 +52,7 @@ async function sources() {
   );
 }
 
-test("clean Flutter staging closes the pure presentation package boundary", async () => {
+test("clean Flutter staging closes all declared presentation package boundaries", async () => {
   const cleanBuildRoot = await fs.mkdtemp(
     path.join(os.tmpdir(), "lico-package-client-stage-"),
   );
@@ -78,25 +79,33 @@ test("clean Flutter staging closes the pure presentation package boundary", asyn
       ),
       true,
     );
-    for (const generatedState of [
-      ".dart_tool",
-      ".flutter-plugins",
-      ".flutter-plugins-dependencies",
-      ".idea",
-      "build",
-    ]) {
-      assert.equal(
-        await fileExists(path.join(stagedContractRoot, generatedState)),
-        false,
-        generatedState,
-      );
+    const presentationPackages = ["presentation_contract", "presentation_flutter", "presentation_runtime"];
+    const manifest = await fs.readFile(path.join(stagedFlutterRoot, "pubspec.yaml"), "utf8");
+    for (const name of presentationPackages) {
+      assert.ok(manifest.includes(`path: ../../packages/${name}`));
+      const staged = path.join(path.dirname(stagedContractRoot), name);
+      assert.equal(await fileExists(path.join(staged, "pubspec.yaml")), true, name);
+      assert.equal(await fileExists(path.join(staged, "lib", `${name}.dart`)), true, name);
+      for (const generatedState of [
+        ".dart_tool",
+        ".flutter-plugins",
+        ".flutter-plugins-dependencies",
+        ".idea",
+        "build",
+      ]) {
+        assert.equal(
+          await fileExists(path.join(staged, generatedState)),
+          false,
+          `${name}/${generatedState}`,
+        );
+      }
     }
     const stagedPackages = await fs.readdir(path.dirname(stagedContractRoot), {
       withFileTypes: true,
     });
     assert.deepEqual(
       stagedPackages.map((entry) => `${entry.name}:${entry.isDirectory()}`).sort(),
-      ["presentation_contract:true"],
+      presentationPackages.map((name) => `${name}:true`),
     );
   } finally {
     if (previousCleanBuildRoot === undefined) {
@@ -126,7 +135,7 @@ test("package client facade preserves exactly the six existing named exports", a
   assert.equal(facade.includes("function packageClient("), false);
 });
 
-test("package client migration owns exactly nineteen bounded ordinary modules", async () => {
+test("package client keeps an exact bounded module inventory", async () => {
   assert.deepEqual(await collectModules(moduleRoot), [...leaves]);
   const source = await sources();
   for (const leaf of Object.keys(source)) {

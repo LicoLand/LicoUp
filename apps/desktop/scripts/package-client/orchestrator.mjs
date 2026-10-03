@@ -17,6 +17,10 @@ import {
 } from "./module-selection.mjs";
 import { runPackageProcess } from "./process-runner.mjs";
 import { buildNativeSidecars } from "./build/native.mjs";
+import {
+  buildReleaseTools,
+  selectReleaseToolDescriptor,
+} from "./build/release-tools.mjs";
 import { buildSwiftSidecars } from "./build/swift.mjs";
 import {
   assertFlutterBuildPrereqs,
@@ -67,6 +71,10 @@ export function packageClient(
   const flutterBuildAttempted = !options.skipFlutterBuild;
   try {
     buildNativeSidecars(selected, options);
+    // Optional release tools are target-catalog capabilities, never bundle resources.
+    // Platforms without such a declaration do not execute this build stage.
+    const releaseTool = selectReleaseToolDescriptor(options.platform);
+    if (releaseTool) buildReleaseTools(options, releaseTool);
     buildSwiftSidecars(selected, options);
     if (buildFlutterApp(options)) {
       rmSync(packagedBundleRoot(options), { recursive: true, force: true });

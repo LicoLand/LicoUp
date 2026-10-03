@@ -16,6 +16,8 @@ test("regression report allowlists numeric metrics and never retains command out
     startedAt: "2026-01-01T00:00:00.000Z",
     completedAt: "2026-01-01T00:00:01.000Z",
     durationMs: 1_000,
+    candidateHead: "a".repeat(40),
+    sourceStateDigest: `sha256:${"b".repeat(64)}`,
     concurrency: { maximumWeight: 4, maximumProcesses: 2, poolPeaks: { rust: 4 } },
     results: [{
       id: "rust-target-1",
@@ -26,6 +28,7 @@ test("regression report allowlists numeric metrics and never retains command out
       reason: canary,
       durationMs: 1_000,
       members: ["rust.domain.synthetic"],
+      evidenceHead: "a".repeat(40),
       metrics: {
         wallTimeMs: { status: "measured", value: 1_000, rawOutput: canary },
         directCpuMs: { status: "unavailable", reason: "native_metric_unavailable", raw: canary },
@@ -58,6 +61,8 @@ test("regression report allowlists numeric metrics and never retains command out
 
   assert.equal(JSON.stringify(report).includes(canary), false);
   assert.equal(report.complete, true);
+  assert.equal(report.candidateHead, "a".repeat(40));
+  assert.equal(report.results[0].evidenceHead, "a".repeat(40));
   assert.equal(report.status, "failed");
   assert.equal(report.results[0].reason, "execution_failed");
   assert.equal(report.compatibility[0].reason, "compatibility_failed");

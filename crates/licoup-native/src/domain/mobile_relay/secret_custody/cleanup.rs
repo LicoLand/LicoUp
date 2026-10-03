@@ -14,6 +14,12 @@ pub(in crate::domain::mobile_relay) fn e2ee_secret_store_cleanup_in(
     );
 
     let config = load_config_for_disposable_cleanup()?;
+    if let Some(origin) = recorded_custody_namespace(&config)? {
+        ensure!(
+            origin == current_custody_namespace()?,
+            "relocated custody requires its owning cleanup authority"
+        );
+    }
     let pairwise_path = mobile_relay_pairwise_store_path()?;
     let pairwise_database_present_before = pairwise_path.exists();
     let pairwise_handles = if pairwise_database_present_before {
@@ -173,7 +179,13 @@ pub(in crate::domain::mobile_relay) fn native_secret_store() -> PlatformSecretSt
 
 pub(in crate::domain::mobile_relay) fn native_secret_store_namespace() -> Result<String> {
     let path = config_path()?;
-    Ok(sha256_hex(path.to_string_lossy().as_bytes()))
+    Ok(native_secret_store_namespace_for_config_path(&path))
+}
+
+pub(in crate::domain::mobile_relay) fn native_secret_store_namespace_for_config_path(
+    path: &Path,
+) -> String {
+    sha256_hex(path.to_string_lossy().as_bytes())
 }
 
 pub(in crate::domain::mobile_relay) fn native_secret_store_handle_for_namespace(

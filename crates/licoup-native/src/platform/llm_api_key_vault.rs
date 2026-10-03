@@ -36,6 +36,15 @@ const INVENTORY_FILE: &str = "llm-api-key-inventory.json";
 const MAX_INVENTORY_BYTES: usize = 64 * 1024;
 const EPOCH_FILE: &str = "llm-gateway-credential-epoch";
 
+/// Metadata-only applicability of the published legacy custody transition.
+/// It never measures current key availability or requests user presence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LegacyCredentialMigrationDisposition {
+    RequiresAuthorization,
+    NotApplicable,
+}
+
 pub struct PlatformLlmApiKeyVault {
     store: PlatformSecretStore,
     inventory_path: PathBuf,
@@ -43,6 +52,24 @@ pub struct PlatformLlmApiKeyVault {
 }
 
 impl PlatformLlmApiKeyVault {
+    pub fn legacy_credential_migration_disposition() -> Result<LegacyCredentialMigrationDisposition>
+    {
+        Self::legacy_credential_migration_disposition_for(std::env::consts::OS)
+    }
+
+    /// The same platform-owned declaration is read by the repository diagnostic.
+    pub fn legacy_credential_migration_disposition_for(
+        platform: &str,
+    ) -> Result<LegacyCredentialMigrationDisposition> {
+        let policy: BTreeMap<String, LegacyCredentialMigrationDisposition> = serde_json::from_str(
+            include_str!("../../resources/gateway-credential-migration.json"),
+        )?;
+        policy
+            .get(platform)
+            .copied()
+            .ok_or_else(|| anyhow!("gateway_credential_migration_platform_unknown"))
+    }
+
     pub fn production() -> Result<Self> {
         Self::at_state_root(paths::portable_data_dir()?)
     }
@@ -788,3 +815,33 @@ mod tests {
 
 #[cfg(all(test, target_os = "macos"))]
 mod migration_tests;
+
+#[cfg(test)]
+mod disposition_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_custody_disposition_is_owned_by_the_platform_projection() {
+        for (platform, expected) in [
+            (
+                "macos",
+                LegacyCredentialMigrationDisposition::RequiresAuthorization,
+            ),
+            (
+                "windows",
+                LegacyCredentialMigrationDisposition::NotApplicable,
+            ),
+            ("linux", LegacyCredentialMigrationDisposition::NotApplicable),
+        ] {
+            assert_eq!(
+                PlatformLlmApiKeyVault::legacy_credential_migration_disposition_for(platform)
+                    .unwrap(),
+                expected
+            );
+        }
+        assert!(
+            PlatformLlmApiKeyVault::legacy_credential_migration_disposition_for("unrecognized")
+                .is_err()
+        );
+    }
+}

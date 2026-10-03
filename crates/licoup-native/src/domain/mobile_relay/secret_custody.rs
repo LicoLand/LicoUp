@@ -28,15 +28,18 @@ use uuid::Uuid;
 use super::config::{default_config, normalize_config, prepare_station_fields_for_persistence};
 use super::endpoint_trust::{
     ensure_mobile_relay_endpoint_descriptor, ensure_mobile_relay_endpoint_material,
-    local_endpoint_state, secure_mesh_mls_state_dir, sha256_hex,
+    existing_identity_requires_custody, local_endpoint_state, secure_mesh_mls_state_dir,
+    sha256_hex, validate_existing_identity_custody,
 };
 use super::pairwise_session::{mobile_relay_pairwise_store, mobile_relay_pairwise_store_path};
 use super::support::{bool_param, text_param};
 
 mod cleanup;
 mod config_store;
+mod inventory;
 mod persistence;
 mod presentation;
+mod recovery;
 mod reset_guard;
 mod runtime;
 mod runtime_secret_material;
@@ -48,8 +51,10 @@ mod tests;
 
 pub(in crate::domain::mobile_relay) use cleanup::*;
 pub(in crate::domain::mobile_relay) use config_store::*;
+pub(in crate::domain::mobile_relay) use inventory::*;
 pub(in crate::domain::mobile_relay) use persistence::*;
 pub(in crate::domain::mobile_relay) use presentation::*;
+pub(crate) use recovery::prepare_recovered_custody_metadata;
 pub(in crate::domain::mobile_relay) use reset_guard::*;
 pub(in crate::domain::mobile_relay) use runtime::*;
 #[cfg(test)]

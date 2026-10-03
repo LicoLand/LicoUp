@@ -9,7 +9,7 @@ class MobileRelayJsonStore {
   const MobileRelayJsonStore();
 
   static int _atomicWriteSequence = 0;
-  static final Map<String, Future<void>> _writeQueues = {};
+  static final Map<Object, Future<void>> _writeQueues = {};
 
   Future<Object?> read(Object portableData, String fileName) async {
     final file = await _file(portableData, fileName);
@@ -55,18 +55,19 @@ class MobileRelayJsonStore {
     if (portableData is! PortableDataRoot) {
       throw ArgumentError.value(portableData, 'portableData');
     }
-    await portableData.withAppManagedWriter(() async {
-      final file = await _file(portableData, fileName);
-      await file.parent.create(recursive: true);
-      if (lock) {
+    await portableData.withAppManagedWriter(
+      // Reserve document submission order before asynchronous path resolution.
+      // The physical-path queue also coordinates distinct roots for one file.
+      () => _enqueueWrite((portableData, fileName), () async {
+        final file = await _file(portableData, fileName);
         await _enqueueWrite(
-          file,
-          () => _writeJsonAtomicallyWithLock(file, payload),
+          file.absolute.path,
+          () => lock
+              ? _writeJsonAtomicallyWithLock(file, payload)
+              : _writeJsonAtomically(file, payload),
         );
-        return;
-      }
-      await _enqueueWrite(file, () => _writeJsonAtomically(file, payload));
-    });
+      }),
+    );
   }
 
   Future<File> _file(Object portableData, String fileName) async {
@@ -94,6 +95,7 @@ class MobileRelayJsonStore {
   }
 
   Future<void> _writeJsonAtomicallyWithLock(File file, Object? payload) async {
+    await file.parent.create(recursive: true);
     final lock = File(
       p.join(file.parent.path, '${p.basename(file.path)}.lock'),
     );
@@ -110,8 +112,7 @@ class MobileRelayJsonStore {
     }
   }
 
-  Future<void> _enqueueWrite(File file, Future<void> Function() write) async {
-    final key = file.absolute.path;
+  Future<void> _enqueueWrite(Object key, Future<void> Function() write) async {
     final previous = _writeQueues[key] ?? Future<void>.value();
     final queued = previous.catchError((_) {}).then((_) => write());
     _writeQueues[key] = queued;

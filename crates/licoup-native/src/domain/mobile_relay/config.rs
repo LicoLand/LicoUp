@@ -116,6 +116,16 @@ pub(super) fn normalize_config(value: Value) -> Value {
 }
 
 pub(crate) fn migrate_config_document(value: &mut Value) -> Result<()> {
+    validate_config_for_migration(value)?;
+    value
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("mobile relay config exists but is not an object"))?
+        .insert("schemaVersion".to_owned(), json!(CONFIG_SCHEMA_VERSION));
+    Ok(())
+}
+
+/// Read-only recognition of exactly the formats the owning migration accepts.
+pub(crate) fn validate_config_for_migration(value: &Value) -> Result<()> {
     let schema = value
         .get("schemaVersion")
         .and_then(Value::as_u64)
@@ -125,10 +135,6 @@ pub(crate) fn migrate_config_document(value: &mut Value) -> Result<()> {
         "mobile relay config is newer than this client"
     );
     ensure_local_pairwise_protocol_compatible(value)?;
-    value
-        .as_object_mut()
-        .ok_or_else(|| anyhow!("mobile relay config exists but is not an object"))?
-        .insert("schemaVersion".to_owned(), json!(CONFIG_SCHEMA_VERSION));
     Ok(())
 }
 

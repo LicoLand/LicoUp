@@ -12,6 +12,7 @@ use super::{
     StrategyDefinition, StrategyDefinitionSummary, StrategyDiagnostic, StrategyProjection,
 };
 use crate::domain::workflow_runtime::ASSISTANT_TEMPORARY_DEFINITION_PREFIX;
+use licoup_foundation::core::sqlite_contract::ColumnVariant;
 use licoup_workflow::{
     BindingKind, CommandStatus, FailureClass, GraphState, GraphStateKind, ReducerEvent, RunCommand,
     RunSnapshot, StrategyRunStatus, Transition, TransitionEvent, TransitionMode,
@@ -35,8 +36,9 @@ pub struct StrategyStore {
 impl StrategyStore {
     pub fn open(portable_root: &Path) -> Result<Self> {
         let root = portable_root.join("client-state").join("adaptive-flywheel");
-        licoup_foundation::platform::file_security::ensure_private_dir(&root)?;
         let db_path = root.join(DATABASE_FILE);
+        preflight_existing_store(&db_path)?;
+        licoup_foundation::platform::file_security::ensure_private_dir(&root)?;
         let existed = db_path.exists();
         let store = Self {
             db_path,
@@ -56,6 +58,9 @@ impl StrategyStore {
 
     pub(crate) fn open_for_migration(portable_root: &Path) -> Result<Self> {
         let root = portable_root.join("client-state").join("adaptive-flywheel");
+        // Native admission validates the published physical input before this
+        // private conversion entry. Keep the owner's lower-level transforms
+        // testable without turning them into additional admitted endpoints.
         licoup_foundation::platform::file_security::ensure_private_dir(&root)?;
         let store = Self {
             db_path: root.join(DATABASE_FILE),
@@ -65,19 +70,6 @@ impl StrategyStore {
         licoup_foundation::platform::file_security::harden_private_path(&store.db_path)?;
         store.remove_retired_revision_trees(&retired);
         Ok(store)
-    }
-
-    pub(crate) fn migrate_to_schema_2(portable_root: &Path) -> Result<()> {
-        let root = portable_root.join("client-state").join("adaptive-flywheel");
-        licoup_foundation::platform::file_security::ensure_private_dir(&root)?;
-        let store = Self {
-            db_path: root.join(DATABASE_FILE),
-            package_revisions_root: Some(root.join("strategy-packages").join("revisions")),
-        };
-        let retired = store.with_connection(initialize_schema_2)?;
-        licoup_foundation::platform::file_security::harden_private_path(&store.db_path)?;
-        store.remove_retired_revision_trees(&retired);
-        Ok(())
     }
 
     pub fn open_in_memory() -> Result<Self> {
@@ -1486,17 +1478,19 @@ impl StrategyStore {
 }
 
 fn initialize_schema(connection: &mut Connection) -> Result<Vec<String>> {
-    initialize_schema_through(connection, true)
+    let retired = initialize_schema_through(connection)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    migrate_legacy_workflow_definitions(&transaction)?;
+    transaction.execute("UPDATE strategy_meta SET value='3' WHERE key='version'", [])?;
+    transaction.commit()?;
+    super::queue::initialize_schema(connection)?;
+    super::subscriptions::initialize_schema(connection)?;
+    super::commit::initialize_schema(connection)?;
+    super::control::initialize_schema(connection)?;
+    Ok(retired)
 }
 
-fn initialize_schema_2(connection: &mut Connection) -> Result<Vec<String>> {
-    initialize_schema_through(connection, false)
-}
-
-fn initialize_schema_through(
-    connection: &mut Connection,
-    include_workflow_routing: bool,
-) -> Result<Vec<String>> {
+fn initialize_schema_through(connection: &mut Connection) -> Result<Vec<String>> {
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS strategy_meta(
            key TEXT PRIMARY KEY, value TEXT NOT NULL
@@ -1598,18 +1592,6 @@ fn initialize_schema_through(
            ON strategy_runs(revision_digest, conversation_id, terminal, updated_at DESC);",
     )?;
     migrate_bindings_ordinal_primary_key(connection)?;
-    if include_workflow_routing {
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        migrate_legacy_workflow_definitions(&transaction)?;
-        transaction.execute("UPDATE strategy_meta SET value='3' WHERE key='version'", [])?;
-        transaction.commit()?;
-    } else {
-        connection.execute("UPDATE strategy_meta SET value='2' WHERE key='version'", [])?;
-    }
-    super::queue::initialize_schema(connection)?;
-    super::subscriptions::initialize_schema(connection)?;
-    super::commit::initialize_schema(connection)?;
-    super::control::initialize_schema(connection)?;
     Ok(retired)
 }
 
@@ -1657,6 +1639,84 @@ fn validate_current_schema(connection: &mut Connection) -> Result<()> {
     super::subscriptions::initialize_schema(connection)?;
     super::commit::initialize_schema(connection)?;
     super::control::initialize_schema(connection)?;
+    Ok(())
+}
+
+fn preflight_existing_store(path: &Path) -> Result<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    ensure!(
+        metadata.is_file() && !metadata.file_type().is_symlink(),
+        "unsupported_state_shape"
+    );
+    let connection = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let version: String = connection.query_row(
+        "SELECT value FROM strategy_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    ensure!(
+        matches!(version.as_str(), "2" | "3"),
+        "unsupported_state_shape"
+    );
+    ensure!(version == "3", "strategy_schema_migration_required");
+    validate_published_core_layout(&connection, &version)
+}
+
+/// Read-only validation of the published core layout.
+///
+/// `expected_meta_version` is the `strategy_meta.version` the caller classified
+/// the file as (`2` for the released layout, `3` for this binary's current
+/// one). The tables, columns, keys, foreign keys, uniqueness constraints and
+/// named indexes are then checked exactly, so a database that merely carries a
+/// version row — or a seven-table database whose ordinal primary key or unique
+/// authorization index is missing — is refused without writing a byte.
+pub(crate) fn validate_published_core_layout(
+    connection: &Connection,
+    expected_meta_version: &str,
+) -> Result<()> {
+    let version: Option<String> = connection
+        .query_row(
+            "SELECT value FROM strategy_meta WHERE key='version'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    ensure!(
+        version.as_deref() == Some(expected_meta_version),
+        "unsupported_state_shape"
+    );
+    // Validate all retained write semantics, including tables created on demand
+    // by the current owner. An absent auxiliary table is created by startup; a
+    // malformed existing table is never repaired by CREATE IF NOT EXISTS.
+    let mut reference = Connection::open_in_memory()?;
+    initialize_schema_through(&mut reference)?;
+    let required = licoup_foundation::core::sqlite_contract::tables(&reference)?;
+    super::queue::initialize_schema(&reference)?;
+    super::subscriptions::initialize_schema(&reference)?;
+    super::commit::initialize_schema(&reference)?;
+    super::control::initialize_schema(&reference)?;
+    let existing = licoup_foundation::core::sqlite_contract::tables(connection)?;
+    for table in licoup_foundation::core::sqlite_contract::tables(&reference)? {
+        if !existing.contains(&table) && !required.contains(&table) {
+            continue;
+        }
+        licoup_foundation::core::sqlite_contract::validate_table(
+            connection,
+            &reference,
+            &table,
+            match table.as_str() {
+                "strategy_runs" => Some(ColumnVariant::Nullable("terminal")),
+                // v0.2.1's ordinal-key conversion omitted the fresh-store
+                // DEFAULT 0. Both published producers supply ordinal values.
+                "strategy_bindings" => Some(ColumnVariant::MissingZeroDefault("ordinal")),
+                _ => None,
+            },
+        )?;
+    }
     Ok(())
 }
 
@@ -2393,6 +2453,7 @@ mod tests {
         assert_eq!(ordinal, 0);
         assert_eq!(active, 0);
         assert_eq!(version, "3");
+        validate_published_core_layout(&connection, "3").unwrap();
     }
 
     #[test]

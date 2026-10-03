@@ -795,6 +795,152 @@ mod tests {
     use std::io::BufRead as _;
 
     #[test]
+    fn runtime_bound_empty_service_retains_read_only_conversation_behavior() {
+        if std::env::var_os("LICOUP_SYNTHETIC_BOUND_OWNER").is_none() {
+            let root =
+                std::env::temp_dir().join(format!("licoup-bound-owner-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&root).unwrap();
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "conversation_host::tests::runtime_bound_empty_service_retains_read_only_conversation_behavior", "--nocapture"])
+                .env("LICOUP_SYNTHETIC_BOUND_OWNER", &root)
+                .env("HOME", root.join("home"))
+                .env("USERPROFILE", root.join("home"))
+                .env("XDG_CONFIG_HOME", root.join("home/config"))
+                .env("XDG_DATA_HOME", root.join("home/share"))
+                .env("APPDATA", root.join("home/appdata"))
+                .env("LOCALAPPDATA", root.join("home/local-appdata"))
+                .env("LICOUP_HOME", &root)
+                .env("LICOUP_MCP_AUTOSTART", "0")
+                .env("LICO_MOBILE_RELAY_NATIVE_SECRET_STORE", "disabled")
+                .output().unwrap();
+            let _ = std::fs::remove_dir_all(&root);
+            assert!(
+                output.status.success(),
+                "isolated owner boundary: stdout={} stderr={}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+        let root = PathBuf::from(std::env::var_os("LICOUP_SYNTHETIC_BOUND_OWNER").unwrap());
+        assert!(root.starts_with(std::env::temp_dir()));
+        assert!(
+            root.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("licoup-bound-owner-")
+        );
+        std::fs::create_dir_all(&root).unwrap();
+        let _access =
+            licoup_foundation::platform::data_home_access::acquire_process_data_home_access()
+                .unwrap();
+        let service = licoup_native::domain::client_conversation::ConversationService::open(&root)
+            .expect("synthetic owner opens");
+        let runtime = PersistentConversationRuntime::new(service.store().clone());
+        let bound = super::super::stdio_rpc::bind_conversation_runtime(service, &runtime, None);
+        let actual_database = bound.store().db_path().to_path_buf();
+        bound
+            .execute(serde_json::json!({"action": "conversation.list"}))
+            .expect("bound synthetic owner must list without an Agent or private runtime state");
+        let threaded = bound.clone();
+        std::thread::spawn(move || {
+            threaded.execute(serde_json::json!({"action":"conversation.list"}))
+        })
+        .join()
+        .unwrap()
+        .expect("bound owner must preserve its store across request threads");
+        let body = serde_json::json!({"action":"conversation.list"});
+        let args = super::super::private_stdin_json::materialize_private_stdin_json(
+            ["conversation", "execute", "--stdin-json", "true"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+            std::io::Cursor::new(body.to_string().into_bytes()),
+        )
+        .unwrap();
+        let admitted = licoup_native::ffi::commands::admit_cli_command(args).unwrap();
+        let (request, _) = licoup_native::ffi::commands::native_rpc::request_for_command(&admitted)
+            .unwrap()
+            .unwrap();
+        assert_eq!(request["params"], body);
+        let input = std::io::Cursor::new(format!("{request}\n").into_bytes());
+        let output = serve_stdio_rpc_with_persistent_conversation(
+            input,
+            Vec::new(),
+            execute_rpc_cli,
+            runtime,
+            bound,
+        )
+        .expect("synthetic persistent dispatcher runs");
+        let response: serde_json::Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(
+            response["ok"], true,
+            "synthetic dispatcher response: {response}"
+        );
+        let reference_root = root.join("reference-owner");
+        let reference_store =
+            licoup_native::domain::client_conversation::ConversationService::open(&reference_root)
+                .unwrap();
+        let actual_schema = rusqlite::Connection::open(&actual_database).unwrap();
+        let reference_schema =
+            rusqlite::Connection::open(reference_store.store().db_path()).unwrap();
+        for table in licoup_foundation::core::sqlite_contract::tables(&reference_schema).unwrap() {
+            licoup_foundation::core::sqlite_contract::validate_table(
+                &actual_schema,
+                &reference_schema,
+                &table,
+                None,
+            )
+            .unwrap_or_else(|error| {
+                panic!("synthetic owner schema changed after composition: {table}: {error:#}")
+            });
+        }
+        drop(actual_schema);
+        drop(reference_schema);
+        drop(reference_store);
+        let service =
+            licoup_native::domain::client_conversation::ConversationService::open(&root).unwrap();
+        let runtime = PersistentConversationRuntime::new(service.store().clone());
+        let service = super::super::stdio_rpc::bind_conversation_runtime(service, &runtime, None);
+        let probe = service.clone();
+        let listener = ListenerOptions::new()
+            .name(
+                licoup_native::platform::conversation_host_transport::endpoint_name_for_root(&root)
+                    .unwrap(),
+            )
+            .nonblocking(ListenerNonblockingMode::Accept)
+            .create_sync()
+            .unwrap();
+        let host = std::thread::spawn(move || serve_bound_host(listener, service, runtime, None));
+        let mut stream = connect_test_host(&root);
+        serde_json::to_writer(&mut stream, &request).unwrap();
+        stream.write_all(b"\n").unwrap();
+        stream.flush().unwrap();
+        let mut reader = BufReader::new(stream);
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        let response: serde_json::Value = serde_json::from_str(&line).unwrap();
+        probe
+            .execute(serde_json::json!({"action":"conversation.list"}))
+            .expect("owner remains valid after attendance/listener startup");
+        assert_eq!(
+            response["ok"], true,
+            "synthetic actual-listener response: {response}"
+        );
+        let stop = serde_json::json!({"protocol":"licoup.stdio.v1","id":"stop","workflowId":request["workflowId"],"method":"shutdown","params":{"host":true}});
+        serde_json::to_writer(reader.get_mut(), &stop).unwrap();
+        reader.get_mut().write_all(b"\n").unwrap();
+        reader.get_mut().flush().unwrap();
+        line.clear();
+        reader.read_line(&mut line).unwrap();
+        drop(reader);
+        host.join().unwrap().unwrap();
+        drop(probe);
+        drop(_access);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn idle_exit_waits_minutes_after_the_owner_is_empty() {
         assert!(IDLE_EXIT_GRACE >= Duration::from_secs(60));
     }

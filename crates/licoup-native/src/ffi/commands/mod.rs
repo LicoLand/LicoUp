@@ -15,6 +15,7 @@ mod client_conversation;
 mod client_update;
 mod collaboration;
 mod conversation_surface;
+mod full_backup;
 mod gateway;
 mod llm_gateway;
 mod mcp;
@@ -5541,6 +5542,55 @@ fn build_command_table() -> CommandTable {
         cardinality: CommandCardinality::Exact,
         handler: gateway::handle_telegram_pairing_revoke,
         help: "Revoke Telegram DM access for a chat id",
+    });
+    table.register_command(CommandSpec {
+        source_module: "full_backup.rs",
+        handler_name: "handle_backup_export",
+        path: &["backup", "export"],
+        required_positionals: &[RequiredArgumentSpec {
+            name: "archive",
+            kind: RequiredArgumentKind::Text,
+        }],
+        options: &[
+            OptionSpec {
+                name: "data-root",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "writers-stopped",
+                arity: OptionArity::Boolean,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: full_backup::handle_backup_export,
+        help: "Export the selected data home to one plaintext archive after stopped writers are declared",
+    });
+    table.register_command(CommandSpec {
+        source_module: "full_backup.rs",
+        handler_name: "handle_backup_import",
+        path: &["backup", "import"],
+        required_positionals: &[RequiredArgumentSpec {
+            name: "archive",
+            kind: RequiredArgumentKind::Text,
+        }],
+        options: &[OptionSpec {
+            name: "target-root",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: full_backup::handle_backup_import,
+        help: "Restore one archive into an empty target home and rebase owner-managed references",
     });
     table
 }

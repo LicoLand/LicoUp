@@ -2086,6 +2086,7 @@ name = "licoup-conversation"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "licoup-foundation",
  "licoup-state-machine-codegen",
  "proptest",
  "rusqlite",
@@ -2118,6 +2119,8 @@ dependencies = [
  "flate2",
  "fs2",
  "nix",
+ "rusqlite",
+ "serde",
  "serde_json",
  "tar",
  "url",
@@ -2138,6 +2141,18 @@ dependencies = [
  "ureq",
  "uuid",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "licoup-migrate"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "licoup-foundation",
+ "licoup-native",
+ "rusqlite",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -10,6 +10,8 @@ import { REQUIRED_FLUTTER_TOP_LEVEL_DIRS } from "../apps/desktop/scripts/client-
 import { loadSecureMeshClientBoundaryConfig } from "./scripts/lib/secure-mesh-client-boundary-config.mjs";
 import { readSourceCheckBundle } from "./scripts/lib/source-check-bundle.mjs";
 
+import { isReviewedPrivacyFixture } from "./scripts/lib/privacy-test-fixtures.mjs";
+
 const repoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const execFileAsync = promisify(execFile);
 const ignoredDirs = new Set([
@@ -110,7 +112,6 @@ const forbiddenPublicDocumentContent = [
     reasonCode: "PUBLIC_DOCUMENT_PRODUCT_LANGUAGE_FORBIDDEN"
   }
 ];
-const allowedContentPaths = new Set();
 const retiredStatePolicyChecks = [];
 const flutterSrcRoot = "apps/desktop/lib/src";
 const requiredFlutterTopLevelDirs = REQUIRED_FLUTTER_TOP_LEVEL_DIRS;
@@ -274,12 +275,10 @@ async function scanPublicFiles() {
     checkedFiles.push(relativePath);
     const source = await readFile(absolutePath, "utf8");
     for (const { pattern, reasonCode } of forbiddenContent) {
-      if (allowedContentPaths.has(relativePath)) {
-        continue;
-      }
       pattern.lastIndex = 0;
-      const match = pattern.exec(source);
-      if (match) {
+      for (const match of source.matchAll(pattern)) {
+        if (isReviewedPrivacyFixture({ file: relativePath, rule: reasonCode,
+          source, start: match.index, match: match[0] })) continue;
         addFailure(reasonCode, relativePath, match[0]);
       }
     }

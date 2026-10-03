@@ -306,8 +306,17 @@ test("declared lifecycle consumers read specific projection facts", async () => 
   );
   assert.match(
     lifecycle,
-    /initializeWithOptions[\s\S]{0,3000}sequentialSteps\s*:[\s\S]{0,2000}action\s*:\s*_initializeClientCore/u,
-    "core initialization must remain a coordinator-owned sequential step",
+    /sequentialSteps\s*:\s*_clientSequentialSteps/u,
+    "the coordinator must execute the declared sequential steps",
+  );
+  const sequentialSteps = lifecycle.match(
+    /List<ClientBootstrapStep>\s+get\s+_clientSequentialSteps\s*=>\s*\[([\s\S]*?)\];/u,
+  );
+  assert.ok(sequentialSteps, "the sequential startup steps must be declared");
+  assert.match(
+    sequentialSteps[1],
+    /action\s*:\s*_initializeLocalConversation/u,
+    "local conversation initialization must remain a coordinator-owned sequential step",
   );
   for (const functionName of ["_finalizeClientInitialization"]) {
     const block = dartFunctionBlock(lifecycle, functionName);

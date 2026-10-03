@@ -10,14 +10,18 @@ use std::path::{Path, PathBuf};
 use super::policy;
 
 pub(super) fn portable_state_root() -> Result<PathBuf> {
-    Ok(portable_data_dir()?.join(policy::CLIENT_STATE_DIR))
+    Ok(state_root_for_data_home(&portable_data_dir()?))
+}
+
+/// Project the owned layout without opening or initializing a data home.
+pub(crate) fn state_root_for_data_home(root: &Path) -> PathBuf {
+    root.join(policy::CLIENT_STATE_DIR)
 }
 
 pub(super) fn portable_state_root_read_only() -> Result<PathBuf> {
-    Ok(
-        licoup_foundation::platform::paths::portable_data_dir_read_only()?
-            .join(policy::CLIENT_STATE_DIR),
-    )
+    Ok(state_root_for_data_home(
+        &licoup_foundation::platform::paths::portable_data_dir_read_only()?,
+    ))
 }
 
 pub(super) fn activity_path(root: &Path) -> PathBuf {

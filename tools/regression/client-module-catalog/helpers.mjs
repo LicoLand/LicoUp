@@ -1,6 +1,11 @@
 import { classifyClientModule } from "../client-regression-metadata.mjs";
 
 const REPO_ROOT = ".";
+export const CLIENT_MODULE_RUNNABLE_HOSTS = Object.freeze([
+  "darwin",
+  "linux",
+  "win32",
+]);
 export const NATIVE_MANIFEST = "crates/licoup-native/Cargo.toml";
 export const FOUNDATION_MANIFEST = "crates/licoup-foundation/Cargo.toml";
 
@@ -64,9 +69,15 @@ export const FAKE_AGENT_SERVICE_INPUTS = Object.freeze([
 ]);
 
 export function command(program, args, timeoutMs) {
+  const singleRustTarget = args.filter((arg) =>
+    ["--lib", "--bin", "--test", "--bench", "--doc"].includes(arg)).length === 1;
+  const commandArgs = program === "cargo" && args[0] === "test" &&
+    !singleRustTarget && !args.includes("--no-fail-fast")
+    ? ["test", "--no-fail-fast", ...args.slice(1)]
+    : args;
   return Object.freeze({
     program,
-    args: Object.freeze([...args]),
+    args: Object.freeze([...commandArgs]),
     cwd: REPO_ROOT,
     timeoutMs,
   });
@@ -88,6 +99,23 @@ export function flutterTests(testPaths) {
       "flutter",
       "test",
       "--no-pub",
+      ...testPaths,
+    ],
+    5 * 60_000,
+  );
+}
+
+export function flutterPackageTests(packageRoot, testPaths = ["test"]) {
+  return node(
+    "tools/scripts/client-toolchain-runner.mjs",
+    [
+      "--check",
+      "flutter",
+      "--cwd",
+      packageRoot,
+      "--",
+      "flutter",
+      "test",
       ...testPaths,
     ],
     5 * 60_000,
@@ -222,7 +250,15 @@ export function rustBinaryTests(binary, filter, features = []) {
   );
 }
 
-export function defineModule({ id, kind, summary, inputs, command: moduleCommand }) {
+export function defineModule({
+  id,
+  kind,
+  summary,
+  inputs,
+  command: moduleCommand,
+  runnableHosts = CLIENT_MODULE_RUNNABLE_HOSTS,
+  targetEvidenceHosts = [],
+}) {
   const regression = classifyClientModule({ id, kind, command: moduleCommand });
   return Object.freeze({
     id,
@@ -230,7 +266,11 @@ export function defineModule({ id, kind, summary, inputs, command: moduleCommand
     summary,
     inputs: Object.freeze([...new Set(inputs)]),
     command: moduleCommand,
-    regression,
+    regression: Object.freeze({
+      ...regression,
+      runnableHosts: Object.freeze([...runnableHosts]),
+      targetEvidenceHosts: Object.freeze([...targetEvidenceHosts]),
+    }),
   });
 }
 

@@ -5,8 +5,6 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { pruneReclaimableTestArtifacts } from "./lib/test-artifact-lifecycle.mjs";
-
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const supportedPlatforms = new Set(["android", "linux", "macos", "windows"]);
 const supportedModes = new Set(["debug", "profile", "release"]);
@@ -82,14 +80,12 @@ export function clientBuildInvocation(options) {
 export function runClientBuild(
   options,
   {
-    pruneArtifacts = pruneReclaimableTestArtifacts,
     root = repoRoot,
     spawnBuild = spawnSync,
   } = {},
 ) {
   const invocation = clientBuildInvocation(options);
   let execution = null;
-  let cleanup = null;
   try {
     execution = spawnBuild(invocation.command, invocation.args, {
       cwd: root,
@@ -99,41 +95,17 @@ export function runClientBuild(
     });
   } catch {
     execution = { error: true, status: null };
-  } finally {
-    cleanup = pruneCompilerCaches(pruneArtifacts, root);
   }
 
   const buildSucceeded =
     execution?.status === 0 && !execution?.error && !execution?.signal;
-  const cleanupSucceeded = cleanup?.failed === 0;
   return Object.freeze({
-    ok: buildSucceeded && cleanupSucceeded,
+    ok: buildSucceeded,
     platform: options.platform,
     mode: options.mode,
     buildSucceeded,
-    cleanupSucceeded,
-    removedCompilerCaches: cleanup?.removed || 0,
-    activeCompilerCaches: cleanup?.active || 0,
     privatePathsIncluded: false,
   });
-}
-
-function pruneCompilerCaches(pruneArtifacts, root) {
-  const first = tryPruneCompilerCaches(pruneArtifacts, root);
-  if (first.failed === 0) return first;
-  const second = tryPruneCompilerCaches(pruneArtifacts, root);
-  return Object.freeze({
-    ...second,
-    removed: (first.removed || 0) + (second.removed || 0),
-  });
-}
-
-function tryPruneCompilerCaches(pruneArtifacts, root) {
-  try {
-    return pruneArtifacts({ repoRoot: root });
-  } catch {
-    return { active: 0, failed: 1, removed: 0 };
-  }
 }
 
 export function publicClientBuildFailure(error) {

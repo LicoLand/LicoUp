@@ -55,6 +55,8 @@
     { "role": "installer-digest", "path": "build/apple-release/LicoUp-macos-arm64.dmg.sha256", "publicName": "LicoUp-macos-arm64.dmg.sha256" },
     { "role": "update-archive", "path": "build/apple-release/LicoUp-macos-arm64-update.zip", "publicName": "LicoUp-macos-arm64-update.zip" },
     { "role": "update-digest", "path": "build/apple-release/LicoUp-macos-arm64-update.zip.sha256", "publicName": "LicoUp-macos-arm64-update.zip.sha256" },
-    { "role": "update-manifest", "path": "build/apple-release/LicoUp-update-manifest.json", "publicName": "LicoUp-update-manifest.json" }
+    { "role": "update-manifest", "path": "build/apple-release/LicoUp-update-manifest.json", "publicName": "LicoUp-update-manifest.json" },
+    { "role": "independent-tool", "source": "build/apps/desktop/release-tools/macos/LicoUp-migrate-macos-arm64", "path": "build/apple-release/LicoUp-migrate-macos-arm64", "publicName": "LicoUp-migrate-macos-arm64" },
+    { "role": "independent-tool-digest", "path": "build/apple-release/LicoUp-migrate-macos-arm64.sha256", "publicName": "LicoUp-migrate-macos-arm64.sha256" }
   ]
 }

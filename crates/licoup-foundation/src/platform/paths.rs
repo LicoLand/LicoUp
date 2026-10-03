@@ -189,7 +189,6 @@ fn normalize_path(path: &Path) -> PathBuf {
     }
 }
 
-#[cfg(any(target_os = "windows", test))]
 fn windows_data_home_config(home: &Path, app_data: Option<OsString>) -> PathBuf {
     app_data
         .filter(|path| !path.to_string_lossy().trim().is_empty())
@@ -198,22 +197,55 @@ fn windows_data_home_config(home: &Path, app_data: Option<OsString>) -> PathBuf 
         .join("LicoUp")
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DataHomePlatform {
+    Macos,
+    Windows,
+    Xdg,
+}
+
+impl DataHomePlatform {
+    pub const fn current() -> Self {
+        if cfg!(target_os = "macos") {
+            Self::Macos
+        } else if cfg!(target_os = "windows") {
+            Self::Windows
+        } else {
+            Self::Xdg
+        }
+    }
+}
+
+/// Pure path policy shared by production resolution and isolated process fixtures.
+pub fn data_home_locator_path_for(
+    platform: DataHomePlatform,
+    home: &Path,
+    app_data: Option<OsString>,
+    xdg_config_home: Option<OsString>,
+) -> PathBuf {
+    let config = match platform {
+        DataHomePlatform::Macos => home.join("Library/Application Support/LicoUp"),
+        DataHomePlatform::Windows => windows_data_home_config(home, app_data),
+        DataHomePlatform::Xdg => xdg_config_home
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .unwrap_or_else(|| home.join(".config"))
+            .join("licoup"),
+    };
+    config.join("data-home")
+}
+
 /// Location of the small boot locator shared by native processes and Flutter.
 pub fn data_home_locator_path() -> Result<PathBuf> {
     let home = user_home_from_env()
         .map(|home| strip_macos_data_volume(&home))
         .ok_or_else(|| anyhow!("cannot resolve the LicoUp home directory"))?;
-    #[cfg(target_os = "macos")]
-    let config = home.join("Library/Application Support/LicoUp");
-    #[cfg(target_os = "windows")]
-    let config = windows_data_home_config(&home, env::var_os("APPDATA"));
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let config = env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .filter(|path| path.is_absolute())
-        .unwrap_or_else(|| home.join(".config"))
-        .join("licoup");
-    Ok(config.join("data-home"))
+    Ok(data_home_locator_path_for(
+        DataHomePlatform::current(),
+        &home,
+        env::var_os("APPDATA"),
+        env::var_os("XDG_CONFIG_HOME"),
+    ))
 }
 
 /// Read the private boot locator without creating the selected data root.
@@ -469,21 +501,25 @@ mod tests {
 
     #[test]
     fn relative_environment_roots_become_absolute_without_changing_source() {
-        let cwd = Path::new("/fixture/current-directory");
+        let cwd = std::env::temp_dir()
+            .canonicalize()
+            .unwrap()
+            .join("fixture-current-directory");
+        let expected_root = cwd.parent().unwrap().join("licoup-data");
         for (selection, expected, source) in [
             (
                 environment_data_home(Some("../licoup-data/./new-root".to_string()), None).unwrap(),
-                PathBuf::from("/fixture/licoup-data/new-root"),
+                expected_root.join("new-root"),
                 DataHomeSource::Environment,
             ),
             (
                 environment_data_home(None, Some("../licoup-data/./legacy-root".to_string()))
                     .unwrap(),
-                PathBuf::from("/fixture/licoup-data/legacy-root"),
+                expected_root.join("legacy-root"),
                 DataHomeSource::LegacyEnvironment,
             ),
         ] {
-            let selection = absolutize_data_home_selection(selection, Some(cwd));
+            let selection = absolutize_data_home_selection(selection, Some(&cwd));
             assert!(selection.path.is_absolute());
             assert_eq!(selection.path, expected);
             assert_eq!(selection.source, source);
@@ -553,6 +589,40 @@ mod tests {
         assert_eq!(
             windows_data_home_config(home, Some(OsString::from("/fixture/appdata"))),
             PathBuf::from("/fixture/appdata/LicoUp")
+        );
+    }
+
+    #[test]
+    fn locator_policy_uses_each_platform_owner_directory() {
+        let fixture = std::env::temp_dir()
+            .canonicalize()
+            .unwrap()
+            .join("licoup-locator-policy");
+        let home = fixture.join("home");
+        let home = home.as_path();
+        let app_data = fixture.join("appdata");
+        let config = fixture.join("config");
+        for (platform, expected) in [
+            (
+                DataHomePlatform::Macos,
+                home.join("Library/Application Support/LicoUp/data-home"),
+            ),
+            (DataHomePlatform::Windows, app_data.join("LicoUp/data-home")),
+            (DataHomePlatform::Xdg, config.join("licoup/data-home")),
+        ] {
+            assert_eq!(
+                data_home_locator_path_for(
+                    platform,
+                    home,
+                    Some(app_data.clone().into_os_string()),
+                    Some(config.clone().into_os_string())
+                ),
+                expected
+            );
+        }
+        assert_eq!(
+            data_home_locator_path_for(DataHomePlatform::Xdg, home, None, Some("relative".into())),
+            home.join(".config/licoup/data-home")
         );
     }
 

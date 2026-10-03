@@ -53,6 +53,8 @@ mixin ClientLifecycleFacade
   @override
   Future<void> loadConversationSessions(String agentId);
 
+  final Set<String> _unavailableFeatureDomains = {};
+
   String portableDataPath = '';
   String portableDataSource = '';
   String portableDataPreviousRootPath = '';
@@ -92,16 +94,37 @@ mixin ClientLifecycleFacade
       action: _initializeClientPreferences,
     ),
     ClientBootstrapStep(
+      id: 'client_target_order',
+      requiredForStartup: false,
+      action: () => _loadOptionalFeature(
+        'agent-tab-order',
+        targetController.loadTabOrder,
+      ),
+    ),
+    ClientBootstrapStep(
+      id: 'client_target_cache',
+      action: targetController.hydrateCache,
+    ),
+    ClientBootstrapStep(
       id: 'client_mobile_relay',
-      action: _initializeClientCore,
+      requiredForStartup: false,
+      action: () => _loadOptionalFeature('mobile-relay', _initializeClientCore),
     ),
     ClientBootstrapStep(
       id: 'client_mobile_home',
-      action: _initializeClientMobileHome,
+      requiredForStartup: false,
+      action: () => _loadOptionalFeature(
+        'mobile-home-layout',
+        _initializeClientMobileHome,
+      ),
     ),
     ClientBootstrapStep(
       id: 'client_skill_preferences',
-      action: _initializeClientSkillPreferences,
+      requiredForStartup: false,
+      action: () => _loadOptionalFeature(
+        'skill-hub-preferences',
+        _initializeClientSkillPreferences,
+      ),
     ),
     ClientBootstrapStep(id: 'client_catalog', action: _initializeClientCatalog),
   ];
@@ -154,7 +177,15 @@ mixin ClientLifecycleFacade
 
   Future<void> _admitClientStateMigration() async {
     try {
-      await agentService.admitClientStateMigration(portableDataPath);
+      final admission = await agentService.admitClientStateMigration(
+        portableDataPath,
+      );
+      _unavailableFeatureDomains
+        ..clear()
+        ..addAll(
+          (admission['unavailableFeatureDomainIds'] as List? ?? const [])
+              .whereType<String>(),
+        );
     } on Object {
       throw StateError('client_state_migration');
     }
@@ -162,13 +193,32 @@ mixin ClientLifecycleFacade
 
   Future<void> _initializeClientStorage() async {
     await portableData.loadWorkspaceManifest();
-    await loadConversationToolAllowlists();
-    await loadCurrentViewRestore();
+    replaceConversationToolAllowlists(const {});
+    if (!_unavailableFeatureDomains.contains('agent-tool-allowlist')) {
+      await loadConversationToolAllowlists();
+    }
+    if (!_unavailableFeatureDomains.contains('current-view')) {
+      await loadCurrentViewRestore();
+    }
     final catalog = await appearancePresetCatalogService.loadCatalog(
       portableData,
     );
     applyAppearancePresetCatalog(catalog);
-    await layoutManager.initialize();
+    await layoutManager.initialize(
+      loadStoredState: !_unavailableFeatureDomains.contains(
+        'appearance-presentation',
+      ),
+    );
+  }
+
+  Future<void> _loadOptionalFeature(
+    String domain,
+    Future<void> Function() load,
+  ) async {
+    if (_unavailableFeatureDomains.contains(domain)) {
+      throw StateError('client_optional_state_unavailable');
+    }
+    await load();
   }
 
   Future<void> _initializeLocalConversation() async {
@@ -199,8 +249,6 @@ mixin ClientLifecycleFacade
     appearancePreferenceOwner.replaceLoadingEffect(
       presentation?.loadingEffectId ?? 'spinner',
     );
-    await targetController.loadTabOrder();
-    await targetController.hydrateCache();
   }
 
   Future<void> _initializeClientCore() async {

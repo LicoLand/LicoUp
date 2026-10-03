@@ -13,6 +13,7 @@ test("workflow changes select the pure crate and its native integration", async 
   assert.ok(sources.length > 0);
   for (const source of sources) {
     assert.deepEqual(ids(selectModulesForChangedPaths([source])), [
+      "architecture.client-boundaries",
       "rust.core.workflow",
       "rust.domain.adaptive-flywheel",
     ]);
@@ -32,6 +33,7 @@ test("Rust catalog commands are independently filtered", () => {
 test("catalog convergence crate and native adapters retain bounded closures", () => {
   const selections = new Map([
     ["crates/lico-catalog-convergence/src/engine.rs", [
+      "architecture.client-boundaries",
       "rust.crate.catalog-convergence",
     ]],
     ["crates/licoup-native/src/domain/catalog_convergence.rs", [
@@ -60,6 +62,7 @@ test("catalog convergence crate and native adapters retain bounded closures", ()
     module.id === "rust.crate.catalog-convergence");
   assert.deepEqual(crateModule.command.args, [
     "test",
+    "--no-fail-fast",
     "--manifest-path",
     "crates/lico-catalog-convergence/Cargo.toml",
   ]);
@@ -112,7 +115,12 @@ test("Independent MCP lifecycle tests use the standalone crate regression", () =
   ])), ["regression.subagent-mcp-common", "rust.core.mcp-server"]);
   const module = CLIENT_MODULE_CATALOG.find((candidate) =>
     candidate.id === "rust.core.mcp-server");
-  assert.deepEqual(module.command.args, ["test", "--manifest-path", "crates/licoup-mcp/Cargo.toml"]);
+  assert.deepEqual(module.command.args, [
+    "test",
+    "--no-fail-fast",
+    "--manifest-path",
+    "crates/licoup-mcp/Cargo.toml",
+  ]);
 });
 
 test("Rust domain changes select a precise cargo-filtered slice", () => {
@@ -136,6 +144,7 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "crates/licoup-conversation/src/store/execution.rs",
   ])), [
     "regression.subagent-mcp-common",
+    "architecture.client-boundaries",
     "rust.domain.client-conversations",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
@@ -168,6 +177,8 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "domain::client_conversation::",
     "store::execution::tests::",
     "store::native_sessions::tests::",
+    "store::schema::tests::",
+    "store::tests::open_",
   ]);
   const rpc = CLIENT_MODULE_CATALOG.find((module) =>
     module.id === "rust.bin.licoup.rpc");
@@ -635,7 +646,8 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
   assert.equal(skillHub.command.args.at(-1), "domain::skill_hub::tests");
   assert.equal(optionalCollaboration.command.args.at(-1),
     "domain::collaboration_plugin");
-  assert.equal(clientUpdate.command.args.at(-1), "domain::client_update::tests::");
+  assert.ok(clientUpdate.command.args.includes("domain::client_update::tests::"));
+  assert.deepEqual(clientUpdate.command.args.slice(-3), ["--", "--skip", "native_runner::"]);
 });
 
 test("foundation and security modules retain exact narrow command filters", () => {
@@ -953,7 +965,7 @@ test("client update leaves retain exact narrow regression filters", () => {
   ]);
   for (const [moduleId, filter] of filters) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === moduleId);
-    assert.equal(module.command.args.at(-1), filter);
+    assert.ok(module.command.args.includes(filter));
   }
   const sourceBundle = CLIENT_MODULE_CATALOG.find((candidate) =>
     candidate.id === sourceBundleId);

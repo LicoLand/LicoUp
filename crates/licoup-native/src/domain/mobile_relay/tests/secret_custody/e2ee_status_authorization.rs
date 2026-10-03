@@ -308,6 +308,7 @@ fn e2ee_status_requires_single_system_authorization_prompt_budget() {
         e2ee_private_key: true,
         e2ee_pairing_secret: true,
         e2ee_signing_key: true,
+        identity_custody_verified: Some(true),
         e2ee_signed_prekey_private_key: true,
         e2ee_one_time_prekey_private_key: true,
         e2ee_one_time_mlkem1024_prekey_seed: true,

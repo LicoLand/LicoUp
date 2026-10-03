@@ -12,20 +12,161 @@ import {
   loadEmbeddedFrontier,
   planSteps,
 } from "../../../tools/scripts/client-state-migration/frontier.mjs";
-import { DURABLE_SHAPES } from "../../../tools/scripts/client-state-migration/probe.mjs";
-import { evaluateMigrationState } from "../../../tools/scripts/client-state-migration/report.mjs";
+import {
+  ADAPTIVE_FLYWHEEL_SCHEMA_VERSIONS,
+  DURABLE_SHAPES,
+  GATEWAY_CUSTODY_DOMAIN,
+  gatewayCredentialMigrationDisposition,
+} from "../../../tools/scripts/client-state-migration/probe.mjs";
+import {
+  evaluateMigrationState,
+  exitCodeForVerdict,
+} from "../../../tools/scripts/client-state-migration/report.mjs";
 import { repairDomain } from "../../../tools/scripts/client-state-migration/repair.mjs";
 import { writePrivateJsonAtomic } from "../../../tools/scripts/client-state-migration/util.mjs";
+import { inspectConversationContract, inspectStrategyContract } from "../../../tools/scripts/client-state-migration/sqlite-contract.mjs";
+import { selectModulesForChangedPaths } from "../../../tools/regression/client-module-selection.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const facadeRef = "tools/scripts/client-state-migration.mjs";
 const moduleRoot = "tools/scripts/client-state-migration";
 const MIGRATION_MODULE = "crates/licoup-native/src/domain/client_state_migration.rs";
+const STORES_MODULE = "crates/licoup-native/src/domain/client_state_migration/stores.rs";
+const STRATEGY_STORE_MODULE =
+  "crates/licoup-native/src/domain/client_state_migration/strategy_store.rs";
 const CLIENT_STATE_POLICY = "crates/licoup-native/src/platform/client_state/policy.rs";
 const CLIENT_STATE_MIGRATION =
   "crates/licoup-native/src/platform/client_state/migration.rs";
 const CONVERSATION_STORE = "crates/licoup-conversation/src/store/mod.rs";
+const CONVERSATION_SCHEMA = "crates/licoup-conversation/src/store/schema.rs";
+const WORKFLOW_STORE_MODULE = "crates/licoup-native/src/domain/workflow_store/store.rs";
+const FRONTIER_CONSUMER = "tools/scripts/client-state-migration/frontier.mjs";
+const REPORT_CONSUMER = "tools/scripts/client-state-migration/report.mjs";
+const RELEASED_FIXTURE = "tests/fixtures/client_state_migration/released_source.rs";
 const BACKSLASH = String.fromCharCode(92);
+
+/** A Rust source file from the repository. */
+function ownerSource(relative) {
+  return fs.readFileSync(path.join(repoRoot, relative), "utf8");
+}
+
+/**
+ * The quoted Rust string literal containing `anchor`, unescaped. Fixtures are
+ * built from the actual owner DDL and the frozen fixture, never from the
+ * validator contract the tests are checking.
+ */
+function rustLiteralContaining(source, anchor) {
+  const index = source.indexOf(anchor);
+  assert.ok(index !== -1, `the Rust source no longer contains ${anchor}`);
+  const start = source.lastIndexOf('"', index);
+  const end = source.indexOf('"', index);
+  assert.ok(start !== -1 && end !== -1 && end > start, `${anchor} is not a quoted literal`);
+  return source
+    .slice(start + 1, end)
+    .replace(/\\n/gu, "\n")
+    .replace(/\\"/gu, '"');
+}
+
+/** A `const NAME: &str = "..."` value. */
+function rustConstString(source, name) {
+  const marker = `const ${name}: &str = "`;
+  const start = source.indexOf(marker);
+  assert.ok(start !== -1, `${name} moved`);
+  const from = start + marker.length;
+  const end = source.indexOf('";', from);
+  assert.ok(end !== -1, `${name} is not closed`);
+  return source.slice(from, end);
+}
+
+/** A `const NAME: &str = r#"..."#` value. */
+function rustRawString(source, name) {
+  const marker = `const ${name}: &str = r#"`;
+  const start = source.indexOf(marker);
+  assert.ok(start !== -1, `${name} moved`);
+  const from = start + marker.length;
+  const end = source.indexOf('"#;', from);
+  assert.ok(end !== -1, `${name} is not closed`);
+  return source.slice(from, end);
+}
+
+function currentConversationSchemaVersion() {
+  const match = ownerSource(CONVERSATION_STORE).match(
+    /pub const CURRENT_SCHEMA_VERSION: &str = "(\d+)";/u,
+  );
+  assert.ok(match, "the conversation store schema version moved");
+  return match[1];
+}
+
+/** The owner's current strategy core DDL plus the active-conversation index. */
+function ownerStrategyCurrentDdl() {
+  const source = ownerSource(WORKFLOW_STORE_MODULE);
+  return [
+    rustLiteralContaining(source, "CREATE TABLE IF NOT EXISTS strategy_meta"),
+    rustLiteralContaining(source, "CREATE INDEX IF NOT EXISTS strategy_runs_active_conversation_idx"),
+  ].join("\n");
+}
+
+function releasedStrategyDdl({ producerUpgraded = false } = {}) {
+  let ddl = rustRawString(ownerSource(RELEASED_FIXTURE), "RELEASED_STRATEGY_SCHEMA");
+  if (producerUpgraded) {
+    // The published producer added this column through `ensure_column`, which
+    // leaves it nullable.
+    ddl = ddl.replace("terminal INTEGER NOT NULL,", "terminal INTEGER,");
+    assert.ok(!ddl.includes("terminal INTEGER NOT NULL,"));
+  }
+  return ddl;
+}
+
+test("custody applicability follows the platform owner's shared disposition", () => {
+  const root = tempRoot("custody-platform-policy");
+  try {
+    const frontier = loadEmbeddedFrontier();
+    seedAdmittedRoot(root, frontier, { withCustody: false });
+    const before = snapshot(root);
+    const policy = JSON.parse(ownerSource("crates/licoup-native/resources/gateway-credential-migration.json"));
+    for (const [platform, ownerPlatform] of [["darwin", "macos"], ["linux", "linux"], ["win32", "windows"]]) {
+      const report = evaluateMigrationState({ root, frontier, binaryProductVersion: "0.3.0", platform });
+      const custody = report.domains.find((domain) => domain.domainId === GATEWAY_CUSTODY_DOMAIN);
+      assert.equal(custody.pendingAuthorization, policy[ownerPlatform] === "requires-authorization");
+      assert.equal(snapshot(root), before);
+    }
+    assert.throws(() => evaluateMigrationState({ root, frontier, binaryProductVersion: "0.3.0", platform: "unrecognized" }), /probe_capability_unavailable/u);
+  } finally { removeRoot(root); }
+});
+
+test("strategy admission recognizes both published ordinal producers without relaxing other defaults", () => {
+  for (const version of ["2", "3"]) {
+    for (const ordinal of ["ordinal INTEGER NOT NULL DEFAULT 0,", "ordinal INTEGER NOT NULL,"]) {
+      const database = new DatabaseSync(":memory:");
+      try {
+        database.exec(releasedStrategyDdl().replace("ordinal INTEGER NOT NULL DEFAULT 0,", ordinal));
+        database.prepare("UPDATE strategy_meta SET value=? WHERE key='version'").run(version);
+        assert.doesNotThrow(() => inspectStrategyContract(database));
+      } finally { database.close(); }
+    }
+  }
+  for (const ordinal of ["ordinal INTEGER NOT NULL DEFAULT 1,", "ordinal INTEGER DEFAULT 0,"]) {
+    const database = new DatabaseSync(":memory:");
+    try {
+      database.exec(releasedStrategyDdl().replace("ordinal INTEGER NOT NULL DEFAULT 0,", ordinal));
+      assert.throws(() => inspectStrategyContract(database), /unsupported_state_shape/u);
+    } finally { database.close(); }
+  }
+});
+
+/** The shared fixture's business rows with its own constants substituted. */
+function releasedStrategyRows() {
+  const fixture = ownerSource(RELEASED_FIXTURE);
+  const template = rustLiteralContaining(fixture, "INSERT INTO strategy_definitions");
+  return template
+    .replace(/\{\{/gu, "{")
+    .replace(/\}\}/gu, "}")
+    .replace(/\{([A-Z_]+)\}/gu, (_, name) =>
+      fixture.includes(`const ${name}: &str = "`)
+        ? rustConstString(fixture, name)
+        : rustRawString(fixture, name),
+    );
+}
 
 function tempRoot(label) {
   return fs.mkdtempSync(path.join(os.tmpdir(), `licoup-migration-${label}-`));
@@ -91,13 +232,211 @@ function seedLedger(root, frontier, domains) {
   });
 }
 
+// Independent frozen producer output, never the evaluator's reference builder.
+function createCurrentConversationStore(database) {
+  database.exec(rustRawString(ownerSource(RELEASED_FIXTURE), "RELEASED_CONVERSATION_SCHEMA"));
+  database.exec(rustRawString(ownerSource("tests/fixtures/client_state_migration/owner_layouts.rs"), "CURRENT_CONVERSATION_ADDITIONS"));
+  database.exec(
+    `INSERT INTO schema_meta(key,value) VALUES ('version','${currentConversationSchemaVersion()}');`,
+  );
+}
+
+test("empty stores initialize and complete current stores can reconstruct only missing metadata", () => {
+  for (const seed of ["", "CREATE TABLE retained_fixture(value TEXT); INSERT INTO retained_fixture VALUES ('retained');"]) {
+    const database = new DatabaseSync(":memory:");
+    try {
+      database.exec(seed);
+      assert.equal(inspectConversationContract(database, currentConversationSchemaVersion()).version, null);
+    } finally { database.close(); }
+  }
+  for (const mutation of ["DROP TABLE schema_meta;", "DELETE FROM schema_meta WHERE key='version';"]) {
+    const database = new DatabaseSync(":memory:");
+    try {
+      createCurrentConversationStore(database);
+      database.exec(mutation);
+      assert.equal(inspectConversationContract(database, currentConversationSchemaVersion()).version, currentConversationSchemaVersion());
+      database.exec("DROP TABLE events;");
+      assert.throws(() => inspectConversationContract(database, currentConversationSchemaVersion()), /unsupported_state_shape/u);
+    } finally { database.close(); }
+  }
+});
+
+test("unused related tables and their rows coexist with the current Conversation owner", () => {
+  const database = new DatabaseSync(":memory:");
+  try {
+    createCurrentConversationStore(database);
+    database.exec(ownerSource("tests/fixtures/client_state_migration/retained_related_tables.sql"));
+    database.exec("INSERT INTO conversations(id,title,created_at,updated_at) VALUES ('kept','Synthetic retained title',1,1); INSERT INTO peer_bindings VALUES (x'01',x'02','kept','member','provider',1);");
+    assert.equal(inspectConversationContract(database, currentConversationSchemaVersion()).version, currentConversationSchemaVersion());
+    assert.equal(database.prepare("SELECT count(*) AS count FROM peer_bindings").get().count, 1);
+    database.exec("CREATE TRIGGER deny_current_insert BEFORE INSERT ON conversations BEGIN SELECT RAISE(ABORT,'blocked'); END;");
+    assert.throws(() => inspectConversationContract(database, currentConversationSchemaVersion()), /unsupported_state_shape/u);
+  } finally { database.close(); }
+});
+
+test("current continuity owner composes with Conversation and malformed effects remain refused", () => {
+  const selected = selectModulesForChangedPaths(["crates/licoup-conversation/src/continuity/migrate.rs"])
+    .filter((module) => module.id === "regression.client-state-contracts");
+  assert.equal(selected.length, 1, "the actual continuity producer must select its diagnostic consumer");
+  const fixture = rustRawString(
+    ownerSource("tests/fixtures/client_state_migration/continuity_layout.rs"),
+    "CURRENT_CONTINUITY_SCHEMA",
+  );
+  for (const mutation of [
+    null,
+    "DROP TRIGGER continuity_bump_designation_epoch;",
+    "DROP TRIGGER continuity_bump_designation_epoch; CREATE TRIGGER continuity_bump_designation_epoch AFTER UPDATE OF assistant_membership_id ON conversations BEGIN DELETE FROM conversations WHERE id=NEW.id; END;",
+    "CREATE TRIGGER extra_effect BEFORE INSERT ON conversations BEGIN SELECT RAISE(ABORT, 'blocked'); END;",
+    "DROP TABLE continuity_goals;",
+    "DELETE FROM continuity_schema WHERE key='version';",
+  ]) {
+    const database = new DatabaseSync(":memory:");
+    try {
+      createCurrentConversationStore(database);
+      database.exec(fixture);
+      if (mutation) database.exec(mutation);
+      if (mutation) assert.throws(() => inspectConversationContract(database, currentConversationSchemaVersion()), /unsupported_state_shape/u);
+      else assert.equal(inspectConversationContract(database, currentConversationSchemaVersion()).version, currentConversationSchemaVersion());
+    } finally { database.close(); }
+  }
+  const database = new DatabaseSync(":memory:");
+  try {
+    createCurrentConversationStore(database);
+    database.exec("CREATE TABLE continuity_schema(key TEXT PRIMARY KEY,value TEXT NOT NULL); INSERT INTO continuity_schema VALUES ('version','7');");
+    assert.throws(() => inspectConversationContract(database, currentConversationSchemaVersion()), /unsupported_state_shape/u,
+      "an extension marker alone cannot manufacture its owned structures");
+  } finally { database.close(); }
+});
+
+/// The current strategy layout as its owner actually creates it.
+function createCurrentStrategyStore(database) {
+  database.exec(ownerStrategyCurrentDdl());
+}
+
+/// The frozen released Conversation layout from the shared fixture.
+function createReleasedConversationStore(database) {
+  database.exec(rustRawString(ownerSource(RELEASED_FIXTURE), "RELEASED_CONVERSATION_SCHEMA"));
+  database.exec(
+    "INSERT INTO schema_meta(key,value) VALUES ('version','12');",
+  );
+}
+
+/// The frozen released strategy layout, optionally the published producer's
+/// in-place upgrade output (nullable `terminal`).
+function createReleasedStrategyStore(database, options = {}) {
+  database.exec(releasedStrategyDdl(options));
+  database.exec(releasedStrategyRows());
+}
+
+function supportedConversationSchema(version) {
+  let sql = rustRawString(ownerSource(RELEASED_FIXTURE), "RELEASED_CONVERSATION_SCHEMA");
+  if (version <= 4) sql = sql.replace("runtime_cursor INTEGER, ", "");
+  if (version <= 5) sql = sql.replace(", strategy_revision TEXT", "");
+  if (version <= 6) sql = sql.replace("assistant_membership_id TEXT REFERENCES memberships(id),", "");
+  if (version <= 8) sql = sql.replace(", preferred_reasoning_effort TEXT", "");
+  if (version <= 9) sql = sql.replace(/CREATE TABLE IF NOT EXISTS subagent_dispatch_claims[\s\S]*?(?=CREATE TABLE IF NOT EXISTS subagent_mcp_inbound)/u, "");
+  if (version <= 10) sql = sql.replace(/CREATE TABLE IF NOT EXISTS subagent_mcp_inbound[\s\S]*?(?=CREATE TABLE IF NOT EXISTS migration_provenance)/u, "");
+  if (version < 12) sql = sql.replace("CREATE UNIQUE INDEX IF NOT EXISTS memberships_principal_unique\n            ON memberships(conversation_id, principal_id);", "CREATE UNIQUE INDEX memberships_active_unique ON memberships(conversation_id,principal_id) WHERE status='active';");
+  if (version === 18) sql += rustRawString(ownerSource("tests/fixtures/client_state_migration/owner_layouts.rs"), "CURRENT_CONVERSATION_ADDITIONS");
+  return sql;
+}
+
+const structuralCases = JSON.parse(ownerSource("tests/fixtures/client_state_migration/structural_cases.json"));
+for (const version of [11, 12, 18]) {
+  for (const mutation of structuralCases) {
+    test(`actual evaluator refuses schema${version}: ${mutation.name}`, () => {
+      const root = tempRoot("structural-refusal");
+      try {
+        seedAdmittedRoot(root, loadEmbeddedFrontier());
+        const filename = path.join(root, "client-state/conversations/conversations.sqlite3");
+        fs.unlinkSync(filename);
+        let ddl = supportedConversationSchema(version);
+        if (mutation.from !== undefined) {
+          assert.ok(ddl.includes(mutation.from));
+          ddl = ddl.replaceAll(mutation.from, mutation.to);
+        }
+        if (mutation.before) ddl = ddl.replace("CREATE TABLE subagent_dispatch_deliveries", "CREATE TABLE IF NOT EXISTS subagent_dispatch_deliveries");
+        const database = new DatabaseSync(filename);
+        if (mutation.before) database.exec(mutation.sql);
+        database.exec(ddl);
+        database.prepare("INSERT INTO schema_meta VALUES ('version',?)").run(String(version));
+        if (mutation.sql && !mutation.before) database.exec(mutation.sql);
+        if (mutation.rows) database.exec(mutation.rows);
+        database.close();
+        const before = snapshot(root);
+        const result = evaluateMigrationState({ root, frontier: loadEmbeddedFrontier(), binaryProductVersion: "0.3.0", platform: "darwin" });
+        const domain = result.domains.find((domain) => domain.domainId === "canonical-conversation");
+        assert.ok(domain.codes.includes("unsupported_state_shape"));
+        assert.equal(result.verdict, "invalid");
+        assert.equal(exitCodeForVerdict(result.verdict), 4);
+        assert.equal(result.domains.find((domain) => domain.domainId === "adaptive-flywheel").observedSchemaVersion, 2);
+        assert.equal(snapshot(root), before);
+      } finally { removeRoot(root); }
+    });
+  }
+}
+
+for (const version of [...Array.from({ length: 12 }, (_, index) => index + 1), 18]) {
+  test(`actual evaluator accepts independent supported Conversation schema${version}`, () => {
+    const root = tempRoot("supported-layout");
+    try {
+      seedAdmittedRoot(root, loadEmbeddedFrontier());
+      const filename = path.join(root, "client-state/conversations/conversations.sqlite3");
+      fs.unlinkSync(filename);
+      const database = new DatabaseSync(filename);
+      database.exec(supportedConversationSchema(version));
+      database.prepare("INSERT INTO schema_meta VALUES ('version',?)").run(String(version));
+      database.exec("INSERT INTO principals VALUES ('principal','human','Synthetic principal',NULL,1); INSERT INTO conversations(id,title,created_at,updated_at) VALUES ('conversation','Synthetic retained title',1,1);");
+      database.close();
+      const before = snapshot(root);
+      const result = evaluateMigrationState({ root, frontier: loadEmbeddedFrontier(), binaryProductVersion: "0.3.0", platform: "darwin" });
+      assert.equal(result.verdict, "healthy");
+      assert.equal(exitCodeForVerdict(result.verdict), 0);
+      assert.equal(snapshot(root), before);
+    } finally { removeRoot(root); }
+  });
+}
+
+for (const version of [2, 3]) {
+  for (const [label, from, to, extra] of [
+    ["missing required default", "model TEXT NOT NULL DEFAULT ''", "model TEXT NOT NULL", ""],
+    ["FK update action", "REFERENCES strategy_definitions(revision_digest) ON DELETE CASCADE", "REFERENCES strategy_definitions(revision_digest) ON DELETE CASCADE ON UPDATE CASCADE", ""],
+    ["changed default", "model TEXT NOT NULL DEFAULT ''", "model TEXT NOT NULL DEFAULT 'unexpected'", ""],
+    ["malformed auxiliary table", null, null, "CREATE TABLE workflow_queue(request_id TEXT PRIMARY KEY);"],
+    ["write trigger", null, null, "CREATE TRIGGER deny_run BEFORE INSERT ON strategy_runs BEGIN SELECT RAISE(ABORT,'synthetic refusal'); END;"],
+  ]) {
+    test(`actual evaluator refuses strategy${version}: ${label}`, () => {
+      const root = tempRoot("strategy-structure");
+      try {
+        seedAdmittedRoot(root, loadEmbeddedFrontier());
+        const filename = path.join(root, "client-state/adaptive-flywheel/strategies.sqlite3");
+        fs.unlinkSync(filename);
+        const database = new DatabaseSync(filename);
+        const ddl = releasedStrategyDdl();
+        database.exec(from === null ? ddl : ddl.replaceAll(from, to));
+        database.exec(extra);
+        database.prepare("UPDATE strategy_meta SET value=?").run(String(version));
+        database.close();
+        const before = snapshot(root);
+        const result = evaluateMigrationState({ root, frontier: loadEmbeddedFrontier(), binaryProductVersion: "0.3.0", platform: "darwin" });
+        assert.equal(result.verdict, "invalid");
+        assert.ok(result.domains.find((domain) => domain.domainId === "adaptive-flywheel").codes.includes("unsupported_state_shape"));
+        assert.equal(snapshot(root), before);
+      } finally { removeRoot(root); }
+    });
+  }
+}
+
 /** The state a completed admission leaves behind, for the healthy verdict. */
-function seedAdmittedRoot(root, frontier) {
+function seedAdmittedRoot(root, frontier, { withCustody = true } = {}) {
   const expectedSteps = (domain) =>
     domain.steps.filter((step) => step.toSchemaVersion <= domain.targetSchemaVersion)
       .map((step) => step.stepId);
   const domains = {};
   for (const domain of frontier.domains) {
+    // A macOS admission leaves the protected custody domain pending until the
+    // operation completes; the marker exists only after that operation.
+    if (!withCustody && domain.domainId === "gateway-credential-custody") continue;
     domains[domain.domainId] = {
       schemaVersion: domain.targetSchemaVersion,
       completedStepIds: expectedSteps(domain),
@@ -105,6 +444,7 @@ function seedAdmittedRoot(root, frontier) {
   }
   seedLedger(root, frontier, domains);
   for (const domain of frontier.domains) {
+    if (!withCustody && domain.domainId === "gateway-credential-custody") continue;
     writePrivateJson(path.join(root, `client-state/migrations/domain-state/${domain.domainId}.json`), {
       schemaVersion: "v0.0.1:client-state-domain-marker-1",
       domainId: domain.domainId,
@@ -133,10 +473,7 @@ function seedAdmittedRoot(root, frontier) {
   const conversations = path.join(root, "client-state/conversations");
   fs.mkdirSync(conversations, { recursive: true });
   const database = new DatabaseSync(path.join(conversations, "conversations.sqlite3"));
-  database.exec(
-    "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);" +
-      "INSERT INTO schema_meta(key,value) VALUES ('version','15');",
-  );
+  createCurrentConversationStore(database);
   database.close();
   fs.writeFileSync(
     path.join(conversations, "migration-v5.complete"),
@@ -145,10 +482,7 @@ function seedAdmittedRoot(root, frontier) {
   const flywheel = path.join(root, "client-state/adaptive-flywheel");
   fs.mkdirSync(flywheel, { recursive: true });
   const strategies = new DatabaseSync(path.join(flywheel, "strategies.sqlite3"));
-  strategies.exec(
-    "CREATE TABLE strategy_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);" +
-      "INSERT INTO strategy_meta(key,value) VALUES ('version','3');",
-  );
+  createCurrentStrategyStore(strategies);
   strategies.close();
 }
 
@@ -704,17 +1038,18 @@ test("the private write refuses to clobber a document that changed after the rea
   }
 });
 
-test("a root reached through a user-owned symlink is not certified", () => {
+test("root symlinks follow the private-state owner trust boundary", () => {
   const real = tempRoot("symlink-real");
   const link = `${real}-link`;
   try {
     seedAdmittedRoot(real, loadEmbeddedFrontier());
     fs.symlinkSync(real, link);
+    const systemOwned = fs.lstatSync(link).uid === 0;
     const { envelope, status } = runJson(["doctor", "--root", link]);
-    assert.equal(status, 4);
+    assert.equal(status, systemOwned ? 0 : 4);
     assert.equal(
       envelope.codes.some((entry) => entry.code === "migration_ledger_invalid"),
-      true,
+      !systemOwned,
       JSON.stringify(envelope.codes),
     );
   } finally {
@@ -812,6 +1147,7 @@ test("exit codes stay distinct for healthy, behind, ahead, invalid, and usage", 
   const frontier = loadEmbeddedFrontier();
   const healthy = tempRoot("exit-healthy");
   const ahead = tempRoot("exit-ahead");
+  const pending = tempRoot("exit-pending");
   try {
     seedAdmittedRoot(healthy, frontier);
     assert.equal(runCli(["doctor", "--root", healthy]).status, 0);
@@ -820,24 +1156,447 @@ test("exit codes stay distinct for healthy, behind, ahead, invalid, and usage", 
     assert.equal(runCli(["doctor", "--root", ahead]).status, 3);
     fs.writeFileSync(path.join(ahead, "client-state/appearance-preferences.json"), "not json");
     assert.equal(runCli(["doctor", "--root", ahead]).status, 4);
+    seedAdmittedRoot(pending, frontier, { withCustody: false });
+    assert.equal(
+      runCli(["doctor", "--root", pending]).status,
+      gatewayCredentialMigrationDisposition(process.platform) === "requires-authorization" ? 5 : 0,
+    );
     assert.equal(runCli(["status", "--root", "relative/path"]).status, 64);
     assert.equal(runCli(["unknown-command", "--root", healthy]).status, 64);
     assert.equal(runCli(["repair", "--root", healthy]).status, 64);
   } finally {
     removeRoot(healthy);
     removeRoot(ahead);
+    removeRoot(pending);
+  }
+});
+
+test("the evaluator refuses undeclared frontiers and mirrors the owner's store layouts", () => {
+  const frontier = loadEmbeddedFrontier();
+  const seedNamedLedger = (root, frontierId) =>
+    writePrivateJson(path.join(root, "client-state/migrations/ledger.json"), {
+      schemaVersion: "v0.0.1:client-state-migration-ledger-1",
+      highestAdmittedProductVersion: "0.3.0",
+      frontierId,
+      domains: {},
+    });
+
+  for (const named of ["licoup-state-0.2.1", "licoup-state-0.2.2"]) {
+    const root = tempRoot("frontier-refusal");
+    try {
+      seedNamedLedger(root, named);
+      const report = evaluateMigrationState({
+        root,
+        frontier,
+        binaryProductVersion: "0.3.0",
+      });
+      assert.equal(report.verdict, "invalid", named);
+      assert.ok(
+        report.codes.some((entry) => entry.code === "unsupported_state_shape"),
+        `${named} must be refused: ${JSON.stringify(report.codes)}`,
+      );
+    } finally {
+      removeRoot(root);
+    }
+  }
+  for (const named of [frontier.sourceFrontierId, frontier.frontierId]) {
+    const root = tempRoot("frontier-accepted");
+    try {
+      seedNamedLedger(root, named);
+      const report = evaluateMigrationState({
+        root,
+        frontier,
+        binaryProductVersion: "0.3.0",
+      });
+      assert.equal(
+        report.codes.some((entry) => entry.code === "unsupported_state_shape"),
+        false,
+        `${named} is a declared endpoint`,
+      );
+    } finally {
+      removeRoot(root);
+    }
+  }
+});
+
+test("the evaluator refuses fake conversation and malformed strategy databases", () => {
+  const frontier = loadEmbeddedFrontier();
+  const cases = [
+    {
+      label: "a current-stamped two-table conversation store",
+      seed: (root) => {
+        const directory = path.join(root, "client-state/conversations");
+        fs.mkdirSync(directory, { recursive: true });
+        const database = new DatabaseSync(path.join(directory, "conversations.sqlite3"));
+        database.exec(
+          "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);" +
+            "INSERT INTO schema_meta(key,value) VALUES ('version','18');" +
+            "CREATE TABLE conversations(id TEXT PRIMARY KEY, title TEXT NOT NULL);",
+        );
+        database.close();
+        fs.writeFileSync(
+          path.join(directory, "migration-v5.complete"),
+          ["schema=v5", "status=complete", ""].join("\n"),
+        );
+      },
+    },
+    {
+      label: "a development conversation schema",
+      seed: (root) => {
+        const directory = path.join(root, "client-state/conversations");
+        fs.mkdirSync(directory, { recursive: true });
+        const database = new DatabaseSync(path.join(directory, "conversations.sqlite3"));
+        database.exec(
+          "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);" +
+            "INSERT INTO schema_meta(key,value) VALUES ('version','15');",
+        );
+        database.close();
+      },
+    },
+    {
+      label: "a strategy version row on a truncated database",
+      seed: (root) => {
+        const directory = path.join(root, "client-state/adaptive-flywheel");
+        fs.mkdirSync(directory, { recursive: true });
+        const database = new DatabaseSync(path.join(directory, "strategies.sqlite3"));
+        database.exec(
+          "CREATE TABLE strategy_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);" +
+            "INSERT INTO strategy_meta(key,value) VALUES ('version','3');",
+        );
+        database.close();
+      },
+    },
+    {
+      label: "a legacy strategy stamp",
+      seed: (root) => {
+        const directory = path.join(root, "client-state/adaptive-flywheel");
+        fs.mkdirSync(directory, { recursive: true });
+        const database = new DatabaseSync(path.join(directory, "strategies.sqlite3"));
+        database.exec(
+          "CREATE TABLE strategy_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);" +
+            "INSERT INTO strategy_meta(key,value) VALUES ('version','1');",
+        );
+        database.close();
+      },
+    },
+  ];
+  for (const scenario of cases) {
+    const root = tempRoot("refused-shape");
+    try {
+      scenario.seed(root);
+      const report = evaluateMigrationState({
+        root,
+        frontier,
+        binaryProductVersion: "0.3.0",
+      });
+      assert.equal(report.verdict, "invalid", scenario.label);
+      assert.ok(
+        report.codes.some((entry) => entry.code === "unsupported_state_shape"),
+        `${scenario.label}: ${JSON.stringify(report.codes)}`,
+      );
+    } finally {
+      removeRoot(root);
+    }
+  }
+});
+
+test("released and producer-variant stores are accepted; mutations and malformed inspections are bounded", () => {
+  const frontier = loadEmbeddedFrontier();
+  const seedReleasedConversation = (root) => {
+    const directory = path.join(root, "client-state/conversations");
+    fs.mkdirSync(directory, { recursive: true });
+    const database = new DatabaseSync(path.join(directory, "conversations.sqlite3"));
+    createReleasedConversationStore(database);
+    database.close();
+    fs.writeFileSync(
+      path.join(directory, "migration-v5.complete"),
+      ["schema=v5", "status=complete", ""].join("\n"),
+    );
+  };
+  const seedReleasedStrategy = (root, options = {}) => {
+    const directory = path.join(root, "client-state/adaptive-flywheel");
+    fs.mkdirSync(directory, { recursive: true });
+    const database = new DatabaseSync(path.join(directory, "strategies.sqlite3"));
+    createReleasedStrategyStore(database, options);
+    database.close();
+  };
+  const evaluate = (root) =>
+    evaluateMigrationState({ root, frontier, binaryProductVersion: "0.3.0", platform: "linux" });
+
+  // The frozen released layouts, including the published producer's in-place
+  // upgrade output with a nullable terminal, are owner-supported sources.
+  const accepted = tempRoot("released-accepted");
+  try {
+    seedReleasedConversation(accepted);
+    seedReleasedStrategy(accepted, { producerUpgraded: true });
+    const report = evaluate(accepted);
+    const conversation = report.domains.find(
+      (domain) => domain.domainId === "canonical-conversation",
+    );
+    assert.equal(conversation.observedSchemaVersion, 1, JSON.stringify(report.codes));
+    const adaptive = report.domains.find((domain) => domain.domainId === "adaptive-flywheel");
+    assert.equal(adaptive.observedSchemaVersion, 1, JSON.stringify(report.codes));
+    assert.equal(
+      report.codes.some((entry) => entry.code === "unsupported_state_shape"),
+      false,
+      JSON.stringify(report.codes),
+    );
+  } finally {
+    removeRoot(accepted);
+  }
+
+  // The same released layout stamped as the adjacent legacy version stays a
+  // legitimate source: the JS evaluator must not over-refuse it.
+  const legacy = tempRoot("released-legacy");
+  try {
+    seedReleasedConversation(legacy);
+    const database = new DatabaseSync(
+      path.join(legacy, "client-state/conversations/conversations.sqlite3"),
+    );
+    database.exec("UPDATE schema_meta SET value='11' WHERE key='version';");
+    database.close();
+    const report = evaluate(legacy);
+    const conversation = report.domains.find(
+      (domain) => domain.domainId === "canonical-conversation",
+    );
+    assert.equal(conversation.observedSchemaVersion, 1, JSON.stringify(report.codes));
+    assert.equal(
+      report.codes.some((entry) => entry.code === "unsupported_state_shape"),
+      false,
+      JSON.stringify(report.codes),
+    );
+  } finally {
+    removeRoot(legacy);
+  }
+
+  const mutations = [
+    {
+      label: "the released membership identity index is not unique",
+      domainId: "canonical-conversation",
+      seed: (root) => {
+        seedReleasedConversation(root);
+        const database = new DatabaseSync(
+          path.join(root, "client-state/conversations/conversations.sqlite3"),
+        );
+        database.exec(
+          "DROP INDEX memberships_principal_unique;" +
+            "CREATE INDEX memberships_principal_unique ON memberships(conversation_id, principal_id);",
+        );
+        database.close();
+      },
+    },
+    {
+      label: "the released partial predicate was weakened",
+      domainId: "adaptive-flywheel",
+      seed: (root) => {
+        seedReleasedStrategy(root, { producerUpgraded: true });
+        const database = new DatabaseSync(
+          path.join(root, "client-state/adaptive-flywheel/strategies.sqlite3"),
+        );
+        database.exec(
+          "DROP INDEX strategy_authorization_active_idx;" +
+            "CREATE UNIQUE INDEX strategy_authorization_active_idx" +
+            " ON strategy_authorizations(revision_digest) WHERE active=1 AND 0;",
+        );
+        database.close();
+      },
+    },
+    {
+      label: "an older published stamp on two tables",
+      domainId: "canonical-conversation",
+      seed: (root) => {
+        const directory = path.join(root, "client-state/conversations");
+        fs.mkdirSync(directory, { recursive: true });
+        const database = new DatabaseSync(path.join(directory, "conversations.sqlite3"));
+        database.exec(
+          "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);" +
+            "INSERT INTO schema_meta(key,value) VALUES ('version','11');" +
+            "CREATE TABLE conversations(id TEXT PRIMARY KEY, title TEXT NOT NULL);",
+        );
+        database.close();
+        fs.writeFileSync(
+          path.join(directory, "migration-v5.complete"),
+          ["schema=v5", "status=complete", ""].join("\n"),
+        );
+      },
+    },
+    {
+      label: "a current stamped store without a conversation title",
+      domainId: "canonical-conversation",
+      seed: (root) => {
+        const directory = path.join(root, "client-state/conversations");
+        fs.mkdirSync(directory, { recursive: true });
+        const database = new DatabaseSync(path.join(directory, "conversations.sqlite3"));
+        createCurrentConversationStore(database);
+        database.exec("ALTER TABLE conversations DROP COLUMN title;");
+        database.close();
+        fs.writeFileSync(
+          path.join(directory, "migration-v5.complete"),
+          ["schema=v5", "status=complete", ""].join("\n"),
+        );
+      },
+    },
+    {
+      label: "an identity-only older store",
+      domainId: "canonical-conversation",
+      seed: (root) => {
+        const directory = path.join(root, "client-state/conversations");
+        fs.mkdirSync(directory, { recursive: true });
+        const database = new DatabaseSync(path.join(directory, "conversations.sqlite3"));
+        database.exec(
+          "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);" +
+            "INSERT INTO schema_meta(key,value) VALUES ('version','11');" +
+            "CREATE TABLE principals(id TEXT PRIMARY KEY);" +
+            "CREATE TABLE conversations(id TEXT PRIMARY KEY, title TEXT NOT NULL);" +
+            "CREATE TABLE memberships(id TEXT PRIMARY KEY);" +
+            "CREATE TABLE events(id TEXT PRIMARY KEY);",
+        );
+        database.close();
+        fs.writeFileSync(
+          path.join(directory, "migration-v5.complete"),
+          ["schema=v5", "status=complete", ""].join("\n"),
+        );
+      },
+    },
+    {
+      label: "a current store missing a principal business field",
+      domainId: "canonical-conversation",
+      seed: (root) => {
+        const directory = path.join(root, "client-state/conversations");
+        fs.mkdirSync(directory, { recursive: true });
+        const database = new DatabaseSync(path.join(directory, "conversations.sqlite3"));
+        createCurrentConversationStore(database);
+        database.exec("ALTER TABLE principals DROP COLUMN display_name;");
+        database.close();
+        fs.writeFileSync(
+          path.join(directory, "migration-v5.complete"),
+          ["schema=v5", "status=complete", ""].join("\n"),
+        );
+      },
+    },
+    {
+      label: "a released store without event sequence uniqueness",
+      domainId: "canonical-conversation",
+      seed: (root) => {
+        seedReleasedConversation(root);
+        const database = new DatabaseSync(
+          path.join(root, "client-state/conversations/conversations.sqlite3"),
+        );
+        database.exec(
+          "PRAGMA foreign_keys=OFF;" +
+            "CREATE TABLE events_rebuilt (" +
+            "id TEXT PRIMARY KEY," +
+            "conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE," +
+            "sequence INTEGER NOT NULL," +
+            "author_membership_id TEXT REFERENCES memberships(id)," +
+            "kind TEXT NOT NULL, causation_id TEXT, correlation_id TEXT," +
+            "created_at INTEGER NOT NULL," +
+            "finalized INTEGER NOT NULL DEFAULT 0 CHECK(finalized IN (0,1))," +
+            "CHECK(1));" +
+            "INSERT INTO events_rebuilt SELECT id, conversation_id, sequence," +
+            " author_membership_id, kind, causation_id, correlation_id, created_at, finalized" +
+            " FROM events;" +
+            "DROP TABLE events;" +
+            "ALTER TABLE events_rebuilt RENAME TO events;",
+        );
+        database.close();
+      },
+    },
+    {
+      label: "a malformed schema_meta inspection",
+      domainId: "canonical-conversation",
+      seed: (root) => {
+        const directory = path.join(root, "client-state/conversations");
+        fs.mkdirSync(directory, { recursive: true });
+        const database = new DatabaseSync(path.join(directory, "conversations.sqlite3"));
+        database.exec("CREATE TABLE schema_meta(key TEXT);");
+        database.close();
+        fs.writeFileSync(
+          path.join(directory, "migration-v5.complete"),
+          ["schema=v5", "status=complete", ""].join("\n"),
+        );
+      },
+    },
+  ];
+  for (const mutation of mutations) {
+    const root = tempRoot("released-mutation");
+    try {
+      mutation.seed(root);
+      const report = evaluate(root);
+      assert.equal(report.verdict, "invalid", mutation.label);
+      const domain = report.domains.find((entry) => entry.domainId === mutation.domainId);
+      assert.equal(domain.verdict, "invalid", mutation.label);
+      assert.ok(
+        domain.codes.includes("unsupported_state_shape"),
+        `${mutation.label}: ${JSON.stringify(domain.codes)}`,
+      );
+      assert.equal(
+        report.domains.length,
+        frontier.domains.length,
+        `${mutation.label}: every other domain stays reported`,
+      );
+    } finally {
+      removeRoot(root);
+    }
+  }
+});
+
+test("pending custody is incomplete, never healthy", () => {
+  const frontier = loadEmbeddedFrontier();
+  const root = tempRoot("pending-custody");
+  try {
+    seedAdmittedRoot(root, frontier, { withCustody: false });
+    const report = evaluateMigrationState({
+      root,
+      frontier,
+      binaryProductVersion: "0.3.0",
+      platform: "darwin",
+    });
+    assert.equal(report.verdict, "pending_authorization");
+    assert.equal(exitCodeForVerdict(report.verdict), 5);
+    const gateway = report.domains.find(
+      (domain) => domain.domainId === "gateway-credential-custody",
+    );
+    assert.equal(gateway.pendingAuthorization, true);
+    assert.equal(gateway.observedSchemaVersion, 0);
+    assert.equal(
+      fs.existsSync(
+        path.join(
+          root,
+          "client-state/migrations/domain-state/gateway-credential-custody.json",
+        ),
+      ),
+      false,
+      "the tool must not fabricate a custody marker",
+    );
+  } finally {
+    removeRoot(root);
   }
 });
 
 test("every mirrored durable shape and constant still matches the Rust admission", async () => {
-  const [migration, policy, migrationPlatform, conversationStore] = await Promise.all([
+  const [
+    migration,
+    stores,
+    strategyStore,
+    workflowStore,
+    policy,
+    migrationPlatform,
+    conversationStore,
+  ] = await Promise.all([
     fs.promises.readFile(path.join(repoRoot, MIGRATION_MODULE), "utf8"),
+    fs.promises.readFile(path.join(repoRoot, STORES_MODULE), "utf8"),
+    fs.promises.readFile(path.join(repoRoot, STRATEGY_STORE_MODULE), "utf8"),
+    fs.promises.readFile(path.join(repoRoot, WORKFLOW_STORE_MODULE), "utf8"),
     fs.promises.readFile(path.join(repoRoot, CLIENT_STATE_POLICY), "utf8"),
     fs.promises.readFile(path.join(repoRoot, CLIENT_STATE_MIGRATION), "utf8"),
     fs.promises.readFile(path.join(repoRoot, CONVERSATION_STORE), "utf8"),
   ]);
-  // Whitespace is stripped so the binding survives any rustfmt layout.
-  const compact = migration.replace(/\s+/gu, "");
+  // The domain routing lives in the stores leaf, the strategy layouts in the
+  // strategy-store leaf, and the owner's exact core-table descriptor lives in
+  // the workflow-store owner, so the mirror reads the owners together.
+  // Whitespace is stripped so the bindings survive any rustfmt layout.
+  const compact = `${migration}${stores}${strategyStore}${workflowStore}`.replace(/\s+/gu, "");
 
   const jsonDocuments = new Map();
   const pattern =
@@ -875,9 +1634,49 @@ test("every mirrored durable shape and constant still matches the Rust admission
   assert.ok(
     compact.includes(probeRoute("probe_mobile_relay", DURABLE_SHAPES["mobile-relay"].document)),
   );
-  assert.ok(compact.includes('root.join("client-state/adaptive-flywheel/strategies.sqlite3")'));
-  assert.ok(compact.includes('Some("3")=>Ok(AuthoritativeProbe{version:2,present:true,})'));
-  assert.ok(compact.includes('Some("2")=>Ok(AuthoritativeProbe{version:1,present:true,})'));
+  assert.ok(
+    compact.includes(
+      'constSTRATEGY_STORE_DATABASE:&str="client-state/adaptive-flywheel/strategies.sqlite3";',
+    ),
+    "the strategy database path must stay the admission's own constant",
+  );
+  // The Node tool maps a store's own `strategy_meta` version to a domain
+  // version. Read that mapping out of the Rust layout registry so the mirror
+  // cannot drift from the formats the admission actually knows.
+  const formatVersions = {};
+  for (const match of compact.matchAll(
+    /meta_versions:&\["(\d+)"\],domain_schema_version:(\d+),/gu,
+  )) {
+    formatVersions[match[1]] = Number(match[2]);
+  }
+  assert.deepEqual(
+    formatVersions,
+    { ...ADAPTIVE_FLYWHEEL_SCHEMA_VERSIONS },
+    "the Node strategy-version mapping must mirror the Rust layout registry",
+  );
+  // The tool derives the Conversation contract from the owner DDL at runtime,
+  // so the anchors it reads must stay present in the owner source.
+  const conversationSchema = await fs.promises.readFile(
+    path.join(repoRoot, CONVERSATION_SCHEMA),
+    "utf8",
+  );
+  for (const anchor of [
+    "fn ensure_current_layout",
+    "DROP INDEX IF EXISTS memberships_active_unique",
+    "CREATE TABLE IF NOT EXISTS principals",
+  ]) {
+    assert.ok(
+      conversationSchema.includes(anchor),
+      `the Conversation owner no longer carries ${anchor}`,
+    );
+  }
+  const [frontierConsumer, reportConsumer] = await Promise.all([
+    fs.promises.readFile(path.join(repoRoot, FRONTIER_CONSUMER), "utf8"),
+    fs.promises.readFile(path.join(repoRoot, REPORT_CONSUMER), "utf8"),
+  ]);
+  assert.ok(frontierConsumer.includes("sourceFrontierId"));
+  assert.ok(reportConsumer.includes("sourceFrontierId"));
+  assert.ok(reportConsumer.includes("pending_authorization"));
   assert.ok(compact.includes('root.join("client-state/conversations/conversations.sqlite3")'));
   assert.ok(compact.includes('root.join("client-state/conversations/migration-v5.complete")'));
   const completionSource =
@@ -939,6 +1738,7 @@ test("the diagnostic module keeps its facade, its leaf set, and one authority pe
     "probe.mjs",
     "repair.mjs",
     "report.mjs",
+    "sqlite-contract.mjs",
     "util.mjs",
   ]);
   const facade = await fs.promises.readFile(path.join(repoRoot, facadeRef), "utf8");

@@ -10,6 +10,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/workflow_store/**",
         "crates/licoup-workflow/**",
         "crates/licoup-foundation/src/core/safe_archive.rs",
+        "crates/licoup-foundation/src/core/safe_archive/**",
         "crates/licoup-native/src/platform/process_sandbox/strategy.rs",
         "crates/licoup-native/src/platform/strategy_runtime/**",
       ],
@@ -92,6 +93,8 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-conversation/src/store/recovery.rs",
         "crates/licoup-conversation/src/store/schema.rs",
         "crates/licoup-conversation/src/store/schema/**",
+        "tests/fixtures/client_state_migration/continuity_layout.rs",
+        "tests/fixtures/client_state_migration/retained_related_tables.sql",
         "crates/licoup-conversation/tests/cold_recovery.rs",
         "crates/licoup-conversation/tests/local_conversation.rs",
         "crates/licoup-conversation/src/lib.rs",
@@ -113,6 +116,8 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
           "domain::client_conversation::",
           "store::execution::tests::",
           "store::native_sessions::tests::",
+          "store::schema::tests::",
+          "store::tests::open_",
         ],
           10 * 60_000,
       ),
@@ -258,6 +263,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.provider-quota",
       kind: "rust-domain",
       summary: "Provider-quota snapshot contract, per-provider sources, refresh scheduler, and retained store",
+      targetEvidenceHosts: ["darwin", "linux", "win32"],
       inputs: [
         "crates/licoup-native/src/domain/provider_quota.rs",
         "crates/licoup-native/src/domain/provider_quota/**",
@@ -1831,7 +1837,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.mobile-relay.endpoint-trust.local-material.identity",
       kind: "rust-domain",
-      summary: "Local identity and signing generation separated from endpoint config mutation",
+      summary: "Local endpoint identity generation, data-home binding, and replacement-import refusal",
       inputs: [
         "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/composition.rs",
         "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/identity_generation.rs",
@@ -2053,9 +2059,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.mobile-relay.secret-custody",
       kind: "rust-domain",
-      summary: "Secret custody facade and shared helper projection",
+      summary: "Secret custody facade, redacted credential inventory, and shared helper projection",
       inputs: [
         "crates/licoup-native/src/domain/mobile_relay/secret_custody.rs",
+        "crates/licoup-native/src/domain/mobile_relay/secret_custody/inventory.rs",
         "crates/licoup-native/src/domain/mobile_relay/secret_custody/tests.rs",
       ],
       command: rustLayer("domain::mobile_relay::secret_custody::tests::"),
@@ -2114,6 +2121,15 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer(
         "domain::mobile_relay::secret_custody::reset_guard::tests::",
       ),
+    }),
+  defineModule({
+      id: "rust.domain.mobile-relay.secret-custody.recovery",
+      kind: "rust-domain",
+      summary: "Archive custody metadata preparation and authorized same-device recovery",
+      inputs: [
+        "crates/licoup-native/src/domain/mobile_relay/secret_custody/recovery.rs",
+      ],
+      command: rustLayer("domain::mobile_relay::secret_custody::recovery::tests::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.secret-custody.runtime",
@@ -2275,6 +2291,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.targets.scan-paths",
       kind: "rust-domain",
       summary: "Agent Scan Path Manifest: allowlisted discovery, lexical deny, unused-agent other-app skip",
+      targetEvidenceHosts: ["darwin", "linux", "win32"],
       inputs: [
         "crates/licoup-native/src/domain/targets/scan_paths.rs",
         "crates/licoup-foundation/src/platform/paths.rs",
@@ -2286,6 +2303,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.targets.binaries",
       kind: "rust-domain",
       summary: "Bounded platform executable discovery and source classification",
+      targetEvidenceHosts: ["darwin", "linux", "win32"],
       inputs: [
         "crates/licoup-native/src/domain/targets/binaries.rs",
         "crates/licoup-native/src/domain/targets/scan_paths.rs",
@@ -2315,6 +2333,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.targets.platform-paths",
       kind: "rust-domain",
       summary: "Cross-platform target configuration and evidence paths",
+      targetEvidenceHosts: ["darwin", "linux", "win32"],
       inputs: [
         "crates/licoup-native/src/domain/targets/platform_paths.rs",
         "crates/licoup-native/src/domain/targets/scan_paths.rs",
@@ -2336,6 +2355,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.targets.platform-integration",
       kind: "rust-domain",
       summary: "Cross-platform path, process, and executable integration projections",
+      targetEvidenceHosts: ["darwin", "linux", "win32"],
       inputs: [
         "crates/licoup-native/src/domain/targets/binaries.rs",
         "crates/licoup-native/src/domain/targets/platform_paths.rs",
@@ -2598,6 +2618,8 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/collaboration_plugin/manifest.rs",
         "crates/licoup-native/src/domain/collaboration_plugin/runner_signature.rs",
         "crates/licoup-native/src/domain/collaboration_plugin/source.rs",
+        "crates/licoup-foundation/src/core/safe_archive.rs",
+        "crates/licoup-foundation/src/core/safe_archive/**",
         "crates/licoup-native/src/domain/collaboration_plugin/test_support.rs",
         "crates/licoup-native/src/domain/collaboration_plugin/transaction.rs",
         "crates/licoup-native/src/domain/collaboration_plugin/lifecycle/**",
@@ -2774,6 +2796,13 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/client_state_migration/stores.rs",
         "crates/licoup-native/src/domain/client_state_migration/strategy_store.rs",
         "crates/licoup-native/src/domain/client_state_migration/tests.rs",
+        "crates/licoup-native/src/domain/client_state_migration/tests/**",
+        "tests/fixtures/client_state_migration/**",
+        "crates/licoup-conversation/src/store/schema.rs",
+        "crates/licoup-conversation/src/store/schema/**",
+        "crates/licoup-conversation/src/store/native_sessions.rs",
+        "crates/licoup-foundation/src/core/sqlite_contract.rs",
+        "crates/licoup-native/src/domain/workflow_store/**",
         "crates/licoup-native/src/platform/hermes_tui_gateway_driver.rs",
         "crates/licoup-native/build.rs",
       ],
@@ -2783,6 +2812,8 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.client-update",
       kind: "rust-domain",
       summary: "Cross-cutting client update selection, metadata, receipts, and aggregate regression",
+      runnableHosts: ["darwin", "linux"],
+      targetEvidenceHosts: ["darwin", "linux"],
       inputs: [
         "crates/licoup-native/src/domain/client_update.rs",
         "crates/licoup-native/src/domain/client_update/constants.rs",
@@ -2794,7 +2825,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/client_update/tests/support.rs",
         "crates/licoup-native/src/domain/client_update/verify.rs",
       ],
-      command: rustLayer("domain::client_update::tests::"),
+      command: rustLayer("domain::client_update::tests::", ["--skip", "native_runner::"]),
     }),
   defineModule({
       id: "rust.domain.client-update.signature-roles",
@@ -2869,6 +2900,8 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.client-update.native-runner",
       kind: "rust-domain",
       summary: "Safe signed archive extraction and redacted macOS app lifecycle",
+      runnableHosts: ["darwin"],
+      targetEvidenceHosts: ["darwin"],
       inputs: [
         "crates/licoup-native/src/domain/client_update/native_runner/**",
         "crates/licoup-native/src/domain/client_update/tests/native_runner.rs",

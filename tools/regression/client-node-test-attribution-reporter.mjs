@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 export const NODE_TEST_INPUTS_ENV = "LICO_CLIENT_NODE_TEST_INPUTS";
 export const NODE_TEST_ATTRIBUTION_SCHEMA = "licoup.node-test-attribution.v1";
+const PRIVATE_FAILURE_LIMIT = 64 * 1024;
 
 function normalizedFile(value) {
   try {
@@ -30,6 +31,33 @@ function configuredInputs() {
   }
 }
 
+function safeFailureCategory(error) {
+  const candidate = error?.code || error?.failureType || error?.name || "test_failure";
+  const normalized = String(candidate)
+    .toLowerCase()
+    .replace(/[^a-z0-9_.:+-]+/gu, "_")
+    .replace(/^_+|_+$/gu, "")
+    .slice(0, 80);
+  return normalized || "test_failure";
+}
+
+function privateFailureDiagnostic(error) {
+  const sections = [];
+  const visited = new Set();
+  let current = error;
+  for (let depth = 0; current && depth < 4 && !visited.has(current); depth += 1) {
+    visited.add(current);
+    const stack = typeof current.stack === "string" ? current.stack : "";
+    const message = typeof current.message === "string" ? current.message : "";
+    if (stack) sections.push(stack);
+    else if (message) sections.push(message);
+    else sections.push(String(current));
+    current = current.cause;
+    if (current) sections.push("Caused by:");
+  }
+  return sections.join("\n").slice(-PRIVATE_FAILURE_LIMIT);
+}
+
 export default async function* nodeTestAttributionReporter(source) {
   const inputs = configuredInputs();
   const indexByFile = inputs
@@ -43,7 +71,12 @@ export default async function* nodeTestAttributionReporter(source) {
     const file = normalizedFile(event?.data?.file);
     const index = indexByFile.get(file);
     if (index === undefined) complete = false;
-    else failedInputIndexes.add(index);
+    else {
+      failedInputIndexes.add(index);
+      const error = event?.data?.details?.error;
+      yield `[node-test-private-diagnostic input=${index} category=${safeFailureCategory(error)}]\n`;
+      yield `${privateFailureDiagnostic(error)}\n`;
+    }
   }
 
   yield `${JSON.stringify({

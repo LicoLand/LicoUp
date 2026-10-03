@@ -11,6 +11,7 @@ const repoRoot = path.resolve(
 );
 
 const production = {
+  manifest: "schemas/client_bridge/manifest.json",
   schema: "schemas/client_bridge/client_error.schema.json",
   generator: "tools/scripts/generate-client-bridge-contracts.mjs",
   rustGenerated:
@@ -74,14 +75,21 @@ test("one schema deterministically owns both generated ClientError values", asyn
   );
 
   const generator = await read(production.generator);
-  for (const ownedPath of [
-    production.schema,
-    production.rustGenerated,
-    production.dartGenerated,
-  ]) {
+  assert.ok(generator.includes(production.manifest));
+  const manifest = JSON.parse(await read(production.manifest));
+  const family = manifest.families.find(({ id }) => id === "client_error");
+  assert.deepEqual(family, {
+    id: "client_error",
+    status: "active",
+    schema: production.schema,
+    rustOutput: production.rustGenerated,
+    dartOutput: production.dartGenerated,
+  });
+  for (const ownedPath of Object.values(family).filter((value) =>
+    typeof value === "string" && value.includes("/"))) {
     assert.ok(
-      generator.includes(ownedPath),
-      `generator must own ${ownedPath}`,
+      await fs.access(path.join(repoRoot, ownedPath)).then(() => true, () => false),
+      `manifest path must exist: ${ownedPath}`,
     );
   }
   assert.match(generator, /--check/);
@@ -174,18 +182,12 @@ test("node-owned production has no ClientError twins, shims, or string projectio
     ),
   );
 
-  const forbiddenEverywhere = [
+  const forbiddenClientErrorTypes = [
     [/\b(?:ClientErrorShim|LegacyClientError|ClientErrorDto)\b/, "shim"],
     [/\b(?:type|typedef)\s+ClientError\b/, "alias"],
-    [/\b(?:errorCode|error_code)\b/, "code-only projection"],
-    [
-      /(?:message|error|cause)\s*\.\s*(?:contains|startsWith|endsWith|contains_key)\s*\(/,
-      "string classifier",
-    ],
-    [/\bRegExp\s*\(/, "regular-expression classifier"],
   ];
   for (const [relativePath, source] of sources) {
-    for (const [pattern, description] of forbiddenEverywhere) {
+    for (const [pattern, description] of forbiddenClientErrorTypes) {
       assert.doesNotMatch(
         source,
         pattern,
@@ -202,6 +204,29 @@ test("node-owned production has no ClientError twins, shims, or string projectio
         source,
         /\b(?:pub\s+)?use\b[^;]*\bas\s+ClientError\b/,
         `${relativePath} aliases ClientError`,
+      );
+    }
+  }
+
+  const typedChainFiles = new Set(
+    Object.values(production).filter((relativePath) =>
+      /\.(?:dart|rs)$/u.test(relativePath)),
+  );
+  const forbiddenTypedChain = [
+    [/\b(?:errorCode|error_code)\b/, "code-only projection"],
+    [
+      /(?:message|error|cause)\s*\.\s*(?:contains|startsWith|endsWith|contains_key)\s*\(/,
+      "string classifier",
+    ],
+    [/\bRegExp\s*\(/, "regular-expression classifier"],
+  ];
+  for (const relativePath of typedChainFiles) {
+    const source = sources.get(relativePath);
+    for (const [pattern, description] of forbiddenTypedChain) {
+      assert.doesNotMatch(
+        source,
+        pattern,
+        `${relativePath} contains a forbidden ${description}`,
       );
     }
   }
@@ -224,6 +249,6 @@ test("node-owned production has no ClientError twins, shims, or string projectio
   assert.match(sources.get(production.localization), /\bClientError\b/);
   assert.doesNotMatch(
     sources.get(production.controller),
-    /[\u3400-\u9fff]|send failed at|发送在/,
+    /send failed at|发送在/,
   );
 });

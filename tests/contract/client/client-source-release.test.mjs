@@ -4,13 +4,22 @@ import { mkdtemp, mkdir, writeFile, readFile, copyFile, rm } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { acceptedPromotion, execute, prepareSourceDraft } from '../../../tools/scripts/client-source-release.mjs';
-async function fixture(t) {
+async function fixture(t, {tool = false} = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'source-fixture-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const git = args => execute('git', args, { cwd: root, env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' } });
   await git(['init', '-q', '-b', 'release']);
   await git(['config', 'user.name', 'Release Fixture']); await git(['config', 'user.email', 'fixture@example.invalid']);
   await mkdir(path.join(root, 'tools')); await writeFile(path.join(root, 'tools/client-version.json'), JSON.stringify({ productVersion: '0.1.1', buildNumber: 2 }));
+  const profile = JSON.parse(await readFile(new URL('../../../tools/apple-release/macos-direct-arm64.json', import.meta.url), 'utf8'));
+  const template = JSON.parse(await readFile(new URL('../../../tools/client-release-template.json', import.meta.url), 'utf8'));
+  if (!tool) {
+    profile.artifacts = profile.artifacts.filter(entry => !entry.role.startsWith('independent-tool'));
+    template.publication.assetRoles = template.publication.assetRoles.filter(role => !role.startsWith('independent-tool'));
+  }
+  await mkdir(path.join(root, 'tools/apple-release'));
+  await writeFile(path.join(root, 'tools/apple-release/macos-direct-arm64.json'), JSON.stringify(profile));
+  await writeFile(path.join(root, 'tools/client-release-template.json'), JSON.stringify(template));
   await git(['add', '.']); await git(['commit', '-qm', 'fixture base']);
   await git(['checkout', '-qb', 'stable']); await writeFile(path.join(root, 'source.txt'), 'accepted source\n');
   await git(['add', '.']); await git(['commit', '-qm', 'fixture source']); const head = await git(['rev-parse','HEAD']);
@@ -51,7 +60,7 @@ async function fixture(t) {
     }
     assert.fail('unexpected operation');
   };
-  return { root, event, state, run, publish: () => prepareSourceDraft({ event, eventName: 'pull_request', cwd: root, run }) };
+  return { root, event, state, run, profile, publish: () => prepareSourceDraft({ event, eventName: 'pull_request', cwd: root, run }) };
 }
 test('accepted exact merge prepares source pair in a draft and retry preserves platform assets', async t => {
   const f = await fixture(t); const receipt = await f.publish(); assert.equal(receipt.ok, true); assert.equal(receipt.sourcePublished, false); assert.equal(f.state.release.draft, true); assert.equal(f.state.assets.size, 2);
@@ -91,4 +100,18 @@ test('published complete release is a verified no-op while incomplete publicatio
   const receipt = await f.publish(); assert.equal(receipt.sourcePublished, true); assert.deepEqual(f.state.writes, []);
   f.state.assets.delete('LicoUp-update-manifest.json');
   await assert.rejects(f.publish(), { code: 'source_public_asset_missing' });
+});
+
+test('the frozen seven-role declaration preserves independent assets without uploading them from the source publisher', async t => {
+  const f = await fixture(t, {tool:true});
+  await f.publish();
+  assert.equal(f.state.writes.filter(value => value.startsWith('upload:')).length, 2);
+  for (const artifact of f.profile.artifacts) f.state.assets.set(artifact.publicName, Buffer.from('synthetic'));
+  f.state.release.draft = false; f.state.writes = [];
+  assert.equal((await f.publish()).sourcePublished, true);
+  assert.equal(f.state.assets.size, 9);
+  assert.deepEqual(f.state.writes, []);
+  f.state.assets.delete('LicoUp-migrate-macos-arm64.sha256');
+  await assert.rejects(f.publish(), {code:'source_public_asset_missing'});
+  assert.deepEqual(f.state.writes, []);
 });

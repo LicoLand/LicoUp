@@ -44,11 +44,10 @@ export async function checkProductContractsAndPortableData(context, { modules })
     "USER-GUIDE.md must describe native continuation and the non-interleaving fallback"
   );
   assert(
-    normalizedContributingSource.includes("run the smallest relevant checks") &&
-      normalizedContributingSource.includes("mandatory Node-only source policy once") &&
-      normalizedContributingSource.includes("only the affected technology lanes") &&
-      normalizedContributingSource.includes("commit gate never builds or publishes every platform"),
-    "CONTRIBUTING.md must preserve targeted closure and independent commit gates"
+    normalizedContributingSource.includes("is the sole verified delivery entry") &&
+      normalizedContributingSource.includes("Independent checks must settle and report their failures together") &&
+      normalizedContributingSource.includes("run the complete host profile in the local workflow once"),
+    "CONTRIBUTING.md must preserve focused repair and complete local verification"
   );
   const portableDirs = modules["portable-data"]?.portableDirectories || [];
   const expectedPortableDirs = [
@@ -169,7 +168,7 @@ export async function checkFileSecurityAndClientState(context) {
     );
   }
   const fileSecurityInternalImport =
-    /file_security::(?:append_lock|atomic_replace|hardening|marker|policy|sync|unix_hardening|validation|windows_acl)/u;
+    /file_security::(?:append_lock|atomic_replace|hardening|marker|policy|sync|unix_hardening|validation|windows_acl)\b/u;
   for (const relativePath of (await collectSourceFiles(rustCliRoot, ".rs")).filter(
     (sourcePath) => sourcePath !== `${fileSecurityRoot}.rs` &&
       !sourcePath.startsWith(`${fileSecurityRoot}/`)

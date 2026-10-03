@@ -30,20 +30,24 @@ jobs:
       rust: ${{ steps.plan.outputs.rust }}
       android: ${{ steps.plan.outputs.android }}
       dependencies: ${{ steps.plan.outputs.dependencies }}
+      target_darwin: ${{ steps.plan.outputs.target_darwin }}
+      target_linux: ${{ steps.plan.outputs.target_linux }}
+      target_win32: ${{ steps.plan.outputs.target_win32 }}
       changed_count: ${{ steps.plan.outputs.changed_count }}
       change_digest: ${{ steps.plan.outputs.change_digest }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
       - name: Select the author README fast path
         id: readme
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node tools/scripts/readme-fast-path.mjs classify --base "$BASE_SHA" --head "$HEAD_SHA"
       - name: Verify client gate topology
         if: steps.readme.outputs.readme_fast != 'true'
@@ -53,46 +57,20 @@ jobs:
         if: steps.readme.outputs.readme_fast != 'true'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
-          HEAD_SHA: ${{ github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: npm run client:gate:plan -- --base "$BASE_SHA" --head "$HEAD_SHA"
 
-  source:
-    name: Client source policy
+  engineering:
+    name: Complete engineering profile
     if: ${{ needs.plan.outputs.readme_fast != 'true' }}
     needs: plan
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: "24"
-          cache: npm
-      - name: Install Node dependencies
-        run: npm ci
-      - name: Run Node-only source policy
-        env:
-          LICO_AUDITOR_GATE_DELEGATED: "1"
-        run: npm run client:gate:source
-      - name: Upload source-policy reports
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: client-source-policy-reports
-          path: |
-            build/reports/
-            build/test-reports/
-          if-no-files-found: ignore
-          retention-days: 14
-
-  flutter:
-    name: Flutter checks
-    if: ${{ needs.plan.outputs.flutter == 'true' }}
-    needs: plan
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
@@ -101,21 +79,6 @@ jobs:
         with:
           flutter-version: "3.44.2"
           cache: true
-      - run: npm ci
-      - run: npm run client:gate:flutter
-
-  rust:
-    name: Rust checks
-    if: ${{ needs.plan.outputs.rust == 'true' }}
-    needs: plan
-    runs-on: ubuntu-24.04
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: "24"
-          cache: npm
       - uses: dtolnay/rust-toolchain@46817827a5bfabe028bf34e1cce71fd40e2ff697 # 1.95.0
         with:
           components: clippy, rustfmt
@@ -127,21 +90,64 @@ jobs:
             build/crates/licoup-native/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
-      - name: Install Linux native test dependencies
+      - name: Install Linux native dependencies
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends libdbus-1-dev pkg-config
       - run: npm ci
-      - run: npm run client:gate:rust
+      - name: Prepare registered engineering dependencies
+        run: |
+          test -x "$JAVA_HOME_17_X64/bin/java"
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+          cargo fetch --locked --manifest-path Cargo.toml
+          cargo fetch --locked --manifest-path components/analytics/Cargo.toml
+          cargo fetch --locked --manifest-path sdk/usage-source/Cargo.toml
+          for root in packages/presentation_contract packages/presentation_flutter packages/presentation_runtime
+          do
+            (cd "$root" && flutter pub get --enforce-lockfile)
+          done
+      - name: Bootstrap the pinned Android SDK
+        run: |
+          echo "ANDROID_HOME=$RUNNER_TEMP/licoup-android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$RUNNER_TEMP/licoup-android-sdk" >> "$GITHUB_ENV"
+          node tools/scripts/client-android-sdk-bootstrap.mjs \
+            --sdk-root "$RUNNER_TEMP/licoup-android-sdk"
+      - name: Warm the Gradle dependency cache
+        run: |
+          (cd apps/desktop && flutter pub get --enforce-lockfile)
+          (cd apps/desktop/android && ./gradlew :app:compileDebugKotlin :app:verifyReleaseAcceptanceIsolation :app:testDebugUnitTest --no-daemon)
+      - name: Install pinned cargo-audit
+        run: cargo install cargo-audit --version 0.22.2 --locked
+      - name: Run the complete registered engineering profile
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          LICO_AUDITOR_GATE_DELEGATED: "1"
+        run: npm run client:gate:verify -- --base "$BASE_SHA" --head "$HEAD_SHA" --target pr --execution direct --host linux
+      - name: Upload engineering reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: client-engineering-reports
+          path: |
+            build/reports/
+            build/test-reports/
+            build/private/client-regression/
+          if-no-files-found: ignore
+          retention-days: 14
 
-  android:
-    name: Android native checks
-    if: ${{ needs.plan.outputs.android == 'true' }}
+  target-linux:
+    name: Affected Linux target evidence
+    if: ${{ needs.plan.outputs.target_linux == 'true' }}
     needs: plan
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
@@ -151,65 +157,102 @@ jobs:
         with:
           flutter-version: "3.44.2"
           cache: true
-      - name: Install Android and native test dependencies
+      - name: Install Linux native dependencies
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends libdbus-1-dev pkg-config
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platforms;android-33" \
-            "ndk;27.0.12077973" \
-            "ndk;30.0.14904198" < /dev/null
       - run: npm ci
-      - run: npm run client:gate:android
-      - name: Upload Android reports
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: client-android-reports
-          path: build/reports/
-          if-no-files-found: ignore
-          retention-days: 14
+      - name: Fetch locked Rust dependencies
+        run: |
+          cargo fetch --locked --manifest-path Cargo.toml
+          cargo fetch --locked --manifest-path components/analytics/Cargo.toml
+          cargo fetch --locked --manifest-path sdk/usage-source/Cargo.toml
+      - name: Run affected Linux target modules
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: npm run client:gate:verify -- --base "$BASE_SHA" --head "$HEAD_SHA" --target pr --execution target --host linux
 
-  dependencies:
-    name: Dependency audit
-    if: ${{ needs.plan.outputs.dependencies == 'true' }}
+  target-darwin:
+    name: Affected macOS target evidence
+    if: ${{ needs.plan.outputs.target_darwin == 'true' }}
     needs: plan
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    runs-on: macos-15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
           cache: npm
       - uses: dtolnay/rust-toolchain@46817827a5bfabe028bf34e1cce71fd40e2ff697 # 1.95.0
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-audit-${{ hashFiles('Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-audit-
+          flutter-version: "3.44.2"
+          cache: true
       - run: npm ci
-      - name: Install pinned cargo-audit
-        run: cargo install cargo-audit --version 0.22.2 --locked
-      - run: npm run client:gate:dependencies
+      - name: Fetch locked Rust dependencies
+        run: |
+          cargo fetch --locked --manifest-path Cargo.toml
+          cargo fetch --locked --manifest-path components/analytics/Cargo.toml
+          cargo fetch --locked --manifest-path sdk/usage-source/Cargo.toml
+      - name: Run affected macOS target modules
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: npm run client:gate:verify -- --base "$BASE_SHA" --head "$HEAD_SHA" --target pr --execution target --host darwin
+
+  target-win32:
+    name: Affected Windows target evidence
+    if: ${{ needs.plan.outputs.target_win32 == 'true' }}
+    needs: plan
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: npm
+      - uses: dtolnay/rust-toolchain@46817827a5bfabe028bf34e1cce71fd40e2ff697 # 1.95.0
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: "3.44.2"
+          cache: true
+      - run: npm ci
+      - name: Fetch locked Rust dependencies
+        run: |
+          cargo fetch --locked --manifest-path Cargo.toml
+          cargo fetch --locked --manifest-path components/analytics/Cargo.toml
+          cargo fetch --locked --manifest-path sdk/usage-source/Cargo.toml
+      - name: Run affected Windows target modules
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: npm run client:gate:verify -- --base "$env:BASE_SHA" --head "$env:HEAD_SHA" --target pr --execution target --host win32
 
   client-required:
     name: Client required
     if: always() && github.event.deleted != true
-    needs: [plan, source, flutter, rust, android, dependencies]
+    needs: [plan, engineering, target-linux, target-darwin, target-win32]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     env:
       PLAN_RESULT: ${{ needs.plan.result }}
       README_FAST_SELECTED: ${{ needs.plan.outputs.readme_fast }}
-      SOURCE_RESULT: ${{ needs.source.result }}
-      FLUTTER_RESULT: ${{ needs.flutter.result }}
-      RUST_RESULT: ${{ needs.rust.result }}
-      ANDROID_RESULT: ${{ needs.android.result }}
-      DEPENDENCIES_RESULT: ${{ needs.dependencies.result }}
+      ENGINEERING_RESULT: ${{ needs.engineering.result }}
+      TARGET_LINUX_SELECTED: ${{ needs.plan.outputs.target_linux }}
+      TARGET_LINUX_RESULT: ${{ needs.target-linux.result }}
+      TARGET_DARWIN_SELECTED: ${{ needs.plan.outputs.target_darwin }}
+      TARGET_DARWIN_RESULT: ${{ needs.target-darwin.result }}
+      TARGET_WIN32_SELECTED: ${{ needs.plan.outputs.target_win32 }}
+      TARGET_WIN32_RESULT: ${{ needs.target-win32.result }}
     steps:
       - name: Reduce independent gate results
         run: |
@@ -219,11 +262,10 @@ jobs:
           fi
           if [[ "$README_FAST_SELECTED" == "true" ]]; then
             for result in \
-              "$SOURCE_RESULT" \
-              "$FLUTTER_RESULT" \
-              "$RUST_RESULT" \
-              "$ANDROID_RESULT" \
-              "$DEPENDENCIES_RESULT"
+              "$ENGINEERING_RESULT" \
+              "$TARGET_LINUX_RESULT" \
+              "$TARGET_DARWIN_RESULT" \
+              "$TARGET_WIN32_RESULT"
             do
               if [[ "$result" != "skipped" ]]; then
                 echo "An ordinary client gate ran for an author README update" >&2
@@ -236,18 +278,22 @@ jobs:
             echo "README path selection was ambiguous" >&2
             exit 1
           fi
-          if [[ "$SOURCE_RESULT" != "success" ]]; then
-            echo "Required source policy did not succeed" >&2
+          if [[ "$ENGINEERING_RESULT" != "success" ]]; then
+            echo "The complete engineering profile did not succeed" >&2
             exit 1
           fi
-          for result in \
-            "$FLUTTER_RESULT" \
-            "$RUST_RESULT" \
-            "$ANDROID_RESULT" \
-            "$DEPENDENCIES_RESULT"
+          for target in LINUX DARWIN WIN32
           do
-            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
-              echo "A selected client gate did not succeed" >&2
+            selected_name="TARGET_${target}_SELECTED"
+            result_name="TARGET_${target}_RESULT"
+            selected="${!selected_name}"
+            result="${!result_name}"
+            if [[ "$selected" == "true" && "$result" != "success" ]]; then
+              echo "Required target evidence did not succeed" >&2
+              exit 1
+            fi
+            if [[ "$selected" != "true" && "$result" != "skipped" ]]; then
+              echo "An unaffected target gate ran unexpectedly" >&2
               exit 1
             fi
           done

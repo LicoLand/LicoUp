@@ -397,6 +397,14 @@ function copyRegularFile(source, destination) {
 
 function candidateFiles(target, artifact, version) {
   const name = resolveToken(artifact.file, version, target);
+  if (artifact.role === "migration-tool") {
+    // One producer owns this unbundled asset. Never substitute an old file from
+    // a distribution directory or checkout root when that producer skipped it.
+    return [path.join(
+      workspaceRoot,
+      "build", "apps", "desktop", "release-tools", target.platform, name,
+    )];
+  }
   const distributionRoot = path.join(workspaceRoot, "build", "apps", "desktop", "distribution", "macos");
   const candidates = [];
   if (target.platform === "macos" && target.channel === "direct") {

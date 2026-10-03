@@ -47,6 +47,16 @@ export function isCompatibleFlutterTestCommand(command) {
   return commandParts(command) !== null;
 }
 
+export function flutterTestInputPaths(command) {
+  const parts = commandParts(command);
+  if (!parts) return Object.freeze([]);
+  const tail = parts.flutterArgs.slice(1);
+  const nameIndex = tail.indexOf("--name");
+  const optionEnd = nameIndex >= 0 ? nameIndex : tail.length;
+  return Object.freeze(tail.slice(0, optionEnd)
+    .filter((value) => !value.startsWith("-")));
+}
+
 function withoutValueOption(args, longName, shortName) {
   const output = [];
   for (let index = 0; index < args.length; index += 1) {
@@ -198,6 +208,20 @@ function repoRelativeTestPath(value, { repoRoot, commandCwd }) {
   return relative.split(path.sep).join("/");
 }
 
+function repoRelativeInputPath(value, { repoRoot, commandCwd }) {
+  if (typeof value !== "string" || value.length === 0 || !repoRoot) return null;
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:/u.test(value) && !/^[A-Za-z]:[\\/]/u.test(value)) {
+    return null;
+  }
+  const absolute = path.isAbsolute(value)
+    ? path.resolve(value)
+    : path.resolve(commandCwd || repoRoot, value);
+  const relative = path.relative(path.resolve(repoRoot), absolute);
+  if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relative)) return null;
+  return relative.split(path.sep).join("/").replace(/\/$/u, "");
+}
+
 function repoPathFromReporterValue(value, context) {
   const direct = repoRelativeTestPath(value, context);
   if (direct) return direct;
@@ -217,12 +241,14 @@ function repoPathFromReporterValue(value, context) {
 }
 
 function reporterTestPath(test, suites, context) {
+  const suiteId = test?.suiteID ?? test?.suiteId ?? test?.suite_id;
+  const suitePath = suites.get(suiteId);
+  if (suitePath) return suitePath;
   for (const value of [test?.url, test?.rootUrl, test?.root_url, test?.path, test?.name]) {
     const relative = repoPathFromReporterValue(value, context);
     if (relative) return relative;
   }
-  const suiteId = test?.suiteID ?? test?.suiteId ?? test?.suite_id;
-  return suites.get(suiteId) || null;
+  return null;
 }
 
 function reporterStackLocation(value, context) {
@@ -241,6 +267,7 @@ export function createFlutterJsonStatsCollector({
   failureLimit = FLUTTER_FAILURE_DIAGNOSTIC_LIMIT,
   repoRoot = null,
   commandCwd = repoRoot,
+  inputFiles = [],
 } = {}) {
   if (!Number.isInteger(lineLimit) || lineLimit < 1) {
     throw new Error("Flutter JSON reporter line limit must be a positive integer");
@@ -259,6 +286,12 @@ export function createFlutterJsonStatsCollector({
   const testDetails = new Map();
   const testErrors = new Map();
   const completedTests = new Set();
+  const normalizedInputs = inputFiles.map((input) =>
+    repoRelativeInputPath(input, { repoRoot, commandCwd }));
+  const executedInputTests = normalizedInputs.map(() => 0);
+  const failedInputIndexes = new Set();
+  const testInputIndexes = new Map();
+  let unmatchedEvidence = false;
   const failures = [];
   let testCount = 0;
   let passedCount = 0;
@@ -288,10 +321,14 @@ export function createFlutterJsonStatsCollector({
     if (event.type === "testStart") {
       if (validNonNegativeInteger(event.test?.id) && !testStarts.has(event.test.id)) {
         testStarts.set(event.test.id, event.time);
+        const file = reporterTestPath(event.test, suitePaths, { repoRoot, commandCwd });
         testDetails.set(event.test.id, {
-          file: reporterTestPath(event.test, suitePaths, { repoRoot, commandCwd }),
+          file,
           name: normalizeDiagnosticText(event.test.name, 240) || "unnamed_test",
         });
+        const indexes = normalizedInputs.flatMap((input, index) =>
+          input && file && (file === input || file.startsWith(`${input}/`)) ? [index] : []);
+        testInputIndexes.set(event.test.id, indexes);
       }
       return;
     }
@@ -316,8 +353,16 @@ export function createFlutterJsonStatsCollector({
       testStarts.delete(event.testID);
       const detail = testDetails.get(event.testID);
       testDetails.delete(event.testID);
+      const inputIndexes = testInputIndexes.get(event.testID) || [];
+      testInputIndexes.delete(event.testID);
       const errors = testErrors.get(event.testID) || [];
       testErrors.delete(event.testID);
+      const executed = event.result !== "success" || (!event.hidden && !event.skipped);
+      if (executed && inputIndexes.length === 0) unmatchedEvidence = true;
+      for (const index of inputIndexes) {
+        if (executed) executedInputTests[index] += 1;
+        if (event.result !== "success") failedInputIndexes.add(index);
+      }
       if (event.result !== "success" && failures.length < failureLimit) {
         failures.push(Object.freeze({
           file: detail?.file || "unknown_test_file",
@@ -402,5 +447,16 @@ export function createFlutterJsonStatsCollector({
 
   const failureDiagnostics = () => Object.freeze([...failures]);
 
-  return Object.freeze({ push, finish, failureDiagnostics });
+  const attribution = () => {
+    const complete = sawStart && sawDone && !unmatchedEvidence && testStarts.size === 0 &&
+      normalizedInputs.length > 0 && normalizedInputs.every(Boolean) &&
+      executedInputTests.every((count) => count > 0);
+    return Object.freeze({
+      attributionComplete: complete,
+      failedInputIndexes: Object.freeze([...failedInputIndexes]
+        .sort((left, right) => left - right)),
+    });
+  };
+
+  return Object.freeze({ push, finish, failureDiagnostics, attribution });
 }

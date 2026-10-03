@@ -162,7 +162,7 @@ export async function readOnlyCommandOutput(program, args) {
 }
 
 export function definePlatformEntry({ id, hosts, tools = [], artifacts = [], liveCommand = null,
-  resources = [],
+  resources = [], inputs = [], unverifiedInputs = [],
   unavailableReason = "platform_runtime_unavailable", capabilityProbe = null }) {
   return Object.freeze({
     id,
@@ -172,6 +172,8 @@ export function definePlatformEntry({ id, hosts, tools = [], artifacts = [], liv
     // Different platform branches must not serialize behind one synthetic
     // device lock. A concrete platform still has one exclusive runtime lane.
     resources: Object.freeze([`platform-runtime:${id}`, ...resources]),
+    inputs: Object.freeze([...inputs]),
+    unverifiedInputs: Object.freeze([...unverifiedInputs]),
     liveCommand,
     async probe() {
       if (hosts.length > 0 && !hosts.includes(process.platform)) {
@@ -206,6 +208,10 @@ export function defineAgentEntry(id) {
     stage: "compatibility",
     lane: `agent:${id}`,
     resources: Object.freeze([`agent-runtime:${id}`]),
+    inputs: Object.freeze([
+      `tests/product-e2e/cli/agent-conversations/${id}/conversation.test.mjs`,
+    ]),
+    unverifiedInputs: Object.freeze([]),
     liveCommand: config
       ? Object.freeze({
         program: "node",

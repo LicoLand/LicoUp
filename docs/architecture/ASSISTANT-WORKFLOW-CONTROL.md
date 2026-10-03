@@ -308,7 +308,7 @@ its display. The running host keeps its matching read-only code and runtime
 resources while an update candidate is staged. An incompatible candidate waits
 for controlled handoff rather than replacing live resources or taking ownership.
 
-The independent Node.js migration CLI participates in this refactor under its
+The standalone migration CLI participates in this refactor under its
 [existing migration contract](CLIENT-UPDATE-AND-STATE-MIGRATION.md). It needs a
 consistent source: request maintenance/drain through the same control path,
 wait for actual safe ownership release, then acquire the data-root lock and

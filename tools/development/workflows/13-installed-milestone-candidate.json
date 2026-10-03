@@ -1,0 +1,42 @@
+{
+  "id": "installed-milestone-candidate",
+  "file": "13-installed-milestone-candidate.json",
+  "title": {
+    "en": "Installed milestone candidate and maintainer fine-tuning",
+    "zh": "里程碑安装候选与维护者微调"
+  },
+  "purpose": {
+    "en": "Under an explicit central delivery assignment, turn one completed milestone into the installed application the maintainer reviews.",
+    "zh": "在显式中央交付安排下，把一个已完成里程碑变成维护者可评审的已安装应用。"
+  },
+  "owner": {
+    "en": "Assigned central delivery owner for the integrated candidate",
+    "zh": "整合候选的指定中央交付负责人"
+  },
+  "entry": {
+    "en": "An explicit central delivery assignment exists for the integrated candidate; the milestone's implementation, source review, non-live verification and engineering handoff are complete",
+    "zh": "整合候选已获得显式中央交付安排；该里程碑的实现、源码审阅、非真实验证与工程交付均已完成"
+  },
+  "steps": [
+    {
+      "en": "Run npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery on the integrated candidate; the canonical entry executes the complete host profile (generic checks plus the host platform's checks), then builds, installs and launches through their existing owners.",
+      "zh": "在集成候选执行 npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery；统一入口先执行完整宿主档案（通用检查加宿主平台检查），再调用已有属主构建、安装和启动。"
+    },
+    {
+      "en": "Observe the requested result only within explicit acceptance authority; launch alone does not prove usability. Stop after successful delivery.",
+      "zh": "仅在明确验收权限内观察要求的结果；启动返回不证明可用。成功交付后停止。"
+    }
+  ],
+  "exit": {
+    "en": "The assigned delivery owner hands the maintainer the installed build of this milestone and its fine-tuning result. The installed trial never activates the next milestone.",
+    "zh": "指派的交付负责人把该里程碑的已安装构建及其微调结果交给维护者。安装验证本身不会启动下一个里程碑。"
+  },
+  "failure": {
+    "en": "If the entry fails or authorized observation exposes a defect, identify whether the workflow missed required execution or the feature owner is faulty. Repair an actual workflow omission first when present; otherwise repair the feature. Run focused verification, reuse valid evidence, then run the same canonical entry again. This repairs the current milestone without activating the next.",
+    "zh": "入口失败或已授权观察发现缺陷时，先归因工作流是否漏执行必要检查或功能属主是否错误。确有工作流遗漏时先修遗漏，否则修功能；定向验证并复用有效证据后，再运行同一统一入口。此流程修复当前里程碑，不激活下一个。"
+  },
+  "boundary": {
+    "en": "Build, install and launch belong to this explicitly assigned central delivery step, never to an ordinary engineering handoff. Driving the interface, user-scenario acceptance and Computer Use stay separate and are not implied; signing, notarization and publication keep their own authorization.",
+    "zh": "构建、安装与启动属于本显式指派的中央交付步骤，不属于普通工程交付；操作界面、用户场景验收与 Computer Use 另属独立范围，不由此隐含；签名、公证与发布保留各自授权。"
+  }
+}

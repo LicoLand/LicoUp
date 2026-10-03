@@ -123,7 +123,7 @@ test("all consumers use only the stable file security facade", async () => {
 test("every security responsibility owns a dedicated narrow regression", async () => {
   const entries = (await fs.readdir(path.join(repoRoot, root, "tests"))).sort();
   assert.deepEqual(entries, [
-    "append_lock.rs", "atomic_replace.rs", "composition.rs", "hardening.rs", "marker.rs",
+    "append_lock.rs", "atomic_private_file.rs", "atomic_replace.rs", "composition.rs", "hardening.rs", "marker.rs",
     "mod.rs", "policy.rs", "support.rs", "sync.rs", "unix_hardening.rs", "validation.rs",
     "windows_acl.rs",
   ]);

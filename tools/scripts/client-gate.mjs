@@ -2,14 +2,21 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  appendFileSync,
-  readFileSync,
-  writeSync,
-} from "node:fs";
+import { appendFileSync, readFileSync, writeSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { CLIENT_MODULE_CATALOG } from "../regression/client-module-catalog.mjs";
+import { executeClientModules } from "../regression/client-module-execution.mjs";
+import {
+  selectModulesForChangedPaths,
+  selectModulesById,
+  validateClientModuleCatalog,
+} from "../regression/client-module-selection.mjs";
+import {
+  createClientRegressionReport,
+  writeClientRegressionReport,
+} from "../regression/client-regression-report.mjs";
 import {
   CLIENT_CI_JOBS,
   CLIENT_GATE_LANES,
@@ -17,8 +24,13 @@ import {
   CLIENT_RELEASE_TARGETS,
   classifyClientGatePaths,
 } from "./client-gate-policy.mjs";
+import { runLocalClientDelivery } from "./client-macos-deliver.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const verificationReportPath = path.join(
+  repoRoot,
+  "build/reports/client-module-regression.json",
+);
 const taskEventPrefix = "::lico-dev-task-event::";
 const taskEventSchemaVersion = "v0.0.1:lico-dev:task-event-1";
 const safeTaskEventValue = /^[a-z0-9][a-z0-9:._-]{0,127}$/u;
@@ -117,6 +129,8 @@ function validatePackageTopology() {
     "client:gate:android": "node tools/scripts/client-gate.mjs run android",
     "client:gate:dependencies": "node tools/scripts/client-gate.mjs run dependencies",
     "client:gate:release-policy": "node tools/scripts/client-gate.mjs run release-policy",
+    "client:gate:verify": "node tools/scripts/client-gate.mjs verify",
+    "client:gate:step": "node tools/scripts/client-gate.mjs step",
   };
   for (const [script, expected] of Object.entries(expectedGateCommands)) {
     if (scripts[script] !== expected) {
@@ -202,12 +216,14 @@ function validateCiTopology() {
   const workflow = readText(".github/workflows/client-ci.yml");
   for (const job of CLIENT_CI_JOBS) jobBlock(workflow, job);
   const plan = jobBlock(workflow, "plan");
-  const source = jobBlock(workflow, "source");
+  const engineering = jobBlock(workflow, "engineering");
   for (const token of [
     "github.event.pull_request.base.sha",
     "github.event.pull_request.head.sha",
     "readme-fast-path.mjs classify",
     "readme_fast: ${{ steps.readme.outputs.readme_fast }}",
+    "target_darwin: ${{ steps.plan.outputs.target_darwin }}",
+    "target_win32: ${{ steps.plan.outputs.target_win32 }}",
   ]) {
     assertIncludes(plan, token, `CI README classifier is missing: ${token}`);
   }
@@ -217,42 +233,46 @@ function validateCiTopology() {
     "Client required must not repeat the Auditor privacy scan");
   for (const token of forbiddenSourceTokens) {
     assertExcludes(plan, token, `CI plan job must not contain ${token}`);
-    assertExcludes(source, token, `CI source job must not contain ${token}`);
   }
-  assertIncludes(
-    source,
-    "npm run client:gate:source",
-    "CI source job must invoke the canonical source gate",
-  );
-  for (const lane of ["flutter", "rust", "android", "dependencies"]) {
-    const block = jobBlock(workflow, lane);
-    const outputName = lane.replaceAll("-", "_");
-    assertIncludes(
-      block,
-      `needs: plan`,
-      `CI ${lane} lane must depend only on the change plan`,
-    );
-    assertIncludes(
-      block,
-      `needs.plan.outputs.${outputName}`,
-      `CI ${lane} lane must be selected by the change plan`,
-    );
-    assertIncludes(
-      block,
-      `npm run client:gate:${lane}`,
-      `CI ${lane} lane must invoke its canonical gate`,
-    );
+  for (const token of [
+    "npm run client:gate:verify",
+    "--execution direct --host linux",
+    "ref: ${{ github.event.pull_request.head.sha || github.sha }}",
+    "LICO_AUDITOR_GATE_DELEGATED",
+    "cargo install cargo-audit --version 0.22.2 --locked",
+    "node tools/scripts/client-android-sdk-bootstrap.mjs",
+  ]) {
+    assertIncludes(engineering, token, `complete CI engineering profile is missing: ${token}`);
+  }
+  for (const [job, host] of [
+    ["target-linux", "linux"],
+    ["target-darwin", "darwin"],
+    ["target-win32", "win32"],
+  ]) {
+    const block = jobBlock(workflow, job);
+    assertIncludes(block, `needs.plan.outputs.target_${host}`,
+      `${job} must be selected from the catalog target ownership`);
+    assertIncludes(block, "npm run client:gate:verify",
+      `${job} must invoke the canonical client gate`);
+    assertIncludes(block, `--execution target --host ${host}`,
+      `${job} must bind evidence to its actual target host`);
+    assertIncludes(block, "ref: ${{ github.event.pull_request.head.sha || github.sha }}",
+      `${job} must check out the exact candidate head`);
   }
   const required = jobBlock(workflow, "client-required");
   assertIncludes(
     required,
-    "needs: [plan, source, flutter, rust, android, dependencies]",
-    "required CI reducer must observe every independent lane",
+    "needs: [plan, engineering, target-linux, target-darwin, target-win32]",
+    "required CI reducer must observe the complete profile and affected targets",
   );
   assertIncludes(required, "if: always()", "required CI reducer must always report lane failures");
   for (const token of [
     "PLAN_RESULT",
     "README_FAST_SELECTED",
+    "ENGINEERING_RESULT",
+    "TARGET_LINUX_RESULT",
+    "TARGET_DARWIN_RESULT",
+    "TARGET_WIN32_RESULT",
     "An ordinary client gate ran for an author README update",
     "README path selection was ambiguous",
   ]) {
@@ -462,7 +482,10 @@ function validateDelegatedApplePublicationTopology() {
   ]) {
     if (Object.hasOwn(scripts, retired)) fail(`retired Apple Release command remains: ${retired}`);
   }
-  const roles = ["installer", "installer-digest", "update-archive", "update-digest", "update-manifest"];
+  const roles = ["installer", "installer-digest", "update-archive", "update-digest", "update-manifest", "independent-tool", "independent-tool-digest"];
+  const publication = readJson("tools/client-release-template.json").publication;
+  if (JSON.stringify(publication?.assetRoles) !== JSON.stringify(roles) ||
+      publication.independentToolSignatureNotaryAndPublicDigestRequired !== true) fail("LicoUp independent-tool publication contract is incomplete");
   for (const [file, sourceBranch, candidateBranch, releaseTrack] of [
     ["tools/apple-release/macos-direct-arm64.json", "release",
       "macos-release-candidate", "stable"],
@@ -488,10 +511,16 @@ function validateDelegatedApplePublicationTopology() {
               ["node", "tools/scripts/macos-release/gate-release-policy.mjs"]])
           : !Array.isArray(config.update?.command) || !config.update.command.includes("--release-track") ||
             !config.update.command.includes(releaseTrack)) ||
-        artifacts.length !== 5 ||
+         artifacts.length !== roles.length ||
         roles.some((role) => artifacts.filter((entry) => entry.role === role).length !== 1) ||
         artifacts.find((entry) => entry.role === "update-manifest")?.publicName !==
-          "LicoUp-update-manifest.json") {
+           "LicoUp-update-manifest.json" ||
+         artifacts.find((entry) => entry.role === "independent-tool")?.source !==
+           "build/apps/desktop/release-tools/macos/LicoUp-migrate-macos-arm64" ||
+         artifacts.find((entry) => entry.role === "independent-tool")?.publicName !== "LicoUp-migrate-macos-arm64" ||
+         artifacts.find((entry) => entry.role === "independent-tool")?.path !== "build/apple-release/LicoUp-migrate-macos-arm64" ||
+         artifacts.find((entry) => entry.role === "independent-tool-digest")?.publicName !== "LicoUp-migrate-macos-arm64.sha256" ||
+         artifacts.find((entry) => entry.role === "independent-tool-digest")?.path !== "build/apple-release/LicoUp-migrate-macos-arm64.sha256") {
       fail(`LicoUp delegated Apple publication configuration is invalid: ${file}`);
     }
   }
@@ -556,7 +585,7 @@ function validateRevision(value, label) {
   return value;
 }
 
-function changedPaths({ base, head }) {
+export function changedPaths({ base, head, target = "commit" }) {
   const safeHead = validateRevision(head || "HEAD", "head");
   const zeroRevision = /^0+$/u.test(base || "");
   if (!base || zeroRevision) {
@@ -579,7 +608,10 @@ function changedPaths({ base, head }) {
           errorMessage: "unable to inspect initial client revision",
         },
       );
-      return rootDiff.toString("utf8").split("\0").filter(Boolean);
+      const rootPaths = rootDiff.toString("utf8").split("\0").filter(Boolean);
+      return ["commit", "delivery"].includes(target)
+        ? [...new Set([...rootPaths, ...workingTreePaths(safeHead)])]
+        : rootPaths;
     }
   }
   const safeBase = validateRevision(base, "base");
@@ -593,16 +625,49 @@ function changedPaths({ base, head }) {
       errorMessage: "unable to inspect client changes",
     },
   );
-  return diff.toString("utf8").split("\0").filter(Boolean);
+  const committed = diff.toString("utf8").split("\0").filter(Boolean);
+  return ["commit", "delivery"].includes(target)
+    ? [...new Set([...committed, ...workingTreePaths(safeHead)])]
+    : committed;
 }
 
-function writePlanOutput(plan, digest) {
+function workingTreePaths(head) {
+  const tracked = run(
+    "git",
+    ["diff", "--no-renames", "--name-only", "-z", head, "--"],
+    {
+      capture: true,
+      encoding: "buffer",
+      stdio: ["ignore", "pipe", "pipe"],
+      errorMessage: "unable to inspect local client changes",
+    },
+  );
+  const untracked = run(
+    "git",
+    ["ls-files", "--others", "--exclude-standard", "-z", "--"],
+    {
+      capture: true,
+      encoding: "buffer",
+      stdio: ["ignore", "pipe", "pipe"],
+      errorMessage: "unable to inspect untracked client changes",
+    },
+  );
+  return Buffer.concat([tracked, untracked])
+    .toString("utf8")
+    .split("\0")
+    .filter(Boolean);
+}
+
+function writePlanOutput(plan, digest, targetHosts = []) {
   const lines = [
     ...Object.entries(plan.lanes).map(
       ([lane, selected]) => `${lane.replaceAll("-", "_")}=${selected}`,
     ),
     `changed_count=${plan.changedCount}`,
     `change_digest=${digest}`,
+    ...["darwin", "linux", "win32"].map(
+      (host) => `target_${host}=${targetHosts.includes(host)}`,
+    ),
   ];
   const outputPath = process.env.GITHUB_OUTPUT;
   if (outputPath) {
@@ -617,17 +682,23 @@ function writePlanOutput(plan, digest) {
     changedCount: plan.changedCount,
     lanes: plan.lanes,
     changeDigest: digest,
+    targetHosts,
   })}\n`);
 }
 
 function parsePlanArgs(args) {
-  const values = { base: "", head: "HEAD" };
+  const values = { base: "", head: "HEAD", target: "commit" };
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index];
-    if (flag !== "--base" && flag !== "--head") fail(`unknown plan argument: ${flag}`);
+    if (!["--base", "--head", "--target"].includes(flag)) {
+      fail(`unknown plan argument: ${flag}`);
+    }
     if (index + 1 >= args.length) fail(`missing value for ${flag}`);
     values[flag.slice(2)] = args[index + 1];
     index += 1;
+  }
+  if (!["commit", "pr", "release"].includes(values.target)) {
+    fail("client gate target must be commit, pr, or release");
   }
   return values;
 }
@@ -636,43 +707,378 @@ function planGate(args) {
   const revisions = parsePlanArgs(args);
   const paths = changedPaths(revisions);
   const plan = classifyClientGatePaths(paths);
+  const targetHosts = [...new Set(selectModulesForChangedPaths(paths)
+    .flatMap((module) => module.regression.targetEvidenceHosts || []))].sort();
   const digest = createHash("sha256")
     .update([...new Set(paths)].sort().join("\0"))
     .digest("hex");
-  writePlanOutput(plan, digest);
+  writePlanOutput(plan, digest, targetHosts);
 }
 
-function runLane(lane) {
-  if (lane === "release-policy") run(process.execPath, ["--test",
-    "tests/contract/client/client-source-release.test.mjs",
-    "tests/contract/client/macos-release-adapters.test.mjs",
-    "tests/contract/client/macos-release-candidate.test.mjs",
-    "tests/contract/client/apple-release-integration.test.mjs"]);
+function parseVerifyArgs(args) {
+  const values = {
+    base: "", execution: "local", head: "HEAD", host: "", target: "", moduleIds: [],
+  };
+  for (let index = 0; index < args.length; index += 1) {
+    const flag = args[index];
+    if (!["--base", "--execution", "--head", "--host", "--target", "--module"].includes(flag)) {
+      fail(`unknown verify argument: ${flag}`);
+    }
+    if (index + 1 >= args.length) fail(`missing value for ${flag}`);
+    if (flag === "--module") values.moduleIds.push(args[index + 1]);
+    else values[flag.slice(2)] = args[index + 1];
+    index += 1;
+  }
+  if (!values.base) fail("client gate verify requires --base");
+  if (!["commit", "pr", "release", "delivery"].includes(values.target)) {
+    fail("client gate verify requires --target commit, pr, release, or delivery");
+  }
+  if (!["direct", "local", "target"].includes(values.execution)) {
+    fail("client gate verify execution must be direct, local, or target");
+  }
+  if (["direct", "target"].includes(values.execution) &&
+      !["darwin", "linux", "win32"].includes(values.host)) {
+    fail("direct and target client gate verification require --host darwin, linux, or win32");
+  }
+  if (["direct", "target"].includes(values.execution) && values.host !== process.platform) {
+    fail("client gate verification host must match the actual runtime host");
+  }
+  if (values.target === "delivery" && values.execution !== "local") {
+    fail("client delivery requires local execution");
+  }
+  if (values.moduleIds.length > 0 && !["direct", "target"].includes(values.execution)) {
+    fail("client gate module selection requires direct or target execution");
+  }
+  return Object.freeze({ ...values, moduleIds: Object.freeze([...values.moduleIds]) });
+}
+
+function reportIsMergeReady(report) {
+  return report?.complete === true &&
+    report?.status === "passed" &&
+    Array.isArray(report.results) &&
+    report.results.length > 0 &&
+    report.results.every((result) => result.status === "passed") &&
+    Array.isArray(report.compatibility) &&
+    report.compatibility.every((result) => result.status === "passed");
+}
+
+export function withExecutionPrerequisites(selected, catalog) {
+  const requiresFlutterDependencies = selected.some((module) =>
+    ["flutter", "gradle"].includes(module.regression.toolchain));
+  if (!requiresFlutterDependencies || selected.some((module) =>
+    module.id === "regression.flutter-dependencies")) return selected;
+  const prerequisite = catalog.find((module) => module.id === "regression.flutter-dependencies");
+  if (!prerequisite) fail("Flutter dependency prerequisite is not registered");
+  return [prerequisite, ...selected];
+}
+
+export function selectTargetModules({ moduleIds = [], paths = [], host, catalog }) {
+  const requested = moduleIds.length > 0
+    ? selectModulesById(moduleIds, catalog)
+    : selectModulesForChangedPaths(paths, catalog).filter((module) =>
+      (module.regression.targetEvidenceHosts || []).includes(host));
+  if (moduleIds.length > 0 && requested.some((module) =>
+    !(module.regression.targetEvidenceHosts || []).includes(host))) {
+    fail("focused target module does not require evidence from this host");
+  }
+  return withExecutionPrerequisites(requested, catalog);
+}
+
+export function selectDirectModules({ moduleIds = [], host, catalog }) {
+  if (moduleIds.length > 0) {
+    return withExecutionPrerequisites(selectModulesById(moduleIds, catalog), catalog);
+  }
+  return catalog.filter((module) =>
+    (module.regression.runnableHosts || ["darwin", "linux", "win32"]).includes(host) &&
+    (module.regression.targetEvidenceHosts || []).length === 0);
+}
+
+export function selectLocalHostModules({ host, catalog }) {
+  return withExecutionPrerequisites(catalog.filter((module) =>
+    (module.regression.runnableHosts || ["darwin", "linux", "win32"]).includes(host) &&
+    ((module.regression.targetEvidenceHosts || []).length === 0 ||
+      module.regression.targetEvidenceHosts.includes(host))), catalog);
+}
+
+export function createTargetEvidenceReceipt({ revisions, selected, result }) {
+  const report = result.report || null;
+  const passed = result.exitCode === 0 &&
+    targetResultsCoverSelection(selected, report?.results || []);
+  return Object.freeze({
+    ok: passed,
+    schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
+    target: revisions.target,
+    execution: revisions.execution,
+    host: revisions.host,
+    head: revisions.head,
+    stepIds: selected.map((module) => module.id),
+    selectedStepCount: selected.length,
+    complete: false,
+    mergeReady: false,
+    report,
+  });
+}
+
+export async function verifyClientGate(args, {
+  catalog = CLIENT_MODULE_CATALOG,
+  executor = executeClientModules,
+  output = process.stdout,
+  reportPath = verificationReportPath,
+} = {}) {
+  const revisions = parseVerifyArgs(args);
+  const paths = changedPaths(revisions);
+  const plan = classifyClientGatePaths(paths);
+  validateClientModuleCatalog(catalog);
+  const modules = revisions.execution === "direct"
+    ? selectDirectModules({
+      moduleIds: revisions.moduleIds,
+      host: revisions.host,
+      catalog,
+    })
+    : catalog;
+  if (revisions.execution === "local") {
+    const verification = await verifyLocalClientGate({
+      revisions, plan, catalog, executor, output, reportPath,
+    });
+    if (verification !== 0 || revisions.target !== "delivery") return verification;
+    return runLocalClientDelivery({ output });
+  }
+  if (revisions.execution === "target") {
+    if (!["pr", "release"].includes(revisions.target)) {
+      fail("target evidence requires an immutable PR or release candidate");
+    }
+    if (!/^[a-f0-9]{40}$/u.test(revisions.head)) {
+      fail("target evidence requires an immutable candidate head SHA");
+    }
+    const actualHead = run("git", ["rev-parse", "HEAD"], {
+      capture: true,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      errorMessage: "unable to verify target candidate revision",
+    }).trim().toLowerCase();
+    const worktreeState = run("git", ["status", "--porcelain=v1", "--untracked-files=all"], {
+      capture: true,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      errorMessage: "unable to verify target candidate worktree",
+    });
+    if (actualHead !== revisions.head.toLowerCase() || worktreeState.length !== 0) {
+      fail("target evidence candidate does not match the clean checked-out head");
+    }
+    const selected = selectTargetModules({
+      moduleIds: revisions.moduleIds,
+      paths,
+      host: revisions.host,
+      catalog,
+    });
+    const result = selected.length === 0
+      ? { exitCode: 0, report: { results: [] } }
+      : await executor(selected, {
+        repoRoot,
+        catalog,
+        output,
+        reportPath,
+        runKind: "focused",
+        compatibilityRunner: async () => [],
+      });
+    const receipt = createTargetEvidenceReceipt({ revisions, selected, result });
+    output.write(`${JSON.stringify(receipt)}\n`);
+    return receipt.ok ? 0 : 1;
+  }
+  const result = await executor(modules, {
+    repoRoot,
+    catalog,
+    output,
+    reportPath,
+    runKind: revisions.moduleIds.length > 0 ? "focused" : "complete",
+    compatibilityRunner: async () => [],
+  });
+  const mergeReady = result.exitCode === 0 && reportIsMergeReady(result.report);
+  output.write(`${JSON.stringify({
+    ok: mergeReady,
+    schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
+    target: revisions.target,
+    execution: revisions.execution,
+    scope: "host-engineering-profile",
+    changedCount: plan.changedCount,
+    lanes: plan.lanes,
+    selectedStepCount: modules.length,
+    complete: result.report?.complete === true,
+    mergeReady: false,
+  })}\n`);
+  return mergeReady ? 0 : 1;
+}
+
+function localHost() {
+  if (!["darwin", "linux", "win32"].includes(process.platform)) {
+    fail("local client gate host is unsupported");
+  }
+  return process.platform;
+}
+
+function resultMembers(result) {
+  return Array.isArray(result?.members) ? result.members : [];
+}
+
+export function targetResultsCoverSelection(selected, results) {
+  if (!Array.isArray(results) || results.some((entry) => entry.status !== "passed")) return false;
+  const covered = new Set(results.flatMap(resultMembers));
+  return selected.every((module) => covered.has(module.id));
+}
+
+function labelResultHost(result, host) {
+  return Object.freeze({ ...result, id: `host.${host}.${result.id}` });
+}
+
+async function verifyLocalClientGate({
+  revisions,
+  plan,
+  catalog,
+  executor,
+  output,
+  reportPath,
+}) {
+  const host = localHost();
+  const modules = selectLocalHostModules({ host, catalog });
+  const result = await executor(modules, {
+    repoRoot,
+    catalog,
+    output,
+    reportPath: null,
+    runKind: "complete",
+    compatibilityRunner: async () => [],
+  });
+  const currentHead = run("git", ["rev-parse", revisions.head], {
+    capture: true,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    errorMessage: "unable to resolve local verification head",
+  }).trim().toLowerCase();
+  const startedAt = result.report?.startedAt || new Date().toISOString();
+  const completedAt = new Date().toISOString();
+  const results = (result.report?.results || []).map((entry) => {
+    const labelled = labelResultHost(entry, host);
+    return labelled.evidenceHead
+      ? labelled
+      : Object.freeze({ ...labelled, evidenceHead: currentHead });
+  });
+  const report = createClientRegressionReport({
+    runKind: "complete",
+    startedAt,
+    completedAt,
+    durationMs: Math.max(0, Date.parse(completedAt) - Date.parse(startedAt)),
+    results,
+    concurrency: result.report?.concurrency || {},
+    compatibility: [],
+    candidateHead: currentHead,
+    sourceStateDigest: result.report?.sourceStateDigest ?? null,
+  });
+  if (reportPath) await writeClientRegressionReport(report, reportPath);
+  const mergeReady = result.exitCode === 0 && reportIsMergeReady(report);
+  output.write(`${JSON.stringify({
+    ok: mergeReady,
+    schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
+    target: revisions.target,
+    execution: revisions.execution,
+    scope: "host-complete-profile",
+    host,
+    changedCount: plan.changedCount,
+    lanes: plan.lanes,
+    selectedStepCount: modules.length,
+    complete: report.complete,
+    mergeReady,
+  })}\n`);
+  return mergeReady ? 0 : 1;
+}
+
+export async function runClientGateStep(stepId, {
+  catalog = CLIENT_MODULE_CATALOG,
+  executor = executeClientModules,
+  output = process.stdout,
+} = {}) {
+  const selected = selectModulesById([stepId], catalog);
+  const result = await executor(selected, {
+    repoRoot,
+    catalog,
+    output,
+    reportPath: null,
+    runKind: "focused",
+    compatibilityRunner: async () => [],
+  });
+  const passed = result.exitCode === 0 &&
+    result.report?.results?.every((entry) => entry.status === "passed") === true;
+  output.write(`${JSON.stringify({
+    ok: passed,
+    schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
+    scope: "focused-step",
+    stepId,
+    complete: false,
+    mergeReady: false,
+  })}\n`);
+  return passed ? 0 : 1;
+}
+
+export function runLane(lane, {
+  spawnImpl = spawnSync,
+  output = process.stdout,
+  eventEmitter = emitClientGateTaskEvent,
+} = {}) {
   const scripts = CLIENT_GATE_LANES[lane];
   if (!scripts) fail(`unknown client gate lane: ${lane || "<missing>"}`);
-  for (const script of scripts) {
-    emitClientGateTaskEvent({ type: "step-start", stage: script });
-    process.stdout.write(`\n[client-gate:${lane}] npm run ${script}\n`);
-    run("npm", ["run", script], {
-      onFailure: (result) => emitClientGateTaskEvent({
+  const steps = lane === "release-policy"
+    ? [Object.freeze({
+      id: "release-policy.contract-tests",
+      command: process.execPath,
+      args: ["--test",
+        "tests/contract/client/client-source-release.test.mjs",
+        "tests/contract/client/macos-release-adapters.test.mjs",
+        "tests/contract/client/macos-release-candidate.test.mjs",
+        "tests/contract/client/apple-release-integration.test.mjs"],
+    }), ...scripts.map((script) => Object.freeze({
+      id: script,
+      command: "npm",
+      args: ["run", script],
+    }))]
+    : scripts.map((script) => Object.freeze({
+      id: script,
+      command: "npm",
+      args: ["run", script],
+    }));
+  const results = [];
+  for (const step of steps) {
+    eventEmitter({ type: "step-start", stage: step.id });
+    output.write(`\n[client-gate:${lane}] ${step.id}\n`);
+    const result = spawnImpl(step.command, step.args, {
+      cwd: repoRoot,
+      env: process.env,
+      shell: false,
+      stdio: "inherit",
+    });
+    const status = !result.error && result.status === 0 ? "passed" : "failed";
+    results.push(Object.freeze({ id: step.id, status }));
+    if (status === "failed") {
+      eventEmitter({
         type: "step-failure",
-        stage: script,
+        stage: step.id,
         code: result.error ? "command-launch-failed" : "command-exit-nonzero",
         exitCode: result.status ?? 1,
         retryable: false,
         recovery: "inspect-failed-step",
-      }),
-    });
+      });
+    }
   }
-  process.stdout.write(`${JSON.stringify({
-    ok: true,
+  const ok = results.every((result) => result.status === "passed");
+  output.write(`${JSON.stringify({
+    ok,
     schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
     lane,
-    stepCount: scripts.length,
+    stepCount: steps.length,
+    results,
   })}\n`);
+  return ok ? 0 : 1;
 }
 
-export function main(args = process.argv.slice(2)) {
+export async function main(args = process.argv.slice(2)) {
   const [command, ...rest] = args;
   if (command === "topology") {
     process.stdout.write(`${JSON.stringify(validateClientGateTopology())}\n`);
@@ -684,15 +1090,24 @@ export function main(args = process.argv.slice(2)) {
   }
   if (command === "run") {
     if (rest.length !== 1) fail("client gate run requires exactly one lane");
-    runLane(rest[0]);
+    process.exitCode = runLane(rest[0]);
     return;
   }
-  fail("usage: client-gate.mjs <topology|plan|run LANE>");
+  if (command === "verify") {
+    process.exitCode = await verifyClientGate(rest);
+    return;
+  }
+  if (command === "step") {
+    if (rest.length !== 1) fail("client gate step requires exactly one module id");
+    process.exitCode = await runClientGateStep(rest[0]);
+    return;
+  }
+  fail("usage: client-gate.mjs <topology|plan|run LANE|verify|step MODULE_ID>");
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    main();
+    await main();
   } catch (error) {
     process.stderr.write(`${error?.message || error}\n`);
     process.exitCode = 1;

@@ -55,11 +55,18 @@ export function formatArchitectureResult({
   futureModules,
   packagedTargets,
   packagePlanCheckedPlatforms,
+  metrics,
+  ratchet,
 }) {
   if (failures.length > 0) {
     return {
       ok: false,
-      text: JSON.stringify({ ok: false, failures }, null, 2),
+      text: JSON.stringify({
+        ok: false,
+        failures,
+        ...(metrics === undefined ? {} : { metrics }),
+        ...(ratchet === undefined ? {} : { ratchet }),
+      }, null, 2),
     };
   }
   return {
@@ -69,6 +76,8 @@ export function formatArchitectureResult({
       futureModules,
       packagedTargets,
       packagePlanCheckedPlatforms,
+      ...(metrics === undefined ? {} : { metrics }),
+      ...(ratchet === undefined ? {} : { ratchet }),
     }, null, 2),
   };
 }

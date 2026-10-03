@@ -630,7 +630,7 @@
         "setLocalizedFallbackTitle",
         "MacosAuthorizationContext",
         "effect_lock",
-        "secure_mesh_authorization_required",
+        "SecretStorePresenceError::authorization_required()",
         "SecurityCapability::DataProtectionKeychain",
         "SecurityCapability::OsUserPresence",
         "SecurityCapability::DeviceCredential",

@@ -8,6 +8,7 @@ use ed25519_dalek::SigningKey;
 use rand_core::{OsRng, RngCore};
 use uuid::Uuid;
 use x25519_dalek::{PublicKey, StaticSecret};
+use zeroize::Zeroizing;
 
 pub(super) struct IdentityMaterial {
     pub(super) private_key: String,
@@ -34,10 +35,11 @@ pub(super) fn generate_identity_material() -> IdentityMaterial {
 }
 
 pub(super) fn derive_identity_public(private_key: &str) -> Result<([u8; 32], String, String)> {
-    let secret = StaticSecret::from(decode_key_32(
+    let decoded = Zeroizing::new(decode_key_32(
         private_key,
         "mobile relay local private key",
     )?);
+    let secret = StaticSecret::from(*decoded);
     let public = PublicKey::from(&secret).to_bytes();
     Ok((
         public,

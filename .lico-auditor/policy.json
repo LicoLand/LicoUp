@@ -2,6 +2,14 @@
   "schemaVersion": 1,
   "allowedJsonPaths": [
     {
+      "path": "apps/desktop/scripts/client-architecture/ratchet/baseline.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/client_state_migration/structural_cases.json",
+      "kind": "json"
+    },
+    {
       "path": "crates/licoup-conversation/resources/state-machines.json",
       "kind": "config-object"
     },
@@ -324,13 +332,97 @@
     {
       "path": "tests/integration/usage_sources/fixtures/otlp-restarted.json",
       "kind": "config-object"
+    },
+    {
+      "path": "tools/development/architecture-views.json",
+      "kind": "json"
+    },
+    {
+      "path": "tools/development/state-machines.json",
+      "kind": "json"
+    },
+    {
+      "path": "tools/development/workflows/01-requirements.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/02-milestone.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/03-parallel-development.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/04-integration-review.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/05-engineering-verification.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/06-data-transition.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/07-engineering-handoff.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/08-live-acceptance.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/09-defect-repair.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/10-privacy-review.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/11-contribution.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/12-release.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tools/development/workflows/13-installed-milestone-candidate.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/integration/v71_usage_sources/fixtures/otlp-cumulative.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/integration/v71_usage_sources/fixtures/otlp-regressed.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/integration/v71_usage_sources/fixtures/otlp-restarted.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/gateway-credential-migration.json",
+      "kind": "string-map"
     }
   ],
+  "reviewedSchemaFixtures": [
+    {
+      "path": "tests/fixtures/client_state_migration/retained_related_tables.sql",
+      "reason": "Synthetic schema-only fixture proving that current initialization preserves unrelated retained tables without reading or altering runtime rows."
+    }
+  ],
+  "reviewedSchemaHistory": [],
   "publicReferenceDomains": [
     "claude.ai",
     "claude.com",
     "codeload.github.com",
     "deepseek.com",
+    "developer.mozilla.org",
     "en.wikipedia.org",
     "formulae.brew.sh",
     "licoland.org",
@@ -339,5 +431,25 @@
     "pi.dev",
     "scripts.sil.org",
     "www.adobe.com"
+  ],
+  "reviewedUnixPathLiterals": [
+    {
+      "rule": "developer-macos-home-path",
+      "path": "tools/scripts/lib/privacy-test-fixtures.mjs",
+      "value": "/Users/maintainer/Library/Application Support/LicoUp",
+      "reason": "Fixed artificial migration refusal input declared by the source-boundary checker. The exact complete value is required to verify safe error redaction; no machine or user data is represented."
+    },
+    {
+      "rule": "developer-macos-home-path",
+      "path": "tools/scripts/lib/privacy-test-fixtures.mjs",
+      "value": "/Users/maintainer/private/state.db",
+      "reason": "Fixed artificial migration refusal input declared by the source-boundary checker. The exact complete value is required to verify safe error redaction; no machine or user data is represented."
+    },
+    {
+      "rule": "system-or-deployment-path",
+      "path": "tools/regression/client-module-regression-tests/runner-safety.mjs",
+      "value": "/tmp/private.log",
+      "reason": "Fixed synthetic invalid diagnostic-log reference used to prove that public regression reports reject absolute private paths."
+    }
   ]
 }

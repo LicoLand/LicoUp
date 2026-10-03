@@ -1,0 +1,20 @@
+// Fixed refusal-test inputs, constructed in the migration owner's unit tests.
+// Matching is limited to the exact source file, rule, complete value and literal
+// boundary. Similar account names, paths and appended values remain findings.
+const migrationPaths = [
+  "/Users/maintainer/Library/Application Support/LicoUp",
+  "/Users/maintainer/private/state.db",
+];
+const sourcePaths = new Set([
+  "crates/licoup-migrate/src/archive.rs",
+  "tools/scripts/lib/privacy-test-fixtures.mjs",
+]);
+
+export function isReviewedPrivacyFixture({ file, rule, source, start, match }) {
+  const policyValue = file === ".lico-auditor/policy.json" &&
+    /"value"\s*:\s*"$/u.test(source.slice(0, start));
+  if (rule !== "FORBIDDEN_MACOS_HOME_PATH" || (!sourcePaths.has(file) && !policyValue)) return false;
+  return migrationPaths.some((value) => value.startsWith(match) &&
+    source.startsWith(value, start) &&
+    /^(?:$|[\r\n"'`),;:])/.test(source.slice(start + value.length)));
+}
