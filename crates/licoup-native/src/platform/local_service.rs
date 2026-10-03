@@ -20,16 +20,6 @@ pub use endpoint::ServeEndpoint;
 pub(super) use endpoint::{ServeAttachment, ServeModel, ServeModelCatalog, ServeReadiness};
 pub(super) use serve::{ServeErrorCodes, ServeSpec};
 
-/// Every local Agent service whose durable state and pid record this data root
-/// owns. Force-stop control reads the same records the serve owner writes; no
-/// second service registry exists.
-pub(in crate::platform) fn owned_serve_specs() -> &'static [ServeSpec] {
-    &[
-        super::opencode_serve::CONTROL_SPEC,
-        super::kilo_code_serve::CONTROL_SPEC,
-    ]
-}
-
 pub(in crate::platform) fn service_paths(state_dir: &str) -> anyhow::Result<state::ServicePaths> {
     state::ServicePaths::resolve(state_dir, "serve.pid")
 }

@@ -467,6 +467,18 @@ struct OwnedProcessScope {
     risk_summary: String,
 }
 
+/// Every local Agent service whose durable state and pid record this data root
+/// owns. Force stop reads the same records the serve owner writes through
+/// `local_service`, so no second service registry exists; the list itself
+/// stays with the force-stop owner, which is the only caller, so the
+/// target-neutral local service foundation never names a target policy.
+fn owned_serve_specs() -> &'static [local_service::ServeSpec] {
+    &[
+        super::opencode_serve::CONTROL_SPEC,
+        super::kilo_code_serve::CONTROL_SPEC,
+    ]
+}
+
 /// The owned process groups this data root verifiably owns: a local Agent
 /// service whose durable state record marks it owned, whose pid record names a
 /// live process, and whose process group is the process itself. A listener
@@ -477,7 +489,7 @@ fn owned_process_scopes() -> Vec<OwnedProcessScope> {
     if let Some(scopes) = test_scopes::current_override() {
         return scopes;
     }
-    local_service::owned_serve_specs()
+    owned_serve_specs()
         .iter()
         .filter_map(owned_local_service_scope)
         .collect()
