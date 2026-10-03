@@ -102,6 +102,132 @@ void main() {
       expect(runner.calls[2], containsAll(['--data-root', '/data/lico']));
     },
   );
+
+  test('status projects the native host admission answer', () async {
+    final runner = _AdmissionCommandRunner();
+    const service = ClientUpdateService();
+
+    final status = await service.status(
+      agentService: runner,
+      stateRoot: '/data/client-update-state',
+    );
+
+    expect(status.runningVersion, '1.0.0');
+    expect(status.admission.decision, ClientUpdateAdmissionDecision.blocked);
+    expect(status.admission.allowsMaintenance, isFalse);
+    expect(status.admission.blockers, hasLength(2));
+    expect(
+      status.admission.blockers.first.owner,
+      ClientUpdateBlockerOwner.canonicalConversation,
+    );
+    expect(status.admission.blockers.first.kind, 'conversation-dispatch');
+    expect(status.admission.blockers.first.identity, 'dispatch-1');
+    expect(status.admission.blockers.first.state, 'claimed');
+    expect(
+      status.admission.blockers.last.owner,
+      ClientUpdateBlockerOwner.adaptiveFlywheel,
+    );
+    expect(status.admission.truncated, isTrue);
+    expect(status.admission.lockReasonCode, 'client_update_admission_blocked');
+    expect(runner.calls.single, containsAll(['update', 'status']));
+  });
+
+  test('status fails closed when the host answers no admission', () async {
+    final runner = _RecordingCommandRunner();
+    const service = ClientUpdateService();
+
+    final status = await service.status(agentService: runner);
+
+    expect(status.admission.observed, isFalse);
+    expect(status.admission.allowsMaintenance, isFalse);
+    expect(
+      status.admission.lockReasonCode,
+      'client_update_admission_unavailable',
+    );
+  });
+
+  test('admission facts stay bounded and ignore unknown owners', () {
+    final admission = ClientUpdateAdmission.fromJson({
+      'decision': 'blocked',
+      'truncated': false,
+      'blockers': [
+        {
+          'owner': 'some-future-owner',
+          'kind': 'workflow-run',
+          'identity': 'x' * 400,
+          'state': 'running',
+        },
+        'not-a-map',
+      ],
+    });
+
+    expect(admission.blockers, hasLength(1));
+    expect(admission.blockers.single.owner, ClientUpdateBlockerOwner.unknown);
+    expect(admission.blockers.single.identity.length, 160);
+    expect(admission.blockers.single.kind, 'workflow-run');
+  });
+
+  test('an unknown admission decision never unlocks maintenance', () {
+    final admission = ClientUpdateAdmission.fromJson({
+      'decision': 'something-new',
+      'blockers': const [],
+    });
+
+    expect(admission.observed, isFalse);
+    expect(admission.allowsMaintenance, isFalse);
+    expect(admission.lockReasonCode, 'client_update_admission_unreadable');
+  });
+}
+
+final class _AdmissionCommandRunner implements AgentCommandRunner {
+  final List<List<String>> calls = [];
+
+  @override
+  Future<Map<String, dynamic>> runCli(List<String> args) async {
+    calls.add(List<String>.of(args));
+    return const {
+      'phase': 'idle',
+      'runningVersion': '1.0.0',
+      'runningReleaseTrack': 'nightly',
+      'targetReleaseTrack': 'nightly',
+      'admission': {
+        'decision': 'blocked',
+        'truncated': true,
+        'blockers': [
+          {
+            'owner': 'canonical-conversation',
+            'kind': 'conversation-dispatch',
+            'scope': 'conversation-1',
+            'identity': 'dispatch-1',
+            'state': 'claimed',
+          },
+          {
+            'owner': 'adaptive-flywheel',
+            'kind': 'workflow-run',
+            'scope': 'graph-1',
+            'identity': 'run-1',
+            'state': 'running',
+          },
+        ],
+      },
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> runCliWithStdin(
+    List<String> args,
+    String stdinText,
+  ) async => const {};
+
+  @override
+  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
+      const Stream.empty();
+
+  @override
+  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
+    List<String> args,
+    String stdinText,
+  ) => const Stream.empty();
 }
 
 final class _RecordingCommandRunner implements AgentCommandRunner {

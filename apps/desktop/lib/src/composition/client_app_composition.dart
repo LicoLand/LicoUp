@@ -11,7 +11,10 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/composition/binding_shell_renderer.dart';
 import 'package:licoup/src/composition/built_in_layout_composition.dart';
+import 'package:licoup/src/application/features/runtime_control/controller/work_control_controller.dart';
 import 'package:licoup/src/composition/dispose_all.dart';
+import 'package:licoup/src/composition/work_control_presentation.dart';
+import 'package:licoup/src/contracts/work_control_gateway.dart';
 import 'package:licoup/src/composition/features/agent_hub/agent_hub_feature_composition.dart';
 import 'package:licoup/src/composition/features/agents/agents_feature_composition.dart';
 import 'package:licoup/src/composition/features/chrome/chrome_feature_composition.dart';
@@ -69,6 +72,8 @@ final class ClientAppComposition {
     ClientController? controller,
     CausalFrameTelemetry? telemetry,
     Stream<bool>? systemReduceMotionChanges,
+    WorkControlGateway workControlGateway =
+        const UnavailableWorkControlGateway(),
   }) {
     final resolvedTelemetry = telemetry ?? createOptInCausalFrameTelemetry();
     final layout = controller == null
@@ -95,6 +100,7 @@ final class ClientAppComposition {
       resolvedController,
       layout,
       resolvedTelemetry,
+      workControlGateway,
       systemReduceMotionChanges ??
           (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS
               ? const MacosReduceMotionChannel().changes
@@ -139,8 +145,11 @@ final class ClientAppComposition {
     this._controller,
     this._layout,
     this.telemetry,
+    WorkControlGateway workControlGateway,
     Stream<bool> systemReduceMotionChanges,
-  ) : _projectionTracing = CausalProjectionSourceRegistry(telemetry) {
+  ) : _projectionTracing = CausalProjectionSourceRegistry(telemetry),
+      _workControl = WorkControlController(gateway: workControlGateway) {
+    _workControlPresentation = WorkControlPresentation(_workControl);
     final beginRendererIntent = telemetry?.beginRendererIntent;
     final runtimeSurface = _controller.mobileClientRuntimePlatform
         ? LayoutRuntimeSurface.mobile
@@ -199,6 +208,7 @@ final class ClientAppComposition {
     _conversation = ConversationFeatureComposition(
       _controller,
       beginRendererIntent: beginRendererIntent,
+      workControl: _workControl,
     );
     _mobileRelay = MobileRelayFeatureComposition(
       relay: _controller.mobileRelayController,
@@ -346,12 +356,16 @@ final class ClientAppComposition {
       targets: targets,
       openExternalUri: _controller.runtimePlatformBridge.openHttps,
       workspaceHomeDirectory: userHomeDirectory(),
+      clientUpdateAdmission: () => _controller.clientUpdateStatus.admission,
+      workControl: _workControlPresentation,
     );
     renderer = _renderer;
   }
 
   final ClientController _controller;
   final BuiltInLayoutComposition _layout;
+  final WorkControlController _workControl;
+  late final WorkControlPresentation _workControlPresentation;
   final CausalFrameTelemetry? telemetry;
   final CausalProjectionSourceRegistry _projectionTracing;
   late final ShellProjectionProducer _shellProjection;
@@ -485,6 +499,8 @@ final class ClientAppComposition {
     await _controller.portableData.stopAppManagedWritersAndDrain();
     await disposeAll([
       _renderer.dispose,
+      () async => _workControlPresentation.dispose(),
+      () async => _workControl.dispose(),
       _layout.dispose,
       _projectionTracing.dispose,
       () => telemetry?.dispose(),

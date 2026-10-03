@@ -6,6 +6,7 @@ import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
+import 'package:licoup/src/contracts/client_update_models.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
@@ -29,6 +30,10 @@ import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel.
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_pairing_channels.dart';
 import 'package:licoup/src/frontend/features/models/ui/models_panel.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
+import 'package:licoup/src/contracts/presentation/work_control_models.dart';
+import 'package:licoup/src/composition/work_control_presentation.dart';
+import 'package:licoup/src/composition/force_stop_flow.dart';
+import 'package:licoup/src/frontend/features/settings/ui/client_update_settings_card.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_panel.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -80,6 +85,8 @@ final class BindingShellRenderer implements ShellRendererPort {
     required TargetsBinding targets,
     required ExternalUriOpener openExternalUri,
     required String workspaceHomeDirectory,
+    this.clientUpdateAdmission = clientUpdateAdmissionUnavailable,
+    this.workControl,
   }) : _layout = layout,
        _shellIntents = shellIntents,
        _agents = agents,
@@ -117,6 +124,15 @@ final class BindingShellRenderer implements ShellRendererPort {
   final TargetsBinding _targets;
   final ExternalUriOpener _openExternalUri;
   final String _workspaceHomeDirectory;
+
+  /// Live read of the host maintenance answer for the update card. The
+  /// composition supplies the application controller read; a renderer built
+  /// without one keeps the fail-closed default.
+  final ClientUpdateAdmission Function() clientUpdateAdmission;
+
+  /// Manual stop and explicit force-stop projection. Null keeps the previous
+  /// composer: no stop stage, no force-stop route.
+  final WorkControlPresentation? workControl;
   final _BindingLayoutChrome _chrome;
   bool _disposed = false;
 
@@ -137,6 +153,7 @@ final class BindingShellRenderer implements ShellRendererPort {
     chrome: _chromeBinding,
     conversation: _conversation,
     auxChromePanelOpen: auxChromePanelOpen,
+    workControl: workControl,
   );
 
   @override
@@ -177,6 +194,7 @@ final class BindingShellRenderer implements ShellRendererPort {
     ClientSection.settings => SettingsPanel(
       binding: _settings,
       layoutRegistry: _layout.registry,
+      clientUpdateAdmission: clientUpdateAdmission,
     ),
     ClientSection.agentHub => AgentHubPanel(
       binding: _agentHub,
@@ -206,6 +224,7 @@ final class _BindingChromeFeatures implements LayoutChromeFeatures {
     required this.chrome,
     required this.conversation,
     required this.auxChromePanelOpen,
+    this.workControl,
   }) : notificationNotices = _ChromeNoticesListenable(
          projection: chrome.projection,
        );
@@ -220,12 +239,16 @@ final class _BindingChromeFeatures implements LayoutChromeFeatures {
   @override
   final ValueNotifier<bool> auxChromePanelOpen;
 
+  /// Manual stop and force-stop projection for the dock composer.
+  final WorkControlPresentation? workControl;
+
   @override
   Widget buildDockComposer(BuildContext context, {bool expanded = false}) =>
       _DockConversationComposer(
         agents: agents,
         conversation: conversation,
         expanded: expanded,
+        workControl: workControl,
       );
 
   @override
@@ -311,11 +334,13 @@ final class _DockConversationComposer extends StatefulWidget {
     required this.agents,
     required this.conversation,
     required this.expanded,
+    this.workControl,
   });
 
   final AgentsBinding agents;
   final ConversationBinding conversation;
   final bool expanded;
+  final WorkControlPresentation? workControl;
 
   @override
   State<_DockConversationComposer> createState() =>
@@ -535,7 +560,11 @@ final class _DockConversationComposerState
       mentionLabels = const <String, String>{};
     }
 
-    final composerWidget = RuntimeMessageComposer(
+    Widget buildComposer({
+      WorkStopStage workStopStage = WorkStopStage.idle,
+      String workStopDiagnosticReference = '',
+      VoidCallback? onForceStop,
+    }) => RuntimeMessageComposer(
       // Same keying rule as the in-workspace composer: a conversation switch
       // starts a fresh composer state seeded from that conversation's draft.
       key: ValueKey<String>('dock-composer-${composer.conversationId}'),
@@ -580,7 +609,29 @@ final class _DockConversationComposerState
           : null,
       mentionTargets: mentionTargets,
       mentionLabels: mentionLabels,
+      workStopStage: workStopStage,
+      workStopDiagnosticReference: workStopDiagnosticReference,
+      onForceStop: onForceStop,
     );
+    final workControl = widget.workControl;
+    final composerWidget = workControl == null
+        ? buildComposer()
+        : ListenableBuilder(
+            listenable: workControl,
+            builder: (context, _) {
+              final stage = workControl.stage(observedActive: turnActive);
+              return buildComposer(
+                workStopStage: stage,
+                workStopDiagnosticReference:
+                    workControl.stopDiagnosticReference,
+                onForceStop: stage == WorkStopStage.unconfirmed
+                    ? () => unawaited(
+                        openForceStopConfirmation(context, workControl),
+                      )
+                    : null,
+              );
+            },
+          );
     final group = canonicalConversation;
     if (!widget.expanded || group == null) {
       return composerWidget;

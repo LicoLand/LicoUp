@@ -41,6 +41,198 @@ enum ClientUpdatePhase {
   applyPlanned,
   applied,
   failed,
+
+  /// A signed artifact is verified, but the host still owns unfinished work, so
+  /// maintenance admission refuses the switch. The client never clears this by
+  /// itself: only a new native answer moves it back to [verified].
+  blocked,
+}
+
+/// The native maintenance decision that gates one installed-state change.
+///
+/// This mirrors the native `AdmissionDecision` one to one, plus [unknown] for
+/// an answer this client did not receive. [unknown] is the fail-closed default:
+/// a client that cannot read the host decision never unlocks an update.
+enum ClientUpdateAdmissionDecision {
+  idle('idle'),
+  blocked('blocked'),
+  closed('closed'),
+  unknown('');
+
+  const ClientUpdateAdmissionDecision(this.wireName);
+  final String wireName;
+}
+
+/// Which local owner reported one unfinished task.
+enum ClientUpdateBlockerOwner {
+  canonicalConversation('canonical-conversation'),
+  adaptiveFlywheel('adaptive-flywheel'),
+  unknown('');
+
+  const ClientUpdateBlockerOwner(this.wireName);
+  final String wireName;
+
+  static ClientUpdateBlockerOwner parse(Object? value) {
+    final name = value?.toString().trim() ?? '';
+    for (final candidate in ClientUpdateBlockerOwner.values) {
+      if (candidate != ClientUpdateBlockerOwner.unknown &&
+          candidate.wireName == name) {
+        return candidate;
+      }
+    }
+    return ClientUpdateBlockerOwner.unknown;
+  }
+}
+
+/// One unfinished task that blocks an install switch.
+///
+/// Only stable, bounded identities cross this projection: the reporting owner,
+/// the owner's own kind name, the Conversation or graph it belongs to, the
+/// record identity and the stored state. Payloads, paths, prompt text and raw
+/// owner errors never reach the client.
+final class ClientUpdateBlocker {
+  const ClientUpdateBlocker({
+    required this.owner,
+    required this.kind,
+    this.scope = '',
+    this.identity = '',
+    this.state = '',
+  });
+
+  final ClientUpdateBlockerOwner owner;
+  final String kind;
+  final String scope;
+  final String identity;
+  final String state;
+
+  factory ClientUpdateBlocker.fromJson(Map<String, dynamic> json) {
+    return ClientUpdateBlocker(
+      owner: ClientUpdateBlockerOwner.parse(json['owner']),
+      kind: _boundedClientUpdateFact(json['kind'], 64),
+      scope: _boundedClientUpdateFact(json['scope'], 160),
+      identity: _boundedClientUpdateFact(json['identity'], 160),
+      state: _boundedClientUpdateFact(json['state'], 64),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ClientUpdateBlocker &&
+          other.owner == owner &&
+          other.kind == kind &&
+          other.scope == scope &&
+          other.identity == identity &&
+          other.state == state;
+
+  @override
+  int get hashCode => Object.hash(owner, kind, scope, identity, state);
+}
+
+/// The host-wide maintenance answer behind an installed-state change.
+///
+/// Declared native contract: the `update status` and `update check` results may
+/// carry an `admission` object shaped exactly like the native
+/// `domain::work_admission::Admission` — `decision`, `blockers`, `truncated`.
+/// Until a native host answers it this projection stays [unknown] and every
+/// gate derived from it stays closed.
+final class ClientUpdateAdmission {
+  const ClientUpdateAdmission({
+    required this.decision,
+    this.blockers = const [],
+    this.truncated = false,
+    this.reasonCode = '',
+  });
+
+  /// Fail-closed default for a host that did not answer.
+  const ClientUpdateAdmission.unavailable([
+    this.reasonCode = 'client_update_admission_unavailable',
+  ]) : decision = ClientUpdateAdmissionDecision.unknown,
+       blockers = const [],
+       truncated = false;
+
+  final ClientUpdateAdmissionDecision decision;
+  final List<ClientUpdateBlocker> blockers;
+
+  /// True when the native decision reported more blockers than it listed.
+  final bool truncated;
+
+  /// Stable local reason code for an absent or refused answer.
+  final String reasonCode;
+
+  /// Whether a native answer was actually observed.
+  bool get observed => decision != ClientUpdateAdmissionDecision.unknown;
+
+  /// Whether a maintenance switch may begin now. Never true without a native
+  /// answer: the client cannot approve an update on its own.
+  bool get allowsMaintenance => decision == ClientUpdateAdmissionDecision.idle;
+
+  /// The stable code a locked update reports, or empty when apply may proceed.
+  String get lockReasonCode => switch (decision) {
+    ClientUpdateAdmissionDecision.idle => '',
+    ClientUpdateAdmissionDecision.blocked => 'client_update_admission_blocked',
+    ClientUpdateAdmissionDecision.closed => 'client_update_admission_closed',
+    ClientUpdateAdmissionDecision.unknown =>
+      reasonCode.isEmpty ? 'client_update_admission_unavailable' : reasonCode,
+  };
+
+  /// Reads the native `admission` object, or the fail-closed default.
+  static ClientUpdateAdmission fromJson(Object? value) {
+    if (value is! Map) return const ClientUpdateAdmission.unavailable();
+    final decision = switch ((value['decision'] ?? '').toString().trim()) {
+      'idle' => ClientUpdateAdmissionDecision.idle,
+      'blocked' => ClientUpdateAdmissionDecision.blocked,
+      'closed' => ClientUpdateAdmissionDecision.closed,
+      _ => ClientUpdateAdmissionDecision.unknown,
+    };
+    final blockers = <ClientUpdateBlocker>[];
+    for (final item in (value['blockers'] as List?) ?? const []) {
+      if (item is Map) {
+        blockers.add(
+          ClientUpdateBlocker.fromJson(Map<String, dynamic>.from(item)),
+        );
+      }
+    }
+    return ClientUpdateAdmission(
+      decision: decision,
+      blockers: List<ClientUpdateBlocker>.unmodifiable(blockers),
+      truncated: value['truncated'] == true,
+      reasonCode: decision == ClientUpdateAdmissionDecision.unknown
+          ? 'client_update_admission_unreadable'
+          : '',
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ClientUpdateAdmission &&
+          other.decision == decision &&
+          other.truncated == truncated &&
+          other.reasonCode == reasonCode &&
+          _sameBlockers(other.blockers, blockers);
+
+  @override
+  int get hashCode =>
+      Object.hash(decision, truncated, reasonCode, Object.hashAll(blockers));
+}
+
+bool _sameBlockers(
+  List<ClientUpdateBlocker> left,
+  List<ClientUpdateBlocker> right,
+) {
+  if (identical(left, right)) return true;
+  if (left.length != right.length) return false;
+  for (var index = 0; index < left.length; index += 1) {
+    if (left[index] != right[index]) return false;
+  }
+  return true;
+}
+
+String _boundedClientUpdateFact(Object? value, int limit) {
+  final text = value?.toString().trim() ?? '';
+  if (text.length <= limit) return text;
+  return text.substring(0, limit);
 }
 
 enum ReleaseTrack {
@@ -77,6 +269,7 @@ final class ClientUpdateStatus {
     this.productionReady = false,
     this.updateAvailable = false,
     this.restartRequired = false,
+    this.admission = const ClientUpdateAdmission.unavailable(),
   });
 
   final ClientUpdatePhase phase;
@@ -97,6 +290,9 @@ final class ClientUpdateStatus {
   final bool productionReady;
   final bool updateAvailable;
   final bool restartRequired;
+
+  /// The host maintenance answer behind this status.
+  final ClientUpdateAdmission admission;
 
   factory ClientUpdateStatus.idle({
     String runningVersion = '',
@@ -130,6 +326,7 @@ final class ClientUpdateStatus {
         'applyPlanned' => ClientUpdatePhase.applyPlanned,
         'applied' => ClientUpdatePhase.applied,
         'failed' => ClientUpdatePhase.failed,
+        'blocked' => ClientUpdatePhase.blocked,
         _ => ClientUpdatePhase.idle,
       },
       runningVersion: (json['runningVersion'] as String?)?.trim() ?? '',
@@ -166,6 +363,7 @@ final class ClientUpdateStatus {
       productionReady: json['productionReady'] == true,
       updateAvailable: json['updateAvailable'] == true,
       restartRequired: json['restartRequired'] == true,
+      admission: ClientUpdateAdmission.fromJson(json['admission']),
     );
   }
 
@@ -188,6 +386,7 @@ final class ClientUpdateStatus {
     bool? productionReady,
     bool? updateAvailable,
     bool? restartRequired,
+    ClientUpdateAdmission? admission,
   }) {
     return ClientUpdateStatus(
       phase: phase ?? this.phase,
@@ -208,6 +407,7 @@ final class ClientUpdateStatus {
       productionReady: productionReady ?? this.productionReady,
       updateAvailable: updateAvailable ?? this.updateAvailable,
       restartRequired: restartRequired ?? this.restartRequired,
+      admission: admission ?? this.admission,
     );
   }
 }

@@ -218,6 +218,124 @@ void main() {
     );
     expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
   });
+
+  testWidgets('a blocked host admission lists the tasks and locks apply', (
+    tester,
+  ) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.blocked,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.stable,
+        targetReleaseTrack: ReleaseTrack.stable,
+        availableVersion: '1.1.0',
+        updateAvailable: true,
+        errorCode: 'client_update_admission_blocked',
+      ),
+    );
+    await _pumpCard(
+      tester,
+      fixture,
+      admission: const ClientUpdateAdmission(
+        decision: ClientUpdateAdmissionDecision.blocked,
+        blockers: [
+          ClientUpdateBlocker(
+            owner: ClientUpdateBlockerOwner.canonicalConversation,
+            kind: 'conversation-dispatch',
+            scope: 'conversation-1',
+            identity: 'dispatch-1',
+            state: 'claimed',
+          ),
+          ClientUpdateBlocker(
+            owner: ClientUpdateBlockerOwner.adaptiveFlywheel,
+            kind: 'workflow-run',
+            identity: 'run-1',
+            state: 'running',
+          ),
+        ],
+      ),
+    );
+
+    expect(find.text('Waiting for unfinished work'), findsOneWidget);
+    expect(
+      find.text('Unfinished work still blocks this update. Stop it first.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'canonical-conversation · conversation-dispatch · claimed · dispatch-1',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('adaptive-flywheel · workflow-run · running · run-1'),
+      findsOneWidget,
+    );
+    expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
+    expect(fixture.intents.values.whereType<ApplyClientUpdate>(), isEmpty);
+  });
+
+  testWidgets('an unreadable admission keeps apply locked and says why', (
+    tester,
+  ) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.blocked,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.stable,
+        targetReleaseTrack: ReleaseTrack.stable,
+        availableVersion: '1.1.0',
+        updateAvailable: true,
+      ),
+    );
+    await _pumpCard(
+      tester,
+      fixture,
+      admission: const ClientUpdateAdmission.unavailable(),
+    );
+
+    expect(
+      find.text(
+        'The host could not confirm it is idle, so the update stays locked.',
+      ),
+      findsOneWidget,
+    );
+    expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
+  });
+
+  testWidgets('a truncated blocker list says more tasks exist', (tester) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.verified,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.stable,
+        targetReleaseTrack: ReleaseTrack.stable,
+        availableVersion: '1.1.0',
+        updateAvailable: true,
+      ),
+    );
+    await _pumpCard(
+      tester,
+      fixture,
+      admission: const ClientUpdateAdmission(
+        decision: ClientUpdateAdmissionDecision.closed,
+        truncated: true,
+      ),
+    );
+
+    expect(find.byKey(const Key('client-update-blockers')), findsOneWidget);
+    expect(
+      find.byKey(const Key('client-update-blockers-truncated')),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'Another maintenance operation holds the switch. The update is locked.',
+      ),
+      findsOneWidget,
+    );
+    expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
+  });
 }
 
 Future<void> _expandAdvanced(WidgetTester tester) async {
@@ -253,6 +371,9 @@ Future<void> _pumpCard(
   })
   fixture, {
   Locale locale = const Locale('en'),
+  ClientUpdateAdmission admission = const ClientUpdateAdmission(
+    decision: ClientUpdateAdmissionDecision.idle,
+  ),
 }) async {
   addTearDown(fixture.source.dispose);
   addTearDown(fixture.presentation.dispose);
@@ -271,7 +392,10 @@ Future<void> _pumpCard(
         ],
         theme: buildLicoTheme(platformBrightness: Brightness.dark),
         home: Scaffold(
-          body: ClientUpdateSettingsCard(binding: fixture.binding),
+          body: ClientUpdateSettingsCard(
+            binding: fixture.binding,
+            admission: () => admission,
+          ),
         ),
       ),
     ),
