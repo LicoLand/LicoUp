@@ -388,6 +388,21 @@ fn prepare_current_root(path: PathBuf) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// The directory below the selected data home that holds the managed optional
+/// extension package store.
+pub const PACKAGE_STORE_DIRECTORY: &str = "extension-packages";
+
+/// The managed package store root inside one already selected data home.
+///
+/// The layout is owned here so every process that resolves the LicoUp data home
+/// resolves the package store the same way, and so a fixture can resolve it over
+/// a synthetic root without re-deriving the platform policy. This is pure path
+/// policy: it creates and hardens nothing, because the package store applies its
+/// own private-directory policy when it opens.
+pub fn package_store_root(data_home: &Path) -> PathBuf {
+    data_home.join(PACKAGE_STORE_DIRECTORY)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -684,6 +699,20 @@ mod tests {
             Some(PathBuf::from(["C:", "Profile", "Arc"].join(&separator)))
         );
         assert_eq!(env_home_from(|_| None), None);
+    }
+
+    /// The package store is a layout decision of this owner, so a synthetic
+    /// data home resolves it without re-deriving platform policy, and resolving
+    /// it creates nothing.
+    #[test]
+    fn the_package_store_root_is_one_directory_below_the_data_home() {
+        let data_home = Path::new("fixture/data-home");
+        assert_eq!(
+            package_store_root(data_home),
+            data_home.join("extension-packages")
+        );
+        assert_eq!(PACKAGE_STORE_DIRECTORY, "extension-packages");
+        assert!(!package_store_root(data_home).exists());
     }
 
     struct PortableDataDirOverrideGuard {

@@ -56,6 +56,8 @@ pub mod artifact;
 pub mod discovery;
 pub mod install;
 pub mod journal;
+pub mod maintenance;
+pub mod registration;
 pub mod state;
 pub mod storage;
 pub mod uninstall;
@@ -65,7 +67,7 @@ mod scenarios;
 
 pub use artifact::{
     ArtifactLimits, ArtifactPreflight, ExpandedPackage, MANIFEST_FILE, content_digest,
-    digest_directory, preflight,
+    digest_directory, preflight, read_manifest,
 };
 pub use discovery::{
     CatalogEntry, CatalogIndex, Detector, DiscoveryEnvironment, DiscoveryRule, DiscoveryScan,
@@ -73,7 +75,7 @@ pub use discovery::{
 };
 pub use install::{
     ActivationAdmission, FaultPlan, InstallOutcome, InstallPhase, InstallRequest, InstalledPackage,
-    PackageStore, RemovedVersion, StagedPackage, running_client_version,
+    PackagePreference, PackageStore, RemovedVersion, StagedPackage, running_client_version,
 };
 pub use journal::{
     AbandonedStage, InstallJournal, JournalEntry, JournalOperation, RecoveryReport, StagedDirectory,
@@ -91,10 +93,19 @@ pub use storage::{
     StorageReport, account_store, plan_gc, reclaim,
 };
 
+pub use maintenance::{
+    ADMISSION_UNAVAILABLE, ADMISSION_WORK_IN_FLIGHT, GUARD_OWNER, IdleVerdict, MaintenanceAdmission,
+    MaintenanceOperation, MaintenancePermit, MaintenanceRequest,
+};
+pub use registration::{
+    RecordedRegistration, RegistrationOwner, RegistrationOwners, ReleasedRegistration,
+};
 pub use uninstall::{
-    DependentsDecision, Drained, PreservedFacts, RemainingWork, SurfaceClosure, UninstallOutcome,
-    UninstallPlan, UninstallTransaction, UserDataPurgeRequest, close_surface, keeps_user_runtime,
-    preview, purge_user_data,
+    DRAINED_RECORD_SCHEMA, DependentsDecision, Drained, DrainedRecord, MAX_DRAINED_RECORD_BYTES,
+    PreservedFacts, RemainingWork, SurfaceClosure, UninstallOutcome, UninstallPlan,
+    UninstallTransaction, UserDataPurgeRequest, clear_drained_record, close_surface,
+    drained_record_path, keeps_user_runtime, preview, purge_user_data, read_drained_record,
+    write_drained_record,
 };
 
 /// The component every refusal from this module names, so a client can tell a

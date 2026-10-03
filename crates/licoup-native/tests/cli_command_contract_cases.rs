@@ -21,7 +21,7 @@ const ADMISSION_STAGE: &str = "cli/admission";
 const ADMISSION_COMPONENT: &str = "native_cli";
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
-const AUTHORITATIVE_ROUTE_COUNT: usize = 180;
+const AUTHORITATIVE_ROUTE_COUNT: usize = 194;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -2082,10 +2082,150 @@ fn route_authorities() -> Vec<RouteAuthority> {
         handler: "handle_serve",
         path: "extension-host serve",
         required: &[("data-root", Text), ("package-id", Text), ("version", Text)],
-        cardinality: Options,
+        cardinality: Exact,
         options: options_for_route("extension-host serve"),
         constraints: &[],
     });
+    routes.push(RouteAuthority {
+        module: "package.rs",
+        handler: "handle_catalog",
+        path: "package catalog",
+        required: &[("data-root", Text)],
+        cardinality: Options,
+        options: options_for_route("package catalog"),
+        constraints: &[],
+    });
+
+    routes.push(RouteAuthority {
+        module: "package.rs",
+        handler: "handle_install_plan",
+        path: "package install-plan",
+        required: &[("data-root", Text)],
+        cardinality: Options,
+        options: options_for_route("package install-plan"),
+        constraints: &[],
+    });
+
+    routes.push(RouteAuthority {
+        module: "package.rs",
+        handler: "handle_install_confirm",
+        path: "package install-confirm",
+        required: &[("data-root", Text)],
+        cardinality: Options,
+        options: options_for_route("package install-confirm"),
+        constraints: &[],
+    });
+
+    routes.push(RouteAuthority {
+        module: "package.rs",
+        handler: "handle_install_apply",
+        path: "package install-apply",
+        required: &[("data-root", Text)],
+        cardinality: Options,
+        options: options_for_route("package install-apply"),
+        constraints: &[],
+    });
+
+    routes.push(RouteAuthority {
+        module: "package.rs",
+        handler: "handle_import",
+        path: "package import",
+        required: &[("data-root", Text)],
+        cardinality: Exact,
+        options: options_for_route("package import"),
+        constraints: &[],
+    });
+
+    routes.push(RouteAuthority {
+        module: "package.rs",
+        handler: "handle_enable",
+        path: "package enable",
+        required: &[("data-root", Text), ("package-id", Text), ("version", Text)],
+        cardinality: Exact,
+        options: options_for_route("package enable"),
+        constraints: &[],
+    });
+
+    routes.push(RouteAuthority {
+        module: "package.rs",
+        handler: "handle_disable",
+        path: "package disable",
+        required: &[("data-root", Text), ("package-id", Text), ("version", Text)],
+        cardinality: Exact,
+        options: options_for_route("package disable"),
+        constraints: &[],
+    });
+
+    routes.push(RouteAuthority {
+        module: "package.rs",
+        handler: "handle_uninstall_preview",
+        path: "package uninstall-preview",
+        required: &[("data-root", Text), ("package-id", Text), ("version", Text)],
+        cardinality: Options,
+        options: options_for_route("package uninstall-preview"),
+        constraints: &[],
+    });
+
+    routes.push(RouteAuthority {
+        module: "package.rs",
+        handler: "handle_uninstall_drain",
+        path: "package uninstall-drain",
+        required: &[("data-root", Text), ("package-id", Text), ("version", Text)],
+        cardinality: Options,
+        options: options_for_route("package uninstall-drain"),
+        constraints: &[],
+    });
+
+    routes.push(RouteAuthority {
+        module: "package.rs",
+        handler: "handle_uninstall_collect",
+        path: "package uninstall-collect",
+        required: &[("data-root", Text), ("package-id", Text), ("version", Text)],
+        cardinality: Exact,
+        options: options_for_route("package uninstall-collect"),
+        constraints: &[],
+    });
+
+    routes.push(RouteAuthority {
+        module: "package.rs",
+        handler: "handle_recover",
+        path: "package recover",
+        required: &[("data-root", Text)],
+        cardinality: Options,
+        options: options_for_route("package recover"),
+        constraints: &[],
+    });
+
+    routes.push(RouteAuthority {
+        module: "package.rs",
+        handler: "handle_update_preview",
+        path: "package update-preview",
+        required: &[("data-root", Text), ("package-id", Text)],
+        cardinality: Options,
+        options: options_for_route("package update-preview"),
+        constraints: &[],
+    });
+
+    routes.push(RouteAuthority {
+        module: "package.rs",
+        handler: "handle_update_apply",
+        path: "package update-apply",
+        required: &[("data-root", Text), ("package-id", Text)],
+        cardinality: Exact,
+        options: options_for_route("package update-apply"),
+        constraints: &[],
+    });
+
+    routes.push(RouteAuthority {
+        module: "package.rs",
+        handler: "handle_activate",
+        path: "package activate",
+        required: &[("data-root", Text), ("package-id", Text), ("version", Text)],
+        cardinality: Options,
+        options: options_for_route("package activate"),
+        constraints: &[],
+    });
+
     add_authority_routes(
         &mut routes,
         "agent_usage.rs",
@@ -2877,6 +3017,28 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("capability", Text, false),
             value_option("mode", Text, false),
             value_option("request", Json, false),
+        ],
+        "package catalog" | "package enable" | "package disable"
+        | "package uninstall-preview" | "package recover" | "package activate" => &[],
+        "package install-plan" | "package import" => &[value_option("archive", Text, true)],
+        "package install-confirm" => &[
+            value_option("archive", Text, true),
+            value_option("plan", Text, true),
+        ],
+        "package install-apply" => &[
+            value_option("archive", Text, true),
+            value_option("confirmation", Text, true),
+        ],
+        "package uninstall-drain" => &[
+            value_option("remaining", Text, false),
+            value_option("dependents", Json, false),
+            value_option("instances", Json, false),
+        ],
+        "package uninstall-collect" => &[value_option("registration-inputs", Json, false)],
+        "package update-preview" => &[value_option("archive", Text, false)],
+        "package update-apply" => &[
+            value_option("archive", Text, true),
+            value_option("confirmation", Text, true),
         ],
         "agent-usage scan" => &[
             value_option("agent", Text, false),

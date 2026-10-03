@@ -1,0 +1,1043 @@
+//! The native command surface for the optional extension package lifecycle.
+//!
+//! One route, one operation. The routes own no package fact: they resolve the
+//! data home, open the store the layout owner names, and report what the
+//! platform's own transactions produced.
+//!
+//! Four rules shape this surface:
+//!
+//! 1. **The store root comes from the layout owner.** Every route resolves the
+//!    LicoUp data home it was given and asks
+//!    [`licoup_foundation::platform::paths::package_store_root`] where the store
+//!    lives. No route joins a directory name itself, so the layout has one owner.
+//! 2. **The catalogue is only reachable through recovery.** `package catalog`
+//!    reads through [`PackageStore::catalogue`], which reconciles a crash before
+//!    it reads a single record, so an interrupted install is never presented as a
+//!    half state.
+//! 3. **Installing needs a confirmation bound to the bytes.** `install-plan`
+//!    derives a plan and a confirmation from one archive; `install-apply` must
+//!    present a confirmation that the same archive still reproduces. An archive
+//!    swapped between the two calls cannot be installed under the earlier
+//!    decision.
+//! 4. **Nothing here runs a package, and nothing here reaches the network.** The
+//!    bytes are a local file the operator holds; no probe is executed and no
+//!    socket is opened.
+//!
+//! Mutating *replacement* is deliberately absent: [`package update-apply`] and
+//! [`package activate`] route through the maintenance-admission seam, which
+//! refuses while no native idle guard exists. Read-only `package update-preview`
+//! reports what a replacement would do without doing any of it.
+//!
+//! [`package update-apply`]: handle_update_apply
+//! [`package activate`]: handle_activate
+
+use super::{AdmittedCommand, CliExecution};
+use anyhow::{Result, anyhow};
+use serde_json::{Value, json};
+use std::path::{Path, PathBuf};
+
+use licoup_application::ApplicationFailure;
+use licoup_extension_contracts::deployment::{
+    InstanceLifecycle, LocalCatalogue, PackageEntry, PackageLifecycle,
+};
+use licoup_foundation::platform::paths;
+use sha2::{Digest, Sha256};
+
+use crate::platform::extension_packages::registration::RegistrationOwners;
+use crate::platform::extension_packages::{
+    ArtifactLimits, DependentsDecision, Drained, InstanceIdentity, InstanceMachine,
+    InstanceRegistry, MaintenanceAdmission, MaintenanceOperation, MaintenanceRequest, PackageStore,
+    RemainingWork, TrustRecord, UninstallTransaction, read_drained_record, read_manifest,
+    running_client_version, write_drained_record,
+};
+use crate::platform::package_registration_release::{
+    CodexPluginRelease, PackageRegistrationOwners, ProviderMcpRelease, ReleaseInputs,
+};
+
+/// The report every package route publishes.
+const SCHEMA: &str = "licoup.package-lifecycle.v1";
+
+/// The schema of the confirmation one install plan issues.
+const CONFIRMATION_SCHEMA: &str = "licoup.package-install-confirmation.v1";
+
+/// The longest archive this surface will read from disk.
+const MAX_ARCHIVE_BYTES: u64 = 256 * 1024 * 1024;
+
+/// `package catalog <data-root>` — what this client holds, reconciled first.
+pub(super) fn handle_catalog(command: AdmittedCommand) -> Result<CliExecution> {
+    let data_home = data_home(&command)?;
+    let store = open_store(&data_home)?;
+    let (recovery, installed) = store.catalogue()?;
+    let preferences = installed
+        .iter()
+        .map(|package| {
+            store
+                .preference(&package.package_id, &package.version)
+                .map(|preference| preference.is_none_or(|preference| preference.enabled))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(report(json!({
+        "operation": "catalog",
+        "dataHomeResolved": true,
+        "storeRoot": store.root().display().to_string(),
+        "recoveredBeforeRead": true,
+        "recovery": recovery_report(&recovery),
+        "packages": installed
+            .iter()
+            .zip(preferences)
+            .map(|(package, enabled)| installed_package(package, enabled))
+            .collect::<Vec<_>>(),
+    })))
+}
+
+/// `package install-plan <data-root> --archive <path>` — what installing would do.
+pub(super) fn handle_install_plan(command: AdmittedCommand) -> Result<CliExecution> {
+    let data_home = data_home(&command)?;
+    let store = open_store(&data_home)?;
+    let archive = archive_path(&command)?;
+    let candidate = candidate_for(&store, &archive)?;
+    Ok(report(json!({
+        "operation": "install-plan",
+        "plan": candidate.plan,
+        "archive": archive.display().to_string(),
+    })))
+}
+
+/// `package install-confirm <data-root> --archive <path> --plan <digest>` — the
+/// explicit second step, which re-derives the plan and refuses a stale digest.
+pub(super) fn handle_install_confirm(mut command: AdmittedCommand) -> Result<CliExecution> {
+    let data_home = data_home(&command)?;
+    let store = open_store(&data_home)?;
+    let archive = archive_path(&command)?;
+    let plan_digest = command
+        .option_text("plan")
+        .map(str::to_owned)
+        .ok_or_else(|| anyhow!("package_install_plan_digest_required"))?;
+    let candidate = candidate_for(&store, &archive)?;
+    if candidate.plan_digest != plan_digest {
+        return Ok(refusal(
+            "package_install_plan_stale",
+            "the archive no longer reproduces the plan that was reviewed",
+        ));
+    }
+    Ok(report(json!({
+        "operation": "install-confirm",
+        "packageId": candidate.plan["packageId"].clone(),
+        "version": candidate.plan["version"].clone(),
+        "planDigest": candidate.plan_digest,
+        "confirmation": candidate.confirmation,
+    })))
+}
+
+/// `package install-apply <data-root> --archive <path> --confirmation <token>` —
+/// install the reviewed bytes.
+pub(super) fn handle_install_apply(mut command: AdmittedCommand) -> Result<CliExecution> {
+    let data_home = data_home(&command)?;
+    let store = open_store(&data_home)?;
+    let archive = archive_path(&command)?;
+    let confirmation = command
+        .option_text("confirmation")
+        .map(str::to_owned)
+        .ok_or_else(|| anyhow!("package_install_confirmation_required"))?;
+    let candidate = candidate_for(&store, &archive)?;
+    if confirmation != candidate.confirmation {
+        return Ok(refusal(
+            "package_install_confirmation_stale",
+            "the archive does not reproduce the confirmed plan",
+        ));
+    }
+    install_candidate(&store, &candidate, &archive, "install-apply")
+}
+
+/// `package import <data-root> --archive <path>` — the user's own local import.
+///
+/// A local import *is* the user handing in bytes they hold: there is no
+/// directory, no account and no fetch, which is why this route needs no separate
+/// confirmation step. It installs nothing that would replace an installed
+/// version, and it records the local-approval channel it was admitted under.
+pub(super) fn handle_import(command: AdmittedCommand) -> Result<CliExecution> {
+    let data_home = data_home(&command)?;
+    let store = open_store(&data_home)?;
+    let archive = archive_path(&command)?;
+    let candidate = candidate_for(&store, &archive)?;
+    install_candidate(&store, &candidate, &archive, "import")
+}
+
+/// `package enable <data-root> <package-id> <version>` — switch one installed
+/// version on.
+///
+/// This is the user's own preference, not activation: no instance starts, no
+/// generation moves and no byte changes, so it is not maintenance and does not
+/// pass the idle seam.
+pub(super) fn handle_enable(command: AdmittedCommand) -> Result<CliExecution> {
+    set_enabled(command, true)
+}
+
+/// `package disable <data-root> <package-id> <version>` — switch one installed
+/// version off. The bytes stay; only the preference changes.
+pub(super) fn handle_disable(command: AdmittedCommand) -> Result<CliExecution> {
+    set_enabled(command, false)
+}
+
+/// `package uninstall-preview <data-root> <package-id> <version>` — what removing
+/// this version would touch, before anything is closed.
+pub(super) fn handle_uninstall_preview(command: AdmittedCommand) -> Result<CliExecution> {
+    let data_home = data_home(&command)?;
+    let store = open_store(&data_home)?;
+    let (package_id, version) = identity(&command)?;
+    let (plan, _) = uninstall_plan(&store, &package_id, &version)?;
+    Ok(report(json!({
+        "operation": "uninstall-preview",
+        "plan": uninstall_plan_json(&plan),
+        "explanation": plan.explanation(),
+        "needsUserChoice": plan.needs_user_choice(),
+        "preservesUserData": true,
+    })))
+}
+
+/// `package uninstall-drain <data-root> <package-id> <version>` — withdraw
+/// admission, drain, and write the drained decision down.
+///
+/// `--instances` lets a caller report work it observes. Such a report can only
+/// make the drain *refuse*, never proceed: it is added to the running set and
+/// never removes anything from it.
+pub(super) fn handle_uninstall_drain(mut command: AdmittedCommand) -> Result<CliExecution> {
+    let data_home = data_home(&command)?;
+    let store = open_store(&data_home)?;
+    let (package_id, version) = identity(&command)?;
+    let (plan, mut registry) = uninstall_plan(&store, &package_id, &version)?;
+    if let Some(observed) = command.take_option_json("instances") {
+        observe_instances(&mut registry, observed)?;
+    }
+    let remaining = match command.option_text("remaining") {
+        None | Some("wait") => RemainingWork::Wait,
+        Some("cancel") => RemainingWork::Cancel,
+        Some(_) => return Err(anyhow!("package_uninstall_remaining_unknown")),
+    };
+    let dependents = match command.take_option_json("dependents") {
+        None => DependentsDecision::SelectedOnly,
+        Some(Value::Array(names)) => DependentsDecision::RemoveTogether(
+            names
+                .iter()
+                .map(|name| {
+                    name.as_str()
+                        .map(str::to_owned)
+                        .ok_or_else(|| anyhow!("package_uninstall_dependent_invalid"))
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+        Some(_) => return Err(anyhow!("package_uninstall_dependent_invalid")),
+    };
+    let transaction = match UninstallTransaction::begin(&mut registry, plan, dependents) {
+        Ok(transaction) => transaction,
+        Err(failure) => return Ok(failure_report("uninstall-drain", &failure)),
+    };
+    let withdrawn = transaction.withdrawn_instances().to_vec();
+    let drained = match transaction.drain(&mut registry, remaining) {
+        Ok(drained) => drained,
+        Err(failure) => return Ok(failure_report("uninstall-drain", &failure)),
+    };
+    write_drained_record(&store, &drained)?;
+    let record = drained.record();
+    Ok(report(json!({
+        "operation": "uninstall-drain",
+        "packageId": record.plan.package_id.clone(),
+        "version": record.plan.version.clone(),
+        "withdrawnInstances": withdrawn,
+        "drainedInstances": record.drained_instances.clone(),
+        "canceledWork": record.canceled_work,
+        "unknownWork": record.unknown_work,
+        "releasesRegistrationsOnCollect": record.plan.registrations.len(),
+        "preservesUserData": true,
+    })))
+}
+
+/// `package uninstall-collect <data-root> <package-id> <version>` — release what
+/// the package registered, then reclaim its managed bytes.
+pub(super) fn handle_uninstall_collect(mut command: AdmittedCommand) -> Result<CliExecution> {
+    let data_home = data_home(&command)?;
+    let store = open_store(&data_home)?;
+    let (package_id, version) = identity(&command)?;
+    let record = read_drained_record(&store, &package_id, &version)?;
+    let drained: Drained = record.resume()?;
+    let inputs = match command.take_option_json("registration-inputs") {
+        None | Some(Value::Null) => ReleaseInputs::none(),
+        Some(value) => release_inputs(&value)?,
+    };
+    let owners = PackageRegistrationOwners::new(inputs);
+    let registry = InstanceRegistry::new();
+    match drained.collect(&store, &registry, &owners) {
+        Ok(outcome) => {
+            crate::platform::extension_packages::clear_drained_record(
+                &store,
+                &package_id,
+                &version,
+            )?;
+            Ok(report(json!({
+                "operation": "uninstall-collect",
+                "packageId": outcome.package_id,
+                "version": outcome.version,
+                "reclaimedBytes": outcome.reclaimed_bytes,
+                "drainedInstances": outcome.drained_instances,
+                "canceledWork": outcome.canceled_work,
+                "unknownWork": outcome.unknown_work,
+                "releasedRegistrations": outcome
+                    .released_registrations
+                    .iter()
+                    .map(|released| json!({
+                        "owner": released.owner.wire_name(),
+                        "key": released.key,
+                        "removed": released.removed,
+                        "alreadyAbsent": released.already_absent,
+                    }))
+                    .collect::<Vec<_>>(),
+                "sharedRuntimeRetained": outcome.shared_runtime_retained,
+                "userRuntimeKept": outcome.user_runtime_kept,
+                "removedTogether": outcome.removed_together,
+                "preservedUserData": {
+                    "history": outcome.preserved.history,
+                    "credentials": outcome.preserved.credentials,
+                    "protocolState": outcome.preserved.protocol_state,
+                },
+            })))
+        }
+        Err(failure) => Ok(failure_report("uninstall-collect", &failure)),
+    }
+}
+
+/// `package recover <data-root>` — reconcile a crash and report what it found.
+pub(super) fn handle_recover(command: AdmittedCommand) -> Result<CliExecution> {
+    let data_home = data_home(&command)?;
+    let store = open_store(&data_home)?;
+    let recovery = store.recover()?;
+    Ok(report(json!({
+        "operation": "recover",
+        "recovery": recovery_report(&recovery),
+        "installed": store
+            .installed()?
+            .iter()
+            .map(|package| package.key())
+            .collect::<Vec<_>>(),
+    })))
+}
+
+/// `package update-preview <data-root> <package-id> [--archive <path>]` — what a
+/// replacement would do.
+///
+/// Read-only by construction: it opens the store, reports the installed facts and
+/// the candidate's, and states that apply is unavailable. It closes nothing,
+/// drains nothing and replaces nothing.
+pub(super) fn handle_update_preview(mut command: AdmittedCommand) -> Result<CliExecution> {
+    let data_home = data_home(&command)?;
+    let store = open_store(&data_home)?;
+    let package_id = command
+        .required_text("package-id")
+        .to_owned();
+    let installed = store
+        .installed()?
+        .into_iter()
+        .filter(|package| package.package_id == package_id)
+        .map(|package| {
+            json!({
+                "packageId": package.package_id,
+                "version": package.version,
+                "digest": package.digest,
+                "trustChannel": lifecycle_name(package.trust_channel),
+                "installedAtUnixMs": package.installed_at_unix_ms,
+            })
+        })
+        .collect::<Vec<_>>();
+    let candidate = match command.option_text("archive").map(str::to_owned) {
+        Some(path) => {
+            let candidate = candidate_for(&store, Path::new(&path))?;
+            json!({
+                "plan": candidate.plan,
+                "planDigest": candidate.plan_digest,
+            })
+        }
+        None => Value::Null,
+    };
+    let admission = MaintenanceAdmission::new();
+    let request = MaintenanceRequest::new(
+        MaintenanceOperation::UpdateApply,
+        package_id.clone(),
+        installed
+            .first()
+            .and_then(|installed| installed["version"].as_str())
+            .unwrap_or("unknown"),
+    );
+    let apply = match admission.admit(&request) {
+        Ok(permit) => json!({
+            "available": true,
+            "operation": permit.operation().wire_name(),
+        }),
+        Err(failure) => json!({
+            "available": false,
+            "reasonCode": failure.code,
+            "guardPresent": admission.guard_present(),
+            "guardOwner": crate::platform::extension_packages::GUARD_OWNER,
+        }),
+    };
+    Ok(report(json!({
+        "operation": "update-preview",
+        "packageId": package_id,
+        "installed": installed,
+        "candidate": candidate,
+        "apply": apply,
+        "mutated": false,
+    })))
+}
+
+/// `package update-apply <data-root> <package-id> --archive <path>
+/// --confirmation <token>` — replace an installed version.
+///
+/// Refused through the maintenance-admission seam while no native idle guard
+/// exists. The refusal happens *before* the archive is read, so this route cannot
+/// half-plan a replacement it will not be allowed to perform.
+pub(super) fn handle_update_apply(mut command: AdmittedCommand) -> Result<CliExecution> {
+    let package_id = command.required_text("package-id").to_owned();
+    let version = command
+        .option_text("archive")
+        .map(PathBuf::from)
+        .map(|path| {
+            path.file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or("unknown")
+                .to_owned()
+        })
+        .unwrap_or_else(|| "unknown".to_owned());
+    match MaintenanceAdmission::new().admit(&MaintenanceRequest::new(
+        MaintenanceOperation::UpdateApply,
+        &package_id,
+        &version,
+    )) {
+        Ok(permit) => Err(anyhow!(
+            "package_update_apply_unreachable_without_guard:{}",
+            permit.operation().wire_name()
+        )),
+        Err(failure) => Ok(failure_report("update-apply", &failure)),
+    }
+}
+
+/// `package activate <data-root> <package-id> <version>` — start a generation.
+///
+/// Refused through the same seam: activation starts work, and no idle guard
+/// exists to decide whether that is safe yet.
+pub(super) fn handle_activate(command: AdmittedCommand) -> Result<CliExecution> {
+    let (package_id, version) = identity(&command)?;
+    match MaintenanceAdmission::new().admit(&MaintenanceRequest::new(
+        MaintenanceOperation::Activation,
+        &package_id,
+        &version,
+    )) {
+        Ok(permit) => Err(anyhow!(
+            "package_activate_unreachable_without_guard:{}",
+            permit.operation().wire_name()
+        )),
+        Err(failure) => Ok(failure_report("activate", &failure)),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Shared plumbing
+// ---------------------------------------------------------------------------
+
+/// One reviewed install candidate: the plan, the digest that identifies it, and
+/// the confirmation that admits applying it.
+struct InstallCandidate {
+    plan: Value,
+    plan_digest: String,
+    confirmation: String,
+    package_id: String,
+    version: String,
+    digest: String,
+    permissions: Vec<licoup_extension_contracts::manifest::PermissionRequest>,
+}
+
+impl InstallCandidate {
+    /// The plan's own facts, as the digest that binds a confirmation to them.
+    fn canonical(&self) -> String {
+        format!(
+            "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+            self.package_id,
+            self.version,
+            self.digest,
+            self.plan_digest,
+            running_client_version().unwrap_or_else(|_| "unknown".to_owned()),
+            self.permissions
+                .iter()
+                .map(|permission| format!("{}@{}", permission.capability, permission.scope))
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    }
+}
+
+/// Derive the plan for one archive against the current client and store.
+///
+/// The manifest is read from the archive without expanding it, the digest is
+/// computed from the bytes, and the compatibility list is checked against the
+/// running client. Nothing is written, so a plan can be built for an archive that
+/// will never be installed.
+fn candidate_for(store: &PackageStore, archive: &Path) -> Result<InstallCandidate> {
+    let bytes = read_archive(archive)?;
+    let limits = ArtifactLimits::default();
+    let manifest = read_manifest(&bytes, &limits).map_err(as_handler_error)?;
+    let digest = crate::platform::extension_packages::content_digest(&bytes);
+    let client_version = running_client_version().map_err(as_handler_error)?;
+    let covers = manifest.client_compatibility(&client_version).is_covered();
+    let already_installed = store
+        .installed_version(&manifest.id, &manifest.version)
+        .map_err(as_handler_error)?
+        .is_some();
+    let stored_bytes = store
+        .installed_bytes(&manifest.id, &manifest.version)
+        .map_err(as_handler_error)?;
+    let permissions = manifest.permissions.clone();
+    let plan = json!({
+        "schemaVersion": SCHEMA,
+        "packageId": manifest.id,
+        "version": manifest.version,
+        "displayName": manifest.display_name,
+        "digest": digest,
+        "source": "local-import",
+        "compatibility": {
+            "covers": covers,
+            "clientVersion": client_version,
+            "declared": manifest.compatibility,
+        },
+        "runtimeMode": manifest.runtime.mode(),
+        "hostProtocolMajor": manifest.host_protocol.major,
+        "permissions": permissions
+            .iter()
+            .map(|permission| json!({
+                "capability": permission.capability,
+                "scope": permission.scope,
+            }))
+            .collect::<Vec<_>>(),
+        "requires": manifest
+            .requires
+            .iter()
+            .map(|dependency| json!({
+                "packageId": dependency.package_id,
+                "range": dependency.range,
+            }))
+            .collect::<Vec<_>>(),
+        "compressedBytes": bytes.len() as u64,
+        "alreadyInstalled": already_installed,
+        "installedBytesForThisIdentity": stored_bytes,
+        "installScriptsExecuted": 0,
+        "processesSpawned": 0,
+    });
+    let plan_text = serde_json::to_string(&plan)
+        .map_err(|_| anyhow!("package_install_plan_unserializable"))?;
+    let plan_digest = prefixed_digest(plan_text.as_bytes());
+    let mut candidate = InstallCandidate {
+        plan,
+        plan_digest,
+        confirmation: String::new(),
+        package_id: manifest.id,
+        version: manifest.version,
+        digest,
+        permissions,
+    };
+    candidate.confirmation = format!("{CONFIRMATION_SCHEMA}:{}", prefixed_digest(candidate.canonical().as_bytes()));
+    Ok(candidate)
+}
+
+/// Admit and perform one install of a confirmed candidate.
+fn install_candidate(
+    store: &PackageStore,
+    candidate: &InstallCandidate,
+    archive: &Path,
+    operation: &str,
+) -> Result<CliExecution> {
+    if candidate.plan["compatibility"]["covers"] != Value::Bool(true) {
+        return Ok(refusal(
+            "package_client_incompatible",
+            "the package's compatibility list does not cover this client",
+        ));
+    }
+    if candidate.plan["alreadyInstalled"] == Value::Bool(true) {
+        return Ok(refusal(
+            "package_version_already_installed",
+            "this exact version is already installed and an install never replaces one",
+        ));
+    }
+    let bytes = read_archive(archive)?;
+    let trust = TrustRecord::local_approved(&candidate.digest, candidate.permissions.clone())
+        .map_err(as_handler_error)?;
+    let outcome = store
+        .install_local_import(
+            &candidate.package_id,
+            &candidate.version,
+            trust,
+            &bytes,
+        )
+        .map_err(as_handler_error)?;
+    Ok(report(json!({
+        "operation": operation,
+        "packageId": outcome.installed.package_id,
+        "version": outcome.installed.version,
+        "digest": outcome.installed.digest,
+        "state": lifecycle_name(outcome.state),
+        "trustChannel": lifecycle_name(outcome.installed.trust_channel),
+        "compressedBytes": outcome.installed.compressed_bytes,
+        "expandedBytes": outcome.installed.expanded_bytes,
+        "entryCount": outcome.installed.entry_count,
+        "installScripts": outcome.install_scripts,
+        "processesSpawned": outcome.processes_spawned,
+        "enabled": false,
+    })))
+}
+
+/// Switch one installed version's stored preference.
+fn set_enabled(command: AdmittedCommand, enabled: bool) -> Result<CliExecution> {
+    let data_home = data_home(&command)?;
+    let store = open_store(&data_home)?;
+    let (package_id, version) = identity(&command)?;
+    let preference = store
+        .set_enabled(&package_id, &version, enabled)
+        .map_err(as_handler_error)?;
+    Ok(report(json!({
+        "operation": if enabled { "enable" } else { "disable" },
+        "packageId": package_id,
+        "version": version,
+        "enabled": preference.enabled,
+        "updatedAtUnixMs": preference.updated_at_unix_ms,
+        "activated": false,
+        "processesSpawned": 0,
+    })))
+}
+
+/// Build the uninstall plan and the registry the drain will act on.
+///
+/// The registry is empty unless a caller reports instances in `--instances`: a
+/// one-shot process holds no live instances of its own, and inventing some would
+/// be a fact this surface cannot know.
+fn uninstall_plan(
+    store: &PackageStore,
+    package_id: &str,
+    version: &str,
+) -> Result<(crate::platform::extension_packages::UninstallPlan, InstanceRegistry)> {
+    let installed = store
+        .installed_version(package_id, version)
+        .map_err(as_handler_error)?
+        .ok_or_else(|| anyhow!("package_not_installed"))?;
+    let (_, installed_packages) = store.catalogue().map_err(as_handler_error)?;
+    let mut catalogue = LocalCatalogue::default();
+    for package in &installed_packages {
+        catalogue.insert(PackageEntry::new(
+            package.package_id.clone(),
+            package.version.clone(),
+            package.source,
+        ));
+    }
+    let registry = InstanceRegistry::new();
+    let plan = crate::platform::extension_packages::preview(
+        store,
+        &catalogue,
+        &installed,
+        &registry,
+    )
+    .map_err(as_handler_error)?;
+    Ok((plan, registry))
+}
+
+/// Add caller-observed instances to the registry.
+///
+/// A report can only ever *add* to the running set, so a caller cannot use this
+/// to talk an uninstall past its own drain check.
+fn observe_instances(registry: &mut InstanceRegistry, observed: Value) -> Result<()> {
+    let Value::Array(entries) = observed else {
+        return Err(anyhow!("package_uninstall_instances_invalid"));
+    };
+    for entry in entries {
+        let text = |name: &str| -> Result<String> {
+            entry
+                .get(name)
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .ok_or_else(|| anyhow!("package_uninstall_instances_invalid"))
+        };
+        let number = |name: &str| -> Result<u64> {
+            entry
+                .get(name)
+                .and_then(Value::as_u64)
+                .ok_or_else(|| anyhow!("package_uninstall_instances_invalid"))
+        };
+        let identity = InstanceIdentity::new(
+            text("instanceId")?,
+            text("packageId")?,
+            text("packageVersion")?,
+            number("generation")?,
+            number("registryEpoch")?,
+            Vec::new(),
+        )
+        .map_err(as_handler_error)?;
+        let mut machine = InstanceMachine::discovered(identity).map_err(as_handler_error)?;
+        let lifecycle = match text("lifecycle")?.as_str() {
+            "preparing" => InstanceLifecycle::Preparing,
+            "active" => InstanceLifecycle::Active,
+            "draining" => InstanceLifecycle::Draining,
+            "stopped" => InstanceLifecycle::Stopped,
+            "failed" => InstanceLifecycle::Failed,
+            "quarantined" => InstanceLifecycle::Quarantined,
+            other => return Err(anyhow!("package_uninstall_instance_lifecycle_unknown:{other}")),
+        };
+        machine.advance(lifecycle).map_err(as_handler_error)?;
+        for _ in 0..entry.get("inFlight").and_then(Value::as_u64).unwrap_or(0) {
+            machine.begin_in_flight().map_err(as_handler_error)?;
+        }
+        registry.insert(machine);
+    }
+    Ok(())
+}
+
+/// The inputs one collect needs to release a package's registrations.
+fn release_inputs(value: &Value) -> Result<ReleaseInputs> {
+    let mut inputs = ReleaseInputs::none();
+    if let Some(provider) = value.get("providerMcp").filter(|value| !value.is_null()) {
+        let kind = match provider.get("kind").and_then(Value::as_str) {
+            Some("cursor") => crate::platform::provider_mcp_registration::ProviderConfigKind::Cursor,
+            Some("antigravity") => {
+                crate::platform::provider_mcp_registration::ProviderConfigKind::Antigravity
+            }
+            Some("claude-code") => {
+                crate::platform::provider_mcp_registration::ProviderConfigKind::ClaudeCode
+            }
+            _ => return Err(anyhow!("package_registration_provider_unknown")),
+        };
+        inputs = inputs.with_provider_mcp(ProviderMcpRelease {
+            kind,
+            connector: PathBuf::from(
+                provider
+                    .get("connector")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| anyhow!("package_registration_connector_missing"))?,
+            ),
+            config_path: PathBuf::from(
+                provider
+                    .get("configPath")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| anyhow!("package_registration_config_path_missing"))?,
+            ),
+            approved_digest: provider
+                .get("approvedDigest")
+                .and_then(Value::as_str)
+                .ok_or_else(|| anyhow!("package_registration_approval_missing"))?
+                .to_owned(),
+        });
+    }
+    if let Some(plugin) = value.get("codexPlugin").filter(|value| !value.is_null()) {
+        inputs = inputs.with_codex_plugin(CodexPluginRelease {
+            executable: PathBuf::from(
+                plugin
+                    .get("executable")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| anyhow!("package_registration_executable_missing"))?,
+            ),
+            approved_digest: plugin
+                .get("approvedDigest")
+                .and_then(Value::as_str)
+                .ok_or_else(|| anyhow!("package_registration_approval_missing"))?
+                .to_owned(),
+        });
+    }
+    Ok(inputs)
+}
+
+/// The data home one route was given.
+fn data_home(command: &AdmittedCommand) -> Result<PathBuf> {
+    let root = PathBuf::from(command.required_text("data-root"));
+    if !root.is_absolute() {
+        return Err(anyhow!("package_data_root_must_be_absolute"));
+    }
+    Ok(root)
+}
+
+/// Open the package store at the layout owner's root for one data home.
+fn open_store(data_home: &Path) -> Result<PackageStore> {
+    let root = paths::package_store_root(data_home);
+    PackageStore::open(&root).map_err(as_handler_error)
+}
+
+/// The archive one route was given.
+fn archive_path(command: &AdmittedCommand) -> Result<PathBuf> {
+    let path = PathBuf::from(
+        command
+            .option_text("archive")
+            .ok_or_else(|| anyhow!("package_archive_required"))?,
+    );
+    if !path.is_absolute() {
+        return Err(anyhow!("package_archive_must_be_absolute"));
+    }
+    Ok(path)
+}
+
+/// The installed identity one route names.
+fn identity(command: &AdmittedCommand) -> Result<(String, String)> {
+    Ok((
+        command.required_text("package-id").to_owned(),
+        command.required_text("version").to_owned(),
+    ))
+}
+
+/// Read one local archive, bounded before it is parsed.
+fn read_archive(path: &Path) -> Result<Vec<u8>> {
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|_| anyhow!("package_archive_unavailable"))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(anyhow!("package_archive_not_a_file"));
+    }
+    if metadata.len() > MAX_ARCHIVE_BYTES {
+        return Err(anyhow!("package_archive_too_large"));
+    }
+    std::fs::read(path).map_err(|_| anyhow!("package_archive_unavailable"))
+}
+
+/// A digest with its algorithm named, so a token can never be read as bare bytes.
+fn prefixed_digest(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("sha256:{}", hex(&hasher.finalize()))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    let mut text = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        text.push(char::from_digit(u32::from(byte >> 4), 16).unwrap_or('0'));
+        text.push(char::from_digit(u32::from(byte & 0x0f), 16).unwrap_or('0'));
+    }
+    text
+}
+
+fn installed_package(
+    package: &crate::platform::extension_packages::InstalledPackage,
+    enabled: bool,
+) -> Value {
+    json!({
+        "packageId": package.package_id,
+        "version": package.version,
+        "digest": package.digest,
+        "source": package_source(package),
+        "trustChannel": lifecycle_name(package.trust_channel),
+        "installedAtUnixMs": package.installed_at_unix_ms,
+        "compressedBytes": package.compressed_bytes,
+        "expandedBytes": package.expanded_bytes,
+        "entryCount": package.entry_count,
+        "enabled": enabled,
+        "runtimeRef": package.runtime_ref,
+        "registrations": package
+            .registrations
+            .iter()
+            .map(|registration| json!({
+                "owner": registration.owner.wire_name(),
+                "key": registration.key,
+                "ownerModule": registration.owner.owner_module(),
+            }))
+            .collect::<Vec<_>>(),
+    })
+}
+
+fn package_source(package: &crate::platform::extension_packages::InstalledPackage) -> &'static str {
+    use licoup_extension_contracts::deployment::PackageSource;
+    match package.source {
+        PackageSource::LocalImport => "local-import",
+        PackageSource::LocalDirectory => "local-directory",
+        PackageSource::OfficialDirectory => "official-directory",
+        PackageSource::ThirdPartyDirectory => "third-party-directory",
+    }
+}
+
+fn uninstall_plan_json(plan: &crate::platform::extension_packages::UninstallPlan) -> Value {
+    json!({
+        "packageId": plan.package_id,
+        "version": plan.version,
+        "reverseDependencies": plan.reverse_dependencies,
+        "runningInstances": plan.running_instances,
+        "inFlight": plan.in_flight,
+        "exclusiveBytes": plan.exclusive_bytes,
+        "sharedRuntimeRef": plan.shared_runtime_ref,
+        "registrations": plan
+            .registrations
+            .iter()
+            .map(|registration| json!({
+                "owner": registration.owner.wire_name(),
+                "key": registration.key,
+                "ownerModule": registration.owner.owner_module(),
+            }))
+            .collect::<Vec<_>>(),
+    })
+}
+
+fn recovery_report(report: &crate::platform::extension_packages::RecoveryReport) -> Value {
+    json!({
+        "abandonedStages": report
+            .abandoned
+            .iter()
+            .map(|stage| json!({
+                "packageId": stage.package_id,
+                "version": stage.version,
+                "reclaimedBytes": stage.reclaimed_bytes,
+            }))
+            .collect::<Vec<_>>(),
+        "installedUntouched": report.installed_untouched,
+        "reclaimedBytes": report.reclaimed_bytes,
+        "removalsFinished": report.finished_removals,
+        "clean": report.is_clean(),
+    })
+}
+
+const fn lifecycle_name(state: PackageLifecycle) -> &'static str {
+    match state {
+        PackageLifecycle::Available => "available",
+        PackageLifecycle::Downloaded => "downloaded",
+        PackageLifecycle::Verified => "verified",
+        PackageLifecycle::LocalApproved => "local-approved",
+        PackageLifecycle::Staged => "staged",
+        PackageLifecycle::Installed => "installed",
+    }
+}
+
+/// The envelope every successful package route publishes.
+fn report(mut body: Value) -> CliExecution {
+    if let Some(object) = body.as_object_mut() {
+        object.insert("schemaVersion".to_owned(), json!(SCHEMA));
+        object.insert("isError".to_owned(), json!(false));
+    }
+    CliExecution::Json(body)
+}
+
+/// The envelope a package refusal publishes.
+fn refusal(code: &str, reason: &str) -> CliExecution {
+    CliExecution::Json(json!({
+        "schemaVersion": SCHEMA,
+        "isError": true,
+        "reasonCode": code,
+        "reason": reason,
+    }))
+}
+
+fn failure_report(operation: &str, failure: &ApplicationFailure) -> CliExecution {
+    CliExecution::Json(json!({
+        "schemaVersion": SCHEMA,
+        "isError": true,
+        "operation": operation,
+        "reasonCode": failure.code,
+        "stage": failure.stage,
+        "component": failure.component.as_ref(),
+        "retryable": failure.retryable,
+        "effect": match failure.effect {
+            licoup_application::EffectCertainty::NotAttempted => "not-attempted",
+            licoup_application::EffectCertainty::Uncertain => "uncertain",
+            licoup_application::EffectCertainty::Applied => "applied",
+        },
+        "recovery": failure.recovery.cli_wire(),
+    }))
+}
+
+/// A platform refusal is a fact about the package, so it travels as one.
+///
+/// The handler's `Result` is for request-shape problems; a package fact is
+/// reported in the envelope rather than turned into a transport error.
+fn as_handler_error(failure: ApplicationFailure) -> anyhow::Error {
+    anyhow!("{failure}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_confirmation_is_bound_to_the_bytes_and_the_plan() {
+        let candidate = InstallCandidate {
+            plan: json!({}),
+            plan_digest: "sha256:plan".to_owned(),
+            confirmation: String::new(),
+            package_id: "example.specialist.echo".to_owned(),
+            version: "1.0.0".to_owned(),
+            digest: "sha256:bytes".to_owned(),
+            permissions: Vec::new(),
+        };
+        let first = prefixed_digest(candidate.canonical().as_bytes());
+        let mut other = InstallCandidate {
+            plan: json!({}),
+            plan_digest: "sha256:plan".to_owned(),
+            confirmation: String::new(),
+            package_id: "example.specialist.echo".to_owned(),
+            version: "1.0.0".to_owned(),
+            digest: "sha256:other-bytes".to_owned(),
+            permissions: Vec::new(),
+        };
+        assert_eq!(first, prefixed_digest(candidate.canonical().as_bytes()));
+        assert_ne!(first, prefixed_digest(other.canonical().as_bytes()));
+        other.digest = candidate.digest.clone();
+        assert_eq!(first, prefixed_digest(other.canonical().as_bytes()));
+        assert!(first.starts_with("sha256:"));
+    }
+
+    #[test]
+    fn a_reported_instance_can_only_add_to_the_running_set() {
+        let mut registry = InstanceRegistry::new();
+        assert!(observe_instances(&mut registry, json!([])).is_ok());
+        assert!(registry.is_empty());
+        observe_instances(
+            &mut registry,
+            json!([{
+                "instanceId": "instance-1",
+                "packageId": "example.specialist.echo",
+                "packageVersion": "1.0.0",
+                "generation": 1,
+                "registryEpoch": 1,
+                "lifecycle": "active",
+                "inFlight": 1,
+            }]),
+        )
+        .expect("one observed instance");
+        assert_eq!(registry.len(), 1);
+        assert!(observe_instances(&mut registry, json!({})).is_err());
+        assert!(observe_instances(&mut registry, json!([{"instanceId": "x"}])).is_err());
+    }
+
+    #[test]
+    fn a_relative_data_root_or_archive_is_refused_before_any_store_is_opened() {
+        assert!(data_home_for_test("relative/root").is_err());
+        assert!(data_home_for_test("/absolute/root").is_ok());
+    }
+
+    fn data_home_for_test(root: &str) -> Result<PathBuf> {
+        let root = PathBuf::from(root);
+        if !root.is_absolute() {
+            return Err(anyhow!("package_data_root_must_be_absolute"));
+        }
+        Ok(root)
+    }
+
+    #[test]
+    fn registration_inputs_name_the_owner_they_belong_to() {
+        let inputs = release_inputs(&json!({
+            "providerMcp": {
+                "kind": "cursor",
+                "connector": "/fixture/connector",
+                "configPath": "/fixture/config.json",
+                "approvedDigest": "sha256:approved",
+            }
+        }))
+        .expect("provider inputs");
+        let owners = PackageRegistrationOwners::new(inputs);
+        assert!(owners.can_release(RegistrationOwner::CursorMcp));
+        assert!(!owners.can_release(RegistrationOwner::CodexPlugin));
+        assert!(release_inputs(&json!({"providerMcp": {"kind": "unknown"}})).is_err());
+        let released = owners
+            .release(&RecordedRegistration::new(
+                RegistrationOwner::CursorMcp,
+                "land.lico.fixture",
+            ))
+            .expect_err("the reviewed-candidate rule refuses an unreviewed path");
+        assert_eq!(
+            released.code,
+            crate::platform::package_registration_release::RELEASE_FAILED
+        );
+    }
+}
