@@ -202,9 +202,11 @@ quote the relevant rule, and explain what decision or authority is missing.
 
 Scale planning and tests to the change. Delegate only useful independent work,
 with clear ownership and no fast mode. Allow at least a 10-minute observation
-window for ordinary delegated work and 30 minutes for large work, split into
-host-supported waits with progress updates. These windows are not deadlines;
-a wait returning does not prove completion or permit cancellation.
+window for ordinary delegated work and 30 minutes for large work. Use the host's
+completion notification and let it arrive instead of splitting the window into
+repeated waits; only a host that cannot notify needs bounded waits, and each
+expiry carries a progress update. These windows are not deadlines; a wait
+returning does not prove completion or permit cancellation.
 
 Relay the Agent's own conversation. Never ask an Agent to answer in a format
 LicoUp defines, and never check whether it followed one. A reply is not
