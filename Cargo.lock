@@ -2083,6 +2083,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-agent-copilot"
+version = "0.14.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
+ "licoup-extension-contracts",
+ "licoup-foundation",
+ "serde_json",
+]
+
+[[package]]
 name = "licoup-agent-drivers"
 version = "0.3.0"
 dependencies = [
@@ -2320,6 +2331,7 @@ dependencies = [
  "licoup-agent-adapter-sdk",
  "licoup-agent-adapters",
  "licoup-agent-codex",
+ "licoup-agent-copilot",
  "licoup-agent-drivers",
  "licoup-agent-runtime",
  "licoup-agent-targets",

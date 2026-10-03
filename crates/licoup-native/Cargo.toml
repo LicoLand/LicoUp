@@ -39,6 +39,10 @@ licoup-agent-drivers = { path = "../licoup-agent-drivers" }
 # registration and its turn-event port while the extension host's binary
 # route is completed by the agent-execution port.
 licoup-agent-codex = { path = "../licoup-agent-codex" }
+# The Copilot adapter package. Composition names it for its parser
+# registration, its ACP frame dialect and its driver declaration while the
+# extension host's binary route is completed by the agent-execution port.
+licoup-agent-copilot = { path = "../licoup-agent-copilot" }
 licoup-agent-runtime = { path = "../licoup-agent-runtime" }
 licoup-application = { path = "../licoup-application" }
 licoup-project = { path = "../licoup-project" }
@@ -133,6 +137,10 @@ licoup-conversation = { path = "../licoup-conversation", features = ["test-count
 # dependency.
 licoup-agent-targets = { path = "../licoup-agent-targets", features = ["test-support"] }
 licoup-agent-drivers = { path = "../licoup-agent-drivers", features = ["test-support"] }
+# The Copilot package's replay arm drives the shared ACP reducer, so this host's
+# test build asks the package for the surface that arm is compiled behind —
+# exactly as it asks `licoup-agent-drivers` above for the reducer itself.
+licoup-agent-copilot = { path = "../licoup-agent-copilot", features = ["test-support"] }
 licoup-gateway = { path = "../licoup-gateway" }
 licoup-foundation = { path = "../licoup-foundation", features = ["test-support"] }
 trybuild = { path = "../trybuild" }

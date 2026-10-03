@@ -1,13 +1,25 @@
+//! The Copilot driver, composed from the Copilot adapter package.
+//!
+//! The declaration this driver is reached through — Copilot's runtime protocol
+//! identity, the driver identity its sessions are pooled and cancelled by, and
+//! the ACP entry point it is launched with — belongs to Copilot and lives in
+//! `licoup-agent-copilot` now. It is re-exported here at its former path so the
+//! driver leaves below keep reading it, and so the client carries one copy of
+//! the declaration rather than two.
+//!
+//! What is still composed by the client is the *process* half: probing a
+//! Copilot ACP entry point, running one turn through the shared ACP engine, and
+//! answering control requests. That half moves to the package next, through the
+//! agent-execution route this package's binary is started by; until it does, the
+//! client reads the declaration from the package and owns only the process.
+
+use licoup_agent_copilot::driver::DRIVER;
 use serde_json::Value;
 use std::path::Path;
 
-use super::acp_driver_runtime::{AcpDriverSpec, execute_acp, probe_acp};
+use super::acp_driver_runtime::{execute_acp, probe_acp};
 pub(super) use super::acp_driver_runtime::{CapabilityProbe, ProtocolFailure, RunResult};
-
-pub(super) const RUNTIME_PROTOCOL: &str = "copilot-acp-v1-stdio-ndjson";
-const COPILOT_DRIVER: AcpDriverSpec =
-    AcpDriverSpec::new(RUNTIME_PROTOCOL, &["--acp", "--stdio", "--no-auto-update"])
-        .with_identity("copilot-acp", "copilot_acp");
+pub(super) use licoup_agent_copilot::driver::RUNTIME_PROTOCOL;
 
 pub(super) fn capability_probe(
     executable: &str,
@@ -17,7 +29,7 @@ pub(super) fn capability_probe(
     max_stderr: usize,
 ) -> Result<CapabilityProbe, ProtocolFailure> {
     probe_acp(
-        COPILOT_DRIVER,
+        DRIVER,
         executable,
         cwd,
         timeout_ms,
@@ -37,7 +49,7 @@ pub(super) fn execute(
     max_stderr: usize,
 ) -> RunResult {
     execute_acp(
-        COPILOT_DRIVER,
+        DRIVER,
         executable,
         params,
         prompt,
@@ -52,7 +64,7 @@ pub(super) fn execute(
 pub(in crate::platform) fn cancel(
     session_id: &str,
 ) -> super::acp_driver_runtime::ControlDisposition {
-    super::acp_driver_runtime::cancel_active_turn(COPILOT_DRIVER.agent_id, session_id)
+    super::acp_driver_runtime::cancel_active_turn(DRIVER.agent_id, session_id)
 }
 
 #[cfg(test)]
@@ -71,12 +83,11 @@ mod tests {
 
     #[test]
     fn copilot_launch_arguments_are_fixed_and_private_values_use_acp_stdin() {
-        assert_eq!(
-            COPILOT_DRIVER.launch_args,
-            &["--acp", "--stdio", "--no-auto-update"]
-        );
+        // The declaration is the package's; this asserts the driver the client
+        // actually composes is reached through it.
+        assert_eq!(DRIVER.launch_args, &["--acp", "--stdio", "--no-auto-update"]);
         assert!(
-            !COPILOT_DRIVER.launch_args.iter().any(
+            !DRIVER.launch_args.iter().any(
                 |arg| *arg == "private-prompt" || *arg == concat!("/", "private", "/workspace")
             )
         );

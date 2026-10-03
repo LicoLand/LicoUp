@@ -5,45 +5,37 @@
 //! above it: every entry here names one Agent's own parser function, and the
 //! moved crate names none of them.
 //!
-//! Three parsers answer the port directly — Copilot's and Kimi Code's for the
-//! ACP profile, Hermes' for the persistent ACP dialect. The remaining members
-//! are adapters rather than parser functions, and each exists for a measured
+//! An Agent whose parser has moved into its own package also moved the
+//! projection onto this port, because a projection is only meaningful beside
+//! the type it projects: Copilot's dialect and the request projection it needs
+//! are `licoup-agent-copilot`'s, and the table in [`super::drivers`] names the
+//! package's constant rather than rebuilding it.
+//!
+//! Two parsers answer the port through this module — Kimi Code's for the ACP
+//! profile, Hermes' for the persistent ACP dialect. The remaining members are
+//! adapters rather than parser functions, and each exists for a measured
 //! reason:
 //!
-//! * [`copilot_client_request`] and [`kimi_code_client_request`] project that
-//!   Agent's own `ClientRequest` onto the transport's
-//!   [`ProtocolClientRequest`]. The two types are field-for-field identical, and
-//!   the projection exists so the transport reads one shape rather than every
-//!   Agent's.
+//! * [`kimi_code_client_request`] projects that Agent's own `ClientRequest` onto
+//!   the transport's [`ProtocolClientRequest`]. The two types are
+//!   field-for-field identical, and the projection exists so the transport reads
+//!   one shape rather than every Agent's.
 //! * [`hermes_permission_request`] does the same for Hermes' richer
-//!   `PermissionRequest`, which is the only one of the three that carries a
+//!   `PermissionRequest`, which is the only one of the two that carries a
 //!   display summary and a requested-tool list.
-//! * [`copilot_response_is_error`] and [`kimi_code_response_is_error`] answer
-//!   that dialect's error test. Copilot's and Kimi Code's parsers report a
-//!   remote error through `failure_from_response` rather than exposing a
-//!   predicate, and the frame rule they both follow — a frame carrying `error`
-//!   is an error — is the same rule Hermes' parser states, so it is stated once
-//!   here for the two that do not.
+//! * [`acp_response_is_error`] answers that dialect's error test. Kimi Code's
+//!   parser reports a remote error through `failure_from_response` rather than
+//!   exposing a predicate, and the frame rule it follows — a frame carrying
+//!   `error` is an error — is the same rule Hermes' parser states, so it is
+//!   stated once here for the one that does not.
 //! * [`no_permission_request`] and [`no_client_request`] are the honest answer
-//!   for a dialect that has no such frame: Copilot and Kimi Code never ask a
-//!   permission question over this profile, and Hermes never asks a client
-//!   request, so neither ever invents one.
+//!   for a dialect that has no such frame: Kimi Code never asks a permission
+//!   question over this profile, and Hermes never asks a client request, so
+//!   neither ever invents one.
 
 use licoup_agent_drivers::ProtocolClientRequest;
 use licoup_agent_drivers::ProtocolPermissionRequest;
 use serde_json::Value;
-
-/// Project Copilot's client request onto the transport's shape.
-pub(super) fn copilot_client_request(message: &Value) -> Option<ProtocolClientRequest> {
-    let request =
-        crate::platform::native_agent_parser::adapters::copilot::client_request(message)?;
-    Some(ProtocolClientRequest {
-        id: request.id,
-        method: request.method,
-        session_id: request.session_id,
-        allow_once_option: request.allow_once_option,
-    })
-}
 
 /// Project Kimi Code's client request onto the transport's shape.
 pub(super) fn kimi_code_client_request(message: &Value) -> Option<ProtocolClientRequest> {

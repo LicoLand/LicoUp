@@ -18,14 +18,20 @@ pub(in crate::platform) use licoup_agent_adapter_sdk::{
     LifecycleStage, Transition, TransitionReducer,
 };
 
-// One Agent's parser has moved: Codex's vendor protocol now lives in its own package
-// (`licoup-agent-codex`), parsed once below this port, and this composition names the
-// package rather than keeping a second copy.
+// Two Agents' parsers have moved: Codex's vendor protocol and Copilot's ACP
+// frame policy now live in their own packages (`licoup-agent-codex` and
+// `licoup-agent-copilot`), parsed once below this port, and this composition
+// names the packages rather than keeping a second copy.
+//
+// Codex's parser is also named directly below, because the client's own
+// app-server process half reads its frames, its parser and its effects. Nothing
+// in this host reads Copilot's parser by name: the shared ACP engine reads it
+// through the dialect the package registers, so its registration below is the
+// whole of what this composition needs from it.
 pub(in crate::platform) use licoup_agent_codex::parser as codex;
 
 pub(in crate::platform) mod antigravity;
 pub(in crate::platform) mod claude_code;
-pub(in crate::platform) mod copilot;
 pub(in crate::platform) mod cursor;
 pub(in crate::platform) mod deepseek_harness;
 pub(in crate::platform) mod hermes;
@@ -124,7 +130,10 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     // The Codex package answers both protocol-agnostic queries from its own recorded
     // evidence, so this entry is the package's own registration.
     licoup_agent_codex::registration::REGISTRATION,
-    ParserRegistration::unanswered(copilot::CONTRACT),
+    // Copilot's parser answers those two queries fail-closed — its driver carries its
+    // own transition list and the Subagent mesh never dispatches it — so this entry is
+    // the package's own registration too, reached without a second declaration here.
+    licoup_agent_copilot::registration::REGISTRATION,
     ParserRegistration::new(cursor::CONTRACT, no_transitions, cursor_identity),
     ParserRegistration::new(hermes::CONTRACT, hermes_transitions, no_identity),
     ParserRegistration::unanswered(kilo_code::CONTRACT),
