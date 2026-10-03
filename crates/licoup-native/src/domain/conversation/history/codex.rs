@@ -13,11 +13,10 @@ pub(super) struct CodexRuntimeObservation {
 }
 
 impl CodexRuntimeObservation {
+    /// Capture this refresh's environment evidence through the installed port.
     pub(super) fn capture() -> Self {
         Self {
-            open_rollouts: crate::platform::codex_runtime_observation::open_rollout_paths()
-                .into_iter()
-                .collect(),
+            open_rollouts: super::runtime_observation::port().open_rollouts(),
         }
     }
 

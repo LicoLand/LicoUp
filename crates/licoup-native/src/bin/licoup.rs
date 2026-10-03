@@ -52,6 +52,12 @@ fn main() -> Result<()> {
     } else {
         Some(licoup_foundation::platform::data_home_access::acquire_process_data_home_access()?)
     };
+    // The domain asks environment ports instead of inspecting the host itself.
+    // This process installs the answers it can truthfully give; a port whose
+    // installation fails stays fail-closed rather than fabricating a fact.
+    if let Err(error) = licoup_native::platform::install_environment_ports() {
+        eprintln!("licoup environment ports remain unavailable: {error}");
+    }
     if args.as_slice() == ["rpc", "stdio"] {
         // The RPC wire response is already fail-closed and redacted. Keep the
         // process panic hook equally bounded so a panic payload cannot leak a

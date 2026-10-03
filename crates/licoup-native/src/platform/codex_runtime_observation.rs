@@ -7,7 +7,7 @@
 //! the history owner combines that process evidence with Codex's persisted
 //! task lifecycle before exposing a `running` fact.
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 #[cfg(unix)]
@@ -23,31 +23,40 @@ const CAPTURE_TIMEOUT: Duration = Duration::from_secs(3);
 #[cfg(unix)]
 const MAX_CAPTURE_BYTES: usize = 4 * 1024 * 1024;
 
-pub(crate) fn open_rollout_paths() -> HashSet<PathBuf> {
+pub(crate) fn open_rollout_paths() -> BTreeSet<PathBuf> {
     capture_open_rollout_paths()
         .into_iter()
         .map(|path| fs::canonicalize(&path).unwrap_or(path))
         .collect()
 }
 
+/// Install this host's answer into the history owner's environment port.
+///
+/// The composition calls this once per process. Conversation history reads the
+/// port; it never reaches this module directly, so a program without the
+/// composition keeps the fail-closed answer instead of inspecting processes.
+pub(crate) fn install() -> Result<(), &'static str> {
+    crate::domain::conversation::history::install_open_codex_rollouts(open_rollout_paths)
+}
+
 #[cfg(unix)]
-fn capture_open_rollout_paths() -> HashSet<PathBuf> {
+fn capture_open_rollout_paths() -> BTreeSet<PathBuf> {
     let mut process_command = Command::new("ps");
     process_command.args(["-axo", "pid=,comm="]);
     let Ok(process_result) =
         run_bounded_command_output(&mut process_command, CAPTURE_TIMEOUT, MAX_CAPTURE_BYTES)
     else {
-        return HashSet::new();
+        return BTreeSet::new();
     };
     if process_result.timed_out
         || process_result.truncated
         || !process_result.status.is_some_and(|status| status.success())
     {
-        return HashSet::new();
+        return BTreeSet::new();
     }
     let process_ids = parse_codex_process_ids(&String::from_utf8_lossy(&process_result.stdout));
     if process_ids.is_empty() {
-        return HashSet::new();
+        return BTreeSet::new();
     }
 
     let mut command = Command::new("lsof");
@@ -58,11 +67,11 @@ fn capture_open_rollout_paths() -> HashSet<PathBuf> {
     command.args(["-n", "-F", "n", "-a", "-p", &process_ids.join(",")]);
     let Ok(result) = run_bounded_command_output(&mut command, CAPTURE_TIMEOUT, MAX_CAPTURE_BYTES)
     else {
-        return HashSet::new();
+        return BTreeSet::new();
     };
     if result.timed_out || result.truncated || !result.status.is_some_and(|status| status.success())
     {
-        return HashSet::new();
+        return BTreeSet::new();
     }
     parse_open_rollout_paths(&String::from_utf8_lossy(&result.stdout))
 }
@@ -89,14 +98,14 @@ fn parse_codex_process_ids(output: &str) -> Vec<String> {
 }
 
 #[cfg(windows)]
-fn capture_open_rollout_paths() -> HashSet<PathBuf> {
+fn capture_open_rollout_paths() -> BTreeSet<PathBuf> {
     // Windows has no built-in equivalent that can identify another process's
     // exact open rollout without adding a privileged helper. Fail closed; a
     // LicoUp-owned turn is still projected by the client controller.
-    HashSet::new()
+    BTreeSet::new()
 }
 
-fn parse_open_rollout_paths(output: &str) -> HashSet<PathBuf> {
+fn parse_open_rollout_paths(output: &str) -> BTreeSet<PathBuf> {
     output
         .lines()
         .filter_map(|line| line.strip_prefix('n'))

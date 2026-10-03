@@ -59,8 +59,12 @@ mod project_workspace;
 mod projection_cache;
 mod query;
 mod query_filter;
+mod runtime_observation;
 mod session_merge;
 mod session_metadata;
+
+/// The composition installs the environment port conversation history asks.
+pub(crate) use runtime_observation::install_open_codex_rollouts;
 
 #[allow(unused_imports)]
 use codex::*;
