@@ -599,10 +599,12 @@ pub(super) fn serve_host() -> Result<()> {
         });
     }
     // Optional protocol services have their own process and lifecycle.
-    // A startup failure never changes this host or an active turn.
+    // A startup failure never changes this host or an active turn. The installed
+    // package decides whether there is anything to start: an absent or
+    // switched-off package starts no process and is never reported as running.
     if std::env::var_os("LICOUP_MCP_AUTOSTART").as_deref() != Some(std::ffi::OsStr::new("0")) {
         thread::spawn(|| {
-            let _ = licoup_native::platform::mcp_service_process::execute("start", None);
+            let _ = licoup_native::platform::mcp_service_process::start_on_host_startup();
         });
     }
     serve_bound_host(listener, service, runtime, None)

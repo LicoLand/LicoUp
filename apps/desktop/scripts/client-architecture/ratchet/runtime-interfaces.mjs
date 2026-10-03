@@ -58,7 +58,7 @@ const SOURCES = Object.freeze({
   [N + "platform/lico_agent_driver/execution.rs"]: "061e3f118a7eb9944e328ea3cf2e61ab2845541f3dc88d5b850dc12c7063de55",
   [N + "platform/lico_agent_driver/probe.rs"]: "b968dbfd55ec7e1ca7c83aa5d5fedfc244c6b554d8fe96a441923fa22e0d3179",
   [N + "platform/local_service/process.rs"]: "ab1a749eeffbdca47267a6c888882e033eb2c647da48a0beef7fa79399e38adc",
-  [N + "platform/mcp_service_process.rs"]: "9d99d104e078e13197dc21676a5eb50a25ac23be8906292a9b96c7128f75b8ff",
+  [N + "platform/mcp_service_process.rs"]: "7f86d3232b4ead80180bd520f8e4e82979c52cedce8e612fbc178a2f98bb6d12",
   [N + "platform/openclaw_driver/probe.rs"]: "49a1e80055550a28d5de652f4236dfbf3c99ba53ea53c86692b44810f0d23862",
   [N + "platform/openclaw_driver/supervision.rs"]: "c41128bbbaf81904d6c263ea97988ea1265dd74fa30d8867be73cdce134079bd",
   [N + "platform/openclaw_gateway/command.rs"]: "5b747fa62fa6cd21074aa05990cf195377eeafed75907262598c40a1ac842601",

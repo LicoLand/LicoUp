@@ -145,6 +145,45 @@ test("independent engine owns inbound framing, initialization, calls, and cancel
   assert.match(lifecycle, /"service",\s*action/u);
 });
 
+test("the service process comes from the installed package generation, not a neighbour", () => {
+  // The bundled-neighbour resolution is gone. The generation is selected from
+  // the package store, so an absent or switched-off package starts nothing.
+  assert.doesNotMatch(lifecycle, /packaged_binary_directory/u);
+  assert.match(lifecycle, /MCP_PACKAGE_ID: &str = "org\.licoland\.feature\.mcp"/u);
+  assert.match(lifecycle, /select_generation/u);
+  assert.match(lifecycle, /mcp_package_absent/u);
+  assert.match(lifecycle, /mcp_package_disabled/u);
+  const selection = read(
+    "crates/licoup-native/src/platform/extension_packages/selection.rs",
+  );
+  assert.match(selection, /pub fn select_generation/u);
+  assert.match(selection, /pub fn switched_on/u);
+  // The installed manifest's own process entry is what is resolved, and the
+  // payload the artifact ships declares exactly that entry.
+  const artifact = JSON.parse(read("crates/licoup-mcp/package/manifest.json"));
+  assert.equal(artifact.runtime.mode, "process");
+  assert.equal(artifact.runtime.entry, "bin/lico-subagent-mcp");
+  assert.match(selection, /Runtime::Process/u);
+});
+
+test("the approved payload is the payload that serves", () => {
+  // The launcher measures the generation's executable and hands the digest to
+  // the program it starts; the serving process measures itself against it.
+  assert.match(
+    lifecycle,
+    /APPROVED_DIGEST_ENV: &str = "LICOUP_MCP_APPROVED_DIGEST"/u,
+  );
+  assert.match(lifecycle, /generation\.payload_digest\(\)/u);
+  assert.match(lifecycle, /mcp_package_consent_mismatch/u);
+  const payloadLifecycle = read("crates/licoup-mcp/src/lifecycle.rs");
+  assert.match(payloadLifecycle, /mcp_payload_not_approved/u);
+  assert.match(payloadLifecycle, /APPROVED_DIGEST_ENV/u);
+  assert.match(payloadLifecycle, /fn check_approved_payload/u);
+  assert.match(payloadLifecycle, /check_approved_payload\(\)\?/u);
+  // The digest is computed from the bytes, never from the path or a name.
+  assert.match(payloadLifecycle, /Sha256::new\(\)/u);
+});
+
 test("connector performs one authenticated HTTP exchange through the independent service", () => {
   assert.match(connector, /connector_exchange/u);
   assert.match(connector, /load_connector_discovery/u);

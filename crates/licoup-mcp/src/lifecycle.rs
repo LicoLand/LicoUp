@@ -6,12 +6,75 @@ use crate::{
 use anyhow::{Result, anyhow};
 use fs2::FileExt;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     env, fs,
+    io::Read,
+    path::Path,
     process::{Command, Stdio},
     thread,
     time::Duration,
 };
+
+/// The digest the launcher approved for the bytes it started.
+///
+/// The native package lifecycle measures the installed generation's executable
+/// and hands that digest to the program it starts. A serving process that finds
+/// a different digest on itself refuses to serve: the payload that comes up is
+/// the byte-identical one the operator approved, or it is nothing.
+const APPROVED_DIGEST_ENV: &str = "LICOUP_MCP_APPROVED_DIGEST";
+
+/// The largest executable this process will read to measure itself.
+const MAX_PAYLOAD_BYTES: u64 = 512 * 1024 * 1024;
+
+fn digest_file(path: &Path) -> Result<String> {
+    let mut file = fs::File::open(path).map_err(|_| anyhow!("mcp_binary_unavailable"))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    let mut read = 0_u64;
+    loop {
+        let count = file
+            .read(&mut buffer)
+            .map_err(|_| anyhow!("mcp_binary_unavailable"))?;
+        if count == 0 {
+            break;
+        }
+        read += count as u64;
+        if read > MAX_PAYLOAD_BYTES {
+            return Err(anyhow!("mcp_binary_unavailable"));
+        }
+        hasher.update(&buffer[..count]);
+    }
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        hex.push_str(&format!("{byte:02x}"));
+    }
+    Ok(format!("sha256:{hex}"))
+}
+
+/// Whether a measured payload satisfies the approval it was started under.
+///
+/// No approval is not a mismatch: an executable a developer runs directly is
+/// answerable to that developer, and the launcher that binds consent always
+/// sends one.
+fn consent_holds(measured: &str, approved: Option<&str>) -> Result<()> {
+    match approved {
+        Some(approved) if approved != measured => Err(anyhow!("mcp_payload_not_approved")),
+        _ => Ok(()),
+    }
+}
+
+fn check_approved_payload() -> Result<()> {
+    let approved = env::var(APPROVED_DIGEST_ENV).ok();
+    let approved = approved.as_deref().filter(|value| !value.is_empty());
+    if approved.is_none() {
+        return Ok(());
+    }
+    let executable = env::current_exe().map_err(|_| anyhow!("mcp_binary_unavailable"))?;
+    let measured = digest_file(&executable)?;
+    consent_holds(&measured, approved)
+}
 
 fn current() -> Option<transport::DiscoveryDocument> {
     transport::discovery_path_read_only()
@@ -149,6 +212,9 @@ fn stop() -> Result<Value> {
     Ok(json!({"service":"subagents","state":"stopped"}))
 }
 fn serve() -> Result<Value> {
+    // Consent before serving: the process that answers callers is the approved
+    // payload, or it does not come up at all.
+    check_approved_payload()?;
     let root = private_state::portable_data_dir()?.join("client-state/subagent-mcp");
     private_state::ensure_private_dir(&root)?;
     let mut options = fs::OpenOptions::new();
@@ -182,5 +248,62 @@ pub fn execute(action: &str) -> Result<Value> {
         }
         "serve" => serve(),
         _ => Err(anyhow!("mcp_lifecycle_invalid")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture(tag: &str, content: &[u8]) -> (std::path::PathBuf, std::path::PathBuf) {
+        let root = env::temp_dir().join(format!(
+            "lico-mcp-lifecycle-{tag}-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        fs::create_dir_all(&root).expect("fixture root");
+        let payload = root.join("lico-subagent-mcp");
+        fs::write(&payload, content).expect("fixture payload");
+        (root, payload)
+    }
+
+    #[test]
+    fn only_the_approved_bytes_may_serve() {
+        let (root, payload) = fixture("consent", b"the approved payload");
+        let approved = digest_file(&payload).expect("the fixture measures");
+        assert!(approved.starts_with("sha256:"));
+        assert!(
+            consent_holds(&approved, Some(approved.as_str())).is_ok(),
+            "the measured bytes are the approved bytes"
+        );
+        assert!(
+            consent_holds(&approved, None).is_ok(),
+            "an unbound direct run is answerable to the developer who started it"
+        );
+
+        let (other_root, other) = fixture("swap", b"some other payload");
+        let swapped = digest_file(&other).expect("the other fixture measures");
+        assert_ne!(approved, swapped);
+        assert_eq!(
+            consent_holds(&swapped, Some(approved.as_str()))
+                .expect_err("a swap is refused")
+                .to_string(),
+            "mcp_payload_not_approved"
+        );
+
+        fs::remove_dir_all(root).expect("cleanup");
+        fs::remove_dir_all(other_root).expect("cleanup");
+    }
+
+    #[test]
+    fn a_digest_is_the_bytes_and_never_the_path() {
+        let (root, payload) = fixture("same-bytes", b"identical");
+        let (other_root, other) = fixture("same-bytes-again", b"identical");
+        assert_eq!(
+            digest_file(&payload).expect("measure"),
+            digest_file(&other).expect("measure"),
+            "the same bytes measure the same wherever they are"
+        );
+        fs::remove_dir_all(root).expect("cleanup");
+        fs::remove_dir_all(other_root).expect("cleanup");
     }
 }

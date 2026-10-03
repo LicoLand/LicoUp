@@ -37,6 +37,10 @@ use licoup_native::platform::extension_packages::{
     scan,
 };
 
+/// MCP-PACKAGE-LIFECYCLE: the optional service process and its callers, bound to
+/// the installed and enabled package generation.
+mod mcp_service;
+
 // ---------------------------------------------------------------------------
 // Fixtures: a real archive, a real store, a real root
 // ---------------------------------------------------------------------------
