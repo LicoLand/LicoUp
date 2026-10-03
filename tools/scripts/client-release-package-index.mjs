@@ -193,7 +193,7 @@ export function validateClientCompatibility(value,
     requireExactKeys(value, ["kind", "range"], code);
     const range = text(value.range);
     if (!range || range.length > MAX_RANGE_BYTES) fail(code);
-    const expressions = range.split(/\s+/u);
+    const expressions = range.split(/\s*,\s*|\s+/u).filter(Boolean);
     if (expressions.length === 0 || expressions.length > MAX_COMPARATORS) fail(code);
     return Object.freeze({
       kind,
@@ -1121,7 +1121,7 @@ export function selfTest() {
         schemaVersion: PACKAGE_RELEASE_SCHEMA,
         packageId: "org.licoland.fixture.native-converter",
         packageVersion: "1.3.0",
-        clientCompatibility: { kind: "range", range: ">=0.2.0 <1.0.0" },
+        clientCompatibility: { kind: "range", range: ">=0.2.0, <1.0.0" },
         converter: {
           kind: "native-executable",
           entry: "bin/other-converter",
@@ -1141,7 +1141,7 @@ export function selfTest() {
         schemaVersion: PACKAGE_RELEASE_SCHEMA,
         packageId: "org.licoland.fixture.native-converter",
         packageVersion: "1.3.0",
-        clientCompatibility: { kind: "range", range: ">=0.2.0 <1.0.0" },
+        clientCompatibility: { kind: "range", range: ">=0.2.0, <1.0.0" },
         converter: {
           kind: "native-executable",
           entry: "bin/missing-converter",

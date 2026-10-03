@@ -283,7 +283,7 @@ test("the plan reports the declared package without writing, and the tool reache
   assert.match(plan.packages[0].payloadDigest, /^sha256:[0-9a-f]{64}$/u);
   assert.equal(plan.packages[0].source, fixtureSource);
   assert.deepEqual(plan.packages[0].clientCompatibility,
-    { kind: "range", range: ">=0.2.0 <1.0.0" });
+    { kind: "range", range: ">=0.2.0, <1.0.0" });
   assert.equal(plan.packages[0].converterEntry, "bin/licoup-fixture-converter");
   assert.equal(readdirSync(root).length, 0, "plan must not write anything");
 
@@ -345,11 +345,11 @@ test("the package's own declaration decides its identity, compatibility form and
   assert.equal(clientVersionSatisfies({ kind: "major", majors: [1, 2] }, "1.3.0"), true);
   assert.equal(clientVersionSatisfies({ kind: "major", majors: [1, 2] }, "0.3.0"), false);
   assert.equal(
-    clientVersionSatisfies({ kind: "range", range: ">=0.2.0 <1.0.0" }, "0.3.0"),
+    clientVersionSatisfies({ kind: "range", range: ">=0.2.0, <1.0.0" }, "0.3.0"),
     true,
   );
   assert.equal(
-    clientVersionSatisfies({ kind: "range", range: ">=0.2.0 <1.0.0" }, "1.0.0"),
+    clientVersionSatisfies({ kind: "range", range: ">=0.2.0, <1.0.0" }, "1.0.0"),
     false,
   );
 

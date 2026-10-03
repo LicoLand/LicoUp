@@ -1219,7 +1219,16 @@ fn a_first_party_native_converter_package_imports_offline_from_its_release_fixtu
     assert!(fixture.is_dir(), "the release package fixture is missing");
 
     let manifest_text = std::fs::read_to_string(fixture.join("manifest.json")).expect("manifest");
-    let manifest: serde_json::Value = serde_json::from_str(&manifest_text).expect("manifest json");
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&manifest_text).expect("manifest json");
+    // The fixture carries the compatibility declaration a released package
+    // ships. This synthetic host admits it for the client version it is
+    // actually running, exactly as the neighbouring package fixtures do: a
+    // development build's version is not the released product version, and the
+    // list is what decides admission either way.
+    manifest["compatibility"]["clientVersions"] =
+        serde_json::json!(covering_client_versions());
+    let manifest_text = serde_json::to_string_pretty(&manifest).expect("manifest text");
     let declaration_text =
         std::fs::read_to_string(fixture.join("package-release.json")).expect("declaration");
     let declaration: serde_json::Value =
