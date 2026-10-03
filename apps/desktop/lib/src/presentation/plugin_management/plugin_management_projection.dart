@@ -1,4 +1,4 @@
-import 'package:licoup/src/application/features/plugin_management/models/package_center_catalog.dart';
+import 'package:licoup/src/contracts/package_center/package_facts.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/contracts/optional_collaboration_local_server_models.dart';
 import 'package:licoup/src/contracts/optional_collaboration_models.dart';
@@ -117,7 +117,7 @@ final class PluginProjectionItem {
   /// The four package facts the native store reported: available, installed,
   /// enabled and active. All four come from the native package catalogue — none
   /// is derived here.
-  final PackageFactsProjection facts;
+  final PackageFacts facts;
 
   /// Whether this entry's installation belongs to Agent Hub (third-party Agent
   /// installation) instead of the LicoUp package center.
