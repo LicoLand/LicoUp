@@ -129,6 +129,7 @@ jobs:
           path: |
             build/reports/
             build/test-reports/
+            build/private/client-regression/
           if-no-files-found: ignore
           retention-days: 14
 
