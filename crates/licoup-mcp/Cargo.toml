@@ -7,6 +7,17 @@ license = "AGPL-3.0-or-later"
 repository = "https://github.com/LicoLand/LicoUp.git"
 description = "Independent MCP process adapter for the public LicoUp CLI"
 
+# The crate is two layers. `wire` and `server` are the service-neutral MCP
+# engine: framing, initialization, tool listing and calls, with no subagent
+# catalog, no spawned process and no endpoint. The `service` payload is the
+# optional `org.licoland.feature.mcp` package: the five-tool subagent
+# application, the stdio connector, the authenticated loopback service and its
+# lifecycle. Building without the default feature yields the neutral engine
+# alone, so a consumer of the engine never links the optional payload.
+[features]
+default = ["service"]
+service = []
+
 [dependencies]
 anyhow = "1.0"
 fs2 = "0.4"
@@ -29,3 +40,11 @@ windows-sys = { version = "0.61", features = [
 [[bin]]
 name = "lico-subagent-mcp"
 path = "src/main.rs"
+required-features = ["service"]
+
+# Test-only. The committed package artifact is validated with the host's own
+# manifest, permission and client-compatibility contract instead of a second
+# reading of it. Nothing here enters the optional service binary, which links
+# no kernel crate and reads its own package documents as data.
+[dev-dependencies]
+licoup-extension-contracts = { path = "../licoup-extension-contracts" }

@@ -131,10 +131,10 @@ its declared roles and nothing else.
 
 ## Independent package assets
 
-`tools/scripts/client-release-package-index.mjs` prepares a first-party package
-payload and the signed package index the client reads. These assets are released
-in their own right and do not enter the client draft above. Nothing in the client
-build signs or publishes them:
+`tools/scripts/client-release-package-index.mjs` prepares one payload per
+declared first-party package plus the signed package index the client reads.
+These assets are released in their own right and do not enter the client draft
+above. Nothing in the client build signs or publishes them:
 
 ```sh
 npm run client:release:package-index:plan
@@ -143,11 +143,15 @@ npm run client:release:package-index:build
 node tools/scripts/client-release-package-index.mjs verify --index <index> --payloads <directory>
 ```
 
-`plan` writes nothing and reports each package's declared identity, version,
-client compatibility and payload digest. `fixture` packages the committed
-synthetic package under a key pair generated in memory for that run: it reads no
-protected key and is pipeline evidence, not a publication. `build` writes the
-payload and the signed index into `build/apps/desktop/release-packages/macos`
+`tools/client-release-package-set.json` is the declared set: each entry names the
+package's committed source directory and the release payload role its own asset
+is published as, and the release target declares each of those roles once. `plan`
+writes nothing and reports every declared package's identity, version, client
+compatibility, payload role and payload digest. `fixture` packages the whole
+declared set under a key pair generated in memory for that run: it reads no
+protected key and is pipeline evidence, not a publication. `build` writes one
+payload per declared package and the one signed index into
+`build/apps/desktop/release-packages/macos`
 from a set that reads the release authority's two private keys
 (`LICO_PACKAGE_INDEX_OFFLINE_ROOT_KEY` and
 `LICO_PACKAGE_INDEX_ONLINE_SIGNING_KEY`) and fails closed without them. `verify`
@@ -157,14 +161,18 @@ package's native converter entry.
 Each package declares its own identity, version, client compatibility list and
 native converter entry inside its payload, and the signed index republishes that
 declaration with the payload digest; the client imports an offline payload
-without a network service. The synthetic fixture is replaced by the real
-per-adapter payload under the same contract before any publication. All four
-commands stop before signing for publication, notarization, tagging, upload,
-installation or client launch: those remain part of the separately authorized
-Apple Release operation above.
+without a network service. The committed source directory holds the manifest, the
+release declaration, the resources the declared contributions name and the staged
+native entry; the release stage places the compiled binary at that entry before
+`build` packages the directory, and the packaging tooling refuses an entry a
+script carries. The synthetic fixture is replaced by the real per-adapter payload
+under the same contract before any publication. All four commands stop before
+signing for publication, notarization, tagging, upload, installation or client
+launch: those remain part of the separately authorized Apple Release operation
+above.
 
 Adding these assets to the client draft instead would require the publication
-authority to accept the two package roles in its own artifact contract first;
+authority to accept the package roles in its own artifact contract first;
 that contract lives outside this repository and is owned by the release owner.
 
 Configure the local release authority and inspect release runs with:

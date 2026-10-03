@@ -52,9 +52,11 @@ const builderScript = "apps/desktop/scripts/build-platform-release-package.mjs";
 const stagingScript = "tools/scripts/client-release-packages.mjs";
 const migrationToolAsset = "LicoUp-migrate-macos-arm64";
 const migrationToolDigest = `${migrationToolAsset}.sha256`;
-// The macOS direct target also carries the independent package pair produced by
-// the package index tool. This fixture must supply those producer outputs so
-// the same builder and staging commands stay exercised end to end.
+// The macOS direct target also carries the independent package assets produced
+// by the package index tool: one payload per declared package plus the signed
+// index. This fixture must supply every producer output so the same builder and
+// staging commands stay exercised end to end.
+const mcpPackagePayloadAsset = "LicoUp-package-org.licoland.feature.mcp.licopkg";
 const packagePayloadAsset = "LicoUp-package-fixture-native-converter.licopkg";
 const packageIndexAsset = "LicoUp-package-index.json";
 const productVersion = JSON.parse(
@@ -167,6 +169,11 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
       releaseToolsDirectory("macos"),
       migrationToolAsset,
     ),
+    "mcp-package-payload": path.join(
+      fixture,
+      "build", "apps", "desktop", "release-packages", "macos",
+      mcpPackagePayloadAsset,
+    ),
     "package-payload": path.join(
       fixture,
       "build", "apps", "desktop", "release-packages", "macos",
@@ -187,6 +194,8 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
     "synthetic migration tool payload\n",
   );
   mkdirSync(path.dirname(syntheticCandidates["package-payload"]), { recursive: true });
+  writeFileSync(syntheticCandidates["mcp-package-payload"],
+    "synthetic MCP package payload\n");
   writeFileSync(syntheticCandidates["package-payload"], "synthetic package payload\n");
   writeFileSync(syntheticCandidates["package-index"], "{\"synthetic\":true}\n");
 
@@ -205,6 +214,12 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
     ),
     "the builder materializes the package payload from its own producer output",
   );
+  assert.ok(
+    builtRecord.outputSources.includes(
+      `build/apps/desktop/native-release/macos-direct-arm64/${mcpPackagePayloadAsset}`,
+    ),
+    "every declared package payload comes from its own producer output",
+  );
 
   const staged = run(fixture, stagingScript, ["stage", "--target", "macos-direct-arm64"]);
   assert.equal(staged.status, 0, staged.stderr);
@@ -220,6 +235,10 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
   assert.equal(
     readFileSync(path.join(releaseDirectory, packagePayloadAsset), "utf8"),
     "synthetic package payload\n",
+  );
+  assert.equal(
+    readFileSync(path.join(releaseDirectory, mcpPackagePayloadAsset), "utf8"),
+    "synthetic MCP package payload\n",
   );
   assert.equal(
     readFileSync(path.join(releaseDirectory, packageIndexAsset), "utf8"),
@@ -249,6 +268,15 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
       file: packagePayloadAsset,
       byteSize: readFileSync(path.join(releaseDirectory, packagePayloadAsset)).length,
       sha256: sha256File(path.join(releaseDirectory, packagePayloadAsset)),
+    },
+  );
+  assert.deepEqual(
+    packageManifest.artifacts.find((artifact) => artifact.role === "mcp-package-payload"),
+    {
+      role: "mcp-package-payload",
+      file: mcpPackagePayloadAsset,
+      byteSize: readFileSync(path.join(releaseDirectory, mcpPackagePayloadAsset)).length,
+      sha256: sha256File(path.join(releaseDirectory, mcpPackagePayloadAsset)),
     },
   );
   assert.deepEqual(

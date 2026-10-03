@@ -629,11 +629,13 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
   defineModule({
       id: "release.package-index",
       kind: "release",
-      summary: "Independent package payload, its signed client-facing index and the disposable local fixture",
+      summary: "Independent package payloads, their signed client-facing index and the disposable local fixture",
       inputs: [
         "apps/desktop/scripts/build-platform-release-package.mjs",
+        "crates/licoup-mcp/package/**",
         "crates/licoup-native/resources/client-update-public-keys.json",
         "tests/contract/client/client-release-package-index.test.mjs",
+        "tests/contract/client/migration-release-asset.test.mjs",
         "tests/fixtures/client_package_release/**",
         "tools/apple-release/macos-direct-arm64.json",
         "tools/apple-release/macos-direct-arm64-nightly.json",
