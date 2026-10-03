@@ -26,10 +26,7 @@ impl SessionBinding {
         self.native_session_id.as_deref()
     }
 
-    pub fn expected_protocol_id<'a>(
-        &'a self,
-        config: &'a ProtocolConfig,
-    ) -> Option<&'a str> {
+    pub fn expected_protocol_id<'a>(&'a self, config: &'a ProtocolConfig) -> Option<&'a str> {
         self.protocol_id().or_else(|| {
             config
                 .is_resume()

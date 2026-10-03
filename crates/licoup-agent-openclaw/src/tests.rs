@@ -7,8 +7,8 @@
 //! — the claim that matters most — that the five recorded transcripts still
 //! replay through the real state machine.
 
-use licoup_agent_adapter_sdk::replay::{SCENARIOS, fixture_root, replay_corpus};
 use licoup_agent_adapter_sdk::Transition;
+use licoup_agent_adapter_sdk::replay::{SCENARIOS, fixture_root, replay_corpus};
 use serde_json::{Value, json};
 
 use crate::gateway::GatewayEndpoint;
@@ -107,7 +107,10 @@ fn both_protocol_agnostic_queries_stay_fail_closed_and_say_why() {
     };
     // The driver reports the parser's own transition list on its run result, so
     // the query is not answered a second time through the port.
-    assert_eq!(set.execution_transitions(ADAPTER_ID, &outcome), Some(Vec::new()));
+    assert_eq!(
+        set.execution_transitions(ADAPTER_ID, &outcome),
+        Some(Vec::new())
+    );
     // A resumable OpenClaw identity is a bound Gateway session key rather than a
     // location, so no validator is claimed for it.
     let request = licoup_agent_adapter_sdk::port::DurableIdentityRequest {

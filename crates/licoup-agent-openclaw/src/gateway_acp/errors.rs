@@ -47,11 +47,7 @@ impl ProtocolFailure {
         }))
     }
 
-    pub fn user_interaction(
-        method: &str,
-        session_id: Option<&str>,
-        turn_id: Option<&str>,
-    ) -> Self {
+    pub fn user_interaction(method: &str, session_id: Option<&str>, turn_id: Option<&str>) -> Self {
         Self(Box::new(ProtocolFailurePayload {
             code: "openclaw_user_interaction_required",
             message: "OpenClaw requires explicit user interaction before this turn can continue.",

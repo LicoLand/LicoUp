@@ -1,5 +1,6 @@
-//! The native Agent parser family: the thirteen per-Agent parsers this host
-//! still holds, and the composition that injects them into the adapter SDK.
+//! The native Agent parser family: the eleven per-Agent parsers this host still
+//! holds, the two its adapter packages own, and the composition that injects
+//! them all into the adapter SDK.
 //!
 //! `licoup-agent-adapter-sdk` is the single authority for what every adapter
 //! program shares: the byte-line ingress contract, the adapter declaration, the
@@ -9,14 +10,27 @@
 //! lifecycle machine. None of that is here any more, and none of it is
 //! duplicated here.
 //!
-//! What is here is one Agent each. `adapters` holds the thirteen parsers that
-//! classify one Agent's vendor frames and the `REGISTRATIONS` list that names
-//! their declarations; `replay` holds the arm that drives each of them from a
+//! What is here is one Agent each. `adapters` holds the eleven parsers that
+//! classify one Agent's vendor frames, names the two packages that own Codex's
+//! and OpenClaw's, and carries the `REGISTRATIONS` list that names all thirteen
+//! declarations; `replay` holds the arm that drives each of them from a
 //! recorded transcript and the corpus checks that belong to the family; and
-//! `tests` holds the family's own claims. Each per-Agent subtree and its arm
-//! move to that Agent's crate (`licoup-agent-<agent>`); this root and the
-//! composition are what remain, because they are what names thirteen parsers
-//! and, later, thirteen crates.
+//! `tests` holds the family's own claims. Each remaining per-Agent subtree and
+//! its arm move to that Agent's crate (`licoup-agent-<agent>`); this root and
+//! the composition are what remain, because they are what names the packaged
+//! inventory and, later, thirteen packages.
+//!
+//! # What the kernel still owns
+//!
+//! A package owns its Agent's protocol; the kernel still owns that Agent's
+//! *process*. All thirteen are executed today by drivers composed in
+//! `platform` — the bounded capability probe, the launch, the supervised
+//! transport and the cleanup — and each adapter package's binary route is
+//! completed by the agent-execution port that package declares. Moving that
+//! half behind those ports, so the installed package binary is what runs, is
+//! the VENDOR-CODE-REMOVAL remainder. Until it lands, a parser that has moved
+//! here proves the protocol and the composition, and never claims an execution
+//! the package did not perform.
 //!
 //! The SDK's two protocol-agnostic `port::ParserRegistration` queries are
 //! answered in `adapters::REGISTRATIONS` by the Agents whose facts a reader
@@ -66,9 +80,10 @@ const PACKAGED_ADAPTER_IDS: [&str; 13] = [
 
 /// The parser set this host injects into the adapter SDK.
 ///
-/// The declarations live in `adapters`, where the thirteen parsers that report
-/// them live; this is the composition's name for the set, so a caller outside
-/// the family never names a parser to reach the SDK.
+/// The declarations live in `adapters`, in the one list that names all
+/// thirteen parsers — the eleven this tree still holds and the two their
+/// packages own; this is the composition's name for the set, so a caller
+/// outside the family never names a parser to reach the SDK.
 pub(in crate::platform) const fn parser_set() -> licoup_agent_adapter_sdk::port::AdapterParserSet {
     adapters::parser_set()
 }

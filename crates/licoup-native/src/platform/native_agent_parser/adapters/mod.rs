@@ -9,7 +9,10 @@
 //!
 //! Each subtree below is one Agent's protocol and moves with that Agent's crate
 //! (`licoup-agent-<agent>`); the composition travels last, because it is what
-//! tilts from naming thirteen parsers to naming the crates that hold them.
+//! tilts from naming thirteen parsers to naming the crates that hold them. Two
+//! have already moved — Codex's and OpenClaw's — so the eleven subtrees left
+//! here are joined by two package names in the list below, and the list keeps
+//! naming all thirteen declarations.
 
 pub(in crate::platform) use licoup_agent_adapter_sdk::adapters::{
     AdapterContract, NativeLineParser,

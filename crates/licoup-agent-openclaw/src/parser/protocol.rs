@@ -3,9 +3,9 @@ use super::codec::{
     INITIALIZE_REQUEST_ID, MODE_REQUEST_ID, PROMPT_REQUEST_ID, SESSION_REQUEST_ID,
     request_id_matches, response_is_error,
 };
+use super::events::projected_event;
 use crate::gateway_acp::continuity::{SessionBinding, session_method, session_request};
 use crate::gateway_acp::errors::ProtocolFailure;
-use super::events::projected_event;
 use crate::gateway_acp::model::EffectiveSettings;
 use crate::gateway_acp::params::ProtocolConfig;
 use licoup_foundation::core::acp::{self, AcpClientCapabilities, AcpImplementation};
@@ -331,10 +331,7 @@ impl OpenClawProtocol {
             turn_id: self.config.turn_id.clone(),
             turn_status: stop_reason,
             effective: self.effective.clone(),
-            transitions:
-                crate::parser::completed_transitions(
-                    &self.output,
-                ),
+            transitions: crate::parser::completed_transitions(&self.output),
         }))]
     }
 

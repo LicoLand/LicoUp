@@ -22,8 +22,8 @@
 //! client's `platform::openclaw_driver` until the package's binary route
 //! replaces it, and the reviewed process sites in that half are unchanged.
 
-pub mod contract;
 pub mod continuity;
+pub mod contract;
 pub mod errors;
 pub mod model;
 pub mod params;
