@@ -22,8 +22,7 @@
 //! decision and this seam starts admitting; every existing caller already routes
 //! through it, so there is no second path to close.
 
-use crate::platform::extension_packages::refusal;
-use licoup_application::ApplicationFailure;
+use licoup_application::{ApplicationFailure, RecoveryAction};
 
 /// The component a maintenance refusal names.
 pub(crate) const COMPONENT: &str = "extension_packages_maintenance";
@@ -143,7 +142,11 @@ impl MaintenanceAdmission {
             // and that is the one value that cannot be mistaken for a check.
             None => ADMISSION_UNAVAILABLE,
         };
-        Err(refusal(refusal_code, STAGE)
+        // Retryable and with a real next step: the guard is what is missing, and
+        // it is expected to arrive. `NotAttempted` is exact here — nothing on the
+        // mutation path ran.
+        Err(ApplicationFailure::retryable(refusal_code, STAGE)
+            .with_recovery(RecoveryAction::RetryAfterRecovery)
             .with_component(COMPONENT)
             .with_field("maintenance")
             .with_presentation_arg("operation", request.operation.wire_name())

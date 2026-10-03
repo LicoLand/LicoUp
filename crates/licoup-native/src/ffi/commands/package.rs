@@ -43,7 +43,6 @@ use licoup_extension_contracts::deployment::{
 use licoup_foundation::platform::paths;
 use sha2::{Digest, Sha256};
 
-use crate::platform::extension_packages::registration::RegistrationOwners;
 use crate::platform::extension_packages::{
     ArtifactLimits, DependentsDecision, Drained, InstanceIdentity, InstanceMachine,
     InstanceRegistry, MaintenanceAdmission, MaintenanceOperation, MaintenanceRequest, PackageStore,
@@ -99,13 +98,16 @@ pub(super) fn handle_install_plan(command: AdmittedCommand) -> Result<CliExecuti
     Ok(report(json!({
         "operation": "install-plan",
         "plan": candidate.plan,
+        "planDigest": candidate.plan_digest,
+        "confirmation": candidate.confirmation,
         "archive": archive.display().to_string(),
+        "installed": false,
     })))
 }
 
 /// `package install-confirm <data-root> --archive <path> --plan <digest>` — the
 /// explicit second step, which re-derives the plan and refuses a stale digest.
-pub(super) fn handle_install_confirm(mut command: AdmittedCommand) -> Result<CliExecution> {
+pub(super) fn handle_install_confirm(command: AdmittedCommand) -> Result<CliExecution> {
     let data_home = data_home(&command)?;
     let store = open_store(&data_home)?;
     let archive = archive_path(&command)?;
@@ -131,7 +133,7 @@ pub(super) fn handle_install_confirm(mut command: AdmittedCommand) -> Result<Cli
 
 /// `package install-apply <data-root> --archive <path> --confirmation <token>` —
 /// install the reviewed bytes.
-pub(super) fn handle_install_apply(mut command: AdmittedCommand) -> Result<CliExecution> {
+pub(super) fn handle_install_apply(command: AdmittedCommand) -> Result<CliExecution> {
     let data_home = data_home(&command)?;
     let store = open_store(&data_home)?;
     let archive = archive_path(&command)?;
@@ -258,8 +260,14 @@ pub(super) fn handle_uninstall_collect(mut command: AdmittedCommand) -> Result<C
     let data_home = data_home(&command)?;
     let store = open_store(&data_home)?;
     let (package_id, version) = identity(&command)?;
-    let record = read_drained_record(&store, &package_id, &version)?;
-    let drained: Drained = record.resume()?;
+    let record = match read_drained_record(&store, &package_id, &version) {
+        Ok(record) => record,
+        Err(failure) => return Ok(failure_report("uninstall-collect", &failure)),
+    };
+    let drained: Drained = match record.resume() {
+        Ok(drained) => drained,
+        Err(failure) => return Ok(failure_report("uninstall-collect", &failure)),
+    };
     let inputs = match command.take_option_json("registration-inputs") {
         None | Some(Value::Null) => ReleaseInputs::none(),
         Some(value) => release_inputs(&value)?,
@@ -327,7 +335,7 @@ pub(super) fn handle_recover(command: AdmittedCommand) -> Result<CliExecution> {
 /// Read-only by construction: it opens the store, reports the installed facts and
 /// the candidate's, and states that apply is unavailable. It closes nothing,
 /// drains nothing and replaces nothing.
-pub(super) fn handle_update_preview(mut command: AdmittedCommand) -> Result<CliExecution> {
+pub(super) fn handle_update_preview(command: AdmittedCommand) -> Result<CliExecution> {
     let data_home = data_home(&command)?;
     let store = open_store(&data_home)?;
     let package_id = command
@@ -394,7 +402,7 @@ pub(super) fn handle_update_preview(mut command: AdmittedCommand) -> Result<CliE
 /// Refused through the maintenance-admission seam while no native idle guard
 /// exists. The refusal happens *before* the archive is read, so this route cannot
 /// half-plan a replacement it will not be allowed to perform.
-pub(super) fn handle_update_apply(mut command: AdmittedCommand) -> Result<CliExecution> {
+pub(super) fn handle_update_apply(command: AdmittedCommand) -> Result<CliExecution> {
     let package_id = command.required_text("package-id").to_owned();
     let version = command
         .option_text("archive")
@@ -454,24 +462,6 @@ struct InstallCandidate {
     permissions: Vec<licoup_extension_contracts::manifest::PermissionRequest>,
 }
 
-impl InstallCandidate {
-    /// The plan's own facts, as the digest that binds a confirmation to them.
-    fn canonical(&self) -> String {
-        format!(
-            "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
-            self.package_id,
-            self.version,
-            self.digest,
-            self.plan_digest,
-            running_client_version().unwrap_or_else(|_| "unknown".to_owned()),
-            self.permissions
-                .iter()
-                .map(|permission| format!("{}@{}", permission.capability, permission.scope))
-                .collect::<Vec<_>>()
-                .join(",")
-        )
-    }
-}
 
 /// Derive the plan for one archive against the current client and store.
 ///
@@ -494,7 +484,12 @@ fn candidate_for(store: &PackageStore, archive: &Path) -> Result<InstallCandidat
         .installed_bytes(&manifest.id, &manifest.version)
         .map_err(as_handler_error)?;
     let permissions = manifest.permissions.clone();
-    let plan = json!({
+    // The reviewed core holds only facts about the archive, the client and the
+    // decision. It deliberately excludes what this data home currently holds:
+    // those facts move on their own, and a confirmation that changed whenever
+    // anything was installed would be a confirmation of the directory rather
+    // than of the bytes the operator reviewed.
+    let core = json!({
         "schemaVersion": SCHEMA,
         "packageId": manifest.id,
         "version": manifest.version,
@@ -524,25 +519,33 @@ fn candidate_for(store: &PackageStore, archive: &Path) -> Result<InstallCandidat
             }))
             .collect::<Vec<_>>(),
         "compressedBytes": bytes.len() as u64,
-        "alreadyInstalled": already_installed,
-        "installedBytesForThisIdentity": stored_bytes,
         "installScriptsExecuted": 0,
         "processesSpawned": 0,
     });
-    let plan_text = serde_json::to_string(&plan)
+    let core_text = serde_json::to_string(&core)
         .map_err(|_| anyhow!("package_install_plan_unserializable"))?;
-    let plan_digest = prefixed_digest(plan_text.as_bytes());
-    let mut candidate = InstallCandidate {
+    let plan_digest = prefixed_digest(core_text.as_bytes());
+    let confirmation = format!(
+        "{CONFIRMATION_SCHEMA}:{}",
+        prefixed_digest(format!("{CONFIRMATION_SCHEMA}\u{1f}{plan_digest}").as_bytes())
+    );
+    let mut plan = core;
+    if let Some(object) = plan.as_object_mut() {
+        object.insert("alreadyInstalled".to_owned(), json!(already_installed));
+        object.insert(
+            "installedBytesForThisIdentity".to_owned(),
+            json!(stored_bytes),
+        );
+    }
+    Ok(InstallCandidate {
         plan,
         plan_digest,
-        confirmation: String::new(),
+        confirmation,
         package_id: manifest.id,
         version: manifest.version,
         digest,
         permissions,
-    };
-    candidate.confirmation = format!("{CONFIRMATION_SCHEMA}:{}", prefixed_digest(candidate.canonical().as_bytes()));
-    Ok(candidate)
+    })
 }
 
 /// Admit and perform one install of a confirmed candidate.
@@ -677,6 +680,7 @@ fn observe_instances(registry: &mut InstanceRegistry, observed: Value) -> Result
         .map_err(as_handler_error)?;
         let mut machine = InstanceMachine::discovered(identity).map_err(as_handler_error)?;
         let lifecycle = match text("lifecycle")?.as_str() {
+            "discovered" => InstanceLifecycle::Discovered,
             "preparing" => InstanceLifecycle::Preparing,
             "active" => InstanceLifecycle::Active,
             "draining" => InstanceLifecycle::Draining,
@@ -685,9 +689,46 @@ fn observe_instances(registry: &mut InstanceRegistry, observed: Value) -> Result
             "quarantined" => InstanceLifecycle::Quarantined,
             other => return Err(anyhow!("package_uninstall_instance_lifecycle_unknown:{other}")),
         };
-        machine.advance(lifecycle).map_err(as_handler_error)?;
-        for _ in 0..entry.get("inFlight").and_then(Value::as_u64).unwrap_or(0) {
-            machine.begin_in_flight().map_err(as_handler_error)?;
+        // An instance reaches a state by passing through the ones before it, so
+        // the report is walked the same way rather than jumped to.
+        for step in [
+            InstanceLifecycle::Preparing,
+            InstanceLifecycle::Active,
+            InstanceLifecycle::Draining,
+            InstanceLifecycle::Stopped,
+        ] {
+            if machine.state() == lifecycle {
+                break;
+            }
+            if step == InstanceLifecycle::Stopped {
+                break;
+            }
+            machine.advance(step).map_err(as_handler_error)?;
+            if step == lifecycle {
+                break;
+            }
+        }
+        if machine.state() != lifecycle {
+            match lifecycle {
+                InstanceLifecycle::Failed => machine.fail("reported by the caller"),
+                InstanceLifecycle::Quarantined => machine.quarantine("reported by the caller"),
+                _ => Err(licoup_application::ApplicationFailure::permanent(
+                    "package_uninstall_instance_lifecycle_unknown",
+                    "extension/package-uninstall",
+                )),
+            }
+            .map_err(as_handler_error)?;
+        }
+        let in_flight = entry.get("inFlight").and_then(Value::as_u64).unwrap_or(0);
+        if in_flight > 0 {
+            if machine.state() != InstanceLifecycle::Active {
+                return Err(anyhow!(
+                    "package_uninstall_instance_in_flight_requires_active"
+                ));
+            }
+            for _ in 0..in_flight {
+                machine.begin_in_flight().map_err(as_handler_error)?;
+            }
         }
         registry.insert(machine);
     }
@@ -948,33 +989,97 @@ fn as_handler_error(failure: ApplicationFailure) -> anyhow::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::extension_packages::registration::{
+        RegistrationOwner, RegistrationOwners,
+    };
 
+    /// A confirmation is a digest of the reviewed plan, and it is stable while
+    /// the reviewed facts are: installing something else does not invalidate the
+    /// confirmation of the bytes that were reviewed.
     #[test]
-    fn a_confirmation_is_bound_to_the_bytes_and_the_plan() {
-        let candidate = InstallCandidate {
-            plan: json!({}),
-            plan_digest: "sha256:plan".to_owned(),
-            confirmation: String::new(),
-            package_id: "example.specialist.echo".to_owned(),
-            version: "1.0.0".to_owned(),
-            digest: "sha256:bytes".to_owned(),
-            permissions: Vec::new(),
-        };
-        let first = prefixed_digest(candidate.canonical().as_bytes());
-        let mut other = InstallCandidate {
-            plan: json!({}),
-            plan_digest: "sha256:plan".to_owned(),
-            confirmation: String::new(),
-            package_id: "example.specialist.echo".to_owned(),
-            version: "1.0.0".to_owned(),
-            digest: "sha256:other-bytes".to_owned(),
-            permissions: Vec::new(),
-        };
-        assert_eq!(first, prefixed_digest(candidate.canonical().as_bytes()));
-        assert_ne!(first, prefixed_digest(other.canonical().as_bytes()));
-        other.digest = candidate.digest.clone();
-        assert_eq!(first, prefixed_digest(other.canonical().as_bytes()));
-        assert!(first.starts_with("sha256:"));
+    fn a_confirmation_follows_the_reviewed_plan_and_not_the_directory() {
+        let (home, store) = fixture_store();
+        let bytes = fixture_archive();
+        let archive = home.join("fixture.zip");
+        std::fs::write(&archive, &bytes).expect("archive");
+        let first = candidate_for(&store, &archive).expect("plan");
+        let second = candidate_for(&store, &archive).expect("plan again");
+        assert_eq!(first.plan_digest, second.plan_digest);
+        assert_eq!(first.confirmation, second.confirmation);
+        assert!(
+            first
+                .confirmation
+                .starts_with("licoup.package-install-confirmation.v1:sha256:")
+        );
+
+        // What the directory holds is reported, and it is not part of what was
+        // confirmed.
+        assert_eq!(first.plan["alreadyInstalled"], false);
+        std::fs::create_dir_all(home.join("staged")).expect("staged");
+        let third = candidate_for(&store, &archive).expect("plan once more");
+        assert_eq!(third.plan_digest, first.plan_digest);
+        assert_eq!(third.confirmation, first.confirmation);
+    }
+
+    /// A different archive produces a different confirmation, so swapped bytes
+    /// cannot be installed under the reviewed decision.
+    #[test]
+    fn different_bytes_produce_a_different_confirmation() {
+        let (home, store) = fixture_store();
+        let one = home.join("one.zip");
+        let two = home.join("two.zip");
+        std::fs::write(&one, fixture_archive()).expect("archive");
+        std::fs::write(&two, fixture_archive_with(b"print('other')\n")).expect("archive");
+        let first = candidate_for(&store, &one).expect("plan");
+        let second = candidate_for(&store, &two).expect("plan");
+        assert_ne!(first.digest, second.digest);
+        assert_ne!(first.confirmation, second.confirmation);
+    }
+
+    fn fixture_store() -> (PathBuf, PackageStore) {
+        let home = std::env::temp_dir().join(format!(
+            "licoup-package-command-{}",
+            crate::platform::extension_packages::unique_suffix()
+        ));
+        std::fs::create_dir_all(&home).expect("home");
+        let store = PackageStore::open(&paths::package_store_root(&home)).expect("store");
+        (home, store)
+    }
+
+    fn fixture_archive() -> Vec<u8> {
+        fixture_archive_with(b"print('fixture')\n")
+    }
+
+    fn fixture_archive_with(entry: &[u8]) -> Vec<u8> {
+        use std::io::Write;
+        let client = running_client_version().expect("a product version");
+        let next_major = client
+            .split('.')
+            .next()
+            .and_then(|major| major.parse::<u64>().ok())
+            .map(|major| major + 1)
+            .expect("a semantic major version");
+        let manifest = json!({
+            "schema": licoup_extension_contracts::wire::MANIFEST,
+            "id": "example.fixture.echo",
+            "version": "1.0.0",
+            "displayName": "Fixture",
+            "hostProtocol": { "major": 1 },
+            "compatibility": { "clientVersions": [format!(">={client}, <{next_major}")] },
+            "runtime": { "mode": "process", "entry": "agent.py" },
+            "permissions": [{ "capability": "example.fixture/net", "scope": "self" }],
+        });
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        writer
+            .start_file("manifest.json", options)
+            .expect("start file");
+        writer
+            .write_all(manifest.to_string().as_bytes())
+            .expect("write");
+        writer.start_file("agent.py", options).expect("start file");
+        writer.write_all(entry).expect("write");
+        writer.finish().expect("finish").into_inner()
     }
 
     #[test]
