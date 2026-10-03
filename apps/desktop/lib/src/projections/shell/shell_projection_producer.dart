@@ -9,6 +9,7 @@ import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/contracts/presentation/mounted_destination_set.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
@@ -29,6 +30,7 @@ final class ShellProjectionProducer {
     required ClientNavigationController navigation,
     required LayoutManager layoutManager,
     required ProjectionSource<EnvironmentProjection> environment,
+    MountedDestinationSet? mountedDestinations,
     AppearanceProjection Function(AppearancePreferenceOwner owner)?
     appearanceResolver,
     LocaleProjection Function(LocalePreferenceOwner owner)? localeResolver,
@@ -39,6 +41,9 @@ final class ShellProjectionProducer {
     layoutResolver,
     StatusProjection Function(FunctionalStatusRuntime runtime)? statusResolver,
   }) {
+    final mounts =
+        mountedDestinations ?? MountedDestinationSet(ClientSection.values);
+    this.mounts = mounts;
     final resolveAppearance = appearanceResolver ?? resolveAppearanceProjection;
     final resolveLocale = localeResolver ?? resolveLocaleProjection;
     final resolveLayout = layoutResolver ?? resolveLayoutProjection;
@@ -72,6 +77,9 @@ final class ShellProjectionProducer {
   late final ProjectionSource<EnvironmentProjection> environment;
   late final ApplicationProjectionSource<NavigationProjection> navigation;
   late final ApplicationProjectionSource<StatusProjection> status;
+
+  /// The catalogue projection of which destinations this client mounts.
+  late final MountedDestinationSet mounts;
   bool _disposed = false;
 
   ProjectionSource<LayoutProjection> get layout => _layout;
@@ -103,14 +111,40 @@ final class ShellProjectionProducer {
     );
   }
 
-  static NavigationProjection _readNavigation(
-    ClientNavigationController navigation,
-  ) => NavigationProjection(
-    destination: navigation.currentSection,
-    destinations: ClientSection.values.where(
-      (destination) => navigation.resolve(destination) == destination,
-    ),
-  );
+  /// Projects the mounted destinations the composition declared.
+  ///
+  /// Only mounted destinations are offered, because an uninstalled feature has
+  /// no surface and no owner to reach. Unmounted ones are reported in
+  /// [NavigationProjection.unavailable] rather than dropped, so the absence is
+  /// visible, and a selection that is not mounted — a restored view naming a
+  /// capability this client does not have — is recovered to a mounted
+  /// destination before the shell renders it.
+  NavigationProjection _readNavigation(ClientNavigationController navigation) {
+    final available = mounts.destinations
+        .where((destination) => navigation.resolve(destination) == destination)
+        .toList(growable: false);
+    final requested = navigation.currentSection;
+    final unavailable = [
+      for (final destination in ClientSection.values)
+        if (!mounts.isMounted(destination)) destination,
+    ];
+    if (available.isEmpty) {
+      return NavigationProjection(
+        destination: requested,
+        destinations: const <ClientSection>[],
+        unavailable: unavailable,
+      );
+    }
+    final destination = available.contains(requested)
+        ? requested
+        : mounts.recoveryFor(requested) ?? available.first;
+    return NavigationProjection(
+      destination: destination,
+      destinations: available,
+      unavailable: unavailable,
+      recoveryDestination: destination == requested ? null : destination,
+    );
+  }
 }
 
 AppearanceProjection resolveAppearanceProjection(

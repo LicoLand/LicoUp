@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/composition/built_in_layout_composition.dart';
+import 'package:licoup/src/composition/binding_shell_renderer/shell_destinations.dart';
+import 'package:licoup/src/composition/client_composition_set.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
@@ -12,34 +14,24 @@ import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/frontend/binding/shell_renderer_port.dart';
 import 'package:licoup/src/frontend/environment/environment_projection_adapter.dart';
-import 'package:licoup/src/frontend/environment/workspace_home_directory_scope.dart';
-import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_search_palette.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agents_canvas.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_dialog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/assistant_configuration_dialog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/projection.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/strategy.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
-import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
-import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_pairing_channels.dart';
-import 'package:licoup/src/frontend/features/models/ui/models_panel.dart';
-import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
-import 'package:licoup/src/frontend/features/settings/ui/settings_panel.dart';
-import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
 import 'package:licoup/src/frontend/layout/layout_registry.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
-import 'package:licoup/src/presentation/agent_hub/agent_hub_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/agent_hub/agent_hub_binding.dart';
 import 'package:licoup/src/presentation/chrome/chrome_binding.dart';
 import 'package:licoup/src/presentation/chrome/chrome_projection.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
@@ -57,11 +49,16 @@ import 'package:licoup/src/presentation/environment/environment_projection.dart'
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
 import 'package:licoup/src/presentation/targets/targets_binding.dart';
 
-typedef ExternalUriOpener = Future<void> Function(Uri uri);
-
 /// Concrete renderer factory assembled only at the composition boundary.
+///
+/// The renderer owns no destination dispatch of its own: [ShellDestinations]
+/// resolves each section against the composition declaration and the bindings
+/// this factory was handed, and an optional binding is null exactly when its
+/// feature composition is not named by [composition]. The renderer therefore
+/// cannot render a surface for a capability the client does not have.
 final class BindingShellRenderer implements ShellRendererPort {
   BindingShellRenderer({
+    required ClientCompositionSet composition,
     required BuiltInLayoutComposition layout,
     required IntentSink<ShellIntent> shellIntents,
     required ProjectionSource<StatusProjection> status,
@@ -70,31 +67,37 @@ final class BindingShellRenderer implements ShellRendererPort {
     required ChromeBinding chrome,
     required ConversationBinding conversation,
     required MonitoringBinding monitoring,
-    required SkillHubBinding skillHub,
-    required PluginManagementBinding pluginManagement,
-    required MobileRelayBinding mobileRelay,
-    required ModelsBinding models,
-    required SettingsBinding settings,
-    required AgentHubBinding agentHub,
-    required SearchBinding search,
+    required SkillHubBinding? skillHub,
+    required PluginManagementBinding? pluginManagement,
+    required MobileRelayBinding? mobileRelay,
+    required ModelsBinding? models,
+    required SettingsBinding? settings,
+    required AgentHubBinding? agentHub,
+    required SearchBinding? search,
     required TargetsBinding targets,
     required ExternalUriOpener openExternalUri,
     required String workspaceHomeDirectory,
   }) : _layout = layout,
-       _shellIntents = shellIntents,
        _agents = agents,
        _chromeBinding = chrome,
        _conversation = conversation,
-       _monitoring = monitoring,
-       _skillHub = skillHub,
-       _pluginManagement = pluginManagement,
-       _mobileRelay = mobileRelay,
-       _models = models,
-       _settings = settings,
-       _agentHub = agentHub,
-       _targets = targets,
-       _openExternalUri = openExternalUri,
-       _workspaceHomeDirectory = workspaceHomeDirectory,
+       _destinations = ShellDestinations(
+         composition: composition,
+         layout: layout,
+         shellIntents: shellIntents,
+         agents: agents,
+         conversation: conversation,
+         monitoring: monitoring,
+         mobileRelay: mobileRelay,
+         targets: targets,
+         skillHub: skillHub,
+         pluginManagement: pluginManagement,
+         models: models,
+         settings: settings,
+         agentHub: agentHub,
+         openExternalUri: openExternalUri,
+         workspaceHomeDirectory: workspaceHomeDirectory,
+       ),
        _chrome = _BindingLayoutChrome(
          status: status,
          locale: locale,
@@ -103,22 +106,18 @@ final class BindingShellRenderer implements ShellRendererPort {
        );
 
   final BuiltInLayoutComposition _layout;
-  final IntentSink<ShellIntent> _shellIntents;
   final AgentsBinding _agents;
   final ChromeBinding _chromeBinding;
   final ConversationBinding _conversation;
-  final MonitoringBinding _monitoring;
-  final SkillHubBinding _skillHub;
-  final PluginManagementBinding _pluginManagement;
-  final MobileRelayBinding _mobileRelay;
-  final ModelsBinding _models;
-  final SettingsBinding _settings;
-  final AgentHubBinding _agentHub;
-  final TargetsBinding _targets;
-  final ExternalUriOpener _openExternalUri;
-  final String _workspaceHomeDirectory;
+  final ShellDestinations _destinations;
   final _BindingLayoutChrome _chrome;
   bool _disposed = false;
+
+  /// The destination resolver this renderer forwards to.
+  ///
+  /// The composition boundary reads it to answer which surface a declaration
+  /// produces; the renderer itself owns no section dispatch.
+  ShellDestinations get destinations => _destinations;
 
   @override
   LayoutRegistry get layoutRegistry => _layout.registry;
@@ -140,58 +139,18 @@ final class BindingShellRenderer implements ShellRendererPort {
   );
 
   @override
-  GlobalKey createAgentsHomeKey() => GlobalKey<MobileAgentsHomeState>();
+  GlobalKey createAgentsHomeKey() => _destinations.createAgentsHomeKey();
 
   @override
   Widget buildDestination(
     BuildContext context,
     ClientSection destination, {
     required GlobalKey agentsHomeKey,
-  }) => switch (destination) {
-    ClientSection.agents => WorkspaceHomeDirectoryScope(
-      path: _workspaceHomeDirectory,
-      child: AgentsCanvas(
-        agents: _agents,
-        conversation: _conversation,
-        relay: _mobileRelay,
-        monitoring: _monitoring,
-        targets: _targets,
-        onSelectDestination: (destination) =>
-            _shellIntents.send(SelectShellDestination(destination)),
-        agentsHomeKey: agentsHomeKey as GlobalKey<MobileAgentsHomeState>,
-      ),
-    ),
-    ClientSection.monitoring => AgentUsagePanel(binding: _monitoring),
-    ClientSection.skillHub => SkillHubPanel(binding: _skillHub),
-    ClientSection.pluginManagement => AdapterPluginPanel(
-      binding: _pluginManagement,
-    ),
-    ClientSection.mobileRelay => MobileRelayPanel(
-      binding: _mobileRelay,
-      chatChannels: MobilePairingChannels(binding: _models),
-    ),
-    ClientSection.models => ModelsPanel(
-      binding: _models,
-      pane: ModelsPanelPane.gateway,
-    ),
-    ClientSection.settings => SettingsPanel(
-      binding: _settings,
-      layoutRegistry: _layout.registry,
-    ),
-    ClientSection.agentHub => AgentHubPanel(
-      binding: _agentHub,
-      plugins: _pluginManagement,
-      skills: _skillHub,
-      openHomepage: _openExternalUri,
-      onOpenAgent: (agentId) => _shellIntents.send(OpenShellAgent(agentId)),
-    ),
-  };
+  }) => _destinations.build(context, destination, agentsHomeKey: agentsHomeKey);
 
   @override
-  void resetAgentsHome(GlobalKey agentsHomeKey) {
-    final state = agentsHomeKey.currentState;
-    if (state is MobileAgentsHomeState) state.resetToList();
-  }
+  void resetAgentsHome(GlobalKey agentsHomeKey) =>
+      _destinations.resetAgentsHome(agentsHomeKey);
 
   Future<void> dispose() async {
     if (_disposed) return;
@@ -747,8 +706,8 @@ final class _BindingLayoutChrome implements LayoutChromePort {
   _BindingLayoutChrome({
     required ProjectionSource<StatusProjection> status,
     required ProjectionSource<LocaleProjection> locale,
-    required MobileRelayBinding mobileRelay,
-    required SearchBinding search,
+    required MobileRelayBinding? mobileRelay,
+    required SearchBinding? search,
   }) : _mobileRelay = mobileRelay,
        _search = search {
     _status = status.current;
@@ -758,8 +717,8 @@ final class _BindingLayoutChrome implements LayoutChromePort {
     _localeSubscription = locale.changes.listen(_handleLocale);
   }
 
-  final MobileRelayBinding _mobileRelay;
-  final SearchBinding _search;
+  final MobileRelayBinding? _mobileRelay;
+  final SearchBinding? _search;
   final _RendererNotifier _listeners = _RendererNotifier();
   late StatusProjection _status;
   late LocaleProjection _locale;
@@ -780,13 +739,25 @@ final class _BindingLayoutChrome implements LayoutChromePort {
   void removeListener(VoidCallback listener) =>
       _listeners.removeListener(listener);
 
+  /// Opens the pairing entry only when the relay feature is installed; an
+  /// absent relay binding has no pairing surface and no owner to reach.
   @override
-  Future<void> openPairing(BuildContext context) =>
-      showMobileRelayPopup(context, _mobileRelay);
+  Future<void> openPairing(BuildContext context) {
+    final mobileRelay = _mobileRelay;
+    return mobileRelay == null
+        ? Future<void>.value()
+        : showMobileRelayPopup(context, mobileRelay);
+  }
 
+  /// Opens global search only when the search feature is installed; an absent
+  /// search binding has no search surface and no owner to reach.
   @override
-  Future<void> openGlobalSearch(BuildContext context) =>
-      showAgentConversationSearchPalette(context, _search);
+  Future<void> openGlobalSearch(BuildContext context) {
+    final search = _search;
+    return search == null
+        ? Future<void>.value()
+        : showAgentConversationSearchPalette(context, search);
+  }
 
   void _handleStatus(ProjectionUpdate<StatusProjection> update) {
     if (_disposed) return;
