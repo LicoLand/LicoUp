@@ -505,8 +505,20 @@ impl ProfileSnapshotAuthority for ProductionSnapshotAuthority {
                     .map(|value| format!("{pointer}:{value}"))
             })
             .collect::<Vec<_>>();
-        capabilities
-            .extend(crate::platform::runtime_adapters::native_capabilities_for_agent(agent_id));
+        // Every capability fact is projected by its own owner; the channel
+        // facts are the ones this list carried before the projection moved, and
+        // the driver-inventory and readiness facts are published under their
+        // own names above.
+        capabilities.extend(
+            crate::platform::runtime_adapters::native_capabilities_for_agent(agent_id)
+                .into_iter()
+                .filter(|fact| {
+                    fact.source == licoup_agent_drivers::runtime_adapters::registry::SOURCE_AGENT_CLI_PRESENCE
+                        || fact.source
+                            == licoup_agent_drivers::runtime_adapters::registry::SOURCE_AGENT_DESKTOP_PRESENCE
+                })
+                .map(|fact| fact.name.to_owned()),
+        );
         capabilities.sort();
         capabilities.dedup();
         let readiness = target

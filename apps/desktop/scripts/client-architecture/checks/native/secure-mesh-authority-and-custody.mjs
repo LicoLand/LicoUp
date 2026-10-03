@@ -401,13 +401,26 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     ),
   ]);
   const clientCliVmSource = await readText("tools/scripts/client-cli-vm/verify/command.mjs");
-  const runtimeAdaptersRustSource = await readJoinedText([
-    "crates/licoup-native/src/platform/runtime_adapters.rs",
-    ...await collectSourceFiles(
-      "crates/licoup-native/src/platform/runtime_adapters",
-      ".rs"
-    )
-  ]);
+  // The adapter registry and adapter execution are owned by
+  // `licoup-agent-drivers`; the host keeps the per-Agent halves this host still
+  // holds in its own `runtime_adapters` composition. Both are read, because the
+  // canonical transports and the approval ownership they state are one seam.
+  const runtimeAdaptersRustSource = [
+    await readJoinedText([
+      "crates/licoup-native/src/platform/runtime_adapters.rs",
+      ...await collectSourceFiles(
+        "crates/licoup-native/src/platform/runtime_adapters",
+        ".rs"
+      )
+    ]),
+    await readJoinedText([
+      "crates/licoup-agent-drivers/src/runtime_adapters.rs",
+      ...await collectSourceFiles(
+        "crates/licoup-agent-drivers/src/runtime_adapters",
+        ".rs"
+      )
+    ]),
+  ].join("\n");
   const codexAppServerFacadeSource = await readText(
     "crates/licoup-native/src/platform/codex_app_server.rs"
   );

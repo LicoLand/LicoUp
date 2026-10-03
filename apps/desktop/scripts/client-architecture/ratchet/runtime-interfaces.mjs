@@ -4,6 +4,7 @@
  * New sites never inherit a neighbouring record or a file-level tool mention.
  */
 const N = "crates/licoup-native/src/";
+const DR = "crates/licoup-agent-drivers/src/";
 const F = "crates/licoup-foundation/src/";
 const T = "crates/licoup-agent-targets/src/";
 const D = "apps/desktop/lib/src/platform/native_client/";
@@ -40,8 +41,9 @@ const SOURCES = Object.freeze({
   [T + "domain/targets/model_catalog/pi.rs"]: "22466bce8b6d17b8125cbcb036ccd549e64867b56fdbf3883589610f0dcc3f2e",
   [PARAMETERS]: "43cdd22e2653747415a63b54cf508b35b8250d77b12c914c69925cc8f398bf8b",
   [T + "domain/targets/virtual_machine_discovery.rs"]: "c2132da0c5a99e8f913a16c79e0e836510e831fc2a83970e8904da7dc0fca89e",
-  [N + "platform/acp_driver_runtime/supervision.rs"]: "f8f5cbadcead16a414c59e29ba5afc195181ccb66b5ea38d4e150a8418199e15",
-  [N + "platform/acp_session_transport/command.rs"]: "57959e1ee554ff987850ccffe8a716dc0be6c219dc78f7d63190e807fcde870a",
+  [DR + "acp_driver_runtime/supervision.rs"]: "7300984d196c6a73ba67e82b6a96c8c90e41b8540f7b03e7e6a7a7968c31705b",
+  [DR + "acp_session_transport/command.rs"]: "b16fc8b4383c2b27693417d311200d15fefd047c8929be51d9bf98dc6305da9d",
+  [DR + "local_service/process.rs"]: "40c1858f9ddf63679d771bb3f38ec4401ce7e75aa957ff29488ab3154117b9d9",
   [N + "platform/antigravity_driver/auth.rs"]: "cf7f6d1607aef2f200b2cb075d5f05a99ff482555ef57d7d77ce6a8c54621bfa",
   [N + "platform/antigravity_driver/execution.rs"]: "646d01cfd0c377272d4c51a368a7777fd004583682e368e3cb380af7127a4c69",
   [N + "platform/antigravity_driver/probe.rs"]: "75c62a13bccda44854d39b98ba41eaf2a146f2e0f64fed7b98edfc7e8b9972ae",
@@ -57,7 +59,6 @@ const SOURCES = Object.freeze({
   [N + "platform/hermes_driver/probe.rs"]: "973dddadc2653371f6c19a21a3987a19fa62aae3edb2694994bd7abf4e242d23",
   [N + "platform/lico_agent_driver/execution.rs"]: "061e3f118a7eb9944e328ea3cf2e61ab2845541f3dc88d5b850dc12c7063de55",
   [N + "platform/lico_agent_driver/probe.rs"]: "b968dbfd55ec7e1ca7c83aa5d5fedfc244c6b554d8fe96a441923fa22e0d3179",
-  [N + "platform/local_service/process.rs"]: "ab1a749eeffbdca47267a6c888882e033eb2c647da48a0beef7fa79399e38adc",
   [N + "platform/mcp_service_process.rs"]: "9d99d104e078e13197dc21676a5eb50a25ac23be8906292a9b96c7128f75b8ff",
   [N + "platform/openclaw_driver/probe.rs"]: "49a1e80055550a28d5de652f4236dfbf3c99ba53ea53c86692b44810f0d23862",
   [N + "platform/openclaw_driver/supervision.rs"]: "c41128bbbaf81904d6c263ea97988ea1265dd74fa30d8867be73cdce134079bd",
@@ -67,7 +68,7 @@ const SOURCES = Object.freeze({
   [N + "platform/process_sandbox/seatbelt.rs"]: "33208cec6c4bd28e1b60ebb4e74c43921bf3df114fe438d05893144868686367",
   [N + "platform/process_sandbox/strategy.rs"]: "a8832eb3055c1dd7fde3e99c413aa92ec8c6e98a51a89345d4b377b8440d66f4",
   [SUPERVISOR]: "cc54d42dbc06636b95f686587c05bea047396d0652d1561a1abe6c99d7fff700",
-  [N + "platform/strategy_runtime/mod.rs"]: "da0edda05789d868ce6b05fd13ce0acb8278cdb75d1f8ccaf7dd3da213dec751",
+  [N + "platform/strategy_runtime/mod.rs"]: "f5b341677e85eea0e7c8c64593ed0856fd693f47d237f64e613cb5e39a41ee9f",
   [SHELL]: "e2a192a409575acf91555b56912d83d62f8b004904f56014b21024e8585a23a7",
 });
 
@@ -167,11 +168,11 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
   ...entries(T + "domain/targets/virtual_machine_discovery.rs", command, [
     ["d312c2e7bc93", "Capture prepared OrbStack listing/probe commands under the explicit machine/probe bounds; source review distinguishes their different purposes instead of guessing from file-wide names."],
   ]),
-  ...entries(N + "platform/acp_driver_runtime/supervision.rs", field("Command::new(&self.executable)"), [
-    ["6022e508e45a", "Launch the registered ACP driver's configured executable with its launch arguments, workspace and reasoning environment through the supervised process interface."],
+  ...entries(DR + "acp_driver_runtime/supervision.rs", field("Command::new(&self.executable)"), [
+    ["a01ddab5f5c3", "Launch the registered ACP driver's configured executable with its launch arguments, workspace and reasoning environment through the supervised process interface."],
   ]),
-  ...entries(N + "platform/acp_session_transport/command.rs", field("Command::new(&self.executable)"), [
-    ["c44bece6e4cd", "Launch the local executable branch of ACP session transport when no external runtime connection supplies the command; keep the configured executable boundary explicit."],
+  ...entries(DR + "acp_session_transport/command.rs", field("Command::new(&self.executable)"), [
+    ["8badc004c930", "Launch the local executable branch of ACP session transport when no external runtime connection supplies the command; keep the configured executable boundary explicit."],
   ]),
   ...entries(N + "platform/antigravity_driver/auth.rs", parameter("executable: Option<&str>"), [
     ["439bc3ba329a", "Construct the Antigravity OAuth-start command using an optional selected executable and vendor default; this source review does not grant or verify consent for that external authorization effect."],
@@ -235,11 +236,11 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
     ["e60bf875c7e5", "Construct the selected Lico Agent help probe to derive capability information; classification is not live readiness or an assertion about timeout behavior."],
     ["702f845b22dd", "Run the prepared Lico Agent help command through its output interface; this separate sink stays visible and does not authorize a live Agent probe."],
   ]),
-  ...entries(N + "platform/local_service/process.rs", parameter("executable: &str"), [
-    ["9e175109b027", "Construct a local service process using the caller's executable and explicit command configurator before the service owner detaches it."],
+  ...entries(DR + "local_service/process.rs", parameter("executable: &str"), [
+    ["de96119a14bc", "Construct a local service process using the caller's executable and explicit command configurator before the service owner detaches it."],
   ]),
-  ...entries(N + "platform/local_service/process.rs", {kind: "command", evidence: "command: &mut Command"}, [
-    ["8871e5d550ce", "Detach a source-declared caller-prepared std Command with platform process-group flags; the selected program cannot be inferred from the receiver name alone."],
+  ...entries(DR + "local_service/process.rs", {kind: "command", evidence: "command: &mut Command"}, [
+    ["7e16ee355cb6", "Detach a source-declared caller-prepared std Command with platform process-group flags; the selected program cannot be inferred from the receiver name alone."],
   ]),
   ...entries(N + "platform/mcp_service_process.rs", parameter("binary: Option<&Path>"), [
     ["25b8c55d297b", "Run the independently built MCP service lifecycle using the optional caller binary or packaged sibling default, supplying the owning CLI and selected home without linking the service into the kernel."],

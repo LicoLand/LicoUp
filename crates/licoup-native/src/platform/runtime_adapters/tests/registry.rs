@@ -1,11 +1,162 @@
-use super::super::adapter::adapter_for_agent;
+use super::super::adapter::{
+    CapabilityFact, CapabilityFactName, CapabilityFactState, NativeAbilityKind,
+    NativeDriverStateKind, adapter_for_agent,
+};
+use super::super::live_status::LiveSnapshot;
 use super::super::registry::{
-    DRIVER_INVENTORY_JSON, READINESS_JSON, adapter_management_catalog,
-    parse_runtime_driver_registry, runtime_driver_profile,
+    DRIVER_INVENTORY_JSON, READINESS_JSON, adapter_management_catalog, native_capabilities_for_agent,
+    native_capability_catalog_entry, parse_runtime_driver_registry, runtime_driver_profile,
 };
 use super::super::{PACKAGED_RUNTIME_ADAPTER_IDS, RuntimeAdapter};
 use crate::platform::opencode_driver;
 use serde_json::{Value, json};
+
+fn fact(facts: &[CapabilityFact], name: &str) -> CapabilityFact {
+    facts
+        .iter()
+        .find(|fact| fact.name == name)
+        .unwrap_or_else(|| panic!("the projection must report the fact {name}"))
+        .clone()
+}
+
+/// The channel facts an Agent declares, followed by the ability facts every
+/// participant is asked about.
+fn expected_kinds(channels: &[&'static str]) -> Vec<&'static str> {
+    channels
+        .iter()
+        .copied()
+        .chain(["image-input", "real-interface"])
+        .collect()
+}
+
+#[test]
+fn participant_projection_reports_declared_unknown_and_not_declared() {
+    // One participant whose owner declares image input.
+    let declared = native_capabilities_for_agent("codex");
+    let image_input = fact(&declared, "image-input");
+    assert_eq!(image_input.state, CapabilityFactState::Declared);
+    assert_eq!(image_input.source, "driver-inventory");
+
+    // One participant the readable owner does not list.
+    let not_declared = native_capabilities_for_agent("claude-code");
+    let image_input = fact(&not_declared, "image-input");
+    assert_eq!(image_input.state, CapabilityFactState::NotDeclared);
+    assert_eq!(image_input.source, "driver-inventory");
+
+    // One participant whose owner cannot be read: not a packaged Agent, so no
+    // owner answers for it. An unreadable owner is unknown, never not-declared.
+    let unreadable = native_capabilities_for_agent("no-such-packaged-agent");
+    assert!(
+        !unreadable.is_empty(),
+        "an unreadable owner must still produce facts with states"
+    );
+    let image_input = fact(&unreadable, "image-input");
+    assert_eq!(image_input.state, CapabilityFactState::Unknown);
+    assert_eq!(image_input.source, "driver-inventory");
+    assert_ne!(image_input.state, CapabilityFactState::NotDeclared);
+
+    // Every derived fact carries a state and the owner that produced it.
+    for name in [
+        "image-input",
+        "real-interface",
+        "conversationDriver:supported",
+        "conversationDriver:ready",
+    ] {
+        for facts in [&declared, &not_declared, &unreadable] {
+            let fact = fact(facts, name);
+            assert!(!fact.source.is_empty(), "{name} must name its owner");
+        }
+    }
+    // Channel facts keep their owner too.
+    let channel = fact(&declared, "app-server");
+    assert_eq!(channel.state, CapabilityFactState::Declared);
+    assert_eq!(channel.source, "agent-cli-presence");
+    let desktop = fact(&declared, "desktop");
+    assert_eq!(desktop.source, "agent-desktop-presence");
+}
+
+#[test]
+fn capability_fact_vocabulary_is_one_closed_set() {
+    assert_eq!(
+        CapabilityFactName::parse("image-input"),
+        Some(CapabilityFactName::Ability(NativeAbilityKind::ImageInput))
+    );
+    assert_eq!(
+        CapabilityFactName::parse("real-interface"),
+        Some(CapabilityFactName::Ability(NativeAbilityKind::RealInterface))
+    );
+    assert_eq!(
+        CapabilityFactName::parse("conversationDriver:supported"),
+        Some(CapabilityFactName::DriverState(
+            NativeDriverStateKind::ConversationDriverSupported
+        ))
+    );
+    assert_eq!(
+        CapabilityFactName::parse("app-server").map(CapabilityFactName::wire_name),
+        Some("app-server")
+    );
+    assert_eq!(CapabilityFactName::parse("not-a-capability"), None);
+}
+
+#[test]
+fn an_unknown_fact_reports_no_detection_value() {
+    let snapshot = LiveSnapshot::for_testing(Vec::new(), std::collections::BTreeMap::new());
+    let adapter = RuntimeAdapter::Codex;
+    let declared = native_capability_catalog_entry(
+        adapter,
+        &snapshot,
+        &CapabilityFact {
+            name: "image-input",
+            state: CapabilityFactState::Declared,
+            source: "driver-inventory",
+        },
+    )
+    .unwrap();
+    assert_eq!(declared["detected"], json!(true));
+    assert_eq!(declared["state"], json!("declared"));
+
+    let not_declared = native_capability_catalog_entry(
+        adapter,
+        &snapshot,
+        &CapabilityFact {
+            name: "real-interface",
+            state: CapabilityFactState::NotDeclared,
+            source: "agent-desktop-presence",
+        },
+    )
+    .unwrap();
+    assert_eq!(not_declared["detected"], json!(false));
+
+    let unknown = native_capability_catalog_entry(
+        adapter,
+        &snapshot,
+        &CapabilityFact {
+            name: "image-input",
+            state: CapabilityFactState::Unknown,
+            source: "driver-inventory",
+        },
+    )
+    .unwrap();
+    assert!(
+        unknown.get("detected").is_none(),
+        "an unknown fact reports no detection value"
+    );
+    assert_eq!(unknown["state"], json!("unknown"));
+
+    // A conversation-driver state is not a native capability entry.
+    assert!(
+        native_capability_catalog_entry(
+            adapter,
+            &snapshot,
+            &CapabilityFact {
+                name: "conversationDriver:supported",
+                state: CapabilityFactState::Declared,
+                source: "conversation-readiness",
+            },
+        )
+        .is_none()
+    );
+}
 
 #[test]
 fn packaged_dispatch_ids_are_unique_and_complete() {
@@ -62,22 +213,67 @@ fn management_catalog_projects_native_capabilities_and_adapter_plugins() {
             .iter()
             .map(|capability| {
                 assert!(capability["detected"].is_boolean());
+                assert!(capability["state"].is_string());
                 capability["kind"].as_str().unwrap()
             })
             .collect::<Vec<_>>()
     };
-    assert_eq!(capability_kinds("codex"), ["desktop", "cli", "app-server"]);
-    assert_eq!(capability_kinds("claude-code"), ["cli"]);
-    assert_eq!(capability_kinds("antigravity"), ["desktop", "cli"]);
-    assert_eq!(capability_kinds("opencode"), ["cli", "local-server"]);
-    assert_eq!(capability_kinds("kilo-code"), ["cli", "local-server"]);
-    assert_eq!(capability_kinds("openclaw"), ["cli", "acp", "gateway"]);
-    assert_eq!(capability_kinds("hermes"), ["cli", "acp", "tui-gateway"]);
-    assert_eq!(capability_kinds("cursor"), ["desktop", "cli"]);
-    assert_eq!(capability_kinds("pi"), ["cli", "rpc"]);
-    assert_eq!(capability_kinds("deepseek-harness"), ["cli", "rpc"]);
-    assert_eq!(capability_kinds("copilot"), ["cli", "acp"]);
-    assert_eq!(capability_kinds("kimi-code"), ["cli", "acp", "web-server"]);
+    // The catalog publishes the declared channel and ability facts for every
+    // packaged Agent from the one participant projection.
+    assert_eq!(
+        capability_kinds("codex"),
+        expected_kinds(&["desktop", "cli", "app-server"])
+    );
+    assert_eq!(capability_kinds("claude-code"), expected_kinds(&["cli"]));
+    assert_eq!(
+        capability_kinds("antigravity"),
+        expected_kinds(&["desktop", "cli"])
+    );
+    assert_eq!(
+        capability_kinds("opencode"),
+        expected_kinds(&["cli", "local-server"])
+    );
+    assert_eq!(
+        capability_kinds("kilo-code"),
+        expected_kinds(&["cli", "local-server"])
+    );
+    assert_eq!(
+        capability_kinds("openclaw"),
+        expected_kinds(&["cli", "acp", "gateway"])
+    );
+    assert_eq!(
+        capability_kinds("hermes"),
+        expected_kinds(&["cli", "acp", "tui-gateway"])
+    );
+    assert_eq!(
+        capability_kinds("cursor"),
+        expected_kinds(&["desktop", "cli"])
+    );
+    assert_eq!(capability_kinds("pi"), expected_kinds(&["cli", "rpc"]));
+    assert_eq!(
+        capability_kinds("deepseek-harness"),
+        expected_kinds(&["cli", "rpc"])
+    );
+    assert_eq!(capability_kinds("copilot"), expected_kinds(&["cli", "acp"]));
+    assert_eq!(
+        capability_kinds("kimi-code"),
+        expected_kinds(&["cli", "acp", "web-server"])
+    );
+    // The ready multimodal Agent declares image input; an Agent whose owner
+    // was read and does not list it reports not-declared, not unknown.
+    let image_input = |agent: &str| {
+        by_id[agent]["nativeCapabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|capability| capability["kind"] == "image-input")
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(image_input("codex")["state"], json!("declared"));
+    assert_eq!(image_input("codex")["detected"], json!(true));
+    assert_eq!(image_input("claude-code")["state"], json!("not-declared"));
+    assert_eq!(image_input("claude-code")["detected"], json!(false));
 
     // Only agents with real managed plugins list adapter plugin entries.
     let plugin_ids = |agent: &str| {

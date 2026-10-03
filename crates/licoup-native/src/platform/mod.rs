@@ -1,6 +1,16 @@
-mod acp_driver_runtime;
-pub(in crate::platform) mod acp_session_transport;
-pub(crate) mod agent_workspace;
+// The ACP engines and the local-service control plane live in
+// `licoup-agent-drivers`; these paths stay reachable at the visibility this
+// host exposed before they moved.
+pub(crate) use licoup_agent_drivers::{acp_driver_runtime, acp_session_transport};
+// The bounded-workspace selection is a foundation primitive; this path stays
+// reachable at the visibility this host exposed before it moved.
+pub use licoup_foundation::platform::agent_workspace;
+// The turn-event bus, the raw-execution observer and the native interaction
+// registry are foundation primitives; these paths stay reachable at the
+// visibility this host exposed before they moved.
+pub use licoup_foundation::platform::native_agent_interaction;
+pub use licoup_foundation::platform::raw_execution;
+pub use licoup_foundation::platform::turn_event_emit;
 pub(crate) mod antigravity_driver;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 pub mod authorized_secure_record;
@@ -22,10 +32,9 @@ mod kilo_code_driver;
 mod kilo_code_serve;
 mod kimi_code_driver;
 mod lico_agent_driver;
-mod local_service;
+pub(crate) use licoup_agent_drivers::local_service;
 pub(crate) mod mcp_approval_plan_store;
 pub(crate) mod mcp_streamable_http;
-mod native_agent_interaction;
 mod native_agent_parser;
 mod openclaw_driver;
 mod opencode_driver;
@@ -34,13 +43,11 @@ pub mod process_sandbox;
 pub(crate) mod provider_mcp_registration;
 #[cfg(unix)]
 mod pty_transport;
-pub mod raw_execution;
 pub(crate) mod remote_acp_history;
 pub(crate) mod remote_hermes_gateway_history;
 pub(crate) mod secure_mesh_mls_store;
 pub mod stop_control;
 pub(crate) mod strategy_runtime;
-mod turn_event_emit;
 pub(crate) mod user_presence;
 pub mod user_shell_environment;
 pub(crate) mod virtual_machine;

@@ -4,7 +4,9 @@ mod model;
 mod probe;
 
 pub(super) use execution::execute;
-pub(super) use model::{RUNTIME_PROTOCOL, RunResult};
+#[cfg(test)]
+pub(super) use model::RunResult;
+pub(super) use model::RUNTIME_PROTOCOL;
 pub(super) use probe::probe;
 
 #[cfg(test)]

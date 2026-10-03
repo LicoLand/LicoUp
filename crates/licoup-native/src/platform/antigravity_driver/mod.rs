@@ -19,7 +19,9 @@ pub(super) use execution::execute;
 #[cfg(test)]
 pub(super) use hooks::{ensure_hook_bridge, uninstall_hook_bridge};
 pub(crate) use hooks::{hook_bridge_status, install_hook_bridge, uninstall_hook_bridge_report};
-pub(super) use model::{DRIVER_ID, RUNTIME_PROTOCOL, RunResult};
+#[cfg(test)]
+pub(super) use model::RunResult;
+pub(super) use model::{DRIVER_ID, RUNTIME_PROTOCOL};
 pub(super) use probe::probe;
 
 #[cfg(test)]
