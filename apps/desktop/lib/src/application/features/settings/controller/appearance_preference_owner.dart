@@ -111,6 +111,25 @@ final class AppearancePreferenceOwner extends ApplicationStateOwner {
     return true;
   }
 
+  /// Adopts the durable record read at startup.
+  ///
+  /// This is how a restart reaches the surface: the stored requests are the
+  /// user's, unchanged, including a kind this build does not serve, which stays
+  /// recorded for the build that does. No availability answer is adopted with
+  /// them; the package owner reports that separately.
+  bool adoptResourceSelections(
+    Map<String, PresentationResourceSelection> selections, {
+    ApplicationCause? cause,
+  }) {
+    if (_sameSelections(selections, _resourceSelections)) return false;
+    _resourceSelections =
+        Map<String, PresentationResourceSelection>.unmodifiable(
+          Map<String, PresentationResourceSelection>.of(selections),
+        );
+    publishChange(cause);
+    return true;
+  }
+
   /// Adopts what the package owner reports for each kind.
   ///
   /// A kind the map does not name stays unanswered, which is the state a

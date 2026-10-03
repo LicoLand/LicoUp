@@ -186,8 +186,45 @@ void main() {
     expect(owner.requestedResource(PresentationResourceKind.font), isNull);
   });
 
-  test('clearing a request returns the kind to the declared default', () {
+  test('the record read at startup reaches the surface unchanged', () {
     final owner = AppearancePreferenceOwner();
+    addTearDown(owner.dispose);
+    var changes = 0;
+    owner.changes.listen((_) => changes += 1);
+
+    final adopted = owner.adoptResourceSelections({
+      'theme': PresentationResourceSelection(
+        resourceId: 'org.example.orbital-nights',
+        packageId: 'org.example.orbital',
+        packageGeneration: 3,
+      ),
+      // A kind this build does not serve stays recorded for the build that
+      // does, instead of being dropped on the way in.
+      'orbital-behavior': PresentationResourceSelection(
+        resourceId: 'org.example.behavior',
+      ),
+    });
+
+    expect(adopted, isTrue);
+    expect(changes, 1);
+    expect(owner.resourceSelections.keys, [
+      'theme',
+      'orbital-behavior',
+    ]);
+    expect(
+      owner.resourceState(PresentationResourceKind.theme).serving,
+      PresentationResourceServing.unreported,
+      reason: 'the record is adopted without an availability answer',
+    );
+    expect(
+      owner.adoptResourceSelections(owner.resourceSelections),
+      isFalse,
+      reason: 'adopting the same record publishes nothing',
+    );
+    expect(changes, 1);
+  });
+
+  test('clearing a request returns the kind to the declared default', () {    final owner = AppearancePreferenceOwner();
     addTearDown(owner.dispose);
     owner.requestResource(PresentationResourceKind.theme, _requestedTheme());
     owner.replaceResourceReports(const {

@@ -60,7 +60,7 @@ choice was made. A generation is an observation, not the identity: a reinstall
 publishes the same identity at a new generation and the user's request still
 applies.
 
-A surface reports one of four states, resolved from the request and the report
+A surface reports one of five states, resolved from the request and the report
 alone:
 
 | State | Rendered |
