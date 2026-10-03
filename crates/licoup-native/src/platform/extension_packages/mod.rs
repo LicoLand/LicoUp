@@ -115,8 +115,9 @@ pub use surface::{
 };
 
 pub use maintenance::{
-    ADMISSION_CLOSED, ADMISSION_DECISION_UNREADABLE, ADMISSION_WORK_IN_FLIGHT, GUARD_OWNER,
-    IdleVerdict, MaintenanceAdmission, MaintenanceOperation, MaintenancePermit, MaintenanceRequest,
+    ADMISSION_DECISION_UNREADABLE, ADMISSION_WORK_IN_FLIGHT, GUARD_OWNER, IdleVerdict,
+    PACKAGE_ADMISSION_CLOSED, PackageMaintenanceAdmission, MaintenanceOperation,
+    MaintenancePermit, MaintenanceRequest,
 };
 pub use registration::{
     RecordedRegistration, RegistrationOwner, RegistrationOwners, ReleasedRegistration,

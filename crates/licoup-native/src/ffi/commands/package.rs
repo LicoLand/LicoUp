@@ -49,9 +49,9 @@ use sha2::{Digest, Sha256};
 
 use crate::platform::extension_packages::{
     ArtifactLimits, DependentsDecision, Drained, IdleVerdict, InstanceIdentity, InstanceMachine,
-    InstanceRegistry, MaintenanceAdmission, MaintenanceOperation, MaintenanceRequest, PackageStore,
-    RemainingWork, TrustRecord, UninstallTransaction, read_drained_record, read_manifest,
-    running_client_version, write_drained_record,
+    InstanceRegistry, MaintenanceOperation, MaintenanceRequest, PackageMaintenanceAdmission,
+    PackageStore, RemainingWork, TrustRecord, UninstallTransaction, read_drained_record,
+    read_manifest, running_client_version, write_drained_record,
 };
 use crate::platform::package_registration_release::{
     CodexPluginRelease, PackageRegistrationOwners, ProviderMcpRelease, ReleaseInputs,
@@ -390,7 +390,7 @@ pub(super) fn handle_update_preview(command: AdmittedCommand) -> Result<CliExecu
         }
         None => Value::Null,
     };
-    let admission = MaintenanceAdmission::new();
+    let admission = PackageMaintenanceAdmission::new();
     let verdict = maintenance_verdict(&data_home);
     let request = MaintenanceRequest::new(
         MaintenanceOperation::UpdateApply,
@@ -451,7 +451,7 @@ pub(super) fn handle_update_apply(command: AdmittedCommand) -> Result<CliExecuti
                 .to_owned()
         })
         .unwrap_or_else(|| "unknown".to_owned());
-    match MaintenanceAdmission::new().admit(
+    match PackageMaintenanceAdmission::new().admit(
         maintenance_verdict(&data_home),
         &MaintenanceRequest::new(MaintenanceOperation::UpdateApply, &package_id, &version),
     ) {
@@ -480,7 +480,7 @@ pub(super) fn handle_activate(command: AdmittedCommand) -> Result<CliExecution> 
     let data_home = resolve_data_home(command.required_text("data-root"))?;
     let package_id = command.required_text("package-id").to_owned();
     let version = command.required_text("version").to_owned();
-    match MaintenanceAdmission::new().admit(
+    match PackageMaintenanceAdmission::new().admit(
         maintenance_verdict(&data_home),
         &MaintenanceRequest::new(MaintenanceOperation::Activation, &package_id, &version),
     ) {

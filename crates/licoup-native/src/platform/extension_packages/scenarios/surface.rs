@@ -30,8 +30,19 @@ use crate::platform::extension_packages::surface::{
     PackageSurface, RESOURCE_NOT_OWNED, SurfaceResource, uninstall_package,
 };
 use crate::platform::extension_packages::{InstanceRegistry, RemainingWork, Settlement};
+use crate::platform::package_registration_release::PackageRegistrationOwners;
 use licoup_extension_contracts::deployment::{LocalCatalogue, PackageEntry, PackageSource};
 use licoup_extension_contracts::manifest::PackageManifest;
+
+/// These scenarios record no external registration, so every owner is asked for
+/// nothing and the reclaim proceeds. One shared value keeps a `'static`
+/// reference available without each test naming or rebuilding the adapter.
+static OWNERS: std::sync::LazyLock<PackageRegistrationOwners> =
+    std::sync::LazyLock::new(PackageRegistrationOwners::default);
+
+fn owners() -> &'static PackageRegistrationOwners {
+    &OWNERS
+}
 
 const ANALYTICS: &str = "org.licoland.feature.analytics";
 const ANALYTICS_VERSION: &str = "0.1.0";
@@ -246,6 +257,7 @@ fn uninstalling_analytics_releases_its_own_surface_and_leaves_the_base_alone() {
         &catalogue,
         &mut surface,
         RemainingWork::Wait,
+        owners(),
     )
     .expect_err("the package's own work is unsettled");
     assert_eq!(failure.code, "package_uninstall_in_flight");
@@ -283,6 +295,7 @@ fn uninstalling_analytics_releases_its_own_surface_and_leaves_the_base_alone() {
         &catalogue,
         &mut surface,
         RemainingWork::Wait,
+        owners(),
     )
     .expect("the drained package is reclaimed");
 
@@ -376,6 +389,7 @@ fn a_cancelled_uninstall_settles_its_own_work_and_never_the_base_execution() {
         &catalogue,
         &mut surface,
         RemainingWork::Cancel,
+        owners(),
     )
     .expect("cancelling is a recorded outcome, not a failure");
 
@@ -438,6 +452,7 @@ fn a_package_another_installed_package_requires_is_refused_with_its_dependents()
         &catalogue,
         &mut surface,
         RemainingWork::Wait,
+        owners(),
     )
     .expect_err("a dependent package is the user's decision");
     assert_eq!(failure.code, "package_uninstall_has_dependents");

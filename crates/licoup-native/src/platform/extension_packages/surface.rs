@@ -29,6 +29,7 @@
 
 use crate::platform::extension_packages::install::{InstalledPackage, PackageStore};
 use crate::platform::extension_packages::refusal;
+use crate::platform::extension_packages::registration::RegistrationOwners;
 use crate::platform::extension_packages::state::InstanceRegistry;
 use crate::platform::extension_packages::uninstall::{
     DependentsDecision, PreservedFacts, RemainingWork, UninstallOutcome, UninstallTransaction,
@@ -225,12 +226,17 @@ impl SurfaceUninstall {
 /// The surface is released only after the bytes are reclaimed: a refused or
 /// interrupted transaction leaves both the package and its registered surface
 /// exactly as they were, so a retry starts from the same declaration.
+///
+/// [owners] carries the production per-owner release: the registration the
+/// package recorded is withdrawn by the module that owns its surface, and the
+/// bytes are only reclaimed once that withdrawal succeeded.
 pub fn uninstall_package(
     store: &PackageStore,
     registry: &mut InstanceRegistry,
     catalogue: &LocalCatalogue,
     surface: &mut PackageSurface,
     remaining: RemainingWork,
+    owners: &dyn RegistrationOwners,
 ) -> Result<SurfaceUninstall, ApplicationFailure> {
     let Some(installed) = store.installed_version(surface.package_id(), surface.version())? else {
         return Err(refusal("package_not_installed", SURFACE_STAGE)
@@ -241,7 +247,7 @@ pub fn uninstall_package(
     let transaction =
         UninstallTransaction::begin(registry, plan, DependentsDecision::SelectedOnly)?;
     let drained = transaction.drain(registry, remaining)?;
-    let outcome = drained.collect(store, registry)?;
+    let outcome = drained.collect(store, registry, owners)?;
     let released = surface.release_all();
     Ok(SurfaceUninstall { outcome, released })
 }

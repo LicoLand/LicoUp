@@ -8,7 +8,7 @@
 //! publishes, and nothing else.
 //!
 //! - There is exactly one way to obtain a [`MaintenancePermit`]: ask
-//!   [`MaintenanceAdmission::admit`]. Its field is private, so no caller can
+//!   [`PackageMaintenanceAdmission::admit`]. Its field is private, so no caller can
 //!   construct one, and no route can hand itself permission.
 //! - The verdict arrives as data, read for the data root the operation would
 //!   change. A decision nobody read is a refusal — never an assumed idle host.
@@ -25,7 +25,7 @@
 //! every refusal code, so a caller cannot publish its own vocabulary for a
 //! decision it did not make.
 //!
-//! Asking is not holding. [`MaintenanceAdmission::admit`] answers whether the
+//! Asking is not holding. [`PackageMaintenanceAdmission::admit`] answers whether the
 //! operation may proceed; the caller that actually changes installed state takes
 //! the durable close-admission barrier itself through the guard's own entry
 //! (`hold_package_activation_admission`) and releases it on success or abort.
@@ -49,7 +49,12 @@ pub const ADMISSION_WORK_IN_FLIGHT: &str = "package_maintenance_work_in_flight";
 
 /// The refusal code the guard reports when a maintenance switch already holds
 /// the close-admission barrier.
-pub const ADMISSION_CLOSED: &str = "package_maintenance_admission_closed";
+///
+/// Qualified with `PACKAGE_` because this is the package surface's own
+/// vocabulary: the work-admission seam publishes `maintenance_admission_closed`
+/// for the same situation on the migration and generation-replacement paths, and
+/// the two codes must stay distinguishable.
+pub const PACKAGE_ADMISSION_CLOSED: &str = "package_maintenance_admission_closed";
 
 /// The stage every refusal from this seam reports.
 pub const STAGE: &str = "extension/package-maintenance";
@@ -120,13 +125,17 @@ pub enum IdleVerdict {
     Unavailable,
 }
 
-/// The native maintenance-admission seam.
+/// The native maintenance-admission seam for the package surface.
 ///
 /// A zero-sized value: admission is a decision about shared state on disk, not
 /// per-caller state, so there is nothing for a caller to hold. Holding one grants
 /// nothing; the permit is what admits one operation.
+///
+/// Named for the surface it guards because the crate also carries the
+/// generation-replacement admission port, `resources::MaintenanceAdmission`,
+/// which the crate-root composition answers.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct MaintenanceAdmission;
+pub struct PackageMaintenanceAdmission;
 
 /// Permission to perform one mutating maintenance operation.
 ///
@@ -143,7 +152,7 @@ impl MaintenancePermit {
     }
 }
 
-impl MaintenanceAdmission {
+impl PackageMaintenanceAdmission {
     pub const fn new() -> Self {
         Self
     }
@@ -168,7 +177,7 @@ impl MaintenanceAdmission {
                 });
             }
             IdleVerdict::Busy => ADMISSION_WORK_IN_FLIGHT,
-            IdleVerdict::Closed => ADMISSION_CLOSED,
+            IdleVerdict::Closed => PACKAGE_ADMISSION_CLOSED,
             // Not "idle" and not "busy": no decision arrived, and that is the one
             // value that cannot be mistaken for a safe answer.
             IdleVerdict::Unavailable => ADMISSION_DECISION_UNREADABLE,
@@ -199,7 +208,7 @@ mod tests {
     /// proceed, and the permit names the operation it was issued for.
     #[test]
     fn an_idle_verdict_admits_both_mutating_operations() {
-        let admission = MaintenanceAdmission::new();
+        let admission = PackageMaintenanceAdmission::new();
         for operation in [
             MaintenanceOperation::UpdateApply,
             MaintenanceOperation::Activation,
@@ -215,10 +224,10 @@ mod tests {
     /// which answer arrived rather than collapsing them into one.
     #[test]
     fn every_non_idle_verdict_refuses_with_its_own_stable_code() {
-        let admission = MaintenanceAdmission::new();
+        let admission = PackageMaintenanceAdmission::new();
         for (verdict, code) in [
             (IdleVerdict::Busy, ADMISSION_WORK_IN_FLIGHT),
-            (IdleVerdict::Closed, ADMISSION_CLOSED),
+            (IdleVerdict::Closed, PACKAGE_ADMISSION_CLOSED),
             (IdleVerdict::Unavailable, ADMISSION_DECISION_UNREADABLE),
         ] {
             for operation in [
@@ -263,7 +272,7 @@ mod tests {
     #[test]
     fn every_refusal_names_the_operation_the_package_and_the_guard_owner() {
         assert_eq!(GUARD_OWNER, "UPDATE-IDLE-ADMISSION");
-        let failure = MaintenanceAdmission::new()
+        let failure = PackageMaintenanceAdmission::new()
             .admit(
                 IdleVerdict::Closed,
                 &request(MaintenanceOperation::UpdateApply),
