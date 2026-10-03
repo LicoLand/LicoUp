@@ -2268,6 +2268,7 @@ dependencies = [
  "licoup-gateway",
  "licoup-gateway-core",
  "licoup-platform-bridges",
+ "licoup-project",
  "licoup-protocol-bindings",
  "licoup-state-machine-codegen",
  "licoup-workflow",
@@ -2313,6 +2314,17 @@ dependencies = [
 name = "licoup-platform-bridges"
 version = "0.3.0"
 dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "licoup-project"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "licoup-foundation",
+ "rusqlite",
  "serde",
  "serde_json",
 ]

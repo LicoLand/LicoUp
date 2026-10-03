@@ -24,6 +24,7 @@ mod mobile;
 mod model_registry;
 pub mod native_rpc;
 mod opencode_serve;
+mod project;
 mod provider_quota;
 mod resource_usage;
 mod secure_mesh;
@@ -5652,6 +5653,48 @@ fn build_command_table() -> CommandTable {
         cardinality: CommandCardinality::Options,
         handler: full_backup::handle_backup_import,
         help: "Restore one archive into an empty target home and rebase owner-managed references",
+    });
+    table.register_command(CommandSpec {
+        source_module: "project.rs",
+        handler_name: "handle_project_register",
+        path: &["project", "register"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "stdin-json",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Json,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: project::handle_project_register,
+        help: "Register one explicitly declared authorized project identity and its plan identity",
+    });
+    table.register_command(CommandSpec {
+        source_module: "project.rs",
+        handler_name: "handle_project_read",
+        path: &["project", "read"],
+        required_positionals: &[RequiredArgumentSpec {
+            name: "project-id",
+            kind: RequiredArgumentKind::Text,
+        }],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: project::handle_project_read,
+        help: "Read one registered authorized project identity",
+    });
+    table.register_command(CommandSpec {
+        source_module: "project.rs",
+        handler_name: "handle_project_list",
+        path: &["project", "list"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: project::handle_project_list,
+        help: "List the registered authorized project identities",
     });
     table
 }

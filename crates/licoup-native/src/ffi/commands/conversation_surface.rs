@@ -136,6 +136,7 @@ fn family_wire(family: CommandFamily) -> &'static str {
         CommandFamily::Assistant => "assistant",
         CommandFamily::Subagent => "subagent",
         CommandFamily::Conversation => "conversation",
+        CommandFamily::Project => "project",
     }
 }
 

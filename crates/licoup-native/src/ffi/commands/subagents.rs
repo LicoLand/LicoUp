@@ -324,7 +324,9 @@ mod tests {
                 ApplicationCommand::Assistant(command) => {
                     application_port::assistant_invocation(command)
                 }
-                ApplicationCommand::Conversation(_) => panic!("{name} is not a tool"),
+                ApplicationCommand::Conversation(_) | ApplicationCommand::Project(_) => {
+                    panic!("{name} is not a tool")
+                }
             };
             assert_eq!(translated, *name, "{name} decodes into another tool");
         }

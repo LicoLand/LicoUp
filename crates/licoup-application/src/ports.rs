@@ -11,7 +11,7 @@
 //! once before any family port runs.
 
 use crate::actor::ActorClaim;
-use crate::command::{AssistantCommand, ConversationCommand, SubagentCommand};
+use crate::command::{AssistantCommand, ConversationCommand, ProjectCommand, SubagentCommand};
 use crate::failure::ApplicationFailure;
 use crate::result::CommandOutcome;
 
@@ -58,6 +58,15 @@ pub trait ConversationPort: Send + Sync {
     ) -> Result<CommandOutcome, ApplicationFailure>;
 }
 
+/// Authorized project and plan identity registration and reads.
+pub trait ProjectPort: Send + Sync {
+    fn execute(
+        &self,
+        claim: &ActorClaim,
+        command: &ProjectCommand,
+    ) -> Result<CommandOutcome, ApplicationFailure>;
+}
+
 /// The complete backend behind the facade.
 ///
 /// There is deliberately no notification port. Completion follow-up is not a
@@ -71,6 +80,7 @@ pub struct ApplicationPorts {
     pub assistant: std::sync::Arc<dyn AssistantPort>,
     pub subagent: std::sync::Arc<dyn SubagentPort>,
     pub conversation: std::sync::Arc<dyn ConversationPort>,
+    pub project: std::sync::Arc<dyn ProjectPort>,
 }
 
 impl ApplicationPorts {
@@ -79,12 +89,14 @@ impl ApplicationPorts {
         assistant: std::sync::Arc<dyn AssistantPort>,
         subagent: std::sync::Arc<dyn SubagentPort>,
         conversation: std::sync::Arc<dyn ConversationPort>,
+        project: std::sync::Arc<dyn ProjectPort>,
     ) -> Self {
         Self {
             actors,
             assistant,
             subagent,
             conversation,
+            project,
         }
     }
 }
