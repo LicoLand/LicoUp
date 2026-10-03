@@ -39,5 +39,6 @@ pub mod session_policy;
 pub mod skill_hub;
 pub mod subagents;
 pub mod targets;
+pub mod work_admission;
 pub mod workflow_runtime;
 pub mod workflow_store;

@@ -465,6 +465,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.domain.client-update.revocation",
   "rust.domain.client-update.workflow",
   "rust.domain.client-update.native-runner",
+  "rust.domain.work-admission",
   "rust.domain.secure-mesh-mls",
   "rust.domain.secure-mesh-mls.actions",
   "rust.domain.secure-mesh-mls.participant-key-package",

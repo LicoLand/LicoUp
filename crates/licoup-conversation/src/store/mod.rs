@@ -21,6 +21,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+mod admission;
 mod continuity_seam;
 mod conversations;
 mod dispatches;
@@ -36,6 +37,10 @@ mod schema;
 use schema::CONVERSATION_SCHEMA_TABLES;
 use schema::{configure_connection, initialize_schema, preflight_schema, validate_current_schema};
 
+pub use admission::{
+    LocalWorkBlocker, LocalWorkKind, MAX_UNFINISHED_LOCAL_WORK, UnfinishedLocalWork,
+    local_work_database_path, read_unfinished_local_work,
+};
 pub use continuity_seam::ContinuityUnitOfWork;
 pub use conversations::ConversationRepository;
 pub use dispatches::{DispatchRepository, MAX_SUBAGENT_INVOCATION_DEPTH};
@@ -404,6 +409,26 @@ trait CountedSqlite {
         P: rusqlite::Params,
         F: FnOnce(&Row<'_>) -> rusqlite::Result<T>;
     fn execute<P: rusqlite::Params>(&self, sql: &str, params: P) -> rusqlite::Result<usize>;
+}
+
+impl CountedSqlite for Connection {
+    // A read-only connection has no counter: readers that must not open,
+    // initialise or recover the canonical store still share the same SQL.
+    fn prepare(&self, sql: &str) -> rusqlite::Result<Statement<'_>> {
+        self.prepare(sql)
+    }
+
+    fn query_row<T, P, F>(&self, sql: &str, params: P, f: F) -> rusqlite::Result<T>
+    where
+        P: rusqlite::Params,
+        F: FnOnce(&Row<'_>) -> rusqlite::Result<T>,
+    {
+        self.query_row(sql, params, f)
+    }
+
+    fn execute<P: rusqlite::Params>(&self, sql: &str, params: P) -> rusqlite::Result<usize> {
+        self.execute(sql, params)
+    }
 }
 
 impl CountedSqlite for CountedConnection<'_> {
@@ -4954,23 +4979,32 @@ fn clear_native_sessions_archived(
 /// Refuse a destructive group write while any work is still in flight:
 /// unfinalized Events, active Direct Turns, running dispatches, or claimed
 /// subagent dispatches would lose their settlement records.
+///
+/// The states are [`admission`]'s shared vocabulary, so this per-group refusal
+/// and the host-wide unfinished-work read cannot disagree about what "in
+/// flight" means.
 fn refuse_in_flight_group_work(
     connection: &impl CountedSqlite,
     conversation_id: &str,
 ) -> StoreResult<()> {
     let blocked: bool = connection.query_row(
-        "SELECT EXISTS(
-           SELECT 1 FROM events
-           WHERE conversation_id=?1 AND finalized=0
-         ) OR EXISTS(
-           SELECT 1 FROM direct_turns
-           WHERE conversation_id=?1
-             AND state IN ('pending','claimed','running','waiting-for-human')
-         ) OR EXISTS(
-           SELECT 1 FROM conversation_dispatches
-           WHERE conversation_id=?1
-             AND state IN ('accepted','running','cancel-requested')
-         )",
+        &format!(
+            "SELECT EXISTS(
+               SELECT 1 FROM events
+               WHERE conversation_id=?1 AND {event_predicate}
+             ) OR EXISTS(
+               SELECT 1 FROM direct_turns
+               WHERE conversation_id=?1
+                 AND state IN ({turn_states})
+             ) OR EXISTS(
+               SELECT 1 FROM conversation_dispatches
+               WHERE conversation_id=?1
+                 AND state IN ({dispatch_states})
+             )",
+            event_predicate = admission::UNFINISHED_EVENT_SQL,
+            turn_states = admission::UNFINISHED_DIRECT_TURN_STATES,
+            dispatch_states = admission::UNFINISHED_DISPATCH_STATES,
+        ),
         params![conversation_id],
         |row| row.get(0),
     )?;
@@ -4979,13 +5013,14 @@ fn refuse_in_flight_group_work(
     }
     if table_exists(connection, "subagent_dispatch_claims")? {
         let subagent_active: bool = connection.query_row(
-            "SELECT EXISTS(
-               SELECT 1 FROM subagent_dispatch_claims
-               WHERE conversation_id=?1
-                 AND state IN (
-                   'claimed','running','cancel-requested','reconciliation-required'
-                 )
-             )",
+            &format!(
+                "SELECT EXISTS(
+                   SELECT 1 FROM subagent_dispatch_claims
+                   WHERE conversation_id=?1
+                     AND state IN ({claim_states})
+                 )",
+                claim_states = admission::UNFINISHED_CLAIM_STATES,
+            ),
             params![conversation_id],
             |row| row.get(0),
         )?;
