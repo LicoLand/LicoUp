@@ -200,14 +200,13 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     ["crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/process/windows.rs", "Windows child process identity"],
     ["crates/licoup-native/src/domain/agent_resource_usage/process_snapshot.rs", "platform process metrics"],
     ["crates/licoup-native/src/domain/client_update/native_runner/plan.rs", "parent process identity and Windows process enumeration"],
-    ["crates/licoup-native/src/domain/targets/model_catalog/tests.rs", "isolated process environment fixtures"],
     ["crates/licoup-native/src/bin/lico-gateway.rs", "inherited readiness file descriptor"],
     ["crates/licoup-native/src/bin/lico-llm-gateway.rs", "inherited readiness file descriptor"],
     ["crates/licoup-native/src/platform/authorized_secure_record/macos_keychain.rs", "macOS Keychain FFI"],
     ["crates/licoup-native/src/platform/user_presence.rs", "platform presence authorization"],
     ["crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs", "macOS presence authorization"],
     ["crates/licoup-native/src/platform/antigravity_driver/tests.rs", "isolated process environment fixture"],
-    ["crates/licoup-native/src/platform/client_autostart.rs", "launchd user identity"],
+    ["crates/licoup-agent-targets/src/platform/client_autostart.rs", "launchd user identity"],
     ["crates/licoup-native/src/platform/cursor_driver/tests.rs", "isolated process environment fixtures"],
     ["crates/licoup-gateway-core/src/channels/telegram/credentials.rs", "isolated credential environment fixture"],
     ["crates/licoup-native/src/platform/lico_agent_driver/tests.rs", "isolated process environment fixtures"],
@@ -217,7 +216,8 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     ["crates/licoup-gateway-core/src/control/inventory.rs", "Unix peer credential verification"],
     ["crates/licoup-native/src/platform/llm_gateway_service.rs", "bounded sidecar pipe and process lifecycle"],
     ["crates/licoup-native/src/platform/pty_transport.rs", "PTY descriptor and ioctl ownership"],
-    ["crates/licoup-native/src/platform/process_supervisor.rs", "Unix supervised-child wait identity and process-tree lifecycle"],
+    ["crates/licoup-foundation/src/platform/process_supervisor.rs", "Unix supervised-child wait identity and process-tree lifecycle"],
+    ["crates/licoup-native/src/platform/extension_host/isolation/limits.rs", "Unix pre-exec resource-limit application for one isolated extension instance"],
     ["crates/licoup-native/src/bin/licoup/conversation_host.rs", "process termination signal registration for graceful host shutdown"],
   ]);
   const reviewedRustUnsafeFiles = new Set(reviewedRustUnsafeResponsibilities.keys());
@@ -225,6 +225,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     "every reviewed unsafe owner must retain one explicit responsibility");
   const rustCliUnsafeFiles = (await Promise.all([
     collectRustUnsafeFiles(rustCliRoot),
+    collectRustUnsafeFiles("crates/licoup-agent-targets/src"),
     collectRustUnsafeFiles("crates/licoup-foundation/src"),
     collectRustUnsafeFiles("crates/licoup-gateway-core/src"),
     collectRustUnsafeFiles("crates/licoup-gateway/src"),

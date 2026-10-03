@@ -52,7 +52,8 @@ const SOURCES = Object.freeze({
   [N + "platform/cursor_driver/execution.rs"]: "e50f484719e8828fb7842711337d8886d6b220986fced0d2757fedbe6038576f",
   [N + "platform/cursor_driver/probe.rs"]: "e5fb151d35ada8ac16770cfa444a46edc9b07dfbfd02b36f165c0947b3f69c77",
   [N + "platform/deepseek_harness_driver.rs"]: "4069c51e24d5e58698f37034eb3685ce6a235be2f8eb72b999c681942dc6094d",
-  [N + "platform/generic_cli_driver.rs"]: "0383fbc57ae5f1f4f26d20ede03786edb278ec37eeaa0a83080854b5300ac3a5",
+  [N + "platform/extension_host/isolation/confinement.rs"]: "2cc72396a086eea81f47ce7fabe818dd4b5f2c054d3280e06c45cd8ac8046956",
+  [N + "platform/generic_cli_driver.rs"]: "5c4b290f0efd613dc45cc449f412032f959dd398449ca7962a2fe3801fa18a44",
   [N + "platform/hermes_driver/probe.rs"]: "973dddadc2653371f6c19a21a3987a19fa62aae3edb2694994bd7abf4e242d23",
   [N + "platform/lico_agent_driver/execution.rs"]: "061e3f118a7eb9944e328ea3cf2e61ab2845541f3dc88d5b850dc12c7063de55",
   [N + "platform/lico_agent_driver/probe.rs"]: "b968dbfd55ec7e1ca7c83aa5d5fedfc244c6b554d8fe96a441923fa22e0d3179",
@@ -214,6 +215,12 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
   ]),
   ...entries(N + "platform/deepseek_harness_driver.rs", field("Command::new(&config.executable)"), [
     ["0988ff707b77", "Start the configured DeepSeek Harness SDK-profile JSON-RPC carrier under its workspace and supervised stdio; this is an Agent runtime binding, not a fixed native artifact."],
+  ]),
+  ...entries(N + "platform/extension_host/isolation/confinement.rs", field("Command::new(&program.executable)"), [
+    ["f01e7857fd11", "Start one extension instance's validated program in trusted local mode through the executable and arguments the confinement plan admitted before any process exists; the plan canonicalizes that path, so the executable stays intentional runtime state rather than a fixed native artifact, and this record grants no confinement."],
+  ]),
+  ...entries(N + "platform/extension_host/isolation/confinement.rs", field('Command::new("/usr/bin/sandbox-exec")'), [
+    ["efc45e369a5f", "Construct the macOS seatbelt boundary for a restricted instance around the same admitted program: the source trust check accepts only a root-owned, non-symlink /usr/bin/sandbox-exec, and the admitted executable follows the generated profile as its guest target; the profile, not this record, decides the filesystem, network and process-fork scope."],
   ]),
   ...entries(N + "platform/generic_cli_driver.rs", parameter("executable: &str"), [
     ["9ebc382eb9d5", "Execute a registered argv-only Agent through the caller-selected executable, argument substitution and chosen PTY/stdio mode; arbitrary legitimate Agent paths are not constrained to manufacture a baseline."],

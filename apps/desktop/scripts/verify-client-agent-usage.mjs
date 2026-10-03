@@ -102,7 +102,7 @@ const commandMod = await readText("crates/licoup-native/src/ffi/commands/mod.rs"
 const commandUsage = await readText("crates/licoup-native/src/ffi/commands/agent_usage.rs");
 const stateStore = await readJoinedText([
   "crates/licoup-native/src/platform/client_state.rs",
-  "crates/licoup-native/src/platform/client_state/policy.rs",
+  "crates/licoup-client-state/src/policy.rs",
 ]);
 const dartService = await readText(
   "apps/desktop/lib/src/backend/features/agents/services/agent_usage_service.dart"

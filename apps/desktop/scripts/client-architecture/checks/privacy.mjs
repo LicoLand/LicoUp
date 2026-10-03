@@ -179,20 +179,22 @@ export async function checkFileSecurityAndClientState(context) {
     );
   }
 
-  const clientStateRoot = "crates/licoup-native/src/platform/client_state";
+  const clientStateRoot = "crates/licoup-client-state/src";
   const clientStateLeaves = [
     "accessors.rs",
     "activity.rs",
     "collections.rs",
     "migration.rs",
-    "operations.rs",
     "paths.rs",
     "policy.rs",
     "redaction.rs",
+    "resource_policy.rs",
     "serialization.rs",
     "snapshots.rs"
   ];
-  const clientStateFacadeSource = await readText(`${clientStateRoot}.rs`);
+  // The store's own crate root is the facade: the modules are its leaves and
+  // `lib.rs` re-exports them at the paths every caller already names.
+  const clientStateFacadeSource = await readText(`${clientStateRoot}/lib.rs`);
   const clientStateFiles = await collectSourceFiles(clientStateRoot, ".rs");
   const clientStateProductionFiles = clientStateFiles.filter(
     (relativePath) => !relativePath.includes("/tests/")
@@ -200,7 +202,7 @@ export async function checkFileSecurityAndClientState(context) {
   assert(
     sameSet(
       clientStateProductionFiles,
-      clientStateLeaves.map((leaf) => `${clientStateRoot}/${leaf}`)
+      [...clientStateLeaves, "lib.rs"].map((leaf) => `${clientStateRoot}/${leaf}`)
     ) &&
       clientStateLeaves.every((leaf) =>
         clientStateFacadeSource.includes(`mod ${leaf.replace(".rs", "")};`)) &&
