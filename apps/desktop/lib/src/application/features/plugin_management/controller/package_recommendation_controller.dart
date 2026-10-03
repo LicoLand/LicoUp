@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:licoup/src/application/features/plugin_management/models/adapter_plugin_catalog.dart';
-import 'package:licoup/src/application/features/plugin_management/models/package_center_catalog.dart';
+import 'package:licoup/src/contracts/package_center_catalog.dart';
 import 'package:licoup/src/application/features/plugin_management/models/package_first_launch_record.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
 

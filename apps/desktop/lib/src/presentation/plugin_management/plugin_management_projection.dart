@@ -1,4 +1,4 @@
-import 'package:licoup/src/application/features/plugin_management/models/package_center_catalog.dart';
+import 'package:licoup/src/contracts/package_center_catalog.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/contracts/optional_collaboration_local_server_models.dart';
 import 'package:licoup/src/contracts/optional_collaboration_models.dart';

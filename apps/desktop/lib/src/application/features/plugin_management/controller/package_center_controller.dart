@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:licoup/src/application/features/plugin_management/models/package_center_catalog.dart';
+import 'package:licoup/src/contracts/package_center_catalog.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 
