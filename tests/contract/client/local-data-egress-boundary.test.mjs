@@ -35,7 +35,7 @@ const reviewedRustEgressFiles = Object.freeze([
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/probe.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/shutdown.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/source.rs",
-  "crates/licoup-native/src/domain/model_registry/source.rs",
+  "crates/licoup-model-catalog/src/identity/source.rs",
   "crates/licoup-native/src/domain/provider_model_pricing.rs",
   "crates/licoup-native/src/domain/provider_quota/http.rs",
   "crates/licoup-native/src/platform/badtower_station/http_io.rs",
@@ -87,7 +87,7 @@ test("GitHub package fetchers are bounded inbound GET-only sources", async () =>
   const updatePath =
     "crates/licoup-native/src/domain/client_update/github_source.rs";
   const registryPath =
-    "crates/licoup-native/src/domain/model_registry/source.rs";
+    "crates/licoup-model-catalog/src/identity/source.rs";
   const [collaboration, update, registry] = await Promise.all(
     [collaborationPath, updatePath, registryPath].map((relativePath) =>
       fs.readFile(path.join(repoRoot, relativePath), "utf8"),

@@ -448,6 +448,22 @@
     {
       "path": "tests/fixtures/client_package_release/fixture-native-converter/package-release.json",
       "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-mcp/package/manifest.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-mcp/package/package-release.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-mcp/package/contributions/service-status.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-model-catalog/src/pricing/pricing_catalog.json",
+      "kind": "config-object"
     }
   ],
   "reviewedSchemaFixtures": [
