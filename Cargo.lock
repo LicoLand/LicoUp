@@ -2206,6 +2206,7 @@ dependencies = [
  "anyhow",
  "fs2",
  "libc",
+ "licoup-extension-contracts",
  "licoup-foundation",
  "serde",
  "serde_json",

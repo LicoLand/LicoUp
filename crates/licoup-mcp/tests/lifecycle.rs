@@ -1,5 +1,9 @@
 //! Process contract proof using a synthetic CLI, with no linked kernel or GUI.
-#![cfg(unix)]
+//!
+//! The subject is the optional `lico-subagent-mcp` binary, so this target needs
+//! the `service` feature. Building the crate without it yields the neutral MCP
+//! engine alone, and this proof does not apply there.
+#![cfg(all(unix, feature = "service"))]
 use serde_json::{Value, json};
 use std::{
     fs,

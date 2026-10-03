@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
+const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const read = (path) => readFileSync(path, "utf8");
 const application = read("crates/licoup-native/src/domain/subagents/mod.rs");
 const production = read("crates/licoup-native/src/domain/subagents/production.rs");
 const engine = read("crates/licoup-mcp/src/server.rs");
+const library = read("crates/licoup-mcp/src/lib.rs");
 const core = read("crates/licoup-native/src/core/mcp.rs");
 const connector = read("crates/licoup-mcp/src/connector.rs");
 const transport = read("crates/licoup-mcp/src/transport.rs");
@@ -160,6 +165,114 @@ test("mesh caller membership comes from the native registry through the CLI cata
   assert.match(transport, /\.caller_providers\(\)/u);
   assert.match(connector, /published_callers/u);
   assert.match(production, /adapters: AdapterRegistry/u);
+});
+
+// The workspace dependency graph, read from Cargo rather than from a hand-kept
+// list. Only normal and build edges are traversed: a dev-dependency is a test's
+// own input and enters no binary.
+function workspaceEdges() {
+  const result = spawnSync("cargo",
+    ["metadata", "--offline", "--no-deps", "--format-version", "1"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 60_000,
+      maxBuffer: 64 * 1024 * 1024,
+    });
+  assert.equal(result.status, 0, `cargo metadata must succeed: ${result.stderr}`);
+  const metadata = JSON.parse(result.stdout);
+  const members = new Set(metadata.workspace_members);
+  const workspace = metadata.packages.filter((entry) => members.has(entry.id));
+  const byName = new Map(workspace.map((entry) => [entry.name, entry]));
+  return {
+    workspace,
+    byName,
+    edges: new Map(workspace.map((entry) => [entry.name, entry.dependencies
+      .filter((dependency) => dependency.kind !== "dev" && dependency.kind !== "build")
+      .map((dependency) => dependency.name)
+      .filter((name) => byName.has(name))])),
+  };
+}
+
+function reachableFrom(edges, origin) {
+  const seen = new Set();
+  const queue = [origin];
+  while (queue.length > 0) {
+    const name = queue.shift();
+    for (const next of edges.get(name) || []) {
+      if (seen.has(next)) continue;
+      seen.add(next);
+      queue.push(next);
+    }
+  }
+  return seen;
+}
+
+test("no kernel crate reaches the optional MCP payload, and the neutral engine stands alone", () => {
+  const { workspace, edges } = workspaceEdges();
+  const payload = "licoup-mcp";
+  assert.ok(edges.has(payload), `${payload} is a workspace member`);
+
+  // Dependency traversal, not a text search: no workspace member reaches the
+  // optional payload along any chain of normal or build dependencies. The kernel
+  // is a complete product without the package, and it does not link one.
+  for (const member of workspace) {
+    if (member.name === payload) continue;
+    const closure = reachableFrom(edges, member.name);
+    assert.equal(closure.has(payload), false,
+      `${member.name} must not depend on the optional MCP payload`);
+  }
+
+  // The optional payload's own in-repo edges go one way, to the neutral
+  // Foundation every crate may share, and nowhere else.
+  assert.deepEqual([...edges.get(payload)].sort(), ["licoup-foundation"]);
+  // A test-only reading of the host's contract does not become a link either:
+  // the edge is a dev-dependency, and the traversal above never sees it.
+  assert.equal(reachableFrom(edges, "licoup-native").has(payload), false);
+
+  // The crate's own boundary is declared, not implied: the neutral engine is
+  // built by default with the payload and on its own without it, and the
+  // optional binary is not built at all without the feature.
+  assert.match(mcpCargo, /\[features\]\n(?:.*\n)*?default = \["service"\]\nservice = \[\]/u);
+  assert.match(mcpCargo, /required-features = \["service"\]/u);
+  const neutral = ["pub mod wire;", "mod server;"];
+  for (const declaration of neutral) {
+    assert.ok(library.includes(declaration), declaration);
+    assert.doesNotMatch(library,
+      new RegExp(`#\\[cfg\\(feature = "service"\\)\\]\\s*${declaration}`, "u"),
+      `${declaration} is the neutral layer and is not gated`);
+  }
+  for (const service of ["pub mod application;", "pub mod lifecycle;",
+    "pub mod private_state;", "pub mod transport;"]) {
+    assert.match(library,
+      new RegExp(`#\\[cfg\\(feature = "service"\\)\\]\\s*${service}`, "u"),
+      `${service} is the optional service payload and is gated`);
+  }
+
+  // The neutral MCP consumers live in the kernel and keep their own identity:
+  // the service-neutral message adapter with its outbound transfer approval
+  // gate, the bounded outbound HTTP transport, the approval plan store, and the
+  // shared guide resource. None of them names the payload crate.
+  const neutralOwners = [
+    "crates/licoup-native/src/core/mcp.rs",
+    "crates/licoup-native/src/core/mcp/wire.rs",
+    "crates/licoup-native/src/core/mcp/transfer.rs",
+    "crates/licoup-native/src/platform/mcp_streamable_http.rs",
+    "crates/licoup-native/src/platform/mcp_approval_plan_store.rs",
+    "crates/licoup-native/resources/licoup-guide/SKILL.md",
+  ];
+  for (const relative of neutralOwners) {
+    const source = read(relative);
+    assert.ok(source.length > 0, relative);
+    assert.equal(source.includes("licoup_mcp"), false,
+      `${relative} is a neutral owner and must not name the optional payload`);
+    assert.equal(source.includes("licoup-mcp"), false,
+      `${relative} is a neutral owner and must not name the optional payload`);
+  }
+  assert.match(read("crates/licoup-native/src/core/mcp.rs"), /Service-neutral/u);
+  assert.match(read("crates/licoup-native/src/core/mcp.rs"), /McpExternalTransferGate/u);
+  assert.match(read("crates/licoup-native/src/core/mcp.rs"), /DEFAULT_TRANSFER_APPROVAL_TTL/u);
 });
 
 test("caller and target ports meet only in one registry", () => {

@@ -488,14 +488,20 @@ function validateDelegatedApplePublicationTopology() {
       publication.independentToolSignatureNotaryAndPublicDigestRequired !== true) fail("LicoUp independent-tool publication contract is incomplete");
   // The independently released package assets are declared beside the client
   // draft, not inside it: the publication authority owns a closed draft asset
-  // contract and the packages are released in their own right.
+  // contract and the packages are released in their own right. One payload role
+  // carries one declared package's asset, and one index role carries the signed
+  // document every one of them is published in.
   const packageAssets = publication.independentPackageAssets;
   if (!packageAssets || typeof packageAssets !== "object" ||
       JSON.stringify(Object.keys(packageAssets).sort()) !== JSON.stringify([
-        "clientDraftCarries", "indexRole", "payloadRole", "producer",
+        "clientDraftCarries", "indexRole", "payloadRoles", "producer",
         "signedIndexRequired",
       ]) ||
-      packageAssets.payloadRole !== "package-payload" ||
+      !Array.isArray(packageAssets.payloadRoles) ||
+      packageAssets.payloadRoles.length === 0 ||
+      new Set(packageAssets.payloadRoles).size !== packageAssets.payloadRoles.length ||
+      packageAssets.payloadRoles.some((role) =>
+        !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*-payload$/u.test(role)) ||
       packageAssets.indexRole !== "package-index" ||
       packageAssets.producer !== "tools/scripts/client-release-package-index.mjs" ||
       packageAssets.clientDraftCarries !== false ||
@@ -504,13 +510,19 @@ function validateDelegatedApplePublicationTopology() {
   }
   const packageTarget = readJson("tools/client-release-targets.json").targets
     .find((target) => target.id === "macos-direct-arm64");
-  for (const role of [packageAssets.payloadRole, packageAssets.indexRole]) {
+  for (const role of [...packageAssets.payloadRoles, packageAssets.indexRole]) {
     const declared = (packageTarget?.artifacts || []).filter((artifact) =>
       artifact.role === role);
     if (declared.length !== 1 || !declared[0].source ||
         !declared[0].source.startsWith("build/apps/desktop/native-release/")) {
       fail(`LicoUp independent package asset is not declared for its release target: ${role}`);
     }
+  }
+  const setPackages = readJson("tools/client-release-package-set.json").packages;
+  if (!Array.isArray(setPackages) ||
+      JSON.stringify([...setPackages.map((entry) => entry.payloadRole)].sort()) !==
+        JSON.stringify([...packageAssets.payloadRoles].sort())) {
+    fail("LicoUp declared package set and publication payload roles disagree");
   }
   for (const [file, sourceBranch, candidateBranch, releaseTrack] of [
     ["tools/apple-release/macos-direct-arm64.json", "release",
