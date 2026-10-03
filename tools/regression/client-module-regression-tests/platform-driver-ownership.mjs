@@ -224,7 +224,10 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "rust.platform.extension-packages",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/tests/v71_package_lifecycle/main.rs",
+    "crates/licoup-native/tests/package_lifecycle/main.rs",
+  ])), ["rust.platform.extension-packages"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "tests/integration/package_lifecycle/verify_component_lifecycle.py",
   ])), ["rust.platform.extension-packages"]);
   assert.deepEqual(
     CLIENT_MODULE_CATALOG.find((candidate) =>
@@ -234,7 +237,7 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
       "--manifest-path",
       "crates/licoup-native/Cargo.toml",
       "--test",
-      "v71_package_lifecycle",
+      "package_lifecycle",
     ],
   );
   assert.deepEqual(ids(selectModulesForChangedPaths([
