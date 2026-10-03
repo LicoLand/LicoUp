@@ -8,3 +8,10 @@ pub mod core;
 pub mod domain;
 pub mod ffi;
 pub mod platform;
+
+/// Every declarative state machine this host compiles from
+/// `resources/state-machines`. The JSON configuration is the transition
+/// authority; an owner that reads a machine names it through this module.
+pub(crate) mod state_machines {
+    include!(concat!(env!("OUT_DIR"), "/state_machines.rs"));
+}

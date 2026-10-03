@@ -15,6 +15,7 @@ mod client_conversation;
 mod client_update;
 mod collaboration;
 mod conversation_surface;
+mod extension_host;
 mod full_backup;
 mod gateway;
 mod llm_gateway;
@@ -1730,6 +1731,66 @@ fn build_command_table() -> CommandTable {
         cardinality: CommandCardinality::Options,
         handler: agent_hub::handle_apply,
         help: "Apply one confirmed Agent Hub plan",
+    });
+    table.register_command(CommandSpec {
+        source_module: "extension_host.rs",
+        handler_name: "handle_serve",
+        path: &["extension-host", "serve"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "data-root",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "package-id",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "version",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[
+            OptionSpec {
+                name: "await-ms",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "cancel-after-ms",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "capability",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "mode",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "request",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Json,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: extension_host::handle_serve,
+        help: "Run one agent-execution call through the extension host composed over a managed root",
     });
     table.register_command(CommandSpec {
         source_module: "agent_usage.rs",

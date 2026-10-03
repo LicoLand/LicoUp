@@ -14,6 +14,7 @@
 //! settled exactly where it was admitted.
 
 use crate::platform::extension_packages::{actionable, now_unix_ms, refusal};
+use crate::state_machines::{extension_instance, extension_package};
 use licoup_application::ApplicationFailure;
 use licoup_extension_contracts::deployment::{InstanceLifecycle, PackageFacts, PackageLifecycle};
 use licoup_extension_contracts::manifest::PermissionRequest;
@@ -28,48 +29,94 @@ const INSTANCE_STAGE: &str = "extension/instance-state";
 /// A self-transition is legal: the journal may replay a step the host already
 /// performed after a crash, and re-observing a state is not a state change.
 pub fn package_transition_allowed(from: PackageLifecycle, to: PackageLifecycle) -> bool {
-    use PackageLifecycle::{Available, Downloaded, Installed, LocalApproved, Staged, Verified};
-    if from == to {
-        return true;
-    }
-    matches!(
-        (from, to),
-        (Available, Downloaded)
-            | (Downloaded, Verified)
-            | (Downloaded, LocalApproved)
-            | (Verified, Staged)
-            | (LocalApproved, Staged)
-            | (Staged, Installed)
-    )
+    package_next(from, to).is_some()
 }
 
 /// Whether one instance-lifecycle step is legal.
 pub fn instance_transition_allowed(from: InstanceLifecycle, to: InstanceLifecycle) -> bool {
-    use InstanceLifecycle::{
-        Active, Discovered, Draining, Failed, Preparing, Quarantined, Stopped,
-    };
-    if from == to {
-        return true;
+    instance_next(from, to).is_some()
+}
+
+fn package_next(from: PackageLifecycle, requested: PackageLifecycle) -> Option<PackageLifecycle> {
+    extension_package::transition(package_state(from), package_event(requested))
+        .map(package_lifecycle)
+}
+
+const fn package_state(state: PackageLifecycle) -> extension_package::State {
+    match state {
+        PackageLifecycle::Available => extension_package::State::Available,
+        PackageLifecycle::Downloaded => extension_package::State::Downloaded,
+        PackageLifecycle::Verified => extension_package::State::Verified,
+        PackageLifecycle::LocalApproved => extension_package::State::LocalApproved,
+        PackageLifecycle::Staged => extension_package::State::Staged,
+        PackageLifecycle::Installed => extension_package::State::Installed,
     }
-    matches!(
-        (from, to),
-        (Discovered, Preparing)
-            | (Discovered, Stopped)
-            | (Discovered, Failed)
-            | (Discovered, Quarantined)
-            | (Preparing, Active)
-            | (Preparing, Stopped)
-            | (Preparing, Failed)
-            | (Preparing, Quarantined)
-            | (Active, Draining)
-            | (Active, Failed)
-            | (Active, Quarantined)
-            | (Draining, Stopped)
-            | (Draining, Failed)
-            | (Failed, Stopped)
-            | (Failed, Quarantined)
-            | (Quarantined, Stopped)
-    )
+}
+
+const fn package_event(state: PackageLifecycle) -> extension_package::Event {
+    match state {
+        PackageLifecycle::Available => extension_package::Event::ObserveAvailable,
+        PackageLifecycle::Downloaded => extension_package::Event::ObserveDownloaded,
+        PackageLifecycle::Verified => extension_package::Event::ObserveVerified,
+        PackageLifecycle::LocalApproved => extension_package::Event::ObserveLocalApproved,
+        PackageLifecycle::Staged => extension_package::Event::ObserveStaged,
+        PackageLifecycle::Installed => extension_package::Event::ObserveInstalled,
+    }
+}
+
+const fn package_lifecycle(state: extension_package::State) -> PackageLifecycle {
+    match state {
+        extension_package::State::Available => PackageLifecycle::Available,
+        extension_package::State::Downloaded => PackageLifecycle::Downloaded,
+        extension_package::State::Verified => PackageLifecycle::Verified,
+        extension_package::State::LocalApproved => PackageLifecycle::LocalApproved,
+        extension_package::State::Staged => PackageLifecycle::Staged,
+        extension_package::State::Installed => PackageLifecycle::Installed,
+    }
+}
+
+fn instance_next(
+    from: InstanceLifecycle,
+    requested: InstanceLifecycle,
+) -> Option<InstanceLifecycle> {
+    extension_instance::transition(instance_state(from), instance_event(requested))
+        .map(instance_lifecycle)
+}
+
+const fn instance_state(state: InstanceLifecycle) -> extension_instance::State {
+    match state {
+        InstanceLifecycle::Discovered => extension_instance::State::Discovered,
+        InstanceLifecycle::Preparing => extension_instance::State::Preparing,
+        InstanceLifecycle::Active => extension_instance::State::Active,
+        InstanceLifecycle::Draining => extension_instance::State::Draining,
+        InstanceLifecycle::Stopped => extension_instance::State::Stopped,
+        InstanceLifecycle::Failed => extension_instance::State::Failed,
+        InstanceLifecycle::Quarantined => extension_instance::State::Quarantined,
+    }
+}
+
+const fn instance_event(state: InstanceLifecycle) -> extension_instance::Event {
+    match state {
+        InstanceLifecycle::Discovered => extension_instance::Event::ObserveDiscovered,
+        InstanceLifecycle::Preparing => extension_instance::Event::ObservePreparing,
+        InstanceLifecycle::Active => extension_instance::Event::ObserveActive,
+        InstanceLifecycle::Draining => extension_instance::Event::ObserveDraining,
+        InstanceLifecycle::Stopped => extension_instance::Event::ObserveStopped,
+        InstanceLifecycle::Failed => extension_instance::Event::ObserveFailed,
+        InstanceLifecycle::Quarantined => extension_instance::Event::ObserveQuarantined,
+    }
+}
+
+const fn instance_lifecycle(state: extension_instance::State) -> InstanceLifecycle {
+    match state {
+        extension_instance::State::Discovered => InstanceLifecycle::Discovered,
+        extension_instance::State::Preparing => InstanceLifecycle::Preparing,
+        extension_instance::State::Active => InstanceLifecycle::Active,
+        extension_instance::State::Draining => InstanceLifecycle::Draining,
+        extension_instance::State::Stopped => InstanceLifecycle::Stopped,
+        extension_instance::State::Failed => InstanceLifecycle::Failed,
+        extension_instance::State::Quarantined => InstanceLifecycle::Quarantined,
+    }
 }
 
 /// One permission the user has approved, as the pair of a capability and the
@@ -254,7 +301,7 @@ impl PackageMachine {
             package_id.into(),
             version.into(),
             true,
-            PackageLifecycle::Available,
+            package_lifecycle(extension_package::INITIAL),
         )
     }
 
@@ -399,9 +446,9 @@ impl PackageMachine {
 
     /// Take one lifecycle step, refusing a step the machine could not have made.
     pub fn advance(&mut self, next: PackageLifecycle) -> Result<(), ApplicationFailure> {
-        if !package_transition_allowed(self.state, next) {
+        let Some(next) = package_next(self.state, next) else {
             return Err(transition_refusal(self.state, next));
-        }
+        };
         self.state = next;
         Ok(())
     }
@@ -414,26 +461,11 @@ fn transition_refusal(from: PackageLifecycle, to: PackageLifecycle) -> Applicati
 }
 
 fn lifecycle_name(state: PackageLifecycle) -> &'static str {
-    match state {
-        PackageLifecycle::Available => "available",
-        PackageLifecycle::Downloaded => "downloaded",
-        PackageLifecycle::Verified => "verified",
-        PackageLifecycle::LocalApproved => "local-approved",
-        PackageLifecycle::Staged => "staged",
-        PackageLifecycle::Installed => "installed",
-    }
+    package_state(state).as_str()
 }
 
 fn instance_state_name(state: InstanceLifecycle) -> &'static str {
-    match state {
-        InstanceLifecycle::Discovered => "discovered",
-        InstanceLifecycle::Preparing => "preparing",
-        InstanceLifecycle::Active => "active",
-        InstanceLifecycle::Draining => "draining",
-        InstanceLifecycle::Stopped => "stopped",
-        InstanceLifecycle::Failed => "failed",
-        InstanceLifecycle::Quarantined => "quarantined",
-    }
+    instance_state(state).as_str()
 }
 
 /// The four facts that identify one running instance, kept apart.
@@ -542,7 +574,7 @@ impl InstanceMachine {
         identity.validate()?;
         Ok(Self {
             identity,
-            state: InstanceLifecycle::Discovered,
+            state: instance_lifecycle(extension_instance::INITIAL),
             admission: Admission::Open,
             in_flight: 0,
             settled: 0,
@@ -588,13 +620,13 @@ impl InstanceMachine {
 
     /// Take one lifecycle step, refusing a step the machine could not have made.
     pub fn advance(&mut self, next: InstanceLifecycle) -> Result<(), ApplicationFailure> {
-        if !instance_transition_allowed(self.state, next) {
+        let Some(next) = instance_next(self.state, next) else {
             return Err(
                 refusal("package_instance_transition_invalid", INSTANCE_STAGE)
                     .with_presentation_arg("from", instance_state_name(self.state))
                     .with_presentation_arg("to", instance_state_name(next)),
             );
-        }
+        };
         self.state = next;
         Ok(())
     }

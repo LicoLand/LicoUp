@@ -145,3 +145,10 @@ required-features = ["test-support"]
 name = "continuity_native"
 path = "tests/continuity_native.rs"
 required-features = ["test-support"]
+
+# Real untrusted-extension process isolation: the suite starts real programs
+# under the production `IsolatedProcessCarrier`, so it reads its fixtures from
+# the repository root and is declared here rather than inside the crate.
+[[test]]
+name = "extension_isolation"
+path = "../../tests/integration/extension_isolation/main.rs"

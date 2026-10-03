@@ -21,7 +21,7 @@ const ADMISSION_STAGE: &str = "cli/admission";
 const ADMISSION_COMPONENT: &str = "native_cli";
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
-const AUTHORITATIVE_ROUTE_COUNT: usize = 179;
+const AUTHORITATIVE_ROUTE_COUNT: usize = 180;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -2077,6 +2077,15 @@ fn route_authorities() -> Vec<RouteAuthority> {
         &["agent-hub apply"],
         Options,
     );
+    routes.push(RouteAuthority {
+        module: "extension_host.rs",
+        handler: "handle_serve",
+        path: "extension-host serve",
+        required: &[("data-root", Text), ("package-id", Text), ("version", Text)],
+        cardinality: Options,
+        options: options_for_route("extension-host serve"),
+        constraints: &[],
+    });
     add_authority_routes(
         &mut routes,
         "agent_usage.rs",
@@ -2861,6 +2870,13 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("operation", Text, false),
             value_option("stdin-json", Json, false),
             boolean_option("cancel"),
+        ],
+        "extension-host serve" => &[
+            value_option("await-ms", Text, false),
+            value_option("cancel-after-ms", Text, false),
+            value_option("capability", Text, false),
+            value_option("mode", Text, false),
+            value_option("request", Json, false),
         ],
         "agent-usage scan" => &[
             value_option("agent", Text, false),

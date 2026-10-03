@@ -58,6 +58,31 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustIntegrationTest("package_lifecycle"),
     }),
   defineModule({
+      id: "rust.platform.extension-host",
+      kind: "rust-platform",
+      summary: "Generation-bound catalog, effect admission, lifecycle, and host contracts",
+      inputs: [
+        "crates/licoup-native/src/platform/extension_host/**",
+        "crates/licoup-native/resources/state-machines/extension-package.json",
+        "crates/licoup-native/resources/state-machines/extension-instance.json",
+        "crates/licoup-native/resources/state-machines/extension-invocation.json",
+        "crates/licoup-native/tests/extension_contract/**",
+      ],
+      command: rustIntegrationTest("extension_contract"),
+    }),
+  defineModule({
+      id: "rust.platform.extension-isolation",
+      kind: "rust-platform",
+      summary: "Real OS-enforced extension limits, environment ownership, scoped release and honest unsupported modes",
+      inputs: [
+        "crates/licoup-native/src/platform/extension_host/isolation/**",
+        "tests/integration/extension_isolation/**",
+        "sdk/agent-adapter/python/**",
+        "sdk/agent-adapter/samples/minimal-specialist/**",
+      ],
+      command: rustIntegrationTest("extension_isolation"),
+    }),
+  defineModule({
       id: "rust.platform.extension-packages.artifact",
       kind: "rust-platform",
       summary: "Package archive admission, expansion, and transport integrity",
