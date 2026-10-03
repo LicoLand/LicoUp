@@ -122,6 +122,7 @@ export const FLUTTER_MODULES = Object.freeze([
         "apps/desktop/test/fixtures/presentation_source_fixture.dart",
         "apps/desktop/test/fixtures/settings_binding_fixture.dart",
         "apps/desktop/test/mobile_relay_feature_composition_test.dart",
+        "apps/desktop/test/model_selection_projection_test.dart",
         "apps/desktop/test/settings_feature_composition_test.dart",
         "apps/desktop/test/support/agent_conversation_workspace_fixture.dart",
         "apps/desktop/test/support/canonical_group/canonical_group_binding_fixture.dart",
@@ -132,6 +133,7 @@ export const FLUTTER_MODULES = Object.freeze([
         "test/application_signal_test.dart",
         "test/composition/dispose_all_test.dart",
         "test/mobile_relay_feature_composition_test.dart",
+        "test/model_selection_projection_test.dart",
         "test/settings_feature_composition_test.dart",
       ]),
     }),
@@ -1725,9 +1727,10 @@ export const FLUTTER_MODULES = Object.freeze([
   defineModule({
       id: "flutter.layer.contracts",
       kind: "flutter-layer",
-      summary: "Generated and cross-platform Secure Mesh contract projections",
+      summary: "Generated and cross-platform Secure Mesh contract projections, including the separated model-selection document",
       inputs: [
         "apps/desktop/lib/src/contracts/generated/**",
+        "apps/desktop/lib/src/contracts/model_selection.dart",
         "apps/desktop/lib/src/contracts/target_candidate.dart",
         "apps/desktop/test/fixtures/secure_mesh_capability_projection.dart",
         "apps/desktop/test/secure_mesh_kt_models_test.dart",

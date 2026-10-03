@@ -22,11 +22,20 @@
 //! available, and an observed model with no declared identity is still
 //! observed.
 //!
+//! [`selection_matrix`] is the client-facing join of that query with the
+//! effective policy. Support, availability, credentials and execution are four
+//! separate dimensions, each with its own state and reason, and execution is
+//! decided once per request scope — so the same Agent can show a different
+//! direct and workflow outcome, and neither is ever read as readiness.
+//!
 //! The crate reads nothing owned above it directly. Probes, credential states
-//! and source generations arrive through [`port::ModelCatalogPort`], which this
-//! crate declares and the `licoup-native` crate root composes; the crate's own
-//! fail-closed answer is [`port::ModelCatalogPort::unavailable`], and a process
-//! that composes nothing keeps it.
+//! and source generations arrive through [`port::ModelCatalogPort`], and the
+//! effective per-scope admission through
+//! [`selection_matrix::SelectionMatrixPort`]; this crate declares both and the
+//! `licoup-native` crate root composes them. The crate's own fail-closed answer
+//! is [`port::ModelCatalogPort::unavailable`] together with
+//! [`selection_matrix::SelectionMatrixPort::unavailable`], and a process that
+//! composes nothing keeps them.
 //!
 //! Nothing here reaches upward: the only LicoUp dependency is
 //! `licoup-foundation`, which owns the path, atomic-write and display-name
@@ -38,6 +47,7 @@ pub mod planning;
 pub mod port;
 pub mod pricing;
 pub mod selection;
+pub mod selection_matrix;
 
 pub use availability::{
     ObservedAvailability, ObservedCatalog, ObservedCatalogCache, ObservedModel, now_unix_ms,
@@ -54,4 +64,9 @@ pub use pricing::{ModelTokenPrice, agent_model_price, model_price};
 pub use selection::{
     SelectionEvidence, SelectionFacts, SelectionReport, declared_facts, selection_facts,
     selection_report, unknown_facts,
+};
+pub use selection_matrix::{
+    AvailabilityState, SELECTION_MATRIX_SCHEMA_VERSION, ScopeAdmission, ScopeAdmissionFacts,
+    ScopeOutcome, ScopeOutcomeState, SelectionMatrix, SelectionMatrixEntry, SelectionMatrixPort,
+    SelectionScope, SupportState, selection_matrix, selection_matrix_document,
 };

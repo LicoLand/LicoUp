@@ -26,6 +26,9 @@
 
 use licoup_model_catalog::availability::ObservedModel;
 use licoup_model_catalog::port::{CredentialState, ModelCatalogPort};
+use licoup_model_catalog::selection_matrix::{
+    ScopeAdmissionFacts, ScopeOutcomeState, SelectionMatrixPort, SelectionScope,
+};
 use serde_json::Value;
 
 /// The port this host composes: every catalogue fact answered by its owner.
@@ -36,6 +39,41 @@ pub fn model_catalog_port() -> ModelCatalogPort {
         provider_credential: provider_credential,
         source_generation: source_generation,
     }
+}
+
+/// The effective per-scope execution policy this host composes.
+///
+/// ## Why every scope is undetermined
+///
+/// Deciding whether one Agent may run *right now* is policy, and this host
+/// composes no policy owner yet: no module answers "is this Agent admitted for a
+/// direct request, and for a workflow turn". The catalogue must not invent one,
+/// and readiness evidence is not a substitute — a probed conversation runtime
+/// says the Agent can be reached, not that the effective policy permits the
+/// request.
+///
+/// So this composition states no outcome for any Agent and any scope, which the
+/// client renders as `undetermined`. It never reports `allowed`, and the two
+/// scopes are answered separately the moment an owner exists: the substitution
+/// point is this function, not the projection.
+pub fn selection_matrix_port() -> SelectionMatrixPort {
+    SelectionMatrixPort {
+        agent_scope_admission: agent_scope_admission,
+    }
+}
+
+fn agent_scope_admission(
+    agent: &str,
+    _scope: SelectionScope,
+    _params: &Value,
+) -> ScopeAdmissionFacts {
+    if !crate::domain::agent_catalog::contains(agent) {
+        return ScopeAdmissionFacts::new(
+            ScopeOutcomeState::Undetermined,
+            "agent_not_declared_on_host",
+        );
+    }
+    ScopeAdmissionFacts::undetermined()
 }
 
 /// The Agent inventory's declaration labels. The inventory owns which Agents
@@ -147,6 +185,33 @@ fn source_generation() -> Option<String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// No policy owner is composed, so no scope is ever answered `allowed` —
+    /// including for an Agent the inventory does declare and can reach.
+    #[test]
+    fn the_composed_policy_states_no_execution_outcome_for_any_scope() {
+        let port = selection_matrix_port();
+        for agent in ["codex", "cursor", "kilo-code"] {
+            for scope in SelectionScope::ALL {
+                let facts = (port.agent_scope_admission)(agent, scope, &json!({}));
+                assert_eq!(
+                    facts.state,
+                    ScopeOutcomeState::Undetermined,
+                    "{agent} {scope:?} must not be admitted by a composition with no owner"
+                );
+                assert_eq!(facts.reason, "selection_policy_owner_absent");
+            }
+        }
+        // An Agent this host does not declare says so, instead of borrowing the
+        // reason a declared Agent reports.
+        let unknown = (port.agent_scope_admission)(
+            "not-a-declared-agent",
+            SelectionScope::Direct,
+            &json!({}),
+        );
+        assert_eq!(unknown.state, ScopeOutcomeState::Undetermined);
+        assert_eq!(unknown.reason, "agent_not_declared_on_host");
+    }
 
     #[test]
     fn the_composition_answers_every_port_member_from_its_owner() {

@@ -90,6 +90,31 @@ test("model registry and typed usage reuse their existing Rust closures", () => 
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-model-catalog/src/identity/mod.rs",
   ])), ["architecture.client-boundaries", "rust.crate.model-catalog"]);
+  // The dimension join belongs to the same catalogue closure as the identity
+  // index, the observed availability and the recorded prices it reads.
+  for (const entry of [
+    "crates/licoup-model-catalog/src/selection_matrix.rs",
+    "crates/licoup-model-catalog/src/selection.rs",
+    "crates/licoup-model-catalog/src/availability.rs",
+  ]) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([entry])),
+      ["architecture.client-boundaries", "rust.crate.model-catalog"]);
+  }
+  // The client document contract stays in the cross-platform contract layer;
+  // its projection and suite stay in the Flutter presentation closure, which
+  // executes them.
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/contracts/model_selection.dart",
+  ])), ["architecture.client-boundaries", "flutter.layer.contracts"]);
+  for (const entry of [
+    "apps/desktop/lib/src/projections/model_selection/model_selection_projection.dart",
+    "apps/desktop/test/model_selection_projection_test.dart",
+  ]) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([entry])),
+      entry.endsWith("_test.dart")
+        ? ["flutter.presentation.boundary-closure"]
+        : ["architecture.client-boundaries", "flutter.presentation.boundary-closure"]);
+  }
   // The native shim keeps every former identity path reachable for the
   // consumers that still live in the kernel.
   assert.deepEqual(ids(selectModulesForChangedPaths([
