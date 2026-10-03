@@ -38,6 +38,17 @@ pub mod package;
 pub mod panels;
 pub mod policy;
 
+/// The package's own lifecycle, compiled from `resources/state-machines/`.
+///
+/// The JSON configuration is the transition authority: `analytics.package`
+/// declares the states and events, and [`package::AnalyticsPackage`] moves only
+/// along the edges it declares. Restating the table in Rust is what this module
+/// exists to prevent.
+#[allow(dead_code, clippy::collapsible_if, clippy::enum_variant_names)]
+pub(crate) mod state_machine {
+    include!(concat!(env!("OUT_DIR"), "/state_machines.rs"));
+}
+
 pub use correlation::{CorrelationPolicy, Reconciliation};
 pub use facts::{
     CoreUsageFacts, FactOutcome, FactPage, FactReceipt, MeteringFact, PendingObligation,

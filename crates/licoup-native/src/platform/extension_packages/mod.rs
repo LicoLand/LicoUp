@@ -61,6 +61,7 @@ pub mod selection;
 pub mod release_index;
 pub mod state;
 pub mod storage;
+pub mod surface;
 pub mod uninstall;
 
 #[cfg(test)]
@@ -106,6 +107,9 @@ pub use state::{
 pub use storage::{
     GcOutcome, GcReport, InFlightPins, RetainReason, SavingsClaim, StorageEntry, StorageKind,
     StorageReport, account_store, plan_gc, reclaim,
+};
+pub use surface::{
+    PackageSurface, RESOURCE_NOT_OWNED, SurfaceResource, SurfaceUninstall, uninstall_package,
 };
 
 pub use uninstall::{
