@@ -88,11 +88,7 @@ pub fn initialize_accepted(frame: &ProtocolFrame) -> Option<bool> {
     })
 }
 
-pub fn prompt_request(
-    request_id: &str,
-    session_id: &str,
-    prompt: &str,
-) -> Value {
+pub fn prompt_request(request_id: &str, session_id: &str, prompt: &str) -> Value {
     json!({"jsonrpc":"2.0","id":request_id,"method":"session/prompt","params":{"sessionId":session_id,"contentBlocks":[{"type":"text","text":prompt}]}})
 }
 
@@ -145,10 +141,7 @@ impl TurnParser {
         }
     }
 
-    pub fn ingest(
-        &mut self,
-        frame: ProtocolFrame,
-    ) -> Result<Option<TurnResult>, TurnParseError> {
+    pub fn ingest(&mut self, frame: ProtocolFrame) -> Result<Option<TurnResult>, TurnParseError> {
         if frame.value.get("id").and_then(Value::as_str) == Some(self.request_id.as_str()) {
             if frame.value.get("error").is_some() {
                 return Err(TurnParseError::PromptRejected);
@@ -277,11 +270,7 @@ fn success_transitions(output: &str, frames: &[ProtocolFrame]) -> Vec<Transition
     transitions
 }
 
-pub fn failure_transitions(
-    code: &str,
-    stage: &str,
-    message: &str,
-) -> Vec<Transition> {
+pub fn failure_transitions(code: &str, stage: &str, message: &str) -> Vec<Transition> {
     let mut reducer = TransitionReducer::default();
     let mut transitions = reducer.advance(LifecycleStage::Accepted);
     if let Some(failure) = reducer.fail(code, stage, message) {

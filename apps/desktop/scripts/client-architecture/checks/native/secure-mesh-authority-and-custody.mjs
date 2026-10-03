@@ -430,6 +430,10 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
       "crates/licoup-native/src/platform/codex_app_server",
       ".rs"
     ),
+    // The app-server protocol identity belongs to the Codex adapter package, so
+    // the assertion reads it where it now lives rather than from the process half
+    // that only re-exports it.
+    "crates/licoup-agent-codex/src/app_server/contract.rs",
     "crates/licoup-agent-codex/src/parser/control.rs",
   ]);
   assert(runtimeAdaptersRustSource.includes("enum RuntimeAdapter") &&

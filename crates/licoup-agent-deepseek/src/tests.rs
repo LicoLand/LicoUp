@@ -132,13 +132,15 @@ fn the_published_registration_is_the_parser_the_registry_finds() {
 fn the_replay_arm_refuses_an_adapter_this_package_does_not_carry() {
     let mut arm =
         crate::replay::replay_arm(ADAPTER_ID).expect("this package carries its own adapter");
-    assert!(arm.feed(&licoup_agent_adapter_sdk::replay::RecordedFrame {
-        index: 0,
-        direction: "received".to_owned(),
-        channel: "another-channel".to_owned(),
-        payload: "{}".to_owned(),
-    })
-    .is_err());
+    assert!(
+        arm.feed(&licoup_agent_adapter_sdk::replay::RecordedFrame {
+            index: 0,
+            direction: "received".to_owned(),
+            channel: "another-channel".to_owned(),
+            payload: "{}".to_owned(),
+        })
+        .is_err()
+    );
     assert!(crate::replay::replay_arm("codex").is_err());
 }
 
@@ -347,7 +349,9 @@ fn the_parser_attributes_only_the_receipted_turn_until_idle() {
         assert!(parser.ingest(frame(value)).unwrap().is_none());
     }
     let result = parser
-        .ingest(frame(json!({"method":"session.status","params":{"sessionId":"session-1","status":"idle"}})))
+        .ingest(frame(
+            json!({"method":"session.status","params":{"sessionId":"session-1","status":"idle"}}),
+        ))
         .unwrap()
         .unwrap();
     assert_eq!(result.turn_id, "message-1");

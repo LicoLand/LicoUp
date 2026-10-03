@@ -164,7 +164,10 @@ fn ask(requests: &[Value]) -> Value {
         String::from_utf8_lossy(&output.stderr)
     );
     let line = String::from_utf8(output.stdout).expect("the answer is UTF-8");
-    let line = line.lines().next().expect("the entry answers at least once");
+    let line = line
+        .lines()
+        .next()
+        .expect("the entry answers at least once");
     serde_json::from_str(line).expect("the answer is JSON")
 }
 
@@ -225,10 +228,7 @@ fn the_committed_package_serves_the_capability_the_host_leaves_optional() {
 
     // The adapter the manifest contributes is the adapter the library registers,
     // so the documents and the program describe one package.
-    assert_eq!(
-        licoup_agent_deepseek::registration::ADAPTER_ID,
-        ADAPTER_ID
-    );
+    assert_eq!(licoup_agent_deepseek::registration::ADAPTER_ID, ADAPTER_ID);
     assert_eq!(
         licoup_agent_deepseek::registration::FRAMING,
         "lf-jsonl-jsonrpc"
@@ -357,10 +357,8 @@ fn the_release_declaration_and_the_manifest_describe_one_package() {
 
 #[test]
 fn the_declared_native_converter_really_converts_the_declared_source_format() {
-    let root = std::env::temp_dir().join(format!(
-        "licoup-deepseek-converter-{}",
-        std::process::id()
-    ));
+    let root =
+        std::env::temp_dir().join(format!("licoup-deepseek-converter-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
 
@@ -402,7 +400,10 @@ fn the_declared_native_converter_really_converts_the_declared_source_format() {
             json!({"inputTokens": 70, "cacheReadTokens": 30, "outputTokens": 20, "reasoningTokens": 15})
         );
     }
-    assert_eq!(answers[0], answers[1], "compression changes no counted fact");
+    assert_eq!(
+        answers[0], answers[1],
+        "compression changes no counted fact"
+    );
 
     // A generation this reader has not been written against is refused by name,
     // with the declared generation reported, rather than folded as if it were

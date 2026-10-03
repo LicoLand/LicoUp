@@ -9,6 +9,8 @@
 mod cache;
 mod cursor;
 mod deepseek;
+#[cfg(test)]
+mod deepseek_tests;
 mod files;
 mod identity_refresh;
 #[cfg(test)]

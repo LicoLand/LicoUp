@@ -27,7 +27,8 @@ pub const PROVIDER_ID: &str = "deepseek-official";
 pub const PROVIDER_NAME: &str = "DeepSeek";
 
 /// The vendor generation these rows were transcribed from.
-pub const CATALOGUE_ORIGIN: &str = "deepseek-harness provider `@deepseek-ai/dsh-llm-deepseek` 0.2.0-rc.2 advisory defaults";
+pub const CATALOGUE_ORIGIN: &str =
+    "deepseek-harness provider `@deepseek-ai/dsh-llm-deepseek` 0.2.0-rc.2 advisory defaults";
 
 /// The reasoning efforts a model that reasons offers, in the order the provider
 /// advertises them.

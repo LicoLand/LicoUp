@@ -111,16 +111,8 @@ fn opaque_identity(session_id: &str) -> bool {
 /// result* rather than through the query, and answers the identity query
 /// fail-closed because the mesh never dispatches that Agent.
 pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
-    ParserRegistration::new(
-        antigravity::CONTRACT,
-        no_transitions,
-        antigravity_identity,
-    ),
-    ParserRegistration::new(
-        claude_code::CONTRACT,
-        no_transitions,
-        claude_code_identity,
-    ),
+    ParserRegistration::new(antigravity::CONTRACT, no_transitions, antigravity_identity),
+    ParserRegistration::new(claude_code::CONTRACT, no_transitions, claude_code_identity),
     // The Codex package answers both protocol-agnostic queries from its own recorded
     // evidence, so this entry is the package's own registration.
     licoup_agent_codex::registration::REGISTRATION,

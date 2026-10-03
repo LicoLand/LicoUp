@@ -14,10 +14,6 @@ use licoup_agent_adapter_sdk::adapters::NativeLineParser;
 // moves to the package next, through the agent-execution port the package will
 // declare; until it does, the client reads the protocol from the package and
 // owns only the process.
-use licoup_agent_deepseek::parser::{
-    FrameError, FrameParser, ProtocolFrame, TurnParseError, TurnParser, encode_request,
-    initialize_accepted, initialize_request, prompt_request, shutdown_request,
-};
 use super::process_supervisor::SupervisedChild;
 use super::raw_execution::{
     RawExecutionBinding, RawExecutionBindingGuard, RawExecutionDirection, RawExecutionObserver,
@@ -25,6 +21,10 @@ use super::raw_execution::{
 };
 use licoup_agent_adapter_sdk::adapters::driver_registry::{
     registry_get, registry_insert_if_absent, registry_remove, registry_remove_if,
+};
+use licoup_agent_deepseek::parser::{
+    FrameError, FrameParser, ProtocolFrame, TurnParseError, TurnParser, encode_request,
+    initialize_accepted, initialize_request, prompt_request, shutdown_request,
 };
 
 pub(super) const DRIVER_ID: &str = "deepseek-harness-sdk-jsonrpc";
@@ -484,10 +484,7 @@ fn execute_turn(
     session_id: &str,
     output_limit: Option<usize>,
     deadline: Option<Instant>,
-) -> std::result::Result<
-    licoup_agent_deepseek::parser::TurnResult,
-    ProtocolFailure,
-> {
+) -> std::result::Result<licoup_agent_deepseek::parser::TurnResult, ProtocolFailure> {
     let request_id = format!("prompt-{}", state.next_request_id);
     state.next_request_id = state.next_request_id.saturating_add(1);
     let request = prompt_request(&request_id, &state.harness_session_id, prompt);

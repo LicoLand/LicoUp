@@ -47,11 +47,7 @@ pub fn installed() -> bool {
 ///
 /// Fail-closed: with no consumer installed the samples are dropped rather than
 /// written somewhere this package chose.
-pub fn publish(
-    path: &Path,
-    size: u64,
-    samples: Vec<UsageSample>,
-) -> Result<(), SessionReadError> {
+pub fn publish(path: &Path, size: u64, samples: Vec<UsageSample>) -> Result<(), SessionReadError> {
     match PORT.get() {
         Some(sink) => sink(path, size, samples),
         None => Ok(()),

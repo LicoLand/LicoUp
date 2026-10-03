@@ -166,17 +166,21 @@ fn fold_rows(reader: impl BufRead) -> Result<Vec<UsageSample>, SessionReadError>
 fn read_header(mut reader: impl BufRead) -> Result<(SessionHeader, Fold), SessionReadError> {
     loop {
         let Some(row) = next_row(&mut reader)? else {
-            return Err(SessionReadError::Malformed("the artifact carries no header row"));
+            return Err(SessionReadError::Malformed(
+                "the artifact carries no header row",
+            ));
         };
         if row.get("type").and_then(Value::as_str) != Some("session") {
             return Err(SessionReadError::Malformed(
                 "the first row is not a session header",
             ));
         }
-        let version = row
-            .get("version")
-            .and_then(Value::as_u64)
-            .ok_or(SessionReadError::Malformed("the header carries no format version"))?;
+        let version =
+            row.get("version")
+                .and_then(Value::as_u64)
+                .ok_or(SessionReadError::Malformed(
+                    "the header carries no format version",
+                ))?;
         if version != CURRENT_FORMAT_VERSION {
             return Err(SessionReadError::UnsupportedFormatVersion(version));
         }
@@ -192,7 +196,9 @@ fn translate_header(row: &Value) -> Result<SessionHeader, SessionReadError> {
     let id = row
         .get("id")
         .and_then(Value::as_str)
-        .ok_or(SessionReadError::Malformed("the header carries no session id"))?
+        .ok_or(SessionReadError::Malformed(
+            "the header carries no session id",
+        ))?
         .to_owned();
     // A fork records its inherited prefix beside the header. It is absent on an
     // unseeded session, whose prefix is zero by definition rather than unknown.
@@ -276,7 +282,9 @@ impl Fold {
                 model: text(data.pointer("/header/config/model")),
                 provider: text(data.pointer("/header/config/provider")),
                 reasoning_effort: text(data.pointer("/header/config/reasoningEffort")),
-                default_reasoning_effort: text(data.pointer("/header/adapterDefaults/reasoningEffort")),
+                default_reasoning_effort: text(
+                    data.pointer("/header/adapterDefaults/reasoningEffort"),
+                ),
             });
             return;
         }
@@ -286,9 +294,11 @@ impl Fold {
         if kind == "llm/retry-started" {
             // The attempt this names is superseded by the retry, so the retry's
             // own settlement is counted separately rather than replacing it.
-            if self.samples.last().is_some_and(|sample| {
-                sample.turn == turn && sample.step == step
-            }) {
+            if self
+                .samples
+                .last()
+                .is_some_and(|sample| sample.turn == turn && sample.step == step)
+            {
                 self.open = None;
             }
             return;
@@ -394,7 +404,9 @@ fn text(value: Option<&Value>) -> Option<String> {
 ///
 /// Kept here because "which file is the current generation of this session" is
 /// a fact about the vendor's layout, not about the client that asks.
-pub fn newest_generation(sources: BTreeMap<std::path::PathBuf, String>) -> BTreeMap<std::path::PathBuf, String> {
+pub fn newest_generation(
+    sources: BTreeMap<std::path::PathBuf, String>,
+) -> BTreeMap<std::path::PathBuf, String> {
     let mut sessions = BTreeMap::<std::path::PathBuf, (u64, std::path::PathBuf, String)>::new();
     for (path, kind) in sources {
         let Some(version) = generation(&path) else {
