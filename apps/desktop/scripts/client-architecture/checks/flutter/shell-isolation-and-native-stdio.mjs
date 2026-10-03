@@ -93,6 +93,7 @@ export async function checkShellIsolationAndNativeStdio(context) {
   `${nativeStdioRpcRoot}/session_expectation.dart`,
   `${nativeStdioRpcRoot}/session_manager.dart`,
   `${nativeStdioRpcRoot}/shutdown.dart`,
+  `${nativeStdioRpcRoot}/stream_observation.dart`,
 ]);
   const nativeStdioRpcLeaves = await collectSourceFiles(nativeStdioRpcRoot, ".dart");
   assert(

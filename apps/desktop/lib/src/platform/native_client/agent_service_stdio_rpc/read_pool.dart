@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/operation_pending_queue.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/stream_observation.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:licoup/src/platform/native_client/native_rpc_priority.dart';
 
@@ -16,14 +17,18 @@ typedef StdioRpcReadOperation = Future<void> Function(StdioRpcSessionManager);
 /// backlog cannot starve a read that is needed now, and a cancelled or failed
 /// background query cannot leave the pool without usable capacity.
 final class StdioRpcReadPool {
-  StdioRpcReadPool({required NativeCliProcessContext processContext})
-    : _processContext = processContext;
+  StdioRpcReadPool({
+    required NativeCliProcessContext processContext,
+    StreamObservationPort? observation,
+  }) : _processContext = processContext,
+       _observation = observation;
 
   // Each session owns one native sidecar. Keep startup and retained native
   // memory bounded while allowing independent feature reads to overlap.
   static const int capacity = 4;
 
   final NativeCliProcessContext _processContext;
+  final StreamObservationPort? _observation;
   final RpcOperationPendingQueue<StdioRpcReadOperation> _pending =
       RpcOperationPendingQueue<StdioRpcReadOperation>();
   final List<_ReadWorker> _workers = [];
@@ -88,7 +93,10 @@ final class StdioRpcReadPool {
     }
     if (_workers.length >= capacity) return null;
     final worker = _ReadWorker(
-      StdioRpcSessionManager(processContext: _processContext),
+      StdioRpcSessionManager(
+        processContext: _processContext,
+        observation: _observation,
+      ),
     );
     _workers.add(worker);
     return worker;

@@ -65,6 +65,7 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
                 workflowId: workflowId,
               )
             : null,
+        sizeBytes: encoded.length,
       );
       await writeStdioRpcFrame(session, encoded);
       var terminalSeen = false;
@@ -168,8 +169,6 @@ Future<void> _detachExecutionObservation({
   if (!session.usable) return;
   final detachId = '$requestId-execution-detach';
   try {
-    final reply = session.expectFrame(requestId: detachId, control: true);
-    reply.ignore();
     final encoded = ConversationCommand(
       id: detachId,
       workflowId: workflowId,
@@ -182,6 +181,12 @@ Future<void> _detachExecutionObservation({
         'workflowId': workflowId,
       },
     ).encode();
+    final reply = session.expectFrame(
+      requestId: detachId,
+      control: true,
+      sizeBytes: encoded.length,
+    );
+    reply.ignore();
     await writeStdioRpcFrame(session, encoded);
     final frame = await reply;
     final envelope = frame.envelope;
