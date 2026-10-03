@@ -250,6 +250,84 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the package center shows the four facts of a native package', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final service = _PackageCatalogAgentService(
+      packages: [
+        _nativePackage(
+          packageId: 'acp-bridge',
+          available: true,
+          enabled: true,
+          active: true,
+        ),
+      ],
+    );
+    final controller = ClientController(
+      agentService: service,
+      presentationPreferencesRepository: _PanelPreferencesRepository(),
+    );
+    addTearDown(controller.dispose);
+    await controller.adapterPluginController.refresh();
+    controller.packageCenterController.useDataRoot('/tmp/synthetic-data-home');
+    await controller.packageCenterController.refresh();
+    final feature = PluginManagementFeatureComposition(controller);
+    addTearDown(feature.dispose);
+    await _pumpProviderBinding(tester, feature, const Locale('en'));
+
+    // All four facts come from the native package report, and none of them is
+    // derived here.
+    expect(find.byKey(const Key('package-fact-available')), findsWidgets);
+    expect(find.text('Available: yes'), findsWidgets);
+    expect(find.text('Installed: yes'), findsWidgets);
+    expect(find.text('Enabled: yes'), findsWidgets);
+    expect(find.text('Active: yes'), findsWidgets);
+    expect(find.text('This package is managed by LicoUp.'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an absent capability shows the not-installed state', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final service = _PackageCatalogAgentService(packages: const []);
+    final controller = ClientController(
+      agentService: service,
+      presentationPreferencesRepository: _PanelPreferencesRepository(),
+    );
+    addTearDown(controller.dispose);
+    await controller.adapterPluginController.refresh();
+    controller.packageCenterController.useDataRoot('/tmp/synthetic-data-home');
+    await controller.packageCenterController.refresh();
+    final feature = PluginManagementFeatureComposition(controller);
+    addTearDown(feature.dispose);
+    await _pumpProviderBinding(tester, feature, const Locale('en'));
+
+    expect(find.byKey(const Key('package-fact-available')), findsWidgets);
+    expect(find.text('Available: no'), findsWidgets);
+    expect(find.text('Installed: no'), findsWidgets);
+    expect(
+      find.byKey(const Key('package-not-installed-antigravity')),
+      findsOneWidget,
+    );
+    expect(find.text('This capability is not installed.'), findsWidgets);
+    // The third-party Agent install stays with Agent Hub, which the copy names.
+    expect(
+      find.text(
+        'Installing the third-party Agent itself stays with Agent Hub.',
+      ),
+      findsWidgets,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('the composition installs its live region sources', (
     tester,
   ) async {
@@ -498,6 +576,22 @@ Widget _panelApp(
   );
 }
 
+/// Pumps the panel over the composition's own live presentation sources, so a
+/// synthetic native reply drives the projection end to end.
+Future<void> _pumpProviderBinding(
+  WidgetTester tester,
+  PluginManagementFeatureComposition feature,
+  Locale locale,
+) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: feature.providerOverrides,
+      child: _panelApp(feature, locale),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 Future<PluginManagementPresentationFixture> _pumpBinding(
   WidgetTester tester,
   PluginManagementFeatureComposition feature,
@@ -728,3 +822,43 @@ final class _PanelPreferencesRepository
     String preference,
   ) async => _preferences = _preferences.copyWith(localePreference: preference);
 }
+
+/// The synthetic adapter catalogue plus one native package catalogue, so the
+/// four package facts are projected from a report rather than injected.
+final class _PackageCatalogAgentService extends _CatalogAgentService {
+  _PackageCatalogAgentService({required this.packages});
+
+  final List<Map<String, Object?>> packages;
+
+  @override
+  Future<Map<String, dynamic>> runCli(List<String> args) async {
+    if (args.length >= 2 && args[0] == 'package' && args[1] == 'catalog') {
+      calls.add(List.unmodifiable(args));
+      return {
+        'schemaVersion': 'licoup.package-lifecycle.v1',
+        'isError': false,
+        'operation': 'catalog',
+        'packages': packages,
+      };
+    }
+    return super.runCli(args);
+  }
+}
+
+Map<String, Object?> _nativePackage({
+  required String packageId,
+  bool available = false,
+  bool enabled = false,
+  bool active = false,
+}) => {
+  'packageId': packageId,
+  'version': '1.0.0',
+  'label': packageId,
+  'capabilityKind': 'licoup-capability',
+  'lifecycle': 'installed',
+  'source': 'official-directory',
+  'available': available,
+  'enabled': enabled,
+  'active': active,
+  'agentId': 'antigravity',
+};

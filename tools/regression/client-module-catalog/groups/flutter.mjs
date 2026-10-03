@@ -1131,6 +1131,7 @@ export const FLUTTER_MODULES = Object.freeze([
       inputs: [
         "apps/desktop/lib/src/application/features/plugin_management/**",
         "apps/desktop/lib/src/application/controller/assembly/client_plugin_management_component_assembly.dart",
+        "apps/desktop/lib/src/contracts/package_center/package_facts.dart",
         "apps/desktop/lib/src/frontend/features/plugin_management/**",
         "apps/desktop/lib/src/contracts/presentation/semantic_destination.dart",
         "apps/desktop/lib/src/presentation/layout/semantic_destination_catalog.dart",
