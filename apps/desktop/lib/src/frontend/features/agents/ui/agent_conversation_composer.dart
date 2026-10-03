@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -23,6 +22,7 @@ import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 
 class RuntimeMessageComposer extends StatefulWidget {
   const RuntimeMessageComposer({
@@ -144,10 +144,16 @@ class RuntimeMessageComposer extends StatefulWidget {
 }
 
 class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
-  late final TextEditingController _controller;
   final FocusNode _focusNode = FocusNode();
   LayoutFocusCoordinator? _layoutFocusCoordinator;
   bool _focused = false;
+
+  /// The latest editing value reported by the shared [InputField]. This is the
+  /// view's own echo of what the field shows: it renders the send affordance
+  /// and derives the mention query. The draft itself is owner state — the
+  /// composer never keeps a second copy and never writes one back through a
+  /// mirror channel.
+  late TextEditingValue _value;
   late bool _hasText;
   int? _mentionStart;
   String _mentionQuery = '';
@@ -155,54 +161,39 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   final ScrollController _mentionScrollController = ScrollController();
   late final _ComposerPasteAction _pasteAction;
 
-  /// The draft text last pushed into the store by this field. The debounced
-  /// echo comes back as [RuntimeMessageComposer.initialDraft]; when it
-  /// matches this value it must not overwrite in-flight typing. Any other
-  /// incoming value is an external restore (conversation switch, send-clear)
-  /// and applies immediately.
-  String? _lastSyncedDraft;
-
-  /// Trailing debounce for the draft-store echo. Typing stays purely local;
-  /// the store write republishes the composer projection and rebuilds the
-  /// conversation workspace, so it runs only after a short silence, on focus
-  /// loss, and before dispose.
-  Timer? _draftSyncTimer;
-  static const Duration _draftSyncDelay = Duration(milliseconds: 180);
-
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.initialDraft);
-    _hasText = widget.initialDraft.trim().isNotEmpty;
-    _lastSyncedDraft = widget.initialDraft;
-    _controller.addListener(_onTextChanged);
+    _value = _restoredValue(widget.initialDraft);
+    _hasText = _value.text.trim().isNotEmpty;
     _focusNode.addListener(_onFocusChanged);
     _pasteAction = _ComposerPasteAction(
       () => widget.onPasteImage?.call() ?? Future<bool>.value(false),
     );
   }
 
+  /// External draft text (conversation switch, owner-driven clear after send,
+  /// attachment flows) becomes an end-of-text caret. The owner stores text
+  /// only, so the caret cannot travel with it.
+  static TextEditingValue _restoredValue(String text) => TextEditingValue(
+    text: text,
+    selection: TextSelection.collapsed(offset: text.length),
+  );
+
   @override
   void didUpdateWidget(covariant RuntimeMessageComposer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // The draft is scoped per conversation: switching conversations (or a
-    // successful send clearing the current draft) replaces the text without
-    // recreating this widget. An incoming draft equal to the last text this
-    // field flushed is the debounced echo of our own write and must never
-    // overwrite in-flight typing; anything else is an external restore.
+    // An incoming draft equal to the text already on screen is the owner's
+    // echo of this field's own write, or an unrelated parent rebuild: it must
+    // never reinstall a value and reset the caret. Anything else is a real
+    // external restore.
     if (oldWidget.initialDraft != widget.initialDraft &&
-        widget.initialDraft != _controller.text &&
-        widget.initialDraft != _lastSyncedDraft) {
-      // A pending flush still holds the previous draft; the store already
-      // carries the new value, so flushing now would clobber the restore.
-      _draftSyncTimer?.cancel();
-      _draftSyncTimer = null;
-      final restored = widget.initialDraft;
-      _lastSyncedDraft = restored;
-      _controller.value = TextEditingValue(
-        text: restored,
-        selection: TextSelection.collapsed(offset: restored.length),
-      );
+        widget.initialDraft != _value.text) {
+      _value = _restoredValue(widget.initialDraft);
+      _hasText = _value.text.trim().isNotEmpty;
+      _mentionStart = null;
+      _mentionQuery = '';
+      _mentionSelection = 0;
     }
   }
 
@@ -226,14 +217,10 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
 
   @override
   void dispose() {
-    _flushDraftSync();
     _layoutFocusCoordinator?.unregister(
       LayoutFocusTargets.composerField,
       _focusNode,
     );
-    _controller
-      ..removeListener(_onTextChanged)
-      ..dispose();
     _mentionScrollController.dispose();
     _focusNode
       ..removeListener(_onFocusChanged)
@@ -241,37 +228,45 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     super.dispose();
   }
 
-  void _onTextChanged() {
-    _scheduleDraftSync();
-    final next = _controller.text.trim().isNotEmpty;
+  /// One write per real edit. The shared control suppresses the callback while
+  /// it installs an incoming value, so the owner's echo cannot bounce back as
+  /// another write.
+  void _onValueChanged(TextEditingValue value) {
+    _value = value;
+    widget.onDraftChanged(value.text);
+    final next = value.text.trim().isNotEmpty;
     final mentionChanged = _syncMentionQuery();
     if (!mounted || (next == _hasText && !mentionChanged)) return;
     setState(() => _hasText = next);
   }
 
-  void _scheduleDraftSync() {
-    _draftSyncTimer?.cancel();
-    _draftSyncTimer = Timer(_draftSyncDelay, _flushDraftSync);
+  /// Clear through the owner. The stored draft is the single source of truth;
+  /// dropping the local echo in the same frame keeps a repeated Enter from
+  /// posting the same message twice.
+  void _clearDraft() {
+    setState(_dropEcho);
+    widget.onDraftChanged('');
   }
 
-  void _flushDraftSync() {
-    _draftSyncTimer?.cancel();
-    _draftSyncTimer = null;
-    _lastSyncedDraft = _controller.text;
-    widget.onDraftChanged(_controller.text);
+  void _dropEcho() {
+    _value = const TextEditingValue();
+    _hasText = false;
+    _mentionStart = null;
+    _mentionQuery = '';
+    _mentionSelection = 0;
   }
 
   bool _syncMentionQuery() {
     final previousStart = _mentionStart;
     final previousQuery = _mentionQuery;
-    final selection = _controller.selection;
+    final selection = _value.selection;
     _mentionStart = null;
     _mentionQuery = '';
     if (widget.mentionTargets.isNotEmpty &&
         selection.isValid &&
         selection.isCollapsed) {
       final caret = selection.extentOffset;
-      final beforeCaret = _controller.text.substring(0, caret);
+      final beforeCaret = _value.text.substring(0, caret);
       final match = RegExp(r'(^|\s)@([^\s@]*)$').firstMatch(beforeCaret);
       if (match != null) {
         _mentionStart = match.start + (match.group(1)?.length ?? 0);
@@ -305,6 +300,9 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
         .toList(growable: false);
   }
 
+  /// Arrow, Tab and Escape belong to the picker and stay local to it. Enter is
+  /// owned by the shared control's submit port ([_handleSubmit]) because that
+  /// port runs closer to the field's own focus node.
   KeyEventResult _handleMentionKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final suggestions = _mentionSuggestions;
@@ -324,8 +322,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
       _revealMentionSelection(suggestions);
       return KeyEventResult.handled;
     }
-    if (event.logicalKey == LogicalKeyboardKey.enter ||
-        event.logicalKey == LogicalKeyboardKey.tab) {
+    if (event.logicalKey == LogicalKeyboardKey.tab) {
       _insertMention(suggestions[_mentionSelection]);
       return KeyEventResult.handled;
     }
@@ -380,21 +377,26 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
 
   void _insertMention(TargetCandidate target) {
     final start = _mentionStart;
-    final selection = _controller.selection;
+    final selection = _value.selection;
     if (start == null || !selection.isValid || !selection.isCollapsed) return;
     final label = (widget.mentionLabels[target.target] ?? '').trim().isEmpty
         ? agentConversationTargetDisplayName(target)
         : widget.mentionLabels[target.target]!.trim();
     final replacement = '@$label ';
     final caret = selection.extentOffset;
-    final text = _controller.text;
+    final text = _value.text;
     final next = text.replaceRange(start, caret, replacement);
-    _controller.value = TextEditingValue(
+    final nextValue = TextEditingValue(
       text: next,
       selection: TextSelection.collapsed(offset: start + replacement.length),
     );
-    _mentionStart = null;
-    _mentionQuery = '';
+    setState(() {
+      _value = nextValue;
+      _hasText = next.trim().isNotEmpty;
+      _mentionStart = null;
+      _mentionQuery = '';
+    });
+    widget.onDraftChanged(next);
     _focusNode.requestFocus();
   }
 
@@ -403,29 +405,41 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     if (next == _focused || !mounted) {
       return;
     }
-    if (!next) _flushDraftSync();
     setState(() => _focused = next);
   }
 
+  /// Enter reaches the field's submit port before the picker's own key handler,
+  /// so a pending mention selection is resolved here instead of submitting.
+  void _handleSubmit(String text) {
+    final suggestions = _mentionSuggestions;
+    if (suggestions.isNotEmpty) {
+      _insertMention(suggestions[_mentionSelection]);
+      return;
+    }
+    _submit();
+  }
+
   Future<void> _submit() async {
-    final text = _controller.text.trim();
+    final text = _value.text.trim();
     if ((text.isEmpty && !widget.hasAttachments) || !widget.enabled) {
       return;
     }
     final onSlashNewConversation = widget.onSlashNewConversation;
     if (onSlashNewConversation != null &&
         text == RuntimeMessageComposer.slashNewCommand) {
-      _controller.clear();
+      _clearDraft();
       onSlashNewConversation();
       return;
     }
     const ConversationMotionSubmitNotification().dispatch(context);
-    _controller.clear();
+    _clearDraft();
     final consumed = await widget.onSend(text);
-    if (!consumed && mounted && _controller.text.trim().isEmpty) {
-      _controller
-        ..text = text
-        ..selection = TextSelection.collapsed(offset: text.length);
+    if (!consumed && mounted && _value.text.trim().isEmpty) {
+      setState(() {
+        _value = _restoredValue(text);
+        _hasText = true;
+      });
+      widget.onDraftChanged(text);
       _focusNode.requestFocus();
     }
   }
@@ -447,14 +461,18 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
           : <Type, Action<Intent>>{PasteTextIntent: _pasteAction},
       child: Focus(
         onKeyEvent: _handleMentionKey,
-        child: TextField(
+        child: InputField(
           key: const Key('agent-conversation-composer-input'),
-          controller: _controller,
+          value: _value,
+          onValueChanged: _onValueChanged,
           focusNode: _focusNode,
           minLines: floating ? 2 : 1,
           maxLines: 4,
           textInputAction: TextInputAction.send,
-          onSubmitted: (_) => _submit(),
+          // The owner clears after a successful send; the field never clears
+          // the business draft on its own.
+          clearOnSubmit: false,
+          onSubmit: _handleSubmit,
           enabled: interactive,
           style: theme.textTheme.bodyLarge,
           decoration: InputDecoration(

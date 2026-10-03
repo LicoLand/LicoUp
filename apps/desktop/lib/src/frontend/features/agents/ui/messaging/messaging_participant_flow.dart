@@ -2,7 +2,6 @@ import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
@@ -17,9 +16,9 @@ import 'package:licoup/src/frontend/features/agents/ui/conversation_failure_noti
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_scroll_to_latest_button.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
-import 'package:licoup/src/frontend/shared/ui/reading_position_scroll_controller.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 
 /// Longest silence between two consecutive same-author messages that still
 /// renders as one participant-flow group.
@@ -434,7 +433,14 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   bool _atLatest = true;
   List<MessagingFlowEntry>? _cachedEntries;
   List<ConversationTimelineItem>? _cachedItems;
-  Map<String, int> _cachedEntryIndexes = const {};
+
+  /// Slots for the reversed flow. Rebuilt only when the entries or the
+  /// earlier-page presence change, so [CollectionView] captures one reading
+  /// anchor per real content change.
+  List<_FlowSlot> _cachedSlots = const [];
+  int _cachedSlotsRevision = -1;
+  bool _cachedSlotsShowEarlier = false;
+  int _entriesRevision = 0;
   bool _pageRequestInFlight = false;
 
   /// Reverse lists keep the newest rows at offset 0. Treat a small residual
@@ -457,14 +463,6 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   @override
   void didUpdateWidget(MessagingParticipantFlow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final readingController = _scrollController;
-    if (readingController is ReadingPositionScrollController) {
-      if (oldWidget.sessionKey == widget.sessionKey) {
-        readingController.captureReadingAnchor();
-      } else {
-        readingController.clearReadingAnchor();
-      }
-    }
     if (oldWidget.sessionKey != widget.sessionKey) {
       // A different conversation starts from its own newest window.
       _atLatest = true;
@@ -591,11 +589,34 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
     final display = entries.reversed.toList(growable: false);
     _cachedItems = items;
     _cachedEntries = display;
-    _cachedEntryIndexes = {
-      for (var index = 0; index < display.length; index += 1)
-        _entryKey(display[index]): index,
-    };
+    _entriesRevision += 1;
     return display;
+  }
+
+  /// The reversed flow's slots: every display entry, then the earlier-page slot
+  /// at the oldest end.
+  ///
+  /// Slots carry an index into the cached entries rather than a second index
+  /// map, so a streamed text revision that patches one entry in place keeps this
+  /// list's identity: the lazy list neither re-indexes its keys nor re-captures
+  /// the reading anchor mid-reply.
+  List<_FlowSlot> _displaySlots(List<MessagingFlowEntry> entries) {
+    final showEarlier =
+        widget.hasEarlier ||
+        widget.messagePageLoading ||
+        widget.messagePageError.isNotEmpty;
+    if (_cachedSlotsRevision == _entriesRevision &&
+        showEarlier == _cachedSlotsShowEarlier) {
+      return _cachedSlots;
+    }
+    _cachedSlotsRevision = _entriesRevision;
+    _cachedSlotsShowEarlier = showEarlier;
+    _cachedSlots = List<_FlowSlot>.unmodifiable(<_FlowSlot>[
+      for (var index = 0; index < entries.length; index += 1)
+        _FlowSlot.entry(index),
+      if (showEarlier) const _FlowSlot.earlierPage(),
+    ]);
+    return _cachedSlots;
   }
 
   String _entryKey(MessagingFlowEntry entry) => switch (entry) {
@@ -611,6 +632,7 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   @override
   Widget build(BuildContext context) {
     final displayEntries = _displayEntries;
+    final displaySlots = _displaySlots(displayEntries);
     // Conversation text must be selectable and copyable. Selection is hosted
     // once at the pane level (AgentConversationActivePane) so a drag can span
     // several messages; a nested SelectionArea here would double-register
@@ -621,15 +643,22 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
       onNotification: _handleScrollNotification,
       child: Stack(
         children: [
-          ListView.builder(
-            controller: _scrollController,
+          CollectionView<_FlowSlot>(
+            // Page storage keeps this flow's offset apart from other
+            // scrollables on the route.
             key: PageStorageKey<String>(
               'messaging-participant-flow-${widget.sessionKey}',
             ),
+            items: displaySlots,
+            itemKey: (slot) => slot.isEarlierPage
+                ? 'messaging-flow-earlier-page'
+                : _entryKey(displayEntries[slot.entryIndex]),
+            controller: _scrollController,
             reverse: true,
-            findChildIndexCallback: (key) =>
-                key is ValueKey<String> ? _cachedEntryIndexes[key.value] : null,
-            scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
+            // A streamed reply changes one slot per frame. Without a repaint
+            // boundary per slot the whole visible flow repaints with it.
+            wrapWithRepaintBoundary: true,
+            scrollCacheExtent: 2.0,
             padding: EdgeInsets.fromLTRB(
               LicoContentSpacing.item,
               LicoContentSpacing.item + widget.topOverlayInset,
@@ -638,36 +667,13 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
                   widget.adapter.assistantVerticalPadding +
                   widget.bottomOverlayInset,
             ),
-            itemCount:
-                displayEntries.length +
-                ((widget.hasEarlier ||
-                        widget.messagePageLoading ||
-                        widget.messagePageError.isNotEmpty)
-                    ? 1
-                    : 0),
-            itemBuilder: (context, index) {
-              if (index == displayEntries.length) {
-                return _MessagingEarlierPageRow(
-                  loading: widget.messagePageLoading,
-                  errorCode: widget.messagePageError,
-                  onRetry: widget.onLoadEarlier,
-                );
-              }
-              final entry = displayEntries[index];
-              // A streamed reply changes one entry per frame. Without a
-              // repaint boundary per entry the whole visible flow
-              // repaints with it.
-              final entryKey = _entryKey(entry);
-              return ReadingPositionAnchor(
-                key: ValueKey<String>(entryKey),
-                controller: entry is MessagingFlowMessageGroup
-                    ? null
-                    : _scrollController,
-                anchorId: entryKey,
-                isRow: true,
-                child: RepaintBoundary(child: _entryContent(context, entry)),
-              );
-            },
+            itemBuilder: (context, slot, index) => slot.isEarlierPage
+                ? _MessagingEarlierPageRow(
+                    loading: widget.messagePageLoading,
+                    errorCode: widget.messagePageError,
+                    onRetry: widget.onLoadEarlier,
+                  )
+                : _entryContent(context, displayEntries[slot.entryIndex]),
           ),
           if (!_atLatest)
             Align(
@@ -760,6 +766,17 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
       ),
     };
   }
+}
+
+/// One slot of the reversed participant flow: an index into the cached display
+/// entries, or the earlier-page slot at the oldest end.
+@immutable
+final class _FlowSlot {
+  const _FlowSlot.entry(this.entryIndex) : isEarlierPage = false;
+  const _FlowSlot.earlierPage() : entryIndex = -1, isEarlierPage = true;
+
+  final int entryIndex;
+  final bool isEarlierPage;
 }
 
 final class _MessagingEarlierPageRow extends StatelessWidget {

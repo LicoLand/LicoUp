@@ -27,7 +27,7 @@ import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:licoup/src/frontend/shared/ui/reading_position_scroll_controller.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 
 /// One author group in the messaging participant flow: a header row with the
 /// author avatar, display name, and AGENT badge for agent authors, followed

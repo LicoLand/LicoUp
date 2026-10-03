@@ -5,8 +5,8 @@ import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_view.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
-import 'package:licoup/src/frontend/shared/ui/reading_position_scroll_controller.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 
 void main() {
   for (final style in AgentsMessageStyle.values) {

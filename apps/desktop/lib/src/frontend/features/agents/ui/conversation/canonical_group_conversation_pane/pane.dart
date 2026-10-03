@@ -4,7 +4,6 @@ import 'package:licoup/src/frontend/features/agents/ui/conversation_execution_bi
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:licoup/src/frontend/shared/ui/reading_position_scroll_controller.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
@@ -34,6 +33,7 @@ import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 
 /// Canonical Conversation renderer. Durable Events and Parts stay distinct
 /// from native catalog sessions; the live Membership turns only contribute
