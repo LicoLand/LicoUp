@@ -1,26 +1,15 @@
 //! Telegram Communication Channel (Bot API → local conversation lane).
 
-mod binding;
-mod bridge;
-mod control;
-mod credentials;
-mod inbound;
-mod runtime;
-mod transport;
+pub mod binding;
+pub mod control;
+pub mod credentials;
 
 pub use binding::{
     BindingStore, ChatBinding, PairingRecord, approve_pairing, list_pairings, revoke_pairing,
 };
-pub use bridge::{list_agents, list_sessions, open_session, send_turn};
 pub use control::{ControlCommand, ControlOutcome, parse_control_command};
 pub use credentials::{
     clear_bot_token, credentials_status, load_bot_token, set_bot_token, token_configured,
-};
-pub use inbound::{InboundKind, InboundMessage, MediaRef, ReplyRef};
-pub use runtime::{RuntimeConfig, run_channel_loop};
-pub use transport::{
-    BotIdentity, BotTransport, LiveBotTransport, MockBotTransport, TelegramApiError, Update,
-    bot_commands,
 };
 
 use anyhow::Result;

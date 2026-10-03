@@ -9,8 +9,8 @@ pub(super) fn handle_client_token(command: AdmittedCommand) -> Result<CliExecuti
     let agent = command
         .option_text("agent")
         .ok_or_else(|| anyhow!("gateway_agent_required"))?;
-    crate::domain::llm_gateway_agent_config::GatewayAgentTarget::parse(agent)?;
-    let token = crate::platform::llm_gateway_client_auth::ensure_default_token()?;
+    licoup_gateway_core::model::llm_gateway_agent_config::GatewayAgentTarget::parse(agent)?;
+    let token = licoup_gateway_core::control::client_auth::ensure_default_token()?;
     let mut stdout = std::io::stdout().lock();
     stdout.write_all(token.expose_bytes())?;
     stdout.write_all(b"\n")?;
@@ -88,7 +88,7 @@ pub(super) fn handle_inventory_reload(mut command: AdmittedCommand) -> Result<Cl
 
 pub(super) fn handle_channel_status(_command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(
-        crate::platform::gateway_runtime::channel_layer_status()?,
+        licoup_gateway_core::channels::channel_layer_status()?,
     ))
 }
 

@@ -12,19 +12,21 @@
 use crate::core::secure_mesh_secret_store::SecretBytes;
 #[cfg(unix)]
 use crate::core::secure_mesh_secret_store::SecretStoreAuthorizationSession;
-use crate::domain::llm_api_key_vault::LlmApiKeyProvider;
-#[cfg(unix)]
-use crate::domain::llm_api_key_vault::{GatewayCredentialHandoff, LlmApiKeyInventory};
-use crate::domain::llm_gateway::{
-    CompiledGateway, CredentialStyle, GatewayConfig, GatewayProvider, MAX_GATEWAY_BODY_BYTES,
-    UpstreamProtocol,
-};
 use anyhow::{Result, anyhow, ensure};
 use licoup_foundation::platform::file_security::{
     atomic_write_private_text, ensure_private_dir, read_private_text_bounded,
     remove_private_state_marker,
 };
 use licoup_foundation::platform::paths;
+use licoup_gateway_core::credentials::llm_api_key_vault::LlmApiKeyProvider;
+#[cfg(unix)]
+use licoup_gateway_core::credentials::llm_api_key_vault::{
+    GatewayCredentialHandoff, LlmApiKeyInventory,
+};
+use licoup_gateway_core::model::llm_gateway::{
+    CompiledGateway, CredentialStyle, GatewayConfig, GatewayProvider, MAX_GATEWAY_BODY_BYTES,
+    UpstreamProtocol,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -174,7 +176,7 @@ pub(crate) fn reconcile_gateway_session_credentials(
 
 fn reconcile_enabled_credential_ids(
     enabled: &BTreeSet<String>,
-    inventory: &crate::domain::llm_api_key_vault::LlmApiKeyInventory,
+    inventory: &licoup_gateway_core::credentials::llm_api_key_vault::LlmApiKeyInventory,
     now_epoch_seconds: u64,
 ) -> BTreeSet<String> {
     let available: BTreeSet<&str> = inventory
@@ -220,9 +222,10 @@ impl ServicePaths {
         let root = paths::portable_data_dir()?.join(STATE_DIRECTORY);
         ensure_private_dir(&root)?;
         Ok(Self {
-            credentials_control:
-                crate::platform::llm_gateway_credentials_control::control_socket_path(&root),
-            client_token: crate::platform::llm_gateway_client_auth::default_token_path()?,
+            credentials_control: licoup_gateway_core::control::credentials::control_socket_path(
+                &root,
+            ),
+            client_token: licoup_gateway_core::control::client_auth::default_token_path()?,
             config: root.join("config.json"),
             pid: root.join("gateway.pid"),
             log: root.join("gateway.log"),
@@ -250,7 +253,7 @@ pub fn service_status(port: u16) -> Result<Value> {
 /// local Gateway. Reading statistics never authorizes credential access.
 pub fn service_usage() -> Result<Value> {
     let paths = ServicePaths::resolve()?;
-    crate::platform::llm_gateway_usage::read_usage(&paths.usage)
+    licoup_gateway_core::usage::read_usage(&paths.usage)
 }
 
 /// Return the live provider catalogs exposed by a running managed Gateway.
@@ -259,12 +262,12 @@ pub fn service_usage() -> Result<Value> {
 /// back to product-owned model names.
 pub(crate) fn service_model_catalog(
     port: u16,
-) -> Result<Vec<crate::domain::llm_gateway_agent_config::GatewayAgentModel>> {
+) -> Result<Vec<licoup_gateway_core::model::llm_gateway_agent_config::GatewayAgentModel>> {
     if !probe_health(port, HEALTH_PROBE_TIMEOUT) {
         return Ok(Vec::new());
     }
     let paths = ServicePaths::resolve()?;
-    let token = crate::platform::llm_gateway_client_auth::read_token(&paths.client_token)?;
+    let token = licoup_gateway_core::control::client_auth::read_token(&paths.client_token)?;
     let token = token
         .expose_utf8()
         .map_err(|_| anyhow!("gateway_client_token_invalid"))?;
@@ -313,10 +316,12 @@ pub(crate) fn service_model_catalog(
                 !name.is_empty() && name.len() <= 1024 && !name.chars().any(char::is_control)
             })
             .unwrap_or(id);
-        models.push(crate::domain::llm_gateway_agent_config::GatewayAgentModel {
-            id: id.to_owned(),
-            name: name.to_owned(),
-        });
+        models.push(
+            licoup_gateway_core::model::llm_gateway_agent_config::GatewayAgentModel {
+                id: id.to_owned(),
+                name: name.to_owned(),
+            },
+        );
     }
     Ok(models)
 }
@@ -532,7 +537,7 @@ pub fn service_start(port: u16) -> Result<Value> {
         service_stop(port)?;
     }
     let paths = ServicePaths::resolve()?;
-    let _ = crate::platform::llm_gateway_client_auth::ensure_default_token()?;
+    let _ = licoup_gateway_core::control::client_auth::ensure_default_token()?;
     if let Some(record) = read_pid_record(&paths.pid)? {
         if pid_alive(record.pid) {
             return Err(anyhow!("llm_gateway_already_unhealthy"));
@@ -790,7 +795,7 @@ fn hot_apply_session_credentials(port: u16) -> Result<Option<bool>> {
             None => None,
         }
     };
-    let loaded = crate::platform::llm_gateway_credentials_control::apply_credentials_hot(
+    let loaded = licoup_gateway_core::control::credentials::apply_credentials_hot(
         &paths.credentials_control,
         handoff.as_ref(),
     )?;
@@ -863,11 +868,8 @@ pub fn reload_conversation_inventory(readiness_json: &str) -> Result<Value> {
         .parent()
         .ok_or_else(|| anyhow!("gateway_inventory_control_unavailable"))?
         .to_path_buf();
-    let overlay = crate::platform::llm_gateway_inventory_control::overlay_path(&state_root);
-    crate::platform::llm_gateway_inventory_control::write_inventory_overlay(
-        &overlay,
-        readiness_json,
-    )?;
+    let overlay = licoup_gateway_core::control::inventory::overlay_path(&state_root);
+    licoup_gateway_core::control::inventory::write_inventory_overlay(&overlay, readiness_json)?;
 
     let Some(record) = read_pid_record(&paths.pid)?.filter(|record| pid_alive(record.pid)) else {
         return Ok(json!({
@@ -883,12 +885,11 @@ pub fn reload_conversation_inventory(readiness_json: &str) -> Result<Value> {
 
     #[cfg(unix)]
     {
-        let socket =
-            crate::platform::llm_gateway_inventory_control::control_socket_path(&state_root);
+        let socket = licoup_gateway_core::control::inventory::control_socket_path(&state_root);
         // Brief retry covers socket bind races without ever restarting the process.
         let mut last_error = None;
         for _ in 0..8 {
-            match crate::platform::llm_gateway_inventory_control::apply_inventory_hot(
+            match licoup_gateway_core::control::inventory::apply_inventory_hot(
                 &socket,
                 readiness_json,
             ) {
@@ -1397,12 +1398,12 @@ mod tests {
     #[test]
     fn unleased_provider_model_reaches_the_credential_boundary() {
         let gateway = CompiledGateway::compile(default_config()).unwrap();
-        let credentials = crate::domain::llm_api_key_vault::GatewayCredentialSlot::disconnected();
+        let credentials = licoup_gateway_core::credentials::llm_api_key_vault::GatewayCredentialSlot::disconnected();
         let request = serde_json::json!({
             "model": "deepseek:deepseek-v4-flash",
             "messages": [{"role": "user", "content": "synthetic"}]
         });
-        let error = crate::platform::llm_gateway_transport::exchange(
+        let error = licoup_gateway::http::transport::exchange(
             &gateway,
             "/v1/chat/completions",
             &serde_json::to_vec(&request).unwrap(),
@@ -1413,7 +1414,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             error,
-            crate::platform::llm_gateway_transport::GatewayTransportError::CredentialUnavailable
+            licoup_gateway::http::transport::GatewayTransportError::CredentialUnavailable
         );
     }
 
@@ -1487,7 +1488,7 @@ mod tests {
     fn agent_config_catalog_reads_the_authenticated_live_gateway_snapshot() {
         let root = temp_state_root();
         let _guard = PortableDataDirOverrideGuard::set(root.clone());
-        let _token = crate::platform::llm_gateway_client_auth::ensure_default_token().unwrap();
+        let _token = licoup_gateway_core::control::client_auth::ensure_default_token().unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let server = thread::spawn(move || {
@@ -1595,7 +1596,7 @@ mod tests {
         credentials.insert(
             LlmApiKeyProvider::Kimi,
             vec![
-                crate::domain::llm_api_key_vault::GatewayCredential::new(
+                licoup_gateway_core::credentials::llm_api_key_vault::GatewayCredential::new(
                     uuid::Uuid::new_v4().to_string(),
                     SecretBytes::try_from_string("synthetic-secret".to_owned()).unwrap(),
                     None,
@@ -1605,7 +1606,7 @@ mod tests {
         );
         let handoff = GatewayCredentialHandoff::new(
             credentials,
-            crate::domain::llm_api_key_vault::GatewayCredentialLeaseDays::Seven,
+            licoup_gateway_core::credentials::llm_api_key_vault::GatewayCredentialLeaseDays::Seven,
             "11111111-1111-4111-8111-111111111111".to_owned(),
         )
         .unwrap();
@@ -1626,7 +1627,7 @@ mod tests {
 
     #[test]
     fn vault_mutation_reconciliation_never_auto_authorizes_new_credentials() {
-        use crate::domain::llm_api_key_vault::{
+        use licoup_gateway_core::credentials::llm_api_key_vault::{
             GatewayCredentialLeaseDays, LlmApiKeyInventory, LlmApiKeyMetadata,
         };
 

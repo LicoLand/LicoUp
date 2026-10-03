@@ -8,6 +8,8 @@ export const CLIENT_MODULE_RUNNABLE_HOSTS = Object.freeze([
 ]);
 export const NATIVE_MANIFEST = "crates/licoup-native/Cargo.toml";
 export const FOUNDATION_MANIFEST = "crates/licoup-foundation/Cargo.toml";
+export const GATEWAY_CORE_MANIFEST = "crates/licoup-gateway-core/Cargo.toml";
+export const GATEWAY_MANIFEST = "crates/licoup-gateway/Cargo.toml";
 
 export const FLUTTER_COMPOSITION_INPUTS = Object.freeze([
   "apps/desktop/analysis_options.yaml",
@@ -22,7 +24,13 @@ export const RUST_COMPOSITION_INPUTS = Object.freeze([
   FOUNDATION_MANIFEST,
   "crates/licoup-foundation/src/lib.rs",
   "crates/licoup-foundation/src/core/mod.rs",
+  "crates/licoup-foundation/src/core/secret_bytes.rs",
   "crates/licoup-foundation/src/platform/mod.rs",
+  GATEWAY_CORE_MANIFEST,
+  "crates/licoup-gateway-core/src/lib.rs",
+  "crates/licoup-gateway-core/src/ports/mod.rs",
+  GATEWAY_MANIFEST,
+  "crates/licoup-gateway/src/lib.rs",
   NATIVE_MANIFEST,
   "crates/licoup-native/src/core/mod.rs",
   "crates/licoup-native/src/domain/mod.rs",
@@ -184,6 +192,51 @@ export function rustLayer(filter, harnessArgs = []) {
       "--lib",
       filter,
       ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),
+    ],
+    10 * 60_000,
+  );
+}
+
+export function gatewayCoreLayer(filter, harnessArgs = []) {
+  return command(
+    "cargo",
+    [
+      "test",
+      "--manifest-path",
+      GATEWAY_CORE_MANIFEST,
+      "--lib",
+      filter,
+      ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),
+    ],
+    10 * 60_000,
+  );
+}
+
+export function gatewayLayer(filter, harnessArgs = []) {
+  return command(
+    "cargo",
+    [
+      "test",
+      "--manifest-path",
+      GATEWAY_MANIFEST,
+      "--lib",
+      filter,
+      ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),
+    ],
+    10 * 60_000,
+  );
+}
+
+export function gatewayIntegrationTest(target, filter) {
+  return command(
+    "cargo",
+    [
+      "test",
+      "--manifest-path",
+      GATEWAY_MANIFEST,
+      "--test",
+      target,
+      ...(filter ? [filter] : []),
     ],
     10 * 60_000,
   );

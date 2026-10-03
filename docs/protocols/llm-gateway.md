@@ -3,8 +3,9 @@
 English (normative) · [简体中文](llm-gateway.zh-CN.md)
 
 The LLM Gateway is the **lower layer** of the Gateway Runtime. Authority for
-this layer is `domain/llm_gateway.rs`, `platform/llm_gateway_transport.rs`, and
-the unified `lico-gateway` process (`platform/gateway_runtime`). The layer
+this layer is `crates/licoup-gateway-core/src/model/llm_gateway.rs`,
+`crates/licoup-gateway/src/http/transport.rs`, and the unified `lico-gateway`
+process (`crates/licoup-gateway/src/runtime`). The layer
 binds only to loopback and routes by the exact client-protocol/requested-model
 pair; there is no global active provider. Messaging channels are documented in
 [`gateway-runtime.md`](gateway-runtime.md).

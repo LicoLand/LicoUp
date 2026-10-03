@@ -2125,7 +2125,40 @@ dependencies = [
  "tar",
  "url",
  "uuid",
+ "zeroize",
  "zip",
+]
+
+[[package]]
+name = "licoup-gateway"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "licoup-foundation",
+ "licoup-gateway-core",
+ "serde",
+ "serde_json",
+ "time",
+ "ureq",
+ "uuid",
+]
+
+[[package]]
+name = "licoup-gateway-core"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "fs2",
+ "libc",
+ "licoup-foundation",
+ "rand_core 0.6.4",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "time",
+ "url",
+ "uuid",
 ]
 
 [[package]]
@@ -2190,6 +2223,8 @@ dependencies = [
  "licoup-endpoint-core",
  "licoup-extension-contracts",
  "licoup-foundation",
+ "licoup-gateway",
+ "licoup-gateway-core",
  "licoup-platform-bridges",
  "licoup-protocol-bindings",
  "licoup-state-machine-codegen",

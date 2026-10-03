@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
+[features]
+# Test-only zeroize observation probes consumed by the custody test suites.
+test-support = []
+
 [dependencies]
 anyhow.workspace = true
 fs2.workspace = true
@@ -16,6 +20,7 @@ serde_json.workspace = true
 tar.workspace = true
 url.workspace = true
 zip.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 uuid.workspace = true

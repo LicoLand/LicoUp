@@ -133,8 +133,7 @@ pub fn write_inventory_overlay(path: &Path, readiness_json: &str) -> Result<()> 
         "gateway_inventory_overlay_too_large"
     );
     // Validate before writing so a bad document never poisons boot.
-    crate::platform::runtime_adapters::reload_conversation_readiness_document(readiness_json)
-        .map_err(|code| anyhow!(code))?;
+    crate::ports::readiness::reload_document(readiness_json).map_err(|code| anyhow!(code))?;
     if let Some(parent) = path.parent() {
         licoup_foundation::platform::file_security::ensure_private_dir(parent)?;
     }
@@ -147,8 +146,7 @@ pub fn load_inventory_overlay_if_present(path: &Path) -> Result<bool> {
     if !path.is_file() {
         return Ok(false);
     }
-    crate::platform::runtime_adapters::reload_conversation_readiness_from_path(path)
-        .map_err(|code| anyhow!(code))?;
+    crate::ports::readiness::reload_from_path(path).map_err(|code| anyhow!(code))?;
     Ok(true)
 }
 
@@ -161,8 +159,7 @@ fn handle_control_message(stream: &mut impl Read, overlay: &Path) -> Result<()> 
     );
     let text = std::str::from_utf8(&payload)
         .map_err(|_| anyhow!("gateway_inventory_control_message_invalid"))?;
-    crate::platform::runtime_adapters::reload_conversation_readiness_document(text)
-        .map_err(|code| anyhow!(code))?;
+    crate::ports::readiness::reload_document(text).map_err(|code| anyhow!(code))?;
     // Persist so soft-restart / next boot keep the hot-applied verified set.
     if let Some(parent) = overlay.parent() {
         licoup_foundation::platform::file_security::ensure_private_dir(parent)?;
@@ -245,9 +242,41 @@ mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    /// Readiness application belongs to the composing host; the test installs
+    /// a deterministic applier so the pushed document stays observable.
+    fn install_recording_readiness() -> Arc<std::sync::Mutex<Vec<String>>> {
+        use crate::ports::readiness;
+        static APPLIED: std::sync::OnceLock<Arc<std::sync::Mutex<Vec<String>>>> =
+            std::sync::OnceLock::new();
+        fn apply(text: &str) -> Result<(), &'static str> {
+            let parsed: serde_json::Value =
+                serde_json::from_str(text).map_err(|_| "readiness_overlay_invalid")?;
+            if parsed
+                .get("schemaVersion")
+                .and_then(serde_json::Value::as_str)
+                .is_none()
+            {
+                return Err("readiness_overlay_invalid");
+            }
+            APPLIED
+                .get()
+                .expect("recording applier installed before use")
+                .lock()
+                .expect("readiness recorder lock")
+                .push(text.to_owned());
+            Ok(())
+        }
+        let applied = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let _ = APPLIED.set(Arc::clone(&applied));
+        let _ = readiness::install(apply);
+        applied
+    }
+
     #[test]
     fn inventory_control_hot_applies_and_persists_overlay() {
         use std::os::unix::fs::PermissionsExt;
+
+        let recorded = install_recording_readiness();
 
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -272,7 +301,11 @@ mod tests {
         }
         assert!(socket.exists());
 
-        let readiness = include_str!("../../resources/agent-conversation-readiness.json");
+        // One generated readiness fixture owns the verified document.
+        let readiness = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../licoup-native/resources/agent-conversation-readiness.json"
+        ));
         let mut applied = false;
         for _ in 0..40 {
             match apply_inventory_hot(&socket, readiness) {
@@ -287,6 +320,14 @@ mod tests {
         assert!(overlay.is_file());
         let persisted = std::fs::read_to_string(&overlay).unwrap();
         assert!(persisted.contains("client-agent-conversation-readiness-1"));
+        assert!(
+            recorded
+                .lock()
+                .expect("readiness recorder lock")
+                .iter()
+                .any(|text| text.contains("client-agent-conversation-readiness-1")),
+            "pushed readiness must reach the installed callback"
+        );
 
         stop.store(true, Ordering::SeqCst);
         let _ = server.join();

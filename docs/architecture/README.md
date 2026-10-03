@@ -367,6 +367,8 @@ crates/
 ├── licoup-native/              # Host binary + FFI entry points
 │   ├── src/bin/                # licoup-cli, lico-gateway, lico-agent, etc.
 │   └── src/ffi/                # Mobile platform FFI (Android/iOS)
+├── licoup-gateway/             # Gateway Runtime process: loopback model server, channels
+├── licoup-gateway-core/        # Shared gateway model, credential lease, control channels, ports
 ├── licoup-conversation/        # L3: Conversation domain (state machine, events, projections)
 ├── licoup-workflow/            # Pure workflow compiler and transition machine
 ├── licoup-agent-runtime/       # L4+L5: Agent adapters + settlement arbiter
@@ -383,7 +385,10 @@ crates/
   Projection emission. Source-agnostic (handles local and future remote events identically).
 - `licoup-agent-runtime` owns L4+L5: adapter dispatch, protocol translation, settlement.
   Adapters REPORT signals; settlement DECIDES outcomes.
-- `licoup-native` remains the binary host that composes these crates.
+- `licoup-native` remains the binary host that composes these crates. It composes
+  the Gateway Runtime sidecar (`lico-gateway`) behind its off-by-default `gateway`
+  feature: conversations, credential custody and verified readiness reach the
+  runtime only through the lane, vault and readiness ports.
 - Crate boundaries enforce: conversation logic cannot depend on adapter details, and
   adapters cannot decide conversation outcomes.
 

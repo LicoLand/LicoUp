@@ -96,9 +96,9 @@ export const OPTIONAL_CAPABILITY_CRATES = Object.freeze({
     evidence: "No separate first-party crate implements this package at this baseline.",
   }),
   "org.licoland.feature.gateway": Object.freeze({
-    crates: Object.freeze([]),
+    crates: Object.freeze(["licoup-gateway"]),
     evidence:
-      "No separate crate at this baseline; the gateway runtime ships as the lico-gateway binary inside licoup-native.",
+      "crates/licoup-gateway implements the gateway runtime and the managed client links it only through the off-by-default `gateway` feature; the kernel keeps no mandatory dependency.",
   }),
   "org.licoland.feature.collaboration": Object.freeze({
     crates: Object.freeze([]),
@@ -150,7 +150,7 @@ export const OPTIONAL_CAPABILITY_ARTIFACTS = Object.freeze({
   "org.licoland.feature.gateway": Object.freeze({
     artifacts: Object.freeze(["lico-gateway"]),
     evidence:
-      "licoup-native builds the lico-gateway binary; gateway-sidecar bundles it as the gateway runtime.",
+      "licoup-native composes the lico-gateway binary from crates/licoup-gateway when the gateway feature is built; gateway-sidecar bundles it as the gateway runtime.",
   }),
   "org.licoland.feature.collaboration": Object.freeze({
     artifacts: Object.freeze([]),

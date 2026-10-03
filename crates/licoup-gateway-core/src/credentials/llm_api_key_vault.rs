@@ -11,7 +11,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::core::secure_mesh_secret_store::SecretBytes;
+use licoup_foundation::core::secret_bytes::SecretBytes;
 
 pub const LLM_API_KEY_INVENTORY_SCHEMA: &str = "licoup.llm-api-key-inventory.v1";
 pub const GATEWAY_CREDENTIAL_HANDOFF_SCHEMA: &str = "licoup.llm-gateway-credential-handoff.v2";
@@ -22,14 +22,14 @@ pub const MAX_LLM_API_KEY_LABEL_BYTES: usize = 96;
 const LEASE_VALIDATION_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum GatewayCredentialChange {
+pub enum GatewayCredentialChange {
     CredentialCreated,
     CredentialDeleted,
     LeaseDaysChanged,
 }
 
 impl GatewayCredentialChange {
-    pub(crate) fn revokes_active_leases(self) -> bool {
+    pub fn revokes_active_leases(self) -> bool {
         matches!(self, Self::CredentialCreated | Self::CredentialDeleted)
     }
 }
@@ -281,7 +281,7 @@ impl NewLlmApiKey {
         self.validity
     }
 
-    pub(crate) fn into_secret(self) -> SecretBytes {
+    pub fn into_secret(self) -> SecretBytes {
         self.secret
     }
 }
@@ -305,14 +305,14 @@ pub trait GatewayCredentialEpochSource: Send + Sync {
 ///
 /// Identity and expiry travel with the secret so authorization selection and
 /// storage validity remain enforceable after the sidecar has started.
-pub(crate) struct GatewayCredential {
+pub struct GatewayCredential {
     credential_id: String,
     secret: SecretBytes,
     expires_at_epoch_seconds: Option<u64>,
 }
 
 impl GatewayCredential {
-    pub(crate) fn new(
+    pub fn new(
         credential_id: String,
         secret: SecretBytes,
         expires_at_epoch_seconds: Option<u64>,
@@ -359,11 +359,11 @@ pub struct GatewayCredentialHandoff {
 }
 
 impl GatewayCredentialHandoff {
-    pub(crate) fn providers(&self) -> impl Iterator<Item = LlmApiKeyProvider> + '_ {
+    pub fn providers(&self) -> impl Iterator<Item = LlmApiKeyProvider> + '_ {
         self.credentials.keys().copied()
     }
 
-    pub(crate) fn retain_credential_ids(&mut self, credential_ids: &BTreeSet<String>) {
+    pub fn retain_credential_ids(&mut self, credential_ids: &BTreeSet<String>) {
         for credentials in self.credentials.values_mut() {
             credentials.retain(|credential| credential_ids.contains(&credential.credential_id));
         }
@@ -371,11 +371,11 @@ impl GatewayCredentialHandoff {
             .retain(|_, credentials| !credentials.is_empty());
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.credentials.is_empty()
     }
 
-    pub(crate) fn new(
+    pub fn new(
         credentials: BTreeMap<LlmApiKeyProvider, Vec<GatewayCredential>>,
         lease_days: GatewayCredentialLeaseDays,
         epoch: String,
@@ -601,7 +601,7 @@ impl GatewayCredentialLease {
         }
     }
 
-    pub(crate) fn new(
+    pub fn new(
         credentials: BTreeMap<LlmApiKeyProvider, Vec<GatewayCredential>>,
         lease_days: GatewayCredentialLeaseDays,
         epoch: String,
@@ -1280,7 +1280,7 @@ mod tests {
             serde_json::json!([{"provider": "kimi", "keys": [handoff_key(serde_json::json!([256]))]}]),
         ));
         // One key exceeding MAX_SECRET_BYTES.
-        let oversize_key = vec![0u8; crate::core::secure_mesh_secret_store::MAX_SECRET_BYTES + 1];
+        let oversize_key = vec![0u8; licoup_foundation::core::secret_bytes::MAX_SECRET_BYTES + 1];
         assert_handoff_invalid(&handoff_document(
             serde_json::json!([{"provider": "kimi", "keys": [handoff_key(serde_json::json!(oversize_key))]}]),
         ));

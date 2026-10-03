@@ -1,15 +1,15 @@
 //! Long-polling gateway loop and bounded per-chat inbound scheduling.
 
-use super::binding::{BindingStore, ChatBinding, PairingRecord};
 use super::bridge::{
     ensure_known_agent, format_agent_list, format_session_list, list_agents, list_sessions,
     open_session, resolve_session_selector, send_turn,
 };
-use super::control::{
-    ControlCommand, ControlOutcome, commands_text, help_text, parse_control_command,
-};
 use super::transport::{BotIdentity, BotTransport, InboundMessage, bot_commands};
 use anyhow::{Result, anyhow};
+use licoup_gateway_core::channels::telegram::binding::{BindingStore, ChatBinding, PairingRecord};
+use licoup_gateway_core::channels::telegram::control::{
+    ControlCommand, ControlOutcome, commands_text, help_text, parse_control_command,
+};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -193,7 +193,7 @@ pub fn run_channel_loop<T: BotTransport + 'static>(
     let identity = transport
         .get_me()
         .map_err(|error| anyhow!("{}: {}", error.code, error.message))?;
-    let _ = super::mark_ready(&identity.username);
+    let _ = licoup_gateway_core::channels::telegram::mark_ready(&identity.username);
     transport
         .delete_webhook()
         .map_err(|error| anyhow!("{}: {}", error.code, error.message))?;
@@ -653,10 +653,8 @@ fn sanitize_error(error: &anyhow::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::platform::gateway_runtime::channels::telegram::inbound::InboundKind;
-    use crate::platform::gateway_runtime::channels::telegram::transport::{
-        MockBotTransport, Update,
-    };
+    use crate::channels::telegram::inbound::InboundKind;
+    use crate::channels::telegram::transport::{MockBotTransport, Update};
     use licoup_foundation::platform::paths::set_portable_data_dir_override;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Condvar, Mutex};
@@ -692,6 +690,37 @@ mod tests {
         }
     }
 
+    /// The composing host owns conversation access; tests install deterministic
+    /// lane answers so the channel admission path stays exercised.
+    fn install_synthetic_lane() {
+        use licoup_gateway_core::ports::lane::{self, LanePort};
+        use serde_json::json;
+        fn scan_targets() -> anyhow::Result<serde_json::Value> {
+            Ok(json!({"candidates": [{
+                "target": "codex",
+                "label": "Codex",
+                "binaryPath": "/fixture-root/bin/codex",
+                "adapterCapabilities": {
+                    "conversationDriver": "native",
+                    "conversationReadiness": "ready",
+                },
+            }]}))
+        }
+        fn empty(params: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+            let _ = params;
+            Ok(json!({"sessions": []}))
+        }
+        let _ = lane::install(LanePort {
+            scan_targets,
+            conversation_list: empty,
+            open_or_resume: empty,
+            dispatch: |operation, params| {
+                let _ = (operation, params);
+                Ok(json!({"ok": true, "output": "synthetic", "sessionId": "synthetic"}))
+            },
+        });
+    }
+
     fn wait_until<F: Fn() -> bool>(condition: F, timeout: Duration) {
         let deadline = Instant::now() + timeout;
         while !condition() {
@@ -702,6 +731,7 @@ mod tests {
 
     #[test]
     fn start_issues_pairing_and_approve_enables_agent_command() {
+        install_synthetic_lane();
         let root = std::env::temp_dir().join(format!("licoup-tg-rt-{}", uuid::Uuid::new_v4()));
         let _ = std::fs::create_dir_all(&root);
         let previous = set_portable_data_dir_override(Some(root.clone()));
@@ -798,20 +828,18 @@ mod tests {
         message.kind = InboundKind::Photo;
         message.text = None;
         message.caption = Some("/whoami".into());
-        message.media = vec![
-            crate::platform::gateway_runtime::channels::telegram::inbound::MediaRef {
-                kind: "photo".into(),
-                file_id: "p".into(),
-                file_unique_id: None,
-                file_name: None,
-                mime_type: None,
-                file_size: Some(10),
-                width: Some(1),
-                height: Some(1),
-                duration: None,
-                emoji: None,
-            },
-        ];
+        message.media = vec![crate::channels::telegram::inbound::MediaRef {
+            kind: "photo".into(),
+            file_id: "p".into(),
+            file_unique_id: None,
+            file_name: None,
+            mime_type: None,
+            file_size: Some(10),
+            width: Some(1),
+            height: Some(1),
+            duration: None,
+            emoji: None,
+        }];
         handle_inbound(&transport, &store, &BotIdentity::default(), &message).unwrap();
         let messages = sent.lock().unwrap();
         assert!(messages.iter().any(|(_, body)| body.contains("chatId: 5")));

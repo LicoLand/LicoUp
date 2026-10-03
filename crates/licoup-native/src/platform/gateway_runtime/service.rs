@@ -1,9 +1,9 @@
 //! Managed lifecycle facade for the unified Gateway Runtime.
 
-use crate::platform::gateway_runtime::channels;
 use anyhow::Result;
 use licoup_foundation::platform::file_security::ensure_private_dir;
 use licoup_foundation::platform::paths;
+use licoup_gateway_core::channels;
 use serde_json::{Value, json};
 use std::path::PathBuf;
 

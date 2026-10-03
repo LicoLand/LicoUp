@@ -3,8 +3,9 @@
 [English（规范版本）](llm-gateway.md)
 
 LLM Gateway 是 Gateway Runtime 的**下层**。本层权威实现位于
-`domain/llm_gateway.rs`、`platform/llm_gateway_transport.rs`，以及统一进程
-`lico-gateway`（`platform/gateway_runtime`）。下层只监听回环地址，并按
+`crates/licoup-gateway-core/src/model/llm_gateway.rs`、
+`crates/licoup-gateway/src/http/transport.rs`，以及统一进程 `lico-gateway`
+（`crates/licoup-gateway/src/runtime`）。下层只监听回环地址，并按
 “客户端协议 + 请求模型”精确路由，不使用全局当前供应商。消息 channel 见
 [`gateway-runtime.zh-CN.md`](gateway-runtime.zh-CN.md)。
 

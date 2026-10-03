@@ -99,8 +99,8 @@ fn protected_custody_upgrade_defers_until_success_and_retries_without_reset() {
         // Native approval can take arbitrarily long. Its dedicated lock
         // must not block unrelated startup admission while waiting.
         assert_eq!(admit(&root)?.status, "ready");
-        crate::domain::llm_api_key_vault::LlmApiKeyInventory::new(
-            crate::domain::llm_api_key_vault::GatewayCredentialLeaseDays::default(),
+        licoup_gateway_core::credentials::llm_api_key_vault::LlmApiKeyInventory::new(
+            licoup_gateway_core::credentials::llm_api_key_vault::GatewayCredentialLeaseDays::default(),
             Vec::new(),
         )
     })

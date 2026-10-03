@@ -5,14 +5,24 @@ import {
   foundationLayer,
   node,
   rustLayer,
+  gatewayCoreLayer,
+  gatewayIntegrationTest,
+  gatewayLayer,
   rustBinaryTests,
   rustIntegrationTest,
   defineModule,
 } from "../helpers.mjs";
 
-const nativeBinaryCheck = (binary) => command(
+const nativeBinaryCheck = (binary, features = []) => command(
   "cargo",
-  ["check", "--manifest-path", NATIVE_MANIFEST, "--bin", binary],
+  [
+    "check",
+    "--manifest-path",
+    NATIVE_MANIFEST,
+    ...(features.length > 0 ? ["--features", features.join(",")] : []),
+    "--bin",
+    binary,
+  ],
   10 * 60_000,
 );
 
@@ -1959,13 +1969,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/llm_api_key_vault.rs",
         "crates/licoup-native/src/platform/llm_api_key_vault/**",
         "crates/licoup-native/src/platform/llm_gateway_autostart.rs",
-        "crates/licoup-native/src/platform/llm_gateway_client_auth.rs",
-        "crates/licoup-native/src/platform/llm_gateway_credentials_control.rs",
-        "crates/licoup-native/src/platform/llm_gateway_inventory_control.rs",
-        "crates/licoup-native/src/platform/llm_gateway_server.rs",
         "crates/licoup-native/src/platform/llm_gateway_service.rs",
-        "crates/licoup-native/src/platform/llm_gateway_transport.rs",
-        "crates/licoup-native/src/platform/llm_gateway_usage.rs",
         "crates/licoup-foundation/src/platform/paths.rs",
         "crates/licoup-native/src/platform/process_sandbox/mod.rs",
         "crates/licoup-native/src/platform/process_sandbox/seatbelt.rs",
@@ -2120,6 +2124,65 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "rust.gateway.credentials",
+      kind: "rust-platform",
+      summary: "Gateway credential lease, handoff, epoch revocation, and provider inventory model",
+      inputs: [
+        "crates/licoup-gateway-core/src/credentials/**",
+        "crates/licoup-native/src/platform/llm_api_key_vault.rs",
+        "crates/licoup-native/src/platform/llm_api_key_vault/**",
+      ],
+      command: gatewayCoreLayer("credentials::"),
+    }),
+  defineModule({
+      id: "rust.gateway.control",
+      kind: "rust-platform",
+      summary: "Gateway control sockets, local client token, usage counters, and the host lifecycle facade",
+      inputs: [
+        "crates/licoup-gateway-core/src/control/**",
+        "crates/licoup-gateway-core/src/usage.rs",
+        "crates/licoup-native/src/platform/gateway_runtime/**",
+        "crates/licoup-native/src/platform/llm_gateway_service.rs",
+        "crates/licoup-native/src/platform/llm_gateway_autostart.rs",
+      ],
+      command: gatewayCoreLayer("control::"),
+    }),
+  defineModule({
+      id: "rust.gateway.runtime",
+      kind: "rust-platform",
+      summary: "Gateway Runtime process: loopback model server, upstream transport, and the Telegram channel runtime",
+      inputs: [
+        "crates/licoup-gateway/src/lib.rs",
+        "crates/licoup-gateway/src/http/**",
+        "crates/licoup-gateway/src/runtime/**",
+        "crates/licoup-gateway/src/channels/**",
+        "tests/contract/client/client-architecture-ratchet.test.mjs",
+      ],
+      command: gatewayLayer(""),
+    }),
+  defineModule({
+      id: "rust.gateway.composition",
+      kind: "rust-platform",
+      summary: "Base client composition proof: no mandatory gateway dependency and no gateway listener without the sidecar",
+      inputs: [
+        "crates/licoup-gateway/tests/kernel_without_gateway.rs",
+        "crates/licoup-native/Cargo.toml",
+        "crates/licoup-gateway/Cargo.toml",
+        "crates/licoup-gateway-core/Cargo.toml",
+      ],
+      command: gatewayIntegrationTest("kernel_without_gateway", ""),
+    }),
+  defineModule({
+      id: "rust.gateway.ports",
+      kind: "rust-platform",
+      summary: "Lane, vault, and readiness ports the composing host installs for the runtime",
+      inputs: [
+        "crates/licoup-gateway-core/src/ports/**",
+        "crates/licoup-native/src/platform/gateway_composition.rs",
+      ],
+      command: gatewayCoreLayer("ports::"),
+    }),
+  defineModule({
       id: "rust.bin.lico-agent",
       kind: "rust-ffi",
       summary: "First-party local agent executable composition",
@@ -2130,15 +2193,21 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       id: "rust.bin.lico-gateway",
       kind: "rust-ffi",
       summary: "Local messaging gateway executable composition",
-      inputs: ["crates/licoup-native/src/bin/lico-gateway.rs"],
-      command: nativeBinaryCheck("lico-gateway"),
+      inputs: [
+        "crates/licoup-native/src/bin/lico-gateway.rs",
+        "crates/licoup-native/src/platform/gateway_composition.rs",
+      ],
+      command: nativeBinaryCheck("lico-gateway", ["gateway"]),
     }),
   defineModule({
       id: "rust.bin.lico-llm-gateway",
       kind: "rust-ffi",
       summary: "Local LLM gateway executable composition",
-      inputs: ["crates/licoup-native/src/bin/lico-llm-gateway.rs"],
-      command: nativeBinaryCheck("lico-llm-gateway"),
+      inputs: [
+        "crates/licoup-native/src/bin/lico-llm-gateway.rs",
+        "crates/licoup-native/src/platform/gateway_composition.rs",
+      ],
+      command: nativeBinaryCheck("lico-llm-gateway", ["gateway"]),
     }),
   defineModule({
       id: "rust.bin.licoup",

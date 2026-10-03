@@ -1,12 +1,14 @@
 //! Process-local, loopback-only HTTP front end for the LLM gateway.
 
-use crate::core::secure_mesh_secret_store::SecretBytes;
-use crate::domain::llm_api_key_vault::GatewayCredentialSlot;
-use crate::domain::llm_gateway::{CompiledGateway, GatewayResponse, MAX_GATEWAY_BODY_BYTES};
-use crate::platform::llm_gateway_transport::{
+use crate::http::transport::{
     GatewayExchange, GatewayStreamSink, GatewayTransportError, exchange_to_sink, list_models,
 };
-use crate::platform::llm_gateway_usage::GatewayUsageRecorder;
+use licoup_foundation::core::secret_bytes::SecretBytes;
+use licoup_gateway_core::credentials::llm_api_key_vault::GatewayCredentialSlot;
+use licoup_gateway_core::model::llm_gateway::{
+    CompiledGateway, GatewayResponse, MAX_GATEWAY_BODY_BYTES,
+};
+use licoup_gateway_core::usage::GatewayUsageRecorder;
 use std::collections::BTreeMap;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -284,7 +286,7 @@ fn request_is_authorized(headers: &BTreeMap<String, String>, client_token: &Secr
     match (authorization, api_key) {
         (Some(_), Some(_)) | (None, None) => false,
         (Some(token), None) | (None, Some(token)) => {
-            crate::platform::llm_gateway_client_auth::token_matches(client_token, token)
+            licoup_gateway_core::control::client_auth::token_matches(client_token, token)
         }
     }
 }
@@ -438,7 +440,7 @@ fn write_error(
 }
 
 fn transport_error(error: GatewayTransportError) -> (u16, &'static str) {
-    use crate::domain::llm_gateway::GatewayError;
+    use licoup_gateway_core::model::llm_gateway::GatewayError;
     match error {
         GatewayTransportError::Gateway(GatewayError::UnsupportedPath) => {
             (404, "gateway_path_not_found")
@@ -462,15 +464,15 @@ pub fn bind_address(port: u16) -> SocketAddr {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::llm_api_key_vault::{
+    use anyhow::Result;
+    use licoup_gateway_core::credentials::llm_api_key_vault::{
         GatewayCredential, GatewayCredentialEpochSource, GatewayCredentialLease,
         GatewayCredentialLeaseDays, LlmApiKeyProvider,
     };
-    use crate::domain::llm_gateway::{
+    use licoup_gateway_core::model::llm_gateway::{
         ClientProtocol, CredentialStyle, GatewayConfig, GatewayProvider, ModelRoute,
         UpstreamProtocol,
     };
-    use anyhow::Result;
     use std::sync::Arc;
     use std::time::Duration;
 

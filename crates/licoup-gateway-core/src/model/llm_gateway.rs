@@ -3,7 +3,7 @@
 //! Configuration contains credential references only. Secrets are resolved by
 //! the platform transport after routing and endpoint validation succeed.
 
-use crate::domain::llm_api_key_vault::LlmApiKeyProvider;
+use crate::credentials::llm_api_key_vault::LlmApiKeyProvider;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, HashMap, VecDeque};
@@ -149,7 +149,7 @@ impl CompiledGateway {
 
     /// Providers whose live model catalogs may be queried. Stable sorting keeps
     /// a multi-provider `/v1/models` response deterministic.
-    pub(crate) fn catalog_providers(&self) -> Vec<GatewayProvider> {
+    pub fn catalog_providers(&self) -> Vec<GatewayProvider> {
         let mut providers = self.providers.values().cloned().collect::<Vec<_>>();
         providers.sort_by(|left, right| left.id.cmp(&right.id));
         providers
@@ -356,10 +356,10 @@ impl CompiledGateway {
         Ok(())
     }
 
-    pub(crate) fn remember_stream_response(
+    pub fn remember_stream_response(
         &self,
         request: &PreparedGatewayRequest,
-        response: crate::domain::llm_gateway_stream::StreamedChatResponse,
+        response: crate::model::llm_gateway_stream::StreamedChatResponse,
     ) -> Result<(), GatewayError> {
         if request.client_protocol == ClientProtocol::OpenAiResponses
             && request.upstream_protocol == UpstreamProtocol::OpenAiChatCompletions
@@ -442,11 +442,11 @@ fn endpoint_for(provider: &GatewayProvider) -> Result<String, GatewayError> {
     endpoint_with_suffix(provider, suffix)
 }
 
-pub(crate) fn models_endpoint_for(provider: &GatewayProvider) -> Result<String, GatewayError> {
+pub fn models_endpoint_for(provider: &GatewayProvider) -> Result<String, GatewayError> {
     endpoint_with_suffix(provider, "models")
 }
 
-pub(crate) fn namespaced_model_id(provider_id: &str, upstream_model: &str) -> Option<String> {
+pub fn namespaced_model_id(provider_id: &str, upstream_model: &str) -> Option<String> {
     (valid_id(provider_id) && valid_id(upstream_model))
         .then(|| format!("{provider_id}:{upstream_model}"))
 }

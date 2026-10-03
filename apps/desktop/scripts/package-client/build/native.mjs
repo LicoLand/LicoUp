@@ -6,6 +6,16 @@ import process from "node:process";
 import { packageClientRuntime } from "../cli-policy.mjs";
 import { runPackageProcess } from "../process-runner.mjs";
 
+/**
+ * Sidecars the kernel composes but does not run by default: they are built from
+ * the kernel crate behind its `gateway` feature, so a base client build carries
+ * neither the runtime nor its listeners.
+ */
+const KERNEL_OPTIONAL_SIDECAR_FEATURES = Object.freeze({
+  "lico-gateway": "gateway",
+  "lico-llm-gateway": "gateway",
+});
+
 export function buildNativeSidecars(
   selected,
   options,
@@ -43,6 +53,14 @@ export function buildNativeSidecars(
     if (options.platform === "windows") {
       args.push("--target", packageClientRuntime.windowsX64RustTarget);
     }
+    const features = [
+      ...new Set(
+        selectedBins
+          .map((bin) => KERNEL_OPTIONAL_SIDECAR_FEATURES[bin])
+          .filter(Boolean),
+      ),
+    ];
+    if (features.length > 0) args.push("--features", features.join(","));
     for (const bin of selectedBins) args.push("--bin", bin);
     runProcess(process.execPath, args, {
       failureCode: "native_sidecar_build_failed",

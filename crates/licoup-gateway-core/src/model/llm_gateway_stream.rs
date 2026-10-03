@@ -1,19 +1,19 @@
 //! Incremental SSE protocol conversion for the local LLM gateway.
 
-use crate::domain::llm_gateway::{
+use crate::model::llm_gateway::{
     ClientProtocol, GatewayError, MAX_GATEWAY_BODY_BYTES, PreparedGatewayRequest, UpstreamProtocol,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
-pub(crate) struct GatewayStreamTransformer {
+pub struct GatewayStreamTransformer {
     mode: StreamMode,
     pending: Vec<u8>,
     received: usize,
     finished: bool,
 }
 
-pub(crate) struct StreamedChatResponse {
+pub struct StreamedChatResponse {
     pub(crate) response_id: String,
     pub(crate) assistant: Value,
 }
@@ -53,7 +53,7 @@ struct ToolState {
 }
 
 impl GatewayStreamTransformer {
-    pub(crate) fn new(request: &PreparedGatewayRequest) -> Result<Self, GatewayError> {
+    pub fn new(request: &PreparedGatewayRequest) -> Result<Self, GatewayError> {
         let state = || ChatStreamState {
             model: request.requested_model.clone(),
             id: None,
@@ -89,7 +89,7 @@ impl GatewayStreamTransformer {
         })
     }
 
-    pub(crate) fn push(&mut self, bytes: &[u8]) -> Result<Vec<u8>, GatewayError> {
+    pub fn push(&mut self, bytes: &[u8]) -> Result<Vec<u8>, GatewayError> {
         self.received = self
             .received
             .checked_add(bytes.len())
@@ -122,7 +122,7 @@ impl GatewayStreamTransformer {
         Ok(output)
     }
 
-    pub(crate) fn finish(&mut self) -> Result<Vec<u8>, GatewayError> {
+    pub fn finish(&mut self) -> Result<Vec<u8>, GatewayError> {
         if matches!(self.mode, StreamMode::Passthrough) || self.finished {
             return Ok(Vec::new());
         }
@@ -132,7 +132,7 @@ impl GatewayStreamTransformer {
         self.finalize()
     }
 
-    pub(crate) fn take_chat_history_response(&mut self) -> Option<StreamedChatResponse> {
+    pub fn take_chat_history_response(&mut self) -> Option<StreamedChatResponse> {
         match &mut self.mode {
             StreamMode::Responses(state) => state.history_response.take(),
             StreamMode::Anthropic(_) | StreamMode::Passthrough => None,
@@ -558,8 +558,8 @@ mod tests {
             client_protocol,
             upstream_protocol: UpstreamProtocol::OpenAiChatCompletions,
             endpoint: "http://127.0.0.1/v1/chat/completions".to_owned(),
-            credential_provider: crate::domain::llm_api_key_vault::LlmApiKeyProvider::Kimi,
-            credential_style: crate::domain::llm_gateway::CredentialStyle::Bearer,
+            credential_provider: crate::credentials::llm_api_key_vault::LlmApiKeyProvider::Kimi,
+            credential_style: crate::model::llm_gateway::CredentialStyle::Bearer,
             body: Vec::new(),
             stream: true,
             requested_model: "requested".to_owned(),

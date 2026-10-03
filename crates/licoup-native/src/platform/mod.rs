@@ -56,16 +56,11 @@ pub mod conversation_host_client;
 pub mod conversation_host_transport;
 pub mod cursor_subagent_mcp_manager;
 pub mod data_home_relocation;
+pub mod gateway_composition;
 pub mod gateway_runtime;
 pub mod llm_api_key_vault;
 pub mod llm_gateway_autostart;
-pub mod llm_gateway_client_auth;
-pub mod llm_gateway_credentials_control;
-pub mod llm_gateway_inventory_control;
-pub mod llm_gateway_server;
 pub mod llm_gateway_service;
-pub mod llm_gateway_transport;
-pub mod llm_gateway_usage;
 pub mod mcp_service_process;
 pub mod openclaw_gateway;
 pub mod opencode_serve;
@@ -90,11 +85,3 @@ pub(crate) use process_supervisor::{
     configure_untrusted_agent_command, run_bounded_command_input, run_bounded_command_output,
     run_bounded_untrusted_agent_output,
 };
-
-/// Install this host's answers for the environment ports the domain asks.
-///
-/// The composition calls this once per process, before any conversation
-/// history read. A program that never calls it keeps every port fail-closed.
-pub fn install_environment_ports() -> Result<(), &'static str> {
-    codex_runtime_observation::install()
-}

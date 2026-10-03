@@ -23,13 +23,13 @@ impl fmt::Display for SecretBytesError {
 
 impl std::error::Error for SecretBytesError {}
 
-#[cfg(test)]
+#[cfg(feature = "test-support")]
 #[derive(Clone, Default)]
 pub struct SecretZeroizeProbe {
     observations: std::sync::Arc<std::sync::Mutex<Vec<Vec<u8>>>>,
 }
 
-#[cfg(test)]
+#[cfg(feature = "test-support")]
 impl SecretZeroizeProbe {
     pub fn new() -> Self {
         Self::default()
@@ -51,7 +51,7 @@ impl SecretZeroizeProbe {
 
 pub struct SecretBytes {
     bytes: Vec<u8>,
-    #[cfg(test)]
+    #[cfg(feature = "test-support")]
     zeroize_probe: Option<SecretZeroizeProbe>,
 }
 
@@ -63,7 +63,7 @@ impl SecretBytes {
         }
         Ok(Self {
             bytes,
-            #[cfg(test)]
+            #[cfg(feature = "test-support")]
             zeroize_probe: None,
         })
     }
@@ -90,11 +90,12 @@ impl SecretBytes {
         std::str::from_utf8(&self.bytes).map_err(|_| SecretBytesError::NotUtf8)
     }
 
-    pub(crate) fn copy_for_persistent_read(&self) -> Self {
+    /// Copy for a persistent read; the caller owns the copy and must drop it.
+    pub fn copy_for_persistent_read(&self) -> Self {
         Self::try_from_bytes(self.bytes.to_vec()).expect("validated secret bytes remain bounded")
     }
 
-    #[cfg(test)]
+    #[cfg(feature = "test-support")]
     pub fn try_from_bytes_with_test_zeroize_probe(
         mut bytes: Vec<u8>,
         zeroize_probe: SecretZeroizeProbe,
@@ -110,8 +111,8 @@ impl SecretBytes {
         })
     }
 
-    #[cfg(test)]
-    pub(crate) fn attach_test_zeroize_probe(&mut self, zeroize_probe: SecretZeroizeProbe) {
+    #[cfg(feature = "test-support")]
+    pub fn attach_test_zeroize_probe(&mut self, zeroize_probe: SecretZeroizeProbe) {
         self.zeroize_probe = Some(zeroize_probe);
     }
 }
@@ -128,7 +129,7 @@ impl Zeroize for SecretBytes {
             return;
         }
         self.bytes.as_mut_slice().zeroize();
-        #[cfg(test)]
+        #[cfg(feature = "test-support")]
         if let Some(probe) = &self.zeroize_probe {
             probe.observe(&self.bytes);
         }

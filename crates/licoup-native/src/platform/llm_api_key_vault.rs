@@ -18,15 +18,15 @@ use crate::{
         SecretBytes, SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession,
         SecretStoreCallerChannel, SecretStoreKeyClass, SecureMeshSecretStore,
     },
-    domain::llm_api_key_vault::{
-        GatewayCredential, GatewayCredentialChange, GatewayCredentialEpochSource,
-        GatewayCredentialHandoff, GatewayCredentialLease, GatewayCredentialLeaseDays,
-        LlmApiKeyCredentialUpdate, LlmApiKeyInventory, LlmApiKeyMetadata, LlmApiKeyProvider,
-        MAX_LLM_API_KEYS, NewLlmApiKey,
-    },
     platform::secure_mesh_secret_store::PlatformSecretStore,
 };
 use licoup_foundation::platform::{file_security, paths};
+use licoup_gateway_core::credentials::llm_api_key_vault::{
+    GatewayCredential, GatewayCredentialChange, GatewayCredentialEpochSource,
+    GatewayCredentialHandoff, GatewayCredentialLease, GatewayCredentialLeaseDays,
+    LlmApiKeyCredentialUpdate, LlmApiKeyInventory, LlmApiKeyMetadata, LlmApiKeyProvider,
+    MAX_LLM_API_KEYS, NewLlmApiKey,
+};
 
 const SERVICE: &str = "dev.licoland.licoup.llm-gateway";
 const PREFIX: &str = "llm-api-key";
@@ -525,7 +525,9 @@ fn decode_inventory(bytes: &[u8]) -> Result<LlmApiKeyInventory> {
         value
             .get("schemaVersion")
             .and_then(serde_json::Value::as_str)
-            == Some(crate::domain::llm_api_key_vault::LLM_API_KEY_INVENTORY_SCHEMA),
+            == Some(
+                licoup_gateway_core::credentials::llm_api_key_vault::LLM_API_KEY_INVENTORY_SCHEMA
+            ),
         "llm_api_key_inventory_invalid"
     );
     let lease_days = value

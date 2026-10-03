@@ -1,6 +1,7 @@
 //! Bridge Telegram turns into the local conversation lane.
 
 use anyhow::Result;
+use licoup_gateway_core::ports::lane;
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +27,13 @@ impl std::fmt::Display for BridgeError {
 
 impl std::error::Error for BridgeError {}
 
+/// The composing host installs conversation access; without it the channel
+/// fails closed instead of reaching for host internals.
+fn lane_port() -> Result<lane::LanePort, BridgeError> {
+    lane::require()
+        .map_err(|error| BridgeError::new("telegram_gateway_lane_unavailable", error.to_string()))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentSummary {
     pub id: String,
@@ -40,7 +48,7 @@ pub struct SessionSummary {
 }
 
 pub fn list_agents() -> Result<Vec<AgentSummary>, BridgeError> {
-    let scanned = crate::domain::targets::scan_targets()
+    let scanned = (lane_port()?.scan_targets)()
         .map_err(|error| BridgeError::new("telegram_gateway_targets_failed", error.to_string()))?;
     let mut agents = Vec::new();
     if let Some(items) = scanned.get("candidates").and_then(Value::as_array) {
@@ -107,7 +115,7 @@ fn agent_summary_if_channel_admissible(item: &Value) -> Option<AgentSummary> {
 }
 
 pub fn list_sessions(agent_id: &str) -> Result<Vec<SessionSummary>, BridgeError> {
-    let listed = crate::domain::conversations::conversation_list(&json!({
+    let listed = (lane_port()?.conversation_list)(&json!({
         "agent": agent_id,
         "scanMode": "browse",
         "limit": 20,
@@ -144,7 +152,7 @@ pub fn open_session(agent_id: &str, session_id: Option<&str>) -> Result<String, 
     if let Some(session_id) = session_id.filter(|value| !value.is_empty()) {
         params["sessionId"] = json!(session_id);
     }
-    let opened = crate::platform::open_or_resume(&params)
+    let opened = (lane_port()?.open_or_resume)(&params)
         .map_err(|error| BridgeError::new("telegram_gateway_open_failed", error.to_string()))?;
     let resolved = opened
         .get("sessionId")
@@ -168,7 +176,7 @@ pub fn send_turn(
     if let Some(session_id) = session_id.filter(|value| !value.is_empty()) {
         params["sessionId"] = json!(session_id);
     }
-    let result = crate::platform::dispatch_lane_operation("send", &params).map_err(|_| {
+    let result = (lane_port()?.dispatch)("send", &params).map_err(|_| {
         BridgeError::new(
             "telegram_gateway_send_failed",
             "conversation lane send failed",
