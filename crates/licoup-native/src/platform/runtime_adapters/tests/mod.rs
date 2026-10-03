@@ -1,4 +1,5 @@
 mod adapter_dispatch;
+mod approval_authority;
 mod artifact;
 mod conversation_integrity;
 mod generic_cli;
