@@ -128,6 +128,38 @@ pub fn local_work_database_path(portable_root: &Path) -> PathBuf {
         .join(DATABASE_FILE)
 }
 
+/// Every unfinished locally owned task this host records, read straight from
+/// the canonical database without opening, initializing, recovering or
+/// mutating it.
+///
+/// A maintenance decision must never change the work it decides about, so it
+/// uses this entry rather than [`ConversationStore::open`], which initializes
+/// the schema and cold-recovers interrupted work. A data root without a
+/// database has no record, so it has no local work either; a database whose
+/// schema is not current is an error, because this reader cannot migrate it.
+pub fn read_unfinished_local_work(portable_root: &Path) -> StoreResult<UnfinishedLocalWork> {
+    let path = local_work_database_path(portable_root);
+    if !path.is_file() {
+        return Ok(UnfinishedLocalWork::empty());
+    }
+    let connection = Connection::open_with_flags(
+        &path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|_| anyhow!("conversation_database_open_failed"))?;
+    let version: String = connection
+        .query_row(
+            "SELECT value FROM schema_meta WHERE key='version'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|_| anyhow!("conversation_database_preflight_failed"))?;
+    if version != CURRENT_SCHEMA_VERSION {
+        return Err(anyhow!("conversation_schema_migration_required"));
+    }
+    unfinished_local_work(&connection)
+}
+
 impl ConversationStore {
     /// Every unfinished locally owned task this host records, across all
     /// Conversations, in a deterministic order (kind, conversation id,
@@ -277,7 +309,12 @@ mod tests {
                 None,
             )
             .expect("dispatch");
-        (scope.conversation_id, scope.membership_id, scope.dispatch_id, scope.event_id)
+        (
+            scope.conversation_id,
+            scope.membership_id,
+            scope.dispatch_id,
+            scope.event_id,
+        )
     }
 
     fn settle(store: &ConversationStore, dispatch_id: &str) {
@@ -307,9 +344,7 @@ mod tests {
         (conversation.id, memberships)
     }
 
-    fn dispatch_blockers(
-        work: &UnfinishedLocalWork,
-    ) -> Vec<(String, String, String)> {
+    fn dispatch_blockers(work: &UnfinishedLocalWork) -> Vec<(String, String, String)> {
         let mut blockers = work
             .blockers()
             .iter()
@@ -516,12 +551,7 @@ mod tests {
             let store = store();
             let (conversation_id, memberships) = group(&store, &["caller", "target"]);
             let claim = store
-                .claim_subagent_dispatch(
-                    &conversation_id,
-                    &memberships[0],
-                    &memberships[1],
-                    None,
-                )
+                .claim_subagent_dispatch(&conversation_id, &memberships[0], &memberships[1], None)
                 .expect("claim");
             let steps: &[SubagentDispatchClaimState] = match state {
                 SubagentDispatchClaimState::Claimed => &[],

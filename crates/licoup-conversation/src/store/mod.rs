@@ -39,7 +39,7 @@ use schema::{configure_connection, initialize_schema, preflight_schema, validate
 
 pub use admission::{
     LocalWorkBlocker, LocalWorkKind, MAX_UNFINISHED_LOCAL_WORK, UnfinishedLocalWork,
-    local_work_database_path,
+    local_work_database_path, read_unfinished_local_work,
 };
 pub use continuity_seam::ContinuityUnitOfWork;
 pub use conversations::ConversationRepository;
@@ -409,6 +409,26 @@ trait CountedSqlite {
         P: rusqlite::Params,
         F: FnOnce(&Row<'_>) -> rusqlite::Result<T>;
     fn execute<P: rusqlite::Params>(&self, sql: &str, params: P) -> rusqlite::Result<usize>;
+}
+
+impl CountedSqlite for Connection {
+    // A read-only connection has no counter: readers that must not open,
+    // initialise or recover the canonical store still share the same SQL.
+    fn prepare(&self, sql: &str) -> rusqlite::Result<Statement<'_>> {
+        self.prepare(sql)
+    }
+
+    fn query_row<T, P, F>(&self, sql: &str, params: P, f: F) -> rusqlite::Result<T>
+    where
+        P: rusqlite::Params,
+        F: FnOnce(&Row<'_>) -> rusqlite::Result<T>,
+    {
+        self.query_row(sql, params, f)
+    }
+
+    fn execute<P: rusqlite::Params>(&self, sql: &str, params: P) -> rusqlite::Result<usize> {
+        self.execute(sql, params)
+    }
 }
 
 impl CountedSqlite for CountedConnection<'_> {
