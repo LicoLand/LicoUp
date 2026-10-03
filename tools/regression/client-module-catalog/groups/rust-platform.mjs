@@ -106,6 +106,15 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::extension_packages::artifact::tests::"),
     }),
   defineModule({
+      id: "rust.platform.extension-packages.compatibility",
+      kind: "rust-platform",
+      summary: "Declared adapter strategy intervals, manifest-read client compatibility, and the version-keyed availability cache",
+      inputs: [
+        "crates/licoup-native/src/platform/extension_packages/compatibility.rs",
+      ],
+      command: rustLayer("platform::extension_packages::compatibility::tests::"),
+    }),
+  defineModule({
       id: "rust.ffi.typed-error-chain",
       kind: "rust-ffi",
       summary: "Generated typed conversation errors across runtime, FFI, and stdio terminal frames",

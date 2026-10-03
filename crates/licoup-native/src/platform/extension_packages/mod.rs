@@ -5,7 +5,7 @@
 //! The contract crate [`licoup_extension_contracts`] owns the shapes: the package
 //! manifest, the permission request, the install closure, the ownership table, and
 //! the two lifecycle enums. This module owns the *transactions* around them, and
-//! the four facts the plan separates on purpose:
+//! the five facts the plan separates on purpose:
 //!
 //! - **Package state** ([`state::PackageMachine`]): `Available → Downloaded →
 //!   Verified/LocalApproved → Staged → Installed`. Installing is not activating:
@@ -23,8 +23,12 @@
 //! - **Storage** ([`storage`]): core, optional code, shared runtime, cache, user
 //!   data and in-flight pins are accounted separately, and a "space saved" claim
 //!   that ignores still-used packages or shared dependencies is refused.
+//! - **Compatibility and availability** ([`compatibility`]): which package serves
+//!   which Agent version, read from the packages' own manifests and from a
+//!   declared interval table, remembered in a version-keyed cache, and answered
+//!   on request without reading a manifest at all.
 //!
-//! Three rules are enforced by construction rather than described:
+//! Five rules are enforced by construction rather than described:
 //!
 //! 1. **Uninstall withdraws new admission before it drains anything.** Removing a
 //!    package is a typestate: [`uninstall::UninstallTransaction`] can only be
@@ -46,6 +50,13 @@
 //!    a package the client has outgrown cannot be started either. The package's
 //!    own version is not part of the rule, and `hostProtocol` stays the wire
 //!    contract range.
+//! 5. **Availability is answered from a record, never from a probe.** The Agent
+//!    version in an [`compatibility::AvailabilityRecord`] is an observation a
+//!    caller already holds; the request path
+//!    ([`compatibility::AvailabilityIndex::cached`]) reads one bounded file and
+//!    nothing else. A record decided for another Agent version is stale and is
+//!    never reused, and an Agent nothing covers stays unavailable rather than
+//!    cached as a guess.
 
 use licoup_application::{ApplicationFailure, RecoveryAction};
 use std::fs;
@@ -53,6 +64,7 @@ use std::io::Write;
 use std::path::Path;
 
 pub mod artifact;
+pub mod compatibility;
 pub mod discovery;
 pub mod install;
 pub mod journal;
@@ -66,6 +78,12 @@ mod scenarios;
 pub use artifact::{
     ArtifactLimits, ArtifactPreflight, ExpandedPackage, MANIFEST_FILE, content_digest,
     digest_directory, preflight,
+};
+pub use compatibility::{
+    AgentChange, AgentIdentity, AgentNaming, AgentObservation, AgentVersionInterval, Availability,
+    AvailabilityCache, AvailabilityIndex, AvailabilityRecord, CachedAvailability, CompatibilityRow,
+    CompatibilityTable, DeclaredPackage, DeclaredPackageSource, ManifestSet, PackageOffer,
+    StrategyDeclaration, StrategyDeclarations, Unavailable, UnavailableReason,
 };
 pub use discovery::{
     CatalogEntry, CatalogIndex, Detector, DiscoveryEnvironment, DiscoveryRule, DiscoveryScan,
