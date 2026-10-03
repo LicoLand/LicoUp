@@ -16,6 +16,15 @@ pub(crate) mod state_machines {
     include!(concat!(env!("OUT_DIR"), "/state_machines.rs"));
 }
 
+/// The Agent inventory composition: this host's answers for the port
+/// `licoup-agent-targets` declares.
+///
+/// Like the environment-port and product-version bindings below, it lives at
+/// the crate root, above both layers: each fact is answered by the module that
+/// owns it, and neither layer has to know the other. The public
+/// [`agent_target_port`] accessor is the one path to it.
+pub(crate) mod target_port;
+
 /// The process composition entry: installs this host's answers for the
 /// environment ports the domain asks.
 ///
@@ -41,9 +50,18 @@ pub fn running_product_version() -> anyhow::Result<&'static str> {
     domain::client_state_migration::running_product_version()
 }
 
+/// The Agent inventory port this host composes, for the `lico-agent` binary.
+///
+/// The composition itself is the crate-root [`target_port`] module; this is the
+/// one public path to it, so the domain layer no longer hosts a composition
+/// that reaches into the platform layer.
+pub fn agent_target_port() -> licoup_agent_targets::port::AgentTargetPort {
+    target_port::agent_target_port()
+}
+
 // The Agent inventory port: the facts `licoup-agent-targets` reads from the
 // layers above it. It is declared by the inventory crate and composed by
-// `domain::target_port`; this alias keeps the two naming one path without
-// widening the host's public surface.
+// `target_port`; this alias keeps the two naming one path without widening the
+// host's public surface.
 pub(crate) use licoup_agent_targets::port;
 

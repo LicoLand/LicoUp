@@ -7,6 +7,11 @@
 //! the driver engines, the model facts, the conversation state or the local
 //! model gateway, and no reference points upward.
 //!
+//! It sits at the crate root, above the domain and platform layers, exactly
+//! like the environment-port and product-version bindings: answering the port
+//! is composition, not a domain concern, and a domain module that reached into
+//! `crate::platform` would be the coupling the layering exists to prevent.
+//!
 //! `agreement_with_the_declarations` below is the other half of that split.
 //! The inventory's thirteen declarations and the engines' packaged adapters are
 //! one set, and the check that they stay one-to-one needs both halves in view,

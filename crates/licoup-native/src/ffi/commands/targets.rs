@@ -4,7 +4,7 @@ use serde_json::Value;
 
 /// The Agent inventory port this command layer composes.
 fn targets() -> crate::port::AgentTargetPort {
-    crate::domain::target_port::agent_target_port()
+    crate::target_port::agent_target_port()
 }
 
 pub(super) fn handle_targets_catalog(_command: AdmittedCommand) -> Result<CliExecution> {

@@ -421,7 +421,7 @@ impl ReadOnlyTargetPort for NativeReadOnlyTargets {
             .iter()
             .map(|provider| {
                 crate::domain::targets::inspect_target_read_only(
-                    &crate::domain::target_port::agent_target_port(),
+                    &crate::target_port::agent_target_port(),
                     provider,
                 )
                 .map_err(|_| retryable("target_inventory_unavailable", "target/list"))?
@@ -442,7 +442,7 @@ impl ReadOnlyTargetPort for NativeReadOnlyTargets {
             return Err(permanent("subagent_unavailable", "target/probe"));
         }
         let inspected = crate::domain::targets::inspect_target_read_only(
-            &crate::domain::target_port::agent_target_port(),
+            &crate::target_port::agent_target_port(),
             provider.as_str(),
         )
         .map_err(|_| permanent("subagent_unavailable", "target/probe"))?;

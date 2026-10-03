@@ -468,7 +468,7 @@ struct ProductionSnapshotAuthority;
 impl ProfileSnapshotAuthority for ProductionSnapshotAuthority {
     fn target_facts(&mut self, agent_id: &str) -> Option<TargetFacts> {
         let inspected = crate::domain::targets::inspect_target_read_only(
-            &crate::domain::target_port::agent_target_port(),
+            &crate::target_port::agent_target_port(),
             agent_id,
         )
         .ok()?;

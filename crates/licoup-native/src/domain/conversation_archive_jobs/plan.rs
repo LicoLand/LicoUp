@@ -21,7 +21,7 @@ pub(super) fn prepare(params: &Value) -> Result<PreparedArchivePlan> {
         object.insert("archiveMode".to_string(), json!(true));
     }
     let target_scan = targets::scan_targets_with_params(
-        &crate::domain::target_port::agent_target_port(),
+        &crate::target_port::agent_target_port(),
         &scan_params,
     )?;
     prepare_with_target_scan(request, target_scan)

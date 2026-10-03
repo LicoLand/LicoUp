@@ -3,7 +3,7 @@ use anyhow::{Result, anyhow};
 
 /// The Agent inventory port this command layer composes.
 fn targets() -> crate::port::AgentTargetPort {
-    crate::domain::target_port::agent_target_port()
+    crate::target_port::agent_target_port()
 }
 
 pub(super) fn handle_status(_command: AdmittedCommand) -> Result<CliExecution> {

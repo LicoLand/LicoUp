@@ -47,7 +47,7 @@ struct GatewayTotals {
 
 pub(super) fn summarize(window: &UsageWindow, warnings: &mut Vec<Value>) -> HistoryUsageSummary {
     let result = targets::available_runtime_executable(
-        &crate::domain::target_port::agent_target_port(),
+        &crate::target_port::agent_target_port(),
         "openclaw",
     )
     .ok_or(GatewayUsageFailure::ExecutableUnavailable)

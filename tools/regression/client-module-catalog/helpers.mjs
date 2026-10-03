@@ -50,6 +50,7 @@ export const RUST_COMPOSITION_INPUTS = Object.freeze([
   "crates/licoup-native/src/ffi/commands/mod.rs",
   "crates/licoup-native/src/ffi/mod.rs",
   "crates/licoup-native/src/lib.rs",
+  "crates/licoup-native/src/target_port.rs",
   "crates/licoup-native/src/platform/mod.rs",
 ]);
 

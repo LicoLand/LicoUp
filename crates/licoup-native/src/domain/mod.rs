@@ -38,7 +38,6 @@ pub mod secure_mesh_mls;
 pub mod session_policy;
 pub mod skill_hub;
 pub mod subagents;
-pub mod target_port;
 pub mod targets;
 pub mod workflow_runtime;
 pub mod workflow_store;

@@ -1031,7 +1031,7 @@ pub fn lane_capabilities(params: &Value) -> Result<Value> {
 /// Verified agent discovery for channel admission. Discovery is not admission:
 /// callers still apply their own readiness and executable gate.
 pub fn lane_target_scan() -> Result<Value> {
-    crate::domain::target_port::target_scan(&serde_json::json!({}))
+    crate::target_port::target_scan(&serde_json::json!({}))
 }
 
 /// Bounded conversation listing for one agent, as the lane sees it.

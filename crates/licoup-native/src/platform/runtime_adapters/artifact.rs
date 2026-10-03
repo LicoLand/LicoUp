@@ -56,7 +56,7 @@ pub(super) fn runtime_executable(
         crate::domain::targets::agent_cli_executable,
         |target| {
             crate::domain::targets::available_runtime_executable(
-                &crate::domain::target_port::agent_target_port(),
+                &crate::target_port::agent_target_port(),
                 target,
             )
         },

@@ -138,7 +138,7 @@ fn codex_saved_manual_binary_path_precedes_the_bundled_default() {
         fs::write(path, b"synthetic Codex executable").unwrap();
     }
     crate::domain::targets::add_target(
-        &crate::domain::target_port::agent_target_port(),
+        &crate::target_port::agent_target_port(),
         &json!({
             "target": "codex",
             "stateRoot": state_root.to_string_lossy(),
@@ -179,7 +179,7 @@ fn metadata_only_codex_entry_does_not_hide_a_bundled_default_from_stale_route() 
         fs::write(path, b"synthetic Codex executable").unwrap();
     }
     crate::domain::targets::add_target(
-        &crate::domain::target_port::agent_target_port(),
+        &crate::target_port::agent_target_port(),
         &json!({
             "target": "codex",
             "stateRoot": state_root.to_string_lossy(),

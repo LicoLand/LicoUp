@@ -173,7 +173,7 @@ fn run_prompt(
     let result = {
         let mut guard = agent.lock().unwrap();
         guard.prompt(
-            &licoup_native::domain::target_port::agent_target_port(),
+            &licoup_native::agent_target_port(),
             message,
             |event| {
                 if let AgentEvent::MessageUpdate { role, delta } = &event

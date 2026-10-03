@@ -604,7 +604,7 @@ impl SubagentRuntimeAdapter for HostSubagentRuntime {
 
     fn execution_admission(&self) -> ExecutionAdmissionEvidence {
         let target = crate::domain::targets::inspect_target_read_only(
-            &crate::domain::target_port::agent_target_port(),
+            &crate::target_port::agent_target_port(),
             self.provider.as_str(),
         )
         .ok()
@@ -628,7 +628,7 @@ impl SubagentRuntimeAdapter for HostSubagentRuntime {
             installed,
             executable_message_send_route: message_send_capable
                 && crate::domain::targets::available_runtime_executable(
-                    &crate::domain::target_port::agent_target_port(),
+                    &crate::target_port::agent_target_port(),
                     self.provider.as_str(),
                 )
                 .is_some(),
@@ -643,7 +643,7 @@ impl SubagentRuntimeAdapter for HostSubagentRuntime {
         ReadinessEvidence {
             provider_id: self.provider.as_str().to_owned(),
             installed: crate::domain::targets::inspect_target_read_only(
-                &crate::domain::target_port::agent_target_port(),
+                &crate::target_port::agent_target_port(),
                 self.provider.as_str(),
             )
             .ok()

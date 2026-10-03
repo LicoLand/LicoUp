@@ -96,7 +96,7 @@ pub(crate) fn resolve_executable(
 
 fn discovered_or_command(registration: &CliRegistration) -> Result<String, RuntimeAdapterError> {
     if let Some(discovered) = crate::domain::targets::available_runtime_executable(
-        &crate::domain::target_port::agent_target_port(),
+        &crate::target_port::agent_target_port(),
         &registration.id,
     )
     .or_else(|| crate::domain::targets::agent_cli_executable(&registration.id))

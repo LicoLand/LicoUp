@@ -5,5 +5,5 @@
 // through this re-export for the FFI command layer, the driver engines, the
 // model facts, the conversation history readers and the Agent binaries, which
 // are the consumers that still live in `licoup-native`. Every call into it
-// takes the port `domain::target_port` composes.
+// takes the port `crate::target_port` composes.
 pub use licoup_agent_targets::domain::targets::*;

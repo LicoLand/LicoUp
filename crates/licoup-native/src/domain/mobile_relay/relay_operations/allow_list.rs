@@ -18,7 +18,7 @@ pub(in crate::domain::mobile_relay) fn allowed_agent_ids(
             .collect::<BTreeSet<_>>()
     } else {
         let scan = targets::scan_targets_with_params(
-            &crate::domain::target_port::agent_target_port(),
+            &crate::target_port::agent_target_port(),
             &json!({}),
         )?;
         let candidates = scan.get("candidates").cloned().unwrap_or_else(|| json!([]));

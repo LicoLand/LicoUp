@@ -165,7 +165,7 @@ fn target_status_map(params: &Value, warnings: &mut Vec<Value>) -> BTreeMap<Stri
         object.insert("includeHistoryModelCatalog".to_owned(), json!(false));
     }
     match targets::scan_targets_with_params(
-        &crate::domain::target_port::agent_target_port(),
+        &crate::target_port::agent_target_port(),
         &scan_params,
     ) {
         Ok(scan) => scan

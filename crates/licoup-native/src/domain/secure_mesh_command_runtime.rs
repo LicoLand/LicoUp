@@ -45,7 +45,7 @@ impl SecureCommandLocalExecutor for SecureCommandRuntimeExecutor {
                 let agent = text_from_any(&params, &["agent", "agentId", "target"])
                     .ok_or_else(|| anyhow!("agent message target is unavailable"))?;
                 let executable = super::targets::available_runtime_executable(
-                    &crate::domain::target_port::agent_target_port(),
+                    &crate::target_port::agent_target_port(),
                     &agent,
                 )
                 .ok_or_else(|| {
