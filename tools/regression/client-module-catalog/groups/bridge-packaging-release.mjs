@@ -644,6 +644,7 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
       summary: "Independent package payloads, their signed client-facing index and the disposable local fixture",
       inputs: [
         "apps/desktop/scripts/build-platform-release-package.mjs",
+        "crates/licoup-gateway/package/**",
         "crates/licoup-mcp/package/**",
         "crates/licoup-native/resources/client-update-public-keys.json",
         "tests/contract/client/client-release-package-index.test.mjs",

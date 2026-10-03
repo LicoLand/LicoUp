@@ -180,3 +180,55 @@ fn the_runtime_reaches_host_capabilities_only_through_ports() {
         "readiness stays a pushed document applied through the callback port"
     );
 }
+
+#[test]
+fn the_login_item_is_registered_only_by_the_installed_gateway_package() {
+    let autostart = read("crates/licoup-native/src/platform/llm_gateway_autostart.rs");
+    // One owner writes the definition, and it reads the package identity and the
+    // entry each generation declares rather than a path this file invents.
+    assert!(
+        autostart.contains("pub const GATEWAY_PACKAGE_ID: &str = \"org.licoland.feature.gateway\"")
+            && autostart.contains("installed_manifest(GATEWAY_PACKAGE_ID"),
+        "the login item names the optional package that owns it"
+    );
+    assert!(
+        autostart.contains("pub fn activate"),
+        "the package lifecycle reaches the one registration path through an explicit entry point"
+    );
+
+    // A base client build carries no gateway process to start, so the login item
+    // cannot be registered by a bundled neighbour: the sidecar lookup resolves
+    // from the packaged binary directory and never from the package store.
+    let service = read("crates/licoup-native/src/platform/llm_gateway_service.rs");
+    let lookup = service
+        .split("fn sidecar_path()")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}\n").next())
+        .expect("the sidecar lookup is a bounded function");
+    assert!(
+        lookup.contains("packaged_binary_directory(&current)"),
+        "the sidecar is the packaged neighbour, not a package-store lookup"
+    );
+    assert!(
+        !lookup.contains("extension-packages"),
+        "a base client must not reach into the package store to find a sidecar"
+    );
+
+    // The shipped package declares the entry, the capability owner and the
+    // client line the host reads; the kernel names none of them.
+    let manifest = read("crates/licoup-gateway/package/manifest.json");
+    assert!(
+        manifest.contains("\"id\": \"org.licoland.feature.gateway\"")
+            && manifest.contains("\"entry\": \"bin/lico-gateway\""),
+        "the package declares its own identity and runtime entry"
+    );
+    assert!(
+        read("crates/licoup-gateway/package/package-release.json")
+            .contains("\"entry\": \"bin/lico-gateway\""),
+        "the release declaration names the same entry the manifest declares"
+    );
+    assert!(
+        !read("crates/licoup-native/Cargo.toml").contains("org.licoland.feature.gateway"),
+        "the kernel must not hard-depend on the optional gateway package"
+    );
+}

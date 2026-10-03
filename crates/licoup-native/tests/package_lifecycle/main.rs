@@ -41,6 +41,10 @@ use licoup_native::platform::extension_packages::{
     account_store, close_surface, plan_gc, preview, running_client_version, scan,
 };
 
+/// GATEWAY-PACKAGE-LIFECYCLE: the Gateway login item and the package that owns
+/// it, driven through the real store and the real registration owner.
+mod gateway_package;
+
 /// MCP-PACKAGE-LIFECYCLE: the optional service process and its callers, bound to
 /// the installed and enabled package generation.
 mod mcp_service;

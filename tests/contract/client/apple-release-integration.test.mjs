@@ -47,7 +47,8 @@ test("LicoUp is one declarative Apple Release use case", () => {
   // package index tool produces them outside the application bundle.
   const template = readJson("tools/client-release-template.json");
   assert.deepEqual(template.publication.independentPackageAssets, {
-    payloadRoles: ["mcp-package-payload", "package-payload"],
+    payloadRoles: ["codex-adapter-package-payload", "gateway-package-payload",
+      "mcp-package-payload", "package-payload"],
     indexRole: "package-index",
     producer: "tools/scripts/client-release-package-index.mjs",
     clientDraftCarries: false,

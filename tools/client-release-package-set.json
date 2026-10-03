@@ -7,6 +7,11 @@
       "payloadRole": "codex-adapter-package-payload"
     },
     {
+      "packageId": "org.licoland.feature.gateway",
+      "source": "crates/licoup-gateway/package",
+      "payloadRole": "gateway-package-payload"
+    },
+    {
       "packageId": "org.licoland.feature.mcp",
       "source": "crates/licoup-mcp/package",
       "payloadRole": "mcp-package-payload"

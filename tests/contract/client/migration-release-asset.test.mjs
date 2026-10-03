@@ -56,6 +56,10 @@ const migrationToolDigest = `${migrationToolAsset}.sha256`;
 // by the package index tool: one payload per declared package plus the signed
 // index. This fixture must supply every producer output so the same builder and
 // staging commands stay exercised end to end.
+const codexPackagePayloadAsset =
+  "LicoUp-package-org.licoland.adapter.codex.licopkg";
+const gatewayPackagePayloadAsset =
+  "LicoUp-package-org.licoland.feature.gateway.licopkg";
 const mcpPackagePayloadAsset = "LicoUp-package-org.licoland.feature.mcp.licopkg";
 const packagePayloadAsset = "LicoUp-package-fixture-native-converter.licopkg";
 const packageIndexAsset = "LicoUp-package-index.json";
@@ -169,6 +173,16 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
       releaseToolsDirectory("macos"),
       migrationToolAsset,
     ),
+    "codex-adapter-package-payload": path.join(
+      fixture,
+      "build", "apps", "desktop", "release-packages", "macos",
+      codexPackagePayloadAsset,
+    ),
+    "gateway-package-payload": path.join(
+      fixture,
+      "build", "apps", "desktop", "release-packages", "macos",
+      gatewayPackagePayloadAsset,
+    ),
     "mcp-package-payload": path.join(
       fixture,
       "build", "apps", "desktop", "release-packages", "macos",
@@ -194,6 +208,10 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
     "synthetic migration tool payload\n",
   );
   mkdirSync(path.dirname(syntheticCandidates["package-payload"]), { recursive: true });
+  writeFileSync(syntheticCandidates["codex-adapter-package-payload"],
+    "synthetic codex adapter package payload\n");
+  writeFileSync(syntheticCandidates["gateway-package-payload"],
+    "synthetic gateway package payload\n");
   writeFileSync(syntheticCandidates["mcp-package-payload"],
     "synthetic MCP package payload\n");
   writeFileSync(syntheticCandidates["package-payload"], "synthetic package payload\n");
@@ -216,6 +234,18 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
   );
   assert.ok(
     builtRecord.outputSources.includes(
+      `build/apps/desktop/native-release/macos-direct-arm64/${codexPackagePayloadAsset}`,
+    ),
+    "every declared package payload comes from its own producer output",
+  );
+  assert.ok(
+    builtRecord.outputSources.includes(
+      `build/apps/desktop/native-release/macos-direct-arm64/${gatewayPackagePayloadAsset}`,
+    ),
+    "every declared package payload comes from its own producer output",
+  );
+  assert.ok(
+    builtRecord.outputSources.includes(
       `build/apps/desktop/native-release/macos-direct-arm64/${mcpPackagePayloadAsset}`,
     ),
     "every declared package payload comes from its own producer output",
@@ -235,6 +265,14 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
   assert.equal(
     readFileSync(path.join(releaseDirectory, packagePayloadAsset), "utf8"),
     "synthetic package payload\n",
+  );
+  assert.equal(
+    readFileSync(path.join(releaseDirectory, codexPackagePayloadAsset), "utf8"),
+    "synthetic codex adapter package payload\n",
+  );
+  assert.equal(
+    readFileSync(path.join(releaseDirectory, gatewayPackagePayloadAsset), "utf8"),
+    "synthetic gateway package payload\n",
   );
   assert.equal(
     readFileSync(path.join(releaseDirectory, mcpPackagePayloadAsset), "utf8"),
@@ -268,6 +306,25 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
       file: packagePayloadAsset,
       byteSize: readFileSync(path.join(releaseDirectory, packagePayloadAsset)).length,
       sha256: sha256File(path.join(releaseDirectory, packagePayloadAsset)),
+    },
+  );
+  assert.deepEqual(
+    packageManifest.artifacts.find((artifact) =>
+      artifact.role === "codex-adapter-package-payload"),
+    {
+      role: "codex-adapter-package-payload",
+      file: codexPackagePayloadAsset,
+      byteSize: readFileSync(path.join(releaseDirectory, codexPackagePayloadAsset)).length,
+      sha256: sha256File(path.join(releaseDirectory, codexPackagePayloadAsset)),
+    },
+  );
+  assert.deepEqual(
+    packageManifest.artifacts.find((artifact) => artifact.role === "gateway-package-payload"),
+    {
+      role: "gateway-package-payload",
+      file: gatewayPackagePayloadAsset,
+      byteSize: readFileSync(path.join(releaseDirectory, gatewayPackagePayloadAsset)).length,
+      sha256: sha256File(path.join(releaseDirectory, gatewayPackagePayloadAsset)),
     },
   );
   assert.deepEqual(
