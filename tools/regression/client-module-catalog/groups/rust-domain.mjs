@@ -648,6 +648,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/conversation/history/delegated_transcripts.rs",
         "crates/licoup-native/src/domain/conversation/history/project_workspace.rs",
         "crates/licoup-native/src/domain/conversation/history/projection_cache.rs",
+        "crates/licoup-native/src/domain/conversation/history/runtime_observation.rs",
       ],
       command: rustLayer(
         "domain::conversation::history::tests::split_history_module_composition_keeps_the_public_schema",
