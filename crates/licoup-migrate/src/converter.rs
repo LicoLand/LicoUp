@@ -110,6 +110,18 @@ pub fn identify_declared(
     required: &FrozenEndpoints,
 ) -> ToolResult<ConversionOwner> {
     let manifest = PackageManifest::from_value(value).map_err(refusal_of)?;
+    identify_manifest(&manifest, required)
+}
+
+/// Identify the owner from an already-validated manifest.
+///
+/// The store reads a manifest back from installed content and validates it, so a
+/// caller that already holds one asks the same question here instead of
+/// re-serialising the document to go through [`identify_declared`].
+pub fn identify_manifest(
+    manifest: &PackageManifest,
+    required: &FrozenEndpoints,
+) -> ToolResult<ConversionOwner> {
     let declaration = manifest.conversion_owner(required).map_err(refusal_of)?;
     Ok(ConversionOwner {
         package_id: manifest.id.clone(),

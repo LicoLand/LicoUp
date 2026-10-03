@@ -132,12 +132,110 @@ it carries a native converter, and the tool holds no table of package names or f
 aliases. With a package root the tool also checks that the entry the manifest promises is a
 file inside that root.
 
-Not implemented in this contract: obtaining and verifying a package, running its converter,
-reading the signed release index, and coordinating one migration across supported skipped
-releases. That acquisition, verification and end-to-end coordination belongs to
-PACKAGE-MIGRATION-COORDINATOR. The `inspect`, `plan`, `convert`, `resume`, `export`,
-`import` and `rehearse` verbs keep driving the client's own migration owner exactly as
-before, and no package converter entry is executed.
+## Coordinated package conversion
+
+The standalone tool coordinates one conversion from the package store to the converter and
+back. Nothing converts the data except the package's own program: the tool selects, stages,
+runs, verifies and records.
+
+### Installed converter inventory
+
+`licoup-migrate converters --package-store <root>` reads the installed versions the package
+store records and reports each one's candidacy for the required pair. A package is a
+**candidate** only when its own manifest declares the pair: the required source format is
+one of the formats it publishes and the target format is exactly the required target. A
+package that declares no conversion — most packages — is not a candidate, and neither is one
+that declares another pair; both are reported with the refusal code that names the rule.
+The package's compatibility list takes no part: which client builds may load a package is the
+host's admission question, not the format question.
+
+Selection is deterministic: the greatest installed version of the requested identity, or of
+every candidate when none is named. Every candidate is listed either way, so an operator sees
+the alternatives. When the caller supplies the signed release index, a candidate must also be
+the payload the index publishes: both release-role signatures verify over the canonical
+unsigned bytes, the entry agrees with the installed manifest about identity, version, entry,
+kind and pair, and the digest and size the host recorded for the installed bytes are the
+digest and size the index publishes. The index publishes one source format per package while
+the manifest declares the list it reads, so the reconciliation is that the published source
+is the required one and one the manifest declares. A candidate that is not the published
+payload is refused rather than run.
+
+### Converter protocol
+
+`licoup-migrate package-convert` (and `package-resume`) runs the selected entry as a bounded
+native subprocess:
+
+```text
+<entry> --source <dir> --target <dir> \
+        --source-format <identity> --target-format <identity> \
+        --result <file> [--resume]
+```
+
+* `--source` is a staged copy of the data root. The converter reads it and must not write
+  inside it.
+* `--target` is the directory the converted result is produced in, and the process's working
+  directory. It is never deleted by the tool, including across a resume.
+* `--result` is where the converter writes a `licoup.package-conversion-result.v1` document:
+  `schema`, `sourceFormat`, `targetFormat`, `complete` and an optional `convertedRecords`.
+* `--resume` states that a previous invocation was interrupted and the target must be
+  continued rather than started over.
+
+The tool bounds what it did not write: captured output is capped and reported as truncated,
+the result document is size-bounded and strictly shaped, the child runs in its own process
+group so a stop reaches the whole tree, and the environment is reduced to the variables a
+native program needs to start on the platform. There is no automatic execution deadline: an
+elapsed time is not a user's decision, so a caller stops a run it no longer wants. The
+converter may be a program of any size, but it must be a native executable inside the
+package payload — a converter that borrows an interpreter is refused at declaration time, and
+neither the tool nor the conversion reaches a network or needs an installed Agent, an old
+package runtime, Node or Python.
+
+Completion is the converter's own checked report, never its exit status alone: the process
+must exit zero, the result document must be the documented one and name the required pair,
+`complete` must be true, and the target must not be empty. Anything else leaves the run
+unfinished and the tool's exit status non-zero. A converter that writes inside the source it
+was given is refused, and the data root's digest is verified unchanged after every run: a
+conversion stages a copy and never writes the source root.
+
+### Interruption, resume and admission
+
+The tool's existing run record owns the progress. The record is written into the caller's
+working root, beside the staged copy and the target, and it names the package, its version,
+the entry, the required pair, the digest of the installed payload the run was admitted under
+and the digest of the source root as the run read it. Two steps are recorded: staging the
+source copy and running the converter. Each is written before it is attempted and rewritten
+after it settles, so an interruption is visible as an unsettled step instead of a claim.
+
+An unsettled run is resumed, never restarted. A plain `package-convert` over a recorded
+unsettled run is refused (`package_conversion_unfinished`) and names the resume; a resume
+requires the same declared package, pair, payload digest and source digest, reuses an intact
+staged copy instead of staging again, and asks the converter for `--resume` so the target it
+already produced is continued. A settled run answers `alreadyCurrent` and is not converted a
+second time. An interrupted or failed conversion is incomplete work, never a successful
+migration.
+
+Maintenance admission is asked before anything is staged. The tool reads the host's own
+idle-admission decision (`domain/work_admission`) and refuses while this host still owns
+unfinished local work (`maintenance_work_unfinished`) or while another maintenance operation
+holds the close-admission barrier (`maintenance_admission_closed`), reporting the decision
+and the blocking owners it read. The operator's `--writers-stopped` statement covers the
+writers outside that coordination, exactly as it does for the client-owner verbs, and the
+tool holds the client's selected-home exclusive process lease for the run.
+
+An offline payload is imported through the package store's existing path:
+`--payload` is bounded and preflighted by the store's own artifact admission, its content
+digest is checked against the signed index when one was supplied, and the store's
+`install_local_import` publishes it under the manifest identity and permission scope. An
+already installed version with the same digest satisfies the import; a version whose
+recorded digest differs is refused instead of replaced.
+
+Not part of this contract: publishing a produced target back into the data root. The
+standalone conversion produces a staged target and reports it; replacing an installed data
+root is a separate, separately authorized act, and the tool never writes the source root it
+read. The release index tool does not yet read the manifest `conversion` block when it
+packages a payload, and its `converter.sourceFormat` is a single format while the manifest
+declares a list; the reader reconciles the two and refuses a disagreement, so a release
+whose two documents disagree cannot be converted.
 
 ## Client update selection
 

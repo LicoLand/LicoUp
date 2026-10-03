@@ -261,6 +261,7 @@ impl ExpandedPackage {
         })?;
         let manifest = PackageManifest::from_value(value)?;
         check_entry_point(&destination, &manifest)?;
+        apply_entry_mode(bytes, &destination, &manifest)?;
         check_resource_definitions(&destination, &manifest)?;
         let install_scripts = entries
             .iter()
@@ -344,15 +345,7 @@ fn is_install_script(entry: &str) -> bool {
 /// does not ship is naming someone else's program; the host starts what the
 /// package carries, not what it points at.
 fn check_entry_point(root: &Path, manifest: &PackageManifest) -> Result<(), ApplicationFailure> {
-    let declared = match &manifest.runtime {
-        Runtime::Process { entry, .. } => Some(entry.as_str()),
-        Runtime::Declarative { descriptor } => Some(descriptor.as_str()),
-        Runtime::Service { .. } => None,
-        // A data package is carried by its resources, and each of those is
-        // checked below; there is no program to resolve an entry point for.
-        Runtime::Data => None,
-    };
-    let Some(declared) = declared else {
+    let Some(declared) = declared_entry(manifest) else {
         return Ok(());
     };
     let relative = Path::new(declared);
@@ -374,6 +367,77 @@ fn check_entry_point(root: &Path, manifest: &PackageManifest) -> Result<(), Appl
             .with_field("runtime.entry")
             .with_presentation_arg("entry", declared)),
     }
+}
+
+/// The program a manifest declares the host starts, when it declares one.
+///
+/// A data package is carried by its resources and has no program; a service
+/// package brings its own registration. Both answer `None` rather than naming an
+/// entry point there is nothing to resolve for.
+fn declared_entry(manifest: &PackageManifest) -> Option<&str> {
+    match &manifest.runtime {
+        Runtime::Process { entry, .. } => Some(entry.as_str()),
+        Runtime::Declarative { descriptor } => Some(descriptor.as_str()),
+        Runtime::Service { .. } | Runtime::Data => None,
+    }
+}
+
+/// Publish the mode the payload declared for the program the host will start.
+///
+/// The extractor writes every member as a private regular file, which is the right
+/// default for data. A declared entry point is not data: it is the program a host
+/// starts, the release tooling refuses a payload whose converter carries no
+/// executable bit, and the host's own program resolution refuses an entry it cannot
+/// execute. The mode travels in the archive, so it is read back from there and
+/// applied to the file that was just published. Nothing else changes, and a payload
+/// that declared no executable bit keeps the private default: granting a program a
+/// mode its own payload did not declare is not this layer's decision.
+#[cfg(unix)]
+fn apply_entry_mode(
+    bytes: &[u8],
+    root: &Path,
+    manifest: &PackageManifest,
+) -> Result<(), ApplicationFailure> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let Some(declared) = declared_entry(manifest) else {
+        return Ok(());
+    };
+    let Ok(mut archive) = zip::ZipArchive::new(std::io::Cursor::new(bytes)) else {
+        return Ok(());
+    };
+    for index in 0..archive.len() {
+        let Ok(entry) = archive.by_index(index) else {
+            continue;
+        };
+        if entry.name() != declared {
+            continue;
+        }
+        let Some(mode) = entry.unix_mode() else {
+            return Ok(());
+        };
+        if mode & 0o111 == 0 {
+            return Ok(());
+        }
+        let path = root.join(Path::new(declared));
+        return fs::set_permissions(&path, fs::Permissions::from_mode(mode & 0o777)).map_err(
+            |_| {
+                refusal("package_entry_mode_unavailable", ARTIFACT_STAGE)
+                    .with_field("runtime.entry")
+            },
+        );
+    }
+    Ok(())
+}
+
+/// A payload that declared no entry mode publishes nothing extra.
+#[cfg(not(unix))]
+fn apply_entry_mode(
+    _bytes: &[u8],
+    _root: &Path,
+    _manifest: &PackageManifest,
+) -> Result<(), ApplicationFailure> {
+    Ok(())
 }
 
 /// Every typed resource definition must be a regular file inside this package.
@@ -486,6 +550,62 @@ mod tests {
             ),
             ("agent.py", b"print('echo')\n".as_slice()),
         ])
+    }
+
+    /// An archive whose members carry the unix modes a real payload declares.
+    fn archive_with_modes(files: &[(&str, &[u8], u32)]) -> Vec<u8> {
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        for (name, content, mode) in files {
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated)
+                .unix_permissions(*mode);
+            writer.start_file(*name, options).expect("start file");
+            writer.write_all(content).expect("write");
+        }
+        writer.finish().expect("finish").into_inner()
+    }
+
+    /// The mode a payload declared for its program is the mode the host starts.
+    ///
+    /// A host refuses an entry it cannot execute, so a publication that dropped the
+    /// declared bit would make every native package unrunnable while still calling
+    /// itself installed.
+    #[cfg(unix)]
+    #[test]
+    fn a_declared_program_keeps_the_mode_its_payload_declared() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let bytes = archive_with_modes(&[
+            (
+                MANIFEST_FILE,
+                manifest_json("example.specialist.echo", "1.0.0", "bin/echo").as_bytes(),
+                0o100644,
+            ),
+            ("bin/echo", b"#!/bin/sh\nexec true\n", 0o100755),
+            ("bin/data.json", b"{}\n", 0o100600),
+        ]);
+        let destination = staging("entry-mode");
+        let expanded = ExpandedPackage::expand(&bytes, &destination, &ArtifactLimits::default())
+            .expect("a payload whose program declared an executable mode expands");
+        let mode = fs::metadata(expanded.content_dir().join("bin/echo"))
+            .expect("published program")
+            .permissions()
+            .mode();
+        assert_eq!(
+            mode & 0o111,
+            0o111,
+            "the declared executable bit survives publication: {mode:o}"
+        );
+        let data_mode = fs::metadata(expanded.content_dir().join("bin/data.json"))
+            .expect("published data")
+            .permissions()
+            .mode();
+        assert_eq!(
+            data_mode & 0o111,
+            0,
+            "nothing but the declared entry point is granted a mode: {data_mode:o}"
+        );
+        let _ = fs::remove_dir_all(&destination);
     }
 
     fn staging(tag: &str) -> PathBuf {

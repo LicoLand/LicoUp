@@ -6,11 +6,16 @@
 
 use licoup_migrate::cli::{Invocation, Usage, Verb, parse};
 use licoup_migrate::error::{
-    ARCHIVE_REQUIRED, DATA_ROOT_REQUIRED, TARGET_ROOT_REQUIRED, ToolError, WORK_ROOT_REQUIRED,
+    ARCHIVE_REQUIRED, DATA_ROOT_REQUIRED, PACKAGE_STORE_UNAVAILABLE, TARGET_ROOT_REQUIRED,
+    ToolError, WORK_ROOT_REQUIRED,
+};
+use licoup_migrate::inventory::{InventoryRequest, inventory};
+use licoup_migrate::package_conversion::{
+    PackageConversionRequest, admission_report, convert as package_convert,
 };
 use licoup_migrate::rehearse::{RehearsalRequest, rehearse};
 use licoup_migrate::resume::{ResumeOptions, resume};
-use licoup_migrate::{archive, convert, inspect, plan};
+use licoup_migrate::{archive, convert, converter, inspect, plan};
 use licoup_native::domain::local_recovery;
 use std::path::Path;
 use std::process::ExitCode;
@@ -48,6 +53,18 @@ fn main() -> ExitCode {
             // format" is only actionable with the format the source actually carries. The
             // read writes nothing, so a refusal still leaves the source untouched.
             let refusal = match invocation.verb {
+                // A package conversion that was refused still answers the question the
+                // operator asked first: what does this host say about maintenance now?
+                // The decision is read from its own owner, never restated here.
+                Verb::PackageConvert | Verb::PackageResume => match invocation.data_root.as_deref()
+                {
+                    Some(root) => serde_json::json!({
+                        "status": "refused",
+                        "error": error.code(),
+                        "admission": admission_report(root),
+                    }),
+                    None => serde_json::json!({ "status": "refused", "error": error.code() }),
+                },
                 Verb::Rehearse => match invocation
                     .data_root
                     .as_deref()
@@ -99,8 +116,14 @@ fn run(invocation: &Invocation) -> Result<Outcome, ToolError> {
     // recovery operation, without reacquiring it in the library helpers. The
     // operator statement still covers older/nonparticipating writers.
     let _selected_home = match invocation.verb {
-        Verb::Inspect | Verb::Plan => None,
-        Verb::Convert | Verb::Resume | Verb::Export | Verb::Import | Verb::Rehearse => Some(
+        Verb::Inspect | Verb::Plan | Verb::Converters => None,
+        Verb::Convert
+        | Verb::Resume
+        | Verb::Export
+        | Verb::Import
+        | Verb::Rehearse
+        | Verb::PackageConvert
+        | Verb::PackageResume => Some(
             local_recovery::acquire_exclusive_selected_home()
                 .map_err(|_| ToolError::new("data_home_coordination_unavailable"))?
                 .ok_or_else(|| ToolError::new(local_recovery::WRITERS_RUNNING))?,
@@ -178,10 +201,60 @@ fn run(invocation: &Invocation) -> Result<Outcome, ToolError> {
             archive_path(invocation)?,
             target_root(invocation)?,
         )?)?)),
+        // The inventory is a read of one package store: it reports what is
+        // installed, which installed package declares the required pair, and — when
+        // the caller names a data root — what this host's own decision is.
+        Verb::Converters => {
+            let required = converter::required_conversion()?;
+            let mut report = inventory(
+                &InventoryRequest {
+                    package_store: package_store(invocation)?,
+                    index: invocation.index.as_deref(),
+                    index_public_keys: invocation.index_public_keys.as_deref(),
+                    requested_package: invocation.package.as_deref(),
+                },
+                &required,
+            )?
+            .0;
+            if let Some(root) = invocation.data_root.as_deref() {
+                report.admission = Some(admission_report(root));
+            }
+            let finished = !report.candidates.is_empty();
+            let rendered = render(&report)?;
+            if finished {
+                Ok(Outcome::done(rendered))
+            } else {
+                Ok(Outcome::unfinished(rendered))
+            }
+        }
         // The rehearsal drives the same owners as a conversion and the two archive verbs,
         // one stage at a time. Its report names every stage whether or not it ran, so a run
         // that stopped part way is rendered rather than hidden; the exit status follows the
         // report so a caller that scripts it cannot read a partial rehearsal as a recovery.
+        // One package-owned conversion: the package store's own admission for the
+        // payload, the host's own maintenance decision for the root, and the
+        // package's declared converter run by the tool over a staged copy.
+        Verb::PackageConvert | Verb::PackageResume => {
+            let report = package_convert(&PackageConversionRequest {
+                data_root: data_root(invocation)?,
+                work_root: work_root(invocation)?,
+                package_store: package_store(invocation)?,
+                package: invocation.package.as_deref(),
+                payload: invocation.payload.as_deref(),
+                index: invocation.index.as_deref(),
+                index_public_keys: invocation.index_public_keys.as_deref(),
+                writers_stopped: invocation.writers_stopped,
+                resume: invocation.verb == Verb::PackageResume,
+                stop: None,
+            })?;
+            let finished = report.is_complete();
+            let rendered = render(&report)?;
+            if finished {
+                Ok(Outcome::done(rendered))
+            } else {
+                Ok(Outcome::unfinished(rendered))
+            }
+        }
         Verb::Rehearse => {
             let report = rehearse(&RehearsalRequest {
                 data_root: data_root(invocation)?.to_path_buf(),
@@ -220,6 +293,13 @@ fn target_root(invocation: &Invocation) -> Result<&Path, ToolError> {
 
 fn work_root(invocation: &Invocation) -> Result<&Path, ToolError> {
     invocation.work_root.as_deref().ok_or(WORK_ROOT_REQUIRED)
+}
+
+fn package_store(invocation: &Invocation) -> Result<&Path, ToolError> {
+    invocation
+        .package_store
+        .as_deref()
+        .ok_or(PACKAGE_STORE_UNAVAILABLE)
 }
 
 fn render<T: serde::Serialize>(value: &T) -> Result<String, ToolError> {

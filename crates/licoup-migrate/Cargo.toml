@@ -17,12 +17,19 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1.0"
+command-group.workspace = true
 licoup-extension-contracts = { path = "../licoup-extension-contracts" }
 licoup-native = { path = "../licoup-native" }
+semver.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 [dev-dependencies]
+base64.workspace = true
+ed25519-dalek.workspace = true
+licoup-conversation = { path = "../licoup-conversation" }
 licoup-foundation = { path = "../licoup-foundation" }
+rand_core.workspace = true
 rusqlite.workspace = true
 serde_json = "1.0"
+zip.workspace = true

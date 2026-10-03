@@ -9,6 +9,7 @@ const F = "crates/licoup-foundation/src/";
 const T = "crates/licoup-agent-targets/src/";
 const D = "apps/desktop/lib/src/platform/native_client/";
 const SUPERVISOR = `${F}platform/process_supervisor.rs`;
+const MIGRATE_CONVERTER = "crates/licoup-migrate/src/converter_process.rs";
 const PARAMETERS = `${T}domain/targets/parameters.rs`;
 const BINARIES = `${T}domain/targets/binaries.rs`;
 const SHELL = `${T}platform/user_shell_environment.rs`;
@@ -59,6 +60,8 @@ const SOURCES = Object.freeze({
   [N + "platform/hermes_driver/probe.rs"]: "973dddadc2653371f6c19a21a3987a19fa62aae3edb2694994bd7abf4e242d23",
   [N + "platform/lico_agent_driver/execution.rs"]: "061e3f118a7eb9944e328ea3cf2e61ab2845541f3dc88d5b850dc12c7063de55",
   [N + "platform/lico_agent_driver/probe.rs"]: "b968dbfd55ec7e1ca7c83aa5d5fedfc244c6b554d8fe96a441923fa22e0d3179",
+  [N + "platform/local_service/process.rs"]: "ab1a749eeffbdca47267a6c888882e033eb2c647da48a0beef7fa79399e38adc",
+  [MIGRATE_CONVERTER]: "1a468623ec8a3a0d23371c0dad7fdfdcb145f5cd6886cb306776c6f3acc59277",
   [N + "platform/mcp_service_process.rs"]: "9d99d104e078e13197dc21676a5eb50a25ac23be8906292a9b96c7128f75b8ff",
   [N + "platform/local_service/process.rs"]: "ab1a749eeffbdca47267a6c888882e033eb2c647da48a0beef7fa79399e38adc",
   [N + "platform/mcp_service_process.rs"]: "7f86d3232b4ead80180bd520f8e4e82979c52cedce8e612fbc178a2f98bb6d12",
@@ -283,5 +286,8 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
   ]),
   ...entries(SHELL, command, [
     ["cb586647e84a", "Capture the prepared login-shell command under the bounded process owner; environment values are runtime data and are not stored in this source review inventory."],
+  ]),
+  ...entries(MIGRATE_CONVERTER, field("entry: &'a Path"), [
+    ["b9b764e7cf4a", "Run the converter program the selected package published for the required format pair; the entry inside the installed payload is the package's own declaration, and the store's digest and signed-index checks admitted those bytes before this process starts."],
   ]),
 ]);

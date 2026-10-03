@@ -58,6 +58,7 @@ pub mod install;
 pub mod journal;
 pub mod resources;
 pub mod selection;
+pub mod release_index;
 pub mod state;
 pub mod storage;
 pub mod uninstall;
@@ -92,6 +93,11 @@ pub use resources::{
     maintenance_admission_port,
 };
 pub use selection::{GenerationSelection, InstalledGeneration, select_generation, switched_on};
+pub use release_index::{
+    IndexedConverter, IndexedPackage, IndexedPayload, MAX_INDEX_BYTES, MAX_INDEX_PACKAGES,
+    PACKAGE_INDEX_SCHEMA, VerifiedPackageIndex, bundled_public_keys, canonical_unsigned_bytes,
+    verify_index,
+};
 pub use state::{
     Admission, InstallActivation, InstanceIdentity, InstanceMachine, InstanceRegistry,
     InstanceReport, PackageMachine, PermissionKey, Settlement, TrustRecord,
