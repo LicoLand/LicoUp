@@ -87,6 +87,40 @@ pub use turn_event_emit::{
     emit_agent_processing, emit_turn_event, install_stdout_ndjson_sink, install_stream_sink,
 };
 
+/// This host's answer for the Antigravity adapter package's turn-event port.
+///
+/// The package owns *what* one Antigravity turn emits; this host owns *where* it
+/// goes, because the host owns the consumer. The answer is this host's own
+/// emitters rather than a second sink, so an Antigravity event and a Cursor
+/// event reach the same reader through the same path. The package emits no tool
+/// failure of its own, so it declares no such sink.
+pub(crate) fn antigravity_turn_event_port()
+-> licoup_agent_antigravity::port::turn_event::TurnEventPort {
+    licoup_agent_antigravity::port::turn_event::TurnEventPort {
+        emit_turn_event,
+        emit_agent_message_chunk,
+        emit_agent_message_completed,
+        emit_agent_processing,
+    }
+}
+
+/// Whether this host admits a new Antigravity execution.
+///
+/// The admission decision is the host's own close-admission barrier: the durable
+/// record a maintenance switch holds while it changes installed state. A turn
+/// launched under that barrier would run a vendor CLI that the switch may be
+/// replacing, so the package asks and never bypasses the answer. A data root
+/// with no record is idle — reading creates nothing — and an unreadable record
+/// refuses rather than admitting, exactly as the barrier's owner states.
+pub(crate) fn antigravity_admits_execution() -> bool {
+    let Ok(data_root) = licoup_foundation::platform::paths::portable_data_dir() else {
+        return false;
+    };
+    crate::domain::work_admission::WorkAdmission::open(data_root)
+        .barrier()
+        .is_ok_and(|barrier| barrier.is_none())
+}
+
 /// This host's answer for the Codex adapter package's turn-event port.
 ///
 /// The package owns *what* one Codex turn emits; this host owns *where* it goes,

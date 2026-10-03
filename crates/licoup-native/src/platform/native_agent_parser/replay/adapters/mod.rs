@@ -6,12 +6,13 @@
 //! constructs; this composition reaches it through the SDK's parser-set port.
 //! Two Agents keep their protocol state machine outside this module tree
 //! (`acp_driver_runtime` for copilot and kimi-code, `openclaw_driver` for
-//! openclaw), so those arms live next to the code they replay.
+//! openclaw), so those arms live next to the code they replay. Codex and
+//! Antigravity have moved into their packages, so their arms are reached through
+//! those crates' own `replay` modules rather than kept here.
 //!
 //! The arms are `pub(in crate::platform)` to this module's parent — it is the
 //! only reader, and it hands them to the SDK's harness through the parser set.
 
-mod antigravity;
 mod claude_code;
 mod cursor;
 mod deepseek_harness;
@@ -39,7 +40,10 @@ pub(in crate::platform) fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameR
         crate::platform::runtime_adapters::install();
     }
     Ok(match adapter_id {
-        "antigravity" => Box::new(antigravity::Replay::new()?),
+        // The arm moved with the parser into the Antigravity adapter package, so a
+        // regression in that parser fails the package's own corpus as well as this
+        // composition's.
+        "antigravity" => licoup_agent_antigravity::replay::replay_arm(adapter_id)?,
         "claude-code" => Box::new(claude_code::Replay::new()?),
         "codex" => licoup_agent_codex::replay::replay_arm(adapter_id)?,
         "copilot" | "kimi-code" => Box::new(acp_driver_runtime::replay::Replay::new(adapter_id)?),

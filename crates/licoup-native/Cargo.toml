@@ -39,6 +39,10 @@ licoup-agent-drivers = { path = "../licoup-agent-drivers" }
 # registration and its turn-event port while the extension host's binary
 # route is completed by the agent-execution port.
 licoup-agent-codex = { path = "../licoup-agent-codex" }
+# The Antigravity adapter package. Composition names it for its parser
+# registration and its ports while the extension host's binary route is
+# completed by the agent-execution port.
+licoup-agent-antigravity = { path = "../licoup-agent-antigravity" }
 licoup-agent-runtime = { path = "../licoup-agent-runtime" }
 licoup-application = { path = "../licoup-application" }
 licoup-project = { path = "../licoup-project" }

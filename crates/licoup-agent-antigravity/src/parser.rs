@@ -1,14 +1,38 @@
-use super::AdapterContract;
-use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
+//! Antigravity's vendor protocol below the adapter port.
+//!
+//! Antigravity exposes no line-oriented protocol. A turn's vendor facts arrive
+//! through three entries, and this module is the single place that reads them:
+//!
+//! 1. the official **Agent Hooks receipt** — the vendor CLI, its own Stop-hook
+//!    writer, or this package's [`crate::hook`] writes a JSON object carrying
+//!    the native `conversationId`; [`parse_hook_receipt`] recovers it, per
+//!    ADR-0008 classification happening here and nowhere above;
+//! 2. the **PTY lane** — [`PtyOutputParser`] strips terminal control from the
+//!    supervised process's stdout and accumulates the turn's output;
+//! 3. the **terminal process outcome** — [`classify_terminal`] combines the
+//!    launch-time requested conversation, the receipt and the process result
+//!    into this Agent's success or its own stable failure.
+//!
+//! The declaration below is the same string the replay corpus records as its
+//! channel, so a fixture cannot pass against another Agent's framing.
+
+use licoup_agent_adapter_sdk::adapters::AdapterContract;
+use licoup_agent_adapter_sdk::{LifecycleStage, Transition, TransitionReducer};
 use licoup_foundation::platform::ansi_stripper::AnsiStripper;
 use serde_json::Value;
 
-pub(super) const CONTRACT: AdapterContract = AdapterContract::new("antigravity", "pty-hook-json");
+/// The one adapter declaration this package's parser reports.
+pub const CONTRACT: AdapterContract = AdapterContract::new("antigravity", "pty-hook-json");
 
 const MIN_SESSION_ID_LEN: usize = 8;
 const MAX_SESSION_ID_LEN: usize = 128;
 
-pub(in crate::platform) fn valid_session_id(session_id: &str) -> bool {
+/// Whether a value is one Antigravity native conversation identity.
+///
+/// The vendor's conversation ids are opaque but bounded: a durable identity is
+/// accepted only when it is the documented length range of alphanumerics,
+/// `_` and `-`. Everything else is refused rather than quoted upstream.
+pub fn valid_session_id(session_id: &str) -> bool {
     let len = session_id.len();
     (MIN_SESSION_ID_LEN..=MAX_SESSION_ID_LEN).contains(&len)
         && session_id
@@ -24,7 +48,7 @@ pub(in crate::platform) fn valid_session_id(session_id: &str) -> bool {
 /// vendor payload and the vendor environment identifier are retained only as
 /// compatible inputs for receipts produced by earlier writer layouts, so any
 /// compatible writer order resolves to the same conversation.
-pub(in crate::platform) fn parse_hook_receipt(text: &str) -> Option<String> {
+pub fn parse_hook_receipt(text: &str) -> Option<String> {
     let envelope: Value = serde_json::from_str(text).ok()?;
     let payload = envelope
         .get("hookPayload")
@@ -58,20 +82,24 @@ fn conversation_identifier(value: &Value) -> Option<&str> {
     .find_map(|key| value.get(key).and_then(Value::as_str))
 }
 
-pub(in crate::platform) struct PtyOutputParser {
+/// The PTY lane's stdout parser: strips terminal control once, accumulates the
+/// turn's output, and reports each visible chunk as it arrives.
+pub struct PtyOutputParser {
     stripper: AnsiStripper,
     output: String,
 }
 
 impl PtyOutputParser {
-    pub(in crate::platform) fn new() -> Self {
+    /// A parser for one turn's stdout, holding no state between turns.
+    pub fn new() -> Self {
         Self {
             stripper: AnsiStripper::new(),
             output: String::new(),
         }
     }
 
-    pub(in crate::platform) fn push(&mut self, bytes: &[u8]) -> Option<String> {
+    /// Feed one stdout chunk; `None` means the chunk carried no visible text.
+    pub fn push(&mut self, bytes: &[u8]) -> Option<String> {
         let text = self.stripper.push(bytes);
         if text.is_empty() {
             None
@@ -81,7 +109,9 @@ impl PtyOutputParser {
         }
     }
 
-    pub(in crate::platform) fn finish(mut self) -> (String, Option<String>) {
+    /// Finish the lane: the trimmed turn output and any trailing partial
+    /// escape sequence that is flushed as one final visible chunk.
+    pub fn finish(mut self) -> (String, Option<String>) {
         let tail = self.stripper.finish();
         let effect = (!tail.is_empty()).then(|| tail.clone());
         self.output.push_str(&tail);
@@ -90,30 +120,41 @@ impl PtyOutputParser {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(in crate::platform) struct TerminalFacts<'a> {
-    pub(in crate::platform) requested_session: &'a str,
-    pub(in crate::platform) receipt_session: Option<&'a str>,
-    pub(in crate::platform) output: &'a str,
-    pub(in crate::platform) timed_out: bool,
-    pub(in crate::platform) exit_success: bool,
+/// The facts the terminal classification reads: the launch-time requested
+/// conversation, the receipt's conversation, the collected output, and the
+/// supervised process's own outcome. They never arrive on a vendor wire.
+pub struct TerminalFacts<'a> {
+    pub requested_session: &'a str,
+    pub receipt_session: Option<&'a str>,
+    pub output: &'a str,
+    pub timed_out: bool,
+    pub exit_success: bool,
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub(in crate::platform) struct TerminalFailure {
-    pub(in crate::platform) code: &'static str,
-    pub(in crate::platform) message: &'static str,
-    pub(in crate::platform) stage: &'static str,
-    pub(in crate::platform) session_id: String,
+/// This Agent's own refusal of one terminal outcome.
+pub struct TerminalFailure {
+    pub code: &'static str,
+    pub message: &'static str,
+    pub stage: &'static str,
+    pub session_id: String,
 }
 
 #[derive(Debug)]
-pub(in crate::platform) struct TerminalSuccess {
-    pub(in crate::platform) session_id: String,
-    pub(in crate::platform) output: String,
-    pub(in crate::platform) transitions: Vec<Transition>,
+/// This Agent's report of one completed turn.
+pub struct TerminalSuccess {
+    pub session_id: String,
+    pub output: String,
+    pub transitions: Vec<Transition>,
 }
 
-pub(in crate::platform) fn classify_terminal(
+/// Classify one finished turn from the facts the driver collected.
+///
+/// Order is the protocol's, not a caller's: a timed-out process is reported as
+/// the timeout, a turn that bound no valid identity is reported as the missing
+/// receipt, a resumed conversation that drifted is reported as drift, and only
+/// then is a non-zero exit or empty output the turn's failure.
+pub fn classify_terminal(
     facts: TerminalFacts<'_>,
 ) -> Result<TerminalSuccess, TerminalFailure> {
     if facts.timed_out {
@@ -172,6 +213,17 @@ pub(in crate::platform) fn classify_terminal(
     })
 }
 
+/// This Agent's normalized transitions for one completed turn.
+///
+/// The reply transitions a completed execution reports: the processing and
+/// responding stages, the turn's output as this Agent's one reply unit, and the
+/// terminal completed stage. It is the same projection
+/// [`classify_terminal`] reports, reached from an execution outcome rather than
+/// from a classified turn.
+pub fn completed_transitions(output: &str) -> Vec<Transition> {
+    success_transitions(output)
+}
+
 fn success_transitions(output: &str) -> Vec<Transition> {
     let mut reducer = TransitionReducer::default();
     let mut transitions = reducer.advance(LifecycleStage::Processing);
@@ -184,7 +236,8 @@ fn success_transitions(output: &str) -> Vec<Transition> {
     transitions
 }
 
-pub(in crate::platform) fn failure_transitions(
+/// This Agent's normalized transitions for one reported failure.
+pub fn failure_transitions(
     code: &str,
     stage: &str,
     message: &str,

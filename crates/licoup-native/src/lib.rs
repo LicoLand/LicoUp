@@ -62,12 +62,39 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     platform::extension_packages::install_maintenance_admission(std::sync::Arc::new(
         PackageGenerationAdmission,
     ))?;
-    // The Codex adapter package owns what one Codex turn emits; this host owns
-    // where it goes, because the host owns the consumer. The package is linked
-    // here for its registration while its binary route is completed by the
-    // agent-execution port, and a host that never installs this port leaves the
-    // package's emitters silent rather than inventing a consumer.
-    licoup_agent_codex::port::turn_event::install(platform::codex_turn_event_port())
+    // An adapter package owns what one of its turns emits; this host owns where
+    // it goes, because the host owns the consumer. Each package is linked here
+    // for its registration while its binary route is completed by the
+    // agent-execution port, and a host that never installs these ports leaves the
+    // packages' emitters silent rather than inventing a consumer.
+    licoup_agent_codex::port::turn_event::install(platform::codex_turn_event_port())?;
+    licoup_agent_antigravity::port::turn_event::install(
+        platform::antigravity_turn_event_port(),
+    )?;
+    // The Antigravity package asks this host two execution questions. The caller
+    // context belongs to the Subagent mesh's own binding, and the admission
+    // answer is the host's close-admission barrier, which a launching turn may
+    // not bypass.
+    licoup_agent_antigravity::port::execution::install(
+        licoup_agent_antigravity::port::execution::ExecutionPort {
+            subagent_caller_context: subagent_caller_context,
+            admits_execution: platform::antigravity_admits_execution,
+        },
+    )
+}
+
+/// The composition's answer for the Antigravity adapter package's caller-context
+/// query: the exported Subagent caller context this host's own drivers bind.
+///
+/// It is the same environment contract the launcher applies, read through the
+/// port so the package asks the host rather than reading a second copy of the
+/// variable names.
+fn subagent_caller_context() -> Option<String> {
+    let provider = std::env::var("LICOUP_MCP_CALLER_PROVIDER").ok()?;
+    if provider.trim().is_empty() {
+        return None;
+    }
+    Some(provider)
 }
 
 /// The composition's answer for the package-generation admission port: the
