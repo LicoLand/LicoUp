@@ -11,13 +11,13 @@ use super::native_agent_parser::adapters::deepseek_harness::{
     FrameError, FrameParser, ProtocolFrame, TurnParseError, TurnParser, encode_request,
     initialize_accepted, initialize_request, prompt_request, shutdown_request,
 };
-use super::native_agent_parser::adapters::driver_registry::{
-    registry_get, registry_insert_if_absent, registry_remove, registry_remove_if,
-};
 use super::process_supervisor::SupervisedChild;
 use super::raw_execution::{
     RawExecutionBinding, RawExecutionBindingGuard, RawExecutionDirection, RawExecutionObserver,
     RawExecutionReader,
+};
+use licoup_agent_adapter_sdk::adapters::driver_registry::{
+    registry_get, registry_insert_if_absent, registry_remove, registry_remove_if,
 };
 
 pub(super) const DRIVER_ID: &str = "deepseek-harness-sdk-jsonrpc";

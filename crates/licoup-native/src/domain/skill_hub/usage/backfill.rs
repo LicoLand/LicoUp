@@ -31,9 +31,9 @@ use crate::domain::conversation::source_catalog::{
 use crate::domain::skill_hub::{
     ClientStateStore, Result, Value, bool_param, collection_items_mut, json, string_param,
 };
-use crate::platform::skill_invocation_projection::project_history_skill_invocations;
 use anyhow::anyhow;
 use fs2::FileExt;
+use licoup_agent_adapter_sdk::skill_invocation_projection::project_history_skill_invocations;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;

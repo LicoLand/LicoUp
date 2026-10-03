@@ -67,6 +67,13 @@
         }
       },
       {
+        "manifest": "crates/licoup-agent-adapter-sdk/Cargo.toml",
+        "title": {
+          "en": "Agent adapter SDK",
+          "zh": "智能体适配器 SDK"
+        }
+      },
+      {
         "manifest": "crates/licoup-agent-adapters/Cargo.toml",
         "title": {
           "en": "Agent adapters",

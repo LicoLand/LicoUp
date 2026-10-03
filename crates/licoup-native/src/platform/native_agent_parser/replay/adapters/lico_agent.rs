@@ -23,7 +23,8 @@ impl Replay {
     /// The framing this boundary consumes, taken from the adapter's own
     /// contract so a frame recorded under another channel cannot pass.
     fn framing() -> &'static str {
-        crate::platform::native_agent_parser::adapters::contract(RuntimeAdapter::LicoAgent).framing
+        crate::platform::native_agent_parser::adapters::contract_for(RuntimeAdapter::LicoAgent)
+            .framing
     }
 }
 

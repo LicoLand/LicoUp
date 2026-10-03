@@ -49,7 +49,7 @@ const SOURCES = Object.freeze({
   [N + "platform/codex_plugin_manager.rs"]: "58aa902449d5a9f25b342f4541ed6c56488af6c0c23c633892cce24bbea31855",
   [N + "platform/cursor_driver/execution.rs"]: "e50f484719e8828fb7842711337d8886d6b220986fced0d2757fedbe6038576f",
   [N + "platform/cursor_driver/probe.rs"]: "e5fb151d35ada8ac16770cfa444a46edc9b07dfbfd02b36f165c0947b3f69c77",
-  [N + "platform/deepseek_harness_driver.rs"]: "52944946f8240e9dd6d18c5c5d39d121c6291461c055aa903f85ab13a5dd45c1",
+  [N + "platform/deepseek_harness_driver.rs"]: "4069c51e24d5e58698f37034eb3685ce6a235be2f8eb72b999c681942dc6094d",
   [N + "platform/generic_cli_driver.rs"]: "0383fbc57ae5f1f4f26d20ede03786edb278ec37eeaa0a83080854b5300ac3a5",
   [N + "platform/hermes_driver/probe.rs"]: "973dddadc2653371f6c19a21a3987a19fa62aae3edb2694994bd7abf4e242d23",
   [N + "platform/lico_agent_driver/execution.rs"]: "061e3f118a7eb9944e328ea3cf2e61ab2845541f3dc88d5b850dc12c7063de55",

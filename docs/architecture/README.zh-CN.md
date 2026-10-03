@@ -175,6 +175,7 @@ flowchart TB
 | `crates/licoup-endpoint-core/` | 端点身份、密钥保管与加密基础 |
 | `crates/licoup-protocol-bindings/` | LicoArc Candidate 固定输入准入（由 LicoArc SDK 验证） |
 | `crates/licoup-client-state/` | 客户端状态管理契约 |
+| `crates/licoup-agent-adapter-sdk/` | 共享智能体适配器契约：逐行解析契约、迁移词汇表、注册表查询、回放工具与解析器生命周期状态机 |
 | `crates/licoup-agent-adapters/` | 智能体适配器 trait 定义 |
 | `crates/lico-catalog-convergence/` | 目录收敛逻辑 |
 | `packages/contracts/client/` | 客户端自有 Schema（第 2 层） |
@@ -355,6 +356,7 @@ crates/
 ├── licoup-protocol-bindings/   # L2: LicoArc Candidate 固定输入准入
 ├── licoup-client-state/        # 客户端状态管理（配额、持久化）
 ├── licoup-platform-bridges/    # 系统桥接（Keychain、WinCred 等）
+├── licoup-agent-adapter-sdk/   # 共享适配器契约、注册表、回放工具、解析器生命周期
 ├── licoup-agent-adapters/      # 智能体适配器 trait 定义
 └── lico-catalog-convergence/   # 目录管理
 ```

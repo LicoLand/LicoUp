@@ -2054,6 +2054,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-agent-adapter-sdk"
+version = "0.3.0"
+dependencies = [
+ "licoup-state-machine-codegen",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "licoup-agent-adapters"
 version = "0.3.0"
 dependencies = [
@@ -2182,6 +2192,7 @@ dependencies = [
  "libcrux-sha3",
  "libcrux-traits",
  "lico-catalog-convergence",
+ "licoup-agent-adapter-sdk",
  "licoup-agent-adapters",
  "licoup-agent-runtime",
  "licoup-application",
