@@ -17,7 +17,10 @@ const requiredFutureModules = [
   "lico-agent-sidecar",
   "codex-plugin"
 ];
-const allFutureModules = [...requiredFutureModules];
+const optionalFutureModules = [
+  "extension-packages"
+];
+const allFutureModules = [...requiredFutureModules, ...optionalFutureModules];
 const packageClientFacadePath = "apps/desktop/scripts/package-client.mjs";
 const packageClientModuleRoot = "apps/desktop/scripts/package-client";
 const packageClientSourceBundleTestPath =
@@ -85,6 +88,19 @@ export async function checkPackagingAndTargetProjection(context) {
   );
   for (const moduleId of requiredFutureModules) {
     assert(modules[moduleId]?.required === true, `future module must be required: ${moduleId}`);
+  }
+  // A module whose implementation arrives as an independent package asset is
+  // optional: the release must stay complete and startable without it, and no
+  // required module may depend on it.
+  for (const moduleId of optionalFutureModules) {
+    assert(modules[moduleId]?.required === false,
+      `package-provided module must stay optional: ${moduleId}`);
+    assert(
+      Object.entries(modules).every(([id, module]) =>
+        !requiredFutureModules.includes(id) ||
+        !(module.requires || []).includes(moduleId)),
+      `required module must not depend on optional module: ${moduleId}`
+    );
   }
   for (const moduleId of enabledConfigModules) {
     assert(allFutureModules.includes(moduleId), `enabled module must be known: ${moduleId}`);

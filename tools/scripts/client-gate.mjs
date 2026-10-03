@@ -486,6 +486,32 @@ function validateDelegatedApplePublicationTopology() {
   const publication = readJson("tools/client-release-template.json").publication;
   if (JSON.stringify(publication?.assetRoles) !== JSON.stringify(roles) ||
       publication.independentToolSignatureNotaryAndPublicDigestRequired !== true) fail("LicoUp independent-tool publication contract is incomplete");
+  // The independently released package assets are declared beside the client
+  // draft, not inside it: the publication authority owns a closed draft asset
+  // contract and the packages are released in their own right.
+  const packageAssets = publication.independentPackageAssets;
+  if (!packageAssets || typeof packageAssets !== "object" ||
+      JSON.stringify(Object.keys(packageAssets).sort()) !== JSON.stringify([
+        "clientDraftCarries", "indexRole", "payloadRole", "producer",
+        "signedIndexRequired",
+      ]) ||
+      packageAssets.payloadRole !== "package-payload" ||
+      packageAssets.indexRole !== "package-index" ||
+      packageAssets.producer !== "tools/scripts/client-release-package-index.mjs" ||
+      packageAssets.clientDraftCarries !== false ||
+      packageAssets.signedIndexRequired !== true) {
+    fail("LicoUp independent-package publication contract is incomplete");
+  }
+  const packageTarget = readJson("tools/client-release-targets.json").targets
+    .find((target) => target.id === "macos-direct-arm64");
+  for (const role of [packageAssets.payloadRole, packageAssets.indexRole]) {
+    const declared = (packageTarget?.artifacts || []).filter((artifact) =>
+      artifact.role === role);
+    if (declared.length !== 1 || !declared[0].source ||
+        !declared[0].source.startsWith("build/apps/desktop/native-release/")) {
+      fail(`LicoUp independent package asset is not declared for its release target: ${role}`);
+    }
+  }
   for (const [file, sourceBranch, candidateBranch, releaseTrack] of [
     ["tools/apple-release/macos-direct-arm64.json", "release",
       "macos-release-candidate", "stable"],

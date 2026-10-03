@@ -58,6 +58,7 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:verify:consumer-verification-manifest:self-test",
     "client:verify:update-manifest:self-test",
     "client:release:packages:self-test",
+    "client:verify:package-index:self-test",
     "client:verify:review-signoff:self-test",
     "client:verify:release-target-evidence:self-test",
     "client:verify:release-report-schema:self-test",

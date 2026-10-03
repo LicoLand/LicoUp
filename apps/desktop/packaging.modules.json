@@ -246,6 +246,22 @@
       "requires": [
         "subagents-mcp"
       ]
+    },
+    "extension-packages": {
+      "label": "Independently released first-party packages read through a signed package index",
+      "category": "packages",
+      "enabled": true,
+      "required": false,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
+      "requires": [
+        "native-sidecar",
+        "portable-data"
+      ]
     }
   },
   "deferredCapabilities": {}

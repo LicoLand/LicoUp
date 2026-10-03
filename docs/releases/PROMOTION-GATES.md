@@ -121,10 +121,51 @@ update keys and notary authority/queue without publishing. An existing `In Progr
 submission blocks a new session. Actual app/archive validation remains mandatory
 immediately before upload; build and notary waits have no cancellation deadline.
 
-Apple Release preserves the source pair and appends only the five macOS assets:
-`LicoUp-macos-arm64.dmg`, its `.sha256`, `LicoUp-macos-arm64-update.zip`, its
-`.sha256`, and `LicoUp-update-manifest.json`. The single public Release therefore
-contains seven immutable assets. A conflict stops; public files are never replaced.
+Apple Release preserves the source pair and appends the declared macOS draft
+assets: `LicoUp-macos-arm64.dmg`, its `.sha256`, `LicoUp-macos-arm64-update.zip`,
+its `.sha256`, `LicoUp-update-manifest.json`, and the independent migration tool
+`LicoUp-migrate-macos-arm64` with its `.sha256`. The single public Release
+therefore contains nine immutable assets. A conflict stops; public files are
+never replaced. The draft asset set is closed: the publication authority accepts
+its declared roles and nothing else.
+
+## Independent package assets
+
+`tools/scripts/client-release-package-index.mjs` prepares a first-party package
+payload and the signed package index the client reads. These assets are released
+in their own right and do not enter the client draft above. Nothing in the client
+build signs or publishes them:
+
+```sh
+npm run client:release:package-index:plan
+npm run client:release:package-index:fixture
+npm run client:release:package-index:build
+node tools/scripts/client-release-package-index.mjs verify --index <index> --payloads <directory>
+```
+
+`plan` writes nothing and reports each package's declared identity, version,
+client compatibility and payload digest. `fixture` packages the committed
+synthetic package under a key pair generated in memory for that run: it reads no
+protected key and is pipeline evidence, not a publication. `build` writes the
+payload and the signed index into `build/apps/desktop/release-packages/macos`
+from a set that reads the release authority's two private keys
+(`LICO_PACKAGE_INDEX_OFFLINE_ROOT_KEY` and
+`LICO_PACKAGE_INDEX_ONLINE_SIGNING_KEY`) and fails closed without them. `verify`
+re-verifies an index, its Ed25519 role signatures, its payload digests and each
+package's native converter entry.
+
+Each package declares its own identity, version, client compatibility list and
+native converter entry inside its payload, and the signed index republishes that
+declaration with the payload digest; the client imports an offline payload
+without a network service. The synthetic fixture is replaced by the real
+per-adapter payload under the same contract before any publication. All four
+commands stop before signing for publication, notarization, tagging, upload,
+installation or client launch: those remain part of the separately authorized
+Apple Release operation above.
+
+Adding these assets to the client draft instead would require the publication
+authority to accept the two package roles in its own artifact contract first;
+that contract lives outside this repository and is owned by the release owner.
 
 Configure the local release authority and inspect release runs with:
 
@@ -163,5 +204,6 @@ requires exact public-asset reconciliation, anonymous installer download,
 digest verification, installation, and stable launch.
 
 The final merged promotion publishes source automatically. macOS signing,
-notarization and the five platform assets remain separately authorized Apple
-Release operations.
+notarization and the platform assets remain separately authorized Apple Release
+operations; the independent package assets are prepared locally and published by
+a separately authorized release step of their own.

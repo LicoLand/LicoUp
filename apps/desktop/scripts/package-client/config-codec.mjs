@@ -255,6 +255,22 @@ export function validatePackagingConfig(
     }
   }
   validateDeferredCapabilities(config.deferredCapabilities);
+  // An optional module is one this release may ship without. A required module
+  // that depends on it would turn that absence into a broken bundle, so the
+  // dependency direction is refused instead of silently weakening the optional
+  // declaration.
+  const optionalModules = new Set(Object.entries(modules)
+    .filter(([, moduleConfig]) => moduleConfig.required === false)
+    .map(([id]) => id));
+  if (optionalModules.size > 0) {
+    for (const moduleConfig of Object.values(modules)) {
+      if (moduleConfig.required !== true) continue;
+      if ((moduleConfig.requires || []).some((dependency) =>
+        optionalModules.has(dependency))) {
+        packageFailure("packaging_optional_module_dependency_invalid");
+      }
+    }
+  }
   return config;
 }
 

@@ -99,10 +99,40 @@ apple-release compliance check --project . --config tools/apple-release/macos-di
 隐私、描述文件/证书、更新密钥及公证权限/队列，不执行发布。已有 `In Progress` 提交时
 禁止新会话。真实 App/归档上传前仍须执行制品检查；构建与公证等待均无取消截止时间。
 
-Apple Release 保留源码两项资产，只补充五项 macOS 资产：`LicoUp-macos-arm64.dmg`、
-其 `.sha256`、`LicoUp-macos-arm64-update.zip`、其 `.sha256` 和
-`LicoUp-update-manifest.json`。唯一公开 Release 因此包含七项不可变资产；冲突时停止，
-绝不替换公开文件。
+Apple Release 保留源码两项资产，补充声明的 macOS 草稿资产：
+`LicoUp-macos-arm64.dmg`、其 `.sha256`、`LicoUp-macos-arm64-update.zip`、
+其 `.sha256`、`LicoUp-update-manifest.json`，以及独立迁移工具
+`LicoUp-migrate-macos-arm64` 及其 `.sha256`。唯一公开 Release 因此包含九项不可变
+资产；冲突时停止，绝不替换公开文件。草稿资产集是封闭的：发布权威只接受其声明的角色。
+
+## 独立包资产
+
+`tools/scripts/client-release-package-index.mjs` 负责准备第一方包载荷与客户端读取的
+已签名包索引。这些资产以自身名义发布，不进入上述客户端草稿；客户端构建既不签名也不
+发布它们：
+
+```sh
+npm run client:release:package-index:plan
+npm run client:release:package-index:fixture
+npm run client:release:package-index:build
+node tools/scripts/client-release-package-index.mjs verify --index <index> --payloads <directory>
+```
+
+`plan` 不写任何文件，只报告每个包声明的身份、版本、客户端兼容范围与载荷摘要。
+`fixture` 用本次运行在内存中生成的密钥对打包仓库内的合成包：不读取任何受保护密钥，
+仅作为流水线证据，不是发布。`build` 读取发布权威的两把私钥
+（`LICO_PACKAGE_INDEX_OFFLINE_ROOT_KEY` 与
+`LICO_PACKAGE_INDEX_ONLINE_SIGNING_KEY`），缺少任一把即失败关闭，并把载荷与已签名
+索引写入 `build/apps/desktop/release-packages/macos`。`verify` 重新校验索引、其
+Ed25519 角色签名、载荷摘要以及每个包的原生转换入口。
+
+每个包在自身载荷内声明身份、版本、客户端兼容列表与原生转换入口，已签名索引连同载荷
+摘要重新发布该声明；客户端可在无网络服务的情况下导入离线载荷。任何发布之前，合成的
+测试包会被同契约下的真实适配器载荷替换。上述四条命令都在面向发布的签名、公证、打
+tag、上传、安装与客户端启动之前停止：这些仍属于上文单独授权的 Apple Release 操作。
+
+若要把这些资产并入客户端草稿，必须先由发布负责人让发布权威的制品契约接受这两个包
+角色；该契约位于本仓库之外。
 
 配置本机发布授权并检查发布运行：
 
@@ -136,5 +166,5 @@ Stable 版本。
 已上传制品本身都不代表成功；终态还必须完成精确公开制品对账、匿名下载安装包、摘要
 校验、安装与稳定启动。
 
-最后一段晋升合并后自动发布源码。macOS 签名、公证及五项平台资产仍由单独授权的
-Apple Release 操作完成。
+最后一段晋升合并后自动发布源码。macOS 签名、公证与平台资产仍由单独授权的 Apple Release
+操作完成；独立包资产在本地准备，并由其自身单独授权的发布步骤发布。

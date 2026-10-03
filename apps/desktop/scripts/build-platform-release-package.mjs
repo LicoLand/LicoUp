@@ -405,6 +405,15 @@ function candidateFiles(target, artifact, version) {
       "build", "apps", "desktop", "release-tools", target.platform, name,
     )];
   }
+  if (artifact.role === "package-payload" || artifact.role === "package-index") {
+    // The signed package index and its payload are produced by the package
+    // index tool for this release. A missing producer output fails the build
+    // rather than falling back to an unrelated file of the same name.
+    return [path.join(
+      workspaceRoot,
+      "build", "apps", "desktop", "release-packages", target.platform, name,
+    )];
+  }
   const distributionRoot = path.join(workspaceRoot, "build", "apps", "desktop", "distribution", "macos");
   const candidates = [];
   if (target.platform === "macos" && target.channel === "direct") {

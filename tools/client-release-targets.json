@@ -49,6 +49,16 @@
           "for": "migration-tool"
         },
         {
+          "role": "package-payload",
+          "file": "LicoUp-package-fixture-native-converter.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-fixture-native-converter.licopkg"
+        },
+        {
+          "role": "package-index",
+          "file": "LicoUp-package-index.json",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-index.json"
+        },
+        {
           "role": "build-manifest",
           "file": "LicoUp-macos-arm64.build.json",
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-macos-arm64.build.json"
