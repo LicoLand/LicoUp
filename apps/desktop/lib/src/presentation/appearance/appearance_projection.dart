@@ -49,6 +49,8 @@ final class AppearanceProjection {
     this.fontPreference = 'system',
     this.reduceMotion = false,
     this.loadingEffectId = 'spinner',
+    this.planTokens = const {},
+    this.planFallbackReason,
     required Iterable<AppearancePresetProjection> presets,
   }) : presets = immutablePresentationList(presets);
 
@@ -58,6 +60,16 @@ final class AppearanceProjection {
   final String loadingEffectId;
   final List<AppearancePresetProjection> presets;
 
+  /// Token roles a published appearance resource supplied, if any.
+  ///
+  /// Empty while the client renders its built-in appearance, so the renderer
+  /// needs no separate "which appearance" branch.
+  final Map<String, String> planTokens;
+
+  /// Why the declared default is serving instead of a selected resource, when
+  /// a published plan recorded a fallback.
+  final String? planFallbackReason;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -66,6 +78,8 @@ final class AppearanceProjection {
           other.fontPreference == fontPreference &&
           other.reduceMotion == reduceMotion &&
           other.loadingEffectId == loadingEffectId &&
+          other.planFallbackReason == planFallbackReason &&
+          samePresentationMap(other.planTokens, planTokens) &&
           samePresentationList(other.presets, presets);
 
   @override
@@ -74,6 +88,10 @@ final class AppearanceProjection {
     fontPreference,
     reduceMotion,
     loadingEffectId,
+    planFallbackReason,
+    Object.hashAll(
+      planTokens.entries.map((entry) => Object.hash(entry.key, entry.value)),
+    ),
     Object.hashAll(presets),
   );
 }

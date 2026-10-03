@@ -3,9 +3,15 @@ import 'package:licoup/src/presentation/appearance/appearance_projection.dart';
 
 /// Adapts renderer-independent appearance values to the existing Flutter
 /// theme model without exposing Application-owned configuration objects.
+///
+/// A published appearance resource's tokens are applied to every preset the
+/// projection carries, so the appearance the plan selected renders whichever
+/// preset the brightness resolution reaches. The tokens are plain role/value
+/// pairs; nothing else about a preset can be replaced by a resource.
 List<AppearancePresetConfig> appearancePresetConfigsFromProjection(
   AppearanceProjection projection,
 ) {
+  final planTokens = projection.planTokens;
   final lightPresetId = _fixedPresetId(
     projection,
     mode: AppearancePresetMode.light,
@@ -33,6 +39,7 @@ List<AppearancePresetConfig> appearancePresetConfigsFromProjection(
         darkPresetId: mode == AppearancePresetMode.system ? darkPresetId : null,
         tokens: Map.unmodifiable({
           for (final token in preset.tokens) token.name: token.value,
+          ...planTokens,
         }),
       );
     }),

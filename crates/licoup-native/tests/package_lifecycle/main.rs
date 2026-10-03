@@ -36,8 +36,9 @@ use licoup_native::platform::extension_packages::{
     DependentsDecision, Detector, DiscoveryEnvironment, Drained, FallbackReason, FaultPlan,
     InFlightPins, InstallPhase, InstallRequest, InstanceIdentity, InstanceLifecycle,
     InstanceMachine, InstanceRegistry, MaintenanceAdmission, OffFrameLane, PackageMachine,
-    PackageStore, PreparedGeneration, RecommendationLog, RemainingWork, ResourceBinding,
-    ResourceChange, ResourceHost, StorageKind, SystemDefault, TrustRecord, UninstallTransaction,
+    MOUNT_PLAN_FORMAT, PackageStore, PreparedGeneration, RecommendationLog, RemainingWork,
+    ResourceBinding, ResourceChange, ResourceHost, StorageKind, SystemDefault, TrustRecord,
+    UninstallTransaction, plan_generation_mount,
     account_store, close_surface, plan_gc, preview, running_client_version, scan,
 };
 
@@ -1734,6 +1735,151 @@ fn resource_id_of(resources: &[ResourceDeclaration], kind: ResourceKind) -> Stri
         .unwrap_or_else(|| panic!("the synthetic package declares a {kind:?} resource"))
         .id()
         .to_owned()
+}
+
+#[test]
+fn the_mount_plan_publishes_the_typed_resources_a_generation_serves() {
+    let (root, store) = store("mount-plan-publication");
+    let id = "org.licoland.appearance.synthetic";
+    let version = "1.0.0";
+    let resources = installed_data_package(&store, id, version);
+
+    let seam = SeamAnswer::answering("");
+    let admission = Arc::clone(&seam) as Arc<dyn MaintenanceAdmission>;
+    let mut host = ResourceHost::with_admission(root.clone(), admission);
+    let prepared = PreparedGeneration::new(id, version, 1, resources.clone()).expect("prepared");
+    host.begin_replacement(&prepared)
+        .expect("an idle host admits the switch")
+        .commit();
+
+    // The user's ordinary selection of the installed theme: a presentation
+    // preference, so it replaces no generation and asks no admission question.
+    let theme = resource_id_of(&resources, ResourceKind::Theme);
+    host.select(ResourceKind::Theme, &theme)
+        .expect("a compiled theme resource is selectable");
+
+    let plan = plan_generation_mount(&host.bindings(), id, 1, &resources);
+    assert_eq!(plan.revision, host.bindings().revision());
+
+    // The document is data: an identity, bindings, plain values. It has no
+    // member a widget, a builder, a callback or a client object could travel in.
+    let document = plan.to_document();
+    assert_eq!(document["format"], MOUNT_PLAN_FORMAT);
+    assert_eq!(document["version"], 1);
+    assert_eq!(document["revision"], plan.revision);
+
+    // The theme binding names the resource and the generation that serves it.
+    let bindings = document["bindings"].as_array().expect("bindings");
+    let theme_binding = bindings
+        .iter()
+        .find(|binding| binding["kind"] == "theme")
+        .expect("the theme kind is published");
+    assert_eq!(theme_binding["resourceId"], theme.as_str());
+    assert_eq!(theme_binding["packageId"], id);
+    assert_eq!(theme_binding["packageGeneration"], 1);
+    assert!(theme_binding.get("system").is_none());
+
+    // A kind nothing selected serves the client's own system fact instead.
+    let font_binding = bindings
+        .iter()
+        .find(|binding| binding["kind"] == "font")
+        .expect("the font kind is published");
+    assert_eq!(font_binding["system"], "font");
+
+    // The composition the generation declares reaches the plan through the
+    // contract's own planner. The component that binds a host-registered action
+    // no client registered is refused with its stable reason; the plain
+    // component mounts.
+    let blockable = resources
+        .iter()
+        .find(|resource| resource.kind() == ResourceKind::Composition)
+        .expect("composition resource");
+    let action_component = blockable
+        .components()
+        .iter()
+        .find(|component| component.action_ref.is_some())
+        .expect("the synthetic composition binds an action");
+    let action_ref = action_component
+        .action_ref
+        .clone()
+        .expect("the bound action identity");
+    let mounts = plan.mounted().count();
+    assert_eq!(mounts, blockable.components().len() - 1);
+    let refusals: Vec<(&str, &str)> = plan
+        .refused()
+        .map(|(contribution, reason)| (contribution.action_ref.as_deref().unwrap_or_default(), reason))
+        .collect();
+    assert_eq!(refusals, vec![(action_ref.as_str(), "action_unregistered")]);
+
+    // Only the mounted contributions are published: the interface cannot mount
+    // what the native owner refused.
+    let published = document["contributions"].as_array().expect("contributions");
+    assert_eq!(published.len(), mounts);
+    for contribution in published {
+        assert!(contribution.get("blocked").is_none());
+        assert!(contribution.get("inputs").is_some());
+    }
+
+    // Reading the same published bindings twice gives the same document.
+    let again = plan_generation_mount(&host.bindings(), id, 1, &resources);
+    assert_eq!(again.to_document(), document);
+
+    cleanup(&root);
+}
+
+#[test]
+fn a_disabled_generation_publishes_the_declared_default_and_its_reason() {
+    let (root, store) = store("mount-plan-fallback");
+    let id = "org.licoland.appearance.synthetic";
+    let version = "1.0.0";
+    let resources = installed_data_package(&store, id, version);
+    let theme = resource_id_of(&resources, ResourceKind::Theme);
+
+    let seam = SeamAnswer::answering("");
+    let admission = Arc::clone(&seam) as Arc<dyn MaintenanceAdmission>;
+    let mut host = ResourceHost::with_admission(root.clone(), admission);
+    let prepared = PreparedGeneration::new(id, version, 1, resources.clone()).expect("prepared");
+    host.begin_replacement(&prepared)
+        .expect("an idle host admits the switch")
+        .commit();
+    host.select(ResourceKind::Theme, &theme)
+        .expect("the installed theme is selectable");
+
+    let fallbacks = host.withdraw(id, ResourceChange::Disabled);
+    assert_eq!(fallbacks.len(), 1);
+    assert_eq!(fallbacks[0].kind, ResourceKind::Theme);
+    assert_eq!(fallbacks[0].reason, FallbackReason::Disabled);
+
+    let plan = plan_generation_mount(&host.bindings(), id, 1, &resources);
+    let document = plan.to_document();
+    let bindings = document["bindings"].as_array().expect("bindings");
+    let theme_binding = bindings
+        .iter()
+        .find(|binding| binding["kind"] == "theme")
+        .expect("the theme kind is published");
+    assert_eq!(theme_binding["system"], "appearance");
+    assert!(theme_binding.get("resourceId").is_none());
+
+    // The reason travels with the document: a renderer reports it instead of
+    // inferring why the default is serving.
+    let published_fallbacks = document["fallbacks"].as_array().expect("fallbacks");
+    assert_eq!(published_fallbacks.len(), 1);
+    assert_eq!(published_fallbacks[0]["kind"], "theme");
+    assert_eq!(published_fallbacks[0]["resourceId"], theme.as_str());
+    assert_eq!(published_fallbacks[0]["packageId"], id);
+    assert_eq!(published_fallbacks[0]["reason"], "disabled");
+
+    // A generation this host no longer serves contributes nothing, whatever it
+    // used to declare.
+    let stale = plan_generation_mount(&host.bindings(), id, 2, &resources);
+    assert_eq!(stale.mounted().count(), 0);
+    assert!(
+        stale
+            .refused()
+            .all(|(_, reason)| reason == "generation_not_served")
+    );
+
+    cleanup(&root);
 }
 
 #[test]

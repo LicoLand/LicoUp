@@ -93,6 +93,12 @@ mixin ClientLifecycleFacade
       id: 'client_preferences',
       action: _initializeClientPreferences,
     ),
+    // The stored preference decides which built-in appearance the plan's
+    // declared default renders over, so the plan is read after it, never before.
+    ClientBootstrapStep(
+      id: 'client_presentation_plan',
+      action: loadPresentationMountPlan,
+    ),
     ClientBootstrapStep(
       id: 'client_target_order',
       requiredForStartup: false,

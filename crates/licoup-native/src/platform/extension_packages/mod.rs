@@ -56,6 +56,7 @@ pub mod artifact;
 pub mod discovery;
 pub mod install;
 pub mod journal;
+pub mod mount_plan;
 pub mod resources;
 pub mod state;
 pub mod storage;
@@ -81,6 +82,11 @@ pub use journal::{
 };
 pub use licoup_extension_contracts::deployment::{
     InstanceLifecycle, PackageFacts, PackageLifecycle,
+};
+pub use mount_plan::{
+    HOST_ACTIONS, HOST_RESOURCE_VIEW_FORMATS, MOUNT_PLAN_FORMAT, MOUNT_PLAN_VERSION, MountDecision,
+    PlannedContribution, ResourceMountPlan, SERVED_PROFILES, plan_generation_mount,
+    system_default_name,
 };
 pub use resources::{
     ADMISSION_BLOCKED, ADMISSION_CLOSED, ADMISSION_RELEASE_FAILED, ADMISSION_UNAVAILABLE,

@@ -3,6 +3,7 @@ import 'package:licoup/src/application/controller/appearance_preference_owner.da
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/platform/appearance/appearance_preset_catalog_service.dart';
+import 'package:licoup/src/platform/presentation/presentation_mount_plan_service.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 /// Appearance-only commands and state access.
@@ -11,6 +12,7 @@ mixin ClientAppearanceCommands {
   LayoutManager get layoutManager;
   PortableDataRoot get portableData;
   AppearancePresetCatalogService get appearancePresetCatalogService;
+  PresentationMountPlanService get presentationMountPlanService;
 
   String get appearancePresetId => appearancePreferenceOwner.presetId;
   bool get reduceMotion => appearancePreferenceOwner.reduceMotion;
@@ -60,5 +62,31 @@ mixin ClientAppearanceCommands {
       directoryPath: catalog.directory.path,
       errorCodes: catalog.errors,
     );
+  }
+
+  /// Adopts the appearance the published native mount plan serves.
+  ///
+  /// An absent plan is not a failure: the client keeps rendering the built-in
+  /// appearance it already resolved. The plan's tokens are read over the
+  /// client's own rendering, so a resource that publishes a subset of the roles
+  /// changes those roles and leaves the rest of the appearance in place.
+  Future<void> loadPresentationMountPlan() async {
+    final mounted = await presentationMountPlanService.mountPublishedPlan(
+      portableData,
+      appearanceDefaults: _appearanceRenderingTokens(),
+    );
+    appearancePreferenceOwner.replacePlanAppearance(mounted?.appearance);
+  }
+
+  Map<String, String> _appearanceRenderingTokens() {
+    for (final preset in appearancePresetConfigs) {
+      if (preset.mode == AppearancePresetMode.dark && preset.tokens.isNotEmpty) {
+        return preset.tokens;
+      }
+    }
+    for (final preset in appearancePresetConfigs) {
+      if (preset.tokens.isNotEmpty) return preset.tokens;
+    }
+    return const <String, String>{};
   }
 }

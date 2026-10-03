@@ -1,5 +1,6 @@
 import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/contracts/presentation/presentation_plan_appearance.dart';
 
 /// Owns appearance preference and catalog state independently of locale and
 /// functional status.
@@ -20,6 +21,7 @@ final class AppearancePreferenceOwner extends ApplicationStateOwner {
   List<AppearancePresetConfig> _presets;
   String _directoryPath = '';
   List<String> _loadErrors = const [];
+  PresentationPlanAppearance? _planAppearance;
 
   String get presetId => _presetId;
   bool get reduceMotion => _reduceMotion;
@@ -34,6 +36,25 @@ final class AppearancePreferenceOwner extends ApplicationStateOwner {
       .toList(growable: false);
   String get directoryPath => _directoryPath;
   List<String> get loadErrors => _loadErrors;
+
+  /// The appearance the native mount plan projects, or `null` while no plan is
+  /// published and the client renders its built-in appearance.
+  PresentationPlanAppearance? get planAppearance => _planAppearance;
+
+  /// Adopts the appearance a published native mount plan resolved.
+  ///
+  /// The caller resolved it through the host registry, so this owner stores the
+  /// projection instead of interpreting a plan document. Passing `null`
+  /// withdraws it and returns rendering to the built-in appearance.
+  bool replacePlanAppearance(
+    PresentationPlanAppearance? appearance, {
+    ApplicationCause? cause,
+  }) {
+    if (_planAppearance == appearance) return false;
+    _planAppearance = appearance;
+    publishChange(cause);
+    return true;
+  }
 
   bool replacePreset(String value, {ApplicationCause? cause}) {
     final normalized = hasAppearancePresetConfig(value, _presets)
