@@ -7,43 +7,52 @@
 //! keep resolving.
 
 use super::super::process_supervisor::SupervisedChild;
-use licoup_agent_claude_code::protocol::LaunchIdentity;
 use std::ffi::{OsStr, OsString};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-pub(in crate::platform) use licoup_agent_claude_code::protocol::FIXED_STREAM_ARGS;
+// This Agent's launch vocabulary, owned by the package that carries the Agent
+// and re-exported where the client's own leaves already name it.
+pub(in crate::platform) use licoup_agent_claude_code::protocol::{
+    DriverConfig, FIXED_STREAM_ARGS, LaunchIdentity,
+};
 
-/// Start this Agent's CLI for one turn.
+/// The launch identity is the package's; starting it is the client's.
 ///
-/// The prompt never reaches argv: it is written to the child's standard input
-/// by the process half. A resumed conversation passes only the native session
-/// identifier.
-pub(in crate::platform) fn spawn(
-    identity: &LaunchIdentity,
-) -> io::Result<SupervisedChild> {
-    let mut command = Command::new(&identity.executable);
-    super::super::user_shell_environment::apply_to_command(&mut command);
-    command
-        .args(identity.args())
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    // The executable's own directory stays the PATH head on top of the
-    // user shell snapshot PATH, so sibling vendor tools keep resolving.
-    if let Some(path) = executable_augmented_path(
-        &identity.executable,
-        super::super::user_shell_environment::get("PATH").map(OsStr::new),
-    ) {
-        command.env("PATH", path);
+/// The identity owns the constructor and the argv this Agent's lane requires.
+/// This adds the one thing the package cannot do without a client process.
+impl LaunchIdentity {
+    /// Start this Agent's CLI for one turn.
+    ///
+    /// The prompt never reaches argv: it is written to the child's standard
+    /// input by the process half. A resumed conversation passes only the native
+    /// session identifier.
+    pub(in crate::platform) fn spawn(&self) -> io::Result<SupervisedChild> {
+        let mut command = Command::new(&self.executable);
+        super::super::user_shell_environment::apply_to_command(&mut command);
+        command
+            .args(self.args())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        // The executable's own directory stays the PATH head on top of the
+        // user shell snapshot PATH, so sibling vendor tools keep resolving.
+        if let Some(path) = executable_augmented_path(
+            &self.executable,
+            super::super::user_shell_environment::get("PATH").map(OsStr::new),
+        ) {
+            command.env("PATH", path);
+        }
+        if let Some(cwd) = self.cwd.as_ref() {
+            command.current_dir(cwd);
+        }
+        SupervisedChild::spawn(&mut command)
     }
-    if let Some(cwd) = identity.cwd.as_ref() {
-        command.current_dir(cwd);
-    }
-    SupervisedChild::spawn(&mut command)
 }
 
+/// The `PATH` a launched CLI sees: the executable's own directory first, then
+/// the user's shell snapshot.
 pub(in crate::platform) fn executable_augmented_path(
     executable: &str,
     inherited: Option<&OsStr>,

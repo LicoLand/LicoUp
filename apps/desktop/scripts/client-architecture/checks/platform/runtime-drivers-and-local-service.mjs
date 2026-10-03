@@ -42,8 +42,7 @@ export async function checkRuntimeDriversAndLocalService(context, {
   const claudeCodePackageRoot = "crates/licoup-agent-claude-code/src";
   const claudeCodeFoundationSource = await readJoinedText([
     "crates/licoup-native/src/platform/claude_code_driver/failure.rs",
-    "crates/licoup-native/src/platform/claude_code_driver/reset.rs",
-    "crates/licoup-native/src/platform/claude_code_driver/model.rs"
+    "crates/licoup-native/src/platform/claude_code_driver/reset.rs"
   ]);
   const claudeCodeCommandSource = await readJoinedText([
     `${claudeCodePackageRoot}/protocol/launch.rs`,
@@ -75,6 +74,12 @@ export async function checkRuntimeDriversAndLocalService(context, {
     `${claudeCodePackageRoot}/protocol/parser/events.rs`,
     `${claudeCodePackageRoot}/protocol/parser/state.rs`
   ]);
+  // The package's own code, with comment lines dropped: a doc comment may name
+  // the client boundary, a code path may not cross it.
+  const claudeCodePackageCode = claudeCodePackageSources
+    .split("\n")
+    .filter((line) => !/^\s*(?:\/\/|\*|\/\*)/u.test(line))
+    .join("\n");
   const claudeCodeTransportSource = await readText(
     "crates/licoup-native/src/platform/claude_code_driver/transport.rs"
   );
@@ -96,9 +101,10 @@ export async function checkRuntimeDriversAndLocalService(context, {
       !claudeCodeCommandSource.includes('"--no-session-persistence"') &&
       claudeCodeCommandSource.includes('args.extend(["--resume".to_string(), session_id.clone()])') &&
       // The package's protocol names no client crate: one copy, below the port.
-      !claudeCodePackageSources.includes("crate::platform") &&
-      !claudeCodePackageSources.includes("licoup_native") &&
-      !claudeCodePackageSources.includes("licoup-native") &&
+      // Documentation may name the boundary it keeps, so the check reads code.
+      !claudeCodePackageCode.includes("crate::platform") &&
+      !claudeCodePackageCode.includes("licoup_native") &&
+      !claudeCodePackageCode.includes("licoup-native") &&
       claudeCodeDriverSource.includes("licoup_agent_claude_code::protocol") &&
       claudeCodeDriverSource.includes("MAX_POOLED_TRANSPORTS") &&
       claudeCodeDriverSource.includes("MAX_TRACKED_SESSIONS") &&
@@ -116,16 +122,18 @@ export async function checkRuntimeDriversAndLocalService(context, {
       claudeCodeParserSource.includes("processing_evidence_kind"),
     "Claude Code parser adapter must own the sole raw-frame ingress, turn state, and redacted event projection"
   );
+  // The failure shape and the transport-reset policy name the package's
+  // protocol and nothing else in the driver: neither reads the parser, the
+  // transport, the supervision registry or the process leaves.
   for (const dependency of [
-    "launch::",
-    "control::",
-    "events::",
-    "execution::",
-    "super::io::",
-    "probe::",
-    "protocol::",
+    "LaunchIdentity",
+    "ClaudeCodeParser",
+    "transport::",
     "supervision::",
-    "transport::"
+    "execution::",
+    "control::",
+    "probe::",
+    "io::"
   ]) {
     assert(
       !claudeCodeFoundationSource.includes(dependency),

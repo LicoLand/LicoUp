@@ -123,11 +123,15 @@ test("the package carries one Agent's protocol and the client keeps the process"
 test("the package names no client crate and reparses no raw vendor detail", async () => {
   const sources = await packageSources();
   const joined = Object.values(sources).join("\n");
-  // Documentation may name the boundary it keeps; code may not cross it.
+  // Documentation may name the boundary it keeps; code may not cross it. A
+  // block doc comment opens with `/*!` or `/**` and continues on lines that do
+  // not start with a comment marker, so the markers are dropped and the
+  // remaining lines are checked.
   const code = Object.entries(sources)
     .flatMap(([leaf, source]) => source
       .split("\n")
-      .filter((line) => !/^\s*(?:\/\/|\*)/u.test(line))
+      .map((line) => line.replace(/\/\/.*$/u, ""))
+      .filter((line) => !/^\s*(?:\*|\/\*)/u.test(line))
       .map((line) => `${leaf}: ${line}`))
     .join("\n");
   for (const clientPath of [
