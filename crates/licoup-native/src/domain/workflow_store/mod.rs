@@ -5,6 +5,7 @@
 //! that make accepted state and delivery intent recoverable across a process
 //! restart.
 
+mod admission;
 mod commit;
 #[cfg(test)]
 mod conformance;
@@ -14,6 +15,10 @@ mod store;
 mod strategy_types;
 mod subscriptions;
 
+pub use admission::{
+    MAX_UNFINISHED_WORKFLOW_WORK, UnfinishedWorkflowWork, WorkflowWorkBlocker, WorkflowWorkKind,
+    read_unfinished_local_work,
+};
 pub use commit::{CommittedTransition, TransitionDecorator, TransitionIntent, TransitionObserver};
 pub use control::DurableControlledStore;
 pub use queue::{DurableQueue, DurableQueueLease, DurableQueueStats, QueueReplay, QueueStoreError};

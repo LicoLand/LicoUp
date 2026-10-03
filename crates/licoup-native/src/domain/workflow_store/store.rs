@@ -1642,7 +1642,7 @@ fn validate_current_schema(connection: &mut Connection) -> Result<()> {
     Ok(())
 }
 
-fn preflight_existing_store(path: &Path) -> Result<()> {
+pub(crate) fn preflight_existing_store(path: &Path) -> Result<()> {
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
