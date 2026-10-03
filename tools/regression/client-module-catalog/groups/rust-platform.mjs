@@ -60,9 +60,10 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.extension-packages",
       kind: "rust-platform",
-      summary: "Offline extension package lifecycle and bounded archive consumer",
+      summary: "Offline extension package lifecycle, typed data-package admission, and bounded archive consumer",
       inputs: [
         "crates/licoup-native/src/platform/extension_packages/artifact.rs",
+        "crates/licoup-native/src/platform/extension_packages/install.rs",
         "crates/licoup-native/src/platform/extension_packages/mod.rs",
         "crates/licoup-native/tests/package_lifecycle/**",
         "tests/integration/package_lifecycle/**",

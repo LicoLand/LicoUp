@@ -66,10 +66,11 @@ export const RUST_COMPONENT_MODULES = Object.freeze([
   ),
   crateTests(
     "rust.crate.extension-contracts",
-    "Published extension schemas, sample vectors, and portable extension behavior",
+    "Published extension schemas, sample vectors, portable extension behavior, and the typed data-package contract",
     "licoup-extension-contracts",
     [
       "crates/licoup-extension-contracts/samples/**",
+      "crates/licoup-extension-contracts/src/**",
       "crates/licoup-extension-contracts/tests/minimal_agent_sample.rs",
       "crates/licoup-extension-contracts/tests/schema_agreement.rs",
       "schemas/extensions/**",

@@ -18,11 +18,14 @@ use licoup_extension_contracts::deployment::{
 use licoup_extension_contracts::manifest::{
     ConverterKind, FrozenEndpoints, MAX_CONVERTER_ENTRY_BYTES, MAX_FORMAT_BYTES, MAX_RANGE_BYTES,
     MAX_SOURCE_FORMATS, PackageManifest, is_converter_entry, is_format_identity,
+    MAX_FONT_FAMILY_BYTES, MAX_HOST_ACTIONS, MAX_LOCALE_TAG_BYTES,
+    MAX_RESOURCE_DEFINITION_BYTES, MAX_RESOURCE_KEYS, ResourceKind, is_font_family, is_locale_tag,
+    is_resource_definition,
 };
 use licoup_extension_contracts::profile::ExtensionProfile;
 use licoup_extension_contracts::provider::COMPATIBLE_DIALECTS;
 use licoup_extension_contracts::ui::{
-    ContributionKind, FieldType, GRAPH_RESOURCE_V1, MAX_CONTRIBUTION_ID_BYTES,
+    ContributionKind, FieldType, GRAPH_RESOURCE_V1, HOST_PRIMITIVES, MAX_CONTRIBUTION_ID_BYTES,
 };
 use licoup_extension_contracts::usage::{Quality, Temporality, UsageOperation};
 use licoup_extension_contracts::wire;
@@ -545,6 +548,287 @@ fn the_published_conversion_declaration_is_the_one_this_crate_validates() {
             format_pattern.is_match(value),
             is_format_identity(value),
             "the published format pattern and is_format_identity disagree on {value:?}"
+        );
+    }
+}
+
+#[test]
+fn the_data_package_category_is_published_with_its_typed_resources() {
+    let manifest: Value = serde_json::from_str(MANIFEST).expect("manifest");
+
+    // The category is the runtime mode, and the data mode carries the mode and
+    // nothing else: an entry or a runtime reference cannot be read as data.
+    let variants = manifest["properties"]["runtime"]["oneOf"]
+        .as_array()
+        .expect("runtime oneOf");
+    let modes: Vec<&str> = variants
+        .iter()
+        .map(|variant| {
+            variant["properties"]["mode"]["const"]
+                .as_str()
+                .expect("mode const")
+        })
+        .collect();
+    assert_eq!(modes, ["process", "declarative", "service", "data"]);
+    let data = &variants[3];
+    assert_eq!(data["additionalProperties"], false);
+    assert_eq!(
+        data["properties"].as_object().expect("properties").len(),
+        1,
+        "a data runtime publishes the mode and no executable field"
+    );
+    assert_eq!(data["required"], json!(["mode"]));
+
+    // Every published kind has exactly one shape, and that shape publishes the
+    // kind, the shape identifier this crate pins and the coverage field its
+    // variant carries — with no room for a free-form field.
+    let shapes = manifest["$defs"]["dataResource"]["oneOf"]
+        .as_array()
+        .expect("resource oneOf");
+    assert_eq!(
+        shapes.len(),
+        ResourceKind::ALL.len(),
+        "one published shape per kind"
+    );
+    let published: Vec<&str> = ResourceKind::ALL.iter().map(|kind| kind.as_str()).collect();
+    assert_eq!(
+        published,
+        [
+            "theme",
+            "layout",
+            "style",
+            "font",
+            "language",
+            "composition"
+        ]
+    );
+    for (kind, shape) in ResourceKind::ALL.iter().zip(shapes) {
+        let name = shape["$ref"]
+            .as_str()
+            .expect("shape ref")
+            .rsplit('/')
+            .next()
+            .expect("shape name");
+        let definition = &manifest["$defs"][name];
+        assert_eq!(definition["properties"]["kind"]["const"], kind.as_str());
+        assert_eq!(
+            definition["properties"]["format"]["const"],
+            kind.format(),
+            "{name} publishes another shape identifier"
+        );
+        assert_eq!(definition["additionalProperties"], false);
+        let required: Vec<&str> = definition["required"]
+            .as_array()
+            .expect("required")
+            .iter()
+            .map(|value| value.as_str().expect("string"))
+            .collect();
+        assert!(required.contains(&"kind"), "{name}");
+        assert!(required.contains(&"id"), "{name}");
+        assert!(required.contains(&"definition"), "{name}");
+        assert!(required.contains(&"format"), "{name}");
+        assert!(
+            required.contains(&kind.coverage_field()),
+            "{name} must require what the kind covers"
+        );
+        assert!(
+            definition["properties"]
+                .get(kind.coverage_field())
+                .is_some(),
+            "{name} must publish its coverage field"
+        );
+    }
+
+    // The declared requirement set is published with the compiled primitive
+    // vocabulary, and a composition component may bind only those.
+    let primitives: Vec<&str> = HOST_PRIMITIVES
+        .iter()
+        .map(|primitive| primitive.as_str())
+        .collect();
+    assert_eq!(
+        manifest["$defs"]["hostPrimitive"]["enum"],
+        json!(primitives),
+        "the manifest publishes the primitives this client compiles"
+    );
+    assert_eq!(
+        manifest["$defs"]["compositionComponent"]["properties"]["primitive"]["$ref"],
+        "#/$defs/hostPrimitive"
+    );
+
+    // The published bounds and shapes are the ones this crate evaluates.
+    assert_eq!(
+        manifest["$defs"]["resourceDefinition"]["maxLength"],
+        MAX_RESOURCE_DEFINITION_BYTES
+    );
+    assert_eq!(
+        manifest["$defs"]["localeTag"]["maxLength"],
+        MAX_LOCALE_TAG_BYTES
+    );
+    assert_eq!(
+        manifest["$defs"]["fontFamily"]["maxLength"],
+        MAX_FONT_FAMILY_BYTES
+    );
+    assert_eq!(
+        manifest["$defs"]["compositionResource"]["properties"]["components"]["maxItems"],
+        MAX_RESOURCE_KEYS
+    );
+    assert_eq!(
+        manifest["properties"]["hostActions"]["maxItems"],
+        MAX_HOST_ACTIONS
+    );
+    assert_eq!(
+        manifest["properties"]["hostPrimitives"]["uniqueItems"], true,
+        "the requirement set is a set"
+    );
+    assert_eq!(manifest["properties"]["hostActions"]["uniqueItems"], true);
+    for kind in ResourceKind::ALL {
+        let name = shape_name(&manifest, kind);
+        if kind == ResourceKind::Composition {
+            continue;
+        }
+        assert_eq!(
+            manifest["$defs"][name]["properties"][kind.coverage_field()]["maxItems"],
+            MAX_RESOURCE_KEYS,
+            "{name}"
+        );
+        assert_eq!(
+            manifest["$defs"][name]["properties"][kind.coverage_field()]["uniqueItems"],
+            true,
+            "{name} covers each key once"
+        );
+    }
+
+    // The two category rules are published as conditions, so a schema reader
+    // learns the same rule the host enforces.
+    let conditions = manifest["allOf"].as_array().expect("allOf");
+    assert_eq!(conditions.len(), 2);
+    assert_eq!(
+        conditions[0]["if"]["properties"]["runtime"]["properties"]["mode"]["const"],
+        "data"
+    );
+    assert_eq!(
+        conditions[0]["then"]["properties"]["profiles"]["maxItems"], 0,
+        "a data package serves no profile"
+    );
+    assert_eq!(
+        conditions[0]["else"]["properties"]["profiles"]["minItems"], 1,
+        "every other category declares the profiles it serves"
+    );
+    assert_eq!(
+        conditions[1]["then"]["properties"]["runtime"]["properties"]["mode"]["const"], "data",
+        "typed resources are carried by data and nothing else"
+    );
+    assert_eq!(
+        conditions[1]["if"]["properties"]["resources"]["minItems"],
+        1
+    );
+
+    // The refusals this crate raises name the rules the schema publishes.
+    let resources = manifest["properties"]["resources"]["description"]
+        .as_str()
+        .expect("resources description");
+    for token in ["data", "hostPrimitives", "hostActions", "definition"] {
+        assert!(
+            resources.contains(token),
+            "the published resource rule must name {token}"
+        );
+    }
+    let runtime = manifest["properties"]["runtime"]["description"]
+        .as_str()
+        .expect("runtime description");
+    for token in ["data", "entry", "runtimeRef", "refused"] {
+        assert!(
+            runtime.contains(token),
+            "the published category rule must name {token}"
+        );
+    }
+}
+
+/// The `$defs` name one kind's published shape.
+fn shape_name(manifest: &Value, kind: ResourceKind) -> &str {
+    let shapes = manifest["$defs"]["dataResource"]["oneOf"]
+        .as_array()
+        .expect("resource oneOf");
+    let index = ResourceKind::ALL
+        .iter()
+        .position(|candidate| *candidate == kind)
+        .expect("published kind");
+    shapes[index]["$ref"]
+        .as_str()
+        .expect("shape ref")
+        .rsplit('/')
+        .next()
+        .expect("shape name")
+}
+
+#[test]
+fn the_published_resource_shapes_are_the_ones_this_crate_checks() {
+    let manifest: Value = serde_json::from_str(MANIFEST).expect("manifest");
+
+    let locale_pattern = manifest["$defs"]["localeTag"]["pattern"]
+        .as_str()
+        .expect("locale pattern");
+    let locale = Regex::new(locale_pattern).expect("compiles");
+    let families = manifest["$defs"]["fontFamily"]["pattern"]
+        .as_str()
+        .expect("font pattern");
+    let family = Regex::new(families).expect("compiles");
+    let definition = manifest["$defs"]["resourceDefinition"]["pattern"]
+        .as_str()
+        .expect("definition pattern");
+    let definition_pattern = Regex::new(definition).expect("compiles");
+    let escaped = manifest["$defs"]["resourceDefinition"]["not"]["pattern"]
+        .as_str()
+        .expect("definition escape pattern");
+    let escaped_pattern = Regex::new(escaped).expect("compiles");
+
+    for tag in [
+        "en",
+        "zh",
+        "zh-CN",
+        "pt-BR",
+        "sr-Latn-RS",
+        "",
+        "e",
+        "zh_CN",
+        "english",
+    ] {
+        assert_eq!(
+            locale.is_match(tag),
+            is_locale_tag(tag),
+            "the published locale shape and is_locale_tag disagree on {tag:?}"
+        );
+    }
+    for name in [
+        "Inter",
+        "Noto Sans SC",
+        "",
+        " Inter",
+        "Inter ",
+        "Inter\nMono",
+    ] {
+        assert_eq!(
+            family.is_match(name),
+            is_font_family(name),
+            "the published font shape and is_font_family disagree on {name:?}"
+        );
+    }
+    for path in [
+        "themes/midnight.json",
+        "a/b/c.json",
+        "",
+        "/etc/passwd",
+        "../outside.json",
+        "a/../b.json",
+        "..",
+        "themes\\midnight.json",
+        "./themes/midnight.json",
+    ] {
+        let published = definition_pattern.is_match(path) && !escaped_pattern.is_match(path);
+        assert_eq!(
+            published,
+            is_resource_definition(path),
+            "the published definition shape and is_resource_definition disagree on {path:?}"
         );
     }
 }

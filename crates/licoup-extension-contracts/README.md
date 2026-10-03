@@ -16,7 +16,7 @@ this crate builds on rather than duplicating.
 | `agent` | C09 | Event kinds, the admission receipt, cancel outcomes, describe and resume shapes |
 | `provider` | C10 | Provider configuration, catalog keys, credential handles and their endpoint scope |
 | `usage` | C11 | Observations, metric semantics, exact decimals and cumulative series rules |
-| `manifest` | C09, C12 | The package manifest: identity, profiles, runtime, dependencies and permissions |
+| `manifest` | C09, C12 | The package manifest: identity, category, profiles, dependencies, permissions and the typed data resources a data package contributes |
 | `deployment` | C12 | Install closure, package facts, capability availability and per-capability ownership |
 | `ui` | C13 | Contribution kinds, host primitives, mount decisions and generation checks |
 
