@@ -9,6 +9,13 @@ pub mod domain;
 pub mod ffi;
 pub mod platform;
 
+/// Every declarative state machine this host compiles from
+/// `resources/state-machines`. The JSON configuration is the transition
+/// authority; an owner that reads a machine names it through this module.
+pub(crate) mod state_machines {
+    include!(concat!(env!("OUT_DIR"), "/state_machines.rs"));
+}
+
 /// The process composition entry: installs this host's answers for the
 /// environment ports the domain asks.
 ///
@@ -32,4 +39,5 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
 /// admission through it instead of reaching into the domain layer.
 pub fn running_product_version() -> anyhow::Result<&'static str> {
     domain::client_state_migration::running_product_version()
+
 }

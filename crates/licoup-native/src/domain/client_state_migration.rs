@@ -35,7 +35,7 @@ use stores::{
     reconcile_current_marker, upgrade_canonical_conversation_schema,
 };
 
-include!(concat!(env!("OUT_DIR"), "/state_machines.rs"));
+use crate::state_machines::update_handoff;
 
 const MAX_MIGRATION_JSON_BYTES: usize = 4 * 1024 * 1024;
 const FRONTIER_SCHEMA: &str = "v0.0.1:client-state-migration-frontier-1";

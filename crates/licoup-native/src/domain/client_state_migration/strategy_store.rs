@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 use super::stores::regular_file_present;
-use super::strategy_store_artifact;
 use super::{AuthoritativeProbe, migration_failpoint, write_json_atomic};
+use crate::state_machines::strategy_store_artifact;
 
 // ---------------------------------------------------------------------------
 // The released strategy-store layout and the conversion to the current one

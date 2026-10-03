@@ -1090,7 +1090,18 @@ test("architecture gate owns every measured manifest and runtime source root", a
       if (!entry.isDirectory()) {
         continue;
       }
-      measuredPaths.push(`${root}/${entry.name}/Cargo.toml`);
+      // A directory under a source root is not necessarily a Rust crate: the
+      // reference extension SDK carries Python sources and samples. Only a
+      // directory that really holds a manifest or a Rust source root is a
+      // measured path for the architecture gate to own.
+      const manifest = path.join(repoRoot, root, entry.name, "Cargo.toml");
+      if (await fs.stat(manifest).then(() => true, () => false)) {
+        measuredPaths.push(`${root}/${entry.name}/Cargo.toml`);
+      }
+      const sourceRoot = path.join(repoRoot, root, entry.name, "src");
+      if (!(await fs.stat(sourceRoot).then(() => true, () => false))) {
+        continue;
+      }
       const sources = await sourceFiles(`${root}/${entry.name}/src`, ".rs");
       if (sources.length > 0) {
         measuredPaths.push(sources[0]);

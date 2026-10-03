@@ -1248,3 +1248,85 @@ test("native CLI modules retain exact binary-scoped command filters", () => {
     }
   }
 });
+
+test("extension host and isolation leaves retain exact tests and complete source ownership", async () => {
+  const expectedCommands = new Map([
+    ["rust.platform.extension-host", "extension_contract"],
+    ["rust.platform.extension-isolation", "extension_isolation"],
+  ]);
+  for (const [id, target] of expectedCommands) {
+    const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
+    assert.deepEqual(module.command.args, [
+      "test",
+      "--manifest-path",
+      "crates/licoup-native/Cargo.toml",
+      "--test",
+      target,
+    ]);
+  }
+  const host = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "rust.platform.extension-host");
+  const isolation = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "rust.platform.extension-isolation");
+  assert.equal(host.inputs.some((input) => input.endsWith("/**")), true);
+  assert.equal(isolation.inputs.some((input) => input.endsWith("/**")), true);
+
+  // The declarative machines the host and the package store read are part of
+  // what the host serves, so a change to one of them selects the host leaf.
+  for (const relativePath of [
+    "crates/licoup-native/resources/state-machines/extension-package.json",
+    "crates/licoup-native/resources/state-machines/extension-instance.json",
+    "crates/licoup-native/resources/state-machines/extension-invocation.json",
+  ]) {
+    assert.equal(host.inputs.includes(relativePath), true,
+      `extension state machine must have a precise regression owner: ${relativePath}`);
+    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), [
+      "rust.platform.extension-host",
+    ]);
+  }
+
+  // Every source the host and the isolation carrier own resolves to exactly
+  // one of the two leaves: the host's own suite for the host half, and the real
+  // subprocess suite for the isolation half.
+  const hostSources = [
+    "crates/licoup-native/src/platform/extension_host/mod.rs",
+    ...await sourceFiles("crates/licoup-native/src/platform/extension_host", ".rs"),
+  ].filter((relativePath) =>
+    !relativePath.startsWith("crates/licoup-native/src/platform/extension_host/isolation/"));
+  for (const relativePath of hostSources) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), [
+      "architecture.client-boundaries",
+      "rust.platform.extension-host",
+    ], `extension host source must have one regression owner: ${relativePath}`);
+  }
+  const isolationSources = [
+    ...await sourceFiles("crates/licoup-native/src/platform/extension_host/isolation", ".rs"),
+  ];
+  for (const relativePath of isolationSources) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), [
+      "architecture.client-boundaries",
+      "rust.platform.extension-host",
+      "rust.platform.extension-isolation",
+    ], `extension isolation source must have one regression owner: ${relativePath}`);
+  }
+  for (const relativePath of [
+    "tests/integration/extension_isolation/main.rs",
+    ...await sourceFiles("tests/integration/extension_isolation", ".rs"),
+    "sdk/agent-adapter/python/licoup_agent_sdk.py",
+    "sdk/agent-adapter/samples/minimal-specialist/agent.py",
+  ]) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), [
+      "rust.platform.extension-isolation",
+    ], `extension isolation fixture must have one regression owner: ${relativePath}`);
+  }
+
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-native/tests/extension_contract/main.rs",
+  ])), ["rust.platform.extension-host"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "tests/integration/extension_isolation/main.rs",
+  ])), ["rust.platform.extension-isolation"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "sdk/agent-adapter/python/licoup_agent_sdk.py",
+  ])), ["rust.platform.extension-isolation"]);
+});
