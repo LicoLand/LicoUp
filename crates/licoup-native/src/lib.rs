@@ -21,3 +21,14 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
         platform::codex_runtime_observation::open_rollout_paths,
     )
 }
+
+/// The product version this binary was built with.
+///
+/// The build script injects `LICO_CLIENT_PRODUCT_VERSION` from
+/// `tools/client-version.json`; a build with no injected version is a
+/// development build and reports the documented fallback. The composition owns
+/// this process fact, so the platform layer answers a package's compatibility
+/// admission through it instead of reaching into the domain layer.
+pub fn running_product_version() -> anyhow::Result<&'static str> {
+    domain::client_state_migration::running_product_version()
+}

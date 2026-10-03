@@ -55,7 +55,7 @@ const CONTENT_DIRECTORY: &str = "content";
 /// read here and never restated: a literal here would be a second, silently
 /// drifting answer to the same question.
 pub fn running_client_version() -> Result<String, ApplicationFailure> {
-    crate::domain::client_state_migration::running_product_version()
+    crate::running_product_version()
         .map(str::to_owned)
         .map_err(|_| {
             refusal("package_client_version_unavailable", INSTALL_STAGE).with_field("clientVersion")

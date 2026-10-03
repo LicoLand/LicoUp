@@ -408,6 +408,18 @@
     {
       "path": "crates/licoup-native/resources/gateway-credential-migration.json",
       "kind": "string-map"
+    },
+    {
+      "path": "crates/licoup-agent-adapter-sdk/resources/state-machines/parser-lifecycle.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/client_package_release/fixture-native-converter/manifest.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/client_package_release/fixture-native-converter/package-release.json",
+      "kind": "config-object"
     }
   ],
   "reviewedSchemaFixtures": [
