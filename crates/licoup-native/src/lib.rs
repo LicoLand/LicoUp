@@ -25,6 +25,16 @@ pub(crate) mod state_machines {
 /// [`agent_target_port`] accessor is the one path to it.
 pub(crate) mod target_port;
 
+/// The driver core's lane composition: this host's own conversation, generic
+/// CLI, caller-manager and collaboration lanes, in the shape
+/// `licoup-agent-drivers` reads them through its port.
+///
+/// It lives at the crate root for the same reason [`target_port`] does: two of
+/// its answers read domain facts, and the platform layer may not reach the
+/// domain layer. The layer that owns each fact stays where it is; this module
+/// joins them once, above both.
+pub(crate) mod host_lane;
+
 /// The process composition entry: installs this host's answers for the ports
 /// its layers ask.
 ///

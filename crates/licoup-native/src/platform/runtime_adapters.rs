@@ -14,8 +14,8 @@
 //!   — in [`drivers`], which move to `licoup-agent-<agent>` when those crates
 //!   exist, exactly as `platform::work_context_ports`' two halves do;
 //! * this host's own conversation lane, its generic CLI fallback lane, its
-//!   Subagent caller manager and its cleanup entry point, in [`host_lane`],
-//!   none of which is any Agent's protocol;
+//!   Subagent caller manager and its cleanup entry point, in
+//!   [`crate::host_lane`], none of which is any Agent's protocol;
 //! * the endpoint layer's client-error projection, in [`client_error`], which
 //!   travels with the endpoint crate when `ffi/` extracts.
 //!
@@ -25,7 +25,6 @@
 pub mod client_error;
 pub(crate) mod dialects;
 pub(crate) mod drivers;
-mod host_lane;
 
 // The host's own suites for the adapter registry and adapter execution. They
 // exercise the *composed* host — the thirteen per-Agent arms this file
@@ -82,16 +81,16 @@ pub(crate) fn install() {
             target_port: || Some(crate::target_port::agent_target_port()),
             parser_set: crate::platform::native_agent_parser::parser_set,
             drivers: drivers::registrations(),
-            conversation_host: host_lane::conversation_host(),
-            generic_cli: host_lane::generic_cli(),
-            collaboration_mcp: host_lane::collaboration_mcp(),
-            caller_manager: host_lane::caller_manager(),
-            caller_config: host_lane::caller_config(),
+            conversation_host: crate::host_lane::conversation_host(),
+            generic_cli: crate::host_lane::generic_cli(),
+            collaboration_mcp: crate::host_lane::collaboration_mcp(),
+            caller_manager: crate::host_lane::caller_manager(),
+            caller_config: crate::host_lane::caller_config(),
             dispatch_timeout: crate::domain::dispatch_timeout_policy::resolve_dispatch_timeout,
             declared_capability_flag:
                 crate::platform::conversation_lane::declared_capability_flag,
-            codex_plugin_installation_state: host_lane::codex_plugin_installation_state,
-            cleanup_conversation: host_lane::cleanup_conversation,
+            codex_plugin_installation_state: crate::host_lane::codex_plugin_installation_state,
+            cleanup_conversation: crate::host_lane::cleanup_conversation,
         })
     });
 }
@@ -122,5 +121,5 @@ pub(crate) fn registrations_parser(
 /// reaches it.
 pub fn cleanup_conversation(params: &Value) -> Result<Value, String> {
     install();
-    host_lane::cleanup_conversation(params)
+    crate::host_lane::cleanup_conversation(params)
 }

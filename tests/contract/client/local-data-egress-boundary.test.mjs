@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 
 const productionRoots = Object.freeze([
+  ["crates/licoup-agent-drivers/src", ".rs"],
   ["crates/licoup-native/src", ".rs"],
   ["crates/licoup-mcp/src", ".rs"],
   ["crates/licoup-agent-targets/src", ".rs"],
@@ -24,6 +25,8 @@ const networkTokensByExtension = Object.freeze({
 });
 
 const reviewedRustEgressFiles = Object.freeze([
+  "crates/licoup-agent-drivers/src/local_service/http.rs",
+  "crates/licoup-agent-drivers/src/local_service/sse.rs",
   "crates/licoup-agent-targets/src/domain/lico_agent/transport.rs",
   "crates/licoup-gateway/src/channels/telegram/transport.rs",
   "crates/licoup-gateway/src/http/server.rs",
@@ -40,8 +43,6 @@ const reviewedRustEgressFiles = Object.freeze([
   "crates/licoup-native/src/domain/provider_quota/http.rs",
   "crates/licoup-native/src/platform/badtower_station/http_io.rs",
   "crates/licoup-native/src/platform/llm_gateway_service.rs",
-  "crates/licoup-native/src/platform/local_service/http.rs",
-  "crates/licoup-native/src/platform/local_service/sse.rs",
   "crates/licoup-native/src/platform/mcp_streamable_http.rs",
 ]);
 
@@ -166,11 +167,11 @@ test("reviewed runtime owners retain direction, endpoint, and data bounds", asyn
       "MAX_IN_FLIGHT", "MAX_COALESCED_WRITE_BYTES", ".post(&prepared.endpoint)",
       'request.set("authorization"', "MAX_GATEWAY_BODY_BYTES",
     ]],
-    ["crates/licoup-native/src/platform/local_service/http.rs", [
+    ["crates/licoup-agent-drivers/src/local_service/http.rs", [
       "MAX_HTTP_REQUEST_BODY_BYTES", "MAX_HTTP_RESPONSE_BODY_BYTES",
       "MAX_HTTP_HEADER_BYTES", "MAX_HTTP_IN_FLIGHT", "is_https_or_loopback_http_url",
     ]],
-    ["crates/licoup-native/src/platform/local_service/sse.rs", [
+    ["crates/licoup-agent-drivers/src/local_service/sse.rs", [
       "MAX_SSE_LINE_BYTES", "MAX_SSE_FRAME_BYTES", "MAX_SSE_EVENTS_PER_STREAM",
       "MAX_SSE_STREAMS", "http::validate_url", "http::validate_headers",
     ]],

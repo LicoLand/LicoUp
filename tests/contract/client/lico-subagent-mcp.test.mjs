@@ -16,7 +16,7 @@ const runtime = read("crates/licoup-agent-runtime/src/lib.rs");
 const adapters = read("crates/licoup-agent-adapters/src/lib.rs");
 const claims = read("crates/licoup-conversation/src/store/dispatches.rs");
 const providerRuntime = read(
-  "crates/licoup-native/src/platform/runtime_adapters/subagent_mesh.rs",
+  "crates/licoup-agent-drivers/src/runtime_adapters/subagent_mesh.rs",
 );
 const agentHubCatalog = read("crates/licoup-native/src/domain/agent_hub/catalog.rs");
 const agentHubVersion = read("crates/licoup-native/src/domain/agent_hub/version_check.rs");

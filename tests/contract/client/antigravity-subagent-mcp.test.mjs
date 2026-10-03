@@ -8,7 +8,8 @@ const manager = read("crates/licoup-native/src/platform/antigravity_subagent_mcp
 const execution = read("crates/licoup-native/src/platform/antigravity_driver/execution.rs");
 const hooks = read("crates/licoup-native/src/platform/antigravity_driver/hooks.rs");
 const auth = read("crates/licoup-native/src/platform/antigravity_driver/auth.rs");
-const runtime = read("crates/licoup-native/src/platform/runtime_adapters/subagent_mesh.rs");
+const runtime = read("crates/licoup-agent-drivers/src/runtime_adapters/subagent_mesh.rs");
+const adapters = read("crates/licoup-native/src/platform/native_agent_parser/adapters/mod.rs");
 const startup = read("tests/product-e2e/cli/subagent-mcp/upstream/antigravity-startup-recognition.mjs");
 
 test("Antigravity registration uses one common namespaced ownership contract", () => {
@@ -39,11 +40,15 @@ test("Antigravity target requires hook identity, auth preflight, PTY and exact r
   assert.match(execution, /current_dir\(&self\.workspace\)/u);
   assert.match(hooks, /receipt/u);
   assert.match(auth, /oauth|auth/iu);
-  assert.match(runtime, /ExactIdentityKind::AntigravityReceipt/u);
+  // Exact resume asks the Agent's own parser through the shared port, and the
+  // host's Antigravity registration answers with Antigravity's receipt rule.
+  assert.match(runtime, /parser\.valid_identity/u);
+  assert.match(adapters, /antigravity_identity/u);
+  assert.match(adapters, /antigravity::valid_session_id/u);
 });
 
 test("Antigravity guidance and cancellation are explicit without private field fallback", () => {
-  const policy = read("crates/licoup-native/src/platform/runtime_adapters.rs");
+  const policy = read("crates/licoup-agent-drivers/src/runtime_adapters.rs");
   const control = read("crates/licoup-native/src/platform/antigravity_driver/control.rs");
   assert.match(policy, /OrdinaryWirePrefix/u);
   assert.match(execution, /antigravity_private_instructions_unsupported/u);

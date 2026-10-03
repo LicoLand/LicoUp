@@ -477,39 +477,39 @@ test("neutral ACP runtime and session transport retain bounded ownership", async
   }
   const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
   const sources = await sourceFiles(
-    "crates/licoup-native/src/platform/acp_driver_runtime", ".rs");
+    "crates/licoup-agent-drivers/src/acp_driver_runtime", ".rs");
   for (const relativePath of [
-    "crates/licoup-native/src/platform/acp_driver_runtime.rs",
+    "crates/licoup-agent-drivers/src/acp_driver_runtime.rs",
     ...sources,
     "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot.rs",
     "crates/licoup-native/src/platform/native_agent_parser/adapters/kimi_code.rs",
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot/framing.rs",
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot/protocol.rs",
+    "crates/licoup-agent-drivers/src/acp_driver_runtime/events.rs",
+    "crates/licoup-agent-drivers/src/acp_driver_runtime/protocol.rs",
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `neutral ACP runtime source must have a precise regression owner: ${relativePath}`);
   }
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/acp_driver_runtime/session_plan.rs",
+    "crates/licoup-agent-drivers/src/acp_driver_runtime/session_plan.rs",
   ])), ["architecture.client-boundaries", "rust.platform.acp-runtime.continuity"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/acp_driver_runtime/params.rs",
+    "crates/licoup-agent-drivers/src/acp_driver_runtime/params.rs",
   ])), ["architecture.client-boundaries", "rust.platform.acp-runtime.params"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot/protocol.rs",
+    "crates/licoup-agent-drivers/src/acp_driver_runtime/protocol.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.platform.acp-runtime.interaction",
     "rust.platform.acp-runtime.protocol",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/acp_driver_runtime/stdio_transport.rs",
+    "crates/licoup-agent-drivers/src/acp_driver_runtime/stdio_transport.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.platform.acp-runtime.stdio-transport",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/acp_session_transport/execution.rs",
+    "crates/licoup-agent-drivers/src/acp_session_transport/execution.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.platform.acp-session-transport.collaboration-mcp",
@@ -526,9 +526,9 @@ test("neutral ACP runtime and session transport retain bounded ownership", async
       || candidate.id === "rust.platform.acp-session-transport.collaboration-mcp");
   const sessionInputs = new Set(sessionModules.flatMap((module) => module.inputs));
   for (const relativePath of [
-    "crates/licoup-native/src/platform/acp_session_transport.rs",
+    "crates/licoup-agent-drivers/src/acp_session_transport.rs",
     ...await sourceFiles(
-      "crates/licoup-native/src/platform/acp_session_transport",
+      "crates/licoup-agent-drivers/src/acp_session_transport",
       ".rs",
     ),
     "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes.rs",
@@ -698,7 +698,7 @@ test("local service leaves retain exact tests and complete source ownership", as
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/licoup-native/src/platform/local_service.rs"), false);
+        "crates/licoup-agent-drivers/src/local_service.rs"), false);
     }
   }
   const sourceCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
@@ -710,9 +710,9 @@ test("local service leaves retain exact tests and complete source ownership", as
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/licoup-native/src/platform/local_service", ".rs");
+    "crates/licoup-agent-drivers/src/local_service", ".rs");
   for (const relativePath of [
-    "crates/licoup-native/src/platform/local_service.rs",
+    "crates/licoup-agent-drivers/src/local_service.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,

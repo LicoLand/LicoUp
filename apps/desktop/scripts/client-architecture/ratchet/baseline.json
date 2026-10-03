@@ -1,6 +1,6 @@
 {
   "schema": "licoup-architecture-ratchet-baseline.v1",
-  "recordedAt": "2026-10-03T04:35:48.552Z",
+  "recordedAt": "2026-10-03T14:38:52.313Z",
   "metrics": {
     "kernel_optional_cargo_edges": {
       "value": 0,
@@ -10,7 +10,7 @@
     },
     "native_layer_imports": {
       "domain_to_platform": 85,
-      "platform_to_domain": 24,
+      "platform_to_domain": 16,
       "domain_to_platform_files": [
         "crates/licoup-native/src/domain/agent_catalog.rs",
         "crates/licoup-native/src/domain/agent_hub/engine.rs",
@@ -99,8 +99,6 @@
         "crates/licoup-native/src/domain/workflow_runtime/service.rs"
       ],
       "platform_to_domain_files": [
-        "crates/licoup-native/src/platform/acp_driver_runtime/params.rs",
-        "crates/licoup-native/src/platform/acp_session_transport/command.rs",
         "crates/licoup-native/src/platform/antigravity_subagent_mcp_manager.rs",
         "crates/licoup-native/src/platform/claude_code_subagent_mcp_manager.rs",
         "crates/licoup-native/src/platform/codex_plugin_manager.rs",
@@ -113,16 +111,10 @@
         "crates/licoup-native/src/platform/mcp_approval_plan_store.rs",
         "crates/licoup-native/src/platform/openclaw_driver/params.rs",
         "crates/licoup-native/src/platform/provider_mcp_registration.rs",
-        "crates/licoup-native/src/platform/runtime_adapters/artifact.rs",
-        "crates/licoup-native/src/platform/runtime_adapters/dispatch.rs",
-        "crates/licoup-native/src/platform/runtime_adapters/registry.rs",
-        "crates/licoup-native/src/platform/runtime_adapters/subagent_mesh.rs",
-        "crates/licoup-native/src/platform/runtime_adapters/tests/artifact.rs",
         "crates/licoup-native/src/platform/runtime_adapters/tests/generic_cli.rs",
         "crates/licoup-native/src/platform/runtime_adapters.rs",
         "crates/licoup-native/src/platform/strategy_runtime/mod.rs",
-        "crates/licoup-native/src/platform/subagent_mcp_ensure.rs",
-        "crates/licoup-native/src/platform/work_context_ports/host_driver.rs"
+        "crates/licoup-native/src/platform/subagent_mcp_ensure.rs"
       ]
     },
     "optional_capabilities_in_packaging": {
@@ -147,6 +139,10 @@
         "apps/desktop/lib/src/platform/native_client/native_cli_runtime_context.dart::e76e4e09cac0::8d786a4f62f1cfc9b770",
         "apps/desktop/lib/src/platform/native_client/native_cli_runtime_context.dart::ee1df33749dc::f3888a34c72df917fe1b",
         "apps/desktop/lib/src/platform/native_client/native_one_shot_command_executor.dart::24892bcbafb7::72a4b8474d6b9e34c63d",
+        "crates/licoup-agent-drivers/src/acp_driver_runtime/supervision.rs::a01ddab5f5c3::a6bbc0038e7e8032f79e",
+        "crates/licoup-agent-drivers/src/acp_session_transport/command.rs::8badc004c930::1c75488c88da7c54315a",
+        "crates/licoup-agent-drivers/src/local_service/process.rs::7e16ee355cb6::4de81b3bfe62de788360",
+        "crates/licoup-agent-drivers/src/local_service/process.rs::de96119a14bc::352a7fdc2d61460bf034",
         "crates/licoup-agent-targets/src/domain/targets/model_catalog/antigravity.rs::2aae20787da1::baa7507b574632ef4f84",
         "crates/licoup-agent-targets/src/domain/targets/model_catalog/antigravity.rs::ebfec92bd3a8::fc2d94a7335f196ba314",
         "crates/licoup-agent-targets/src/domain/targets/model_catalog/cursor.rs::3f179eee8ffb::237465db2682aa911467",
@@ -178,8 +174,6 @@
         "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/runner.rs::62d7f9b48bbe::941cac8d5d183e1f4cfc",
         "crates/licoup-native/src/domain/provider_quota/antigravity.rs::4c12ae154e53::fd130d2813abd0305264",
         "crates/licoup-native/src/domain/provider_quota/codex.rs::c25730361e38::89a078214e61a0ee2ea7",
-        "crates/licoup-native/src/platform/acp_driver_runtime/supervision.rs::6022e508e45a::01045208f064f34ff325",
-        "crates/licoup-native/src/platform/acp_session_transport/command.rs::c44bece6e4cd::02af7f1fb7757ae97952",
         "crates/licoup-native/src/platform/antigravity_driver/auth.rs::439bc3ba329a#2::185509dc8b7645188ad6",
         "crates/licoup-native/src/platform/antigravity_driver/auth.rs::439bc3ba329a::fb1688d2c6326385ca04",
         "crates/licoup-native/src/platform/antigravity_driver/execution.rs::f0312bc5c0c1::2e1b1550eb2b62759955",
@@ -204,8 +198,6 @@
         "crates/licoup-native/src/platform/lico_agent_driver/execution.rs::5d0555e57fe2::59522056028d46098c56",
         "crates/licoup-native/src/platform/lico_agent_driver/probe.rs::702f845b22dd::c97f4f60973140a557d6",
         "crates/licoup-native/src/platform/lico_agent_driver/probe.rs::e60bf875c7e5::588f778f0eebb32051e8",
-        "crates/licoup-native/src/platform/local_service/process.rs::8871e5d550ce::a2f1f4f3081c43a42a3a",
-        "crates/licoup-native/src/platform/local_service/process.rs::9e175109b027::8d8dcf1d5ab4c8145016",
         "crates/licoup-native/src/platform/mcp_service_process.rs::25b8c55d297b::a911cfdd8b9d1a30aac7",
         "crates/licoup-native/src/platform/openclaw_driver/probe.rs::298e735358b7::e478465099b58cfd11e1",
         "crates/licoup-native/src/platform/openclaw_driver/supervision.rs::b394558a3eed::024b14ee9fb9f8a8b74c",
@@ -222,6 +214,10 @@
         "apps/desktop/lib/src/platform/native_client/native_cli_runtime_context.dart::e76e4e09cac0::8d786a4f62f1cfc9b770",
         "apps/desktop/lib/src/platform/native_client/native_cli_runtime_context.dart::ee1df33749dc::f3888a34c72df917fe1b",
         "apps/desktop/lib/src/platform/native_client/native_one_shot_command_executor.dart::24892bcbafb7::72a4b8474d6b9e34c63d",
+        "crates/licoup-agent-drivers/src/acp_driver_runtime/supervision.rs::a01ddab5f5c3::a6bbc0038e7e8032f79e",
+        "crates/licoup-agent-drivers/src/acp_session_transport/command.rs::8badc004c930::1c75488c88da7c54315a",
+        "crates/licoup-agent-drivers/src/local_service/process.rs::7e16ee355cb6::4de81b3bfe62de788360",
+        "crates/licoup-agent-drivers/src/local_service/process.rs::de96119a14bc::352a7fdc2d61460bf034",
         "crates/licoup-agent-targets/src/domain/targets/model_catalog/antigravity.rs::2aae20787da1::baa7507b574632ef4f84",
         "crates/licoup-agent-targets/src/domain/targets/model_catalog/antigravity.rs::ebfec92bd3a8::fc2d94a7335f196ba314",
         "crates/licoup-agent-targets/src/domain/targets/model_catalog/cursor.rs::3f179eee8ffb::237465db2682aa911467",
@@ -253,8 +249,6 @@
         "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/runner.rs::62d7f9b48bbe::941cac8d5d183e1f4cfc",
         "crates/licoup-native/src/domain/provider_quota/antigravity.rs::4c12ae154e53::fd130d2813abd0305264",
         "crates/licoup-native/src/domain/provider_quota/codex.rs::c25730361e38::89a078214e61a0ee2ea7",
-        "crates/licoup-native/src/platform/acp_driver_runtime/supervision.rs::6022e508e45a::01045208f064f34ff325",
-        "crates/licoup-native/src/platform/acp_session_transport/command.rs::c44bece6e4cd::02af7f1fb7757ae97952",
         "crates/licoup-native/src/platform/antigravity_driver/auth.rs::439bc3ba329a#2::185509dc8b7645188ad6",
         "crates/licoup-native/src/platform/antigravity_driver/auth.rs::439bc3ba329a::fb1688d2c6326385ca04",
         "crates/licoup-native/src/platform/antigravity_driver/execution.rs::f0312bc5c0c1::2e1b1550eb2b62759955",
@@ -279,8 +273,6 @@
         "crates/licoup-native/src/platform/lico_agent_driver/execution.rs::5d0555e57fe2::59522056028d46098c56",
         "crates/licoup-native/src/platform/lico_agent_driver/probe.rs::702f845b22dd::c97f4f60973140a557d6",
         "crates/licoup-native/src/platform/lico_agent_driver/probe.rs::e60bf875c7e5::588f778f0eebb32051e8",
-        "crates/licoup-native/src/platform/local_service/process.rs::8871e5d550ce::a2f1f4f3081c43a42a3a",
-        "crates/licoup-native/src/platform/local_service/process.rs::9e175109b027::8d8dcf1d5ab4c8145016",
         "crates/licoup-native/src/platform/mcp_service_process.rs::25b8c55d297b::a911cfdd8b9d1a30aac7",
         "crates/licoup-native/src/platform/openclaw_driver/probe.rs::298e735358b7::e478465099b58cfd11e1",
         "crates/licoup-native/src/platform/openclaw_driver/supervision.rs::b394558a3eed::024b14ee9fb9f8a8b74c",
