@@ -159,6 +159,8 @@ To maintain clarity across the four primary architectural tiers, detailed domain
 | **Subagent MCP** | External Protocol Adapter | [subagent-mcp.md](../protocols/subagent-mcp.md) | Independently built MCP process exposing the remote-approved Subagents subset through the native CLI |
 | **Semantic Conversation** | Tier 3: Rust Functional Core | [semantic-conversation.md](../protocols/semantic-conversation.md) | Registry-listed agent protocol translations, native catalog discovery, and read-only replay |
 | **Security & Data Boundaries** | Tier 3: Rust Functional Core | [SECURITY-AND-DATA-BOUNDARY.md](SECURITY-AND-DATA-BOUNDARY.md) | VM discovery isolation, endpoint protection preview, platform secret custody, zero-trust data |
+| **Extension Platform** | Tier 3: Rust Functional Core | [EXTENSION-PLATFORM.md](EXTENSION-PLATFORM.md) | Extension contract, profiles, carrier, lifecycle, the kernel decision and the package compatibility list |
+| **Deployment Profiles** | Tier 3: Rust Functional Core | [DEPLOYMENT-PROFILES.md](DEPLOYMENT-PROFILES.md) | Installation profiles, install closure, per-capability ownership and the first-party package rule |
 | **Platform System Bridges** | Tier 4: Native OS Adaptation | `crates/licoup-native/src/platform/` | Low-level OS APIs and system tooling for macOS, Windows, Linux, Android, iOS |
 
 ---

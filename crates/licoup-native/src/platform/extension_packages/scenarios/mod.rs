@@ -30,6 +30,21 @@ const SCRIPTED: &str = "example.specialist.scripted";
 const NET: &str = "example.specialist/net";
 const FS: &str = "example.specialist/fs";
 
+/// The client versions a fixture declares it supports: the client this test
+/// binary runs as, up to but not including the next major line. The value comes
+/// from the product version owner rather than a literal here.
+fn covering_client_versions() -> Vec<String> {
+    let client = crate::platform::extension_packages::running_client_version()
+        .expect("the binary declares a product version");
+    let next_major = client
+        .split('.')
+        .next()
+        .and_then(|major| major.parse::<u64>().ok())
+        .map(|major| major + 1)
+        .expect("a semantic major version");
+    vec![format!(">={client}, <{next_major}")]
+}
+
 fn manifest_json(
     id: &str,
     version: &str,
@@ -46,6 +61,7 @@ fn manifest_json(
         "version": version,
         "displayName": "Echo specialist",
         "hostProtocol": { "major": 1, "minimumMinor": 0 },
+        "compatibility": { "clientVersions": covering_client_versions() },
         "profiles": [{ "id": "agent-execution", "major": 1 }],
         "runtime": runtime,
         "activation": "on-demand",

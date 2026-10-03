@@ -15,6 +15,7 @@ use licoup_extension_contracts::agent::{AgentEventKind, CancelOutcome, UsageSupp
 use licoup_extension_contracts::deployment::{
     CapabilityAvailability, PackageLifecycle, PackageSource,
 };
+use licoup_extension_contracts::manifest::MAX_RANGE_BYTES;
 use licoup_extension_contracts::profile::ExtensionProfile;
 use licoup_extension_contracts::provider::COMPATIBLE_DIALECTS;
 use licoup_extension_contracts::ui::{
@@ -264,6 +265,11 @@ fn closed_enumerations_match_the_crate() {
 
     let deployment: Value = serde_json::from_str(DEPLOYMENT).expect("deployment");
     assert_eq!(
+        deployment["properties"]["profile"]["enum"],
+        json!(["minimal-local", "standard", "gateway", "peer", "analytics"]),
+        "the workflow and flywheel are kernel capabilities, so no profile selects them"
+    );
+    assert_eq!(
         deployment["properties"]["packages"]["items"]["properties"]["source"]["enum"],
         json!([
             PackageSource::LocalImport.id(),
@@ -331,6 +337,44 @@ fn the_agent_event_vocabulary_is_published_with_its_optional_outcomes() {
     // An Agent that reports no usage is a complete Agent, so "unavailable" is
     // part of the vocabulary rather than a missing value.
     assert_eq!(wire_of(&UsageSupport::Unavailable), "unavailable");
+}
+
+#[test]
+fn the_published_compatibility_list_is_the_one_this_crate_evaluates() {
+    let manifest: Value = serde_json::from_str(MANIFEST).expect("manifest");
+    assert!(
+        manifest["required"]
+            .as_array()
+            .expect("required list")
+            .iter()
+            .any(|key| key == "compatibility"),
+        "every package carries a self-described compatibility list"
+    );
+    let client_versions = &manifest["properties"]["compatibility"]["properties"]["clientVersions"];
+    assert_eq!(
+        client_versions["minItems"], 1,
+        "a list that declares no client version is admitted by nothing"
+    );
+    assert_eq!(
+        client_versions["items"]["maxLength"], MAX_RANGE_BYTES,
+        "the published bound is the native bound"
+    );
+    assert_eq!(
+        manifest["properties"]["compatibility"]["additionalProperties"], false,
+        "the compatibility object carries the client list and nothing else"
+    );
+
+    // The refusal this crate raises is the stable reason a client reports, so the
+    // schema's own description has to name the rule rather than imply it.
+    let description = manifest["properties"]["compatibility"]["description"]
+        .as_str()
+        .expect("compatibility description");
+    for token in ["hostProtocol", "activation"] {
+        assert!(
+            description.contains(token),
+            "the published rule must name {token} as the separate fact it is"
+        );
+    }
 }
 
 #[test]

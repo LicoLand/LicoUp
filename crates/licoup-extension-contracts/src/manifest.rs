@@ -19,6 +19,13 @@
 //! that produced them: a task that changes a package makes the evidence of the
 //! tasks that touch its closure stale, and that closure is computed from these
 //! two lists rather than from a task graph.
+//!
+//! `compatibility` is a third, separate claim: the client versions the package
+//! itself says it supports ([`Compatibility`]). It is not `hostProtocol` — that
+//! is the *wire* contract range, negotiated per connection — and it is not the
+//! package's own version: a package version that differs from the client is not
+//! itself a refusal. The kernel loads a package only when the list covers the
+//! running client, and refuses it at install and at activation when it does not.
 
 use crate::profile::ProfileDeclaration;
 use crate::refusal;
@@ -26,6 +33,7 @@ use crate::ui::ContributionKind;
 use licoup_application::{
     ActivationMode, ApplicationFailure, ContractRange, is_namespaced, is_semver,
 };
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -201,6 +209,97 @@ impl Runtime {
     }
 }
 
+/// The client versions a package says it supports.
+///
+/// This is the package's own declaration, and it is what decides whether this
+/// kernel loads it. Each entry is a bare major version (`"1"`) or a
+/// semantic-version range, so a package released independently of the client can
+/// support a line rather than one exact build. An empty list supports no client:
+/// a package that declares none is admitted by nothing, which is why the list is
+/// required rather than optional.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Compatibility {
+    /// One entry per supported client line.
+    #[serde(default)]
+    pub client_versions: Vec<String>,
+}
+
+impl Compatibility {
+    pub fn new(client_versions: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        Self {
+            client_versions: client_versions.into_iter().map(Into::into).collect(),
+        }
+    }
+
+    /// Structural validation: the list is present and every entry is a version
+    /// requirement this contract can evaluate.
+    ///
+    /// It compares nothing here. Coverage is a decision about a running client
+    /// ([`Compatibility::covers`]), and keeping the two apart is what stops a
+    /// malformed list from reading as "no client is supported".
+    pub fn validate(&self) -> Result<(), ApplicationFailure> {
+        if self.client_versions.is_empty() {
+            return Err(refusal::new("manifest_invalid", STAGE).with_field("compatibility"));
+        }
+        for declared in &self.client_versions {
+            if declared.is_empty()
+                || declared.len() > MAX_RANGE_BYTES
+                || VersionReq::parse(declared).is_err()
+            {
+                return Err(refusal::new("manifest_invalid", STAGE).with_field("compatibility"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether one client version is inside the declared list.
+    ///
+    /// A client version this contract cannot parse is covered by nothing, so an
+    /// unreadable identity fails closed rather than loading everything.
+    pub fn covers(&self, client_version: &str) -> bool {
+        let Ok(version) = Version::parse(client_version) else {
+            return false;
+        };
+        self.client_versions.iter().any(|declared| {
+            VersionReq::parse(declared).is_ok_and(|requirement| requirement.matches(&version))
+        })
+    }
+}
+
+/// Whether a package's self-described compatibility list covers one client.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ClientCompatibility {
+    /// The running client is one of the versions this package declares.
+    Covered,
+    /// It is not, so this kernel must not load the package.
+    NotCovered,
+}
+
+impl ClientCompatibility {
+    pub const fn is_covered(self) -> bool {
+        matches!(self, Self::Covered)
+    }
+
+    /// The refusal for a package this client must not load, or `None` when it
+    /// may.
+    ///
+    /// It names the package and the client version it was decided against, and
+    /// its recovery is the real next step: install a package whose list covers
+    /// this client. The package's own version is not part of the refusal,
+    /// because a different version is not itself the problem.
+    pub fn refusal(self, package_id: &str, client_version: &str) -> Option<ApplicationFailure> {
+        if self.is_covered() {
+            return None;
+        }
+        Some(
+            refusal::actionable("package_client_incompatible", STAGE, "compatibility")
+                .with_presentation_arg("package", package_id)
+                .with_presentation_arg("clientVersion", client_version),
+        )
+    }
+}
+
 /// The package manifest.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -210,8 +309,14 @@ pub struct PackageManifest {
     pub id: String,
     pub version: String,
     pub display_name: String,
-    /// The host protocol range this package needs.
+    /// The host protocol range this package needs. This is the wire contract,
+    /// and it is not the compatibility rule: it is negotiated per connection and
+    /// says nothing about which client builds may load the package.
     pub host_protocol: ContractRange,
+    /// The client versions this package says it supports. Required: a package
+    /// that declares none is admitted by nothing.
+    #[serde(default)]
+    pub compatibility: Compatibility,
     #[serde(default)]
     pub profiles: Vec<ProfileDeclaration>,
     pub runtime: Runtime,
@@ -246,6 +351,29 @@ impl PackageManifest {
             .filter_map(|declaration| declaration.profile())
     }
 
+    /// Whether this package's compatibility list covers one client version.
+    ///
+    /// The package's own `version` takes no part: two builds of a package that
+    /// declare the same list are covered by the same clients.
+    pub fn client_compatibility(&self, client_version: &str) -> ClientCompatibility {
+        if self.compatibility.covers(client_version) {
+            ClientCompatibility::Covered
+        } else {
+            ClientCompatibility::NotCovered
+        }
+    }
+
+    /// Refuse a client this package's compatibility list does not cover.
+    pub fn admit_client(&self, client_version: &str) -> Result<(), ApplicationFailure> {
+        match self
+            .client_compatibility(client_version)
+            .refusal(&self.id, client_version)
+        {
+            Some(failure) => Err(failure),
+            None => Ok(()),
+        }
+    }
+
     /// Structural validation of every field the host reads before it runs
     /// anything.
     pub fn validate(&self) -> Result<(), ApplicationFailure> {
@@ -261,6 +389,7 @@ impl PackageManifest {
         if self.display_name.is_empty() || self.host_protocol.major < 1 {
             return Err(refusal::new("manifest_invalid", STAGE).with_field("hostProtocol"));
         }
+        self.compatibility.validate()?;
         self.runtime.validate()?;
         for declaration in &self.profiles {
             declaration.validate()?;
@@ -346,6 +475,7 @@ mod tests {
                 major: 1,
                 minimum_minor: 0,
             },
+            compatibility: Compatibility::new(["0"]),
             profiles: vec![
                 ProfileDeclaration::new(ExtensionProfile::AgentExecution.id(), 1)
                     .with_capabilities(["example.specialist/stream"]),
@@ -373,6 +503,7 @@ mod tests {
             "version": "1.0.0",
             "displayName": "Echo specialist",
             "hostProtocol": { "major": 1, "minimumMinor": 0 },
+            "compatibility": { "clientVersions": ["0"] },
             "profiles": [],
             "runtime": { "mode": "process", "entry": "agent.py" },
             "requires": [],
@@ -393,6 +524,7 @@ mod tests {
             "version": "1.0.0",
             "displayName": "Echo specialist",
             "hostProtocol": { "major": 1, "minimumMinor": 0 },
+            "compatibility": { "clientVersions": ["0"] },
             "profiles": [],
             "runtime": { "mode": "process", "entry": "agent.py" },
             "permissions": [{ "capability": "example.specialist/net", "scope": "self", "granted": true }]
@@ -464,5 +596,122 @@ mod tests {
         let published: Vec<_> = ahead.published_profiles().collect();
         assert_eq!(published, vec![ExtensionProfile::AgentExecution]);
         assert_eq!(ahead.profiles.len(), 2);
+    }
+
+    #[test]
+    fn a_package_declares_the_client_versions_it_supports() {
+        let mut package = manifest();
+        package.compatibility = Compatibility::new(["0"]);
+        assert!(package.validate().is_ok());
+        assert_eq!(
+            package.client_compatibility("0.3.0"),
+            ClientCompatibility::Covered
+        );
+        assert_eq!(
+            package.client_compatibility("0.4.9"),
+            ClientCompatibility::Covered,
+            "a whole major line is covered, not one exact build"
+        );
+        assert_eq!(
+            package.client_compatibility("1.0.0"),
+            ClientCompatibility::NotCovered
+        );
+
+        package.compatibility = Compatibility::new([">=0.3.0, <0.5.0"]);
+        assert!(package.client_compatibility("0.3.0").is_covered());
+        assert!(package.client_compatibility("0.4.99").is_covered());
+        assert!(!package.client_compatibility("0.5.0").is_covered());
+        assert!(!package.client_compatibility("0.2.9").is_covered());
+
+        // A client identity this contract cannot read is covered by nothing.
+        package.compatibility = Compatibility::new(["0"]);
+        assert!(!package.client_compatibility("nightly").is_covered());
+    }
+
+    #[test]
+    fn a_different_package_version_is_not_itself_a_refusal() {
+        let mut supported = manifest();
+        supported.version = "1.0.0".to_owned();
+        supported.compatibility = Compatibility::new(["0"]);
+
+        let mut also_supported = manifest();
+        also_supported.version = "9.9.9".to_owned();
+        also_supported.compatibility = Compatibility::new(["0"]);
+
+        assert_eq!(
+            supported.client_compatibility("0.3.0"),
+            also_supported.client_compatibility("0.3.0"),
+            "the package's own version takes no part in the decision"
+        );
+        assert!(supported.admit_client("0.3.0").is_ok());
+
+        let mut unsupported = manifest();
+        unsupported.version = "0.3.0".to_owned();
+        unsupported.compatibility = Compatibility::new([">=99.0.0"]);
+        let failure = unsupported
+            .admit_client("0.3.0")
+            .expect_err("the running client is outside the declared list");
+        assert_eq!(failure.code, "package_client_incompatible");
+        assert_eq!(failure.field.as_deref(), Some("compatibility"));
+        assert_eq!(
+            failure.presentation_args.get("clientVersion"),
+            Some("0.3.0")
+        );
+        assert_eq!(
+            failure.recovery,
+            licoup_application::RecoveryAction::InstallOrRetryRuntime
+        );
+    }
+
+    #[test]
+    fn a_package_that_declares_no_usable_client_versions_is_refused() {
+        let mut absent = manifest();
+        absent.compatibility = Compatibility::default();
+        assert_eq!(
+            absent
+                .validate()
+                .expect_err("a package with no list is admitted by nothing")
+                .field
+                .as_deref(),
+            Some("compatibility")
+        );
+
+        let mut malformed = manifest();
+        malformed.compatibility = Compatibility::new(["not a range"]);
+        assert_eq!(
+            malformed
+                .validate()
+                .expect_err("a range this contract cannot read is not a declaration")
+                .field
+                .as_deref(),
+            Some("compatibility")
+        );
+
+        let mut oversized = manifest();
+        oversized.compatibility = Compatibility::new(["0".repeat(MAX_RANGE_BYTES + 1)]);
+        assert_eq!(
+            oversized
+                .validate()
+                .expect_err("a bound the schema publishes is a bound here")
+                .field
+                .as_deref(),
+            Some("compatibility")
+        );
+    }
+
+    #[test]
+    fn a_manifest_that_carries_no_compatibility_list_is_read_and_refused() {
+        let wire = serde_json::json!({
+            "schema": crate::wire::MANIFEST,
+            "id": "example.specialist.echo",
+            "version": "1.0.0",
+            "displayName": "Echo specialist",
+            "hostProtocol": { "major": 1, "minimumMinor": 0 },
+            "profiles": [],
+            "runtime": { "mode": "process", "entry": "agent.py" },
+        });
+        let failure = PackageManifest::from_value(wire).expect_err("no compatibility list");
+        assert_eq!(failure.code, "manifest_invalid");
+        assert_eq!(failure.field.as_deref(), Some("compatibility"));
     }
 }

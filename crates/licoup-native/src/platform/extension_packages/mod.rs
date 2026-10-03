@@ -39,6 +39,13 @@
 //!    host's fetcher together with the digest they were fetched against. A local
 //!    import hands in a directory or an already-running adapter endpoint, and
 //!    needs no directory service, no account and no publication.
+//! 4. **A package loads only when its own compatibility list covers the running
+//!    client.** [`PackageStore::install`] refuses one that does not before
+//!    anything is published, and activation consumes an
+//!    [`ActivationAdmission`] the store issued for that exact package version, so
+//!    a package the client has outgrown cannot be started either. The package's
+//!    own version is not part of the rule, and `hostProtocol` stays the wire
+//!    contract range.
 
 use licoup_application::{ApplicationFailure, RecoveryAction};
 use std::fs;
@@ -65,8 +72,8 @@ pub use discovery::{
     OffFrameLane, PendingInstall, Recommendation, RecommendationLog, scan,
 };
 pub use install::{
-    FaultPlan, InstallOutcome, InstallPhase, InstallRequest, InstalledPackage, PackageStore,
-    RemovedVersion, StagedPackage,
+    ActivationAdmission, FaultPlan, InstallOutcome, InstallPhase, InstallRequest, InstalledPackage,
+    PackageStore, RemovedVersion, StagedPackage, running_client_version,
 };
 pub use journal::{
     AbandonedStage, InstallJournal, JournalEntry, JournalOperation, RecoveryReport, StagedDirectory,

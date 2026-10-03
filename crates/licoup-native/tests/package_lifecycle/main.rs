@@ -33,7 +33,8 @@ use licoup_native::platform::extension_packages::{
     DiscoveryEnvironment, Drained, FaultPlan, InFlightPins, InstallPhase, InstallRequest,
     InstanceIdentity, InstanceLifecycle, InstanceMachine, InstanceRegistry, OffFrameLane,
     PackageMachine, PackageStore, RecommendationLog, RemainingWork, StorageKind, TrustRecord,
-    UninstallTransaction, account_store, close_surface, plan_gc, preview, scan,
+    UninstallTransaction, account_store, close_surface, plan_gc, preview, running_client_version,
+    scan,
 };
 
 // ---------------------------------------------------------------------------
@@ -67,6 +68,47 @@ fn manifest_json(
     runtime_ref: Option<&str>,
     requires: &[(&str, &str)],
 ) -> String {
+    manifest_json_declaring(
+        id,
+        version,
+        entry,
+        permissions,
+        runtime_ref,
+        requires,
+        &covering_client_versions(),
+    )
+}
+
+/// The client versions a fixture declares it supports: the client this test
+/// binary runs as, up to but not including the next major line. The value comes
+/// from the product version owner rather than a literal here, and the upper bound
+/// is what lets a test exercise a client that has moved past a package's own
+/// list.
+fn covering_client_versions() -> Vec<String> {
+    let client = running_client_version().expect("the binary declares a product version");
+    let next_major = client
+        .split('.')
+        .next()
+        .and_then(|major| major.parse::<u64>().ok())
+        .map(|major| major + 1)
+        .expect("a semantic major version");
+    vec![format!(">={client}, <{next_major}")]
+}
+
+/// A compatibility list no 0.x client is inside, whatever the running version is.
+fn excluding_client_versions() -> Vec<String> {
+    vec![">=99.0.0".to_owned()]
+}
+
+fn manifest_json_declaring(
+    id: &str,
+    version: &str,
+    entry: &str,
+    permissions: &[(&str, &str)],
+    runtime_ref: Option<&str>,
+    requires: &[(&str, &str)],
+    client_versions: &[String],
+) -> String {
     let mut runtime = serde_json::json!({ "mode": "process", "entry": entry });
     if let Some(reference) = runtime_ref {
         runtime["runtimeRef"] = serde_json::Value::String(reference.to_owned());
@@ -85,6 +127,7 @@ fn manifest_json(
         "version": version,
         "displayName": format!("Fixture {id}"),
         "hostProtocol": { "major": 1, "minimumMinor": 0 },
+        "compatibility": { "clientVersions": client_versions },
         "profiles": [],
         "runtime": runtime,
         "activation": "on-demand",
@@ -98,16 +141,27 @@ fn manifest_json(
 
 /// One package archive, built the way a user-built package would be.
 fn package_bytes(id: &str, version: &str, runtime_ref: Option<&str>) -> Vec<u8> {
+    package_bytes_declaring(id, version, runtime_ref, &covering_client_versions())
+}
+
+/// One package archive whose manifest declares the given client versions.
+fn package_bytes_declaring(
+    id: &str,
+    version: &str,
+    runtime_ref: Option<&str>,
+    client_versions: &[String],
+) -> Vec<u8> {
     archive(&[
         (
             "manifest.json",
-            manifest_json(
+            manifest_json_declaring(
                 id,
                 version,
                 "agent.py",
                 &[("example.fixture/net", "self")],
                 runtime_ref,
                 &[],
+                client_versions,
             )
             .into_bytes(),
         ),
@@ -158,7 +212,14 @@ fn install_local(
     bytes
 }
 
-fn active_instance(package_id: &str, version: &str, generation: u64) -> InstanceMachine {
+/// An installed package that is running, reached the way activation is reached:
+/// the store admits the version, and only then may the instance prepare.
+fn active_instance(
+    store: &PackageStore,
+    package_id: &str,
+    version: &str,
+    generation: u64,
+) -> InstanceMachine {
     let identity = InstanceIdentity::new(
         format!("instance-{package_id}-{generation}"),
         package_id,
@@ -168,11 +229,11 @@ fn active_instance(package_id: &str, version: &str, generation: u64) -> Instance
         Vec::<String>::new(),
     )
     .expect("identity");
-    let mut machine = InstanceMachine::discovered(identity).expect("instance");
-    machine
-        .advance(InstanceLifecycle::Preparing)
-        .expect("preparing");
-    machine.advance(InstanceLifecycle::Active).expect("active");
+    let admission = store
+        .admit_activation(package_id, version)
+        .expect("the installed version covers this client");
+    let mut machine = InstanceMachine::prepare(admission, identity).expect("preparing");
+    machine.activate().expect("active");
     machine
 }
 
@@ -267,13 +328,37 @@ fn discovery_recommends_without_installing_and_a_local_import_needs_no_directory
     );
     assert_eq!(
         licoup_extension_contracts::deployment::availability(
-            "workflow.v1",
+            "endpoint-collaboration.v1",
             licoup_extension_contracts::deployment::PackageFacts::default()
         )
         .describe(),
         "not-installed",
         "an optional capability nobody installed is a catalogue fact, not an error"
     );
+
+    // The Assistant and the workflow are the kernel's, so no profile choice and
+    // no package absence can remove them.
+    for capability in [
+        licoup_extension_contracts::deployment::ASSISTANT_CAPABILITY,
+        licoup_extension_contracts::deployment::WORKFLOW_CAPABILITY,
+    ] {
+        assert_eq!(
+            licoup_extension_contracts::deployment::capability_owner(capability)
+                .expect("the kernel owns it")
+                .package(),
+            CORE_PACKAGE
+        );
+        assert_eq!(
+            licoup_extension_contracts::deployment::availability(capability, facts).describe(),
+            "served",
+            "{capability} is served by the installed kernel itself"
+        );
+        assert!(
+            !licoup_extension_contracts::deployment::optional_capabilities()
+                .any(|optional| optional == capability),
+            "{capability} is not a capability a user may leave out"
+        );
+    }
 
     cleanup(&root);
 }
@@ -459,7 +544,7 @@ fn a_hostile_package_is_refused_before_it_can_be_installed() {
     // instance, and the package stays installed so the user can see what happened.
     install_local(&store, "example.fixture.echo", "1.0.0", None);
     let mut registry = InstanceRegistry::new();
-    let mut machine = active_instance("example.fixture.echo", "1.0.0", 1);
+    let mut machine = active_instance(&store, "example.fixture.echo", "1.0.0", 1);
     machine.begin_in_flight().expect("admitted work");
     machine.fail("the adapter process exited").expect("failed");
     assert_eq!(machine.state(), InstanceLifecycle::Failed);
@@ -477,6 +562,154 @@ fn a_hostile_package_is_refused_before_it_can_be_installed() {
             .note(),
         Some("the adapter process exited")
     );
+
+    cleanup(&root);
+}
+
+// ---------------------------------------------------------------------------
+// EX-07 — the compatibility list decides admission, not version equality
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_package_released_independently_is_admitted_when_its_list_covers_the_client() {
+    let (root, store) = store("compatibility-covers");
+    let client = running_client_version().expect("the binary declares a product version");
+
+    // The package's own version is deliberately unrelated to the client's: an
+    // independently released package is not refused for being a different
+    // version, and no exact-version-equality rule exists on this path.
+    assert_ne!("7.4.1", client.as_str());
+    let bytes = package_bytes_declaring(
+        "example.fixture.independent",
+        "7.4.1",
+        None,
+        &covering_client_versions(),
+    );
+    let outcome = store
+        .install_local_import(
+            "example.fixture.independent",
+            "7.4.1",
+            trust_for(&bytes),
+            &bytes,
+        )
+        .expect("a covering list is admitted");
+    assert_eq!(outcome.state, PackageLifecycle::Installed);
+
+    let admission = store
+        .admit_activation("example.fixture.independent", "7.4.1")
+        .expect("activation is admitted against the same client");
+    assert_eq!(admission.client_version(), client);
+    assert_eq!(admission.package_id(), "example.fixture.independent");
+    assert_eq!(admission.version(), "7.4.1");
+
+    // The activation entry consumes that admission, and the instance really
+    // reaches active.
+    let identity = InstanceIdentity::new(
+        "instance-independent-1",
+        "example.fixture.independent",
+        "7.4.1",
+        1,
+        3,
+        Vec::<String>::new(),
+    )
+    .expect("identity");
+    let mut machine = InstanceMachine::prepare(admission.clone(), identity).expect("prepared");
+    machine.activate().expect("active");
+    assert_eq!(machine.state(), InstanceLifecycle::Active);
+
+    // An admission is for one package version. An instance that names another
+    // version cannot borrow it.
+    let other = InstanceIdentity::new(
+        "instance-independent-2",
+        "example.fixture.independent",
+        "7.4.2",
+        2,
+        3,
+        Vec::<String>::new(),
+    )
+    .expect("identity");
+    assert_eq!(
+        InstanceMachine::prepare(admission, other)
+            .expect_err("an admission is not transferable")
+            .code,
+        "package_activation_admission_mismatch"
+    );
+
+    cleanup(&root);
+}
+
+#[test]
+fn a_list_that_does_not_cover_the_client_is_refused_at_install_and_at_activation() {
+    let (root, store) = store("compatibility-refused");
+    let client = running_client_version().expect("the binary declares a product version");
+
+    // Install refuses it before anything is published, with a stable reason that
+    // names the client it was decided against.
+    let excluded = package_bytes_declaring(
+        "example.fixture.outgrown",
+        "1.0.0",
+        None,
+        &excluding_client_versions(),
+    );
+    let failure = store
+        .install_local_import(
+            "example.fixture.outgrown",
+            "1.0.0",
+            trust_for(&excluded),
+            &excluded,
+        )
+        .expect_err("the running client is outside the declared list");
+    assert_eq!(failure.code, "package_client_incompatible");
+    assert_eq!(failure.field.as_deref(), Some("compatibility"));
+    assert_eq!(
+        failure.presentation_args.get("clientVersion"),
+        Some(client.as_str())
+    );
+    assert!(store.installed().expect("installed").is_empty());
+    assert!(
+        store.staged_directories().expect("staged").is_empty(),
+        "a refused install leaves nothing staged"
+    );
+
+    // Activation checks again, because the client may have moved past a list that
+    // covered it at install time.
+    let covering = package_bytes_declaring(
+        "example.fixture.outgrown",
+        "1.0.0",
+        None,
+        &covering_client_versions(),
+    );
+    store
+        .install_local_import(
+            "example.fixture.outgrown",
+            "1.0.0",
+            trust_for(&covering),
+            &covering,
+        )
+        .expect("installed while the list covered this client");
+
+    let outgrowing = "99.0.0";
+    let failure = store
+        .admit_activation_for_client("example.fixture.outgrown", "1.0.0", outgrowing)
+        .expect_err("the client has moved past the declared list");
+    assert_eq!(failure.code, "package_client_incompatible");
+    assert_eq!(
+        failure.presentation_args.get("clientVersion"),
+        Some(outgrowing)
+    );
+    assert!(
+        store
+            .installed_path("example.fixture.outgrown", "1.0.0")
+            .exists(),
+        "refusing activation is not uninstalling"
+    );
+
+    // The running client still admits it, and so does an instance prepared from
+    // that admission.
+    let admission = store
+        .admit_activation("example.fixture.outgrown", "1.0.0")
+        .expect("still covered by the running client");
+    assert_eq!(admission.client_version(), client);
 
     cleanup(&root);
 }
@@ -552,7 +785,7 @@ fn an_interrupted_install_keeps_the_old_version_and_recovery_finishes_the_journa
     // A restart where the old instance is gone reports it rather than forgetting
     // it, and the pins it still owns stay accounted.
     let mut registry = InstanceRegistry::new();
-    registry.insert(active_instance("example.fixture.echo", "1.0.0", 1));
+    registry.insert(active_instance(&store, "example.fixture.echo", "1.0.0", 1));
     let missing = registry.reconcile_after_restart(&[]);
     assert_eq!(missing, vec!["instance-example.fixture.echo-1".to_owned()]);
     let mut pins = InFlightPins::new();
@@ -589,7 +822,7 @@ fn uninstall_withdraws_admission_first_and_then_reclaims_only_its_own_bytes() {
     let installed = store.installed().expect("installed").remove(0);
     let mut registry = InstanceRegistry::new();
     let instance_id = "instance-example.fixture.echo-1".to_owned();
-    let mut machine = active_instance("example.fixture.echo", "1.0.0", 1);
+    let mut machine = active_instance(&store, "example.fixture.echo", "1.0.0", 1);
     machine.begin_in_flight().expect("admitted work");
     registry.insert(machine);
 
@@ -849,7 +1082,12 @@ fn one_hundred_available_three_installed_one_active_costs_metadata_only() {
     // One active. Installing three does not start three: activation is per
     // instance and on demand.
     let mut registry = InstanceRegistry::new();
-    registry.insert(active_instance("example.fixture.adapter003", "1.0.0", 1));
+    registry.insert(active_instance(
+        &store,
+        "example.fixture.adapter003",
+        "1.0.0",
+        1,
+    ));
     assert_eq!(registry.active().count(), 1);
     assert_eq!(registry.len(), 1);
     assert_eq!(registry.total_in_flight(), 0);

@@ -40,6 +40,20 @@ ECHO = "example.specialist.echo"
 SCRIPTED = "example.specialist.scripted"
 
 
+def client_versions() -> list[str]:
+    """The client versions these synthetic packages declare they support.
+
+    The value comes from ``tools/client-version.json``, the same manifest the
+    build injects into the binary under test, rather than a version restated
+    here; the upper bound is the next major line, so the declaration is a real
+    range and not an exact-version match.
+    """
+    published = json.loads((ROOT / "tools" / "client-version.json").read_text())
+    version = published["productVersion"]
+    next_major = int(version.split(".")[0]) + 1
+    return [f">={version}, <{next_major}"]
+
+
 def manifest(package_id: str, version: str) -> str:
     """A package manifest that satisfies the published extension schema."""
     return json.dumps(
@@ -49,6 +63,7 @@ def manifest(package_id: str, version: str) -> str:
             "version": version,
             "displayName": "Synthetic specialist",
             "hostProtocol": {"major": 1, "minimumMinor": 0},
+            "compatibility": {"clientVersions": client_versions()},
             "profiles": [{"id": "agent-execution", "major": 1}],
             "runtime": {"mode": "process", "entry": "agent.py"},
             "activation": "on-demand",
