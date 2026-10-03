@@ -2111,6 +2111,7 @@ version = "0.1.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
  "licoup-agent-drivers",
+ "licoup-agent-kimi",
  "licoup-extension-contracts",
  "licoup-foundation",
  "serde_json",

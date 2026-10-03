@@ -181,7 +181,11 @@ test("the moved parser leaves no copy in the host and the inventory keeps thirte
   const composition = read(
     "crates/licoup-native/src/platform/native_agent_parser/adapters/mod.rs",
   );
-  assert.match(composition, /pub\(in crate::platform\) use licoup_agent_kimi::parser as kimi_code;/u);
+  // The composition names no Kimi parser module: the package's own dialect
+  // registration is what reaches the transport, and the parser registration is
+  // the package's own value.
+  assert.doesNotMatch(composition, /licoup_agent_kimi::parser/u);
+  assert.doesNotMatch(composition, /mod kimi_code;/u);
   assert.equal((composition.match(/ParserRegistration::(?:unanswered|new)\(/gu) ?? []).length, 11);
   assert.match(composition, /licoup_agent_kimi::registration::REGISTRATION/u);
   assert.match(composition, /licoup_agent_codex::registration::REGISTRATION/u);

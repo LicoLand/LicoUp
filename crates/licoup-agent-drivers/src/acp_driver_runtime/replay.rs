@@ -35,14 +35,15 @@ impl Replay {
     ///
     /// This is the constructor an Agent's own package uses: the package owns the
     /// dialect and hands it over without this crate learning the Agent's name.
-    /// The driver identity the reducer is keyed on is the dialect's own, so an
-    /// arm cannot replay against a different driver than the dialect answers for.
+    /// The reducer reads the dialect it was handed for the whole transcript, so
+    /// an arm replays against exactly the Agent whose dialect it carries and no
+    /// port installation is needed to build one.
     pub fn with_dialect(registration: AcpParserRegistration) -> Self {
         assert!(
             !registration.driver_id.is_empty(),
             "an ACP replay arm needs a driver identity"
         );
-        Self::build(registration.driver_id)
+        Self::build(registration)
     }
 
     /// Build the arm for an adapter id the caller maps onto an installed driver.
@@ -58,12 +59,12 @@ impl Replay {
                 "no ACP frame dialect is installed for adapter {adapter_id}"
             ));
         }
-        Ok(Self::build(registration.driver_id))
+        Ok(Self::build(registration))
     }
 
-    fn build(driver_id: &'static str) -> Self {
+    fn build(registration: AcpParserRegistration) -> Self {
         Self {
-            protocol: AcpProtocol::new(
+            protocol: AcpProtocol::with_dialect(
                 ProtocolConfig {
                     prompt: PROMPT.to_owned(),
                     requested_session_id: REQUESTED_SESSION_ID.to_owned(),
@@ -78,7 +79,7 @@ impl Replay {
                     allow_all_authorized: false,
                     mcp_servers: Vec::new(),
                 },
-                driver_id,
+                registration,
             ),
         }
     }

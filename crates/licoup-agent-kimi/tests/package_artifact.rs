@@ -16,7 +16,8 @@
 //!
 //! Nothing is generated, nothing is executed, and nothing reaches the network.
 
-use licoup_agent_adapter_sdk::replay::{FrameReplay, RecordedFrame};
+use licoup_agent_adapter_sdk::replay::{FrameReplay as _, RecordedFrame};
+
 use licoup_agent_kimi::dialect;
 use licoup_extension_contracts::deployment::{PackOwnership, capability_owner};
 use licoup_extension_contracts::manifest::{PackageManifest, Runtime};
@@ -296,8 +297,8 @@ fn the_release_declaration_and_the_manifest_describe_one_package() {
 }
 
 /// The declared source format is one a recorded Kimi transcript really crosses:
-/// the same adapter declaration, the same framing and the same reducer the
-/// production transport drives, fed the frames of a synthetic ACP turn.
+/// the committed corpus's own Kimi Code transcript is replayed through the same
+/// reducer the production transport drives, with the package's own dialect.
 #[test]
 fn the_declared_format_is_the_one_a_recorded_kimi_turn_crosses() {
     let contract = licoup_agent_adapter_sdk::registry::parser_for(
@@ -310,51 +311,18 @@ fn the_declared_format_is_the_one_a_recorded_kimi_turn_crosses() {
 
     let mut arm = licoup_agent_kimi::replay::replay_arm(ADAPTER_ID)
         .expect("the package replays its own adapter");
-    let projections: Vec<Vec<Value>> = [
-        json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {
-                "protocolVersion": 1,
-                "agentCapabilities": {"loadSession": true},
-            },
-        }),
-        json!({
-            "jsonrpc": "2.0",
-            "id": 2,
-            "result": {"sessionId": "native-session"},
-        }),
-        json!({
-            "jsonrpc": "2.0",
-            "method": "session/update",
-            "params": {
-                "sessionId": "native-session",
-                "update": {
-                    "sessionUpdate": "agent_message_chunk",
-                    "content": {"type": "text", "text": "synthetic reply"},
-                },
-            },
-        }),
-        json!({
-            "jsonrpc": "2.0",
-            "id": 3,
-            "result": {"stopReason": "end_turn"},
-        }),
-    ]
-    .into_iter()
-    .enumerate()
-    .map(|(index, payload)| {
-        arm.feed(&frame(index, payload))
-            .unwrap_or_else(|error| panic!("frame {index} must be replayable: {error}"))
-    })
-    .collect();
+    let projections: Vec<Vec<Value>> = recorded_turn()
+        .into_iter()
+        .enumerate()
+        .map(|(index, payload)| {
+            arm.feed(&frame(index, payload))
+                .unwrap_or_else(|error| panic!("frame {index} must be replayable: {error}"))
+        })
+        .collect();
 
-    // The turn really crossed the dialect: the frames produced effects, and the
-    // terminal one completed the turn through Kimi's own transition vocabulary.
-    assert!(
-        projections.iter().any(|effects| !effects.is_empty()),
-        "the recorded turn produced no effects at all"
-    );
+    // The turn really crossed the dialect: the terminal frame completed it, and
+    // it reduced through Kimi's own transition vocabulary rather than another
+    // ACP Agent's.
     let terminal = projections.last().expect("a terminal frame");
     assert!(
         terminal
@@ -362,14 +330,41 @@ fn the_declared_format_is_the_one_a_recorded_kimi_turn_crosses() {
             .any(|effect| effect["effect"] == "complete"),
         "the recorded turn never completed: {terminal:?}"
     );
-    let reply = serde_json::to_string(terminal).expect("the projection serializes");
+    let completed = serde_json::to_string(terminal).expect("the projection serializes");
     assert!(
-        reply.contains("kimi-code:reply"),
-        "the completed turn did not reduce through Kimi's own vocabulary: {reply}"
+        completed.contains("kimi-code:reply"),
+        "the completed turn did not reduce through Kimi's own vocabulary: {completed}"
     );
 
     // An adapter this package does not carry is refused rather than defaulted.
     assert!(licoup_agent_kimi::replay::replay_arm("codex").is_err());
+}
+
+/// The frames of the committed `normal-turn` Kimi Code transcript, in order.
+///
+/// They are read from the corpus rather than retyped here, so the format this
+/// test crosses is the format the recorded transcript actually carries. The
+/// corpus root is the host's, one level above this package's release source;
+/// a checkout without it fails rather than passing on a synthetic substitute.
+fn recorded_turn() -> Vec<Value> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/desktop/test/fixtures/adapter-replay/kimi-code/normal-turn.json");
+    let document: Value = serde_json::from_str(
+        &std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("the recorded transcript must be readable: {error}")),
+    )
+    .expect("the recorded transcript is JSON");
+    assert_eq!(document["adapterId"], ADAPTER_ID);
+    document["frames"]
+        .as_array()
+        .expect("the transcript records frames")
+        .iter()
+        .map(|frame| {
+            assert_eq!(frame["channel"], FRAMING, "the transcript records this channel");
+            serde_json::from_str(frame["payload"].as_str().expect("a raw payload"))
+                .expect("a recorded payload is JSON")
+        })
+        .collect()
 }
 
 #[test]

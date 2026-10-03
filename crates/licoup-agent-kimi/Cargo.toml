@@ -50,3 +50,7 @@ path = "src/bin/lico-agent-kimi.rs"
 [dev-dependencies]
 licoup-extension-contracts = { path = "../licoup-extension-contracts" }
 licoup-agent-drivers = { path = "../licoup-agent-drivers", features = ["test-support"] }
+# The package's own integration test drives the replay arm, so the test build
+# enables the feature that compiles it. It is a self-dependency because
+# `dev-dependencies` features apply to the test targets and nothing else.
+licoup-agent-kimi = { path = ".", features = ["test-support"] }

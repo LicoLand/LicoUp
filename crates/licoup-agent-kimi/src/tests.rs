@@ -132,37 +132,47 @@ fn the_error_test_is_the_shared_envelope_rule() {
 }
 
 /// One completed turn reduces to the arrival-ordered lifecycle with the Agent's
-/// whole reply as its one text unit.
+/// whole reply as its one text unit. The reducer starts before acceptance, so
+/// the sequence opens with the submitted stage every parser reports.
 #[test]
 fn a_completed_turn_reduces_to_the_shared_transition_vocabulary() {
     let transitions = parser::completed_transitions("synthetic reply");
     assert_eq!(
         transitions,
         vec![
-            Transition::Stage(LifecycleStage::Accepted),
-            Transition::Stage(LifecycleStage::Processing),
-            Transition::Stage(LifecycleStage::Responding),
+            Transition::Lifecycle(LifecycleStage::Submitted),
+            Transition::Lifecycle(LifecycleStage::Accepted),
+            Transition::Lifecycle(LifecycleStage::Processing),
+            Transition::Lifecycle(LifecycleStage::Responding),
             Transition::Text {
                 unit_id: "kimi-code:reply".to_owned(),
                 text: "synthetic reply".to_owned(),
             },
-            Transition::Stage(LifecycleStage::Completed),
+            Transition::Lifecycle(LifecycleStage::Completed),
         ]
     );
 }
 
-/// One failed turn reduces to acceptance followed by the shared failure, and
-/// the failure reports the protocol's own code, stage and redacted message.
+/// One failed turn reduces to the open stages followed by the shared failure,
+/// and the failure reports the protocol's own code, stage and redacted message.
 #[test]
 fn a_failed_turn_reduces_to_acceptance_and_the_shared_failure() {
     let transitions = parser::failed_transitions("kimi_code_acp_working_directory_invalid", "params", "redacted");
-    assert_eq!(transitions.len(), 2);
-    assert_eq!(transitions[0], Transition::Stage(LifecycleStage::Accepted));
-    match &transitions[1] {
-        Transition::Failure(failure) => {
-            assert_eq!(failure.code, "kimi_code_acp_working_directory_invalid");
-            assert_eq!(failure.stage, "params");
-            assert_eq!(failure.message, "redacted");
+    assert_eq!(
+        transitions.len(),
+        3,
+        "an unaccepted turn reports the open stages and one failure: {transitions:?}"
+    );
+    assert_eq!(transitions[0], Transition::Lifecycle(LifecycleStage::Submitted));
+    match transitions.last().expect("a reported failure") {
+        Transition::Failed {
+            code,
+            stage,
+            message,
+        } => {
+            assert_eq!(code, "kimi_code_acp_working_directory_invalid");
+            assert_eq!(stage, "params");
+            assert_eq!(message, "redacted");
         }
         other => panic!("a failed turn reports the shared failure, got {other:?}"),
     }
@@ -182,11 +192,35 @@ fn a_malformed_session_update_is_refused() {
 #[test]
 fn an_initialize_response_is_read_from_its_own_line() {
     let other = br#"{"jsonrpc":"2.0","id":2,"result":{"protocolVersion":1,"agentCapabilities":{}}}"#;
-    assert_eq!(parser::initialize_response(other, 1).expect("decodes"), None);
-    let malformed = br#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1}}"#;
-    assert!(parser::initialize_response(malformed, 1).is_err());
-    assert!(parser::initialize_response(b"", 1).is_err());
-    assert_eq!(acp::AcpError::JsonLineInvalid, acp::AcpError::JsonLineInvalid);
+    assert_eq!(
+        parser::initialize_response(other, 1).expect("decodes"),
+        None,
+        "a response to another request is not this Agent's initialize answer"
+    );
+
+    let answering = br#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true},"authMethods":[]}}"#;
+    let response = parser::initialize_response(answering, 1)
+        .expect("decodes")
+        .expect("the answering line is read");
+    assert_eq!(response.protocol_version, 1);
+    assert!(response.capabilities.load_session);
+
+    for refused in [
+        // A protocol generation this profile does not publish.
+        br#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":99}}"#.as_slice(),
+        // A result that is not the object the envelope requires.
+        br#"{"jsonrpc":"2.0","id":1,"result":[]}"#.as_slice(),
+        // A capability value of the wrong shape.
+        br#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"authMethods":{}}}"#.as_slice(),
+        b"".as_slice(),
+    ] {
+        assert!(
+            parser::initialize_response(refused, 1).is_err(),
+            "an unusable initialize answer must be refused: {}",
+            String::from_utf8_lossy(refused)
+        );
+    }
+    assert_eq!(acp::AcpError::ResultInvalid, acp::AcpError::ResultInvalid);
 }
 
 /// The execution port is fail-closed until its host installs it: a package
