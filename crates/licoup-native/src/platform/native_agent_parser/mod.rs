@@ -9,14 +9,15 @@
 //! lifecycle machine. None of that is here any more, and none of it is
 //! duplicated here.
 //!
-//! What is here is one Agent each. `adapters` holds the thirteen parsers that
-//! classify one Agent's vendor frames and the `REGISTRATIONS` list that names
-//! their declarations; `replay` holds the arm that drives each of them from a
-//! recorded transcript and the corpus checks that belong to the family; and
-//! `tests` holds the family's own claims. Each per-Agent subtree and its arm
-//! move to that Agent's crate (`licoup-agent-<agent>`); this root and the
-//! composition are what remain, because they are what names thirteen parsers
-//! and, later, thirteen crates.
+//! What is here is one Agent each. `adapters` holds the thirteen parser
+//! entries this host composes — eleven declared here and two, Codex and Pi,
+//! named from the package that owns their protocol — plus the `REGISTRATIONS`
+//! list that names their declarations; `replay` holds the arm that drives each
+//! of them from a recorded transcript and the corpus checks that belong to the
+//! family; and `tests` holds the family's own claims. Each per-Agent subtree
+//! and its arm move to that Agent's crate (`licoup-agent-<agent>`); this root
+//! and the composition are what remain, because they are what names thirteen
+//! parsers and, later, thirteen crates.
 //!
 //! The SDK's two protocol-agnostic `port::ParserRegistration` queries are
 //! answered in `adapters::REGISTRATIONS` by the Agents whose facts a reader
