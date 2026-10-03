@@ -600,28 +600,32 @@ test("runtime adapter modules retain leaf-owned inputs and exact command filters
 
 test("Codex app-server leaves retain exact narrow regression ownership", async () => {
   const sourceBundleId = "regression.codex-app-server-source-bundle";
+  const packageModuleId = "rust.core.agent-codex-package";
+  // The process half is still composed by the client; the wire half moved into
+  // the Codex adapter package. Both keep a precise narrow owner, and a source
+  // that moved selects the package's own module as well.
   const selections = new Map([
-    ["crates/licoup-native/src/platform/codex_app_server/config.rs",
-      "rust.platform.codex-app-server.config"],
-    ["crates/licoup-native/src/platform/native_agent_parser/adapters/codex/session.rs",
-      "rust.platform.codex-app-server.session"],
-    ["crates/licoup-native/src/platform/native_agent_parser/adapters/codex/events.rs",
-      "rust.platform.codex-app-server.events"],
-    ["crates/licoup-native/src/platform/native_agent_parser/adapters/codex/control.rs",
-      "rust.platform.codex-app-server.control"],
     ["crates/licoup-native/src/platform/codex_app_server/io.rs",
-      "rust.platform.codex-app-server.io"],
+      ["rust.platform.codex-app-server.io"]],
     ["crates/licoup-native/src/platform/codex_app_server/launch.rs",
-      "rust.platform.codex-app-server.launch"],
+      ["rust.platform.codex-app-server.launch"]],
     ["crates/licoup-native/src/platform/codex_app_server/supervision.rs",
-      "rust.platform.codex-app-server.transport"],
+      ["rust.platform.codex-app-server.transport"]],
     ["crates/licoup-native/src/platform/codex_app_server/transport.rs",
-      "rust.platform.codex-app-server.transport"],
+      ["rust.platform.codex-app-server.transport"]],
+    ["crates/licoup-agent-codex/src/app_server/config.rs",
+      [packageModuleId, "rust.platform.codex-app-server.config"]],
+    ["crates/licoup-agent-codex/src/parser/session.rs",
+      [packageModuleId, "rust.platform.codex-app-server.session"]],
+    ["crates/licoup-agent-codex/src/parser/events.rs",
+      [packageModuleId, "rust.platform.codex-app-server.events"]],
+    ["crates/licoup-agent-codex/src/parser/control.rs",
+      [packageModuleId, "rust.platform.codex-app-server.control"]],
   ]);
-  for (const [source, moduleId] of selections) {
+  for (const [source, moduleIds] of selections) {
     assert.deepEqual(ids(selectModulesForChangedPaths([
       source,
-    ])), [sourceBundleId, "architecture.client-boundaries", moduleId]);
+    ])), [sourceBundleId, "architecture.client-boundaries", ...moduleIds]);
   }
 
   const filters = new Map([
@@ -649,23 +653,38 @@ test("Codex app-server leaves retain exact narrow regression ownership", async (
     assert.equal(module.command.args.at(-1), filter);
   }
 
-  const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
-  const splitSources = await sourceFiles(
-    "crates/licoup-native/src/platform/codex_app_server",
-    ".rs",
-  );
+  // Every source that carries the Codex protocol or its process has a precise
+  // narrow owner rather than the package's whole-directory fallback.
+  const narrowInputs = new Set(modules.flatMap((module) => module.inputs));
   for (const relativePath of [
     "crates/licoup-native/src/platform/codex_app_server.rs",
-    ...splitSources,
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/codex.rs",
     ...await sourceFiles(
-      "crates/licoup-native/src/platform/native_agent_parser/adapters/codex",
+      "crates/licoup-native/src/platform/codex_app_server",
       ".rs",
     ),
+    "crates/licoup-agent-codex/src/app_server.rs",
+    ...await sourceFiles("crates/licoup-agent-codex/src/app_server", ".rs"),
+    "crates/licoup-agent-codex/src/parser.rs",
+    ...await sourceFiles("crates/licoup-agent-codex/src/parser", ".rs"),
   ]) {
-    assert.equal(ownedInputs.has(relativePath), true,
+    assert.equal(narrowInputs.has(relativePath), true,
       `Codex app-server source must have a precise regression owner: ${relativePath}`);
   }
+  // Every other file the package ships is owned by the package's own module,
+  // which owns the crate tree as a whole.
+  const owns = (relativePath) => CLIENT_MODULE_CATALOG.some((module) =>
+    module.inputs.some((input) => input.endsWith("/**")
+      ? relativePath.startsWith(input.slice(0, -2))
+      : input === relativePath));
+  const packageSources = await sourceFiles("crates/licoup-agent-codex/src", ".rs");
+  assert.ok(packageSources.length > 0);
+  for (const relativePath of packageSources) {
+    assert.equal(owns(relativePath), true,
+      `Codex package source must have a regression owner: ${relativePath}`);
+  }
+  const packageModule = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === packageModuleId);
+  assert.deepEqual(packageModule.inputs, ["crates/licoup-agent-codex/**"]);
 
   const sourceBundle = CLIENT_MODULE_CATALOG.find((candidate) =>
     candidate.id === sourceBundleId);

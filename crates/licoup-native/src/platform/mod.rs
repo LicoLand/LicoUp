@@ -17,7 +17,6 @@ pub mod authorized_secure_record;
 pub(crate) mod badtower_station;
 mod claude_code_driver;
 mod codex_app_server;
-pub(crate) mod codex_runtime_observation;
 pub(crate) mod conversation_lane;
 mod copilot_driver;
 mod cursor_driver;
@@ -87,6 +86,22 @@ pub use turn_event_emit::{
     StreamSinkGuard, clear_stream_sink, emit_agent_message_chunk, emit_agent_message_completed,
     emit_agent_processing, emit_turn_event, install_stdout_ndjson_sink, install_stream_sink,
 };
+
+/// This host's answer for the Codex adapter package's turn-event port.
+///
+/// The package owns *what* one Codex turn emits; this host owns *where* it goes,
+/// because the host owns the consumer. The answer is this host's own emitters
+/// rather than a second sink, so a Codex event and a Cursor event reach the same
+/// reader through the same path.
+pub(crate) fn codex_turn_event_port() -> licoup_agent_codex::port::turn_event::TurnEventPort {
+    licoup_agent_codex::port::turn_event::TurnEventPort {
+        emit_turn_event,
+        emit_agent_message_chunk,
+        emit_agent_message_completed,
+        emit_agent_processing,
+        emit_agent_tool_error: turn_event_emit::emit_agent_tool_error,
+    }
+}
 
 // The bounded process owner moved to `licoup-foundation`. It is re-exported at
 // its former path and former visibility, because the driver engines, the

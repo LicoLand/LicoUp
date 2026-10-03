@@ -675,8 +675,11 @@ export const REGRESSION_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/platform/codex_app_server.rs",
         "crates/licoup-native/src/platform/codex_app_server/**",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/codex.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/codex/**",
+        "crates/licoup-agent-codex/src/parser.rs",
+        "crates/licoup-agent-codex/src/parser/**",
+        "crates/licoup-agent-codex/src/app_server.rs",
+        "crates/licoup-agent-codex/src/app_server/**",
+        "crates/licoup-agent-codex/package/**",
         "tests/contract/client/codex-app-server-source-bundle.test.mjs",
       ],
       command: command(
@@ -1581,6 +1584,8 @@ export const REGRESSION_MODULES = Object.freeze([
         "crates/licoup-agent-adapters/src/**",
         "crates/licoup-agent-adapter-sdk/Cargo.toml",
         "crates/licoup-agent-adapter-sdk/src/**",
+        "crates/licoup-agent-codex/Cargo.toml",
+        "crates/licoup-agent-codex/src/**",
         "crates/licoup-agent-runtime/Cargo.toml",
         "crates/licoup-agent-runtime/src/**",
         "crates/licoup-agent-targets/Cargo.toml",

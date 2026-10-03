@@ -35,6 +35,10 @@ licoup-agent-adapter-sdk = { path = "../licoup-agent-adapter-sdk" }
 # the work-context seam and the protocol engines. This host composes it and
 # answers its ports; the crate never reaches back into the host.
 licoup-agent-drivers = { path = "../licoup-agent-drivers" }
+# The Codex adapter package. Composition names it for its parser
+# registration and its turn-event port while the extension host's binary
+# route is completed by the agent-execution port.
+licoup-agent-codex = { path = "../licoup-agent-codex" }
 licoup-agent-runtime = { path = "../licoup-agent-runtime" }
 licoup-application = { path = "../licoup-application" }
 licoup-project = { path = "../licoup-project" }

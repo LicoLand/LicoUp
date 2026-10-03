@@ -1,5 +1,5 @@
 use super::CodexParser;
-use crate::platform::codex_app_server::model::ProtocolEffect;
+use crate::app_server::model::ProtocolEffect;
 use serde_json::{Value, json};
 
 impl CodexParser {

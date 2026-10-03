@@ -16,6 +16,9 @@ export const GATEWAY_MANIFEST = "crates/licoup-gateway/Cargo.toml";
 export const CLIENT_STATE_MANIFEST = "crates/licoup-client-state/Cargo.toml";
 export const AGENT_TARGETS_MANIFEST = "crates/licoup-agent-targets/Cargo.toml";
 export const MODEL_CATALOG_MANIFEST = "crates/licoup-model-catalog/Cargo.toml";
+// An Agent adapter package is its own crate and program, so the modules that
+// own its protocol and its document run against its manifest rather than the host.
+export const AGENT_CODEX_MANIFEST = "crates/licoup-agent-codex/Cargo.toml";
 
 export const FLUTTER_COMPOSITION_INPUTS = Object.freeze([
   "apps/desktop/analysis_options.yaml",
@@ -222,6 +225,24 @@ export function rustAdapterSdkLayer(filter, harnessArgs = []) {
       "test",
       "--manifest-path",
       ADAPTER_SDK_MANIFEST,
+      "--lib",
+      filter,
+      ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),
+    ],
+    10 * 60_000,
+  );
+}
+
+/// One module of the Codex adapter package's library. The package is its own
+/// crate and program, so its leaves run against its own manifest rather than
+/// against the host that composes it.
+export function rustAgentPackageLayer(filter, harnessArgs = []) {
+  return command(
+    "cargo",
+    [
+      "test",
+      "--manifest-path",
+      AGENT_CODEX_MANIFEST,
       "--lib",
       filter,
       ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),

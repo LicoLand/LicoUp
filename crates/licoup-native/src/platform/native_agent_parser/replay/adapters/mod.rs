@@ -1,8 +1,11 @@
 //! One replay arm per Agent parser this host composes.
 //!
 //! Each arm is the only place that knows how to construct that Agent's real
-//! parser. Two Agents keep their protocol state machine outside this module
-//! tree (`acp_driver_runtime` for copilot and kimi-code, `openclaw_driver` for
+//! parser. An Agent whose parser has moved into its own package also moved the
+//! arm that drives it, because an arm is only meaningful beside the parser it
+//! constructs; this composition reaches it through the SDK's parser-set port.
+//! Two Agents keep their protocol state machine outside this module tree
+//! (`acp_driver_runtime` for copilot and kimi-code, `openclaw_driver` for
 //! openclaw), so those arms live next to the code they replay.
 //!
 //! The arms are `pub(in crate::platform)` to this module's parent — it is the
@@ -10,7 +13,6 @@
 
 mod antigravity;
 mod claude_code;
-mod codex;
 mod cursor;
 mod deepseek_harness;
 mod hermes;
@@ -31,7 +33,7 @@ pub(in crate::platform) fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameR
     Ok(match adapter_id {
         "antigravity" => Box::new(antigravity::Replay::new()?),
         "claude-code" => Box::new(claude_code::Replay::new()?),
-        "codex" => Box::new(codex::Replay::new()?),
+        "codex" => licoup_agent_codex::replay::replay_arm(adapter_id)?,
         "copilot" | "kimi-code" => Box::new(acp_driver_runtime::replay::Replay::new(adapter_id)?),
         "cursor" => Box::new(cursor::Replay::new()?),
         "deepseek-harness" => Box::new(deepseek_harness::Replay::new()?),

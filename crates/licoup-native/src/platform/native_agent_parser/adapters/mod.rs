@@ -18,9 +18,14 @@ pub(in crate::platform) use licoup_agent_adapter_sdk::{
     LifecycleStage, Transition, TransitionReducer,
 };
 
+// One Agent's parser has moved: Codex's vendor protocol now lives in its own
+// package (`licoup-agent-codex`), parsed once below this port, and this
+// composition names the package rather than keeping a second copy. The
+// remaining twelve move the same way, one package each.
+pub(in crate::platform) use licoup_agent_codex::parser as codex;
+
 pub(in crate::platform) mod antigravity;
 pub(in crate::platform) mod claude_code;
-pub(in crate::platform) mod codex;
 pub(in crate::platform) mod copilot;
 pub(in crate::platform) mod cursor;
 pub(in crate::platform) mod deepseek_harness;
@@ -46,7 +51,10 @@ use licoup_agent_adapter_sdk::port::{AdapterParserSet, ParserRegistration};
 pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     ParserRegistration::unanswered(antigravity::CONTRACT),
     ParserRegistration::unanswered(claude_code::CONTRACT),
-    ParserRegistration::unanswered(codex::CONTRACT),
+    // The Codex package answers both protocol-agnostic queries from its own
+    // recorded evidence, so this entry is the package's own registration rather
+    // than a fail-closed placeholder.
+    licoup_agent_codex::registration::REGISTRATION,
     ParserRegistration::unanswered(copilot::CONTRACT),
     ParserRegistration::unanswered(cursor::CONTRACT),
     ParserRegistration::unanswered(hermes::CONTRACT),
