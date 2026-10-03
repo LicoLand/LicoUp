@@ -2,7 +2,34 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:presentation_contract/presentation_contract.dart';
 import 'package:presentation_flutter/presentation_flutter.dart';
+import 'package:presentation_runtime/presentation_runtime.dart';
+
+import 'support/prepared_markdown.dart';
+
+/// The prepared value each message body presents, built through the runtime's
+/// own decomposition and region parse.
+///
+/// One value per (message, text) revision is reused across rebuilds, the way an
+/// installed prepared value is: growing a message body produces the next
+/// revision instead of re-preparing the same one.
+final Map<String, PreparedValue<MessageMarkdownBlock>> _preparedByRevision =
+    <String, PreparedValue<MessageMarkdownBlock>>{};
+
+PreparedValue<MessageMarkdownBlock> preparedBody(String id, String text) {
+  final key = '$id@$text';
+  final cached = _preparedByRevision[key];
+  if (cached != null) return cached;
+  if (_preparedByRevision.length >= 32) _preparedByRevision.clear();
+  final prepared = preparedMarkdownDocument(
+    text,
+    message: id,
+    version: text.length,
+  );
+  _preparedByRevision[key] = prepared;
+  return prepared;
+}
 
 /// One message entity in the integration assembly.
 final class TestMessage {
@@ -10,13 +37,11 @@ final class TestMessage {
     required this.id,
     required this.author,
     required this.text,
-    this.isStreaming = false,
   });
 
   final String id;
   final String author;
   final String text;
-  final bool isStreaming;
 }
 
 class ConversationNotifier extends Notifier<List<TestMessage>> {
@@ -48,7 +73,6 @@ class ConversationNotifier extends Notifier<List<TestMessage>> {
             id: m.id,
             author: m.author,
             text: '${m.text}$additionalTokens',
-            isStreaming: true,
           )
         else
           m,
@@ -143,8 +167,10 @@ void main() {
                                       ),
                                       const SizedBox(height: 4),
                                       StreamingText(
-                                        document: msg.text,
-                                        isStreaming: msg.isStreaming,
+                                        prepared: preparedBody(
+                                          msg.id,
+                                          msg.text,
+                                        ),
                                       ),
                                     ],
                                   ),
