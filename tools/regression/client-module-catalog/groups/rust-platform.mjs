@@ -204,8 +204,11 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/extension_packages/maintenance.rs",
         "crates/licoup-native/src/platform/extension_packages/registration.rs",
         "crates/licoup-native/src/platform/package_registration_release.rs",
-        "crates/licoup-native/tests/package_lifecycle/**",
       ],
+      // The package_lifecycle test binary belongs to rust.platform.extension-packages:
+      // two modules declaring the same target in `inputs` and the same command is
+      // double ownership, which platform-driver-ownership.mjs rejects. This module
+      // owns the new production surface, not the test binary.
       command: rustIntegrationTest("package_lifecycle"),
     }),
   defineModule({
