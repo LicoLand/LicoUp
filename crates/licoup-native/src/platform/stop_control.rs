@@ -16,6 +16,7 @@
 
 use serde_json::{Map, Value, json};
 use std::path::Path;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use super::client_state::ActivityLog;
@@ -39,6 +40,88 @@ const FORCE_STOP_OBSERVATION_BOUND: Duration = Duration::from_secs(5);
 const MAX_REASON_BYTES: usize = 64;
 const MAX_SCOPE_ID_BYTES: usize = 64;
 const MAX_AFFECTED_TASKS: usize = 16;
+
+/// Answers one Subagent MCP dispatch-claim stop for this process.
+///
+/// The claim owner is a domain owner, so the stop control asks this port
+/// instead of reaching into the domain layer: the composition above installs
+/// the answer, and the port reports the claim owner's own result — the
+/// disposition on success, or its stable error code.
+pub type StopSubagentClaim = fn(
+    conversation_id: &str,
+    caller_membership_id: &str,
+    target_membership_id: &str,
+) -> Result<Value, &'static str>;
+
+/// The fail-closed answer: a process that installed no claim dispatcher
+/// refuses the stop instead of reporting it as requested or acknowledged.
+fn no_subagent_claim_stop(
+    _conversation_id: &str,
+    _caller_membership_id: &str,
+    _target_membership_id: &str,
+) -> Result<Value, &'static str> {
+    Err("subagent_claim_stop_unavailable")
+}
+
+/// One process's installed claim-stop dispatcher.
+///
+/// The production program has exactly one; tests build their own so the
+/// fail-closed default and an installed answer are both observable without
+/// depending on test order.
+pub struct SubagentClaimStopPort {
+    dispatcher: OnceLock<StopSubagentClaim>,
+}
+
+impl SubagentClaimStopPort {
+    pub const fn new() -> Self {
+        Self {
+            dispatcher: OnceLock::new(),
+        }
+    }
+
+    /// Install the composition's dispatcher. One dispatcher per port: a second
+    /// installation is refused rather than silently replacing the first.
+    pub fn install(&self, dispatcher: StopSubagentClaim) -> Result<(), &'static str> {
+        self.dispatcher
+            .set(dispatcher)
+            .map_err(|_| "subagent claim stop is already installed")
+    }
+
+    /// The installed dispatcher's answer, or the fail-closed one.
+    pub fn stop(
+        &self,
+        conversation_id: &str,
+        caller_membership_id: &str,
+        target_membership_id: &str,
+    ) -> Result<Value, &'static str> {
+        self.dispatcher
+            .get()
+            .copied()
+            .unwrap_or(no_subagent_claim_stop)(
+            conversation_id,
+            caller_membership_id,
+            target_membership_id,
+        )
+    }
+}
+
+impl Default for SubagentClaimStopPort {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+static SUBAGENT_CLAIM_STOP: SubagentClaimStopPort = SubagentClaimStopPort::new();
+
+/// The process-wide port the stop control reads.
+pub fn subagent_claim_stop_port() -> &'static SubagentClaimStopPort {
+    &SUBAGENT_CLAIM_STOP
+}
+
+/// Install the composition's claim-stop dispatcher for this process.
+pub fn install_subagent_claim_stop(dispatcher: StopSubagentClaim) -> Result<(), &'static str> {
+    SUBAGENT_CLAIM_STOP.install(dispatcher)
+}
 
 /// One current work owner that can be stopped manually.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -413,7 +496,7 @@ fn stop_subagent_claim(target: &StopTarget) -> OwnerStopDisposition {
     let Some(target_membership_id) = target.membership_id.as_deref() else {
         return OwnerStopDisposition::Unavailable;
     };
-    match crate::domain::subagents::stop_active_claim(
+    match subagent_claim_stop_port().stop(
         conversation_id,
         caller_membership_id,
         target_membership_id,
@@ -422,7 +505,7 @@ fn stop_subagent_claim(target: &StopTarget) -> OwnerStopDisposition {
             Some("cancelled") => OwnerStopDisposition::Acknowledged,
             _ => OwnerStopDisposition::Requested,
         },
-        Err(error) => match error.code {
+        Err(code) => match code {
             "subagent_cancel_unavailable" => OwnerStopDisposition::NotActive,
             _ => OwnerStopDisposition::Unavailable,
         },
@@ -1223,6 +1306,36 @@ mod tests {
                 .as_str()
                 .is_some_and(|id| id.starts_with("stop-"))),
             "every recorded stop event carries the opaque correlation id"
+        );
+    }
+
+    #[test]
+    fn an_unanswered_claim_stop_port_refuses_instead_of_reporting_a_stop() {
+        let port = SubagentClaimStopPort::new();
+        assert_eq!(
+            port.stop("conversation:one", "caller:one", "member:one"),
+            Err("subagent_claim_stop_unavailable"),
+        );
+    }
+
+    #[test]
+    fn an_installed_claim_dispatcher_is_the_only_answer_the_port_gives() {
+        fn cancelled(_: &str, _: &str, _: &str) -> Result<Value, &'static str> {
+            Ok(json!({"state": "cancelled"}))
+        }
+        fn unavailable(_: &str, _: &str, _: &str) -> Result<Value, &'static str> {
+            Err("subagent_cancel_unavailable")
+        }
+        let port = SubagentClaimStopPort::new();
+        port.install(cancelled).unwrap();
+        assert_eq!(
+            port.stop("conversation:one", "caller:one", "member:one"),
+            Ok(json!({"state": "cancelled"})),
+        );
+        assert!(port.install(unavailable).is_err());
+        assert_eq!(
+            port.stop("conversation:one", "caller:one", "member:one"),
+            Ok(json!({"state": "cancelled"})),
         );
     }
 }
