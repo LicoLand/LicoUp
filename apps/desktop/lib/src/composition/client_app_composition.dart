@@ -2,7 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter/foundation.dart';
+import 'package:presentation_runtime/presentation_runtime.dart'
+    show presentationRuntimeProvider;
 import 'package:riverpod/misc.dart' show Override;
+import 'package:riverpod/riverpod.dart' show Ref;
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
@@ -39,6 +42,7 @@ import 'package:licoup/src/presentation/agent_hub/agent_hub_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/chrome/chrome_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
+import 'package:licoup/src/presentation/conversation/conversation_markdown_port.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
 import 'package:licoup/src/presentation/models/models_binding.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
@@ -54,6 +58,7 @@ import 'package:licoup/src/platform/presentation/macos_reduce_motion_channel.dar
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:licoup/src/platform/native_client/data_home_executor.dart';
 import 'package:licoup/src/projections/environment/environment_projection_source.dart';
+import 'package:licoup/src/projections/conversation/conversation_markdown_preparation.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
 import 'package:licoup/src/presentation/targets/targets_binding.dart';
 import 'package:licoup/src/projections/shell/shell_effect_producer.dart';
@@ -388,11 +393,25 @@ final class ClientAppComposition {
   /// presentation sources. The app root wraps its tree in a `ProviderScope`
   /// with these; feature tests install their own synthetic overrides instead.
   List<Override> get presentationOverrides => <Override>[
+    conversationMarkdownPortProvider.overrideWith(_bindConversationMarkdown),
     ..._settings.providerOverrides,
     ..._pluginManagement.providerOverrides,
     ..._skillHub.providerOverrides,
     ..._mobileRelay.providerOverrides,
   ];
+
+  /// Binds the conversation markdown port to the container's runtime.
+  ///
+  /// One preparation owner exists per presentation container and lives behind
+  /// the port, so a view publishes narrow input and reads prepared state
+  /// without owning a runtime, a worker pool, or a cache. The owner is disposed
+  /// with the container, which stops its worker isolates with the scope.
+  ConversationMarkdownPort _bindConversationMarkdown(Ref ref) {
+    final runtime = ref.watch(presentationRuntimeProvider);
+    final preparation = ConversationMarkdownPreparation.spawn(runtime: runtime);
+    ref.onDispose(preparation.dispose);
+    return preparation;
+  }
 
   Future<void> initialize() => _controller.initialize();
 
