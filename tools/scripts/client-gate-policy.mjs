@@ -7,6 +7,7 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:gate:topology",
     "client:gate:self-test",
     "repo:client-boundary",
+    "repo:identity:self-test",
     "repo:local-info-hygiene:self-test",
     "repo:local-info-hygiene",
     "repo:workspace-cache-boundary",

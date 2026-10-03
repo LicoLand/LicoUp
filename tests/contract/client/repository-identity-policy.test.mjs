@@ -13,6 +13,8 @@ import {
   canonicalGitHubEmail,
   isAgentIdentity,
   isMergeInProgress,
+  managedPolicyDrift,
+  managedPolicyPaths,
   outgoingCommits,
   outgoingObjectChecks,
   parseRawDiffEntries,
@@ -592,4 +594,46 @@ test("release remains the required default branch", () => {
   assert.doesNotMatch(source, /default_branch=/u);
   assert.doesNotMatch(source, /--default-branch/u);
   assert.doesNotMatch(source, /["']PATCH["']/u);
+});
+
+// The managed-policy check compares each file with the committed revision at HEAD. It must
+// never compare with a digest recorded when the policy was installed: that made the gate
+// satisfiable only while the checkout stayed on the install-time revision, so a branch
+// switch, merge, rebase or pull left the checkout unable to commit anything at all.
+// These cases are the guard against reintroducing that behaviour.
+test("managed policy drift is read from HEAD, so advancing the revision is not drift", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "licoup-identity-drift-"));
+  try {
+    for (const relativePath of managedPolicyPaths) {
+      const absolute = path.join(root, relativePath);
+      mkdirSync(path.dirname(absolute), { recursive: true });
+      writeFileSync(absolute, "policy revision one\n", { mode: 0o755 });
+    }
+    const git = (...args) => execFileSync("git", args, { cwd: root, stdio: "pipe" });
+    git("init", "-q");
+    git("config", "user.name", "policy-fixture");
+    git("config", "user.email", "policy-fixture@example.invalid");
+    git("add", "-A");
+    git("commit", "-q", "-m", "policy revision one");
+    assert.deepEqual(managedPolicyDrift(root), []);
+
+    // A commit that changes a managed file is a new revision, not local drift.
+    for (const relativePath of managedPolicyPaths) {
+      writeFileSync(path.join(root, relativePath), "policy revision two\n", { mode: 0o755 });
+    }
+    git("add", "-A");
+    git("commit", "-q", "-m", "policy revision two");
+    assert.deepEqual(managedPolicyDrift(root), []);
+
+    // Only an uncommitted local edit to the gate's own tooling is reported.
+    writeFileSync(path.join(root, managedPolicyPaths[0]), "locally edited\n", { mode: 0o755 });
+    assert.deepEqual(managedPolicyDrift(root), [managedPolicyPaths[0]]);
+
+    // A removed or replaced policy file is reported as well.
+    rmSync(path.join(root, managedPolicyPaths[0]));
+    writeFileSync(path.join(root, managedPolicyPaths[1]), "another local edit\n", { mode: 0o755 });
+    assert.deepEqual(managedPolicyDrift(root), [managedPolicyPaths[0], managedPolicyPaths[1]].sort());
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { execFileSync, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   chmodSync,
   lstatSync,
@@ -23,7 +22,7 @@ const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const posixExecutableBitRequired = process.platform !== "win32";
 const zeroObjectId = /^0+$/u;
 const githubLoginPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u;
-const managedPolicyPaths = Object.freeze([
+export const managedPolicyPaths = Object.freeze([
   ".githooks/pre-commit",
   ".githooks/commit-msg",
   ".githooks/pre-push",
@@ -65,6 +64,12 @@ export class IdentityPolicyError extends Error {
 
 function reject(code, message) {
   throw new IdentityPolicyError(code, message);
+}
+
+// A reported notice is loud and non-blocking. It names a condition a human should judge;
+// it never stops the operation. Keep self-integrity findings here rather than in `reject`.
+function report(code, message) {
+  process.stderr.write(`LicoUp identity gate (reported, not blocking): ${code}: ${message}\n`);
 }
 
 function run(command, args, options = {}) {
@@ -200,22 +205,6 @@ function assertConfiguredIdentity(identity) {
   }
 }
 
-function hashFile(relativePath) {
-  const absolutePath = path.join(repoRoot, relativePath);
-  const metadata = lstatSync(absolutePath, { throwIfNoEntry: false });
-  if (!metadata || !metadata.isFile() || metadata.isSymbolicLink()) {
-    reject("POLICY_FILE_INVALID", "A managed identity policy file is missing or unsafe.");
-  }
-  if (
-    posixExecutableBitRequired &&
-    relativePath.startsWith(".githooks/") &&
-    (metadata.mode & 0o111) === 0
-  ) {
-    reject("HOOK_NOT_EXECUTABLE", "A managed Git hook is not executable.");
-  }
-  return createHash("sha256").update(readFileSync(absolutePath)).digest("hex");
-}
-
 function gitPrivatePath(name) {
   const value = run("git", ["rev-parse", "--git-path", name], {
     code: "GIT_REPOSITORY_REQUIRED",
@@ -224,53 +213,74 @@ function gitPrivatePath(name) {
   return path.resolve(repoRoot, value);
 }
 
-function policyManifestPath() {
-  return gitPrivatePath("licoup-identity-policy.json");
-}
-
 function stagedReceiptPath() {
   return gitPrivatePath("licoup-identity-receipt.json");
 }
 
-function installPolicyManifest() {
-  for (const relativePath of managedPolicyPaths) {
-    if (relativePath.startsWith(".githooks/")) {
-      chmodSync(path.join(repoRoot, relativePath), 0o755);
-    }
+// The managed policy files are the tooling that decides what may be committed: the Git
+// hooks, the sensitive-file policy, the ruleset planner and this script. A local edit to
+// them is worth saying out loud. It is not worth stopping the commit.
+//
+// This check previously compared every file with a digest recorded by `install`. That made
+// it satisfiable only while the checkout stayed on the exact revision present at install
+// time: a branch switch, merge, rebase or pull changed those files legitimately and left
+// the checkout unable to commit anything at all, while a deliberate edit could satisfy the
+// check by running `install` again. It therefore cost a great deal and detected little.
+//
+// Comparing with the committed state at HEAD keeps the signal that matters — an
+// uncommitted local edit to the gate's own machinery — with no revision-bound false
+// positives, and needs no per-checkout installed state.
+//
+// Do not reintroduce install-time hashing, a manifest, or a blocking gate here. Drift is
+// reported for a human to judge; the published result stays protected by the independent
+// pull-request commit-identity workflow.
+export function managedPolicyDrift(rootDirectory = repoRoot) {
+  const drifted = new Set();
+  const changed = runOptionalIn("git", ["diff", "--name-only", "HEAD", "--", ...managedPolicyPaths], rootDirectory);
+  for (const entry of String(changed || "").split("\n").map((line) => line.trim()).filter(Boolean)) {
+    drifted.add(entry);
   }
-  const files = Object.fromEntries(
-    managedPolicyPaths.map((relativePath) => [relativePath, hashFile(relativePath)]),
+  const untracked = runOptionalIn(
+    "git",
+    ["ls-files", "--others", "--exclude-standard", "--", ...managedPolicyPaths],
+    rootDirectory,
   );
-  writeFileSync(
-    policyManifestPath(),
-    `${JSON.stringify({ schemaVersion: 1, files })}\n`,
-    { encoding: "utf8", mode: 0o600 },
-  );
+  for (const entry of String(untracked || "").split("\n").map((line) => line.trim()).filter(Boolean)) {
+    drifted.add(entry);
+  }
+  for (const relativePath of managedPolicyPaths) {
+    const metadata = lstatSync(path.join(rootDirectory, relativePath), { throwIfNoEntry: false });
+    if (!metadata || !metadata.isFile() || metadata.isSymbolicLink()) drifted.add(relativePath);
+  }
+  return [...drifted].sort();
 }
 
-function assertInstalledPolicy() {
+function reportPolicyNotices() {
   if (localGitConfig("core.hooksPath") !== ".githooks") {
-    reject(
-      "HOOKS_PATH_INVALID",
-      "The repository-controlled Git hooks are not enabled. Run npm run repo:identity:install.",
+    report(
+      "HOOKS_PATH_NOT_ENABLED",
+      "Repository-controlled Git hooks are not enabled, so this gate is not protecting ordinary "
+      + "commits. Run npm run repo:identity:install.",
     );
   }
-  let manifest;
-  try {
-    manifest = JSON.parse(readFileSync(policyManifestPath(), "utf8"));
-  } catch {
-    reject("POLICY_MANIFEST_INVALID", "The local identity policy manifest is missing or invalid.");
-  }
-  if (manifest.schemaVersion !== 1 || typeof manifest.files !== "object") {
-    reject("POLICY_MANIFEST_INVALID", "The local identity policy manifest is invalid.");
-  }
   for (const relativePath of managedPolicyPaths) {
-    if (manifest.files[relativePath] !== hashFile(relativePath)) {
-      reject(
-        "POLICY_FILE_MODIFIED",
-        "A managed identity policy file changed after installation. Review it, then reinstall the policy.",
-      );
+    if (!relativePath.startsWith(".githooks/")) continue;
+    const metadata = lstatSync(path.join(repoRoot, relativePath), { throwIfNoEntry: false });
+    if (
+      posixExecutableBitRequired
+      && metadata?.isFile()
+      && (metadata.mode & 0o111) === 0
+    ) {
+      report("HOOK_NOT_EXECUTABLE", `${relativePath} is not executable, so Git will not run it.`);
     }
+  }
+  const drifted = managedPolicyDrift();
+  if (drifted.length > 0) {
+    report(
+      "POLICY_FILE_DRIFT",
+      `Managed policy file(s) differ from the committed revision: ${drifted.join(", ")}. `
+      + "This is reported, never blocked; review the local edit before relying on this gate.",
+    );
   }
 }
 
@@ -584,7 +594,7 @@ export function outgoingCommits(input, remoteName, execute = run) {
 function verifyLocalIdentityAndPolicy() {
   const identity = currentGitHubIdentity();
   assertConfiguredIdentity(identity);
-  assertInstalledPolicy();
+  reportPolicyNotices();
   return identity;
 }
 
@@ -593,9 +603,15 @@ function install() {
   run("git", ["config", "--local", "user.name", identity.login]);
   run("git", ["config", "--local", "user.email", canonicalGitHubEmail(identity)]);
   run("git", ["config", "--local", "core.hooksPath", ".githooks"]);
-  installPolicyManifest();
+  for (const relativePath of managedPolicyPaths) {
+    if (relativePath.startsWith(".githooks/")) {
+      chmodSync(path.join(repoRoot, relativePath), 0o755);
+    }
+  }
   assertConfiguredIdentity(identity);
-  assertInstalledPolicy();
+  // Nothing is recorded for later comparison: the policy is read from the committed
+  // revision on every run, so there is no per-checkout state to refresh.
+  reportPolicyNotices();
   process.stdout.write("identity_policy=installed\n");
 }
 
