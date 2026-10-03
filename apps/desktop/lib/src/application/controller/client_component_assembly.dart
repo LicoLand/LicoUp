@@ -14,7 +14,7 @@ import 'package:licoup/src/application/controller/assembly/client_settings_compo
 import 'package:licoup/src/application/controller/assembly/client_skill_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_target_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_usage_component_assembly.dart';
-import 'package:licoup/src/application/controller/appearance_preference_owner.dart';
+import 'package:licoup/src/application/features/settings/controller/appearance_preference_owner.dart';
 import 'package:licoup/src/application/controller/functional_status_runtime.dart';
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:licoup/src/application/controller/locale_preference_owner.dart';

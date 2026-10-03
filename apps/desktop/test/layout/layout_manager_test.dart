@@ -4,6 +4,7 @@ import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -544,6 +545,16 @@ final class FakePreferencesRepository
         preferences = preferences.copyWith(loadingEffectId: id);
         return preferences;
       });
+
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) => _enqueue(() async {
+    preferences = preferences.withResourceSelection(kind, selection);
+    return preferences;
+  });
 
   @override
   Future<PresentationPreferences> setAppearancePreset(String id) =>

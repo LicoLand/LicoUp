@@ -15,7 +15,7 @@ import 'package:licoup/src/application/controller/client_maintenance_facade.dart
 import 'package:licoup/src/application/controller/client_mobile_relay_facade.dart';
 import 'package:licoup/src/application/controller/client_navigation_facade.dart';
 import 'package:licoup/src/application/controller/client_routing_facade.dart';
-import 'package:licoup/src/application/controller/appearance_preference_owner.dart';
+import 'package:licoup/src/application/features/settings/controller/appearance_preference_owner.dart';
 import 'package:licoup/src/application/controller/functional_status_runtime.dart';
 import 'package:licoup/src/application/controller/locale_preference_owner.dart';
 import 'package:licoup/src/application/controller/client_skill_hub_facade.dart';
@@ -91,7 +91,7 @@ import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:licoup/src/platform/process/client_process_lifecycle.dart';
 import 'package:licoup/src/platform/presentation/client_current_view_store.dart';
-import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
+import 'package:licoup/src/platform/presentation/file_presentation_preferences_repository.dart';
 import 'package:licoup/src/platform/runtime_platform_bridge.dart';
 import 'package:licoup/src/platform/secure_mesh/secure_mesh_capability_service.dart';
 import 'package:licoup/src/platform/skill_hub/skill_hub_preferences_store.dart';

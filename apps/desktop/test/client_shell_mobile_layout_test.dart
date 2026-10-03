@@ -13,6 +13,7 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
@@ -773,6 +774,12 @@ final class _TestPresentationPreferencesRepository
   @override
   Future<PresentationPreferences> setLoadingEffect(String id) async =>
       _preferences = _preferences.copyWith(loadingEffectId: id);
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) async => _preferences = _preferences.withResourceSelection(kind, selection);
 
   @override
   Future<PresentationPreferences> setAppearancePreset(String id) async =>

@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
@@ -53,6 +54,12 @@ final class FilePresentationPreferencesRepository
   @override
   Future<PresentationPreferences> setLoadingEffect(String id) =>
       _update((current) => current.copyWith(loadingEffectId: id));
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) => _update((current) => current.withResourceSelection(kind, selection));
 
   Future<PresentationPreferences> _update(
     PresentationPreferences Function(PresentationPreferences current) mutate,
