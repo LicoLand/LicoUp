@@ -39,6 +39,7 @@ pub(crate) mod remote_acp_history;
 pub(crate) mod remote_hermes_gateway_history;
 pub(crate) mod secure_mesh_mls_store;
 pub(crate) mod skill_invocation_projection;
+pub mod stop_control;
 pub(crate) mod strategy_runtime;
 mod turn_event_emit;
 pub(crate) mod user_presence;

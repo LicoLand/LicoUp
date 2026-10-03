@@ -11,6 +11,10 @@ use super::local_service::{self, http::HttpFailure};
 use super::native_agent_parser::adapters::opencode::{ServeEventFailure, ServeEventParser};
 
 pub use super::local_service::ServeEndpoint;
+
+/// The durable serve owner descriptor used by force-stop control. Control
+/// reads the same state and pid records this owner writes.
+pub(in crate::platform) const CONTROL_SPEC: super::local_service::ServeSpec = policy::SPEC;
 pub const DEFAULT_PORT: u16 = policy::DEFAULT_PORT;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

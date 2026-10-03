@@ -28,6 +28,18 @@ impl ActivityLog {
         }
     }
 
+    /// The private activity log under one explicit portable data root.
+    ///
+    /// A durable owner that already holds its exact root (for example the
+    /// strategy store's run drive) records diagnostics there instead of
+    /// consulting the ambient process data root.
+    pub(crate) fn in_data_root(data_root: &Path) -> Result<Self> {
+        let root = paths::state_root_for_data_home(data_root);
+        ensure_private_dir(&root)?;
+        ensure_private_dir(&paths::activity_root(&root))?;
+        Ok(Self::from_state_root(&root))
+    }
+
     pub fn append(&self, event_type: &str, payload: Value) -> Result<Value> {
         validate_event_type(event_type)?;
         let payload = redaction::redact_activity_payload(payload)?;

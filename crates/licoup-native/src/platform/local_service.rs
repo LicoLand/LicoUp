@@ -20,5 +20,39 @@ pub use endpoint::ServeEndpoint;
 pub(super) use endpoint::{ServeAttachment, ServeModel, ServeModelCatalog, ServeReadiness};
 pub(super) use serve::{ServeErrorCodes, ServeSpec};
 
+/// Every local Agent service whose durable state and pid record this data root
+/// owns. Force-stop control reads the same records the serve owner writes; no
+/// second service registry exists.
+pub(in crate::platform) fn owned_serve_specs() -> &'static [ServeSpec] {
+    &[
+        super::opencode_serve::CONTROL_SPEC,
+        super::kilo_code_serve::CONTROL_SPEC,
+    ]
+}
+
+pub(in crate::platform) fn service_paths(state_dir: &str) -> anyhow::Result<state::ServicePaths> {
+    state::ServicePaths::resolve(state_dir, "serve.pid")
+}
+
+pub(in crate::platform) fn read_service_state(
+    paths: &state::ServicePaths,
+) -> anyhow::Result<serde_json::Value> {
+    state::read_json(&paths.state_path, "local_service_state_invalid")
+}
+
+pub(in crate::platform) fn service_pid(paths: &state::ServicePaths) -> anyhow::Result<Option<u32>> {
+    state::read_pid(&paths.pid_path)
+}
+
+pub(in crate::platform) fn process_alive(pid: u32) -> bool {
+    process::alive(Some(pid))
+}
+
+/// The in-flight turns one local service endpoint is currently running. The
+/// confirmation dialog names these tasks; force stop never guesses them.
+pub(in crate::platform) fn active_endpoint_turns(attach_url: &str) -> Vec<(String, String)> {
+    turn_control::active_turns_for_endpoint(attach_url)
+}
+
 #[cfg(test)]
 mod tests;

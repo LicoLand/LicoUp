@@ -797,6 +797,43 @@ impl PersistentConversationRuntime {
         }))
     }
 
+    /// Cancel one already-open turn by its handle for the workflow drive. The
+    /// handle resolves its own conversation scope, so the drive can never
+    /// retarget another turn, and a turn with no live owner reports that fact
+    /// instead of an assumed stop.
+    pub(crate) fn cancel_opened_turn(
+        &self,
+        handle: &str,
+    ) -> licoup_native::domain::workflow_runtime::TurnCancelDisposition {
+        use licoup_native::domain::workflow_runtime::TurnCancelDisposition;
+        let Some(turn) = self.turn(handle) else {
+            return TurnCancelDisposition::Unavailable;
+        };
+        let settled = turn
+            .state
+            .lock()
+            .map(|state| state.terminal.is_some())
+            .unwrap_or(true);
+        if settled {
+            return TurnCancelDisposition::NoActiveTurn;
+        }
+        let params = json!({
+            "turnHandle": turn.scope.dispatch_id,
+            "conversationId": turn.scope.conversation_id,
+            "agent": turn.agent_id,
+        });
+        match self.request_cancel(&params) {
+            Ok(response) => match response.get("ok").and_then(Value::as_bool) {
+                Some(true) => TurnCancelDisposition::Accepted,
+                _ => match response.get("status").and_then(Value::as_str) {
+                    Some("not_active") => TurnCancelDisposition::NoActiveTurn,
+                    _ => TurnCancelDisposition::Unavailable,
+                },
+            },
+            Err(_) => TurnCancelDisposition::Unavailable,
+        }
+    }
+
     fn attempt_deferred_cancel(turn: &Arc<PersistentTurn>) -> Option<Value> {
         if turn
             .cancel_requested
@@ -2291,6 +2328,113 @@ fn write_persistent_terminal<W: Write>(
     }
 }
 
+/// Stop one admitted task through its actual owner.
+///
+/// The durable workflow run is reached through the same strategy service
+/// composition the RPC strategy arm uses, so the run drive signals its exact
+/// live turn. The persistent conversation turn and the supervised lane session
+/// keep their existing owners; this composition adds no second control path.
+/// A process that hosts neither owner reports the owner as unavailable instead
+/// of fabricating a cancellation.
+pub(super) fn stop_task(
+    params: &Value,
+    runtime: Option<&PersistentConversationRuntime>,
+    portable_data_dir: Option<PathBuf>,
+) -> Value {
+    use licoup_native::domain::workflow_runtime::TurnCancelDisposition;
+    use licoup_native::platform::stop_control::{OwnerStopDisposition, StopTarget, WorkStopPorts};
+    let turn_runtime = runtime.cloned();
+    let turn_port = move |target: &StopTarget| -> OwnerStopDisposition {
+        let Some(runtime) = turn_runtime.as_ref() else {
+            return OwnerStopDisposition::Unavailable;
+        };
+        let Some(handle) = target.turn_handle.as_deref() else {
+            return OwnerStopDisposition::NotActive;
+        };
+        match runtime.cancel_opened_turn(handle) {
+            TurnCancelDisposition::Accepted => OwnerStopDisposition::Acknowledged,
+            TurnCancelDisposition::NoActiveTurn => OwnerStopDisposition::NotActive,
+            TurnCancelDisposition::Unavailable => OwnerStopDisposition::Unavailable,
+        }
+    };
+    let run_runtime = runtime.cloned();
+    let run_port = move |target: &StopTarget| -> OwnerStopDisposition {
+        let Some(run_id) = target.run_id.as_deref() else {
+            return OwnerStopDisposition::NotActive;
+        };
+        // Without the persistent host runtime the drive that owns the live
+        // turn does not exist in this process; no cancellation can reach it.
+        let Some(runtime) = run_runtime.as_ref() else {
+            return OwnerStopDisposition::Unavailable;
+        };
+        let Ok(root) = licoup_foundation::platform::paths::portable_data_dir() else {
+            return OwnerStopDisposition::Unavailable;
+        };
+        let Ok(service) = licoup_native::domain::workflow_runtime::StrategyService::open(&root)
+        else {
+            return OwnerStopDisposition::Unavailable;
+        };
+        let service = service
+            .with_actor_turn_port(strategy_turn_port(
+                runtime.clone(),
+                portable_data_dir.clone(),
+            ))
+            .with_assistant_wake_port(assistant_wake_port(
+                runtime.clone(),
+                portable_data_dir.clone(),
+            ));
+        // An Assistant-owned run cancels through its own action; the durable
+        // admission of that action also requires its route receipt.
+        let assistant_owned = service
+            .store()
+            .run(run_id)
+            .map(|snapshot| {
+                snapshot.assistant_membership_id.is_some() && snapshot.route_receipt.is_some()
+            })
+            .unwrap_or(false);
+        let action = if assistant_owned {
+            "strategy.assistant.workflow.cancel"
+        } else {
+            "strategy.run.cancel"
+        };
+        let request = json!({
+            "action": action,
+            "runId": run_id,
+            "correlationId": target.correlation_id,
+        });
+        match service.execute(request) {
+            Ok(response) if response.get("ok").and_then(Value::as_bool) == Some(true) => {
+                let settled = service
+                    .store()
+                    .run(run_id)
+                    .map(|snapshot| {
+                        !snapshot.commands.values().any(|command| {
+                            matches!(
+                                command.status,
+                                licoup_workflow::CommandStatus::InDoubt
+                                    | licoup_workflow::CommandStatus::CancelRequested
+                            )
+                        })
+                    })
+                    .unwrap_or(false);
+                if settled {
+                    OwnerStopDisposition::Acknowledged
+                } else {
+                    OwnerStopDisposition::Requested
+                }
+            }
+            _ => OwnerStopDisposition::Unavailable,
+        }
+    };
+    let ports = WorkStopPorts {
+        turn: runtime
+            .is_some()
+            .then_some(&turn_port as &(dyn Fn(&StopTarget) -> OwnerStopDisposition + Sync)),
+        run: Some(&run_port as &(dyn Fn(&StopTarget) -> OwnerStopDisposition + Sync)),
+    };
+    licoup_native::platform::stop_control::stop_work(params, &ports)
+}
+
 pub(super) fn has_capacity(workers: &[std::thread::JoinHandle<()>]) -> bool {
     workers.len() < MAX_CONCURRENT_SENDS
 }
@@ -2306,12 +2450,14 @@ pub(super) fn strategy_turn_port(
 ) -> licoup_native::domain::workflow_runtime::ActorTurnPort {
     let open_runtime = runtime.clone();
     let run_runtime = runtime.clone();
+    let cancel_runtime = runtime.clone();
     let run_dir = portable_data_dir;
     licoup_native::domain::workflow_runtime::ActorTurnPort {
         open: Arc::new(move |params| open_runtime.open_admitted_turn(params)),
         run: Arc::new(move |handle, params| {
             run_runtime.run_open_turn(handle, params, run_dir.clone())
         }),
+        cancel: Arc::new(move |handle| cancel_runtime.cancel_opened_turn(handle)),
         abandon: Arc::new(move |handle| runtime.abandon_turn(handle)),
     }
 }

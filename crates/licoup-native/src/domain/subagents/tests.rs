@@ -1280,6 +1280,7 @@ fn unverified_direct_dispatch_records_inbound_claim_and_preserves_native_failure
 fn assistant_execute_replays_settle_a_callback_wait_with_the_master_decision() {
     use crate::domain::workflow_runtime::{
         ActorTurnPort, StrategyPackageImporter, StrategyService, StrategyStore,
+        TurnCancelDisposition,
     };
 
     let root =
@@ -1338,6 +1339,7 @@ fn assistant_execute_replays_settle_a_callback_wait_with_the_master_decision() {
         run: Arc::new(|_, _| {
             Ok(json!({"ok": true, "output": "done", "nativeSessionId": "session-1"}))
         }),
+        cancel: Arc::new(|_| TurnCancelDisposition::NoActiveTurn),
         abandon: Arc::new(|_| {}),
     })
     .with_profile_snapshot_authority(std::sync::Arc::new(Mutex::new(Box::new(ReadyProfiles))));

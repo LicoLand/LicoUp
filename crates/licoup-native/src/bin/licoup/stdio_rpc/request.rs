@@ -101,16 +101,21 @@ pub(crate) fn parse_stdio_rpc_request(
         | ConversationProtocolMethod::AgentConversationActive
         | ConversationProtocolMethod::AgentConversationExecution
         | ConversationProtocolMethod::AgentConversationExecutionDetach
-        | ConversationProtocolMethod::AgentConversationAttach => StdioRpcMethod::Conversation {
-            operation: command
-                .method
-                .as_str()
-                .strip_prefix("agent.conversation.")
-                .unwrap_or_else(|| command.method.as_str())
-                .to_string(),
-            params: command.params,
-            portable_data_dir,
-        },
+        | ConversationProtocolMethod::AgentConversationAttach
+        | ConversationProtocolMethod::AgentConversationStop
+        | ConversationProtocolMethod::AgentConversationForcePreview
+        | ConversationProtocolMethod::AgentConversationForceConfirm => {
+            StdioRpcMethod::Conversation {
+                operation: command
+                    .method
+                    .as_str()
+                    .strip_prefix("agent.conversation.")
+                    .unwrap_or_else(|| command.method.as_str())
+                    .to_string(),
+                params: command.params,
+                portable_data_dir,
+            }
+        }
         ConversationProtocolMethod::ClientConversationExecute => {
             StdioRpcMethod::ClientConversation {
                 params: command.params,

@@ -12,6 +12,10 @@ use super::native_agent_parser::adapters::kilo_code::{ServeEventFailure, ServeEv
 
 pub use super::local_service::ServeEndpoint;
 
+/// The durable serve owner descriptor used by force-stop control. Control
+/// reads the same state and pid records this owner writes.
+pub(in crate::platform) const CONTROL_SPEC: super::local_service::ServeSpec = policy::SPEC;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum EventStreamFailure {
     Closed,

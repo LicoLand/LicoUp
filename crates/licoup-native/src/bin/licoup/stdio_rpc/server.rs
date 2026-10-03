@@ -438,6 +438,47 @@ where
                             &request.workflow_id,
                             runtime.active(&params),
                         )?;
+                    } else if matches!(
+                        operation.as_str(),
+                        "stop" | "force.preview" | "force.confirm"
+                    ) {
+                        // Manual stop and owned-process force stop are control
+                        // operations: they never fabricate a business success,
+                        // and a force-stop confirm terminates only the
+                        // re-verified owned process group.
+                        let execution = catch_unwind(AssertUnwindSafe(|| {
+                            let _guard =
+                                PortableDataDirOverrideGuard::set(portable_data_dir.clone());
+                            match operation.as_str() {
+                                "stop" => conversation::stop_task(
+                                    &params,
+                                    conversation_runtime.as_ref(),
+                                    portable_data_dir,
+                                ),
+                                "force.preview" => {
+                                    licoup_native::platform::stop_control::force_stop_preview(
+                                        &params,
+                                    )
+                                }
+                                _ => licoup_native::platform::stop_control::force_stop_confirm(
+                                    &params,
+                                ),
+                            }
+                        }));
+                        match execution {
+                            Ok(value) => write_stdio_rpc_success_shared(
+                                &writer,
+                                &request.id,
+                                &request.workflow_id,
+                                value,
+                            )?,
+                            Err(_) => write_stdio_rpc_error_shared(
+                                &writer,
+                                Some(&request.id),
+                                Some(&request.workflow_id),
+                                "command_panicked",
+                            )?,
+                        }
                     } else if operation == "cancel" {
                         let runtime = conversation_runtime
                             .as_ref()

@@ -11,7 +11,7 @@ pub const CONVERSATION_PROTOCOL_MAX_CLIENT_ARGS: usize = 256;
 pub const CONVERSATION_PROTOCOL_MAX_ERROR_CODE_BYTES: usize = 64;
 pub const CONVERSATION_PROTOCOL_MAX_STDERR_BYTES: usize = 524288;
 
-pub const CONVERSATION_PROTOCOL_METHODS: [&str; 35] = [
+pub const CONVERSATION_PROTOCOL_METHODS: [&str; 38] = [
     "execute",
     "shutdown",
     "catalog.status",
@@ -29,6 +29,9 @@ pub const CONVERSATION_PROTOCOL_METHODS: [&str; 35] = [
     "agent.conversation.cleanup",
     "agent.conversation.capabilities",
     "agent.conversation.cancel",
+    "agent.conversation.stop",
+    "agent.conversation.force.preview",
+    "agent.conversation.force.confirm",
     "agent.conversation.steer",
     "agent.conversation.active",
     "agent.conversation.dispatch",
@@ -68,6 +71,9 @@ pub enum ConversationProtocolMethod {
     AgentConversationCleanup,
     AgentConversationCapabilities,
     AgentConversationCancel,
+    AgentConversationStop,
+    AgentConversationForcePreview,
+    AgentConversationForceConfirm,
     AgentConversationSteer,
     AgentConversationActive,
     AgentConversationDispatch,
@@ -108,6 +114,9 @@ impl ConversationProtocolMethod {
             Self::AgentConversationCleanup => "agent.conversation.cleanup",
             Self::AgentConversationCapabilities => "agent.conversation.capabilities",
             Self::AgentConversationCancel => "agent.conversation.cancel",
+            Self::AgentConversationStop => "agent.conversation.stop",
+            Self::AgentConversationForcePreview => "agent.conversation.force.preview",
+            Self::AgentConversationForceConfirm => "agent.conversation.force.confirm",
             Self::AgentConversationSteer => "agent.conversation.steer",
             Self::AgentConversationActive => "agent.conversation.active",
             Self::AgentConversationDispatch => "agent.conversation.dispatch",
@@ -148,6 +157,9 @@ impl ConversationProtocolMethod {
             "agent.conversation.cleanup" => Some(Self::AgentConversationCleanup),
             "agent.conversation.capabilities" => Some(Self::AgentConversationCapabilities),
             "agent.conversation.cancel" => Some(Self::AgentConversationCancel),
+            "agent.conversation.stop" => Some(Self::AgentConversationStop),
+            "agent.conversation.force.preview" => Some(Self::AgentConversationForcePreview),
+            "agent.conversation.force.confirm" => Some(Self::AgentConversationForceConfirm),
             "agent.conversation.steer" => Some(Self::AgentConversationSteer),
             "agent.conversation.active" => Some(Self::AgentConversationActive),
             "agent.conversation.dispatch" => Some(Self::AgentConversationDispatch),

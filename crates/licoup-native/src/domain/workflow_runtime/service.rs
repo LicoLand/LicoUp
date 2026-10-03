@@ -31,17 +31,140 @@ use licoup_workflow::{
 const MAX_PACKAGE_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_DRIVE_EFFECTS_PER_CALL: usize = 512;
 const EFFECT_LEASE_DURATION_MS: i64 = 5 * 60 * 1000;
+/// A cancellation that arrives while the drive is still preparing one exact
+/// turn waits this bounded moment for its identity. The wait never converts an
+/// unacknowledged request into an observed stop.
+const CANCEL_OWNER_LOOKUP_BOUND: std::time::Duration = std::time::Duration::from_secs(2);
+const CANCEL_OWNER_LOOKUP_STEP: std::time::Duration = std::time::Duration::from_millis(5);
 
 /// The Conversation-dispatch seam for one Conversation-bound actor command.
 /// `open` registers the turn and returns its handle, `run` executes one
-/// opened turn to its terminal state, and `abandon` settles one opened turn
-/// that will never run. Composition happens where the persistent host
-/// runtime exists; the strategy service treats the port as opaque.
+/// opened turn to its terminal state, `cancel` signals one opened turn to
+/// stop, and `abandon` settles one opened turn that will never run.
+/// Composition happens where the persistent host runtime exists; the strategy
+/// service treats the port as opaque.
 pub struct ActorTurnPort {
     pub open: Arc<dyn Fn(&Value) -> std::result::Result<String, RuntimeAdapterError> + Send + Sync>,
     pub run:
         Arc<dyn Fn(&str, &Value) -> std::result::Result<Value, RuntimeAdapterError> + Send + Sync>,
+    pub cancel: Arc<dyn Fn(&str) -> TurnCancelDisposition + Send + Sync>,
     pub abandon: Arc<dyn Fn(&str) + Send + Sync>,
+}
+
+/// The bounded outcome of one turn-cancel request routed through the port. The
+/// port converts adapter control results into these facts, so a raw adapter
+/// error can never fabricate an observed stop.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TurnCancelDisposition {
+    /// The owning runtime accepted cancellation for the exact in-flight turn.
+    Accepted,
+    /// The owner has no active turn for that handle; the effect position stays
+    /// unknown.
+    NoActiveTurn,
+    /// The owning runtime is unreachable from this process.
+    Unavailable,
+}
+
+impl TurnCancelDisposition {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Accepted => "accepted",
+            Self::NoActiveTurn => "no-active-turn",
+            Self::Unavailable => "unavailable",
+        }
+    }
+}
+
+/// The live in-process owner of one (run, command) attempt.
+///
+/// The drive reserves the entry before the command becomes `Running`, so a
+/// cancellation that arrives while the turn is still being prepared can wait
+/// for the exact turn identity instead of guessing one.
+fn live_turns() -> &'static Mutex<BTreeMap<(String, String), (String, Option<String>)>> {
+    static TURNS: OnceLock<Mutex<BTreeMap<(String, String), (String, Option<String>)>>> =
+        OnceLock::new();
+    TURNS.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+/// One drive-owned command attempt. `reserve` runs before the command becomes
+/// `Running`; `attach` records the exact turn handle once the port opens it;
+/// `Drop` removes the entry only when it is still this attempt's own.
+struct LiveTurnRegistration {
+    run_id: String,
+    command_id: String,
+    attempt_token: String,
+    handle: Option<String>,
+}
+
+impl LiveTurnRegistration {
+    fn reserve(run_id: &str, command_id: &str, attempt_token: &str) -> Self {
+        let mut turns = live_turns()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        turns.insert(
+            (run_id.to_owned(), command_id.to_owned()),
+            (attempt_token.to_owned(), None),
+        );
+        Self {
+            run_id: run_id.to_owned(),
+            command_id: command_id.to_owned(),
+            attempt_token: attempt_token.to_owned(),
+            handle: None,
+        }
+    }
+
+    fn attach(&mut self, handle: &str) {
+        let mut turns = live_turns()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let key = (self.run_id.clone(), self.command_id.clone());
+        let owned = turns
+            .get(&key)
+            .is_some_and(|(token, _)| token == &self.attempt_token);
+        if owned || !turns.contains_key(&key) {
+            turns.insert(key, (self.attempt_token.clone(), Some(handle.to_owned())));
+        }
+        self.handle = Some(handle.to_owned());
+    }
+}
+
+impl Drop for LiveTurnRegistration {
+    fn drop(&mut self) {
+        let mut turns = live_turns()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let key = (self.run_id.clone(), self.command_id.clone());
+        if turns
+            .get(&key)
+            .is_some_and(|(token, _)| token == &self.attempt_token)
+        {
+            turns.remove(&key);
+        }
+    }
+}
+
+/// What this process knows about the live owner of one command attempt.
+enum LiveTurnOwner {
+    /// No in-process drive owns this attempt.
+    Absent,
+    /// The drive owns it and is preparing the turn; the handle is not yet
+    /// known.
+    Preparing,
+    /// The exact turn handle executing this attempt.
+    Ready(String),
+}
+
+fn live_turn_owner(run_id: &str, command_id: &str, attempt_token: &str) -> LiveTurnOwner {
+    let turns = live_turns()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    match turns.get(&(run_id.to_owned(), command_id.to_owned())) {
+        Some((token, Some(handle))) if token == attempt_token => {
+            LiveTurnOwner::Ready(handle.clone())
+        }
+        Some((token, None)) if token == attempt_token => LiveTurnOwner::Preparing,
+        _ => LiveTurnOwner::Absent,
+    }
 }
 
 /// The notice seam for the designated Assistant. `wake` receives the
@@ -97,6 +220,21 @@ impl TransitionObserver for PostCommitDispatcher {
             &transition.after,
         )
     }
+}
+
+/// Runs this process has cancelled since their drive started. The settle path
+/// consults it before touching the durable run again, so an ordinary drive
+/// batch performs no extra store read.
+fn cancelled_runs() -> &'static Mutex<BTreeSet<String>> {
+    static RUNS: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
+    RUNS.get_or_init(|| Mutex::new(BTreeSet::new()))
+}
+
+fn cancellation_pending(run_id: &str) -> bool {
+    cancelled_runs()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .contains(run_id)
 }
 
 fn driving_runs() -> &'static Mutex<BTreeSet<String>> {
@@ -499,22 +637,7 @@ impl StrategyService {
             "strategy.run.cancel" => {
                 let run_id = required_string(object, "runId")?;
                 self.admit_run_identity(run_id)?;
-                let cancelled = self
-                    .store
-                    .apply_event(run_id, ReducerEvent::CancelRequested)?;
-                for command in cancelled
-                    .commands
-                    .values()
-                    .filter(|command| command.status == CommandStatus::CancelRequested)
-                {
-                    self.apply_run_event(
-                        run_id,
-                        ReducerEvent::CancellationUnknown {
-                            command_id: command.id.clone(),
-                            attempt_token: command.attempt_token.clone(),
-                        },
-                    )?;
-                }
+                self.cancel_run(run_id, object)?;
                 let snapshot = self.store.run(run_id)?;
                 self.refresh_graph_usage(&snapshot, None);
                 Ok(serde_json::to_value(
@@ -624,22 +747,7 @@ impl StrategyService {
             "strategy.assistant.workflow.cancel" => {
                 let run_id = required_string(object, "runId")?;
                 self.admit_assistant_run_identity(run_id)?;
-                let cancelled = self
-                    .store
-                    .apply_event(run_id, ReducerEvent::CancelRequested)?;
-                for command in cancelled
-                    .commands
-                    .values()
-                    .filter(|command| command.status == CommandStatus::CancelRequested)
-                {
-                    self.apply_run_event(
-                        run_id,
-                        ReducerEvent::CancellationUnknown {
-                            command_id: command.id.clone(),
-                            attempt_token: command.attempt_token.clone(),
-                        },
-                    )?;
-                }
+                self.cancel_run(run_id, object)?;
                 let snapshot = self.store.run(run_id)?;
                 self.refresh_graph_usage(&snapshot, None);
                 let mut value = self.assistant_run_projection(&snapshot)?;
@@ -1263,7 +1371,20 @@ impl StrategyService {
         Ok(())
     }
 
-    fn drive_run(&self, run_id: &str, mut entry: Option<EntryTurnRegistration>) -> Result<()> {
+    fn drive_run(&self, run_id: &str, entry: Option<EntryTurnRegistration>) -> Result<()> {
+        let result = self.drive_run_inner(run_id, entry);
+        cancelled_runs()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .remove(run_id);
+        result
+    }
+
+    fn drive_run_inner(
+        &self,
+        run_id: &str,
+        mut entry: Option<EntryTurnRegistration>,
+    ) -> Result<()> {
         self.store.reclaim_abandoned_host_commands(run_id)?;
         self.recover_expired_commands(run_id)?;
         let _ = self.transition.reconcile_pending();
@@ -1327,6 +1448,11 @@ impl StrategyService {
                 else {
                     break;
                 };
+                // The reservation is visible before the command is durable as
+                // `Running`, so a cancellation arriving in that window still
+                // resolves this exact attempt.
+                let live =
+                    LiveTurnRegistration::reserve(run_id, &command.id, &command.attempt_token);
                 self.apply_run_event(
                     run_id,
                     ReducerEvent::CommandStarted {
@@ -1334,7 +1460,7 @@ impl StrategyService {
                         attempt_token: command.attempt_token.clone(),
                     },
                 )?;
-                commands.push((command, claimant));
+                commands.push((command, claimant, live));
             }
             if commands.is_empty() {
                 break;
@@ -1343,9 +1469,9 @@ impl StrategyService {
                 let (sender, receiver) = std::sync::mpsc::channel();
                 let leases = commands
                     .iter()
-                    .map(|(command, claimant)| (command.id.clone(), claimant.clone()))
+                    .map(|(command, claimant, _)| (command.id.clone(), claimant.clone()))
                     .collect::<Vec<_>>();
-                for (command, claimant) in commands {
+                for (command, claimant, live) in commands {
                     let registration = if entry
                         .as_ref()
                         .is_some_and(|registration| registration.matches(&command))
@@ -1358,8 +1484,13 @@ impl StrategyService {
                     let run_id = run_id.to_owned();
                     let sender = sender.clone();
                     scope.spawn(move || {
-                        let result =
-                            service.execute_command(&run_id, &command, &claimant, registration);
+                        let result = service.execute_command(
+                            &run_id,
+                            &command,
+                            &claimant,
+                            registration,
+                            live,
+                        );
                         let _ = sender.send((command, result));
                     });
                 }
@@ -1387,8 +1518,26 @@ impl StrategyService {
             })?;
             executed = executed.saturating_add(outcomes.len());
             outcomes.sort_by(|left, right| left.0.id.cmp(&right.0.id));
+            // A cancellation that committed while these effects were in flight
+            // owns their terminal state. Settling them again would conflict
+            // with that control transition and could fabricate a business
+            // outcome for work the user already stopped.
+            let cancellation = cancellation_pending(run_id).then(|| self.store.run(run_id));
+            let claimable = |command: &RunCommand| match cancellation.as_ref() {
+                None => true,
+                Some(Ok(current)) => current.commands.get(&command.id).is_some_and(|command| {
+                    matches!(
+                        command.status,
+                        CommandStatus::Pending | CommandStatus::Claimed | CommandStatus::Running
+                    )
+                }),
+                Some(Err(_)) => true,
+            };
             let mut assistant_failures = Vec::new();
             for (command, result) in outcomes {
+                if !claimable(&command) {
+                    continue;
+                }
                 match result {
                     Ok((output, group_streamed)) => {
                         if let Some((class, code)) = actor_output_failure(&command, &output) {
@@ -1518,6 +1667,7 @@ impl StrategyService {
         command: &RunCommand,
         claimant: &str,
         registration: Option<EntryTurnRegistration>,
+        mut live: LiveTurnRegistration,
     ) -> Result<(Value, bool)> {
         let snapshot = self.store.run(run_id)?;
         let definition = self
@@ -1586,6 +1736,7 @@ impl StrategyService {
                     snapshot.conversation_id.as_deref(),
                     registration,
                     &fingerprint,
+                    &mut live,
                 )
             }
             CommandKind::Script => {
@@ -1720,6 +1871,7 @@ impl StrategyService {
         conversation_id: Option<&str>,
         registration: Option<EntryTurnRegistration>,
         expected_fingerprint: &str,
+        live: &mut LiveTurnRegistration,
     ) -> Result<(Value, bool)> {
         let Some(conversation_id) = conversation_id.filter(|value| !value.is_empty()) else {
             return execute_actor(command, authorization_digest, binding, permit, cwd)
@@ -1755,6 +1907,9 @@ impl StrategyService {
             }
         };
         let (handle, params) = registration.into_run();
+        // The exact live turn is reachable for cancellation until its own run
+        // returns; the reservation never outlives the effect attempt.
+        live.attach(&handle);
         match (port.run)(&handle, &params) {
             Ok(value) => {
                 if actor_output_failure(command, &value).is_some() {
@@ -1763,6 +1918,92 @@ impl StrategyService {
                 Ok((value, true))
             }
             Err(error) => Err(anyhow!("strategy_actor_dispatch_failed:{error}")),
+        }
+    }
+
+    /// Cancel one durable run by signalling the owner of each in-flight effect.
+    ///
+    /// The durable `CancelRequested` transition is the request. Every command
+    /// whose owner acknowledges the exact live turn settles as cancelled;
+    /// every command whose owner does not acknowledge keeps its effect
+    /// unknown. A request is never recorded as an observed exit, and a normal
+    /// cancellation is not a fault.
+    fn cancel_run(&self, run_id: &str, object: &Map<String, Value>) -> Result<()> {
+        let correlation_id = object
+            .get("correlationId")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .unwrap_or_else(crate::platform::stop_control::new_correlation_id);
+        let cancelled = self
+            .store
+            .apply_event(run_id, ReducerEvent::CancelRequested)?;
+        cancelled_runs()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .insert(run_id.to_owned());
+        let in_flight = cancelled
+            .commands
+            .values()
+            .filter(|command| command.status == CommandStatus::CancelRequested)
+            .map(|command| (command.id.clone(), command.attempt_token.clone()))
+            .collect::<Vec<_>>();
+        let mut unacknowledged = 0usize;
+        for (command_id, attempt_token) in in_flight {
+            if self.command_owner_acknowledges(run_id, &command_id, &attempt_token) {
+                self.apply_run_event(
+                    run_id,
+                    ReducerEvent::CancellationAcknowledged {
+                        command_id,
+                        attempt_token,
+                    },
+                )?;
+            } else {
+                unacknowledged = unacknowledged.saturating_add(1);
+                self.apply_run_event(
+                    run_id,
+                    ReducerEvent::CancellationUnknown {
+                        command_id,
+                        attempt_token,
+                    },
+                )?;
+            }
+        }
+        crate::platform::stop_control::record_run_stop(
+            &self.portable_root,
+            &correlation_id,
+            unacknowledged == 0,
+        );
+        Ok(())
+    }
+
+    /// True only when the exact live turn executing this command acknowledged
+    /// the cancellation. An absent port, an unknown handle, or an unreachable
+    /// owner all stay unacknowledged.
+    fn command_owner_acknowledges(
+        &self,
+        run_id: &str,
+        command_id: &str,
+        attempt_token: &str,
+    ) -> bool {
+        let Some(port) = self.actor_port.as_ref() else {
+            return false;
+        };
+        let deadline = std::time::Instant::now() + CANCEL_OWNER_LOOKUP_BOUND;
+        loop {
+            match live_turn_owner(run_id, command_id, attempt_token) {
+                LiveTurnOwner::Ready(handle) => {
+                    return matches!((port.cancel)(&handle), TurnCancelDisposition::Accepted);
+                }
+                // Nothing in this process owns the attempt; the effect position
+                // stays unknown instead of assuming a stop.
+                LiveTurnOwner::Absent => return false,
+                LiveTurnOwner::Preparing => {
+                    if std::time::Instant::now() >= deadline {
+                        return false;
+                    }
+                    std::thread::sleep(CANCEL_OWNER_LOOKUP_STEP);
+                }
+            }
         }
     }
 
@@ -2414,9 +2655,11 @@ fn ensure_allowed_fields(action: &str, object: &Map<String, Value>) -> Result<()
             "cwd",
         ],
         "strategy.run.active" => &["action", "revisionDigest", "conversationId"],
-        "strategy.run.inspect" | "strategy.run.cancel" | "strategy.run.retry" => {
-            &["action", "runId"]
-        }
+        "strategy.run.inspect" | "strategy.run.retry" => &["action", "runId"],
+        // The cancel path carries the stop control's opaque correlation id so
+        // the request, the owner's acknowledgement, and the unconfirmed
+        // outcome share one diagnostic identity.
+        "strategy.run.cancel" => &["action", "runId", "correlationId"],
         "strategy.assistant.workflow.execute" => &[
             "action",
             "conversationId",
@@ -2430,9 +2673,8 @@ fn ensure_allowed_fields(action: &str, object: &Map<String, Value>) -> Result<()
             "callbackStateId",
             "callbackStateVisit",
         ],
-        "strategy.assistant.workflow.inspect" | "strategy.assistant.workflow.cancel" => {
-            &["action", "runId"]
-        }
+        "strategy.assistant.workflow.inspect" => &["action", "runId"],
+        "strategy.assistant.workflow.cancel" => &["action", "runId", "correlationId"],
         "strategy.run.resume" => &[
             "action",
             "runId",
@@ -3707,6 +3949,7 @@ mod tests {
                     .push((format!("run:{handle}"), params.clone()));
                 run(handle, params)
             }),
+            cancel: Arc::new(|_| TurnCancelDisposition::NoActiveTurn),
             abandon: Arc::new(|_| {}),
         }
     }
@@ -3736,7 +3979,10 @@ mod tests {
     /// exit path, so root cleanup waits the drive out and retries the remove
     /// while SQLite drops its journal files.
     fn remove_drive_root(root: PathBuf, service: StrategyService) {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        // The drive set is process-wide while these tests run in parallel, so
+        // this bound is a liveness guarantee for every in-flight drive, not a
+        // latency assertion about this test's own run.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
         while !driving_runs()
             .lock()
             .unwrap_or_else(|poison| poison.into_inner())
@@ -4055,6 +4301,7 @@ mod tests {
                 Err(RuntimeAdapterError::ConversationDispatchFailed)
             }),
             run: Arc::new(|_, _| panic!("a rejected registration has no effect to run")),
+            cancel: Arc::new(|_| TurnCancelDisposition::NoActiveTurn),
             abandon: Arc::new(|_| {}),
         })
         .with_profile_snapshot_authority(fixture_profile_authority("ready", authority_calls));
@@ -4292,6 +4539,7 @@ mod tests {
         .with_actor_turn_port(ActorTurnPort {
             open: Arc::new(|_| panic!("a stale route must reject before registration")),
             run: Arc::new(|_, _| panic!("a stale route must reject before effects")),
+            cancel: Arc::new(|_| TurnCancelDisposition::NoActiveTurn),
             abandon: Arc::new(|_| {}),
         })
         .with_profile_snapshot_authority(authority);
@@ -4352,6 +4600,7 @@ mod tests {
         .with_actor_turn_port(ActorTurnPort {
             open: Arc::new(|_| Err(RuntimeAdapterError::ConversationDispatchFailed)),
             run: Arc::new(|_, _| panic!("a failed registration must not run")),
+            cancel: Arc::new(|_| TurnCancelDisposition::NoActiveTurn),
             abandon: Arc::new(|_| {}),
         });
 
@@ -4384,6 +4633,204 @@ mod tests {
         );
         drop(service);
         remove_root(root);
+    }
+
+    /// Start one conversation-bound run whose actor effect stays in flight
+    /// until the returned release sender fires.
+    fn blocked_run_fixture(
+        root: &Path,
+        cancel: TurnCancelDisposition,
+    ) -> (
+        StrategyService,
+        StrategyStore,
+        String,
+        std::sync::mpsc::Sender<()>,
+        Arc<Mutex<Vec<String>>>,
+    ) {
+        let (_conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(root);
+        let (store, revision) = authorized_entry_store(root, &membership_id);
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let released = Mutex::new(released);
+        let (started, run_started) = std::sync::mpsc::channel::<()>();
+        let started = Mutex::new(started);
+        let cancels = Arc::new(Mutex::new(Vec::<String>::new()));
+        let cancel_calls = Arc::clone(&cancels);
+        let service = StrategyService::from_parts(
+            root.to_path_buf(),
+            store.clone(),
+            StrategyPackageImporter::open(root).unwrap(),
+        )
+        .with_actor_turn_port(ActorTurnPort {
+            open: Arc::new(|_| Ok("dispatch:live".to_owned())),
+            run: Arc::new(move |_, _| {
+                let _ = started.lock().unwrap().send(());
+                let _ = released
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(std::time::Duration::from_secs(10));
+                Ok(json!({"ok": true, "output": "late-effect"}))
+            }),
+            cancel: Arc::new(move |handle| {
+                cancel_calls.lock().unwrap().push(handle.to_owned());
+                cancel
+            }),
+            abandon: Arc::new(|_| {}),
+        });
+        let response = service
+            .execute(json!({
+                "action": "strategy.run.start",
+                "revisionDigest": revision,
+                "input": {"message": "hi"},
+                "idempotencyKey": "cancel-fixture",
+                "conversationId": conversation_id,
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], true);
+        let run_id = response["result"]["runId"].as_str().unwrap().to_owned();
+        // The turn is executing (and therefore has its exact handle attached)
+        // before either test cancels; the fixture never races the cancellation.
+        run_started
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("the drive reached its executing turn");
+        (service, store, run_id, release, cancels)
+    }
+
+    fn wait_for_running_command(store: &StrategyStore, run_id: &str) -> RunSnapshot {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let snapshot = store.run(run_id).unwrap();
+            if snapshot
+                .commands
+                .values()
+                .any(|command| command.status == CommandStatus::Running)
+            {
+                return snapshot;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "run never claimed its effect: {:?}",
+                snapshot.status
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    fn activity_events(root: &Path) -> Vec<Value> {
+        let path = root.join("client-state/activity/activity.jsonl");
+        let text = fs::read_to_string(&path).unwrap_or_default();
+        text.lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn run_cancel_reaches_the_executing_turn_and_is_not_recorded_as_unknown() {
+        let root = root();
+        let (service, store, run_id, release, cancels) =
+            blocked_run_fixture(&root, TurnCancelDisposition::Accepted);
+        wait_for_running_command(&store, &run_id);
+
+        let cancelled = service
+            .execute(json!({
+                "action": "strategy.run.cancel",
+                "runId": run_id,
+            }))
+            .unwrap();
+        assert_eq!(cancelled["ok"], true);
+        assert_eq!(
+            cancels.lock().unwrap().as_slice(),
+            ["dispatch:live".to_owned()],
+            "cancel reaches the exact live turn handle"
+        );
+        let snapshot = store.run(&run_id).unwrap();
+        assert_eq!(snapshot.status, StrategyRunStatus::Cancelled);
+        assert!(snapshot.commands.values().all(|command| {
+            command.status == CommandStatus::Cancelled
+                && command.failure_class != Some(FailureClass::InDoubt)
+        }));
+
+        // The stopped effect settling late never fabricates a business success
+        // and never rewrites the acknowledged cancellation.
+        release.send(()).unwrap();
+        let settled = wait_for_terminal(&store, &run_id);
+        assert_eq!(settled.status, StrategyRunStatus::Cancelled);
+        assert!(
+            settled
+                .commands
+                .values()
+                .all(|command| command.status == CommandStatus::Cancelled)
+        );
+
+        let events = activity_events(&root);
+        assert!(
+            events
+                .iter()
+                .any(|event| event["type"] == "work.stop.requested"),
+            "the request is recorded: {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| event["type"] == "work.stop.accepted"),
+            "an acknowledged normal cancellation is recorded as a control fact"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| event["type"] == "work.stop.unconfirmed"),
+            "an acknowledged cancellation is not an anomaly"
+        );
+        let encoded = serde_json::to_string(&events).unwrap();
+        assert!(
+            !encoded.contains("late-effect") && !encoded.contains("message"),
+            "diagnostics carry no raw effect payload: {encoded}"
+        );
+        remove_drive_root(root, service);
+    }
+
+    #[test]
+    fn run_cancel_without_owner_acknowledgement_keeps_the_effect_unknown() {
+        let root = root();
+        let (service, store, run_id, release, _cancels) =
+            blocked_run_fixture(&root, TurnCancelDisposition::NoActiveTurn);
+        wait_for_running_command(&store, &run_id);
+
+        let cancelled = service
+            .execute(json!({
+                "action": "strategy.run.cancel",
+                "runId": run_id,
+            }))
+            .unwrap();
+        assert_eq!(cancelled["ok"], true);
+        let snapshot = store.run(&run_id).unwrap();
+        assert_eq!(snapshot.status, StrategyRunStatus::CancelInDoubt);
+        assert!(
+            snapshot
+                .commands
+                .values()
+                .all(|command| command.status == CommandStatus::InDoubt),
+            "an unacknowledged cancellation keeps every in-flight effect unknown: {:?}",
+            snapshot
+                .commands
+                .values()
+                .map(|c| c.status)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            snapshot.diagnostic_code.as_deref(),
+            Some("cancellation_outcome_unknown")
+        );
+        let events = activity_events(&root);
+        assert!(
+            events
+                .iter()
+                .any(|event| event["type"] == "work.stop.unconfirmed"),
+            "an unacknowledged request stays unconfirmed: {events:?}"
+        );
+        release.send(()).unwrap();
+        remove_drive_root(root, service);
     }
 
     #[test]
@@ -4453,6 +4900,7 @@ mod tests {
         let port = Arc::new(ActorTurnPort {
             open: Arc::new(|_| Ok("dispatch:entry".to_owned())),
             run: Arc::new(|_, _| Ok(json!({"ok": true}))),
+            cancel: Arc::new(|_| TurnCancelDisposition::NoActiveTurn),
             abandon: Arc::new(move |handle| {
                 abandon_calls.lock().unwrap().push(handle.to_owned());
             }),
@@ -5050,6 +5498,7 @@ mod tests {
         .with_actor_turn_port(ActorTurnPort {
             open: Arc::new(|_| panic!("admission failure must not open a turn")),
             run: Arc::new(|_, _| panic!("admission failure must not run")),
+            cancel: Arc::new(|_| TurnCancelDisposition::NoActiveTurn),
             abandon: Arc::new(|_| {}),
         });
         let response = service
@@ -5352,6 +5801,76 @@ mod tests {
             assert!(wake.2.get("stateId").and_then(Value::as_str).is_some());
         }
         drop(wakes);
+        remove_drive_root(root, service);
+    }
+
+    #[test]
+    fn cancel_settles_a_parked_approval_wait_without_signalling_any_owner() {
+        let root = root();
+        let (_conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let (store, revision) = authorized_callback_store(&root, &membership_id);
+        let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let port = recording_port(Arc::clone(&calls), |_, _| {
+            Ok(json!({"ok": true, "output": "done"}))
+        });
+        let service = StrategyService::from_parts(
+            root.clone(),
+            store.clone(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(port);
+
+        let response = service
+            .execute(json!({
+                "action": "strategy.run.start",
+                "revisionDigest": revision,
+                "input": {"message": "hi"},
+                "idempotencyKey": "cancel-parked",
+                "conversationId": conversation_id,
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        let run_id = response["result"]["runId"].as_str().unwrap().to_owned();
+        let parked = wait_for_status(&store, &run_id, StrategyRunStatus::Waiting);
+        assert_eq!(parked.pending_callbacks.len(), 1);
+        let runs_before = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(operation, _)| operation.starts_with("run:"))
+            .count();
+
+        let cancelled = service
+            .execute(json!({
+                "action": "strategy.run.cancel",
+                "runId": run_id,
+            }))
+            .unwrap();
+        assert_eq!(cancelled["ok"], true);
+        let snapshot = store.run(&run_id).unwrap();
+        assert_eq!(snapshot.status, StrategyRunStatus::Cancelled);
+        assert!(
+            snapshot.pending_callbacks.is_empty(),
+            "the durable wait is cleared with the cancellation"
+        );
+        let runs_after = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(operation, _)| operation.starts_with("run:"))
+            .count();
+        assert_eq!(
+            runs_before, runs_after,
+            "a parked wait has no executing turn, so cancelling it signals no owner"
+        );
+        let events = activity_events(&root);
+        assert!(
+            events
+                .iter()
+                .any(|event| event["type"] == "work.stop.accepted"),
+            "the parked cancellation is recorded as normal control, not a fault"
+        );
         remove_drive_root(root, service);
     }
 

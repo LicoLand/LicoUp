@@ -127,6 +127,25 @@ pub(in crate::platform) fn cancel(driver_id: &str, session_id: &str) -> ControlD
     }
 }
 
+/// The in-flight turns one endpoint is running right now, as bounded
+/// identifier pairs. Force-stop preview names exactly these tasks.
+pub(in crate::platform) fn active_turns_for_endpoint(attach_url: &str) -> Vec<(String, String)> {
+    const MAX_REPORTED_TURNS: usize = 16;
+    let normalized = attach_url.trim_end_matches('/');
+    let prefix = format!("{normalized}/session/");
+    active_turns()
+        .lock()
+        .map(|turns| {
+            turns
+                .iter()
+                .filter(|(_, turn)| turn.abort_url.starts_with(&prefix))
+                .take(MAX_REPORTED_TURNS)
+                .map(|(key, _)| key.clone())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub(in crate::platform) fn endpoint_has_active_turn(attach_url: &str) -> bool {
     let normalized = attach_url.trim_end_matches('/');
     if endpoint_leases()
