@@ -19,7 +19,8 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.project-identity",
       kind: "rust-domain",
-      summary: "Authorized project and plan identity registration, typed refusals, and durable reopen",
+      summary:
+        "Authorized project and plan identity registration, declared artifact and cross-project dependency inputs, typed refusals, and durable reopen",
       inputs: [
         "crates/licoup-project/Cargo.toml",
         "crates/licoup-project/src/**",
