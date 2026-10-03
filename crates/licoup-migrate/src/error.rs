@@ -76,6 +76,26 @@ pub const WORK_ROOT_REQUIRED: ToolError = ToolError::new("work_root_required");
 pub const ARCHIVE_INSIDE_DATA_ROOT: ToolError = ToolError::new("archive_path_inside_data_root");
 /// The rehearsal's disposable working root sits inside the source it promised only to read.
 pub const WORK_ROOT_INSIDE_DATA_ROOT: ToolError = ToolError::new("work_root_inside_data_root");
+/// The named package manifest could not be read as a manifest document.
+pub const CONVERTER_MANIFEST_UNREADABLE: ToolError =
+    ToolError::new("converter_manifest_unreadable");
+/// The manifest is not a valid package manifest, so no conversion was read from it.
+pub const CONVERTER_MANIFEST_INVALID: ToolError = ToolError::new("converter_manifest_invalid");
+/// The package declares no conversion, so this conversion has no owner here.
+pub const CONVERTER_MISSING: ToolError = ToolError::new("converter_missing");
+/// The declared converter is not a native executable.
+pub const CONVERTER_NOT_NATIVE: ToolError = ToolError::new("converter_not_native");
+/// The declared entry is not an entry inside the package payload.
+pub const CONVERTER_ENTRY_OUTSIDE_PACKAGE: ToolError =
+    ToolError::new("converter_entry_outside_package");
+/// The declared entry is not present in the package payload.
+pub const CONVERTER_ENTRY_MISSING: ToolError = ToolError::new("converter_entry_missing");
+/// The declaration is present and incomplete.
+pub const CONVERTER_INCOMPLETE: ToolError = ToolError::new("converter_incomplete");
+/// The declaration is malformed or over a published bound.
+pub const CONVERTER_INVALID: ToolError = ToolError::new("converter_invalid");
+/// The declared formats are not the endpoints this tool requires.
+pub const CONVERTER_ENDPOINT_MISMATCH: ToolError = ToolError::new("converter_endpoint_mismatch");
 
 /// A failure that names the marker it read, never the path it read it from.
 pub fn marker_read_failed(_path: &std::path::Path) -> ToolError {

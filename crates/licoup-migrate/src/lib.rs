@@ -9,6 +9,7 @@
 pub mod archive;
 pub mod cli;
 pub mod convert;
+pub mod converter;
 pub mod error;
 pub mod inspect;
 pub mod journal;

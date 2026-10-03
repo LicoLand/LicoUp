@@ -2219,6 +2219,7 @@ name = "licoup-migrate"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "licoup-extension-contracts",
  "licoup-foundation",
  "licoup-native",
  "rusqlite",
