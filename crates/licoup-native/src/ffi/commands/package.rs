@@ -1140,13 +1140,20 @@ mod tests {
 
     fn fixture_archive_with(entry: &[u8]) -> Vec<u8> {
         use std::io::Write;
+        let client = running_client_version().expect("a product version");
+        let next_major = client
+            .split('.')
+            .next()
+            .and_then(|major| major.parse::<u64>().ok())
+            .map(|major| major + 1)
+            .expect("a semantic major version");
         let manifest = json!({
             "schema": licoup_extension_contracts::wire::MANIFEST,
             "id": "example.fixture.echo",
             "version": "1.0.0",
             "displayName": "Fixture",
-            "hostProtocol": { "major": 1 },
-            "compatibility": { "clientVersions": [">=0.0.0"] },
+            "hostProtocol": { "major": 1, "minimumMinor": 0 },
+            "compatibility": { "clientVersions": [format!(">={client}, <{next_major}")] },
             "runtime": { "mode": "process", "entry": "agent.py" },
             "permissions": [{ "capability": "example.fixture/net", "scope": "self" }],
         });

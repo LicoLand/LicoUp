@@ -36,7 +36,6 @@ use crate::platform::extension_packages::state::{InstanceRegistry, Settlement};
 use crate::platform::extension_packages::{
     read_bounded_text, refusal, remove_managed_tree, replace_file_atomically,
 };
-use crate::platform::package_registration_release::PackageRegistrationOwners;
 use licoup_application::ApplicationFailure;
 use licoup_extension_contracts::deployment::{InstanceLifecycle, LocalCatalogue};
 use licoup_extension_contracts::manifest::USER_RUNTIME_PREFIX;
@@ -667,12 +666,8 @@ pub fn purge_user_data(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::package_registration_release::PackageRegistrationOwners;
 
-    /// The client versions a fixture declares it supports: the client this test
-    /// binary runs as, up to but not including the next major line. The value
-    /// comes from the product version owner rather than a literal here, and the
-    /// upper bound is what lets a test exercise a client that has moved past a
-    /// package's own list.
     /// The production registration adapter with no caller-supplied release inputs.
     ///
     /// These scenarios record no external registration, so every owner is asked for
@@ -685,6 +680,11 @@ mod tests {
         &OWNERS
     }
 
+    /// The client versions a fixture declares it supports: the client this test
+    /// binary runs as, up to but not including the next major line. The value
+    /// comes from the product version owner rather than a literal here, and the
+    /// upper bound is what lets a test exercise a client that has moved past a
+    /// package's own list.
     fn covering_client_versions() -> Vec<String> {
         let client = crate::platform::extension_packages::running_client_version()
             .expect("the binary declares a product version");
