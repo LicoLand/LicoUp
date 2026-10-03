@@ -2338,7 +2338,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.extension-package-store",
       kind: "rust-platform",
-      summary: "Extension package discovery, install, journal, state, storage and uninstall store operations",
+      summary: "Extension package discovery, install, journal, state, storage, registered surface and uninstall store operations",
       inputs: [
         "crates/licoup-native/src/platform/extension_packages/discovery.rs",
         "crates/licoup-native/src/platform/extension_packages/install.rs",
@@ -2346,6 +2346,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/extension_packages/scenarios/**",
         "crates/licoup-native/src/platform/extension_packages/state.rs",
         "crates/licoup-native/src/platform/extension_packages/storage.rs",
+        "crates/licoup-native/src/platform/extension_packages/surface.rs",
         "crates/licoup-native/src/platform/extension_packages/uninstall.rs",
       ],
       command: rustLayer("platform::extension_packages::"),

@@ -40,26 +40,16 @@ use crate::{refusal, refusal_with};
 pub const CAPABILITY: &str = "analytics.v1";
 
 /// How far along the package is.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum PackageState {
-    /// The code is not on this machine: nothing here exists to run.
-    NotInstalled,
-    /// Enabled and serving.
-    Active,
-    /// New admission and new reads are refused; in-flight reads may finish.
-    Draining,
-    /// Removed: the index, sources and panels are gone; the facts remain.
-    Removed,
-}
+///
+/// The states and the events that move between them are the package's own
+/// declaration in `resources/state-machines/package.json`, compiled by
+/// `build.rs`; this alias is what lets the rest of the module name them.
+pub use crate::state_machine::analytics_package::State as PackageState;
 
 impl PackageState {
+    /// The wire name of this state, as the declaration spells it.
     pub const fn id(self) -> &'static str {
-        match self {
-            Self::NotInstalled => "not-installed",
-            Self::Active => "active",
-            Self::Draining => "draining",
-            Self::Removed => "removed",
-        }
+        self.as_str()
     }
 }
 
@@ -206,8 +196,13 @@ impl<'a, F: CoreUsageFacts> AnalyticsPackage<'a, F> {
         if let Some(failure) = availability.refusal(CAPABILITY) {
             return Err(failure);
         }
+        let state = crate::state_machine::analytics_package::transition(
+            crate::state_machine::analytics_package::INITIAL,
+            crate::state_machine::analytics_package::Event::Activate,
+        )
+        .expect("the package configuration activates from its initial state");
         Ok(Self {
-            state: PackageState::Active,
+            state,
             facts,
             authority: config.authority,
             correlation: config.correlation,
@@ -487,13 +482,11 @@ impl<'a, F: CoreUsageFacts> AnalyticsPackage<'a, F> {
     /// flight the package stays [`PackageState::Draining`] and
     /// [`Self::complete_uninstall`] finishes once they are done.
     pub fn begin_uninstall(&mut self) -> Result<UninstallReport, ApplicationFailure> {
-        match self.state {
-            PackageState::Active => self.state = PackageState::Draining,
-            PackageState::Draining => {}
-            PackageState::NotInstalled | PackageState::Removed => {
-                return Err(self.inactive_refusal());
-            }
-        }
+        self.state = crate::state_machine::analytics_package::transition(
+            self.state,
+            crate::state_machine::analytics_package::Event::BeginUninstall,
+        )
+        .ok_or_else(|| self.inactive_refusal())?;
         let withdrawn = self.panels.withdraw();
         let released_scrapers: Vec<String> = self.scrapers.iter().cloned().collect();
         self.scrapers.clear();
@@ -525,7 +518,11 @@ impl<'a, F: CoreUsageFacts> AnalyticsPackage<'a, F> {
         self.recorded.clear();
         let released_sources: Vec<String> = self.sources.keys().cloned().collect();
         self.sources.clear();
-        self.state = PackageState::Removed;
+        self.state = crate::state_machine::analytics_package::transition(
+            self.state,
+            crate::state_machine::analytics_package::Event::CompleteUninstall,
+        )
+        .expect("a drained package can complete uninstall");
         Ok(UninstallReport {
             state: self.state,
             withdrawn_contributions: Vec::new(),
@@ -1149,6 +1146,84 @@ mod tests {
             facts.facts.len(),
             1,
             "the core fact survives every surface of the package"
+        );
+    }
+
+    /// The lifecycle the package follows is the one it declares.
+    ///
+    /// The table lives in `resources/state-machines/package.json` and is
+    /// compiled by `build.rs`, so a declaration this module does not follow is a
+    /// build failure rather than a comment that has drifted.
+    #[test]
+    fn the_declared_state_machine_is_the_only_lifecycle_the_package_follows() {
+        use crate::state_machine::analytics_package as machine;
+
+        assert_eq!(machine::MACHINE_ID, "analytics.package");
+        assert_eq!(machine::INITIAL, PackageState::NotInstalled);
+        assert_eq!(machine::ALL_STATES.len(), 4);
+        assert_eq!(machine::ALL_EVENTS.len(), 3);
+
+        // The declared edges, and only those.
+        assert_eq!(
+            machine::transition(PackageState::NotInstalled, machine::Event::Activate),
+            Some(PackageState::Active)
+        );
+        assert_eq!(
+            machine::transition(PackageState::Active, machine::Event::BeginUninstall),
+            Some(PackageState::Draining)
+        );
+        assert_eq!(
+            machine::transition(PackageState::Draining, machine::Event::BeginUninstall),
+            Some(PackageState::Draining),
+            "asking twice to drain is the same state, not a second transition"
+        );
+        assert_eq!(
+            machine::transition(PackageState::Draining, machine::Event::CompleteUninstall),
+            Some(PackageState::Removed)
+        );
+        assert_eq!(
+            machine::transition(PackageState::Removed, machine::Event::Activate),
+            None,
+            "a removed package is not reactivated in place"
+        );
+        assert_eq!(
+            machine::transition(PackageState::Active, machine::Event::CompleteUninstall),
+            None,
+            "collecting before draining is not a representable transition"
+        );
+
+        // The wire names the host reads are the declaration's own spelling.
+        assert_eq!(PackageState::Active.id(), "active");
+        assert_eq!(PackageState::Draining.id(), "draining");
+        assert_eq!(
+            PackageState::from_name("removed"),
+            Some(PackageState::Removed)
+        );
+        assert_eq!(PackageState::from_name("unknown"), None);
+
+        // The package moves exactly there: activation lands on the declared
+        // state, collection before the drain is refused, and a removed package
+        // cannot be uninstalled a second time.
+        let mut facts = MemoryFacts::default();
+        let mut package = active(
+            &mut facts,
+            AuthorityPolicy::new(),
+            CorrelationPolicy::none(),
+        );
+        assert_eq!(package.state(), PackageState::Active);
+        assert_eq!(
+            package.complete_uninstall().expect_err("not draining").code,
+            "analytics_package_inactive"
+        );
+        package.begin_uninstall().expect("draining");
+        package.complete_uninstall().expect("removed");
+        assert_eq!(package.state(), PackageState::Removed);
+        let refusal = package.begin_uninstall().expect_err("removed once");
+        assert_eq!(refusal.code, "analytics_package_inactive");
+        assert_eq!(refusal.presentation_args.get("state"), Some("removed"));
+        assert_eq!(
+            package.complete_uninstall().expect_err("nothing left").code,
+            "analytics_package_inactive"
         );
     }
 

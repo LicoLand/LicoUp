@@ -283,6 +283,31 @@ fn an_installation_without_the_package_has_nothing_to_scrape() {
 }
 
 #[test]
+fn an_uninstall_reports_only_the_surface_it_actually_held() {
+    // Nothing mounted, nothing prepared, no source configured: the package holds
+    // no surface, so its removal reports none. "Removed nothing" is a fact about
+    // this installation, not a completed removal of something else.
+    let mut facts = MemoryFacts::new();
+    let before = facts.snapshot();
+    let mut package = active(&mut facts, AuthorityPolicy::new());
+    let drain = package.begin_uninstall().expect("draining");
+    assert!(drain.withdrawn_contributions.is_empty());
+    assert_eq!(drain.dropped_prepared, 0);
+    assert!(drain.released_sources.is_empty());
+    assert!(drain.released_scrapers.is_empty());
+    assert_eq!(drain.dropped_observations, 0);
+
+    let done = package.complete_uninstall().expect("complete");
+    assert_eq!(done.state, PackageState::Removed);
+    assert!(done.withdrawn_contributions.is_empty());
+    assert!(done.released_sources.is_empty());
+    assert_eq!(done.dropped_observations, 0);
+    assert!(done.facts_preserved);
+    drop(package);
+    assert_eq!(facts.snapshot(), before);
+}
+
+#[test]
 fn uninstalling_the_panel_package_leaves_other_scopes_budgets_and_obligations_alone() {
     let mut facts = MemoryFacts::new();
     facts
