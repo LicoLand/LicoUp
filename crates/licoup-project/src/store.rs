@@ -210,18 +210,7 @@ impl ProjectIdentityStore {
     /// Every registered project, in registration order.
     pub fn list(&self) -> Result<Vec<RegisteredProject>, ProjectFailure> {
         let connection = self.connect()?;
-        let mut statement = connection
-            .prepare(&format!(
-                "SELECT {} FROM project_identities ORDER BY registration_sequence",
-                column_list()
-            ))
-            .map_err(store_error)?;
-        let rows = statement
-            .query_map([], decode_row)
-            .map_err(store_error)?
-            .collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(store_error)?;
-        rows.into_iter().collect()
+        registered_projects(&connection)
     }
 
     /// Admit one declared dependency edge.
@@ -423,6 +412,29 @@ impl ProjectIdentityStore {
         configure_connection(&connection)?;
         operation(&mut connection)
     }
+}
+
+/// Every registered project, in registration order.
+///
+/// The query is separate from [`ProjectIdentityStore::list`] so a preview reads
+/// the identities and the declarations it compares them against on one
+/// connection, rather than from two moments that a concurrent registration
+/// could separate.
+pub(crate) fn registered_projects(
+    connection: &Connection,
+) -> Result<Vec<RegisteredProject>, ProjectFailure> {
+    let mut statement = connection
+        .prepare(&format!(
+            "SELECT {} FROM project_identities ORDER BY registration_sequence",
+            column_list()
+        ))
+        .map_err(store_error)?;
+    let rows = statement
+        .query_map([], decode_row)
+        .map_err(store_error)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(store_error)?;
+    rows.into_iter().collect()
 }
 
 fn column_list() -> String {

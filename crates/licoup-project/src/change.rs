@@ -49,7 +49,7 @@ use crate::failure::ProjectFailure;
 use crate::identity::{ProjectId, WorkItemId};
 use crate::store::{
     EdgeSnapshot, ProjectIdentityStore, cycle_path, dependency_state, edge_snapshot,
-    project_exists, read_project_row,
+    project_exists, read_project_row, registered_projects,
 };
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -369,8 +369,7 @@ impl ProjectIdentityStore {
             .iter()
             .map(|entry| &entry.work.project_id)
             .collect();
-        let untouched_projects = self
-            .list()?
+        let untouched_projects = registered_projects(&connection)?
             .into_iter()
             .map(|project| project.project_id)
             .filter(|project_id| !touched.contains(project_id))
