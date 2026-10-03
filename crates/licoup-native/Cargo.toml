@@ -48,6 +48,9 @@ licoup-extension-contracts = { path = "../licoup-extension-contracts" }
 # never depends on the kernel.
 licoup-usage-source-sdk = { path = "../../sdk/usage-source" }
 licoup-workflow = { path = "../licoup-workflow" }
+# The durable strategy database, extracted from this host so the host no longer
+# owns workflow persistence or the routing/admission contracts the store reads.
+licoup-workflow-store = { path = "../licoup-workflow-store" }
 licoup-conversation = { path = "../licoup-conversation" }
 licoup-gateway-core = { path = "../licoup-gateway-core" }
 licoup-gateway = { path = "../licoup-gateway", optional = true }

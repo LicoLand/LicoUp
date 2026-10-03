@@ -1,39 +1,8 @@
-//! Durable workflow state, command, queue, subscription, and commit contracts.
+//! Native host re-export of the independent durable workflow store crate.
 //!
-//! The strategy database remains the local workflow authority.  Runtime code
-//! owns adapters and execution; this module owns the short SQLite transactions
-//! that make accepted state and delivery intent recoverable across a process
-//! restart.
+//! Durable strategy state, command queues, subscriptions, admission control and
+//! their routing contracts are owned by `licoup-workflow-store`. This module
+//! keeps the stable `licoup_native::domain::workflow_store` path the host's own
+//! consumers already use and holds no implementation of its own.
 
-mod admission;
-mod commit;
-#[cfg(test)]
-mod conformance;
-mod control;
-mod queue;
-mod store;
-mod strategy_types;
-mod subscriptions;
-
-pub use admission::{
-    MAX_UNFINISHED_WORKFLOW_WORK, UnfinishedWorkflowWork, WorkflowWorkBlocker, WorkflowWorkKind,
-    read_unfinished_local_work,
-};
-pub use commit::{CommittedTransition, TransitionDecorator, TransitionIntent, TransitionObserver};
-pub use control::DurableControlledStore;
-pub use queue::{DurableQueue, DurableQueueLease, DurableQueueStats, QueueReplay, QueueStoreError};
-pub use store::StrategyStore;
-pub(crate) use store::normalize_legacy_workflow;
-pub(crate) use store::validate_published_core_layout;
-pub use strategy_types::{
-    BindingCandidate, BindingValue, StrategyAuthorization, StrategyDefinition,
-    StrategyDefinitionSummary, StrategyDiagnostic, StrategyError, StrategyErrorCode,
-    StrategyProjection,
-};
-pub use subscriptions::DurableSubscriptionStore;
-
-pub const STRATEGY_SCHEMA_VERSION: &str = "licoup.adaptive-flywheel.state.v1";
-
-/// Name the store by its domain boundary while preserving the established
-/// `StrategyStore` type for callers that still use strategy terminology.
-pub type WorkflowStore = StrategyStore;
+pub use licoup_workflow_store::*;

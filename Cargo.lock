@@ -2338,6 +2338,7 @@ dependencies = [
  "licoup-state-machine-codegen",
  "licoup-usage-source-sdk",
  "licoup-workflow",
+ "licoup-workflow-store",
  "log",
  "mime_guess",
  "nix",
@@ -2438,6 +2439,21 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "licoup-workflow-store"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "licoup-foundation",
+ "licoup-workflow",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]

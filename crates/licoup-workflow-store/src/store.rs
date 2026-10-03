@@ -11,7 +11,7 @@ use super::{
     BindingCandidate, BindingValue, STRATEGY_SCHEMA_VERSION, StrategyAuthorization,
     StrategyDefinition, StrategyDefinitionSummary, StrategyDiagnostic, StrategyProjection,
 };
-use crate::domain::workflow_runtime::ASSISTANT_TEMPORARY_DEFINITION_PREFIX;
+use crate::ASSISTANT_TEMPORARY_DEFINITION_PREFIX;
 use licoup_foundation::core::sqlite_contract::ColumnVariant;
 use licoup_workflow::{
     BindingKind, CommandStatus, FailureClass, GraphState, GraphStateKind, ReducerEvent, RunCommand,
@@ -56,7 +56,7 @@ impl StrategyStore {
         Ok(store)
     }
 
-    pub(crate) fn open_for_migration(portable_root: &Path) -> Result<Self> {
+    pub fn open_for_migration(portable_root: &Path) -> Result<Self> {
         let root = portable_root.join("client-state").join("adaptive-flywheel");
         // Native admission validates the published physical input before this
         // private conversion entry. Keep the owner's lower-level transforms
@@ -99,7 +99,7 @@ impl StrategyStore {
         super::DurableControlledStore::from_store(self.clone())
     }
 
-    pub(crate) fn with_connection<T>(
+    pub fn with_connection<T>(
         &self,
         operation: impl FnOnce(&mut Connection) -> Result<T>,
     ) -> Result<T> {
@@ -119,7 +119,7 @@ impl StrategyStore {
         operation(&mut connection)
     }
 
-    pub(crate) fn register_definition(
+    pub fn register_definition(
         &self,
         revision_digest: &str,
         semantics_digest: &str,
@@ -584,7 +584,7 @@ impl StrategyStore {
     /// digest already commits to the route receipt; existing rows must be
     /// byte-for-byte equivalent and can never be rebound.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn admit_assistant_run(
+    pub fn admit_assistant_run(
         &self,
         revision_digest: &str,
         semantics_digest: &str,
@@ -792,7 +792,7 @@ impl StrategyStore {
         })
     }
 
-    pub(crate) fn run_id_by_idempotency_key(
+    pub fn run_id_by_idempotency_key(
         &self,
         idempotency_key: &str,
     ) -> Result<Option<String>> {
@@ -871,7 +871,7 @@ impl StrategyStore {
         })
     }
 
-    pub(crate) fn claim_next_command(
+    pub fn claim_next_command(
         &self,
         run_id: &str,
         claimant: &str,
@@ -971,7 +971,7 @@ impl StrategyStore {
         })
     }
 
-    pub(crate) fn renew_command_lease(
+    pub fn renew_command_lease(
         &self,
         command_id: &str,
         claimant: &str,
@@ -995,7 +995,7 @@ impl StrategyStore {
     /// effect permit is issued. The write lock serializes this admission with
     /// binding updates and authorization revocation; a later revoke does not
     /// retroactively invalidate the already-issued one-shot permit.
-    pub(crate) fn authorize_effect(
+    pub fn authorize_effect(
         &self,
         run_id: &str,
         command_id: &str,
@@ -1071,7 +1071,7 @@ impl StrategyStore {
     /// cannot act on a stale pre-lock observation. Claimed-before-start work
     /// is retried in the same transaction, while expired running work is
     /// retained as in-doubt and is never blindly retried.
-    pub(crate) fn recover_next_expired_command(&self, run_id: &str) -> Result<bool> {
+    pub fn recover_next_expired_command(&self, run_id: &str) -> Result<bool> {
         let Some(command_id) = self.next_expired_leased_command_id(run_id)? else {
             return Ok(false);
         };
@@ -1082,7 +1082,7 @@ impl StrategyStore {
     /// Drop still-valid leases left by a previous host process and retry the
     /// commands. Expired-running recovery stays InDoubt; only this path treats
     /// a running effect as Transient `host_runtime_lost`.
-    pub(crate) fn reclaim_abandoned_host_commands(&self, run_id: &str) -> Result<()> {
+    pub fn reclaim_abandoned_host_commands(&self, run_id: &str) -> Result<()> {
         let command_ids = self.release_live_host_leases(run_id)?;
         for command_id in command_ids {
             self.recover_leased_command(run_id, &command_id, LeaseRecovery::AbandonedHost)?;
@@ -1417,7 +1417,7 @@ impl StrategyStore {
         })
     }
 
-    pub(crate) fn bind_conversation_if_absent(
+    pub fn bind_conversation_if_absent(
         &self,
         run_id: &str,
         conversation_id: &str,
@@ -1486,7 +1486,7 @@ fn initialize_schema(connection: &mut Connection) -> Result<Vec<String>> {
     super::queue::initialize_schema(connection)?;
     super::subscriptions::initialize_schema(connection)?;
     super::commit::initialize_schema(connection)?;
-    super::control::initialize_schema(connection)?;
+    super::controlled::initialize_schema(connection)?;
     Ok(retired)
 }
 
@@ -1638,7 +1638,7 @@ fn validate_current_schema(connection: &mut Connection) -> Result<()> {
     super::queue::initialize_schema(connection)?;
     super::subscriptions::initialize_schema(connection)?;
     super::commit::initialize_schema(connection)?;
-    super::control::initialize_schema(connection)?;
+    super::controlled::initialize_schema(connection)?;
     Ok(())
 }
 
@@ -1674,7 +1674,7 @@ pub(crate) fn preflight_existing_store(path: &Path) -> Result<()> {
 /// named indexes are then checked exactly, so a database that merely carries a
 /// version row — or a seven-table database whose ordinal primary key or unique
 /// authorization index is missing — is refused without writing a byte.
-pub(crate) fn validate_published_core_layout(
+pub fn validate_published_core_layout(
     connection: &Connection,
     expected_meta_version: &str,
 ) -> Result<()> {
@@ -1698,7 +1698,7 @@ pub(crate) fn validate_published_core_layout(
     super::queue::initialize_schema(&reference)?;
     super::subscriptions::initialize_schema(&reference)?;
     super::commit::initialize_schema(&reference)?;
-    super::control::initialize_schema(&reference)?;
+    super::controlled::initialize_schema(&reference)?;
     let existing = licoup_foundation::core::sqlite_contract::tables(connection)?;
     for table in licoup_foundation::core::sqlite_contract::tables(&reference)? {
         if !existing.contains(&table) && !required.contains(&table) {
@@ -1821,7 +1821,10 @@ fn migrate_legacy_workflow_definitions(connection: &Connection) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn normalize_legacy_workflow(
+/// Rewrite one stored definition into the current canonical shape when it was
+/// written by an earlier development implementation. The returned definition is
+/// the identity the current machine reduces; `None` means it already is.
+pub fn normalize_legacy_workflow(
     mut workflow: WorkflowDefinition,
 ) -> Option<WorkflowDefinition> {
     let mut changed = false;

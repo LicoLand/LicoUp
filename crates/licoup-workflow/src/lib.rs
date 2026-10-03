@@ -9,6 +9,7 @@ pub mod compile;
 pub mod diagnostic;
 pub mod ir;
 pub mod machine;
+pub mod strategy;
 pub mod syntax;
 
 pub use analysis::{
@@ -23,6 +24,11 @@ pub use diagnostic::{
 pub use ir::*;
 pub use machine::{
     CommandKind, CommandStatus, ReducerEvent, ReducerOutput, RunCommand, RunSnapshot, reduce,
+};
+pub use strategy::{
+    ASSISTANT_TEMPORARY_DEFINITION_PREFIX, BindingCandidate, BindingValue, StrategyAuthorization,
+    StrategyDefinition, StrategyDefinitionSummary, StrategyDiagnostic, StrategyError,
+    StrategyErrorCode, StrategyProjection,
 };
 pub use syntax::{ParsedWorkflow, parse};
 

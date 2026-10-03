@@ -6,13 +6,16 @@
 
 pub mod adapter;
 mod assistant;
-pub mod control;
 pub mod driver;
 pub mod evolution;
 pub mod node;
 mod package;
-pub mod routing;
 mod service;
+
+// Routing and admission control are the durable store's own contracts. They are
+// re-exported at this path so existing workflow callers keep one stable name
+// while the store owns the only implementation.
+pub use crate::domain::workflow_store::{control, routing};
 
 pub use adapter::{
     AdapterError, AdapterExecutionStatus, CancelOutcome, CooperativeDrainAdapter,

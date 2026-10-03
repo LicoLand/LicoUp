@@ -3,11 +3,11 @@
 use anyhow::{Result, ensure};
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
 
-use crate::domain::workflow_runtime::control::{
+use crate::control::{
     AdmissionConflict, AdmissionReceipt, ControlOperation, ControlScope, ControlledStore,
     OperationGrant,
 };
-use crate::domain::workflow_runtime::routing::{ChannelKind, QueueBounds};
+use crate::routing::{ChannelKind, QueueBounds};
 
 use super::store::StrategyStore;
 use super::{queue, queue::QueueStoreError};
@@ -18,7 +18,7 @@ pub struct DurableControlledStore {
 }
 
 impl DurableControlledStore {
-    pub(crate) fn from_store(store: StrategyStore) -> Self {
+    pub fn from_store(store: StrategyStore) -> Self {
         Self { store }
     }
 
@@ -491,7 +491,7 @@ fn validate_id(value: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::workflow_runtime::control::ControlledStore;
+    use crate::control::ControlledStore;
     use std::fs;
     use uuid::Uuid;
 

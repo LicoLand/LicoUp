@@ -3,7 +3,7 @@
 use anyhow::{Result, anyhow, ensure};
 use rusqlite::{OptionalExtension, params};
 
-use crate::domain::workflow_runtime::routing::{
+use crate::routing::{
     ActivationRule, NodeLifecycleState, Subscription, SubscriptionPredicate, SubscriptionRegistry,
     SubscriptionScope,
 };
