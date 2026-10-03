@@ -353,20 +353,20 @@ test("feature requests propagate through dependency features to optional edges",
       'version = "0.0.0"',
       "",
       "[dependencies]",
-      'workflow = { package = "licoup-workflow", path = "../licoup-workflow", optional = true }',
+      'analytics = { package = "licoup-analytics", path = "../licoup-analytics", optional = true }',
       "",
       "[features]",
-      'runtime = ["workflow"]',
+      'runtime = ["analytics"]',
       "",
     ].join("\n"),
-    "crates/licoup-workflow/Cargo.toml": crateManifest("licoup-workflow"),
+    "crates/licoup-analytics/Cargo.toml": crateManifest("licoup-analytics"),
     "crates/licoup-extension-contracts/src/deployment.rs": deploymentSource([
-      ["workflow.v1", "Optional", "org.licoland.feature.workflow"],
+      ["analytics.v1", "Optional", "org.licoland.feature.analytics"],
     ]),
   }, async (root) => {
     const metric = await measureKernelOptionalCargoEdges({ repoRoot: root });
     assert.deepEqual(metric.ratchet.edges, [
-      "helper -> licoup-workflow (optional-active)",
+      "helper -> licoup-analytics (optional-active)",
     ]);
     assert.deepEqual(metric.details.problems, []);
   });
@@ -474,7 +474,7 @@ test("cargo graph resolves workspace inheritance, locality, and requested activa
       'members = ["crates/licoup-native"]',
       "",
       "[workspace.dependencies]",
-      'renamed-workflow = { package = "licoup-workflow", path = "components/workflow" }',
+      'renamed-analytics = { package = "licoup-analytics", path = "components/analytics" }',
       "",
     ].join("\n"),
     "crates/licoup-native/Cargo.toml": [
@@ -483,25 +483,25 @@ test("cargo graph resolves workspace inheritance, locality, and requested activa
       'version = "0.0.0"',
       "",
       "[dependencies]",
-      "renamed-workflow = { workspace = true }",
-      'licoup-workflow = "1.0.0"',
+      "renamed-analytics = { workspace = true }",
+      'licoup-analytics = "1.0.0"',
       'licoup-mcp = { path = "../licoup-mcp", optional = true }',
       "",
       "[features]",
       'default = ["licoup-mcp"]',
       "",
     ].join("\n"),
-    "components/workflow/Cargo.toml": crateManifest("licoup-workflow"),
+    "components/analytics/Cargo.toml": crateManifest("licoup-analytics"),
     "crates/licoup-mcp/Cargo.toml": crateManifest("licoup-mcp"),
     "crates/licoup-extension-contracts/src/deployment.rs": deploymentSource([
-      ["workflow.v1", "Optional", "org.licoland.feature.workflow"],
+      ["analytics.v1", "Optional", "org.licoland.feature.analytics"],
       ["mcp-server.v1", "Optional", "org.licoland.feature.mcp"],
     ]),
   }, async (root) => {
     const metric = await measureKernelOptionalCargoEdges({ repoRoot: root });
     assert.deepEqual(metric.ratchet.edges, [
+      "licoup-native -> licoup-analytics (dependencies)",
       "licoup-native -> licoup-mcp (optional-active)",
-      "licoup-native -> licoup-workflow (dependencies)",
     ]);
     assert.deepEqual(metric.details.problems, []);
   });
@@ -522,20 +522,20 @@ test("cargo graph handles dotted keys, sub-tables, apostrophe comments, and inac
       "dotted.optional = true",
       "",
       "[dependencies.delta]",
-      'package = "licoup-workflow"',
-      'path = "../licoup-workflow"',
+      'package = "licoup-analytics"',
+      'path = "../licoup-analytics"',
       "",
     ].join("\n"),
     "crates/licoup-mcp/Cargo.toml": crateManifest("licoup-mcp"),
-    "crates/licoup-workflow/Cargo.toml": crateManifest("licoup-workflow"),
+    "crates/licoup-analytics/Cargo.toml": crateManifest("licoup-analytics"),
     "crates/licoup-extension-contracts/src/deployment.rs": deploymentSource([
       ["mcp-server.v1", "Optional", "org.licoland.feature.mcp"],
-      ["workflow.v1", "Optional", "org.licoland.feature.workflow"],
+      ["analytics.v1", "Optional", "org.licoland.feature.analytics"],
     ]),
   }, async (root) => {
     const metric = await measureKernelOptionalCargoEdges({ repoRoot: root });
     assert.deepEqual(metric.ratchet.edges, [
-      "licoup-native -> licoup-workflow (dependencies)",
+      "licoup-native -> licoup-analytics (dependencies)",
     ]);
     assert.deepEqual(metric.details.inactive_optional_edges, [
       "licoup-native -> licoup-mcp (optional, inactive for the requested features)",
@@ -548,13 +548,13 @@ test("external dependencies with local names never count as local edges", async 
   await withFixtureTree({
     "Cargo.toml": "[workspace]\n",
     "crates/licoup-native/Cargo.toml": crateManifest("licoup-native", {
-      "licoup-workflow": "^2.0.0",
+      "licoup-analytics": "^2.0.0",
       "licoup-mcp": { git: "https://example.invalid/mcp.git" },
     }),
-    "crates/licoup-workflow/Cargo.toml": crateManifest("licoup-workflow"),
+    "crates/licoup-analytics/Cargo.toml": crateManifest("licoup-analytics"),
     "crates/licoup-mcp/Cargo.toml": crateManifest("licoup-mcp"),
     "crates/licoup-extension-contracts/src/deployment.rs": deploymentSource([
-      ["workflow.v1", "Optional", "org.licoland.feature.workflow"],
+      ["analytics.v1", "Optional", "org.licoland.feature.analytics"],
       ["mcp-server.v1", "Optional", "org.licoland.feature.mcp"],
     ]),
   }, async (root) => {
@@ -1218,18 +1218,18 @@ test("literal bytes and exact attributed tool sets bind exception identity", asy
   assert.notEqual(modified.siteIds[0], original.siteIds[0]);
 });
 
-function forwardedFixture({ nativeFeatures = 'default = ["helper/runtime"]', optional = false, helperFeatures = 'runtime = ["dep:workflow"]' } = {}) {
+function forwardedFixture({ nativeFeatures = 'default = ["helper/runtime"]', optional = false, helperFeatures = 'runtime = ["dep:analytics"]' } = {}) {
   return completeFixture({
     "crates/licoup-native/Cargo.toml": crateManifest("licoup-native", {
       helper: { path: "../helper", optional, "default-features": false },
     }, `\n[features]\n${nativeFeatures}\n`),
     "crates/helper/Cargo.toml": crateManifest("helper", {
-      workflow: { package: "licoup-workflow", path: "../licoup-workflow", optional: true },
+      analytics: { package: "licoup-analytics", path: "../licoup-analytics", optional: true },
     }, `\n[features]\n${helperFeatures}\n`),
-    "crates/licoup-workflow/Cargo.toml": crateManifest("licoup-workflow"),
+    "crates/licoup-analytics/Cargo.toml": crateManifest("licoup-analytics"),
     "crates/licoup-extension-contracts/src/deployment.rs": deploymentSource([
       ["mcp-server.v1", "Optional", "org.licoland.feature.mcp"],
-      ["workflow.v1", "Optional", "org.licoland.feature.workflow"],
+      ["analytics.v1", "Optional", "org.licoland.feature.analytics"],
     ]),
   });
 }
@@ -1257,7 +1257,7 @@ test("default and weak feature forwarding keep optional debt through actual chec
 
 test("workspace feature requests remain additive through a renamed dependency", async () => {
   await withFixtureTree(forwardedFixture({
-    helperFeatures: 'runtime = ["dep:workflow"]\nextra = []',
+    helperFeatures: 'runtime = ["dep:analytics"]\nextra = []',
   }), async (root) => {
     await fs.writeFile(path.join(root, "Cargo.toml"), '[workspace]\n[workspace.dependencies]\nrenamed = { package = "helper", path = "crates/helper", features = ["runtime"] }\n');
     await fs.writeFile(path.join(root, "crates/licoup-native/Cargo.toml"), crateManifest("licoup-native", {
@@ -1283,7 +1283,7 @@ test("feature unification traverses optional implementations before deciding ker
     assert.deepEqual(measurement.problems, []);
     const metric = measurement.metrics.find((entry) => entry.id === "kernel_optional_cargo_edges");
     assert.deepEqual(metric.ratchet.edges, [
-      "helper -> licoup-workflow (optional-active)",
+      "helper -> licoup-analytics (optional-active)",
       "licoup-native -> licoup-mcp (dependencies)",
     ]);
     assert.deepEqual(metric.details.inactive_optional_edges, []);
@@ -1297,7 +1297,7 @@ test("invalid feature requests, unknown local overrides and ambiguous binary own
     await assertMeasurementRefused(root, /feature missing is not declared/u);
   });
   await withFixtureTree(forwardedFixture(), async (root) => {
-    await fs.appendFile(path.join(root, "Cargo.toml"), '\n[patch.crates-io]\nworkflow = { path = "crates/licoup-workflow" }\n');
+    await fs.appendFile(path.join(root, "Cargo.toml"), '\n[patch.crates-io]\nanalytics = { path = "crates/licoup-analytics" }\n');
     await assertMeasurementRefused(root, /local dependency overrides/u);
   });
   await withFixtureTree(completeFixture({
@@ -1311,11 +1311,11 @@ test("ownership constants and qualified constructors cannot turn one optional ed
     assert.equal((await recordArchitectureRatchet({ repoRoot: root })).record.kernelOptionalCargoEdges, 1);
     const ownerPath = path.join(root, "crates/licoup-extension-contracts/src/deployment.rs");
     await fs.writeFile(ownerPath, [
-      'const WORKFLOW: &str = "workflow.v1";',
-      'mod packages { pub const PACKAGE: &str = "org.licoland.feature.workflow"; pub const OWNER: PackOwnership = PackOwnership::Optional(PACKAGE); }',
+      'const ANALYTICS: &str = "analytics.v1";',
+      'mod packages { pub const PACKAGE: &str = "org.licoland.feature.analytics"; pub const OWNER: PackOwnership = PackOwnership::Optional(PACKAGE); }',
       'mod unrelated { pub const PACKAGE: &str = "org.licoland.feature.mcp"; }',
       'pub const CAPABILITY_OWNERSHIP: [(&str, PackOwnership); 2] = [',
-      ' (WORKFLOW, packages::OWNER),',
+      ' (ANALYTICS, packages::OWNER),',
       ' ("mcp-server.v1", crate::deployment::PackOwnership :: Optional (unrelated::PACKAGE)),',
       '];',
     ].join("\n"));
@@ -1327,7 +1327,7 @@ test("ownership constants and qualified constructors cannot turn one optional ed
     assert.equal(recorded.record.kernelOptionalCargoEdges, 1);
     for (const unsupported of [
       'pub const CAPABILITY_OWNERSHIP: [(&str, PackOwnership); 2] = generated_ownership!();',
-      'pub const CAPABILITY_OWNERSHIP: [(&str, PackOwnership); 1] = [("workflow.v1", select_owner())];',
+      'pub const CAPABILITY_OWNERSHIP: [(&str, PackOwnership); 1] = [("analytics.v1", select_owner())];',
       '// pub const CAPABILITY_OWNERSHIP: [(&str, PackOwnership); 0] = [];',
     ]) {
       await fs.writeFile(ownerPath, unsupported);
