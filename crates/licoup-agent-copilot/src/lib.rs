@@ -35,6 +35,14 @@
 //! next. Until it does, running this package's binary describes this Agent; it
 //! does not run a turn. That remainder is named for the kernel cleanup that owns
 //! it, and nothing here claims otherwise.
+//!
+//! Because this package starts no execution, it declares no host port of its
+//! own and answers no admission question: which conversation is admitted, when
+//! an update may replace a running package, and where a turn's events go are the
+//! host's, reached through the shared engine today and through the
+//! agent-execution route when that route lands. A package that executes nothing
+//! has nothing with which to bypass the host's idle update admission, and when
+//! it does execute it will ask the host rather than decide.
 
 pub mod dialect;
 pub mod driver;

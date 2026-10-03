@@ -481,7 +481,9 @@ test("neutral ACP runtime and session transport retain bounded ownership", async
   for (const relativePath of [
     "crates/licoup-agent-drivers/src/acp_driver_runtime.rs",
     ...sources,
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot.rs",
+    // The per-Agent frame policy the shared reducer reads: Copilot's dialect
+    // moved into its own package, Kimi Code's is still composed by the host.
+    "crates/licoup-agent-copilot/src/dialect.rs",
     "crates/licoup-native/src/platform/native_agent_parser/adapters/kimi_code.rs",
     "crates/licoup-agent-drivers/src/acp_driver_runtime/events.rs",
     "crates/licoup-agent-drivers/src/acp_driver_runtime/protocol.rs",

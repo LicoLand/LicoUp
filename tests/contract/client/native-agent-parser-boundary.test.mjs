@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-// The thirteen per-Agent parsers and the composition that names them stay in
-// the host; the shared adapter contract, the registry lookup, the replay
-// harness and the lifecycle authority moved to `licoup-agent-adapter-sdk`.
+// The thirteen per-Agent parsers stay one inventory; the composition that names
+// them, the shared adapter contract, the registry lookup, the replay harness and
+// the lifecycle authority are split between the host, the adapter SDK and the
+// Agent packages the moved parsers live in.
 const parserRoot = 'crates/licoup-native/src/platform/native_agent_parser';
 const compositionRoot = `${parserRoot}/adapters`;
 const sdkRoot = 'crates/licoup-agent-adapter-sdk/src';
@@ -23,6 +24,33 @@ const adapters = [
   'lico_agent',
   'deepseek_harness',
 ];
+// An Agent whose parser has moved carries its declaration in its own package, so
+// the composition names the package and the component the check reads is the
+// package's parser. The registration constructor each package uses is asserted
+// where that package's registration now lives, because the owner changed and the
+// answer has to be read from its owner.
+const movedParsers = {
+  codex: {
+    crate: 'licoup_agent_codex',
+    registration: 'crates/licoup-agent-codex/src/registration.rs',
+    component: 'crates/licoup-agent-codex/src/parser.rs',
+    constructor: /ParserRegistration::new\(/u,
+    answers: ['execution_transitions', 'valid_identity'],
+    // The client's own app-server process half reads this parser by name.
+    alias: 'codex',
+  },
+  copilot: {
+    crate: 'licoup_agent_copilot',
+    registration: 'crates/licoup-agent-copilot/src/registration.rs',
+    component: 'crates/licoup-agent-copilot/src/parser.rs',
+    constructor: /ParserRegistration::unanswered\(/u,
+    answers: [],
+    // Nothing in the host reads this parser by name: the shared ACP engine reads
+    // it through the dialect the package registers.
+    alias: null,
+  },
+};
+const movedCount = Object.keys(movedParsers).length;
 
 test('packaged adapter registry is bijective with the thirteen-entry inventory', () => {
   const composition = readFileSync(`${compositionRoot}/mod.rs`, 'utf8');
@@ -30,9 +58,12 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     composition.indexOf('pub(in crate::platform) static REGISTRATIONS'),
     composition.indexOf('/// The parser registrations this host injects'),
   );
-  // Every entry names its Agent's declaration exactly once, and none inherits
-  // another Agent's answer.
-  assert.equal((registrations.match(/ParserRegistration::(?:unanswered|new)\(/g) ?? []).length, 13);
+  // Every entry names its Agent's declaration exactly once — locally or through
+  // the package that owns it — and none inherits another Agent's answer.
+  assert.equal(
+    (registrations.match(/ParserRegistration::(?:unanswered|new)\(/g) ?? []).length + movedCount,
+    13,
+  );
   // The queries a reader reaches are answered by the Agent that owns the fact:
   // Hermes' normalized transitions, and the exact-resume identity of the four
   // Agents the Subagent mesh dispatches. Every other entry stays declared and
@@ -51,8 +82,31 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     const contract = chunk.match(/(\w+)::CONTRACT/);
     if (contract) entries.set(contract[1], chunk);
   }
-  assert.equal(entries.size, 13);
+  assert.equal(entries.size, adapters.length - movedCount);
   for (const adapter of adapters) {
+    const moved = movedParsers[adapter];
+    if (moved) {
+      // The composition names the package's registration, and — for a parser the
+      // host still reads by name — the package's parser. The package's own
+      // documents carry what this check would otherwise read here.
+      if (moved.alias) {
+        assert.ok(
+          composition.includes(`use ${moved.crate}::parser as ${moved.alias};`),
+          `${adapter}'s parser lives in ${moved.crate} and the composition names it`,
+        );
+      }
+      assert.ok(
+        registrations.includes(`${moved.crate}::registration::REGISTRATION`),
+        `${adapter}'s registration is the package's own declaration`,
+      );
+      const owner = readFileSync(moved.registration, 'utf8');
+      assert.match(owner, moved.constructor, `${adapter}'s registration constructor`);
+      for (const answer of moved.answers) {
+        assert.match(owner, new RegExp(`\\b${answer}\\b`, 'u'));
+      }
+      assert.match(readFileSync(moved.component, 'utf8'), /AdapterContract::new/);
+      continue;
+    }
     assert.match(composition, new RegExp(`mod ${adapter};`));
     const entry = entries.get(adapter);
     assert.ok(entry, `no registration entry for ${adapter}`);

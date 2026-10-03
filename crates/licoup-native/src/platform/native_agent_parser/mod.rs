@@ -1,5 +1,6 @@
-//! The native Agent parser family: the thirteen per-Agent parsers this host
-//! still holds, and the composition that injects them into the adapter SDK.
+//! The native Agent parser family: the per-Agent parsers this host still holds,
+//! and the composition that injects them — and the Agent packages that own the
+//! moved ones — into the adapter SDK.
 //!
 //! `licoup-agent-adapter-sdk` is the single authority for what every adapter
 //! program shares: the byte-line ingress contract, the adapter declaration, the
@@ -9,14 +10,15 @@
 //! lifecycle machine. None of that is here any more, and none of it is
 //! duplicated here.
 //!
-//! What is here is one Agent each. `adapters` holds the thirteen parsers that
-//! classify one Agent's vendor frames and the `REGISTRATIONS` list that names
-//! their declarations; `replay` holds the arm that drives each of them from a
-//! recorded transcript and the corpus checks that belong to the family; and
-//! `tests` holds the family's own claims. Each per-Agent subtree and its arm
-//! move to that Agent's crate (`licoup-agent-<agent>`); this root and the
-//! composition are what remain, because they are what names thirteen parsers
-//! and, later, thirteen crates.
+//! What is here is one Agent each. `adapters` holds the parsers that classify
+//! one Agent's vendor frames — the eleven this host still carries, and the two
+//! Codex and Copilot moved into their own packages — and the `REGISTRATIONS`
+//! list that names their declarations; `replay` holds the arm that drives each
+//! of them from a recorded transcript and the corpus checks that belong to the
+//! family; and `tests` holds the family's own claims. Each per-Agent subtree and
+//! its arm move to that Agent's crate (`licoup-agent-<agent>`); this root and
+//! the composition are what remain, because they are what names the parsers and
+//! the crates that hold them.
 //!
 //! The SDK's two protocol-agnostic `port::ParserRegistration` queries are
 //! answered in `adapters::REGISTRATIONS` by the Agents whose facts a reader
@@ -24,10 +26,10 @@
 //! no transition list of its own and the host's Hermes normalization reads that
 //! query; and the four Agents the Subagent mesh dispatches — Codex, Cursor,
 //! Antigravity and Claude Code — answer `valid_identity` from their own
-//! recorded evidence. Twelve of the thirteen entries leave
-//! `execution_transitions` unanswered because their driver carries the parser's
-//! own transition list, and the identity query stays fail-closed for an Agent
-//! the mesh never dispatches. No entry inherits a neighbouring Agent's answer.
+//! recorded evidence. The remaining entries leave `execution_transitions`
+//! unanswered because their driver carries the parser's own transition list, and
+//! the identity query stays fail-closed for an Agent the mesh never dispatches.
+//! No entry inherits a neighbouring Agent's answer.
 
 pub(in crate::platform) mod adapters;
 #[cfg(test)]

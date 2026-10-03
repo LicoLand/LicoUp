@@ -867,7 +867,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Fail-closed ACP permission interaction projection",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot.rs",
+        "crates/licoup-agent-copilot/src/dialect.rs",
+        "crates/licoup-agent-copilot/src/parser.rs",
         "crates/licoup-native/src/platform/native_agent_parser/adapters/kimi_code.rs",
         "crates/licoup-agent-drivers/src/acp_driver_runtime/parser_port.rs",
         "crates/licoup-agent-drivers/src/acp_driver_runtime/protocol.rs",
@@ -920,7 +921,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "ACP initialize, optional MCP server injection, session, prompt, and response state machine",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot.rs",
+        "crates/licoup-agent-copilot/src/dialect.rs",
+        "crates/licoup-agent-copilot/src/parser.rs",
         "crates/licoup-native/src/platform/native_agent_parser/adapters/kimi_code.rs",
         "crates/licoup-agent-drivers/src/acp_driver_runtime/parser_port.rs",
         "crates/licoup-agent-drivers/src/acp_driver_runtime/protocol.rs",
