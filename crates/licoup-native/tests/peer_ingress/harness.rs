@@ -1210,10 +1210,34 @@ pub fn application_facade(
         std::sync::Arc::new(UnusedAssistant),
         std::sync::Arc::new(UnusedSubagent),
         conversation,
+        // This harness never exercises the project port: a fail-closed
+        // stand-in keeps the facade honest without reaching into native
+        // composition that an integration test cannot name.
+        std::sync::Arc::new(UnusedProject),
     ))
 }
 
 /// Decodes one peer command request through the application contract.
 pub fn decode_command(request: &serde_json::Value) -> ApplicationCommand {
     ApplicationCommand::decode(request).expect("the peer command request is a typed command")
+}
+
+/// A project port that answers nothing: this harness has no project work, and
+/// a silent success would be a lie about a capability the host does not have.
+struct UnusedProject;
+
+impl licoup_application::ProjectPort for UnusedProject {
+    fn execute(
+        &self,
+        _claim: &licoup_application::ActorClaim,
+        _command: &licoup_application::ProjectCommand,
+    ) -> Result<licoup_application::CommandOutcome, licoup_application::ApplicationFailure> {
+        Err(
+            licoup_application::ApplicationFailure::permanent(
+                "project_port_unavailable",
+                "project",
+            )
+            .with_field("project"),
+        )
+    }
 }
