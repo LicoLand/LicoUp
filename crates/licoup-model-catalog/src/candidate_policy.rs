@@ -464,10 +464,11 @@ pub fn select_candidates(
     }
 
     let selected = ranked.first().map(|entry| entry.candidate.clone());
-    let substitute_for = path
-        .first()
-        .filter(|head| selected.as_ref() != Some(*head))
-        .cloned();
+    // A substitution is reported only when something was actually selected in
+    // the explicit choice's place: an unavailable request made no substitution.
+    let substitute_for = selected
+        .as_ref()
+        .and_then(|selected| path.first().filter(|head| *head != selected).cloned());
     let unavailable = if request.allowed.is_empty() {
         Some(CandidateUnavailable::NoAllowedCandidate)
     } else if ranked.is_empty() {

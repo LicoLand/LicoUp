@@ -51,11 +51,10 @@ pub use availability::{
     ObservedAvailability, ObservedCatalog, ObservedCatalogCache, ObservedModel, now_unix_ms,
 };
 pub use candidate_policy::{
-    CandidateAvailability, CandidateCredential, CandidateDecision, CandidateExclusion,
-    CandidateId, CandidatePolicyPort, CandidateQuota, CandidateRelation, CandidateRequest,
-    CandidateRequirement, CandidateUnavailable, ExclusionCategory, ExclusionCode,
-    ExcludedCandidate, QuotaState, RankedCandidate, RequirementAnswer, RequirementState,
-    select_candidates,
+    CandidateAvailability, CandidateCredential, CandidateDecision, CandidateExclusion, CandidateId,
+    CandidatePolicyPort, CandidateQuota, CandidateRelation, CandidateRequest, CandidateRequirement,
+    CandidateUnavailable, ExcludedCandidate, ExclusionCategory, ExclusionCode, QuotaState,
+    RankedCandidate, RequirementAnswer, RequirementState, select_candidates,
 };
 pub use identity::{
     CanonicalModel, RegistrySnapshot, SnapshotProvenance, model_display_name, snapshot_report,
