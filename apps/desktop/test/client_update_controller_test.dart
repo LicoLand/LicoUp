@@ -183,7 +183,15 @@ void main() {
     expect(controller.status.phase, ClientUpdatePhase.applied);
     expect(exited, isTrue);
     expect(gateway.lastApplyDataRoot, '/data/lico');
-    expect(gateway.calls, ['status', 'check', 'download', 'verify', 'apply']);
+    expect(gateway.calls, [
+      'status',
+      'check',
+      'download',
+      'verify',
+      // The native admission answer is re-read immediately before the switch.
+      'status',
+      'apply',
+    ]);
   });
 
   test('nightly can select stable and clears the previous artifact', () async {
@@ -263,6 +271,126 @@ void main() {
       expect(controller.canApplyUpdate, isFalse);
     },
   );
+
+  test(
+    'a blocked host admission keeps apply locked and never reaches native apply',
+    () async {
+      final gateway = _FakeClientUpdateGateway()
+        ..admission = const ClientUpdateAdmission(
+          decision: ClientUpdateAdmissionDecision.blocked,
+          blockers: [
+            ClientUpdateBlocker(
+              owner: ClientUpdateBlockerOwner.canonicalConversation,
+              kind: 'conversation-dispatch',
+              scope: 'conversation-1',
+              identity: 'dispatch-1',
+              state: 'claimed',
+            ),
+            ClientUpdateBlocker(
+              owner: ClientUpdateBlockerOwner.adaptiveFlywheel,
+              kind: 'workflow-run',
+              identity: 'run-1',
+              state: 'running',
+            ),
+          ],
+        );
+      final updates = <ClientUpdateStatusUpdate>[];
+      var exited = false;
+      final controller = ClientUpdateController(
+        gateway: gateway,
+        agentService: _NoopAgentCommandRunner(),
+        onStatus: updates.add,
+      );
+      addTearDown(controller.dispose);
+
+      await controller.checkGithub();
+      await controller.downloadGithub();
+
+      expect(controller.status.phase, ClientUpdatePhase.blocked);
+      expect(controller.admissionAllowsApply, isFalse);
+      expect(controller.admissionBlockers, hasLength(2));
+      expect(controller.applyLockReasonCode, 'client_update_admission_blocked');
+      expect(controller.canApplyUpdate, isFalse);
+      expect(controller.status.errorCode, 'client_update_admission_blocked');
+
+      await controller.applyThenExit(() => exited = true);
+
+      expect(exited, isFalse);
+      expect(gateway.calls, isNot(contains('apply')));
+      expect(updates.last.errorCode, 'client_update_admission_blocked');
+    },
+  );
+
+  test('an unreadable host admission fails closed', () async {
+    final gateway = _FakeClientUpdateGateway()
+      ..admission = const ClientUpdateAdmission.unavailable();
+    final controller = ClientUpdateController(
+      gateway: gateway,
+      agentService: _NoopAgentCommandRunner(),
+      onStatus: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    await controller.checkGithub();
+    await controller.downloadGithub();
+
+    expect(controller.status.phase, ClientUpdatePhase.blocked);
+    expect(controller.admission.observed, isFalse);
+    expect(
+      controller.applyLockReasonCode,
+      'client_update_admission_unavailable',
+    );
+    expect(controller.canApplyUpdate, isFalse);
+    expect(gateway.calls, isNot(contains('apply')));
+  });
+
+  test('a new idle admission answer unlocks a verified update', () async {
+    final gateway = _FakeClientUpdateGateway()
+      ..admission = const ClientUpdateAdmission(
+        decision: ClientUpdateAdmissionDecision.blocked,
+      );
+    final controller = ClientUpdateController(
+      gateway: gateway,
+      agentService: _NoopAgentCommandRunner(),
+      onStatus: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    await controller.checkGithub();
+    await controller.downloadGithub();
+    expect(controller.canApplyUpdate, isFalse);
+
+    gateway.admission = const ClientUpdateAdmission(
+      decision: ClientUpdateAdmissionDecision.idle,
+    );
+    await controller.refreshAdmission();
+
+    expect(controller.status.phase, ClientUpdatePhase.verified);
+    expect(controller.canApplyUpdate, isTrue);
+    expect(controller.applyLockReasonCode, isEmpty);
+  });
+
+  test(
+    'a closed host admission states that another switch holds the host',
+    () async {
+      final gateway = _FakeClientUpdateGateway()
+        ..admission = const ClientUpdateAdmission(
+          decision: ClientUpdateAdmissionDecision.closed,
+        );
+      final controller = ClientUpdateController(
+        gateway: gateway,
+        agentService: _NoopAgentCommandRunner(),
+        onStatus: (_) {},
+      );
+      addTearDown(controller.dispose);
+
+      await controller.checkGithub();
+      await controller.downloadGithub();
+
+      expect(controller.applyLockReasonCode, 'client_update_admission_closed');
+      expect(controller.canApplyUpdate, isFalse);
+    },
+  );
 }
 
 final class _FakeClientUpdateGateway implements ClientUpdateGateway {
@@ -272,6 +400,9 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
   ClientUpdatePhase checkPhase = ClientUpdatePhase.updateAvailable;
   String lastApplyDataRoot = '';
   String lastCheckTargetReleaseTrack = '';
+  ClientUpdateAdmission admission = const ClientUpdateAdmission(
+    decision: ClientUpdateAdmissionDecision.idle,
+  );
 
   ClientUpdateStatus _status(ClientUpdatePhase phase) => ClientUpdateStatus(
     phase: phase,
@@ -285,6 +416,7 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     manifestSha256: 'sha256:manifest',
     targetId: 'test-target',
     githubReleaseUrl: 'https://github.com/LicoLand/LicoUp/releases/tag/v1.1.0',
+    admission: admission,
   );
 
   void _record(String call) {
@@ -368,11 +500,12 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     String stateRoot = '',
   }) async {
     _record('status');
-    return const ClientUpdateStatus(
+    return ClientUpdateStatus(
       phase: ClientUpdatePhase.idle,
       runningVersion: '1.0.0',
       runningReleaseTrack: ReleaseTrack.nightly,
       targetReleaseTrack: ReleaseTrack.nightly,
+      admission: admission,
     );
   }
 

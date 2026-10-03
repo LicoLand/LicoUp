@@ -1632,6 +1632,24 @@ export const FLUTTER_MODULES = Object.freeze([
       ]),
     }),
   defineModule({
+      id: "flutter.feature.runtime-control",
+      kind: "flutter-feature",
+      summary:
+        "Manual stop, explicit force-stop, and native upgrade-blocker admission control",
+      inputs: [
+        "apps/desktop/lib/src/application/features/runtime_control/**",
+        "apps/desktop/lib/src/contracts/work_control_gateway.dart",
+        "apps/desktop/lib/src/contracts/presentation/work_control_models.dart",
+        "apps/desktop/lib/src/frontend/features/runtime_control/**",
+        "apps/desktop/test/force_stop_dialog_test.dart",
+        "apps/desktop/test/work_control_controller_test.dart",
+      ],
+      command: flutterTests([
+        "test/force_stop_dialog_test.dart",
+        "test/work_control_controller_test.dart",
+      ]),
+    }),
+  defineModule({
       id: "flutter.feature.skill-hub",
       kind: "flutter-feature",
       summary: "Skill Hub catalog, compatibility, preferences, and UI",

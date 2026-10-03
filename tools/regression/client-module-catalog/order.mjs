@@ -165,6 +165,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "flutter.feature.mobile-relay.panel-trust",
   "flutter.feature.mobile-relay.secure-mesh-controller",
   "flutter.feature.settings",
+  "flutter.feature.runtime-control",
   "flutter.feature.skill-hub",
   "flutter.feature.skill-hub.delete",
   "flutter.feature.skill-hub.usage",

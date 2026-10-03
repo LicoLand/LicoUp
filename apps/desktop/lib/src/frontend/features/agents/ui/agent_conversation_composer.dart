@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/contracts/presentation/work_control_models.dart';
+import 'package:licoup/src/frontend/features/runtime_control/work_stop_indicator.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
@@ -60,6 +62,9 @@ class RuntimeMessageComposer extends StatefulWidget {
     this.fieldTrailing,
     this.outerPadding,
     this.fixedHeight,
+    this.workStopStage = WorkStopStage.idle,
+    this.workStopDiagnosticReference = '',
+    this.onForceStop,
   });
 
   final String targetLabel;
@@ -132,6 +137,20 @@ class RuntimeMessageComposer extends StatefulWidget {
   /// insets; hosts that position the composer precisely (the Desktop bottom
   /// bar) pass an explicit value so the capsule aligns with their grid.
   final EdgeInsetsGeometry? outerPadding;
+
+  /// The visible stop stage of the admitted work behind this composer.
+  ///
+  /// [WorkStopStage.idle] renders nothing, so hosts that do not project manual
+  /// stop keep the previous composer exactly.
+  final WorkStopStage workStopStage;
+
+  /// Short local reference for the last stop answer (an opaque correlation
+  /// id), shown beside the stage. Never a raw error or payload.
+  final String workStopDiagnosticReference;
+
+  /// Opens the explicit force-stop confirmation. Only an unconfirmed stop
+  /// offers it.
+  final VoidCallback? onForceStop;
 
   /// Pins the compact (non-floating) capsule to this height and centers its
   /// content vertically, ignoring the text's intrinsic growth. The Desktop
@@ -655,6 +674,17 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
               onSelected: _insertMention,
             ),
             const SizedBox(height: 8),
+          ],
+          if (widget.workStopStage != WorkStopStage.idle) ...[
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 6),
+              child: WorkStopIndicator(
+                stage: widget.workStopStage,
+                diagnosticReference: widget.workStopDiagnosticReference,
+                chinese: strings.isChinese,
+                onForceStop: widget.onForceStop,
+              ),
+            ),
           ],
           if (floating)
             field
