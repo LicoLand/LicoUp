@@ -436,6 +436,20 @@ export const RUST_CORE_MODULES = Object.freeze([
       command: rustLayer("core::secure_mesh_crypto::tests::tamper::"),
     }),
   defineModule({
+      id: "rust.core.endpoint-core",
+      kind: "rust-core",
+      summary: "Caller-owned session, custody, transport, and durable-state port contracts",
+      inputs: [
+        "crates/licoup-endpoint-core/Cargo.toml",
+        "crates/licoup-endpoint-core/src/**",
+      ],
+      command: command(
+        "cargo",
+        ["test", "-p", "licoup-endpoint-core"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
       id: "rust.core.protocol-bindings",
       kind: "rust-core",
       summary: "Fixed-input admission, frozen Line version, and verified peer ingress",
