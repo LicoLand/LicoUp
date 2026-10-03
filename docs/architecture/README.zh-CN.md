@@ -158,6 +158,8 @@ flowchart TB
 | **下属智能体 MCP** | 外部协议适配器 | [subagent-mcp.zh-CN.md](../protocols/subagent-mcp.zh-CN.md) | 独立构建的 MCP 进程通过原生 CLI 提供获准远程调用的 Subagents 子集 |
 | **语义对话与历史编目** | 第 3 层：功能核心层 | [semantic-conversation.md](../protocols/semantic-conversation.md) | 注册表所列 Agent 协议转换、厂商历史目录发现与只读回放 |
 | **安全与数据边界** | 第 3 层：功能核心层 | [SECURITY-AND-DATA-BOUNDARY.zh-CN.md](SECURITY-AND-DATA-BOUNDARY.zh-CN.md) | 虚拟机探测隔离、端点保护预览、平台密钥保管与数据零信任 |
+| **扩展平台** | 第 3 层：功能核心层 | [EXTENSION-PLATFORM.md](EXTENSION-PLATFORM.md) | 扩展契约、Profile、载体、生命周期、内核决定与包自描述兼容列表 |
+| **部署 Profile** | 第 3 层：功能核心层 | [DEPLOYMENT-PROFILES.md](DEPLOYMENT-PROFILES.md) | 安装 Profile、安装闭包、能力归属与第一方包规则 |
 | **原生系统平台桥接** | 第 4 层：原生适配层 | `crates/licoup-native/src/platform/` | macOS、Windows、Linux、Android、iOS 底层 OS API 与工具链实现 |
 
 ---

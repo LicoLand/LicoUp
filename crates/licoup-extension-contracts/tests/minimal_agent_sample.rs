@@ -103,6 +103,37 @@ fn the_sample_manifest_is_a_conformant_local_package() {
 }
 
 #[test]
+fn the_sample_declares_the_client_versions_it_supports() {
+    let manifest =
+        PackageManifest::from_value(serde_json::from_str(MANIFEST).expect("manifest JSON"))
+            .expect("the sample manifest is accepted");
+
+    // The published product identity, read from the same manifest the build
+    // injects into the client, rather than a version restated here.
+    let product: Value = serde_json::from_str(include_str!("../../../tools/client-version.json"))
+        .expect("client version manifest");
+    let product_version = product["productVersion"]
+        .as_str()
+        .expect("the client version manifest declares a product version");
+
+    assert!(
+        !manifest.compatibility.client_versions.is_empty(),
+        "every package carries a compatibility list; one that declares none is admitted by nothing"
+    );
+    assert!(
+        manifest.client_compatibility(product_version).is_covered(),
+        "the sample must cover the client it ships against ({product_version})"
+    );
+    assert_eq!(
+        manifest
+            .client_compatibility(product_version)
+            .refusal(&manifest.id, product_version),
+        None,
+        "a covering list refuses nothing"
+    );
+}
+
+#[test]
 fn the_sample_manifest_carries_every_field_its_schema_requires() {
     let schema: Value = serde_json::from_str(include_str!(
         "../../../schemas/extensions/manifest.schema.json"

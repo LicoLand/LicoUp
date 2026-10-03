@@ -81,11 +81,6 @@ export const OPTIONAL_CAPABILITY_CRATES = Object.freeze({
     evidence:
       "crates/licoup-mcp builds the lico-subagent-mcp binary bundled by the subagents-mcp packaging module.",
   }),
-  "org.licoland.feature.workflow": Object.freeze({
-    crates: Object.freeze(["licoup-workflow"]),
-    evidence:
-      "crates/licoup-workflow implements the workflow capability; AR-05 currently keeps the workflow/flywheel in the kernel and M4 owns the ownership-table correction.",
-  }),
   "org.licoland.adapter.generic": Object.freeze({
     crates: Object.freeze([]),
     evidence:
@@ -133,11 +128,6 @@ export const OPTIONAL_CAPABILITY_ARTIFACTS = Object.freeze({
     evidence:
       "crates/licoup-mcp builds lico-subagent-mcp; subagents-mcp bundles it and codex-plugin embeds it.",
   }),
-  "org.licoland.feature.workflow": Object.freeze({
-    artifacts: Object.freeze([]),
-    evidence:
-      "No separate bundled artifact; the workflow runtime is compiled into the native kernel sidecar.",
-  }),
   "org.licoland.adapter.generic": Object.freeze({
     artifacts: Object.freeze([]),
     evidence:
@@ -172,7 +162,6 @@ export const OPTIONAL_CAPABILITY_ARTIFACTS = Object.freeze({
 export const OPTIONAL_CAPABILITY_BUNDLES = Object.freeze({
   "org.licoland.feature.analytics": Object.freeze([]),
   "org.licoland.feature.mcp": Object.freeze(["subagents-mcp", "codex-plugin"]),
-  "org.licoland.feature.workflow": Object.freeze([]),
   "org.licoland.adapter.generic": Object.freeze([]),
   "org.licoland.provider.compat": Object.freeze([]),
   "org.licoland.feature.gateway": Object.freeze(["gateway-sidecar"]),

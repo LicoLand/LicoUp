@@ -11,12 +11,12 @@
       "const": "licoup.deployment.v1"
     },
     "profile": {
-      "enum": ["minimal-local", "standard", "gateway", "peer", "workflow", "analytics"],
-      "description": "The recipe this installation started from. A profile is an initial selection, not a permanent prohibition: the user may change it or add packages at any time."
+      "enum": ["minimal-local", "standard", "gateway", "peer", "analytics"],
+      "description": "The recipe this installation started from. A profile is an initial selection, not a permanent prohibition: the user may change it or add packages at any time. The workflow and flywheel are kernel capabilities, so no profile selects them."
     },
     "corePackage": {
       "$ref": "#/$defs/namespacedName",
-      "description": "The minimal trusted host. Its capabilities cannot be trimmed away, and it may not require a package that can."
+      "description": "The minimal trusted host: canonical conversation, the Assistant, the workflow and flywheel, the extension host with package management, the base usage journal, the declarative interface primitives, the generic PTY/CLI adapter with Agent Hub configuration registration, key custody, and update and migration admission. Its capabilities cannot be trimmed away, and it may not require a package that can."
     },
     "packages": {
       "type": "array",
@@ -89,7 +89,7 @@
           },
           "core": {
             "type": "boolean",
-            "description": "True when the minimal core carries it, so every distribution has it."
+            "description": "True when the kernel carries it, so every distribution has it."
           },
           "availability": {
             "enum": ["served", "installed-not-enabled", "not-installed", "not-in-distribution"],

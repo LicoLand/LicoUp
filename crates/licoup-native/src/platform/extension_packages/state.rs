@@ -13,6 +13,7 @@
 //! identity, because that instance still has to be observed, cancelled and
 //! settled exactly where it was admitted.
 
+use crate::platform::extension_packages::install::ActivationAdmission;
 use crate::platform::extension_packages::{actionable, now_unix_ms, refusal};
 use licoup_application::ApplicationFailure;
 use licoup_extension_contracts::deployment::{InstanceLifecycle, PackageFacts, PackageLifecycle};
@@ -587,7 +588,11 @@ impl InstanceMachine {
     }
 
     /// Take one lifecycle step, refusing a step the machine could not have made.
-    pub fn advance(&mut self, next: InstanceLifecycle) -> Result<(), ApplicationFailure> {
+    ///
+    /// It is crate-visible rather than public because the step that starts using a
+    /// package — preparing — is not a free transition: see
+    /// [`InstanceMachine::prepare`].
+    pub(crate) fn advance(&mut self, next: InstanceLifecycle) -> Result<(), ApplicationFailure> {
         if !instance_transition_allowed(self.state, next) {
             return Err(
                 refusal("package_instance_transition_invalid", INSTANCE_STAGE)
@@ -597,6 +602,38 @@ impl InstanceMachine {
         }
         self.state = next;
         Ok(())
+    }
+
+    /// Begin preparing an instance of an installed package version.
+    ///
+    /// This is the activation entry. It consumes the store's compatibility
+    /// admission for exactly this package version, so a package whose
+    /// self-described list does not cover the running client cannot be started —
+    /// including one that was installed under an earlier client and has been
+    /// outgrown by a client update. Nothing is executed here: preparing is the
+    /// admission, and the caller starts the program afterwards.
+    pub fn prepare(
+        admission: ActivationAdmission,
+        identity: InstanceIdentity,
+    ) -> Result<Self, ApplicationFailure> {
+        if admission.package_id() != identity.package_id
+            || admission.version() != identity.package_version
+        {
+            return Err(
+                refusal("package_activation_admission_mismatch", INSTANCE_STAGE)
+                    .with_field("instanceId")
+                    .with_presentation_arg("package", &identity.package_id)
+                    .with_presentation_arg("version", &identity.package_version),
+            );
+        }
+        let mut machine = Self::discovered(identity)?;
+        machine.advance(InstanceLifecycle::Preparing)?;
+        Ok(machine)
+    }
+
+    /// Move a prepared instance to active.
+    pub fn activate(&mut self) -> Result<(), ApplicationFailure> {
+        self.advance(InstanceLifecycle::Active)
     }
 
     /// Stop accepting new work on this instance.

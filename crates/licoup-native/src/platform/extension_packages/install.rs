@@ -21,7 +21,9 @@
 //! Enabled is not active: an install decides availability. Which instances
 //! start, and when, is decided later and per instance.
 
-use crate::platform::extension_packages::artifact::{ArtifactLimits, ExpandedPackage};
+use crate::platform::extension_packages::artifact::{
+    ArtifactLimits, ExpandedPackage, MANIFEST_FILE,
+};
 use crate::platform::extension_packages::journal::{
     AbandonedStage, InstallJournal, JournalOperation, RecoveryReport, StagedDirectory,
 };
@@ -32,15 +34,64 @@ use crate::platform::extension_packages::{
 };
 use licoup_application::ApplicationFailure;
 use licoup_extension_contracts::deployment::{PackageLifecycle, PackageSource};
-use licoup_extension_contracts::manifest::PermissionRequest;
+use licoup_extension_contracts::manifest::{PackageManifest, PermissionRequest};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 const INSTALL_STAGE: &str = "extension/package-install";
 const MAX_RECORD_BYTES: usize = 64 * 1024;
+/// The bound on the manifest the host reads back from an installed package
+/// before it activates it.
+const MAX_MANIFEST_BYTES: usize = 64 * 1024;
 const STAGE_MARKER: &str = "stage.json";
 const CONTENT_DIRECTORY: &str = "content";
+
+/// The client version a package's compatibility list is checked against.
+///
+/// The value is the product version this binary was built with, injected by the
+/// build script from `tools/client-version.json`; a build with no injected
+/// version is a development build and reports its own documented fallback. It is
+/// read here and never restated: a literal here would be a second, silently
+/// drifting answer to the same question.
+pub fn running_client_version() -> Result<String, ApplicationFailure> {
+    crate::domain::client_state_migration::running_product_version()
+        .map(str::to_owned)
+        .map_err(|_| {
+            refusal("package_client_version_unavailable", INSTALL_STAGE).with_field("clientVersion")
+        })
+}
+
+/// Proof that one installed package version may be activated on this client.
+///
+/// It is produced only by [`PackageStore::admit_activation`] and its explicit
+/// client-version form, so preparing an instance cannot skip the compatibility
+/// check: the admission names the exact package version it was decided for, and
+/// [`crate::platform::extension_packages::InstanceMachine::prepare`] refuses an
+/// identity that names anything else.
+#[derive(Clone, Debug)]
+pub struct ActivationAdmission {
+    package_id: String,
+    version: String,
+    client_version: String,
+}
+
+impl ActivationAdmission {
+    /// The package this admission was issued for.
+    pub fn package_id(&self) -> &str {
+        &self.package_id
+    }
+
+    /// The package version this admission was issued for.
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    /// The client version the compatibility list was checked against.
+    pub fn client_version(&self) -> &str {
+        &self.client_version
+    }
+}
 
 /// One step of an install that a test may fail on purpose.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -352,6 +403,15 @@ impl PackageStore {
             self.rollback(request, &staging, "manifest mismatch")?;
             return Err(failure);
         }
+        // The package's own compatibility list decides whether this client may
+        // load it at all. It is checked before anything is published, and the
+        // package's version is not part of the rule: a package released
+        // independently of the client is refused only when its list does not
+        // cover the running client.
+        if let Err(failure) = expanded.manifest().admit_client(&running_client_version()?) {
+            self.rollback(request, &staging, "client incompatibility")?;
+            return Err(failure);
+        }
         // The manifest may ask for more than the user approved; that needs a new
         // decision, not a bigger install.
         let requested = expanded.manifest().permissions.clone();
@@ -511,6 +571,63 @@ impl PackageStore {
         serde_json::from_str(&text)
             .map(Some)
             .map_err(|_| refusal("package_record_invalid", INSTALL_STAGE))
+    }
+
+    /// The manifest of one installed version, read back from the content the host
+    /// published.
+    ///
+    /// The package's own declaration is the source of truth for its compatibility
+    /// list, and this reads the copy that was actually installed rather than a
+    /// record the host wrote about it: a record would be the host answering its own
+    /// question.
+    pub fn installed_manifest(
+        &self,
+        package_id: &str,
+        version: &str,
+    ) -> Result<PackageManifest, ApplicationFailure> {
+        checked_identity(package_id, version)?;
+        let path = self.installed_path(package_id, version).join(MANIFEST_FILE);
+        let Some(text) = read_bounded_text(&path, MAX_MANIFEST_BYTES)? else {
+            return Err(refusal("package_manifest_missing", INSTALL_STAGE).with_field("manifest"));
+        };
+        let value: serde_json::Value = serde_json::from_str(&text).map_err(|_| {
+            refusal("package_manifest_invalid", INSTALL_STAGE).with_field("manifest")
+        })?;
+        PackageManifest::from_value(value)
+    }
+
+    /// Admit one installed version for activation against one client version.
+    ///
+    /// Activation is where a package installed under an older client is checked
+    /// again: the client may have been updated since, and a package that covered
+    /// it then may not cover it now. A package whose list does not cover the
+    /// client is refused here with the same stable reason the installer uses, and
+    /// nothing about the installed files changes.
+    pub fn admit_activation_for_client(
+        &self,
+        package_id: &str,
+        version: &str,
+        client_version: &str,
+    ) -> Result<ActivationAdmission, ApplicationFailure> {
+        let manifest = self.installed_manifest(package_id, version)?;
+        manifest.admit_client(client_version)?;
+        Ok(ActivationAdmission {
+            package_id: package_id.to_owned(),
+            version: version.to_owned(),
+            client_version: client_version.to_owned(),
+        })
+    }
+
+    /// Admit one installed version for activation on this client.
+    ///
+    /// The client version is the running product version, from the same owner the
+    /// installer uses.
+    pub fn admit_activation(
+        &self,
+        package_id: &str,
+        version: &str,
+    ) -> Result<ActivationAdmission, ApplicationFailure> {
+        self.admit_activation_for_client(package_id, version, &running_client_version()?)
     }
 
     /// Staging directories a crashed install may have left behind.
@@ -816,6 +933,23 @@ fn read_directory(path: &Path) -> Result<Vec<PathBuf>, ApplicationFailure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The client versions a fixture declares it supports: the client this test
+    /// binary runs as, up to but not including the next major line. The value
+    /// comes from the product version owner rather than a literal here, and the
+    /// upper bound is what lets a test exercise a client that has moved past a
+    /// package's own list.
+    fn covering_client_versions() -> Vec<String> {
+        let client = crate::platform::extension_packages::running_client_version()
+            .expect("the binary declares a product version");
+        let next_major = client
+            .split('.')
+            .next()
+            .and_then(|major| major.parse::<u64>().ok())
+            .map(|major| major + 1)
+            .expect("a semantic major version");
+        vec![format!(">={client}, <{next_major}")]
+    }
     use crate::platform::extension_packages::ensure_private_directory;
     use licoup_extension_contracts::wire;
     use std::io::Write;
@@ -831,6 +965,7 @@ mod tests {
             "version": version,
             "displayName": "Echo specialist",
             "hostProtocol": { "major": 1, "minimumMinor": 0 },
+            "compatibility": { "clientVersions": covering_client_versions() },
             "profiles": [],
             "runtime": runtime,
             "activation": "on-demand",
@@ -869,6 +1004,109 @@ mod tests {
             std::env::temp_dir().join(format!("licoup-pkg-install-{tag}-{}", unique_suffix()));
         let store = PackageStore::open(&root).expect("store");
         (root, store)
+    }
+
+    /// One package archive whose manifest declares the given client versions.
+    fn package_bytes_declaring(id: &str, version: &str, client_versions: &[String]) -> Vec<u8> {
+        let mut manifest: serde_json::Value =
+            serde_json::from_str(&manifest_json(id, version, None)).expect("manifest JSON");
+        manifest["compatibility"]["clientVersions"] = serde_json::json!(client_versions);
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        writer
+            .start_file("manifest.json", options)
+            .expect("manifest entry");
+        writer
+            .write_all(manifest.to_string().as_bytes())
+            .expect("manifest");
+        writer.start_file("agent.py", options).expect("agent entry");
+        writer.write_all(b"print('echo')\n").expect("agent");
+        writer.finish().expect("finish").into_inner()
+    }
+
+    #[test]
+    fn the_compatibility_list_decides_admission_and_the_package_version_does_not() {
+        let (root, store) = store("compatibility");
+        let client = running_client_version().expect("the binary declares a product version");
+
+        // A package released independently of the client is admitted when its own
+        // list covers the running client, whatever its version says.
+        let covering = package_bytes_declaring(
+            "example.specialist.independent",
+            "4.2.0",
+            &covering_client_versions(),
+        );
+        store
+            .install_local_import(
+                "example.specialist.independent",
+                "4.2.0",
+                trust_for(&covering),
+                &covering,
+            )
+            .expect("a covering list is admitted");
+
+        // A list that excludes the client is refused before anything is
+        // published, and nothing is left staged.
+        let excluded = package_bytes_declaring(
+            "example.specialist.outgrown",
+            "4.2.0",
+            &[">=99.0.0".to_owned()],
+        );
+        let failure = store
+            .install_local_import(
+                "example.specialist.outgrown",
+                "4.2.0",
+                trust_for(&excluded),
+                &excluded,
+            )
+            .expect_err("the running client is outside the declared list");
+        assert_eq!(failure.code, "package_client_incompatible");
+        assert_eq!(failure.field.as_deref(), Some("compatibility"));
+        assert_eq!(
+            failure.presentation_args.get("clientVersion"),
+            Some(client.as_str())
+        );
+        assert!(
+            store
+                .installed_version("example.specialist.outgrown", "4.2.0")
+                .expect("record")
+                .is_none()
+        );
+        assert!(store.staged_directories().expect("staged").is_empty());
+        remove_managed_tree(&root).expect("cleanup");
+    }
+
+    #[test]
+    fn an_installed_version_is_admitted_for_activation_against_the_running_client() {
+        let (root, store) = store("activation");
+        let client = running_client_version().expect("the binary declares a product version");
+        let bytes = package_bytes("example.specialist.echo", "1.0.0", None);
+        store
+            .install_local_import(
+                "example.specialist.echo",
+                "1.0.0",
+                trust_for(&bytes),
+                &bytes,
+            )
+            .expect("install");
+
+        let admission = store
+            .admit_activation("example.specialist.echo", "1.0.0")
+            .expect("the installed manifest covers the running client");
+        assert_eq!(admission.client_version(), client);
+
+        // A client the list does not cover is refused, and the files stay where
+        // they are: refusing activation is not uninstalling.
+        let failure = store
+            .admit_activation_for_client("example.specialist.echo", "1.0.0", "99.0.0")
+            .expect_err("outgrown");
+        assert_eq!(failure.code, "package_client_incompatible");
+        assert!(
+            store
+                .installed_path("example.specialist.echo", "1.0.0")
+                .exists()
+        );
+        remove_managed_tree(&root).expect("cleanup");
     }
 
     #[test]

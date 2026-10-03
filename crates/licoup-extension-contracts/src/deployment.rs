@@ -3,11 +3,14 @@
 //! Three separate things are decided here, and confusing them is how a "small
 //! core" turns back into one large bundle:
 //!
-//! 1. **Ownership.** Every capability has an owner: the minimal core, or a
-//!    specific package a user may leave out ([`CAPABILITY_OWNERSHIP`]). The
-//!    minimal distribution carries the four core capabilities and nothing else,
-//!    and it is a complete product — local chat, stop, history and basic
-//!    diagnostics — without any of the others.
+//! 1. **Ownership.** Every capability has an owner: the kernel, or a specific
+//!    package a user may leave out ([`CAPABILITY_OWNERSHIP`]). The kernel is the
+//!    installed client itself — canonical conversation, the Assistant, the
+//!    workflow and flywheel, the extension host with package management, the base
+//!    usage journal, the declarative interface primitives, the generic PTY/CLI
+//!    adapter with Agent Hub configuration registration, key custody, and update
+//!    and migration admission. It is a complete product without any optional
+//!    package, and it depends on none of them.
 //! 2. **The install closure.** `requires` decides what is installed with a
 //!    package; `optionalRequires` is a statement that extra capability becomes
 //!    available *when the user already has it*, and never an instruction to
@@ -40,6 +43,14 @@ pub const CORE_PACKAGE: &str = "org.licoland.core";
 /// client.
 pub const DECLARATIVE_UI_CAPABILITY: &str = "declarative-ui.v1";
 
+/// The continuous Assistant. It is the product's collaboration loop rather than
+/// a feature a user installs, so it belongs to the kernel.
+pub const ASSISTANT_CAPABILITY: &str = "assistant.v1";
+
+/// The workflow and flywheel: durable multi-step work over the conversation.
+/// Like the Assistant, it is the kernel's, not an optional package's.
+pub const WORKFLOW_CAPABILITY: &str = "workflow.v1";
+
 /// Which set of packages carries one capability.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PackOwnership {
@@ -64,15 +75,17 @@ impl PackOwnership {
     }
 }
 
-/// Per-capability ownership: the minimal core, or one optional package.
+/// Per-capability ownership: the kernel, or one optional package.
 ///
 /// The same capability may be provided by more than one package — three adapters
 /// all provide `agent-execution.v1` — and the default distribution names the one a
 /// user gets without choosing. Ownership answers "which package must be present
 /// for this to work at all", which is a different question from "which packages
 /// offer it".
-pub const CAPABILITY_OWNERSHIP: [(&str, PackOwnership); 12] = [
+pub const CAPABILITY_OWNERSHIP: [(&str, PackOwnership); 13] = [
     ("conversation.v1", PackOwnership::Core(CORE_PACKAGE)),
+    (ASSISTANT_CAPABILITY, PackOwnership::Core(CORE_PACKAGE)),
+    (WORKFLOW_CAPABILITY, PackOwnership::Core(CORE_PACKAGE)),
     ("extension-host.v1", PackOwnership::Core(CORE_PACKAGE)),
     ("usage-journal.v1", PackOwnership::Core(CORE_PACKAGE)),
     (DECLARATIVE_UI_CAPABILITY, PackOwnership::Core(CORE_PACKAGE)),
@@ -95,10 +108,6 @@ pub const CAPABILITY_OWNERSHIP: [(&str, PackOwnership); 12] = [
     (
         "endpoint-collaboration.v1",
         PackOwnership::Optional("org.licoland.feature.collaboration"),
-    ),
-    (
-        "workflow.v1",
-        PackOwnership::Optional("org.licoland.feature.workflow"),
     ),
     (
         "mcp-server.v1",
@@ -133,6 +142,26 @@ pub fn optional_capabilities() -> impl Iterator<Item = &'static str> {
         .iter()
         .filter(|(_, ownership)| !ownership.is_core())
         .map(|(capability, _)| *capability)
+}
+
+/// The packages the default distribution is assembled from: the kernel first,
+/// then the first-party packages that carry the optional capabilities, in table
+/// order and without repetition.
+///
+/// Every package named here carries a self-described compatibility list
+/// ([`crate::manifest::Compatibility`]), and the kernel's place in this set is
+/// not a dependency: no optional package may force the kernel to load it, and the
+/// kernel may not require any of them.
+pub fn default_packages() -> impl Iterator<Item = &'static str> {
+    let mut packages = vec![CORE_PACKAGE];
+    let mut seen: BTreeSet<&'static str> = packages.iter().copied().collect();
+    for (_, ownership) in CAPABILITY_OWNERSHIP {
+        let package = ownership.package();
+        if seen.insert(package) {
+            packages.push(package);
+        }
+    }
+    packages.into_iter()
 }
 
 /// Where a package came from.
@@ -582,16 +611,99 @@ mod tests {
     #[test]
     fn the_core_carries_only_untrimmable_capabilities() {
         let core: Vec<&str> = core_capabilities().collect();
-        assert_eq!(core.len(), 4);
+        assert_eq!(core.len(), 6);
         assert!(core.contains(&"extension-host.v1"));
         assert!(core.contains(&DECLARATIVE_UI_CAPABILITY));
         assert!(!core.contains(&"model-gateway.v1"));
         assert!(optional_capabilities().any(|id| id == "endpoint-collaboration.v1"));
-        assert_eq!(
-            capability_owner("workflow.v1"),
-            Some(PackOwnership::Optional("org.licoland.feature.workflow"))
-        );
         assert_eq!(capability_owner("nobody.knows.v1"), None);
+    }
+
+    #[test]
+    fn the_assistant_and_the_workflow_stay_in_the_kernel() {
+        for capability in [ASSISTANT_CAPABILITY, WORKFLOW_CAPABILITY] {
+            assert_eq!(
+                capability_owner(capability),
+                Some(PackOwnership::Core(CORE_PACKAGE)),
+                "{capability} is part of the installed client, not a package to install"
+            );
+            assert!(
+                core_capabilities().any(|id| id == capability),
+                "{capability} must survive every profile choice"
+            );
+            assert!(
+                !optional_capabilities().any(|id| id == capability),
+                "{capability} may not be left out"
+            );
+        }
+        assert_eq!(
+            capability_owner(WORKFLOW_CAPABILITY),
+            Some(PackOwnership::Core(CORE_PACKAGE)),
+            "the workflow and flywheel are the kernel's"
+        );
+    }
+
+    #[test]
+    fn an_optional_capability_is_never_a_kernel_dependency() {
+        // Every optional capability is carried by a package the user may leave
+        // out, and the kernel never names one of them.
+        for capability in optional_capabilities() {
+            let ownership = capability_owner(capability).expect("every capability has an owner");
+            assert!(!ownership.is_core(), "{capability} must stay optional");
+            assert_ne!(
+                ownership.package(),
+                CORE_PACKAGE,
+                "{capability} may not be owned by the kernel"
+            );
+            assert!(
+                !core_capabilities().any(|id| id == capability),
+                "{capability} may not be a kernel capability as well"
+            );
+        }
+
+        let mut catalogue = catalogue();
+        assert!(check_core_dependencies(&catalogue).is_ok());
+        for capability in optional_capabilities() {
+            let owner = capability_owner(capability).expect("owner").package();
+            let mut with_dependency = catalogue.get(CORE_PACKAGE).cloned().expect("core");
+            with_dependency.requires = vec![Dependency::new(owner, "^1")];
+            catalogue.insert(with_dependency);
+            let failure = check_core_dependencies(&catalogue).expect_err("kernel must not depend");
+            assert_eq!(failure.code, "core_requires_optional_package");
+        }
+    }
+
+    #[test]
+    fn the_default_package_set_is_the_kernel_and_its_first_party_packages() {
+        let packages: Vec<&str> = default_packages().collect();
+        assert_eq!(packages.first(), Some(&CORE_PACKAGE));
+        assert_eq!(
+            packages.len(),
+            1 + optional_capabilities().count(),
+            "one package per optional capability, plus the kernel"
+        );
+        let unique: BTreeSet<&str> = packages.iter().copied().collect();
+        assert_eq!(unique.len(), packages.len(), "no package is named twice");
+        assert_eq!(packages[1], "org.licoland.adapter.generic");
+
+        // The kernel is complete without any of them: a distribution that has
+        // only the core still serves every core capability.
+        let mut catalogue = LocalCatalogue::new();
+        catalogue.insert(PackageEntry::new(
+            CORE_PACKAGE,
+            "0.3.0",
+            PackageSource::OfficialDirectory,
+        ));
+        let closure = install_closure(&catalogue, &[CORE_PACKAGE]).expect("kernel alone");
+        assert_eq!(closure.len(), 1);
+        assert!(closure.declined_optional().next().is_none());
+        for capability in core_capabilities() {
+            assert_eq!(
+                availability(capability, PackageFacts::local_import(true)).describe(),
+                "served",
+                "{capability} is served by the kernel alone"
+            );
+        }
     }
 
     #[test]

@@ -2106,6 +2106,7 @@ version = "0.3.0"
 dependencies = [
  "licoup-application",
  "regex",
+ "semver",
  "serde",
  "serde_json",
  "url",

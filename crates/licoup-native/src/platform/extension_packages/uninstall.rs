@@ -489,6 +489,23 @@ pub fn purge_user_data(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The client versions a fixture declares it supports: the client this test
+    /// binary runs as, up to but not including the next major line. The value
+    /// comes from the product version owner rather than a literal here, and the
+    /// upper bound is what lets a test exercise a client that has moved past a
+    /// package's own list.
+    fn covering_client_versions() -> Vec<String> {
+        let client = crate::platform::extension_packages::running_client_version()
+            .expect("the binary declares a product version");
+        let next_major = client
+            .split('.')
+            .next()
+            .and_then(|major| major.parse::<u64>().ok())
+            .map(|major| major + 1)
+            .expect("a semantic major version");
+        vec![format!(">={client}, <{next_major}")]
+    }
     use crate::platform::extension_packages::artifact::{ArtifactLimits, content_digest};
     use crate::platform::extension_packages::install::InstallRequest;
     use crate::platform::extension_packages::state::{
@@ -513,6 +530,7 @@ mod tests {
             "version": version,
             "displayName": "Echo specialist",
             "hostProtocol": { "major": 1, "minimumMinor": 0 },
+            "compatibility": { "clientVersions": covering_client_versions() },
             "profiles": [],
             "runtime": runtime,
             "activation": "on-demand",
