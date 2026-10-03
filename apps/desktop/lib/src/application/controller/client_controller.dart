@@ -195,8 +195,7 @@ class ClientController extends AgentConversationController
            appearancePresetCatalogService ??
            const AppearancePresetCatalogService(),
        presentationMountPlanService =
-           presentationMountPlanService ??
-           const PresentationMountPlanService(),
+           presentationMountPlanService ?? const PresentationMountPlanService(),
        clientLogExportService =
            clientLogExportService ?? const ClientLogExportService(),
        clientClipboardService =

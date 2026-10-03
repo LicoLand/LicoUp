@@ -57,8 +57,8 @@ Map<String, Object?> _contribution({
 }) => {
   'id': id,
   'primitive': primitive,
-  if (actionRef != null) 'actionRef': actionRef,
-  if (resourceFormat != null) 'resourceFormat': resourceFormat,
+  'actionRef': ?actionRef,
+  'resourceFormat': ?resourceFormat,
   'inputs': {'label': 'Aurora'},
 };
 
@@ -171,10 +171,10 @@ void main() {
     // The contributions mount through the registered primitive set, and only
     // the roles this build renders reach the renderer.
     expect(mounted!.mounted, hasLength(2));
-    expect(
-      mounted.mounted.map((entry) => entry.primitive),
-      [DeclarativePrimitive.text, DeclarativePrimitive.progress],
-    );
+    expect(mounted.mounted.map((entry) => entry.primitive), [
+      DeclarativePrimitive.text,
+      DeclarativePrimitive.progress,
+    ]);
     expect(mounted.refusals, isEmpty);
     expect(mounted.appearance.isDefault, isFalse);
     expect(mounted.appearance.resourceId, 'org.licoland.theme.aurora');
@@ -192,7 +192,9 @@ void main() {
       MaterialApp(
         theme: theme,
         home: const Scaffold(
-          body: Center(child: FilledButton(onPressed: null, child: Text('Apply'))),
+          body: Center(
+            child: FilledButton(onPressed: null, child: Text('Apply')),
+          ),
         ),
       ),
     );
@@ -202,16 +204,16 @@ void main() {
       const Color(0xFFFF0055),
     );
     expect(
-      tester
-          .widget<Scaffold>(find.byType(Scaffold))
-          .backgroundColor,
+      tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
       isNull,
     );
     final scaffold = tester.widget<Material>(
-      find.descendant(
-        of: find.byType(Scaffold),
-        matching: find.byType(Material),
-      ).first,
+      find
+          .descendant(
+            of: find.byType(Scaffold),
+            matching: find.byType(Material),
+          )
+          .first,
     );
     expect(scaffold.color, const Color(0xFF101020));
   });
@@ -237,7 +239,10 @@ void main() {
     expect(mounted!.mounted, hasLength(1));
     expect(mounted.mounted.single.primitive, DeclarativePrimitive.text);
     expect(mounted.refusals, hasLength(1));
-    expect(mounted.refusals.single.id, 'org.licoland.appearance.synthetic/erase');
+    expect(
+      mounted.refusals.single.id,
+      'org.licoland.appearance.synthetic/erase',
+    );
     expect(mounted.refusals.single.code, 'action_undeclared');
     expect(mounted.refusals.single.field, 'actionRef');
   });
@@ -301,7 +306,10 @@ void main() {
     expect(mounted.appearance.resourceId, isNull);
     expect(mounted.appearance.packageGeneration, isNull);
     expect(mounted.appearance.fallbackReason, 'disabled');
-    expect(mounted.appearance.fallback!.resourceId, 'org.licoland.theme.aurora');
+    expect(
+      mounted.appearance.fallback!.resourceId,
+      'org.licoland.theme.aurora',
+    );
     expect(mounted.planTokens['brand'], defaults['brand']);
 
     // The withdrawn resource's values are gone: the theme renders the client's

@@ -60,11 +60,12 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.extension-packages",
       kind: "rust-platform",
-      summary: "Offline extension package lifecycle, typed data-package admission, and bounded archive consumer",
+      summary: "Offline extension package lifecycle, typed data-package admission, published mount plan, and bounded archive consumer",
       inputs: [
         "crates/licoup-native/src/platform/extension_packages/artifact.rs",
         "crates/licoup-native/src/platform/extension_packages/install.rs",
         "crates/licoup-native/src/platform/extension_packages/mod.rs",
+        "crates/licoup-native/src/platform/extension_packages/mount_plan.rs",
         "crates/licoup-native/tests/package_lifecycle/**",
         "tests/integration/package_lifecycle/**",
       ],
@@ -2355,8 +2356,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.extension-resource-lifecycle",
       kind: "rust-platform",
-      summary: "Ordinary resource selection, guarded package-generation replacement, and deterministic system-default fallback",
+      summary: "Ordinary resource selection, guarded package-generation replacement, published mount plan, and deterministic system-default fallback",
       inputs: [
+        "crates/licoup-native/src/platform/extension_packages/mount_plan.rs",
         "crates/licoup-native/src/platform/extension_packages/resources.rs",
         "crates/licoup-extension-contracts/src/manifest.rs",
       ],

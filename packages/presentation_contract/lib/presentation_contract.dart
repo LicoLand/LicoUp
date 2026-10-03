@@ -1457,7 +1457,6 @@ final class ResourceFallback {
 
   final MountedResourceKind kind;
 
-
   /// The resource that had been selected.
   final String resourceId;
 
@@ -1637,7 +1636,8 @@ final class SelectedResourceBinding extends MountedResourceBinding {
           other.packageGeneration == packageGeneration;
 
   @override
-  int get hashCode => Object.hash(kind, resourceId, packageId, packageGeneration);
+  int get hashCode =>
+      Object.hash(kind, resourceId, packageId, packageGeneration);
 
   @override
   String toString() =>
@@ -1735,7 +1735,9 @@ final class MountedContribution {
     resourceFormat,
     actionRef,
     Object.hashAll(regions),
-    Object.hashAll(inputs.entries.map((entry) => Object.hash(entry.key, entry.value))),
+    Object.hashAll(
+      inputs.entries.map((entry) => Object.hash(entry.key, entry.value)),
+    ),
   );
 
   @override

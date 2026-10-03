@@ -44,7 +44,10 @@ HostPrimitiveRegistry _host({
     DeclarativePrimitive.command,
   },
   Set<String> actions = const {'org.licoland.action.apply-theme'},
-  Map<String, String> defaults = const {'bg-base': '#101014', 'brand': '#88ff00'},
+  Map<String, String> defaults = const {
+    'bg-base': '#101014',
+    'brand': '#88ff00',
+  },
   Set<String> roles = const {'bg-base', 'brand', 'text-primary'},
 }) => HostPrimitiveRegistry(
   primitives: primitives,
@@ -208,7 +211,10 @@ void main() {
       expect(revision.mounted.single.primitive, DeclarativePrimitive.text);
       expect(revision.mounted.single.inputs['label'], 'Aurora');
       expect(revision.refusals, isEmpty);
-      expect(revision.appearance.source, ResolvedAppearanceSource.selectedResource);
+      expect(
+        revision.appearance.source,
+        ResolvedAppearanceSource.selectedResource,
+      );
       expect(revision.appearance.resourceId, 'org.licoland.theme.aurora');
       expect(revision.appearance.packageGeneration, 3);
       expect(revision.appearance.isDefault, isFalse);
@@ -237,9 +243,7 @@ void main() {
 
     test('refuses an unregistered primitive and keeps the rest mounted', () {
       final registry = ExtensionHostRegistry(
-        host: _host(
-          primitives: const {DeclarativePrimitive.text},
-        ),
+        host: _host(primitives: const {DeclarativePrimitive.text}),
       );
       addTearDown(registry.dispose);
 
@@ -263,12 +267,18 @@ void main() {
       );
 
       expect(revision.mounted, hasLength(1));
-      expect(revision.mounted.single.id, 'org.licoland.appearance.synthetic/theme');
+      expect(
+        revision.mounted.single.id,
+        'org.licoland.appearance.synthetic/theme',
+      );
       final refusal = revision.refusals.single;
       expect(refusal.refusal, ExtensionMountRefusal.primitiveUnavailable);
       expect(refusal.refusal!.code, 'primitive_unavailable');
       expect(refusal.field, 'primitive');
-      expect(refusal.contribution.id, 'org.licoland.appearance.synthetic/summary');
+      expect(
+        refusal.contribution.id,
+        'org.licoland.appearance.synthetic/summary',
+      );
     });
 
     test('refuses a primitive the plan itself does not publish', () {
@@ -325,34 +335,37 @@ void main() {
       expect(refusal.field, 'actionRef');
     });
 
-    test('refuses an action the plan publishes but this build did not register', () {
-      final registry = ExtensionHostRegistry(
-        host: _host(actions: const <String>{}),
-      );
-      addTearDown(registry.dispose);
+    test(
+      'refuses an action the plan publishes but this build did not register',
+      () {
+        final registry = ExtensionHostRegistry(
+          host: _host(actions: const <String>{}),
+        );
+        addTearDown(registry.dispose);
 
-      final revision = registry.mount(
-        NativeMountPlan.fromDecoded({
-          ..._publishedDocument(
-            contributions: [
-              {
-                'id': 'org.licoland.appearance.synthetic/apply',
-                'primitive': 'action',
-                'actionRef': 'org.licoland.action.apply-theme',
-                'inputs': {'label': 'Apply'},
-              },
-            ],
-          ),
-          'hostActions': ['org.licoland.action.apply-theme'],
-        }),
-      );
+        final revision = registry.mount(
+          NativeMountPlan.fromDecoded({
+            ..._publishedDocument(
+              contributions: [
+                {
+                  'id': 'org.licoland.appearance.synthetic/apply',
+                  'primitive': 'action',
+                  'actionRef': 'org.licoland.action.apply-theme',
+                  'inputs': {'label': 'Apply'},
+                },
+              ],
+            ),
+            'hostActions': ['org.licoland.action.apply-theme'],
+          }),
+        );
 
-      expect(
-        revision.refusals.single.refusal,
-        ExtensionMountRefusal.actionUnavailable,
-      );
-      expect(revision.refusals.single.refusal!.code, 'action_unavailable');
-    });
+        expect(
+          revision.refusals.single.refusal,
+          ExtensionMountRefusal.actionUnavailable,
+        );
+        expect(revision.refusals.single.refusal!.code, 'action_unavailable');
+      },
+    );
 
     test('refuses a resource format this build compiles no renderer for', () {
       final registry = ExtensionHostRegistry(

@@ -60,7 +60,8 @@ pub const SERVED_PROFILES: [&str; 0] = [];
 ///
 /// A contribution may invoke only an action named here. A name outside this set
 /// is refused, so a package can never reach an operation the host did not
-/// publish.
+/// publish. The constant is empty because this client registers no composition
+/// action yet; the shell names its own set at composition instead.
 pub const HOST_ACTIONS: [&str; 0] = [];
 
 /// The resource-view formats this interface compiles a renderer for.
@@ -126,8 +127,6 @@ pub struct MountDecision {
     pub contribution: PlannedContribution,
     /// `None` when it mounts; otherwise the host's stable reason.
     pub blocked: Option<&'static str>,
-    /// The declaration member the refusal decided, when one is known.
-    pub field: Option<&'static str>,
 }
 
 impl MountDecision {
@@ -143,6 +142,8 @@ pub struct ResourceMountPlan {
     pub revision: u64,
     /// The committed bindings this plan publishes.
     pub bindings: ResourceBindings,
+    /// The action names the shell that will render this plan registered.
+    pub host_actions: Vec<String>,
     /// Every contribution the host considered, mounted and refused alike.
     pub decisions: Vec<MountDecision>,
 }
@@ -158,9 +159,11 @@ impl ResourceMountPlan {
 
     /// The refused contributions with their stable reasons.
     pub fn refused(&self) -> impl Iterator<Item = (&PlannedContribution, &'static str)> {
-        self.decisions
-            .iter()
-            .filter_map(|decision| decision.blocked.map(|reason| (&decision.contribution, reason)))
+        self.decisions.iter().filter_map(|decision| {
+            decision
+                .blocked
+                .map(|reason| (&decision.contribution, reason))
+        })
     }
 
     /// The wire document this plan publishes.
@@ -168,7 +171,15 @@ impl ResourceMountPlan {
     /// Member order is fixed and collections are ordered, so the same published
     /// bindings always encode to the same document.
     pub fn to_document(&self) -> Value {
-        let mut contributions: Vec<Value> = self.decisions.iter().map(decisions).collect();
+        // Only the mounted contributions are published: the interface cannot
+        // mount what the native owner refused, so a refused contribution has no
+        // member in the document at all.
+        let mut contributions: Vec<Value> = self
+            .decisions
+            .iter()
+            .filter(|decision| decision.is_mounted())
+            .map(decisions)
+            .collect();
         contributions.sort_by(|left, right| {
             left["id"]
                 .as_str()
@@ -180,7 +191,7 @@ impl ResourceMountPlan {
             .iter()
             .map(|primitive| primitive.as_str())
             .collect();
-        let mut actions: Vec<&str> = HOST_ACTIONS.to_vec();
+        let mut actions: Vec<&str> = self.host_actions.iter().map(String::as_str).collect();
         actions.sort_unstable();
 
         json!({
@@ -200,31 +211,14 @@ impl ResourceMountPlan {
     /// them. A refused contribution is not published: the interface cannot
     /// mount what the native owner refused, whatever a renderer does.
     pub fn mounted_document(&self) -> Value {
-        let contributions: Vec<Value> = self
-            .mounted()
-            .map(PlannedContribution::to_wire)
-            .collect();
+        let contributions: Vec<Value> = self.mounted().map(PlannedContribution::to_wire).collect();
         json!({ "contributions": contributions })
     }
 }
 
-/// One decision's document member.
-///
-/// A mounted contribution publishes its own shape; a refused one publishes the
-/// stable reason and the field that decided, so the interface can report why
-/// without re-deriving the rule.
+/// One mounted contribution's document member.
 fn decisions(decision: &MountDecision) -> Value {
-    let mut value = match decision.contribution.to_wire() {
-        Value::Object(members) => members,
-        _ => serde_json::Map::new(),
-    };
-    if let Some(blocked) = decision.blocked {
-        value.insert("blocked".to_owned(), json!(blocked));
-        if let Some(field) = decision.field {
-            value.insert("blockedField".to_owned(), json!(field));
-        }
-    }
-    Value::Object(value)
+    decision.contribution.to_wire()
 }
 
 /// The declared default one kind falls back to, as the document names it.
@@ -291,6 +285,27 @@ pub fn plan_generation_mount(
     package_generation: u64,
     resources: &[ResourceDeclaration],
 ) -> ResourceMountPlan {
+    plan_generation_mount_with_actions(
+        bindings,
+        package_id,
+        package_generation,
+        resources,
+        &HOST_ACTIONS,
+    )
+}
+
+/// Publish the mount plan for a shell that registered its own action names.
+///
+/// The registered set is an argument rather than a global so a shell states
+/// what it actually registered, and a plan is always decided against the shell
+/// that will render it.
+pub fn plan_generation_mount_with_actions(
+    bindings: &ResourceBindings,
+    package_id: &str,
+    package_generation: u64,
+    resources: &[ResourceDeclaration],
+    host_actions: &[&str],
+) -> ResourceMountPlan {
     let served = bindings.serves_package_generation(package_id, package_generation);
     let profiles: Vec<ExtensionProfile> = SERVED_PROFILES
         .iter()
@@ -299,16 +314,16 @@ pub fn plan_generation_mount(
 
     let mut decisions: Vec<MountDecision> = Vec::new();
     for resource in resources {
-        let ResourceDeclaration::Composition { id, components, .. } = resource else {
+        let ResourceDeclaration::Composition { components, .. } = resource else {
             continue;
         };
         for component in components {
             decisions.push(decide(
-                id,
                 component,
                 served,
                 &profiles,
                 HOST_RESOURCE_VIEW_FORMATS,
+                host_actions,
             ));
         }
     }
@@ -316,6 +331,10 @@ pub fn plan_generation_mount(
     ResourceMountPlan {
         revision: bindings.revision(),
         bindings: bindings.clone(),
+        host_actions: host_actions
+            .iter()
+            .map(|action| (*action).to_owned())
+            .collect(),
         decisions,
     }
 }
@@ -327,27 +346,24 @@ pub fn plan_generation_mount(
 /// rejects is `contribution_invalid`, while a primitive this host build did not
 /// compile is refused here rather than rendered as a neighbouring primitive.
 fn decide(
-    composition_id: &str,
     component: &CompositionComponent,
     generation_served: bool,
     profiles: &[ExtensionProfile],
     available_formats: [&'static str; 0],
+    host_actions: &[&str],
 ) -> MountDecision {
-
-    let contribution = contribution(composition_id, component);
-    let planned = planned(composition_id, component);
+    let contribution = contribution(component);
+    let planned = planned(component);
     if !generation_served {
         return MountDecision {
             contribution: planned,
             blocked: Some("generation_not_served"),
-            field: Some("packageGeneration"),
         };
     }
-    if let Some(refusal) = components_registration(component) {
+    if let Some(refusal) = components_registration(component, host_actions) {
         return MountDecision {
             contribution: planned,
-            blocked: Some(refusal.0),
-            field: Some(refusal.1),
+            blocked: Some(refusal),
         };
     }
     let mut formats: Vec<&str> = available_formats.to_vec();
@@ -358,21 +374,26 @@ fn decide(
         Some(blocked) => MountDecision {
             contribution: planned,
             blocked: Some(blocked),
-            field: None,
         },
         None => MountDecision {
             contribution: planned,
             blocked: None,
-            field: None,
         },
     }
 }
 
 /// Why this host cannot mount a component whose declaration is well formed.
-fn components_registration(component: &CompositionComponent) -> Option<(&'static str, &'static str)> {
+///
+/// The action a component binds is a name the shell registered. A name outside
+/// that set is refused here, so a package can never reach an operation the host
+/// did not publish.
+fn components_registration(
+    component: &CompositionComponent,
+    host_actions: &[&str],
+) -> Option<&'static str> {
     if let Some(action_ref) = component.action_ref.as_deref() {
-        if !HOST_ACTIONS.contains(&action_ref) {
-            return Some(("action_unregistered", "components.actionRef"));
+        if !host_actions.contains(&action_ref) {
+            return Some("action_unregistered");
         }
     }
     None
@@ -382,14 +403,14 @@ fn components_registration(component: &CompositionComponent) -> Option<(&'static
 ///
 /// A composition component binds a compiled primitive and, when it declares
 /// one, a host-registered action; it never brings a primitive of its own and it
-/// never names a callback. The contract's own `settings` contribution kind is
-/// the closest published shape, so the planner's structural rules apply to it
-/// unchanged.
-fn contribution(composition_id: &str, component: &CompositionComponent) -> Contribution {
+/// never names a callback. The component's own namespaced identity is the
+/// contribution identity, so the planner's structural rules apply to it
+/// unchanged and a refusal names the same thing the package declared.
+fn contribution(component: &CompositionComponent) -> Contribution {
     Contribution {
         schema: licoup_extension_contracts::wire::UI.to_owned(),
-        id: format!("{composition_id}#{}", component.component),
-        kind: ContributionKind::Settings,
+        id: component.component.clone(),
+        kind: contribution_kind(component.primitive),
         title: component.component.clone(),
         required_profile: None,
         resource_ref: None,
@@ -400,16 +421,32 @@ fn contribution(composition_id: &str, component: &CompositionComponent) -> Contr
     }
 }
 
+/// The published contribution kind one compiled primitive composes.
+///
+/// The kind decides which structural rules apply, so a primitive with no
+/// declared shape of its own is read as the closest published one rather than
+/// as a shape the contract does not have.
+const fn contribution_kind(primitive: HostPrimitive) -> ContributionKind {
+    match primitive {
+        HostPrimitive::Form => ContributionKind::Settings,
+        HostPrimitive::Table => ContributionKind::ResourceView,
+        HostPrimitive::Chart => ContributionKind::MetricPanel,
+        HostPrimitive::Progress => ContributionKind::ResourceView,
+        HostPrimitive::Text => ContributionKind::Navigation,
+        HostPrimitive::Action => ContributionKind::Command,
+    }
+}
+
 /// The planned contribution one component publishes.
 ///
 /// The values are the component's own declaration: its identity as the label
-/// the primitive renders, and its declared regions. No value here is a widget,
-/// a callback or a host object.
-fn planned(composition_id: &str, component: &CompositionComponent) -> PlannedContribution {
+/// the primitive renders. No value here is a widget, a callback or a host
+/// object.
+fn planned(component: &CompositionComponent) -> PlannedContribution {
     let mut inputs = BTreeMap::new();
     inputs.insert("label".to_owned(), json!(component.component));
     PlannedContribution {
-        id: format!("{composition_id}#{}", component.component),
+        id: component.component.clone(),
         primitive: component.primitive,
         resource_id: None,
         resource_format: component_resource_format(component),

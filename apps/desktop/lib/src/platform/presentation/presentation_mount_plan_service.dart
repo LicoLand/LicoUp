@@ -72,7 +72,10 @@ const String desktopGraphResourceViewFormat = 'licoup.ui.graph-resource.v1';
 
 /// A published plan this client mounted, with what it renders.
 final class MountedPresentationPlan {
-  const MountedPresentationPlan({required this.revision, required this.appearance});
+  const MountedPresentationPlan({
+    required this.revision,
+    required this.appearance,
+  });
 
   /// The committed revision, with every mounted and refused contribution.
   final HostMountRevision revision;
@@ -130,7 +133,9 @@ final class PresentationMountPlanService {
   /// A document this build cannot own — an unknown generation, an unknown
   /// member, an unfinished binding — is refused whole and reported as absent: a
   /// partially understood plan never reaches rendering.
-  Future<NativeMountPlan?> readPublishedPlan(PortableDataRoot portableData) async {
+  Future<NativeMountPlan?> readPublishedPlan(
+    PortableDataRoot portableData,
+  ) async {
     final root = await portableData.clientDirectory();
     final file = File(p.join(root.path, planFileName));
     if (!await file.exists()) return null;

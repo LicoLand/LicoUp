@@ -80,7 +80,8 @@ mixin ClientAppearanceCommands {
 
   Map<String, String> _appearanceRenderingTokens() {
     for (final preset in appearancePresetConfigs) {
-      if (preset.mode == AppearancePresetMode.dark && preset.tokens.isNotEmpty) {
+      if (preset.mode == AppearancePresetMode.dark &&
+          preset.tokens.isNotEmpty) {
         return preset.tokens;
       }
     }

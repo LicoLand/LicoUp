@@ -35,11 +35,11 @@ use licoup_native::platform::extension_packages::{
     ADMISSION_BLOCKED, ADMISSION_CLOSED, Admission, ArtifactLimits, CatalogEntry, CatalogIndex,
     DependentsDecision, Detector, DiscoveryEnvironment, Drained, FallbackReason, FaultPlan,
     InFlightPins, InstallPhase, InstallRequest, InstanceIdentity, InstanceLifecycle,
-    InstanceMachine, InstanceRegistry, MaintenanceAdmission, OffFrameLane, PackageMachine,
-    MOUNT_PLAN_FORMAT, PackageStore, PreparedGeneration, RecommendationLog, RemainingWork,
+    InstanceMachine, InstanceRegistry, MOUNT_PLAN_FORMAT, MaintenanceAdmission, OffFrameLane,
+    PackageMachine, PackageStore, PreparedGeneration, RecommendationLog, RemainingWork,
     ResourceBinding, ResourceChange, ResourceHost, StorageKind, SystemDefault, TrustRecord,
-    UninstallTransaction, plan_generation_mount,
-    account_store, close_surface, plan_gc, preview, running_client_version, scan,
+    UninstallTransaction, account_store, close_surface, plan_gc, plan_generation_mount,
+    plan_generation_mount_with_actions, preview, running_client_version, scan,
 };
 
 // ---------------------------------------------------------------------------
@@ -1758,7 +1758,9 @@ fn the_mount_plan_publishes_the_typed_resources_a_generation_serves() {
     host.select(ResourceKind::Theme, &theme)
         .expect("a compiled theme resource is selectable");
 
-    let plan = plan_generation_mount(&host.bindings(), id, 1, &resources);
+    // The shell states the action it registered; the plan is decided against it.
+    let registered = ["org.licoland.action.apply-appearance"];
+    let plan = plan_generation_mount_with_actions(&host.bindings(), id, 1, &resources, &registered);
     assert_eq!(plan.revision, host.bindings().revision());
 
     // The document is data: an identity, bindings, plain values. It has no
@@ -1787,41 +1789,62 @@ fn the_mount_plan_publishes_the_typed_resources_a_generation_serves() {
     assert_eq!(font_binding["system"], "font");
 
     // The composition the generation declares reaches the plan through the
-    // contract's own planner. The component that binds a host-registered action
-    // no client registered is refused with its stable reason; the plain
-    // component mounts.
-    let blockable = resources
+    // contract's own planner: every component of the served generation mounts
+    // when the shell registered the action it binds.
+    let composition = resources
         .iter()
         .find(|resource| resource.kind() == ResourceKind::Composition)
         .expect("composition resource");
-    let action_component = blockable
+    let action_component = composition
         .components()
         .iter()
         .find(|component| component.action_ref.is_some())
         .expect("the synthetic composition binds an action");
-    let action_ref = action_component
-        .action_ref
-        .clone()
-        .expect("the bound action identity");
-    let mounts = plan.mounted().count();
-    assert_eq!(mounts, blockable.components().len() - 1);
-    let refusals: Vec<(&str, &str)> = plan
-        .refused()
-        .map(|(contribution, reason)| (contribution.action_ref.as_deref().unwrap_or_default(), reason))
-        .collect();
-    assert_eq!(refusals, vec![(action_ref.as_str(), "action_unregistered")]);
+    assert_eq!(plan.mounted().count(), composition.components().len());
+    assert_eq!(plan.refused().count(), 0);
 
-    // Only the mounted contributions are published: the interface cannot mount
-    // what the native owner refused.
+    // Only the mounted contributions are published, and each carries the plain
+    // values its primitive renders.
     let published = document["contributions"].as_array().expect("contributions");
-    assert_eq!(published.len(), mounts);
-    for contribution in published {
-        assert!(contribution.get("blocked").is_none());
-        assert!(contribution.get("inputs").is_some());
+    assert_eq!(published.len(), composition.components().len());
+    for component in composition.components() {
+        let found = published
+            .iter()
+            .find(|contribution| contribution["id"] == component.component.as_str())
+            .unwrap_or_else(|| panic!("{} is published", component.component));
+        assert_eq!(found["primitive"], component.primitive.as_str());
+        assert!(found["inputs"]["label"].is_string());
     }
 
+    // A shell that did not register the action refuses only that component, and
+    // names the declaration that decided it.
+    let unregistered = plan_generation_mount(&host.bindings(), id, 1, &resources);
+    assert_eq!(
+        unregistered.mounted().count(),
+        composition.components().len() - 1
+    );
+    let refusals: Vec<(String, &str)> = unregistered
+        .refused()
+        .map(|(contribution, reason)| (contribution.id.clone(), reason))
+        .collect();
+    assert_eq!(
+        refusals,
+        vec![(action_component.component.clone(), "action_unregistered")]
+    );
+    let refused_document = unregistered.to_document();
+    let refused_published = refused_document["contributions"]
+        .as_array()
+        .expect("contributions");
+    assert_eq!(refused_published.len(), composition.components().len() - 1);
+    assert!(
+        refused_published
+            .iter()
+            .all(|contribution| contribution["id"] != action_component.component.as_str())
+    );
+
     // Reading the same published bindings twice gives the same document.
-    let again = plan_generation_mount(&host.bindings(), id, 1, &resources);
+    let again =
+        plan_generation_mount_with_actions(&host.bindings(), id, 1, &resources, &registered);
     assert_eq!(again.to_document(), document);
 
     cleanup(&root);

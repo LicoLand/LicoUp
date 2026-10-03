@@ -86,7 +86,7 @@ pub use licoup_extension_contracts::deployment::{
 pub use mount_plan::{
     HOST_ACTIONS, HOST_RESOURCE_VIEW_FORMATS, MOUNT_PLAN_FORMAT, MOUNT_PLAN_VERSION, MountDecision,
     PlannedContribution, ResourceMountPlan, SERVED_PROFILES, plan_generation_mount,
-    system_default_name,
+    plan_generation_mount_with_actions, system_default_name,
 };
 pub use resources::{
     ADMISSION_BLOCKED, ADMISSION_CLOSED, ADMISSION_RELEASE_FAILED, ADMISSION_UNAVAILABLE,

@@ -38,8 +38,7 @@ final class PresentationPlanFallback {
   int get hashCode => Object.hash(resourceId, packageId, reason);
 
   @override
-  String toString() =>
-      'PresentationPlanFallback($resourceId, ${reason.name})';
+  String toString() => 'PresentationPlanFallback($resourceId, ${reason.name})';
 }
 
 /// The appearance the host renders right now, projected from the plan.
@@ -56,7 +55,9 @@ final class PresentationPlanAppearance {
     this.resourceId,
     this.packageGeneration,
     this.fallback,
-  }) : tokens = Map<String, String>.unmodifiable(Map<String, String>.of(tokens));
+  }) : tokens = Map<String, String>.unmodifiable(
+         Map<String, String>.of(tokens),
+       );
 
   /// Whether a selected resource or the declared default is serving.
   final PlanAppearanceSource source;
