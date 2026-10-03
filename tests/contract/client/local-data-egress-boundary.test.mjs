@@ -9,6 +9,8 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)
 const productionRoots = Object.freeze([
   ["crates/licoup-native/src", ".rs"],
   ["crates/licoup-mcp/src", ".rs"],
+  ["crates/licoup-agent-targets/src", ".rs"],
+  ["crates/licoup-gateway/src", ".rs"],
   ["apps/desktop/lib", ".dart"],
   ["apps/desktop/android/app/src/main", ".kt"],
   ["apps/desktop/ios/Runner", ".swift"],
@@ -22,6 +24,10 @@ const networkTokensByExtension = Object.freeze({
 });
 
 const reviewedRustEgressFiles = Object.freeze([
+  "crates/licoup-agent-targets/src/domain/lico_agent/transport.rs",
+  "crates/licoup-gateway/src/channels/telegram/transport.rs",
+  "crates/licoup-gateway/src/http/server.rs",
+  "crates/licoup-gateway/src/http/transport.rs",
   "crates/licoup-mcp/src/lifecycle.rs",
   "crates/licoup-mcp/src/transport.rs",
   "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cursor.rs",
@@ -29,15 +35,11 @@ const reviewedRustEgressFiles = Object.freeze([
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/probe.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/shutdown.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/source.rs",
-  "crates/licoup-agent-targets/src/domain/lico_agent/transport.rs",
   "crates/licoup-native/src/domain/model_registry/source.rs",
   "crates/licoup-native/src/domain/provider_model_pricing.rs",
   "crates/licoup-native/src/domain/provider_quota/http.rs",
   "crates/licoup-native/src/platform/badtower_station/http_io.rs",
-  "crates/licoup-native/src/platform/gateway_runtime/channels/telegram/transport.rs",
-  "crates/licoup-native/src/platform/llm_gateway_server.rs",
   "crates/licoup-native/src/platform/llm_gateway_service.rs",
-  "crates/licoup-native/src/platform/llm_gateway_transport.rs",
   "crates/licoup-native/src/platform/local_service/http.rs",
   "crates/licoup-native/src/platform/local_service/sse.rs",
   "crates/licoup-native/src/platform/mcp_streamable_http.rs",
@@ -148,11 +150,11 @@ test("reviewed runtime owners retain direction, endpoint, and data bounds", asyn
       "HTTP_TIMEOUT_SECONDS", "MAX_ERROR_RESPONSE_BYTES", "read_bounded",
       ".take(take_limit)",
     ]],
-    ["crates/licoup-native/src/platform/gateway_runtime/channels/telegram/transport.rs", [
+    ["crates/licoup-gateway/src/channels/telegram/transport.rs", [
       'DEFAULT_API_ROOT: &str = "https://api.telegram.org"',
       "MAX_RESPONSE_BYTES", ".timeout_connect", ".send_json(body)",
     ]],
-    ["crates/licoup-native/src/platform/llm_gateway_server.rs", [
+    ["crates/licoup-gateway/src/http/server.rs", [
       "if !address.ip().is_loopback()", "MAX_HEADER_BYTES", "MAX_HEADERS",
       "MAX_REQUESTS_PER_CONNECTION", "MAX_GATEWAY_BODY_BYTES",
     ]],
@@ -160,7 +162,7 @@ test("reviewed runtime owners retain direction, endpoint, and data bounds", asyn
       "MAX_CONFIG_BYTES", "MAX_PID_BYTES", "TcpStream::connect_timeout",
       'GET /health HTTP/1.1',
     ]],
-    ["crates/licoup-native/src/platform/llm_gateway_transport.rs", [
+    ["crates/licoup-gateway/src/http/transport.rs", [
       "MAX_IN_FLIGHT", "MAX_COALESCED_WRITE_BYTES", ".post(&prepared.endpoint)",
       'request.set("authorization"', "MAX_GATEWAY_BODY_BYTES",
     ]],

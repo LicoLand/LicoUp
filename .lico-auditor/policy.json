@@ -22,7 +22,35 @@
       "kind": "config-object"
     },
     {
+      "path": "sdk/agent-adapter/samples/minimal-specialist/manifest.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "sdk/agent-adapter/samples/minimal-specialist/transcript.json",
+      "kind": "json"
+    },
+    {
+      "path": "sdk/agent-adapter/samples/minimal-specialist/events.json",
+      "kind": "json"
+    },
+    {
       "path": "crates/licoup-native/resources/state-machines/update-handoff.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/extension-instance.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/extension-invocation.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/extension-package.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-agent-targets/src/domain/targets/model_catalog/builtin_catalog.json",
       "kind": "config-object"
     },
     {

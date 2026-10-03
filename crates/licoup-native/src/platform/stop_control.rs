@@ -1289,7 +1289,7 @@ mod tests {
             &json!({
                 "turnHandle": "dispatch:two",
                 "conversationId": "conversation:two",
-                "reason": "/Users/someone/private/secret-token",
+                "reason": "/fixture/private/secret-token",
                 "prompt": "confidential work content",
                 "apiKey": "sk-live-secret",
             }),
@@ -1298,7 +1298,7 @@ mod tests {
         assert_eq!(response["status"], "stop-requested");
         let events = read_events(&root.root);
         let encoded = serde_json::to_string(&events).unwrap();
-        assert!(!encoded.contains("/Users/someone"), "{encoded}");
+        assert!(!encoded.contains("/fixture/private"), "{encoded}");
         assert!(!encoded.contains("confidential work content"), "{encoded}");
         assert!(!encoded.contains("sk-live-secret"), "{encoded}");
         assert!(

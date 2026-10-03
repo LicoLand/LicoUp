@@ -9,7 +9,11 @@ are served exactly as usual.
 
 Replay the recorded session with:
 
-    python3 -B agent.py < transcript.jsonl
+    python3 -B replay.py transcript.json | python3 -B agent.py
+
+`transcript.json` holds the host frames of one exchange and `events.json` the
+answer frames, both as recorded frame arrays that `replay.py` renders back to
+the one-frame-per-line carrier format.
 """
 from __future__ import annotations
 
