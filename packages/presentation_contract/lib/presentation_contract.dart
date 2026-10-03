@@ -1292,7 +1292,15 @@ extension PresentationActionsSend<Action> on PresentationActions<Action> {
 /// not provide it, the contribution is locally unavailable: the resource it
 /// would have read keeps its identity, position, and consistency groups, so no
 /// other feature re-reads or re-merges anything.
-enum DeclarativePrimitive { form, table, chart, text, progress, command }
+enum DeclarativePrimitive {
+  form,
+  table,
+  chart,
+  text,
+  progress,
+  command,
+  action,
+}
 
 /// Ordinary data input for one third-party declarative contribution.
 ///
@@ -1395,6 +1403,353 @@ final class DeclarativeUnavailable {
   @override
   String toString() =>
       'DeclarativeUnavailable($contributionId, ${primitive.name})';
+}
+
+/// Resource kinds a native host resource lifecycle publishes.
+///
+/// The set is closed: a kind this generation does not publish is a declaration
+/// error, not a newer capability a renderer could preserve for later. A
+/// component composition binds to the same appearance kinds a theme does, so
+/// withdrawing a package falls back for the whole appearance at once.
+enum MountedResourceKind { theme, layout, style, font, language, composition }
+
+/// The declared default one kind serves when no installed resource is selected.
+///
+/// These are the client's own system facts, not a bundled fallback package: a
+/// kind with no available resource renders the platform's own appearance, font
+/// or locale.
+enum MountedSystemDefault { appearance, font, locale }
+
+/// The declared default of one kind, independent of any installed resource.
+const Map<MountedResourceKind, MountedSystemDefault> mountedSystemDefaults = {
+  MountedResourceKind.theme: MountedSystemDefault.appearance,
+  MountedResourceKind.layout: MountedSystemDefault.appearance,
+  MountedResourceKind.style: MountedSystemDefault.appearance,
+  MountedResourceKind.composition: MountedSystemDefault.appearance,
+  MountedResourceKind.font: MountedSystemDefault.font,
+  MountedResourceKind.language: MountedSystemDefault.locale,
+};
+
+/// Why a kind stopped serving the resource its reader had selected.
+enum ResourceFallbackReason {
+  /// The package carrying the resource was switched off.
+  disabled,
+
+  /// The package was uninstalled, or that version was removed.
+  uninstalled,
+
+  /// The package's next generation no longer carries the selected resource.
+  replaced,
+}
+
+/// One recorded fallback: what was selected, and what happened to it.
+///
+/// The user's preference survives the fallback; what this host serves does not.
+/// A renderer reports the reason and renders the declared default instead of
+/// keeping a withdrawn resource's values on screen.
+final class ResourceFallback {
+  const ResourceFallback({
+    required this.kind,
+    required this.resourceId,
+    required this.packageId,
+    required this.reason,
+  });
+
+  final MountedResourceKind kind;
+
+
+  /// The resource that had been selected.
+  final String resourceId;
+
+  /// The package that carried it.
+  final String packageId;
+
+  final ResourceFallbackReason reason;
+
+  MountedSystemDefault get system => mountedSystemDefaults[kind]!;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ResourceFallback &&
+          other.kind == kind &&
+          other.resourceId == resourceId &&
+          other.packageId == packageId &&
+          other.reason == reason;
+
+  @override
+  int get hashCode => Object.hash(kind, resourceId, packageId, reason);
+
+  @override
+  String toString() =>
+      'ResourceFallback(${kind.name}, $resourceId, ${reason.name})';
+}
+
+/// One kind's resolved binding in a native resource snapshot.
+///
+/// The variant is the answer: a selected resource names the package generation
+/// that serves it, and the declared default names the system fact that renders
+/// while nothing is selected.
+sealed class MountedResourceBinding {
+  const MountedResourceBinding({required this.kind});
+
+  final MountedResourceKind kind;
+
+  /// The resource identity this binding serves, when it serves one.
+  String? get resourceId;
+
+  /// The package generation this binding serves, when it serves one.
+  int? get packageGeneration;
+
+  /// The declared default this binding falls back to, when it falls back.
+  MountedSystemDefault? get system;
+
+  bool get isDefault => system != null;
+
+  const factory MountedResourceBinding.selected({
+    required MountedResourceKind kind,
+    required String resourceId,
+    required String packageId,
+    required int packageGeneration,
+  }) = SelectedResourceBinding;
+
+  const factory MountedResourceBinding.defaulted({
+    required MountedResourceKind kind,
+    required MountedSystemDefault system,
+  }) = DefaultResourceBinding;
+
+  /// The binding one published entry describes, refusing an unfinished pair.
+  factory MountedResourceBinding.fromWire(Map<String, Object?> json) {
+    final kind = mountedResourceKindByName(json['kind']);
+    if (kind == null) {
+      throw FormatException('unknown resource kind: ${json['kind']}', json, 0);
+    }
+    final system = mountedSystemDefaultByName(json['system']);
+    if (system != null) {
+      final declared = mountedSystemDefaults[kind]!;
+      if (system != declared) {
+        throw FormatException(
+          '${kind.name} falls back to ${declared.name}, not ${system.name}',
+          json,
+          0,
+        );
+      }
+      return MountedResourceBinding.defaulted(kind: kind, system: system);
+    }
+    final resourceId = json['resourceId'];
+    final packageId = json['packageId'];
+    final generation = json['packageGeneration'];
+    if (resourceId is! String || resourceId.isEmpty) {
+      throw FormatException('resourceId must be a non-empty string', json, 0);
+    }
+    if (packageId is! String || packageId.isEmpty) {
+      throw FormatException('packageId must be a non-empty string', json, 0);
+    }
+    if (generation is! int || generation < 1) {
+      throw FormatException(
+        'packageGeneration must be a positive integer',
+        json,
+        0,
+      );
+    }
+    return MountedResourceBinding.selected(
+      kind: kind,
+      resourceId: resourceId,
+      packageId: packageId,
+      packageGeneration: generation,
+    );
+  }
+
+  Map<String, Object?> toWire();
+}
+
+/// The resource kind one published name identifies, if any.
+MountedResourceKind? mountedResourceKindByName(Object? name) {
+  for (final kind in MountedResourceKind.values) {
+    if (kind.name == name) return kind;
+  }
+  return null;
+}
+
+/// The declared default one published name identifies, if any.
+MountedSystemDefault? mountedSystemDefaultByName(Object? name) {
+  for (final system in MountedSystemDefault.values) {
+    if (system.name == name) return system;
+  }
+  return null;
+}
+
+/// The declarative primitive one published name identifies, if any.
+///
+/// A name outside the published set is refused rather than mapped to a
+/// neighbouring primitive, so an undeclared reference cannot silently render as
+/// something else.
+DeclarativePrimitive? declarativePrimitiveByName(Object? name) {
+  for (final primitive in DeclarativePrimitive.values) {
+    if (primitive.name == name) return primitive;
+  }
+  return null;
+}
+
+/// The fallback reason one published name identifies, if any.
+ResourceFallbackReason? resourceFallbackReasonByName(Object? name) {
+  for (final reason in ResourceFallbackReason.values) {
+    if (reason.name == name) return reason;
+  }
+  return null;
+}
+
+/// A resource an installed package generation currently serves.
+final class SelectedResourceBinding extends MountedResourceBinding {
+  const SelectedResourceBinding({
+    required super.kind,
+    required this.resourceId,
+    required this.packageId,
+    required this.packageGeneration,
+  });
+
+  @override
+  final String resourceId;
+
+  final String packageId;
+
+  @override
+  final int packageGeneration;
+
+  @override
+  MountedSystemDefault? get system => null;
+
+  @override
+  Map<String, Object?> toWire() => <String, Object?>{
+    'kind': kind.name,
+    'resourceId': resourceId,
+    'packageId': packageId,
+    'packageGeneration': packageGeneration,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SelectedResourceBinding &&
+          other.kind == kind &&
+          other.resourceId == resourceId &&
+          other.packageId == packageId &&
+          other.packageGeneration == packageGeneration;
+
+  @override
+  int get hashCode => Object.hash(kind, resourceId, packageId, packageGeneration);
+
+  @override
+  String toString() =>
+      'SelectedResourceBinding(${kind.name}, $resourceId@$packageGeneration)';
+}
+
+/// A kind rendering its declared default because nothing is selected.
+final class DefaultResourceBinding extends MountedResourceBinding {
+  const DefaultResourceBinding({required super.kind, required this.system});
+
+  @override
+  final MountedSystemDefault system;
+
+  @override
+  String? get resourceId => null;
+
+  @override
+  int? get packageGeneration => null;
+
+  @override
+  Map<String, Object?> toWire() => <String, Object?>{
+    'kind': kind.name,
+    'system': system.name,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DefaultResourceBinding &&
+          other.kind == kind &&
+          other.system == system;
+
+  @override
+  int get hashCode => Object.hash(kind, system);
+
+  @override
+  String toString() => 'DefaultResourceBinding(${kind.name}, ${system.name})';
+}
+
+/// What one mounted contribution is composed of.
+///
+/// The values are data: an identity, a primitive name, and the references the
+/// host already resolved. [actionRef] is a name in the plan's action set, and
+/// [regions] are ids the contribution declares it occupies, so the host decides
+/// placement rather than the contribution.
+final class MountedContribution {
+  MountedContribution({
+    required this.id,
+    required this.primitive,
+    this.resourceId,
+    this.resourceFormat,
+    this.actionRef,
+    Iterable<String> regions = const <String>[],
+    Map<String, Object?> inputs = const <String, Object?>{},
+  }) : regions = List<String>.unmodifiable(regions),
+       inputs = Map<String, Object?>.unmodifiable(inputs);
+
+  /// Namespaced contribution identity.
+  final String id;
+
+  final DeclarativePrimitive primitive;
+
+  /// The resource this contribution reads, when the host bound one.
+  final String? resourceId;
+
+  /// The bounded pure-data format a resource-view contribution renders.
+  final String? resourceFormat;
+
+  /// The host-registered action this contribution may invoke.
+  final String? actionRef;
+
+  /// Ids of the regions this contribution occupies.
+  final List<String> regions;
+
+  /// Plain immutable values the primitive renders; never code, never a widget.
+  final Map<String, Object?> inputs;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MountedContribution &&
+          other.id == id &&
+          other.primitive == primitive &&
+          other.resourceId == resourceId &&
+          other.resourceFormat == resourceFormat &&
+          other.actionRef == actionRef &&
+          _sameList(other.regions, regions) &&
+          _sameMap(other.inputs, inputs);
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    primitive,
+    resourceId,
+    resourceFormat,
+    actionRef,
+    Object.hashAll(regions),
+    Object.hashAll(inputs.entries.map((entry) => Object.hash(entry.key, entry.value))),
+  );
+
+  @override
+  String toString() => 'MountedContribution($id, ${primitive.name})';
+}
+
+bool _sameMap(Map<String, Object?> left, Map<String, Object?> right) {
+  if (left.length != right.length) return false;
+  for (final entry in left.entries) {
+    if (!right.containsKey(entry.key) || right[entry.key] != entry.value) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /// Read-only projected state exposed to an existing renderer.
