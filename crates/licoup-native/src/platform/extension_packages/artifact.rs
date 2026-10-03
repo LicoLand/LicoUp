@@ -261,6 +261,7 @@ impl ExpandedPackage {
         })?;
         let manifest = PackageManifest::from_value(value)?;
         check_entry_point(&destination, &manifest)?;
+        check_resource_definitions(&destination, &manifest)?;
         let install_scripts = entries
             .iter()
             .filter(|entry| is_install_script(entry))
@@ -347,6 +348,9 @@ fn check_entry_point(root: &Path, manifest: &PackageManifest) -> Result<(), Appl
         Runtime::Process { entry, .. } => Some(entry.as_str()),
         Runtime::Declarative { descriptor } => Some(descriptor.as_str()),
         Runtime::Service { .. } => None,
+        // A data package is carried by its resources, and each of those is
+        // checked below; there is no program to resolve an entry point for.
+        Runtime::Data => None,
     };
     let Some(declared) = declared else {
         return Ok(());
@@ -370,6 +374,34 @@ fn check_entry_point(root: &Path, manifest: &PackageManifest) -> Result<(), Appl
             .with_field("runtime.entry")
             .with_presentation_arg("entry", declared)),
     }
+}
+
+/// Every typed resource definition must be a regular file inside this package.
+///
+/// The contract already bounds a definition to a relative path with no parent
+/// segment and no platform separator, so the two facts decided here are the ones
+/// the contract cannot know: the file is present in the content that was just
+/// expanded, and it is a regular file rather than a directory or a symbolic
+/// link. A declaration that is safe but absent is refused before the version is
+/// published, rather than discovered when a resource is mounted. A package that
+/// declares no resource takes no part in this check.
+fn check_resource_definitions(
+    root: &Path,
+    manifest: &PackageManifest,
+) -> Result<(), ApplicationFailure> {
+    for resource in &manifest.resources {
+        let definition = resource.definition();
+        let resolved = root.join(Path::new(definition));
+        match fs::symlink_metadata(&resolved) {
+            Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {}
+            _ => {
+                return Err(refusal("package_resource_missing", ARTIFACT_STAGE)
+                    .with_field("resources.definition")
+                    .with_presentation_arg("definition", definition));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn map_extraction_failure(error: anyhow::Error) -> ApplicationFailure {

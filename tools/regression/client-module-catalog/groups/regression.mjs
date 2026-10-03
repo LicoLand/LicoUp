@@ -277,9 +277,12 @@ export const REGRESSION_MODULES = Object.freeze([
   ),
   nodeTestModule(
     "regression.extension-ui-schema",
-    "Strict published extension UI schema admission",
+    "Strict published extension UI and package-manifest schema admission",
     ["crates/licoup-extension-contracts/tests/ui_schema.test.mjs"],
-    ["schemas/extensions/ui.schema.json"],
+    [
+      "schemas/extensions/manifest.schema.json",
+      "schemas/extensions/ui.schema.json",
+    ],
   ),
   nodeTestModule(
     "regression.cargo-test-filter-runner",

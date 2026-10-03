@@ -26,10 +26,22 @@
 //! package's own version: a package version that differs from the client is not
 //! itself a refusal. The kernel loads a package only when the list covers the
 //! running client, and refuses it at install and at activation when it does not.
+//!
+//! A fourth claim is the package's *category*. A package carried by a program
+//! uses `process`, `declarative` or `service`; a package that carries data and no
+//! program uses [`Runtime::Data`] and declares typed
+//! [`ResourceDeclaration`]s. The two are exclusive in both directions: a data
+//! runtime that names an entry, a runtime reference or any other executable field
+//! is refused, and a package that declares typed resources and is also carried by
+//! a program is refused, because appearance data enters the client as data. What
+//! a data package may ask of the host is likewise explicit: `hostPrimitives` and
+//! `hostActions` are the requirement set it may bind to, and a composition
+//! component that binds a primitive or action outside that set is refused rather
+//! than resolved at mount time.
 
 use crate::profile::ProfileDeclaration;
 use crate::refusal;
-use crate::ui::ContributionKind;
+use crate::ui::{ContributionKind, HostPrimitive};
 use licoup_application::{
     ActivationMode, ApplicationFailure, ContractRange, is_namespaced, is_semver,
 };
@@ -42,6 +54,37 @@ const STAGE: &str = "extension/manifest";
 
 /// The longest range expression accepted.
 pub const MAX_RANGE_BYTES: usize = 64;
+
+/// The longest identity one typed resource may carry.
+pub const MAX_RESOURCE_ID_BYTES: usize = 160;
+
+/// The longest resource definition path accepted.
+pub const MAX_RESOURCE_DEFINITION_BYTES: usize = 200;
+
+/// The most coverage keys or components one typed resource may declare.
+pub const MAX_RESOURCE_KEYS: usize = 64;
+
+/// The longest font family name accepted.
+pub const MAX_FONT_FAMILY_BYTES: usize = 64;
+
+/// The longest locale tag accepted.
+pub const MAX_LOCALE_TAG_BYTES: usize = 35;
+
+/// The most host actions one package may declare.
+pub const MAX_HOST_ACTIONS: usize = 64;
+
+/// The published shape of a theme resource.
+pub const THEME_RESOURCE_FORMAT: &str = "licoup.data.theme.v1";
+/// The published shape of a layout resource.
+pub const LAYOUT_RESOURCE_FORMAT: &str = "licoup.data.layout.v1";
+/// The published shape of a style resource.
+pub const STYLE_RESOURCE_FORMAT: &str = "licoup.data.style.v1";
+/// The published shape of a font resource.
+pub const FONT_RESOURCE_FORMAT: &str = "licoup.data.font.v1";
+/// The published shape of a language resource.
+pub const LANGUAGE_RESOURCE_FORMAT: &str = "licoup.data.language.v1";
+/// The published shape of a component composition resource.
+pub const COMPOSITION_RESOURCE_FORMAT: &str = "licoup.data.composition.v1";
 
 /// Fields a manifest may not carry, because they are facts about the *bytes* or
 /// about the host's decision rather than about the package's own plan.
@@ -145,6 +188,10 @@ impl ContributionDeclaration {
 }
 
 /// How a package is carried.
+///
+/// The first three modes are carried by something the host starts or bridges. The
+/// last one is carried by nothing: a data package is its typed resources, and the
+/// host reads them out of the installed content.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "mode", rename_all = "kebab-case")]
 pub enum Runtime {
@@ -165,6 +212,12 @@ pub enum Runtime {
         #[serde(rename = "endpointRef")]
         endpoint_ref: String,
     },
+    /// Data only. It names no entry point, no descriptor and no endpoint because
+    /// there is nothing to start: the package's [`ResourceDeclaration`]s are its
+    /// whole contribution, and the host mounts them in its own registry. A data
+    /// runtime that carries any other field is refused rather than read as a
+    /// program that happens to have no entry point.
+    Data,
 }
 
 impl Runtime {
@@ -173,6 +226,7 @@ impl Runtime {
             Self::Process { .. } => "process",
             Self::Declarative { .. } => "declarative",
             Self::Service { .. } => "service",
+            Self::Data => "data",
         }
     }
 
@@ -187,8 +241,13 @@ impl Runtime {
             Self::Process { runtime_ref, .. } => runtime_ref
                 .as_deref()
                 .is_none_or(|reference| !reference.starts_with(USER_RUNTIME_PREFIX)),
-            Self::Declarative { .. } | Self::Service { .. } => false,
+            Self::Declarative { .. } | Self::Service { .. } | Self::Data => false,
         }
+    }
+
+    /// Whether this package is carried by nothing the host could start.
+    pub const fn is_data(&self) -> bool {
+        matches!(self, Self::Data)
     }
 
     pub fn validate(&self) -> Result<(), ApplicationFailure> {
@@ -207,6 +266,393 @@ impl Runtime {
             _ => Ok(()),
         }
     }
+}
+
+/// A typed data resource kind a data package may contribute.
+///
+/// Each kind has exactly one published shape in this contract generation, so a
+/// resource is never free-form: its `kind` decides which fields the manifest
+/// carries, and [`ResourceKind::format`] is the shape identifier the document
+/// must repeat. A kind this client does not publish is refused rather than
+/// preserved, because a resource the host cannot type is not one it could mount.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ResourceKind {
+    Theme,
+    Layout,
+    Style,
+    Font,
+    Language,
+    Composition,
+}
+
+impl ResourceKind {
+    /// Every kind this contract generation publishes.
+    pub const ALL: [Self; 6] = [
+        Self::Theme,
+        Self::Layout,
+        Self::Style,
+        Self::Font,
+        Self::Language,
+        Self::Composition,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Theme => "theme",
+            Self::Layout => "layout",
+            Self::Style => "style",
+            Self::Font => "font",
+            Self::Language => "language",
+            Self::Composition => "composition",
+        }
+    }
+
+    /// The published shape of this kind.
+    pub const fn format(self) -> &'static str {
+        match self {
+            Self::Theme => THEME_RESOURCE_FORMAT,
+            Self::Layout => LAYOUT_RESOURCE_FORMAT,
+            Self::Style => STYLE_RESOURCE_FORMAT,
+            Self::Font => FONT_RESOURCE_FORMAT,
+            Self::Language => LANGUAGE_RESOURCE_FORMAT,
+            Self::Composition => COMPOSITION_RESOURCE_FORMAT,
+        }
+    }
+
+    /// The declaration field that carries what this kind covers.
+    pub const fn coverage_field(self) -> &'static str {
+        match self {
+            Self::Theme => "tokens",
+            Self::Layout => "regions",
+            Self::Style => "targets",
+            Self::Font => "families",
+            Self::Language => "locales",
+            Self::Composition => "components",
+        }
+    }
+
+    /// The kind one wire name publishes, if this contract generation has it.
+    pub fn from_wire(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.as_str() == name)
+    }
+}
+
+/// One component of a composition resource.
+///
+/// A composition binds host-registered actions to precompiled host primitives;
+/// it does not bring a primitive of its own and it does not name a callback. The
+/// `primitive` must be one the manifest declares in `hostPrimitives`, and the
+/// `actionRef`, when present, must be one it declares in `hostActions`.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompositionComponent {
+    /// The namespaced component identity.
+    pub component: String,
+    /// The compiled host primitive this component is composed from.
+    pub primitive: HostPrimitive,
+    /// The host action this component may invoke, when it binds one.
+    #[serde(default)]
+    pub action_ref: Option<String>,
+}
+
+impl CompositionComponent {
+    pub fn validate(&self) -> Result<(), ApplicationFailure> {
+        if !is_namespaced(&self.component) || self.component.len() > MAX_RESOURCE_ID_BYTES {
+            return Err(refusal::new("data_package_resource_invalid", STAGE)
+                .with_field("resources.components"));
+        }
+        if self
+            .action_ref
+            .as_deref()
+            .is_some_and(|action| !is_namespaced(action) || action.len() > MAX_RESOURCE_ID_BYTES)
+        {
+            return Err(refusal::new("data_package_resource_invalid", STAGE)
+                .with_field("resources.components.actionRef"));
+        }
+        Ok(())
+    }
+}
+
+/// One typed data resource a package contributes.
+///
+/// The variant is the type: a theme carries token identities, a font carries the
+/// family names it covers, a language carries the locale tags it provides, and a
+/// composition carries the components it binds. `definition` is the file inside
+/// the package that holds the shape named by `format`; the host reads it from the
+/// installed content, and a definition that is missing, absolute or outside the
+/// package is refused before publication.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum ResourceDeclaration {
+    /// Design tokens the host applies to its own widgets.
+    Theme {
+        id: String,
+        definition: String,
+        format: String,
+        tokens: Vec<String>,
+    },
+    /// Named regions of the client shell.
+    Layout {
+        id: String,
+        definition: String,
+        format: String,
+        regions: Vec<String>,
+    },
+    /// Named visual targets a style may address.
+    Style {
+        id: String,
+        definition: String,
+        format: String,
+        targets: Vec<String>,
+    },
+    /// Font families the package supplies.
+    Font {
+        id: String,
+        definition: String,
+        format: String,
+        families: Vec<String>,
+    },
+    /// Locale tags the package supplies strings for.
+    Language {
+        id: String,
+        definition: String,
+        format: String,
+        locales: Vec<String>,
+    },
+    /// A component composition bound to host primitives and actions.
+    Composition {
+        id: String,
+        definition: String,
+        format: String,
+        components: Vec<CompositionComponent>,
+    },
+}
+
+impl ResourceDeclaration {
+    pub fn kind(&self) -> ResourceKind {
+        match self {
+            Self::Theme { .. } => ResourceKind::Theme,
+            Self::Layout { .. } => ResourceKind::Layout,
+            Self::Style { .. } => ResourceKind::Style,
+            Self::Font { .. } => ResourceKind::Font,
+            Self::Language { .. } => ResourceKind::Language,
+            Self::Composition { .. } => ResourceKind::Composition,
+        }
+    }
+
+    /// The namespaced resource identity.
+    pub fn id(&self) -> &str {
+        match self {
+            Self::Theme { id, .. }
+            | Self::Layout { id, .. }
+            | Self::Style { id, .. }
+            | Self::Font { id, .. }
+            | Self::Language { id, .. }
+            | Self::Composition { id, .. } => id,
+        }
+    }
+
+    /// The file inside the package that carries the resource.
+    pub fn definition(&self) -> &str {
+        match self {
+            Self::Theme { definition, .. }
+            | Self::Layout { definition, .. }
+            | Self::Style { definition, .. }
+            | Self::Font { definition, .. }
+            | Self::Language { definition, .. }
+            | Self::Composition { definition, .. } => definition,
+        }
+    }
+
+    /// The shape identifier the document repeats.
+    pub fn format(&self) -> &str {
+        match self {
+            Self::Theme { format, .. }
+            | Self::Layout { format, .. }
+            | Self::Style { format, .. }
+            | Self::Font { format, .. }
+            | Self::Language { format, .. }
+            | Self::Composition { format, .. } => format,
+        }
+    }
+
+    /// What this resource covers, as its declaration field and its values.
+    ///
+    /// A composition covers components rather than keys, so it has none here and
+    /// is validated through [`ResourceDeclaration::components`].
+    pub fn coverage(&self) -> Option<(&'static str, &[String])> {
+        match self {
+            Self::Theme { tokens, .. } => Some(("tokens", tokens)),
+            Self::Layout { regions, .. } => Some(("regions", regions)),
+            Self::Style { targets, .. } => Some(("targets", targets)),
+            Self::Font { families, .. } => Some(("families", families)),
+            Self::Language { locales, .. } => Some(("locales", locales)),
+            Self::Composition { .. } => None,
+        }
+    }
+
+    /// The components of a composition resource; empty for every other kind.
+    pub fn components(&self) -> &[CompositionComponent] {
+        match self {
+            Self::Composition { components, .. } => components,
+            _ => &[],
+        }
+    }
+
+    /// Structural validation of one typed resource, independent of any package.
+    pub fn validate(&self) -> Result<(), ApplicationFailure> {
+        if !is_namespaced(self.id()) || self.id().len() > MAX_RESOURCE_ID_BYTES {
+            return Err(
+                refusal::new("data_package_resource_invalid", STAGE).with_field("resources.id")
+            );
+        }
+        if !is_resource_definition(self.definition()) {
+            return Err(refusal::new("data_package_resource_invalid", STAGE)
+                .with_field("resources.definition"));
+        }
+        if self.format() != self.kind().format() {
+            return Err(refusal::new("data_package_resource_shape_unknown", STAGE)
+                .with_field("resources.format")
+                .with_presentation_arg("kind", self.kind().as_str())
+                .with_presentation_arg("format", self.format()));
+        }
+        match self.coverage() {
+            Some((field, keys)) => {
+                if keys.is_empty() || keys.len() > MAX_RESOURCE_KEYS {
+                    return Err(refusal::new("data_package_resource_invalid", STAGE)
+                        .with_field("resources.coverage")
+                        .with_presentation_arg("field", field));
+                }
+                let mut seen: Vec<&str> = Vec::with_capacity(keys.len());
+                for key in keys {
+                    if !self.kind().accepts_coverage_key(key) || seen.contains(&key.as_str()) {
+                        return Err(refusal::new("data_package_resource_invalid", STAGE)
+                            .with_field("resources.coverage")
+                            .with_presentation_arg("field", field)
+                            .with_presentation_arg("value", key));
+                    }
+                    seen.push(key);
+                }
+            }
+            None => {
+                let components = self.components();
+                if components.is_empty() || components.len() > MAX_RESOURCE_KEYS {
+                    return Err(refusal::new("data_package_resource_invalid", STAGE)
+                        .with_field("resources.components"));
+                }
+                let mut seen: Vec<&str> = Vec::with_capacity(components.len());
+                for component in components {
+                    component.validate()?;
+                    if seen.contains(&component.component.as_str()) {
+                        return Err(refusal::new("data_package_resource_invalid", STAGE)
+                            .with_field("resources.components")
+                            .with_presentation_arg("component", component.component.as_str()));
+                    }
+                    seen.push(&component.component);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether every host primitive and action this resource binds is declared.
+    pub fn validate_bindings(
+        &self,
+        primitives: &[HostPrimitive],
+        actions: &[String],
+    ) -> Result<(), ApplicationFailure> {
+        for component in self.components() {
+            if !primitives.contains(&component.primitive) {
+                return Err(refusal::new("data_package_primitive_undeclared", STAGE)
+                    .with_field("hostPrimitives")
+                    .with_presentation_arg("primitive", component.primitive.as_str())
+                    .with_presentation_arg("component", component.component.as_str()));
+            }
+            if let Some(action) = component.action_ref.as_deref()
+                && !actions.iter().any(|declared| declared == action)
+            {
+                return Err(refusal::new("data_package_action_undeclared", STAGE)
+                    .with_field("hostActions")
+                    .with_presentation_arg("action", action));
+            }
+        }
+        Ok(())
+    }
+}
+
+impl ResourceKind {
+    /// Whether one coverage key has the shape this kind publishes.
+    fn accepts_coverage_key(self, key: &str) -> bool {
+        match self {
+            Self::Theme | Self::Layout | Self::Style => {
+                is_namespaced(key) && key.len() <= MAX_RESOURCE_ID_BYTES
+            }
+            Self::Font => is_font_family(key),
+            Self::Language => is_locale_tag(key),
+            // A composition is validated through its components, not through keys.
+            Self::Composition => false,
+        }
+    }
+}
+
+/// Whether one value is a bounded locale tag: a 2–3 letter language subtag
+/// followed by at most three alphanumeric subtags, as `en`, `zh-CN` or `pt-BR`.
+///
+/// It is deliberately narrower than full BCP 47: the contract publishes one
+/// bounded shape both the host and a third party can check, and a tag outside it
+/// is refused rather than guessed at.
+pub fn is_locale_tag(tag: &str) -> bool {
+    if tag.is_empty() || tag.len() > MAX_LOCALE_TAG_BYTES {
+        return false;
+    }
+    let mut subtags = tag.split('-');
+    let Some(language) = subtags.next() else {
+        return false;
+    };
+    if !(2..=3).contains(&language.len())
+        || !language
+            .chars()
+            .all(|character| character.is_ascii_alphabetic())
+    {
+        return false;
+    }
+    subtags.all(|subtag| {
+        (2..=8).contains(&subtag.len())
+            && subtag
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric())
+    })
+}
+
+/// Whether one value is a bounded, printable font family name.
+pub fn is_font_family(family: &str) -> bool {
+    !family.is_empty()
+        && family.len() <= MAX_FONT_FAMILY_BYTES
+        && !family.starts_with(char::is_whitespace)
+        && !family.ends_with(char::is_whitespace)
+        && !family.chars().any(char::is_control)
+}
+
+/// Whether one value is a relative path inside a package.
+///
+/// The same rule the artifact preflight applies to a declared entry point: no
+/// absolute path, no parent directory, no platform separator and no NUL. A
+/// definition is read from the package the host installed, never from somewhere
+/// the manifest points at.
+pub fn is_resource_definition(definition: &str) -> bool {
+    !definition.is_empty()
+        && definition.len() <= MAX_RESOURCE_DEFINITION_BYTES
+        && !definition.contains('\\')
+        && !definition.contains('\0')
+        && std::path::Path::new(definition)
+            .components()
+            .all(|component| {
+                matches!(
+                    component,
+                    std::path::Component::Normal(_) | std::path::Component::CurDir
+                )
+            })
 }
 
 /// The client versions a package says it supports.
@@ -333,6 +779,18 @@ pub struct PackageManifest {
     pub permissions: Vec<PermissionRequest>,
     #[serde(default)]
     pub contributions: Vec<ContributionDeclaration>,
+    /// The typed data resources this package contributes. A package that
+    /// declares one is carried by data ([`Runtime::Data`]) and by nothing else.
+    #[serde(default)]
+    pub resources: Vec<ResourceDeclaration>,
+    /// The host primitives this package's resources may bind. A composition
+    /// component naming one outside this set is refused, and a name this client
+    /// does not compile is refused rather than preserved.
+    #[serde(default)]
+    pub host_primitives: Vec<HostPrimitive>,
+    /// The host-registered actions this package's resources may invoke.
+    #[serde(default)]
+    pub host_actions: Vec<String>,
     /// The package's own namespaced attributes, preserved for newer hosts.
     #[serde(default)]
     pub extensions: BTreeMap<String, Value>,
@@ -394,6 +852,33 @@ impl PackageManifest {
         for declaration in &self.profiles {
             declaration.validate()?;
         }
+        // The category is exclusive in both directions. A data package declares
+        // resources instead of a program, and a package that declares typed
+        // resources is a data package: appearance data enters the client as data,
+        // never as a program that also happens to ship a theme.
+        if self.runtime.is_data() {
+            if !self.profiles.is_empty() {
+                return Err(
+                    refusal::new("data_package_profile_refused", STAGE).with_field("profiles")
+                );
+            }
+        } else if !self.resources.is_empty() {
+            return Err(
+                refusal::new("data_package_executable_refused", STAGE).with_field("runtime")
+            );
+        }
+        self.validate_requirements()?;
+        let mut resource_ids: Vec<&str> = Vec::with_capacity(self.resources.len());
+        for resource in &self.resources {
+            resource.validate()?;
+            resource.validate_bindings(&self.host_primitives, &self.host_actions)?;
+            if resource_ids.contains(&resource.id()) {
+                return Err(refusal::new("data_package_resource_invalid", STAGE)
+                    .with_field("resources.id")
+                    .with_presentation_arg("id", resource.id()));
+            }
+            resource_ids.push(resource.id());
+        }
         for dependency in self.requires.iter().chain(self.optional_requires.iter()) {
             dependency.validate()?;
         }
@@ -411,17 +896,119 @@ impl PackageManifest {
         Ok(())
     }
 
+    /// The declared host-primitive and host-action requirement set.
+    ///
+    /// It is a set, not a list: a duplicate is a declaration error rather than a
+    /// second requirement, and an action the host could never publish as
+    /// namespaced is refused here instead of at the call site.
+    fn validate_requirements(&self) -> Result<(), ApplicationFailure> {
+        let mut primitives: Vec<HostPrimitive> = Vec::with_capacity(self.host_primitives.len());
+        for primitive in &self.host_primitives {
+            if primitives.contains(primitive) {
+                return Err(refusal::new("data_package_requirement_invalid", STAGE)
+                    .with_field("hostPrimitives")
+                    .with_presentation_arg("primitive", primitive.as_str()));
+            }
+            primitives.push(*primitive);
+        }
+        if self.host_actions.len() > MAX_HOST_ACTIONS {
+            return Err(
+                refusal::new("data_package_requirement_invalid", STAGE).with_field("hostActions")
+            );
+        }
+        let mut actions: Vec<&str> = Vec::with_capacity(self.host_actions.len());
+        for action in &self.host_actions {
+            if !is_namespaced(action)
+                || action.len() > MAX_RESOURCE_ID_BYTES
+                || actions.contains(&action.as_str())
+            {
+                return Err(refusal::new("data_package_requirement_invalid", STAGE)
+                    .with_field("hostActions")
+                    .with_presentation_arg("action", action));
+            }
+            actions.push(action);
+        }
+        Ok(())
+    }
+
+    /// Whether this package is carried by its typed resources and no program.
+    pub const fn is_data_package(&self) -> bool {
+        self.runtime.is_data()
+    }
+
     /// Read a manifest, refusing one that declares a fact about its own bytes or
-    /// about a permission the host has not granted.
+    /// about a permission the host has not granted, and one whose data category
+    /// or typed resources do not hold.
     pub fn from_value(value: Value) -> Result<Self, ApplicationFailure> {
         if let Some(field) = self_asserted_field(&value) {
             return Err(refusal::new("manifest_self_asserted_fact", STAGE).with_field(&field));
+        }
+        // The data category is checked before anything is deserialized: an
+        // internally tagged runtime would otherwise drop an `entry` or a
+        // `runtimeRef` on the floor and read an executable declaration as data.
+        if let Some(field) = executable_data_field(&value) {
+            return Err(refusal::new("data_package_executable_refused", STAGE).with_field(&field));
+        }
+        if let Some(kind) = unknown_resource_kind(&value) {
+            return Err(refusal::new("data_package_resource_kind_unknown", STAGE)
+                .with_field("resources.kind")
+                .with_presentation_arg("kind", &kind));
+        }
+        if let Some(primitive) = unknown_declared_primitive(&value) {
+            return Err(refusal::new("data_package_primitive_unknown", STAGE)
+                .with_field("hostPrimitives")
+                .with_presentation_arg("primitive", &primitive));
+        }
+        // The resources are read on their own so a malformed declaration names
+        // its own refusal instead of the whole manifest being called unreadable.
+        if let Some(resources) = value.get("resources") {
+            serde_json::from_value::<Vec<ResourceDeclaration>>(resources.clone()).map_err(
+                |_| refusal::new("data_package_resource_invalid", STAGE).with_field("resources"),
+            )?;
         }
         let manifest: Self = serde_json::from_value(value)
             .map_err(|_| refusal::new("manifest_invalid", STAGE).with_field("manifest"))?;
         manifest.validate()?;
         Ok(manifest)
     }
+}
+
+/// The runtime field of a data package that carries something executable, if any.
+///
+/// A data runtime has exactly one field, `mode`. Everything else — an entry, a
+/// runtime reference, a descriptor, an endpoint or a field this contract has
+/// never heard of — is a program declaration on a package that must not have one.
+pub fn executable_data_field(value: &Value) -> Option<String> {
+    let runtime = value.get("runtime")?.as_object()?;
+    if runtime.get("mode").and_then(Value::as_str) != Some("data") {
+        return None;
+    }
+    runtime
+        .keys()
+        .find(|key| key.as_str() != "mode")
+        .map(|key| format!("runtime.{key}"))
+}
+
+/// The first resource kind in `value` this contract does not publish, if any.
+pub fn unknown_resource_kind(value: &Value) -> Option<String> {
+    value
+        .get("resources")?
+        .as_array()?
+        .iter()
+        .filter_map(|resource| resource.get("kind")?.as_str())
+        .find(|kind| ResourceKind::from_wire(kind).is_none())
+        .map(str::to_owned)
+}
+
+/// The first declared host primitive in `value` this client does not compile.
+pub fn unknown_declared_primitive(value: &Value) -> Option<String> {
+    value
+        .get("hostPrimitives")?
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_str)
+        .find(|primitive| HostPrimitive::from_wire(primitive).is_none())
+        .map(str::to_owned)
 }
 
 /// The dotted path of the first field in `value` that a manifest may not assert,
@@ -489,8 +1076,413 @@ mod tests {
             optional_requires: vec![Dependency::new("org.licoland.feature.analytics", "^1.0")],
             permissions: Vec::new(),
             contributions: Vec::new(),
+            resources: Vec::new(),
+            host_primitives: Vec::new(),
+            host_actions: Vec::new(),
             extensions: BTreeMap::new(),
         }
+    }
+
+    /// The wire form of a data package carrying every published resource kind.
+    fn data_package_wire() -> Value {
+        serde_json::json!({
+            "schema": crate::wire::MANIFEST,
+            "id": "org.licoland.appearance.midnight",
+            "version": "1.0.0",
+            "displayName": "Midnight appearance",
+            "hostProtocol": { "major": 1, "minimumMinor": 0 },
+            "compatibility": { "clientVersions": ["0"] },
+            "profiles": [],
+            "runtime": { "mode": "data" },
+            "hostPrimitives": ["text", "form", "action"],
+            "hostActions": ["org.licoland.action.apply-appearance"],
+            "resources": [
+                {
+                    "kind": "theme",
+                    "id": "org.licoland.theme.midnight",
+                    "definition": "themes/midnight.json",
+                    "format": THEME_RESOURCE_FORMAT,
+                    "tokens": ["org.licoland.token.surface", "org.licoland.token.text"]
+                },
+                {
+                    "kind": "layout",
+                    "id": "org.licoland.layout.compact",
+                    "definition": "layouts/compact.json",
+                    "format": LAYOUT_RESOURCE_FORMAT,
+                    "regions": ["org.licoland.region.sidebar"]
+                },
+                {
+                    "kind": "style",
+                    "id": "org.licoland.style.soft",
+                    "definition": "styles/soft.json",
+                    "format": STYLE_RESOURCE_FORMAT,
+                    "targets": ["org.licoland.target.button"]
+                },
+                {
+                    "kind": "font",
+                    "id": "org.licoland.font.text",
+                    "definition": "fonts/text.json",
+                    "format": FONT_RESOURCE_FORMAT,
+                    "families": ["Inter", "Noto Sans SC"]
+                },
+                {
+                    "kind": "language",
+                    "id": "org.licoland.language.zh",
+                    "definition": "strings/zh.json",
+                    "format": LANGUAGE_RESOURCE_FORMAT,
+                    "locales": ["zh", "zh-CN"]
+                },
+                {
+                    "kind": "composition",
+                    "id": "org.licoland.composition.shell",
+                    "definition": "compositions/shell.json",
+                    "format": COMPOSITION_RESOURCE_FORMAT,
+                    "components": [
+                        {
+                            "component": "org.licoland.component.status",
+                            "primitive": "text"
+                        },
+                        {
+                            "component": "org.licoland.component.apply",
+                            "primitive": "action",
+                            "actionRef": "org.licoland.action.apply-appearance"
+                        }
+                    ]
+                }
+            ],
+            "requires": [],
+            "optionalRequires": [],
+            "permissions": []
+        })
+    }
+
+    #[test]
+    fn a_data_package_carries_typed_resources_and_no_program() {
+        let manifest =
+            PackageManifest::from_value(data_package_wire()).expect("a typed data package");
+        assert!(manifest.is_data_package());
+        assert_eq!(manifest.runtime.mode(), "data");
+        assert!(!manifest.runtime.owns_its_runtime());
+        assert_eq!(manifest.resources.len(), ResourceKind::ALL.len());
+        let kinds: Vec<&str> = manifest
+            .resources
+            .iter()
+            .map(|resource| resource.kind().as_str())
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                "theme",
+                "layout",
+                "style",
+                "font",
+                "language",
+                "composition"
+            ]
+        );
+        assert_eq!(
+            manifest.runtime,
+            serde_json::from_value::<Runtime>(serde_json::json!({ "mode": "data" })).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&manifest.runtime).unwrap(),
+            serde_json::json!({ "mode": "data" })
+        );
+
+        // Every kind round-trips through its own typed shape, and the shape is
+        // not free-form: each declaration carries exactly the fields its kind
+        // publishes.
+        for resource in &manifest.resources {
+            let wire = serde_json::to_value(resource).expect("serialize");
+            assert_eq!(
+                wire.get("kind").and_then(Value::as_str),
+                Some(resource.kind().as_str())
+            );
+            assert_eq!(
+                wire.get("format").and_then(Value::as_str),
+                Some(resource.kind().format())
+            );
+            assert_eq!(
+                serde_json::from_value::<ResourceDeclaration>(wire.clone()).expect("read back"),
+                *resource
+            );
+            let coverage = resource
+                .coverage()
+                .map(|(field, _)| field)
+                .unwrap_or("components");
+            assert_eq!(coverage, resource.kind().coverage_field());
+            assert!(wire.get(coverage).is_some(), "{coverage} is published");
+        }
+
+        // A data package has no place to put a program.
+        let wire = serde_json::to_value(&manifest).expect("serialize");
+        for forbidden in ["entry", "runtimeRef", "descriptor", "endpointRef", "code"] {
+            assert!(
+                !wire.to_string().contains(&format!("\"{forbidden}\"")),
+                "a data package has no {forbidden}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_executable_declaration_on_a_data_package_is_refused() {
+        for (runtime, field) in [
+            (
+                serde_json::json!({ "mode": "data", "entry": "agent.py" }),
+                "runtime.entry",
+            ),
+            (
+                serde_json::json!({ "mode": "data", "runtimeRef": "user:python3" }),
+                "runtime.runtimeRef",
+            ),
+            (
+                serde_json::json!({ "mode": "data", "descriptor": "adapter.json" }),
+                "runtime.descriptor",
+            ),
+        ] {
+            let mut wire = data_package_wire();
+            wire["runtime"] = runtime;
+            let failure = PackageManifest::from_value(wire)
+                .expect_err("a data package carries no executable declaration");
+            assert_eq!(failure.code, "data_package_executable_refused");
+            assert_eq!(failure.field.as_deref(), Some(field));
+        }
+
+        // The reverse direction: a program that also ships typed resources is
+        // refused, because appearance data is carried by data.
+        let mut wire = data_package_wire();
+        wire["runtime"] = serde_json::json!({ "mode": "process", "entry": "agent.py" });
+        let failure = PackageManifest::from_value(wire)
+            .expect_err("typed resources are carried by data, not by a program");
+        assert_eq!(failure.code, "data_package_executable_refused");
+        assert_eq!(failure.field.as_deref(), Some("runtime"));
+
+        // A data package serves no method profile.
+        let mut wire = data_package_wire();
+        wire["profiles"] = serde_json::json!([{ "id": "declarative-ui", "major": 1 }]);
+        let failure =
+            PackageManifest::from_value(wire).expect_err("a data package serves no profile");
+        assert_eq!(failure.code, "data_package_profile_refused");
+        assert_eq!(failure.field.as_deref(), Some("profiles"));
+    }
+
+    #[test]
+    fn an_unknown_resource_kind_is_refused_rather_than_kept() {
+        let mut wire = data_package_wire();
+        wire["resources"] = serde_json::json!([
+            {
+                "kind": "widget",
+                "id": "org.licoland.widget.card",
+                "definition": "widgets/card.json",
+                "format": "licoup.data.widget.v1",
+                "components": []
+            }
+        ]);
+        let failure =
+            PackageManifest::from_value(wire).expect_err("a host cannot type an unknown kind");
+        assert_eq!(failure.code, "data_package_resource_kind_unknown");
+        assert_eq!(failure.field.as_deref(), Some("resources.kind"));
+        assert_eq!(
+            failure.presentation_args.get("kind"),
+            Some("widget"),
+            "the refusal names the kind it could not type"
+        );
+
+        // A published kind with a shape this generation does not publish is
+        // refused too: the shape is not a guess.
+        let mut wire = data_package_wire();
+        wire["resources"] = serde_json::json!([
+            {
+                "kind": "font",
+                "id": "org.licoland.font.text",
+                "definition": "fonts/text.json",
+                "format": "licoup.data.font.v2",
+                "families": ["Inter"]
+            }
+        ]);
+        let failure = PackageManifest::from_value(wire).expect_err("an unknown shape");
+        assert_eq!(failure.code, "data_package_resource_shape_unknown");
+        assert_eq!(failure.field.as_deref(), Some("resources.format"));
+    }
+
+    #[test]
+    fn host_primitives_and_actions_must_be_declared_to_be_used() {
+        // A composition binding a primitive the package did not declare.
+        let mut wire = data_package_wire();
+        wire["hostPrimitives"] = serde_json::json!(["form"]);
+        let failure = PackageManifest::from_value(wire)
+            .expect_err("a composition may bind only a declared primitive");
+        assert_eq!(failure.code, "data_package_primitive_undeclared");
+        assert_eq!(failure.field.as_deref(), Some("hostPrimitives"));
+        assert_eq!(failure.presentation_args.get("primitive"), Some("text"));
+
+        // A primitive this client does not compile at all.
+        let mut wire = data_package_wire();
+        wire["hostPrimitives"] = serde_json::json!(["canvas"]);
+        let failure =
+            PackageManifest::from_value(wire).expect_err("this client compiles no canvas");
+        assert_eq!(failure.code, "data_package_primitive_unknown");
+        assert_eq!(failure.presentation_args.get("primitive"), Some("canvas"));
+
+        // A declared primitive that no resource binds is still a declaration
+        // error when it repeats: the set is a set.
+        let mut wire = data_package_wire();
+        wire["hostPrimitives"] = serde_json::json!(["text", "text"]);
+        let failure = PackageManifest::from_value(wire).expect_err("a duplicate requirement");
+        assert_eq!(failure.code, "data_package_requirement_invalid");
+        assert_eq!(failure.field.as_deref(), Some("hostPrimitives"));
+
+        // An action the package did not declare.
+        let mut wire = data_package_wire();
+        wire["hostActions"] = serde_json::json!(["org.licoland.action.other"]);
+        let failure =
+            PackageManifest::from_value(wire).expect_err("an arbitrary host action is not access");
+        assert_eq!(failure.code, "data_package_action_undeclared");
+        assert_eq!(
+            failure.presentation_args.get("action"),
+            Some("org.licoland.action.apply-appearance")
+        );
+
+        // An action that could never be a host-registered namespaced action.
+        let mut wire = data_package_wire();
+        wire["hostActions"] = serde_json::json!(["eval"]);
+        let failure = PackageManifest::from_value(wire).expect_err("a bare action name");
+        assert_eq!(failure.code, "data_package_requirement_invalid");
+        assert_eq!(failure.field.as_deref(), Some("hostActions"));
+    }
+
+    #[test]
+    fn a_resource_that_is_not_typed_is_refused() {
+        let theme = |definition: &str, tokens: Value| {
+            let mut wire = data_package_wire();
+            wire["resources"] = serde_json::json!([{
+                "kind": "theme",
+                "id": "org.licoland.theme.midnight",
+                "definition": definition,
+                "format": THEME_RESOURCE_FORMAT,
+                "tokens": tokens,
+            }]);
+            wire
+        };
+
+        // A theme without its tokens is not a theme this host can mount.
+        let failure =
+            PackageManifest::from_value(theme("themes/midnight.json", serde_json::json!([])))
+                .expect_err("empty coverage");
+        assert_eq!(failure.code, "data_package_resource_invalid");
+        assert_eq!(failure.field.as_deref(), Some("resources.coverage"));
+
+        // The same token twice covers no more than once.
+        let failure = PackageManifest::from_value(theme(
+            "themes/midnight.json",
+            serde_json::json!(["org.licoland.token.text", "org.licoland.token.text"]),
+        ))
+        .expect_err("duplicate coverage");
+        assert_eq!(failure.code, "data_package_resource_invalid");
+
+        // An unprefixed token is not a token identity.
+        let failure = PackageManifest::from_value(theme(
+            "themes/midnight.json",
+            serde_json::json!(["surface"]),
+        ))
+        .expect_err("a bare token");
+        assert_eq!(failure.code, "data_package_resource_invalid");
+
+        // A definition that leaves the package is not a definition.
+        for definition in [
+            "/etc/passwd",
+            "../outside.json",
+            "themes\\midnight.json",
+            "",
+        ] {
+            let failure = PackageManifest::from_value(theme(
+                definition,
+                serde_json::json!(["org.licoland.token.text"]),
+            ))
+            .expect_err("a definition is a file inside the package");
+            assert_eq!(
+                failure.code, "data_package_resource_invalid",
+                "{definition}"
+            );
+            assert_eq!(failure.field.as_deref(), Some("resources.definition"));
+        }
+
+        // A language resource publishes locale tags, not arbitrary strings.
+        let mut wire = data_package_wire();
+        wire["resources"] = serde_json::json!([{
+            "kind": "language",
+            "id": "org.licoland.language.zh",
+            "definition": "strings/zh.json",
+            "format": LANGUAGE_RESOURCE_FORMAT,
+            "locales": ["zh", "not a locale"],
+        }]);
+        let failure = PackageManifest::from_value(wire).expect_err("not a locale tag");
+        assert_eq!(failure.code, "data_package_resource_invalid");
+
+        // A composition with no component composes nothing.
+        let mut wire = data_package_wire();
+        wire["resources"] = serde_json::json!([{
+            "kind": "composition",
+            "id": "org.licoland.composition.shell",
+            "definition": "compositions/shell.json",
+            "format": COMPOSITION_RESOURCE_FORMAT,
+            "components": [],
+        }]);
+        let failure = PackageManifest::from_value(wire).expect_err("empty composition");
+        assert_eq!(failure.code, "data_package_resource_invalid");
+        assert_eq!(failure.field.as_deref(), Some("resources.components"));
+
+        // Two resources with one identity are one resource declared twice.
+        let mut wire = data_package_wire();
+        let mut resources = wire["resources"].as_array().cloned().expect("resources");
+        resources.push(resources[0].clone());
+        wire["resources"] = Value::Array(resources);
+        let failure = PackageManifest::from_value(wire).expect_err("one identity twice");
+        assert_eq!(failure.code, "data_package_resource_invalid");
+        assert_eq!(failure.field.as_deref(), Some("resources.id"));
+    }
+
+    #[test]
+    fn a_data_package_is_refused_by_a_client_its_list_does_not_cover() {
+        let mut wire = data_package_wire();
+        wire["compatibility"] = serde_json::json!({ "clientVersions": [">=99.0.0"] });
+        let manifest = PackageManifest::from_value(wire).expect("a well-formed data package");
+        let failure = manifest
+            .admit_client("0.3.0")
+            .expect_err("the running client is outside the declared list");
+        assert_eq!(failure.code, "package_client_incompatible");
+        assert_eq!(failure.field.as_deref(), Some("compatibility"));
+        assert_eq!(
+            failure.presentation_args.get("package"),
+            Some("org.licoland.appearance.midnight")
+        );
+
+        let mut wire = data_package_wire();
+        wire["compatibility"] = serde_json::json!({ "clientVersions": [">=0.1.0, <1.0.0"] });
+        let covered = PackageManifest::from_value(wire).expect("a well-formed data package");
+        assert!(covered.admit_client("0.3.0").is_ok());
+    }
+
+    #[test]
+    fn locale_tags_and_font_families_publish_one_bounded_shape() {
+        for tag in ["en", "zh", "zh-CN", "pt-BR", "sr-Latn-RS"] {
+            assert!(is_locale_tag(tag), "{tag}");
+        }
+        for tag in ["", "e", "english", "zh_CN", "zh-", "-zh", "zh-CN-", "zh CN"] {
+            assert!(!is_locale_tag(tag), "{tag}");
+        }
+
+        assert!(is_font_family("Inter"));
+        assert!(is_font_family("Noto Sans SC"));
+        assert!(!is_font_family(""), "an empty family name");
+        assert!(
+            !is_font_family(" Inter"),
+            "a leading space is not part of a name"
+        );
+        assert!(
+            !is_font_family("Inter\n"),
+            "a control character is not a name"
+        );
     }
 
     #[test]

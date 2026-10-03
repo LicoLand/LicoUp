@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use licoup_extension_contracts::deployment::{
     CORE_PACKAGE, LocalCatalogue, PackageEntry, PackageLifecycle, PackageSource, install_closure,
 };
-use licoup_extension_contracts::manifest::{Dependency, PermissionRequest};
+use licoup_extension_contracts::manifest::{Dependency, PermissionRequest, ResourceKind};
 use licoup_extension_contracts::wire;
 use licoup_native::platform::extension_packages::{
     Admission, ArtifactLimits, CatalogEntry, CatalogIndex, DependentsDecision, Detector,
@@ -1226,8 +1226,7 @@ fn a_first_party_native_converter_package_imports_offline_from_its_release_fixtu
     // actually running, exactly as the neighbouring package fixtures do: a
     // development build's version is not the released product version, and the
     // list is what decides admission either way.
-    manifest["compatibility"]["clientVersions"] =
-        serde_json::json!(covering_client_versions());
+    manifest["compatibility"]["clientVersions"] = serde_json::json!(covering_client_versions());
     let manifest_text = serde_json::to_string_pretty(&manifest).expect("manifest text");
     let declaration_text =
         std::fs::read_to_string(fixture.join("package-release.json")).expect("declaration");
@@ -1313,6 +1312,346 @@ fn a_first_party_native_converter_package_imports_offline_from_its_release_fixtu
     assert_eq!(outcome.installed.package_id, package_id);
     assert_eq!(outcome.installed.version, version);
     assert_eq!(store.installed().expect("installed").len(), 1);
+
+    cleanup(&root);
+}
+
+// ---------------------------------------------------------------------------
+// The data-package category at the formal store
+// ---------------------------------------------------------------------------
+
+/// The definitions a synthetic data package ships, one per published kind.
+const DATA_PACKAGE_FILES: [(&str, &str); 6] = [
+    ("themes/synthetic.json", "{\"tokens\":{}}\n"),
+    ("layouts/synthetic.json", "{\"regions\":{}}\n"),
+    ("styles/synthetic.json", "{\"targets\":{}}\n"),
+    ("fonts/synthetic.json", "{\"families\":[]}\n"),
+    ("strings/synthetic.json", "{\"locales\":{}}\n"),
+    ("compositions/synthetic.json", "{\"components\":[]}\n"),
+];
+
+/// The wire form of a synthetic data package: no program, every published
+/// resource kind, and the host requirements its composition binds.
+fn data_package_manifest(id: &str, version: &str, client_versions: &[String]) -> serde_json::Value {
+    serde_json::json!({
+        "schema": wire::MANIFEST,
+        "id": id,
+        "version": version,
+        "displayName": "Synthetic appearance package",
+        "hostProtocol": { "major": 1, "minimumMinor": 0 },
+        "compatibility": { "clientVersions": client_versions },
+        "profiles": [],
+        "runtime": { "mode": "data" },
+        "activation": "on-demand",
+        "requires": [],
+        "optionalRequires": [],
+        "permissions": [],
+        "contributions": [],
+        "hostPrimitives": ["text", "action"],
+        "hostActions": ["org.licoland.action.apply-appearance"],
+        "resources": [
+            {
+                "kind": "theme",
+                "id": "org.licoland.theme.synthetic",
+                "definition": DATA_PACKAGE_FILES[0].0,
+                "format": "licoup.data.theme.v1",
+                "tokens": ["org.licoland.token.surface", "org.licoland.token.text"]
+            },
+            {
+                "kind": "layout",
+                "id": "org.licoland.layout.synthetic",
+                "definition": DATA_PACKAGE_FILES[1].0,
+                "format": "licoup.data.layout.v1",
+                "regions": ["org.licoland.region.sidebar"]
+            },
+            {
+                "kind": "style",
+                "id": "org.licoland.style.synthetic",
+                "definition": DATA_PACKAGE_FILES[2].0,
+                "format": "licoup.data.style.v1",
+                "targets": ["org.licoland.target.button"]
+            },
+            {
+                "kind": "font",
+                "id": "org.licoland.font.synthetic",
+                "definition": DATA_PACKAGE_FILES[3].0,
+                "format": "licoup.data.font.v1",
+                "families": ["Inter", "Noto Sans SC"]
+            },
+            {
+                "kind": "language",
+                "id": "org.licoland.language.synthetic",
+                "definition": DATA_PACKAGE_FILES[4].0,
+                "format": "licoup.data.language.v1",
+                "locales": ["zh", "zh-CN"]
+            },
+            {
+                "kind": "composition",
+                "id": "org.licoland.composition.synthetic",
+                "definition": DATA_PACKAGE_FILES[5].0,
+                "format": "licoup.data.composition.v1",
+                "components": [
+                    {
+                        "component": "org.licoland.component.status",
+                        "primitive": "text"
+                    },
+                    {
+                        "component": "org.licoland.component.apply",
+                        "primitive": "action",
+                        "actionRef": "org.licoland.action.apply-appearance"
+                    }
+                ]
+            }
+        ]
+    })
+}
+
+/// One data-package archive, with the definitions its resources name.
+fn data_package_bytes(id: &str, version: &str, client_versions: &[String]) -> Vec<u8> {
+    let mut files: Vec<(&str, Vec<u8>)> = vec![(
+        "manifest.json",
+        data_package_manifest(id, version, client_versions)
+            .to_string()
+            .into_bytes(),
+    )];
+    files.extend(
+        DATA_PACKAGE_FILES
+            .iter()
+            .map(|(name, content)| (*name, content.as_bytes().to_vec())),
+    );
+    archive(&files)
+}
+
+/// A data package whose manifest the caller changed after it was written, so
+/// each refusable shape is exercised through the store rather than the type.
+fn mutated_data_package(
+    id: &str,
+    version: &str,
+    declared: bool,
+    mutate: impl FnOnce(&mut serde_json::Value),
+) -> Vec<u8> {
+    let client_versions = if declared {
+        covering_client_versions()
+    } else {
+        excluding_client_versions()
+    };
+    let mut manifest = data_package_manifest(id, version, &client_versions);
+    mutate(&mut manifest);
+    let mut files: Vec<(&str, Vec<u8>)> =
+        vec![("manifest.json", manifest.to_string().into_bytes())];
+    files.extend(
+        DATA_PACKAGE_FILES
+            .iter()
+            .map(|(name, content)| (*name, content.as_bytes().to_vec())),
+    );
+    archive(&files)
+}
+
+#[test]
+fn a_data_package_installs_through_the_store_with_typed_resources() {
+    let (root, store) = store("data-package-install");
+    let id = "org.licoland.appearance.synthetic";
+    let version = "1.0.0";
+    let bytes = data_package_bytes(id, version, &covering_client_versions());
+
+    // Installing starts nothing and runs no script: a data package is carried by
+    // its resources, and the host publishes the content it validated.
+    let outcome = store
+        .install_local_import(
+            id,
+            version,
+            TrustRecord::local_approved(content_digest_of(&bytes), []).expect("trust"),
+            &bytes,
+        )
+        .expect("a data package installs through the formal store");
+    assert_eq!(outcome.processes_spawned, 0);
+    assert!(outcome.installed.install_scripts.is_empty());
+    assert_eq!(
+        outcome.installed.runtime_ref, None,
+        "a data package names no interpreter"
+    );
+    assert!(!outcome.installed.owns_shared_runtime());
+    assert_eq!(outcome.installed.digest, content_digest_of(&bytes));
+
+    // The installed declaration is a data package, read back from the content
+    // the host published rather than from a record the host wrote about it.
+    let manifest = store
+        .installed_manifest(id, version)
+        .expect("installed manifest");
+    assert!(manifest.is_data_package());
+    assert_eq!(manifest.runtime.mode(), "data");
+    assert!(
+        manifest.profiles.is_empty(),
+        "a data package serves no profile"
+    );
+
+    // Each resource comes back typed, with the shape and coverage its kind
+    // publishes, and the file it names is the content that was installed.
+    let resources = store
+        .installed_resources(id, version)
+        .expect("typed installed resources");
+    assert_eq!(resources.len(), ResourceKind::ALL.len());
+    for (resource, kind) in resources.iter().zip(ResourceKind::ALL) {
+        assert_eq!(resource.kind(), kind, "{kind:?}");
+        assert_eq!(resource.format(), kind.format(), "{kind:?}");
+        match resource.coverage() {
+            Some((field, keys)) => {
+                assert_eq!(field, kind.coverage_field(), "{kind:?}");
+                assert!(!keys.is_empty(), "{kind:?}");
+            }
+            // A composition covers components rather than keys.
+            None => {
+                assert_eq!(kind, ResourceKind::Composition);
+                assert!(!resource.components().is_empty());
+            }
+        }
+        assert!(
+            store
+                .installed_path(id, version)
+                .join(resource.definition())
+                .is_file(),
+            "the definition {kind:?} names is part of the installed content"
+        );
+    }
+
+    // The kind-specific values survive the round trip: families, locale tags
+    // and composition bindings are the declarations that were installed.
+    let font = resources
+        .iter()
+        .find(|resource| resource.kind() == ResourceKind::Font)
+        .expect("font resource");
+    assert_eq!(
+        font.coverage().expect("families").1,
+        ["Inter", "Noto Sans SC"]
+    );
+    let language = resources
+        .iter()
+        .find(|resource| resource.kind() == ResourceKind::Language)
+        .expect("language resource");
+    let (_, locales) = language.coverage().expect("locales");
+    assert_eq!(locales, ["zh", "zh-CN"]);
+    assert!(
+        locales
+            .iter()
+            .all(|tag| licoup_extension_contracts::manifest::is_locale_tag(tag))
+    );
+    let composition = resources
+        .iter()
+        .find(|resource| resource.kind() == ResourceKind::Composition)
+        .expect("composition resource");
+    assert_eq!(composition.components().len(), 2);
+    assert_eq!(composition.components()[1].primitive.as_str(), "action");
+    assert_eq!(
+        composition.components()[1].action_ref.as_deref(),
+        Some("org.licoland.action.apply-appearance")
+    );
+
+    // The same admission every installed version passes: compatibility is
+    // checked again at activation, and this client is inside the declared list.
+    assert!(store.admit_activation(id, version).is_ok());
+    assert_eq!(store.installed().expect("installed").len(), 1);
+
+    cleanup(&root);
+}
+
+#[test]
+fn the_store_refuses_every_invalid_data_package_shape() {
+    let id = "org.licoland.appearance.synthetic";
+    let version = "1.0.0";
+    let (root, store) = store("data-package-refusals");
+
+    let cases: Vec<(&str, &str, Vec<u8>)> = vec![
+        (
+            "an executable declaration on the data category",
+            "runtime.entry",
+            mutated_data_package(id, version, true, |manifest| {
+                manifest["runtime"] = serde_json::json!({ "mode": "data", "entry": "agent.py" });
+            }),
+        ),
+        (
+            "a program that also ships typed resources",
+            "runtime",
+            mutated_data_package(id, version, true, |manifest| {
+                manifest["runtime"] = serde_json::json!({ "mode": "process", "entry": "agent.py" });
+            }),
+        ),
+        (
+            "a host primitive the package did not declare",
+            "hostPrimitives",
+            mutated_data_package(id, version, true, |manifest| {
+                manifest["hostPrimitives"] = serde_json::json!(["form"]);
+            }),
+        ),
+        (
+            "a resource kind this client does not publish",
+            "resources.kind",
+            mutated_data_package(id, version, true, |manifest| {
+                manifest["resources"] = serde_json::json!([{
+                    "kind": "widget",
+                    "id": "org.licoland.widget.card",
+                    "definition": "widgets/card.json",
+                    "format": "licoup.data.widget.v1",
+                    "components": []
+                }]);
+            }),
+        ),
+        (
+            "a definition the package does not carry",
+            "resources.definition",
+            mutated_data_package(id, version, true, |manifest| {
+                manifest["resources"][3]["definition"] = serde_json::json!("fonts/absent.json");
+            }),
+        ),
+    ];
+    let expected = [
+        "data_package_executable_refused",
+        "data_package_executable_refused",
+        "data_package_primitive_undeclared",
+        "data_package_resource_kind_unknown",
+        "package_resource_missing",
+    ];
+
+    for ((what, field, bytes), code) in cases.iter().zip(expected) {
+        let failure = store
+            .install_local_import(
+                id,
+                version,
+                TrustRecord::local_approved(content_digest_of(bytes), []).expect("trust"),
+                bytes,
+            )
+            .expect_err(what);
+        assert_eq!(failure.code, code, "{what}");
+        assert_eq!(failure.field.as_deref(), Some(*field), "{what}");
+    }
+
+    // A client outside the declared list is refused by the same admission every
+    // package passes, and the refusal names the version it was decided against.
+    let bytes = data_package_bytes(id, version, &excluding_client_versions());
+    let failure = store
+        .install_local_import(
+            id,
+            version,
+            TrustRecord::local_approved(content_digest_of(&bytes), []).expect("trust"),
+            &bytes,
+        )
+        .expect_err("the running client is outside the declared list");
+    assert_eq!(failure.code, "package_client_incompatible");
+    assert_eq!(failure.field.as_deref(), Some("compatibility"));
+    assert!(
+        failure.presentation_args.get("clientVersion").is_some(),
+        "the refusal names the client version it was decided against"
+    );
+
+    // None of the refused shapes published anything: the store has no version,
+    // no record and no content for them.
+    assert!(store.installed().expect("installed").is_empty());
+    assert!(!store.installed_path(id, version).exists());
+    assert!(
+        store
+            .installed_version(id, version)
+            .expect("record")
+            .is_none()
+    );
 
     cleanup(&root);
 }

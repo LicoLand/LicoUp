@@ -34,7 +34,9 @@ use crate::platform::extension_packages::{
 };
 use licoup_application::ApplicationFailure;
 use licoup_extension_contracts::deployment::{PackageLifecycle, PackageSource};
-use licoup_extension_contracts::manifest::{PackageManifest, PermissionRequest};
+use licoup_extension_contracts::manifest::{
+    PackageManifest, PermissionRequest, ResourceDeclaration,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -616,6 +618,27 @@ impl PackageStore {
             version: version.to_owned(),
             client_version: client_version.to_owned(),
         })
+    }
+
+    /// The typed data resources one installed version carries.
+    ///
+    /// They are read from the manifest inside the installed content — the same
+    /// declaration the installer validated, the definition files of which were
+    /// checked present before publication — and they come back as typed
+    /// declarations rather than as free-form JSON, so a consumer names a kind and
+    /// its coverage instead of parsing an untyped document. An installed package
+    /// that declares no resource returns an empty list rather than a refusal.
+    ///
+    /// This adds no installer and no second admission path: it answers from what
+    /// [`PackageStore::install`] already published, and a package this client may
+    /// not load cannot have been published by it.
+    pub fn installed_resources(
+        &self,
+        package_id: &str,
+        version: &str,
+    ) -> Result<Vec<ResourceDeclaration>, ApplicationFailure> {
+        self.installed_manifest(package_id, version)
+            .map(|manifest| manifest.resources)
     }
 
     /// Admit one installed version for activation on this client.

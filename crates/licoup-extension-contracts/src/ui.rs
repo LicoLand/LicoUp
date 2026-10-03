@@ -83,7 +83,12 @@ impl ContributionKind {
 /// These are compiled into the client. A contribution chooses among them; it does
 /// not bring its own, and a capability that needs a genuinely new primitive
 /// negotiates a core version instead of shipping one.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+///
+/// The wire names are the published vocabulary: a package manifest declares the
+/// primitives a data package requires with exactly these strings, and the schema
+/// under `schemas/extensions/manifest.schema.json` publishes the same set.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum HostPrimitive {
     Form,
     Table,
@@ -93,15 +98,39 @@ pub enum HostPrimitive {
     Action,
 }
 
+impl HostPrimitive {
+    /// Every primitive this client generation compiles.
+    pub const ALL: [Self; 6] = [
+        Self::Form,
+        Self::Table,
+        Self::Chart,
+        Self::Progress,
+        Self::Text,
+        Self::Action,
+    ];
+
+    /// The published wire name.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Form => "form",
+            Self::Table => "table",
+            Self::Chart => "chart",
+            Self::Progress => "progress",
+            Self::Text => "text",
+            Self::Action => "action",
+        }
+    }
+
+    /// The primitive one wire name publishes, if this generation compiles it.
+    pub fn from_wire(name: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|primitive| primitive.as_str() == name)
+    }
+}
+
 /// Every primitive available to a contribution.
-pub const HOST_PRIMITIVES: [HostPrimitive; 6] = [
-    HostPrimitive::Form,
-    HostPrimitive::Table,
-    HostPrimitive::Chart,
-    HostPrimitive::Progress,
-    HostPrimitive::Text,
-    HostPrimitive::Action,
-];
+pub const HOST_PRIMITIVES: [HostPrimitive; 6] = HostPrimitive::ALL;
 
 /// The kind of value one field holds.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -526,6 +555,32 @@ mod tests {
         let mut overreach = form("example.settings/plain");
         overreach.series = panel.series;
         assert!(overreach.validate().is_err());
+    }
+
+    #[test]
+    fn the_host_primitive_vocabulary_is_the_published_wire_set() {
+        let names: Vec<&str> = HOST_PRIMITIVES
+            .iter()
+            .map(|primitive| primitive.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            ["form", "table", "chart", "progress", "text", "action"],
+            "the manifest schema publishes exactly this set"
+        );
+        for primitive in HOST_PRIMITIVES {
+            let wire = serde_json::to_value(primitive).expect("serialize");
+            assert_eq!(wire, serde_json::json!(primitive.as_str()));
+            assert_eq!(
+                serde_json::from_value::<HostPrimitive>(wire).expect("deserialize"),
+                primitive
+            );
+            assert_eq!(
+                HostPrimitive::from_wire(primitive.as_str()),
+                Some(primitive)
+            );
+        }
+        assert_eq!(HostPrimitive::from_wire("canvas"), None);
     }
 
     #[test]
