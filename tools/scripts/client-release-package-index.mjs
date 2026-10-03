@@ -35,6 +35,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -1107,6 +1108,24 @@ export function selfTest() {
       !clientVersionSatisfies({ kind: "major", majors: [1, 2] }, "1.4.0") ||
       clientVersionSatisfies({ kind: "major", majors: [1, 2] }, "0.3.0")) {
       fail("package_index_self_test_compatibility_invalid");
+    }
+
+    // The declared set covers every package the tree ships: a package the host
+    // installs but the set never names is a package no release publishes, and the
+    // tool refuses that state here rather than reporting a complete plan for a
+    // partial set. The synthetic fixture is the one declared source outside those
+    // directories, so only the missing direction is refused.
+    const packageDirectories = ["crates", "components"].flatMap((parent) =>
+      readdirSync(path.join(repoRoot, parent), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => `${parent}/${entry.name}/package`)
+        .filter((source) => lstatSync(path.join(repoRoot, source, PACKAGE_PAYLOAD_MANIFEST_NAME),
+          { throwIfNoEntry: false })?.isFile()))
+      .sort();
+    const declaredSources = new Set(set.packages.map((entry) => entry.source));
+    const unregistered = packageDirectories.filter((source) => !declaredSources.has(source));
+    if (packageDirectories.length === 0 || unregistered.length > 0) {
+      fail("package_index_self_test_package_unregistered", { packages: unregistered });
     }
 
     // A signed index verifies through the shared Ed25519 role mechanism, and
