@@ -50,6 +50,8 @@
     }
   ],
   "extensions": {
-    "org.licoland.feature.analytics/purpose": "The optional analytics package: usage sources, the observation index and the metric panels over the core's retained metering facts. The kernel owns the ledger and depends on no part of this package, so a client without it keeps its usage, its running work and its history."
+    "org.licoland.feature.analytics/purpose": "The optional analytics package: usage sources, the observation index and the metric panels over the core's retained metering facts. The kernel owns the ledger and depends on no part of this package, so a client without it keeps its usage, its running work and its history.",
+    "org.licoland.feature.analytics/persistentData": "none",
+    "org.licoland.feature.analytics/persistentDataReason": "This package declares no conversion because it owns no persisted package data of its own: it writes no data home, no cache and no store. Its observation index, source bindings, panels and prepared values live for the activation only and are released on uninstall, and the metering facts it reads are the kernel's retained ledger, which stays exactly where it was."
   }
 }
