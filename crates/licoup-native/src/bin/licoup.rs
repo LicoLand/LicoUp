@@ -55,7 +55,7 @@ fn main() -> Result<()> {
     // The domain asks environment ports instead of inspecting the host itself.
     // This process installs the answers it can truthfully give; a port whose
     // installation fails stays fail-closed rather than fabricating a fact.
-    if let Err(error) = licoup_native::platform::install_environment_ports() {
+    if let Err(error) = licoup_native::install_environment_ports() {
         eprintln!("licoup environment ports remain unavailable: {error}");
     }
     if args.as_slice() == ["rpc", "stdio"] {

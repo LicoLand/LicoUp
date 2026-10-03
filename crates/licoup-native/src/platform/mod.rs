@@ -90,11 +90,3 @@ pub(crate) use process_supervisor::{
     configure_untrusted_agent_command, run_bounded_command_input, run_bounded_command_output,
     run_bounded_untrusted_agent_output,
 };
-
-/// Install this host's answers for the environment ports the domain asks.
-///
-/// The composition calls this once per process, before any conversation
-/// history read. A program that never calls it keeps every port fail-closed.
-pub fn install_environment_ports() -> Result<(), &'static str> {
-    codex_runtime_observation::install()
-}

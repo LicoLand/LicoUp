@@ -30,15 +30,6 @@ pub(crate) fn open_rollout_paths() -> BTreeSet<PathBuf> {
         .collect()
 }
 
-/// Install this host's answer into the history owner's environment port.
-///
-/// The composition calls this once per process. Conversation history reads the
-/// port; it never reaches this module directly, so a program without the
-/// composition keeps the fail-closed answer instead of inspecting processes.
-pub(crate) fn install() -> Result<(), &'static str> {
-    crate::domain::conversation::history::install_open_codex_rollouts(open_rollout_paths)
-}
-
 #[cfg(unix)]
 fn capture_open_rollout_paths() -> BTreeSet<PathBuf> {
     let mut process_command = Command::new("ps");
