@@ -2290,6 +2290,7 @@ dependencies = [
  "licoup-project",
  "licoup-protocol-bindings",
  "licoup-state-machine-codegen",
+ "licoup-usage-source-sdk",
  "licoup-workflow",
  "log",
  "mime_guess",
@@ -2370,6 +2371,15 @@ dependencies = [
 name = "licoup-state-machine-codegen"
 version = "0.3.0"
 dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "licoup-usage-source-sdk"
+version = "0.1.0"
+dependencies = [
+ "licoup-extension-contracts",
  "serde",
  "serde_json",
 ]

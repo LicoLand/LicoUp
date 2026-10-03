@@ -35,6 +35,10 @@ licoup-agent-runtime = { path = "../licoup-agent-runtime" }
 licoup-application = { path = "../licoup-application" }
 licoup-project = { path = "../licoup-project" }
 licoup-extension-contracts = { path = "../licoup-extension-contracts" }
+# The C11 usage-source SDK: the third-party source shapes the base usage journal
+# admits. Downward only — the SDK maps inputs onto the published contract and
+# never depends on the kernel.
+licoup-usage-source-sdk = { path = "../../sdk/usage-source" }
 licoup-workflow = { path = "../licoup-workflow" }
 licoup-conversation = { path = "../licoup-conversation" }
 licoup-gateway-core = { path = "../licoup-gateway-core" }

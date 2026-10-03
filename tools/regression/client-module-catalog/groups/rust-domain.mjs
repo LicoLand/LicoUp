@@ -304,7 +304,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.agent-usage",
       kind: "rust-domain",
-      summary: "Agent-usage command composition, shared attribution, contracts, and windows",
+      summary: "Agent-usage command composition, shared attribution, contracts, windows, and the base usage journal's source events",
       inputs: [
         "crates/licoup-native/src/domain/agent_usage.rs",
         "crates/licoup-native/src/domain/agent_usage/attribution.rs",
@@ -314,8 +314,20 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/agent_usage/model_identity.rs",
         "crates/licoup-native/src/domain/agent_usage/persistence.rs",
         "crates/licoup-native/src/domain/agent_usage/tests.rs",
+        "crates/licoup-native/src/domain/agent_usage/usage_journal.rs",
         "crates/licoup-native/src/domain/agent_usage/variant.rs",
         "crates/licoup-native/src/domain/agent_usage/workflow_ledger.rs",
+        // The base journal admits the C11 usage-source shapes and stores what
+        // they observe in the ledger this owner owns, so a change to that SDK
+        // or to the kernel dependency on it reruns this module.
+        "crates/licoup-native/Cargo.toml",
+        "sdk/usage-source/Cargo.toml",
+        "sdk/usage-source/src/**",
+        // Its tests compile the accepted synthetic series in, so the fixtures
+        // are inputs of this module as much as of the component that reads them.
+        "tests/integration/usage_sources/fixtures/otlp-cumulative.json",
+        "tests/integration/usage_sources/fixtures/otlp-regressed.json",
+        "tests/integration/usage_sources/fixtures/otlp-restarted.json",
       ],
       command: rustLayer("domain::agent_usage::"),
     }),
