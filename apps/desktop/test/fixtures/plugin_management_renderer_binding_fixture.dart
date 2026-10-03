@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:licoup/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_center_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_recommendation_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/models/package_first_launch_record.dart';
 import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller.dart';
 import 'package:licoup/src/composition/features/semantic_feature_channel.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
@@ -15,9 +18,19 @@ final class PluginManagementRendererBindingFixture {
     : _plugins = AdapterPluginController(
         runner: const _EmptyPluginRunner(),
         onStatus: (_) {},
+      ),
+      _packages = PackageCenterController(
+        runner: const _EmptyPluginRunner(),
+        onStatus: (_) {},
       ) {
+    _recommendations = PackageRecommendationController(
+      installer: _NoopPackageInstallSource(),
+      store: MemoryPackageFirstLaunchStore(),
+    );
     _projection = PluginManagementProjectionProducer(
       plugins: _plugins,
+      packages: _packages,
+      recommendations: _recommendations,
       collaboration: _collaboration,
     );
     _effects = SemanticEffectChannel<PluginManagementEffect>();
@@ -31,6 +44,8 @@ final class PluginManagementRendererBindingFixture {
 
   final OptionalCollaborationController _collaboration;
   final AdapterPluginController _plugins;
+  final PackageCenterController _packages;
+  late final PackageRecommendationController _recommendations;
   late final PluginManagementProjectionProducer _projection;
   late final SemanticEffectChannel<PluginManagementEffect> _effects;
   late final SemanticIntentChannel<PluginManagementIntent> _intents;
@@ -43,7 +58,11 @@ final class PluginManagementRendererBindingFixture {
         await _plugins.refresh();
       case PlanPluginInstall() ||
           PlanPluginUninstall() ||
-          ApplyPluginLifecyclePlan():
+          ApplyPluginLifecyclePlan() ||
+          InstallPackage() ||
+          UninstallPackage() ||
+          SetPackageEnabled() ||
+          ResolvePackageRecommendation():
         break;
       case LoadCollaborationStatus():
         await _collaboration.loadStatus();
@@ -175,4 +194,10 @@ final class _EmptyPluginRunner implements AgentCommandRunner {
     List<String> args,
     String stdinText,
   ) => const Stream.empty();
+}
+
+final class _NoopPackageInstallSource
+    implements PackageRecommendationInstallPort {
+  @override
+  Future<bool> installFromArchive(String archive) async => false;
 }

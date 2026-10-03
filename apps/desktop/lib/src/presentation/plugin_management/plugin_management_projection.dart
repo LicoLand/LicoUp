@@ -1,3 +1,4 @@
+import 'package:licoup/src/application/features/plugin_management/models/package_center_catalog.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/contracts/optional_collaboration_local_server_models.dart';
 import 'package:licoup/src/contracts/optional_collaboration_models.dart';
@@ -89,6 +90,10 @@ final class PluginProjectionItem {
     required this.uninstallable,
     required this.runtimeStateLabel,
     required this.protocolLabel,
+    required this.packageId,
+    required this.packageVersion,
+    required this.facts,
+    required this.agentInstallation,
     required Iterable<PluginCapabilityProjection> capabilities,
     Iterable<PluginEntryProjection> plugins = const [],
   }) : capabilities = immutablePresentationList(capabilities),
@@ -103,6 +108,20 @@ final class PluginProjectionItem {
   final bool uninstallable;
   final String runtimeStateLabel;
   final String protocolLabel;
+
+  /// The native package identity behind this entry, empty when the native
+  /// package store holds no package for it.
+  final String packageId;
+  final String packageVersion;
+
+  /// The four package facts the native store reported: available, installed,
+  /// enabled and active. All four come from the native package catalogue — none
+  /// is derived here.
+  final PackageFactsProjection facts;
+
+  /// Whether this entry's installation belongs to Agent Hub (third-party Agent
+  /// installation) instead of the LicoUp package center.
+  final bool agentInstallation;
   final List<PluginCapabilityProjection> capabilities;
   final List<PluginEntryProjection> plugins;
 
@@ -119,6 +138,10 @@ final class PluginProjectionItem {
           other.uninstallable == uninstallable &&
           other.runtimeStateLabel == runtimeStateLabel &&
           other.protocolLabel == protocolLabel &&
+          other.packageId == packageId &&
+          other.packageVersion == packageVersion &&
+          other.facts == facts &&
+          other.agentInstallation == agentInstallation &&
           samePresentationList(other.capabilities, capabilities) &&
           samePresentationList(other.plugins, plugins);
 
@@ -133,9 +156,66 @@ final class PluginProjectionItem {
     uninstallable,
     runtimeStateLabel,
     protocolLabel,
+    packageId,
+    packageVersion,
+    facts,
+    agentInstallation,
     Object.hashAll(capabilities),
     Object.hashAll(plugins),
   );
+}
+
+/// One package the first-launch (or first-use) confirmation offers.
+final class PackageRecommendationItemProjection {
+  const PackageRecommendationItemProjection({
+    required this.packageId,
+    required this.label,
+    required this.agentId,
+    required this.archive,
+  });
+
+  final String packageId;
+  final String label;
+  final String agentId;
+  final String archive;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PackageRecommendationItemProjection &&
+          other.packageId == packageId &&
+          other.label == label &&
+          other.agentId == agentId &&
+          other.archive == archive;
+
+  @override
+  int get hashCode => Object.hash(packageId, label, agentId, archive);
+}
+
+/// The one confirmation the package center shows for a recommended set.
+final class PackageRecommendationProjection {
+  PackageRecommendationProjection({
+    required Iterable<PackageRecommendationItemProjection> recommendations,
+    required this.firstLaunch,
+  }) : recommendations = immutablePresentationList(recommendations);
+
+  final List<PackageRecommendationItemProjection> recommendations;
+
+  /// Whether this is the first launch of the data home instead of a capability
+  /// that appeared later.
+  final bool firstLaunch;
+
+  bool get isEmpty => recommendations.isEmpty;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PackageRecommendationProjection &&
+          samePresentationList(other.recommendations, recommendations) &&
+          other.firstLaunch == firstLaunch;
+
+  @override
+  int get hashCode => Object.hash(firstLaunch, Object.hashAll(recommendations));
 }
 
 final class CollaborationProjection {
@@ -219,6 +299,7 @@ final class PluginManagementProjection {
     required Iterable<PluginProjectionItem> plugins,
     required Iterable<PresentationChoice> workflows,
     CollaborationProjection? collaboration,
+    this.recommendation,
     required this.phase,
     this.notice,
   }) : plugins = immutablePresentationList(plugins),
@@ -239,6 +320,9 @@ final class PluginManagementProjection {
   final List<PluginProjectionItem> plugins;
   final List<PresentationChoice> workflows;
   final CollaborationProjection collaboration;
+
+  /// The pending recommendation offer, or `null` when nothing is offered.
+  final PackageRecommendationProjection? recommendation;
   final PresentationPhase phase;
   final PresentationNotice? notice;
 
@@ -249,6 +333,7 @@ final class PluginManagementProjection {
           samePresentationList(other.plugins, plugins) &&
           samePresentationList(other.workflows, workflows) &&
           other.collaboration == collaboration &&
+          other.recommendation == recommendation &&
           other.phase == phase &&
           other.notice == notice;
 
@@ -257,6 +342,7 @@ final class PluginManagementProjection {
     Object.hashAll(plugins),
     Object.hashAll(workflows),
     collaboration,
+    recommendation,
     phase,
     notice,
   );

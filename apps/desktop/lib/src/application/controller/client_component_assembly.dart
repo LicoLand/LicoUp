@@ -32,6 +32,8 @@ import 'package:licoup/src/application/features/mobile_relay/controller/mobile_r
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
 import 'package:licoup/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_center_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_recommendation_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/client_log_export_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/client_update_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/directory_path_controller.dart';
@@ -166,6 +168,7 @@ final class ClientComponentAssembly {
     );
     pluginManagement = ClientPluginManagementComponentAssembly(
       runner: agentService,
+      portableData: portableData,
       reportStatus: _reportStatus,
     );
     mobile = ClientMobileComponentAssembly(
@@ -249,6 +252,10 @@ final class ClientComponentAssembly {
       settings.optionalCollaborationController;
   AdapterPluginController get adapterPluginController =>
       pluginManagement.adapterPluginController;
+  PackageCenterController get packageCenterController =>
+      pluginManagement.packageCenterController;
+  PackageRecommendationController get packageRecommendationController =>
+      pluginManagement.packageRecommendationController;
   DirectoryPathController get directoryPathController =>
       settings.directoryPathController;
   MobileHomeLayoutController get mobileHomeLayoutController =>

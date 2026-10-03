@@ -47,6 +47,8 @@ import 'package:licoup/src/application/features/navigation/controller/client_nav
 import 'package:licoup/src/application/features/navigation/controller/client_interface_entry_hook_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_current_view_tracker.dart';
 import 'package:licoup/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_center_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_recommendation_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/client_log_export_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/client_update_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/directory_path_controller.dart';
@@ -456,6 +458,12 @@ class ClientController extends AgentConversationController
   @override
   AdapterPluginController get adapterPluginController =>
       _components.adapterPluginController;
+  @override
+  PackageCenterController get packageCenterController =>
+      _components.packageCenterController;
+  @override
+  PackageRecommendationController get packageRecommendationController =>
+      _components.packageRecommendationController;
   @override
   DirectoryPathController get directoryPathController =>
       _components.directoryPathController;

@@ -299,9 +299,14 @@ void main() {
     await _pumpBinding(tester, feature, const Locale('en'));
     service.calls.clear();
 
-    await tester.tap(
-      find.byKey(const Key('adapter-install-antigravity-acp-bridge')),
+    // The package center card carries the four package facts above the install
+    // action, so the action is scrolled into view before it is tapped.
+    final installAction = find.byKey(
+      const Key('adapter-install-antigravity-acp-bridge'),
     );
+    await tester.ensureVisible(installAction);
+    await tester.pumpAndSettle();
+    await tester.tap(installAction);
     await tester.pumpAndSettle();
 
     expect(service.calls, isEmpty);
@@ -342,9 +347,12 @@ void main() {
         withToastHost: true,
       );
 
-      await tester.tap(
-        find.byKey(const Key('adapter-install-antigravity-acp-bridge')),
+      final installAction = find.byKey(
+        const Key('adapter-install-antigravity-acp-bridge'),
       );
+      await tester.ensureVisible(installAction);
+      await tester.pumpAndSettle();
+      await tester.tap(installAction);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('confirm-adapter-install')));
       await tester.pumpAndSettle();

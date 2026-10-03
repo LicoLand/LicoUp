@@ -4,6 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_center_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_recommendation_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/models/package_first_launch_record.dart';
 import 'package:licoup/src/application/features/plugin_management/models/adapter_plugin_catalog.dart';
 import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
@@ -221,9 +224,16 @@ void _expectOrderedChain(
 final class _RegionRig {
   _RegionRig({bool countUpstream = false}) {
     plugins = AdapterPluginController(runner: runner, onStatus: (_) {});
+    packages = PackageCenterController(runner: runner, onStatus: (_) {});
+    recommendations = PackageRecommendationController(
+      installer: _NoopPackageInstallSource(),
+      store: MemoryPackageFirstLaunchStore(),
+    );
     collaboration = OptionalCollaborationController(gateway: _StatusGateway());
     producer = PluginManagementProjectionProducer(
       plugins: plugins,
+      packages: packages,
+      recommendations: recommendations,
       collaboration: collaboration,
     );
     final ProjectionSource<PluginManagementProjection> upstream;
@@ -239,6 +249,8 @@ final class _RegionRig {
 
   final _CatalogRunner runner = _CatalogRunner();
   late final AdapterPluginController plugins;
+  late final PackageCenterController packages;
+  late final PackageRecommendationController recommendations;
   late final OptionalCollaborationController collaboration;
   late final PluginManagementProjectionProducer producer;
   late final _CountingProjectionSource counter;
@@ -284,6 +296,8 @@ final class _RegionRig {
     await collaborationSource.dispose();
     await producer.dispose();
     collaboration.dispose();
+    recommendations.dispose();
+    packages.dispose();
     plugins.dispose();
   }
 }
@@ -444,3 +458,9 @@ Map<String, dynamic> _plugin({
   'installationState': installationState,
   'lifecycleActions': actions,
 };
+
+final class _NoopPackageInstallSource
+    implements PackageRecommendationInstallPort {
+  @override
+  Future<bool> installFromArchive(String archive) async => false;
+}

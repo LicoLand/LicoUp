@@ -9,11 +9,15 @@ final class PluginCatalogInputs {
     required Iterable<PluginProjectionItem> plugins,
     required this.phase,
     required this.notice,
+    this.recommendation,
   }) : plugins = immutablePresentationList(plugins);
 
   final List<PluginProjectionItem> plugins;
   final PresentationPhase phase;
   final PresentationNotice? notice;
+
+  /// The pending recommendation confirmation, or `null` when none is offered.
+  final PackageRecommendationProjection? recommendation;
 
   @override
   bool operator ==(Object other) =>
@@ -21,10 +25,12 @@ final class PluginCatalogInputs {
       other is PluginCatalogInputs &&
           samePresentationList(other.plugins, plugins) &&
           other.phase == phase &&
-          other.notice == notice;
+          other.notice == notice &&
+          other.recommendation == recommendation;
 
   @override
-  int get hashCode => Object.hash(Object.hashAll(plugins), phase, notice);
+  int get hashCode =>
+      Object.hash(Object.hashAll(plugins), phase, notice, recommendation);
 }
 
 /// Narrow immutable inputs of the optional collaboration region.

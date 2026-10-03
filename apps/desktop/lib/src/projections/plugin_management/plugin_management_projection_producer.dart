@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_center_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_recommendation_controller.dart';
 import 'package:licoup/src/application/features/plugin_management/models/adapter_plugin_catalog.dart';
+import 'package:licoup/src/application/features/plugin_management/models/package_center_catalog.dart';
 import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_projection.dart';
@@ -14,17 +17,25 @@ final class PluginManagementProjectionProducer
     implements ProjectionSource<PluginManagementProjection> {
   PluginManagementProjectionProducer({
     required AdapterPluginController plugins,
+    required PackageCenterController packages,
+    required PackageRecommendationController recommendations,
     required OptionalCollaborationController collaboration,
   }) : _plugins = plugins,
+       _packages = packages,
+       _recommendations = recommendations,
        _collaboration = collaboration,
-       _current = _read(plugins, collaboration) {
+       _current = _read(plugins, packages, recommendations, collaboration) {
     _subscriptions = [
       plugins.changes.listen(_handleChange),
+      packages.changes.listen(_handleChange),
+      recommendations.changes.listen(_handleChange),
       collaboration.changes.listen(_handleChange),
     ];
   }
 
   final AdapterPluginController _plugins;
+  final PackageCenterController _packages;
+  final PackageRecommendationController _recommendations;
   final OptionalCollaborationController _collaboration;
   final StreamController<ProjectionUpdate<PluginManagementProjection>>
   _changes =
@@ -44,7 +55,7 @@ final class PluginManagementProjectionProducer
 
   void _handleChange(ApplicationChange change) {
     if (_disposed) return;
-    final next = _read(_plugins, _collaboration);
+    final next = _read(_plugins, _packages, _recommendations, _collaboration);
     if (next == _current) return;
     _current = next;
     _changes.add(ProjectionUpdate(next, trace: _trace(change.cause)));
@@ -98,6 +109,8 @@ final class PluginManagementProjectionProducer
 
   static PluginManagementProjection _read(
     AdapterPluginController plugins,
+    PackageCenterController packages,
+    PackageRecommendationController recommendations,
     OptionalCollaborationController collaboration,
   ) {
     final state = collaboration.state;
@@ -107,7 +120,9 @@ final class PluginManagementProjectionProducer
       ...?catalog?.mcpInstallChoices,
     ];
     return PluginManagementProjection(
-      plugins: [for (final adapter in plugins.adapters) _adapter(adapter)],
+      plugins: [
+        for (final adapter in plugins.adapters) _adapter(adapter, packages),
+      ],
       workflows: [
         for (final workflow in workflows)
           PresentationChoice(
@@ -140,12 +155,35 @@ final class PluginManagementProjectionProducer
         localServers: collaboration.workflows.localServers,
         notice: collaborationDomainNotice(collaboration),
       ),
+      recommendation: _recommendation(recommendations),
       phase: pluginDomainPhase(plugins),
       notice: pluginDomainNotice(plugins),
     );
   }
 
-  static PluginProjectionItem _adapter(AdapterPluginDescriptor adapter) {
+  static PackageRecommendationProjection? _recommendation(
+    PackageRecommendationController recommendations,
+  ) {
+    final offer = recommendations.pending;
+    if (offer == null || offer.isEmpty) return null;
+    return PackageRecommendationProjection(
+      firstLaunch: offer.firstLaunch,
+      recommendations: [
+        for (final item in offer.recommendations)
+          PackageRecommendationItemProjection(
+            packageId: item.packageId,
+            label: item.label,
+            agentId: item.agentId,
+            archive: item.archive,
+          ),
+      ],
+    );
+  }
+
+  static PluginProjectionItem _adapter(
+    AdapterPluginDescriptor adapter,
+    PackageCenterController packages,
+  ) {
     final installable =
         adapter.supports(AdapterPluginLifecycleAction.install) ||
         adapter.plugins.any(
@@ -156,11 +194,16 @@ final class PluginManagementProjectionProducer
         adapter.plugins.any(
           (plugin) => plugin.supports(AdapterPluginLifecycleAction.uninstall),
         );
-    final installed =
+    final native = _nativePackage(adapter, packages);
+    final legacyInstalled =
         adapter.installationState == 'installed' ||
         adapter.plugins.any(
           (plugin) => plugin.installationState == 'installed',
         );
+    // The four facts come from the native package catalogue. An entry with no
+    // native package is not-installed on every one of them, which is exactly
+    // the absent-capability state the package center renders.
+    final facts = native?.facts ?? PackageFactsProjection.absent;
     return PluginProjectionItem(
       id: adapter.agentId,
       name: _agentLabel(adapter.label),
@@ -170,12 +213,19 @@ final class PluginManagementProjectionProducer
                 .map((plugin) => plugin.detail)
                 .where((value) => value.isNotEmpty)
                 .join('\n'),
-      enabled: installed,
-      installed: installed,
+      enabled: facts.enabled,
+      installed: facts.installed || (native == null && legacyInstalled),
       installable: installable,
       uninstallable: uninstallable,
       runtimeStateLabel: adapter.readiness,
       protocolLabel: adapter.runtimeProtocol,
+      packageId: native?.packageId ?? '',
+      packageVersion: native?.version ?? '',
+      facts: facts,
+      // A bundled ACP bridge or a managed bridge the store does not own is an
+      // Agent-side installation; only a package the store holds is a LicoUp
+      // package installation.
+      agentInstallation: native == null,
       capabilities: [
         for (final capability in adapter.nativeCapabilities)
           PluginCapabilityProjection(
@@ -202,6 +252,24 @@ final class PluginManagementProjectionProducer
           ),
       ],
     );
+  }
+
+  /// The native package the store reported for one adapter.
+  ///
+  /// The adapter's own package id is tried first; otherwise each declared
+  /// plugin id is. Nothing is inferred from a naming convention: a package only
+  /// matches when the native catalogue names that exact id.
+  static PackageCatalogItem? _nativePackage(
+    AdapterPluginDescriptor adapter,
+    PackageCenterController packages,
+  ) {
+    final direct = packages.catalog.package(adapter.agentId);
+    if (direct != null) return direct;
+    for (final plugin in adapter.plugins) {
+      final item = packages.catalog.package(plugin.id);
+      if (item != null) return item;
+    }
+    return null;
   }
 
   static String _agentLabel(String value) {
