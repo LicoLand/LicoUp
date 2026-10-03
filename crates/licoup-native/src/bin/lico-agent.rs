@@ -172,19 +172,23 @@ fn run_prompt(
     let mut usage_records = Vec::new();
     let result = {
         let mut guard = agent.lock().unwrap();
-        guard.prompt(message, |event| {
-            if let AgentEvent::MessageUpdate { role, delta } = &event
-                && role == "assistant"
-            {
-                assistant_output.push_str(delta);
-            }
-            if let AgentEvent::Usage { model, usage } = &event {
-                usage_records.push((OffsetDateTime::now_utc(), usage_record(model, usage)));
-            }
-            if !matches!(event, AgentEvent::AgentEnd) {
-                let _ = emit_event(out, &event);
-            }
-        })
+        guard.prompt(
+            &licoup_native::domain::target_port::agent_target_port(),
+            message,
+            |event| {
+                if let AgentEvent::MessageUpdate { role, delta } = &event
+                    && role == "assistant"
+                {
+                    assistant_output.push_str(delta);
+                }
+                if let AgentEvent::Usage { model, usage } = &event {
+                    usage_records.push((OffsetDateTime::now_utc(), usage_record(model, usage)));
+                }
+                if !matches!(event, AgentEvent::AgentEnd) {
+                    let _ = emit_event(out, &event);
+                }
+            },
+        )
     };
     if let Err(err) = result {
         // Earlier model calls still consumed tokens when a later call failed.

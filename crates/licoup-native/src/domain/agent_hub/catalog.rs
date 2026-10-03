@@ -482,7 +482,10 @@ pub fn discovery_facts(params: &Value, agent_id: Option<&str>) -> Result<Vec<Dis
 fn live_fact(params: &Value, agent_id: &str) -> Result<Option<DiscoveryFact>> {
     let mut inspect_params = params.clone();
     inspect_params["target"] = json!(agent_id);
-    let inspected = crate::domain::targets::inspect_target_with_params(&inspect_params)?;
+    let inspected = crate::domain::targets::inspect_target_with_params(
+        &crate::domain::target_port::agent_target_port(),
+        &inspect_params,
+    )?;
     Ok(inspected.get("target").and_then(fact_from_value))
 }
 

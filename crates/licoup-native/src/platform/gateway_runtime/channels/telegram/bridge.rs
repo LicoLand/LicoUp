@@ -40,8 +40,11 @@ pub struct SessionSummary {
 }
 
 pub fn list_agents() -> Result<Vec<AgentSummary>, BridgeError> {
-    let scanned = crate::domain::targets::scan_targets()
-        .map_err(|error| BridgeError::new("telegram_gateway_targets_failed", error.to_string()))?;
+    let scanned =
+        crate::domain::targets::scan_targets(&crate::domain::target_port::agent_target_port())
+            .map_err(|error| {
+                BridgeError::new("telegram_gateway_targets_failed", error.to_string())
+            })?;
     let mut agents = Vec::new();
     if let Some(items) = scanned.get("candidates").and_then(Value::as_array) {
         for item in items {

@@ -2070,6 +2070,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-agent-targets"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "libc",
+ "licoup-client-state",
+ "licoup-foundation",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "toml",
+ "uuid",
+]
+
+[[package]]
 name = "licoup-application"
 version = "0.3.0"
 dependencies = [
@@ -2080,6 +2095,16 @@ dependencies = [
 [[package]]
 name = "licoup-client-state"
 version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "fs2",
+ "licoup-foundation",
+ "nix",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
 
 [[package]]
 name = "licoup-conversation"
@@ -2116,8 +2141,10 @@ name = "licoup-foundation"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "command-group",
  "flate2",
  "fs2",
+ "libc",
  "nix",
  "rusqlite",
  "serde",
@@ -2184,6 +2211,7 @@ dependencies = [
  "lico-catalog-convergence",
  "licoup-agent-adapters",
  "licoup-agent-runtime",
+ "licoup-agent-targets",
  "licoup-application",
  "licoup-client-state",
  "licoup-conversation",

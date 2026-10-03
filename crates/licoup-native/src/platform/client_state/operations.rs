@@ -6,9 +6,9 @@ use crate::ffi::generated::client_state::{
     ClientStateSetRequest, ClientStateSetResult,
 };
 
-use super::activity::ActivityLog;
 use super::collections::ClientStateStore;
-use super::snapshots::SnapshotStore;
+use licoup_client_state::ActivityLog;
+use licoup_client_state::SnapshotStore;
 
 pub fn state_get(request: ClientStateGetRequest) -> Result<ClientStateGetResult> {
     let store = ClientStateStore::portable()?;

@@ -49,9 +49,17 @@ pub(super) fn runtime_executable(
     runtime_executable_with_discovery(
         adapter,
         requested,
-        crate::domain::targets::manual_runtime_executable,
+        |target| {
+            crate::domain::targets::manual_runtime_executable(target)
+                .map_err(|_| RuntimeAdapterError::ExecutableUnavailable)
+        },
         crate::domain::targets::agent_cli_executable,
-        crate::domain::targets::available_runtime_executable,
+        |target| {
+            crate::domain::targets::available_runtime_executable(
+                &crate::domain::target_port::agent_target_port(),
+                target,
+            )
+        },
     )
 }
 

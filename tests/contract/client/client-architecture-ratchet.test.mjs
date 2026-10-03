@@ -114,7 +114,7 @@ async function inspectFixture(files, allowlist = [], runtimeReviews = []) {
 }
 
 async function nativeReviewFixture() {
-  const supervisor = "crates/licoup-native/src/platform/process_supervisor.rs";
+  const supervisor = "crates/licoup-foundation/src/platform/process_supervisor.rs";
   const files = Object.fromEntries(await Promise.all([strategyRuntimePath, supervisor].map(async (file) => [file, await fs.readFile(path.join(repoRoot, file), "utf8")])));
   const reviews = RUNTIME_INTERFACE_REVIEWS.filter((review) => [strategyRuntimePath, supervisor].includes(review.id.split("::")[0]));
   return {files, reviews};

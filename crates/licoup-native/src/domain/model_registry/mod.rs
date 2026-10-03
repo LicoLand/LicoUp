@@ -1,13 +1,15 @@
 //! Shared canonical model identities from public catalog facts. Native Agent
 //! selectors remain untouched; the registry supplies identity, not entitlement.
 
-mod display;
 mod index;
 mod source;
 
 use anyhow::{Result, anyhow};
-pub use display::model_display_name;
+// Display typography is shared vocabulary rather than registry behaviour: the
+// Agent inventory, the usage projection and this registry format the same model
+// names, so the formatter lives below all of them and its former path stays.
 pub use index::RegistrySnapshot;
+pub use licoup_foundation::core::model_naming::model_display_name;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;

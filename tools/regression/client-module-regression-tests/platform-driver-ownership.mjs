@@ -15,7 +15,7 @@ test("layer, FFI, bridge, packaging, and release paths select dedicated modules"
     "crates/licoup-native/src/domain/mobile_relay/config.rs",
   ])), ["architecture.client-boundaries", "rust.domain.mobile-relay.configuration"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/targets/binaries.rs",
+    "crates/licoup-agent-targets/src/domain/targets/binaries.rs",
   ])), [
     "regression.agent-scan-paths",
     "architecture.client-boundaries",
@@ -764,16 +764,18 @@ test("file security leaves retain exact tests and complete source ownership", as
 });
 
 test("client state leaves retain exact tests and complete source ownership", async () => {
+  // The store and its journal owners moved to `licoup-client-state`; only the
+  // facade and the wire-contract command surface stay in the host.
   const filters = new Map([
     ["rust.platform.client-state.composition", "platform::client_state::tests::composition::"],
-    ["rust.platform.client-state.policy", "platform::client_state::tests::policy::"],
-    ["rust.platform.client-state.collections", "platform::client_state::tests::collections::"],
-    ["rust.platform.client-state.activity", "platform::client_state::tests::activity::"],
-    ["rust.platform.client-state.snapshots", "platform::client_state::tests::snapshots::"],
-    ["rust.platform.client-state.redaction", "platform::client_state::tests::redaction::"],
-    ["rust.platform.client-state.serialization", "platform::client_state::tests::serialization::"],
-    ["rust.platform.client-state.paths", "platform::client_state::tests::paths::"],
-    ["rust.platform.client-state.accessors", "platform::client_state::tests::accessors::"],
+    ["rust.platform.client-state.policy", "tests::policy::"],
+    ["rust.platform.client-state.collections", "tests::collections::"],
+    ["rust.platform.client-state.activity", "tests::activity::"],
+    ["rust.platform.client-state.snapshots", "tests::snapshots::"],
+    ["rust.platform.client-state.redaction", "tests::redaction::"],
+    ["rust.platform.client-state.serialization", "tests::serialization::"],
+    ["rust.platform.client-state.paths", "tests::paths::"],
+    ["rust.platform.client-state.accessors", "tests::accessors::"],
     ["rust.platform.client-state.operations", "platform::client_state::tests::operations::"],
   ]);
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
@@ -795,8 +797,10 @@ test("client state leaves retain exact tests and complete source ownership", asy
     ...modules.flatMap((module) => module.inputs),
     ...sourceCheck.inputs,
   ]);
-  const splitSources = await sourceFiles(
-    "crates/licoup-native/src/platform/client_state", ".rs");
+  const splitSources = [
+    ...await sourceFiles("crates/licoup-native/src/platform/client_state", ".rs"),
+    ...await sourceFiles("crates/licoup-client-state/src", ".rs"),
+  ];
   for (const relativePath of [
     "crates/licoup-native/src/platform/client_state.rs",
     ...splitSources,

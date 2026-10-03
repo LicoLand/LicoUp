@@ -46,12 +46,13 @@ struct GatewayTotals {
 }
 
 pub(super) fn summarize(window: &UsageWindow, warnings: &mut Vec<Value>) -> HistoryUsageSummary {
-    let result = targets::available_runtime_executable("openclaw")
-        .ok_or(GatewayUsageFailure::ExecutableUnavailable)
-        .and_then(|executable| query_gateway_usage(&executable, window))
-        .and_then(|payload| {
-            parse_gateway_usage(&payload, window).ok_or(GatewayUsageFailure::Invalid)
-        });
+    let result = targets::available_runtime_executable(
+        &crate::domain::target_port::agent_target_port(),
+        "openclaw",
+    )
+    .ok_or(GatewayUsageFailure::ExecutableUnavailable)
+    .and_then(|executable| query_gateway_usage(&executable, window))
+    .and_then(|payload| parse_gateway_usage(&payload, window).ok_or(GatewayUsageFailure::Invalid));
     match result {
         Ok(summary) => summary,
         Err(failure) => {

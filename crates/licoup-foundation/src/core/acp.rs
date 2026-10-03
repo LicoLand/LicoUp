@@ -44,5 +44,14 @@ pub const SESSION_PROMPT_METHOD: &str = "session/prompt";
 pub const SESSION_CANCEL_METHOD: &str = "session/cancel";
 pub const SESSION_UPDATE_METHOD: &str = "session/update";
 
+/// The wire protocol name the Hermes TUI Gateway lane reports.
+///
+/// This names a protocol, not a driver: the Agent inventory's virtual-machine
+/// projection, the Hermes TUI Gateway adapter and the packaged readiness
+/// documents all have to agree on the same string, and every one of them sits
+/// above this crate. It is therefore vocabulary and lives here rather than in
+/// whichever of them happens to be extracted first.
+pub const HERMES_TUI_GATEWAY_PROTOCOL: &str = "hermes-tui-gateway-stdio-jsonrpc";
+
 #[cfg(test)]
 mod tests;

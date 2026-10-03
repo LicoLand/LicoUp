@@ -4,11 +4,13 @@
  * New sites never inherit a neighbouring record or a file-level tool mention.
  */
 const N = "crates/licoup-native/src/";
+const F = "crates/licoup-foundation/src/";
+const T = "crates/licoup-agent-targets/src/";
 const D = "apps/desktop/lib/src/platform/native_client/";
-const SUPERVISOR = `${N}platform/process_supervisor.rs`;
-const PARAMETERS = `${N}domain/targets/parameters.rs`;
-const BINARIES = `${N}domain/targets/binaries.rs`;
-const SHELL = `${N}platform/user_shell_environment.rs`;
+const SUPERVISOR = `${F}platform/process_supervisor.rs`;
+const PARAMETERS = `${T}domain/targets/parameters.rs`;
+const BINARIES = `${T}domain/targets/binaries.rs`;
+const SHELL = `${T}platform/user_shell_environment.rs`;
 const SCRIPT = `${N}domain/client_update/native_runner/script.rs`;
 const PLAN = `${N}domain/client_update/native_runner/plan.rs`;
 const APPLY = `${N}domain/client_update/native_runner/mod.rs`;
@@ -20,8 +22,8 @@ const SOURCES = Object.freeze({
   "crates/licoup-mcp/src/application.rs": "b55110ba2db3ac10d493f151dbb5ee76a85ae1a9aa498f8da1caff777643f061",
   [N + "domain/agent_hub/argv.rs"]: "4f942a0f7df3f2e2e8396a40906381811ae6dcd656c2a7bcf9d7ceb5c214d911",
   [N + "domain/agent_hub/version_check.rs"]: "fd0b8afba2b39f844a4a232af074954e452e8eae60ca49ba979ffe7b6e23970b",
-  [N + "domain/agent_usage/agent_usage_native/deepseek.rs"]: "f41088287f41378dcd8f35d5af3c532316fbee555cc198de25bc0027d3b99b7f",
-  [N + "domain/agent_usage/agent_usage_native/openclaw.rs"]: "79263e4fe0fb01fcb5c06a436a51140fe494859399e518c38244e0ecc082e63b",
+  [N + "domain/agent_usage/agent_usage_native/deepseek.rs"]: "c317130155bec59b96525b71e5a6fa763e7d3aa2a38062ed5846fba49b3e1fb5",
+  [N + "domain/agent_usage/agent_usage_native/openclaw.rs"]: "204de1d2f6cba7853a8823e25e0c5378d538ec135c01c5f54a7cc7808f48136f",
   [APPLY]: "07491d6d0ff170596be9ed55f3b6ca558422f7e141cd9f2445fc7211346f0071",
   [PLAN]: "473f8f8716db2a35b7af98ac649cf82093f61a857ddceb1870e0c5a842b6e635",
   [SCRIPT]: "f9e10ec9f18c4a4ad29d7dbebdcfa832c5b5f65e7ad33ec6d6732c08334d1d82",
@@ -29,15 +31,15 @@ const SOURCES = Object.freeze({
   [N + "domain/collaboration_plugin/assembly/runtime/runner.rs"]: "2aabbdd6feec68f0ebc4424bc88f295ea336e2838b4dc10ffe766e2e437ad9c5",
   [N + "domain/provider_quota/antigravity.rs"]: "5b275717c421a7cd2218b3395cab7a0bee6c053863dd53eb516ebb555ac24f82",
   [N + "domain/provider_quota/codex.rs"]: "8dc13c83b0f4bb333b4de063845a2d7561f9d07434ec94a0257eb8c5d093cbd5",
-  [BINARIES]: "faf742b5a1bfa32edad86ba19f8cd7cd58a19082962bc1a015d9cdc89fe190c9",
-  [N + "domain/targets/model_catalog/antigravity.rs"]: "0f801156aabbb6cb193e1a8250bc5abea521e94e6b127d2933f74c47d90d5380",
-  [N + "domain/targets/model_catalog/cursor.rs"]: "8a659ba87218bdc513e62362a41e58a15447d752355eeab115f313dffa077edd",
-  [N + "domain/targets/model_catalog/deepseek.rs"]: "fc8c545619292bfa8069a3a385d14cded17251dd4022a027650832e36c70cc5e",
-  [N + "domain/targets/model_catalog/kilo.rs"]: "84b15ed6576b49e67c2b29b9d20d765c22ec7a58311f68da7993723a749019bc",
-  [N + "domain/targets/model_catalog/opencode.rs"]: "c1a82e817be0289a16df7dbbb9465cad3f1bb5cb8cde3d4122a9e6c4ded51289",
-  [N + "domain/targets/model_catalog/pi.rs"]: "08bc9d99b5c9a9ff0f12ce62fe431a8eeb09ca9a1c4d001901b7b036bf7d8703",
+  [BINARIES]: "7c71b58d968831ac48e6200130e04b542d6c163392f5f0b9e49ebb95d4798872",
+  [T + "domain/targets/model_catalog/antigravity.rs"]: "c18e9624e37d563cebb74c71cceef0a6495d40e0df39025998557f9c11fc3308",
+  [T + "domain/targets/model_catalog/cursor.rs"]: "cc30dc2803e20c9fe938faf58ea5b49caf319eb83492f7096a631b570b7f6464",
+  [T + "domain/targets/model_catalog/deepseek.rs"]: "ad8de7ce729f12bf3ca6bc78864e258a2412bf54db3a15c70e193e23be0183be",
+  [T + "domain/targets/model_catalog/kilo.rs"]: "1945c633ad10cb99c2dc62e063e2778c8d7930eee17d7eeedb9c75eabc531dfe",
+  [T + "domain/targets/model_catalog/opencode.rs"]: "e20e6e35d4e13d55f3359c3356b9f480a13a8a7f80249dd035fdf2b62e96ac20",
+  [T + "domain/targets/model_catalog/pi.rs"]: "22466bce8b6d17b8125cbcb036ccd549e64867b56fdbf3883589610f0dcc3f2e",
   [PARAMETERS]: "43cdd22e2653747415a63b54cf508b35b8250d77b12c914c69925cc8f398bf8b",
-  [N + "domain/targets/virtual_machine_discovery.rs"]: "b2bb00104a446c8eb30a8e6b7f89e6789e4306a68cd8c4876eaadc7b3d566fb7",
+  [T + "domain/targets/virtual_machine_discovery.rs"]: "c2132da0c5a99e8f913a16c79e0e836510e831fc2a83970e8904da7dc0fca89e",
   [N + "platform/acp_driver_runtime/supervision.rs"]: "f8f5cbadcead16a414c59e29ba5afc195181ccb66b5ea38d4e150a8418199e15",
   [N + "platform/acp_session_transport/command.rs"]: "57959e1ee554ff987850ccffe8a716dc0be6c219dc78f7d63190e807fcde870a",
   [N + "platform/antigravity_driver/auth.rs"]: "cf7f6d1607aef2f200b2cb075d5f05a99ff482555ef57d7d77ce6a8c54621bfa",
@@ -50,7 +52,7 @@ const SOURCES = Object.freeze({
   [N + "platform/cursor_driver/execution.rs"]: "e50f484719e8828fb7842711337d8886d6b220986fced0d2757fedbe6038576f",
   [N + "platform/cursor_driver/probe.rs"]: "e5fb151d35ada8ac16770cfa444a46edc9b07dfbfd02b36f165c0947b3f69c77",
   [N + "platform/deepseek_harness_driver.rs"]: "52944946f8240e9dd6d18c5c5d39d121c6291461c055aa903f85ab13a5dd45c1",
-  [N + "platform/generic_cli_driver.rs"]: "0383fbc57ae5f1f4f26d20ede03786edb278ec37eeaa0a83080854b5300ac3a5",
+  [N + "platform/generic_cli_driver.rs"]: "5c4b290f0efd613dc45cc449f412032f959dd398449ca7962a2fe3801fa18a44",
   [N + "platform/hermes_driver/probe.rs"]: "973dddadc2653371f6c19a21a3987a19fa62aae3edb2694994bd7abf4e242d23",
   [N + "platform/lico_agent_driver/execution.rs"]: "061e3f118a7eb9944e328ea3cf2e61ab2845541f3dc88d5b850dc12c7063de55",
   [N + "platform/lico_agent_driver/probe.rs"]: "b968dbfd55ec7e1ca7c83aa5d5fedfc244c6b554d8fe96a441923fa22e0d3179",
@@ -63,9 +65,9 @@ const SOURCES = Object.freeze({
   [N + "platform/pi_driver/supervision.rs"]: "eb35a662553bb9a7292d38c1bd6537eb11cbccc77205325cb8029219da58aafe",
   [N + "platform/process_sandbox/seatbelt.rs"]: "33208cec6c4bd28e1b60ebb4e74c43921bf3df114fe438d05893144868686367",
   [N + "platform/process_sandbox/strategy.rs"]: "a8832eb3055c1dd7fde3e99c413aa92ec8c6e98a51a89345d4b377b8440d66f4",
-  [SUPERVISOR]: "862f95a9ace893135bd9d76cb37150d77cd86ab2d9e119a8ffcc6d0c4c418df0",
+  [SUPERVISOR]: "029c292316d8043f6301e565d80efc1b445446254a999a44a10b1970d92141e4",
   [N + "platform/strategy_runtime/mod.rs"]: "da0edda05789d868ce6b05fd13ce0acb8278cdb75d1f8ccaf7dd3da213dec751",
-  [SHELL]: "fef4af6ac516351a33bbc66c08b2a16006d600371eb674f2226607140a0c6c09",
+  [SHELL]: "e2a192a409575acf91555b56912d83d62f8b004904f56014b21024e8585a23a7",
 });
 
 function entries(file, selection, sites, extra = []) {
@@ -123,46 +125,46 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
   ...entries(N + "domain/provider_quota/codex.rs", parameter("executable: &Path"), [
     ["c25730361e38", "Query Codex app-server rate limits through the injected executable callback and one bounded stdio exchange; binary identity comes from the local runtime binding, not response contents."],
   ]),
-  ...entries(N + "domain/targets/model_catalog/antigravity.rs", configuration, [
-    ["3c79b07d2daf", "Construct the selected Antigravity model query from explicit JSON path options or local discovery; the user-selected Agent and execution gate are retained without constraining those configured paths for measurement."],
+  ...entries(T + "domain/targets/model_catalog/antigravity.rs", configuration, [
+    ["ebfec92bd3a8", "Construct the selected Antigravity model query from explicit JSON path options or local discovery; the user-selected Agent and execution gate are retained without constraining those configured paths for measurement."],
   ], [BINARIES, SHELL]),
-  ...entries(N + "domain/targets/model_catalog/antigravity.rs", command, [
-    ["bc81ba11a11f", "Capture the selected Antigravity models command after user-shell environment preparation with the existing timeout/output bounds."],
+  ...entries(T + "domain/targets/model_catalog/antigravity.rs", command, [
+    ["2aae20787da1", "Capture the selected Antigravity models command after user-shell environment preparation with the existing timeout/output bounds."],
   ], [PARAMETERS, BINARIES]),
-  ...entries(N + "domain/targets/model_catalog/cursor.rs", configuration, [
-    ["0f4bbed5d2e7", "Construct Cursor's selected-agent model query from explicit CLI path options or discovery, preserving the discovered-agent execution gate and terminal-equivalent environment."],
+  ...entries(T + "domain/targets/model_catalog/cursor.rs", configuration, [
+    ["70e42a6bb7bb", "Construct Cursor's selected-agent model query from explicit CLI path options or discovery, preserving the discovered-agent execution gate and terminal-equivalent environment."],
   ], [BINARIES, SHELL]),
-  ...entries(N + "domain/targets/model_catalog/cursor.rs", command, [
-    ["ed356d543cfe", "Capture the prepared Cursor model-catalog command under the source-owned bounded runner; its configured executable is not replaced with a fixed name to satisfy measurement."],
+  ...entries(T + "domain/targets/model_catalog/cursor.rs", command, [
+    ["3f179eee8ffb", "Capture the prepared Cursor model-catalog command under the source-owned bounded runner; its configured executable is not replaced with a fixed name to satisfy measurement."],
   ], [PARAMETERS, BINARIES]),
-  ...entries(N + "domain/targets/model_catalog/deepseek.rs", configuration, [
-    ["80743485edcc", "Construct the DeepSeek metadata reader from a configured or PATH-discovered Node runtime and selected dsh binding; both executable gates and the fixed METADATA_PROBE remain source-owned."],
-    ["9d312f35c684", "Run the prepared DeepSeek metadata reader through the scrubbed untrusted-Agent capture interface; the explicit Node dependency and selected Agent binding remain visible."],
+  ...entries(T + "domain/targets/model_catalog/deepseek.rs", configuration, [
+    ["163f4356c3db", "Construct the DeepSeek metadata reader from a configured or PATH-discovered Node runtime and selected dsh binding; both executable gates and the fixed METADATA_PROBE remain source-owned."],
+    ["1754e96dd539", "Run the prepared DeepSeek metadata reader through the scrubbed untrusted-Agent capture interface; the explicit Node dependency and selected Agent binding remain visible."],
   ], [BINARIES, SHELL, SUPERVISOR]),
-  ...entries(N + "domain/targets/model_catalog/kilo.rs", configuration, [
-    ["a5baca241349", "Construct the selected Kilo models query using caller path settings and discovery fallback; provider availability is observed in the user's shell environment, not assumed from a literal command name."],
+  ...entries(T + "domain/targets/model_catalog/kilo.rs", configuration, [
+    ["76eaaa43aad7", "Construct the selected Kilo models query using caller path settings and discovery fallback; provider availability is observed in the user's shell environment, not assumed from a literal command name."],
   ], [BINARIES, SHELL]),
-  ...entries(N + "domain/targets/model_catalog/kilo.rs", command, [
-    ["2cbf55d4f908", "Capture the caller-prepared Kilo models command with bounded output and duration after environment preparation."],
+  ...entries(T + "domain/targets/model_catalog/kilo.rs", command, [
+    ["aa8553b13d86", "Capture the caller-prepared Kilo models command with bounded output and duration after environment preparation."],
   ], [PARAMETERS, BINARIES]),
-  ...entries(N + "domain/targets/model_catalog/opencode.rs", configuration, [
-    ["9a68afac9552", "Construct the OpenCode model query from configured CLI paths or discovery; the subsequent untrusted-Agent runner deliberately overrides inherited environment with its scrubbed contract."],
+  ...entries(T + "domain/targets/model_catalog/opencode.rs", configuration, [
+    ["dd0f86dfece5", "Construct the OpenCode model query from configured CLI paths or discovery; the subsequent untrusted-Agent runner deliberately overrides inherited environment with its scrubbed contract."],
   ], [BINARIES, SHELL]),
-  ...entries(N + "domain/targets/model_catalog/opencode.rs", command, [
-    ["cc1a5cbf6eba", "Capture the prepared OpenCode catalog command through the untrusted-Agent supervisor, preserving its restricted environment and output/time limits."],
+  ...entries(T + "domain/targets/model_catalog/opencode.rs", command, [
+    ["81917d89ce43", "Capture the prepared OpenCode catalog command through the untrusted-Agent supervisor, preserving its restricted environment and output/time limits."],
   ], [PARAMETERS, BINARIES]),
-  ...entries(N + "domain/targets/model_catalog/pi.rs", configuration, [
-    ["aca93ccae592", "Construct Pi's list-models request from piCliPath or local discovery after the execution gate; configured installation paths remain an intentional runtime input."],
+  ...entries(T + "domain/targets/model_catalog/pi.rs", configuration, [
+    ["5b27ff08b97d", "Construct Pi's list-models request from piCliPath or local discovery after the execution gate; configured installation paths remain an intentional runtime input."],
   ], [BINARIES, SHELL]),
-  ...entries(N + "domain/targets/model_catalog/pi.rs", command, [
-    ["915dca0a66f9", "Capture the selected Pi model query through the scrubbed untrusted-Agent runner; this classification does not execute the Agent or certify its live response."],
+  ...entries(T + "domain/targets/model_catalog/pi.rs", command, [
+    ["1e1d9ae5982a", "Capture the selected Pi model query through the scrubbed untrusted-Agent runner; this classification does not execute the Agent or certify its live response."],
   ], [PARAMETERS, BINARIES]),
-  ...entries(N + "domain/targets/virtual_machine_discovery.rs", field("Command::new(&self.orb)"), [
-    ["a6e916bbfa13", "List running OrbStack machines using the selected local orb executable; listing is distinct from guest execution and is not attributed to Python merely because another function contains a Python probe."],
-    ["a6e916bbfa13#2", "Run the fixed guest discovery script through the selected OrbStack executable and machine binding; the guest script and delegated runtime purpose remain visible in this source-bound interface."],
+  ...entries(T + "domain/targets/virtual_machine_discovery.rs", field("Command::new(&self.orb)"), [
+    ["ff50f785c7de", "List running OrbStack machines using the selected local orb executable; listing is distinct from guest execution and is not attributed to Python merely because another function contains a Python probe."],
+    ["ff50f785c7de#2", "Run the fixed guest discovery script through the selected OrbStack executable and machine binding; the guest script and delegated runtime purpose remain visible in this source-bound interface."],
   ]),
-  ...entries(N + "domain/targets/virtual_machine_discovery.rs", command, [
-    ["54ad90f4ce7a", "Capture prepared OrbStack listing/probe commands under the explicit machine/probe bounds; source review distinguishes their different purposes instead of guessing from file-wide names."],
+  ...entries(T + "domain/targets/virtual_machine_discovery.rs", command, [
+    ["d312c2e7bc93", "Capture prepared OrbStack listing/probe commands under the explicit machine/probe bounds; source review distinguishes their different purposes instead of guessing from file-wide names."],
   ]),
   ...entries(N + "platform/acp_driver_runtime/supervision.rs", field("Command::new(&self.executable)"), [
     ["6022e508e45a", "Launch the registered ACP driver's configured executable with its launch arguments, workspace and reasoning environment through the supervised process interface."],
@@ -258,7 +260,7 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
     ["783b7b87c003", "Construct the strategy sandbox around the verified chosen script runtime, revision and scratch roots; Node/Python dependencies remain explicit runtime interfaces rather than zero debt."],
   ]),
   ...entries(SUPERVISOR, {kind: "command", evidence: "command: &mut Command"}, [
-    ["baade34aee90", "Delegate an explicitly prepared untrusted Agent Command to the shared bounded capture owner after environment/workspace/stdin isolation; arbitrary caller program selection remains visible."],
+    ["0ed976fe744e", "Delegate an explicitly prepared untrusted Agent Command to the shared bounded capture owner after environment/workspace/stdin isolation; arbitrary caller program selection remains visible."],
   ]),
   ...entries(N + "platform/strategy_runtime/mod.rs", parameter("fn verify_runtime(kind: RuntimeKind, executable: &Path)"), [
     ["90131efac688", "Construct the version probe for a selected strategy runtime after path/permission checks, retaining canonicalized or configured runtime identity rather than inventing a literal executable."],
@@ -267,9 +269,9 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
     ["b39e0b100c0d", "Capture the selected strategy runtime version through the scrubbed bounded runner before creating its verified descriptor; this record does not make that dependency disappear."],
   ]),
   ...entries(SHELL, {kind: "environment", evidence: 'std::env::var_os("SHELL")'}, [
-    ["8087715fd0ae", "Capture the user's login-shell environment using an existing SHELL path or platform fallback and fixed source-owned marker command; the shell path remains intentional runtime state."],
+    ["3fd93d50e8fa", "Capture the user's login-shell environment using an existing SHELL path or platform fallback and fixed source-owned marker command; the shell path remains intentional runtime state."],
   ]),
   ...entries(SHELL, command, [
-    ["97fb83656c35", "Capture the prepared login-shell command under the bounded process owner; environment values are runtime data and are not stored in this source review inventory."],
+    ["cb586647e84a", "Capture the prepared login-shell command under the bounded process owner; environment values are runtime data and are not stored in this source review inventory."],
   ]),
 ]);

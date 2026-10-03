@@ -26,7 +26,10 @@ pub fn catalog_model_projection(model_id: &str) -> Option<Value> {
 
 /// Read-only target inspection from the existing `targets` owner.
 pub fn target_read_only(target_id: &str) -> Result<Value, anyhow::Error> {
-    crate::domain::targets::inspect_target_read_only(target_id)
+    crate::domain::targets::inspect_target_read_only(
+        &crate::domain::target_port::agent_target_port(),
+        target_id,
+    )
 }
 
 /// Skill list from the existing `skill_hub` owner. Callers supply params; this

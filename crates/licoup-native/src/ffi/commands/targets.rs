@@ -2,6 +2,11 @@ use super::{AdmittedCommand, CliExecution, admitted_params};
 use anyhow::{Result, ensure};
 use serde_json::Value;
 
+/// The Agent inventory port this command layer composes.
+fn targets() -> crate::port::AgentTargetPort {
+    crate::domain::target_port::agent_target_port()
+}
+
 pub(super) fn handle_targets_catalog(_command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(serde_json::json!({
         "ok": true,
@@ -49,7 +54,7 @@ pub(super) fn handle_targets_scan(command: AdmittedCommand) -> Result<CliExecuti
         }
     }
     Ok(CliExecution::Json(
-        crate::domain::targets::scan_targets_with_params(&params)?,
+        crate::domain::targets::scan_targets_with_params(&targets(), &params)?,
     ))
 }
 
@@ -89,6 +94,7 @@ pub(super) fn handle_targets_add(command: AdmittedCommand) -> Result<CliExecutio
         }
     }
     Ok(CliExecution::Json(crate::domain::targets::add_target(
+        &targets(),
         &params,
     )?))
 }
@@ -114,7 +120,7 @@ pub(super) fn handle_targets_inspect(command: AdmittedCommand) -> Result<CliExec
         object.insert("target".to_string(), Value::String(target.to_string()));
     }
     Ok(CliExecution::Json(
-        crate::domain::targets::inspect_target_with_params(&params)?,
+        crate::domain::targets::inspect_target_with_params(&targets(), &params)?,
     ))
 }
 

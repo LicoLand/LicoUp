@@ -420,11 +420,14 @@ impl ReadOnlyTargetPort for NativeReadOnlyTargets {
             .members()
             .iter()
             .map(|provider| {
-                crate::domain::targets::inspect_target_read_only(provider)
-                    .map_err(|_| retryable("target_inventory_unavailable", "target/list"))?
-                    .get("target")
-                    .and_then(|target| project_target(target, &self.adapters))
-                    .ok_or_else(|| retryable("target_inventory_unavailable", "target/list"))
+                crate::domain::targets::inspect_target_read_only(
+                    &crate::domain::target_port::agent_target_port(),
+                    provider,
+                )
+                .map_err(|_| retryable("target_inventory_unavailable", "target/list"))?
+                .get("target")
+                .and_then(|target| project_target(target, &self.adapters))
+                .ok_or_else(|| retryable("target_inventory_unavailable", "target/list"))
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(json!({
@@ -438,8 +441,11 @@ impl ReadOnlyTargetPort for NativeReadOnlyTargets {
         if !self.is_member(provider.as_str()) {
             return Err(permanent("subagent_unavailable", "target/probe"));
         }
-        let inspected = crate::domain::targets::inspect_target_read_only(provider.as_str())
-            .map_err(|_| permanent("subagent_unavailable", "target/probe"))?;
+        let inspected = crate::domain::targets::inspect_target_read_only(
+            &crate::domain::target_port::agent_target_port(),
+            provider.as_str(),
+        )
+        .map_err(|_| permanent("subagent_unavailable", "target/probe"))?;
         inspected
             .get("target")
             .and_then(|target| project_target(target, &self.adapters))

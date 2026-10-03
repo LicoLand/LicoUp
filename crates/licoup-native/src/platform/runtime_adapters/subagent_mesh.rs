@@ -603,9 +603,12 @@ impl SubagentRuntimeAdapter for HostSubagentRuntime {
     }
 
     fn execution_admission(&self) -> ExecutionAdmissionEvidence {
-        let target = crate::domain::targets::inspect_target_read_only(self.provider.as_str())
-            .ok()
-            .and_then(|value| value.get("target").cloned());
+        let target = crate::domain::targets::inspect_target_read_only(
+            &crate::domain::target_port::agent_target_port(),
+            self.provider.as_str(),
+        )
+        .ok()
+        .and_then(|value| value.get("target").cloned());
         let installed = target
             .as_ref()
             .and_then(|target| target.get("status"))
@@ -624,8 +627,11 @@ impl SubagentRuntimeAdapter for HostSubagentRuntime {
             provider_id: self.provider.as_str().to_owned(),
             installed,
             executable_message_send_route: message_send_capable
-                && crate::domain::targets::available_runtime_executable(self.provider.as_str())
-                    .is_some(),
+                && crate::domain::targets::available_runtime_executable(
+                    &crate::domain::target_port::agent_target_port(),
+                    self.provider.as_str(),
+                )
+                .is_some(),
         }
     }
 
@@ -636,16 +642,19 @@ impl SubagentRuntimeAdapter for HostSubagentRuntime {
             .is_some_and(|profile| profile.driver_status == "implemented");
         ReadinessEvidence {
             provider_id: self.provider.as_str().to_owned(),
-            installed: crate::domain::targets::inspect_target_read_only(self.provider.as_str())
-                .ok()
-                .and_then(|value| value.get("target").cloned())
-                .and_then(|target| {
-                    target
-                        .get("status")
-                        .and_then(Value::as_str)
-                        .map(str::to_owned)
-                })
-                .is_some_and(|status| status != "not-detected"),
+            installed: crate::domain::targets::inspect_target_read_only(
+                &crate::domain::target_port::agent_target_port(),
+                self.provider.as_str(),
+            )
+            .ok()
+            .and_then(|value| value.get("target").cloned())
+            .and_then(|target| {
+                target
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            })
+            .is_some_and(|status| status != "not-detected"),
             identity_verified: profile.is_some(),
             transport_ready,
             // Direct MCP authentication and Membership authorization own

@@ -54,7 +54,9 @@ pub fn relocate(params: &Value) -> Result<Value> {
 
     // Capture settings before stopping their processes. They are reinstalled
     // with the same enablement after the destination becomes authoritative.
-    let autostart = crate::platform::client_autostart::status()?;
+    let autostart = crate::platform::client_autostart::status(
+        &crate::domain::target_port::agent_target_port(),
+    )?;
 
     // Close admission before stopping root-local services. Their existing
     // leases remain valid until each writer proves it has drained; then the
@@ -201,7 +203,11 @@ pub fn recover(params: &Value) -> Result<Value> {
     }
     phase("switching-data-home");
     paths::save_data_home(&replacement)?;
-    if crate::platform::client_autostart::refresh_after_data_home_recovery().is_err() {
+    if crate::platform::client_autostart::refresh_after_data_home_recovery(
+        &crate::domain::target_port::agent_target_port(),
+    )
+    .is_err()
+    {
         bail!("data_home_recovery_autostart_failed");
     }
     Ok(json!({"status": "recovered"}))
@@ -614,6 +620,7 @@ fn restore_autostart_settings(status: &Value) -> Result<()> {
         || desktop.get("enabled").and_then(Value::as_bool) == Some(true)
     {
         crate::platform::client_autostart::set_desktop(
+            &crate::domain::target_port::agent_target_port(),
             desktop.get("enabled").and_then(Value::as_bool) == Some(true),
             desktop.get("silent").and_then(Value::as_bool) == Some(true),
         )?;
@@ -622,6 +629,7 @@ fn restore_autostart_settings(status: &Value) -> Result<()> {
         || mcp.get("enabled").and_then(Value::as_bool) == Some(true)
     {
         crate::platform::client_autostart::set_mcp(
+            &crate::domain::target_port::agent_target_port(),
             mcp.get("enabled").and_then(Value::as_bool) == Some(true),
         )?;
     }
@@ -634,6 +642,7 @@ fn restore_autostart_settings(status: &Value) -> Result<()> {
             .and_then(|port| u16::try_from(port).ok())
             .unwrap_or(15_722);
         crate::platform::client_autostart::set_gateway(
+            &crate::domain::target_port::agent_target_port(),
             gateway.get("enabled").and_then(Value::as_bool) == Some(true),
             port,
         )?;
