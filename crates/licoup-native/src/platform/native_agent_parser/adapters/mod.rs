@@ -9,7 +9,9 @@
 //!
 //! Each subtree below is one Agent's protocol and moves with that Agent's crate
 //! (`licoup-agent-<agent>`); the composition travels last, because it is what
-//! tilts from naming thirteen parsers to naming the crates that hold them.
+//! tilts from naming thirteen parsers to naming the crates that hold them. Two
+//! parsers have moved already and their subtrees are gone: the composition names
+//! the package that owns each one, and no copy stays here.
 
 pub(in crate::platform) use licoup_agent_adapter_sdk::adapters::{
     AdapterContract, NativeLineParser,
@@ -18,9 +20,13 @@ pub(in crate::platform) use licoup_agent_adapter_sdk::{
     LifecycleStage, Transition, TransitionReducer,
 };
 
-// One Agent's parser has moved: Codex's vendor protocol now lives in its own package
-// (`licoup-agent-codex`), parsed once below this port, and this composition names the
-// package rather than keeping a second copy.
+// Two Agents' parsers have moved: Codex's vendor protocol lives in
+// `licoup-agent-codex` and Kimi Code's ACP dialect in `licoup-agent-kimi`, each
+// parsed once below this port, and this composition names the package rather
+// than keeping a second copy. Codex's is re-exported here because the host's
+// Codex leaves still read it through this tree; Kimi Code's is reached through
+// the package's dialect registration in `runtime_adapters::drivers`, so this
+// tree names no Kimi parser at all.
 pub(in crate::platform) use licoup_agent_codex::parser as codex;
 
 pub(in crate::platform) mod antigravity;
@@ -30,7 +36,6 @@ pub(in crate::platform) mod cursor;
 pub(in crate::platform) mod deepseek_harness;
 pub(in crate::platform) mod hermes;
 pub(in crate::platform) mod kilo_code;
-pub(in crate::platform) mod kimi_code;
 pub(in crate::platform) mod lico_agent;
 pub(in crate::platform) mod openclaw;
 pub(in crate::platform) mod opencode;
@@ -110,6 +115,10 @@ fn opaque_identity(session_id: &str) -> bool {
 /// entry declares its Agent's transition answer as *the parser's own execution
 /// result* rather than through the query, and answers the identity query
 /// fail-closed because the mesh never dispatches that Agent.
+///
+/// Two entries are the moved packages' own registrations rather than constants
+/// restated here, so the declaration a package publishes and the declaration
+/// this host dispatches are one value and cannot drift.
 pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     ParserRegistration::new(
         antigravity::CONTRACT,
@@ -128,7 +137,9 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     ParserRegistration::new(cursor::CONTRACT, no_transitions, cursor_identity),
     ParserRegistration::new(hermes::CONTRACT, hermes_transitions, no_identity),
     ParserRegistration::unanswered(kilo_code::CONTRACT),
-    ParserRegistration::unanswered(kimi_code::CONTRACT),
+    // The Kimi Code package owns its dialect and reports its transitions with its
+    // own execution result, so this entry is the package's own registration.
+    licoup_agent_kimi::registration::REGISTRATION,
     ParserRegistration::unanswered(openclaw::CONTRACT),
     ParserRegistration::unanswered(opencode::CONTRACT),
     ParserRegistration::unanswered(pi::CONTRACT),

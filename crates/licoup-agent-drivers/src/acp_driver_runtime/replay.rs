@@ -4,13 +4,16 @@
 //! any Agent's tree. Every ACP adapter replays the same real `AcpProtocol`; the
 //! frame dialect it reads is resolved from the installed port by driver
 //! identity, exactly as the production transport resolves it, so the arm cannot
-//! drift from what the driver runs.
+//! drift from what the driver runs. An Agent whose dialect has moved into its own
+//! package builds its arm through [`Replay::with_dialect`] and hands the dialect
+//! over, so this crate still learns no Agent's protocol.
 
 use licoup_agent_adapter_sdk::Transition;
 use licoup_agent_adapter_sdk::replay::{FrameReplay, RecordedFrame};
 use serde_json::{Value, json};
 
 use super::params::{ProtocolConfig, RequestedSettings};
+use super::parser_port::AcpParserRegistration;
 use super::protocol::{AcpProtocol, ProtocolEffect};
 use super::{CapabilityProbe, EffectiveSettings, ProtocolFailure};
 
@@ -28,25 +31,38 @@ pub struct Replay {
 }
 
 impl Replay {
-    pub fn new(adapter_id: &str) -> Result<Self, String> {
-        // The replay arm is built for the driver the adapter id maps to, so a
-        // dialect the composition did not register is refused here rather than
-        // replayed through the fail-closed dialect.
-        let registration = match adapter_id {
-            "copilot" => super::parser_port::parser_for("copilot-acp"),
-            "kimi-code" => super::parser_port::parser_for("kimi-code-acp"),
-            other => {
-                return Err(format!(
-                    "no ACP protocol parser is registered for adapter {other}"
-                ));
-            }
-        };
+    /// Build one Agent's arm from a dialect the caller already resolved.
+    ///
+    /// This is the constructor an Agent's own package uses: the package owns the
+    /// dialect and hands it over without this crate learning the Agent's name.
+    /// The driver identity the reducer is keyed on is the dialect's own, so an
+    /// arm cannot replay against a different driver than the dialect answers for.
+    pub fn with_dialect(registration: AcpParserRegistration) -> Self {
+        assert!(
+            !registration.driver_id.is_empty(),
+            "an ACP replay arm needs a driver identity"
+        );
+        Self::build(registration.driver_id)
+    }
+
+    /// Build the arm for an adapter id the caller maps onto an installed driver.
+    ///
+    /// The adapter-to-driver mapping is the caller's, so a dialect the
+    /// composition did not register is refused here rather than replayed through
+    /// the fail-closed dialect. A build that installs its dialects through the
+    /// port — as the host's composition does — reads its arms this way.
+    pub fn new(adapter_id: &str, driver_id: &str) -> Result<Self, String> {
+        let registration = super::parser_port::parser_for(driver_id);
         if registration.driver_id.is_empty() {
             return Err(format!(
                 "no ACP frame dialect is installed for adapter {adapter_id}"
             ));
         }
-        Ok(Self {
+        Ok(Self::build(registration.driver_id))
+    }
+
+    fn build(driver_id: &'static str) -> Self {
+        Self {
             protocol: AcpProtocol::new(
                 ProtocolConfig {
                     prompt: PROMPT.to_owned(),
@@ -62,9 +78,9 @@ impl Replay {
                     allow_all_authorized: false,
                     mcp_servers: Vec::new(),
                 },
-                registration.driver_id,
+                driver_id,
             ),
-        })
+        }
     }
 }
 

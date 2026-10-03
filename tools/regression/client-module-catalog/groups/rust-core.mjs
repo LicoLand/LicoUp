@@ -50,6 +50,17 @@ export const RUST_CORE_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "rust.core.agent-kimi-package",
+      kind: "rust-core",
+      summary: "Kimi Code adapter package program, ACP frame dialect, registration, and replay arm",
+      inputs: ["crates/licoup-agent-kimi/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-kimi/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
       id: "rust.core.acp.composition",
       kind: "rust-core",
       summary: "ACP facade, shared protocol types, validation, and error boundaries",

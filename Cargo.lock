@@ -2106,6 +2106,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-agent-kimi"
+version = "0.1.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
+ "licoup-extension-contracts",
+ "licoup-foundation",
+ "serde_json",
+]
+
+[[package]]
 name = "licoup-agent-runtime"
 version = "0.3.0"
 dependencies = [
@@ -2321,6 +2332,7 @@ dependencies = [
  "licoup-agent-adapters",
  "licoup-agent-codex",
  "licoup-agent-drivers",
+ "licoup-agent-kimi",
  "licoup-agent-runtime",
  "licoup-agent-targets",
  "licoup-application",

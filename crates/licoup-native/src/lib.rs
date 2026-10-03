@@ -49,8 +49,9 @@ pub(crate) mod host_lane;
 /// the other: a layer declares the port it needs, the other owns the fact, and
 /// this function joins them once per process. That covers the environment
 /// ports the domain asks, the gateway runtime's ports, the stop control's
-/// Subagent-claim dispatcher, which the domain answers, and the progressive
-/// turn-event port the Codex adapter package asks for. A process that never
+/// Subagent-claim dispatcher, which the domain answers, and the ports the two
+/// Agent adapter packages ask for — the progressive turn-event sink Codex emits
+/// through and the execution admission Kimi Code asks for. A process that never
 /// calls it keeps every port fail-closed.
 pub fn install_environment_ports() -> Result<(), &'static str> {
     domain::conversation::history::install_open_codex_rollouts(
@@ -67,7 +68,32 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     // here for its registration while its binary route is completed by the
     // agent-execution port, and a host that never installs this port leaves the
     // package's emitters silent rather than inventing a consumer.
-    licoup_agent_codex::port::turn_event::install(platform::codex_turn_event_port())
+    licoup_agent_codex::port::turn_event::install(platform::codex_turn_event_port())?;
+    // The Kimi Code adapter package owns what one Kimi execution is; the one
+    // fact it cannot derive is whether this host currently admits new work,
+    // because the idle-admission decision is the host's. Installing the answer
+    // is what lets a Kimi turn run at all, and a host that never installs it
+    // refuses rather than running.
+    licoup_agent_kimi::port::execution::install(licoup_agent_kimi::port::execution::ExecutionPort {
+        admits_execution: admits_agent_execution,
+    })
+}
+
+/// Whether this host admits a new Agent execution right now: admission is open
+/// unless a maintenance switch holds the close-admission barrier.
+///
+/// The barrier is the same record package activation and data conversion hold,
+/// and it is read when the question is asked rather than cached, so a turn
+/// cannot start from a decision the host has since closed. A data root whose
+/// barrier cannot be read admits nothing: an unreadable record is not evidence
+/// that admission is open.
+fn admits_agent_execution() -> bool {
+    let Ok(data_root) = licoup_foundation::platform::paths::portable_data_dir() else {
+        return false;
+    };
+    domain::work_admission::WorkAdmission::open(data_root)
+        .barrier()
+        .is_ok_and(|barrier| barrier.is_none())
 }
 
 /// The composition's answer for the package-generation admission port: the

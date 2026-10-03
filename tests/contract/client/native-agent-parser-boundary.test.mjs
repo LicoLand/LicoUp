@@ -3,8 +3,9 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 // The thirteen per-Agent parsers and the composition that names them stay in
-// the host; the shared adapter contract, the registry lookup, the replay
-// harness and the lifecycle authority moved to `licoup-agent-adapter-sdk`.
+// the host until that Agent's own package owns the protocol; the shared adapter
+// contract, the registry lookup, the replay harness and the lifecycle authority
+// moved to `licoup-agent-adapter-sdk`.
 const parserRoot = 'crates/licoup-native/src/platform/native_agent_parser';
 const compositionRoot = `${parserRoot}/adapters`;
 const sdkRoot = 'crates/licoup-agent-adapter-sdk/src';
@@ -24,6 +25,20 @@ const adapters = [
   'deepseek_harness',
 ];
 
+// The parsers that have moved into their Agent's own package: the composition
+// names the package's registration and the package's source declares the
+// adapter contract, so no copy stays in the host.
+const packaged = {
+  codex: {
+    crate: 'licoup_agent_codex',
+    source: 'crates/licoup-agent-codex/src/parser.rs',
+  },
+  kimi_code: {
+    crate: 'licoup_agent_kimi',
+    source: 'crates/licoup-agent-kimi/src/parser.rs',
+  },
+};
+
 test('packaged adapter registry is bijective with the thirteen-entry inventory', () => {
   const composition = readFileSync(`${compositionRoot}/mod.rs`, 'utf8');
   const registrations = composition.slice(
@@ -32,7 +47,11 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
   );
   // Every entry names its Agent's declaration exactly once, and none inherits
   // another Agent's answer.
-  assert.equal((registrations.match(/ParserRegistration::(?:unanswered|new)\(/g) ?? []).length, 13);
+  assert.equal((registrations.match(/ParserRegistration::(?:unanswered|new)\(/g) ?? []).length, 11);
+  // The two moved packages contribute their own registration, so the count of
+  // package entries plus declared entries is still thirteen.
+  assert.match(registrations, /\blicoup_agent_codex::registration::REGISTRATION\b/u);
+  assert.match(registrations, /\blicoup_agent_kimi::registration::REGISTRATION\b/u);
   // The queries a reader reaches are answered by the Agent that owns the fact:
   // Hermes' normalized transitions, and the exact-resume identity of the four
   // Agents the Subagent mesh dispatches. Every other entry stays declared and
@@ -40,7 +59,6 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
   const answered = {
     antigravity: ['no_transitions', 'antigravity_identity'],
     claude_code: ['no_transitions', 'claude_code_identity'],
-    codex: ['codex_transitions', 'codex_identity'],
     cursor: ['no_transitions', 'cursor_identity'],
     hermes: ['hermes_transitions', 'no_identity'],
   };
@@ -51,12 +69,29 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     const contract = chunk.match(/(\w+)::CONTRACT/);
     if (contract) entries.set(contract[1], chunk);
   }
+  for (const [adapter, moved] of Object.entries(packaged)) {
+    const entry = registrations
+      .split('\n')
+      .find((line) => line.includes(`${moved.crate}::registration::REGISTRATION`));
+    assert.ok(entry, `no package registration entry for ${adapter}`);
+    entries.set(adapter, entry);
+  }
   assert.equal(entries.size, 13);
   for (const adapter of adapters) {
-    assert.match(composition, new RegExp(`mod ${adapter};`));
+    const moved = packaged[adapter];
+    // A parser the host still carries is a module of this tree; a parser that
+    // has moved is named by the package, and the composition declares no module
+    // for it.
+    if (moved) {
+      assert.doesNotMatch(composition, new RegExp(`mod ${adapter};`));
+    } else {
+      assert.match(composition, new RegExp(`mod ${adapter};`));
+    }
     const entry = entries.get(adapter);
     assert.ok(entry, `no registration entry for ${adapter}`);
-    if (answered[adapter]) {
+    if (moved) {
+      assert.match(entry, /licoup_agent_\w+::registration::REGISTRATION/u);
+    } else if (answered[adapter]) {
       assert.match(entry, /^new\(/u);
       for (const answer of answered[adapter]) {
         assert.match(entry, new RegExp(`\\b${answer}\\b`, 'u'));
@@ -65,7 +100,7 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
       assert.match(entry, /^unanswered\(/u);
     }
     const component = readFileSync(
-      `${parserRoot}/adapters/${adapter}.rs`,
+      moved ? moved.source : `${parserRoot}/adapters/${adapter}.rs`,
       'utf8',
     );
     assert.match(component, /AdapterContract::new/);

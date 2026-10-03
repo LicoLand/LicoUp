@@ -7,6 +7,11 @@
       "payloadRole": "codex-adapter-package-payload"
     },
     {
+      "packageId": "org.licoland.adapter.kimi",
+      "source": "crates/licoup-agent-kimi/package",
+      "payloadRole": "kimi-adapter-package-payload"
+    },
+    {
       "packageId": "org.licoland.feature.mcp",
       "source": "crates/licoup-mcp/package",
       "payloadRole": "mcp-package-payload"
