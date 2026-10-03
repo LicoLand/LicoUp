@@ -26,14 +26,14 @@ pub(crate) enum SkillInvocationProfile {
     History,
 }
 
-pub(in crate::platform) fn project_skill_invocations(value: &Value) -> Vec<Value> {
+pub fn project_skill_invocations(value: &Value) -> Vec<Value> {
     project_with_profile(value, SkillInvocationProfile::Runtime)
 }
 
 /// Same matching semantics as the live-driver projection with history-file
 /// envelope unwrapping layered on top. Driver behavior stays on the frozen
 /// runtime profile; this entry point serves only local history backfill.
-pub(crate) fn project_history_skill_invocations(value: &Value) -> Vec<Value> {
+pub fn project_history_skill_invocations(value: &Value) -> Vec<Value> {
     project_with_profile(value, SkillInvocationProfile::History)
 }
 

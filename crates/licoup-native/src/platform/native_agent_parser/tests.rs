@@ -1,5 +1,14 @@
+//! The family's own claims.
+//!
+//! A claim that names an Agent — which parsers exist, which declaration each
+//! one reports, what one Agent's parser does with a vendor frame — belongs here
+//! where both halves are in view: the parsers in `adapters` and the dispatch
+//! enum in `runtime_adapters`. The claims that name no Agent live in
+//! `licoup-agent-adapter-sdk`'s own test module.
+
 use super::*;
 use crate::platform::runtime_adapters::RuntimeAdapter;
+use licoup_agent_adapter_sdk::adapters::ProtocolSignalKind;
 
 const ALL: [RuntimeAdapter; 13] = [
     RuntimeAdapter::Antigravity,
@@ -17,46 +26,95 @@ const ALL: [RuntimeAdapter; 13] = [
     RuntimeAdapter::DeepSeekHarness,
 ];
 
+/// The iron rule: one Agent, one declaration, one parser. The dispatch enum and
+/// the parser set this host composes are the same thirteen ids, in the packaged
+/// order, and each reports the id the enum names.
+///
+/// This read the crate's own `registry::parser_for` before the parsers became
+/// an injected set. It reads the composed set now, through the SDK's
+/// string-keyed registry lookup, which is what the claim was always about.
 #[test]
 fn native_agent_parser_registry_is_bijective_with_packaged_inventory() {
-    let registered = ALL.map(|adapter| parser_for(adapter).id);
+    let set = parser_set();
+    let registered: Vec<&'static str> = ALL
+        .map(|adapter| {
+            licoup_agent_adapter_sdk::registry::parser_for(&set, adapter.id())
+                .expect("every dispatched adapter must have a composed parser")
+                .id
+        })
+        .to_vec();
     assert_eq!(registered, PACKAGED_ADAPTER_IDS);
     for adapter in ALL {
-        assert!(!parser_for(adapter).framing.is_empty());
+        let contract = licoup_agent_adapter_sdk::registry::parser_for(&set, adapter.id())
+            .expect("every dispatched adapter must have a composed parser");
+        assert!(!contract.framing.is_empty());
+        assert_eq!(contract.inventory_json()["adapterId"], adapter.id());
+    }
+}
+
+/// The parser set the SDK reads is the one this host composes, so the replay
+/// arms, the registry and the corpus coverage cannot drift apart.
+#[test]
+fn native_agent_parser_composes_one_registration_per_packaged_adapter() {
+    let set = parser_set();
+    assert_eq!(set.registered_ids(), PACKAGED_ADAPTER_IDS);
+    assert_eq!(set.all().len(), ALL.len());
+}
+
+/// Every composed parser's declaration reports the complete L4 signal set and
+/// settles no turn. The conversation layer remains the sole turn authority.
+#[test]
+fn packaged_adapters_report_l4_facts_without_settling_turns() {
+    for adapter in ALL {
+        let contract = licoup_agent_adapter_sdk::registry::parser_for(&parser_set(), adapter.id())
+            .expect("every dispatched adapter must have a composed parser");
+        assert!(!contract.settles_turn, "{} settled a turn", contract.id);
+        assert!(
+            !contract.has_implicit_turn_timeout,
+            "{} declared an implicit turn timeout",
+            contract.id
+        );
+        assert!(contract.emits_all_content, "{} hid content", contract.id);
         assert_eq!(
-            parser_for(adapter).inventory_json()["adapterId"],
-            adapter.id()
+            contract.reported_signals,
+            [
+                ProtocolSignalKind::ProtocolFinish,
+                ProtocolSignalKind::Eof,
+                ProtocolSignalKind::CancelConfirmed,
+            ],
+            "{} did not report the complete L4 signal set",
+            contract.id
         );
     }
 }
 
+/// The two protocol-agnostic queries are declared by the SDK and composed here.
+/// Until an Agent's crate owns that Agent's answer, the entry answers
+/// fail-closed rather than inheriting another Agent's answer.
 #[test]
-fn native_agent_parser_reconciles_delta_and_cumulative_text_once() {
-    let mut reconciler = TextReconciler::default();
-    assert_eq!(
-        reconciler.observe("reply", TextForm::Delta("你")),
-        Ok("你".into())
-    );
-    assert_eq!(
-        reconciler.observe("reply", TextForm::Cumulative("你好")),
-        Ok("好".into())
-    );
-    assert_eq!(
-        reconciler.observe("reply", TextForm::Cumulative("你好")),
-        Ok(String::new())
-    );
-    assert_eq!(
-        reconciler.observe("reply", TextForm::Cumulative("你")),
-        Ok(String::new())
-    );
-    assert_eq!(
-        reconciler.observe("reply", TextForm::Cumulative("你好呀")),
-        Ok("呀".into())
-    );
-    assert_eq!(
-        reconciler.observe("reply", TextForm::Cumulative("另一个")),
-        Err("native_text_snapshot_diverged")
-    );
+fn native_agent_parser_registrations_declare_their_agent() {
+    for registration in parser_set().all() {
+        assert!(
+            PACKAGED_ADAPTER_IDS.contains(&registration.contract.id),
+            "{} is not a packaged adapter",
+            registration.contract.id
+        );
+    }
+}
+
+/// The replay arms and the registry are one set: an id in `REGISTRATIONS` with
+/// no arm would make a corpus check impossible to run at all.
+#[test]
+fn native_agent_parser_composes_a_replay_arm_for_every_registration() {
+    for adapter in ALL {
+        let arm = replay::adapters::replay_arm(adapter.id());
+        assert!(
+            arm.is_ok(),
+            "{} has no composed replay arm: {:?}",
+            adapter.id(),
+            arm.err()
+        );
+    }
 }
 
 #[test]
@@ -437,34 +495,5 @@ fn cursor_parser_ignores_internal_mcp_catalog_calls() {
         !effects
             .iter()
             .any(|effect| matches!(effect, CursorEffect::Tool { .. }))
-    );
-}
-
-#[test]
-fn native_agent_parser_closes_lifecycle_prefix_and_keeps_first_failure() {
-    let mut reducer = TransitionReducer::default();
-    let stages = reducer.advance(LifecycleStage::Responding);
-    assert_eq!(stages.len(), 4);
-    assert!(matches!(
-        stages[0],
-        Transition::Lifecycle(LifecycleStage::Submitted)
-    ));
-    assert!(matches!(
-        stages[3],
-        Transition::Lifecycle(LifecycleStage::Responding)
-    ));
-    assert!(reducer.fail("native", "turn", "first").is_some());
-    assert!(reducer.fail("observer", "observe", "later").is_none());
-    assert!(reducer.advance(LifecycleStage::Completed).is_empty());
-}
-
-#[test]
-fn native_agent_parser_rejects_failure_after_terminal_completion() {
-    let mut reducer = TransitionReducer::default();
-    assert_eq!(reducer.advance(LifecycleStage::Completed).len(), 5);
-    assert!(
-        reducer
-            .fail("late_transport_failure", "observer/read", "late failure")
-            .is_none()
     );
 }

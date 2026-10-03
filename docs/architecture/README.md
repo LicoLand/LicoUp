@@ -176,6 +176,7 @@ To maintain clarity across the four primary architectural tiers, detailed domain
 | `crates/licoup-endpoint-core/` | Endpoint identity, key custody, crypto foundations |
 | `crates/licoup-protocol-bindings/` | Fixed-input admission for the LicoArc Candidate (verification by the LicoArc SDK) |
 | `crates/licoup-client-state/` | Client state management contracts |
+| `crates/licoup-agent-adapter-sdk/` | Shared Agent adapter contract: byte-line parser contract, transition vocabulary, registry lookup, replay harness and parser lifecycle machine |
 | `crates/licoup-agent-adapters/` | Agent adapter trait definitions |
 | `crates/lico-catalog-convergence/` | Catalog convergence logic |
 | `packages/contracts/client/` | Client-owned schemas (Tier 2) |
@@ -374,6 +375,7 @@ crates/
 ├── licoup-protocol-bindings/   # L2: Fixed-input admission for the LicoArc Candidate
 ├── licoup-client-state/        # Client state management (quotas, persistence)
 ├── licoup-platform-bridges/    # OS-specific bridges (Keychain, WinCred, etc.)
+├── licoup-agent-adapter-sdk/   # Shared adapter contract, registry, replay harness, parser lifecycle
 ├── licoup-agent-adapters/      # Agent adapter trait definitions
 └── lico-catalog-convergence/   # Catalog management
 ```

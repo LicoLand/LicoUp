@@ -1,9 +1,12 @@
-//! One replay arm per registered adapter.
+//! One replay arm per Agent parser this host composes.
 //!
-//! Each arm is the only place that knows how to construct that adapter's real
-//! parser. Two adapters keep their protocol state machine outside this module
+//! Each arm is the only place that knows how to construct that Agent's real
+//! parser. Two Agents keep their protocol state machine outside this module
 //! tree (`acp_driver_runtime` for copilot and kimi-code, `openclaw_driver` for
 //! openclaw), so those arms live next to the code they replay.
+//!
+//! The arms are `pub(in crate::platform)` to this module's parent — it is the
+//! only reader, and it hands them to the SDK's harness through the parser set.
 
 mod antigravity;
 mod claude_code;
@@ -18,38 +21,13 @@ mod pi;
 
 use super::FrameReplay;
 use crate::platform::acp_driver_runtime;
-use crate::platform::native_agent_parser::registry::parser_for;
 use crate::platform::openclaw_driver;
-use crate::platform::runtime_adapters::RuntimeAdapter;
 
-const ALL: [RuntimeAdapter; 13] = [
-    RuntimeAdapter::Antigravity,
-    RuntimeAdapter::ClaudeCode,
-    RuntimeAdapter::Codex,
-    RuntimeAdapter::Copilot,
-    RuntimeAdapter::Cursor,
-    RuntimeAdapter::Hermes,
-    RuntimeAdapter::KiloCode,
-    RuntimeAdapter::KimiCode,
-    RuntimeAdapter::OpenClaw,
-    RuntimeAdapter::OpenCode,
-    RuntimeAdapter::Pi,
-    RuntimeAdapter::LicoAgent,
-    RuntimeAdapter::DeepSeekHarness,
-];
-
-/// The framing a registered adapter really speaks. A fixture whose recorded
-/// channel disagrees with this is not a transcript of that adapter.
-pub(super) fn contract_framing(adapter_id: &str) -> Result<&'static str, String> {
-    ALL.iter()
-        .map(|adapter| parser_for(*adapter))
-        .find(|contract| contract.id == adapter_id)
-        .map(|contract| contract.framing)
-        .ok_or_else(|| format!("no registered contract for adapter {adapter_id}"))
-}
-
-/// Build the replay arm for a registered adapter id.
-pub(super) fn replay_for(adapter_id: &str) -> Result<Box<dyn FrameReplay>, String> {
+/// Build the replay arm for one Agent parser this host composes.
+///
+/// An adapter this host composes no arm for is refused rather than defaulted,
+/// so a fixture can never pass against a parser that was never constructed.
+pub(in crate::platform) fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameReplay>, String> {
     Ok(match adapter_id {
         "antigravity" => Box::new(antigravity::Replay::new()?),
         "claude-code" => Box::new(claude_code::Replay::new()?),

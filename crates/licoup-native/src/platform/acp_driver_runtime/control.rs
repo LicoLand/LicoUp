@@ -2,7 +2,7 @@
 
 use super::super::process_supervisor::BoundedStdinWriter;
 use super::io::write_message;
-use crate::platform::native_agent_parser::adapters::driver_registry::{
+use licoup_agent_adapter_sdk::adapters::driver_registry::{
     registry_get, registry_insert, registry_remove_if,
 };
 use licoup_foundation::core::acp;

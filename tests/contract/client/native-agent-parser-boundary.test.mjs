@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+// The thirteen per-Agent parsers and the composition that names them stay in
+// the host; the shared adapter contract, the registry lookup, the replay
+// harness and the lifecycle authority moved to `licoup-agent-adapter-sdk`.
 const parserRoot = 'crates/licoup-native/src/platform/native_agent_parser';
+const compositionRoot = `${parserRoot}/adapters`;
+const sdkRoot = 'crates/licoup-agent-adapter-sdk/src';
 const adapters = [
   'antigravity',
   'claude_code',
@@ -20,20 +25,38 @@ const adapters = [
 ];
 
 test('packaged adapter registry is bijective with the thirteen-entry inventory', () => {
-  const registry = readFileSync(`${parserRoot}/adapters/mod.rs`, 'utf8');
+  const composition = readFileSync(`${compositionRoot}/mod.rs`, 'utf8');
+  const registrations = composition.slice(
+    composition.indexOf('pub(in crate::platform) static REGISTRATIONS'),
+    composition.indexOf('/// The parser registrations this host injects'),
+  );
+  assert.equal((registrations.match(/ParserRegistration::unanswered\(/g) ?? []).length, 13);
   for (const adapter of adapters) {
-    assert.match(registry, new RegExp(`mod ${adapter};`));
+    assert.match(composition, new RegExp(`mod ${adapter};`));
+    assert.match(
+      registrations,
+      new RegExp(`ParserRegistration::unanswered\\(${adapter}::CONTRACT\\)`),
+    );
     const component = readFileSync(
       `${parserRoot}/adapters/${adapter}.rs`,
       'utf8',
     );
     assert.match(component, /AdapterContract::new/);
   }
-  const contractMatch = registry.slice(
-    registry.indexOf("pub(super) fn contract"),
-    registry.indexOf("pub(in crate::platform) struct AdapterContract"),
-  );
-  assert.equal((contractMatch.match(/RuntimeAdapter::/g) ?? []).length, 13);
+});
+
+test('the shared adapter contract names no Agent', () => {
+  const contract = [
+    readFileSync(`${sdkRoot}/adapters/mod.rs`, 'utf8'),
+    readFileSync(`${sdkRoot}/registry.rs`, 'utf8'),
+    readFileSync(`${sdkRoot}/port.rs`, 'utf8'),
+    readFileSync(`${sdkRoot}/lifecycle.rs`, 'utf8'),
+    readFileSync(`${sdkRoot}/reconciliation.rs`, 'utf8'),
+    readFileSync(`${sdkRoot}/replay/mod.rs`, 'utf8'),
+  ].join('\n');
+  for (const adapter of adapters) {
+    assert.doesNotMatch(contract, new RegExp(`\\b${adapter}\\b`));
+  }
 });
 
 test('normalized runtime responses cross the typed final parser boundary', () => {
@@ -46,8 +69,8 @@ test('normalized runtime responses cross the typed final parser boundary', () =>
   assert.match(normalization, /"events": transitions/);
   assert.doesNotMatch(normalization, /"events": execution\.events/);
   const parserCore = [
-    readFileSync(`${parserRoot}/adapters/mod.rs`, 'utf8'),
-    readFileSync(`${parserRoot}/registry.rs`, 'utf8'),
+    readFileSync(`${sdkRoot}/adapters/mod.rs`, 'utf8'),
+    readFileSync(`${sdkRoot}/registry.rs`, 'utf8'),
   ].join('\n');
   assert.doesNotMatch(parserCore, /ReturnedFrames|DecodePolicy|decode_execution/);
 
@@ -119,7 +142,20 @@ test('interaction and lifecycle authorities are unbounded and write-once', () =>
   assert.doesNotMatch(approvalRoute, /PARKED_PERMISSIONS|ParkedPermission/);
   assert.match(approvalRoute, /native_agent_interaction::resolve/);
 
-  const lifecycle = readFileSync(`${parserRoot}/lifecycle.rs`, 'utf8');
+  // The lifecycle reducer moved to the adapter SDK, which owns it now. The
+  // first failure stays write-once, and the stages stay prefix closed: the
+  // reducer walks the declared machine from its initial state to the reported
+  // one rather than emitting a stage list of its own.
+  const lifecycle = readFileSync(`${sdkRoot}/lifecycle.rs`, 'utf8');
   assert.match(lifecycle, /if self\.failure\.is_some\(\)/);
-  assert.match(lifecycle, /LifecycleStage::ALL/);
+  assert.match(lifecycle, /parser_lifecycle::INITIAL/);
+  assert.match(lifecycle, /parser_lifecycle::transition\(current, Event::Advance\)/);
+  const machine = readFileSync(
+    'crates/licoup-agent-adapter-sdk/resources/state-machines/parser-lifecycle.json',
+    'utf8',
+  );
+  const declared = JSON.parse(machine).machines;
+  assert.equal(declared.length, 1);
+  assert.deepEqual(declared[0].terminal, ['completed']);
+  assert.equal(declared[0].initial, 'submitted');
 });

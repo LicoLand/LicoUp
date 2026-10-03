@@ -1,5 +1,5 @@
 use crate::platform::native_agent_parser::adapters::antigravity::valid_session_id;
-use crate::platform::native_agent_parser::adapters::driver_registry::{
+use licoup_agent_adapter_sdk::adapters::driver_registry::{
     registry_get, registry_insert, registry_remove,
 };
 use std::path::{Path, PathBuf};

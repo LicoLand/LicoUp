@@ -720,7 +720,9 @@ impl PiProtocol {
                 );
             }
             self.events.extend(
-                crate::platform::skill_invocation_projection::project_skill_invocations(message),
+                licoup_agent_adapter_sdk::skill_invocation_projection::project_skill_invocations(
+                    message,
+                ),
             );
             if let Some(event) = sanitized_event(message) {
                 self.events.push(event);

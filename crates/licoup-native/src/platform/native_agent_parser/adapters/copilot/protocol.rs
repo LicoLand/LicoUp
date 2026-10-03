@@ -408,7 +408,9 @@ impl AcpProtocol {
             );
         }
         let skill_events =
-            super::super::skill_invocation_projection::project_skill_invocations(update.payload());
+            licoup_agent_adapter_sdk::skill_invocation_projection::project_skill_invocations(
+                update.payload(),
+            );
         if skill_events.is_empty() {
             self.events.push(update.into_payload());
         } else {

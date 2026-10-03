@@ -7,6 +7,9 @@ export const CLIENT_MODULE_RUNNABLE_HOSTS = Object.freeze([
   "win32",
 ]);
 export const NATIVE_MANIFEST = "crates/licoup-native/Cargo.toml";
+// The shared Agent adapter contract lives in this crate, so the modules that
+// moved there run their tests against its manifest rather than against the host.
+export const ADAPTER_SDK_MANIFEST = "crates/licoup-agent-adapter-sdk/Cargo.toml";
 export const FOUNDATION_MANIFEST = "crates/licoup-foundation/Cargo.toml";
 
 export const FLUTTER_COMPOSITION_INPUTS = Object.freeze([
@@ -181,6 +184,21 @@ export function rustLayer(filter, harnessArgs = []) {
       "test",
       "--manifest-path",
       NATIVE_MANIFEST,
+      "--lib",
+      filter,
+      ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),
+    ],
+    10 * 60_000,
+  );
+}
+
+export function rustAdapterSdkLayer(filter, harnessArgs = []) {
+  return command(
+    "cargo",
+    [
+      "test",
+      "--manifest-path",
+      ADAPTER_SDK_MANIFEST,
       "--lib",
       filter,
       ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),
