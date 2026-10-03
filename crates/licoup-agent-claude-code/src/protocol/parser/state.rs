@@ -37,9 +37,9 @@ pub struct ProtocolFinishReport {
 pub struct ClaudeCodeStateMachine<'a> {
     pub(crate) config: &'a DriverConfig,
     /// The native identity the launch expected, when it had one.
-    pub(crate) expected_session_id: Option<String>,
+    pub expected_session_id: Option<String>,
     /// The native identity the CLI actually reported.
-    pub(crate) observed_session_id: Option<String>,
+    pub observed_session_id: Option<String>,
     effective: EffectiveSettings,
     started_emitted: bool,
     next_message_unit: u64,

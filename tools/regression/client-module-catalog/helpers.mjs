@@ -18,6 +18,7 @@ export const AGENT_TARGETS_MANIFEST = "crates/licoup-agent-targets/Cargo.toml";
 export const MODEL_CATALOG_MANIFEST = "crates/licoup-model-catalog/Cargo.toml";
 // An Agent adapter package is its own crate and program, so the modules that
 // own its protocol and its document run against its manifest rather than the host.
+export const AGENT_CLAUDE_CODE_MANIFEST = "crates/licoup-agent-claude-code/Cargo.toml";
 export const AGENT_CODEX_MANIFEST = "crates/licoup-agent-codex/Cargo.toml";
 
 export const FLUTTER_COMPOSITION_INPUTS = Object.freeze([
@@ -233,22 +234,32 @@ export function rustAdapterSdkLayer(filter, harnessArgs = []) {
   );
 }
 
-/// One module of the Codex adapter package's library. The package is its own
+/// One module of one Agent adapter package's library. A package is its own
 /// crate and program, so its leaves run against its own manifest rather than
 /// against the host that composes it.
-export function rustAgentPackageLayer(filter, harnessArgs = []) {
+export function rustAgentPackageLayer(manifest, filter, harnessArgs = []) {
   return command(
     "cargo",
     [
       "test",
       "--manifest-path",
-      AGENT_CODEX_MANIFEST,
+      manifest,
       "--lib",
       filter,
       ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),
     ],
     10 * 60_000,
   );
+}
+
+/// One module of the Codex adapter package's library.
+export function codexAgentPackageLayer(filter, harnessArgs = []) {
+  return rustAgentPackageLayer(AGENT_CODEX_MANIFEST, filter, harnessArgs);
+}
+
+/// One module of the Claude Code adapter package's library.
+export function claudeCodeAgentPackageLayer(filter, harnessArgs = []) {
+  return rustAgentPackageLayer(AGENT_CLAUDE_CODE_MANIFEST, filter, harnessArgs);
 }
 
 export function gatewayCoreLayer(filter, harnessArgs = []) {

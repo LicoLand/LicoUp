@@ -7,21 +7,13 @@
 //! The decision is written back as a `permission_response` control response
 //! so the CLI continues or aborts the turn itself.
 
-use super::errors::ProtocolFailure;
 use super::io::write_message;
 use super::transport::PersistentTransport;
-use crate::platform::native_agent_parser::adapters::claude_code::permission_response;
+use licoup_agent_claude_code::protocol::parser::permission_response;
+use licoup_agent_claude_code::protocol::{PermissionRequest, ProtocolFailure};
 use serde_json::json;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use uuid::Uuid;
-
-#[derive(Debug)]
-pub(in crate::platform) struct PermissionRequest {
-    pub(in crate::platform) request_id: String,
-    pub(in crate::platform) tool_use_id: Option<String>,
-    pub(in crate::platform) tool_name: Option<String>,
-    pub(in crate::platform) summary: String,
-}
 
 pub(super) struct PendingApproval {
     token: String,

@@ -1,9 +1,9 @@
 use super::super::process_supervisor::{
     BoundedStdinWriter, SupervisedChild, TransportFinishFailure, finish_protocol_transport,
 };
-use super::command::LaunchIdentity;
+use super::launch::LaunchIdentity;
 use super::control::ControlRequest;
-use super::errors::{ProtocolFailure, pipe_failure};
+use super::failure::{ProtocolFailure, pipe_failure};
 use super::io::{TransportEvent, drain_stderr, read_protocol_messages};
 use crate::platform::raw_execution::{
     RawExecutionBinding, RawExecutionBindingGuard, RawExecutionDirection, RawExecutionReader,
@@ -36,7 +36,7 @@ impl PersistentTransport {
         control_receiver: Receiver<ControlRequest>,
         max_stderr: usize,
     ) -> Result<Self, ProtocolFailure> {
-        let mut child = identity.spawn().map_err(|error| {
+        let mut child = super::launch::spawn(identity).map_err(|error| {
             let message = match error.kind() {
                 std::io::ErrorKind::NotFound => "The Claude Code executable is not available.",
                 std::io::ErrorKind::PermissionDenied => {

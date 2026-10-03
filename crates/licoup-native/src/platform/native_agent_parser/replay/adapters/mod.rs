@@ -12,7 +12,6 @@
 //! only reader, and it hands them to the SDK's harness through the parser set.
 
 mod antigravity;
-mod claude_code;
 mod cursor;
 mod deepseek_harness;
 mod hermes;
@@ -40,7 +39,7 @@ pub(in crate::platform) fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameR
     }
     Ok(match adapter_id {
         "antigravity" => Box::new(antigravity::Replay::new()?),
-        "claude-code" => Box::new(claude_code::Replay::new()?),
+        "claude-code" => licoup_agent_claude_code::replay::replay_arm(adapter_id)?,
         "codex" => licoup_agent_codex::replay::replay_arm(adapter_id)?,
         "copilot" | "kimi-code" => Box::new(acp_driver_runtime::replay::Replay::new(adapter_id)?),
         "cursor" => Box::new(cursor::Replay::new()?),

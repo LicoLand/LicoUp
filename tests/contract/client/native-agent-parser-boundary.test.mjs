@@ -2,26 +2,32 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-// The thirteen per-Agent parsers and the composition that names them stay in
-// the host; the shared adapter contract, the registry lookup, the replay
-// harness and the lifecycle authority moved to `licoup-agent-adapter-sdk`.
+// The per-Agent parsers that are still the host's and the composition that names
+// them stay in the host; the shared adapter contract, the registry lookup, the
+// replay harness and the lifecycle authority moved to
+// `licoup-agent-adapter-sdk`, and two Agents' protocols moved into their own
+// packages (`licoup-agent-codex`, `licoup-agent-claude-code`).
 const parserRoot = 'crates/licoup-native/src/platform/native_agent_parser';
 const compositionRoot = `${parserRoot}/adapters`;
 const sdkRoot = 'crates/licoup-agent-adapter-sdk/src';
-const adapters = [
-  'antigravity',
-  'claude_code',
-  'codex',
-  'copilot',
-  'cursor',
-  'hermes',
-  'kilo_code',
-  'kimi_code',
-  'openclaw',
-  'opencode',
-  'pi',
-  'lico_agent',
-  'deepseek_harness',
+
+// Every adapter the packaged inventory declares, in `RuntimeAdapter` order, and
+// where its parser declaration lives: `host` is a module beside the composition,
+// `package` is an adapter package this composition names.
+const inventory = [
+  { adapter: 'antigravity', owner: 'host' },
+  { adapter: 'claude_code', owner: 'package', package: 'licoup-agent-claude-code' },
+  { adapter: 'codex', owner: 'package', package: 'licoup-agent-codex' },
+  { adapter: 'copilot', owner: 'host' },
+  { adapter: 'cursor', owner: 'host' },
+  { adapter: 'hermes', owner: 'host' },
+  { adapter: 'kilo_code', owner: 'host' },
+  { adapter: 'kimi_code', owner: 'host' },
+  { adapter: 'openclaw', owner: 'host' },
+  { adapter: 'opencode', owner: 'host' },
+  { adapter: 'pi', owner: 'host' },
+  { adapter: 'lico_agent', owner: 'host' },
+  { adapter: 'deepseek_harness', owner: 'host' },
 ];
 
 test('packaged adapter registry is bijective with the thirteen-entry inventory', () => {
@@ -31,16 +37,23 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     composition.indexOf('/// The parser registrations this host injects'),
   );
   // Every entry names its Agent's declaration exactly once, and none inherits
-  // another Agent's answer.
-  assert.equal((registrations.match(/ParserRegistration::(?:unanswered|new)\(/g) ?? []).length, 13);
+  // another Agent's answer. An entry is either a constructor over a declaration
+  // this composition holds (`ParserRegistration::new` / `unanswered`) or the
+  // registration an adapter package publishes for itself.
+  const hostEntries = registrations.match(/ParserRegistration::(?:unanswered|new)\(/g) ?? [];
+  const packageEntries = registrations.match(/\w+::registration::REGISTRATION/g) ?? [];
+  assert.equal(
+    hostEntries.length + packageEntries.length,
+    inventory.length,
+    'one registration entry per packaged adapter',
+  );
+
   // The queries a reader reaches are answered by the Agent that owns the fact:
   // Hermes' normalized transitions, and the exact-resume identity of the four
   // Agents the Subagent mesh dispatches. Every other entry stays declared and
   // unanswered rather than inheriting a neighbouring Agent's answer.
   const answered = {
     antigravity: ['no_transitions', 'antigravity_identity'],
-    claude_code: ['no_transitions', 'claude_code_identity'],
-    codex: ['codex_transitions', 'codex_identity'],
     cursor: ['no_transitions', 'cursor_identity'],
     hermes: ['hermes_transitions', 'no_identity'],
   };
@@ -51,25 +64,53 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     const contract = chunk.match(/(\w+)::CONTRACT/);
     if (contract) entries.set(contract[1], chunk);
   }
-  assert.equal(entries.size, 13);
-  for (const adapter of adapters) {
-    assert.match(composition, new RegExp(`mod ${adapter};`));
-    const entry = entries.get(adapter);
-    assert.ok(entry, `no registration entry for ${adapter}`);
-    if (answered[adapter]) {
-      assert.match(entry, /^new\(/u);
-      for (const answer of answered[adapter]) {
-        assert.match(entry, new RegExp(`\\b${answer}\\b`, 'u'));
+  for (const { adapter, owner, package: packageName } of inventory) {
+    if (owner === 'host') {
+      assert.match(composition, new RegExp(`mod ${adapter};`));
+      const entry = entries.get(adapter);
+      assert.ok(entry, `no registration entry for ${adapter}`);
+      if (answered[adapter]) {
+        assert.match(entry, /^new\(/u);
+        for (const answer of answered[adapter]) {
+          assert.match(entry, new RegExp(`\\b${answer}\\b`, 'u'));
+        }
+      } else {
+        assert.match(entry, /^unanswered\(/u);
       }
-    } else {
-      assert.match(entry, /^unanswered\(/u);
+      const component = readFileSync(`${parserRoot}/adapters/${adapter}.rs`, 'utf8');
+      assert.match(component, /AdapterContract::new/);
+      continue;
     }
-    const component = readFileSync(
-      `${parserRoot}/adapters/${adapter}.rs`,
+    // A package-owned parser keeps no copy beside the composition: the entry is
+    // the package's own registration, and the package's crate declares the
+    // adapter contract its parser reports.
+    assert.equal(
+      composition.includes(`mod ${adapter};`),
+      false,
+      `${adapter} moved into ${packageName} and is not a host module`,
+    );
+    assert.match(
+      composition,
+      new RegExp(`${packageName.replaceAll('-', '_')}::registration::REGISTRATION`),
+      `the composition names ${packageName} for ${adapter}`,
+    );
+    // A package's parser declaration sits at the root of its own protocol
+    // module: `parser.rs` beside `app_server/` for Codex, `protocol/parser.rs`
+    // for Claude Code.
+    const declaration = readFileSync(
+      packageName === "licoup-agent-codex"
+        ? `crates/${packageName}/src/parser.rs`
+        : `crates/${packageName}/src/protocol/parser.rs`,
+      "utf8",
+    );
+    assert.match(declaration, /AdapterContract::new/);
+    const registration = readFileSync(
+      `crates/${packageName}/src/registration.rs`,
       'utf8',
     );
-    assert.match(component, /AdapterContract::new/);
+    assert.match(registration, /pub const REGISTRATION: ParserRegistration/);
   }
+  assert.equal(entries.size, inventory.filter(({ owner }) => owner === 'host').length);
 });
 
 test('the shared adapter contract names no Agent', () => {
@@ -81,7 +122,7 @@ test('the shared adapter contract names no Agent', () => {
     readFileSync(`${sdkRoot}/reconciliation.rs`, 'utf8'),
     readFileSync(`${sdkRoot}/replay/mod.rs`, 'utf8'),
   ].join('\n');
-  for (const adapter of adapters) {
+  for (const { adapter } of inventory) {
     assert.doesNotMatch(contract, new RegExp(`\\b${adapter}\\b`));
   }
 });

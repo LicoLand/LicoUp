@@ -19,7 +19,7 @@ pub(super) enum TransportEvent {
 
 pub(super) fn write_message(stdin: &mut BoundedStdinWriter, message: &Value) -> io::Result<()> {
     let bytes =
-        crate::platform::native_agent_parser::adapters::claude_code::encode_message(message)?;
+        licoup_agent_claude_code::protocol::parser::encode_message(message)?;
     if let Some(observer) = RawExecutionObserver::current() {
         observer.record_bytes("claude-code", RawExecutionDirection::Sent, &bytes);
     }

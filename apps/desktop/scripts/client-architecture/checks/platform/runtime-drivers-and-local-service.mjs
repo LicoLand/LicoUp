@@ -36,25 +36,45 @@ export async function checkRuntimeDriversAndLocalService(context, {
     "crates/licoup-native/src/platform/claude_code_driver.rs",
     ...claudeCodeDriverFiles
   ]);
+  // The vendor protocol, its parser and the launch vocabulary moved into the
+  // Claude Code adapter package; the client keeps the process half and reads
+  // the package rather than holding a second copy.
+  const claudeCodePackageRoot = "crates/licoup-agent-claude-code/src";
   const claudeCodeFoundationSource = await readJoinedText([
-    "crates/licoup-native/src/platform/claude_code_driver/errors.rs",
-    "crates/licoup-native/src/platform/claude_code_driver/model.rs",
-    "crates/licoup-native/src/platform/claude_code_driver/params.rs"
+    "crates/licoup-native/src/platform/claude_code_driver/failure.rs",
+    "crates/licoup-native/src/platform/claude_code_driver/reset.rs",
+    "crates/licoup-native/src/platform/claude_code_driver/model.rs"
   ]);
-  const claudeCodeCommandSource = await readText(
-    "crates/licoup-native/src/platform/claude_code_driver/command.rs"
-  );
+  const claudeCodeCommandSource = await readJoinedText([
+    `${claudeCodePackageRoot}/protocol/launch.rs`,
+    `${claudeCodePackageRoot}/protocol/params.rs`,
+    "crates/licoup-native/src/platform/claude_code_driver/launch.rs"
+  ]);
   const claudeCodeParserSource = await readJoinedText([
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code.rs",
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code/events.rs",
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code/state.rs"
+    `${claudeCodePackageRoot}/protocol/parser.rs`,
+    `${claudeCodePackageRoot}/protocol/parser/adapter.rs`,
+    `${claudeCodePackageRoot}/protocol/parser/events.rs`,
+    `${claudeCodePackageRoot}/protocol/parser/state.rs`
   ]);
   const claudeCodeEventsSource = await readText(
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code/events.rs"
+    `${claudeCodePackageRoot}/protocol/parser/events.rs`
   );
   const claudeCodeProtocolSource = await readText(
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code/state.rs"
+    `${claudeCodePackageRoot}/protocol/parser/state.rs`
   );
+  const claudeCodePackageSources = await readJoinedText([
+    `${claudeCodePackageRoot}/lib.rs`,
+    `${claudeCodePackageRoot}/registration.rs`,
+    `${claudeCodePackageRoot}/replay.rs`,
+    `${claudeCodePackageRoot}/port/execution.rs`,
+    `${claudeCodePackageRoot}/protocol/mod.rs`,
+    `${claudeCodePackageRoot}/protocol/control.rs`,
+    `${claudeCodePackageRoot}/protocol/failure.rs`,
+    `${claudeCodePackageRoot}/protocol/parser.rs`,
+    `${claudeCodePackageRoot}/protocol/parser/adapter.rs`,
+    `${claudeCodePackageRoot}/protocol/parser/events.rs`,
+    `${claudeCodePackageRoot}/protocol/parser/state.rs`
+  ]);
   const claudeCodeTransportSource = await readText(
     "crates/licoup-native/src/platform/claude_code_driver/transport.rs"
   );
@@ -75,6 +95,11 @@ export async function checkRuntimeDriversAndLocalService(context, {
       claudeCodeCommandSource.includes('"stream-json"') &&
       !claudeCodeCommandSource.includes('"--no-session-persistence"') &&
       claudeCodeCommandSource.includes('args.extend(["--resume".to_string(), session_id.clone()])') &&
+      // The package's protocol names no client crate: one copy, below the port.
+      !claudeCodePackageSources.includes("crate::platform") &&
+      !claudeCodePackageSources.includes("licoup_native") &&
+      !claudeCodePackageSources.includes("licoup-native") &&
+      claudeCodeDriverSource.includes("licoup_agent_claude_code::protocol") &&
       claudeCodeDriverSource.includes("MAX_POOLED_TRANSPORTS") &&
       claudeCodeDriverSource.includes("MAX_TRACKED_SESSIONS") &&
       claudeCodeDriverSource.includes("MAX_PROTOCOL_LINE_BYTES") &&
@@ -92,7 +117,7 @@ export async function checkRuntimeDriversAndLocalService(context, {
     "Claude Code parser adapter must own the sole raw-frame ingress, turn state, and redacted event projection"
   );
   for (const dependency of [
-    "command::",
+    "launch::",
     "control::",
     "events::",
     "execution::",
@@ -104,22 +129,21 @@ export async function checkRuntimeDriversAndLocalService(context, {
   ]) {
     assert(
       !claudeCodeFoundationSource.includes(dependency),
-      `Claude Code result, error, and parameter foundations must not depend on ${dependency}`
+      `Claude Code failure and result foundations must not depend on ${dependency}`
     );
   }
-  for (const dependency of ["execution::", "protocol::", "supervision::", "transport::"]) {
+  for (const dependency of ["execution::", "supervision::", "transport::"]) {
     assert(
       !claudeCodeCommandSource.includes(dependency),
-      `Claude Code command identity must not depend on ${dependency}`
+      `Claude Code launch identity must not depend on ${dependency}`
     );
   }
   for (const dependency of [
-    "command::",
+    "launch::",
     "control::",
     "execution::",
     "io::",
     "params::",
-    "protocol::",
     "supervision::",
     "transport::"
   ]) {

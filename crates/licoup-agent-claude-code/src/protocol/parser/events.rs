@@ -1,12 +1,12 @@
 use serde_json::{Value, json};
 
-pub(crate) fn partial_text_delta(message: &Value) -> Option<&str> {
+pub fn partial_text_delta(message: &Value) -> Option<&str> {
     (message.get("type").and_then(Value::as_str) == Some("stream_event"))
         .then(|| message.pointer("/event/delta/text").and_then(Value::as_str))
         .flatten()
 }
 
-pub(crate) fn processing_evidence_kind(message: &Value) -> Option<&'static str> {
+pub fn processing_evidence_kind(message: &Value) -> Option<&'static str> {
     let message_type = message.get("type").and_then(Value::as_str)?;
     if message_type == "assistant" {
         let blocks = message
@@ -54,7 +54,7 @@ pub(crate) fn processing_evidence_kind(message: &Value) -> Option<&'static str> 
 /// The name of the first tool the assistant used in this message (for example
 /// `Bash`), so the client can label the evidence step instead of a bare
 /// `tool`. Bounded to the tool name only; tool input stays local.
-pub(crate) fn processing_tool_name(message: &Value) -> Option<&str> {
+pub fn processing_tool_name(message: &Value) -> Option<&str> {
     let blocks = message
         .pointer("/message/content")
         .and_then(Value::as_array)?;
@@ -75,7 +75,7 @@ pub(crate) fn processing_tool_name(message: &Value) -> Option<&str> {
 /// Retain only the structured evidence needed to replay a process-local turn.
 /// Raw tool input, reasoning text, local paths, and vendor frames never enter
 /// the transcript projection.
-pub(crate) fn transcript_event(message: &Value) -> Option<Value> {
+pub fn transcript_event(message: &Value) -> Option<Value> {
     if message.get("type").and_then(Value::as_str) == Some("system")
         && message.get("subtype").and_then(Value::as_str) == Some("permission_denied")
     {

@@ -17,6 +17,7 @@ pub mod launch;
 pub mod params;
 pub mod settings;
 
+pub use control::PermissionRequest;
 pub use failure::{ProtocolFailure, ProtocolFailurePayload};
 pub use launch::{FIXED_STREAM_ARGS, LaunchIdentity};
 pub use params::DriverConfig;

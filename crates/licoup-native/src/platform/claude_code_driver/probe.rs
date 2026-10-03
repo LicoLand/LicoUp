@@ -1,6 +1,7 @@
 use super::super::process_supervisor::{IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded};
 use super::io::read_bounded;
-use super::model::{CapabilityProbe, PROCESS_POLL_INTERVAL};
+use super::model::PROCESS_POLL_INTERVAL;
+use licoup_agent_claude_code::protocol::CapabilityProbe;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};

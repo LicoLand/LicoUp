@@ -2331,6 +2331,7 @@ dependencies = [
  "licoarc-rust",
  "licoup-agent-adapter-sdk",
  "licoup-agent-adapters",
+ "licoup-agent-claude-code",
  "licoup-agent-codex",
  "licoup-agent-drivers",
  "licoup-agent-runtime",

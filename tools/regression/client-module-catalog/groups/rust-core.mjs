@@ -39,6 +39,17 @@ export const RUST_CORE_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "rust.core.agent-claude-code-package",
+      kind: "rust-core",
+      summary: "Claude Code adapter package program, vendor protocol, registration, and replay corpus",
+      inputs: ["crates/licoup-agent-claude-code/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-claude-code/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
       id: "rust.core.agent-codex-package",
       kind: "rust-core",
       summary: "Codex adapter package program, vendor protocol, registration, and replay corpus",

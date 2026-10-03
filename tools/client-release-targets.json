@@ -49,6 +49,11 @@
           "for": "migration-tool"
         },
         {
+          "role": "claude-code-adapter-package-payload",
+          "file": "LicoUp-package-org.licoland.adapter.claude-code.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.claude-code.licopkg"
+        },
+        {
           "role": "codex-adapter-package-payload",
           "file": "LicoUp-package-org.licoland.adapter.codex.licopkg",
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.codex.licopkg"

@@ -35,8 +35,36 @@ impl<'a> ClaudeCodeParser<'a> {
     }
 
     /// The protocol state machine this parser drives.
+    ///
+    /// The process half reads it for the failures it reports and the identity
+    /// the turn bound; the parser owns the classification, so both halves see
+    /// one state rather than two.
+    pub fn state(&self) -> &ClaudeCodeStateMachine<'a> {
+        &self.state
+    }
+
+    /// The protocol state machine this parser drives, mutably.
     pub fn state_mut(&mut self) -> &mut ClaudeCodeStateMachine<'a> {
         &mut self.state
+    }
+
+    /// Consume one already-decoded frame, as the replay arm and the process
+    /// half both do.
+    pub fn handle(
+        &mut self,
+        message: Value,
+    ) -> Result<Option<super::ProtocolFinishReport>, ProtocolFailure> {
+        self.state.handle(message)
+    }
+
+    /// This Agent's failure, carrying the identity the parser has bound.
+    pub fn failure(
+        &self,
+        code: &'static str,
+        message: &'static str,
+        stage: &'static str,
+    ) -> ProtocolFailure {
+        self.state.failure(code, message, stage)
     }
 
     /// Record that the client wrote a user-initiated interrupt for this turn.
