@@ -6,7 +6,7 @@ import 'package:licoup/src/application/features/plugin_management/controller/ada
 import 'package:licoup/src/application/features/plugin_management/controller/package_center_controller.dart';
 import 'package:licoup/src/application/features/plugin_management/controller/package_recommendation_controller.dart';
 import 'package:licoup/src/application/features/plugin_management/models/adapter_plugin_catalog.dart';
-import 'package:licoup/src/contracts/package_center_catalog.dart';
+import 'package:licoup/src/application/features/plugin_management/models/package_center_catalog.dart';
 import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_projection.dart';

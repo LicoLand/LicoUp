@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:licoup/src/application/features/plugin_management/models/adapter_plugin_catalog.dart';
-import 'package:licoup/src/contracts/package_center_catalog.dart';
+import 'package:licoup/src/application/features/plugin_management/models/package_center_catalog.dart';
 import 'package:licoup/src/application/features/plugin_management/models/package_first_launch_record.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
 
@@ -11,6 +11,25 @@ import 'package:licoup/src/application/state/application_signal.dart';
 /// to the same native install transaction the package center uses.
 abstract interface class PackageRecommendationInstallPort {
   Future<bool> installFromArchive(String archive);
+}
+
+/// One capability the native catalogue declares as available.
+///
+/// [archive] is the local package the capability would install; it stays empty
+/// until the availability cache names one, and an empty archive installs
+/// nothing rather than guessing a source.
+final class AvailablePackageCapability {
+  const AvailablePackageCapability({
+    required this.packageId,
+    required this.label,
+    required this.agentId,
+    this.archive = '',
+  });
+
+  final String packageId;
+  final String label;
+  final String agentId;
+  final String archive;
 }
 
 /// One offered package: what the native adapter catalog recommends and which
@@ -146,6 +165,10 @@ final class PackageRecommendationController extends ApplicationStateOwner {
     if (_running) return _outcome;
     if (!_loaded) await load();
     if (_record.firstLaunchCompleted) {
+      // This data home has already been offered. An offer still waiting for an
+      // answer belongs to the launch that made it, so it is dropped rather than
+      // re-presented by a later launch.
+      _pending = null;
       _outcome = const PackageBootstrapOutcome(
         markerRecorded: false,
         offered: false,
@@ -251,27 +274,30 @@ final class PackageRecommendationController extends ApplicationStateOwner {
     return results;
   }
 
-  /// Offer the capabilities one catalog reports as available but not installed.
+  /// Offer the capabilities the native catalogue names as available and not
+  /// installed.
   ///
   /// This is the first-use path: a capability that appeared after the first
-  /// launch settled is offered from the native availability fact, never from a
-  /// local guess. Returns `null` when nothing is available, when every available
-  /// capability is already declined, or before the first launch has settled.
+  /// launch settled is offered from the store's availability fact, never from a
+  /// local guess. [catalog] is the native package catalogue the store reported;
+  /// a capability it already holds as installed is not offered again.
+  ///
+  /// Returns `null` when nothing is available, when every available capability
+  /// is already declined or installed, or before the first launch has settled.
   PackageRecommendationOffer? offerOnFirstUse({
+    required List<AvailablePackageCapability> availability,
     required PackageCenterCatalog catalog,
   }) {
     if (!_record.firstLaunchCompleted) return null;
     final recommendations = <PackageRecommendation>[
-      for (final item in catalog.packages)
-        if (item.facts.available &&
-            !item.facts.installed &&
-            item.isOfferedToPackageCenter &&
-            !_record.declined(item.packageId))
+      for (final capability in availability)
+        if (!_record.declined(capability.packageId) &&
+            catalog.package(capability.packageId)?.facts.installed != true)
           PackageRecommendation(
-            packageId: item.packageId,
-            label: item.label,
-            agentId: item.agentId,
-            archive: '',
+            packageId: capability.packageId,
+            label: capability.label,
+            agentId: capability.agentId,
+            archive: capability.archive,
           ),
     ];
     if (recommendations.isEmpty) return null;
@@ -302,30 +328,43 @@ final class PackageRecommendationController extends ApplicationStateOwner {
     List<AdapterPluginDescriptor> adapters, {
     PackageCenterCatalog? catalog,
   }) {
-    final recommendations = <PackageRecommendation>[];
-    for (final adapter in adapters) {
-      if (adapter.managementKind != AdapterPluginManagementKind.managedBridge) {
-        continue;
-      }
-      if (adapter.installationState == 'installed') continue;
-      if (!adapter.supports(AdapterPluginLifecycleAction.install)) continue;
-      for (final plugin in adapter.plugins) {
-        if (!plugin.supports(AdapterPluginLifecycleAction.install)) continue;
-        if (plugin.installationState == 'installed') continue;
-        if (_record.declined(plugin.id)) continue;
-        if (catalog?.package(plugin.id)?.facts.installed == true) continue;
-        recommendations.add(
+    return [
+      for (final capability in availableCapabilities(adapters))
+        if (!_record.declined(capability.packageId) &&
+            catalog?.package(capability.packageId)?.facts.installed != true)
           PackageRecommendation(
-            packageId: plugin.id,
-            label: plugin.label,
-            agentId: adapter.agentId,
-            archive: '',
+            packageId: capability.packageId,
+            label: capability.label,
+            agentId: capability.agentId,
+            archive: capability.archive,
           ),
-        );
-      }
-    }
-    return recommendations;
+    ];
   }
+
+  /// The capabilities the native adapter catalogue declares as installable and
+  /// not installed, for the detected Agents it scanned off the frame.
+  ///
+  /// This is a projection of native declarations only: the renderer reads
+  /// `lifecycleActions` and `installationState` and invents nothing. It is the
+  /// one availability source the first-launch offer and the first-use offer
+  /// both read.
+  static List<AvailablePackageCapability> availableCapabilities(
+    List<AdapterPluginDescriptor> adapters,
+  ) => [
+    for (final adapter in adapters)
+      if (adapter.managementKind == AdapterPluginManagementKind.managedBridge &&
+          adapter.installationState != 'installed' &&
+          adapter.supports(AdapterPluginLifecycleAction.install))
+        for (final plugin in adapter.plugins)
+          if (plugin.supports(AdapterPluginLifecycleAction.install) &&
+              plugin.installationState != 'installed')
+            AvailablePackageCapability(
+              packageId: plugin.id,
+              label: plugin.label,
+              agentId: adapter.agentId,
+              archive: '',
+            ),
+  ];
 
   Future<void> _writeRecord(PackageFirstLaunchRecord record) async {
     _record = record;

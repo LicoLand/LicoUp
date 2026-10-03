@@ -1141,6 +1141,7 @@ export const FLUTTER_MODULES = Object.freeze([
       inputs: [
         "apps/desktop/lib/src/application/features/plugin_management/**",
         "apps/desktop/lib/src/application/controller/assembly/client_plugin_management_component_assembly.dart",
+        "apps/desktop/lib/src/contracts/package_center/package_facts.dart",
         "apps/desktop/lib/src/frontend/features/plugin_management/**",
         "apps/desktop/lib/src/contracts/presentation/semantic_destination.dart",
         "apps/desktop/lib/src/presentation/layout/semantic_destination_catalog.dart",
@@ -1150,6 +1151,8 @@ export const FLUTTER_MODULES = Object.freeze([
         "apps/desktop/test/client_interface_entry_hooks_test.dart",
         "apps/desktop/test/fixtures/plugin_management_presentation_fixture.dart",
         "apps/desktop/test/layout/semantic_destination_catalog_test.dart",
+        "apps/desktop/test/package_center_catalog_test.dart",
+        "apps/desktop/test/package_recommendation_test.dart",
         "apps/desktop/test/plugin_management_presentation_sources_test.dart",
       ],
       command: flutterTests([
@@ -1159,6 +1162,8 @@ export const FLUTTER_MODULES = Object.freeze([
         "test/optional_collaboration_settings_boundary_test.dart",
         "test/layout/semantic_destination_catalog_test.dart",
         "test/layout/profiles/dashboard/desktop/dashboard_desktop_bundle_test.dart",
+        "test/package_center_catalog_test.dart",
+        "test/package_recommendation_test.dart",
         "test/plugin_management_presentation_sources_test.dart",
       ]),
     }),

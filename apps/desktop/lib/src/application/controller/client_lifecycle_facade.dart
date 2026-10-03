@@ -293,8 +293,22 @@ mixin ClientLifecycleFacade
     await packageRecommendationController.load();
     await packageCenterController.refresh();
     await adapterPluginController.refresh();
-    await packageRecommendationController.runFirstLaunch(
+    final firstLaunch = await packageRecommendationController.runFirstLaunch(
       adapters: adapterPluginController.adapters,
+    );
+    if (firstLaunch.offered || firstLaunch.markerRecorded) {
+      // This launch either made the first offer or is the launch that recorded
+      // the marker: both settle the first launch, so nothing is offered a second
+      // time here.
+      return;
+    }
+    // First use: a capability the native catalogue names as available but not
+    // installed, and that this data home has not declined, is offered once.
+    packageRecommendationController.offerOnFirstUse(
+      availability: PackageRecommendationController.availableCapabilities(
+        adapterPluginController.adapters,
+      ),
+      catalog: packageCenterController.catalog,
     );
   }
 

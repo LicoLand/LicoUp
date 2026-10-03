@@ -1,5 +1,10 @@
 import 'dart:collection';
 
+import 'package:licoup/src/contracts/package_center/package_facts.dart';
+
+export 'package:licoup/src/contracts/package_center/package_facts.dart'
+    show PackageFacts;
+
 /// Wire schema of the native `package` command family
 /// (`licoup.package-lifecycle.v1`, declared by
 /// `schemas/client_bridge/package.json`).
@@ -77,50 +82,10 @@ enum PackageCapabilityKind {
 /// The four facts the package center renders, exactly as the native package
 /// store reported them.
 ///
-/// Only the forward implications the store itself enforces are required: an
-/// active instance needs an enabled package, which needs an installed one.
-/// Availability is deliberately not part of that chain — a local import is
-/// installed without ever being available.
-final class PackageFactsProjection {
-  const PackageFactsProjection({
-    required this.available,
-    required this.installed,
-    required this.enabled,
-    required this.active,
-  });
-
-  /// No capability is present at all: the not-installed state.
-  static const absent = PackageFactsProjection(
-    available: false,
-    installed: false,
-    enabled: false,
-    active: false,
-  );
-
-  final bool available;
-  final bool installed;
-  final bool enabled;
-  final bool active;
-
-  bool get notInstalled => !installed;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is PackageFactsProjection &&
-          other.available == available &&
-          other.installed == installed &&
-          other.enabled == enabled &&
-          other.active == active;
-
-  @override
-  int get hashCode => Object.hash(available, installed, enabled, active);
-
-  @override
-  String toString() =>
-      'PackageFactsProjection(available: $available, installed: $installed, '
-      'enabled: $enabled, active: $active)';
-}
+/// The value contract itself lives in
+/// `contracts/package_center/package_facts.dart`, so the renderer reads the four
+/// facts without importing the application layer.
+typedef PackageFactsProjection = PackageFacts;
 
 /// One package the native store reported.
 final class PackageCatalogItem {
