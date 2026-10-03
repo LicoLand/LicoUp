@@ -1,34 +1,30 @@
-//! Codex/Pi protocol adapters. Requests and response rules match the live parsers.
-//! Transport is injected; a stored binding row is never treated as resume success.
+//! The Codex and Pi protocol adapters, and the driver execution each reaches.
+//!
+//! This module answers the work-context seam's port for the two Agents this
+//! host composes today: how each one's protocol adapter is built and how each
+//! one's driver is executed. It is not the seam — that is
+//! `licoup-agent-drivers` — and it is not where either Agent stays: the Codex
+//! half travels to `licoup-agent-codex` and the Pi half to `licoup-agent-pi`
+//! when those crates exist.
+//!
+//! Requests and response rules match the live parsers. Transport is injected; a
+//! stored binding row is never treated as resume success.
 
 use std::sync::Arc;
 
+use licoup_agent_drivers::{
+    AdapterCall, AdapterResponse, AdapterTransport, AgentProtocolRegistration, DriverExecution,
+    DriverFailure, DriverInvocation, unverified_snapshot,
+};
 use licoup_agent_runtime::work_context::{
     CapabilityProfile, ForkInheritance, IsolationReview, NativeCapabilitySnapshot,
-    NativeCapabilitySupport, NativeControlRequest, NativeFidelity, NativeProtocolAdapter,
-    NativeWorkContextKey, ParallelPolicy, ProtocolFamily, ProtocolMethods, ProtocolOutcome,
-    SessionPresence, WorkContextConfig, WorkContextRuntime, identity_conflict, invalid_request,
-    native_binding_lost, protocol_methods, reconciliation_required, unsupported_capability,
-    work_context_runtime,
+    NativeControlRequest, NativeFidelity, NativeProtocolAdapter, NativeWorkContextKey,
+    ParallelPolicy, ProtocolFamily, ProtocolMethods, ProtocolOutcome, SessionPresence,
+    WorkContextConfig, WorkContextRuntime, identity_conflict, invalid_request, native_binding_lost,
+    protocol_methods, reconciliation_required, unsupported_capability, work_context_runtime,
 };
 use licoup_conversation::{ConversationStore, PrivateRuntimeBinding};
 use serde_json::{Value, json};
-
-use super::host_driver::HostDriverTransport;
-use super::transport::{AdapterCall, AdapterResponse, AdapterTransport};
-
-pub fn unverified_snapshot() -> NativeCapabilitySnapshot {
-    NativeCapabilitySnapshot {
-        exact_resume: NativeCapabilitySupport::Unverified,
-        fork: NativeCapabilitySupport::Unsupported,
-        compact: NativeCapabilitySupport::Unverified,
-        steer: NativeCapabilitySupport::Unverified,
-        cancel: NativeCapabilitySupport::Unverified,
-        tools: NativeCapabilitySupport::Unverified,
-        isolated_context: NativeCapabilitySupport::Unverified,
-        parallel_contexts: NativeCapabilitySupport::Unverified,
-    }
-}
 
 pub fn pi_session_id_missing(session_id: &str) -> bool {
     session_id.trim().is_empty()
@@ -519,32 +515,89 @@ impl NativeProtocolAdapter for PiAdapterProtocol {
     }
 }
 
-pub fn bind_adapter_work_context(
-    family: ProtocolFamily,
+// ---------------------------------------------------------------------------
+// The port this module answers
+// ---------------------------------------------------------------------------
+
+/// The Codex half of the port: how this host builds the Codex protocol adapter
+/// and executes the Codex driver.
+pub(super) const CODEX: AgentProtocolRegistration = AgentProtocolRegistration {
+    agent_id: "codex",
+    bind: bind_codex,
+    execute: execute_codex,
+};
+
+/// The Pi half of the port.
+pub(super) const PI: AgentProtocolRegistration = AgentProtocolRegistration {
+    agent_id: "pi",
+    bind: bind_pi,
+    execute: execute_pi,
+};
+
+fn bind_codex(
     config: WorkContextConfig,
-    transport: Arc<dyn AdapterTransport>,
     store: Option<ConversationStore>,
+    transport: Arc<dyn AdapterTransport>,
 ) -> WorkContextRuntime {
-    match family {
-        ProtocolFamily::Codex => {
-            work_context_runtime(CodexAdapterProtocol::new(store, transport), config)
-        }
-        ProtocolFamily::Pi => {
-            work_context_runtime(PiAdapterProtocol::new(store, transport), config)
-        }
+    work_context_runtime(CodexAdapterProtocol::new(store, transport), config)
+}
+
+fn bind_pi(
+    config: WorkContextConfig,
+    store: Option<ConversationStore>,
+    transport: Arc<dyn AdapterTransport>,
+) -> WorkContextRuntime {
+    work_context_runtime(PiAdapterProtocol::new(store, transport), config)
+}
+
+fn execute_codex(invocation: &DriverInvocation<'_>) -> DriverExecution {
+    let result = crate::platform::codex_app_server::execute(
+        invocation.executable,
+        invocation.params,
+        invocation.prompt,
+        invocation.session_id,
+        invocation.cwd,
+        invocation.timeout_ms,
+        invocation.max_stdout,
+        invocation.max_stderr,
+    );
+    let failure = result.error.as_ref().map(|error| DriverFailure {
+        code: error.code,
+        stage: error.stage,
+        message: error.message,
+        identity: error.thread_id.clone(),
+    });
+    DriverExecution {
+        ok: result.ok,
+        thread_id: result.thread_id,
+        session_id: result.session_id,
+        output: result.output,
+        failure,
     }
 }
 
-pub fn bind_persisted_work_context(
-    store: ConversationStore,
-    family: ProtocolFamily,
-    _profile: CapabilityProfile,
-    config: WorkContextConfig,
-) -> WorkContextRuntime {
-    bind_adapter_work_context(
-        family,
-        config,
-        Arc::new(HostDriverTransport::new(family)),
-        Some(store),
-    )
+fn execute_pi(invocation: &DriverInvocation<'_>) -> DriverExecution {
+    let result = crate::platform::pi_driver::execute(
+        invocation.executable,
+        invocation.params,
+        invocation.prompt,
+        invocation.session_id,
+        invocation.cwd,
+        invocation.timeout_ms,
+        invocation.max_stdout,
+        invocation.max_stderr,
+    );
+    let failure = result.error.as_ref().map(|error| DriverFailure {
+        code: error.code,
+        stage: error.stage,
+        message: error.message,
+        identity: error.session_id.clone(),
+    });
+    DriverExecution {
+        ok: result.ok,
+        thread_id: result.thread_id,
+        session_id: result.session_id,
+        output: result.output,
+        failure,
+    }
 }

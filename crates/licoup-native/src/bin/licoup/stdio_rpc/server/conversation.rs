@@ -1086,7 +1086,7 @@ impl PersistentConversationRuntime {
                 Ok(value)
             }
             Ok(Err(error)) => {
-                persist_runtime_failure(&turn, &error.client_error());
+                persist_runtime_failure(&turn, &licoup_native::platform::runtime_adapters::client_error::client_error(&error));
                 Err(error)
             }
             Err(_) => {
@@ -2170,7 +2170,7 @@ where
             terminal_sequence,
             persistent_turn.as_ref(),
             observer_connected.load(Ordering::Acquire),
-            error.client_error(),
+            licoup_native::platform::runtime_adapters::client_error::client_error(&error),
         ),
         Err(_) => finish_error(
             writer,

@@ -336,7 +336,7 @@ where
                                 &writer,
                                 Some(&request.id),
                                 Some(&request.workflow_id),
-                                &error.client_error(),
+                                &licoup_native::platform::runtime_adapters::client_error::client_error(&error),
                             )?,
                         }
                     } else if operation == "send" {

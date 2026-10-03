@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn permission_request_parks_for_external_approval_when_session_exists() {
-    let mut protocol = SessionProtocol::new(config(json!({}), "hello", "native-session"));
+    let mut protocol = SessionProtocol::new(config(json!({}), "hello", "native-session"), HERMES_SESSION_DRIVER.driver_id);
     initialize(&mut protocol);
     protocol.handle_message(json!({"jsonrpc": "2.0", "id": SESSION_REQUEST_ID, "result": null}));
     let effects = protocol.handle_message(json!({
@@ -30,7 +30,7 @@ fn permission_request_parks_for_external_approval_when_session_exists() {
 
 #[test]
 fn permission_request_without_session_fails_closed() {
-    let mut protocol = SessionProtocol::new(config(json!({}), "hello", ""));
+    let mut protocol = SessionProtocol::new(config(json!({}), "hello", ""), HERMES_SESSION_DRIVER.driver_id);
     // Skip session establishment so there is no durable pause handle.
     protocol.phase = ProtocolPhase::AwaitPrompt;
     let effects = protocol.handle_message(json!({
@@ -57,7 +57,7 @@ fn permission_request_without_session_fails_closed() {
 #[cfg(unix)]
 #[test]
 fn permission_denial_stops_autonomous_dispatch() {
-    let mut protocol = SessionProtocol::new(config(json!({}), "hello", "native-session"));
+    let mut protocol = SessionProtocol::new(config(json!({}), "hello", "native-session"), HERMES_SESSION_DRIVER.driver_id);
     initialize(&mut protocol);
     protocol.handle_message(json!({"jsonrpc": "2.0", "id": SESSION_REQUEST_ID, "result": null}));
     protocol.interaction_failure = Some(ProtocolFailure::user_interaction(

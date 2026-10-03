@@ -31,7 +31,7 @@ impl Replay {
                 model: None,
                 turn_id: TURN_ID.to_owned(),
                 mcp_servers: Vec::new(),
-            }),
+            }, "hermes-acp"),
         })
     }
 }

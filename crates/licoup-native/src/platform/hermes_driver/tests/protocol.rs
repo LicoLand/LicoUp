@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn exact_resume_uses_session_load_inside_json_rpc() {
-    let mut protocol = SessionProtocol::new(config(json!({}), "hello", "native-session"));
+    let mut protocol = SessionProtocol::new(config(json!({}), "hello", "native-session"), HERMES_SESSION_DRIVER.driver_id);
     let session = sent_messages(initialize(&mut protocol));
     assert_eq!(session[0]["method"], "session/load");
     assert_eq!(session[0]["params"]["sessionId"], "native-session");
@@ -10,7 +10,7 @@ fn exact_resume_uses_session_load_inside_json_rpc() {
 
 #[test]
 fn interrupted_turn_keeps_native_session_for_exact_continue() {
-    let mut protocol = SessionProtocol::new(config(json!({}), "hello", "native-session"));
+    let mut protocol = SessionProtocol::new(config(json!({}), "hello", "native-session"), HERMES_SESSION_DRIVER.driver_id);
     initialize(&mut protocol);
     protocol.handle_message(json!({"jsonrpc": "2.0", "id": SESSION_REQUEST_ID, "result": null}));
     let effects = protocol.handle_message(json!({
@@ -30,7 +30,7 @@ fn interrupted_turn_keeps_native_session_for_exact_continue() {
 
 #[test]
 fn exact_resume_returns_requested_identity_after_prompt() {
-    let mut protocol = SessionProtocol::new(config(json!({}), "hello", "native-session"));
+    let mut protocol = SessionProtocol::new(config(json!({}), "hello", "native-session"), HERMES_SESSION_DRIVER.driver_id);
     let session = sent_messages(initialize(&mut protocol));
     assert_eq!(session[0]["method"], "session/load");
     assert_eq!(session[0]["params"]["sessionId"], "native-session");
@@ -51,7 +51,7 @@ fn exact_resume_returns_requested_identity_after_prompt() {
 
 #[test]
 fn resume_returning_a_different_identity_fails_before_prompt() {
-    let mut protocol = SessionProtocol::new(config(json!({}), "hello", "native-session"));
+    let mut protocol = SessionProtocol::new(config(json!({}), "hello", "native-session"), HERMES_SESSION_DRIVER.driver_id);
     initialize(&mut protocol);
     let effects = protocol.handle_message(json!({
         "jsonrpc": "2.0",
@@ -74,7 +74,7 @@ fn resume_returning_a_different_identity_fails_before_prompt() {
 
 #[test]
 fn create_without_native_identity_fails_closed() {
-    let mut protocol = SessionProtocol::new(config(json!({}), "hello", ""));
+    let mut protocol = SessionProtocol::new(config(json!({}), "hello", ""), HERMES_SESSION_DRIVER.driver_id);
     initialize(&mut protocol);
     let effects = protocol.handle_message(json!({
         "jsonrpc": "2.0",

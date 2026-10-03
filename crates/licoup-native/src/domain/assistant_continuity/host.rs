@@ -58,7 +58,7 @@ use crate::platform::runtime_adapters::{
     RuntimeAdapter, RuntimeAdapterError, adapter_for_agent_public,
 };
 use crate::platform::work_context_ports::{
-    AdapterTransport, HostDriverTransport, bind_adapter_work_context, bind_host_work_context,
+    AdapterTransport, bind_adapter_work_context, bind_host_work_context,
 };
 
 use super::adoption::{AdoptionPolicy, stage_from_coverage};
@@ -482,7 +482,7 @@ impl ContinuityHost {
             parent_conversation_id,
             goal_id,
             family,
-            Arc::new(HostDriverTransport::new(family)),
+            Arc::new(crate::platform::work_context_ports::host_driver_transport(family)),
             generation,
         )
     }

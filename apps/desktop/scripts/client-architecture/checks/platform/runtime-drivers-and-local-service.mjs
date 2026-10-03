@@ -383,28 +383,30 @@ export async function checkRuntimeDriversAndLocalService(context, {
     "OpenCode must remain a serve-only adapter over the neutral ACP model without a retired stdio sibling"
   );
 
+  // The control plane is owned by `licoup-agent-drivers`; the host reaches it
+  // through the re-export at `platform::local_service`.
   const localServiceFacadeSource = await readText(
-    "crates/licoup-native/src/platform/local_service.rs"
+    "crates/licoup-agent-drivers/src/local_service.rs"
   );
   const localServiceFiles = await collectSourceFiles(
-    "crates/licoup-native/src/platform/local_service",
+    "crates/licoup-agent-drivers/src/local_service",
     ".rs"
   );
   const localServiceProductionFiles = localServiceFiles.filter(
     (relativePath) => !relativePath.includes("/tests/")
   );
   const localServiceSource = await readJoinedText([
-    "crates/licoup-native/src/platform/local_service.rs",
+    "crates/licoup-agent-drivers/src/local_service.rs",
     ...localServiceProductionFiles
   ]);
   const localServiceHttpSource = await readText(
-    "crates/licoup-native/src/platform/local_service/http.rs"
+    "crates/licoup-agent-drivers/src/local_service/http.rs"
   );
   const localServiceSseSource = await readText(
-    "crates/licoup-native/src/platform/local_service/sse.rs"
+    "crates/licoup-agent-drivers/src/local_service/sse.rs"
   );
   const localServiceServeSource = await readText(
-    "crates/licoup-native/src/platform/local_service/serve.rs"
+    "crates/licoup-agent-drivers/src/local_service/serve.rs"
   );
   assert(
     !localServiceFacadeSource.includes("ureq::") &&

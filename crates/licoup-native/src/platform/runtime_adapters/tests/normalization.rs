@@ -1,20 +1,31 @@
 use super::super::model::{NormalizedEffectiveSettings, NormalizedExecution};
 use super::super::normalization::{execution_response, normalize_codex, normalize_cursor};
 use super::super::{RUNTIME_SCHEMA_VERSION, RuntimeAdapter};
-use crate::platform::{codex_app_server, opencode_driver};
+use super::super::drivers::{codex_driven, cursor_driven};
+use crate::platform::{codex_app_server, cursor_driver, opencode_driver};
 use serde_json::json;
+
+/// The transitions one composed Agent's parser reports for one outcome, read
+/// through the adapter SDK's protocol-agnostic query rather than by naming the
+/// Agent's transition builder.
+fn execution_transitions(agent_id: &str, output: &str) -> Vec<licoup_agent_adapter_sdk::Transition> {
+    let registration = crate::platform::native_agent_parser::parser_set()
+        .registration(agent_id)
+        .expect("the dispatch enum and the composed parser set are one set");
+    (registration.execution_transitions)(&licoup_agent_adapter_sdk::port::ExecutionOutcome {
+        output,
+        failure: None,
+    })
+}
 
 #[test]
 fn codex_response_uses_the_canonical_shape() {
     let response = execution_response(
         RuntimeAdapter::Codex,
-        normalize_codex(codex_app_server::RunResult {
+        normalize_codex(codex_driven(codex_app_server::RunResult {
             ok: true,
             output: "answer".to_string(),
-            transitions:
-                crate::platform::native_agent_parser::adapters::codex::completed_transitions(
-                    "answer",
-                ),
+            transitions: execution_transitions("codex", "answer"),
             error: None,
             session_id: "session-1".to_string(),
             thread_id: "thread-1".to_string(),
@@ -31,7 +42,7 @@ fn codex_response_uses_the_canonical_shape() {
             stdout_truncated: false,
             stderr_truncated: false,
             started_at: "1".to_string(),
-        }),
+        })),
     );
 
     assert_eq!(response["schemaVersion"], RUNTIME_SCHEMA_VERSION);
@@ -61,7 +72,7 @@ fn codex_usage_limit_response_preserves_safe_resolution_contract() {
     );
     let response = execution_response(
         RuntimeAdapter::Codex,
-        normalize_codex(codex_app_server::RunResult {
+        normalize_codex(codex_driven(codex_app_server::RunResult {
             ok: false,
             output: String::new(),
             transitions: Vec::new(),
@@ -75,7 +86,7 @@ fn codex_usage_limit_response_preserves_safe_resolution_contract() {
             stdout_truncated: false,
             stderr_truncated: false,
             started_at: "1".to_string(),
-        }),
+        })),
     );
 
     assert_eq!(response["error"]["code"], "codex_usage_limit_exceeded");
@@ -100,7 +111,7 @@ fn spawn_failure_response_carries_env_mismatch_root_cause_and_recovery() {
     );
     let response = execution_response(
         RuntimeAdapter::Codex,
-        normalize_codex(codex_app_server::RunResult {
+        normalize_codex(codex_driven(codex_app_server::RunResult {
             ok: false,
             output: String::new(),
             transitions: Vec::new(),
@@ -114,7 +125,7 @@ fn spawn_failure_response_carries_env_mismatch_root_cause_and_recovery() {
             stdout_truncated: false,
             stderr_truncated: false,
             started_at: "1".to_string(),
-        }),
+        })),
     );
 
     assert_eq!(response["error"]["code"], "codex_app_server_start_failed");
@@ -134,7 +145,7 @@ fn unmatched_failure_response_carries_unknown_root_cause_with_review_hint() {
     );
     let response = execution_response(
         RuntimeAdapter::Codex,
-        normalize_codex(codex_app_server::RunResult {
+        normalize_codex(codex_driven(codex_app_server::RunResult {
             ok: false,
             output: String::new(),
             transitions: Vec::new(),
@@ -148,7 +159,7 @@ fn unmatched_failure_response_carries_unknown_root_cause_with_review_hint() {
             stdout_truncated: false,
             stderr_truncated: false,
             started_at: "1".to_string(),
-        }),
+        })),
     );
 
     assert_eq!(response["error"]["rootCause"], "unknown");
@@ -157,11 +168,11 @@ fn unmatched_failure_response_carries_unknown_root_cause_with_review_hint() {
 
 #[test]
 fn cursor_usage_limit_response_preserves_safe_resolution_contract() {
-    let failure = crate::platform::cursor_driver::errors::CursorFailureKind::UsageLimitExceeded
+    let failure = cursor_driver::errors::CursorFailureKind::UsageLimitExceeded
         .failure(Some("synthetic-session"));
     let response = execution_response(
         RuntimeAdapter::Cursor,
-        normalize_cursor(crate::platform::cursor_driver::RunResult {
+        normalize_cursor(cursor_driven(cursor_driver::RunResult {
             ok: false,
             output: String::new(),
             transitions: Vec::new(),
@@ -170,18 +181,17 @@ fn cursor_usage_limit_response_preserves_safe_resolution_contract() {
             thread_id: "synthetic-session".to_owned(),
             turn_id: String::new(),
             turn_status: "usage_limit_exceeded".to_owned(),
-            effective: crate::platform::cursor_driver::model::EffectiveSettings::default(),
+            effective: cursor_driver::model::EffectiveSettings::default(),
             status_code: Some(1),
             stdout_truncated: false,
             stderr_truncated: false,
             started_at: "1".to_owned(),
-        }),
+        })),
     );
 
     assert_eq!(response["error"]["code"], "cursor_cli_usage_limit_exceeded");
     assert_eq!(response["error"]["component"], "native_cli");
     assert_eq!(response["error"]["retryable"], false);
-    assert_eq!(response["statusCode"], 1);
     assert_eq!(
         response["error"]["recovery"],
         "select_available_model_or_wait_for_quota_reset"

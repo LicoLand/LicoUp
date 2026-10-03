@@ -10,7 +10,9 @@ use serde_json::{Map, Value, json};
 use std::sync::Arc;
 
 pub fn production_application() -> Result<SubagentApplication, SubagentError> {
-    let adapters = crate::platform::runtime_adapters::production_subagent_registry();
+    let adapters = crate::platform::runtime_adapters::production_subagent_registry(
+        crate::target_port::agent_target_port(),
+    );
     Ok(SubagentApplication::new(
         Arc::new(NativeConversationHost),
         adapters.clone(),
@@ -615,7 +617,9 @@ mod tests {
 
     #[test]
     fn target_projection_drops_user_labels_and_private_inventory() {
-        let adapters = crate::platform::runtime_adapters::production_subagent_registry();
+        let adapters = crate::platform::runtime_adapters::production_subagent_registry(
+        crate::target_port::agent_target_port(),
+    );
         let projected = project_target(
             &json!({
                 "target": "cursor",

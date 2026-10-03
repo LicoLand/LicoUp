@@ -63,17 +63,6 @@ const PACKAGED_ADAPTER_IDS: [&str; 13] = [
     "deepseek-harness",
 ];
 
-/// Dispatch-time admission: the adapter this host is about to dispatch must
-/// have a parser in the set this host composes.
-///
-/// The lookup is the SDK registry's string-keyed one, read with the dispatch
-/// enum's own identity, so the admission and the declaration the parser reports
-/// cannot disagree about which Agent is being dispatched.
-pub(in crate::platform) fn require_registered(
-    adapter: crate::platform::runtime_adapters::RuntimeAdapter,
-) {
-    licoup_agent_adapter_sdk::registry::require_registered(&parser_set(), adapter.id());
-}
 
 /// The parser set this host injects into the adapter SDK.
 ///

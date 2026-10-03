@@ -73,7 +73,8 @@ fn observe_skill_invocations(params: &Value, result: &Value) {
 }
 
 fn agent_conversation_failure(error: &RuntimeAdapterError) -> Value {
-    let client_error: ClientError = error.client_error();
+    let client_error: ClientError =
+        crate::platform::runtime_adapters::client_error::client_error(error);
     serde_json::json!({
         "ok": false,
         "error": client_error

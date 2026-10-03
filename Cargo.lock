@@ -2071,6 +2071,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-agent-drivers"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "fs2",
+ "licoup-agent-adapter-sdk",
+ "licoup-agent-adapters",
+ "licoup-agent-runtime",
+ "licoup-agent-targets",
+ "licoup-application",
+ "licoup-conversation",
+ "licoup-foundation",
+ "licoup-mcp",
+ "licoup-state-machine-codegen",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "time",
+ "ureq",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "licoup-agent-runtime"
 version = "0.3.0"
 dependencies = [
@@ -2152,6 +2176,7 @@ name = "licoup-foundation"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "base64",
  "command-group",
  "flate2",
  "fs2",
@@ -2275,6 +2300,7 @@ dependencies = [
  "licoarc-rust",
  "licoup-agent-adapter-sdk",
  "licoup-agent-adapters",
+ "licoup-agent-drivers",
  "licoup-agent-runtime",
  "licoup-agent-targets",
  "licoup-application",

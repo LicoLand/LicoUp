@@ -31,6 +31,10 @@ licoup-endpoint-core = { path = "../licoup-endpoint-core" }
 licoup-platform-bridges = { path = "../licoup-platform-bridges" }
 licoup-agent-adapters = { path = "../licoup-agent-adapters" }
 licoup-agent-adapter-sdk = { path = "../licoup-agent-adapter-sdk" }
+# The host side of Agent execution: the adapter registry, adapter execution,
+# the work-context seam and the protocol engines. This host composes it and
+# answers its ports; the crate never reaches back into the host.
+licoup-agent-drivers = { path = "../licoup-agent-drivers" }
 licoup-agent-runtime = { path = "../licoup-agent-runtime" }
 licoup-application = { path = "../licoup-application" }
 licoup-project = { path = "../licoup-project" }
@@ -124,6 +128,7 @@ licoup-conversation = { path = "../licoup-conversation", features = ["test-count
 # read travel behind an explicit feature, because `cfg(test)` is false for a
 # dependency.
 licoup-agent-targets = { path = "../licoup-agent-targets", features = ["test-support"] }
+licoup-agent-drivers = { path = "../licoup-agent-drivers", features = ["test-support"] }
 licoup-gateway = { path = "../licoup-gateway" }
 licoup-foundation = { path = "../licoup-foundation", features = ["test-support"] }
 trybuild = { path = "../trybuild" }

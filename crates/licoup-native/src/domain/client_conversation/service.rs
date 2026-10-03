@@ -1774,7 +1774,9 @@ impl ConversationService {
                 // Pre-dispatch rejection: settle the turn only when its
                 // dispatch was never opened. An opened dispatch already
                 // belongs to the completion authority.
-                let projected = serde_json::to_value(error.client_error())?;
+                let projected = serde_json::to_value(crate::platform::runtime_adapters::client_error::client_error(
+                    &error,
+                ))?;
                 let diagnostic = serde_json::to_string(&json!({
                     "code": safe_failure_field(
                         &projected,
@@ -2920,7 +2922,7 @@ mod tests {
             // dispatch tests do.
             let mut admitted = params.clone();
             admitted["binaryPath"] = json!("/bin/sh");
-            let result = send_message(&admitted);
+            let result = send_message(&crate::target_port::agent_target_port(), &admitted);
             recorded
                 .lock()
                 .unwrap()
