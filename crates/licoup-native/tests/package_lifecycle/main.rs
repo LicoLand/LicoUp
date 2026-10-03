@@ -958,3 +958,114 @@ fn every_installed_archive_is_bounded_before_it_is_written() {
 
     cleanup(&root);
 }
+
+// ---------------------------------------------------------------------------
+// The committed release fixture imports offline
+// ---------------------------------------------------------------------------
+
+/// The committed release fixture is the same package the release pipeline
+/// packages and signs in `tools/scripts/client-release-package-index.mjs`: a
+/// host manifest plus the package's own release declaration (identity, version,
+/// client compatibility and a native converter entry).
+///
+/// This test builds the archive from those declared sources exactly as the
+/// packaging tool does and imports it with no directory, no account, no network
+/// and no agent. What it proves about the binary-only requirement is structural:
+/// the manifest references no interpreter, no archive entry is a script, and the
+/// host record keeps no runtime reference to release, so the client starts the
+/// entry the package ships.
+#[test]
+fn a_first_party_native_converter_package_imports_offline_from_its_release_fixture() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/client_package_release/fixture-native-converter");
+    assert!(fixture.is_dir(), "the release package fixture is missing");
+
+    let manifest_text = std::fs::read_to_string(fixture.join("manifest.json")).expect("manifest");
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_text).expect("manifest json");
+    let declaration_text =
+        std::fs::read_to_string(fixture.join("package-release.json")).expect("declaration");
+    let declaration: serde_json::Value =
+        serde_json::from_str(&declaration_text).expect("declaration json");
+
+    let package_id = manifest["id"].as_str().expect("package id").to_owned();
+    let version = manifest["version"]
+        .as_str()
+        .expect("package version")
+        .to_owned();
+    let entry = manifest["runtime"]["entry"]
+        .as_str()
+        .expect("runtime entry")
+        .to_owned();
+    assert_eq!(manifest["runtime"]["mode"], "process");
+    assert!(
+        manifest["runtime"]["runtimeRef"].is_null(),
+        "an official package declares no interpreter"
+    );
+    assert_eq!(declaration["converter"]["kind"], "native-executable");
+    assert_eq!(
+        declaration["converter"]["entry"].as_str(),
+        Some(entry.as_str())
+    );
+    assert_eq!(declaration["packageId"].as_str(), Some(package_id.as_str()));
+    assert_eq!(
+        declaration["packageVersion"].as_str(),
+        Some(version.as_str())
+    );
+
+    let converter = std::fs::read(fixture.join(&entry)).expect("converter entry");
+    assert!(
+        !converter.starts_with(b"#!"),
+        "the converter entry is a program, not a script"
+    );
+
+    let bytes = archive(&[
+        ("manifest.json", manifest_text.into_bytes()),
+        ("package-release.json", declaration_text.into_bytes()),
+        (entry.as_str(), converter),
+    ]);
+
+    // The trust record is bound to these bytes and covers exactly the
+    // permissions the package asks for: the import decides nothing else.
+    let permissions = manifest["permissions"]
+        .as_array()
+        .expect("permissions")
+        .iter()
+        .map(|permission| {
+            PermissionRequest::new(
+                permission["capability"].as_str().expect("capability"),
+                permission["scope"].as_str().expect("scope"),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let (root, store) = store("release-package-fixture");
+    let outcome = store
+        .install_local_import(
+            &package_id,
+            &version,
+            TrustRecord::local_approved(content_digest_of(&bytes), permissions).expect("trust"),
+            &bytes,
+        )
+        .expect("offline import of the release fixture");
+
+    assert_eq!(outcome.installed.source, PackageSource::LocalImport);
+    assert_eq!(
+        outcome.installed.trust_channel,
+        PackageLifecycle::LocalApproved
+    );
+    assert_eq!(outcome.processes_spawned, 0);
+    assert!(
+        outcome.installed.install_scripts.is_empty(),
+        "no install script runs for a native package"
+    );
+    assert_eq!(
+        outcome.installed.runtime_ref, None,
+        "the host starts the entry the package ships"
+    );
+    assert_eq!(outcome.installed.digest, content_digest_of(&bytes));
+    assert_eq!(outcome.installed.package_id, package_id);
+    assert_eq!(outcome.installed.version, version);
+    assert_eq!(store.installed().expect("installed").len(), 1);
+
+    cleanup(&root);
+}

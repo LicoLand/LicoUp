@@ -24,6 +24,7 @@ import {
   parsePackageClientArgs,
   validateMacosPackagingHost,
 } from "./package-client/cli-policy.mjs";
+import { selectPackagingModules } from "./package-client/module-selection.mjs";
 import { readFileSync } from "node:fs";
 import { sha256File } from "../../../tools/scripts/lib/client-release-artifact-digest.mjs";
 import {
@@ -319,6 +320,39 @@ const canonicalConfig = JSON.parse(readFileSync(
   "utf8",
 ));
 validatePackagingConfig(canonicalConfig);
+// An optional module is a capability this release may ship without: it can be
+// disabled, it reports itself as skipped, and no required module may depend on
+// it. A required module still cannot be disabled.
+const withoutOptional = selectPackagingModules(canonicalConfig, {
+  platform: "macos",
+  enabledOverrides: [],
+  disabledOverrides: ["extension-packages"],
+});
+requireValue(
+  withoutOptional.selected.every((module) => module.id !== "extension-packages") &&
+    withoutOptional.skipped.some((module) =>
+      module.id === "extension-packages" && module.status === "disabled"),
+  "optional_packaging_module_disable_failed",
+);
+requireValue(
+  withoutOptional.skipped.every((module) =>
+    module.required !== true || module.status === "skipped-platform"),
+  "optional_packaging_module_selection_invalid",
+);
+expectRejected(
+  () => selectPackagingModules(canonicalConfig, {
+    platform: "macos",
+    enabledOverrides: [],
+    disabledOverrides: ["native-sidecar"],
+  }),
+  "required_packaging_module_disable_was_accepted",
+);
+const optionalDependency = structuredClone(canonicalConfig);
+optionalDependency.modules["local-task-queue"].requires = ["extension-packages"];
+expectRejected(
+  () => validatePackagingConfig(optionalDependency),
+  "required_module_optional_dependency_was_accepted",
+);
 if (process.platform === "darwin" && process.arch === "arm64") {
   const macosArm64Options = parsePackageClientArgs(
     [

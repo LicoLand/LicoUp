@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "licomesh.client-release-package-set.v1",
+  "packages": [
+    {
+      "packageId": "org.licoland.fixture.native-converter",
+      "source": "tests/fixtures/client_package_release/fixture-native-converter"
+    }
+  ]
+}

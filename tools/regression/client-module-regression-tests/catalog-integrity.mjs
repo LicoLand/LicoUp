@@ -507,6 +507,7 @@ const LEGACY_LANE_EQUIVALENT_MODULES = Object.freeze({
   "client:promotion:self-test": ["regression.release-workflow-contracts"],
   "client:pricing:check": ["release.model-pricing"],
   "client:release:packages:self-test": ["regression.release-workflow-contracts"],
+  "client:verify:package-index:self-test": ["release.package-index"],
   "client:verify:android-physical-install-launch:self-test": [
     "regression.android-physical-install-launch-source-bundle",
   ],

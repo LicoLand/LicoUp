@@ -52,6 +52,11 @@ const builderScript = "apps/desktop/scripts/build-platform-release-package.mjs";
 const stagingScript = "tools/scripts/client-release-packages.mjs";
 const migrationToolAsset = "LicoUp-migrate-macos-arm64";
 const migrationToolDigest = `${migrationToolAsset}.sha256`;
+// The macOS direct target also carries the independent package pair produced by
+// the package index tool. This fixture must supply those producer outputs so
+// the same builder and staging commands stay exercised end to end.
+const packagePayloadAsset = "LicoUp-package-fixture-native-converter.licopkg";
+const packageIndexAsset = "LicoUp-package-index.json";
 const productVersion = JSON.parse(
   readFileSync(path.join(repoRoot, "tools/client-version.json"), "utf8"),
 ).productVersion;
@@ -162,6 +167,16 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
       releaseToolsDirectory("macos"),
       migrationToolAsset,
     ),
+    "package-payload": path.join(
+      fixture,
+      "build", "apps", "desktop", "release-packages", "macos",
+      packagePayloadAsset,
+    ),
+    "package-index": path.join(
+      fixture,
+      "build", "apps", "desktop", "release-packages", "macos",
+      packageIndexAsset,
+    ),
   };
   mkdirSync(path.dirname(syntheticCandidates.installer), { recursive: true });
   writeFileSync(syntheticCandidates.installer, "synthetic installer payload\n");
@@ -171,6 +186,9 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
     syntheticCandidates["migration-tool"],
     "synthetic migration tool payload\n",
   );
+  mkdirSync(path.dirname(syntheticCandidates["package-payload"]), { recursive: true });
+  writeFileSync(syntheticCandidates["package-payload"], "synthetic package payload\n");
+  writeFileSync(syntheticCandidates["package-index"], "{\"synthetic\":true}\n");
 
   const built = run(fixture, builderScript, ["--target", "macos-direct-arm64"]);
   assert.equal(built.status, 0, built.stderr);
@@ -180,6 +198,12 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
       `build/apps/desktop/native-release/macos-direct-arm64/${migrationToolAsset}`,
     ),
     "the builder materializes the tool from its unbundled build output",
+  );
+  assert.ok(
+    builtRecord.outputSources.includes(
+      `build/apps/desktop/native-release/macos-direct-arm64/${packagePayloadAsset}`,
+    ),
+    "the builder materializes the package payload from its own producer output",
   );
 
   const staged = run(fixture, stagingScript, ["stage", "--target", "macos-direct-arm64"]);
@@ -192,6 +216,14 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
     readFileSync(stagedDigest, "utf8"),
     `${hexDigest(stagedTool)}  ${migrationToolAsset}\n`,
     "the checksum file binds the staged tool's own bytes",
+  );
+  assert.equal(
+    readFileSync(path.join(releaseDirectory, packagePayloadAsset), "utf8"),
+    "synthetic package payload\n",
+  );
+  assert.equal(
+    readFileSync(path.join(releaseDirectory, packageIndexAsset), "utf8"),
+    "{\"synthetic\":true}\n",
   );
 
   const packageManifest = JSON.parse(readFileSync(
@@ -209,6 +241,24 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
   assert.equal(
     packageManifest.artifacts.find((artifact) => artifact.file === migrationToolDigest)?.for,
     "migration-tool",
+  );
+  assert.deepEqual(
+    packageManifest.artifacts.find((artifact) => artifact.role === "package-payload"),
+    {
+      role: "package-payload",
+      file: packagePayloadAsset,
+      byteSize: readFileSync(path.join(releaseDirectory, packagePayloadAsset)).length,
+      sha256: sha256File(path.join(releaseDirectory, packagePayloadAsset)),
+    },
+  );
+  assert.deepEqual(
+    packageManifest.artifacts.find((artifact) => artifact.role === "package-index"),
+    {
+      role: "package-index",
+      file: packageIndexAsset,
+      byteSize: readFileSync(path.join(releaseDirectory, packageIndexAsset)).length,
+      sha256: sha256File(path.join(releaseDirectory, packageIndexAsset)),
+    },
   );
 
   const buildManifest = JSON.parse(readFileSync(
