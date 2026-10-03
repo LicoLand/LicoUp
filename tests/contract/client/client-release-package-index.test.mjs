@@ -75,6 +75,12 @@ const codexPackageId = "org.licoland.adapter.codex";
 const codexPackageSource = "crates/licoup-agent-codex/package";
 const codexPayloadRole = "codex-adapter-package-payload";
 const codexPayloadAsset = `LicoUp-package-${codexPackageId}.licopkg`;
+// The Cursor adapter package is released the same way, on its own payload role,
+// so one adapter's asset can never stand in for another's.
+const cursorPackageId = "org.licoland.adapter.cursor";
+const cursorPackageSource = "crates/licoup-agent-cursor/package";
+const cursorPayloadRole = "cursor-adapter-package-payload";
+const cursorPayloadAsset = `LicoUp-package-${cursorPackageId}.licopkg`;
 const clientProductVersion = JSON.parse(readFileSync(
   path.join(repoRoot, "tools/client-version.json"), "utf8",
 )).productVersion;
@@ -118,6 +124,11 @@ test("the canonical release configuration declares every package payload role ex
         source: `build/apps/desktop/native-release/macos-direct-arm64/${codexPayloadAsset}`,
       },
       {
+        role: cursorPayloadRole,
+        file: cursorPayloadAsset,
+        source: `build/apps/desktop/native-release/macos-direct-arm64/${cursorPayloadAsset}`,
+      },
+      {
         role: mcpPayloadRole,
         file: mcpPayloadAsset,
         source: `build/apps/desktop/native-release/macos-direct-arm64/${mcpPayloadAsset}`,
@@ -140,7 +151,8 @@ test("the canonical release configuration declares every package payload role ex
     const roles = target.artifacts.map((artifact) => artifact.role);
     assert.equal(
       roles.includes(PACKAGE_PAYLOAD_ROLE) || roles.includes(PACKAGE_INDEX_ROLE) ||
-        roles.includes(mcpPayloadRole) || roles.includes(codexPayloadRole),
+        roles.includes(mcpPayloadRole) || roles.includes(codexPayloadRole) ||
+        roles.includes(cursorPayloadRole),
       target.id === "macos-direct-arm64",
       `${target.id} must not carry an independent package asset`,
     );
@@ -151,7 +163,7 @@ test("the canonical release configuration declares every package payload role ex
   const publication = template.publication;
   assert.equal(publication.exactDraftAssetSetRequired, true);
   assert.deepEqual(publication.independentPackageAssets, {
-    payloadRoles: [codexPayloadRole, mcpPayloadRole, PACKAGE_PAYLOAD_ROLE],
+    payloadRoles: [codexPayloadRole, cursorPayloadRole, mcpPayloadRole, PACKAGE_PAYLOAD_ROLE],
     indexRole: PACKAGE_INDEX_ROLE,
     producer: "tools/scripts/client-release-package-index.mjs",
     clientDraftCarries: false,
@@ -160,6 +172,7 @@ test("the canonical release configuration declares every package payload role ex
   assert.equal(publication.assetRoles.includes(PACKAGE_PAYLOAD_ROLE), false);
   assert.equal(publication.assetRoles.includes(mcpPayloadRole), false);
   assert.equal(publication.assetRoles.includes(codexPayloadRole), false);
+  assert.equal(publication.assetRoles.includes(cursorPayloadRole), false);
   assert.equal(publication.assetRoles.includes(PACKAGE_INDEX_ROLE), false);
   for (const config of [stable, nightly]) {
     assert.deepEqual(
@@ -168,7 +181,7 @@ test("the canonical release configuration declares every package payload role ex
       "exactDraftAssetSetRequired still holds with the independent package assets",
     );
     for (const role of [PACKAGE_PAYLOAD_ROLE, mcpPayloadRole, codexPayloadRole,
-      PACKAGE_INDEX_ROLE]) {
+      cursorPayloadRole, PACKAGE_INDEX_ROLE]) {
       assert.equal(config.artifacts.some((entry) => entry.role === role), false,
         `${role} must not enter the closed client draft`);
     }
@@ -194,10 +207,11 @@ test("the trial packages every declared payload and one signed index without pro
   assert.equal(firstResult.signingKeysGeneratedInMemory, true);
   assert.equal(firstResult.privatePathsIncluded, false);
   assert.deepEqual(firstResult.payloads.map((entry) => entry.payloadRole),
-    [codexPayloadRole, mcpPayloadRole, PACKAGE_PAYLOAD_ROLE]);
+    [codexPayloadRole, cursorPayloadRole, mcpPayloadRole, PACKAGE_PAYLOAD_ROLE]);
   assert.equal(firstResult.payloads[0].payloadPath.endsWith(codexPayloadAsset), true);
-  assert.equal(firstResult.payloads[1].payloadPath.endsWith(mcpPayloadAsset), true);
-  assert.equal(firstResult.payloads[2].payloadPath.endsWith(payloadAsset), true);
+  assert.equal(firstResult.payloads[1].payloadPath.endsWith(cursorPayloadAsset), true);
+  assert.equal(firstResult.payloads[2].payloadPath.endsWith(mcpPayloadAsset), true);
+  assert.equal(firstResult.payloads[3].payloadPath.endsWith(payloadAsset), true);
   assert.equal(firstResult.indexPath.endsWith(indexAsset), true);
 
   const indexText = readFileSync(path.join(root, "first", indexAsset), "utf8");
@@ -209,8 +223,8 @@ test("the trial packages every declared payload and one signed index without pro
   // One index carries one entry per declared package, ordered by identity, and
   // every entry is the package's own declaration rather than the caller's.
   assert.deepEqual(index.packages.map((item) => item.packageId),
-    [codexPackageId, mcpPackageId, "org.licoland.fixture.native-converter"]);
-  const entry = index.packages[2];
+    [codexPackageId, cursorPackageId, mcpPackageId, "org.licoland.fixture.native-converter"]);
+  const entry = index.packages[3];
   const manifest = JSON.parse(readFileSync(path.join(repoRoot, fixtureSource, "manifest.json"), "utf8"));
   const declaration = JSON.parse(
     readFileSync(path.join(repoRoot, fixtureSource, "package-release.json"), "utf8"),
@@ -225,7 +239,7 @@ test("the trial packages every declared payload and one signed index without pro
   assert.equal(entry.payload.fileName, payloadAsset);
   assert.match(entry.payload.sha256, /^sha256:[0-9a-f]{64}$/u);
   assert.deepEqual(verifiedPackageIds(index, path.join(root, "first")),
-    [codexPackageId, mcpPackageId, "org.licoland.fixture.native-converter"]);
+    [codexPackageId, cursorPackageId, mcpPackageId, "org.licoland.fixture.native-converter"]);
 
   // The payload carries exactly the package's own declaration and no
   // interpreter entry, and the release document names no network location: the
@@ -256,7 +270,8 @@ test("the trial packages every declared payload and one signed index without pro
   const secondResult = JSON.parse(second.stdout);
   assert.deepEqual(secondResult.payloads.map((entry) => entry.payloadDigest),
     firstResult.payloads.map((entry) => entry.payloadDigest));
-  for (const [position, asset] of [codexPayloadAsset, mcpPayloadAsset, payloadAsset].entries()) {
+  for (const [position, asset] of [codexPayloadAsset, cursorPayloadAsset, mcpPayloadAsset,
+    payloadAsset].entries()) {
     assert.equal(
       readFileSync(path.join(root, "second", asset))
         .equals(readFileSync(path.join(root, "first", asset))),
@@ -331,16 +346,17 @@ test("the plan reports every declared package without writing, and the tool reac
     entry.payloadFile]),
   [
     [codexPackageId, codexPayloadRole, codexPayloadAsset],
+    [cursorPackageId, cursorPayloadRole, cursorPayloadAsset],
     [mcpPackageId, mcpPayloadRole, mcpPayloadAsset],
     ["org.licoland.fixture.native-converter", PACKAGE_PAYLOAD_ROLE, payloadAsset],
   ]);
-  const fixturePlan = plan.packages[2];
+  const fixturePlan = plan.packages[3];
   assert.match(fixturePlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
   assert.equal(fixturePlan.source, fixtureSource);
   assert.deepEqual(fixturePlan.clientCompatibility,
     { kind: "range", range: ">=0.2.0, <1.0.0" });
   assert.equal(fixturePlan.converterEntry, "bin/licoup-fixture-converter");
-  const mcpPlan = plan.packages[1];
+  const mcpPlan = plan.packages[2];
   assert.equal(mcpPlan.source, mcpPackageSource);
   assert.match(mcpPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
   assert.deepEqual(mcpPlan.clientCompatibility,
@@ -352,6 +368,12 @@ test("the plan reports every declared package without writing, and the tool reac
   assert.deepEqual(codexPlan.clientCompatibility,
     { kind: "range", range: ">=0.3.0, <1.0.0" });
   assert.equal(codexPlan.converterEntry, "bin/lico-agent-codex");
+  const cursorPlan = plan.packages[1];
+  assert.equal(cursorPlan.source, cursorPackageSource);
+  assert.match(cursorPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
+  assert.deepEqual(cursorPlan.clientCompatibility,
+    { kind: "range", range: ">=0.3.0, <1.0.0" });
+  assert.equal(cursorPlan.converterEntry, "bin/lico-agent-cursor");
   assert.equal(readdirSync(root).length, 0, "plan must not write anything");
 
   const sources = [
