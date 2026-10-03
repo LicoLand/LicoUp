@@ -33,7 +33,10 @@ use crate::platform::extension_packages::registration::{
     RecordedRegistration, RegistrationOwners, ReleasedRegistration,
 };
 use crate::platform::extension_packages::state::{InstanceRegistry, Settlement};
-use crate::platform::extension_packages::{read_bounded_text, refusal, remove_managed_tree, replace_file_atomically};
+use crate::platform::extension_packages::{
+    read_bounded_text, refusal, remove_managed_tree, replace_file_atomically,
+};
+use crate::platform::package_registration_release::PackageRegistrationOwners;
 use licoup_application::ApplicationFailure;
 use licoup_extension_contracts::deployment::{InstanceLifecycle, LocalCatalogue};
 use licoup_extension_contracts::manifest::USER_RUNTIME_PREFIX;
@@ -483,10 +486,8 @@ impl DrainedRecord {
             );
         }
         if self.plan.package_id.is_empty() || self.plan.version.is_empty() {
-            return Err(
-                refusal("package_uninstall_record_invalid", UNINSTALL_STAGE)
-                    .with_field("packageId"),
-            );
+            return Err(refusal("package_uninstall_record_invalid", UNINSTALL_STAGE)
+                .with_field("packageId"));
         }
         self.plan
             .registrations
@@ -567,7 +568,7 @@ pub fn clear_drained_record(
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(_) => Err(
-            refusal("package_uninstall_record_unavailable", UNINSTALL_STAGE).with_field("record")
+            refusal("package_uninstall_record_unavailable", UNINSTALL_STAGE).with_field("record"),
         ),
     }
 }
@@ -672,6 +673,18 @@ mod tests {
     /// comes from the product version owner rather than a literal here, and the
     /// upper bound is what lets a test exercise a client that has moved past a
     /// package's own list.
+    /// The production registration adapter with no caller-supplied release inputs.
+    ///
+    /// These scenarios record no external registration, so every owner is asked for
+    /// nothing and the reclaim proceeds. One shared value keeps a `'static` reference
+    /// available without each test naming or rebuilding the adapter.
+    static OWNERS: std::sync::LazyLock<PackageRegistrationOwners> =
+        std::sync::LazyLock::new(PackageRegistrationOwners::default);
+
+    fn owners() -> &'static PackageRegistrationOwners {
+        &OWNERS
+    }
+
     fn covering_client_versions() -> Vec<String> {
         let client = crate::platform::extension_packages::running_client_version()
             .expect("the binary declares a product version");
@@ -799,7 +812,9 @@ mod tests {
         let drained = transaction
             .drain(&mut registry, RemainingWork::Wait)
             .expect("drain");
-        let outcome = drained.collect(&store, &registry, &crate::platform::package_registration_release::PackageRegistrationOwners::default()).expect("collect");
+        let outcome = drained
+            .collect(&store, &registry, owners())
+            .expect("collect");
         assert!(outcome.reclaimed_bytes > 0);
         assert_eq!(outcome.preserved, PreservedFacts::all_kept());
         assert!(store.installed().expect("installed").is_empty());
@@ -852,7 +867,9 @@ mod tests {
         let drained = transaction
             .drain(&mut registry, RemainingWork::Cancel)
             .expect("cancel");
-        let outcome = drained.collect(&store, &registry, &crate::platform::package_registration_release::PackageRegistrationOwners::default()).expect("collect");
+        let outcome = drained
+            .collect(&store, &registry, owners())
+            .expect("collect");
         assert_eq!(outcome.canceled_work, 1);
         assert_eq!(
             outcome.unknown_work, 1,
@@ -916,7 +933,9 @@ mod tests {
         let drained = transaction
             .drain(&mut registry, RemainingWork::Wait)
             .expect("drain");
-        let outcome = drained.collect(&store, &registry, &crate::platform::package_registration_release::PackageRegistrationOwners::default()).expect("collect");
+        let outcome = drained
+            .collect(&store, &registry, owners())
+            .expect("collect");
         assert_eq!(
             outcome.removed_together,
             vec!["example.host.panel".to_owned()]
@@ -944,7 +963,7 @@ mod tests {
         // be able to have its package deleted underneath it.
         active_instance("example.specialist.echo", 2, &mut registry);
         let failure = drained
-            .collect(&store, &registry, &crate::platform::package_registration_release::PackageRegistrationOwners::default())
+            .collect(&store, &registry, owners())
             .expect_err("instance still running");
         assert_eq!(failure.code, "package_instance_still_active");
         assert!(
@@ -999,7 +1018,9 @@ mod tests {
                 .expect("begin")
                 .drain(&mut registry, RemainingWork::Wait)
                 .expect("drain");
-        let outcome = drained.collect(&store, &registry, &crate::platform::package_registration_release::PackageRegistrationOwners::default()).expect("collect");
+        let outcome = drained
+            .collect(&store, &registry, owners())
+            .expect("collect");
         assert!(outcome.user_runtime_kept);
         remove_managed_tree(&root).expect("cleanup");
     }
@@ -1107,7 +1128,7 @@ mod tests {
             .expect("begin")
             .drain(&mut registry, RemainingWork::Wait)
             .expect("drain")
-            .collect(&store, &registry, &crate::platform::package_registration_release::PackageRegistrationOwners::default())
+            .collect(&store, &registry, owners())
             .expect("collect");
 
         assert!(

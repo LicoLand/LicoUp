@@ -110,8 +110,9 @@ fn run(home: &DataHome, path: &str, options: &[(&str, String)]) -> Value {
         .collect::<Vec<_>>();
     let operation = args.get(1).map(String::as_str).unwrap_or_default();
     match operation {
-        "catalog" | "install-plan" | "install-confirm" | "install-apply" | "import"
-        | "recover" => args.push(home.text()),
+        "catalog" | "install-plan" | "install-confirm" | "install-apply" | "import" | "recover" => {
+            args.push(home.text())
+        }
         "enable" | "disable" | "uninstall-preview" | "uninstall-drain" | "uninstall-collect"
         | "activate" => {
             args.push(home.text());
@@ -203,14 +204,14 @@ fn the_whole_lifecycle_runs_through_the_cli_routes_over_a_synthetic_data_home() 
         json!([{ "capability": "example.fixture/net", "scope": "self" }])
     );
     assert_eq!(
-        home.store_root()
-            .join("records")
-            .join(PACKAGE_ID)
-            .exists(),
+        home.store_root().join("records").join(PACKAGE_ID).exists(),
         false,
         "a plan installs nothing"
     );
-    let plan_digest = planned["planDigest"].as_str().expect("plan digest").to_owned();
+    let plan_digest = planned["planDigest"]
+        .as_str()
+        .expect("plan digest")
+        .to_owned();
     assert!(plan_digest.starts_with("sha256:"));
 
     // Confirm: the explicit second step, bound to the reviewed plan digest. A
@@ -243,10 +244,7 @@ fn the_whole_lifecycle_runs_through_the_cli_routes_over_a_synthetic_data_home() 
         &home,
         "package install-apply",
         &[
-            (
-                "archive",
-                archive_text.clone(),
-            ),
+            ("archive", archive_text.clone()),
             (
                 "confirmation",
                 "licoup.package-install-confirmation.v1:sha256:0".to_owned(),
@@ -310,8 +308,11 @@ fn the_whole_lifecycle_runs_through_the_cli_routes_over_a_synthetic_data_home() 
     // The user's own data, where the platform keeps user data for a package.
     let user_data = home.path.join("user-data").join(PACKAGE_ID);
     std::fs::create_dir_all(user_data.join("history")).expect("user data");
-    std::fs::write(user_data.join("history/transcript.jsonl"), b"{\"turn\":1}\n")
-        .expect("history");
+    std::fs::write(
+        user_data.join("history/transcript.jsonl"),
+        b"{\"turn\":1}\n",
+    )
+    .expect("history");
 
     // Uninstall preview: what would be touched, and what is preserved.
     let previewed = run(&home, "package uninstall-preview", &[]);
@@ -322,7 +323,11 @@ fn the_whole_lifecycle_runs_through_the_cli_routes_over_a_synthetic_data_home() 
     assert_eq!(previewed["needsUserChoice"], false);
     assert_eq!(previewed["preservesUserData"], true);
     assert!(
-        home.store_root().join("packages").join(PACKAGE_ID).join(VERSION).exists(),
+        home.store_root()
+            .join("packages")
+            .join(PACKAGE_ID)
+            .join(VERSION)
+            .exists(),
         "a preview removes nothing"
     );
 
@@ -348,7 +353,11 @@ fn the_whole_lifecycle_runs_through_the_cli_routes_over_a_synthetic_data_home() 
         "the drained decision is durable"
     );
     assert!(
-        home.store_root().join("packages").join(PACKAGE_ID).join(VERSION).exists(),
+        home.store_root()
+            .join("packages")
+            .join(PACKAGE_ID)
+            .join(VERSION)
+            .exists(),
         "draining removes no bytes"
     );
 
@@ -361,7 +370,12 @@ fn the_whole_lifecycle_runs_through_the_cli_routes_over_a_synthetic_data_home() 
     assert_eq!(collected["preservedUserData"]["credentials"], true);
     assert_eq!(collected["preservedUserData"]["protocolState"], true);
     assert!(
-        !home.store_root().join("packages").join(PACKAGE_ID).join(VERSION).exists(),
+        !home
+            .store_root()
+            .join("packages")
+            .join(PACKAGE_ID)
+            .join(VERSION)
+            .exists(),
         "collect reclaims the version's own bytes"
     );
     assert!(
@@ -414,7 +428,11 @@ fn an_interrupted_install_is_reconciled_before_the_catalogue_is_read() {
         .expect_err("the injected crash interrupts the install");
     assert_eq!(failure.code, "package_install_interrupted");
     assert!(
-        home.store_root().join("packages").join(PACKAGE_ID).join("2.0.0").exists(),
+        home.store_root()
+            .join("packages")
+            .join(PACKAGE_ID)
+            .join("2.0.0")
+            .exists(),
         "the crash left a half-published version on disk"
     );
     assert_eq!(
@@ -430,7 +448,11 @@ fn an_interrupted_install_is_reconciled_before_the_catalogue_is_read() {
     // The catalogue reconciles first, so the half state is never presented.
     let listed = catalog(&home);
     let packages = listed["packages"].as_array().expect("packages");
-    assert_eq!(packages.len(), 1, "only the recorded version is in the catalogue");
+    assert_eq!(
+        packages.len(),
+        1,
+        "only the recorded version is in the catalogue"
+    );
     assert_eq!(packages[0]["version"], VERSION);
     assert_eq!(listed["recovery"]["clean"], false);
     let abandoned = listed["recovery"]["abandonedStages"]
@@ -441,7 +463,11 @@ fn an_interrupted_install_is_reconciled_before_the_catalogue_is_read() {
     assert_eq!(abandoned[0]["version"], "2.0.0");
     assert!(abandoned[0]["reclaimedBytes"].as_u64().expect("bytes") > 0);
     assert_eq!(
-        home.store_root().join("packages").join(PACKAGE_ID).join("2.0.0").exists(),
+        home.store_root()
+            .join("packages")
+            .join(PACKAGE_ID)
+            .join("2.0.0")
+            .exists(),
         false,
         "recovery reclaimed the half-published version"
     );
@@ -450,7 +476,10 @@ fn an_interrupted_install_is_reconciled_before_the_catalogue_is_read() {
     let recovered = run(&home, "package recover", &[]);
     is_ok(&recovered, "recover");
     assert_eq!(recovered["recovery"]["clean"], true);
-    assert_eq!(recovered["installed"], json!([format!("{PACKAGE_ID}@{VERSION}")]));
+    assert_eq!(
+        recovered["installed"],
+        json!([format!("{PACKAGE_ID}@{VERSION}")])
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -474,7 +503,10 @@ fn a_package_that_does_not_cover_this_client_is_refused_at_install() {
         planned["plan"]["compatibility"]["covers"], false,
         "the plan states the incompatibility rather than hiding it"
     );
-    let plan_digest = planned["planDigest"].as_str().expect("plan digest").to_owned();
+    let plan_digest = planned["planDigest"]
+        .as_str()
+        .expect("plan digest")
+        .to_owned();
 
     let confirmed = run(
         &home,
@@ -686,7 +718,10 @@ fn unfinished_local_work_refuses_the_mutating_routes_through_the_guard() {
 
     let activated = run(&home, "package activate", &[]);
     assert_eq!(activated["isError"], true);
-    assert_eq!(activated["reasonCode"], "package_maintenance_work_in_flight");
+    assert_eq!(
+        activated["reasonCode"],
+        "package_maintenance_work_in_flight"
+    );
 
     assert!(
         !barrier_record(&home).exists(),
@@ -822,7 +857,11 @@ fn drained_for(home: &DataHome, version: &str) -> Drained {
         PackageSource::LocalImport,
     ));
     let plan = preview(&store, &catalogue, &installed, &InstanceRegistry::new()).expect("plan");
-    assert_eq!(plan.registrations.len(), 1, "the plan names what was recorded");
+    assert_eq!(
+        plan.registrations.len(),
+        1,
+        "the plan names what was recorded"
+    );
     let mut registry = InstanceRegistry::new();
     UninstallTransaction::begin(&mut registry, plan, DependentsDecision::SelectedOnly)
         .expect("admission is withdrawn first")
@@ -941,7 +980,10 @@ fn a_reported_running_instance_blocks_the_drain_route() {
         "package install-plan",
         &[("archive", archive_text.clone())],
     );
-    let plan_digest = planned["planDigest"].as_str().expect("plan digest").to_owned();
+    let plan_digest = planned["planDigest"]
+        .as_str()
+        .expect("plan digest")
+        .to_owned();
     let confirmed = run(
         &home,
         "package install-confirm",
@@ -973,7 +1015,10 @@ fn a_reported_running_instance_blocks_the_drain_route() {
     let refused = run(
         &home,
         "package uninstall-drain",
-        &[("instances", observed.clone()), ("remaining", "wait".to_owned())],
+        &[
+            ("instances", observed.clone()),
+            ("remaining", "wait".to_owned()),
+        ],
     );
     assert_eq!(refused["isError"], true);
     assert_eq!(refused["reasonCode"], "package_uninstall_in_flight");
@@ -994,7 +1039,13 @@ fn a_reported_running_instance_blocks_the_drain_route() {
         &[("instances", observed), ("remaining", "cancel".to_owned())],
     );
     is_ok(&drained, "uninstall-drain");
-    assert_eq!(drained["withdrawnInstances"].as_array().expect("withdrawn").len(), 1);
+    assert_eq!(
+        drained["withdrawnInstances"]
+            .as_array()
+            .expect("withdrawn")
+            .len(),
+        1
+    );
     assert_eq!(drained["drainedInstances"], json!(["instance-observed"]));
     assert_eq!(drained["canceledWork"], 1);
     assert_eq!(drained["unknownWork"], 1);
@@ -1011,10 +1062,11 @@ fn a_reported_running_instance_blocks_the_drain_route() {
 
 #[test]
 fn the_package_bridge_family_names_every_route_and_every_refusal() {
-    let manifest: Value =
-        serde_json::from_str(&std::fs::read_to_string(repository_file("schemas/client_bridge/manifest.json"))
-            .expect("manifest"))
-        .expect("manifest JSON");
+    let manifest: Value = serde_json::from_str(
+        &std::fs::read_to_string(repository_file("schemas/client_bridge/manifest.json"))
+            .expect("manifest"),
+    )
+    .expect("manifest JSON");
     let families = manifest["families"].as_array().expect("families");
     assert_eq!(families.len(), 8, "the bridge has eight ordered families");
     let package = families
@@ -1024,10 +1076,11 @@ fn the_package_bridge_family_names_every_route_and_every_refusal() {
     assert_eq!(package["status"], "active");
     assert_eq!(package["schema"], "schemas/client_bridge/package.json");
 
-    let schema: Value =
-        serde_json::from_str(&std::fs::read_to_string(repository_file("schemas/client_bridge/package.json"))
-            .expect("schema"))
-        .expect("schema JSON");
+    let schema: Value = serde_json::from_str(
+        &std::fs::read_to_string(repository_file("schemas/client_bridge/package.json"))
+            .expect("schema"),
+    )
+    .expect("schema JSON");
     assert_eq!(schema["title"], "PackageBridge");
 
     // The schema's operations and the native routes are one set, both ways.
@@ -1040,7 +1093,12 @@ fn the_package_bridge_family_names_every_route_and_every_refusal() {
     let mut routes = licoup_native::ffi::commands::cli_command_schemas()
         .iter()
         .filter(|command| command.path().first() == Some(&"package"))
-        .map(|command| format!("package.{}", command.path()[1..].join(".").replace('-', ".")))
+        .map(|command| {
+            format!(
+                "package.{}",
+                command.path()[1..].join(".").replace('-', ".")
+            )
+        })
         .collect::<Vec<_>>();
     operations.sort();
     routes.sort();

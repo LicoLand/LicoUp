@@ -243,16 +243,18 @@ mod tests {
                 );
             }
         }
-        assert_eq!(ADMISSION_WORK_IN_FLIGHT, "package_maintenance_work_in_flight");
-        assert_eq!(ADMISSION_CLOSED, "package_maintenance_admission_closed");
         assert_eq!(
-            ADMISSION_DECISION_UNREADABLE,
-            "package_maintenance_decision_unreadable"
+            ADMISSION_WORK_IN_FLIGHT,
+            "package_maintenance_work_in_flight"
         );
         assert_eq!(
             ADMISSION_CLOSED,
             "package_maintenance_admission_closed",
             "the refusal is a maintenance one, not the guard's own release code"
+        );
+        assert_eq!(
+            ADMISSION_DECISION_UNREADABLE,
+            "package_maintenance_decision_unreadable"
         );
     }
 
@@ -270,7 +272,7 @@ mod tests {
         let args = failure
             .presentation_args
             .iter()
-            .map(|(key, value)| (*key, *value))
+            .map(|(key, value)| (key, value))
             .collect::<Vec<_>>();
         assert!(args.contains(&("operation", "update-apply")));
         assert!(args.contains(&("package", "example.specialist.echo")));
@@ -289,9 +291,6 @@ mod tests {
             MaintenanceOperation::UpdateApply.to_string(),
             "update-apply"
         );
-        assert_eq!(
-            MaintenanceOperation::Activation.to_string(),
-            "activation"
-        );
+        assert_eq!(MaintenanceOperation::Activation.to_string(), "activation");
     }
 }

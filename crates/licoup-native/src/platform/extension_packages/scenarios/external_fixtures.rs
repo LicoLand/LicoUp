@@ -23,7 +23,20 @@ use crate::platform::extension_packages::install::{FaultPlan, InstallPhase, Inst
 use crate::platform::extension_packages::{
     DependentsDecision, InstanceRegistry, RemainingWork, UninstallTransaction, preview,
 };
+use crate::platform::package_registration_release::PackageRegistrationOwners;
 use licoup_extension_contracts::deployment::{LocalCatalogue, PackageSource};
+
+/// The production registration adapter with no caller-supplied release inputs.
+///
+/// This scenario records no external registration, so every owner is asked for
+/// nothing and the reclaim proceeds. One shared value keeps a `'static` reference
+/// available without the test naming or rebuilding the adapter.
+static OWNERS: std::sync::LazyLock<PackageRegistrationOwners> =
+    std::sync::LazyLock::new(PackageRegistrationOwners::default);
+
+fn owners() -> &'static PackageRegistrationOwners {
+    &OWNERS
+}
 
 fn fixture(directory: &std::path::Path, name: &str) -> Vec<u8> {
     std::fs::read(directory.join(name)).unwrap_or_else(|_| panic!("fixture {name}"))
@@ -125,7 +138,7 @@ fn externally_produced_packages_install_and_uninstall_on_the_real_filesystem() {
             .expect("begin")
             .drain(&mut registry, RemainingWork::Wait)
             .expect("drain")
-            .collect(&store, &registry, &crate::platform::package_registration_release::PackageRegistrationOwners::default())
+            .collect(&store, &registry, owners())
             .expect("collect");
     assert_eq!(outcome.reclaimed_bytes, bytes + record_bytes);
     assert!(!store.installed_path(ECHO, "1.0.0").exists());

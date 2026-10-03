@@ -365,9 +365,7 @@ pub(super) fn handle_recover(command: AdmittedCommand) -> Result<CliExecution> {
 pub(super) fn handle_update_preview(command: AdmittedCommand) -> Result<CliExecution> {
     let data_home = resolve_data_home(command.required_text("data-root"))?;
     let store = open_store(&data_home)?;
-    let package_id = command
-        .required_text("package-id")
-        .to_owned();
+    let package_id = command.required_text("package-id").to_owned();
     let installed = store
         .installed()?
         .into_iter()
@@ -512,8 +510,9 @@ pub(super) fn handle_activate(command: AdmittedCommand) -> Result<CliExecution> 
 /// because nothing is changed yet: an admitted route must not leave admission
 /// closed on a host that was never switched.
 fn hold_and_retire_admission(data_home: &Path) -> Result<(), ApplicationFailure> {
-    crate::domain::work_admission::hold_package_activation_admission(data_home)
-        .map_err(|code| ApplicationFailure::retryable(code, GUARD_STAGE).with_field("maintenance"))?;
+    crate::domain::work_admission::hold_package_activation_admission(data_home).map_err(
+        |code| ApplicationFailure::retryable(code, GUARD_STAGE).with_field("maintenance"),
+    )?;
     crate::domain::work_admission::release_maintenance_admission(data_home)
         .map_err(|code| ApplicationFailure::retryable(code, GUARD_STAGE).with_field("maintenance"))
 }
@@ -552,7 +551,6 @@ struct InstallCandidate {
     digest: String,
     permissions: Vec<licoup_extension_contracts::manifest::PermissionRequest>,
 }
-
 
 /// Derive the plan for one archive against the current client and store.
 ///
@@ -613,8 +611,8 @@ fn candidate_for(store: &PackageStore, archive: &Path) -> Result<InstallCandidat
         "installScriptsExecuted": 0,
         "processesSpawned": 0,
     });
-    let core_text = serde_json::to_string(&core)
-        .map_err(|_| anyhow!("package_install_plan_unserializable"))?;
+    let core_text =
+        serde_json::to_string(&core).map_err(|_| anyhow!("package_install_plan_unserializable"))?;
     let plan_digest = prefixed_digest(core_text.as_bytes());
     let confirmation = format!(
         "{CONFIRMATION_SCHEMA}:{}",
@@ -662,12 +660,7 @@ fn install_candidate(
     let trust = TrustRecord::local_approved(&candidate.digest, candidate.permissions.clone())
         .map_err(as_handler_error)?;
     let outcome = store
-        .install_local_import(
-            &candidate.package_id,
-            &candidate.version,
-            trust,
-            &bytes,
-        )
+        .install_local_import(&candidate.package_id, &candidate.version, trust, &bytes)
         .map_err(as_handler_error)?;
     Ok(report(json!({
         "operation": operation,
@@ -714,7 +707,10 @@ fn uninstall_plan(
     store: &PackageStore,
     package_id: &str,
     version: &str,
-) -> Result<(crate::platform::extension_packages::UninstallPlan, InstanceRegistry)> {
+) -> Result<(
+    crate::platform::extension_packages::UninstallPlan,
+    InstanceRegistry,
+)> {
     let installed = store
         .installed_version(package_id, version)
         .map_err(as_handler_error)?
@@ -729,13 +725,9 @@ fn uninstall_plan(
         ));
     }
     let registry = InstanceRegistry::new();
-    let plan = crate::platform::extension_packages::preview(
-        store,
-        &catalogue,
-        &installed,
-        &registry,
-    )
-    .map_err(as_handler_error)?;
+    let plan =
+        crate::platform::extension_packages::preview(store, &catalogue, &installed, &registry)
+            .map_err(as_handler_error)?;
     Ok((plan, registry))
 }
 
@@ -779,7 +771,11 @@ fn observe_instances(registry: &mut InstanceRegistry, observed: Value) -> Result
             "stopped" => InstanceLifecycle::Stopped,
             "failed" => InstanceLifecycle::Failed,
             "quarantined" => InstanceLifecycle::Quarantined,
-            other => return Err(anyhow!("package_uninstall_instance_lifecycle_unknown:{other}")),
+            other => {
+                return Err(anyhow!(
+                    "package_uninstall_instance_lifecycle_unknown:{other}"
+                ));
+            }
         };
         // An instance reaches a state by passing through the ones before it, so
         // the report is walked the same way rather than jumped to.
@@ -832,7 +828,9 @@ fn release_inputs(value: &Value) -> Result<ReleaseInputs> {
     let mut inputs = ReleaseInputs::none();
     if let Some(provider) = value.get("providerMcp").filter(|value| !value.is_null()) {
         let kind = match provider.get("kind").and_then(Value::as_str) {
-            Some("cursor") => crate::platform::provider_mcp_registration::ProviderConfigKind::Cursor,
+            Some("cursor") => {
+                crate::platform::provider_mcp_registration::ProviderConfigKind::Cursor
+            }
             Some("antigravity") => {
                 crate::platform::provider_mcp_registration::ProviderConfigKind::Antigravity
             }
@@ -910,8 +908,8 @@ fn resolve_archive(path: &str) -> Result<PathBuf> {
 
 /// Read one local archive, bounded before it is parsed.
 fn read_archive(path: &Path) -> Result<Vec<u8>> {
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|_| anyhow!("package_archive_unavailable"))?;
+    let metadata =
+        std::fs::symlink_metadata(path).map_err(|_| anyhow!("package_archive_unavailable"))?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err(anyhow!("package_archive_not_a_file"));
     }

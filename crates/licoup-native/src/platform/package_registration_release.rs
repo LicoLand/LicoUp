@@ -22,8 +22,8 @@
 use crate::platform::codex_plugin_manager;
 use crate::platform::extension_packages::refusal;
 use crate::platform::extension_packages::registration::{
-    RecordedRegistration, RegistrationOwner, RegistrationOwners, ReleasedRegistration,
-    STAGE, owner_unavailable,
+    RecordedRegistration, RegistrationOwner, RegistrationOwners, ReleasedRegistration, STAGE,
+    owner_unavailable,
 };
 use crate::platform::provider_mcp_registration::{self, ProviderConfigKind, RegistrationPlan};
 use licoup_application::ApplicationFailure;
@@ -106,14 +106,29 @@ impl PackageRegistrationOwners {
     ///
     /// A caller reports which surfaces it is ready to release before draining, so
     /// a partially configured uninstall is visible before anything is closed.
+    /// The answer is per owner, not "some provider is configured": inputs for
+    /// Cursor are not inputs for Claude Code, and reporting otherwise would let a
+    /// caller believe a surface was releasable that release then refuses.
     pub fn can_release(&self, owner: RegistrationOwner) -> bool {
         match owner {
             RegistrationOwner::LoginItem => false,
-            RegistrationOwner::ClaudeCodeMcp
-            | RegistrationOwner::CursorMcp
-            | RegistrationOwner::AntigravityMcp => self.inputs.provider_mcp.is_some(),
+            RegistrationOwner::ClaudeCodeMcp => {
+                self.provider_inputs(ProviderConfigKind::ClaudeCode)
+            }
+            RegistrationOwner::CursorMcp => self.provider_inputs(ProviderConfigKind::Cursor),
+            RegistrationOwner::AntigravityMcp => {
+                self.provider_inputs(ProviderConfigKind::Antigravity)
+            }
             RegistrationOwner::CodexPlugin => self.inputs.codex_plugin.is_some(),
         }
+    }
+
+    /// Whether the carried provider inputs are the ones the named provider owns.
+    fn provider_inputs(&self, expected: ProviderConfigKind) -> bool {
+        self.inputs
+            .provider_mcp
+            .as_ref()
+            .is_some_and(|release| release.kind == expected)
     }
 
     fn release_provider_mcp(
@@ -155,11 +170,9 @@ impl PackageRegistrationOwners {
         };
         // The plugin surface belongs to the Codex CLI, so its own `remove` drives
         // it. This adapter never edits the plugin directory itself.
-        let plan = codex_plugin_manager::CodexPluginInstallPlan::prepare(
-            "codex",
-            &release.executable,
-        )
-        .map_err(|_| failed(registration))?;
+        let plan =
+            codex_plugin_manager::CodexPluginInstallPlan::prepare("codex", &release.executable)
+                .map_err(|_| failed(registration))?;
         let mut permit = plan
             .approve(true, &release.approved_digest)
             .map_err(|_| stale_approval(registration))?;
@@ -244,7 +257,7 @@ mod tests {
             let args = failure
                 .presentation_args
                 .iter()
-                .map(|(key, value)| (*key, *value))
+                .map(|(key, value)| (key, value))
                 .collect::<Vec<_>>();
             assert!(args.contains(&("packageOwner", owner.owner_module())));
         }
@@ -265,7 +278,7 @@ mod tests {
         let args = failure
             .presentation_args
             .iter()
-            .map(|(key, value)| (*key, *value))
+            .map(|(key, value)| (key, value))
             .collect::<Vec<_>>();
         assert!(args.contains(&("packageOwner", "platform::client_autostart")));
     }
@@ -273,14 +286,14 @@ mod tests {
     /// Inputs for one provider never release another provider's surface.
     #[test]
     fn a_provider_release_refuses_inputs_for_a_different_provider() {
-        let owners = PackageRegistrationOwners::new(
-            ReleaseInputs::none().with_provider_mcp(ProviderMcpRelease {
+        let owners = PackageRegistrationOwners::new(ReleaseInputs::none().with_provider_mcp(
+            ProviderMcpRelease {
                 kind: ProviderConfigKind::Cursor,
                 connector: PathBuf::from("/fixture/connector"),
                 config_path: PathBuf::from("/fixture/config.json"),
                 approved_digest: "sha256:fixture".to_owned(),
-            }),
-        );
+            },
+        ));
         assert!(owners.can_release(RegistrationOwner::CursorMcp));
         assert!(!owners.can_release(RegistrationOwner::ClaudeCodeMcp));
         assert!(!owners.can_release(RegistrationOwner::CodexPlugin));
@@ -298,14 +311,14 @@ mod tests {
     /// from the one the user approved.
     #[test]
     fn an_approval_that_no_longer_matches_the_surface_is_refused() {
-        let owners = PackageRegistrationOwners::new(
-            ReleaseInputs::none().with_provider_mcp(ProviderMcpRelease {
+        let owners = PackageRegistrationOwners::new(ReleaseInputs::none().with_provider_mcp(
+            ProviderMcpRelease {
                 kind: ProviderConfigKind::Cursor,
                 connector: PathBuf::from("/fixture/connector"),
                 config_path: PathBuf::from("/fixture/absent-config.json"),
                 approved_digest: "sha256:stale".to_owned(),
-            }),
-        );
+            },
+        ));
         // The reviewed-candidate rule refuses the unreviewed path first, which is
         // the same outcome for the caller: nothing was removed.
         let failure = owners
