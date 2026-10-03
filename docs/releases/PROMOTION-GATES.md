@@ -145,7 +145,11 @@ node tools/scripts/client-release-package-index.mjs verify --index <index> --pay
 
 `tools/client-release-package-set.json` is the declared set: each entry names the
 package's committed source directory and the release payload role its own asset
-is published as, and the release target declares each of those roles once. `plan`
+is published as, and the release target declares each of those roles once. The
+set is complete by construction: every `crates/*/package` and
+`components/*/package` directory that carries a `manifest.json` must appear in
+it, and the release contract test enumerates those directories instead of
+restating a list. `plan`
 writes nothing and reports every declared package's identity, version, client
 compatibility, payload role and payload digest. `fixture` packages the whole
 declared set under a key pair generated in memory for that run: it reads no
