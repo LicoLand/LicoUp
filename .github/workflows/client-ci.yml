@@ -113,6 +113,10 @@ jobs:
           echo "ANDROID_SDK_ROOT=$RUNNER_TEMP/licoup-android-sdk" >> "$GITHUB_ENV"
           node tools/scripts/client-android-sdk-bootstrap.mjs \
             --sdk-root "$RUNNER_TEMP/licoup-android-sdk"
+      - name: Warm the Gradle dependency cache
+        run: |
+          cd apps/desktop/android
+          ./gradlew :app:compileDebugKotlin :app:verifyReleaseAcceptanceIsolation --no-daemon
       - name: Install pinned cargo-audit
         run: cargo install cargo-audit --version 0.22.2 --locked
       - name: Run the complete registered engineering profile
