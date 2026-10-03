@@ -56,6 +56,7 @@ pub mod artifact;
 pub mod discovery;
 pub mod install;
 pub mod journal;
+pub mod selection;
 pub mod state;
 pub mod storage;
 pub mod uninstall;
@@ -81,6 +82,7 @@ pub use journal::{
 pub use licoup_extension_contracts::deployment::{
     InstanceLifecycle, PackageFacts, PackageLifecycle,
 };
+pub use selection::{GenerationSelection, InstalledGeneration, select_generation, switched_on};
 pub use state::{
     Admission, InstallActivation, InstanceIdentity, InstanceMachine, InstanceRegistry,
     InstanceReport, PackageMachine, PermissionKey, Settlement, TrustRecord,
