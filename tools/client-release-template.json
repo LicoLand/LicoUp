@@ -4,11 +4,7 @@
     "path": "tools/client-version.json"
   },
   "promotion": {
-    "branches": [
-      "nightly",
-      "stable",
-      "release"
-    ],
+    "branches": ["nightly", "stable", "release"],
     "mergeMethod": "merge",
     "rulesetMutation": "forbidden",
     "linearHistory": false,
