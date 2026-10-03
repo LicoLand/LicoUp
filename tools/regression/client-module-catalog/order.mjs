@@ -637,6 +637,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.platform.url-security",
   "rust.platform.extension-packages",
   "rust.platform.extension-packages.artifact",
+  "rust.platform.extension-packages.release-index",
   "rust.platform.extension-host",
   "rust.platform.extension-isolation",
   "regression.file-security-source-bundle",

@@ -137,9 +137,9 @@
       "undeclared_bindings": []
     },
     "developer_tool_sites": {
-      "execution_sites": 73,
+      "execution_sites": 74,
       "resolved_tool_sites": 0,
-      "reviewed_runtime_interfaces": 73,
+      "reviewed_runtime_interfaces": 74,
       "unreviewed_runtime_interfaces": 0,
       "analysis_failures": 0,
       "unallowlisted_sites": 0,
@@ -166,6 +166,7 @@
         "crates/licoup-agent-targets/src/platform/user_shell_environment.rs::cb586647e84a::a4f3c11f76511fc11348",
         "crates/licoup-foundation/src/platform/process_supervisor.rs::0ed976fe744e::39d495e3a5bcbf5e1be2",
         "crates/licoup-mcp/src/application.rs::df6167de50f6::23dd96d259caf77d2166",
+        "crates/licoup-migrate/src/converter_process.rs::b9b764e7cf4a::4a3ed4ba44991de74d56",
         "crates/licoup-native/src/domain/agent_hub/argv.rs::db471ee64ae2::104bf6e9e333863b26bb",
         "crates/licoup-native/src/domain/agent_hub/version_check.rs::599a57a1fc1d::188d88740e20deb3200d",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/deepseek.rs::aa789fdbbd01::7ec46de92e9300035a3e",
@@ -241,6 +242,7 @@
         "crates/licoup-agent-targets/src/platform/user_shell_environment.rs::cb586647e84a::a4f3c11f76511fc11348",
         "crates/licoup-foundation/src/platform/process_supervisor.rs::0ed976fe744e::39d495e3a5bcbf5e1be2",
         "crates/licoup-mcp/src/application.rs::df6167de50f6::23dd96d259caf77d2166",
+        "crates/licoup-migrate/src/converter_process.rs::b9b764e7cf4a::4a3ed4ba44991de74d56",
         "crates/licoup-native/src/domain/agent_hub/argv.rs::db471ee64ae2::104bf6e9e333863b26bb",
         "crates/licoup-native/src/domain/agent_hub/version_check.rs::599a57a1fc1d::188d88740e20deb3200d",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/deepseek.rs::aa789fdbbd01::7ec46de92e9300035a3e",

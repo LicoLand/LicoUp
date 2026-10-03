@@ -107,6 +107,18 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::extension_packages::artifact::tests::"),
     }),
   defineModule({
+      id: "rust.platform.extension-packages.release-index",
+      kind: "rust-platform",
+      summary: "Signed release package index verification, payload identity and converter reconciliation",
+      inputs: [
+        "crates/licoup-native/src/platform/extension_packages/release_index.rs",
+        "crates/licoup-native/resources/client-update-public-keys.json",
+        "tools/scripts/client-release-package-index.mjs",
+        "tests/fixtures/client_package_release/**",
+      ],
+      command: rustLayer("platform::extension_packages::release_index::tests::"),
+    }),
+  defineModule({
       id: "rust.ffi.typed-error-chain",
       kind: "rust-ffi",
       summary: "Generated typed conversation errors across runtime, FFI, and stdio terminal frames",

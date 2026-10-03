@@ -3,9 +3,12 @@
 //! `inspect`, `plan`, `convert` and `resume` work on a data root. `export` and `import`
 //! route to the client's own full-data-root archive owner; `import` writes into an empty
 //! `--target-root` and therefore names no data root at all. `rehearse` reads one released
-//! root and does all of its work in the disposable `--work-root` the caller names. Every
-//! verb prints one JSON report with a stable `status` field, or a typed failure code, and
-//! never prints a stored value.
+//! root and does all of its work in the disposable `--work-root` the caller names.
+//! `converters`, `package-convert` and `package-resume` are the package-owned conversion:
+//! they read the installed converter inventory of the `--package-store` the caller names,
+//! run the selected package's own converter over a staged copy of the data root in
+//! `--work-root`, and record the run there. Every verb prints one JSON report with a stable
+//! `status` field, or a typed failure code, and never prints a stored value.
 
 use std::path::PathBuf;
 
@@ -24,10 +27,22 @@ pub struct Invocation {
     pub archive: Option<PathBuf>,
     /// The empty destination named by `--target-root`, for `import`.
     pub target_root: Option<PathBuf>,
-    /// The disposable working directory named by `--work-root`, for `rehearse`.
+    /// The disposable working directory named by `--work-root`, for `rehearse` and the
+    /// package conversion verbs.
     pub work_root: Option<PathBuf>,
     /// Keep the rehearsal's disposable working root instead of removing it after the run.
     pub keep_work_root: bool,
+    /// The managed root of the package store, named by `--package-store`.
+    pub package_store: Option<PathBuf>,
+    /// One installed package identity named by `--package`.
+    pub package: Option<String>,
+    /// An offline package payload named by `--payload`.
+    pub payload: Option<PathBuf>,
+    /// A signed release package index named by `--index`.
+    pub index: Option<PathBuf>,
+    /// The public key catalogue the index is verified with, named by
+    /// `--index-public-keys`.
+    pub index_public_keys: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -39,6 +54,9 @@ pub enum Verb {
     Export,
     Import,
     Rehearse,
+    Converters,
+    PackageConvert,
+    PackageResume,
 }
 
 /// What the caller asked for that the tool cannot honour.
@@ -54,6 +72,7 @@ pub enum Usage {
     TargetRootRequired,
     WorkRootRequired,
     WritersStoppedRequired,
+    PackageStoreRequired,
 }
 
 impl std::fmt::Display for Usage {
@@ -71,6 +90,7 @@ impl std::fmt::Display for Usage {
             Self::WritersStoppedRequired => {
                 formatter.write_str("maintenance_confirmation_required")
             }
+            Self::PackageStoreRequired => formatter.write_str("package_store_required"),
         }
     }
 }
@@ -86,6 +106,9 @@ Usage:
   licoup-migrate export   --data-root <path> --archive <path>.zip|.tar.gz --writers-stopped [--json]
   licoup-migrate import   --archive <path> --target-root <empty directory> [--json]
   licoup-migrate rehearse --data-root <path> --work-root <directory> --writers-stopped [--keep-work-root] [--json]
+  licoup-migrate converters --package-store <path> [--data-root <path>] [--index <path>] [--index-public-keys <path>] [--json]
+  licoup-migrate package-convert --data-root <path> --work-root <directory> --package-store <path> --writers-stopped [--package <id>] [--payload <archive>] [--index <path>] [--index-public-keys <path>] [--json]
+  licoup-migrate package-resume  --data-root <path> --work-root <directory> --package-store <path> --writers-stopped [--package <id>] [--index <path>] [--index-public-keys <path>] [--json]
 
 Commands:
   inspect  Report the domain state the client's own owners observe.
@@ -96,9 +119,19 @@ Commands:
   import   Restore one archive into an empty destination.
   rehearse Convert a disposable copy of a released root, round-trip it through
            both plaintext containers, and report each stage it observed.
+  converters
+           Read the installed converter inventory of one package store and report
+           which installed package declares the required conversion pair.
+  package-convert
+           Run the selected package's own native converter over a staged copy of
+           the data root, recording the run in the working root.
+  package-resume
+           Continue the package conversion the working root records, over the same
+           declared package, pair and source.
 
 Options:
-  --data-root <path>  The data root to read. Required by every verb but import.
+  --data-root <path>  The data root to read. Required by every verb but import,
+                      converters, and the archive verbs that name their own inputs.
   --target <name>     Named target for the plan; defaults to the declared target.
   --archive <path>    The archive to write or read. The container is inferred from
                       the name. Required by export and import.
@@ -106,14 +139,29 @@ Options:
                       The empty directory an import publishes into. Required by
                       import; a non-empty destination is refused.
   --work-root <path>  The disposable directory a rehearsal stages, converts,
-                      archives and restores in. Required by rehearse; the named
+                      archives and restores in, and the durable working root a
+                      package conversion stages, converts and records in. Required
+                      by rehearse, package-convert and package-resume; the named
                       data root is never written to.
   --keep-work-root    Keep the rehearsal's working root after the run so a caller
                       can compare the roots each stage left on disk.
+  --package-store <path>
+                      The managed root of the installed extension packages. Required
+                      by converters, package-convert and package-resume.
+  --package <id>      One installed package identity to select. Without it the
+                      greatest installed version of every candidate is selected.
+  --payload <path>    An offline package payload (an already downloaded converter) to
+                      verify and import through the package store before selecting.
+  --index <path>      A signed release package index to verify candidates against.
+                      Without it the package's own manifest is the only declaration
+                      read, and an imported payload is approved locally.
+  --index-public-keys <path>
+                      The public key catalogue the index is verified with. Defaults
+                      to the release catalogue bundled with the client.
   --writers-stopped   State that no writer is running against the data root. A
-                      convert, a resume, an export and a rehearsal require it: the
-                      move, the capture and the rehearsal are only legitimate while
-                      every writer is stopped.
+                      convert, a resume, an export, a rehearsal and a package
+                      conversion require it: the move, the capture and the
+                      rehearsal are only legitimate while every writer is stopped.
   --json              Print JSON (the default; the flag is accepted for symmetry).
 ";
 
@@ -128,6 +176,11 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, Usage> {
     let mut target_root: Option<PathBuf> = None;
     let mut work_root: Option<PathBuf> = None;
     let mut keep_work_root = false;
+    let mut package_store: Option<PathBuf> = None;
+    let mut package: Option<String> = None;
+    let mut payload: Option<PathBuf> = None;
+    let mut index_path: Option<PathBuf> = None;
+    let mut index_public_keys: Option<PathBuf> = None;
 
     let mut index = 0;
     while index < arguments.len() {
@@ -138,7 +191,16 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, Usage> {
             "--json" => json = true,
             "--writers-stopped" => writers_stopped = true,
             "--keep-work-root" => keep_work_root = true,
-            "--data-root" | "--target" | "--archive" | "--target-root" | "--work-root" => {
+            "--data-root"
+            | "--target"
+            | "--archive"
+            | "--target-root"
+            | "--work-root"
+            | "--package-store"
+            | "--package"
+            | "--payload"
+            | "--index"
+            | "--index-public-keys" => {
                 let value = arguments
                     .get(index + 1)
                     .filter(|value| !value.starts_with("--"))
@@ -147,14 +209,24 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, Usage> {
                         "--target" => "--target",
                         "--archive" => "--archive",
                         "--target-root" => "--target-root",
-                        _ => "--work-root",
+                        "--work-root" => "--work-root",
+                        "--package-store" => "--package-store",
+                        "--package" => "--package",
+                        "--payload" => "--payload",
+                        "--index" => "--index",
+                        _ => "--index-public-keys",
                     }))?;
                 match argument {
                     "--data-root" => data_root = Some(PathBuf::from(value)),
                     "--target" => target = Some(value.clone()),
                     "--archive" => archive = Some(PathBuf::from(value)),
                     "--target-root" => target_root = Some(PathBuf::from(value)),
-                    _ => work_root = Some(PathBuf::from(value)),
+                    "--work-root" => work_root = Some(PathBuf::from(value)),
+                    "--package-store" => package_store = Some(PathBuf::from(value)),
+                    "--package" => package = Some(value.clone()),
+                    "--payload" => payload = Some(PathBuf::from(value)),
+                    "--index" => index_path = Some(PathBuf::from(value)),
+                    _ => index_public_keys = Some(PathBuf::from(value)),
                 }
                 index += 1;
             }
@@ -170,6 +242,9 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, Usage> {
                     "export" => Verb::Export,
                     "import" => Verb::Import,
                     "rehearse" => Verb::Rehearse,
+                    "converters" => Verb::Converters,
+                    "package-convert" => Verb::PackageConvert,
+                    "package-resume" => Verb::PackageResume,
                     unknown => return Err(Usage::UnknownVerb(unknown.to_string())),
                 };
                 if verb.is_some() {
@@ -212,6 +287,21 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, Usage> {
                 return Err(Usage::WritersStoppedRequired);
             }
         }
+        // The inventory reads one package store; a data root is only named when the
+        // caller wants the host's own maintenance decision reported beside it.
+        Verb::Converters => {
+            package_store.as_ref().ok_or(Usage::PackageStoreRequired)?;
+        }
+        // A package conversion stages and runs over the data root, holds its own
+        // working root and needs the store that owns the converter.
+        Verb::PackageConvert | Verb::PackageResume => {
+            data_root.as_ref().ok_or(Usage::DataRootRequired)?;
+            work_root.as_ref().ok_or(Usage::WorkRootRequired)?;
+            package_store.as_ref().ok_or(Usage::PackageStoreRequired)?;
+            if !writers_stopped {
+                return Err(Usage::WritersStoppedRequired);
+            }
+        }
         Verb::Inspect | Verb::Plan | Verb::Resume => {
             data_root.as_ref().ok_or(Usage::DataRootRequired)?;
         }
@@ -226,6 +316,11 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, Usage> {
         target_root,
         work_root,
         keep_work_root,
+        package_store,
+        package,
+        payload,
+        index: index_path,
+        index_public_keys,
     })
 }
 
@@ -419,6 +514,146 @@ mod tests {
         ]))
         .expect("rehearse");
         assert!(keeping.keep_work_root);
+    }
+
+    #[test]
+    fn parses_the_converter_inventory_and_the_package_conversion_verbs() {
+        let inventory =
+            parse(&strings(&["converters", "--package-store", "/tmp/store"])).expect("converters");
+        assert_eq!(inventory.verb, Verb::Converters);
+        assert_eq!(
+            inventory.package_store.as_deref(),
+            Some(Path::new("/tmp/store"))
+        );
+        // The inventory reads one package store; a data root is only named when the
+        // caller wants the host's own decision reported beside it.
+        assert!(inventory.data_root.is_none());
+        assert!(!inventory.writers_stopped);
+
+        let convert = parse(&strings(&[
+            "package-convert",
+            "--data-root",
+            "/tmp/root",
+            "--work-root",
+            "/tmp/work",
+            "--package-store",
+            "/tmp/store",
+            "--package",
+            "org.licoland.fixture.converter",
+            "--payload",
+            "/tmp/converter.licopkg",
+            "--index",
+            "/tmp/index.json",
+            "--index-public-keys",
+            "/tmp/keys.json",
+            "--writers-stopped",
+        ]))
+        .expect("package-convert");
+        assert_eq!(convert.verb, Verb::PackageConvert);
+        assert_eq!(convert.data_root.as_deref(), Some(Path::new("/tmp/root")));
+        assert_eq!(convert.work_root.as_deref(), Some(Path::new("/tmp/work")));
+        assert_eq!(
+            convert.package_store.as_deref(),
+            Some(Path::new("/tmp/store"))
+        );
+        assert_eq!(
+            convert.package.as_deref(),
+            Some("org.licoland.fixture.converter")
+        );
+        assert_eq!(
+            convert.payload.as_deref(),
+            Some(Path::new("/tmp/converter.licopkg"))
+        );
+        assert_eq!(convert.index.as_deref(), Some(Path::new("/tmp/index.json")));
+        assert_eq!(
+            convert.index_public_keys.as_deref(),
+            Some(Path::new("/tmp/keys.json"))
+        );
+        assert!(convert.writers_stopped);
+
+        // The resume verb names the same inputs and is the one that continues a run.
+        let resume = parse(&strings(&[
+            "package-resume",
+            "--data-root",
+            "/tmp/root",
+            "--work-root",
+            "/tmp/work",
+            "--package-store",
+            "/tmp/store",
+            "--writers-stopped",
+        ]))
+        .expect("package-resume");
+        assert_eq!(resume.verb, Verb::PackageResume);
+        assert!(resume.payload.is_none());
+        assert!(resume.index.is_none());
+    }
+
+    #[test]
+    fn refuses_a_package_verb_that_omits_an_input_it_needs() {
+        assert_eq!(
+            parse(&strings(&["converters"])),
+            Err(Usage::PackageStoreRequired)
+        );
+        assert_eq!(
+            parse(&strings(&[
+                "package-convert",
+                "--package-store",
+                "/tmp/store",
+                "--work-root",
+                "/tmp/work",
+                "--writers-stopped"
+            ])),
+            Err(Usage::DataRootRequired)
+        );
+        assert_eq!(
+            parse(&strings(&[
+                "package-convert",
+                "--data-root",
+                "/tmp/root",
+                "--package-store",
+                "/tmp/store",
+                "--writers-stopped"
+            ])),
+            Err(Usage::WorkRootRequired)
+        );
+        assert_eq!(
+            parse(&strings(&[
+                "package-convert",
+                "--data-root",
+                "/tmp/root",
+                "--work-root",
+                "/tmp/work",
+                "--writers-stopped"
+            ])),
+            Err(Usage::PackageStoreRequired)
+        );
+        // A package conversion changes data, so the operator's statement is required
+        // exactly as it is for the client-owner conversion.
+        assert_eq!(
+            parse(&strings(&[
+                "package-convert",
+                "--data-root",
+                "/tmp/root",
+                "--work-root",
+                "/tmp/work",
+                "--package-store",
+                "/tmp/store"
+            ])),
+            Err(Usage::WritersStoppedRequired)
+        );
+        assert_eq!(
+            parse(&strings(&[
+                "package-resume",
+                "--data-root",
+                "/tmp/root",
+                "--work-root",
+                "/tmp/work",
+                "--package-store",
+                "/tmp/store",
+                "--index"
+            ])),
+            Err(Usage::MissingValue("--index"))
+        );
     }
 
     #[test]

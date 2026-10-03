@@ -96,6 +96,53 @@ pub const CONVERTER_INCOMPLETE: ToolError = ToolError::new("converter_incomplete
 pub const CONVERTER_INVALID: ToolError = ToolError::new("converter_invalid");
 /// The declared formats are not the endpoints this tool requires.
 pub const CONVERTER_ENDPOINT_MISMATCH: ToolError = ToolError::new("converter_endpoint_mismatch");
+/// The package store the caller named could not be read as one.
+pub const PACKAGE_STORE_UNAVAILABLE: ToolError = ToolError::new("package_store_unavailable");
+/// The signed release index the caller supplied did not verify.
+pub const PACKAGE_INDEX_INVALID: ToolError = ToolError::new("package_index_invalid");
+/// The signed release index describes no entry for the package it was checked against.
+pub const PACKAGE_INDEX_ENTRY_MISSING: ToolError = ToolError::new("package_index_entry_missing");
+/// The signed release index and the package's own declaration disagree.
+pub const PACKAGE_INDEX_CONVERTER_MISMATCH: ToolError =
+    ToolError::new("package_index_converter_mismatch");
+/// Payload bytes are not the bytes the signed index or the store record describes.
+pub const PACKAGE_PAYLOAD_INVALID: ToolError = ToolError::new("package_payload_invalid");
+/// The store refused to publish the payload the caller handed in.
+pub const PACKAGE_IMPORT_REFUSED: ToolError = ToolError::new("package_import_refused");
+/// No installed package declares a conversion for the required endpoints.
+pub const CONVERTER_UNAVAILABLE: ToolError = ToolError::new("converter_unavailable");
+/// The installed converter entry is not a runnable file inside the package payload.
+pub const CONVERTER_ENTRY_UNEXECUTABLE: ToolError = ToolError::new("converter_entry_unexecutable");
+/// The host still owns unfinished local work, so no maintenance may begin.
+pub const MAINTENANCE_WORK_UNFINISHED: ToolError = ToolError::new("maintenance_work_unfinished");
+/// Another maintenance operation holds this data root's close-admission barrier.
+pub const MAINTENANCE_ADMISSION_CLOSED: ToolError = ToolError::new("maintenance_admission_closed");
+/// The host's own admission owner could not report its decision.
+pub const MAINTENANCE_ADMISSION_UNAVAILABLE: ToolError =
+    ToolError::new("maintenance_admission_unavailable");
+/// A conversion run is recorded here and has not settled; it is resumed, never restarted.
+pub const PACKAGE_CONVERSION_UNFINISHED: ToolError =
+    ToolError::new("package_conversion_unfinished");
+/// No interrupted package conversion is recorded in the named working root.
+pub const PACKAGE_CONVERSION_ABSENT: ToolError = ToolError::new("package_conversion_absent");
+/// The recorded run declares another package, another pair or another source root.
+pub const PACKAGE_CONVERSION_MISMATCHED: ToolError =
+    ToolError::new("package_conversion_mismatched");
+/// The source root is not the one the recorded run staged.
+pub const PACKAGE_CONVERSION_SOURCE_CHANGED: ToolError =
+    ToolError::new("package_conversion_source_changed");
+/// The converter could not be started, or exited without producing a target.
+pub const CONVERTER_RUN_FAILED: ToolError = ToolError::new("converter_run_failed");
+/// The converter's result document is missing or not the documented document.
+pub const CONVERTER_RESULT_INVALID: ToolError = ToolError::new("converter_result_invalid");
+/// The converter ran and reported that the conversion is not complete.
+pub const CONVERTER_RESULT_INCOMPLETE: ToolError = ToolError::new("converter_result_incomplete");
+/// The converter wrote inside the source root it promised only to read.
+pub const CONVERTER_MODIFIED_SOURCE: ToolError = ToolError::new("converter_modified_source");
+/// A conversion the tool owns was interrupted before it settled.
+pub const PACKAGE_CONVERSION_STOPPED: ToolError = ToolError::new("package_conversion_stopped");
+/// The source root the run stages from could not be read as one directory tree.
+pub const SOURCE_ROOT_UNREADABLE: ToolError = ToolError::new("source_root_unreadable");
 
 /// A failure that names the marker it read, never the path it read it from.
 pub fn marker_read_failed(_path: &std::path::Path) -> ToolError {

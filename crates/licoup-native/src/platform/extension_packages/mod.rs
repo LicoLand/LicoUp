@@ -56,6 +56,7 @@ pub mod artifact;
 pub mod discovery;
 pub mod install;
 pub mod journal;
+pub mod release_index;
 pub mod state;
 pub mod storage;
 pub mod uninstall;
@@ -80,6 +81,11 @@ pub use journal::{
 };
 pub use licoup_extension_contracts::deployment::{
     InstanceLifecycle, PackageFacts, PackageLifecycle,
+};
+pub use release_index::{
+    IndexedConverter, IndexedPackage, IndexedPayload, MAX_INDEX_BYTES, MAX_INDEX_PACKAGES,
+    PACKAGE_INDEX_SCHEMA, VerifiedPackageIndex, bundled_public_keys, canonical_unsigned_bytes,
+    verify_index,
 };
 pub use state::{
     Admission, InstallActivation, InstanceIdentity, InstanceMachine, InstanceRegistry,

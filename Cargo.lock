@@ -2220,12 +2220,19 @@ name = "licoup-migrate"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
+ "command-group",
+ "ed25519-dalek 2.2.0",
+ "licoup-conversation",
  "licoup-extension-contracts",
  "licoup-foundation",
  "licoup-native",
+ "rand_core 0.6.4",
  "rusqlite",
+ "semver",
  "serde",
  "serde_json",
+ "zip",
 ]
 
 [[package]]
