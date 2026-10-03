@@ -335,6 +335,22 @@ class CollectionView<Item> extends StatefulWidget {
 class _CollectionViewState<Item> extends State<CollectionView<Item>> {
   ScrollController? _internalController;
   bool _pageRequestInFlight = false;
+  Map<Object, int> _keyIndexMap = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    _indexItems();
+  }
+
+  /// Item keys are indexed once per item list instead of once per build, so a
+  /// lazy transcript does not walk every item on each frame it paints.
+  void _indexItems() {
+    _keyIndexMap = <Object, int>{
+      for (var i = 0; i < widget.items.length; i++)
+        widget.itemKey(widget.items[i]): i,
+    };
+  }
 
   ScrollController get _effectiveController =>
       widget.controller ??
@@ -345,6 +361,16 @@ class _CollectionViewState<Item> extends State<CollectionView<Item>> {
   @override
   void didUpdateWidget(covariant CollectionView<Item> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(widget.items, oldWidget.items)) {
+      // New content is about to be laid out. Capture the visible reading anchor
+      // first, so a reader who is scrolled up keeps their place even when the
+      // caller forgot to announce the replacement.
+      final controller = oldWidget.controller ?? _internalController;
+      if (oldWidget.reverse && controller is ReadingPositionScrollController) {
+        controller.captureReadingAnchor();
+      }
+      _indexItems();
+    }
     if (widget.controller != oldWidget.controller) {
       if (oldWidget.controller == null) {
         _internalController?.dispose();
@@ -420,12 +446,6 @@ class _CollectionViewState<Item> extends State<CollectionView<Item>> {
     // In reverse mode: earlier row is at the end of the list (index = itemsCount)
     final totalCount = itemsCount + (hasEarlierRow ? 1 : 0);
 
-    // Map item keys to indices for O(1) child element recovery
-    final keyIndexMap = <Object, int>{};
-    for (var i = 0; i < itemsCount; i++) {
-      keyIndexMap[widget.itemKey(widget.items[i])] = i;
-    }
-
     final listView = ListView.builder(
       controller: _effectiveController,
       reverse: widget.reverse,
@@ -435,7 +455,7 @@ class _CollectionViewState<Item> extends State<CollectionView<Item>> {
       itemCount: totalCount,
       findChildIndexCallback: (Key key) {
         if (key case ValueKey<Object>(:final value)) {
-          return keyIndexMap[value];
+          return _keyIndexMap[value];
         }
         return null;
       },

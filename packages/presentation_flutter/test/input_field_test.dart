@@ -175,4 +175,342 @@ void main() {
 
     expect(submitCalled, isFalse);
   });
+
+  testWidgets('controlled value echoes locally and reports editing changes', (
+    tester,
+  ) async {
+    final reported = <TextEditingValue>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: InputField(
+            value: const TextEditingValue(text: 'draft'),
+            onValueChanged: reported.add,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('draft'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'drafted');
+    await tester.pump();
+
+    // Local echo is immediate, and the owner receives the full editing value.
+    expect(find.text('drafted'), findsOneWidget);
+    expect(reported.last.text, 'drafted');
+  });
+
+  testWidgets('unchanged controlled value never clobbers local echo', (
+    tester,
+  ) async {
+    const value = TextEditingValue(text: 'business value');
+
+    late StateSetter rebuild;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              rebuild = setState;
+              return InputField(value: value, onValueChanged: (_) {});
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'typed locally');
+    await tester.pump();
+
+    // A rebuild that repeats the same value is not a business reset: the
+    // keystroke stays visible and is never replaced by the stale value.
+    rebuild(() {});
+    await tester.pump();
+
+    expect(find.text('typed locally'), findsOneWidget);
+    expect(find.text('business value'), findsNothing);
+  });
+
+  testWidgets('a changed controlled value replaces the local text', (
+    tester,
+  ) async {
+    var value = const TextEditingValue(text: 'first');
+    late StateSetter rebuild;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              rebuild = setState;
+              return InputField(value: value, onValueChanged: (_) {});
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'local draft');
+    await tester.pump();
+    expect(find.text('local draft'), findsOneWidget);
+
+    rebuild(() {
+      value = const TextEditingValue(text: 'installed by owner');
+    });
+    await tester.pump();
+
+    expect(find.text('installed by owner'), findsOneWidget);
+    expect(find.text('local draft'), findsNothing);
+  });
+
+  testWidgets('a controlled field leaves clearing to its owner', (
+    tester,
+  ) async {
+    var value = const TextEditingValue(text: 'send me');
+    String? submitted;
+    late StateSetter rebuild;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              rebuild = setState;
+              return InputField(
+                value: value,
+                onSubmit: (text) => submitted = text,
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+
+    expect(submitted, 'send me');
+    // Local echo survives the submit until the owner decides the outcome.
+    expect(find.text('send me'), findsOneWidget);
+
+    rebuild(() {
+      value = TextEditingValue.empty;
+    });
+    await tester.pump();
+
+    expect(find.text('send me'), findsNothing);
+  });
+
+  testWidgets('duplicate submit paths do not send the same press twice', (
+    tester,
+  ) async {
+    var submits = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: InputField(clearOnSubmit: false, onSubmit: (_) => submits++),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'only once');
+    await tester.pump();
+
+    // The key handler and the platform submit action can both fire for one
+    // physical Enter. Both wired paths are driven in the same turn so the
+    // assertion tests the guard itself rather than how long the machine takes
+    // between two awaited framework calls.
+    final field = tester.widget<TextField>(find.byType(TextField));
+    final wrapper = tester
+        .element(find.byType(TextField))
+        .findAncestorWidgetOfExactType<Focus>()!;
+
+    wrapper.onKeyEvent!(
+      field.focusNode!,
+      const KeyDownEvent(
+        physicalKey: PhysicalKeyboardKey.enter,
+        logicalKey: LogicalKeyboardKey.enter,
+        timeStamp: Duration.zero,
+      ),
+    );
+    field.onSubmitted!(field.controller!.text);
+
+    await tester.pump();
+
+    expect(submits, 1);
+  });
+
+  testWidgets('the platform submit action sends the message', (tester) async {
+    String? submitted;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: InputField(onSubmit: (text) => submitted = text)),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'from the send action');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pump();
+
+    expect(submitted, 'from the send action');
+  });
+
+  testWidgets('the platform send action sends the committed composition', (
+    tester,
+  ) async {
+    var submits = 0;
+    String? submitted;
+    final controller = TextEditingController();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: InputField(
+            controller: controller,
+            onSubmit: (text) {
+              submits++;
+              submitted = text;
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+
+    // The IME is composing a candidate. The send action belongs to the key
+    // handler path, which refuses to submit mid-composition.
+    controller.value = const TextEditingValue(
+      text: 'nihao',
+      composing: TextRange(start: 0, end: 5),
+    );
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(submits, 0);
+
+    // The platform commits the candidate, then the user sends.
+    controller.value = const TextEditingValue(text: '你好');
+    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pump();
+
+    expect(submits, 1);
+    expect(submitted, '你好');
+  });
+
+  test('a controller and a controlled value are mutually exclusive', () {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+
+    expect(
+      () => InputField(
+        controller: controller,
+        value: const TextEditingValue(text: 'both owners'),
+      ),
+      throwsAssertionError,
+    );
+
+    // Either owner alone stays valid.
+    expect(() => InputField(controller: controller), returnsNormally);
+    expect(
+      () => const InputField(value: TextEditingValue(text: 'value only')),
+      returnsNormally,
+    );
+  });
+
+  testWidgets(
+    'an unchanged controlled value preserves local selection and composition',
+    (tester) async {
+      const value = TextEditingValue(text: 'compose me');
+      final reported = <TextEditingValue>[];
+
+      late StateSetter rebuild;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                rebuild = setState;
+                return InputField(value: value, onValueChanged: reported.add);
+              },
+            ),
+          ),
+        ),
+      );
+
+      final controller = tester
+          .widget<TextField>(find.byType(TextField))
+          .controller!;
+      const editing = TextEditingValue(
+        text: 'compose me',
+        selection: TextSelection.collapsed(offset: 3),
+        composing: TextRange(start: 3, end: 5),
+      );
+      controller.value = editing;
+      await tester.pump();
+      expect(controller.value, editing);
+
+      // The owner repeats the value it already held. That is not a business
+      // change, so the caret and the IME candidate range stay where the user
+      // left them.
+      rebuild(() {});
+      await tester.pump();
+
+      expect(controller.value, editing);
+      expect(controller.selection, const TextSelection.collapsed(offset: 3));
+      expect(controller.value.composing, const TextRange(start: 3, end: 5));
+      expect(find.text('compose me'), findsOneWidget);
+    },
+  );
+
+  testWidgets('a controller swap moves the editing listener', (tester) async {
+    final first = TextEditingController(text: 'first');
+    final second = TextEditingController(text: 'second');
+    addTearDown(first.dispose);
+    addTearDown(second.dispose);
+    final reported = <String>[];
+
+    late StateSetter swap;
+    var controller = first;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              swap = setState;
+              return InputField(
+                controller: controller,
+                onValueChanged: (value) => reported.add(value.text),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    swap(() {
+      controller = second;
+    });
+    await tester.pump();
+
+    expect(find.text('second'), findsOneWidget);
+
+    // The retired controller must no longer report; only the live one does.
+    first.text = 'first moved';
+    await tester.pump();
+    expect(reported, isEmpty);
+
+    second.text = 'second moved';
+    await tester.pump();
+    expect(reported, ['second moved']);
+  });
 }
