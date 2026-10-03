@@ -18,7 +18,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const CATALOG_RELATIVE =
-  "crates/licoup-native/src/domain/provider_model_pricing/pricing_catalog.json";
+  "crates/licoup-model-catalog/src/pricing/pricing_catalog.json";
 const MAX_JSON_BYTES = 16 * 1024 * 1024;
 const EXPECTED_TABLE_COUNT = 10;
 const MAX_ROUTES_PER_TABLE = 2_048;

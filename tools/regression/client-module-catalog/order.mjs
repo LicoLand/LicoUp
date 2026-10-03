@@ -72,6 +72,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.crate.conversation-contracts",
   "rust.crate.extension-contracts",
   "rust.crate.state-machine-codegen",
+  "rust.crate.model-catalog",
   "rust.domain.catalog-convergence-adapter",
   "rust.platform.catalog-cache-store",
   "rust.ffi.catalog-convergence",

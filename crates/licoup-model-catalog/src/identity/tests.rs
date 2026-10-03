@@ -2,6 +2,48 @@ use super::*;
 use std::io::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+/// The Agent declaration labels production composition supplies. The registry
+/// strips a label that names a source before it matches a model, so a fixture
+/// states the declarations its expectations depend on instead of inheriting a
+/// host's. The list is the packaged Agent ids and labels the inventory composes.
+const FIXTURE_AGENT_LABELS: &[&str] = &[
+    "openclaw",
+    "claude-code",
+    "Claude Code",
+    "codex",
+    "Codex",
+    "antigravity",
+    "Antigravity",
+    "opencode",
+    "OpenCode",
+    "copilot",
+    "Copilot",
+    "kilo-code",
+    "Kilo Code",
+    "cursor",
+    "Cursor",
+    "cursor-cli",
+    "Cursor CLI",
+    "hermes",
+    "Hermes",
+    "kimi-code",
+    "Kimi Code",
+    "pi",
+    "Pi",
+    "lico-agent",
+    "Lico Agent",
+    "deepseek-harness",
+    "DeepSeek Harness",
+];
+
+fn fixture_registry(value: Value) -> Result<RegistrySnapshot> {
+    RegistrySnapshot::from_catalog_with_wrappers(value, FIXTURE_AGENT_LABELS)
+}
+
+fn fixture_document(catalog: &CatalogDocument) -> Result<RegistrySnapshot> {
+    RegistrySnapshot::from_document_with(catalog, FIXTURE_AGENT_LABELS)
+}
+
 fn catalog() -> Value {
     json!({
         "models": {
@@ -63,7 +105,7 @@ impl Drop for TestDirectory {
 
 #[test]
 fn explicit_provider_links_merge_context_agent_and_effort_wrappers() {
-    let snapshot = RegistrySnapshot::from_catalog(catalog()).unwrap();
+    let snapshot = fixture_registry(catalog()).unwrap();
     for name in [
         "k3",
         "kimi-k3",
@@ -125,7 +167,7 @@ fn composer_speed_tiers_share_one_identity_across_catalogs_and_agents() {
     value["providers"]["relay"] = json!({"models": {
         "composer-2.5-fast": {"base_model":"cursor/composer-2.5-fast"}
     }});
-    let snapshot = RegistrySnapshot::from_catalog(value.clone()).unwrap();
+    let snapshot = fixture_registry(value.clone()).unwrap();
     assert_eq!(
         snapshot.models.len(),
         catalog()["models"].as_object().unwrap().len() + 1
@@ -141,8 +183,12 @@ fn composer_speed_tiers_share_one_identity_across_catalogs_and_agents() {
         .as_object_mut()
         .unwrap()
         .remove("cursor/composer-2.5");
-    let fast_only = RegistrySnapshot::from_catalog(value).unwrap();
-    for registry in [&snapshot, &fast_only, &RegistrySnapshot::empty()] {
+    let fast_only = fixture_registry(value).unwrap();
+    for registry in [
+        &snapshot,
+        &fast_only,
+        &RegistrySnapshot::empty_with_wrappers(FIXTURE_AGENT_LABELS),
+    ] {
         for agent in [None, Some("cursor"), Some("opencode"), Some("codex")] {
             for raw in [
                 "composer-2.5",
@@ -183,7 +229,7 @@ fn composer_speed_tiers_share_one_identity_across_catalogs_and_agents() {
 
 #[test]
 fn actual_fast_versions_and_modalities_remain_distinct() {
-    let snapshot = RegistrySnapshot::from_catalog(catalog()).unwrap();
+    let snapshot = fixture_registry(catalog()).unwrap();
     assert_eq!(
         snapshot
             .resolve("Cursor Grok 4.6 Extra High Fast", Some("cursor"))
@@ -214,7 +260,7 @@ fn actual_fast_versions_and_modalities_remain_distinct() {
 fn ambiguous_names_require_an_explicit_provider_identity() {
     let mut value = catalog();
     value["models"]["other/kimi-k3"] = json!({"name":"Kimi K3"});
-    let snapshot = RegistrySnapshot::from_catalog(value).unwrap();
+    let snapshot = fixture_registry(value).unwrap();
     assert!(snapshot.resolve("Kimi K3", None).is_none());
     assert_eq!(
         snapshot.resolve("kimi-for-coding/k3", None).unwrap().id,
@@ -228,7 +274,7 @@ fn ambiguous_names_require_an_explicit_provider_identity() {
 
 #[test]
 fn numeric_versions_and_exact_ids_survive_loose_display_alias_collisions() {
-    let snapshot = RegistrySnapshot::from_catalog(json!({
+    let snapshot = fixture_registry(json!({
         "models": {
             "lab/model-5.1": {"name":"Model 5.1"},
             "lab/model-51": {"name":"Model 51"},
@@ -267,7 +313,7 @@ fn numeric_versions_and_exact_ids_survive_loose_display_alias_collisions() {
 
 #[test]
 fn canonical_history_ids_do_not_follow_floating_provider_aliases() {
-    let snapshot = RegistrySnapshot::from_catalog(json!({
+    let snapshot = fixture_registry(json!({
         "models": {
             "deepseek/deepseek-v4-flash": {"name":"deepseek-v4-flash"},
             "deepseek/deepseek-v4-flash-0731": {"name":"DeepSeek-V4-Flash-0731"},
@@ -332,7 +378,7 @@ fn canonical_history_ids_do_not_follow_floating_provider_aliases() {
 
 #[test]
 fn recorded_provider_disambiguates_native_selectors_but_source_agent_does_not() {
-    let snapshot = RegistrySnapshot::from_catalog(json!({
+    let snapshot = fixture_registry(json!({
         "models": {
             "first/shared-model": {"name":"Shared Model"},
             "second/shared-model": {"name":"Shared Model"},
@@ -398,7 +444,7 @@ fn recorded_provider_disambiguates_native_selectors_but_source_agent_does_not() 
 
 #[test]
 fn provider_ids_are_separate_from_display_names_and_preserve_punctuation() {
-    let snapshot = RegistrySnapshot::from_catalog(json!({
+    let snapshot = fixture_registry(json!({
         "models": {
             "lab/model-a": {"name":"Model A"},
             "lab/model-b": {"name":"Model B"}
@@ -454,12 +500,12 @@ fn historical_models_keep_concrete_versions_without_following_current_routes() {
         "slot3": {"name":"Kimi K3", "base_model":"moonshotai/kimi-k3"},
         "default": {"base_model":"moonshotai/kimi-k3"}
     }});
-    let before = RegistrySnapshot::from_catalog(value.clone()).unwrap();
+    let before = fixture_registry(value.clone()).unwrap();
     value["providers"]["relay"]["models"]["private-slot"]["base_model"] =
         json!("moonshotai/kimi-k2.7-code");
     value["providers"]["kimi-for-coding"]["models"]["kimi-for-coding"]["base_model"] =
         json!("moonshotai/kimi-k3");
-    let after = RegistrySnapshot::from_catalog(value).unwrap();
+    let after = fixture_registry(value).unwrap();
     assert_ne!(
         before
             .resolve_with_provider("private-slot", Some("relay"), None)
@@ -504,7 +550,7 @@ fn historical_models_keep_concrete_versions_without_following_current_routes() {
             );
         }
     }
-    let mismatched_versions = RegistrySnapshot::from_catalog(json!({
+    let mismatched_versions = fixture_registry(json!({
         "models": {
             "lab/model-5.1-0731-vision": {"name":"Model 5.1 0731 Vision"},
             "lab/other-3": {"name":"Other 3"}
@@ -528,7 +574,7 @@ fn historical_models_keep_concrete_versions_without_following_current_routes() {
 
 #[test]
 fn cursor_thinking_and_effort_wrappers_preserve_the_actual_model_version() {
-    let snapshot = RegistrySnapshot::from_catalog(json!({
+    let snapshot = fixture_registry(json!({
         "models": {
             "anthropic/claude-fable-5": {"name":"Claude Fable 5"},
             "anthropic/claude-fable-5-1": {"name":"claude-fable-5-1"},
@@ -607,11 +653,11 @@ fn model_display_names_format_catalog_and_unknown_ids_without_aliasing() {
     ] {
         assert_eq!(model_display_name(raw), expected, "{raw}");
     }
-    let snapshot = RegistrySnapshot::from_catalog(catalog()).unwrap();
+    let snapshot = fixture_registry(catalog()).unwrap();
     assert!(snapshot.resolve("custom/gpt-reserve", None).is_none());
     assert!(snapshot.resolve("custom/grok-bot", None).is_none());
     assert!(snapshot.resolve("custom/grok-bot-default", None).is_none());
-    let branded = RegistrySnapshot::from_catalog(json!({
+    let branded = fixture_registry(json!({
         "models": {
             "minimax/minimax-m2.5": {"name":"MiniMax M2.5"},
             "openai/chatgpt-latest": {"name":"ChatGPT Latest"},
@@ -639,7 +685,7 @@ fn unique_public_names_link_missing_base_references_without_model_guessing() {
     value["providers"]["different"] = json!({"name":"Different", "models": {
         "novel-7": {"name":"Novel 7"}
     }});
-    let snapshot = RegistrySnapshot::from_catalog(value).unwrap();
+    let snapshot = fixture_registry(value).unwrap();
     assert_eq!(
         snapshot.resolve("relay/vendor-k3", None).unwrap().id,
         "moonshotai/kimi-k3"
@@ -721,7 +767,7 @@ fn cache_write_failure_does_not_publish_an_unpersisted_catalog() {
 fn test_snapshot_is_scoped_and_never_reads_host_catalog() {
     assert!(snapshot().revision().is_empty());
     let result = std::panic::catch_unwind(|| {
-        with_test_snapshot(RegistrySnapshot::from_catalog(catalog()).unwrap(), || {
+        with_test_snapshot(fixture_registry(catalog()).unwrap(), || {
             assert!(!refresh_cached_snapshot().revision().is_empty());
             panic!("fixture panic");
         })
@@ -774,7 +820,7 @@ fn public_archive_preserves_explicit_links_and_reports_dangling_entries() {
     let downloaded = source::from_archive(&bytes).unwrap();
     assert_eq!(downloaded.source, source::REPOSITORY_SOURCE);
     assert_eq!(downloaded.skipped_entries, 2);
-    let snapshot = RegistrySnapshot::from_document(&downloaded.catalog).unwrap();
+    let snapshot = fixture_document(&downloaded.catalog).unwrap();
     assert_eq!(
         snapshot.resolve("relay/alias", None).unwrap().id,
         "lab/model-3"
@@ -793,28 +839,4 @@ fn malformed_public_model_rejects_the_entire_refresh() {
         &[],
     );
     assert!(source::from_archive(&bytes).is_err());
-}
-
-#[test]
-fn local_registry_commands_are_typed_and_read_does_not_refresh() {
-    use crate::ffi::commands::{CliExecution, admit_cli_command, execute_cli};
-    for verb in ["read", "refresh"] {
-        assert!(admit_cli_command(vec!["model-registry".into(), verb.into()]).is_ok());
-        assert!(
-            admit_cli_command(vec![
-                "model-registry".into(),
-                verb.into(),
-                "--source".into(),
-                "arbitrary".into()
-            ])
-            .is_err()
-        );
-    }
-    let CliExecution::Json(result) =
-        execute_cli(vec!["model-registry".into(), "read".into()]).unwrap()
-    else {
-        panic!("expected JSON");
-    };
-    assert_eq!(result["ok"], true);
-    assert_eq!(result["status"], "empty");
 }

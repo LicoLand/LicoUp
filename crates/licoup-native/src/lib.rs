@@ -25,6 +25,14 @@ pub(crate) mod state_machines {
 /// [`agent_target_port`] accessor is the one path to it.
 pub(crate) mod target_port;
 
+/// The model catalogue composition: this host's answers for the port
+/// `licoup-model-catalog` declares.
+///
+/// It lives at the crate root for the same reason the inventory's does: the
+/// catalogue owns the selection facts, this host owns the probe, the
+/// declarations and the data roots, and neither layer has to know the other.
+pub(crate) mod model_catalog_port;
+
 /// The process composition entry: installs this host's answers for the ports
 /// its layers ask.
 ///
@@ -39,7 +47,8 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
         platform::codex_runtime_observation::open_rollout_paths,
     )?;
     platform::gateway_composition::install_readiness()?;
-    platform::stop_control::install_subagent_claim_stop(stop_subagent_claim)
+    platform::stop_control::install_subagent_claim_stop(stop_subagent_claim)?;
+    licoup_model_catalog::install_model_catalog_port(model_catalog_port::model_catalog_port())
 }
 
 /// The composition's answer for the stop control's Subagent-claim port: the
@@ -82,4 +91,3 @@ pub fn agent_target_port() -> licoup_agent_targets::port::AgentTargetPort {
 // `target_port`; this alias keeps the two naming one path without widening the
 // host's public surface.
 pub(crate) use licoup_agent_targets::port;
-

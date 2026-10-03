@@ -26,6 +26,7 @@ licoup-foundation = { path = "../licoup-foundation" }
 licoup-protocol-bindings = { path = "../licoup-protocol-bindings" }
 licoup-client-state = { path = "../licoup-client-state" }
 licoup-agent-targets = { path = "../licoup-agent-targets" }
+licoup-model-catalog = { path = "../licoup-model-catalog" }
 licoup-endpoint-core = { path = "../licoup-endpoint-core" }
 licoup-platform-bridges = { path = "../licoup-platform-bridges" }
 licoup-agent-adapters = { path = "../licoup-agent-adapters" }

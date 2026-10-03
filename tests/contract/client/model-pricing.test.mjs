@@ -22,7 +22,7 @@ const source = readFileSync(
 const rust = readFileSync(
   path.join(
     PRICING_FACT_PATHS.repoRoot,
-    "crates/licoup-native/src/domain/provider_model_pricing.rs",
+    "crates/licoup-model-catalog/src/pricing.rs",
   ),
   "utf8",
 );
@@ -159,7 +159,7 @@ test("Rust and release commands consume only the canonical catalog", () => {
   assert.ok(CLIENT_GATE_LANES["release-policy"].includes("client:pricing:check"));
   assert.doesNotMatch(source, /pricing_verification_stale|release-check/u);
   const selection = classifyClientGatePaths([
-    "crates/licoup-native/src/domain/provider_model_pricing/pricing_catalog.json",
+    "crates/licoup-model-catalog/src/pricing/pricing_catalog.json",
     "tools/scripts/model-pricing-facts.mjs",
   ]);
   assert.equal(selection.lanes["release-policy"], false);

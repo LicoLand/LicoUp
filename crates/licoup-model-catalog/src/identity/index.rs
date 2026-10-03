@@ -32,11 +32,35 @@ impl RegistrySnapshot {
         Self::from_document(&catalog)
     }
 
-    pub(crate) fn empty() -> Self {
-        let wrappers = crate::domain::agent_catalog::entries()
-            .into_iter()
-            .flat_map(|agent| [normalize(&agent.id), normalize(&agent.label)])
-            .collect();
+    /// Build a snapshot against explicitly declared Agent wrapper labels.
+    ///
+    /// Production reads the labels the composed port answers. A caller that
+    /// states its own declaration fixture — a test, or any caller resolving
+    /// against a synthetic catalog — names them here instead of inheriting a
+    /// host's declarations.
+    pub fn from_catalog_with_wrappers(
+        value: Value,
+        wrappers: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> Result<Self> {
+        let catalog: CatalogDocument = serde_json::from_value(value)?;
+        Self::from_document_with(&catalog, &normalize_wrappers(wrappers))
+    }
+
+    /// An empty snapshot whose wrapper labels are the ones this process
+    /// composed.
+    pub fn empty() -> Self {
+        Self::empty_with(&normalize_wrappers(
+            (crate::port::model_catalog_port().agent_wrapper_labels)()
+        ))
+    }
+
+    /// An empty snapshot against explicitly declared Agent wrapper labels.
+    pub fn empty_with_wrappers(wrappers: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+        Self::empty_with(&normalize_wrappers(wrappers))
+    }
+
+    pub(crate) fn empty_with(wrappers: &HashSet<String>) -> Self {
+        let wrappers = wrappers.clone();
         Self {
             models: Vec::new(),
             canonical_ids: HashMap::new(),
@@ -53,8 +77,18 @@ impl RegistrySnapshot {
     }
 
     pub(crate) fn from_document(catalog: &CatalogDocument) -> Result<Self> {
+        Self::from_document_with(
+            catalog,
+            (crate::port::model_catalog_port().agent_wrapper_labels)(),
+        )
+    }
+
+    pub(crate) fn from_document_with(
+        catalog: &CatalogDocument,
+        wrappers: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> Result<Self> {
         ensure!(!catalog.models.is_empty(), "model_registry_catalog_empty");
-        let mut result = Self::empty();
+        let mut result = Self::empty_with(&normalize_wrappers(wrappers));
         result.provider_count = catalog.providers.len();
         let mut model_ids = BTreeMap::<String, usize>::new();
         let mut labs = HashSet::new();
@@ -392,6 +426,17 @@ impl RegistrySnapshot {
         }
         matched
     }
+}
+
+/// The Agent declaration labels a snapshot strips before matching. The
+/// inventory owns them and production reads them from the composed port; an
+/// unanswered port contributes none, which keeps resolution strict: a wrapper
+/// prefix is never stripped on a guess.
+fn normalize_wrappers(labels: impl IntoIterator<Item = impl AsRef<str>>) -> HashSet<String> {
+    labels
+        .into_iter()
+        .map(|label| normalize(label.as_ref()))
+        .collect()
 }
 
 /// Official identity facts supplement directory rows that list serving tiers

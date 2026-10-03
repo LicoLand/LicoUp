@@ -67,10 +67,11 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.model-planning",
       kind: "rust-domain",
-      summary: "Local model planning, canonical model registry, and selection",
+      summary: "Local model planning over the catalogue's declared identity and planning inputs",
       inputs: [
         "crates/licoup-native/src/domain/model_planning.rs",
         "crates/licoup-native/src/domain/model_registry/**",
+        "crates/licoup-native/src/domain/provider_model_pricing.rs",
         "crates/licoup-foundation/src/core/model_naming.rs",
       ],
       command: rustLayer("domain::model_"),
