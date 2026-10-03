@@ -89,7 +89,6 @@ pub(crate) fn install() {
             dispatch_timeout: crate::domain::dispatch_timeout_policy::resolve_dispatch_timeout,
             declared_capability_flag:
                 crate::platform::conversation_lane::declared_capability_flag,
-            codex_plugin_installation_state: crate::host_lane::codex_plugin_installation_state,
             cleanup_conversation: crate::host_lane::cleanup_conversation,
         })
     });

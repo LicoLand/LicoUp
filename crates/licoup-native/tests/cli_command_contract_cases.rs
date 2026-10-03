@@ -1955,27 +1955,6 @@ fn route_authorities() -> Vec<RouteAuthority> {
     add_authority_routes(
         &mut routes,
         "adapter.rs",
-        "handle_codex_plugin_status",
-        &["adapter codex plugin status"],
-        Options,
-    );
-    add_authority_routes(
-        &mut routes,
-        "adapter.rs",
-        "handle_codex_plugin_plan",
-        &["adapter codex plugin plan"],
-        Options,
-    );
-    add_authority_routes(
-        &mut routes,
-        "adapter.rs",
-        "handle_codex_plugin_install",
-        &["adapter codex plugin install"],
-        Options,
-    );
-    add_authority_routes(
-        &mut routes,
-        "adapter.rs",
         "handle_subagent_mcp_status",
         &["adapter subagent-mcp status"],
         Options,
@@ -2922,20 +2901,6 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
         ],
         "resource-usage scan" => &[value_option("state-root", Text, false)],
         "adapter antigravity authorize" => &[value_option("binary-path", Text, false)],
-        "adapter codex plugin status" | "adapter codex plugin plan" => {
-            &[value_option("binary-path", Text, true)]
-        }
-        "adapter codex plugin install" => &[
-            value_option("binary-path", Text, true),
-            value_option("confirmation", Text, true),
-            OptionAuthority {
-                name: "confirmed",
-                arity: OptionArity::Boolean,
-                repeatable: false,
-                value_kind: Text,
-                required: true,
-            },
-        ],
         "adapter subagent-mcp status" | "adapter subagent-mcp plan" => &[
             value_option("agent-id", Text, true),
             value_option("binary-path", Text, false),

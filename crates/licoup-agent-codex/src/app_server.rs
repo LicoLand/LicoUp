@@ -10,12 +10,15 @@
 //! is parsed once, here, and nothing above the port re-parses it. A client that
 //! carries no Codex package therefore carries no app-server field name at all.
 //!
-//! `driver` — the process that speaks this protocol to a real app-server — moves
-//! here too; while it is still composed by the client, the client reads these
-//! modules through this package rather than keeping a second copy.
+//! `driver` is the process half: the app-server this package starts, the
+//! bounded transport it writes and reads, the supervision of one turn and the
+//! live control channel into it. Both halves are the package's, so a client
+//! that carries no Codex package starts no app-server and names no app-server
+//! field.
 
 pub mod config;
 pub mod contract;
+pub mod driver;
 pub mod failure;
 pub mod limits;
 pub mod model;

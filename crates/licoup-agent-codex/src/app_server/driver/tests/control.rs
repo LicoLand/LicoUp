@@ -1,8 +1,8 @@
 use super::support::{
     completed_outcome, config, initialize, open_thread, sent_messages, start_turn,
 };
-use crate::platform::codex_app_server::model::ProtocolEffect;
-use crate::platform::native_agent_parser::adapters::codex::CodexParser;
+use crate::app_server::model::ProtocolEffect;
+use crate::parser::CodexParser;
 use serde_json::{Value, json};
 
 fn active_turn() -> CodexParser {

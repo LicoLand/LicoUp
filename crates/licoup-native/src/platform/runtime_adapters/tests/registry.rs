@@ -285,7 +285,10 @@ fn management_catalog_projects_native_capabilities_and_adapter_plugins() {
             .collect::<Vec<_>>()
     };
     assert_eq!(plugin_ids("antigravity"), ["acp-bridge"]);
-    assert_eq!(plugin_ids("codex"), ["lico-up-codex"]);
+    assert!(
+        plugin_ids("codex").is_empty(),
+        "a Codex caller plugin belongs to Codex's own marketplace, so this client advertises none"
+    );
     for agent in [
         "claude-code",
         "copilot",
@@ -321,18 +324,6 @@ fn management_catalog_projects_native_capabilities_and_adapter_plugins() {
         Vec::new()
     };
     assert_eq!(subagents["lifecycleActions"], json!(expected_actions));
-}
-
-#[test]
-fn codex_plugin_declares_install_only_when_not_installed() {
-    use super::super::registry::codex_plugin_lifecycle_actions;
-    assert_eq!(
-        codex_plugin_lifecycle_actions("not-installed"),
-        vec!["install"]
-    );
-    for state in ["installed", "unavailable", "not-required", ""] {
-        assert!(codex_plugin_lifecycle_actions(state).is_empty(), "{state}");
-    }
 }
 
 #[test]

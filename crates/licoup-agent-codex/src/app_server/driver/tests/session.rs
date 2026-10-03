@@ -1,14 +1,14 @@
 use super::support::{
     completed_outcome, config, failed_effect, initialize, open_thread, sent_messages, start_turn,
 };
-use crate::platform::codex_app_server::config::ProtocolConfig;
-use crate::platform::codex_app_server::limits::{
+use crate::app_server::config::ProtocolConfig;
+use crate::app_server::limits::{
     ACCOUNT_RATE_LIMITS_REQUEST_ID, INITIALIZE_REQUEST_ID, THREAD_REQUEST_ID,
     THREAD_UNARCHIVE_REQUEST_ID,
 };
-use crate::platform::codex_app_server::model::ProtocolEffect;
-use crate::platform::native_agent_parser::adapters::codex::CodexParser;
-use crate::platform::turn_event_emit::{StreamSinkGuard, install_stream_sink};
+use crate::app_server::model::ProtocolEffect;
+use crate::parser::CodexParser;
+use crate::port::turn_event::{TestSinkGuard, install_test_sink};
 use serde_json::{Map, Value, json};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -473,10 +473,10 @@ fn resume_accepts_session_path_aliases_only_with_record_identity() {
 fn turn_start_ack_emits_accepted_lifecycle_receipt() {
     let captured = Arc::new(Mutex::new(Vec::new()));
     let sink_target = Arc::clone(&captured);
-    install_stream_sink(Box::new(move |event| {
+    install_test_sink(Box::new(move |event| {
         sink_target.lock().unwrap().push(event);
     }));
-    let _guard = StreamSinkGuard;
+    let _guard = TestSinkGuard;
     let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
     initialize(&mut protocol);
     open_thread(&mut protocol);

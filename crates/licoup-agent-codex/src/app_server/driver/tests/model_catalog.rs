@@ -1,5 +1,5 @@
 use super::super::model_catalog::project_model_list_response;
-use super::super::reserve::reserve_model_available;
+use crate::app_server::reserve::reserve_model_available;
 use super::super::{io::TransportEvent, model_catalog::wait_for_catalog_responses};
 use serde_json::json;
 use std::sync::mpsc;

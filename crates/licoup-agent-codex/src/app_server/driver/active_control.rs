@@ -80,14 +80,14 @@ pub(super) fn bind(
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum ControlDisposition {
+pub enum ControlDisposition {
     Accepted,
     NoActiveTurn,
     SessionUnavailable,
     TransportUnavailable,
 }
 
-pub(in crate::platform) fn steer(
+pub fn steer(
     thread_id: &str,
     expected_turn_id: &str,
     text: &str,
@@ -123,7 +123,7 @@ pub(in crate::platform) fn steer(
     }
 }
 
-pub(in crate::platform) fn interrupt(thread_id: &str) -> ControlDisposition {
+pub fn interrupt(thread_id: &str) -> ControlDisposition {
     let Some(turn) = active()
         .lock()
         .ok()
@@ -157,12 +157,12 @@ impl ControlRequest {
     ) -> (String, Value, mpsc::SyncSender<bool>) {
         let (request_id, message) = match self.kind {
             ControlRequestKind::Steer(text) => {
-                crate::platform::native_agent_parser::adapters::codex::steer_request(
+                crate::parser::steer_request(
                     thread_id, turn_id, &text,
                 )
             }
             ControlRequestKind::Interrupt => {
-                crate::platform::native_agent_parser::adapters::codex::interrupt_request(
+                crate::parser::interrupt_request(
                     thread_id, turn_id,
                 )
             }

@@ -28,7 +28,7 @@ agent-related modules.
 
 ```
 crates/licoup-native/src/platform/acp_driver_runtime/
-crates/licoup-native/src/platform/codex_app_server/
+crates/licoup-agent-codex/src/app_server/driver/
 crates/licoup-native/src/platform/claude_code_driver/
 crates/licoup-native/src/platform/antigravity_driver/
 crates/licoup-native/src/platform/hermes_driver/

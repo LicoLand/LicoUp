@@ -28,10 +28,17 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use crate::platform::{
-    acp_driver_runtime, antigravity_driver, claude_code_driver, codex_app_server, copilot_driver,
-    cursor_driver, deepseek_harness_driver, hermes_driver, kilo_code_driver, kimi_code_driver,
-    lico_agent_driver, openclaw_driver, opencode_driver, pi_driver,
+    acp_driver_runtime, antigravity_driver, claude_code_driver, copilot_driver, cursor_driver,
+    deepseek_harness_driver, hermes_driver, kilo_code_driver, kimi_code_driver, lico_agent_driver,
+    openclaw_driver, opencode_driver, pi_driver,
 };
+// The Codex driver — the app-server process and the protocol it speaks — is the
+// Codex package's. The composition names the package and keeps the host's own
+// projection of its result; it holds no app-server field, no launch and no
+// protocol phase of its own.
+use licoup_agent_codex::app_server::contract::RUNTIME_PROTOCOL as CODEX_RUNTIME_PROTOCOL;
+use licoup_agent_codex::app_server::driver as codex_driver;
+use licoup_agent_codex::app_server::model::RunResult as CodexRunResult;
 
 /// Project one Agent's own driver failure onto the host's protocol-agnostic
 /// failure facts.
@@ -216,7 +223,7 @@ pub(super) fn registrations() -> &'static [AgentDriverRegistration] {
             AgentDriverRegistration {
                 agent_id: "codex",
                 driver_id: "codex-app-server",
-                runtime_protocol: codex_app_server::RUNTIME_PROTOCOL,
+                runtime_protocol: CODEX_RUNTIME_PROTOCOL,
                 probe: probe_codex,
                 run: run_codex,
                 parser: parsers[2],
@@ -608,7 +615,7 @@ fn run_claude_code(run: &AgentRun<'_>) -> NormalizedExecution {
 }
 
 /// Project one Codex driver result onto the host's protocol-agnostic shape.
-pub(in crate::platform) fn codex_driven(result: codex_app_server::RunResult) -> DrivenRun {
+pub(in crate::platform) fn codex_driven(result: CodexRunResult) -> DrivenRun {
     DrivenRun {
         ok: result.ok,
         output: result.output,
@@ -631,13 +638,13 @@ pub(in crate::platform) fn codex_driven(result: codex_app_server::RunResult) -> 
         stdout_truncated: result.stdout_truncated,
         stderr_truncated: result.stderr_truncated,
         started_at: result.started_at,
-        runtime_protocol: codex_app_server::RUNTIME_PROTOCOL,
+        runtime_protocol: CODEX_RUNTIME_PROTOCOL,
         driver_id: "codex-app-server",
     }
 }
 
 fn run_codex(run: &AgentRun<'_>) -> NormalizedExecution {
-    let result = codex_app_server::execute(
+    let result = codex_driver::execute(
         run.executable,
         run.params,
         run.prompt,
@@ -646,6 +653,7 @@ fn run_codex(run: &AgentRun<'_>) -> NormalizedExecution {
         run.timeout_ms,
         run.max_stdout,
         run.max_stderr,
+        Some(crate::platform::codex_app_server_environment()),
     );
     normalize_codex(codex_driven(result))
 }
