@@ -406,6 +406,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.domain.mobile-relay.secret-custody.scenario.e2ee-status-authorization",
   "rust.domain.mobile-relay.secret-custody.scenario.secure-command-store",
   "rust.domain.mobile-relay.badtower-acceptance",
+  "rust.domain.endpoint-peer-ingress",
   "rust.domain.targets",
   "rust.domain.targets.scan-paths",
   "rust.domain.targets.binaries",
