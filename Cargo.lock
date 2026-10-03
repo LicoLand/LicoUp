@@ -2106,6 +2106,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-agent-kilo"
+version = "0.14.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-extension-contracts",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "licoup-agent-runtime"
 version = "0.3.0"
 dependencies = [
