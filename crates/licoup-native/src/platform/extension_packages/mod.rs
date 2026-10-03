@@ -57,6 +57,7 @@ pub mod discovery;
 pub mod install;
 pub mod journal;
 pub mod resources;
+pub mod selection;
 pub mod state;
 pub mod storage;
 pub mod uninstall;
@@ -90,6 +91,7 @@ pub use resources::{
     SelectionOutcome, SystemDefault, declared_default, install_maintenance_admission,
     maintenance_admission_port,
 };
+pub use selection::{GenerationSelection, InstalledGeneration, select_generation, switched_on};
 pub use state::{
     Admission, InstallActivation, InstanceIdentity, InstanceMachine, InstanceRegistry,
     InstanceReport, PackageMachine, PermissionKey, Settlement, TrustRecord,

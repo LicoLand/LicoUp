@@ -25,6 +25,9 @@ licoup-foundation = { path = "../licoup-foundation" }
 libc = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# The serving process measures its own bytes against the digest the launcher
+# approved, so the payload that comes up is provably the approved one.
+sha2 = "0.10"
 ureq = { version = "2.10", features = ["json"] }
 uuid = { version = "1.11", features = ["v4"] }
 
