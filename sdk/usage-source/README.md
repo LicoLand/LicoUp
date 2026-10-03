@@ -30,10 +30,16 @@ about itself.
 
 ## What it does not do
 
-No ledger, no settlement, no storage, no network, no process supervision. The
-deduplication, correction, cumulative-reset and multi-source single-settlement
-semantics belong to the consumer — the optional analytics package — and the
-durable facts belong to the core.
+No ledger, no settlement, no storage, no network, no process supervision: an
+observation is a claim about what a source measured, and where a claim becomes
+durable is the host's decision. The kernel's base usage journal depends on this
+crate downward for the shapes it admits, so that decision is structural there. A
+delivery is keyed by the bound source, its epoch and the observation id; a higher
+revision corrects it and a retraction withdraws only its own observation; and one
+host-issued measurement settles once however many sources report it. Cumulative
+differencing, correlation and presentation stay with the consumer — the optional
+analytics package — which reads the core's facts through the port the kernel
+composes.
 
 ## Tests
 
@@ -41,6 +47,8 @@ durable facts belong to the core.
 cargo test --locked --manifest-path sdk/usage-source/Cargo.toml
 ```
 
-The crate is a standalone workspace on purpose: the core never depends on an
-optional package, and the repository root manifests stay owned by the workspace
-owner.
+The crate is excluded from the repository root workspace on purpose: it is the
+third-party boundary, so it keeps its own manifest and lock while the kernel takes
+it as a path dependency. The optional analytics package depends on the same crate;
+the kernel never depends on the package, and the repository root manifests stay
+owned by the workspace owner.

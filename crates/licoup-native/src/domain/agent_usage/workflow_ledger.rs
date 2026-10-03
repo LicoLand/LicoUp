@@ -97,7 +97,49 @@ const WORKFLOW_LEDGER_INIT: &str = "PRAGMA busy_timeout=5000;
              CREATE INDEX IF NOT EXISTS graph_usage_reservations_budget
                ON graph_usage_reservations(budget_id,state,invocation_id);
              CREATE INDEX IF NOT EXISTS graph_usage_reservations_run
-               ON graph_usage_reservations(run_id,updated_at_ms,invocation_id);";
+               ON graph_usage_reservations(run_id,updated_at_ms,invocation_id);
+             CREATE TABLE IF NOT EXISTS usage_source_events (
+               source_ref TEXT NOT NULL,
+               source_epoch TEXT NOT NULL,
+               observation_id TEXT NOT NULL,
+               revision INTEGER NOT NULL,
+               scope_ref TEXT NOT NULL,
+               measurement_ref TEXT,
+               observed_at TEXT NOT NULL,
+               content_digest TEXT NOT NULL,
+               retracted INTEGER NOT NULL DEFAULT 0,
+               settled_at_ms INTEGER NOT NULL,
+               PRIMARY KEY(source_ref,source_epoch,observation_id)
+             );
+             CREATE TABLE IF NOT EXISTS usage_source_facts (
+               fact_id TEXT PRIMARY KEY,
+               scope_ref TEXT NOT NULL,
+               metric TEXT NOT NULL,
+               value TEXT,
+               unit TEXT NOT NULL,
+               quality TEXT NOT NULL,
+               eligibility TEXT NOT NULL,
+               source_ref TEXT NOT NULL,
+               source_epoch TEXT NOT NULL,
+               observation_id TEXT NOT NULL,
+               observed_at TEXT NOT NULL,
+               revision INTEGER,
+               retracted INTEGER NOT NULL DEFAULT 0,
+               updated_at_ms INTEGER NOT NULL
+             );
+             CREATE INDEX IF NOT EXISTS usage_source_facts_scope
+               ON usage_source_facts(scope_ref,metric,fact_id);
+             CREATE INDEX IF NOT EXISTS usage_source_facts_event
+               ON usage_source_facts(source_ref,source_epoch,observation_id);
+             CREATE TABLE IF NOT EXISTS usage_source_cursors (
+               source_ref TEXT NOT NULL,
+               source_epoch TEXT NOT NULL,
+               scope_ref TEXT NOT NULL,
+               sequence INTEGER NOT NULL,
+               cursor TEXT NOT NULL,
+               updated_at_ms INTEGER NOT NULL,
+               PRIMARY KEY(source_ref,source_epoch)
+             );";
 
 fn is_database_busy(error: &rusqlite::Error) -> bool {
     matches!(
@@ -117,7 +159,7 @@ pub struct LedgerError {
 }
 
 impl LedgerError {
-    fn storage() -> Self {
+    pub(super) fn storage() -> Self {
         Self {
             code: "usage_ledger_store_unavailable".into(),
             stage: "graph-usage-ledger".into(),
@@ -130,6 +172,17 @@ impl LedgerError {
         Self {
             code: code.into(),
             stage: "graph-usage-ledger".into(),
+            retryable: false,
+            recovery: "correct_request_and_retry".into(),
+        }
+    }
+
+    /// A refusal raised by another owner of the same base store, so the failure
+    /// names the boundary that refused it instead of the graph ledger.
+    pub(super) fn refused(stage: &'static str, code: &'static str) -> Self {
+        Self {
+            code: code.into(),
+            stage: stage.into(),
             retryable: false,
             recovery: "correct_request_and_retry".into(),
         }
@@ -292,8 +345,8 @@ impl CheckedUsage {
     }
 }
 
-struct Ledger {
-    connection: Connection,
+pub(super) struct Ledger {
+    pub(super) connection: Connection,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -1740,7 +1793,7 @@ impl CommandRow {
     }
 }
 
-fn open_ledger(params: &Value) -> LedgerResult<Ledger> {
+pub(super) fn open_ledger(params: &Value) -> LedgerResult<Ledger> {
     let store = client_state_store(params).map_err(|_| LedgerError::storage())?;
     let root = store.root().join("agent-usage");
     fs::create_dir_all(&root).map_err(|_| LedgerError::storage())?;
@@ -1977,7 +2030,7 @@ fn numeric_field(object: &Map<String, Value>, keys: &[&str]) -> Option<u64> {
     keys.iter().find_map(|key| object.get(*key)?.as_u64())
 }
 
-fn now_ms() -> i64 {
+pub(super) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()

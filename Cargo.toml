@@ -22,6 +22,10 @@ members = [
     "crates/licoup-native",
     "crates/trybuild",
 ]
+# The C11 usage-source SDK is a path dependency of the kernel and keeps its own
+# standalone workspace and lock on purpose: it is the third-party boundary, not
+# a kernel crate. Excluding it from this workspace is what lets both be true.
+exclude = ["sdk/usage-source"]
 resolver = "3"
 
 [workspace.package]
