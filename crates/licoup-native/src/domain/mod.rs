@@ -28,6 +28,7 @@ pub mod mobile_relay;
 pub mod model_planning;
 pub mod model_registry;
 pub mod native_roles;
+pub mod project;
 pub mod protocol_input_admission;
 pub mod provider_model_pricing;
 pub mod provider_quota;

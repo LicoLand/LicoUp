@@ -152,14 +152,11 @@ impl CommandOutcome {
 
     /// A result that carries no reference — a read, such as a listing or a
     /// search. Reads never produce an effect, so they have no live identity to
-    /// hand back.
-    pub fn read(payload: Value) -> Self {
+    /// hand back; the operation still names itself, because a caller that reads
+    /// projects must not be told it read conversations.
+    pub fn read(operation: Operation, payload: Value) -> Self {
         Self {
-            reference: OperationReference::new(
-                Operation::ConversationList,
-                "",
-                OperationState::Completed,
-            ),
+            reference: OperationReference::new(operation, "", OperationState::Completed),
             payload,
         }
     }

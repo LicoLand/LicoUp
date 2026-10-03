@@ -24,6 +24,8 @@ pub const MAX_WORKING_DIRECTORY_BYTES: usize = 4096;
 pub const MAX_MODEL_BYTES: usize = 256;
 /// Largest reasoning-effort token accepted.
 pub const MAX_REASONING_EFFORT_BYTES: usize = 32;
+/// Largest project display name accepted.
+pub const MAX_DISPLAY_NAME_BYTES: usize = 256;
 
 /// Which family a command belongs to. Ownership follows this, not the caller.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -31,6 +33,7 @@ pub enum CommandFamily {
     Assistant,
     Subagent,
     Conversation,
+    Project,
 }
 
 /// One addressable business operation. The strings are the neutral names the
@@ -51,6 +54,9 @@ pub enum Operation {
     ConversationSearch,
     ConversationExport,
     ConversationImport,
+    ProjectRegister,
+    ProjectRead,
+    ProjectList,
 }
 
 impl Operation {
@@ -70,6 +76,9 @@ impl Operation {
             Self::ConversationSearch => "conversation.search",
             Self::ConversationExport => "conversation.export",
             Self::ConversationImport => "conversation.import",
+            Self::ProjectRegister => "project.register",
+            Self::ProjectRead => "project.read",
+            Self::ProjectList => "project.list",
         }
     }
 
@@ -453,6 +462,88 @@ impl ImportRequest {
     }
 }
 
+/// The authorized-project family: registration, one read, and the listing.
+///
+/// The registration carries every identity the caller declares — project,
+/// workspace, plan, authorized root, and the authority reference it registers
+/// under. None of it is derived here: this crate bounds the request so a
+/// malformed one never reaches the owner, and the owner decides identity,
+/// authority and durability.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "command", rename_all = "kebab-case")]
+pub enum ProjectCommand {
+    Register(ProjectRegistrationRequest),
+    Read { project_id: String },
+    List,
+}
+
+impl ProjectCommand {
+    pub const fn family() -> CommandFamily {
+        CommandFamily::Project
+    }
+
+    pub const fn operation(&self) -> Operation {
+        match self {
+            Self::Register(_) => Operation::ProjectRegister,
+            Self::Read { .. } => Operation::ProjectRead,
+            Self::List => Operation::ProjectList,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), ApplicationFailure> {
+        match self {
+            Self::Register(request) => request.validate(),
+            Self::Read { project_id } => stable_id("project_id", project_id),
+            Self::List => Ok(()),
+        }
+    }
+}
+
+/// One explicit registration request, in the names the owner reads.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectRegistrationRequest {
+    /// The declared project identity. Never resolved from the authorized root.
+    pub project_id: String,
+    /// The name a person reads.
+    pub display_name: String,
+    /// The declared absolute root this project is authorized to operate in.
+    pub authorized_root: String,
+    /// Which existing authority owner the reference points into.
+    pub authority_kind: String,
+    /// The reference into that owner. A reference, never a credential.
+    pub authority_reference: String,
+    /// The workspace identity this project belongs to.
+    pub workspace_id: String,
+    /// The plan identity carried by this registration.
+    pub plan_id: String,
+}
+
+/// The authority kinds the owner admits.
+pub const AUTHORITY_KINDS: &[&str] = &["membership", "role", "grant"];
+
+impl ProjectRegistrationRequest {
+    pub fn validate(&self) -> Result<(), ApplicationFailure> {
+        stable_id("project_id", &self.project_id)?;
+        bounded_non_empty("display_name", &self.display_name, MAX_DISPLAY_NAME_BYTES)?;
+        bounded_non_empty(
+            "authorized_root",
+            &self.authorized_root,
+            MAX_WORKING_DIRECTORY_BYTES,
+        )?;
+        if !std::path::Path::new(&self.authorized_root).is_absolute() {
+            return Err(ApplicationFailure::invalid_request("authorized_root"));
+        }
+        if !AUTHORITY_KINDS.contains(&self.authority_kind.as_str()) {
+            return Err(ApplicationFailure::invalid_request("authority_kind"));
+        }
+        stable_id("authority_reference", &self.authority_reference)?;
+        stable_id("workspace_id", &self.workspace_id)?;
+        stable_id("plan_id", &self.plan_id)?;
+        Ok(())
+    }
+}
+
 /// Any command either interface can issue.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "family", rename_all = "kebab-case")]
@@ -460,6 +551,7 @@ pub enum ApplicationCommand {
     Assistant(AssistantCommand),
     Subagent(SubagentCommand),
     Conversation(ConversationCommand),
+    Project(ProjectCommand),
 }
 
 impl ApplicationCommand {
@@ -468,6 +560,7 @@ impl ApplicationCommand {
             Self::Assistant(_) => CommandFamily::Assistant,
             Self::Subagent(_) => CommandFamily::Subagent,
             Self::Conversation(_) => CommandFamily::Conversation,
+            Self::Project(_) => CommandFamily::Project,
         }
     }
 
@@ -476,6 +569,7 @@ impl ApplicationCommand {
             Self::Assistant(command) => command.operation(),
             Self::Subagent(command) => command.operation(),
             Self::Conversation(command) => command.operation(),
+            Self::Project(command) => command.operation(),
         }
     }
 
@@ -510,6 +604,7 @@ impl ApplicationCommand {
             Self::Assistant(command) => command.validate(),
             Self::Subagent(command) => command.validate(),
             Self::Conversation(command) => command.validate(),
+            Self::Project(command) => command.validate(),
         }
     }
 
@@ -548,6 +643,10 @@ impl ApplicationCommand {
                 | ConversationCommand::Export(_)
                 | ConversationCommand::Import(_) => None,
             },
+            // A project identity is not a conversation: the project family
+            // addresses one by its own declared identity, so a claim is never
+            // bound to a conversation for it.
+            Self::Project(_) => None,
         }
     }
 }

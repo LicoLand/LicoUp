@@ -53,6 +53,7 @@ impl ApplicationFacade {
             ApplicationCommand::Conversation(command) => {
                 self.ports.conversation.execute(claim, command)
             }
+            ApplicationCommand::Project(command) => self.ports.project.execute(claim, command),
         }
     }
 }

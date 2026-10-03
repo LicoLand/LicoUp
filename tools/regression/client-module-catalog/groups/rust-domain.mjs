@@ -17,6 +17,33 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::workflow_"),
     }),
   defineModule({
+      id: "rust.domain.project-identity",
+      kind: "rust-domain",
+      summary: "Authorized project and plan identity registration, typed refusals, and durable reopen",
+      inputs: [
+        "crates/licoup-project/Cargo.toml",
+        "crates/licoup-project/src/**",
+        "crates/licoup-project/tests/**",
+      ],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-project/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "rust.domain.project-identity.native",
+      kind: "rust-domain",
+      summary: "Project identity command family through the native application facade",
+      inputs: [
+        "crates/licoup-native/src/domain/project/**",
+        "crates/licoup-native/src/domain/application_port.rs",
+        "crates/licoup-native/src/ffi/commands/project.rs",
+        "crates/licoup-project/**",
+      ],
+      command: rustLayer("domain::project"),
+    }),
+  defineModule({
       id: "rust.domain.subagents",
       kind: "rust-domain",
       summary: "Native Assistant and Subagent application with exact Membership delegation",

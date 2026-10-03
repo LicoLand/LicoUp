@@ -21,7 +21,7 @@ const ADMISSION_STAGE: &str = "cli/admission";
 const ADMISSION_COMPONENT: &str = "native_cli";
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
-const AUTHORITATIVE_ROUTE_COUNT: usize = 180;
+const AUTHORITATIVE_ROUTE_COUNT: usize = 183;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -2672,9 +2672,31 @@ fn route_authorities() -> Vec<RouteAuthority> {
         options: vec![],
         constraints: &[],
     });
+    add_authority_routes(
+        &mut routes,
+        "project.rs",
+        "handle_project_register",
+        &["project register"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "project.rs",
+        "handle_project_read",
+        &["project read"],
+        Exact,
+    );
+    add_authority_routes(
+        &mut routes,
+        "project.rs",
+        "handle_project_list",
+        &["project list"],
+        Exact,
+    );
     for route in &mut routes {
         route.required = match route.path {
             "skill get" | "skill visibility set" => &[("skill-id", Text)],
+            "project read" => &[("project-id", Text)],
             "rpc call" => &[("method", Text)],
             _ => route.required,
         };
@@ -2734,7 +2756,9 @@ const fn boolean_option(name: &'static str) -> OptionAuthority {
 fn options_for_route(path: &str) -> Vec<OptionAuthority> {
     use RequiredArgumentKind::{Json, Text};
     let options: &[OptionAuthority] = match path {
-        "rpc call" | "subagents execute" => &[value_option("stdin-json", Json, true)],
+        "rpc call" | "subagents execute" | "project register" => {
+            &[value_option("stdin-json", Json, true)]
+        }
         "mcp start" | "mcp reload" => &[value_option("binary", Text, false)],
         "gateway client-token" => &[value_option("agent", Text, true)],
         "gateway service status"

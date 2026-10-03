@@ -25,6 +25,7 @@
 //!   it performs before any effect.
 
 use crate::contracts::conversation_protocol::ConversationProtocolMethod;
+use crate::domain::project::NativeProjectApplication;
 use crate::domain::subagents::{
     CallerContext, SubagentCallContext, SubagentError, production_application,
 };
@@ -95,6 +96,7 @@ fn application_facade() -> ApplicationFacade {
         Arc::new(NativeAssistantApplication),
         Arc::new(NativeSubagentApplication),
         Arc::new(DurableConversationHost),
+        Arc::new(NativeProjectApplication::portable()),
     ))
 }
 

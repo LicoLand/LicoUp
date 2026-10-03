@@ -9,8 +9,8 @@
 use licoup_application::{
     ActorClaim, ApplicationCommand, ApplicationFacade, ApplicationFailure, ApplicationPorts,
     AssistantCommand, CallbackDecision, CommandOutcome, ConversationCommand, DispatchRequest,
-    EffectCertainty, ExportRequest, Operation, OperationReference, OperationState, RecoveryAction,
-    SearchRequest, SubagentCommand, TaskType,
+    EffectCertainty, ExportRequest, Operation, OperationReference, OperationState, ProjectCommand,
+    ProjectRegistrationRequest, RecoveryAction, SearchRequest, SubagentCommand, TaskType,
 };
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -92,6 +92,19 @@ fn every_command_family_round_trips_through_json_unchanged() {
                 path: "/synthetic/import".into(),
             },
         )),
+        ApplicationCommand::Project(ProjectCommand::Register(ProjectRegistrationRequest {
+            project_id: "alpha-project".into(),
+            display_name: "Synthetic project alpha-project".into(),
+            authorized_root: "/synthetic/authorized/root".into(),
+            authority_kind: "membership".into(),
+            authority_reference: "membership:owner".into(),
+            workspace_id: "workspace:shared".into(),
+            plan_id: "plan:alpha".into(),
+        })),
+        ApplicationCommand::Project(ProjectCommand::Read {
+            project_id: "alpha-project".into(),
+        }),
+        ApplicationCommand::Project(ProjectCommand::List),
     ];
 
     for command in commands {
@@ -114,6 +127,9 @@ fn operation_names_are_stable_and_effect_producing_ones_are_marked() {
         Operation::ConversationImport.as_str(),
         "conversation.import"
     );
+    assert_eq!(Operation::ProjectRegister.as_str(), "project.register");
+    assert_eq!(Operation::ProjectRead.as_str(), "project.read");
+    assert_eq!(Operation::ProjectList.as_str(), "project.list");
 
     for operation in [
         Operation::WorkflowExecute,
@@ -138,6 +154,8 @@ fn operation_names_are_stable_and_effect_producing_ones_are_marked() {
         Operation::ConversationGet,
         Operation::ConversationSearch,
         Operation::ConversationExport,
+        Operation::ProjectRead,
+        Operation::ProjectList,
     ] {
         assert!(
             !operation.produces_effect(),
@@ -145,6 +163,23 @@ fn operation_names_are_stable_and_effect_producing_ones_are_marked() {
             operation.as_str()
         );
     }
+    // Registration writes this product's own durable record and never touches a
+    // provider, and a repeated identity is refused rather than replayed, so it
+    // claims neither a provider effect nor the reconciliation that follows one.
+    assert!(!Operation::ProjectRegister.produces_effect());
+    assert_eq!(
+        ApplicationCommand::Project(ProjectCommand::Register(ProjectRegistrationRequest {
+            project_id: "alpha-project".into(),
+            display_name: "Synthetic project alpha-project".into(),
+            authorized_root: "/synthetic/authorized/root".into(),
+            authority_kind: "membership".into(),
+            authority_reference: "membership:owner".into(),
+            workspace_id: "workspace:shared".into(),
+            plan_id: "plan:alpha".into(),
+        }))
+        .family(),
+        licoup_application::CommandFamily::Project
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -503,6 +538,21 @@ impl licoup_application::SubagentPort for FixturePorts {
     }
 }
 
+impl licoup_application::ProjectPort for FixturePorts {
+    fn execute(
+        &self,
+        _claim: &ActorClaim,
+        command: &ProjectCommand,
+    ) -> Result<CommandOutcome, ApplicationFailure> {
+        self.record("project");
+        Ok(CommandOutcome::new(OperationReference::new(
+            command.operation(),
+            "alpha-project",
+            OperationState::Completed,
+        )))
+    }
+}
+
 impl licoup_application::ConversationPort for FixturePorts {
     fn execute(
         &self,
@@ -511,6 +561,7 @@ impl licoup_application::ConversationPort for FixturePorts {
     ) -> Result<CommandOutcome, ApplicationFailure> {
         self.record("conversation");
         Ok(CommandOutcome::read(
+            command.operation(),
             json!({"command": format!("{:?}", command.operation())}),
         ))
     }
@@ -522,6 +573,7 @@ fn facade(verify_fails: bool) -> (ApplicationFacade, FixturePorts) {
         verify_fails,
     };
     let application = ApplicationPorts::new(
+        Arc::new(ports.clone()),
         Arc::new(ports.clone()),
         Arc::new(ports.clone()),
         Arc::new(ports.clone()),

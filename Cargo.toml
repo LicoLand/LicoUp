@@ -13,6 +13,7 @@ members = [
     "crates/licoup-agent-runtime",
     "crates/licoup-application",
     "crates/licoup-extension-contracts",
+    "crates/licoup-project",
     "crates/licoup-workflow",
     "crates/licoup-conversation",
     "crates/licoup-mcp",

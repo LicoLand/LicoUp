@@ -33,9 +33,10 @@ mod result;
 
 pub use actor::{ActorClaim, ActorClaimError};
 pub use command::{
-    ApplicationCommand, AssistantCommand, CallbackDecision, CancelRequest, CommandFamily,
-    ConversationCommand, DispatchRequest, ExportRequest, ImportRequest, MAX_PROMPT_BYTES,
-    MAX_QUERY_BYTES, MAX_STABLE_ID_BYTES, Operation, SearchRequest, SubagentCommand, TaskType,
+    AUTHORITY_KINDS, ApplicationCommand, AssistantCommand, CallbackDecision, CancelRequest,
+    CommandFamily, ConversationCommand, DispatchRequest, ExportRequest, ImportRequest,
+    MAX_DISPLAY_NAME_BYTES, MAX_PROMPT_BYTES, MAX_QUERY_BYTES, MAX_STABLE_ID_BYTES, Operation,
+    ProjectCommand, ProjectRegistrationRequest, SearchRequest, SubagentCommand, TaskType,
 };
 pub use extension::{
     AUTHORITY_FIELDS, ActivationMode, AdoptedAttributes, CapabilityDescriptor,
@@ -51,6 +52,8 @@ pub use failure::{
 pub use invocation::{
     AuthorityHandle, AuthoritySource, IdempotencyReference, InvocationScope, ToolInvocation,
 };
-pub use ports::{ActorPort, ApplicationPorts, AssistantPort, ConversationPort, SubagentPort};
+pub use ports::{
+    ActorPort, ApplicationPorts, AssistantPort, ConversationPort, ProjectPort, SubagentPort,
+};
 pub use receipt::{NaturalOutput, ReceiptKind, ToolReceipt};
 pub use result::{CommandOutcome, CommandResolution, OperationReference, OperationState};
