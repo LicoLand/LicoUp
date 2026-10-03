@@ -322,6 +322,26 @@ impl ClientCompatibility {
     }
 }
 
+/// The stable codes a conversion refusal is reported with.
+///
+/// They are published values rather than private strings: a caller that has to
+/// report "this package does not own that conversion" maps them to its own
+/// vocabulary without restating the rule, and each one names the field it read.
+pub mod conversion_code {
+    /// The package declares no conversion at all.
+    pub const MISSING: &str = "manifest_conversion_missing";
+    /// The declared converter kind is not a native executable.
+    pub const NOT_NATIVE: &str = "manifest_converter_not_native";
+    /// The declared entry is not an entry inside the package payload.
+    pub const ENTRY_OUTSIDE_PACKAGE: &str = "manifest_converter_entry_outside_package";
+    /// The declaration is present and incomplete.
+    pub const INCOMPLETE: &str = "manifest_conversion_incomplete";
+    /// The declaration is malformed, duplicated or over a published bound.
+    pub const INVALID: &str = "manifest_conversion_invalid";
+    /// The declared formats are not the pair the caller requires.
+    pub const ENDPOINT_MISMATCH: &str = "manifest_conversion_endpoint_mismatch";
+}
+
 /// How a package performs one format conversion.
 ///
 /// One kind is published, and the reason is the same one that makes the release
@@ -440,15 +460,15 @@ impl ConversionDeclaration {
     pub fn validate(&self) -> Result<(), ApplicationFailure> {
         if self.kind != ConverterKind::NativeExecutable {
             return Err(
-                refusal::new("manifest_converter_not_native", STAGE).with_field("conversion.kind")
+                refusal::new(conversion_code::NOT_NATIVE, STAGE).with_field("conversion.kind")
             );
         }
         if !is_converter_entry(&self.entry) {
-            return Err(refusal::new("manifest_converter_entry_outside_package", STAGE)
+            return Err(refusal::new(conversion_code::ENTRY_OUTSIDE_PACKAGE, STAGE)
                 .with_field("conversion.entry"));
         }
         if self.source_formats.is_empty() {
-            return Err(refusal::new("manifest_conversion_incomplete", STAGE)
+            return Err(refusal::new(conversion_code::INCOMPLETE, STAGE)
                 .with_field("conversion.sourceFormats"));
         }
         if self.source_formats.len() > MAX_SOURCE_FORMATS
@@ -457,24 +477,24 @@ impl ConversionDeclaration {
                 .iter()
                 .all(|format| is_format_identity(format))
         {
-            return Err(refusal::new("manifest_conversion_invalid", STAGE)
+            return Err(refusal::new(conversion_code::INVALID, STAGE)
                 .with_field("conversion.sourceFormats"));
         }
         let mut unique = self.source_formats.clone();
         unique.sort();
         unique.dedup();
         if unique.len() != self.source_formats.len() {
-            return Err(refusal::new("manifest_conversion_invalid", STAGE)
+            return Err(refusal::new(conversion_code::INVALID, STAGE)
                 .with_field("conversion.sourceFormats"));
         }
         if !is_format_identity(&self.target_format) {
-            return Err(refusal::new("manifest_conversion_incomplete", STAGE)
+            return Err(refusal::new(conversion_code::INCOMPLETE, STAGE)
                 .with_field("conversion.targetFormat"));
         }
         // One format cannot be both endpoints of the same conversion: a converter
         // that produced the format it reads would have nothing to move.
         if self.source_formats.iter().any(|format| format == &self.target_format) {
-            return Err(refusal::new("manifest_conversion_invalid", STAGE)
+            return Err(refusal::new(conversion_code::INVALID, STAGE)
                 .with_field("conversion.targetFormat"));
         }
         Ok(())
@@ -607,13 +627,13 @@ impl PackageManifest {
         endpoints: &FrozenEndpoints,
     ) -> Result<&ConversionDeclaration, ApplicationFailure> {
         let Some(declaration) = self.conversion.as_ref() else {
-            return Err(refusal::actionable("manifest_conversion_missing", STAGE, "conversion")
+            return Err(refusal::actionable(conversion_code::MISSING, STAGE, "conversion")
                 .with_presentation_arg("package", &self.id)
                 .with_presentation_arg("sourceFormat", endpoints.source_format()));
         };
         if !declaration.converts_from(endpoints.source_format()) {
             return Err(refusal::actionable(
-                "manifest_conversion_endpoint_mismatch",
+                conversion_code::ENDPOINT_MISMATCH,
                 STAGE,
                 "conversion.sourceFormats",
             )
@@ -622,7 +642,7 @@ impl PackageManifest {
         }
         if declaration.target_format != endpoints.target_format() {
             return Err(refusal::actionable(
-                "manifest_conversion_endpoint_mismatch",
+                conversion_code::ENDPOINT_MISMATCH,
                 STAGE,
                 "conversion.targetFormat",
             )
