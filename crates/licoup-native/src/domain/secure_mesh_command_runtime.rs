@@ -44,13 +44,16 @@ impl SecureCommandLocalExecutor for SecureCommandRuntimeExecutor {
                 let mut params = agent_message_send_params(payload)?;
                 let agent = text_from_any(&params, &["agent", "agentId", "target"])
                     .ok_or_else(|| anyhow!("agent message target is unavailable"))?;
-                let executable =
-                    super::targets::available_runtime_executable(&agent).ok_or_else(|| {
-                        anyhow::Error::new(SecureAgentDispatchFailure::new(
-                            "native_agent_runtime_binding_unavailable",
-                            false,
-                        ))
-                    })?;
+                let executable = super::targets::available_runtime_executable(
+                    &crate::domain::target_port::agent_target_port(),
+                    &agent,
+                )
+                .ok_or_else(|| {
+                    anyhow::Error::new(SecureAgentDispatchFailure::new(
+                        "native_agent_runtime_binding_unavailable",
+                        false,
+                    ))
+                })?;
                 params["binaryPath"] = json!(executable.to_string_lossy());
                 dispatch_ready_agent_message(&params, |operation, params| {
                     crate::platform::dispatch_lane_operation(operation, params)

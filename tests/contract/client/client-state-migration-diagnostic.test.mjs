@@ -34,7 +34,7 @@ const MIGRATION_MODULE = "crates/licoup-native/src/domain/client_state_migration
 const STORES_MODULE = "crates/licoup-native/src/domain/client_state_migration/stores.rs";
 const STRATEGY_STORE_MODULE =
   "crates/licoup-native/src/domain/client_state_migration/strategy_store.rs";
-const CLIENT_STATE_POLICY = "crates/licoup-native/src/platform/client_state/policy.rs";
+const CLIENT_STATE_POLICY = "crates/licoup-client-state/src/policy.rs";
 const CLIENT_STATE_MIGRATION =
   "crates/licoup-native/src/platform/client_state/migration.rs";
 const CONVERSATION_STORE = "crates/licoup-conversation/src/store/mod.rs";

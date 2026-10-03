@@ -104,9 +104,9 @@ impl Reader {
     }
 
     fn start() -> Result<ReaderProcess> {
-        let program = crate::domain::targets::find_binary(&["dsh"])
+        let program = licoup_agent_targets::domain::targets::find_binary(&["dsh"])
             .context("DeepSeek Harness reader unavailable")?;
-        let node = crate::domain::targets::find_binary(&["node"])
+        let node = licoup_agent_targets::domain::targets::find_binary(&["node"])
             .context("DeepSeek Harness Node runtime unavailable")?;
         anyhow::ensure!(
             [&program, &node].into_iter().all(|path| {

@@ -12,7 +12,10 @@ pub const RESOURCE_USAGE_SCHEMA_VERSION: u64 = 1;
 /// Scans running agent processes and reports their resource usage.
 #[cfg_attr(not(test), allow(unused_imports))]
 pub fn scan(params: &Value) -> Result<Value> {
-    let target_scan = targets::scan_targets_with_params(params)?;
+    let target_scan = targets::scan_targets_with_params(
+        &crate::domain::target_port::agent_target_port(),
+        params,
+    )?;
     let candidates = injected_targets(params).unwrap_or_else(|| {
         target_scan
             .get("candidates")

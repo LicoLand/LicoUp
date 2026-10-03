@@ -5,17 +5,21 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
+// `licoup-client-state` owns the store and its journal owners; `licoup-native`
+// keeps only the facade and the command surface that depends on the generated
+// wire contract.
 const facadePath = "crates/licoup-native/src/platform/client_state.rs";
-const root = "crates/licoup-native/src/platform/client_state";
+const facadeRoot = "crates/licoup-native/src/platform/client_state";
+const root = "crates/licoup-client-state/src";
 const productionLeaves = Object.freeze([
   "accessors.rs",
   "activity.rs",
   "collections.rs",
   "migration.rs",
-  "operations.rs",
   "paths.rs",
   "policy.rs",
   "redaction.rs",
+  "resource_policy.rs",
   "serialization.rs",
   "snapshots.rs",
 ]);
@@ -41,17 +45,23 @@ async function sourceFiles(relativeRoot) {
 
 test("client state root is an exact thin stable facade", async () => {
   const facade = await read(facadePath);
-  for (const leaf of productionLeaves) {
-    assert.match(facade, new RegExp(`mod ${leaf.replace(".rs", "")};`, "u"));
-    await fs.access(path.join(repoRoot, root, leaf));
-  }
-  const entries = await fs.readdir(path.join(repoRoot, root), { withFileTypes: true });
+  assert.match(facade, /mod operations;/u);
+  const entries = await fs.readdir(path.join(repoRoot, facadeRoot), { withFileTypes: true });
   assert.deepEqual(
     entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort(),
-    [...productionLeaves].sort(),
+    ["operations.rs"],
   );
   for (const forbidden of ["struct ", "impl ", "fn ", "fs::", "include!(", "#[path"])
     assert.equal(facade.includes(forbidden), false, forbidden);
+});
+
+test("the persistence crate owns every leaf and nothing else", async () => {
+  const entries = await fs.readdir(path.join(repoRoot, root), { withFileTypes: true });
+  assert.deepEqual(
+    entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort(),
+    ["lib.rs", ...productionLeaves].sort(),
+  );
+  for (const leaf of productionLeaves) await fs.access(path.join(repoRoot, root, leaf));
 });
 
 test("collections activity and snapshots are independent single-path owners", async () => {
@@ -137,10 +147,10 @@ test("serialization and path helpers own all bounded filesystem details", async 
 });
 
 test("all external consumers use only the restricted client state facade", async () => {
-  const internalModules = "accessors|activity|collections|migration|operations|paths|policy|redaction|serialization|snapshots";
-  const internalPath = new RegExp(`client_state::(?:${internalModules})::`, "u");
+  const internalModules = "accessors|activity|collections|migration|operations|paths|policy|redaction|resource_policy|serialization|snapshots";
+  const internalPath = new RegExp(`(?:client_state|licoup_client_state)::(?:${internalModules})::`, "u");
   const consumers = (await sourceFiles("crates/licoup-native/src"))
-    .filter((relativePath) => relativePath !== facadePath && !relativePath.startsWith(`${root}/`));
+    .filter((relativePath) => relativePath !== facadePath && !relativePath.startsWith(`${facadeRoot}/`));
   for (const relativePath of consumers) {
     const source = await read(relativePath);
     assert.equal(internalPath.test(source), false, relativePath);
@@ -153,10 +163,12 @@ test("all external consumers use only the restricted client state facade", async
 });
 
 test("every client state responsibility owns a dedicated narrow regression", async () => {
-  const entries = (await fs.readdir(path.join(repoRoot, root, "tests"))).sort();
-  assert.deepEqual(entries, [
-    "accessors.rs", "activity.rs", "collections.rs", "composition.rs", "mod.rs",
-    "operations.rs", "paths.rs", "policy.rs", "redaction.rs", "serialization.rs",
+  const owners = (await fs.readdir(path.join(repoRoot, root, "tests"))).sort();
+  assert.deepEqual(owners, [
+    "accessors.rs", "activity.rs", "collections.rs", "mod.rs", "paths.rs",
+    "policy.rs", "redaction.rs", "resource_policy.rs", "serialization.rs",
     "snapshots.rs", "support.rs",
   ]);
+  const facade = (await fs.readdir(path.join(repoRoot, facadeRoot, "tests"))).sort();
+  assert.deepEqual(facade, ["composition.rs", "mod.rs", "operations.rs", "support.rs"]);
 });

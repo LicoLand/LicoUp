@@ -25,6 +25,7 @@ lico-catalog-convergence = { path = "../lico-catalog-convergence" }
 licoup-foundation = { path = "../licoup-foundation" }
 licoup-protocol-bindings = { path = "../licoup-protocol-bindings" }
 licoup-client-state = { path = "../licoup-client-state" }
+licoup-agent-targets = { path = "../licoup-agent-targets" }
 licoup-endpoint-core = { path = "../licoup-endpoint-core" }
 licoup-platform-bridges = { path = "../licoup-platform-bridges" }
 licoup-agent-adapters = { path = "../licoup-agent-adapters" }
@@ -109,6 +110,10 @@ nix = { version = "0.27", default-features = false, features = ["fs", "user", "s
 
 [dev-dependencies]
 licoup-conversation = { path = "../licoup-conversation", features = ["test-counters"] }
+# The scan-isolation seam and the packaged driver fixtures the target fixtures
+# read travel behind an explicit feature, because `cfg(test)` is false for a
+# dependency.
+licoup-agent-targets = { path = "../licoup-agent-targets", features = ["test-support"] }
 licoup-gateway = { path = "../licoup-gateway" }
 licoup-foundation = { path = "../licoup-foundation", features = ["test-support"] }
 trybuild = { path = "../trybuild" }

@@ -1,36 +1,36 @@
-//! Bounded client persistence types.
+//! Bounded client persistence types and the collection store that writes them.
 //!
-//! `ClientResourcePolicy` is the single configuration surface for history pages,
-//! parser buffers, search results, archive workers, spools, log segments, state
-//! quotas, and maintenance batches. Behavior is filled by a later node; this
-//! crate only publishes the bound types.
+//! `ClientStateStore` owns the privately written collection documents under the
+//! portable state root, including the target-discovery cache and its typed
+//! route records; `paths`, `policy` and `serialization` are its location, bound
+//! and write rules. `ClientResourcePolicy` is the single configuration surface
+//! for history pages, parser buffers, search results, archive workers, spools,
+//! log segments, state quotas, and maintenance batches.
+//!
+//! The journal owners above the store (`ActivityLog`, `SnapshotStore`) still
+//! live in `licoup-native` and read the store's rules from here through their
+//! former paths. Nothing here reaches upward: the Agent inventory depends on
+//! this crate rather than on the host that serves requests.
 
+mod accessors;
+pub mod activity;
+pub mod collections;
+pub mod migration;
+pub mod paths;
+pub mod policy;
+pub mod redaction;
 mod resource_policy;
+pub mod serialization;
+pub mod snapshots;
 
+pub use activity::ActivityLog;
+pub use collections::{
+    ClientStateStore, TARGET_DISCOVERY_CACHE_COLLECTION, TARGET_DISCOVERY_CACHE_SCHEMA,
+    TargetRouteRecord,
+};
+pub use migration::{migrate_collections, probe_collections};
 pub use resource_policy::{ClientResourceBounds, ClientResourcePolicy};
+pub use snapshots::{SnapshotRecord, SnapshotStore};
 
 #[cfg(test)]
-mod tests {
-    use super::ClientResourcePolicy;
-
-    #[test]
-    fn standard_policy_exposes_fixed_positive_bounds() {
-        let policy = ClientResourcePolicy::standard();
-        let bounds = policy.bounds();
-        assert!(bounds.history_page_size > 0);
-        assert!(bounds.parser_buffer_bytes > 0);
-        assert!(bounds.search_result_limit > 0);
-        assert_eq!(bounds.archive_worker_count, 1);
-        assert!(bounds.spool_queue_bytes > 0);
-        assert!(bounds.spool_queue_events > 0);
-        assert!(bounds.log_segment_bytes > 0);
-        assert!(bounds.state_quota_bytes > 0);
-        assert!(bounds.maintenance_batch_size > 0);
-    }
-
-    #[test]
-    fn callers_cannot_construct_unbounded_policy() {
-        let policy = ClientResourcePolicy::standard();
-        assert!(!policy.allows_unbounded_collections());
-    }
-}
+mod tests;

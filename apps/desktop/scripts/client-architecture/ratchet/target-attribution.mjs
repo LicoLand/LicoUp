@@ -515,7 +515,12 @@ export function createTargetAttribution(sources, manifests = new Map()) {
       if (marker < 0) return null;
       stem = file.slice(0, marker + 4); segments.shift();
     } else if (segments[0] === "self") segments.shift();
-    else while (segments[0] === "super") { stem = path.posix.dirname(stem); segments.shift(); }
+    else if (segments.length > 1 && sources.has(`crates/${segments[0].replaceAll("_", "-")}/src/lib.rs`)) {
+      // A first-party crate path, e.g. `licoup_foundation::platform::paths`. The
+      // ownership boundary is a crate, so a definition named through its own
+      // crate is as source-proven as one named through `crate::`.
+      stem = `crates/${segments.shift().replaceAll("_", "-")}/src`;
+    } else while (segments[0] === "super") { stem = path.posix.dirname(stem); segments.shift(); }
     const selected = selectModule(path.posix.join(stem, ...segments));
     return selected ? functionSource(selected, symbol, seen) : null;
   }

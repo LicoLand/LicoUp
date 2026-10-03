@@ -1,11 +1,3 @@
-mod accessors;
-mod activity;
-mod collections;
 mod composition;
 mod operations;
-mod paths;
-mod policy;
-mod redaction;
-mod serialization;
-mod snapshots;
 mod support;

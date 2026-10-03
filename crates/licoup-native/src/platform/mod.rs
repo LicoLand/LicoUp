@@ -31,7 +31,6 @@ mod openclaw_driver;
 mod opencode_driver;
 mod pi_driver;
 pub mod process_sandbox;
-mod process_supervisor;
 pub(crate) mod provider_mcp_registration;
 #[cfg(unix)]
 mod pty_transport;
@@ -81,7 +80,12 @@ pub use turn_event_emit::{
     emit_agent_processing, emit_turn_event, install_stdout_ndjson_sink, install_stream_sink,
 };
 
-pub(crate) use process_supervisor::{
+// The bounded process owner moved to `licoup-foundation`. It is re-exported at
+// its former path and former visibility, because the driver engines, the
+// sandboxed execution helpers and the Agent inventory all supervise the same
+// child processes and one implementation serves them all.
+pub(crate) use licoup_foundation::platform::process_supervisor;
+pub(crate) use licoup_foundation::platform::process_supervisor::{
     configure_untrusted_agent_command, run_bounded_command_input, run_bounded_command_output,
     run_bounded_untrusted_agent_output,
 };

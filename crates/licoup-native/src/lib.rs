@@ -39,5 +39,11 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
 /// admission through it instead of reaching into the domain layer.
 pub fn running_product_version() -> anyhow::Result<&'static str> {
     domain::client_state_migration::running_product_version()
-
 }
+
+// The Agent inventory port: the facts `licoup-agent-targets` reads from the
+// layers above it. It is declared by the inventory crate and composed by
+// `domain::target_port`; this alias keeps the two naming one path without
+// widening the host's public surface.
+pub(crate) use licoup_agent_targets::port;
+

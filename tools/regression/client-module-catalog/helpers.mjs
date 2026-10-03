@@ -13,6 +13,8 @@ export const ADAPTER_SDK_MANIFEST = "crates/licoup-agent-adapter-sdk/Cargo.toml"
 export const FOUNDATION_MANIFEST = "crates/licoup-foundation/Cargo.toml";
 export const GATEWAY_CORE_MANIFEST = "crates/licoup-gateway-core/Cargo.toml";
 export const GATEWAY_MANIFEST = "crates/licoup-gateway/Cargo.toml";
+export const CLIENT_STATE_MANIFEST = "crates/licoup-client-state/Cargo.toml";
+export const AGENT_TARGETS_MANIFEST = "crates/licoup-agent-targets/Cargo.toml";
 
 export const FLUTTER_COMPOSITION_INPUTS = Object.freeze([
   "apps/desktop/analysis_options.yaml",
@@ -25,6 +27,13 @@ export const RUST_COMPOSITION_INPUTS = Object.freeze([
   "Cargo.lock",
   "Cargo.toml",
   FOUNDATION_MANIFEST,
+  CLIENT_STATE_MANIFEST,
+  "crates/licoup-client-state/src/lib.rs",
+  AGENT_TARGETS_MANIFEST,
+  "crates/licoup-agent-targets/src/lib.rs",
+  "crates/licoup-agent-targets/src/domain/mod.rs",
+  "crates/licoup-agent-targets/src/platform/mod.rs",
+  "crates/licoup-agent-targets/src/port.rs",
   "crates/licoup-foundation/src/lib.rs",
   "crates/licoup-foundation/src/core/mod.rs",
   "crates/licoup-foundation/src/core/secret_bytes.rs",
@@ -267,6 +276,36 @@ export function foundationLayer(filter, harnessArgs = []) {
       "test",
       "--manifest-path",
       FOUNDATION_MANIFEST,
+      "--lib",
+      filter,
+      ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),
+    ],
+    10 * 60_000,
+  );
+}
+
+export function clientStateLayer(filter, harnessArgs = []) {
+  return command(
+    "cargo",
+    [
+      "test",
+      "--manifest-path",
+      CLIENT_STATE_MANIFEST,
+      "--lib",
+      filter,
+      ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),
+    ],
+    10 * 60_000,
+  );
+}
+
+export function agentTargetsLayer(filter, harnessArgs = []) {
+  return command(
+    "cargo",
+    [
+      "test",
+      "--manifest-path",
+      AGENT_TARGETS_MANIFEST,
       "--lib",
       filter,
       ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),

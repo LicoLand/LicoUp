@@ -55,7 +55,7 @@ pub(super) fn archive_target_scan(params: &Value) -> Result<Value> {
         let path = expand_home(&path);
         return read_json_or_default(&path, || json!({ "candidates": [] }));
     }
-    targets::scan_targets_with_params(params)
+    targets::scan_targets_with_params(&crate::domain::target_port::agent_target_port(), params)
 }
 
 pub(super) fn archive_agents_from_target_scan(params: &Value, target_scan: &Value) -> Vec<String> {

@@ -12,6 +12,7 @@ test-support = []
 
 [dependencies]
 anyhow.workspace = true
+command-group.workspace = true
 fs2.workspace = true
 flate2.workspace = true
 rusqlite.workspace = true
@@ -26,4 +27,7 @@ zeroize.workspace = true
 uuid.workspace = true
 
 [target.'cfg(unix)'.dependencies]
+# The bounded process supervisor reaps children by process group and reports
+# exit status, which needs the platform wait and signal definitions.
+libc.workspace = true
 nix = { version = "0.27", default-features = false, features = ["fs", "user"] }

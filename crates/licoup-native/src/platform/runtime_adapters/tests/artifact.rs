@@ -137,17 +137,23 @@ fn codex_saved_manual_binary_path_precedes_the_bundled_default() {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, b"synthetic Codex executable").unwrap();
     }
-    crate::domain::targets::add_target(&json!({
-        "target": "codex",
-        "stateRoot": state_root.to_string_lossy(),
-        "binaryPath": manual.to_string_lossy(),
-    }))
+    crate::domain::targets::add_target(
+        &crate::domain::target_port::agent_target_port(),
+        &json!({
+            "target": "codex",
+            "stateRoot": state_root.to_string_lossy(),
+            "binaryPath": manual.to_string_lossy(),
+        }),
+    )
     .unwrap();
 
     let resolved = runtime_executable_with_discovery(
         RuntimeAdapter::Codex,
         "codex",
-        |_| crate::domain::targets::manual_runtime_executable_from_store(&store, "codex"),
+        |_| {
+            crate::domain::targets::manual_runtime_executable_from_store(&store, "codex")
+                .map_err(|_| RuntimeAdapterError::ExecutableUnavailable)
+        },
         |_| Some(bundled),
         |_| Some(stale),
     )
@@ -172,11 +178,14 @@ fn metadata_only_codex_entry_does_not_hide_a_bundled_default_from_stale_route() 
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, b"synthetic Codex executable").unwrap();
     }
-    crate::domain::targets::add_target(&json!({
-        "target": "codex",
-        "stateRoot": state_root.to_string_lossy(),
-        "label": "Metadata-only Codex entry",
-    }))
+    crate::domain::targets::add_target(
+        &crate::domain::target_port::agent_target_port(),
+        &json!({
+            "target": "codex",
+            "stateRoot": state_root.to_string_lossy(),
+            "label": "Metadata-only Codex entry",
+        }),
+    )
     .unwrap();
     assert_eq!(
         crate::domain::targets::manual_runtime_executable_from_store(&store, "codex").unwrap(),
@@ -186,7 +195,10 @@ fn metadata_only_codex_entry_does_not_hide_a_bundled_default_from_stale_route() 
     let resolved = runtime_executable_with_discovery(
         RuntimeAdapter::Codex,
         "codex",
-        |_| crate::domain::targets::manual_runtime_executable_from_store(&store, "codex"),
+        |_| {
+            crate::domain::targets::manual_runtime_executable_from_store(&store, "codex")
+                .map_err(|_| RuntimeAdapterError::ExecutableUnavailable)
+        },
         |_| Some(bundled.clone()),
         |_| Some(stale),
     )
@@ -210,7 +222,10 @@ fn malformed_manual_codex_collection_blocks_automatic_and_cached_fallbacks() {
     let resolved = runtime_executable_with_discovery(
         RuntimeAdapter::Codex,
         "codex",
-        |_| crate::domain::targets::manual_runtime_executable_from_store(&store, "codex"),
+        |_| {
+            crate::domain::targets::manual_runtime_executable_from_store(&store, "codex")
+                .map_err(|_| RuntimeAdapterError::ExecutableUnavailable)
+        },
         |_| panic!("manual authority read failure must stop automatic discovery"),
         |_| panic!("manual authority read failure must stop cached fallback"),
     );

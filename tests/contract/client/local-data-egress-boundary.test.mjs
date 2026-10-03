@@ -29,7 +29,7 @@ const reviewedRustEgressFiles = Object.freeze([
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/probe.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/shutdown.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/source.rs",
-  "crates/licoup-native/src/domain/lico_agent/transport.rs",
+  "crates/licoup-agent-targets/src/domain/lico_agent/transport.rs",
   "crates/licoup-native/src/domain/model_registry/source.rs",
   "crates/licoup-native/src/domain/provider_model_pricing.rs",
   "crates/licoup-native/src/domain/provider_quota/http.rs",
@@ -131,7 +131,7 @@ test("reviewed runtime owners retain direction, endpoint, and data bounds", asyn
       "MAX_PAGES", "MAX_PAGE_BYTES", ".take(MAX_PAGE_BYTES.saturating_add(1))",
       '"Origin"',
     ]],
-    ["crates/licoup-native/src/domain/lico_agent/transport.rs", [
+    ["crates/licoup-agent-targets/src/domain/lico_agent/transport.rs", [
       'strip_prefix("http://")', 'host != "127.0.0.1"',
       "TcpStream::connect_timeout", "set_read_timeout", "Content-Length",
     ]],

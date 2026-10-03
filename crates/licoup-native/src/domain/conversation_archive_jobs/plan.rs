@@ -20,7 +20,10 @@ pub(super) fn prepare(params: &Value) -> Result<PreparedArchivePlan> {
     if let Some(object) = scan_params.as_object_mut() {
         object.insert("archiveMode".to_string(), json!(true));
     }
-    let target_scan = targets::scan_targets_with_params(&scan_params)?;
+    let target_scan = targets::scan_targets_with_params(
+        &crate::domain::target_port::agent_target_port(),
+        &scan_params,
+    )?;
     prepare_with_target_scan(request, target_scan)
 }
 

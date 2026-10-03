@@ -420,25 +420,25 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "rust.domain.agent-conversations.session-merge.integration",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/targets/catalog.rs",
+    "crates/licoup-agent-targets/src/domain/targets/catalog.rs",
   ])), ["architecture.client-boundaries", "rust.domain.targets.catalog"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/targets/target_cache.rs",
+    "crates/licoup-agent-targets/src/domain/targets/target_cache.rs",
   ])), ["architecture.client-boundaries", "rust.domain.targets.discovery-cache"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/targets/model_catalog/kilo.rs",
+    "crates/licoup-agent-targets/src/domain/targets/model_catalog/kilo.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.targets.model-catalog.kilo",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/targets/model_catalog/claude.rs",
+    "crates/licoup-agent-targets/src/domain/targets/model_catalog/claude.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.targets.model-catalog.claude-code",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/targets/model_catalog/opencode.rs",
+    "crates/licoup-agent-targets/src/domain/targets/model_catalog/opencode.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.targets.model-catalog.opencode",
@@ -926,7 +926,7 @@ test("target modules retain leaf-owned inputs and exact command filters", () => 
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
     assert.equal(module.inputs.includes(
-      "crates/licoup-native/src/domain/targets.rs"), false);
+      "crates/licoup-agent-targets/src/domain/targets.rs"), false);
   }
 });
 

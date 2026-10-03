@@ -164,7 +164,10 @@ fn target_status_map(params: &Value, warnings: &mut Vec<Value>) -> BTreeMap<Stri
     if let Some(object) = scan_params.as_object_mut() {
         object.insert("includeHistoryModelCatalog".to_owned(), json!(false));
     }
-    match targets::scan_targets_with_params(&scan_params) {
+    match targets::scan_targets_with_params(
+        &crate::domain::target_port::agent_target_port(),
+        &scan_params,
+    ) {
         Ok(scan) => scan
             .get("candidates")
             .and_then(Value::as_array)

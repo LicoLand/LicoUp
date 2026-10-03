@@ -437,11 +437,14 @@ function processTargetAttribution(file, range, sources, aliases, resolver, visit
   const bounded = text.match(/\b((?:\w+\s*::\s*)*)(run_bounded_(?:untrusted_agent_output|command_output))\s*\(/u);
   if (bounded) {
     if (/\bfn\s*$/u.test(text.slice(0, bounded.index))) return null;
-    const owner = "crates/licoup-native/src/platform/process_supervisor.rs";
+    const owner = "crates/licoup-foundation/src/platform/process_supervisor.rs";
     const imported = bounded[1] ? `${bounded[1]}${bounded[2]}`.replace(/\s/gu, "") : resolver.imported(file, bounded[2]);
     const localOwner = file === owner && entry.functions.some((fn) => fn.name === bounded[2]);
-    const qualified = /^(?:crate::platform(?:::process_supervisor)?|super::process_supervisor)::run_bounded_(?:untrusted_agent_output|command_output)$/u.test(imported) ||
-      (path.posix.dirname(file) === "crates/licoup-native/src/platform" && /^super::run_bounded_(?:untrusted_agent_output|command_output)$/u.test(imported));
+    // The bounded process owner sits below both hosts, so a delegating file
+    // reaches it through the crate path, the native re-export or its own
+    // former module path.
+    const qualified = /^(?:licoup_foundation::platform::process_supervisor|crate::platform(?:::process_supervisor)?|super::process_supervisor)::run_bounded_(?:untrusted_agent_output|command_output)$/u.test(imported) ||
+      (["crates/licoup-foundation/src/platform", "crates/licoup-native/src/platform"].includes(path.posix.dirname(file)) && /^super::run_bounded_(?:untrusted_agent_output|command_output)$/u.test(imported));
     if (!sources.has(owner) || (!localOwner && !qualified) ||
         (!bounded[1] && file !== owner && entry.functions.some((fn) => fn.name === bounded[2]))) {
       return { ...resolver.unknown("unresolved source-owned process wrapper API"), api: "unresolved-api:bounded-runner", offset: range.start + bounded.index };

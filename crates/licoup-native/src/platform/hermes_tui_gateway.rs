@@ -18,7 +18,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 use std::{process::Command, process::Stdio};
 
-pub(crate) const RUNTIME_PROTOCOL: &str = "hermes-tui-gateway-stdio-jsonrpc";
+// The protocol name is vocabulary shared with the Agent inventory's
+// virtual-machine projection, which reports it before any driver is launched,
+// so it lives below both and keeps its former path here.
+pub(crate) use licoup_foundation::core::acp::HERMES_TUI_GATEWAY_PROTOCOL as RUNTIME_PROTOCOL;
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
