@@ -16,6 +16,17 @@ pub(in crate::domain::mobile_relay) fn save_config_with_runtime_secret_context(
     config: &mut Value,
     context: &mut RuntimeSecretContext,
 ) -> Result<()> {
+    if context
+        .material
+        .e2ee_secret(MobileRelayE2eeSecretField::PrivateKey)
+        .is_some()
+        || context
+            .material
+            .e2ee_secret(MobileRelayE2eeSecretField::SigningKey)
+            .is_some()
+    {
+        validate_existing_identity_custody(config, &context.material)?;
+    }
     prepare_station_fields_for_persistence(config)?;
     let mut persistable = config.clone();
     persist_config_secret_material_to_native_store_with_batch(
@@ -26,7 +37,31 @@ pub(in crate::domain::mobile_relay) fn save_config_with_runtime_secret_context(
         &mut context.material,
         &mut context.secret_store_batch,
     )?;
+    context.overrides.identity_custody_verified = Some(
+        context
+            .material
+            .e2ee_secret(MobileRelayE2eeSecretField::PrivateKey)
+            .is_some()
+            && context
+                .material
+                .e2ee_secret(MobileRelayE2eeSecretField::SigningKey)
+                .is_some()
+            && validate_existing_identity_custody(config, &context.material).is_ok(),
+    );
+    for field in MobileRelayE2eeSecretField::ALL {
+        if context.material.e2ee_secret(field).is_some() {
+            mark_native_secret_override(&mut context.overrides, field.config_field());
+        }
+    }
     strip_runtime_secret_overrides(&mut persistable, &context.overrides);
+    if let Some(namespace) = context.secret_store_batch.verified_namespace() {
+        if let Some(e2ee) = persistable
+            .get_mut("mobileRelayE2ee")
+            .and_then(Value::as_object_mut)
+        {
+            e2ee.insert(CUSTODY_NAMESPACE_FIELD.to_string(), json!(namespace));
+        }
+    }
     save_config_raw(&mut persistable)?;
     copy_committed_security_generations(config, &persistable)
 }
@@ -60,6 +95,14 @@ fn copy_committed_security_generations(target: &mut Value, committed: &Value) ->
         .get(AUTHORITY_GENERATION_FIELD)
         .cloned()
         .ok_or_else(|| anyhow!("mobile relay committed authority generation is missing"))?;
+    if let Some(namespace) = recorded_custody_namespace(committed)? {
+        if let Some(e2ee) = target
+            .get_mut("mobileRelayE2ee")
+            .and_then(Value::as_object_mut)
+        {
+            e2ee.insert(CUSTODY_NAMESPACE_FIELD.to_string(), json!(namespace));
+        }
+    }
     Ok(())
 }
 

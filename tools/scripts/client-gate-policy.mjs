@@ -103,11 +103,10 @@ export const CLIENT_RELEASE_TARGETS = Object.freeze({
 
 export const CLIENT_CI_JOBS = Object.freeze([
   "plan",
-  "source",
-  "flutter",
-  "rust",
-  "android",
-  "dependencies",
+  "engineering",
+  "target-linux",
+  "target-darwin",
+  "target-win32",
   "client-required",
 ]);
 
@@ -168,6 +167,20 @@ function isAndroidPath(file) {
   );
 }
 
+function isReleasePolicyPath(file) {
+  return (
+    file.startsWith("docs/releases/") ||
+    file.startsWith("tools/apple-release/") ||
+    file.startsWith("tools/release/") ||
+    file.startsWith("tools/scripts/macos-release/") ||
+    file.startsWith("apps/desktop/scripts/package-client") ||
+    file.startsWith(".github/workflows/client-release") ||
+    file === ".github/workflows/client-source-release.yml" ||
+    file === ".github/workflows/client-weekly-release.yml" ||
+    /^tools\/scripts\/client-(?:promotion|release|source-release|weekly-release|update-manifest)/u.test(file)
+  );
+}
+
 export function classifyClientGatePaths(changedPaths) {
   if (!Array.isArray(changedPaths)) {
     throw new Error("changed paths must be an array");
@@ -179,6 +192,7 @@ export function classifyClientGatePaths(changedPaths) {
     rust: false,
     android: false,
     dependencies: false,
+    "release-policy": false,
   };
 
   for (const file of normalized) {
@@ -186,6 +200,7 @@ export function classifyClientGatePaths(changedPaths) {
     if (isRustPath(file)) lanes.rust = true;
     if (isAndroidPath(file)) lanes.android = true;
     if (DEPENDENCY_PATHS.has(file)) lanes.dependencies = true;
+    if (isReleasePolicyPath(file)) lanes["release-policy"] = true;
   }
 
   return Object.freeze({

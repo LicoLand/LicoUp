@@ -32,6 +32,7 @@ const languagePairs = [
   ["PRODUCT.md", "PRODUCT.zh-CN.md"],
   ["CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md"],
   ["SECURITY.md", "SECURITY.zh-CN.md"],
+  ["docs/RUNBOOK.md", "docs/RUNBOOK.zh-CN.md"],
   ["docs/functionality/USER-GUIDE.md", "docs/functionality/USER-GUIDE.zh-CN.md"],
   ["docs/architecture/README.md", "docs/architecture/README.zh-CN.md"],
   [

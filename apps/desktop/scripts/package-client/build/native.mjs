@@ -60,7 +60,7 @@ export function clientReleaseTrack(environment = process.env) {
   return value;
 }
 
-function clientProductVersion() {
+export function clientProductVersion() {
   const manifest = JSON.parse(readFileSync(
     path.join(packageClientRuntime.workspaceRoot, "tools", "client-version.json"),
     "utf8",

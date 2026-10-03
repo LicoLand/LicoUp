@@ -252,4 +252,7 @@ test("Dashboard and desktop layout keep focused catalog ownership", () => {
     "apps/desktop/lib/src/frontend/layout/**"), false);
   assert.equal(layoutFoundation.inputs.includes(
     "apps/desktop/test/layout/**"), false);
+  assert.ok(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/platform/mobile_relay/mobile_relay_json_store.dart",
+  ])).includes("flutter.layer.layout"));
 });

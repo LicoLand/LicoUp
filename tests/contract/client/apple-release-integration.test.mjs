@@ -31,9 +31,16 @@ test("LicoUp is one declarative Apple Release use case", () => {
     { role: "update-archive", publicName: "LicoUp-macos-arm64-update.zip" },
     { role: "update-digest", publicName: "LicoUp-macos-arm64-update.zip.sha256" },
     { role: "update-manifest", publicName: "LicoUp-update-manifest.json" },
+    { role: "independent-tool", publicName: "LicoUp-migrate-macos-arm64" },
+    { role: "independent-tool-digest", publicName: "LicoUp-migrate-macos-arm64.sha256" },
   ]);
   assert.equal(JSON.stringify(config).includes("Apple-Release"), false);
   assert.equal(JSON.stringify(config).includes("../"), false);
+  const tool = config.artifacts.find((entry) => entry.role === "independent-tool");
+  assert.equal(tool.source, "build/apps/desktop/release-tools/macos/LicoUp-migrate-macos-arm64");
+  assert.equal(tool.path, "build/apple-release/LicoUp-migrate-macos-arm64");
+  assert.equal(tool.source.startsWith(`${config.build.app}/`), false);
+  assert.equal(config.build.materials.some((entry) => entry.path === tool.source), false);
 });
 
 test("Nightly publication is a second track profile of the same app identity", () => {

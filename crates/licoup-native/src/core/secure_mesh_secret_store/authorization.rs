@@ -534,6 +534,14 @@ pub struct SecretStorePresenceError {
 }
 
 impl SecretStorePresenceError {
+    pub fn authorization_required() -> Self {
+        Self::new("secure_mesh_authorization_required")
+    }
+
+    pub fn authorization_failed() -> Self {
+        Self::new("secure_mesh_presence_native_authentication_failed")
+    }
+
     fn new(code: &'static str) -> Self {
         Self { code }
     }

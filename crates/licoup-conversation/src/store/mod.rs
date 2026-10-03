@@ -46,6 +46,7 @@ pub use execution::{
 };
 pub use native_sessions::NativeSessionReference;
 pub use recovery::{ColdRecoverableConversationStore, ColdRecoveryReport};
+pub use schema::validate_migration_source;
 
 pub const DEFAULT_EVENT_PAGE_SIZE: usize = 20;
 pub const MAX_EVENT_PAGE_SIZE: usize = 100;
@@ -264,7 +265,11 @@ fn preflight_database_path(db_path: &Path, migration_admission: bool) -> StoreRe
         Connection::open_with_flags(db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(|_| anyhow!("conversation_database_preflight_failed"))?;
     let schema_version = preflight_schema(&connection)?;
-    if !migration_admission && schema_version.as_deref() != Some(CURRENT_SCHEMA_VERSION) {
+    if !migration_admission
+        && schema_version
+            .as_deref()
+            .is_some_and(|version| version != CURRENT_SCHEMA_VERSION)
+    {
         return Err(anyhow!("conversation_schema_migration_required"));
     }
     Ok(true)
@@ -5904,6 +5909,14 @@ mod tests {
     use super::*;
     use crate::client_conversation::{EventPartKind, MembershipStatus, PrincipalKind};
 
+    // Shared data includes domains this crate does not own. Only the independent
+    // Conversation layout is used here; the native tests exercise the full root.
+    #[allow(dead_code)]
+    mod released_source {
+        include!("../../../../tests/fixtures/client_state_migration/released_source.rs");
+        include!("../../../../tests/fixtures/client_state_migration/owner_layouts.rs");
+    }
+
     fn owner() -> Principal {
         Principal {
             id: "human:local".into(),
@@ -7760,17 +7773,43 @@ mod tests {
     }
 
     #[test]
-    fn open_rejects_missing_schema_version_before_configuring_sqlite() {
-        let root = std::env::temp_dir().join(format!("lico-conv-malformed-{}", Uuid::new_v4()));
-        assert_open_refuses_without_database_changes(
-            &root,
-            "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
-             INSERT INTO schema_meta VALUES ('format', 'synthetic');
-             CREATE TABLE retained_fixture(value TEXT NOT NULL);
-             INSERT INTO retained_fixture VALUES ('synthetic retained data');",
-            "conversation_schema_version_missing",
-            ConversationStore::open,
-        );
+    fn open_initializes_existing_empty_or_unrelated_store_without_losing_rows() {
+        for seed in [
+            "",
+            "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO schema_meta VALUES ('format', 'synthetic'); CREATE TABLE retained_fixture(value TEXT NOT NULL); INSERT INTO retained_fixture VALUES ('synthetic retained data');",
+        ] {
+            let root = std::env::temp_dir().join(format!("lico-conv-empty-{}", Uuid::new_v4()));
+            let database = fixture_database(&root);
+            std::fs::create_dir_all(database.parent().unwrap()).unwrap();
+            let connection = Connection::open(&database).unwrap();
+            connection.execute_batch(seed).unwrap();
+            drop(connection);
+            let store = ConversationStore::open(&root).unwrap();
+            store.checkpoint().unwrap();
+            let connection = Connection::open(&database).unwrap();
+            assert_eq!(
+                connection
+                    .query_row(
+                        "SELECT value FROM schema_meta WHERE key='version'",
+                        [],
+                        |row| row.get::<_, String>(0)
+                    )
+                    .unwrap(),
+                CURRENT_SCHEMA_VERSION
+            );
+            if !seed.is_empty() {
+                assert_eq!(
+                    connection
+                        .query_row("SELECT value FROM retained_fixture", [], |row| row
+                            .get::<_, String>(0))
+                        .unwrap(),
+                    "synthetic retained data"
+                );
+            }
+            drop(connection);
+            drop(store);
+            std::fs::remove_dir_all(root).unwrap();
+        }
     }
 
     #[test]
@@ -8322,17 +8361,13 @@ mod tests {
         std::fs::create_dir_all(fixture_database(&root).parent().unwrap()).unwrap();
         let fixture = open_fixture_connection(&root);
         fixture
+            .execute_batch(&released_source::supported_conversation_schema(5))
+            .unwrap();
+        fixture
             .execute_batch(
-                "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-                 INSERT INTO schema_meta(key, value) VALUES ('version', '5');
-                 CREATE TABLE conversations (
-                   id TEXT PRIMARY KEY, title TEXT NOT NULL,
-                   archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)),
-                   pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),
-                   is_group INTEGER NOT NULL DEFAULT 0 CHECK(is_group IN (0,1)),
-                   revision INTEGER NOT NULL DEFAULT 0,
-                   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-                 );",
+                "INSERT INTO schema_meta(key, value) VALUES ('version', '5');
+                 INSERT INTO conversations(id,title,created_at,updated_at)
+                 VALUES ('retained-conversation','Synthetic retained title',1,1);",
             )
             .unwrap();
         fixture.close().unwrap();
@@ -8351,6 +8386,10 @@ mod tests {
             })
             .unwrap();
         assert!(has_strategy_revision);
+        assert_eq!(
+            store.get("retained-conversation").unwrap().title,
+            "Synthetic retained title"
+        );
 
         drop(store);
         let _ = std::fs::remove_dir_all(root);
@@ -9290,32 +9329,16 @@ mod tests {
         std::fs::create_dir_all(fixture_database(&root).parent().unwrap()).unwrap();
         let fixture = open_fixture_connection(&root);
         fixture
+            .execute_batch(&released_source::supported_conversation_schema(6))
+            .unwrap();
+        fixture
             .execute_batch(
-                "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-                 INSERT INTO schema_meta(key, value) VALUES ('version', '6');
-                 CREATE TABLE principals (
-                   id TEXT PRIMARY KEY, kind TEXT NOT NULL, display_name TEXT NOT NULL,
-                   agent_id TEXT, created_at INTEGER NOT NULL
-                 );
-                 CREATE TABLE conversations (
-                   id TEXT PRIMARY KEY, title TEXT NOT NULL,
-                   archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)),
-                   pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),
-                   is_group INTEGER NOT NULL DEFAULT 0 CHECK(is_group IN (0,1)),
-                   strategy_revision TEXT,
-                   revision INTEGER NOT NULL DEFAULT 0,
-                   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-                 );
+                "INSERT INTO schema_meta(key, value) VALUES ('version', '6');
                  INSERT INTO principals(id, kind, display_name, agent_id, created_at)
                    VALUES ('agent:one', 'agent', 'One', 'one', 1),
                           ('human:local', 'human', 'You', NULL, 1);
                  INSERT INTO conversations(id, title, archived, pinned, is_group, revision, created_at, updated_at)
                    VALUES ('legacy-group', 'Legacy', 0, 0, 1, 0, 1, 1);
-                 CREATE TABLE memberships (
-                   id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL,
-                   principal_id TEXT NOT NULL, access TEXT NOT NULL,
-                   status TEXT NOT NULL, joined_at INTEGER NOT NULL, left_at INTEGER
-                 );
                  INSERT INTO memberships(id, conversation_id, principal_id, access, status, joined_at)
                    VALUES ('m-human', 'legacy-group', 'human:local', 'owner', 'active', 1),
                           ('m-agent', 'legacy-group', 'agent:one', 'member', 'active', 1);",

@@ -8,6 +8,14 @@ fn parent_traversal_is_rejected_before_path_resolution() {
     assert!(super::super::validate_no_symlink_ancestors(Path::new("state/../escape")).is_err());
 }
 
+#[cfg(windows)]
+#[test]
+fn an_absolute_drive_path_does_not_probe_its_prefix_as_a_drive_relative_path() {
+    let path = temp_path("absolute-drive-prefix");
+    assert!(path.is_absolute());
+    super::super::validate_no_symlink_ancestors(&path).unwrap();
+}
+
 #[test]
 fn a_directory_is_not_an_atomic_regular_file() {
     let root = temp_path("regular-file-validation");

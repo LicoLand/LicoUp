@@ -139,6 +139,8 @@ pub struct RuntimeSecretMaterial {
     pc_token: Option<SecretBytes>,
     mobile_token: Option<SecretBytes>,
     paired_device_tokens: BTreeMap<String, SecretBytes>,
+    // Ephemeral evidence from authorized local custody, never transported.
+    local_custody_namespace: Option<String>,
 }
 
 impl Default for RuntimeSecretMaterial {
@@ -160,11 +162,27 @@ impl RuntimeSecretMaterial {
             pc_token: None,
             mobile_token: None,
             paired_device_tokens: BTreeMap::new(),
+            local_custody_namespace: None,
         }
     }
 
     pub fn e2ee_secret(&self, field: MobileRelayE2eeSecretField) -> Option<&SecretBytes> {
         self.e2ee.get(&field)
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.e2ee.is_empty()
+            && self.pc_token.is_none()
+            && self.mobile_token.is_none()
+            && self.paired_device_tokens.is_empty()
+    }
+
+    pub(in crate::domain::mobile_relay) fn local_custody_namespace(&self) -> Option<&str> {
+        self.local_custody_namespace.as_deref()
+    }
+
+    pub(in crate::domain::mobile_relay) fn mark_local_custody(&mut self, namespace: &str) {
+        self.local_custody_namespace = Some(namespace.to_owned());
     }
 
     pub fn insert_e2ee_secret(
@@ -178,6 +196,12 @@ impl RuntimeSecretMaterial {
         if self.e2ee.contains_key(&field) {
             return Err(MobileRelaySecretMaterialError::DuplicateField);
         }
+        if matches!(
+            field,
+            MobileRelayE2eeSecretField::PrivateKey | MobileRelayE2eeSecretField::SigningKey
+        ) {
+            self.local_custody_namespace = None;
+        }
         self.e2ee.insert(field, secret);
         Ok(())
     }
@@ -190,16 +214,34 @@ impl RuntimeSecretMaterial {
         if secret.expose_bytes().len() > MOBILE_RELAY_SECRET_FIELD_MAX_BYTES {
             return Err(MobileRelaySecretMaterialError::FieldOversize);
         }
+        if matches!(
+            field,
+            MobileRelayE2eeSecretField::PrivateKey | MobileRelayE2eeSecretField::SigningKey
+        ) {
+            self.local_custody_namespace = None;
+        }
         self.e2ee.insert(field, secret);
         Ok(())
     }
 
     pub fn remove_e2ee_secret(&mut self, field: MobileRelayE2eeSecretField) {
+        if matches!(
+            field,
+            MobileRelayE2eeSecretField::PrivateKey | MobileRelayE2eeSecretField::SigningKey
+        ) {
+            self.local_custody_namespace = None;
+        }
         self.e2ee.remove(&field);
     }
 
     pub fn merge_e2ee_bundle(&mut self, bundle: MobileRelayE2eeSecretBundle) {
         for (field, secret) in bundle.into_fields() {
+            if matches!(
+                field,
+                MobileRelayE2eeSecretField::PrivateKey | MobileRelayE2eeSecretField::SigningKey
+            ) {
+                self.local_custody_namespace = None;
+            }
             self.e2ee.insert(field, secret);
         }
     }
@@ -208,6 +250,7 @@ impl RuntimeSecretMaterial {
         if self.e2ee.is_empty() {
             return None;
         }
+        self.local_custody_namespace = None;
         Some(MobileRelayE2eeSecretBundle {
             fields: std::mem::take(&mut self.e2ee),
         })

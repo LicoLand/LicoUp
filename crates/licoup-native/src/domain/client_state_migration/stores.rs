@@ -3,10 +3,21 @@ use rusqlite::{Connection, OptionalExtension};
 use serde_json::{Value, json};
 use std::{fs, path::Path};
 
+use super::strategy_store::{
+    advance_strategy_store, probe_adaptive_flywheel, strategy_format_for_domain_version,
+};
 use super::{
     AuthoritativeProbe, DOMAIN_MARKER_SCHEMA, DomainFrontier, DomainMarker, MigrationEdge,
     marker_path, write_json_atomic,
 };
+
+/// Resolve a domain's authoritative version exactly as the admission does,
+/// together with whether a readable store is present, so a projection can tell
+/// an absent authority from a present store that records no version.
+pub(super) fn probe_authority(root: &Path, domain: &DomainFrontier) -> Result<(u32, bool)> {
+    let present = probe_authoritative_store(root, &domain.domain_id)?.present;
+    Ok((probe_domain(root, domain)?, present))
+}
 
 pub(super) fn probe_domain(root: &Path, domain: &DomainFrontier) -> Result<u32> {
     let marker = load_domain_marker(root, domain)?;
@@ -117,7 +128,7 @@ fn probe_authoritative_store(marker_root: &Path, domain_id: &str) -> Result<Auth
             Ok(AuthoritativeProbe { version, present })
         }
         "canonical-conversation" => probe_canonical_conversation(root),
-        "adaptive-flywheel" => super::strategy_store::probe(root),
+        "adaptive-flywheel" => probe_adaptive_flywheel(root),
         "workspace-manifest" => probe_json_schema(
             &root.join(".licoup-workspace.json"),
             1,
@@ -180,12 +191,27 @@ pub(super) fn probe_canonical_conversation(root: &Path) -> Result<AuthoritativeP
     let database_present = regular_file_present(&database)?;
     let completion_present = regular_file_present(&completion_marker)?;
     let legacy_present = canonical_legacy_state_present(root)?;
-    probe_sqlite_meta(
-        &database,
-        "schema_meta",
-        "version",
-        licoup_conversation::store::CURRENT_SCHEMA_VERSION,
-    )?;
+    if database_present {
+        // The owning Conversation store classifies and validates the physical
+        // layout read-only: malformed metadata, development snapshots (13..17),
+        // a current store with an incomplete layout, and a released source
+        // store (12) that does not carry the released layout are all refused
+        // here — before the admission's ledger or any domain marker can move.
+        let connection = Connection::open_with_flags(
+            &database,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .context("unsupported_state_shape")?;
+        let inner_version = licoup_conversation::store::validate_migration_source(&connection)
+            .context("unsupported_state_shape")?;
+        if completion_present {
+            // The completion marker is written only after a store existed at a
+            // published inner schema. Older published schemas (1..11) remain
+            // documented migration sources their owner upgrades; a marker over
+            // a versionless file is not a store at all and is refused.
+            ensure!(inner_version.is_some(), "unsupported_state_shape");
+        }
+    }
     if !database_present {
         ensure!(!completion_present, "unsupported_state_shape");
         return Ok(AuthoritativeProbe {
@@ -227,12 +253,13 @@ pub(super) fn upgrade_canonical_conversation_schema(root: &Path) -> Result<()> {
         "schema_meta",
         "version",
         licoup_conversation::store::CURRENT_SCHEMA_VERSION,
-    )?
-    .version
-        == 1
+    )
+    .is_ok_and(|probe| probe.version == 1)
     {
         return Ok(());
     }
+    // The owner validates empty stores and reconstructible current metadata;
+    // a raw missing marker is not an independent startup refusal.
     crate::domain::client_conversation::ConversationStore::open_for_migration(root)
         .context("migration_step_failed")?;
     ensure!(
@@ -433,7 +460,16 @@ pub(super) fn apply_authoritative_store(
                 .context("migration_step_failed")?;
             store.checkpoint().context("migration_step_failed")?;
         }
-        "adaptive-flywheel" => super::strategy_store::apply(root, edge)?,
+        "adaptive-flywheel" => {
+            // The domain edge names the published store format it produces;
+            // `advance_strategy_store` drives the conversion graph to that
+            // format through the store's published writers. StrategyStore's own
+            // migrations execute in SQLite transactions, and the conversion
+            // artifact states the physical format the file reached, so an
+            // interrupted process resumes instead of repeating a committed edge.
+            let target = strategy_format_for_domain_version(edge.to_schema_version)?;
+            advance_strategy_store(root, target)?;
+        }
         "workspace-manifest" => migrate_json_schema(
             &root.join(".licoup-workspace.json"),
             1,

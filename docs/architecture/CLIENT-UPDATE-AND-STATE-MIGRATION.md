@@ -1,5 +1,7 @@
 # Client update and state migration
 
+Updated: 2026-10-01
+
 | Related document | Path | Authority |
 | --- | --- | --- |
 | Normative version | This document | Client update and data migration contracts |
@@ -12,101 +14,83 @@ and `stable` are release tracks of that identity, not side-by-side apps or
 distribution transports. Direct and app-store remain packaging transport
 values.
 
-## Independent migration CLI
+## Conversion ownership and endpoints
 
-Data migration is an independently maintained and distributed Node.js CLI.
-Its planned source location is `tools/data-migration/`, with its own package,
-version, downloadable artifacts and release workflow. An additional repository
-is not required for that independence. Users can install, run, upgrade, and
-uninstall it regardless of the installed client version, including when the
-client cannot start or is not installed. Uninstalling the tool preserves
-application data and recovery records.
+The native migration owner converts the last published product's persisted format
+to the planned release's format. The embedded frontier catalogue is the authority
+for this single source/target pair; [Compatibility](../COMPATIBILITY.md) projects
+it. A product release number is not necessarily the identifier its shipped binary
+recorded. Preserve the recorded identifier and published step prefixes. A local
+build or schema correction does not establish another supported release.
 
-The tool must support conversion from any published data version to the current
-version, and from a newer version to any published older target. Historical
-format readers, writers, and composable upgrade and downgrade steps remain
-available across tool releases. The source is determined from the actual
-stores; the requested target selects its published data contract. Neither the
-running client nor its embedded migration frontier limits that selection.
+Store owners define physical schemas and conversions. Startup admission and the
+standalone native tool use those owners, rather than separate format writers.
+The standalone program is `crates/licoup-migrate`: one Rust binary that runs
+without Node.js or an installed client. Release distribution must provide it as a
+separately downloadable asset rather than a permanently bundled package. Its
+verbs are `inspect`, `plan`, `convert`, `resume`, `export`, `import`, and
+`rehearse`. Every invocation prints one JSON report and exits non-zero when the
+run leaves work owed. `inspect` and `plan` are read-only; `convert`, `resume`,
+`export`, and `rehearse` require the operator's `--writers-stopped` statement.
 
-A downgrade must produce data the target client can actually open. Data that
-the older format cannot represent must remain recoverable in preserved
-extensions, with representation differences reported explicitly; silently
-dropping it or merely restoring an old backup does not complete conversion of
-the current data. Admission metadata changes only after the target stores meet
-their postconditions. Editing a version marker alone cannot authorize an older
-client to read newer data.
+`export` and `import` reach the same Foundation full-data-root archive owner as
+the installed client's `backup` command, so an archive written by either entry
+point restores through the other and neither holds a second archive format.
+`rehearse` drives the same owners over a disposable working root, reports every
+stage it ran, and leaves the source untouched, so a conversion and both
+plaintext container round trips can be proved before an authorized real-data
+transition. The retired Node.js package is not retained as a converter,
+compatibility entry point, or fallback. Retained repository diagnostics are
+developer tools, not another supported conversion authority. There is no
+arbitrary historical-target selection or downgrade conversion contract.
 
-The Node.js CLI coordinates version conversion; protected credentials remain
-behind the platform's native custody and authorization boundary. Any required
-native helper ships with the independent tool and must not depend on an
-installed client. Tool publication is separate from client publication and
-preserves downloads and conversion definitions for historical versions.
+Import validates and extracts through Foundation, then prepares custody metadata,
+owner-managed references and revision protections in its private staging payload.
+These owner checks finish before any payload is published into the empty destination.
+Physical staging paths are used only for verification; persisted references name the
+final logical home. Foundation revalidates the bounded, no-follow payload and preserves
+verified read-only protections during publication. One owner handles checked scratch
+cleanup, publication rollback and directory synchronization. The entry point holds
+selected-home writer coordination throughout. Multi-file publication is not a
+crash-atomic activation transaction: an interrupted or incompletely rolled-back
+destination is unverified, not a usable recovery. Preserve it for diagnosis and retry
+from the unchanged source archive into a fresh empty home. Import never selects or
+activates the recovered home.
 
-These are design requirements for the independent tool; it has not yet been
-implemented. The following sections describe the current client's updater and
-admission implementation. Their forward-update restrictions do not define the
-independent CLI's supported source or target versions.
+For a release that provides the tool, `LicoUp-migrate-macos-arm64` is downloaded
+on demand with its `.sha256` from that release and runs offline once obtained.
+The local release catalogue stages the tool and checksum; that is not proof of
+publication or availability from a released tag. Installing or updating the
+client neither installs, replaces, nor removes the downloaded tool, and the
+running client never selects a bundled migrator. Use a release whose declared
+source and target match the required conversion. Replacing the executable does
+not reset progress: conversion journals remain in the selected data root.
 
-### Integration with the workflow refactor
+Both macOS publication profiles select the governed `independent-tool` and
+`independent-tool-digest` pair. Their source is the separate release-tool build
+output, never the app bundle. Apple Release owns Developer ID signing, independent
+notarization, immutable materialization and public byte/checksum verification for
+that pair. It does not run the migration tool as an acceptance probe. Source
+configuration and synthetic checks do not establish published availability or
+first-run operating-system acceptance; the corresponding owner contract must be
+legitimately adopted before the governed release can consume it.
 
-The tool is part of the planned workflow/compiler and host refactor. The existing
-`client-update-manifest.mjs` produces update metadata; it is not a data converter.
-Provide inspect, conversion planning, conversion and resume operations in the
-independent CLI. Probe actual stores and select versioned data contracts without
-requiring a running client or executable Graph.
+Explicit maintenance requires stopped writers and a recoverable source. The short
+startup `admission.lock` does not prove that runtime writers have stopped. The
+standalone tool holds the client's selected-home exclusive process lease across
+conversion, resume, export, import and rehearsal; a participating active writer
+causes refusal rather than being stopped. The operator statement still covers
+older clients and other writers outside that coordination. Preserve
+the source before an authorized real-data transition and rehearse in a disposable
+root; never use a live store to debug the target schema. Protected credentials
+remain behind their platform custody and authorization boundary.
 
-The CLI coordinates conversion; shared format probes/codecs stay with the
-existing native migration owner and are reused by startup admission and a
-focused tool-shipped helper. Refactor that owner into modules without duplicating
-its readers or creating a second migration authority. The helper uses the
-planned Rust 1.95.0 baseline and retains native custody and authorization.
-
-Before reading a live root for conversion, use the owning host's Proxy/control
-path to request maintenance and drain affected work. Acquire exclusive root
-ownership only after the actual safe handoff. The current short-lived startup
-`admission.lock` does not prove that all runtime writers have stopped. The
-planned common root-access protocol must cover the host, CLI and helper; a
-background migration cannot steal ownership from an active invocation or kill
-it on a timer. No installed client is needed when there is no active owner.
-
-Conversion records durable per-domain progress and verifies target postconditions
-before changing admission metadata. Recovery reconciles committed steps instead
-of repeating them. There is no claim of one atomic transaction across every
-database, file and operating-system credential store.
-
-Versioned contracts include workflow definitions, runs, queued commands and
-deliveries, subscriptions/cursors, node control states, successor handoffs,
-unresolved effects, usage facts and endpoint-state references. Keep historical
-readers, writers, conversion steps and their meaningful fixtures permanently;
-they are supported tool capabilities, not superseded client implementation.
-
-When an older target cannot safely express a record, preserve the complete
-record and relationships in a recovery extension outside that client's discovery
-and execution paths. Report that the older client cannot operate that state;
-provide an inert target projection only when it is truthful. Never map an unknown
-effect to retryable, pending or completed just to fit the old schema. Restore
-the preserved semantics when a capable version is selected later. Unknown-effect
-reconciliation and data-format conversion are separate operations.
-
-Keep every published target available for conversion. Block an affected step
-only when a consistent source, safe isolation/preservation of real external
-effects, or protected custody cannot be established. An unsupported old format
-alone is handled through preservation, not silent data loss or permanent refusal
-to convert the rest of the data. Target-client reads, interrupted conversion,
-historical round trips and execution exclusion of preserved records need actual
-synthetic-fixture evidence during implementation.
-
-### Downgrade, edits and later upgrade
-
-A conversion scenario includes a newer version, downgrade, real edits/deletions and
-execution by the older client, then another upgrade. Preserved extensions cannot
-overwrite newer facts, resurrect deletions or replay historical effects. Restore them
-only after reconciling their original identities and revisions with the current stores.
-An old process that does not understand a new lock protocol is not fenced by that lock;
-obtain exclusive access through its actual lifecycle and root ownership. Protocol and
-key state follow the pinned SDK's recovery contract, independently of ordinary database
-rollback. This scenario remains a requirement for the independent CLI.
+Conversion records per-domain progress. A committed store is authoritative over a
+stale marker or journal, and recovery reconciles the completed step rather than
+repeating it. There is no atomic transaction spanning all databases, files and
+operating-system credential stores. Data-dependent conversion failures remain
+forward-only `migration_step_failed` apply/retry work; a read-only structural
+preflight does not certify every stored business value.
 
 ## Client update selection
 
@@ -139,22 +123,46 @@ Before replacement, native update verification writes a claim bound to the
 selected version, target track, exact frontier, and artifact receipt. The new
 binary must match that claim before migration admission; a mismatch blocks
 before any state mutation. The current updater recovers a claimed replacement
-by installing the same or a newer forward-capable candidate. Explicit data
-downgrade belongs to the independent migration CLI defined above.
+by installing the same or a newer forward-capable candidate. It does not authorize
+data downgrade.
 
 ## Startup admission
 
 After resolving the raw data directory, the desktop lifecycle invokes native
 state admission before loading the workspace, preferences, conversations,
 Adaptive Flywheel, Mobile Relay, or another product-state consumer. Admission
-locks the root, probes every domain, proves a contiguous plan, and persists the
+locks the root, probes every domain under its declared startup scope, proves a contiguous plan, and persists the
 product-version high-water before the first schema mutation. Each durable step
 commits through an atomic file replacement or its owning database transaction;
 the bounded ledger is updated only after its authoritative postcondition.
 Conversation and Adaptive Flywheel SQLite metadata, workspace and presentation
 documents, Mobile Relay configuration, and the remaining declared preference
 documents are probed at their owning stores. Markers record reconciliation for
-an absent store; they never substitute for probing an existing store.
+an absent store; they never substitute for probing an existing store. Optional feature failures
+are returned in `unavailableFeatureDomainIds` without marking their data current or
+replacing their files. The corresponding Flutter bootstrap steps preserve defaults
+or leave the feature disabled. Core state failures remain fatal. Durability alone
+does not make a feature a prerequisite; see the [startup policy](../RUNBOOK.md#startup-and-retained-data).
+
+Before high-water, frontier or domain-marker advancement, SQLite admission checks
+the complete retained owner layout: columns, nullability, defaults, primary and
+unique keys, CHECK expressions, partial-index predicates, foreign-key actions,
+collations and other write constraints. Definitions come from the actual owner
+DDL. Older supported Conversation layouts are upgraded schema-only in memory and
+compared to that full contract, not to a startup column subset. Workflow tables
+created on demand may be absent; malformed existing tables are refused. The
+released nullable-terminal producer variant remains valid. Unrecognized structural
+definitions within the current owner are refused, not silently repaired or treated
+as equivalent SQL. Unowned historical tables and incoming relations coexist without
+being read or removed. Empty stores initialize normally; complete validated current
+structures may reconstruct a missing version marker without replacing their rows.
+
+The retained JavaScript evaluator uses the same owner DDL and structural upgrade
+steps. SQLite inspection errors remain bounded per-domain refusals; they never
+certify an unreadable store or erase sibling observations. Independent frozen
+fixtures exercise native admission, real owner reads and writes, and the actual
+diagnostic evaluator. Changed owner and fixture inputs select those existing
+regression suites through the module catalogue.
 
 The `gateway-credential-custody` domain is a protected continuation of this
 frontier. macOS roots without a completed custody receipt report it in
@@ -167,8 +175,8 @@ its completion marker and reconciles the same migration ledger. Failed or
 cancelled work remains pending. The custody operation holds a separate lock,
 so a native approval dialog does not block unrelated startup admission.
 
-Current domains are skipped and a rerun is a no-op. State ahead of the binary,
-unknown shapes, gaps, and incomplete or failed steps keep startup closed with a
+Current domains are skipped and a rerun is a no-op. Core state ahead of the binary,
+unknown core shapes, gaps, and incomplete or failed core steps refuse startup with a
 stable privacy-safe error code. A committed step is reconciled and not replayed
 after a crash. Durable user and security state is never silently reset.
 
@@ -181,25 +189,24 @@ tables remain the transition authority.
 
 The current admission implementation can recover by reinstalling the same
 verified capable build or a newer signed build and retrying. It denies an older
-binary after high-water advances. Supporting explicit downgrade requires the
-independent CLI to convert the stores and establish target-compatible admission
-state before the older client opens them; that integration remains to be built.
+binary after high-water advances. It does not lower metadata to let an older
+binary open a newer store.
 
 ### Workflow store conversion
 
 The current source advances the Adaptive Flywheel store from SQLite schema 2 to
 3 and its admission frontier from 1 to 2. The existing migration owner materializes
 historical implicit entry slots and effect routes once. Conversion and the schema
-marker commit in one SQLite transaction. Earlier stores reach schema 2 through
-their existing step before this conversion; completed frontier-1 ledgers and
-markers advance through the registered next step.
+marker commit in one SQLite transaction. Only the actual released schema-2 layout
+and current schema-3 layout are admitted; completed frontier-1 ledgers and markers
+advance through the registered next step.
 
 The conversion preserves revision and semantics identities, run snapshots,
 command attempts, leases and grants. Immutable package bytes keep their original
 digests; package verification validates that identity before applying historical
 format interpretation. Ordinary compilation accepts canonical definitions and
-does not rewrite them. This forward conversion does not implement the independent
-CLI or its downgrade contract.
+does not rewrite them. This forward conversion does not establish another
+historical compatibility format.
 
 ## Publication
 

@@ -5,6 +5,52 @@ pub(in crate::domain::mobile_relay) const CONFIG_MAX_BYTES: usize = 512 * 1024;
 pub(in crate::domain::mobile_relay) const CONFIG_GENERATION_FIELD: &str = "configGeneration";
 pub(in crate::domain::mobile_relay) const AUTHORITY_GENERATION_FIELD: &str =
     "securityAuthorityGeneration";
+/// Local custody locator retained across home changes. This value alone never
+/// grants authorization or proves material exists on the current device.
+pub(in crate::domain::mobile_relay) const CUSTODY_NAMESPACE_FIELD: &str = "custodyNamespace";
+
+pub(in crate::domain::mobile_relay) fn validate_custody_namespace(namespace: &str) -> Result<()> {
+    ensure!(
+        namespace == MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE
+            || (namespace.len() == 64
+                && namespace
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))),
+        "mobile relay custody locator is invalid"
+    );
+    Ok(())
+}
+
+pub(in crate::domain::mobile_relay) fn recorded_custody_namespace(
+    config: &Value,
+) -> Result<Option<&str>> {
+    let Some(value) = config
+        .get("mobileRelayE2ee")
+        .and_then(|value| value.get(CUSTODY_NAMESPACE_FIELD))
+    else {
+        return Ok(None);
+    };
+    let namespace = value
+        .as_str()
+        .ok_or_else(|| anyhow!("mobile relay custody locator is invalid"))?;
+    validate_custody_namespace(namespace)?;
+    Ok(Some(namespace))
+}
+
+pub(in crate::domain::mobile_relay) fn current_custody_namespace() -> Result<String> {
+    if mobile_relay_secret_store_override().is_some() {
+        Ok(MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE.to_string())
+    } else {
+        native_secret_store_namespace()
+    }
+}
+
+pub(in crate::domain::mobile_relay) fn custody_locator_matches_current_home(
+    namespace: &str,
+) -> Result<bool> {
+    validate_custody_namespace(namespace)?;
+    Ok(namespace == current_custody_namespace()? || namespace == native_secret_store_namespace()?)
+}
 pub(in crate::domain::mobile_relay) const RUNTIME_SECRET_OVERRIDE_TRANSPORT: &str =
     "platform_keyring_to_rust_ffi_memory_override";
 pub(in crate::domain::mobile_relay) const NATIVE_SECRET_STORE_MODE_ENV: &str =
@@ -36,6 +82,9 @@ thread_local! {
     static MOBILE_RELAY_SECRET_STORE_OVERRIDE: RefCell<Option<Arc<dyn SecureMeshSecretStore>>> =
         RefCell::new(None);
     #[cfg(test)]
+    static NATIVE_NAMESPACE_STORE_TEST_PORT: RefCell<Option<Arc<dyn SecureMeshSecretStore>>> =
+        RefCell::new(None);
+    #[cfg(test)]
     pub(in crate::domain::mobile_relay) static KT_AUTHORITY_RESET_FAILPOINT: RefCell<Option<&'static str>> = const { RefCell::new(None) };
 }
 
@@ -48,6 +97,7 @@ pub(in crate::domain::mobile_relay) struct RuntimeSecretOverrides {
     pub(in crate::domain::mobile_relay) e2ee_private_key: bool,
     pub(in crate::domain::mobile_relay) e2ee_pairing_secret: bool,
     pub(in crate::domain::mobile_relay) e2ee_signing_key: bool,
+    pub(in crate::domain::mobile_relay) identity_custody_verified: Option<bool>,
     pub(in crate::domain::mobile_relay) e2ee_signed_prekey_private_key: bool,
     pub(in crate::domain::mobile_relay) e2ee_one_time_prekey_private_key: bool,
     pub(in crate::domain::mobile_relay) e2ee_one_time_mlkem1024_prekey_seed: bool,
@@ -87,6 +137,9 @@ impl RuntimeSecretOverrides {
         self.e2ee_private_key |= other.e2ee_private_key;
         self.e2ee_pairing_secret |= other.e2ee_pairing_secret;
         self.e2ee_signing_key |= other.e2ee_signing_key;
+        if other.identity_custody_verified.is_some() {
+            self.identity_custody_verified = other.identity_custody_verified;
+        }
         self.e2ee_signed_prekey_private_key |= other.e2ee_signed_prekey_private_key;
         self.e2ee_one_time_prekey_private_key |= other.e2ee_one_time_prekey_private_key;
         self.e2ee_one_time_mlkem1024_prekey_seed |= other.e2ee_one_time_mlkem1024_prekey_seed;
@@ -165,6 +218,7 @@ pub(in crate::domain::mobile_relay) struct MobileRelaySecretStoreAuthBatch {
     store: Option<Arc<dyn SecureMeshSecretStore>>,
     namespace: Option<String>,
     session: Option<SecretStoreAuthorizationSession>,
+    custody_selected: bool,
 }
 
 impl Default for MobileRelaySecretStoreAuthBatch {
@@ -177,6 +231,43 @@ impl Default for MobileRelaySecretStoreAuthBatch {
 }
 
 impl MobileRelaySecretStoreAuthBatch {
+    pub(in crate::domain::mobile_relay) fn prepare_custody_lookup(
+        &mut self,
+        config: &Value,
+    ) -> Result<()> {
+        self.init()?;
+        let cross_home = match recorded_custody_namespace(config)? {
+            Some(recorded) => !custody_locator_matches_current_home(recorded)?,
+            None => false,
+        };
+        if self.session.is_none() && cross_home {
+            self.operation_count = self
+                .operation_count
+                .checked_mul(2)
+                .ok_or_else(|| anyhow!("mobile relay custody authorization budget overflow"))?;
+        }
+        Ok(())
+    }
+
+    pub(in crate::domain::mobile_relay) fn select_verified_custody_namespace(
+        &mut self,
+        namespace: String,
+    ) -> Result<()> {
+        validate_custody_namespace(&namespace)?;
+        ensure!(
+            self.session.is_some(),
+            "mobile relay custody selection requires actual native authorization"
+        );
+        self.namespace = Some(namespace);
+        self.custody_selected = true;
+        Ok(())
+    }
+
+    pub(in crate::domain::mobile_relay) fn verified_namespace(&self) -> Option<&str> {
+        self.custody_selected
+            .then_some(self.namespace.as_deref())
+            .flatten()
+    }
     pub(in crate::domain::mobile_relay) fn new(
         reason: impl Into<String>,
         operation_count: usize,
@@ -197,6 +288,7 @@ impl MobileRelaySecretStoreAuthBatch {
             store: None,
             namespace: None,
             session: None,
+            custody_selected: false,
         }
     }
 
@@ -290,6 +382,12 @@ pub(in crate::domain::mobile_relay) fn mobile_relay_secret_store_override()
 
 pub(in crate::domain::mobile_relay) fn selected_mobile_relay_secret_store()
 -> Arc<dyn SecureMeshSecretStore> {
+    #[cfg(test)]
+    if let Some(store) =
+        NATIVE_NAMESPACE_STORE_TEST_PORT.with(|slot| slot.borrow().as_ref().map(Arc::clone))
+    {
+        return store;
+    }
     let store =
         MOBILE_RELAY_EPHEMERAL_SECRET_STORE.get_or_init(|| Arc::new(EphemeralSecretStore::new()));
     if native_secret_store_permitted() {
@@ -304,6 +402,24 @@ pub(in crate::domain::mobile_relay) fn selected_mobile_relay_secret_store()
         let _ = store.set_unavailable_platform_facts(Vec::new());
     }
     Arc::clone(store) as Arc<dyn SecureMeshSecretStore>
+}
+
+#[cfg(test)]
+pub(in crate::domain::mobile_relay) fn with_native_namespace_store_test_port<T>(
+    store: Arc<dyn SecureMeshSecretStore>,
+    operation: impl FnOnce() -> Result<T>,
+) -> Result<T> {
+    struct Restore(Option<Arc<dyn SecureMeshSecretStore>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            NATIVE_NAMESPACE_STORE_TEST_PORT.with(|slot| {
+                slot.replace(self.0.take());
+            });
+        }
+    }
+    let previous = NATIVE_NAMESPACE_STORE_TEST_PORT.with(|slot| slot.replace(Some(store)));
+    let _restore = Restore(previous);
+    operation()
 }
 
 /// Returns the capability evaluation for the secret store selected by the current client.

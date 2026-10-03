@@ -14,10 +14,15 @@ final class ClientLifecycleProjection {
 }
 
 final class ClientBootstrapStep {
-  const ClientBootstrapStep({required this.id, required this.action});
+  const ClientBootstrapStep({
+    required this.id,
+    required this.action,
+    this.requiredForStartup = true,
+  });
 
   final String id;
   final Future<void> Function() action;
+  final bool requiredForStartup;
 }
 
 final class ClientLifecycleReport {
@@ -100,7 +105,18 @@ final class ClientLifecycleCoordinator extends ApplicationStateOwner {
     try {
       for (final step in sequentialSteps) {
         activeStepId = step.id;
-        await step.action();
+        try {
+          await step.action();
+        } catch (_) {
+          if (step.requiredForStartup) rethrow;
+          if (!_isCurrent(generation)) return;
+          _report(
+            ClientLifecycleReport(
+              code: 'client_optional_step_unavailable',
+              stepId: _safeStepId(step.id),
+            ),
+          );
+        }
         if (!_isCurrent(generation)) return;
       }
       if (runBackgroundSteps && backgroundSteps.isNotEmpty) {

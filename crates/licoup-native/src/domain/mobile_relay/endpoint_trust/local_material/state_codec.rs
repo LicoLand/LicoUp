@@ -22,6 +22,7 @@ pub(in crate::domain::mobile_relay) fn local_endpoint_state<'a>(
     config: &Value,
     secret_material: &'a RuntimeSecretMaterial,
 ) -> Result<LocalEndpointState<'a>> {
+    super::material_mutation::validate_existing_identity_custody(config, secret_material)?;
     let state = config
         .get("mobileRelayE2ee")
         .ok_or_else(|| anyhow!("mobile relay E2EE endpoint state is missing"))?;

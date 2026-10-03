@@ -50,10 +50,12 @@ fn platform_store_unit_test_io_is_noninteractive_and_fail_closed() {
         .handle_for_namespace("noninteractive", "proof")
         .unwrap();
     let error = store.get_secret(&handle).unwrap_err();
-    assert!(
+    assert_eq!(
         error
-            .to_string()
-            .contains("lacks measured platform user authorization")
+            .downcast_ref::<crate::core::secure_mesh_secret_store::SecretStorePresenceError>()
+            .unwrap()
+            .code(),
+        "secure_mesh_authorization_required"
     );
 }
 

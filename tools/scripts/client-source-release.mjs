@@ -43,6 +43,26 @@ export async function prepareSourceDraft({ event, eventName, cwd = process.cwd()
   const parents = (await git(['show', '-s', '--format=%P', revision])).split(/\s+/u);
   if (parents.length !== 2 || parents[1] !== head) fail('source_parent_mismatch');
   const document = JSON.parse(await git(['show', `${revision}:tools/client-version.json`]));
+  // The frozen product declaration owns its platform asset names. Replaying an
+  // older five-role source release must not acquire a later tool requirement.
+  const template = JSON.parse(await git(['show', `${revision}:tools/client-release-template.json`]));
+  const apple = JSON.parse(await git(['show', `${revision}:tools/apple-release/macos-direct-arm64.json`]));
+  const roles = template.publication?.assetRoles;
+  const declared = apple.artifacts;
+  const mandatory = ['installer', 'installer-digest', 'update-archive', 'update-digest', 'update-manifest'];
+  const accepted = new Set([...mandatory, 'independent-tool', 'independent-tool-digest']);
+  if (template.publication?.owner !== 'apple-release-service' ||
+      apple.schema !== 'apple-release.config.v1' || apple.product !== 'LicoUp' ||
+      apple.source?.branch !== 'release' || apple.apple?.target !== 'macos-direct-arm64' ||
+      !Array.isArray(roles) || ![5, 7].includes(roles.length) || new Set(roles).size !== roles.length ||
+      roles.some(role => !accepted.has(role)) || mandatory.some(role => !roles.includes(role)) ||
+      !Array.isArray(declared) || declared.length !== roles.length ||
+      declared.some(entry => !entry || typeof entry !== 'object' || typeof entry.role !== 'string' || typeof entry.publicName !== 'string') ||
+      new Set(declared.map(entry => entry.role)).size !== roles.length ||
+      declared.some(entry => !roles.includes(entry.role) || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(entry.publicName)) ||
+      new Set(declared.map(entry => entry.publicName)).size !== roles.length) fail('source_platform_contract_invalid');
+  if (roles.length === 7 && declared.find(entry => entry.role === 'independent-tool-digest').publicName !==
+      `${declared.find(entry => entry.role === 'independent-tool').publicName}.sha256`) fail('source_platform_contract_invalid');
   const version = document.productVersion;
   if (!/^\d+\.\d+\.\d+$/u.test(version || '') || !Number.isSafeInteger(document.buildNumber) || document.buildNumber < 1) fail('source_version_invalid');
   const tag = `v${version}`, title = `LicoUp ${version}`, marker = `apple-release-source:v1:${revision}`;
@@ -83,7 +103,7 @@ export async function prepareSourceDraft({ event, eventName, cwd = process.cwd()
 
     }
     const assets = JSON.parse(await gh(['api', `repos/${repository}/releases/${release.id}/assets?per_page=100`]));
-    const allowed = new Set([archive, checksum, 'LicoUp-macos-arm64.dmg', 'LicoUp-macos-arm64.dmg.sha256', 'LicoUp-macos-arm64-update.zip', 'LicoUp-macos-arm64-update.zip.sha256', 'LicoUp-update-manifest.json']);
+    const allowed = new Set([archive, checksum, ...declared.map(entry => entry.publicName)]);
     if (!Array.isArray(assets) || new Set(assets.map(a => a.name)).size !== assets.length || assets.some(a => !allowed.has(a.name))) fail('source_asset_conflict');
     const downloaded = path.join(root, 'download');
     const { mkdir } = await import('node:fs/promises');

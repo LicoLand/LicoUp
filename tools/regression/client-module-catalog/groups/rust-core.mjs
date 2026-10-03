@@ -1,6 +1,7 @@
 import {
   command,
   foundationLayer,
+  rustCrateIntegrationTest,
   rustLayer,
   rustBinaryTests,
   defineModule,
@@ -8,6 +9,13 @@ import {
 } from "../helpers.mjs";
 
 export const RUST_CORE_MODULES = Object.freeze([
+  defineModule({
+    id: "rust.core.sqlite-contract",
+    kind: "rust-core",
+    summary: "Owned SQLite structure validation and harmless retained table coexistence",
+    inputs: ["crates/licoup-foundation/src/core/sqlite_contract.rs"],
+    command: foundationLayer("core::sqlite_contract::tests::"),
+  }),
   defineModule({
       id: "rust.core.workflow",
       kind: "rust-core",
@@ -143,8 +151,36 @@ export const RUST_CORE_MODULES = Object.freeze([
       summary: "Bounded no-follow archive inspection and extraction",
       inputs: [
         "crates/licoup-foundation/src/core/safe_archive.rs",
+        "crates/licoup-foundation/src/core/safe_archive/**",
       ],
       command: foundationLayer("core::safe_archive::tests"),
+    }),
+  defineModule({
+      id: "rust.core.full-data-root-archive",
+      kind: "rust-core",
+      summary: "Full data-root archive inventory, atomic private capture, and transactional restore",
+      inputs: [
+        "crates/licoup-foundation/src/core/full_data_root_archive/mod.rs",
+        "crates/licoup-foundation/src/core/full_data_root_archive/capture.rs",
+        "crates/licoup-foundation/src/core/full_data_root_archive/inventory.rs",
+        "crates/licoup-foundation/src/core/full_data_root_archive/restore.rs",
+        "crates/licoup-foundation/tests/full_data_root_archive/**",
+        "crates/licoup-foundation/src/core/safe_archive.rs",
+        "crates/licoup-foundation/src/core/safe_archive/**",
+        "crates/licoup-foundation/src/platform/file_security/atomic_replace.rs",
+      ],
+      command: rustCrateIntegrationTest("licoup-foundation", "full_data_root_archive"),
+    }),
+  defineModule({
+      id: "rust.core.full-data-root-archive.guards",
+      kind: "rust-core",
+      summary: "Archive owner unit and injected-fault guards for capture and restore",
+      inputs: [
+        "crates/licoup-foundation/src/core/full_data_root_archive/capture.rs",
+        "crates/licoup-foundation/src/core/full_data_root_archive/inventory.rs",
+        "crates/licoup-foundation/src/core/full_data_root_archive/restore.rs",
+      ],
+      command: foundationLayer("core::full_data_root_archive"),
     }),
   secureMeshModule({
       id: "rust.core.secure-mesh",

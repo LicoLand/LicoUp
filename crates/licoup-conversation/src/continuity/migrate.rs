@@ -7,7 +7,18 @@ use crate::store::{ContinuityUnitOfWork, StoreResult};
 use anyhow::anyhow;
 
 pub const CONTINUITY_SCHEMA_VERSION: &str = "7";
-const CURRENT_CONTINUITY_SCHEMA_VERSION: u32 = 7;
+pub(crate) const CURRENT_CONTINUITY_SCHEMA_VERSION: u32 = 7;
+
+const DESIGNATION_EPOCH_COLUMN: &str =
+    "ALTER TABLE conversations ADD COLUMN designation_epoch INTEGER NOT NULL DEFAULT 0";
+const DESIGNATION_EPOCH_TRIGGER: &str = "CREATE TRIGGER continuity_bump_designation_epoch
+             AFTER UPDATE OF assistant_membership_id ON conversations
+             WHEN (OLD.assistant_membership_id IS NOT NEW.assistant_membership_id)
+             BEGIN
+               UPDATE conversations
+               SET designation_epoch = designation_epoch + 1
+               WHERE id = NEW.id;
+             END";
 
 const STATEMENTS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS continuity_schema (
@@ -236,6 +247,22 @@ pub fn ensure_continuity_schema(unit: &ContinuityUnitOfWork<'_>) -> StoreResult<
     Ok(true)
 }
 
+/// Build the persistence owner's contract on an in-memory Conversation schema.
+/// This shares the actual owner DDL; callers never run it on the source database.
+pub(crate) fn add_schema_contract(
+    reference: &rusqlite::Connection,
+    designation_epoch: bool,
+) -> StoreResult<()> {
+    for statement in STATEMENTS {
+        reference.execute(statement, [])?;
+    }
+    if designation_epoch {
+        reference.execute(DESIGNATION_EPOCH_COLUMN, [])?;
+        reference.execute(DESIGNATION_EPOCH_TRIGGER, [])?;
+    }
+    Ok(())
+}
+
 fn ensure_adoption_policy_keys(unit: &ContinuityUnitOfWork<'_>) -> StoreResult<bool> {
     let mut dirty = false;
     for (key, value) in [("adoption_enabled", "1"), ("adoption_stage", "offline")] {
@@ -255,7 +282,7 @@ fn ensure_adoption_policy_keys(unit: &ContinuityUnitOfWork<'_>) -> StoreResult<b
     Ok(dirty)
 }
 
-fn parse_continuity_schema_version(value: &str) -> StoreResult<u32> {
+pub(crate) fn parse_continuity_schema_version(value: &str) -> StoreResult<u32> {
     let version = value
         .parse::<u32>()
         .map_err(|_| anyhow!("continuity_schema_unsupported_version"))?;
@@ -352,10 +379,7 @@ fn ensure_designation_epoch(unit: &ContinuityUnitOfWork<'_>) -> StoreResult<bool
     )?;
     let mut dirty = false;
     if present == 0 {
-        unit.execute(
-            "ALTER TABLE conversations ADD COLUMN designation_epoch INTEGER NOT NULL DEFAULT 0",
-            [],
-        )?;
+        unit.execute(DESIGNATION_EPOCH_COLUMN, [])?;
         dirty = true;
     }
     let trigger_present: i64 = unit.query_row(
@@ -367,17 +391,7 @@ fn ensure_designation_epoch(unit: &ContinuityUnitOfWork<'_>) -> StoreResult<bool
         |row| row.get(0),
     )?;
     if trigger_present == 0 {
-        unit.execute(
-            "CREATE TRIGGER continuity_bump_designation_epoch
-             AFTER UPDATE OF assistant_membership_id ON conversations
-             WHEN (OLD.assistant_membership_id IS NOT NEW.assistant_membership_id)
-             BEGIN
-               UPDATE conversations
-               SET designation_epoch = designation_epoch + 1
-               WHERE id = NEW.id;
-             END",
-            [],
-        )?;
+        unit.execute(DESIGNATION_EPOCH_TRIGGER, [])?;
         dirty = true;
     }
     Ok(dirty)

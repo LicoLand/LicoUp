@@ -1,0 +1,46 @@
+{
+  "id": "engineering-verification",
+  "file": "05-engineering-verification.json",
+  "title": {
+    "en": "Deterministic engineering verification",
+    "zh": "工程验证"
+  },
+  "purpose": {
+    "en": "Prove internal behavior without real Agent work.",
+    "zh": "通过确定性输入验证内部行为。"
+  },
+  "owner": {
+    "en": "Implementation owners and integrator",
+    "zh": "实施者与集成人"
+  },
+  "entry": {
+    "en": "Implementation and source review are complete",
+    "zh": "实现与源码审阅完成"
+  },
+  "steps": [
+    {
+      "en": "Run focused tests",
+      "zh": "运行定向测试"
+    },
+    {
+      "en": "Integrate valid evidence",
+      "zh": "整合有效证据"
+    },
+    {
+      "en": "Run final affected regression",
+      "zh": "执行最终受影响回归"
+    }
+  ],
+  "exit": {
+    "en": "Approved requirements map to actual implementation and valid checks.",
+    "zh": "已批准需求与实际实现、有效检查一一对应。"
+  },
+  "failure": {
+    "en": "Repair scoped failures and reuse unaffected passing results.",
+    "zh": "修复范围内失败，复用不受影响的通过结果。"
+  },
+  "boundary": {
+    "en": "Use actual DSL, state, scheduler and storage owners; simulate external boundaries only.",
+    "zh": "验证实际 DSL、状态机、调度和存储实现，仅替代外部边界。"
+  }
+}

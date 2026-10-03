@@ -115,6 +115,7 @@ pub(in crate::domain::mobile_relay) fn public_config(config: &Value) -> Value {
         .get_mut("mobileRelayE2ee")
         .and_then(Value::as_object_mut)
     {
+        state.remove(crate::domain::mobile_relay::secret_custody::CUSTODY_NAMESPACE_FIELD);
         state.remove("privateKeyBase64url");
         state.remove("signingKeyBase64url");
         state.remove("signedPrekeyPrivateKeyBase64url");

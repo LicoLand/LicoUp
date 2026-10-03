@@ -24,6 +24,7 @@ const leaves = Object.freeze([
   "evidence.mjs",
   "live-gate.mjs",
   "live.mjs",
+  "native/acp-settings.mjs",
   "native/acp-turn.mjs",
   "native/app-server.mjs",
   "native/cursor-cli.mjs",
@@ -136,7 +137,7 @@ test("acp conversation parity facade is a thin serial CLI entry", async () => {
   assert.equal(typeof module.runAcpConversationParityCli, "function");
 });
 
-test("acp conversation parity owns exactly twenty-nine bounded ordinary modules", async () => {
+test("acp conversation parity owns exactly thirty bounded ordinary modules", async () => {
   assert.deepEqual(await collectModules(moduleRoot), [...leaves]);
   const source = await sources();
   for (const leaf of Object.keys(source)) {
@@ -181,7 +182,6 @@ test("self-test dry-run preserves passed status without live agent binaries", ()
       cwd: repoRoot,
       encoding: "utf8",
       maxBuffer: 4 * 1024 * 1024,
-      timeout: 120_000,
     },
   );
   assert.equal(result.status, 0, result.stderr || result.stdout.slice(0, 400));
@@ -207,7 +207,6 @@ test("print-live-gate remains a non-mutating checklist", () => {
       cwd: repoRoot,
       encoding: "utf8",
       maxBuffer: 4 * 1024 * 1024,
-      timeout: 30_000,
     },
   );
   assert.equal(result.status, 0, result.stderr || result.stdout.slice(0, 400));

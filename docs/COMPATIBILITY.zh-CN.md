@@ -4,7 +4,7 @@
 
 产品版本：`0.3.0`
 
-生成来源：`tools/client-support-matrix.json`、`tools/client-release-targets.json`、`tools/client-version.json`、`crates/licoup-native/resources/agent-conversation-drivers.json`、`crates/licoup-native/resources/agent-native-capabilities.json` 和 `crates/licoup-native/resources/agent-conversation-readiness.json`。
+生成来源：`tools/client-support-matrix.json`、`tools/client-release-targets.json`、`tools/client-version.json`、`crates/licoup-native/resources/agent-conversation-drivers.json`、`crates/licoup-native/resources/agent-native-capabilities.json`、`crates/licoup-native/resources/agent-conversation-readiness.json` 和 `crates/licoup-native/resources/client-state-migration-frontier.json`。
 
 使用 `npm run client:support-matrix:sync` 更新，使用 `npm run client:support-matrix:check` 验证。请勿手工维护本投影。
 
@@ -50,6 +50,15 @@ LicoUp macOS 客户端仅支持运行 macOS 11 或更高版本的 Apple Silicon�
 | android-direct-arm64-v8a | android-arm64 | android | direct | apk | arm64-v8a | 可用 | 不可选入 | manual-download |
 | android-play-arm64-v8a | android-arm64 | android | google-play | aab | arm64-v8a | 可用 | 不可选入 | store-managed |
 | ios-app-store-arm64 | ios-arm64 | ios | app-store | ipa | arm64 | 可用 | 不可选入 | store-managed |
+
+## 状态迁移端点
+
+内嵌 frontier 目录只声明两个转换端点：最近发布格式作为来源，当前客户端自身的目标格式作为目标。任何其他格式的根目录都会作为不受支持的来源被拒绝；更早的发布格式属于发布历史，不是额外端点。
+
+| 端点 | 格式标识 |
+| --- | --- |
+| 来源（最近发布） | `licoup-state-0.1.1` |
+| 目标（当前客户端） | `licoup-state-0.3.0` |
 
 ## 状态说明
 

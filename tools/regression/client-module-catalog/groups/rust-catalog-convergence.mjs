@@ -2,6 +2,7 @@ import {
   NATIVE_MANIFEST,
   command,
   defineModule,
+  node,
 } from "../helpers.mjs";
 
 const CATALOG_CONVERGENCE_MANIFEST =
@@ -33,6 +34,21 @@ export const RUST_CATALOG_CONVERGENCE_MODULES = Object.freeze([
       ["test", "--manifest-path", CATALOG_CONVERGENCE_MANIFEST],
       10 * 60_000,
     ),
+  }),
+  defineModule({
+    id: "rust.crate.migrate",
+    kind: "rust-crate",
+    summary: "Standalone migration binary and its released-root conversion, archive and cross-container suites",
+    targetEvidenceHosts: ["darwin", "linux", "win32"],
+    inputs: [
+      "crates/licoup-migrate/**",
+      "tools/scripts/migration-crate-tests.mjs",
+      "tests/fixtures/client_state_migration/released_source.rs",
+    ],
+    // The runner constructs the planned candidate identity through the native build
+    // script's real product-version input and builds the client CLI the oracle compares
+    // against; see the script header for why neither of those is a fixture rewrite.
+    command: node("tools/scripts/migration-crate-tests.mjs", [], 20 * 60_000),
   }),
   defineModule({
     id: "rust.domain.catalog-convergence-adapter",

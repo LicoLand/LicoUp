@@ -9,6 +9,7 @@ use anyhow::{Result, anyhow, bail};
 use fs2::FileExt;
 use std::{
     fs::File,
+    io,
     path::{Path, PathBuf},
     sync::atomic::{AtomicUsize, Ordering},
 };
@@ -17,6 +18,14 @@ const ADMISSION_LOCK: &str = "data-home-admission.lock";
 const ACCESS_LOCK: &str = "data-home-access.lock";
 
 static PROCESS_ACCESS_LEASES: AtomicUsize = AtomicUsize::new(0);
+
+/// Whether a failed non-blocking lock attempt means another holder owns the lease.
+/// `fs2` defines the native error on every supported platform; comparing that value
+/// keeps contention distinct from permissions and other I/O failures.
+fn lock_is_contended(error: &io::Error) -> bool {
+    let expected = fs2::lock_contended_error();
+    error.raw_os_error().is_some() && error.raw_os_error() == expected.raw_os_error()
+}
 
 /// A shared process lease. Keep this value alive for the lifetime of every
 /// process that can read or write application-owned state.
@@ -46,6 +55,17 @@ pub struct DataHomeRelocationAdmission {
 }
 
 impl DataHomeRelocationAdmission {
+    /// Prove that existing participants have drained while admission remains
+    /// closed. The barrier prevents a new reader from racing this observation.
+    pub fn process_access_drained(&self) -> Result<bool> {
+        let access = open_lock(&self.access_path)?;
+        match FileExt::try_lock_exclusive(&access) {
+            Ok(()) => Ok(true),
+            Err(error) if lock_is_contended(&error) => Ok(false),
+            Err(_) => Err(anyhow!("data-home relocation lease failed")),
+        }
+    }
+
     pub fn wait_for_process_access(self) -> Result<DataHomeRelocationLease> {
         let access = open_lock(&self.access_path)?;
         FileExt::lock_exclusive(&access)
@@ -88,6 +108,19 @@ pub fn acquire_data_home_relocation_lease() -> Result<DataHomeRelocationLease> {
     acquire_data_home_relocation_admission()?.wait_for_process_access()
 }
 
+/// Try to acquire the exclusive relocation lease without waiting for writers.
+///
+/// `Ok(None)` means another process holds the admission barrier or a shared access
+/// lease: a capture or import must be refused rather than read a live root, and no
+/// process is stopped by asking. Like the blocking form, this runs only in a process
+/// that holds no shared lease.
+pub fn try_acquire_data_home_relocation_lease() -> Result<Option<DataHomeRelocationLease>> {
+    if PROCESS_ACCESS_LEASES.load(Ordering::Acquire) != 0 {
+        bail!("data_home_relocation_requires_stopped_native_process");
+    }
+    try_acquire_data_home_relocation_lease_at(&locator_path()?)
+}
+
 /// Close process admission before stopping services. The returned barrier
 /// must remain alive through service shutdown and access draining.
 pub fn acquire_data_home_relocation_admission() -> Result<DataHomeRelocationAdmission> {
@@ -116,7 +149,7 @@ fn acquire_data_home_access_at(locator: &Path) -> Result<DataHomeAccessLease> {
     // LICOUP_HOME and write the source after the locator has switched.
     match FileExt::try_lock_shared(&admission) {
         Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+        Err(error) if lock_is_contended(&error) => {
             bail!("data-home relocation is in progress")
         }
         Err(_) => bail!("data-home access admission failed"),
@@ -156,20 +189,19 @@ fn try_acquire_data_home_access_at(locator: &Path) -> Result<Option<DataHomeAcce
     let admission = open_lock(&admission_path)?;
     match FileExt::try_lock_shared(&admission) {
         Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(None),
+        Err(error) if lock_is_contended(&error) => return Ok(None),
         Err(_) => return Err(anyhow!("data-home access admission failed")),
     }
     let access = open_lock(&access_path)?;
     match FileExt::try_lock_shared(&access) {
         Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(None),
+        Err(error) if lock_is_contended(&error) => return Ok(None),
         Err(_) => return Err(anyhow!("data-home access lease failed")),
     }
     FileExt::unlock(&admission).map_err(|_| anyhow!("data-home access admission failed"))?;
     Ok(Some(DataHomeAccessLease { _access: access }))
 }
 
-#[cfg(test)]
 fn try_acquire_data_home_relocation_lease_at(
     locator: &Path,
 ) -> Result<Option<DataHomeRelocationLease>> {
@@ -177,13 +209,13 @@ fn try_acquire_data_home_relocation_lease_at(
     let admission = open_lock(&admission_path)?;
     match FileExt::try_lock_exclusive(&admission) {
         Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(None),
+        Err(error) if lock_is_contended(&error) => return Ok(None),
         Err(_) => return Err(anyhow!("data-home relocation admission failed")),
     }
     let access = open_lock(&access_path)?;
     match FileExt::try_lock_exclusive(&access) {
         Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(None),
+        Err(error) if lock_is_contended(&error) => return Ok(None),
         Err(_) => return Err(anyhow!("data-home relocation lease failed")),
     }
     Ok(Some(DataHomeRelocationLease {
@@ -217,6 +249,14 @@ mod tests {
 
     const HELPER_ACTION: &str = "LICOUP_TEST_DATA_HOME_LEASE_ACTION";
     const HELPER_LOCATOR: &str = "LICOUP_TEST_DATA_HOME_LEASE_LOCATOR";
+
+    #[test]
+    fn native_lock_contention_is_distinct_from_other_io_failures() {
+        assert!(lock_is_contended(&fs2::lock_contended_error()));
+        assert!(!lock_is_contended(&std::io::Error::from(
+            std::io::ErrorKind::PermissionDenied
+        )));
+    }
 
     #[test]
     fn separate_process_lease_blocks_copy_until_released_and_admission_blocks_new_access() {
@@ -286,6 +326,68 @@ mod tests {
     }
 
     #[test]
+    fn non_blocking_lease_refuses_an_active_writer_and_recovers_after_release() {
+        let fixture = std::env::temp_dir().join(format!(
+            "licoup-data-home-try-lease-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let locator = fixture.join("config/data-home");
+        std::fs::create_dir_all(locator.parent().unwrap()).unwrap();
+
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "platform::data_home_access::tests::cross_process_lease_helper",
+                "--nocapture",
+            ])
+            .env(HELPER_ACTION, "hold")
+            .env(HELPER_LOCATOR, &locator)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut stdout = BufReader::new(child.stdout.take().unwrap());
+        let mut line = String::new();
+        loop {
+            line.clear();
+            let read = stdout.read_line(&mut line).unwrap();
+            assert_ne!(read, 0, "lease helper exited before acquiring its lease");
+            if line.trim() == "DATA_HOME_LEASE_READY" {
+                break;
+            }
+        }
+
+        // An active writer is refused without being stopped or signalled.
+        assert!(
+            try_acquire_data_home_relocation_lease_at(&locator)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            child.try_wait().unwrap().is_none(),
+            "the writer stays alive"
+        );
+
+        child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(b"release\n")
+            .unwrap();
+        child.stdin.as_mut().unwrap().flush().unwrap();
+        assert!(child.wait().unwrap().success());
+
+        let lease = try_acquire_data_home_relocation_lease_at(&locator)
+            .unwrap()
+            .expect("the lease is available once the writer drained");
+        assert!(try_acquire_data_home_access_at(&locator).unwrap().is_none());
+        drop(lease);
+        assert!(try_acquire_data_home_access_at(&locator).unwrap().is_some());
+        let _ = std::fs::remove_dir_all(fixture);
+    }
+
+    #[test]
     fn admission_barrier_can_precede_service_stop_and_wait_for_existing_access() {
         let fixture = std::env::temp_dir().join(format!(
             "licoup-data-home-admission-{}",
@@ -320,6 +422,7 @@ mod tests {
 
         let admission = acquire_data_home_relocation_admission_at(&locator).unwrap();
         assert!(try_acquire_data_home_access_at(&locator).unwrap().is_none());
+        assert!(!admission.process_access_drained().unwrap());
 
         child
             .stdin
@@ -329,6 +432,7 @@ mod tests {
             .unwrap();
         child.stdin.as_mut().unwrap().flush().unwrap();
         assert!(child.wait().unwrap().success());
+        assert!(admission.process_access_drained().unwrap());
         let relocation = admission.wait_for_process_access().unwrap();
 
         assert!(try_acquire_data_home_access_at(&locator).unwrap().is_none());

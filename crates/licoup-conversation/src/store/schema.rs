@@ -178,50 +178,67 @@ pub(super) fn configure_connection(connection: &Connection) -> StoreResult<()> {
 
 pub(super) fn validate_current_schema(connection: &mut Connection) -> StoreResult<()> {
     let schema_version = preflight_schema(connection)?;
-    if schema_version.as_deref() != Some(CURRENT_SCHEMA_VERSION) {
+    if schema_version
+        .as_deref()
+        .is_some_and(|version| version != CURRENT_SCHEMA_VERSION)
+    {
         return Err(anyhow!("conversation_schema_migration_required"));
     }
     configure_connection(connection)?;
+    if recorded_schema_version(connection)?.is_none() {
+        // Empty stores initialize normally; complete current structures may
+        // reconstruct only their missing marker without replacing any rows.
+        create_current_schema(connection)?;
+    }
     ensure_search_index(connection)?;
     Ok(())
 }
 
-/// Read and classify version metadata before connection setup can change the
-/// SQLite journal mode. Fresh stores and the documented migration sources are
-/// accepted; malformed metadata and unsupported development snapshots fail
-/// without altering the database.
-pub(super) fn preflight_schema(connection: &Connection) -> StoreResult<Option<String>> {
+fn recorded_schema_version(connection: &Connection) -> StoreResult<Option<String>> {
     let has_metadata: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='schema_meta')",
         [],
         |row| row.get(0),
     )?;
-    let prior_schema_version: Option<String> = if has_metadata {
-        connection
-            .query_row(
-                "SELECT value FROM schema_meta WHERE key='version'",
-                [],
-                |row| row.get(0),
-            )
-            .optional()?
-    } else {
-        None
-    };
-    if has_metadata && prior_schema_version.is_none() {
-        return Err(anyhow!("conversation_schema_version_missing"));
-    }
     if !has_metadata {
-        let has_existing_tables: bool = connection.query_row(
-            "SELECT EXISTS(
-               SELECT 1 FROM sqlite_schema
-               WHERE type='table' AND name NOT LIKE 'sqlite_%'
-             )",
+        return Ok(None);
+    }
+    Ok(connection
+        .query_row(
+            "SELECT value FROM schema_meta WHERE key='version'",
             [],
             |row| row.get(0),
-        )?;
-        if has_existing_tables {
-            return Err(anyhow!("conversation_schema_metadata_missing"));
+        )
+        .optional()?)
+}
+
+/// Classify the current owner's data without modifying retained unrelated data.
+/// Missing labels are reconstructible only when the complete current layout
+/// validates. Incomplete owned structures and unknown recorded semantics refuse.
+pub(super) fn preflight_schema(connection: &Connection) -> StoreResult<Option<String>> {
+    let prior_schema_version = recorded_schema_version(connection)?;
+    if prior_schema_version.is_none() {
+        let mut reference = Connection::open_in_memory()?;
+        create_current_schema(&mut reference)?;
+        crate::continuity::migrate::add_schema_contract(&reference, false)?;
+        let owned = licoup_foundation::core::sqlite_contract::tables(&reference)?;
+        let actual = licoup_foundation::core::sqlite_contract::tables(connection)?;
+        if actual
+            .iter()
+            .any(|table| table != "schema_meta" && owned.contains(table))
+        {
+            validate_owner_contract(connection)?;
+            return Ok(Some(CURRENT_SCHEMA_VERSION.to_owned()));
         }
+        if actual.contains(&"schema_meta".to_owned()) {
+            licoup_foundation::core::sqlite_contract::validate_table(
+                connection,
+                &reference,
+                "schema_meta",
+                None,
+            )?;
+        }
+        return Ok(None);
     }
     if let Some(version) = prior_schema_version.as_deref()
         && !matches!(
@@ -244,119 +261,182 @@ pub(super) fn preflight_schema(connection: &Connection) -> StoreResult<Option<St
         return Err(anyhow!("conversation_schema_unsupported_version"));
     }
     if prior_schema_version.as_deref() == Some(CURRENT_SCHEMA_VERSION) {
-        validate_current_schema_shape(connection)?;
+        validate_owner_contract(connection)?;
     }
     Ok(prior_schema_version)
 }
 
-fn validate_current_schema_shape(connection: &Connection) -> StoreResult<()> {
-    const REQUIRED_TABLES: &[&str] = &[
-        "schema_meta",
-        "principals",
-        "conversations",
-        "memberships",
-        "membership_profiles",
-        "events",
-        "event_parts",
-        "direct_turns",
-        "event_search",
-        "source_links",
-        "runtime_bindings",
-        "conversation_dispatches",
-        "subagent_dispatch_claims",
-        "subagent_mcp_inbound",
-        "subagent_dispatch_deliveries",
-        "migration_provenance",
-        "archived_native_sessions",
-        "conversation_native_sessions",
-    ];
-    let tables = connection
-        .prepare("SELECT name FROM sqlite_schema WHERE type='table'")?
-        .query_map([], |row| row.get::<_, String>(0))?
-        .collect::<rusqlite::Result<BTreeSet<_>>>()?;
-    if REQUIRED_TABLES.iter().any(|table| !tables.contains(*table)) {
-        return Err(anyhow!("conversation_schema_incomplete"));
+/// Read-only preflight for the migration admission.
+///
+/// Classifies the store exactly as the owner does and validates the complete
+/// owner-required contract before the caller advances its high-water, frontier
+/// or domain markers. Malformed metadata and development snapshots (13..17)
+/// are refused outright. A current store must already carry the contract its
+/// readers and writers use; an older published schema is copied schema-only
+/// into memory, upgraded by the owner's real path, and the upgraded result
+/// must satisfy that same complete contract. Nothing here writes to the store.
+pub fn validate_migration_source(connection: &Connection) -> StoreResult<Option<String>> {
+    let version = preflight_schema(connection)?;
+    match version.as_deref() {
+        Some(CURRENT_SCHEMA_VERSION) => {}
+        Some(prior) => {
+            // A stamp on a file that never held a store is refused before the
+            // owner's upgrade path is even tried.
+            for (table, required) in MIGRATION_BASELINE_TABLES {
+                let columns = table_columns(connection, table)?;
+                if required.iter().any(|column| !columns.contains(*column)) {
+                    return Err(anyhow!("conversation_schema_incomplete"));
+                }
+            }
+            let upgraded = schema_only_upgrade_copy(connection, prior)?;
+            validate_owner_contract(&upgraded)?;
+        }
+        None => {}
     }
+    Ok(version)
+}
 
-    // Preflight, search-index repair, and cold recovery touch these columns
-    // before ordinary callers can use the store. This is a focused startup
-    // contract, not a second copy of the full table definitions above.
-    const REQUIRED_STARTUP_COLUMNS: &[(&str, &[&str])] = &[
-        ("schema_meta", &["key", "value"]),
-        ("conversations", &["id", "revision", "updated_at"]),
-        (
-            "events",
-            &[
-                "id",
-                "conversation_id",
-                "sequence",
-                "author_membership_id",
-                "correlation_id",
-                "kind",
-                "finalized",
-            ],
-        ),
-        (
-            "event_parts",
-            &["event_id", "ordinal", "kind", "content", "created_at"],
-        ),
-        ("direct_turns", &["id", "state"]),
-        ("event_search", &["event_id", "conversation_id", "content"]),
-        (
-            "conversation_dispatches",
-            &[
-                "id",
-                "conversation_id",
-                "membership_id",
-                "state",
-                "created_at",
-                "error_code",
-                "updated_at",
-            ],
-        ),
-        (
-            "subagent_dispatch_claims",
-            &[
-                "id",
-                "conversation_id",
-                "caller_membership_id",
-                "state",
-                "updated_at",
-            ],
-        ),
-        (
-            "subagent_dispatch_deliveries",
-            &[
-                "claim_id",
-                "kind",
-                "conversation_id",
-                "recipient_membership_id",
-                "state",
-                "terminal_state",
-                "payload",
-                "attempt_count",
-                "created_at",
-                "updated_at",
-            ],
-        ),
-    ];
-    for (table, required_columns) in REQUIRED_STARTUP_COLUMNS {
-        let pragma = format!("PRAGMA table_info({table})");
-        let columns = connection
-            .prepare(&pragma)?
-            .query_map([], |row| row.get::<_, String>(1))?
-            .collect::<rusqlite::Result<BTreeSet<_>>>()?;
-        if required_columns
+/// The identity columns every published Conversation generation carries.
+const MIGRATION_BASELINE_TABLES: &[(&str, &[&str])] = &[
+    ("schema_meta", &["key", "value"]),
+    ("principals", &["id"]),
+    ("conversations", &["id", "title"]),
+    ("memberships", &["id"]),
+    ("events", &["id"]),
+];
+
+/// Rebuild the source's physical schema (no rows) in memory, stamp its
+/// recorded version, and run the owner's real upgrade path over the copy.
+fn schema_only_upgrade_copy(source: &Connection, prior: &str) -> StoreResult<Connection> {
+    let mut virtual_tables = source.prepare(
+        "SELECT name FROM sqlite_schema WHERE type='table' AND sql LIKE 'CREATE VIRTUAL TABLE%'",
+    )?;
+    let shadow_prefixes = virtual_tables
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?
+        .into_iter()
+        .map(|name| format!("{name}_"))
+        .collect::<Vec<_>>();
+    drop(virtual_tables);
+
+    let mut statement = source.prepare(
+        "SELECT name, sql FROM sqlite_schema
+          WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'
+          ORDER BY CASE type
+                     WHEN 'table' THEN 0
+                     WHEN 'index' THEN 1
+                     WHEN 'trigger' THEN 2
+                     ELSE 3
+                   END",
+    )?;
+    let objects = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+
+    let mut memory = Connection::open_in_memory()?;
+    for (name, sql) in objects {
+        if shadow_prefixes
             .iter()
-            .any(|column| !columns.contains(*column))
+            .any(|prefix| name.starts_with(prefix.as_str()))
+        {
+            continue;
+        }
+        memory.execute_batch(&sql)?;
+    }
+    memory.execute(
+        "INSERT INTO schema_meta(key, value) VALUES ('version', ?1)",
+        [prior],
+    )?;
+    initialize_schema_unchecked(&mut memory)?;
+    Ok(memory)
+}
+
+/// The complete contract the current owner requires: every table, column,
+/// key, foreign key and uniqueness constraint the owner itself creates. It is
+/// derived from the owner's canonical schema rather than a hand-kept list, so
+/// every business field a reader or writer uses is covered by construction.
+fn validate_owner_contract(connection: &Connection) -> StoreResult<()> {
+    let mut reference = Connection::open_in_memory()?;
+    create_current_schema(&mut reference)?;
+    let base_tables = licoup_foundation::core::sqlite_contract::tables(&reference)?;
+    let actual_tables = licoup_foundation::core::sqlite_contract::tables(connection)?;
+    let designation_epoch =
+        table_columns(connection, "conversations")?.contains("designation_epoch");
+    crate::continuity::migrate::add_schema_contract(&reference, designation_epoch)?;
+    let owned_tables = licoup_foundation::core::sqlite_contract::tables(&reference)?;
+    let extension_tables: Vec<_> = owned_tables
+        .iter()
+        .filter(|name| !base_tables.contains(name))
+        .collect();
+    let extension_present = designation_epoch
+        || extension_tables
+            .iter()
+            .any(|name| actual_tables.contains(name));
+    let continuity_version = if extension_present {
+        let version: String = connection
+            .query_row(
+                "SELECT value FROM continuity_schema WHERE key='version'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|_| anyhow!("conversation_schema_incomplete"))?;
+        let version = crate::continuity::migrate::parse_continuity_schema_version(&version)?;
+        if version == crate::continuity::migrate::CURRENT_CONTINUITY_SCHEMA_VERSION
+            && !designation_epoch
         {
             return Err(anyhow!("conversation_schema_incomplete"));
+        }
+        Some(version)
+    } else {
+        None
+    };
+    for table in &base_tables {
+        if table == "schema_meta" && !actual_tables.contains(table) {
+            continue;
+        }
+        licoup_foundation::core::sqlite_contract::validate_table(
+            connection, &reference, table, None,
+        )
+        .map_err(|_| anyhow!("conversation_schema_incomplete"))?;
+    }
+    if let Some(version) = continuity_version {
+        for table in extension_tables {
+            // The existing owner creates new tables while upgrading its older
+            // internal states. Current states must already have the complete
+            // owner contract; a marker cannot manufacture missing structures.
+            if version != crate::continuity::migrate::CURRENT_CONTINUITY_SCHEMA_VERSION
+                && !actual_tables.contains(table)
+            {
+                continue;
+            }
+            licoup_foundation::core::sqlite_contract::validate_table(
+                connection, &reference, table, None,
+            )
+            .map_err(|_| anyhow!("conversation_schema_incomplete"))?;
         }
     }
     Ok(())
 }
 
+fn table_columns(connection: &Connection, table: &str) -> StoreResult<BTreeSet<String>> {
+    let pragma = format!("PRAGMA table_info({table})");
+    Ok(connection
+        .prepare(&pragma)?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<rusqlite::Result<BTreeSet<_>>>()?)
+}
+
 pub(super) fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
+    // Validate the same full structural contract on direct owner opens as on
+    // native admission, before journal setup or any durable schema writes.
+    validate_migration_source(connection)?;
+    initialize_schema_unchecked(connection)
+}
+
+fn initialize_schema_unchecked(connection: &mut Connection) -> StoreResult<()> {
     let prior_schema_version = preflight_schema(connection)?;
     configure_connection(connection)?;
     match prior_schema_version.as_deref() {

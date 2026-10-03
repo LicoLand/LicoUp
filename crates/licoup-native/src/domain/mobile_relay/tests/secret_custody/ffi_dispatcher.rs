@@ -37,7 +37,19 @@ fn mobile_ffi_dispatcher_callback_store_keeps_public_reads_no_auth_until_authori
     {
         mobile_config["mobileRelayE2ee"][*field] = json!(secret);
     }
-    save_config_raw(&mut mobile_config).unwrap();
+    // This is a pre-binding published document, not a new durable write by the
+    // current owner. Its first authorized normalization adopts the real bridge
+    // custody owner; a public read must not perform that migration.
+    mobile_config["mobileRelayE2ee"]
+        .as_object_mut()
+        .unwrap()
+        .remove(CUSTODY_NAMESPACE_FIELD);
+    licoup_foundation::platform::file_security::atomic_write_private_text_bounded(
+        &config_path().unwrap(),
+        &serde_json::to_string(&mobile_config).unwrap(),
+        CONFIG_MAX_BYTES,
+    )
+    .unwrap();
     set_portable_data_dir_override(previous);
 
     let store_override: Arc<dyn SecureMeshSecretStore> = store.clone();

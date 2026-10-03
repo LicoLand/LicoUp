@@ -43,7 +43,7 @@ export function runCargoTestFilter({
 }) {
   const started = Date.now();
   const command = "cargo";
-  const commandArgs = ["test", "--manifest-path", manifestPath, filter];
+  const commandArgs = ["test", "--no-fail-fast", "--manifest-path", manifestPath, filter];
   const lease = acquireTestArtifactLease({
     repoRoot,
     scope: "cargo-test-filter",

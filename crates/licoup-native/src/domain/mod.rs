@@ -26,6 +26,7 @@ pub mod llm_api_key_vault;
 pub mod llm_gateway;
 pub mod llm_gateway_agent_config;
 pub(crate) mod llm_gateway_stream;
+pub mod local_recovery;
 pub mod mcp_adapter;
 pub mod mobile_relay;
 pub mod model_planning;

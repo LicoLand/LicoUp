@@ -471,7 +471,7 @@ function copyFixtureApp(runnableRoot, destination) {
   return destination;
 }
 
-test("upgrade replaces all installed copies and unregisters build and deleted entries", () => {
+test("upgrade replaces installed copies and unregisters only existing app bundles", () => {
   const runnableRoot = makeRunnableTree();
   const installDir = tempRoot("lico-lifecycle-system-");
   const userDir = tempRoot("lico-lifecycle-user-");
@@ -502,7 +502,9 @@ test("upgrade replaces all installed copies and unregisters build and deleted en
     assert.equal(readFileSync(data, "utf8"), "keep");
     assert.deepEqual(readdirSync(installDir).sort(), [APP_NAME, "package-metadata"]);
   }
-  for (const app of [target, duplicate, renamed, buildApp, missing]) assert.ok(unregistered.includes(app));
+  for (const app of [target, duplicate, buildApp]) assert.ok(unregistered.includes(app));
+  assert.equal(unregistered.includes(renamed), false);
+  assert.equal(unregistered.includes(missing), false);
   assert.equal(unregistered.includes(foreign), false);
 });
 

@@ -11,6 +11,11 @@ import {
   ids,
   sourceFiles,
 } from "./support.mjs";
+import { spawnSync } from "node:child_process";
+import { migrationCrateTestArgs } from "../../scripts/migration-crate-tests.mjs";
+import { readFileSync } from "node:fs";
+import { CLIENT_COMPATIBILITY_ENTRIES } from "../client-regression-entries/index.mjs";
+import { CLIENT_GATE_LANES } from "../../scripts/client-gate-policy.mjs";
 import {
   assembleClientModuleCatalog,
   defineModule,
@@ -25,6 +30,212 @@ import { RUST_CATALOG_CONVERGENCE_MODULES } from "../client-module-catalog/group
 import { RUST_COMPONENT_MODULES } from "../client-module-catalog/groups/rust-components.mjs";
 import { RUST_DOMAIN_MODULES } from "../client-module-catalog/groups/rust-domain.mjs";
 import { RUST_PLATFORM_MODULES } from "../client-module-catalog/groups/rust-platform.mjs";
+import { partitionModulesByRunnableHost } from "../client-module-selection.mjs";
+
+test("archive transport changes select owner and real extractor consumers", () => {
+  for (const relativePath of [
+    "crates/licoup-foundation/src/core/safe_archive.rs",
+    "crates/licoup-foundation/src/core/safe_archive/zip_structure.rs",
+  ]) {
+    const selected = ids(selectModulesForChangedPaths([relativePath]));
+    for (const owner of [
+      "rust.core.safe-archive", "rust.core.full-data-root-archive",
+      "rust.domain.adaptive-flywheel", "rust.domain.optional-collaboration",
+      "rust.platform.extension-packages.artifact",
+    ]) assert.ok(selected.includes(owner), `${relativePath} must select ${owner}`);
+  }
+  assert.ok(ids(selectModulesForChangedPaths([
+    "crates/licoup-foundation/tests/full_data_root_archive/transport_integrity.rs",
+  ])).includes("rust.core.full-data-root-archive"));
+  const artifact = CLIENT_MODULE_CATALOG.find((module) => module.id === "rust.platform.extension-packages.artifact");
+  assert.ok(artifact.command.args.includes("platform::extension_packages::artifact::tests::"));
+});
+
+function trackedTestEntrypoints() {
+  const result = spawnSync("git", ["ls-files", "-z"], {
+    cwd: repoRoot,
+    encoding: "buffer",
+    shell: false,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert.equal(result.status, 0, "tracked test inventory requires git ls-files");
+  return result.stdout.toString("utf8").split("\0").filter((file) =>
+    file.endsWith(".test.mjs") ||
+    /(?:^|\/)test\/.*_test\.dart$/u.test(file) ||
+    /(?:^|\/)integration_test\/.*_test\.dart$/u.test(file) ||
+    /^crates\/[^/]+\/tests\/[^/]+\.rs$/u.test(file) ||
+    /\/src\/(?:test|androidTest)\/.*Test\.kt$/u.test(file));
+}
+
+function moduleSelects(module, file) {
+  return module.inputs.some((input) => input.endsWith("/**")
+    ? file === input.slice(0, -3) || file.startsWith(input.slice(0, -2))
+    : file === input);
+}
+
+function explicitCargoJobs(command) {
+  if (command.program !== "cargo") return null;
+  const boundary = command.args.indexOf("--");
+  const args = command.args.slice(0, boundary < 0 ? command.args.length : boundary);
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (["-j", "--jobs"].includes(argument)) return Number(args[index + 1]);
+    const compact = argument.match(/^-j([0-9]+)$/u);
+    if (compact) return Number(compact[1]);
+    const long = argument.match(/^--jobs=([0-9]+)$/u);
+    if (long) return Number(long[1]);
+  }
+  return null;
+}
+
+test("complete catalog delegates valid Cargo concurrency to the shared runner budget", () => {
+  for (const module of CLIENT_MODULE_CATALOG) {
+    assert.equal(explicitCargoJobs(module.command), null, module.id);
+    if (module.regression.toolchain === "rust" && module.regression.internalParallelism) {
+      assert.ok(Number.isInteger(module.regression.weight), module.id);
+      assert.ok(module.regression.weight > 0, module.id);
+    }
+  }
+});
+
+test("merge-readiness target runners execute their own registered self-tests", () => {
+  const expected = new Map([
+    ["regression.android-sdk-bootstrap-self-test", {
+      args: ["tools/scripts/client-android-sdk-bootstrap.mjs", "self-test"],
+      inputs: [
+        ".github/workflows/client-ci.yml",
+        "apps/desktop/docker/ubuntu-client.Dockerfile",
+        "tools/scripts/client-android-sdk-bootstrap.mjs",
+      ],
+    }],
+  ]);
+  for (const [id, contract] of expected) {
+    const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
+    assert.ok(module, id);
+    assert.equal(module.command.program, "node", id);
+    assert.deepEqual(module.command.args, contract.args, id);
+    assert.deepEqual(module.inputs, contract.inputs, id);
+  }
+});
+
+const nodeReachability = new WeakMap();
+
+function nodeReachableFiles(module) {
+  if (module.command.program !== "node") return new Set();
+  const cached = nodeReachability.get(module);
+  if (cached) return cached;
+  const pending = module.command.args.filter((argument) =>
+    argument.endsWith(".mjs") && !argument.startsWith("-") &&
+    !argument.includes("*") && !argument.includes("?"));
+  const found = new Set();
+  while (pending.length > 0) {
+    const relativePath = pending.pop();
+    if (found.has(relativePath)) continue;
+    const absolutePath = path.join(repoRoot, relativePath);
+    try {
+      const source = requireText(absolutePath);
+      found.add(relativePath);
+      for (const match of source.matchAll(/["']([^"']+\.mjs)["']/gmu)) {
+        const reference = match[1];
+        const candidate = reference.startsWith(".")
+          ? path.posix.normalize(path.posix.join(path.posix.dirname(relativePath), reference))
+          : reference;
+        if (!candidate.startsWith("../") && !found.has(candidate)) pending.push(candidate);
+      }
+    } catch {
+      // Non-file command arguments are not JavaScript entry points.
+    }
+  }
+  nodeReachability.set(module, found);
+  return found;
+}
+
+function requireText(absolutePath) {
+  return readFileSync(absolutePath, "utf8");
+}
+
+function flutterCommandExecutes(module, file) {
+  const args = module.command.args;
+  const separator = args.indexOf("--");
+  if (separator < 0 || args[separator + 1] !== "flutter" || args[separator + 2] !== "test") {
+    return false;
+  }
+  const cwdIndex = args.indexOf("--cwd");
+  const commandRoot = cwdIndex >= 0 ? args[cwdIndex + 1] : ".";
+  if (!file.startsWith(`${commandRoot}/`)) return false;
+  const localPath = file.slice(commandRoot.length + 1);
+  const selections = args.slice(separator + 3).filter((argument, index, tail) =>
+    !argument.startsWith("-") && tail[index - 1] !== "--name");
+  return selections.length === 0
+    ? localPath.startsWith("test/")
+    : selections.some((selection) =>
+      localPath === selection || localPath.startsWith(`${selection}/`));
+}
+
+function cargoTestExecutes(args, file) {
+  if (args[0] !== "test") return false;
+  const match = /^(crates\/[^/]+)\/tests\/([^/]+)\.rs$/u.exec(file);
+  if (!match || args.includes("--lib") || args.includes("--bin")) return false;
+  const [, crateRoot, target] = match;
+  const manifest = `${crateRoot}/Cargo.toml`;
+  const manifestIndex = args.indexOf("--manifest-path");
+  const packages = args.flatMap((arg, index) =>
+    ["-p", "--package"].includes(arg) ? [args[index + 1]] : []);
+  if (manifestIndex >= 0 && args[manifestIndex + 1] !== manifest) return false;
+  if (packages.length > 0) {
+    const source = readFileSync(path.join(repoRoot, manifest), "utf8");
+    const packageSection = source.match(/\[package\]([\s\S]*?)(?:\n\[|$)/u)?.[1] || "";
+    const packageName = packageSection.match(/^name\s*=\s*"([^"]+)"/mu)?.[1];
+    if (!packages.includes(packageName)) return false;
+  } else if (manifestIndex < 0) return false;
+  const targets = args.flatMap((arg, index) => arg === "--test" ? [args[index + 1]] : []);
+  return targets.length === 0 || targets.includes(target);
+}
+
+function rustCommandExecutes(module, file) {
+  return module.command.program === "cargo" && cargoTestExecutes(module.command.args, file);
+}
+
+function nodeCommandExecutesRust(module, file) {
+  if (module.command.program !== "node" || !file.endsWith(".rs")) return false;
+  if (module.command.args[0] === "tools/scripts/migration-crate-tests.mjs") {
+    return cargoTestExecutes(migrationCrateTestArgs(module.command.args.slice(1)), file);
+  }
+  const target = path.posix.basename(file, ".rs");
+  for (const source of nodeReachableFiles(module)) {
+    try {
+      const text = readFileSync(path.join(repoRoot, source), "utf8");
+      if (text.includes(file) || text.includes(`"${target}"`) || text.includes(`'${target}'`)) {
+        return true;
+      }
+    } catch {
+      // Non-source command arguments are ignored by the reachability scan.
+    }
+  }
+  return false;
+}
+
+function androidCommandExecutes(module, file) {
+  if (!file.endsWith("Test.kt")) return false;
+  const args = module.command.args;
+  if (args[0] === "tools/scripts/client-android-native-tests.mjs") return true;
+  const separator = args.indexOf("--");
+  if (separator < 0 || !["./gradlew", "gradlew.bat"].includes(args[separator + 1])) return false;
+  if (!args.includes(":app:testDebugUnitTest")) return false;
+  const className = path.posix.basename(file, ".kt");
+  const filters = args.flatMap((argument, index) => args[index - 1] === "--tests" ? [argument] : []);
+  return filters.length === 0 || filters.some((filter) => filter.endsWith(`.${className}`));
+}
+
+function moduleExecutes(module, file) {
+  if (module.command.program === "node" && nodeReachableFiles(module).has(file)) return true;
+  if (nodeCommandExecutesRust(module, file)) return true;
+  if (flutterCommandExecutes(module, file)) return true;
+  if (rustCommandExecutes(module, file)) return true;
+  if (androidCommandExecutes(module, file)) return true;
+  return module.id === "regression.continuous-assistant-ux" &&
+    file.startsWith("apps/desktop/test/continuous_assistant_journeys/");
+}
 
 test("catalog declares every independently accepted client architecture family", () => {
   assert.equal(validateClientModuleCatalog(), true);
@@ -73,6 +284,39 @@ test("both native protocol README languages select documentation governance", ()
   }
 });
 
+test("owner schema and frozen fixture changes select the actual migration diagnostic exactly once", () => {
+  const diagnostic = "tests/contract/client/client-state-migration-diagnostic.test.mjs";
+  for (const changed of [
+    "crates/licoup-conversation/src/store/schema.rs",
+    "crates/licoup-conversation/src/store/native_sessions.rs",
+    "crates/licoup-foundation/src/core/sqlite_contract.rs",
+    "crates/licoup-native/src/domain/workflow_store/store.rs",
+    "crates/licoup-native/src/domain/workflow_store/queue.rs",
+    "crates/licoup-native/src/domain/workflow_store/subscriptions.rs",
+    "crates/licoup-native/src/domain/workflow_store/commit.rs",
+    "crates/licoup-native/src/domain/workflow_store/control.rs",
+    "crates/licoup-native/src/domain/client_state_migration/stores.rs",
+    "crates/licoup-native/src/domain/client_state_migration/tests/structural.rs",
+    "tests/fixtures/client_state_migration/released_source.rs",
+    "tests/fixtures/client_state_migration/owner_layouts.rs",
+    "tests/fixtures/client_state_migration/continuity_layout.rs",
+    "tests/fixtures/client_state_migration/structural_cases.json",
+    "tools/scripts/client-state-migration/sqlite-contract.mjs",
+    "tools/scripts/client-state-migration/probe.mjs",
+    diagnostic,
+  ]) {
+    const selected = selectModulesForChangedPaths([changed]);
+    const invocations = selected.filter((module) => module.command.program === "node" && module.command.args.includes(diagnostic));
+    assert.equal(invocations.length, 1, changed);
+    assert.deepEqual(invocations[0].command.args, ["--test", "tests/contract/client/privacy-test-fixtures.test.mjs", "tests/contract/client/client-state-migration.test.mjs", diagnostic]);
+    if (changed.endsWith("/continuity_layout.rs")) {
+      const owner = selected.find((module) => module.id === "rust.domain.client-conversations");
+      assert.ok(owner?.command.args.includes("store::schema::tests::"), "the frozen producer fixture selects its actual Rust schema consumer");
+    }
+    assert.equal(invocations[0].command.cwd, ".");
+  }
+});
+
 test("catalog validation rejects an implicit aggregate-gate command", () => {
   const invalid = [{
     id: "invalid.full-regression",
@@ -111,6 +355,9 @@ test("catalog commands reference existing dedicated scripts and test targets", a
         }
       }
     } else {
+      if (["regression.rust-format", "regression.rust-clippy"].includes(module.id)) {
+        continue;
+      }
       const manifestIndex = moduleCommand.args.indexOf("--manifest-path");
       if (manifestIndex >= 0) {
         await fs.access(path.join(repoRoot, moduleCommand.args[manifestIndex + 1]));
@@ -152,6 +399,55 @@ test("catalog inputs exist and exclude local-only document roots", async () => {
   }
 });
 
+test("startup and client-state checks select every production owner they execute", () => {
+  const bootstrap = CLIENT_MODULE_CATALOG.find((module) =>
+    module.id === "flutter.controller.scenario.bootstrap");
+  const clientState = CLIENT_MODULE_CATALOG.find((module) =>
+    module.id === "regression.client-state-contracts");
+  for (const input of [
+    "apps/desktop/lib/src/application/controller/client_lifecycle_coordinator.dart",
+    "apps/desktop/lib/src/application/controller/client_lifecycle_facade.dart",
+    "apps/desktop/lib/src/application/features/agents/conversation/conversation_session_state_controller.dart",
+    "apps/desktop/lib/src/application/features/layout/layout_manager.dart",
+    "crates/licoup-native/resources/client-state-migration-frontier.json",
+    "crates/licoup-native/src/domain/client_state_migration.rs",
+  ]) {
+    assert.equal(bootstrap.inputs.includes(input), true, input);
+    assert.equal(selectModulesForChangedPaths([input]).some((module) =>
+      module.id === bootstrap.id), true, input);
+  }
+  for (const input of [
+    "apps/desktop/lib/src/application/controller/client_lifecycle_facade.dart",
+    "apps/desktop/lib/src/platform/storage/portable_data_root.dart",
+    "crates/licoup-conversation/src/store/mod.rs",
+    "crates/licoup-native/resources/client-state-migration-frontier.json",
+    "crates/licoup-native/src/domain/client_state_migration.rs",
+    "crates/licoup-native/src/domain/client_state_migration/stores.rs",
+    "crates/licoup-native/src/domain/client_state_migration/strategy_store.rs",
+    "crates/licoup-native/src/platform/client_state/migration.rs",
+    "crates/licoup-native/src/platform/client_state/policy.rs",
+    "schemas/client_bridge/state.json",
+    "tools/scripts/client-state-migration/frontier.mjs",
+    "tools/scripts/client-state-migration/probe.mjs",
+    "tools/scripts/client-state-migration/report.mjs",
+  ]) {
+    assert.equal(selectModulesForChangedPaths([input]).some((module) =>
+      module.id === clientState.id), true, input);
+  }
+  assert.equal(clientState.inputs.includes(
+    "crates/licoup-native/src/domain/client_state_migration/**"), true);
+  assert.equal(clientState.inputs.includes("tools/scripts/client-state-migration/**"), true);
+  assert.deepEqual(clientState.command.args, [
+    "--test",
+    "tests/contract/client/privacy-test-fixtures.test.mjs",
+    "tests/contract/client/client-state-migration.test.mjs",
+    "tests/contract/client/client-state-migration-diagnostic.test.mjs",
+  ]);
+  assert.equal(selectModulesForChangedPaths([
+    "crates/licoup-native/src/domain/client_state_migration/tests/structural.rs",
+  ]).some((module) => module.id === "rust.domain.client-state-migration"), true);
+});
+
 test("package aliases remain thin and cannot route to an aggregate gate", async () => {
   const packageJson = JSON.parse(await fs.readFile(path.join(repoRoot, "package.json"), "utf8"));
   assert.deepEqual({
@@ -168,17 +464,118 @@ test("package aliases remain thin and cannot route to an aggregate gate", async 
     .some(([, commandValue]) => commandValue.includes("client:gate:")), false);
 });
 
-test("tracked contribution guides require targeted closure and independent gates", async () => {
+test("complete catalog owns format lint analysis and dependency audit", () => {
+  const commands = new Map(CLIENT_MODULE_CATALOG.map((module) => [
+    module.id,
+    [module.command.program, ...module.command.args].join(" "),
+  ]));
+  assert.match(commands.get("regression.flutter-format"), /dart format .*--set-exit-if-changed/u);
+  assert.equal(commands.get("regression.rust-format"), "cargo fmt --all -- --check");
+  assert.match(commands.get("regression.rust-clippy"), /^cargo clippy --workspace --all-targets/u);
+  assert.equal(commands.get("regression.dependency-audit"),
+    "node tools/scripts/client-deps-audit.mjs");
+  assert.match(commands.get("flutter.composition.dependencies"), /flutter analyze --no-pub/u);
+  assert.equal(CLIENT_MODULE_CATALOG[0].id, "regression.flutter-dependencies");
+  assert.deepEqual(CLIENT_MODULE_CATALOG[0].regression.resources, ["flutter-cache"]);
+  assert.deepEqual(
+    CLIENT_MODULE_CATALOG.find((module) => module.id === "regression.native-client-smoke")
+      .regression.resources,
+    ["cargo-target"],
+  );
+});
+
+const LEGACY_LANE_EQUIVALENT_MODULES = Object.freeze({
+  "client:gate:topology": ["regression.release-workflow-contracts"],
+  "client:gate:self-test": ["regression.release-workflow-contracts"],
+  "client:verify:build-entry:self-test": ["regression.release-workflow-contracts"],
+  "client:version:check": [
+    "regression.release-workflow-contracts",
+    "regression.client-version",
+    "regression.client-support-matrix",
+  ],
+  "client:verify:agent-conversation-parity": [
+    "regression.agent-conversation-parity-reducer",
+    "regression.agent-conversation-parity-reducer-source-bundle",
+    "regression.acp-conversation-parity-source-bundle",
+  ],
+  "client:format:check": ["regression.flutter-format"],
+  "client:analyze": ["flutter.composition.dependencies"],
+  "client:test": ["@tracked-flutter-test-partitions"],
+  "client:native:clippy": ["regression.rust-clippy"],
+  "client:native:test:helpers": ["rust.core.mcp-server"],
+  "client:native:test": ["@catalog-rust-test-partitions"],
+  "client:promotion:self-test": ["regression.release-workflow-contracts"],
+  "client:pricing:check": ["release.model-pricing"],
+  "client:release:packages:self-test": ["regression.release-workflow-contracts"],
+  "client:verify:android-physical-install-launch:self-test": [
+    "regression.android-physical-install-launch-source-bundle",
+  ],
+  "client:cli:vm:self-test": ["regression.cli-vm-source-bundle"],
+  "client:state:migration:self-test": ["regression.client-state-contracts"],
+  "client:verify:artifact-verification-receipts:self-test": [
+    "regression.artifact-verification-receipts-source-bundle",
+  ],
+  "client:verify:secure-mesh-e2ee-evidence:leak-scan-self-test": [
+    "regression.e2ee-evidence-bundle-source-bundle",
+  ],
+});
+
+function catalogCommand(module) {
+  return [module.command.program, ...module.command.args].join(" ");
+}
+
+test("every legacy lane command has one real catalog execution or declared partition equivalence", async () => {
+  const packageJson = JSON.parse(await fs.readFile(path.join(repoRoot, "package.json"), "utf8"));
+  const catalogCommands = new Set(CLIENT_MODULE_CATALOG.map(catalogCommand));
+  const legacyScripts = Object.values(CLIENT_GATE_LANES).flat();
+  const unmatched = [];
+  for (const script of legacyScripts) {
+    const packageCommand = packageJson.scripts[script];
+    assert.equal(typeof packageCommand, "string", `legacy lane script is missing: ${script}`);
+    if (catalogCommands.has(packageCommand)) continue;
+    const equivalents = LEGACY_LANE_EQUIVALENT_MODULES[script];
+    if (!equivalents) {
+      unmatched.push(script);
+      continue;
+    }
+    for (const moduleId of equivalents) {
+      if (moduleId === "@tracked-flutter-test-partitions") {
+        assert.equal(CLIENT_MODULE_CATALOG.some((module) =>
+          module.command.args.includes("flutter") && module.command.args.includes("test")), true);
+        continue;
+      }
+      if (moduleId === "@catalog-rust-test-partitions") {
+        assert.equal(CLIENT_MODULE_CATALOG.some((module) =>
+          module.command.program === "cargo" && module.command.args[0] === "test"), true);
+        continue;
+      }
+      assert.ok(CLIENT_MODULE_CATALOG.find((module) => module.id === moduleId),
+        `${script} references missing equivalent module ${moduleId}`);
+    }
+  }
+  assert.deepEqual(unmatched, []);
+  const legacyNames = new Set(legacyScripts);
+  assert.deepEqual(
+    Object.keys(LEGACY_LANE_EQUIVALENT_MODULES).filter((script) => !legacyNames.has(script)),
+    [],
+  );
+});
+
+test("tracked contribution guides require focused repair and one complete gate", async () => {
   const docs = await Promise.all([
     "CONTRIBUTING.md",
     "CONTRIBUTING.zh-CN.md",
   ].map((relativePath) => fs.readFile(path.join(repoRoot, relativePath), "utf8")));
-  assert.match(docs[0], /run the smallest relevant checks/u);
-  assert.match(docs[0], /mandatory Node-only source policy once/u);
-  assert.match(docs[0], /commit\s+gate\s+never\s+builds\s+or\s+publishes\s+every\s+platform/iu);
-  assert.match(docs[1], /开发过程中只运行与改动直接相关的最小检查/u);
-  assert.match(docs[1], /只运行一次必需的 Node 源码策略/u);
-  assert.match(docs[1], /提交门禁不会构建或发布所有平台/u);
+  assert.match(docs[0], /run the smallest registered check/u);
+  assert.match(docs[0], /client:gate:step -- <module-id>/u);
+  assert.match(docs[0], /client:gate:verify -- --base origin\/nightly/u);
+  assert.match(docs[0], /After the host profile\s+passes, the delivery target uses the existing owners\s+to build, install, and open\s+the local client/iu);
+  assert.match(docs[0], /It never publishes or activates real data/iu);
+  assert.match(docs[1], /开发过程中运行负责本次改动的最小已注册检查/u);
+  assert.match(docs[1], /client:gate:step -- <module-id>/u);
+  assert.match(docs[1], /client:gate:verify -- --base origin\/nightly/u);
+  assert.match(docs[1], /构建、安装并打开客户端/u);
+  assert.match(docs[1], /它绝不发布或激活真实数据/u);
   assert.deepEqual(ids(selectModulesForChangedPaths(["CONTRIBUTING.md"])),
     [
       "regression.infrastructure",
@@ -214,12 +611,151 @@ test("catalog maps every Flutter, Rust, and platform-host source file", async ()
   assert.deepEqual(unmatched, []);
 });
 
+test("every tracked test entry has an executing engineering owner or explicit live classification", () => {
+  const live = new Map();
+  for (const entry of CLIENT_COMPATIBILITY_ENTRIES) {
+    for (const input of entry.inputs) live.set(input, `${entry.kind}:${entry.id}:live`);
+    for (const input of entry.unverifiedInputs) {
+      live.set(input, `${entry.kind}:${entry.id}:unverified`);
+    }
+  }
+  const missingSelection = [];
+  const selectorOnly = [];
+  const unclassified = [];
+  for (const file of trackedTestEntrypoints()) {
+    const selected = CLIENT_MODULE_CATALOG.filter((module) => moduleSelects(module, file));
+    const executing = CLIENT_MODULE_CATALOG.filter((module) => moduleExecutes(module, file));
+    if (executing.length > 0 && selected.length === 0 && !live.has(file)) missingSelection.push(file);
+    if (selected.length > 0 && executing.length === 0 && !live.has(file)) selectorOnly.push(file);
+    if (selected.length === 0 && executing.length === 0 && !live.has(file)) unclassified.push(file);
+  }
+  assert.deepEqual({ missingSelection, selectorOnly, unclassified }, {
+    missingSelection: [],
+    selectorOnly: [],
+    unclassified: [],
+  });
+});
+
 test("shared Flutter and Rust manifests select their own technology families", () => {
   const flutter = selectModulesForChangedPaths(["apps/desktop/pubspec.yaml"]);
-  assert.deepEqual(ids(flutter), ["flutter.composition.dependencies"]);
+  assert.deepEqual(ids(flutter), [
+    "regression.flutter-dependencies",
+    "regression.client-version",
+    "regression.dependency-audit",
+    "flutter.composition.dependencies",
+  ]);
 
   const rust = selectModulesForChangedPaths(["Cargo.lock"]);
-  assert.deepEqual(ids(rust), ["rust.composition"]);
+  assert.deepEqual(ids(rust), [
+    "regression.client-version",
+    "regression.dependency-audit",
+    "rust.composition",
+  ]);
+});
+
+test("target-owned changes retain runnable hosts and exact target evidence obligations", () => {
+  const cases = [
+    [
+      "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/linux.rs",
+      "rust.platform.secure-mesh-secret-store.backend-linux",
+      ["linux"],
+      ["linux"],
+    ],
+    [
+      "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/macos.rs",
+      "rust.platform.secure-mesh-secret-store.backend-macos",
+      ["darwin"],
+      ["darwin"],
+    ],
+    [
+      "crates/licoup-foundation/src/platform/file_security/windows_acl.rs",
+      "rust.platform.file-security.windows-acl",
+      ["win32"],
+      ["win32"],
+    ],
+    [
+      "crates/licoup-native/src/domain/targets/platform_paths.rs",
+      "rust.domain.targets.platform-paths",
+      ["darwin", "linux", "win32"],
+      ["darwin", "linux", "win32"],
+    ],
+    [
+      "crates/licoup-foundation/src/platform/file_security/atomic_replace.rs",
+      "rust.platform.file-security.atomic-replace",
+      ["darwin", "linux", "win32"],
+      ["darwin", "linux", "win32"],
+    ],
+  ];
+  for (const [input, moduleId, runnableHosts, targetEvidenceHosts] of cases) {
+    const module = selectModulesForChangedPaths([input])
+      .find(({ id }) => id === moduleId);
+    assert.ok(module, `${input} must select ${moduleId}`);
+    assert.deepEqual(module.regression.runnableHosts, runnableHosts);
+    assert.deepEqual(module.regression.targetEvidenceHosts, targetEvidenceHosts);
+  }
+  const portable = CLIENT_MODULE_CATALOG.find(({ id }) =>
+    id === "regression.repository-local-info-hygiene");
+  assert.deepEqual(portable.regression.targetEvidenceHosts, []);
+});
+
+test("host classification separates portable coverage from native adapters", () => {
+  for (const module of CLIENT_MODULE_CATALOG) {
+    for (const host of ["darwin", "linux", "win32"]) {
+      const partition = partitionModulesByRunnableHost([module], host);
+      assert.equal(partition.runnable.length + partition.unsupported.length, 1);
+      assert.equal(partition.runnable.includes(module),
+        module.regression.runnableHosts.includes(host));
+    }
+  }
+
+  const uiModules = selectModulesForChangedPaths([
+    "crates/licoup-native/tests/macos_presence_capability_ui.rs",
+  ]);
+  assert.deepEqual(ids(uiModules).filter((id) => id.includes("capability-ui")), [
+    "rust.platform.secure-mesh-secret-store.capability-ui-common",
+    "rust.platform.secure-mesh-secret-store.capability-ui",
+  ]);
+  assert.deepEqual(
+    partitionModulesByRunnableHost(uiModules, "linux").runnable
+      .filter((module) => module.id.includes("capability-ui"))
+      .map((module) => module.id),
+    ["rust.platform.secure-mesh-secret-store.capability-ui-common"],
+  );
+  assert.deepEqual(
+    partitionModulesByRunnableHost(uiModules, "linux").unsupported
+      .filter((module) => module.id.includes("capability-ui"))
+      .map((module) => module.id),
+    ["rust.platform.secure-mesh-secret-store.capability-ui"],
+  );
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/macos.rs",
+  ])).filter((id) => id.startsWith(
+    "rust.platform.secure-mesh-secret-store.backend-macos",
+  )), [
+    "rust.platform.secure-mesh-secret-store.backend-macos",
+    "rust.platform.secure-mesh-secret-store.backend-macos.runtime-state",
+  ]);
+  const macosBackend = CLIENT_MODULE_CATALOG.find(
+    (module) => module.id === "rust.platform.secure-mesh-secret-store.backend-macos",
+  );
+  const separator = macosBackend.command.args.indexOf("--");
+  const skippedTests = macosBackend.command.args
+    .slice(separator + 1)
+    .filter((argument, index, args) => args[index - 1] === "--skip");
+  assert.equal(
+    macosBackend.command.args[separator - 1],
+    "platform::secure_mesh_secret_store::tests::platform_backends::",
+  );
+  assert.equal(
+    skippedTests.includes("macos_local_authentication_is_never_enabled_inside_unit_tests"),
+    false,
+  );
+  assert.equal(
+    skippedTests.includes(
+      "platform_store_trait_session_dispatches_one_exact_presence_batch_to_macos_consumers",
+    ),
+    false,
+  );
 });
 
 test("shared module roots select composition without leaf-regression fanout", () => {
@@ -244,6 +780,40 @@ test("source-bundle contract keeps an independent regression leaf", () => {
     "--test",
     "tests/contract/client/secure-mesh-source-bundles.test.mjs",
   ]);
+});
+
+test("development report sources select the existing report suite", () => {
+  const module = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "regression.development-reports");
+  assert.ok(module, "the report suite has one maintained owner");
+  assert.equal(module.kind, "regression-infrastructure");
+  assert.deepEqual(module.command.args, [
+    "--test",
+    "tools/development/tests/reports.test.mjs",
+  ]);
+  for (const relativePath of [
+    "tools/development/reports.mjs",
+    "tools/development/reporting/adapters/better-plan.mjs",
+    "tools/development/reporting/plan.mjs",
+    "tools/development/state-machines.json",
+    "tools/development/architecture-views.json",
+    "tools/development/workflows/13-installed-milestone-candidate.json",
+    "tools/development/tests/reports.test.mjs",
+  ]) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), [
+      "regression.development-reports",
+    ], `${relativePath} must select the report suite`);
+  }
+  // Dependency inputs keep every existing owner and additionally select the
+  // report suite, so a dependency change reruns the rendered-fixture contract.
+  for (const relativePath of ["package.json", "package-lock.json"]) {
+    const selected = ids(selectModulesForChangedPaths([relativePath]));
+    assert.ok(selected.includes("regression.development-reports"), `${relativePath} must select the report suite`);
+    assert.ok(selected.includes("regression.infrastructure"), `${relativePath} keeps its dependency owner`);
+  }
+  // The maintained policy is a report input too, and keeps any other owner.
+  const policySelection = ids(selectModulesForChangedPaths([".lico-auditor/policy.json"]));
+  assert.ok(policySelection.includes("regression.development-reports"), "the policy file must select the report suite");
 });
 
 test("agent-usage routing sources select the dedicated evidence verifier", () => {
@@ -296,6 +866,49 @@ test("architecture and package facades retain precise source-bundle ownership", 
   ];
   const architectureTest =
     "tests/contract/client/client-architecture-modules.test.mjs";
+  const ratchetSources = [
+    "apps/desktop/scripts/client-architecture/checks/ratchet.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/baseline.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/cargo-manifest.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/definitions.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/developer-tools.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/lexical.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/measure.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/ownership.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/runtime-interfaces.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/runtime-review.mjs",
+    "apps/desktop/scripts/client-architecture/ratchet/target-attribution.mjs",
+  ];
+  const ratchetTest =
+    "tests/contract/client/client-architecture-ratchet.test.mjs";
+  const runtimeReviewTest = "tests/contract/client/client-architecture-runtime-review.test.mjs";
+  const ratchetDependencySelections = new Map([
+    ["package.json", [
+      "regression.flutter-dependencies",
+      "regression.repository-local-info-hygiene",
+      "regression.client-version",
+      "regression.flutter-format",
+      "regression.rust-format",
+      "regression.rust-clippy",
+      "regression.dependency-audit",
+      "regression.infrastructure",
+      "regression.test-artifact-lifecycle",
+      "regression.documentation-governance",
+      "regression.development-reports",
+      "regression.client-architecture-ratchet",
+      "architecture.client-boundaries",
+      "release.workflows",
+    ]],
+    ["package-lock.json", [
+      "regression.repository-local-info-hygiene",
+      "regression.client-version",
+      "regression.dependency-audit",
+      "regression.infrastructure",
+      "regression.development-reports",
+      "regression.client-architecture-ratchet",
+      "architecture.client-boundaries",
+    ]],
+  ]);
   const packageAssets = [
     "apps/desktop/macos/CustodyHelper/Info.plist",
     "apps/desktop/macos/CustodyHelper/ProductionRelease.entitlements",
@@ -334,14 +947,33 @@ test("architecture and package facades retain precise source-bundle ownership", 
   ];
 
   for (const relativePath of architectureSources) {
-    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), [
+    const expected = [
       "regression.client-architecture-modules",
+      ...(["apps/desktop/scripts/verify-client-architecture.mjs", "apps/desktop/scripts/client-architecture/context.mjs"].includes(relativePath)
+        ? ["regression.client-architecture-ratchet"] : []),
       "architecture.client-boundaries",
-    ]);
+    ];
+    if (relativePath === "tools/verify-client-boundary.mjs") {
+      expected.unshift("regression.client-boundary");
+    }
+    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), expected);
   }
   assert.deepEqual(ids(selectModulesForChangedPaths([architectureTest])), [
     "regression.client-architecture-modules",
   ]);
+  for (const relativePath of ratchetSources) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), [
+      "regression.client-architecture-ratchet",
+      "architecture.client-boundaries",
+    ]);
+  }
+  assert.deepEqual(ids(selectModulesForChangedPaths([ratchetTest])), [
+    "regression.client-architecture-ratchet",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([runtimeReviewTest])), ["regression.client-architecture-ratchet"]);
+  for (const [relativePath, expectedIds] of ratchetDependencySelections) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), expectedIds);
+  }
 
   for (const relativePath of [...packageAssets, ...packageSources]) {
     const expected = [
@@ -354,6 +986,13 @@ test("architecture and package facades retain precise source-bundle ownership", 
     if (relativePath.includes("/bundle-resolver/") ||
         relativePath.endsWith("/resource-assembly.mjs")) {
       expected.unshift("regression.subagent-mcp-common");
+    }
+    if ([
+      "apps/desktop/scripts/package-client/build/release-tools.mjs",
+      "apps/desktop/scripts/package-client/build/native.mjs",
+      "apps/desktop/scripts/package-client/orchestrator.mjs",
+    ].includes(relativePath)) {
+      expected.push("release.migration-asset");
     }
     assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), expected);
   }
@@ -377,6 +1016,8 @@ test("architecture and package facades retain precise source-bundle ownership", 
 
   const architectureBundle = CLIENT_MODULE_CATALOG.find((candidate) =>
     candidate.id === "regression.client-architecture-modules");
+  const ratchetBundle = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "regression.client-architecture-ratchet");
   const packageBundle = CLIENT_MODULE_CATALOG.find((candidate) =>
     candidate.id === "regression.package-client-source-bundle");
   const planBundle = CLIENT_MODULE_CATALOG.find((candidate) =>
@@ -386,6 +1027,23 @@ test("architecture and package facades retain precise source-bundle ownership", 
     architectureTest,
   ]);
   assert.deepEqual(architectureBundle.command.args, ["--test", architectureTest]);
+  assert.deepEqual(ratchetBundle.inputs, [
+    ...ratchetSources,
+    ...ratchetDependencySelections.keys(),
+    "apps/desktop/scripts/verify-client-architecture.mjs",
+    "apps/desktop/scripts/client-architecture/context.mjs",
+    "crates/licoup-native/src/platform/strategy_runtime/mod.rs",
+    "crates/licoup-extension-contracts/src/deployment.rs",
+    ratchetTest,
+    runtimeReviewTest,
+  ]);
+  assert.deepEqual(ratchetBundle.command.args, ["--test", ratchetTest, runtimeReviewTest]);
+  for (const source of [
+    "crates/licoup-native/src/platform/strategy_runtime/mod.rs",
+    "crates/licoup-extension-contracts/src/deployment.rs",
+  ]) {
+    assert.ok(ids(selectModulesForChangedPaths([source])).includes(ratchetBundle.id), source);
+  }
   assert.deepEqual(packageBundle.inputs, [...packageAssets, ...packageSources, ...packageTests]);
   assert.deepEqual(packageBundle.command.args, ["--test", ...packageTests]);
   assert.deepEqual(planBundle.inputs, [...planSources, ...planTests]);
@@ -396,7 +1054,8 @@ test("architecture and package facades retain precise source-bundle ownership", 
     "tests/contract/client/verify-client-plan/verify-client-plan-privacy.test.mjs",
     "tests/contract/client/verify-client-plan/verify-client-plan-source-bundle.test.mjs",
   ]);
-  assert.equal([...architectureBundle.inputs, ...packageBundle.inputs, ...planBundle.inputs]
+  assert.equal([...architectureBundle.inputs, ...ratchetBundle.inputs,
+    ...packageBundle.inputs, ...planBundle.inputs]
     .some((relativePath) => relativePath.includes("*")), false);
 
   const architectureOwner = CLIENT_MODULE_CATALOG.find((candidate) =>
@@ -413,6 +1072,40 @@ test("architecture and package facades retain precise source-bundle ownership", 
   }
   for (const relativePath of planSources) {
     assert.equal(planOwner.inputs.includes(relativePath), true);
+  }
+});
+
+test("architecture gate owns every measured manifest and runtime source root", async () => {
+  const measuredPaths = [
+    "Cargo.toml",
+    "apps/desktop/packaging.modules.json",
+    "crates/licoup-extension-contracts/src/deployment.rs",
+    "package.json",
+    "package-lock.json",
+  ];
+  for (const root of ["crates", "components", "sdk"]) {
+    const entries = await fs.readdir(path.join(repoRoot, root), { withFileTypes: true });
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      measuredPaths.push(`${root}/${entry.name}/Cargo.toml`);
+      const sources = await sourceFiles(`${root}/${entry.name}/src`, ".rs");
+      if (sources.length > 0) {
+        measuredPaths.push(sources[0]);
+      }
+    }
+  }
+  const dartSources = await sourceFiles("apps/desktop/lib", ".dart");
+  if (dartSources.length > 0) {
+    measuredPaths.push(dartSources[0]);
+  }
+  for (const relativePath of measuredPaths) {
+    assert.equal(
+      ids(selectModulesForChangedPaths([relativePath])).includes("architecture.client-boundaries"),
+      true,
+      relativePath,
+    );
   }
 });
 
@@ -457,9 +1150,7 @@ test("catalog physical groups retain a thin barrel and complete source ownership
       "rust-platform",
       "rust-ffi",
     ])],
-    [RUST_COMPONENT_MODULES, new Set([
-      "rust-crate",
-    ])],
+    [RUST_COMPONENT_MODULES, new Set(["rust-crate"])],
     [RUST_PLATFORM_MODULES, new Set([
       "rust-composition",
       "rust-platform",
@@ -596,4 +1287,36 @@ test("Subagent MCP route sources select one hermetic verification module", () =>
       "architecture.client-boundaries",
     ]);
   }
+});
+
+test("migration runner inventory follows the actual crate and target selectors", () => {
+  assert.ok(migrationCrateTestArgs().includes("--no-fail-fast"));
+  assert.ok(migrationCrateTestArgs(["--native-recovery"]).includes("--no-fail-fast"));
+  for (const module of CLIENT_MODULE_CATALOG) {
+    const { program, args } = module.command;
+    if (program === "cargo" && args[0] === "test" &&
+        !args.some((arg) => ["--lib", "--bin", "--test", "--bench", "--doc"].includes(arg))) {
+      assert.ok(args.includes("--no-fail-fast"), module.id);
+    }
+  }
+  const migrate = CLIENT_MODULE_CATALOG.find((module) => module.id === "rust.crate.migrate");
+  const recovery = CLIENT_MODULE_CATALOG.find((module) => module.id === "rust.platform.data-home-relocation");
+  assert.equal(migrate.regression.toolchain, "rust");
+  assert.deepEqual(migrate.regression.targetEvidenceHosts, ["darwin", "linux", "win32"]);
+  assert.ok(migrate.regression.resources.includes("cargo-target"));
+  assert.equal(nodeCommandExecutesRust(migrate, "crates/licoup-migrate/tests/interoperability.rs"), true);
+  assert.equal(nodeCommandExecutesRust(migrate, "crates/licoup-native/tests/data_home_process.rs"), false);
+  assert.equal(nodeCommandExecutesRust(recovery, "crates/licoup-native/tests/data_home_process.rs"), true);
+  assert.equal(nodeCommandExecutesRust(recovery, "crates/licoup-native/tests/cli_command_contract_cases.rs"), false);
+});
+
+test("retained schema fixtures select the validating and initializing owners", () => {
+  const selected = ids(selectModulesForChangedPaths([
+    "tests/fixtures/client_state_migration/retained_related_tables.sql",
+  ]));
+  assert.ok(selected.includes("rust.domain.client-conversations"));
+  assert.ok(selected.includes("regression.client-state-contracts"));
+  assert.ok(ids(selectModulesForChangedPaths([
+    "crates/licoup-foundation/src/core/sqlite_contract.rs",
+  ])).includes("rust.core.sqlite-contract"));
 });

@@ -9,9 +9,17 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)
 const pairs = Object.freeze([
   ["CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md"],
   ["SECURITY.md", "SECURITY.zh-CN.md"],
+  ["docs/RUNBOOK.md", "docs/RUNBOOK.zh-CN.md"],
   ["docs/functionality/USER-GUIDE.md", "docs/functionality/USER-GUIDE.zh-CN.md"],
   ["docs/architecture/README.md", "docs/architecture/README.zh-CN.md"],
   ["docs/COMPATIBILITY.md", "docs/COMPATIBILITY.zh-CN.md"],
+]);
+
+const guidePaths = Object.freeze([
+  ...pairs.flat(),
+  "AGENTS.md",
+  "docs/CLOSURE.md",
+  "tools/development/workflows/README.md",
 ]);
 
 async function read(relativePath) {
@@ -31,7 +39,7 @@ test("public client documents keep matching English and Chinese entry points", a
 });
 
 test("public client document links resolve inside the repository", async () => {
-  for (const relativePath of pairs.flat()) {
+  for (const relativePath of guidePaths) {
     const source = await read(relativePath);
     for (const match of source.matchAll(/\[[^\]]+\]\(([^)]+)\)/gu)) {
       const target = match[1].split("#", 1)[0];
@@ -126,12 +134,43 @@ test("contributing documents preserve the train and delegate post-release public
   const englishCompact = compact(english);
   const chineseCompact = compact(chinese);
 
-  assert.match(englishCompact, /open integration branch/u);
+  assert.match(englishCompact, /only integration trunk/u);
   assert.match(englishCompact, /exact accepted `origin\/release` source/u);
   assert.match(englishCompact, /npm run client:release:macos/u);
   assert.match(englishCompact, /never creates a source candidate/u);
 
-  assert.match(chineseCompact, /持续开放的集成分支/u);
+  assert.match(chineseCompact, /唯一的集成主干/u);
   assert.match(chineseCompact, /精确接受的 `origin\/release`/u);
   assert.match(chineseCompact, /不会创建源码候选/u);
+});
+
+test("developer guides reference resolvable commands and the report sources", async () => {
+  const packageJson = JSON.parse(await read("package.json"));
+  const scripts = new Set(Object.keys(packageJson.scripts ?? {}));
+  const guides = [
+    "AGENTS.md",
+    "docs/RUNBOOK.md",
+    "docs/RUNBOOK.zh-CN.md",
+    "docs/CLOSURE.md",
+    "CONTRIBUTING.md",
+    "CONTRIBUTING.zh-CN.md",
+    "tools/development/workflows/README.md",
+  ];
+  for (const relativePath of guides) {
+    const source = await read(relativePath);
+    for (const match of source.matchAll(/npm run ([a-z0-9][a-z0-9:._-]*)/gu)) {
+      assert.ok(
+        scripts.has(match[1]),
+        `${relativePath} references unknown script npm run ${match[1]}`,
+      );
+    }
+  }
+  const planCommand = "node tools/development/reports.mjs --better-plan <local-source>";
+  for (const relativePath of ["AGENTS.md", "docs/RUNBOOK.md", "CONTRIBUTING.md"]) {
+    assert.ok(
+      compact(await read(relativePath)).includes(planCommand),
+      `${relativePath} documents the plan page command`,
+    );
+  }
+  await assert.doesNotReject(fs.access(path.join(repoRoot, "tools/development/reports.mjs")));
 });

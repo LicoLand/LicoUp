@@ -131,6 +131,7 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "apps/desktop/scripts/verify-client-architecture.mjs",
   ])), [
     "regression.client-architecture-modules",
+    "regression.client-architecture-ratchet",
     "architecture.client-boundaries",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
@@ -200,13 +201,19 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/core/mcp/transfer.rs",
   ])), ["architecture.client-boundaries", "rust.core.mcp.transfer"]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
+  for (const source of [
     "crates/licoup-foundation/src/core/safe_archive.rs",
-  ])), [
-    "architecture.client-boundaries",
-    "rust.domain.adaptive-flywheel",
-    "rust.core.safe-archive",
-  ]);
+    "crates/licoup-foundation/src/core/safe_archive/zip_structure.rs",
+  ]) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([source])), [
+      "architecture.client-boundaries",
+      "rust.domain.adaptive-flywheel",
+      "rust.domain.optional-collaboration",
+      "rust.core.safe-archive",
+      "rust.core.full-data-root-archive",
+      "rust.platform.extension-packages.artifact",
+    ]);
+  }
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-foundation/src/platform/paths.rs",
   ])), [
@@ -222,6 +229,7 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
   ])), [
     "architecture.client-boundaries",
     "rust.platform.extension-packages",
+    "rust.platform.extension-packages.artifact",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/tests/package_lifecycle/main.rs",
@@ -260,16 +268,19 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-protocol-bindings/src/licoarc_relay.rs",
   ])), [
+    "architecture.client-boundaries",
     "rust.core.protocol-bindings",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-protocol-bindings/src/licoarc_relay/mailbox/schedule.rs",
   ])), [
+    "architecture.client-boundaries",
     "rust.core.protocol-bindings",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-protocol-bindings/src/licoarc_relay/private_header.rs",
   ])), [
+    "architecture.client-boundaries",
     "rust.core.protocol-bindings",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
@@ -714,7 +725,7 @@ test("file security leaves retain exact tests and complete source ownership", as
     ["rust.platform.file-security.composition", "platform::file_security::tests::composition::"],
     ["rust.platform.file-security.policy", "platform::file_security::tests::policy::"],
     ["rust.platform.file-security.append-lock", "platform::file_security::tests::append_lock::"],
-    ["rust.platform.file-security.atomic-replace", "platform::file_security::tests::atomic_replace::"],
+    ["rust.platform.file-security.atomic-replace", "platform::file_security::tests::atomic_"],
     ["rust.platform.file-security.marker", "platform::file_security::tests::marker::"],
     ["rust.platform.file-security.validation", "platform::file_security::tests::validation::"],
     ["rust.platform.file-security.sync", "platform::file_security::tests::sync::"],

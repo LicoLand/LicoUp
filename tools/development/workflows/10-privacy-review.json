@@ -1,0 +1,46 @@
+{
+  "id": "privacy-review",
+  "file": "10-privacy-review.json",
+  "title": {
+    "en": "Contextual privacy review",
+    "zh": "隐私审阅"
+  },
+  "purpose": {
+    "en": "Assess each finding before public delivery.",
+    "zh": "公开交付前逐项判断隐私发现。"
+  },
+  "owner": {
+    "en": "Designated reviewing Agent",
+    "zh": "指定审阅智能体"
+  },
+  "entry": {
+    "en": "Changed source candidate",
+    "zh": "待交付源码改动"
+  },
+  "steps": [
+    {
+      "en": "Scan once",
+      "zh": "扫描一次"
+    },
+    {
+      "en": "Review every finding",
+      "zh": "逐项上下文审阅"
+    },
+    {
+      "en": "Generate reviewed report",
+      "zh": "生成审阅后报告"
+    }
+  ],
+  "exit": {
+    "en": "Each finding records location, rule, assessment, evidence, impact and action.",
+    "zh": "每项发现包含位置、规则、判断、依据、影响和处理结果。"
+  },
+  "failure": {
+    "en": "Fix confirmed disclosure and inspect the repair diff; unavailable evidence stays explicit.",
+    "zh": "修复真实泄露，审阅修复差异；缺失证据如实记录。"
+  },
+  "boundary": {
+    "en": "A scan count is not a verdict; sensitive matches remain in private local reports.",
+    "zh": "命中数量不是结论；敏感命中只保留在本地私有报告。"
+  }
+}

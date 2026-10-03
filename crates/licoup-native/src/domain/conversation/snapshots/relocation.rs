@@ -1,4 +1,4 @@
-//! Relocate app-owned snapshot metadata after the data-root copy is published.
+//! Rebase app-owned snapshot metadata in an owned copy, including unpublished staging.
 
 use super::*;
 use std::ffi::OsStr;
@@ -14,10 +14,6 @@ pub(crate) fn relocate_copied_data_home_references(
         .ok_or_else(|| anyhow!("previous data root must be absolute"))?;
     let new_root =
         lexical_absolute(new_data_root).ok_or_else(|| anyhow!("new data root must be absolute"))?;
-    ensure!(
-        copied_root == new_root,
-        "copied data root must be the published new data root"
-    );
     ensure!(
         copied_directory(&copied_root, &copied_root).is_some(),
         "copied data root is not a regular directory"
@@ -35,7 +31,13 @@ pub(crate) fn relocate_copied_data_home_references(
     for key in ["conversationSnapshotRoot", "snapshotRoot"] {
         settings_changed |=
             relocate_path_field(&mut settings, key, &previous_root, &new_root, &copied_root);
-        collect_root_locator(&settings, key, &copied_root, &mut root_candidates);
+        collect_root_locator(
+            &settings,
+            key,
+            &copied_root,
+            &new_root,
+            &mut root_candidates,
+        );
     }
     if settings_changed {
         store.write_collection(SETTINGS_COLLECTION, settings)?;
@@ -59,7 +61,13 @@ pub(crate) fn relocate_copied_data_home_references(
                 &new_root,
                 &copied_root,
             );
-            collect_root_locator(profile, "archiveRoot", &copied_root, &mut root_candidates);
+            collect_root_locator(
+                profile,
+                "archiveRoot",
+                &copied_root,
+                &new_root,
+                &mut root_candidates,
+            );
         }
     }
     if profiles_changed {
@@ -184,13 +192,14 @@ pub(crate) fn relocate_copied_data_home_references(
     }
 
     for (collection_path, marker_root) in archive_collections {
-        regenerate_archive_reports(&copied_root, &marker_root, &collection_path)?;
+        regenerate_archive_reports(&copied_root, &new_root, &marker_root, &collection_path)?;
     }
     Ok(())
 }
 
 fn regenerate_archive_reports(
     copied_root: &Path,
+    new_root: &Path,
     marker_root: &Path,
     collection_path: &Path,
 ) -> Result<()> {
@@ -219,7 +228,7 @@ fn regenerate_archive_reports(
     let baseline_is_unavailable_in_copy = profile
         .baseline_index_path
         .as_ref()
-        .is_some_and(|path| copied_file(copied_root, path).is_none());
+        .is_some_and(|path| copied_logical_file(copied_root, new_root, path).is_none());
     let preserved_external_baseline = baseline_is_unavailable_in_copy.then(|| {
         prior_validation
             .as_ref()
@@ -238,6 +247,7 @@ fn regenerate_archive_reports(
         &index_records,
         &profile,
         copied_root,
+        new_root,
         preserved_external_baseline,
     )?;
 
@@ -273,7 +283,7 @@ fn regenerate_archive_reports(
         &collection_dir.join(SUMMARY_MD),
         &archive_summary_markdown(
             &profile,
-            marker_root,
+            &new_root.join(marker_root.strip_prefix(copied_root)?),
             candidate_count,
             &source_summaries,
             &index_records,
@@ -322,12 +332,19 @@ fn collect_root_locator(
     document: &Value,
     key: &str,
     copied_root: &Path,
+    new_root: &Path,
     roots: &mut BTreeSet<PathBuf>,
 ) {
     let Some(raw) = document.get(key).and_then(Value::as_str) else {
         return;
     };
-    let path = PathBuf::from(raw);
+    let Some(path) = lexical_absolute(Path::new(raw)).and_then(|path| {
+        path.strip_prefix(new_root)
+            .ok()
+            .map(|relative| copied_root.join(relative))
+    }) else {
+        return;
+    };
     if path_is_within_root(&path, copied_root) && copied_directory(copied_root, &path).is_some() {
         if let Some(normalized) = lexical_absolute(&path) {
             roots.insert(normalized);
@@ -368,8 +385,8 @@ fn relocated_path(
     let old_path = lexical_absolute(Path::new(raw))?;
     let relative = old_path.strip_prefix(previous_root).ok()?;
     let replacement = lexical_absolute(&new_root.join(relative))?;
-    if !replacement.starts_with(copied_root)
-        || copied_path_prefix(copied_root, &replacement).is_none()
+    if !replacement.starts_with(new_root)
+        || copied_path_prefix(copied_root, &copied_root.join(relative)).is_none()
     {
         return None;
     }
@@ -388,6 +405,17 @@ pub(super) fn copied_file(root: &Path, path: &Path) -> Option<PathBuf> {
         .ok()
         .filter(|metadata| metadata.is_file())?;
     Some(resolved)
+}
+
+/// Resolve an owner-managed logical locator only within its verified physical copy.
+pub(super) fn copied_logical_file(
+    copied_root: &Path,
+    logical_root: &Path,
+    path: &Path,
+) -> Option<PathBuf> {
+    let logical = lexical_absolute(path)?;
+    let relative = logical.strip_prefix(logical_root).ok()?;
+    copied_file(copied_root, &copied_root.join(relative))
 }
 
 fn copied_directory(root: &Path, path: &Path) -> Option<PathBuf> {

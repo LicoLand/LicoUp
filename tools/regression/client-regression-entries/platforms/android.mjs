@@ -1,6 +1,8 @@
 import { definePlatformEntry, readOnlyCommandOutput } from "../factory.mjs";
 export default definePlatformEntry({
   id: "android",
+  inputs: ["apps/desktop/integration_test/mobile_simulator_closure_test.dart"],
+  unverifiedInputs: [],
   hosts: [],
   tools: ["flutter", "adb", "emulator"],
   resources: ["cargo-target", "flutter-cache", "gradle-cache"],

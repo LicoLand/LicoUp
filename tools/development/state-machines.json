@@ -1,0 +1,44 @@
+[
+  {
+    "id": "conversation",
+    "configuration": "crates/licoup-conversation/resources/state-machines.json",
+    "execution": "compiled-table",
+    "verification": "npm run client:regression -- --module rust.domain.client-conversations",
+    "owner": "conversation",
+    "executor": "crates/licoup-conversation/src/state_machine/mod.rs",
+    "consumers": [
+      "crates/licoup-conversation/src/store/mod.rs",
+      "crates/licoup-conversation/src/store/dispatches.rs",
+      "crates/licoup-conversation/src/continuity/commit.rs",
+      "crates/licoup-conversation/src/continuity/persist.rs",
+      "crates/licoup-conversation/src/store/lifecycle.rs",
+      "crates/licoup-conversation/src/store/recovery.rs",
+      "crates/licoup-conversation/src/continuity/lifecycle.rs",
+      "crates/licoup-conversation/src/continuity/admission.rs",
+      "crates/licoup-native/src/domain/assistant_continuity/context/store.rs"
+    ]
+  },
+  {
+    "id": "workflow-graph",
+    "kind": "dynamic",
+    "provider": "crates/licoup-workflow/src/syntax.rs",
+    "format": "user-supplied JSON Graph definition",
+    "executor": "crates/licoup-workflow/src/machine.rs",
+    "owner": "workflow",
+    "verification": "npm run client:regression -- --module rust.core.workflow",
+    "execution": "runtime-graph",
+    "note": "User graph instances stay private; the provider and executor are registered."
+  },
+  {
+    "id": "update-handoff",
+    "owner": "data-migration",
+    "configuration": "crates/licoup-native/resources/state-machines/update-handoff.json",
+    "executor": "crates/licoup-native/src/domain/client_state_migration/handoff.rs",
+    "execution": "compiled-table",
+    "verification": "npm run client:regression -- --module rust.domain.client-state-migration",
+    "consumers": [
+      "crates/licoup-native/src/domain/client_state_migration/strategy_store.rs",
+      "crates/licoup-native/src/domain/client_state_migration.rs"
+    ]
+  }
+]

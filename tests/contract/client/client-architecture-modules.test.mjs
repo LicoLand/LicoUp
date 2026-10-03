@@ -5,9 +5,11 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
+  createArchitectureContext,
   emitArchitectureResult,
   formatArchitectureResult,
 } from "../../../apps/desktop/scripts/client-architecture/context.mjs";
+import { checkFileSecurityAndClientState } from "../../../apps/desktop/scripts/client-architecture/checks/privacy.mjs";
 import {
   CLIENT_ARCHITECTURE_PHASE_IDS,
   runClientArchitecturePhases,
@@ -43,6 +45,10 @@ const expectedImplFacades = Object.freeze({
   "privacy.mjs": [
     "checkProductContractsAndPortableData",
     "checkFileSecurityAndClientState",
+  ],
+  "ratchet.mjs": [
+    "checkArchitectureRatchet",
+    "recordArchitectureRatchet",
   ],
 });
 
@@ -108,7 +114,26 @@ const phaseRunners = Object.freeze([
   ["flutter.presentation-boundary", "checkPresentationBoundary"],
   ["composition.client-root-and-shell", "checkClientRootAndShell"],
   ["native.target-readiness-reducer", "checkTargetReadinessReducer"],
+  ["architecture.ratchet-metrics", "checkArchitectureRatchet"],
 ]);
+
+test("file-security facade checks distinguish public functions from internal modules", async () => {
+  const consumer = "crates/licoup-native/src/domain/local_recovery/mod.rs";
+  for (const [binding, refused] of [["sync_directory", false], ["sync::sync_directory", true]]) {
+    const context = createArchitectureContext({ repoRoot });
+    const readText = context.readText;
+    context.readText = async (relative) => {
+      const source = await readText(relative);
+      return relative === consumer
+        ? `${source}\nuse licoup_foundation::platform::file_security::${binding};\n`
+        : source;
+    };
+    await checkFileSecurityAndClientState(context);
+    assert.deepEqual(context.failures, refused
+      ? [`${consumer} must consume file security only through its stable facade`]
+      : []);
+  }
+});
 
 test("client architecture verifier has one thin entry and the complete source bundle", async () => {
   const rootLeaves = (await fs.readdir(path.join(repoRoot, moduleRoot)))
@@ -191,7 +216,6 @@ test("source and architecture gates share one required Flutter layer catalog", a
   assert.deepEqual(REQUIRED_FLUTTER_TOP_LEVEL_DIRS, [
     "events",
     "projections",
-    "display",
     "protocol",
     "shared",
     "presentation",
@@ -203,6 +227,18 @@ test("source and architecture gates share one required Flutter layer catalog", a
     "contracts",
   ]);
   assert.equal(Object.isFrozen(REQUIRED_FLUTTER_TOP_LEVEL_DIRS), true);
+
+  const topLevelEntries = await fs.readdir(
+    path.join(repoRoot, "apps/desktop/lib/src"),
+    { withFileTypes: true },
+  );
+  assert.deepEqual(
+    topLevelEntries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort(),
+    [...REQUIRED_FLUTTER_TOP_LEVEL_DIRS].sort(),
+  );
 
   const sourceGate = await fs.readFile(
     path.join(repoRoot, "tools/verify-client-boundary.mjs"),
@@ -247,7 +283,7 @@ test("client architecture phases run strictly and sequentially in the frozen ord
     CLIENT_ARCHITECTURE_PHASE_IDS,
     phaseRunners.map(([id]) => id),
   );
-  assert.equal(CLIENT_ARCHITECTURE_PHASE_IDS.length, 21);
+  assert.equal(CLIENT_ARCHITECTURE_PHASE_IDS.length, 22);
 
   const context = Object.freeze({ marker: "context" });
   const events = [];
@@ -287,6 +323,10 @@ test("client architecture phases run strictly and sequentially in the frozen ord
       mobileRelayClientAdapterSource: "relay-adapter",
       mobileRelayServiceSource: "relay-service",
       secureMeshControllerSource: "mesh-controller",
+    },
+    "architecture.ratchet-metrics": {
+      ratchetMetrics: { nativeRustNonBlankLines: 10 },
+      ratchetReport: { status: "pass" },
     },
   };
   const expectedInputs = {
@@ -342,6 +382,8 @@ test("client architecture phases run strictly and sequentially in the frozen ord
   ]));
   assert.deepEqual(state.packagePlanCheckedPlatforms, ["macos"]);
   assert.equal(state.secureMeshControllerSource, "mesh-controller");
+  assert.deepEqual(state.ratchetMetrics, { nativeRustNonBlankLines: 10 });
+  assert.equal(state.ratchetReport.status, "pass");
 });
 
 test("architecture finalization preserves JSON shape, stream, and exit semantics", () => {
@@ -400,6 +442,18 @@ test("architecture finalization preserves JSON shape, stream, and exit semantics
     exit: () => assert.fail("success must not exit"),
   });
   assert.deepEqual(successStdout, [success.text]);
+
+  const withRatchet = formatArchitectureResult({
+    failures: [],
+    futureModules: ["desktop-app"],
+    packagedTargets: ["codex"],
+    packagePlanCheckedPlatforms: ["macos"],
+    metrics: { nativeRustNonBlankLines: 10 },
+    ratchet: { status: "pass" },
+  });
+  assert.equal(withRatchet.ok, true);
+  assert.match(withRatchet.text, /"metrics": \{\n\s+"nativeRustNonBlankLines": 10\n\s+\}/u);
+  assert.match(withRatchet.text, /"ratchet": \{\n\s+"status": "pass"\n\s+\}/u);
 });
 
 function terminalPresentationTree() {
@@ -822,12 +876,18 @@ test("retired paths, symbols, annotations, and path-count substitution stay abse
     "apps/desktop/lib/src/frontend/shared/appearance/appearance_preset_config.dart",
     "apps/desktop/lib/src/projections/listenable_projection_consumer.dart",
     "apps/desktop/lib/src/projections/adapters/legacy_projection_consumer_source_adapter.dart",
+    "apps/desktop/lib/src/projections/composite_application_projection_source.dart",
+    "apps/desktop/lib/src/projections/projection_consumer.dart",
+    "apps/desktop/lib/src/projections/conversation/conversation_projection_consumer.dart",
+    "apps/desktop/lib/src/display/agent_hub/agent_hub_display.dart",
+    "apps/desktop/lib/src/display/settings/settings_display.dart",
+    "apps/desktop/lib/src/display/targets/targets_display.dart",
   ]);
   assert.equal(Object.isFrozen(RETIRED_PRESENTATION_PATHS), true);
-  assert.ok(rulesFor(withSource(tree, RETIRED_PRESENTATION_PATHS[0], ""))
-    .includes("presentation_boundary_retired_path"));
-  assert.ok(rulesFor(withSource(tree, RETIRED_PRESENTATION_PATHS[2], ""))
-    .includes("presentation_boundary_retired_path"));
+  for (const retiredPath of RETIRED_PRESENTATION_PATHS) {
+    assert.ok(rulesFor(withSource(tree, retiredPath, ""))
+      .includes("presentation_boundary_retired_path"), retiredPath);
+  }
   assert.ok(rulesFor(withSource(
     tree,
     "apps/desktop/lib/src/composition/replacement.dart",
