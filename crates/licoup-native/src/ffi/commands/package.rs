@@ -23,10 +23,14 @@
 //!    bytes are a local file the operator holds; no probe is executed and no
 //!    socket is opened.
 //!
-//! Mutating *replacement* is deliberately absent: [`package update-apply`] and
-//! [`package activate`] route through the maintenance-admission seam, which
-//! refuses while no native idle guard exists. Read-only `package update-preview`
-//! reports what a replacement would do without doing any of it.
+//! Mutating *replacement* and *activation* route through the
+//! maintenance-admission seam, which asks the native idle guard
+//! (`UPDATE-IDLE-ADMISSION`) for the data home the operation would change. The
+//! seam decides; the caller that changes installed state takes the durable
+//! close-admission barrier and releases it when the change succeeds or aborts.
+//! Read-only `package update-preview` asks the same question and reports the
+//! answer without taking anything. Neither route replaces bytes or starts a
+//! generation yet.
 //!
 //! [`package update-apply`]: handle_update_apply
 //! [`package activate`]: handle_activate
@@ -44,7 +48,7 @@ use licoup_foundation::platform::paths;
 use sha2::{Digest, Sha256};
 
 use crate::platform::extension_packages::{
-    ArtifactLimits, DependentsDecision, Drained, InstanceIdentity, InstanceMachine,
+    ArtifactLimits, DependentsDecision, Drained, IdleVerdict, InstanceIdentity, InstanceMachine,
     InstanceRegistry, MaintenanceAdmission, MaintenanceOperation, MaintenanceRequest, PackageStore,
     RemainingWork, TrustRecord, UninstallTransaction, read_drained_record, read_manifest,
     running_client_version, write_drained_record,
@@ -62,9 +66,12 @@ const CONFIRMATION_SCHEMA: &str = "licoup.package-install-confirmation.v1";
 /// The longest archive this surface will read from disk.
 const MAX_ARCHIVE_BYTES: u64 = 256 * 1024 * 1024;
 
+/// The stage a refusal from the maintenance guard reports.
+const GUARD_STAGE: &str = "extension/package-maintenance";
+
 /// `package catalog <data-root>` — what this client holds, reconciled first.
 pub(super) fn handle_catalog(command: AdmittedCommand) -> Result<CliExecution> {
-    let data_home = data_home(&command)?;
+    let data_home = resolve_data_home(command.required_text("data-root"))?;
     let store = open_store(&data_home)?;
     let (recovery, installed) = store.catalogue()?;
     let preferences = installed
@@ -91,9 +98,13 @@ pub(super) fn handle_catalog(command: AdmittedCommand) -> Result<CliExecution> {
 
 /// `package install-plan <data-root> --archive <path>` — what installing would do.
 pub(super) fn handle_install_plan(command: AdmittedCommand) -> Result<CliExecution> {
-    let data_home = data_home(&command)?;
+    let data_home = resolve_data_home(command.required_text("data-root"))?;
     let store = open_store(&data_home)?;
-    let archive = archive_path(&command)?;
+    let archive = resolve_archive(
+        command
+            .option_text("archive")
+            .ok_or_else(|| anyhow!("package_archive_required"))?,
+    )?;
     let candidate = candidate_for(&store, &archive)?;
     Ok(report(json!({
         "operation": "install-plan",
@@ -108,9 +119,13 @@ pub(super) fn handle_install_plan(command: AdmittedCommand) -> Result<CliExecuti
 /// `package install-confirm <data-root> --archive <path> --plan <digest>` — the
 /// explicit second step, which re-derives the plan and refuses a stale digest.
 pub(super) fn handle_install_confirm(command: AdmittedCommand) -> Result<CliExecution> {
-    let data_home = data_home(&command)?;
+    let data_home = resolve_data_home(command.required_text("data-root"))?;
     let store = open_store(&data_home)?;
-    let archive = archive_path(&command)?;
+    let archive = resolve_archive(
+        command
+            .option_text("archive")
+            .ok_or_else(|| anyhow!("package_archive_required"))?,
+    )?;
     let plan_digest = command
         .option_text("plan")
         .map(str::to_owned)
@@ -134,9 +149,13 @@ pub(super) fn handle_install_confirm(command: AdmittedCommand) -> Result<CliExec
 /// `package install-apply <data-root> --archive <path> --confirmation <token>` —
 /// install the reviewed bytes.
 pub(super) fn handle_install_apply(command: AdmittedCommand) -> Result<CliExecution> {
-    let data_home = data_home(&command)?;
+    let data_home = resolve_data_home(command.required_text("data-root"))?;
     let store = open_store(&data_home)?;
-    let archive = archive_path(&command)?;
+    let archive = resolve_archive(
+        command
+            .option_text("archive")
+            .ok_or_else(|| anyhow!("package_archive_required"))?,
+    )?;
     let confirmation = command
         .option_text("confirmation")
         .map(str::to_owned)
@@ -158,9 +177,13 @@ pub(super) fn handle_install_apply(command: AdmittedCommand) -> Result<CliExecut
 /// confirmation step. It installs nothing that would replace an installed
 /// version, and it records the local-approval channel it was admitted under.
 pub(super) fn handle_import(command: AdmittedCommand) -> Result<CliExecution> {
-    let data_home = data_home(&command)?;
+    let data_home = resolve_data_home(command.required_text("data-root"))?;
     let store = open_store(&data_home)?;
-    let archive = archive_path(&command)?;
+    let archive = resolve_archive(
+        command
+            .option_text("archive")
+            .ok_or_else(|| anyhow!("package_archive_required"))?,
+    )?;
     let candidate = candidate_for(&store, &archive)?;
     install_candidate(&store, &candidate, &archive, "import")
 }
@@ -184,9 +207,10 @@ pub(super) fn handle_disable(command: AdmittedCommand) -> Result<CliExecution> {
 /// `package uninstall-preview <data-root> <package-id> <version>` — what removing
 /// this version would touch, before anything is closed.
 pub(super) fn handle_uninstall_preview(command: AdmittedCommand) -> Result<CliExecution> {
-    let data_home = data_home(&command)?;
+    let data_home = resolve_data_home(command.required_text("data-root"))?;
     let store = open_store(&data_home)?;
-    let (package_id, version) = identity(&command)?;
+    let package_id = command.required_text("package-id").to_owned();
+    let version = command.required_text("version").to_owned();
     let (plan, _) = uninstall_plan(&store, &package_id, &version)?;
     Ok(report(json!({
         "operation": "uninstall-preview",
@@ -204,9 +228,10 @@ pub(super) fn handle_uninstall_preview(command: AdmittedCommand) -> Result<CliEx
 /// make the drain *refuse*, never proceed: it is added to the running set and
 /// never removes anything from it.
 pub(super) fn handle_uninstall_drain(mut command: AdmittedCommand) -> Result<CliExecution> {
-    let data_home = data_home(&command)?;
+    let data_home = resolve_data_home(command.required_text("data-root"))?;
     let store = open_store(&data_home)?;
-    let (package_id, version) = identity(&command)?;
+    let package_id = command.required_text("package-id").to_owned();
+    let version = command.required_text("version").to_owned();
     let (plan, mut registry) = uninstall_plan(&store, &package_id, &version)?;
     if let Some(observed) = command.take_option_json("instances") {
         observe_instances(&mut registry, observed)?;
@@ -257,9 +282,10 @@ pub(super) fn handle_uninstall_drain(mut command: AdmittedCommand) -> Result<Cli
 /// `package uninstall-collect <data-root> <package-id> <version>` — release what
 /// the package registered, then reclaim its managed bytes.
 pub(super) fn handle_uninstall_collect(mut command: AdmittedCommand) -> Result<CliExecution> {
-    let data_home = data_home(&command)?;
+    let data_home = resolve_data_home(command.required_text("data-root"))?;
     let store = open_store(&data_home)?;
-    let (package_id, version) = identity(&command)?;
+    let package_id = command.required_text("package-id").to_owned();
+    let version = command.required_text("version").to_owned();
     let record = match read_drained_record(&store, &package_id, &version) {
         Ok(record) => record,
         Err(failure) => return Ok(failure_report("uninstall-collect", &failure)),
@@ -315,7 +341,7 @@ pub(super) fn handle_uninstall_collect(mut command: AdmittedCommand) -> Result<C
 
 /// `package recover <data-root>` — reconcile a crash and report what it found.
 pub(super) fn handle_recover(command: AdmittedCommand) -> Result<CliExecution> {
-    let data_home = data_home(&command)?;
+    let data_home = resolve_data_home(command.required_text("data-root"))?;
     let store = open_store(&data_home)?;
     let recovery = store.recover()?;
     Ok(report(json!({
@@ -333,10 +359,11 @@ pub(super) fn handle_recover(command: AdmittedCommand) -> Result<CliExecution> {
 /// replacement would do.
 ///
 /// Read-only by construction: it opens the store, reports the installed facts and
-/// the candidate's, and states that apply is unavailable. It closes nothing,
-/// drains nothing and replaces nothing.
+/// the candidate's, and asks the maintenance seam whether apply would be admitted
+/// for this data home. It closes nothing, drains nothing and replaces nothing —
+/// asking is not holding, so a preview never takes the close-admission barrier.
 pub(super) fn handle_update_preview(command: AdmittedCommand) -> Result<CliExecution> {
-    let data_home = data_home(&command)?;
+    let data_home = resolve_data_home(command.required_text("data-root"))?;
     let store = open_store(&data_home)?;
     let package_id = command
         .required_text("package-id")
@@ -366,6 +393,7 @@ pub(super) fn handle_update_preview(command: AdmittedCommand) -> Result<CliExecu
         None => Value::Null,
     };
     let admission = MaintenanceAdmission::new();
+    let verdict = maintenance_verdict(&data_home);
     let request = MaintenanceRequest::new(
         MaintenanceOperation::UpdateApply,
         package_id.clone(),
@@ -374,15 +402,17 @@ pub(super) fn handle_update_preview(command: AdmittedCommand) -> Result<CliExecu
             .and_then(|installed| installed["version"].as_str())
             .unwrap_or("unknown"),
     );
-    let apply = match admission.admit(&request) {
+    let apply = match admission.admit(verdict, &request) {
         Ok(permit) => json!({
             "available": true,
             "operation": permit.operation().wire_name(),
+            "guardPresent": verdict != IdleVerdict::Unavailable,
+            "guardOwner": crate::platform::extension_packages::GUARD_OWNER,
         }),
         Err(failure) => json!({
             "available": false,
             "reasonCode": failure.code,
-            "guardPresent": admission.guard_present(),
+            "guardPresent": verdict != IdleVerdict::Unavailable,
             "guardOwner": crate::platform::extension_packages::GUARD_OWNER,
         }),
     };
@@ -399,10 +429,19 @@ pub(super) fn handle_update_preview(command: AdmittedCommand) -> Result<CliExecu
 /// `package update-apply <data-root> <package-id> --archive <path>
 /// --confirmation <token>` — replace an installed version.
 ///
-/// Refused through the maintenance-admission seam while no native idle guard
-/// exists. The refusal happens *before* the archive is read, so this route cannot
-/// half-plan a replacement it will not be allowed to perform.
+/// The maintenance seam decides first, against the data home this route would
+/// change, and the decision happens *before* the archive is read: a host whose
+/// admission is closed or whose work is unfinished never reaches the bytes.
+///
+/// An admitted request owns the durable close-admission barrier. This route takes
+/// it, reports what it found, and retires it again, because the replacement
+/// itself is not wired yet: publishing a new version of an installed package is
+/// the package pipeline's, and until it lands a caller learns exactly that — an
+/// admitted operation that published nothing — rather than an unguarded write.
+/// The take-and-retire pair is the same one the wired caller will use; the only
+/// difference will be where the retire sits.
 pub(super) fn handle_update_apply(command: AdmittedCommand) -> Result<CliExecution> {
+    let data_home = resolve_data_home(command.required_text("data-root"))?;
     let package_id = command.required_text("package-id").to_owned();
     let version = command
         .option_text("archive")
@@ -414,35 +453,87 @@ pub(super) fn handle_update_apply(command: AdmittedCommand) -> Result<CliExecuti
                 .to_owned()
         })
         .unwrap_or_else(|| "unknown".to_owned());
-    match MaintenanceAdmission::new().admit(&MaintenanceRequest::new(
-        MaintenanceOperation::UpdateApply,
-        &package_id,
-        &version,
-    )) {
-        Ok(permit) => Err(anyhow!(
-            "package_update_apply_unreachable_without_guard:{}",
-            permit.operation().wire_name()
-        )),
+    match MaintenanceAdmission::new().admit(
+        maintenance_verdict(&data_home),
+        &MaintenanceRequest::new(MaintenanceOperation::UpdateApply, &package_id, &version),
+    ) {
+        Ok(permit) => match hold_and_retire_admission(&data_home) {
+            Ok(()) => Ok(report(json!({
+                "operation": "update-apply",
+                "packageId": package_id,
+                "admitted": permit.operation().wire_name(),
+                "admissionHeld": true,
+                "admissionReleased": true,
+                "replaced": false,
+                "reasonCode": "package_update_apply_not_wired",
+                "mutated": false,
+            }))),
+            Err(failure) => Ok(CliExecution::Json(failure_body("update-apply", &failure))),
+        },
         Err(failure) => Ok(failure_report("update-apply", &failure)),
     }
 }
 
 /// `package activate <data-root> <package-id> <version>` — start a generation.
 ///
-/// Refused through the same seam: activation starts work, and no idle guard
-/// exists to decide whether that is safe yet.
+/// Refused through the same seam, against the same data home, with the same
+/// take-and-retire barrier around a generation that is not started yet.
 pub(super) fn handle_activate(command: AdmittedCommand) -> Result<CliExecution> {
-    let (package_id, version) = identity(&command)?;
-    match MaintenanceAdmission::new().admit(&MaintenanceRequest::new(
-        MaintenanceOperation::Activation,
-        &package_id,
-        &version,
-    )) {
-        Ok(permit) => Err(anyhow!(
-            "package_activate_unreachable_without_guard:{}",
-            permit.operation().wire_name()
-        )),
+    let data_home = resolve_data_home(command.required_text("data-root"))?;
+    let package_id = command.required_text("package-id").to_owned();
+    let version = command.required_text("version").to_owned();
+    match MaintenanceAdmission::new().admit(
+        maintenance_verdict(&data_home),
+        &MaintenanceRequest::new(MaintenanceOperation::Activation, &package_id, &version),
+    ) {
+        Ok(permit) => match hold_and_retire_admission(&data_home) {
+            Ok(()) => Ok(report(json!({
+                "operation": "activate",
+                "packageId": package_id,
+                "version": version,
+                "admitted": permit.operation().wire_name(),
+                "admissionHeld": true,
+                "admissionReleased": true,
+                "activated": false,
+                "reasonCode": "package_activate_not_wired",
+                "mutated": false,
+            }))),
+            Err(failure) => Ok(CliExecution::Json(failure_body("activate", &failure))),
+        },
         Err(failure) => Ok(failure_report("activate", &failure)),
+    }
+}
+
+/// Take the close-admission barrier for one admitted package operation and
+/// retire it again.
+///
+/// This is the guard's own package-activation pair — the same two calls the
+/// caller that really replaces bytes takes around its change. It runs here
+/// because nothing is changed yet: an admitted route must not leave admission
+/// closed on a host that was never switched.
+fn hold_and_retire_admission(data_home: &Path) -> Result<(), ApplicationFailure> {
+    crate::domain::work_admission::hold_package_activation_admission(data_home)
+        .map_err(|code| ApplicationFailure::retryable(code, GUARD_STAGE).with_field("maintenance"))?;
+    crate::domain::work_admission::release_maintenance_admission(data_home)
+        .map_err(|code| ApplicationFailure::retryable(code, GUARD_STAGE).with_field("maintenance"))
+}
+
+/// The native idle guard's verdict for one data home, in the maintenance seam's
+/// vocabulary.
+///
+/// The guard's decision is the domain's and the seam is the platform's, so the
+/// composition that knows both reads it here and hands it in. A decision that
+/// cannot be read is [`IdleVerdict::Unavailable`], which the seam refuses: a
+/// host whose state is unreadable is not an idle host.
+fn maintenance_verdict(data_home: &Path) -> IdleVerdict {
+    let Ok(admission) = crate::domain::work_admission::WorkAdmission::open(data_home).admission()
+    else {
+        return IdleVerdict::Unavailable;
+    };
+    match admission.decision {
+        crate::domain::work_admission::AdmissionDecision::Idle => IdleVerdict::Idle,
+        crate::domain::work_admission::AdmissionDecision::Blocked => IdleVerdict::Busy,
+        crate::domain::work_admission::AdmissionDecision::Closed => IdleVerdict::Closed,
     }
 }
 
@@ -596,9 +687,10 @@ fn install_candidate(
 
 /// Switch one installed version's stored preference.
 fn set_enabled(command: AdmittedCommand, enabled: bool) -> Result<CliExecution> {
-    let data_home = data_home(&command)?;
+    let data_home = resolve_data_home(command.required_text("data-root"))?;
     let store = open_store(&data_home)?;
-    let (package_id, version) = identity(&command)?;
+    let package_id = command.required_text("package-id").to_owned();
+    let version = command.required_text("version").to_owned();
     let preference = store
         .set_enabled(&package_id, &version, enabled)
         .map_err(as_handler_error)?;
@@ -789,8 +881,12 @@ fn release_inputs(value: &Value) -> Result<ReleaseInputs> {
 }
 
 /// The data home one route was given.
-fn data_home(command: &AdmittedCommand) -> Result<PathBuf> {
-    let root = PathBuf::from(command.required_text("data-root"));
+///
+/// It takes the value the handler already read through its own typed accessor:
+/// the carrier never travels as a value, so a handler cannot hand its admitted
+/// arguments to something that does not know what was admitted.
+fn resolve_data_home(root: &str) -> Result<PathBuf> {
+    let root = PathBuf::from(root);
     if !root.is_absolute() {
         return Err(anyhow!("package_data_root_must_be_absolute"));
     }
@@ -804,24 +900,12 @@ fn open_store(data_home: &Path) -> Result<PackageStore> {
 }
 
 /// The archive one route was given.
-fn archive_path(command: &AdmittedCommand) -> Result<PathBuf> {
-    let path = PathBuf::from(
-        command
-            .option_text("archive")
-            .ok_or_else(|| anyhow!("package_archive_required"))?,
-    );
+fn resolve_archive(path: &str) -> Result<PathBuf> {
+    let path = PathBuf::from(path);
     if !path.is_absolute() {
         return Err(anyhow!("package_archive_must_be_absolute"));
     }
     Ok(path)
-}
-
-/// The installed identity one route names.
-fn identity(command: &AdmittedCommand) -> Result<(String, String)> {
-    Ok((
-        command.required_text("package-id").to_owned(),
-        command.required_text("version").to_owned(),
-    ))
 }
 
 /// Read one local archive, bounded before it is parsed.
@@ -961,7 +1045,13 @@ fn refusal(code: &str, reason: &str) -> CliExecution {
 }
 
 fn failure_report(operation: &str, failure: &ApplicationFailure) -> CliExecution {
-    CliExecution::Json(json!({
+    CliExecution::Json(failure_body(operation, failure))
+}
+
+/// The envelope one platform refusal publishes, for a route that has already
+/// decided its own report shape.
+fn failure_body(operation: &str, failure: &ApplicationFailure) -> Value {
+    json!({
         "schemaVersion": SCHEMA,
         "isError": true,
         "operation": operation,
@@ -975,7 +1065,7 @@ fn failure_report(operation: &str, failure: &ApplicationFailure) -> CliExecution
             licoup_application::EffectCertainty::Applied => "applied",
         },
         "recovery": failure.recovery.cli_wire(),
-    }))
+    })
 }
 
 /// A platform refusal is a fact about the package, so it travels as one.
@@ -990,7 +1080,7 @@ fn as_handler_error(failure: ApplicationFailure) -> anyhow::Error {
 mod tests {
     use super::*;
     use crate::platform::extension_packages::registration::{
-        RegistrationOwner, RegistrationOwners,
+        RecordedRegistration, RegistrationOwner, RegistrationOwners,
     };
 
     /// A confirmation is a digest of the reviewed plan, and it is stable while
@@ -1052,20 +1142,13 @@ mod tests {
 
     fn fixture_archive_with(entry: &[u8]) -> Vec<u8> {
         use std::io::Write;
-        let client = running_client_version().expect("a product version");
-        let next_major = client
-            .split('.')
-            .next()
-            .and_then(|major| major.parse::<u64>().ok())
-            .map(|major| major + 1)
-            .expect("a semantic major version");
         let manifest = json!({
             "schema": licoup_extension_contracts::wire::MANIFEST,
             "id": "example.fixture.echo",
             "version": "1.0.0",
             "displayName": "Fixture",
             "hostProtocol": { "major": 1 },
-            "compatibility": { "clientVersions": [format!(">={client}, <{next_major}")] },
+            "compatibility": { "clientVersions": [">=0.0.0"] },
             "runtime": { "mode": "process", "entry": "agent.py" },
             "permissions": [{ "capability": "example.fixture/net", "scope": "self" }],
         });

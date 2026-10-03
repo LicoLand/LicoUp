@@ -208,10 +208,11 @@ enum PackageFailureCode {
   packageRegistrationApprovalStale("package_registration_approval_stale"),
   packageRegistrationReleaseFailed("package_registration_release_failed"),
   packageRegistrationOwnerUnavailable("package_registration_owner_unavailable"),
-  packageMaintenanceAdmissionUnavailable(
-    "package_maintenance_admission_unavailable",
+  packageMaintenanceDecisionUnreadable(
+    "package_maintenance_decision_unreadable",
   ),
   packageMaintenanceWorkInFlight("package_maintenance_work_in_flight"),
+  packageMaintenanceAdmissionClosed("package_maintenance_admission_closed"),
   unknown('');
 
   const PackageFailureCode(this.wireName);

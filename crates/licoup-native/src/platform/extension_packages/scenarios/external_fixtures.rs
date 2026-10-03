@@ -125,7 +125,7 @@ fn externally_produced_packages_install_and_uninstall_on_the_real_filesystem() {
             .expect("begin")
             .drain(&mut registry, RemainingWork::Wait)
             .expect("drain")
-            .collect(&store, &registry)
+            .collect(&store, &registry, &crate::platform::package_registration_release::PackageRegistrationOwners::default())
             .expect("collect");
     assert_eq!(outcome.reclaimed_bytes, bytes + record_bytes);
     assert!(!store.installed_path(ECHO, "1.0.0").exists());

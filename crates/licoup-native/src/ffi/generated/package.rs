@@ -159,10 +159,12 @@ pub enum PackageFailureCode {
     PackageRegistrationReleaseFailed,
     #[serde(rename = "package_registration_owner_unavailable")]
     PackageRegistrationOwnerUnavailable,
-    #[serde(rename = "package_maintenance_admission_unavailable")]
-    PackageMaintenanceAdmissionUnavailable,
+    #[serde(rename = "package_maintenance_decision_unreadable")]
+    PackageMaintenanceDecisionUnreadable,
     #[serde(rename = "package_maintenance_work_in_flight")]
     PackageMaintenanceWorkInFlight,
+    #[serde(rename = "package_maintenance_admission_closed")]
+    PackageMaintenanceAdmissionClosed,
 }
 
 pub const PACKAGE_BRIDGE_SCHEMA_VERSION: &str = "licoup.package-lifecycle.bridge.v1";

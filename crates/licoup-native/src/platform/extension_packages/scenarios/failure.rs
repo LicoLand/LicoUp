@@ -110,6 +110,7 @@ fn a_record_that_outlived_its_journal_commit_is_reconciled_as_installed() {
         install_scripts: Vec::new(),
         runtime_ref: None,
         permissions: vec![net_permission()],
+        registrations: Vec::new(),
     };
     crate::platform::extension_packages::replace_file_atomically(
         &store.record_path(ECHO, "2.0.0"),

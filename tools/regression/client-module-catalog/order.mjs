@@ -64,6 +64,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.ffi.typed-error-chain",
   "rust.ffi.client-state-contract",
   "rust.ffi.adaptive-flywheel-contract",
+  "rust.ffi.package-lifecycle-contract",
   "rust.ffi.secure-mesh-contract",
   "rust.crate.catalog-convergence",
   "rust.crate.migrate",

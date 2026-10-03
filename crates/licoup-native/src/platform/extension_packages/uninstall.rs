@@ -799,7 +799,7 @@ mod tests {
         let drained = transaction
             .drain(&mut registry, RemainingWork::Wait)
             .expect("drain");
-        let outcome = drained.collect(&store, &registry).expect("collect");
+        let outcome = drained.collect(&store, &registry, &crate::platform::package_registration_release::PackageRegistrationOwners::default()).expect("collect");
         assert!(outcome.reclaimed_bytes > 0);
         assert_eq!(outcome.preserved, PreservedFacts::all_kept());
         assert!(store.installed().expect("installed").is_empty());
@@ -852,7 +852,7 @@ mod tests {
         let drained = transaction
             .drain(&mut registry, RemainingWork::Cancel)
             .expect("cancel");
-        let outcome = drained.collect(&store, &registry).expect("collect");
+        let outcome = drained.collect(&store, &registry, &crate::platform::package_registration_release::PackageRegistrationOwners::default()).expect("collect");
         assert_eq!(outcome.canceled_work, 1);
         assert_eq!(
             outcome.unknown_work, 1,
@@ -916,7 +916,7 @@ mod tests {
         let drained = transaction
             .drain(&mut registry, RemainingWork::Wait)
             .expect("drain");
-        let outcome = drained.collect(&store, &registry).expect("collect");
+        let outcome = drained.collect(&store, &registry, &crate::platform::package_registration_release::PackageRegistrationOwners::default()).expect("collect");
         assert_eq!(
             outcome.removed_together,
             vec!["example.host.panel".to_owned()]
@@ -944,7 +944,7 @@ mod tests {
         // be able to have its package deleted underneath it.
         active_instance("example.specialist.echo", 2, &mut registry);
         let failure = drained
-            .collect(&store, &registry)
+            .collect(&store, &registry, &crate::platform::package_registration_release::PackageRegistrationOwners::default())
             .expect_err("instance still running");
         assert_eq!(failure.code, "package_instance_still_active");
         assert!(
@@ -999,7 +999,7 @@ mod tests {
                 .expect("begin")
                 .drain(&mut registry, RemainingWork::Wait)
                 .expect("drain");
-        let outcome = drained.collect(&store, &registry).expect("collect");
+        let outcome = drained.collect(&store, &registry, &crate::platform::package_registration_release::PackageRegistrationOwners::default()).expect("collect");
         assert!(outcome.user_runtime_kept);
         remove_managed_tree(&root).expect("cleanup");
     }
@@ -1107,7 +1107,7 @@ mod tests {
             .expect("begin")
             .drain(&mut registry, RemainingWork::Wait)
             .expect("drain")
-            .collect(&store, &registry)
+            .collect(&store, &registry, &crate::platform::package_registration_release::PackageRegistrationOwners::default())
             .expect("collect");
 
         assert!(

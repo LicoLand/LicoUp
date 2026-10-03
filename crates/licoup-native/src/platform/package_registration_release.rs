@@ -244,7 +244,7 @@ mod tests {
             let args = failure
                 .presentation_args
                 .iter()
-                .map(|arg| (arg.key.as_str(), arg.value.as_str()))
+                .map(|(key, value)| (*key, *value))
                 .collect::<Vec<_>>();
             assert!(args.contains(&("packageOwner", owner.owner_module())));
         }
@@ -265,7 +265,7 @@ mod tests {
         let args = failure
             .presentation_args
             .iter()
-            .map(|arg| (arg.key.as_str(), arg.value.as_str()))
+            .map(|(key, value)| (*key, *value))
             .collect::<Vec<_>>();
         assert!(args.contains(&("packageOwner", "platform::client_autostart")));
     }

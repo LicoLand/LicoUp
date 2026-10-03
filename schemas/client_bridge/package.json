@@ -84,7 +84,8 @@
     "package_registration_approval_stale",
     "package_registration_release_failed",
     "package_registration_owner_unavailable",
-    "package_maintenance_admission_unavailable",
-    "package_maintenance_work_in_flight"
+    "package_maintenance_decision_unreadable",
+    "package_maintenance_work_in_flight",
+    "package_maintenance_admission_closed"
   ]
 }

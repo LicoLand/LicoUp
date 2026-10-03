@@ -17,7 +17,10 @@
 //!
 //! What is deliberately not here: no network, no marketplace, no account, no
 //! process launch. A local import has to work with the machine offline, and this
-//! harness would fail if anything on these paths needed to reach out.
+//! harness would fail if anything on these paths needed to reach out. The
+//! `commands` module drives the native routes over the same synthetic data home,
+//! including the maintenance seam, which asks the real native idle guard and its
+//! own canonical stores.
 
 mod commands;
 

@@ -502,14 +502,15 @@ fn a_package_that_does_not_cover_this_client_is_refused_at_install() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn mutating_update_and_activation_are_refused_until_the_native_idle_guard_exists() {
+fn mutating_update_and_activation_pass_the_native_idle_guard_and_cycle_its_barrier() {
     let home = DataHome::new("maintenance");
     let bytes = fixture_bytes(PACKAGE_ID, VERSION, &covering_client_versions());
     let archive = archive_file(&home, "echo.zip", &bytes);
     let archive_text = archive.display().to_string();
 
-    // Read-only preview: it reports the installed facts and that apply is not
-    // available, and it mutates nothing.
+    // An idle host: the guard renders a verdict, so the seam is composed and the
+    // read-only preview reports that apply would be admitted. Asking is not
+    // holding — the preview left no barrier behind.
     let previewed = run(
         &home,
         "package update-preview",
@@ -517,17 +518,87 @@ fn mutating_update_and_activation_are_refused_until_the_native_idle_guard_exists
     );
     is_ok(&previewed, "update-preview");
     assert_eq!(previewed["mutated"], false);
+    assert_eq!(previewed["apply"]["available"], true);
+    assert_eq!(previewed["apply"]["operation"], "update-apply");
+    assert_eq!(previewed["apply"]["guardPresent"], true);
+    assert_eq!(previewed["apply"]["guardOwner"], "UPDATE-IDLE-ADMISSION");
+    assert_eq!(previewed["candidate"]["plan"]["packageId"], PACKAGE_ID);
+    assert!(
+        !barrier_record(&home).exists(),
+        "a read-only preview takes no close-admission barrier"
+    );
+
+    // Mutating update: admitted by the guard, so the route takes the durable
+    // close-admission barrier, and retires it again because the replacement is
+    // not wired yet. Nothing is replaced and the host stays usable.
+    let updated = run(
+        &home,
+        "package update-apply",
+        &[
+            ("archive", archive_text),
+            (
+                "confirmation",
+                "licoup.package-install-confirmation.v1:sha256:any".to_owned(),
+            ),
+        ],
+    );
+    is_ok(&updated, "update-apply");
+    assert_eq!(updated["admitted"], "update-apply");
+    assert_eq!(updated["admissionHeld"], true);
+    assert_eq!(updated["admissionReleased"], true);
+    assert_eq!(updated["replaced"], false);
+    assert_eq!(updated["reasonCode"], "package_update_apply_not_wired");
+    assert_eq!(updated["mutated"], false);
+    assert!(
+        !barrier_record(&home).exists(),
+        "an admitted operation that published nothing leaves admission open"
+    );
+
+    // Activation: the same guard, the same hold-and-retire pair.
+    let activated = run(&home, "package activate", &[]);
+    is_ok(&activated, "activate");
+    assert_eq!(activated["admitted"], "activation");
+    assert_eq!(activated["admissionHeld"], true);
+    assert_eq!(activated["admissionReleased"], true);
+    assert_eq!(activated["activated"], false);
+    assert_eq!(activated["reasonCode"], "package_activate_not_wired");
+    assert!(!barrier_record(&home).exists());
+
+    // Neither route installed anything, and the host is still idle.
+    assert_eq!(installed_count(&home), 0);
+    assert_eq!(
+        licoup_native::domain::work_admission::WorkAdmission::open(&home.path)
+            .admission()
+            .expect("admission")
+            .decision,
+        licoup_native::domain::work_admission::AdmissionDecision::Idle
+    );
+}
+
+/// A barrier another switch already holds: the guard refuses through the seam,
+/// with its own stable code and without opening anything.
+#[test]
+fn a_closed_barrier_refuses_the_mutating_routes_through_the_guard() {
+    let home = DataHome::new("maintenance-closed");
+    let bytes = fixture_bytes(PACKAGE_ID, VERSION, &covering_client_versions());
+    let archive = archive_file(&home, "echo-closed.zip", &bytes);
+    let archive_text = archive.display().to_string();
+    licoup_native::domain::work_admission::hold_package_activation_admission(&home.path)
+        .expect("the idle host takes the barrier");
+
+    let previewed = run(
+        &home,
+        "package update-preview",
+        &[("archive", archive_text.clone())],
+    );
+    is_ok(&previewed, "update-preview");
     assert_eq!(previewed["apply"]["available"], false);
     assert_eq!(
         previewed["apply"]["reasonCode"],
-        "package_maintenance_admission_unavailable"
+        "package_maintenance_admission_closed"
     );
-    assert_eq!(previewed["apply"]["guardPresent"], false);
-    assert_eq!(previewed["apply"]["guardOwner"], "UPDATE-IDLE-ADMISSION");
-    assert_eq!(previewed["candidate"]["plan"]["packageId"], PACKAGE_ID);
+    assert_eq!(previewed["apply"]["guardPresent"], true);
 
-    // Mutating update: refused, with the stable code and a truthful reason that
-    // names the operation and the absent guard's owner.
     let updated = run(
         &home,
         "package update-apply",
@@ -542,7 +613,7 @@ fn mutating_update_and_activation_are_refused_until_the_native_idle_guard_exists
     assert_eq!(updated["isError"], true);
     assert_eq!(
         updated["reasonCode"],
-        "package_maintenance_admission_unavailable"
+        "package_maintenance_admission_closed"
     );
     assert_eq!(updated["stage"], "extension/package-maintenance");
     assert_eq!(updated["component"], "extension_packages_maintenance");
@@ -550,16 +621,139 @@ fn mutating_update_and_activation_are_refused_until_the_native_idle_guard_exists
     // The CLI vocabulary has one retry value; the MCP one distinguishes them.
     assert_eq!(updated["recovery"], "retry_or_review_request");
 
-    // Activation: refused through the same seam.
     let activated = run(&home, "package activate", &[]);
     assert_eq!(activated["isError"], true);
     assert_eq!(
         activated["reasonCode"],
-        "package_maintenance_admission_unavailable"
+        "package_maintenance_admission_closed"
     );
 
-    // A refused update and a refused activation wrote nothing.
+    // A refusal closed nothing: the holding switch still holds the barrier.
+    assert!(barrier_record(&home).exists());
     assert_eq!(installed_count(&home), 0);
+    licoup_native::domain::work_admission::release_maintenance_admission(&home.path)
+        .expect("released");
+}
+
+/// Unfinished local work: the guard refuses because the host is busy, and no
+/// barrier record is written for the operation it refused.
+#[test]
+fn unfinished_local_work_refuses_the_mutating_routes_through_the_guard() {
+    let home = DataHome::new("maintenance-busy");
+    let bytes = fixture_bytes(PACKAGE_ID, VERSION, &covering_client_versions());
+    let archive = archive_file(&home, "echo-busy.zip", &bytes);
+    let store = licoup_conversation::ConversationStore::open(&home.path)
+        .expect("the canonical conversation store");
+    store
+        .prepare_runtime_dispatch(
+            "synthetic",
+            "synthetic-session",
+            "synthetic request",
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("an unfinished local dispatch");
+    drop(store);
+
+    let previewed = run(
+        &home,
+        "package update-preview",
+        &[("archive", archive.display().to_string())],
+    );
+    is_ok(&previewed, "update-preview");
+    assert_eq!(previewed["apply"]["available"], false);
+    assert_eq!(
+        previewed["apply"]["reasonCode"],
+        "package_maintenance_work_in_flight"
+    );
+    assert_eq!(previewed["apply"]["guardPresent"], true);
+
+    let updated = run(
+        &home,
+        "package update-apply",
+        &[
+            ("archive", archive.display().to_string()),
+            (
+                "confirmation",
+                "licoup.package-install-confirmation.v1:sha256:any".to_owned(),
+            ),
+        ],
+    );
+    assert_eq!(updated["isError"], true);
+    assert_eq!(updated["reasonCode"], "package_maintenance_work_in_flight");
+
+    let activated = run(&home, "package activate", &[]);
+    assert_eq!(activated["isError"], true);
+    assert_eq!(activated["reasonCode"], "package_maintenance_work_in_flight");
+
+    assert!(
+        !barrier_record(&home).exists(),
+        "a refused switch writes no barrier record"
+    );
+    assert_eq!(installed_count(&home), 0);
+}
+
+/// A decision that cannot be read is not an idle host: the guard refuses, and so
+/// does every mutating route that asks it.
+#[test]
+fn an_unreadable_maintenance_decision_refuses_the_mutating_routes() {
+    let home = DataHome::new("maintenance-unreadable");
+    let bytes = fixture_bytes(PACKAGE_ID, VERSION, &covering_client_versions());
+    let archive = archive_file(&home, "echo-unreadable.zip", &bytes);
+    let record = barrier_record(&home);
+    std::fs::create_dir_all(record.parent().expect("client-state")).expect("client-state");
+    std::fs::write(&record, b"{ not a maintenance record").expect("invalid record");
+
+    let previewed = run(
+        &home,
+        "package update-preview",
+        &[("archive", archive.display().to_string())],
+    );
+    is_ok(&previewed, "update-preview");
+    assert_eq!(previewed["apply"]["available"], false);
+    assert_eq!(
+        previewed["apply"]["reasonCode"],
+        "package_maintenance_decision_unreadable"
+    );
+    assert_eq!(
+        previewed["apply"]["guardPresent"], false,
+        "a decision nobody can read is not a composed guard"
+    );
+
+    let updated = run(
+        &home,
+        "package update-apply",
+        &[
+            ("archive", archive.display().to_string()),
+            (
+                "confirmation",
+                "licoup.package-install-confirmation.v1:sha256:any".to_owned(),
+            ),
+        ],
+    );
+    assert_eq!(updated["isError"], true);
+    assert_eq!(
+        updated["reasonCode"],
+        "package_maintenance_decision_unreadable"
+    );
+
+    let activated = run(&home, "package activate", &[]);
+    assert_eq!(activated["isError"], true);
+    assert_eq!(
+        activated["reasonCode"],
+        "package_maintenance_decision_unreadable"
+    );
+
+    assert_eq!(installed_count(&home), 0);
+}
+
+/// The close-admission barrier the guard holds for one data root.
+fn barrier_record(home: &DataHome) -> PathBuf {
+    home.path
+        .join("client-state")
+        .join("maintenance-admission.json")
 }
 
 // ---------------------------------------------------------------------------
@@ -858,7 +1052,9 @@ fn the_package_bridge_family_names_every_route_and_every_refusal() {
     // Every refusal the family publishes is one this surface can actually report.
     let codes = schema["failureCodes"].as_array().expect("failure codes");
     for code in [
-        "package_maintenance_admission_unavailable",
+        "package_maintenance_decision_unreadable",
+        "package_maintenance_work_in_flight",
+        "package_maintenance_admission_closed",
         "package_client_incompatible",
         "package_version_already_installed",
         "package_uninstall_not_drained",
