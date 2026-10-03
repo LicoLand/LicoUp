@@ -49,6 +49,7 @@ Future<Map<String, dynamic>> exchangeStdioRpcCommandFrame({
       responseFuture = session.expectFrame(
         requestId: requestId,
         control: control,
+        sizeBytes: encoded.length,
       );
       // A failed write abandons this expectation before the normal await site.
       // Mark the future observed immediately so that completion during teardown

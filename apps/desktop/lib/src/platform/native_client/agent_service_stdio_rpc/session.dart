@@ -8,6 +8,7 @@ import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/line_f
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/session_expectation.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/stream_observation.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 class StdioRpcFrame {
@@ -78,8 +79,13 @@ Map<String, dynamic>? _decodeEnvelopeEntry(Uint8List bytes) {
 /// requires. Framed-but-undispatched bytes are bounded: stdout pauses at
 /// [stdioRpcMaxDecodeBacklogBytes] and resumes below
 /// [stdioRpcResumeDecodeBacklogBytes].
+///
+/// [observation] is optional. When it is absent, or present without an
+/// installed backend, no observation record is built and the transport behaves
+/// exactly as one compiled without observation.
 class StdioRpcSession {
-  StdioRpcSession(this.process) {
+  StdioRpcSession(this.process, {StreamObservationPort? observation})
+    : _observation = observation {
     _stdoutSubscription = process.stdout.listen(
       _acceptStdoutChunk,
       onError: (Object _, StackTrace _) => _addFrameError(),
@@ -96,6 +102,7 @@ class StdioRpcSession {
   }
 
   final Process process;
+  final StreamObservationPort? _observation;
   final StdioRpcLineFramer _framer = StdioRpcLineFramer(
     maxFrameBytes: stdioRpcMaxFrameBytes,
   );
@@ -135,6 +142,7 @@ class StdioRpcSession {
   Future<StdioRpcFrame> expectFrame({
     required String requestId,
     bool control = false,
+    int sizeBytes = 0,
   }) {
     if (!_canExpectRequest(requestId)) {
       throw const StdioRpcTransportFailure();
@@ -144,6 +152,16 @@ class StdioRpcSession {
       completer: completer,
       control: control,
     );
+    // Installing the expectation is the request's attempt on its lane; a
+    // control attempt stays distinguishable from an ordinary one.
+    _observe(
+      phase: StreamObservationPhase.install,
+      sizeBytes: sizeBytes,
+      correlationId: requestId,
+      lane: control
+          ? StreamObservationLane.control
+          : StreamObservationLane.ordered,
+    );
     return completer.future;
   }
 
@@ -152,6 +170,7 @@ class StdioRpcSession {
     required String workflowId,
     bool executionObservation = false,
     Future<void> Function()? onCancel,
+    int sizeBytes = 0,
   }) {
     if (!_canExpectRequest(requestId)) {
       throw const StdioRpcTransportFailure();
@@ -174,6 +193,11 @@ class StdioRpcSession {
         workflowId: workflowId,
         executionObservation: executionObservation,
       ),
+    );
+    _observe(
+      phase: StreamObservationPhase.install,
+      sizeBytes: sizeBytes,
+      correlationId: requestId,
     );
     return controller.stream;
   }
@@ -232,8 +256,43 @@ class StdioRpcSession {
         _maxObservedDecodeBacklogBytes = _pendingDecodeBytes;
       }
     }
+    // The acquired chunk is observed with the framed backlog the watermarks
+    // bound, so the byte bound stays attributable to real wire input.
+    _observe(
+      phase: StreamObservationPhase.acquisition,
+      sizeBytes: chunk.length,
+      backlogBytes: _pendingDecodeBytes,
+    );
     if (frames.isEmpty) return;
     _pumpDecodePipeline();
+  }
+
+  /// Reports one phase fact to the optional port.
+  ///
+  /// Nothing is built while no backend is installed: the port reports
+  /// `noBackend` for any submission, and this transport does not even create a
+  /// record, so an unobserved transport carries no observation state at all.
+  void _observe({
+    required StreamObservationPhase phase,
+    int sizeBytes = 0,
+    String correlationId = '',
+    StreamObservationLane lane = StreamObservationLane.ordered,
+    int backlogBytes = 0,
+  }) {
+    final observation = _observation;
+    if (observation == null || !observation.isInstalled) return;
+    observation.observe(
+      phase: phase,
+      sizeBytes: sizeBytes,
+      correlationId: correlationId,
+      lane: lane,
+      backlogBytes: backlogBytes,
+    );
+  }
+
+  String _correlationOf(_PendingFrame pending) {
+    final requestId = pending.envelope?['id'];
+    return requestId is String ? requestId : '';
   }
 
   /// Starts every decode that can start, dispatches everything that is ready,
@@ -282,6 +341,19 @@ class StdioRpcSession {
     }
     pending.decoded = true;
     _classifyFrame(pending);
+    _observeDecode(pending);
+  }
+
+  void _observeDecode(_PendingFrame pending) {
+    _observe(
+      phase: StreamObservationPhase.decode,
+      sizeBytes: pending.bytes.length,
+      correlationId: _correlationOf(pending),
+      lane: pending.control
+          ? StreamObservationLane.control
+          : StreamObservationLane.ordered,
+      backlogBytes: _pendingDecodeBytes,
+    );
   }
 
   void _decodeOffIsolate(_PendingFrame pending) {
@@ -300,6 +372,7 @@ class StdioRpcSession {
       pending.failed = failed || envelope == null;
       pending.decoded = true;
       _classifyFrame(pending);
+      _observeDecode(pending);
       _bulkDecodeRunning = false;
       _pumpDecodePipeline();
     }());
@@ -320,6 +393,7 @@ class StdioRpcSession {
   }
 
   void _dispatchFrames() {
+    var dispatched = 0;
     while (_pendingFrames.isNotEmpty) {
       final first = _pendingFrames.first;
       if (!first.decoded) {
@@ -329,10 +403,16 @@ class StdioRpcSession {
       _pendingFrames.removeFirst();
       _pendingDecodeBytes -= first.bytes.length;
       _dispatchFrame(first);
+      dispatched += 1;
       if (!usable || _closed) {
         _abandonPendingFrames();
         return;
       }
+    }
+    if (dispatched > 0) {
+      // The ordered backlog drained to empty: the framed window the decode
+      // watermarks bound released every byte it held.
+      _observe(phase: StreamObservationPhase.drain, backlogBytes: 0);
     }
     _notifyDecodeIdle();
   }
@@ -353,6 +433,16 @@ class StdioRpcSession {
 
   void _dispatchFrame(_PendingFrame pending) {
     final envelope = pending.envelope;
+    // The frame leaves the bounded backlog for its lane's consumer here.
+    _observe(
+      phase: StreamObservationPhase.dispatch,
+      sizeBytes: pending.bytes.length,
+      correlationId: _correlationOf(pending),
+      lane: pending.control
+          ? StreamObservationLane.control
+          : StreamObservationLane.ordered,
+      backlogBytes: _pendingDecodeBytes,
+    );
     if (pending.failed || envelope == null) {
       _addFrameError();
       return;
@@ -398,6 +488,11 @@ class StdioRpcSession {
         _pendingDecodeBytes <= stdioRpcResumeDecodeBacklogBytes) {
       _stdoutPaused = false;
       _stdoutSubscription.resume();
+      // Backpressure released at the resume watermark: stdout flows again.
+      _observe(
+        phase: StreamObservationPhase.drain,
+        backlogBytes: _pendingDecodeBytes,
+      );
     }
   }
 

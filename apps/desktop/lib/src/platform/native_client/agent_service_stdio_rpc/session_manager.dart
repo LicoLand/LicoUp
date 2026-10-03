@@ -2,15 +2,19 @@ import 'dart:io';
 
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/session.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/stream_observation.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 class StdioRpcSessionManager {
   StdioRpcSessionManager({
     required NativeCliProcessContext processContext,
     this.arguments = const ['rpc', 'stdio'],
-  }) : _processContext = processContext;
+    StreamObservationPort? observation,
+  }) : _processContext = processContext,
+       _observation = observation;
 
   final NativeCliProcessContext _processContext;
+  final StreamObservationPort? _observation;
 
   final List<String> arguments;
   StdioRpcSession? _session;
@@ -80,7 +84,7 @@ class StdioRpcSessionManager {
     }
     late StdioRpcSession session;
     try {
-      session = StdioRpcSession(process);
+      session = StdioRpcSession(process, observation: _observation);
     } on Object {
       process.kill();
       throw const LicoClientRpcException('transport_failed');
