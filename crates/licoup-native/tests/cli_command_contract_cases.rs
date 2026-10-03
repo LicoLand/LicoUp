@@ -21,7 +21,12 @@ const ADMISSION_STAGE: &str = "cli/admission";
 const ADMISSION_COMPONENT: &str = "native_cli";
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
-const AUTHORITATIVE_ROUTE_COUNT: usize = 183;
+// The route authority on this branch: the 183 routes of the integration base
+// plus the four project dependency routes this branch adds. The integration
+// head (c9cff72aa) carries fourteen further package-lifecycle routes and does
+// not compile there, so this branch stays on the last compiling integration
+// state; the union becomes 201 when that repair lands.
+const AUTHORITATIVE_ROUTE_COUNT: usize = 187;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -2693,10 +2698,41 @@ fn route_authorities() -> Vec<RouteAuthority> {
         &["project list"],
         Exact,
     );
+    add_authority_routes(
+        &mut routes,
+        "project.rs",
+        "handle_project_dependency_declare",
+        &["project dependency declare"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "project.rs",
+        "handle_project_dependency_list",
+        &["project dependency list"],
+        Exact,
+    );
+    add_authority_routes(
+        &mut routes,
+        "project.rs",
+        "handle_project_dependency_unresolved",
+        &["project dependency unresolved"],
+        Exact,
+    );
+    add_authority_routes(
+        &mut routes,
+        "project.rs",
+        "handle_project_dependency_blocked",
+        &["project dependency blocked"],
+        Exact,
+    );
     for route in &mut routes {
         route.required = match route.path {
             "skill get" | "skill visibility set" => &[("skill-id", Text)],
-            "project read" => &[("project-id", Text)],
+            "project read" | "project dependency list" | "project dependency unresolved" => {
+                &[("project-id", Text)]
+            }
+            "project dependency blocked" => &[("project-id", Text), ("work-item-id", Text)],
             "rpc call" => &[("method", Text)],
             _ => route.required,
         };
@@ -2756,7 +2792,7 @@ const fn boolean_option(name: &'static str) -> OptionAuthority {
 fn options_for_route(path: &str) -> Vec<OptionAuthority> {
     use RequiredArgumentKind::{Json, Text};
     let options: &[OptionAuthority] = match path {
-        "rpc call" | "subagents execute" | "project register" => {
+        "rpc call" | "subagents execute" | "project register" | "project dependency declare" => {
             &[value_option("stdin-json", Json, true)]
         }
         "mcp start" | "mcp reload" => &[value_option("binary", Text, false)],

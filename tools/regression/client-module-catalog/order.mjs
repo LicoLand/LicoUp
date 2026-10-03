@@ -217,6 +217,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.domain.client-runtime",
   "rust.domain.project-identity",
   "rust.domain.project-identity.native",
+  "rust.domain.project-dependency-inputs",
   "rust.domain.protocol-input-admission",
   "rust.domain.release-receipts",
   "rust.domain.resource-bounds",

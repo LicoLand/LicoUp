@@ -45,6 +45,19 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::project"),
     }),
   defineModule({
+      id: "rust.domain.project-dependency-inputs",
+      kind: "rust-domain",
+      summary:
+        "Declared project artifact inputs through the published CLI routes: blocked consumers, unresolved artifacts, and the cycle, authorization and escape refusals",
+      inputs: [
+        "crates/licoup-native/tests/project_dependency_commands.rs",
+        "crates/licoup-native/src/domain/project/**",
+        "crates/licoup-native/src/ffi/commands/project.rs",
+        "crates/licoup-application/src/command.rs",
+      ],
+      command: rustIntegrationTest("project_dependency_commands"),
+    }),
+  defineModule({
       id: "rust.domain.subagents",
       kind: "rust-domain",
       summary: "Native Assistant and Subagent application with exact Membership delegation",
