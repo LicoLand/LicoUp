@@ -352,7 +352,6 @@ export const REGRESSION_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/workflow_runtime/service.rs",
         "crates/licoup-native/src/platform/cursor_driver/control.rs",
         "crates/licoup-native/src/platform/antigravity_driver/control.rs",
-        "crates/licoup-native/src/platform/codex_plugin_manager.rs",
         "docs/protocols/subagent-mcp.md",
         "docs/protocols/subagent-mcp.zh-CN.md",
         "docs/functionality/USER-GUIDE.md",
@@ -671,10 +670,9 @@ export const REGRESSION_MODULES = Object.freeze([
   defineModule({
       id: "regression.codex-app-server-source-bundle",
       kind: "regression-infrastructure",
-      summary: "Codex app-server split ownership, fail-closed protocol, bounded IO, and redaction contract",
+      summary: "Codex app-server package ownership, fail-closed protocol, bounded IO, and redaction contract",
       inputs: [
-        "crates/licoup-native/src/platform/codex_app_server.rs",
-        "crates/licoup-native/src/platform/codex_app_server/**",
+        "crates/licoup-agent-codex/src/bin/lico-agent-codex.rs",
         "crates/licoup-agent-codex/src/parser.rs",
         "crates/licoup-agent-codex/src/parser/**",
         "crates/licoup-agent-codex/src/app_server.rs",

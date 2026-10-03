@@ -158,13 +158,14 @@ thread_local! {
 /// One process installs the port once, so a test that needs to read what a
 /// turn emitted takes a thread-local capture rather than a second port. The
 /// captured value is the consumer-shaped envelope the host's own readers see.
+/// The capture is installed by [`install_test_sink`] and cleared by the guard's
+/// own drop, exactly as the host's own stream sink is.
 #[cfg(test)]
 pub struct TestSinkGuard;
 
 #[cfg(test)]
-pub fn install_test_sink(sink: Box<dyn Fn(Value)>) -> TestSinkGuard {
+pub fn install_test_sink(sink: Box<dyn Fn(Value)>) {
     TEST_SINK.with(|cell| *cell.borrow_mut() = Some(sink));
-    TestSinkGuard
 }
 
 #[cfg(test)]
