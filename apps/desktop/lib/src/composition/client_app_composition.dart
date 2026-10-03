@@ -35,6 +35,7 @@ import 'package:licoup/src/contracts/presentation/presentation_preferences.dart'
 import 'package:licoup/src/contracts/user_home_directory.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/binding/causal_frame_telemetry.dart';
+import 'package:licoup/src/frontend/binding/presentation_observation.dart';
 import 'package:licoup/src/frontend/binding/causal_projection_source_registry.dart';
 import 'package:licoup/src/frontend/binding/shell_renderer_port.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
@@ -71,7 +72,7 @@ import 'package:licoup/src/projections/shell/shell_projection_producer.dart';
 final class ClientAppComposition {
   factory ClientAppComposition({
     ClientController? controller,
-    CausalFrameTelemetry? telemetry,
+    PresentationObservation? telemetry,
     Stream<bool>? systemReduceMotionChanges,
     ClientCompositionSet compositionSet = ClientCompositionSet.full,
   }) {
@@ -393,7 +394,7 @@ final class ClientAppComposition {
 
   final ClientController _controller;
   final BuiltInLayoutComposition _layout;
-  final CausalFrameTelemetry? telemetry;
+  final PresentationObservation? telemetry;
   final CausalProjectionSourceRegistry _projectionTracing;
 
   /// The declaration naming every feature composition this client owns.
