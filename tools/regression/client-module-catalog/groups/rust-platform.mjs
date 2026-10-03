@@ -194,6 +194,21 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "rust.ffi.package-lifecycle-contract",
+      kind: "rust-ffi",
+      summary: "Generated package lifecycle bridge, the native command surface, the maintenance seam, and release of package-created registrations",
+      inputs: [
+        "schemas/client_bridge/package.json",
+        "crates/licoup-native/src/ffi/generated/package.rs",
+        "crates/licoup-native/src/ffi/commands/package.rs",
+        "crates/licoup-native/src/platform/extension_packages/maintenance.rs",
+        "crates/licoup-native/src/platform/extension_packages/registration.rs",
+        "crates/licoup-native/src/platform/package_registration_release.rs",
+        "crates/licoup-native/tests/package_lifecycle/**",
+      ],
+      command: rustIntegrationTest("package_lifecycle"),
+    }),
+  defineModule({
       id: "rust.platform.skill-invocation-projection",
       kind: "rust-platform",
       summary: "Privacy-minimal skill-call projection across native agent runtime adapters",

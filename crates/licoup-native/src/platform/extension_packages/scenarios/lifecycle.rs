@@ -9,8 +9,21 @@ use crate::platform::extension_packages::{
     RetainReason, StorageEntry, StorageKind, UninstallTransaction, account_store, plan_gc, preview,
     reclaim,
 };
+use crate::platform::package_registration_release::PackageRegistrationOwners;
 use licoup_extension_contracts::deployment::{LocalCatalogue, PackageSource};
 use std::collections::BTreeMap;
+
+/// The production registration adapter with no caller-supplied release inputs.
+///
+/// These scenarios record no external registration, so every owner is asked for
+/// nothing and the reclaim proceeds. One shared value keeps a `'static` reference
+/// available without each test naming or rebuilding the adapter.
+static OWNERS: std::sync::LazyLock<PackageRegistrationOwners> =
+    std::sync::LazyLock::new(PackageRegistrationOwners::default);
+
+fn owners() -> &'static PackageRegistrationOwners {
+    &OWNERS
+}
 
 #[test]
 fn a_directory_recommendation_never_installs_or_runs_anything() {
@@ -114,7 +127,9 @@ fn an_offline_import_uninstalls_for_real_and_keeps_the_users_history() {
             .expect("begin")
             .drain(&mut registry, RemainingWork::Wait)
             .expect("drain");
-    let outcome = drained.collect(&store, &registry).expect("collect");
+    let outcome = drained
+        .collect(&store, &registry, owners())
+        .expect("collect");
     assert_eq!(outcome.reclaimed_bytes, bytes_before + record_bytes);
     assert!(
         !store.installed_path(ECHO, "1.0.0").exists(),
@@ -278,7 +293,7 @@ fn an_uninstall_never_touches_a_runtime_the_user_installed() {
             .expect("begin")
             .drain(&mut registry, RemainingWork::Wait)
             .expect("drain")
-            .collect(&store, &registry)
+            .collect(&store, &registry, owners())
             .expect("collect");
     assert!(outcome.user_runtime_kept);
     assert!(
@@ -350,7 +365,7 @@ fn an_in_flight_generation_is_drained_before_its_bytes_are_reclaimed() {
     let outcome = canceling
         .drain(&mut registry, RemainingWork::Cancel)
         .expect("cancel")
-        .collect(&store, &registry)
+        .collect(&store, &registry, owners())
         .expect("collect");
     assert_eq!(outcome.canceled_work, 1);
     assert_eq!(outcome.unknown_work, 1, "cancelled work is Unknown");

@@ -17,7 +17,12 @@
 //!
 //! What is deliberately not here: no network, no marketplace, no account, no
 //! process launch. A local import has to work with the machine offline, and this
-//! harness would fail if anything on these paths needed to reach out.
+//! harness would fail if anything on these paths needed to reach out. The
+//! `commands` module drives the native routes over the same synthetic data home,
+//! including the maintenance seam, which asks the real native idle guard and its
+//! own canonical stores.
+
+mod commands;
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -907,7 +912,15 @@ fn uninstall_withdraws_admission_first_and_then_reclaims_only_its_own_bytes() {
         registry.get(&instance_id).expect("instance").state(),
         InstanceLifecycle::Stopped
     );
-    let outcome = drained.collect(&store, &registry).expect("collect");
+    // This package registered nothing outside its own bytes, so the real owners
+    // are asked for nothing and the reclaim proceeds.
+    let outcome = drained
+        .collect(
+            &store,
+            &registry,
+            &licoup_native::platform::package_registration_release::PackageRegistrationOwners::default(),
+        )
+        .expect("collect");
 
     assert_eq!(outcome.unknown_work, 1, "cancelled work is Unknown");
     assert!(outcome.reclaimed_bytes > 0);

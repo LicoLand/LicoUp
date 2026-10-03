@@ -25,6 +25,7 @@ mod model_registry;
 pub mod native_rpc;
 mod opencode_serve;
 mod project;
+mod package;
 mod provider_quota;
 mod resource_usage;
 mod secure_mesh;
@@ -1792,6 +1793,385 @@ fn build_command_table() -> CommandTable {
         cardinality: CommandCardinality::Options,
         handler: extension_host::handle_serve,
         help: "Run one agent-execution call through the extension host composed over a managed root",
+    });
+    table.register_command(CommandSpec {
+        source_module: "package.rs",
+        handler_name: "handle_catalog",
+        path: &["package", "catalog"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "data-root",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: package::handle_catalog,
+        help: "List what this client holds, reconciling an interrupted install first",
+    });
+    table.register_command(CommandSpec {
+        source_module: "package.rs",
+        handler_name: "handle_install_plan",
+        path: &["package", "install-plan"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "data-root",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[
+            OptionSpec {
+                name: "archive",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: package::handle_install_plan,
+        help: "Plan one install from a local archive without installing it",
+    });
+    table.register_command(CommandSpec {
+        source_module: "package.rs",
+        handler_name: "handle_install_confirm",
+        path: &["package", "install-confirm"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "data-root",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[
+            OptionSpec {
+                name: "archive",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "plan",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: package::handle_install_confirm,
+        help: "Confirm a reviewed install plan and issue the bound confirmation",
+    });
+    table.register_command(CommandSpec {
+        source_module: "package.rs",
+        handler_name: "handle_install_apply",
+        path: &["package", "install-apply"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "data-root",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[
+            OptionSpec {
+                name: "archive",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "confirmation",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: package::handle_install_apply,
+        help: "Apply one confirmed install from a local archive",
+    });
+    table.register_command(CommandSpec {
+        source_module: "package.rs",
+        handler_name: "handle_import",
+        path: &["package", "import"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "data-root",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[
+            OptionSpec {
+                name: "archive",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: package::handle_import,
+        help: "Install an archive the user imported locally, with no directory and no network",
+    });
+    table.register_command(CommandSpec {
+        source_module: "package.rs",
+        handler_name: "handle_enable",
+        path: &["package", "enable"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "data-root",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "package-id",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "version",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: package::handle_enable,
+        help: "Switch one installed package version on without starting it",
+    });
+    table.register_command(CommandSpec {
+        source_module: "package.rs",
+        handler_name: "handle_disable",
+        path: &["package", "disable"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "data-root",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "package-id",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "version",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: package::handle_disable,
+        help: "Switch one installed package version off, keeping its bytes and user data",
+    });
+    table.register_command(CommandSpec {
+        source_module: "package.rs",
+        handler_name: "handle_uninstall_preview",
+        path: &["package", "uninstall-preview"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "data-root",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "package-id",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "version",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: package::handle_uninstall_preview,
+        help: "Show what removing one installed version would touch",
+    });
+    table.register_command(CommandSpec {
+        source_module: "package.rs",
+        handler_name: "handle_uninstall_drain",
+        path: &["package", "uninstall-drain"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "data-root",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "package-id",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "version",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[
+            OptionSpec {
+                name: "remaining",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "dependents",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Json,
+                required: false,
+            },
+            OptionSpec {
+                name: "instances",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Json,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: package::handle_uninstall_drain,
+        help: "Withdraw admission and drain every instance of one installed version",
+    });
+    table.register_command(CommandSpec {
+        source_module: "package.rs",
+        handler_name: "handle_uninstall_collect",
+        path: &["package", "uninstall-collect"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "data-root",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "package-id",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "version",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[
+            OptionSpec {
+                name: "registration-inputs",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Json,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: package::handle_uninstall_collect,
+        help: "Release the registrations a drained version created, then reclaim its bytes",
+    });
+    table.register_command(CommandSpec {
+        source_module: "package.rs",
+        handler_name: "handle_recover",
+        path: &["package", "recover"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "data-root",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: package::handle_recover,
+        help: "Reconcile an interrupted install and report what recovery found",
+    });
+    table.register_command(CommandSpec {
+        source_module: "package.rs",
+        handler_name: "handle_update_preview",
+        path: &["package", "update-preview"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "data-root",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "package-id",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[
+            OptionSpec {
+                name: "archive",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: package::handle_update_preview,
+        help: "Show what replacing an installed version would do, without doing it",
+    });
+    table.register_command(CommandSpec {
+        source_module: "package.rs",
+        handler_name: "handle_update_apply",
+        path: &["package", "update-apply"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "data-root",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "package-id",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[
+            OptionSpec {
+                name: "archive",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "confirmation",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: package::handle_update_apply,
+        help: "Replace an installed version; refused until the native idle guard exists",
+    });
+    table.register_command(CommandSpec {
+        source_module: "package.rs",
+        handler_name: "handle_activate",
+        path: &["package", "activate"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "data-root",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "package-id",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "version",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: package::handle_activate,
+        help: "Start a generation of an installed version; refused until the native idle guard exists",
     });
     table.register_command(CommandSpec {
         source_module: "agent_usage.rs",

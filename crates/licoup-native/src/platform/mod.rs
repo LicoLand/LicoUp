@@ -23,6 +23,7 @@ mod cursor_driver;
 mod deepseek_harness_driver;
 pub mod extension_host;
 pub mod extension_packages;
+pub mod package_registration_release;
 pub(crate) mod generic_cli_driver;
 mod hermes_driver;
 pub(crate) mod hermes_tui_gateway;
