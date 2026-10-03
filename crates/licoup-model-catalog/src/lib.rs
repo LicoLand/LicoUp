@@ -27,6 +27,12 @@
 //! separate dimensions, each with its own state and reason, and execution is
 //! decided once per request scope — so the same Agent can show a different
 //! direct and workflow outcome, and neither is ever read as readiness.
+//! [`candidate_policy`] is the non-learning routing query over those facts:
+//! given an admitted request and the alternatives its effective grants already
+//! allow, it ranks the survivors deterministically and names one exclusion for
+//! every candidate that may not run — a requirement (capability or model)
+//! mismatch, an unusable credential, a spent quota window, or a model no live
+//! source reported. It recommends within the allowed set and never widens it.
 //!
 //! The crate reads nothing owned above it directly. Probes, credential states
 //! and source generations arrive through [`port::ModelCatalogPort`], and the
@@ -42,6 +48,7 @@
 //! primitives every consumer of these facts already stands on.
 
 pub mod availability;
+pub mod candidate_policy;
 pub mod identity;
 pub mod planning;
 pub mod port;
@@ -51,6 +58,12 @@ pub mod selection_matrix;
 
 pub use availability::{
     ObservedAvailability, ObservedCatalog, ObservedCatalogCache, ObservedModel, now_unix_ms,
+};
+pub use candidate_policy::{
+    CandidateAvailability, CandidateCredential, CandidateDecision, CandidateExclusion, CandidateId,
+    CandidatePolicyPort, CandidateQuota, CandidateRelation, CandidateRequest, CandidateRequirement,
+    CandidateUnavailable, ExcludedCandidate, ExclusionCategory, ExclusionCode, QuotaState,
+    RankedCandidate, RequirementAnswer, RequirementState, select_candidates,
 };
 pub use identity::{
     CanonicalModel, RegistrySnapshot, SnapshotProvenance, model_display_name, snapshot_report,
