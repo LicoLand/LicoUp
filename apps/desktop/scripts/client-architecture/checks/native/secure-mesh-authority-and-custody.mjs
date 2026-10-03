@@ -424,6 +424,18 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
   const codexAppServerFacadeSource = await readText(
     "crates/licoup-native/src/platform/codex_app_server.rs"
   );
+  // The Codex app-server protocol identity belongs to the Codex adapter package:
+  // its app-server contract declares the wire that package's driver speaks, and
+  // the host facade re-exports that constant for the driver leaves that execute
+  // it. The transport identity is read from its owning package, while the host
+  // keeps the process half the assertions below still require.
+  const codexAppServerProtocolSource = await readJoinedText([
+    "crates/licoup-agent-codex/src/app_server.rs",
+    ...await collectSourceFiles(
+      "crates/licoup-agent-codex/src/app_server",
+      ".rs"
+    ),
+  ]);
   const codexAppServerRustSource = await readJoinedText([
     "crates/licoup-native/src/platform/codex_app_server.rs",
     ...await collectSourceFiles(
@@ -441,7 +453,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     runtimeAdaptersRustSource.includes("codex_app_server::execute") &&
     runtimeAdaptersRustSource.includes("nativeSessionId") &&
     runtimeAdaptersRustSource.includes("approvalOwner") &&
-    codexAppServerRustSource.includes('"codex-app-server-stdio-jsonrpc"') &&
+    codexAppServerProtocolSource.includes('"codex-app-server-stdio-jsonrpc"') &&
     codexAppServerRustSource.includes('"thread/start"') &&
     codexAppServerRustSource.includes('"thread/resume"') &&
     codexAppServerRustSource.includes('"turn/start"') &&

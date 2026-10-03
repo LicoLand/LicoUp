@@ -248,7 +248,7 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
     ["7e16ee355cb6", "Detach a source-declared caller-prepared std Command with platform process-group flags; the selected program cannot be inferred from the receiver name alone."],
   ]),
   ...entries(N + "platform/mcp_service_process.rs", parameter("binary: Option<&Path>"), [
-    ["25b8c55d297b", "Run the MCP service generation the installed package store selects, supplying the owning CLI and selected home without linking the service into the kernel; a caller-supplied binary must canonicalize to that generation entry."],
+    ["25b8c55d297b", "Run the MCP service generation the installed package store selects, supplying the owning CLI and selected home without linking the service into the kernel: start, stop, reload and reconcile all go through that generation's own program, which owns the service's writer lease, while this module keeps the lease naming the generation, its measured payload digest and its callers. The install record's content digest is the approval, and the payload digest measured at selection is handed to that program, so bytes that no longer measure the same are refused rather than started; a caller-supplied binary must canonicalize to that generation entry."],
   ]),
   ...entries(N + "platform/openclaw_driver/probe.rs", parameter("executable: &str"), [
     ["298e735358b7", "Construct OpenClaw's bounded capability probe from the selected local executable with the source-owned untrusted-Agent preparation."],
