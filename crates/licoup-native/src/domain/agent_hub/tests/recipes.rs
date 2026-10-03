@@ -346,11 +346,19 @@ fn capabilities(
     }
 }
 
-fn synthetic_channel(id: &str, kind: &str, manager: &str) -> crate::domain::agent_hub::contract::InstallChannel {
+fn synthetic_channel(
+    id: &str,
+    kind: &str,
+    manager: &str,
+) -> crate::domain::agent_hub::contract::InstallChannel {
     crate::domain::agent_hub::contract::InstallChannel {
         id: id.to_string(),
         kind: kind.to_string(),
-        oses: vec!["macos".to_string(), "linux".to_string(), "windows".to_string()],
+        oses: vec![
+            "macos".to_string(),
+            "linux".to_string(),
+            "windows".to_string(),
+        ],
         architectures: Vec::new(),
         priority: 10,
         official_recommended: true,
@@ -402,12 +410,19 @@ fn the_hub_presents_a_vendor_binary_before_a_toolchain_channel() {
         .iter()
         .find(|agent| agent.id == "codex")
         .unwrap();
-    let offered = selector::available_channels(codex, &capabilities("macos", "aarch64", &["homebrew", "npm"]));
+    let offered = selector::available_channels(
+        codex,
+        &capabilities("macos", "aarch64", &["homebrew", "npm"]),
+    );
     let kinds = offered
         .iter()
         .map(|channel| channel.kind.as_str())
         .collect::<Vec<_>>();
-    assert_eq!(kinds.first().copied(), Some("official-artifact"), "{kinds:?}");
+    assert_eq!(
+        kinds.first().copied(),
+        Some("official-artifact"),
+        "{kinds:?}"
+    );
     let classes = offered
         .iter()
         .map(|channel| crate::domain::agent_hub::contract::channel_class(channel))
@@ -456,7 +471,10 @@ fn a_host_without_node_offers_no_npm_channel_and_no_failing_recipe() {
 
 #[test]
 fn a_toolchain_only_recipe_is_marked_and_never_recommended() {
-    let npm_only = synthetic_recipe("synthetic-npm", vec![synthetic_channel("npm", "npm", "npm")]);
+    let npm_only = synthetic_recipe(
+        "synthetic-npm",
+        vec![synthetic_channel("npm", "npm", "npm")],
+    );
     let without_node = capabilities("linux", "x86_64", &[]);
     assert!(selector::available_channels(&npm_only, &without_node).is_empty());
     assert!(selector::toolchain_only(&npm_only));
@@ -480,12 +498,18 @@ fn a_toolchain_only_recipe_is_marked_and_never_recommended() {
 fn a_vendor_binary_installs_without_a_developer_toolchain() {
     let binary_only = synthetic_recipe(
         "synthetic-binary",
-        vec![synthetic_channel("official-artifact", "official-artifact", "none")],
+        vec![synthetic_channel(
+            "official-artifact",
+            "official-artifact",
+            "none",
+        )],
     );
     let bare_host = capabilities("linux", "x86_64", &[]);
     let selected = selector::select_channel(&binary_only, &bare_host).unwrap();
     assert_eq!(selected.channel.kind, "official-artifact");
-    assert!(!crate::domain::agent_hub::contract::channel_requires_developer_toolchain(selected.channel));
+    assert!(
+        !crate::domain::agent_hub::contract::channel_requires_developer_toolchain(selected.channel)
+    );
     assert!(!selector::toolchain_only(&binary_only));
     assert!(selector::first_launch_eligible(&binary_only, &bare_host));
 }
