@@ -383,6 +383,11 @@ fn the_turn_event_port_emits_nothing_until_the_host_installs_it() {
 #[test]
 fn the_replay_arm_refuses_an_adapter_this_package_does_not_carry() {
     assert!(crate::replay::replay_arm("antigravity").is_ok());
-    let refused = crate::replay::replay_arm("cursor").unwrap_err();
+    // An adapter this package does not carry is refused rather than defaulted,
+    // so a fixture can never pass against a parser that was never constructed.
+    let refused = match crate::replay::replay_arm("cursor") {
+        Ok(_) => panic!("a foreign adapter must not get an arm"),
+        Err(error) => error,
+    };
     assert!(refused.contains("cursor"), "{refused}");
 }

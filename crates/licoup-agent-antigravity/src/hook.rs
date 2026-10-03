@@ -6,11 +6,11 @@
 //! just ran, so the client can resume exactly that conversation later.
 //!
 //! The hook used to be a generated `/bin/sh` script that piped its payload into
-//! `python3`. That placed an interpreter between the vendor client and this
-//! package: a machine without `python3` silently lost the conversation identity,
-//! and the interpreter's presence was never part of LicoUp's declared runtime.
-//! This module is that hook, in the package's own program, with no interpreter
-//! and no third program in the path.
+//! a Python interpreter. That placed a second program between the vendor client
+//! and this package: a machine without that interpreter silently lost the
+//! conversation identity, and its presence was never part of LicoUp's declared
+//! runtime. This module is that hook, in the package's own program, with no
+//! interpreter and no third program in the path.
 //!
 //! # What it writes
 //!
@@ -47,8 +47,8 @@ pub const VENDOR_CONVERSATION_ENV: &str = "ANTIGRAVITY_CONVERSATION_ID";
 pub enum HookOutcome {
     /// The identity was recovered and the receipt was written.
     Recorded,
-    /// No identity was available; an existing receipt was kept and nothing was
-    /// written.
+    /// No identity this run resolved; the one a previous writer bound was kept
+    /// (and rewritten owner-only) rather than replaced.
     KeptExisting,
     /// No identity was available and there was nothing to keep.
     NoIdentity,
@@ -90,9 +90,9 @@ pub fn receipt_path() -> Option<PathBuf> {
 ///
 /// The identity is resolved by the parser's own rule over the payload, and the
 /// vendor environment and the existing receipt are the two compatibility
-/// fallbacks the driver has always applied. Nothing is written when no identity
-/// resolves, so the receipt never carries an empty conversation over one a
-/// previous writer bound.
+/// fallbacks the driver has always applied. Nothing is ever written when no
+/// identity resolves at all, so the receipt never carries an empty conversation
+/// over one a previous writer bound.
 pub fn record(path: &Path, payload: &str) -> io::Result<HookOutcome> {
     record_with_environment(path, payload, vendor_environment_identity().as_deref())
 }
@@ -106,20 +106,30 @@ pub fn record_with_environment(
     payload: &str,
     vendor_environment_id: Option<&str>,
 ) -> io::Result<HookOutcome> {
-    let recovered = crate::parser::parse_hook_receipt(payload)
-        .or_else(|| {
-            vendor_environment_id
-                .map(str::trim)
-                .filter(|value| crate::parser::valid_session_id(value))
-                .map(str::to_owned)
-        })
-        .or_else(|| existing_receipt_identity(path));
-    let Some(conversation_id) = recovered else {
-        return Ok(if path.is_file() {
-            HookOutcome::KeptExisting
-        } else {
-            HookOutcome::NoIdentity
-        });
+    // The order is the writer order this host has always applied: this run's
+    // payload first, the vendor environment second, and an identity a previous
+    // writer already bound third. The third answer rewrites the receipt rather
+    // than leaving it untouched, which is what narrows a receipt an older client
+    // left group- or world-readable to owner-only.
+    let (conversation_id, kept_existing) = match crate::parser::parse_hook_receipt(payload) {
+        Some(recovered) => (recovered, false),
+        None => match vendor_environment_id
+            .map(str::trim)
+            .filter(|value| crate::parser::valid_session_id(value))
+            .map(str::to_owned)
+        {
+            Some(recovered) => (recovered, false),
+            None => match existing_receipt_identity(path) {
+                Some(recorded) => (recorded, true),
+                None => {
+                    return Ok(if path.is_file() {
+                        HookOutcome::KeptExisting
+                    } else {
+                        HookOutcome::NoIdentity
+                    });
+                }
+            },
+        },
     };
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -130,7 +140,11 @@ pub fn record_with_environment(
     let temporary = path.with_extension("json.hook-tmp");
     write_private(&temporary, &json!({ "conversationId": conversation_id }))?;
     fs::rename(&temporary, path)?;
-    Ok(HookOutcome::Recorded)
+    Ok(if kept_existing {
+        HookOutcome::KeptExisting
+    } else {
+        HookOutcome::Recorded
+    })
 }
 
 /// The identity the vendor's own environment exports, when the payload had none.

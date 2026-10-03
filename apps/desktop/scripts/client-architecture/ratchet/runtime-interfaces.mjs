@@ -46,7 +46,7 @@ const SOURCES = Object.freeze({
   [DR + "acp_session_transport/command.rs"]: "b16fc8b4383c2b27693417d311200d15fefd047c8929be51d9bf98dc6305da9d",
   [DR + "local_service/process.rs"]: "40c1858f9ddf63679d771bb3f38ec4401ce7e75aa957ff29488ab3154117b9d9",
   [N + "platform/antigravity_driver/auth.rs"]: "cf7f6d1607aef2f200b2cb075d5f05a99ff482555ef57d7d77ce6a8c54621bfa",
-  [N + "platform/antigravity_driver/execution.rs"]: "646d01cfd0c377272d4c51a368a7777fd004583682e368e3cb380af7127a4c69",
+  [N + "platform/antigravity_driver/execution.rs"]: "f1c00ca0af5f89b35593f7fa98865c57f5333f232027f2e5df7588464c615deb",
   [N + "platform/antigravity_driver/probe.rs"]: "75c62a13bccda44854d39b98ba41eaf2a146f2e0f64fed7b98edfc7e8b9972ae",
   [N + "platform/claude_code_driver/command.rs"]: "d5261fa6577d9ddae24027b1b58a165d239fe3122b7b648cae50256c9ee65d6d",
   [N + "platform/claude_code_driver/probe.rs"]: "490b5c591d9d65a1714116d75198cb93b604be1b11ad5cf29f333291a14b8c29",

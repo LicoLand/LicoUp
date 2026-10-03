@@ -78,7 +78,7 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     licoup_agent_antigravity::port::execution::install(
         licoup_agent_antigravity::port::execution::ExecutionPort {
             subagent_caller_context: subagent_caller_context,
-            admits_execution: platform::antigravity_admits_execution,
+            admits_execution: admits_antigravity_execution,
         },
     )
 }
@@ -95,6 +95,25 @@ fn subagent_caller_context() -> Option<String> {
         return None;
     }
     Some(provider)
+}
+
+/// The composition's answer for the Antigravity adapter package's admission
+/// query: this host's own close-admission barrier.
+///
+/// The barrier is the durable record a maintenance switch holds while it changes
+/// installed state, and it lives in the domain layer. The answer is composed here
+/// because that is where a platform port may be joined to a domain fact — the
+/// package asks the port, and a turn launched under the barrier is refused rather
+/// than started against a client that may be replacing it. A data root with no
+/// record is idle: reading creates nothing. An unreadable record refuses, exactly
+/// as the barrier's owner states.
+fn admits_antigravity_execution() -> bool {
+    let Ok(data_root) = licoup_foundation::platform::paths::portable_data_dir() else {
+        return false;
+    };
+    domain::work_admission::WorkAdmission::open(data_root)
+        .barrier()
+        .is_ok_and(|barrier| barrier.is_none())
 }
 
 /// The composition's answer for the package-generation admission port: the

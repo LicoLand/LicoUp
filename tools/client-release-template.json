@@ -66,6 +66,7 @@
     "exactDraftAssetSetRequired": true,
     "independentPackageAssets": {
       "payloadRoles": [
+        "antigravity-adapter-package-payload",
         "codex-adapter-package-payload",
         "mcp-package-payload",
         "package-payload"
