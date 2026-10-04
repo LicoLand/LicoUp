@@ -487,8 +487,12 @@ impl ConversationService {
                 )?;
                 let pairs = self.profile_projection_pairs(conversation_id)?;
                 let authority = super::production_snapshot_authority();
-                let snapshots =
-                    super::project_profile_snapshots(conversation_id, &pairs, &authority);
+                let snapshots = super::project_profile_snapshots(
+                    conversation_id,
+                    &pairs,
+                    &authority,
+                    &crate::workflow_host::ProductionModelFacts,
+                );
                 let candidates =
                     super::rank_candidates(snapshots, &filters).map_err(anyhow::Error::msg)?;
                 Ok(json!({
@@ -1869,39 +1873,13 @@ pub(crate) fn route_receipt(
     conversation_id: &str,
     snapshots: &[super::MembershipProfileSnapshot],
 ) -> Value {
-    json!({
-        "conversationId": conversation_id,
-        "sourceRevisions": [
-            {"source": "targets", "revision": "read-only-v1"},
-            {"source": "nativeCapabilities", "revision": "v0.0.1"},
-            {"source": "providerModelPricing", "revision": "catalog-v1"},
-            {"source": "agentIntelligenceCatalog", "revision": "catalog-v1"},
-            {"source": "skillHub", "revision": "request-snapshot-v1"},
-            {"source": "assistantWorkflowAuthoringBundle", "revision": "v1"},
-        ],
-        "rankedMembershipIds": snapshots
-            .iter()
-            .map(|snapshot| snapshot.membership_id.clone())
-            .collect::<Vec<_>>(),
-        "candidates": snapshots.iter().map(|snapshot| json!({
-            "membershipId": snapshot.membership_id,
-            "profileRevision": snapshot.intent_revision,
-            "responsibility": snapshot.responsibility,
-            "model": snapshot.model,
-            "capabilities": snapshot.capabilities,
-            "skills": snapshot.skills,
-            "environment": snapshot.environment,
-            "readiness": snapshot.readiness,
-            "inputPriceUsdPerMillionTokens": snapshot.price_input_usd_per_million_tokens,
-            "outputPriceUsdPerMillionTokens": snapshot.price_output_usd_per_million_tokens,
-            "codingScore": snapshot.intelligence_score,
-            "taskTags": snapshot.task_tags,
-            "intelligence": snapshot.model.as_deref().and_then(crate::domain::agent_intelligence_catalog::project_allowlisted_model),
-            "reliabilityClass": snapshot.reliability_class,
-            "latencyClass": snapshot.latency_class,
-            "authority": snapshot.authority,
-        })).collect::<Vec<_>>(),
-    })
+    // One receipt shape, owned by the runtime that consumes it; this host
+    // supplies only its own answer for the model facts inside it.
+    licoup_workflow_runtime::ports::route_receipt(
+        conversation_id,
+        snapshots,
+        &crate::workflow_host::ProductionModelFacts,
+    )
 }
 
 fn merge_live_turn(live_turns: &mut Vec<Value>, turn: Value) {

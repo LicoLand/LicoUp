@@ -5,13 +5,13 @@
 //! Collects per-node outcomes for graph pause/stop.
 //! Re-enters execution results with source identity and pre-effect validity checks.
 
-use super::adapter::AdapterExecutionStatus;
-use super::control::{ControlOperation, VerifiedPrincipal};
-use super::node::{
+use crate::adapter::AdapterExecutionStatus;
+use crate::control::{ControlOperation, VerifiedPrincipal};
+use crate::node::{
     CancellationFacts, NodeExecutionError, NodeExecutionOutcome, NodeExecutionReceipt, NodeFacade,
     PauseResult, SteerResult, StopResult,
 };
-use super::routing::{
+use crate::routing::{
     ActivationRule, ChannelKind, FairDispatchQueue, FrozenTargets, NodeFeatureIndex,
     NodeLifecycleState, QueueCapacityExceeded, RecipientEffectStatus, SubscriptionPredicate,
     SubscriptionRegistry, SubscriptionScope,
@@ -736,10 +736,10 @@ impl ContinuousNodeDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::workflow_runtime::adapter::{
+    use crate::adapter::{
         CooperativeDrainAdapter, SyntheticCapabilityAdapter,
     };
-    use crate::domain::workflow_runtime::routing::{
+    use crate::routing::{
         DeliveryMode, FrozenTargetRecipient, QueueBounds, Subscription, TargetSelector,
     };
     use serde_json::json;

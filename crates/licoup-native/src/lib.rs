@@ -53,6 +53,7 @@ pub(crate) mod host_lane;
 /// turn-event port the Codex adapter package asks for. A process that never
 /// calls it keeps every port fail-closed.
 pub fn install_environment_ports() -> Result<(), &'static str> {
+    install_workflow_host_ports();
     domain::conversation::history::install_open_codex_rollouts(
         licoup_agent_codex::observation::open_rollout_paths,
     )?;
@@ -68,6 +69,24 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     // agent-execution port, and a host that never installs this port leaves the
     // package's emitters silent rather than inventing a consumer.
     licoup_agent_codex::port::turn_event::install(platform::codex_turn_event_port())
+}
+
+/// The workflow composition: this host's answers for the ports
+/// `licoup-workflow-runtime` declares.
+///
+/// It lives at the crate root for the same reason [`target_port`] and
+/// [`host_lane`] do: the extracted runtime declares the port, this host owns
+/// the fact, and neither layer has to know the other. Construction of the
+/// workflow service installs it, so the composition is reached from every
+/// entry point and never from inside a platform module.
+pub(crate) mod workflow_host;
+
+/// Install this host's answers for the workflow runtime's ports.
+///
+/// Idempotent: the first installation wins, and a process that never calls it
+/// keeps every workflow port fail-closed.
+pub fn install_workflow_host_ports() {
+    workflow_host::install_workflow_host_ports();
 }
 
 /// The composition's answer for the package-generation admission port: the

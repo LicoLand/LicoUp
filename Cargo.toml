@@ -18,6 +18,7 @@ members = [
     "crates/licoup-extension-contracts",
     "crates/licoup-project",
     "crates/licoup-workflow",
+    "crates/licoup-workflow-runtime",
     "crates/licoup-workflow-store",
     "crates/licoup-conversation",
     "crates/licoup-mcp",

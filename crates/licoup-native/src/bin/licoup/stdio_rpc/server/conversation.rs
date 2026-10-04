@@ -2453,13 +2453,27 @@ pub(super) fn strategy_turn_port(
     let cancel_runtime = runtime.clone();
     let run_dir = portable_data_dir;
     licoup_native::domain::workflow_runtime::ActorTurnPort {
-        open: Arc::new(move |params| open_runtime.open_admitted_turn(params)),
+        open: Arc::new(move |params| {
+            open_runtime
+                .open_admitted_turn(params)
+                .map_err(turn_dispatch_error)
+        }),
         run: Arc::new(move |handle, params| {
-            run_runtime.run_open_turn(handle, params, run_dir.clone())
+            run_runtime
+                .run_open_turn(handle, params, run_dir.clone())
+                .map_err(turn_dispatch_error)
         }),
         cancel: Arc::new(move |handle| cancel_runtime.cancel_opened_turn(handle)),
         abandon: Arc::new(move |handle| runtime.abandon_turn(handle)),
     }
+}
+
+/// The actor turn port carries the fact that the lane could not be reached;
+/// the adapter's own taxonomy stays with the adapter that produced it.
+fn turn_dispatch_error(
+    error: RuntimeAdapterError,
+) -> licoup_native::domain::workflow_runtime::ActorTurnError {
+    licoup_native::domain::workflow_runtime::ActorTurnError::dispatch_failed(error.to_string())
 }
 
 /// The designated-Assistant notice port: a notice already durable on the

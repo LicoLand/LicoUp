@@ -5,12 +5,12 @@
 //! Truthfully enforces adapter capabilities without faking pause or steer via process kill.
 //! Preserves requested, acknowledged, and effect-unknown cancellation facts separately.
 
-use super::adapter::{
+use crate::adapter::{
     AdapterError, CancelOutcome, NodeCapabilityAdapter, NodeInvocation, PauseOutcome,
     ResumeOutcome, SingleWriterSessionRegistry, SteerOutcome,
 };
-use super::control::VerifiedPrincipal;
-use super::routing::{NodeCapability, NodeLifecycleState, NodeMetadata};
+use crate::control::VerifiedPrincipal;
+use crate::routing::{NodeCapability, NodeLifecycleState, NodeMetadata};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -659,7 +659,7 @@ impl NodeFacade {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::workflow_runtime::adapter::{
+    use crate::adapter::{
         AdapterExecutionStatus, CooperativeDrainAdapter, SyntheticCapabilityAdapter,
     };
     use serde_json::json;

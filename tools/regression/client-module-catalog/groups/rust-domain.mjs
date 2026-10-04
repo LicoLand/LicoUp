@@ -6,15 +6,35 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Immutable strategy packages, compiled Graphs, durable reducer/outbox, and authorized effects",
       inputs: [
+        "crates/licoup-workflow-runtime/**",
+        "crates/licoup-workflow/**",
         "crates/licoup-native/src/domain/workflow_runtime/**",
         "crates/licoup-native/src/domain/workflow_store/**",
-        "crates/licoup-workflow/**",
+        "crates/licoup-native/src/workflow_host.rs",
         "crates/licoup-foundation/src/core/safe_archive.rs",
         "crates/licoup-foundation/src/core/safe_archive/**",
         "crates/licoup-native/src/platform/process_sandbox/strategy.rs",
         "crates/licoup-native/src/platform/strategy_runtime/**",
       ],
-      command: rustLayer("domain::workflow_"),
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-workflow-runtime/Cargo.toml", "--lib"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "rust.domain.adaptive-flywheel.store",
+      kind: "rust-domain",
+      summary: "Durable strategy state, command queue, subscriptions and admission over one SQLite authority",
+      inputs: [
+        "crates/licoup-workflow-store/**",
+        "crates/licoup-workflow/**",
+      ],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-workflow-store/Cargo.toml", "--lib"],
+        10 * 60_000,
+      ),
     }),
   defineModule({
       id: "rust.domain.project-identity",

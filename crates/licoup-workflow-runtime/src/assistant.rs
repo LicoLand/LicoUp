@@ -9,10 +9,11 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
-use crate::domain::client_conversation::{
-    CandidateFilters, LICOUP_GUIDE_SKILL_ID, MembershipProfileSnapshot, ProfileResponsibility,
-    rank_candidates,
+use licoup_conversation::{
+    LICOUP_GUIDE_SKILL_ID, MembershipProfileSnapshot, ProfileResponsibility,
 };
+
+use crate::ports::{CandidateFilters, ModelFactsPort, rank_candidates, route_receipt};
 use licoup_workflow::{
     PreflightDiagnostic, WorkflowDiagnosticCode, WorkflowDiagnosticRecovery,
     WorkflowDiagnosticStage,
@@ -20,7 +21,7 @@ use licoup_workflow::{
 
 use licoup_workflow::{BindingKind, GraphStateKind, WorkflowDefinition, validate_workflow_value};
 
-use crate::domain::workflow_store::BindingValue;
+use licoup_workflow_store::BindingValue;
 
 pub const ASSISTANT_TEMPORARY_DEFINITION_PREFIX: &str = "assistant-temporary";
 
@@ -90,6 +91,7 @@ pub fn preflight_assistant_graph(
     bindings: &[BindingValue],
     snapshots: &[MembershipProfileSnapshot],
     filters: &CandidateFilters,
+    model_facts: &dyn ModelFactsPort,
 ) -> Result<AssistantPreflight, PreflightFailure> {
     let validation = validate_workflow_value(workflow);
     let mut checks = validation.diagnostics;
@@ -333,7 +335,7 @@ pub fn preflight_assistant_graph(
             .then_with(|| left.ordinal.cmp(&right.ordinal))
             .then_with(|| left.value_id.cmp(&right.value_id))
     });
-    let route_receipt = crate::domain::client_conversation::route_receipt(conversation_id, &ranked);
+    let route_receipt = route_receipt(conversation_id, &ranked, model_facts);
     let digest_payload = json!({
         "workflow": definition,
         "bindings": canonical_bindings,
@@ -584,6 +586,7 @@ mod tests {
             }],
             &snapshots,
             &CandidateFilters::default(),
+            crate::ports::host_ports().model.as_ref(),
         )
         .unwrap();
         assert_eq!(admitted.bindings[0].value_id, "membership:actor");
@@ -610,6 +613,7 @@ mod tests {
             &[],
             &[assistant],
             &CandidateFilters::default(),
+            crate::ports::host_ports().model.as_ref(),
         )
         .unwrap_err();
         assert!(
@@ -639,6 +643,7 @@ mod tests {
             &[],
             &[],
             &CandidateFilters::default(),
+            crate::ports::host_ports().model.as_ref(),
         )
         .unwrap_err();
         assert_eq!(failure.code, "graph_preflight_rejected");
@@ -680,6 +685,7 @@ mod tests {
             }],
             &snapshots,
             &CandidateFilters::default(),
+            crate::ports::host_ports().model.as_ref(),
         )
         .unwrap_err();
         assert!(failure.diagnostics.iter().any(|diagnostic| {

@@ -25,9 +25,9 @@ use licoup_workflow::{PendingCallback, RunCommand, RunSnapshot, StrategyRunStatu
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::domain::agent_usage::workflow_ledger;
-use crate::domain::workflow_runtime::adapter::SingleWriterSessionRegistry;
-use crate::domain::workflow_store::{StrategyAuthorization, StrategyDefinition};
+use crate::adapter::SingleWriterSessionRegistry;
+use crate::ports::host_ports;
+use licoup_workflow_store::{StrategyAuthorization, StrategyDefinition};
 
 // ============================================================================
 // Group B Typed Integration Seams & Gap Tracking
@@ -149,7 +149,7 @@ impl LedgerEvolutionCostPort {
 
 impl EvolutionCostPort for LedgerEvolutionCostPort {
     fn query_cost_facts(&self, portable_root: &Path, run_id: &str) -> Option<CallbackCostFacts> {
-        let report_result = workflow_ledger::workflow_report(&json!({
+        let report_result = host_ports().usage.workflow_report(&json!({
             "stateRoot": portable_root,
             "runId": run_id,
         }));
@@ -1522,7 +1522,7 @@ mod tests {
             WorkflowMetadata,
         };
         StrategyDefinition {
-            summary: crate::domain::workflow_store::StrategyDefinitionSummary {
+            summary: licoup_workflow_store::StrategyDefinitionSummary {
                 definition_id: "evolution-test".into(),
                 revision_digest: "rev-1".into(),
                 semantics_digest: "sem-1".into(),

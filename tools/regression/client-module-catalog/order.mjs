@@ -198,6 +198,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "flutter.contract.data-home",
   "rust.domain.mcp-adapter",
   "rust.domain.adaptive-flywheel",
+  "rust.domain.adaptive-flywheel.store",
   "rust.domain.subagents",
   "rust.domain.agent-intelligence-catalog",
   "rust.domain.agent-resource-usage",
