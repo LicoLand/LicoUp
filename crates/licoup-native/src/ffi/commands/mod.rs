@@ -6092,6 +6092,49 @@ fn build_command_table() -> CommandTable {
         handler: project::handle_project_list,
         help: "List the registered authorized project identities",
     });
+    table.register_command(CommandSpec {
+        source_module: "project.rs",
+        handler_name: "handle_project_import_preview",
+        path: &["project", "import-preview"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "stdin-json",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Json,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: project::handle_project_import_preview,
+        help: "Report what one canonical plan document would change, before it changes anything",
+    });
+    table.register_command(CommandSpec {
+        source_module: "project.rs",
+        handler_name: "handle_project_import_apply",
+        path: &["project", "import-apply"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "stdin-json",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Json,
+                required: true,
+            },
+            OptionSpec {
+                name: "expected-revision",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: project::handle_project_import_apply,
+        help: "Apply one canonical plan document over the source revision the caller previewed",
+    });
     table
 }
 

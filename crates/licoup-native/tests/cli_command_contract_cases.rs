@@ -2813,6 +2813,20 @@ fn route_authorities() -> Vec<RouteAuthority> {
         &["project list"],
         Exact,
     );
+    add_authority_routes(
+        &mut routes,
+        "project.rs",
+        "handle_project_import_preview",
+        &["project import-preview"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "project.rs",
+        "handle_project_import_apply",
+        &["project import-apply"],
+        Options,
+    );
     for route in &mut routes {
         route.required = match route.path {
             "skill get" | "skill visibility set" => &[("skill-id", Text)],
@@ -2876,9 +2890,13 @@ const fn boolean_option(name: &'static str) -> OptionAuthority {
 fn options_for_route(path: &str) -> Vec<OptionAuthority> {
     use RequiredArgumentKind::{Json, Text};
     let options: &[OptionAuthority] = match path {
-        "rpc call" | "subagents execute" | "project register" => {
+        "rpc call" | "subagents execute" | "project register" | "project import-preview" => {
             &[value_option("stdin-json", Json, true)]
         }
+        "project import-apply" => &[
+            value_option("stdin-json", Json, true),
+            value_option("expected-revision", Text, true),
+        ],
         "mcp start" | "mcp reload" => &[value_option("binary", Text, false)],
         "gateway client-token" => &[value_option("agent", Text, true)],
         "gateway service status"
