@@ -10,6 +10,8 @@ mod commit;
 #[cfg(test)]
 mod conformance;
 mod control;
+#[cfg(test)]
+mod dispatch_composition;
 mod queue;
 mod store;
 mod strategy_types;
