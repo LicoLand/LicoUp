@@ -35,6 +35,7 @@ use super::pairwise_session::{mobile_relay_pairwise_store, mobile_relay_pairwise
 use super::support::{bool_param, text_param};
 
 mod cleanup;
+mod cleanup_authority;
 mod config_store;
 mod inventory;
 mod persistence;
@@ -50,6 +51,7 @@ mod self_test;
 mod tests;
 
 pub(in crate::domain::mobile_relay) use cleanup::*;
+pub(in crate::domain::mobile_relay) use cleanup_authority::*;
 pub(in crate::domain::mobile_relay) use config_store::*;
 pub(in crate::domain::mobile_relay) use inventory::*;
 pub(in crate::domain::mobile_relay) use persistence::*;
@@ -105,6 +107,12 @@ pub(crate) fn ensure_secure_mesh_protected_operation_allowed() -> Result<()> {
 
 pub fn e2ee_secret_store_cleanup(params: &Value) -> Result<Value> {
     cleanup::e2ee_secret_store_cleanup_in(params)
+}
+
+/// Read-only projection of the bounded custody cleanup inventory, the subject
+/// it belongs to and the confirmation contract a cleanup would require.
+pub fn e2ee_secret_store_cleanup_inventory() -> Result<Value> {
+    cleanup_authority::custody_cleanup_inventory_report()
 }
 
 pub fn e2ee_secret_store_self_test(params: &Value) -> Result<Value> {
