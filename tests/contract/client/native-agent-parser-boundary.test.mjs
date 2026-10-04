@@ -4,7 +4,7 @@ import test from 'node:test';
 
 // The per-Agent parsers the host still holds and the composition that names
 // them; the shared adapter contract, the registry lookup, the replay harness
-// and the lifecycle authority moved to `licoup-agent-adapter-sdk`. Two Agents
+// and the lifecycle authority moved to `licoup-agent-adapter-sdk`. Four Agents
 // have moved further: their vendor protocol, wire vocabulary and replay arm are
 // their own package's, and the composition names the package instead of keeping
 // a second copy.
@@ -42,7 +42,7 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     composition.indexOf('/// The parser registrations this host injects'),
   );
   // Every entry names its Agent's declaration exactly once, and none inherits
-  // another Agent's answer. Two of the thirteen are their package's own
+  // another Agent's answer. Four of the thirteen are their package's own
   // registration constant, because the crate that owns the parser also owns
   // that parser's answers.
   const hostedEntries =
@@ -54,11 +54,9 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
   // The queries a reader reaches are answered by the Agent that owns the fact:
   // Hermes' normalized transitions, and the exact-resume identity of the four
   // Agents the Subagent mesh dispatches. Every other entry stays declared and
-  // unanswered rather than inheriting a neighbouring Agent's answer. Codex and
-  // Antigravity answer both queries from their own packages, so their answers
-  // are read where they live instead of here.
-  // Thirteen entries, one per Agent: eleven are declared here and two are the
-  // package's own registration. None inherits another Agent's answer.
+  // unanswered rather than inheriting a neighbouring Agent's answer. The four
+  // packaged Agents answer both queries from their own packages, so their
+  // answers are read where they live instead of here.
   assert.equal(
     (registrations.match(/ParserRegistration::(?:unanswered|new)\(/g) ?? []).length,
      13 - packageAdapters.size);
@@ -102,25 +100,37 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     if (contract) entries.set(contract[1], chunk);
   }
   assert.equal(entries.size, 13 - Object.keys(packaged).length);
+  // The packaged parsers the composition still reads: a parser alias belongs
+  // exactly where this host parses that Agent's frames. Codex and the DeepSeek
+  // Harness are reached for their registration and their replay arm instead, so
+  // an alias for either would be a forwarding shell with no reader — which is
+  // what the compiler reports as an unused import.
+  const readParserAliases = new Set(['antigravity', 'cursor']);
   for (const adapter of adapters) {
     const source = packaged[adapter]
       ? readFileSync(packaged[adapter].parser, 'utf8')
       : readFileSync(`${parserRoot}/adapters/${adapter}.rs`, 'utf8');
     assert.match(source, /AdapterContract::new/);
     if (packaged[adapter]) {
-      // The package owns the parser, the declaration and the replay arm; the
-      // composition reads them through the package's own module and may not
-      // declare the module or retype the declaration a second time.
+      // The package owns the parser, the declaration and the replay arm. The
+      // composition reaches that Agent through the package's own crate, names
+      // the package's own REGISTRATION constant, may not declare the module,
+      // may not retype the declaration here, and keeps a parser alias only
+      // where it actually reads one.
       const crateName = packaged[adapter].crate;
-      // The composition names the alias it composes (the details differ per
-      // adapter only in the crate that sits behind it), and the registration
-      // line names the package's own REGISTRATION constant.
-      assert.match(composition,
-        new RegExp(`use licoup_agent_${adapter.replace('_harness', '')}::parser as ${adapter};`
-          .replace('codex', 'codex')));
+      const packageCrate = `licoup_agent_${crateName.replace('licoup-agent-', '')}::`;
+      assert.ok(composition.includes(packageCrate),
+        `${adapter} must be reached through ${crateName}`);
       assert.match(registrations,
-        new RegExp(`licoup_agent_${packaged[adapter].crate.replace('licoup-agent-', '')}::registration::REGISTRATION`));
+        new RegExp(`${packageCrate}registration::REGISTRATION`));
       assert.doesNotMatch(composition, new RegExp(`mod ${adapter};`));
+      assert.doesNotMatch(composition,
+        new RegExp(`AdapterContract::new\\("${adapter.replace('_harness', '-harness')}"`),
+        `${adapter}'s declaration is the package's, not a second one here`);
+      const alias =
+        `use licoup_agent_${adapter.replace('_harness', '')}::parser as ${adapter};`;
+      assert.equal(composition.includes(alias), readParserAliases.has(adapter),
+        `${adapter} keeps a package parser alias exactly where the host reads one`);
       continue;
     }
     assert.match(composition, new RegExp(`mod ${adapter};`));
