@@ -134,12 +134,16 @@ test("the receipt hook is a native package subcommand, not a generated script", 
   const program = await read(`${packageRoot}/bin/lico-agent-antigravity.rs`);
   assert.ok(program.includes('Some("receipt") => hook::main()'));
   // Comments may name the interpreter this replaces; the code may not invoke it.
-  const code = [hook, program]
-    .flatMap((source) => source.split("\n"))
-    .filter((line) => !line.trimStart().startsWith("//"))
-    .join("\n");
+  // Every file in the hook path is read through this one rule, so documenting
+  // the removal cannot fail the contract and a real invocation cannot hide.
+  const withoutComments = (source) =>
+    source
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("//"))
+      .join("\n");
+  const invoked = [hook, program].map(withoutComments).join("\n");
   for (const interpreter of ["python", "python3", "/bin/sh"]) {
-    assert.equal(code.includes(interpreter), false, interpreter);
+    assert.equal(invoked.includes(interpreter), false, interpreter);
   }
 
   const bridge = await read(`${driverRoot}/hooks.rs`);
@@ -148,10 +152,14 @@ test("the receipt hook is a native package subcommand, not a generated script", 
   assert.ok(bridge.includes("PACKAGE_PROGRAM"));
   assert.ok(bridge.includes("RECEIPT_SUBCOMMAND"));
   assert.ok(bridge.includes(retiredGeneratedScript));
-  assert.equal(bridge.includes("python3"), false);
+  assert.equal(withoutComments(bridge).includes("python3"), false);
   assert.equal(bridge.includes("write_hook_script"), false);
   const failure = await read("crates/licoup-native/src/platform/antigravity_driver/tests.rs");
-  assert.equal(failure.includes("python3"), false, "no fixture needs an interpreter");
+  assert.equal(
+    withoutComments(failure).includes("python3"),
+    false,
+    "no fixture needs an interpreter",
+  );
 
   // The package document ships the native entry and no interpreter asset.
   const manifest = JSON.parse(await read(`${packageRelease}/manifest.json`));
@@ -187,15 +195,35 @@ test("the package declares the ports its host answers", async () => {
   assert.ok(execution.includes(".ok_or(HostEffect::Uninstalled)"));
   assert.ok(turnEvent.includes("if let Some(port) = PORT.get()"));
 
-  // The host answers both ports from its own facts, and the admission answer is
-  // the close-admission barrier rather than a second policy.
+  // The host answers both ports from its own facts. The turn-event answer is the
+  // platform layer's; the execution admission answer is the crate root's,
+  // because composing the host's close-admission barrier is what the root owns
+  // rather than a second policy inside `platform`.
   const platform = await read("crates/licoup-native/src/platform/mod.rs");
   assert.ok(platform.includes("antigravity_turn_event_port"));
-  assert.ok(platform.includes("antigravity_admits_execution"));
-  assert.ok(platform.includes("WorkAdmission::open"));
   const composition = await read("crates/licoup-native/src/lib.rs");
-  assert.ok(composition.includes("licoup_agent_antigravity::port::execution::install"));
-  assert.ok(composition.includes("licoup_agent_antigravity::port::turn_event::install"));
+  assert.ok(composition.includes("licoup_agent_antigravity::port::turn_event::install("));
+  assert.ok(composition.includes("licoup_agent_antigravity::port::execution::install("));
+  // The execution port's admission field carries this host's own answer, read
+  // inside the Antigravity install call rather than another package's.
+  const [, antigravityInstall] = composition.split(
+    "licoup_agent_antigravity::port::execution::install(",
+  );
+  assert.ok(
+    antigravityInstall
+      ?.split("::port::execution::install(")[0]
+      .includes("admits_execution: admits_agent_execution,"),
+    "the Antigravity execution port carries the host's own admission answer",
+  );
+  // ... and that answer is the close-admission barrier, not a second policy.
+  const admissionAnswer = composition
+    .split("fn admits_agent_execution() -> bool {")[1]
+    ?.split("\n}\n")[0];
+  assert.ok(
+    admissionAnswer?.includes("WorkAdmission::open(") &&
+      admissionAnswer.includes(".barrier()"),
+    "the host's admission answer reads the close-admission barrier",
+  );
 
   // The driver reads admission before it starts any process, so the package
   // cannot bypass the host's idle-update admission.
