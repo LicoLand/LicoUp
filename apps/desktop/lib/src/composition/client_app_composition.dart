@@ -77,8 +77,7 @@ final class ClientAppComposition {
     CausalFrameTelemetry? telemetry,
     Stream<bool>? systemReduceMotionChanges,
     ClientCompositionSet compositionSet = ClientCompositionSet.full,
-    WorkControlGateway workControlGateway =
-        const UnavailableWorkControlGateway(),
+    WorkControlGateway? workControlGateway,
   }) {
     final resolvedTelemetry = telemetry ?? createOptInCausalFrameTelemetry();
     final layout = controller == null
@@ -86,6 +85,13 @@ final class ClientAppComposition {
         : BuiltInLayoutComposition.attach(catalog: controller.layoutCatalog);
     final resolvedController =
         controller ?? _createProductionController(layout);
+    // The work-control lane defaults to the controller's own native service, so
+    // the production root reaches the real manual-stop and force-stop owner.
+    // An injected gateway stays available for a caller that supplies a
+    // different lane; omitting it never silently keeps the fail-closed stub.
+    final resolvedWorkControlGateway =
+        workControlGateway ??
+        resolvedController.agentService.workControlGateway;
     AgentRenderAdapterRegistry.instance = AgentRenderAdapterRegistry(
       loadJson: DefaultAgentRenderAdapterJsonSource(
         dataDirectory: () async =>
@@ -106,7 +112,7 @@ final class ClientAppComposition {
       layout,
       resolvedTelemetry,
       compositionSet,
-      workControlGateway,
+      resolvedWorkControlGateway,
       systemReduceMotionChanges ??
           (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS
               ? const MacosReduceMotionChannel().changes
