@@ -18,6 +18,7 @@ use super::generated::{
     ContinuityVisibilityScope, ContinuityWake, ContinuityWriteEnvelope,
 };
 use serde_json::Value;
+use std::collections::BTreeSet;
 
 use super::lifecycle::suppresses_new_work;
 
@@ -726,6 +727,47 @@ pub fn admit_wake(wake: &ContinuityWake) -> Result<(), ContinuityFailure> {
     Ok(())
 }
 
+/// Whether a pending wake re-reads only sources the Goal already recorded.
+///
+/// A reminder exists so the Assistant looks again; it is not by itself new
+/// information. When no settlement arrived and every source the wake names is
+/// already recorded by the Goal — at the same revision, or the wake names none
+/// — reviewing it can only restate the status the Goal already holds. Such a
+/// wake is settled deterministically instead of paying for a model call, and a
+/// Goal that is still waiting keeps its responsibility, its revision and its
+/// reachable pause, resume and cancel controls.
+pub fn wake_repeats_recorded_sources(
+    wake: &ContinuityWake,
+    contract: &ContinuityGoalContract,
+    progress: &ContinuityGoalProgress,
+) -> bool {
+    if wake.settlement.is_some() {
+        return false;
+    }
+    let mut recorded: BTreeSet<(&str, i64)> = BTreeSet::new();
+    for source in contract
+        .source_intent_refs
+        .iter()
+        .chain(contract.criteria.iter().map(|item| &item.description_ref))
+        .chain(
+            progress
+                .criterion_evidence_refs
+                .iter()
+                .map(|item| &item.source),
+        )
+    {
+        recorded.insert((source.opaque_id.as_str(), source.source_revision));
+    }
+    wake.cause_refs.iter().all(|source| {
+        // The Goal naming itself, at or before its current revision, restates
+        // its own identity rather than reporting anything new.
+        (source.owner_kind == ContinuitySourceOwnerKind::Goal
+            && source.opaque_id == progress.goal_id
+            && source.source_revision <= progress.revision)
+            || recorded.contains(&(source.opaque_id.as_str(), source.source_revision))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -941,5 +983,84 @@ mod tests {
             .map(|item| item.criterion_id.as_str())
             .collect();
         assert_eq!(ids, vec!["kept"]);
+    }
+
+    fn reminder(settlement: Option<&str>, causes: Vec<ContinuitySourceRef>) -> ContinuityWake {
+        ContinuityWake {
+            logical_wake_id: "wake:goal:notes:4:review-due".into(),
+            goal_id: "goal:notes".into(),
+            cause_refs: causes,
+            due_at: Some(10),
+            review_policy: "review-due".into(),
+            goal_revision: 4,
+            epoch: 0,
+            host_generation: 1,
+            claim: None,
+            settlement: settlement.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn a_reminder_that_repeats_recorded_sources_decides_nothing() {
+        let (contract, progress) = stored(
+            "Draft the notes",
+            vec![criterion("criterion:notes-done", true, "exact-source")],
+        );
+        let recorded = criterion("criterion:notes-done", true, "exact-source").description_ref;
+        assert!(
+            wake_repeats_recorded_sources(
+                &reminder(None, vec![recorded.clone()]),
+                &contract,
+                &progress
+            ),
+            "a reminder re-reading a recorded source is pure status aggregation"
+        );
+        assert!(
+            wake_repeats_recorded_sources(&reminder(None, Vec::new()), &contract, &progress),
+            "a timer reminder names no new source"
+        );
+        let goal_self = ContinuitySourceRef {
+            owner_kind: ContinuitySourceOwnerKind::Goal,
+            opaque_id: progress.goal_id.clone(),
+            part_id: None,
+            span: None,
+            source_revision: progress.revision,
+            digest: format!("goal:{}:{}", progress.goal_id, progress.revision),
+            visibility_scope: ContinuityVisibilityScope::Goal,
+            validity: ContinuitySourceValidity::Current,
+        };
+        assert!(
+            wake_repeats_recorded_sources(&reminder(None, vec![goal_self]), &contract, &progress),
+            "the Goal naming itself is not new information"
+        );
+    }
+
+    #[test]
+    fn new_sources_and_settlements_always_earn_a_review() {
+        let (contract, progress) = stored(
+            "Draft the notes",
+            vec![criterion("criterion:notes-done", true, "exact-source")],
+        );
+        let mut unseen = criterion("criterion:notes-done", true, "exact-source").description_ref;
+        unseen.opaque_id = "event:user-correction".into();
+        assert!(
+            !wake_repeats_recorded_sources(&reminder(None, vec![unseen]), &contract, &progress),
+            "a wake naming an unrecorded source changes what the Assistant knows"
+        );
+        let mut newer = criterion("criterion:notes-done", true, "exact-source").description_ref;
+        newer.source_revision += 1;
+        assert!(
+            !wake_repeats_recorded_sources(&reminder(None, vec![newer]), &contract, &progress),
+            "a newer revision of a recorded source is new information"
+        );
+        let recorded = criterion("criterion:notes-done", true, "exact-source").description_ref;
+        assert!(
+            !wake_repeats_recorded_sources(
+                &reminder(Some("settlement:child"), vec![recorded]),
+                &contract,
+                &progress
+            ),
+            "a settled child result is a decision, not a reminder"
+        );
     }
 }
