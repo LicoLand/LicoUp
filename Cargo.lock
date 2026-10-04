@@ -2277,6 +2277,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-collaboration"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "licoup-conversation"
 version = "0.3.0"
 dependencies = [

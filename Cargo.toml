@@ -28,6 +28,7 @@ members = [
     "crates/licoup-extension-contracts",
     "crates/licoup-project",
     "crates/licoup-workflow",
+    "crates/licoup-collaboration",
     "crates/licoup-conversation",
     "crates/licoup-mcp",
     "crates/licoup-migrate",
