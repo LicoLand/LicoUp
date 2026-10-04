@@ -80,6 +80,11 @@ licoup-agent-kilo = { path = "../licoup-agent-kilo" }
 # the agent-execution port.
 licoup-agent-lico-agent = { path = "../licoup-agent-lico-agent" }
 licoup-agent-openclaw = { path = "../licoup-agent-openclaw" }
+# The OpenCode adapter package. Composition names it for its serve-protocol
+# parser registration, its replay arm and the execution-admission port the
+# client's own `opencode_driver` asks before it starts a turn, while the
+# extension host's binary route is completed by that same port.
+licoup-agent-opencode = { path = "../licoup-agent-opencode" }
 licoup-agent-runtime = { path = "../licoup-agent-runtime" }
 licoup-application = { path = "../licoup-application" }
 licoup-project = { path = "../licoup-project" }

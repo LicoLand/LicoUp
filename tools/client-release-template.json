@@ -80,6 +80,7 @@
         "kimi-adapter-package-payload",
         "hermes-adapter-package-payload",
         "lico-agent-adapter-package-payload",
+        "opencode-adapter-package-payload",
         "mcp-package-payload",
         "package-payload"
       ],

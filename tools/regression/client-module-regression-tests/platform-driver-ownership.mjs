@@ -1517,6 +1517,11 @@ test("OpenCode driver leaves retain exact tests and complete source ownership", 
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/platform/opencode_driver/continuity.rs",
   ])), [
+    // The OpenCode adapter package's own ownership contract reads this file: the
+    // package owns the serve protocol, and the driver that supervises the
+    // endpoint is where the host reads it, so a change here is a change to the
+    // claim that the host keeps no copy.
+    "regression.opencode-adapter-package-source-bundle",
     "architecture.client-boundaries",
     "rust.platform.opencode-driver.serve-transport",
   ]);

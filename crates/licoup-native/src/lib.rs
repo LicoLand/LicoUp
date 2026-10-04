@@ -49,10 +49,11 @@ pub(crate) mod host_lane;
 /// the other: a layer declares the port it needs, the other owns the fact, and
 /// this function joins them once per process. That covers the environment
 /// ports the domain asks, the gateway runtime's ports, the stop control's
-/// Subagent-claim dispatcher, which the domain answers, and the ports the two
-/// Agent adapter packages ask for — the progressive turn-event sink Codex emits
-/// through and the execution admission Kimi Code asks for. A process that never
-/// calls it keeps every port fail-closed.
+/// Subagent-claim dispatcher, which the domain answers, and the ports the Agent
+/// adapter packages ask for — the progressive turn-event sinks Codex and
+/// Antigravity emit through and the execution admission the Antigravity, Kimi
+/// Code and OpenCode packages ask for. A process that never calls it keeps
+/// every port fail-closed.
 pub fn install_environment_ports() -> Result<(), &'static str> {
     domain::conversation::history::install_open_codex_rollouts(
         licoup_agent_codex::observation::open_rollout_paths,
@@ -109,7 +110,17 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     // binary route is completed by the agent-execution port; until then the client
     // still performs the turn, and removing that is the named remainder on
     // VENDOR-CODE-REMOVAL.
-    licoup_agent_kilo::host::install(platform::kilo_code_host::host_ports())
+    licoup_agent_kilo::host::install(platform::kilo_code_host::host_ports())?;
+    // The OpenCode adapter package owns the `serve` protocol; the client's own
+    // `opencode_driver` still performs one turn, and the one fact it may not
+    // decide for itself is whether this host admits a new execution. Installing
+    // the answer is what lets an OpenCode turn start at all, and a host that
+    // never installs it refuses rather than running.
+    licoup_agent_opencode::port::execution::install(
+        licoup_agent_opencode::port::execution::ExecutionPort {
+            admits_execution: admits_agent_execution,
+        },
+    )
 }
 
 /// The composition's answer for the Antigravity adapter package's caller-context

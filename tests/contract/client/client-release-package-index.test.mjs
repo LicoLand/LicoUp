@@ -141,6 +141,10 @@ const declaredPackages = Object.freeze([
     payloadRole: "lico-agent-adapter-package-payload",
   }),
   declaredRelease({
+    source: "crates/licoup-agent-opencode/package",
+    payloadRole: "opencode-adapter-package-payload",
+  }),
+  declaredRelease({
     source: "crates/licoup-mcp/package",
     payloadRole: "mcp-package-payload",
   }),

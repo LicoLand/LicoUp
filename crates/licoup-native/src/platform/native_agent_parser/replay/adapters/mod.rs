@@ -4,14 +4,13 @@
 //! parser. An Agent whose parser has moved into its own package also moved the
 //! arm that drives it, because an arm is only meaningful beside the parser it
 //! constructs; this composition reaches it through the SDK's parser-set port.
-//! Eleven Agents' arms have moved that way — Antigravity, Claude Code, Codex,
-//! Copilot, Cursor, DeepSeek Harness, Hermes, Kilo Code, Kimi Code, Lico Agent and
-//! OpenClaw — so each is built by the package that owns its parser.
+//! Twelve Agents' arms have moved that way — Antigravity, Claude Code, Codex,
+//! Copilot, Cursor, DeepSeek Harness, Hermes, Kilo Code, Kimi Code, Lico Agent,
+//! OpenClaw and OpenCode — so each is built by the package that owns its parser.
 //!
 //! The arms are `pub(in crate::platform)` to this module's parent — it is the
 //! only reader, and it hands them to the SDK's harness through the parser set.
 
-mod opencode;
 mod pi;
 
 use super::FrameReplay;
@@ -45,7 +44,10 @@ pub(in crate::platform) fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameR
         // regression in that parser fails the package's own corpus as well as
         // this composition's.
         "openclaw" => licoup_agent_openclaw::replay::replay_arm(adapter_id)?,
-        "opencode" => Box::new(opencode::Replay::new()?),
+        // The arm moved with the parser into the OpenCode adapter package, so a
+        // regression in that protocol fails the package's own corpus as well as
+        // this composition's.
+        "opencode" => licoup_agent_opencode::replay::replay_arm(adapter_id)?,
         "pi" => Box::new(pi::Replay::new()?),
         other => {
             return Err(format!(

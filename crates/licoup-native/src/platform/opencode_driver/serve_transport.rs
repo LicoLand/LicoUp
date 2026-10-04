@@ -45,6 +45,24 @@ pub(in crate::platform) fn execute(
             return failed(failure, started_at);
         }
     };
+    // Admission gate: the adapter package asks this host whether it currently
+    // admits a new execution, and the answer is the host's own close-admission
+    // barrier. A turn started while a maintenance switch holds that barrier would
+    // run an Agent the switch may be replacing, so the refusal is reported before
+    // the endpoint is attached and before any process starts. A host that
+    // installed no port on the package answers fail-closed and this turn never
+    // claims it was admitted.
+    if !licoup_agent_opencode::port::execution::admits_execution() {
+        return failed(
+            ProtocolFailure::new(
+                "opencode_execution_admission_closed",
+                "OpenCode execution is not admitted while this client is changing installed state.",
+                "turn/execute",
+            )
+            .with_session(Some(session_id)),
+            started_at,
+        );
+    }
 
     let private_instructions = params
         .get("privateInstructions")
