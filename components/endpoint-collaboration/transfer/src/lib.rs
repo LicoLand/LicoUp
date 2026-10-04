@@ -16,6 +16,7 @@
 pub mod activation;
 pub mod inventory;
 pub mod ownership;
+pub mod verified_target;
 
 pub use activation::{ActivationReason, IdentityActivationRequirement};
 pub use inventory::{
@@ -24,3 +25,7 @@ pub use inventory::{
     TransferLimitation, UnattributedPath, UnexplainedLimitation, classify_entries,
 };
 pub use ownership::TransferOwnership;
+pub use verified_target::{
+    LostActivationPath, RequiredOwner, RetirementEligibility, RetirementRefusal, TargetBinding,
+    VerifiedTargetEvidence,
+};
