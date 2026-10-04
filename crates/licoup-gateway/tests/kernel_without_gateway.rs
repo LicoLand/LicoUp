@@ -110,10 +110,13 @@ fn only_the_gateway_sidecars_start_the_runtime_listeners() {
 
 #[test]
 fn kernel_conversation_and_execution_owners_have_no_gateway_dependency() {
+    // The dispatch owner moved to `licoup-agent-drivers` when the driver core
+    // was extracted; it is still a conversation and execution owner this test
+    // holds to the same rule, so it is named at the path that owns it now.
     let kernel_owners = [
         "crates/licoup-native/src/domain/conversations.rs",
         "crates/licoup-native/src/platform/conversation_lane.rs",
-        "crates/licoup-native/src/platform/runtime_adapters/dispatch.rs",
+        "crates/licoup-agent-drivers/src/runtime_adapters/dispatch.rs",
         "crates/licoup-native/src/bin/licoup/stdio_rpc/server/conversation.rs",
         "crates/licoup-native/src/bin/licoup/conversation_host.rs",
     ];
