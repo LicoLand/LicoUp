@@ -1,5 +1,6 @@
 mod command_sync;
 mod config;
+mod endpoint_collaboration_gate;
 pub mod endpoint_transport;
 mod endpoint_ports;
 mod endpoint_trust;
@@ -28,7 +29,7 @@ pub use relay_operations::{
     command_result_secure, commands_poll, e2ee_status, pc_check_in,
 };
 pub use secret_custody::{
-    e2ee_secret_store_cleanup, e2ee_secret_store_self_test,
+    e2ee_secret_store_cleanup, e2ee_secret_store_cleanup_inventory, e2ee_secret_store_self_test,
     selected_mobile_relay_capability_evaluation, with_mobile_relay_secret_store_override,
     with_pairwise_secret_store_override,
 };

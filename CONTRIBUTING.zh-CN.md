@@ -156,6 +156,29 @@ controller、renderer 或后端代码。用可见状态、可点击动作和预�
 明确区分使用虚拟时间的 widget 检查和真实引擎性能运行。不得用后端 trace 工程替代这套
 统计，也不额外叠加任意数字评分表或审批门禁。必要的状态和生命周期测试服务于此模型。
 
+## 扩展开发
+
+扩展包是客户端启动的程序，双方使用按行分隔的 JSON-RPC 2.0 协议通信。可以用任何语言
+编写：实现握手，以及所服务 Profile 声明的方法，然后打成 ZIP 归档，根目录放置
+`manifest.json`。完整步骤见[扩展平台指南](docs/architecture/EXTENSION-PLATFORM.md#12-build-package-and-import-an-extension)；
+它引用的规则位于 [`crates/licoup-extension-contracts/`](crates/licoup-extension-contracts)，
+实际运行宿主位于 [`crates/licoup-native/src/platform/extension_packages/`](crates/licoup-native/src/platform/extension_packages)。
+
+两个受检样例是最快的起点：`samples/echo-agent/` 是最小的完整 Agent，
+`samples/converter-package/` 是最小的完整格式转换器。两者都由该 crate 自己的测试读取，
+因此不会与它们演示的契约脱节。
+
+```bash
+cargo test -p licoup-extension-contracts
+cd crates/licoup-extension-contracts && python3 -B -m unittest discover -s tests -p 'test_*.py'
+npm run repo:docs
+```
+
+保持平台公布的边界：程序与其所需协议由包自身携带；内核只保留通用 PTY/CLI 适配器和扩展
+宿主，不保留任何厂商实现；转换器必须是包载荷内的原生可执行程序；本地导入全程离线，信任
+绑定到具体字节；`user:` 运行时引用指向用户自行安装的对象，客户端永不删除。诊断信息保持
+本地且有界；包给出的取消结论按原样上报。
+
 ## 本地客户端验证
 
 实现结束于工程交付。构建、安装与启动只针对获得维护者显式中央交付安排的整合候选，
