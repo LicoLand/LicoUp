@@ -338,11 +338,12 @@ Stated plainly, because a contract document is not evidence:
 | Compatibility list | Implemented in the manifest contract and enforced by the package store at install and at activation |
 | Data-package category and typed resources | Implemented in the manifest contract and admitted by the package store: a `data` runtime carries no program, and theme, layout, style, font, language and composition resources are typed declarations that name the host primitives and host actions the manifest declares. An executable declaration on a data package, a resource kind or shape this client does not publish, and a binding outside the declared set are refused with a stable reason before anything is published |
 | Package lifecycle transactions | Implemented in `extension_packages`: offline local import, staged install with an install journal, crash recovery, the package and instance state machines, storage accounting, garbage collection and the uninstall transaction |
-| Package program execution, generation management, the package center and first-launch recommendation | **Not** part of this milestone. The host that starts package programs, the native command family and the client surfaces are delivered by the package-pipeline milestone; this document does not claim they run today |
+| Package program execution, generation management, the package center and first-launch recommendation | Implemented since: the isolation carrier starts an installed package's own declared entry (`platform/extension_host/runtime.rs`, `platform/extension_host/isolation/package_program.rs`), the host owns package generations and the maintenance admission (`platform/extension_packages`, `PackageGenerationAdmission` in `src/lib.rs`), the package center matches small declarative rules and records a recommendation without installing, downloading or starting anything (`platform/extension_packages/discovery.rs`), and the client surfaces are under `apps/desktop/lib/src/application/features/plugin_management/`. `tests/integration/extension_isolation/package_execution.rs` and `codex_package_turn.rs` execute the real carrier |
 
-Nothing above says a package was downloaded, signed, published or executed. The
-schemas and the crate are the contract; the store enforces what section 9 and
-section 10 describe; everything else is a target for the milestone that owns it.
+Nothing above says a package was downloaded, signed or published: the package
+center reads cached catalogue metadata and the probe locations the user allowed,
+and a package reaches the store through local import. The schemas and the crate
+are the contract; the store enforces what section 9 and section 10 describe.
 
 ## 13. Not claimed here
 
