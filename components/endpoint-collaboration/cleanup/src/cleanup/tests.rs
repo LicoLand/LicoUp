@@ -215,8 +215,14 @@ fn the_file_stage_settles_every_frozen_entry_and_leaves_unlisted_data_alone() {
     assert_eq!(receipt.already_absent_count(), 0);
     assert_eq!(receipt.removed_file_bytes(), 7);
     assert_eq!(owner.present_paths(), vec!["external/keep.txt".to_string()]);
-    // The root is untouched otherwise: no directory walk, no external reference.
-    assert_eq!(fixture.root.path().read_dir().unwrap().count(), 0);
+    // The root holds nothing but this owner's own progress material: the stage
+    // never walks the root, so nothing unlisted was reached.
+    let mut left: Vec<String> = fs::read_dir(fixture.root.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    left.sort();
+    assert_eq!(left, vec![CLEANUP_STATE_DIRECTORY.to_string()]);
 }
 
 #[test]
@@ -250,16 +256,18 @@ fn a_restart_at_each_meaningful_boundary_resumes_without_removing_twice() {
     let attempts_before = owner.removal_attempts().len();
     let second = fixture.stage(&owner).run(&fixture.inventory).unwrap();
     let receipt = second.receipt().expect("the resumed stage settles");
-    assert_eq!(receipt.removed_count(), 1);
-    assert_eq!(receipt.already_absent_count(), 1);
+    // The receipt describes the whole file stage across restarts, so it reports
+    // both removals: the one the first run recorded and the one this run made.
+    assert_eq!(receipt.removed_count(), 2);
+    assert_eq!(receipt.already_absent_count(), 0);
     assert_eq!(owner.removal_attempts().len(), attempts_before + 1);
     assert!(owner.present_paths().is_empty());
 
     // A third run is idempotent and reports the same shape.
     let third = fixture.stage(&owner).run(&fixture.inventory).unwrap();
     let receipt = third.receipt().unwrap();
-    assert_eq!(receipt.removed_count(), 1);
-    assert_eq!(receipt.already_absent_count(), 1);
+    assert_eq!(receipt.removed_count(), 2);
+    assert_eq!(receipt.already_absent_count(), 0);
     assert_eq!(owner.removal_attempts().len(), attempts_before + 1);
 }
 
@@ -445,9 +453,27 @@ fn the_private_data_root_owner_removes_only_frozen_entries_and_refuses_a_link() 
     let progress = FileStage::new(&owner, store.clone())
         .run(&inventory)
         .unwrap();
-    let receipt = progress.receipt().unwrap();
-    assert_eq!(receipt.removed_count(), 2);
-    assert!(receipt.outstanding_stages().contains(&CleanupStage::Complete));
+    // On a platform that can express the case, the refused link keeps its own
+    // entry pending so the stage does not settle — but the entries it could
+    // remove are gone and are never restored.
+    #[cfg(unix)]
+    {
+        let report = match &progress {
+            FileStageProgress::Pending(report) => report,
+            FileStageProgress::Settled(_) => panic!("a refused link must keep the stage pending"),
+        };
+        assert_eq!(report.pending().len(), 1);
+        assert_eq!(report.pending()[0].path(), "linked.txt");
+        assert_eq!(
+            report.stage(),
+            CleanupStage::WritersQuiesced,
+            "the stage stops before FilesSettled"
+        );
+    }
+    #[cfg(not(unix))]
+    {
+        assert!(progress.is_settled());
+    }
 
     assert!(!root.path().join("a.txt").exists());
     assert!(!root.path().join("nested/b.bin").exists());
