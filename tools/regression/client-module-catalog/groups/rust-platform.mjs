@@ -212,6 +212,20 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustIntegrationTest("package_lifecycle"),
     }),
   defineModule({
+      id: "rust.ffi.package-route-registry",
+      kind: "rust-ffi",
+      summary: "The package centre's route names bound to the native command registry, and the maintenance barrier its two mutating routes refuse through",
+      inputs: [
+        "crates/licoup-native/src/ffi/commands/mod.rs",
+        "crates/licoup-native/src/ffi/commands/package.rs",
+        "crates/licoup-native/src/domain/work_admission/**",
+        "crates/licoup-native/tests/package_route_registry.rs",
+        "apps/desktop/lib/src/application/features/plugin_management/controller/package_center_controller.dart",
+        "schemas/client_bridge/package.json",
+      ],
+      command: rustIntegrationTest("package_route_registry"),
+    }),
+  defineModule({
       id: "rust.platform.skill-invocation-projection",
       kind: "rust-platform",
       summary: "Privacy-minimal skill-call projection across native agent runtime adapters",
