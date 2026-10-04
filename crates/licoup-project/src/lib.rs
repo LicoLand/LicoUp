@@ -73,14 +73,16 @@ pub use identity::{
     ProjectRegistration, RegisteredProject, WorkItemId, WorkspaceId,
 };
 pub use import::{
-    CapabilityId, ImportDiagnostic, MAX_PLAN_ACCEPTANCE, MAX_PLAN_INPUTS, MAX_PLAN_ROLES,
-    MAX_PLAN_TEXT_BYTES, MAX_PLAN_WORK_ITEMS, MAX_SOURCE_LOCATOR_BYTES, PLAN_DOCUMENT_SCHEMA,
-    PLAN_IMPORT_STAGE, PlanAdmission, PlanDocument, PlanWorkItem, RoleId, RoleReference, RoleScope,
-    SourceId, SourceIdentity, SourceKind, SourceLocator, SourceMapping,
+    CapabilityId, IMPORT_PLAN_MISMATCH, IMPORT_PROJECT_UNAUTHORIZED, IMPORT_RECORD_INVALID,
+    IMPORT_STALE_APPLY, ImportDiagnostic, ImportSlice, MAX_PLAN_ACCEPTANCE, MAX_PLAN_INPUTS,
+    MAX_PLAN_ROLES, MAX_PLAN_TEXT_BYTES, MAX_PLAN_WORK_ITEMS, MAX_SOURCE_LOCATOR_BYTES,
+    PLAN_DOCUMENT_SCHEMA, PLAN_IMPORT_STAGE, PlanAdmission, PlanDocument, PlanImportChange,
+    PlanImportOutcome, PlanWorkItem, RoleId, RoleReference, RoleScope, SourceId, SourceIdentity,
+    SourceKind, SourceLocator, SourceMapping,
 };
 pub use store::{
-    PROJECT_DEPENDENCY_COLUMNS, PROJECT_IDENTITY_COLUMNS, PROJECT_STORE_SCHEMA_VERSION,
-    ProjectIdentityStore,
+    PROJECT_DEPENDENCY_COLUMNS, PROJECT_IDENTITY_COLUMNS, PROJECT_IMPORT_SOURCE_COLUMNS,
+    PROJECT_PLAN_IMPORT_COLUMNS, PROJECT_STORE_SCHEMA_VERSION, ProjectIdentityStore,
 };
 
 #[cfg(test)]

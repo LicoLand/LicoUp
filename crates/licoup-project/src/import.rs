@@ -41,6 +41,7 @@ use crate::dependency::{ArtifactReference, WorkRef, render_dependency_path};
 use crate::failure::ProjectFailure;
 use crate::identity::{PlanId, ProjectId, WorkItemId, declared_identifier};
 use serde::{Deserialize, Deserializer, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 
@@ -402,6 +403,87 @@ impl PlanAdmission {
     }
 }
 
+/// The registered project one import names is not registered.
+pub const IMPORT_PROJECT_UNAUTHORIZED: &str = "project_plan_import_project_unauthorized";
+/// The named plan is not the plan identity the registered project carries.
+pub const IMPORT_PLAN_MISMATCH: &str = "project_plan_import_plan_mismatch";
+/// The state the caller expected is not the state the owner holds.
+pub const IMPORT_STALE_APPLY: &str = "project_plan_import_stale_apply";
+/// A stored import row could not be read back as the model it declares.
+pub const IMPORT_RECORD_INVALID: &str = "project_plan_import_record_invalid";
+
+/// One source-owned plan slice as the durable owner holds it.
+///
+/// The slice belongs to one `(project, source)` pair and to nothing else: a
+/// second source over the same project owns a second slice, and a source over
+/// another project cannot reach this one. The revision is how many admitted
+/// documents this source has produced, and the digest is the content of the
+/// last one.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportSlice {
+    /// The registered project this slice belongs to.
+    pub project_id: ProjectId,
+    /// The plan identity the slice's documents declare.
+    pub plan_id: PlanId,
+    /// The stable identity of the source.
+    pub source_id: SourceId,
+    /// The declared kind of the source, in the caller's own vocabulary.
+    pub source_kind: SourceKind,
+    /// Where the source is, as a person reads it. Never opened.
+    pub source_locator: SourceLocator,
+    /// How many admitted documents this source has produced.
+    pub revision: u64,
+    /// The digest of the document admitted at that revision.
+    pub digest: String,
+    /// The work items the slice holds, in admission order.
+    pub work_item_ids: Vec<WorkItemId>,
+}
+
+/// What one explicit import changes, or would change.
+///
+/// The same value answers the preview and the applied result, so a caller
+/// showing a person what an import would do and the owner reporting what it did
+/// cannot disagree about the fields.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanImportChange {
+    /// The registered project the document belongs to.
+    pub project_id: ProjectId,
+    /// The plan identity the document declares.
+    pub plan_id: PlanId,
+    /// The source the document was read from.
+    pub source_id: SourceId,
+    /// The state this call starts from: the revision an apply must expect.
+    pub revision: u64,
+    /// The digest of the submitted document.
+    pub digest: String,
+    /// Whether the submitted document is exactly the stored revision.
+    pub replayed: bool,
+    /// Declared work items this slice did not hold.
+    pub added: Vec<WorkItemId>,
+    /// Declared work items this slice already held.
+    pub unchanged: Vec<WorkItemId>,
+    /// Stored work items the document omits. Retained, never deleted: an
+    /// omission is not a deletion, and a source cannot cancel admitted work.
+    pub retained: Vec<WorkItemId>,
+    /// One anchor per declared work item, in document order.
+    pub mapping: Vec<SourceMapping>,
+    /// How many declared inputs the document carries.
+    pub input_count: usize,
+}
+
+/// What one explicit import did.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanImportOutcome {
+    /// Whether durable state changed. A replay of the stored revision changes
+    /// nothing, so re-submitting the same document twice is one effect.
+    pub applied: bool,
+    /// The slice state after the call, with its source correspondence.
+    pub change: PlanImportChange,
+}
+
 /// The fields the canonical document defines, by level.
 ///
 /// The lists exist so an unknown field is reported by name instead of being
@@ -486,6 +568,54 @@ impl PlanDocument {
                 error.to_string(),
             )]
         })
+    }
+
+    /// The canonical content digest of this document.
+    ///
+    /// The digest is what makes a repeated import recognisable as the same
+    /// import: an apply that submits a document whose digest equals the stored
+    /// revision's is a no-op rather than a second effect. The encoding is the
+    /// document's own declared fields in declaration order, with a NUL between
+    /// them — a byte no declared identity, locator or text may contain — so two
+    /// different documents cannot encode to the same bytes by concatenation.
+    pub fn digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        let separate = |hasher: &mut Sha256, value: &str| {
+            hasher.update(value.as_bytes());
+            hasher.update([0]);
+        };
+        separate(&mut hasher, &self.schema);
+        separate(&mut hasher, self.project_id.as_str());
+        separate(&mut hasher, self.plan_id.as_str());
+        separate(&mut hasher, self.source.source_id.as_str());
+        separate(&mut hasher, self.source.source_kind.as_str());
+        separate(&mut hasher, self.source.locator.as_str());
+        for item in &self.work_items {
+            hasher.update([1]);
+            separate(&mut hasher, item.work_item_id.as_str());
+            separate(&mut hasher, &item.outcome);
+            for criterion in &item.acceptance {
+                separate(&mut hasher, criterion);
+            }
+            for role in &item.roles {
+                separate(&mut hasher, role.role_id.as_str());
+                separate(&mut hasher, role.scope.as_str());
+                separate(
+                    &mut hasher,
+                    role.capability
+                        .as_ref()
+                        .map(CapabilityId::as_str)
+                        .unwrap_or(""),
+                );
+            }
+            for input in &item.inputs {
+                separate(&mut hasher, input.kind());
+                separate(&mut hasher, &input.producer(&self.project_id).to_string());
+                separate(&mut hasher, input.local_path().unwrap_or(""));
+            }
+            separate(&mut hasher, &item.source_anchor);
+        }
+        format!("{:x}", hasher.finalize())
     }
 
     /// Resolve this document's own declarations and report the correspondence.

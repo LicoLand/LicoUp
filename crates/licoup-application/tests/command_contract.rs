@@ -130,6 +130,14 @@ fn operation_names_are_stable_and_effect_producing_ones_are_marked() {
     assert_eq!(Operation::ProjectRegister.as_str(), "project.register");
     assert_eq!(Operation::ProjectRead.as_str(), "project.read");
     assert_eq!(Operation::ProjectList.as_str(), "project.list");
+    assert_eq!(
+        Operation::ProjectImportPreview.as_str(),
+        "project.import.preview"
+    );
+    assert_eq!(
+        Operation::ProjectImportApply.as_str(),
+        "project.import.apply"
+    );
 
     for operation in [
         Operation::WorkflowExecute,
@@ -156,6 +164,8 @@ fn operation_names_are_stable_and_effect_producing_ones_are_marked() {
         Operation::ConversationExport,
         Operation::ProjectRead,
         Operation::ProjectList,
+        Operation::ProjectImportPreview,
+        Operation::ProjectImportApply,
     ] {
         assert!(
             !operation.produces_effect(),
@@ -269,6 +279,19 @@ fn malformed_commands_are_refused_before_any_port_runs() {
                 }),
             }),
             "callback_state_visit",
+        ),
+        (
+            ApplicationCommand::Project(ProjectCommand::ImportPreview {
+                document: json!("not a document"),
+            }),
+            "document",
+        ),
+        (
+            ApplicationCommand::Project(ProjectCommand::ImportApply {
+                document: Value::Null,
+                expected_revision: 0,
+            }),
+            "document",
         ),
     ];
 

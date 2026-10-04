@@ -57,6 +57,8 @@ pub enum Operation {
     ProjectRegister,
     ProjectRead,
     ProjectList,
+    ProjectImportPreview,
+    ProjectImportApply,
 }
 
 impl Operation {
@@ -79,6 +81,8 @@ impl Operation {
             Self::ProjectRegister => "project.register",
             Self::ProjectRead => "project.read",
             Self::ProjectList => "project.list",
+            Self::ProjectImportPreview => "project.import.preview",
+            Self::ProjectImportApply => "project.import.apply",
         }
     }
 
@@ -462,19 +466,38 @@ impl ImportRequest {
     }
 }
 
-/// The authorized-project family: registration, one read, and the listing.
+/// The authorized-project family: registration, one read, the listing, and the
+/// explicit plan import.
 ///
 /// The registration carries every identity the caller declares — project,
 /// workspace, plan, authorized root, and the authority reference it registers
 /// under. None of it is derived here: this crate bounds the request so a
 /// malformed one never reaches the owner, and the owner decides identity,
 /// authority and durability.
+///
+/// The import carries one canonical plan document as an opaque JSON value. This
+/// crate is protocol-neutral and does not own the document's schema: the project
+/// owner parses it once, resolves its own references and returns every
+/// diagnostic before any effect, and this layer only bounds the request's shape.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "command", rename_all = "kebab-case")]
 pub enum ProjectCommand {
     Register(ProjectRegistrationRequest),
-    Read { project_id: String },
+    Read {
+        project_id: String,
+    },
     List,
+    /// What one canonical plan document would change, before it changes it.
+    ImportPreview {
+        document: Value,
+    },
+    /// Apply one canonical plan document, expecting the revision it previewed.
+    ImportApply {
+        document: Value,
+        /// The source revision the caller last saw. The owner refuses a value
+        /// that is not current, so a concurrent import is never overwritten.
+        expected_revision: u64,
+    },
 }
 
 impl ProjectCommand {
@@ -487,6 +510,8 @@ impl ProjectCommand {
             Self::Register(_) => Operation::ProjectRegister,
             Self::Read { .. } => Operation::ProjectRead,
             Self::List => Operation::ProjectList,
+            Self::ImportPreview { .. } => Operation::ProjectImportPreview,
+            Self::ImportApply { .. } => Operation::ProjectImportApply,
         }
     }
 
@@ -495,7 +520,24 @@ impl ProjectCommand {
             Self::Register(request) => request.validate(),
             Self::Read { project_id } => stable_id("project_id", project_id),
             Self::List => Ok(()),
+            Self::ImportPreview { document } | Self::ImportApply { document, .. } => {
+                plan_document(document)
+            }
         }
+    }
+}
+
+/// Bound one carried plan document to the shape this layer can judge.
+///
+/// Whether the document is canonical is the project owner's decision, and it
+/// answers with every diagnostic before any effect. What this layer refuses is a
+/// request that carries something other than the one document, so a malformed
+/// envelope never reaches the owner.
+fn plan_document(document: &Value) -> Result<(), ApplicationFailure> {
+    if document.is_object() {
+        Ok(())
+    } else {
+        Err(ApplicationFailure::invalid_request("document"))
     }
 }
 

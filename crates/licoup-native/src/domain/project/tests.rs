@@ -355,3 +355,130 @@ fn no_registration_reads_the_authorized_root_it_declares() {
     );
     assert_eq!(Operation::ProjectRegister.as_str(), "project.register");
 }
+
+/// One canonical plan document a case submits through the real port.
+fn plan_document(
+    project_id: &str,
+    plan_id: &str,
+    work_items: serde_json::Value,
+) -> serde_json::Value {
+    serde_json::json!({
+        "schema": licoup_project::PLAN_DOCUMENT_SCHEMA,
+        "projectId": project_id,
+        "planId": plan_id,
+        "source": {
+            "sourceId": "source:roadmap",
+            "sourceKind": "markdown",
+            "locator": "docs/roadmap.md",
+        },
+        "workItems": work_items,
+    })
+}
+
+/// One declared work item that admits cleanly.
+fn plan_work_item(id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "workItemId": id,
+        "outcome": format!("Deliver {id}."),
+        "acceptance": ["The declared outcome holds."],
+        "inputs": [],
+        "roles": [{"roleId": "role:maintainer", "scope": "work-item"}],
+        "sourceAnchor": format!("heading:{id}"),
+    })
+}
+
+/// A user entry and an Agent caller reach one import owner with one answer.
+#[test]
+fn an_import_previews_and_applies_through_the_port_the_client_composes() {
+    let root = TempRoot::new("import");
+    let application = NativeProjectApplication::at(&root.path);
+    let claim = ActorClaim::local_admin("membership:owner");
+    outcome(execute(
+        &application,
+        &claim,
+        ProjectCommand::Register(request(
+            "alpha-project",
+            "workspace:shared",
+            "plan:alpha",
+            &root.declared_root("alpha"),
+            "membership:owner",
+        )),
+    ));
+
+    let document = plan_document(
+        "alpha-project",
+        "plan:alpha",
+        serde_json::json!([plan_work_item("work:read"), plan_work_item("work:write")]),
+    );
+    let preview = outcome(execute(
+        &application,
+        &claim,
+        ProjectCommand::ImportPreview {
+            document: document.clone(),
+        },
+    ));
+    assert_eq!(preview.reference.operation, "project.import.preview");
+    assert_eq!(preview.payload["revision"], 0);
+    assert_eq!(preview.payload["added"].as_array().map(Vec::len), Some(2));
+    assert_eq!(preview.payload["applied"], serde_json::Value::Null);
+
+    let applied = outcome(execute(
+        &application,
+        &claim,
+        ProjectCommand::ImportApply {
+            document: document.clone(),
+            expected_revision: 0,
+        },
+    ));
+    assert_eq!(applied.reference.operation, "project.import.apply");
+    assert_eq!(applied.reference.id, "plan:alpha");
+    assert_eq!(applied.reference.state, OperationState::Completed);
+    assert_eq!(applied.payload["applied"], true);
+    assert_eq!(applied.payload["change"]["revision"], 1);
+    assert_eq!(
+        applied.payload["change"]["mapping"][1]["sourceAnchor"],
+        "heading:work:write"
+    );
+
+    // A replay is one effect: the same document does not apply twice.
+    let replay = outcome(execute(
+        &application,
+        &claim,
+        ProjectCommand::ImportApply {
+            document,
+            expected_revision: 1,
+        },
+    ));
+    assert_eq!(replay.payload["applied"], false);
+    assert_eq!(replay.payload["change"]["revision"], 1);
+
+    // An Agent caller gets the same refusal a user gets, with the owner's code.
+    let stale = failed(execute(
+        &application,
+        &claim,
+        ProjectCommand::ImportApply {
+            document: plan_document(
+                "alpha-project",
+                "plan:alpha",
+                serde_json::json!([plan_work_item("work:read")]),
+            ),
+            expected_revision: 0,
+        },
+    ));
+    assert_eq!(stale.code, "project_plan_import_stale_apply");
+    assert_eq!(stale.stage, "project/import");
+    assert!(!stale.retryable);
+
+    // A document the owner cannot admit is refused with its own code and path.
+    let mut progress = plan_work_item("work:read");
+    progress["status"] = serde_json::json!("done");
+    let ambiguous = failed(execute(
+        &application,
+        &claim,
+        ProjectCommand::ImportPreview {
+            document: plan_document("alpha-project", "plan:alpha", serde_json::json!([progress])),
+        },
+    ));
+    assert_eq!(ambiguous.code, "project_plan_progress_not_admitted");
+    assert_eq!(ambiguous.field.as_deref(), Some("workItems[0].status"));
+}

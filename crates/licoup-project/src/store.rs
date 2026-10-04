@@ -25,6 +25,11 @@ use crate::identity::{
     AuthorityKind, AuthorityReference, AuthorizedRoot, PlanId, ProjectId, ProjectRegistration,
     RegisteredProject, WorkItemId, WorkspaceId,
 };
+use crate::import::{
+    IMPORT_PLAN_MISMATCH, IMPORT_PROJECT_UNAUTHORIZED, IMPORT_RECORD_INVALID, IMPORT_STALE_APPLY,
+    ImportSlice, PlanAdmission, PlanImportChange, PlanImportOutcome, SourceId, SourceKind,
+    SourceLocator,
+};
 use anyhow::{Result, anyhow, ensure};
 use licoup_foundation::platform::file_security::{ensure_private_dir, harden_private_path};
 use rusqlite::{Connection, ErrorCode, OptionalExtension, TransactionBehavior, params};
@@ -37,7 +42,7 @@ use std::path::{Path, PathBuf};
 /// database written by an earlier unpublished shape is refused by name
 /// (`project_identity_schema_migration_required`) rather than opened
 /// half-working; it is not a second supported format.
-pub const PROJECT_STORE_SCHEMA_VERSION: &str = "2";
+pub const PROJECT_STORE_SCHEMA_VERSION: &str = "3";
 
 /// The state root this owner writes inside, by the same rule the workflow
 /// store follows: one durable owner directory under the client-state root.
@@ -81,6 +86,41 @@ pub const PROJECT_DEPENDENCY_COLUMNS: &[&str] = &[
     "producer_project_id",
     "producer_work_item_id",
     "local_path",
+];
+
+/// Columns of `project_plan_imports`, in declaration order.
+///
+/// One admitted declaration of one source-owned plan slice. The row holds what
+/// the source *declared* — an outcome, acceptance criteria, role references and
+/// the anchor it was read from — and no column that could hold a run, a
+/// completion or an acceptance: those are the work owner's facts, and a test
+/// asserts this list against the live schema so one cannot be added silently.
+pub const PROJECT_PLAN_IMPORT_COLUMNS: &[&str] = &[
+    "import_sequence",
+    "project_id",
+    "plan_id",
+    "source_id",
+    "work_item_id",
+    "outcome",
+    "acceptance_json",
+    "roles_json",
+    "source_anchor",
+];
+
+/// Columns of `project_import_sources`, in declaration order.
+///
+/// One row per `(project, source)`: which plan the slice declares, the source's
+/// own identity, how many documents it has produced, and the content digest of
+/// the last one. The revision and digest together are the expected-current-state
+/// token an apply has to echo back.
+pub const PROJECT_IMPORT_SOURCE_COLUMNS: &[&str] = &[
+    "project_id",
+    "source_id",
+    "plan_id",
+    "source_kind",
+    "source_locator",
+    "revision",
+    "digest",
 ];
 
 /// The durable owner of registered project identities and the dependency inputs
@@ -241,75 +281,9 @@ impl ProjectIdentityStore {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(store_error)?;
-        let declaring = read_project_row(&transaction, dependency.project_id.as_str())?
-            .ok_or_else(|| ProjectFailure::dependency("project_dependency_project_unauthorized"))?;
-        if let ArtifactReference::Local { path, .. } = &dependency.artifact
-            && !stays_inside_authorized_root(&declaring.authorized_root, path)
-        {
-            return Err(ProjectFailure::dependency(
-                "project_artifact_reference_escapes_authorized_root",
-            )
-            .with_detail(format!("{path} is outside {}", declaring.authorized_root)));
-        }
-        if let ArtifactReference::CrossProject { project_id, .. } = &dependency.artifact
-            && !project_exists(&transaction, project_id.as_str())?
-        {
-            return Err(
-                ProjectFailure::dependency("project_artifact_reference_unauthorized")
-                    .with_detail(project_id.to_string()),
-            );
-        }
-        let consumer = dependency.consumer();
-        let producer = dependency.producer();
-        if let Some(cycle) = closing_cycle(&transaction, &consumer, &producer)? {
-            return Err(ProjectFailure::dependency("project_dependency_cycle")
-                .with_detail(render_dependency_path(&cycle)));
-        }
-        // Idempotence is decided before the insert so the same edge never
-        // consumes an admission order it does not own.
-        if let Some(dependency_sequence) = stored_dependency_sequence(&transaction, dependency)? {
-            let artifact_state =
-                dependency_state(&transaction, &dependency.project_id, &dependency.artifact)?;
-            transaction.commit().map_err(store_error)?;
-            return Ok(DeclaredDependency {
-                dependency_sequence,
-                dependency: dependency.clone(),
-                artifact_state,
-            });
-        }
-        let inserted = transaction
-            .execute(
-                "INSERT INTO project_dependencies(
-                   project_id, work_item_id, artifact_kind, producer_project_id,
-                   producer_work_item_id, local_path
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                 ON CONFLICT DO NOTHING",
-                params![
-                    dependency.project_id.as_str(),
-                    dependency.work_item_id.as_str(),
-                    dependency.artifact.kind(),
-                    producer.project_id.as_str(),
-                    producer.work_item_id.as_str(),
-                    dependency.artifact.local_path().unwrap_or_default(),
-                ],
-            )
-            .map_err(store_error)?;
-        let dependency_sequence = if inserted == 0 {
-            // The unique constraint is the authority; the check above is
-            // advisory. An edge that still lost the race is the same edge.
-            stored_dependency_sequence(&transaction, dependency)?
-                .ok_or_else(|| dependency_error("project_dependency_record_invalid"))?
-        } else {
-            transaction.last_insert_rowid().max(0) as u64
-        };
-        let artifact_state =
-            dependency_state(&transaction, &dependency.project_id, &dependency.artifact)?;
+        let declared = admit_dependency_in(&transaction, dependency)?;
         transaction.commit().map_err(store_error)?;
-        Ok(DeclaredDependency {
-            dependency_sequence,
-            dependency: dependency.clone(),
-            artifact_state,
-        })
+        Ok(declared)
     }
 
     /// Every dependency one project declares, in admission order.
@@ -401,6 +375,145 @@ impl ProjectIdentityStore {
         Ok(blocked)
     }
 
+    /// What one source-owned slice holds for one project.
+    ///
+    /// `None` means the source has never been applied over this project, which
+    /// is a different answer from an empty slice: the store never writes a row
+    /// for a document it did not admit.
+    pub fn import_slice(
+        &self,
+        project_id: &ProjectId,
+        source_id: &SourceId,
+    ) -> Result<Option<ImportSlice>, ProjectFailure> {
+        let connection = self.connect()?;
+        if !project_exists(&connection, project_id.as_str())? {
+            return Err(ProjectFailure::import(IMPORT_PROJECT_UNAUTHORIZED));
+        }
+        read_import_slice(&connection, project_id, source_id)
+    }
+
+    /// What one admitted document would change, without changing anything.
+    ///
+    /// The preview is the whole decision the apply will make: the same project,
+    /// plan, source and revision checks run here, so a caller that shows a
+    /// person a preview shows the import that the same input will perform.
+    pub fn preview_import(
+        &self,
+        admission: &PlanAdmission,
+    ) -> Result<PlanImportChange, ProjectFailure> {
+        let connection = self.connect()?;
+        import_change(&connection, admission)
+    }
+
+    /// Apply one admitted document, expecting the state the caller last saw.
+    ///
+    /// One immediate transaction admits the declared work items, their declared
+    /// inputs through the dependency owner's own rules, and the source revision.
+    /// The work items the document omits are retained: an omission is reported,
+    /// never read as a deletion or a cancellation, so a source cannot retire
+    /// admitted work by leaving it out. Nothing here starts execution and no
+    /// field widens a directory, cost, disclosure or task grant.
+    pub fn apply_import(
+        &self,
+        admission: &PlanAdmission,
+        expected_revision: u64,
+    ) -> Result<PlanImportOutcome, ProjectFailure> {
+        let mut connection = self.connect()?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(store_error)?;
+        let change = import_change(&transaction, admission)?;
+        if change.revision != expected_revision {
+            return Err(
+                ProjectFailure::import(IMPORT_STALE_APPLY).with_detail(format!(
+                    "revision {expected_revision} was expected, revision {} is current",
+                    change.revision
+                )),
+            );
+        }
+        if change.replayed {
+            // Re-submitting the stored revision is one effect, not two: the
+            // slice, its inputs and its revision are already the submitted ones.
+            transaction.commit().map_err(store_error)?;
+            return Ok(PlanImportOutcome {
+                applied: false,
+                change,
+            });
+        }
+        for item in &admission.document.work_items {
+            let acceptance = serde_json::to_string(&item.acceptance)
+                .map_err(|error| import_error(error.to_string()))?;
+            let roles = serde_json::to_string(&item.roles)
+                .map_err(|error| import_error(error.to_string()))?;
+            transaction
+                .execute(
+                    "INSERT INTO project_plan_imports(
+                       project_id, plan_id, source_id, work_item_id, outcome,
+                       acceptance_json, roles_json, source_anchor
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                     ON CONFLICT(project_id, source_id, work_item_id) DO UPDATE SET
+                       plan_id = excluded.plan_id,
+                       outcome = excluded.outcome,
+                       acceptance_json = excluded.acceptance_json,
+                       roles_json = excluded.roles_json,
+                       source_anchor = excluded.source_anchor",
+                    params![
+                        admission.document.project_id.as_str(),
+                        admission.document.plan_id.as_str(),
+                        admission.document.source.source_id.as_str(),
+                        item.work_item_id.as_str(),
+                        item.outcome,
+                        acceptance,
+                        roles,
+                        item.source_anchor,
+                    ],
+                )
+                .map_err(store_error)?;
+            for input in &item.inputs {
+                admit_dependency_in(
+                    &transaction,
+                    &WorkDependency {
+                        project_id: admission.document.project_id.clone(),
+                        work_item_id: item.work_item_id.clone(),
+                        artifact: input.clone(),
+                    },
+                )?;
+            }
+        }
+        transaction
+            .execute(
+                "INSERT INTO project_import_sources(
+                   project_id, source_id, plan_id, source_kind, source_locator,
+                   revision, digest
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT(project_id, source_id) DO UPDATE SET
+                   plan_id = excluded.plan_id,
+                   source_kind = excluded.source_kind,
+                   source_locator = excluded.source_locator,
+                   revision = excluded.revision,
+                   digest = excluded.digest",
+                params![
+                    admission.document.project_id.as_str(),
+                    admission.document.source.source_id.as_str(),
+                    admission.document.plan_id.as_str(),
+                    admission.document.source.source_kind.as_str(),
+                    admission.document.source.locator.as_str(),
+                    (change.revision + 1) as i64,
+                    change.digest,
+                ],
+            )
+            .map_err(store_error)?;
+        let applied = PlanImportChange {
+            revision: change.revision + 1,
+            ..change
+        };
+        transaction.commit().map_err(store_error)?;
+        Ok(PlanImportOutcome {
+            applied: true,
+            change: applied,
+        })
+    }
+
     fn connect(&self) -> Result<Connection, ProjectFailure> {
         let connection = Connection::open(&self.db_path).map_err(|error| {
             ProjectFailure::store("project_identity_store_unavailable")
@@ -467,7 +580,31 @@ fn initialize_schema(connection: &mut Connection) -> Result<()> {
          CREATE INDEX IF NOT EXISTS project_dependencies_producers
            ON project_dependencies(producer_project_id, producer_work_item_id);
          CREATE INDEX IF NOT EXISTS project_dependencies_consumers
-           ON project_dependencies(project_id, work_item_id);",
+           ON project_dependencies(project_id, work_item_id);
+         CREATE TABLE IF NOT EXISTS project_plan_imports(
+           import_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+           project_id TEXT NOT NULL,
+           plan_id TEXT NOT NULL,
+           source_id TEXT NOT NULL,
+           work_item_id TEXT NOT NULL,
+           outcome TEXT NOT NULL,
+           acceptance_json TEXT NOT NULL,
+           roles_json TEXT NOT NULL,
+           source_anchor TEXT NOT NULL,
+           UNIQUE(project_id, source_id, work_item_id)
+         );
+         CREATE INDEX IF NOT EXISTS project_plan_imports_sources
+           ON project_plan_imports(project_id, source_id);
+         CREATE TABLE IF NOT EXISTS project_import_sources(
+           project_id TEXT NOT NULL,
+           source_id TEXT NOT NULL,
+           plan_id TEXT NOT NULL,
+           source_kind TEXT NOT NULL,
+           source_locator TEXT NOT NULL,
+           revision INTEGER NOT NULL,
+           digest TEXT NOT NULL,
+           PRIMARY KEY(project_id, source_id)
+         );",
     )?;
     Ok(())
 }
@@ -493,6 +630,18 @@ fn validate_current_schema(connection: &mut Connection) -> Result<()> {
     )?;
     ensure!(
         dependency_table == 1,
+        "project_identity_schema_migration_required"
+    );
+    // A database that predates the import slice is refused by the same rule
+    // rather than opened as a project owner that silently cannot hold one.
+    let import_tables: i64 = connection.query_row(
+        "SELECT count(*) FROM sqlite_master WHERE type='table'
+           AND name IN ('project_plan_imports', 'project_import_sources')",
+        [],
+        |row| row.get(0),
+    )?;
+    ensure!(
+        import_tables == 2,
         "project_identity_schema_migration_required"
     );
     Ok(())
@@ -586,6 +735,135 @@ fn dependency_error(error: impl std::fmt::Display) -> ProjectFailure {
     ProjectFailure::store("project_dependency_store_unavailable").with_detail(error.to_string())
 }
 
+fn import_error(error: impl std::fmt::Display) -> ProjectFailure {
+    ProjectFailure::import(IMPORT_RECORD_INVALID).with_detail(error.to_string())
+}
+
+/// One source-owned slice, read from the rows the store already holds.
+fn read_import_slice(
+    connection: &Connection,
+    project_id: &ProjectId,
+    source_id: &SourceId,
+) -> Result<Option<ImportSlice>, ProjectFailure> {
+    let source = connection
+        .query_row(
+            "SELECT plan_id, source_kind, source_locator, revision, digest
+               FROM project_import_sources
+              WHERE project_id = ?1 AND source_id = ?2",
+            params![project_id.as_str(), source_id.as_str()],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(store_error)?;
+    let Some((plan_id, source_kind, source_locator, revision, digest)) = source else {
+        return Ok(None);
+    };
+    let mut statement = connection
+        .prepare(
+            "SELECT work_item_id FROM project_plan_imports
+              WHERE project_id = ?1 AND source_id = ?2
+              ORDER BY import_sequence",
+        )
+        .map_err(store_error)?;
+    let declared = statement
+        .query_map(params![project_id.as_str(), source_id.as_str()], |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(store_error)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(store_error)?;
+    let mut work_item_ids = Vec::with_capacity(declared.len());
+    for work_item_id in declared {
+        work_item_ids.push(WorkItemId::declare(work_item_id).map_err(|_| {
+            import_error("a stored work-item identity is not one this owner admits")
+        })?);
+    }
+    Ok(Some(ImportSlice {
+        project_id: project_id.clone(),
+        plan_id: PlanId::declare(plan_id)
+            .map_err(|_| import_error("a stored plan identity is not one this owner admits"))?,
+        source_id: source_id.clone(),
+        source_kind: SourceKind::declare(source_kind)
+            .map_err(|_| import_error("a stored source kind is not one this owner admits"))?,
+        source_locator: SourceLocator::declare(source_locator)
+            .map_err(|_| import_error("a stored source locator is not one this owner admits"))?,
+        revision: revision.max(0) as u64,
+        digest,
+        work_item_ids,
+    }))
+}
+
+/// What one admitted document changes about the slice it belongs to.
+///
+/// The whole decision runs against the store's own rows: the project has to be
+/// registered, the document's plan has to be the plan that registration
+/// carries, and the revision and digest of the source say whether this is a new
+/// document, a changed one, or the one already stored.
+fn import_change(
+    connection: &Connection,
+    admission: &PlanAdmission,
+) -> Result<PlanImportChange, ProjectFailure> {
+    let document = &admission.document;
+    let registered = read_project_row(connection, document.project_id.as_str())?
+        .ok_or_else(|| ProjectFailure::import(IMPORT_PROJECT_UNAUTHORIZED))?;
+    if registered.plan_id != document.plan_id {
+        return Err(
+            ProjectFailure::import(IMPORT_PLAN_MISMATCH).with_detail(format!(
+                "the registration carries plan {}, not {}",
+                registered.plan_id, document.plan_id
+            )),
+        );
+    }
+    let slice = read_import_slice(connection, &document.project_id, &document.source.source_id)?;
+    let stored = slice
+        .as_ref()
+        .map(|slice| slice.work_item_ids.clone())
+        .unwrap_or_default();
+    let revision = slice.as_ref().map(|slice| slice.revision).unwrap_or(0);
+    let digest = document.digest();
+    let replayed = slice.as_ref().is_some_and(|slice| slice.digest == digest);
+    let mut added = Vec::new();
+    let mut unchanged = Vec::new();
+    for item in &document.work_items {
+        if stored.contains(&item.work_item_id) {
+            unchanged.push(item.work_item_id.clone());
+        } else {
+            added.push(item.work_item_id.clone());
+        }
+    }
+    let retained = stored
+        .iter()
+        .filter(|stored_id| {
+            !document
+                .work_items
+                .iter()
+                .any(|item| &item.work_item_id == *stored_id)
+        })
+        .cloned()
+        .collect();
+    Ok(PlanImportChange {
+        project_id: document.project_id.clone(),
+        plan_id: document.plan_id.clone(),
+        source_id: document.source.source_id.clone(),
+        revision,
+        digest,
+        replayed,
+        added,
+        unchanged,
+        retained,
+        mapping: admission.mapping.clone(),
+        input_count: admission.input_count,
+    })
+}
+
 fn read_project_row(
     connection: &Connection,
     project_id: &str,
@@ -628,6 +906,86 @@ fn stored_dependency_sequence(
         .optional()
         .map_err(store_error)
         .map(|stored| stored.map(|sequence| sequence.max(0) as u64))
+}
+
+/// Admit one declared dependency edge inside a caller's own transaction.
+///
+/// The rules, the idempotence and the returned record are exactly the ones
+/// [`ProjectIdentityStore::admit_dependency`] publishes. The transaction is a
+/// parameter so an explicit import admits the inputs a document declares in the
+/// same transaction that admits its work items: a refused input then leaves
+/// neither the edge nor the slice behind.
+fn admit_dependency_in(
+    transaction: &rusqlite::Transaction<'_>,
+    dependency: &WorkDependency,
+) -> Result<DeclaredDependency, ProjectFailure> {
+    let declaring = read_project_row(transaction, dependency.project_id.as_str())?
+        .ok_or_else(|| ProjectFailure::dependency("project_dependency_project_unauthorized"))?;
+    if let ArtifactReference::Local { path, .. } = &dependency.artifact
+        && !stays_inside_authorized_root(&declaring.authorized_root, path)
+    {
+        return Err(ProjectFailure::dependency(
+            "project_artifact_reference_escapes_authorized_root",
+        )
+        .with_detail(format!("{path} is outside {}", declaring.authorized_root)));
+    }
+    if let ArtifactReference::CrossProject { project_id, .. } = &dependency.artifact
+        && !project_exists(transaction, project_id.as_str())?
+    {
+        return Err(
+            ProjectFailure::dependency("project_artifact_reference_unauthorized")
+                .with_detail(project_id.to_string()),
+        );
+    }
+    let consumer = dependency.consumer();
+    let producer = dependency.producer();
+    if let Some(cycle) = closing_cycle(transaction, &consumer, &producer)? {
+        return Err(ProjectFailure::dependency("project_dependency_cycle")
+            .with_detail(render_dependency_path(&cycle)));
+    }
+    // Idempotence is decided before the insert so the same edge never consumes
+    // an admission order it does not own.
+    if let Some(dependency_sequence) = stored_dependency_sequence(transaction, dependency)? {
+        let artifact_state =
+            dependency_state(transaction, &dependency.project_id, &dependency.artifact)?;
+        return Ok(DeclaredDependency {
+            dependency_sequence,
+            dependency: dependency.clone(),
+            artifact_state,
+        });
+    }
+    let inserted = transaction
+        .execute(
+            "INSERT INTO project_dependencies(
+               project_id, work_item_id, artifact_kind, producer_project_id,
+               producer_work_item_id, local_path
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT DO NOTHING",
+            params![
+                dependency.project_id.as_str(),
+                dependency.work_item_id.as_str(),
+                dependency.artifact.kind(),
+                producer.project_id.as_str(),
+                producer.work_item_id.as_str(),
+                dependency.artifact.local_path().unwrap_or_default(),
+            ],
+        )
+        .map_err(store_error)?;
+    let dependency_sequence = if inserted == 0 {
+        // The unique constraint is the authority; the check above is advisory.
+        // An edge that still lost the race is the same edge.
+        stored_dependency_sequence(transaction, dependency)?
+            .ok_or_else(|| dependency_error("project_dependency_record_invalid"))?
+    } else {
+        transaction.last_insert_rowid().max(0) as u64
+    };
+    let artifact_state =
+        dependency_state(transaction, &dependency.project_id, &dependency.artifact)?;
+    Ok(DeclaredDependency {
+        dependency_sequence,
+        dependency: dependency.clone(),
+        artifact_state,
+    })
 }
 
 /// Every declared edge as one consumer and the producer it waits for.

@@ -19,8 +19,9 @@ use licoup_application::{
     OperationReference, OperationState, ProjectCommand, ProjectPort, ProjectRegistrationRequest,
 };
 use licoup_project::{
-    AuthorityKind, AuthorityReference, ProjectFailure, ProjectId, ProjectIdentitySource,
-    ProjectIdentityStore, ProjectRegistration, RegisteredProject,
+    AuthorityKind, AuthorityReference, ImportDiagnostic, PLAN_IMPORT_STAGE, PlanAdmission,
+    PlanDocument, ProjectFailure, ProjectId, ProjectIdentitySource, ProjectIdentityStore,
+    ProjectRegistration, RegisteredProject,
 };
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -97,7 +98,62 @@ impl ProjectPort for NativeProjectApplication {
                     json!({"projects": projects}),
                 ))
             }
+            ProjectCommand::ImportPreview { document } => {
+                let admission = admit_document(document.clone())?;
+                let change = self
+                    .store()
+                    .map_err(failure)?
+                    .preview_import(&admission)
+                    .map_err(failure)?;
+                Ok(read_outcome(
+                    Operation::ProjectImportPreview,
+                    serde_json::to_value(change).unwrap_or(Value::Null),
+                ))
+            }
+            ProjectCommand::ImportApply {
+                document,
+                expected_revision,
+            } => {
+                let admission = admit_document(document.clone())?;
+                let outcome = self
+                    .store()
+                    .map_err(failure)?
+                    .apply_import(&admission, *expected_revision)
+                    .map_err(failure)?;
+                Ok(CommandOutcome::new(OperationReference::new(
+                    Operation::ProjectImportApply,
+                    admission.document.plan_id.as_str(),
+                    OperationState::Completed,
+                ))
+                .with_payload(serde_json::to_value(outcome).unwrap_or(Value::Null)))
+            }
         }
+    }
+}
+
+/// Parse and resolve one carried document, or refuse with its own diagnostics.
+///
+/// The document crosses the facade as an opaque value because this facade is
+/// protocol-neutral; it becomes the owner's typed declaration here, once, and
+/// every refusal it produces is reported before the store is reached. The
+/// published code is the first diagnostic's — a caller branches on one stable
+/// code — and its document path travels as the offending field, so an ambiguous
+/// conversion is corrected at the exact place the owner named.
+fn admit_document(document: Value) -> Result<PlanAdmission, ApplicationFailure> {
+    let document = PlanDocument::from_value(document).map_err(import_diagnostics)?;
+    document.admit().map_err(import_diagnostics)
+}
+
+/// One refusal for a document the owner would not admit.
+fn import_diagnostics(diagnostics: Vec<ImportDiagnostic>) -> ApplicationFailure {
+    let first = diagnostics.first();
+    let failure = ApplicationFailure::permanent(
+        first.map_or("project_plan_document_invalid", |first| first.code),
+        PLAN_IMPORT_STAGE,
+    );
+    match first.map(|first| first.path.as_str()) {
+        Some(path) if !path.is_empty() => failure.with_field(path),
+        _ => failure,
     }
 }
 
