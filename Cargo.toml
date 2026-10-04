@@ -16,6 +16,7 @@ members = [
     "crates/licoup-agent-antigravity",
     "crates/licoup-agent-cursor",
     "crates/licoup-agent-deepseek",
+    "crates/licoup-agent-kimi",
     "crates/licoup-agent-runtime",
     "crates/licoup-application",
     "crates/licoup-extension-contracts",

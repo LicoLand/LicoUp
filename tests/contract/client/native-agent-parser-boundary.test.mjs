@@ -8,6 +8,10 @@ import test from 'node:test';
 // have moved further: their vendor protocol, wire vocabulary and replay arm are
 // their own package's, and the composition names the package instead of keeping
 // a second copy.
+// The thirteen per-Agent parsers and the composition that names them stay in
+// the host until that Agent's own package owns the protocol; the shared adapter
+// contract, the registry lookup, the replay harness and the lifecycle authority
+// moved to `licoup-agent-adapter-sdk`.
 const parserRoot = 'crates/licoup-native/src/platform/native_agent_parser';
 const compositionRoot = `${parserRoot}/adapters`;
 const sdkRoot = 'crates/licoup-agent-adapter-sdk/src';
@@ -29,11 +33,37 @@ const adapters = [
 // The Agents whose protocol is a package's own: their parser module, their
 // declaration and their replay arm live in the package's crate.
 const packageAdapters = new Map([
-  ['codex', 'crates/licoup-agent-codex'],
   ['antigravity', 'crates/licoup-agent-antigravity'],
+  ['codex', 'crates/licoup-agent-codex'],
   ['cursor', 'crates/licoup-agent-cursor'],
   ['deepseek_harness', 'crates/licoup-agent-deepseek'],
+  ['kimi_code', 'crates/licoup-agent-kimi'],
 ]);
+
+// The package-owned parsers, under the alias the composition composes them by:
+// the crate that owns the parser, and the parser source the package ships.
+const packaged = {
+  antigravity: {
+    crate: 'licoup_agent_antigravity',
+    parser: 'crates/licoup-agent-antigravity/src/parser.rs',
+  },
+  codex: {
+    crate: 'licoup_agent_codex',
+    parser: 'crates/licoup-agent-codex/src/parser.rs',
+  },
+  cursor: {
+    crate: 'licoup_agent_cursor',
+    parser: 'crates/licoup-agent-cursor/src/parser.rs',
+  },
+  deepseek_harness: {
+    crate: 'licoup_agent_deepseek',
+    parser: 'crates/licoup-agent-deepseek/src/parser.rs',
+  },
+  kimi_code: {
+    crate: 'licoup_agent_kimi',
+    parser: 'crates/licoup-agent-kimi/src/parser.rs',
+  },
+};
 
 test('packaged adapter registry is bijective with the thirteen-entry inventory', () => {
   const composition = readFileSync(`${compositionRoot}/mod.rs`, 'utf8');
@@ -42,30 +72,14 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     composition.indexOf('/// The parser registrations this host injects'),
   );
   // Every entry names its Agent's declaration exactly once, and none inherits
-  // another Agent's answer. Two of the thirteen are their package's own
-  // registration constant, because the crate that owns the parser also owns
-  // that parser's answers.
+  // another Agent's answer. The entries a package owns are that package's own
+  // registration constant, counted from the package map rather than restated.
   const hostedEntries =
     (registrations.match(/ParserRegistration::(?:unanswered|new)\(/g) ?? []).length;
   const packageEntries =
-    (registrations.match(/registration::REGISTRATION,/g) ?? []).length;
+    (registrations.match(/licoup_agent_\w+::registration::REGISTRATION/g) ?? []).length;
   assert.equal(hostedEntries + packageEntries, 13);
   assert.equal(packageEntries, packageAdapters.size);
-  // The queries a reader reaches are answered by the Agent that owns the fact:
-  // Hermes' normalized transitions, and the exact-resume identity of the four
-  // Agents the Subagent mesh dispatches. Every other entry stays declared and
-  // unanswered rather than inheriting a neighbouring Agent's answer. Codex and
-  // Antigravity answer both queries from their own packages, so their answers
-  // are read where they live instead of here.
-  // Thirteen entries, one per Agent: eleven are declared here and two are the
-  // package's own registration. None inherits another Agent's answer.
-  assert.equal(
-    (registrations.match(/ParserRegistration::(?:unanswered|new)\(/g) ?? []).length,
-     13 - packageAdapters.size);
-  assert.equal(
-    (registrations.match(/licoup_agent_\w+::registration::REGISTRATION/g) ?? []).length,
-    packageAdapters.size,
-  );
   // The queries a reader reaches are answered by the Agent that owns the fact:
   // Hermes' normalized transitions, and the exact-resume identity of the Agents
   // the Subagent mesh dispatches. Every other entry stays declared and
@@ -76,24 +90,6 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     cursor: ['no_transitions', 'cursor_identity'],
     hermes: ['hermes_transitions', 'no_identity'],
   };
-  const packaged = {
-    antigravity: {
-      crate: 'licoup-agent-antigravity',
-      parser: 'crates/licoup-agent-antigravity/src/parser.rs',
-    },
-    codex: {
-      crate: 'licoup-agent-codex',
-      parser: 'crates/licoup-agent-codex/src/parser.rs',
-    },
-    cursor: {
-      crate: 'licoup-agent-cursor',
-      parser: 'crates/licoup-agent-cursor/src/parser.rs',
-    },
-    deepseek_harness: {
-      crate: 'licoup-agent-deepseek',
-      parser: 'crates/licoup-agent-deepseek/src/parser.rs',
-    },
-  };
   // One entry per Agent, so a per-Agent answer is read from its own entry
   // rather than from a neighbouring one that happens to name the same helper.
   const entries = new Map();
@@ -103,23 +99,18 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
   }
   assert.equal(entries.size, 13 - Object.keys(packaged).length);
   for (const adapter of adapters) {
-    const source = packaged[adapter]
-      ? readFileSync(packaged[adapter].parser, 'utf8')
-      : readFileSync(`${parserRoot}/adapters/${adapter}.rs`, 'utf8');
+    const moved = packaged[adapter];
+    const source = readFileSync(
+      moved ? moved.parser : `${parserRoot}/adapters/${adapter}.rs`, 'utf8');
     assert.match(source, /AdapterContract::new/);
-    if (packaged[adapter]) {
+    if (moved) {
       // The package owns the parser, the declaration and the replay arm; the
-      // composition reads them through the package's own module and may not
-      // declare the module or retype the declaration a second time.
-      const crateName = packaged[adapter].crate;
-      // The composition names the alias it composes (the details differ per
-      // adapter only in the crate that sits behind it), and the registration
-      // line names the package's own REGISTRATION constant.
+      // composition reads them through the package's own module, may not declare
+      // the module, and names the package's own registration constant.
       assert.match(composition,
-        new RegExp(`use licoup_agent_${adapter.replace('_harness', '')}::parser as ${adapter};`
-          .replace('codex', 'codex')));
+        new RegExp(`use ${moved.crate}::parser as ${adapter};`));
       assert.match(registrations,
-        new RegExp(`licoup_agent_${packaged[adapter].crate.replace('licoup-agent-', '')}::registration::REGISTRATION`));
+        new RegExp(`${moved.crate}::registration::REGISTRATION`));
       assert.doesNotMatch(composition, new RegExp(`mod ${adapter};`));
       continue;
     }
@@ -136,6 +127,7 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     }
   }
 });
+
 
 test('the shared adapter contract names no Agent', () => {
   const contract = [

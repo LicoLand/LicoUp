@@ -22,6 +22,7 @@ export const AGENT_CODEX_MANIFEST = "crates/licoup-agent-codex/Cargo.toml";
 export const AGENT_ANTIGRAVITY_MANIFEST =
   "crates/licoup-agent-antigravity/Cargo.toml";
 export const AGENT_DEEPSEEK_MANIFEST = "crates/licoup-agent-deepseek/Cargo.toml";
+export const AGENT_KIMI_MANIFEST = "crates/licoup-agent-kimi/Cargo.toml";
 
 export const FLUTTER_COMPOSITION_INPUTS = Object.freeze([
   "apps/desktop/analysis_options.yaml",

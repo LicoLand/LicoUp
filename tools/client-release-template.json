@@ -73,6 +73,7 @@
         "gateway-package-payload",
         "cursor-adapter-package-payload",
         "deepseek-adapter-package-payload",
+        "kimi-adapter-package-payload",
         "mcp-package-payload",
         "package-payload"
       ],

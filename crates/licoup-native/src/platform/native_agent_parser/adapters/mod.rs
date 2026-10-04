@@ -10,7 +10,9 @@
 //!
 //! Each subtree below is one Agent's protocol and moves with that Agent's crate
 //! (`licoup-agent-<agent>`); the composition travels last, because it is what
-//! tilts from naming thirteen parsers to naming the crates that hold them.
+//! tilts from naming thirteen parsers to naming the crates that hold them. Two
+//! parsers have moved already and their subtrees are gone: the composition names
+//! the package that owns each one, and no copy stays here.
 
 pub(in crate::platform) use licoup_agent_adapter_sdk::adapters::{
     AdapterContract, NativeLineParser,
@@ -32,18 +34,25 @@ pub(in crate::platform) use licoup_agent_antigravity::parser as antigravity;
 // `licoup-agent-codex` and the DeepSeek Harness SDK's in
 // `licoup-agent-deepseek`, each parsed once below this port, and this
 // composition names the packages rather than keeping a second copy.
+// Two Agents' parsers have moved: Codex's vendor protocol lives in
+// `licoup-agent-codex` and Kimi Code's ACP dialect in `licoup-agent-kimi`, each
+// parsed once below this port, and this composition names the package rather
+// than keeping a second copy. Codex's is re-exported here because the host's
+// Codex leaves still read it through this tree; Kimi Code's is reached through
+// the package's dialect registration in `runtime_adapters::drivers`, so this
+// tree names no Kimi parser at all.
 pub(in crate::platform) use licoup_agent_codex::parser as codex;
 // Cursor's vendor protocol has moved the same way, into `licoup-agent-cursor`: its
 // strict-NDJSON turn dialect and the wire vocabulary it reads are the package's,
 // and this composition reads them through the package's own module.
 pub(in crate::platform) use licoup_agent_cursor::parser as cursor;
 pub(in crate::platform) use licoup_agent_deepseek::parser as deepseek_harness;
+pub(in crate::platform) use licoup_agent_kimi::parser as kimi_code;
 
 pub(in crate::platform) mod claude_code;
 pub(in crate::platform) mod copilot;
 pub(in crate::platform) mod hermes;
 pub(in crate::platform) mod kilo_code;
-pub(in crate::platform) mod kimi_code;
 pub(in crate::platform) mod lico_agent;
 pub(in crate::platform) mod openclaw;
 pub(in crate::platform) mod opencode;
@@ -127,6 +136,15 @@ fn opaque_identity(session_id: &str) -> bool {
 /// Every other entry declares its Agent's transition answer as *the parser's own
 /// execution result* rather than through the query, and answers the identity
 /// query fail-closed because the mesh never dispatches that Agent.
+/// Hermes answers its normalized transitions, and the four Agents the Subagent
+/// mesh dispatches answer whether a durable identity is theirs. Every other
+/// entry declares its Agent's transition answer as *the parser's own execution
+/// result* rather than through the query, and answers the identity query
+/// fail-closed because the mesh never dispatches that Agent.
+///
+/// Two entries are the moved packages' own registrations rather than constants
+/// restated here, so the declaration a package publishes and the declaration
+/// this host dispatches are one value and cannot drift.
 pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     // The Antigravity package answers both protocol-agnostic queries from its own
     // protocol facts — the identity rule is its parser's, and the transitions are
@@ -143,7 +161,9 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     licoup_agent_cursor::registration::REGISTRATION,
     ParserRegistration::new(hermes::CONTRACT, hermes_transitions, no_identity),
     ParserRegistration::unanswered(kilo_code::CONTRACT),
-    ParserRegistration::unanswered(kimi_code::CONTRACT),
+    // The Kimi Code package owns its dialect and reports its transitions with its
+    // own execution result, so this entry is the package's own registration.
+    licoup_agent_kimi::registration::REGISTRATION,
     ParserRegistration::unanswered(openclaw::CONTRACT),
     ParserRegistration::unanswered(opencode::CONTRACT),
     ParserRegistration::unanswered(pi::CONTRACT),
