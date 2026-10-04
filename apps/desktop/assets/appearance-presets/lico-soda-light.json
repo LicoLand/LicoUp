@@ -38,7 +38,7 @@
     "accent-glow": "rgba(27, 98, 139, 0.16)",
     "skeleton-base": "#efdfd4",
     "skeleton-highlight": "#fbf2ea",
-    "font-family": "geist",
+    "font-family": "system",
     "icon-style": "outlined",
     "motion-scale": "1",
     "surface-opacity": "1",

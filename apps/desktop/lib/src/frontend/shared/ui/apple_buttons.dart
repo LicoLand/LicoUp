@@ -10,8 +10,11 @@ import 'package:licoup/src/frontend/shared/ui/lico_typography.dart';
 abstract final class AppleControlButtons {
   static ButtonStyle glassFilled(
     LicoThemeColors colors, {
-    String? fontFamily = LicoTypography.sansFamily,
+    String? fontFamily,
+    List<String>? fontFamilyFallback,
   }) {
+    final family = fontFamily ?? LicoTypography.platformSansFamily;
+    final fallback = fontFamilyFallback ?? LicoTypography.sansFallback;
     return ButtonStyle(
       elevation: const WidgetStatePropertyAll(0),
       backgroundColor: WidgetStateProperty.resolveWith((states) {
@@ -41,8 +44,8 @@ abstract final class AppleControlButtons {
       }),
       textStyle: WidgetStatePropertyAll(
         TextStyle(
-          fontFamily: fontFamily,
-          fontFamilyFallback: LicoTypography.sansFallback,
+          fontFamily: family,
+          fontFamilyFallback: fallback,
           fontSize: 13,
           fontWeight: FontWeight.w600,
           letterSpacing: -0.08,
@@ -64,8 +67,11 @@ abstract final class AppleControlButtons {
 
   static ButtonStyle glassOutlined(
     LicoThemeColors colors, {
-    String? fontFamily = LicoTypography.sansFamily,
+    String? fontFamily,
+    List<String>? fontFamilyFallback,
   }) {
+    final family = fontFamily ?? LicoTypography.platformSansFamily;
+    final fallback = fontFamilyFallback ?? LicoTypography.sansFallback;
     return ButtonStyle(
       elevation: const WidgetStatePropertyAll(0),
       backgroundColor: WidgetStateProperty.resolveWith((states) {
@@ -93,8 +99,8 @@ abstract final class AppleControlButtons {
       }),
       textStyle: WidgetStatePropertyAll(
         TextStyle(
-          fontFamily: fontFamily,
-          fontFamilyFallback: LicoTypography.sansFallback,
+          fontFamily: family,
+          fontFamilyFallback: fallback,
           fontSize: 13,
           fontWeight: FontWeight.w500,
           letterSpacing: -0.08,
@@ -116,14 +122,17 @@ abstract final class AppleControlButtons {
 
   static ButtonStyle glassText(
     LicoThemeColors colors, {
-    String? fontFamily = LicoTypography.sansFamily,
+    String? fontFamily,
+    List<String>? fontFamilyFallback,
   }) {
+    final family = fontFamily ?? LicoTypography.platformSansFamily;
+    final fallback = fontFamilyFallback ?? LicoTypography.sansFallback;
     return TextButton.styleFrom(
       foregroundColor: colors.accent,
       disabledForegroundColor: colors.textDisabled,
       textStyle: TextStyle(
-        fontFamily: fontFamily,
-        fontFamilyFallback: LicoTypography.sansFallback,
+        fontFamily: family,
+        fontFamilyFallback: fallback,
         fontSize: 13,
         fontWeight: FontWeight.w500,
         letterSpacing: -0.08,

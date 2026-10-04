@@ -217,6 +217,9 @@ mixin ClientLifecycleFacade
       portableData,
     );
     applyAppearancePresetCatalog(catalog);
+    // Installed language resources render the interface strings. A first launch
+    // has none, and the compiled baseline renders instead.
+    await loadInstalledLocaleResources();
     await layoutManager.initialize(
       loadStoredState: !_unavailableFeatureDomains.contains(
         'appearance-presentation',

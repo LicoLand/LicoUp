@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/controller/appearance_preference_owner.dart';
 import 'package:licoup/src/application/controller/functional_status_runtime.dart';
 import 'package:licoup/src/application/controller/locale_preference_owner.dart';
+import 'package:licoup/src/application/controller/locale_resource_owner.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
@@ -26,6 +27,7 @@ void main() {
     () async {
       final appearanceOwner = AppearancePreferenceOwner();
       final localeOwner = LocalePreferenceOwner();
+      final localeResources = LocaleResourceOwner();
       final statusRuntime = FunctionalStatusRuntime();
       final conversationOwner = _ConversationOwner();
       final navigation = ClientNavigationController(
@@ -53,6 +55,7 @@ void main() {
       final shell = ShellProjectionProducer(
         appearance: appearanceOwner,
         locale: localeOwner,
+        localeResources: localeResources,
         status: statusRuntime,
         navigation: navigation,
         layoutManager: layoutManager,
@@ -61,9 +64,9 @@ void main() {
           resolverCalls[2] += 1;
           return resolveAppearanceProjection(owner);
         },
-        localeResolver: (owner) {
+        localeResolver: (owner, resources) {
           resolverCalls[3] += 1;
-          return resolveLocaleProjection(owner);
+          return resolveLocaleProjection(owner, resources);
         },
         layoutResolver: (manager, environment) {
           resolverCalls[1] += 1;
@@ -173,6 +176,7 @@ void main() {
       navigation.dispose();
       conversationOwner.dispose();
       statusRuntime.dispose();
+      localeResources.dispose();
       localeOwner.dispose();
       appearanceOwner.dispose();
     },

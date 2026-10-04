@@ -120,3 +120,15 @@ bool samePresentationList<T>(List<T> left, List<T> right) {
   }
   return true;
 }
+
+Map<String, String> immutablePresentationMap(Map<String, String> values) =>
+    Map<String, String>.unmodifiable(values);
+
+bool samePresentationMap(Map<String, String> left, Map<String, String> right) {
+  if (identical(left, right)) return true;
+  if (left.length != right.length) return false;
+  for (final entry in left.entries) {
+    if (right[entry.key] != entry.value) return false;
+  }
+  return true;
+}
