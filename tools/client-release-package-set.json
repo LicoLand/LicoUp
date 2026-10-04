@@ -27,6 +27,11 @@
       "payloadRole": "gateway-package-payload"
     },
     {
+      "packageId": "org.licoland.adapter.cursor",
+      "source": "crates/licoup-agent-cursor/package",
+      "payloadRole": "cursor-adapter-package-payload"
+    },
+    {
       "packageId": "org.licoland.feature.mcp",
       "source": "crates/licoup-mcp/package",
       "payloadRole": "mcp-package-payload"

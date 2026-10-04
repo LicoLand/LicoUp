@@ -4,8 +4,9 @@
 //! `licoup-agent-adapter-sdk` owns the shared half — the byte-line ingress
 //! contract, the adapter declaration, the transition vocabulary, the framing
 //! and envelope helpers, the driver registry and the registry lookup. This tree
-//! owns the other half: one parser per Agent, and the composition that names
-//! them and hands them to the SDK through `AdapterParserSet`.
+//! owns the other half: the per-Agent parsers the host still holds, and the
+//! composition that names all thirteen and hands them to the SDK through
+//! `AdapterParserSet`.
 //!
 //! Each subtree below is one Agent's protocol and moves with that Agent's crate
 //! (`licoup-agent-<agent>`); the composition travels last, because it is what
@@ -18,22 +19,23 @@ pub(in crate::platform) use licoup_agent_adapter_sdk::{
     LifecycleStage, Transition, TransitionReducer,
 };
 
-// One Agent's parser has moved: Codex's vendor protocol now lives in its own
-// package (`licoup-agent-codex`), which this composition names through that
-// package's own parser registration rather than by keeping a second copy. The
-// package also owns the app-server process that speaks the protocol, so no
-// kernel module declares either one.
-
 // The second Agent to move: Antigravity's Agent Hooks receipt, PTY parser and
 // terminal classification now live in `licoup-agent-antigravity`. The driver that
 // still supervises the vendor CLI reads them through this path, and the
 // composition names the package for the registration and the replay arm that
 // belong to the same parser.
 pub(in crate::platform) use licoup_agent_antigravity::parser as antigravity;
+// One Agent's parser has moved: Codex's vendor protocol now lives in its own package
+// (`licoup-agent-codex`), parsed once below this port, and this composition names the
+// package rather than keeping a second copy.
+pub(in crate::platform) use licoup_agent_codex::parser as codex;
+// Cursor's vendor protocol has moved the same way, into `licoup-agent-cursor`: its
+// strict-NDJSON turn dialect and the wire vocabulary it reads are the package's,
+// and this composition reads them through the package's own module.
+pub(in crate::platform) use licoup_agent_cursor::parser as cursor;
 
 pub(in crate::platform) mod claude_code;
 pub(in crate::platform) mod copilot;
-pub(in crate::platform) mod cursor;
 pub(in crate::platform) mod deepseek_harness;
 pub(in crate::platform) mod hermes;
 pub(in crate::platform) mod kilo_code;
@@ -50,10 +52,12 @@ use licoup_agent_adapter_sdk::port::{
 /// The fail-closed transition answer, for an Agent parser that reports its
 /// transitions with its own execution result rather than through this query.
 ///
-/// Twelve of the thirteen parsers answer that way: their driver carries the
+/// Every parser this host still holds answers that way: its driver carries the
 /// `transitions` list the parser's own reducer built, so the query stays
-/// declared and unanswered for them, exactly as
-/// [`ParserRegistration::unanswered`] states.
+/// declared and unanswered for it, exactly as
+/// [`ParserRegistration::unanswered`] states. Hermes is the exception the host
+/// answers from its own builders, and the two Agents that have moved into their
+/// own packages answer from the package's registration instead.
 fn no_transitions(_: &ExecutionOutcome<'_>) -> Vec<Transition> {
     Vec::new()
 }
@@ -85,6 +89,10 @@ fn hermes_transitions(outcome: &ExecutionOutcome<'_>) -> Vec<Transition> {
 /// Whether a Cursor chat identity is one that Agent's protocol accepts.
 fn cursor_identity(request: &DurableIdentityRequest<'_>) -> bool {
     cursor::safe_session_id(request.session_id)
+/// Whether an Antigravity Agent Hooks receipt identity is one that Agent's
+/// protocol accepts.
+fn antigravity_identity(request: &DurableIdentityRequest<'_>) -> bool {
+    antigravity::valid_session_id(request.session_id)
 }
 
 /// Whether a Claude Code session identity is one that Agent's protocol accepts.
@@ -106,11 +114,13 @@ fn opaque_identity(session_id: &str) -> bool {
 /// so an Agent parser is one entry rather than four lists that can drift.
 ///
 /// An entry answers the two protocol-agnostic queries when a reader reaches it:
-/// Hermes answers its normalized transitions, and the four Agents the Subagent
-/// mesh dispatches answer whether a durable identity is theirs. Every other
-/// entry declares its Agent's transition answer as *the parser's own execution
-/// result* rather than through the query, and answers the identity query
-/// fail-closed because the mesh never dispatches that Agent.
+/// Hermes answers its normalized transitions, the Agents the Subagent mesh
+/// dispatches answer whether a durable identity is theirs, and the two Agents
+/// whose protocol has moved into its own package contribute the package's own
+/// registration — which answers both queries from that Agent's wire evidence.
+/// Every other entry declares its Agent's transition answer as *the parser's own
+/// execution result* rather than through the query, and answers the identity
+/// query fail-closed because the mesh never dispatches that Agent.
 pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     // The Antigravity package answers both protocol-agnostic queries from its own
     // protocol facts — the identity rule is its parser's, and the transitions are
@@ -125,7 +135,10 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     // evidence, so this entry is the package's own registration.
     licoup_agent_codex::registration::REGISTRATION,
     ParserRegistration::unanswered(copilot::CONTRACT),
-    ParserRegistration::new(cursor::CONTRACT, no_transitions, cursor_identity),
+    // The Cursor package answers both queries from its own wire vocabulary — the
+    // parser's own reply transitions and the session-id rule it binds with — so this
+    // entry is the package's own registration rather than a second answer kept here.
+    licoup_agent_cursor::registration::REGISTRATION,
     ParserRegistration::new(hermes::CONTRACT, hermes_transitions, no_identity),
     ParserRegistration::unanswered(kilo_code::CONTRACT),
     ParserRegistration::unanswered(kimi_code::CONTRACT),

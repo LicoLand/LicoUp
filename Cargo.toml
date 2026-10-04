@@ -14,6 +14,7 @@ members = [
     "crates/licoup-agent-drivers",
     "crates/licoup-agent-codex",
     "crates/licoup-agent-antigravity",
+    "crates/licoup-agent-cursor",
     "crates/licoup-agent-runtime",
     "crates/licoup-application",
     "crates/licoup-extension-contracts",

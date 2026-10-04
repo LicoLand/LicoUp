@@ -22,10 +22,11 @@
 //! answered in `adapters::REGISTRATIONS` by the Agents whose facts a reader
 //! actually reaches: Hermes answers `execution_transitions`, because it reports
 //! no transition list of its own and the host's Hermes normalization reads that
-//! query; and the four Agents the Subagent mesh dispatches — Codex, Cursor,
-//! Antigravity and Claude Code — answer `valid_identity` from their own
-//! recorded evidence. Twelve of the thirteen entries leave
-//! `execution_transitions` unanswered because their driver carries the parser's
+//! query; the Agents the Subagent mesh dispatches — Antigravity and Claude Code
+//! here, Codex and Cursor from their own packages — answer `valid_identity`
+//! from their own recorded evidence; and a package entry answers both queries
+//! from the package's wire vocabulary. Every other entry leaves
+//! `execution_transitions` unanswered because its driver carries the parser's
 //! own transition list, and the identity query stays fail-closed for an Agent
 //! the mesh never dispatches. No entry inherits a neighbouring Agent's answer.
 
@@ -41,7 +42,7 @@ mod tests;
 /// caller that already reaches this module keeps one path to the vocabulary
 /// while the definitions live in exactly one crate.
 pub(in crate::platform) use licoup_agent_adapter_sdk::{
-    LifecycleStage, TextForm, TextReconciler, Transition, TransitionReducer,
+    LifecycleStage, Transition, TransitionReducer,
 };
 
 /// Complete packaged inventory. The registry test proves this is bijective

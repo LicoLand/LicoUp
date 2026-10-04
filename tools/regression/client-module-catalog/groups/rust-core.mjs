@@ -57,6 +57,13 @@ export const RUST_CORE_MODULES = Object.freeze([
       command: command(
         "cargo",
         ["test", "--manifest-path", "crates/licoup-agent-antigravity/Cargo.toml"],
+      id: "rust.core.agent-cursor-package",
+      kind: "rust-core",
+      summary: "Cursor adapter package program, vendor protocol, registration, and replay corpus",
+      inputs: ["crates/licoup-agent-cursor/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-cursor/Cargo.toml"],
         10 * 60_000,
       ),
     }),

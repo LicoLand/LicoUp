@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-// The thirteen per-Agent parsers and the composition that names them stay in
-// the host; the shared adapter contract, the registry lookup, the replay
-// harness and the lifecycle authority moved to `licoup-agent-adapter-sdk`.
+// The per-Agent parsers the host still holds and the composition that names
+// them; the shared adapter contract, the registry lookup, the replay harness
+// and the lifecycle authority moved to `licoup-agent-adapter-sdk`. Two Agents
+// have moved further: their vendor protocol, wire vocabulary and replay arm are
+// their own package's, and the composition names the package instead of keeping
+// a second copy.
 const parserRoot = 'crates/licoup-native/src/platform/native_agent_parser';
 const compositionRoot = `${parserRoot}/adapters`;
 const sdkRoot = 'crates/licoup-agent-adapter-sdk/src';
@@ -23,6 +26,13 @@ const adapters = [
   'lico_agent',
   'deepseek_harness',
 ];
+// The Agents whose protocol is a package's own: their parser module, their
+// declaration and their replay arm live in the package's crate.
+const packageAdapters = new Map([
+  ['codex', 'crates/licoup-agent-codex'],
+  ['antigravity', 'crates/licoup-agent-antigravity'],
+  ['cursor', 'crates/licoup-agent-cursor'],
+]);
 
 test('packaged adapter registry is bijective with the thirteen-entry inventory', () => {
   const composition = readFileSync(`${compositionRoot}/mod.rs`, 'utf8');
@@ -39,13 +49,27 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
   const packageEntries =
     (registrations.match(/registration::REGISTRATION,/g) ?? []).length;
   assert.equal(hostedEntries + packageEntries, 13);
-  assert.equal(packageEntries, 2);
+  assert.equal(packageEntries, packageAdapters.size);
   // The queries a reader reaches are answered by the Agent that owns the fact:
   // Hermes' normalized transitions, and the exact-resume identity of the four
   // Agents the Subagent mesh dispatches. Every other entry stays declared and
   // unanswered rather than inheriting a neighbouring Agent's answer. Codex and
   // Antigravity answer both queries from their own packages, so their answers
   // are read where they live instead of here.
+  // Thirteen entries, one per Agent: eleven are declared here and two are the
+  // package's own registration. None inherits another Agent's answer.
+  assert.equal(
+    (registrations.match(/ParserRegistration::(?:unanswered|new)\(/g) ?? []).length,
+     13 - packageAdapters.size);
+  assert.equal(
+    (registrations.match(/licoup_agent_\w+::registration::REGISTRATION/g) ?? []).length,
+    packageAdapters.size,
+  );
+  // The queries a reader reaches are answered by the Agent that owns the fact:
+  // Hermes' normalized transitions, and the exact-resume identity of the Agents
+  // the Subagent mesh dispatches. Every other entry stays declared and
+  // unanswered rather than inheriting a neighbouring Agent's answer, and a
+  // package entry answers from the package's own evidence.
   const answered = {
     claude_code: ['no_transitions', 'claude_code_identity'],
     cursor: ['no_transitions', 'cursor_identity'],
@@ -59,6 +83,10 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     codex: {
       crate: 'licoup-agent-codex',
       parser: 'crates/licoup-agent-codex/src/parser.rs',
+    },
+    cursor: {
+      crate: 'licoup-agent-cursor',
+      parser: 'crates/licoup-agent-cursor/src/parser.rs',
     },
   };
   // One entry per Agent, so a per-Agent answer is read from its own entry
@@ -75,12 +103,13 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
       : readFileSync(`${parserRoot}/adapters/${adapter}.rs`, 'utf8');
     assert.match(source, /AdapterContract::new/);
     if (packaged[adapter]) {
-      // The host names the package's registration; it may not declare the
-      // module or retype the declaration a second time.
-      assert.match(
-        composition,
-        new RegExp(`licoup_agent_${adapter.replaceAll('-', '_')}::registration::REGISTRATION`),
-      );
+      // The package owns the parser, the declaration and the replay arm; the
+      // composition reads them through the package's own module and may not
+      // declare the module or retype the declaration a second time.
+      assert.match(composition,
+        new RegExp(`use licoup_agent_${adapter}::parser as ${adapter};`));
+      assert.match(registrations,
+        new RegExp(`licoup_agent_${adapter}::registration::REGISTRATION`));
       assert.doesNotMatch(composition, new RegExp(`mod ${adapter};`));
       continue;
     }
@@ -171,7 +200,12 @@ test('Cursor PTY isolation precedes its strict NDJSON parser', () => {
     'crates/licoup-native/src/platform/cursor_driver/io.rs',
     'utf8',
   );
-  const parser = readFileSync(`${parserRoot}/adapters/cursor.rs`, 'utf8');
+  // The PTY isolation stays in the host's process half; the parser it hands a
+  // clean line to is the package's own, and it reads no PTY control at all.
+  const parser = readFileSync(
+    'crates/licoup-agent-cursor/src/parser.rs',
+    'utf8',
+  );
   assert.match(transport, /isolate_pty_protocol_line/);
   assert.doesNotMatch(parser, /strip_pty_controls|isolate_pty_protocol_line/);
   assert.match(parser, /serde_json::from_slice/);

@@ -71,6 +71,7 @@
         "appearance-converter-package-payload",
         "analytics-package-payload",
         "gateway-package-payload",
+        "cursor-adapter-package-payload",
         "mcp-package-payload",
         "package-payload"
       ],

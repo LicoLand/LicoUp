@@ -100,6 +100,7 @@ export const RUST_COMPONENT_MODULES = Object.freeze([
   crateTests(
     "rust.crate.model-catalog",
     "Declared model identity, observed availability, recorded price facts, the separated support/availability/credentials/execution matrix and non-learning candidate routing behind the catalogue ports",
+    "Declared model identity, observed availability, recorded price facts, the separated support/execution matrix, and non-learning candidate routing behind the catalogue ports",
     "licoup-model-catalog",
     [
       "crates/licoup-model-catalog/src/lib.rs",
