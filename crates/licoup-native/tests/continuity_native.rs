@@ -502,7 +502,7 @@ fn pi_resume_and_start_are_effect_free_without_managed_executable() {
 fn control_payload_is_preserved_at_transport_and_scoped_lane() {
     use licoup_conversation::ConversationStore;
     use licoup_conversation::RuntimeBinding;
-    use licoup_native::platform::dispatch_lane_operation;
+    use licoup_native::dispatch_agent_operation as dispatch;
     use licoup_native::platform::work_context_ports::{
         AdapterCall, AdapterResponse, CountingTransport, bind_adapter_work_context,
     };
@@ -574,14 +574,14 @@ fn control_payload_is_preserved_at_transport_and_scoped_lane() {
     }
     assert_eq!(calls[0].params["text"], "exact-steer-content");
 
-    let lane = dispatch_lane_operation("steer", &calls[0].params).unwrap();
+    let lane = dispatch("steer", &calls[0].params).unwrap();
     assert_eq!(lane["ok"], false);
     assert_ne!(lane["status"], "unsupported");
     assert_eq!(
         lane["error"]["code"],
         "dispatch_steer_transport_unavailable"
     );
-    let cancel = dispatch_lane_operation("cancel", &calls[1].params).unwrap();
+    let cancel = dispatch("cancel", &calls[1].params).unwrap();
     assert_eq!(cancel["ok"], false);
     assert_ne!(
         cancel.get("error").and_then(|error| error.get("code")),

@@ -9,18 +9,26 @@ const repoRoot = path.resolve(
   "../../..",
 );
 const driverRoot = "crates/licoup-native/src/platform/pi_driver";
-const parserRoot = "crates/licoup-native/src/platform/native_agent_parser/adapters/pi";
+// The wire half, owned by the Pi adapter package since PI-PACKAGE moved it out
+// of the kernel. One package carries one Agent's protocol; the client names the
+// package for its vocabulary instead of keeping a second copy.
+const packageRoot = "crates/licoup-agent-pi/src";
 
+// The process half of the Pi driver, still composed by the client.
 const productionLeaves = Object.freeze([
   "active_control.rs",
-  "errors.rs",
   "execution.rs",
   "io.rs",
+  "probe.rs",
+  "supervision.rs",
+]);
+// The protocol vocabulary the package owns: the failure shape, the effective
+// settings, the launch configuration and the session records.
+const packageDriverLeaves = Object.freeze([
+  "errors.rs",
   "model.rs",
   "params.rs",
-  "probe.rs",
   "sessions.rs",
-  "supervision.rs",
 ]);
 const parserLeaves = Object.freeze(["events.rs", "protocol.rs"]);
 
@@ -30,19 +38,23 @@ async function read(relativePath) {
 
 async function sources() {
   return Object.fromEntries(await Promise.all([
-    ["parser/pi.rs", await read(`${parserRoot}.rs`)],
+    ["parser/pi.rs", await read(`${packageRoot}/parser.rs`)],
     ...productionLeaves.map(async (leaf) => [
       `driver/${leaf}`,
       await read(`${driverRoot}/${leaf}`),
     ]),
+    ...packageDriverLeaves.map(async (leaf) => [
+      `driver/${leaf}`,
+      await read(`${packageRoot}/driver/${leaf}`),
+    ]),
     ...parserLeaves.map(async (leaf) => [
       `parser/${leaf}`,
-      await read(`${parserRoot}/${leaf}`),
+      await read(`${packageRoot}/parser/${leaf}`),
     ]),
   ]));
 }
 
-test("Pi driver facade is thin and owns every production leaf", async () => {
+test("Pi driver facade is thin, names the package, and owns only the process", async () => {
   const facade = await read(`${driverRoot}.rs`);
   assert.deepEqual(
     [...facade.matchAll(/^(?:pub\(in crate::platform\) )?mod ([a-z_]+);$/gmu)]
@@ -52,6 +64,9 @@ test("Pi driver facade is thin and owns every production leaf", async () => {
       .sort(),
     [...productionLeaves].sort(),
   );
+  // The protocol vocabulary is read from the package rather than declared here:
+  // one Agent, one copy.
+  assert.ok(facade.includes("licoup_agent_pi::driver"));
   for (const implementationToken of [
     "struct PiProtocol",
     "struct ProtocolConfig",
@@ -59,8 +74,14 @@ test("Pi driver facade is thin and owns every production leaf", async () => {
     "fn run_protocol_loop",
     "include!(",
     "#[path",
+    // The vocabulary modules may not be re-declared beside the package that
+    // owns them: a `mod model;` here would be a second copy.
+    "mod errors;",
+    "mod model;",
+    "mod params;",
+    "mod sessions;",
   ]) {
-    assert.equal(facade.includes(implementationToken), false);
+    assert.equal(facade.includes(implementationToken), false, implementationToken);
   }
 });
 
@@ -170,4 +191,15 @@ test("Pi split contains no production unsafe or hidden compatibility include", a
   assert.equal(joined.includes("unsafe {"), false);
   assert.equal(joined.includes("include!("), false);
   assert.equal(joined.includes("#[path"), false);
+
+  // The package owns the protocol and no part of the client: a client path in
+  // the package's sources would be the kernel reaching back in through it.
+  const packageSources = [
+    source["parser/pi.rs"],
+    ...parserLeaves.map((leaf) => source[`parser/${leaf}`]),
+    ...packageDriverLeaves.map((leaf) => source[`driver/${leaf}`]),
+  ].join("\n");
+  for (const clientPath of ["crate::platform", "licoup_native", "licoup-native"]) {
+    assert.equal(packageSources.includes(clientPath), false, clientPath);
+  }
 });

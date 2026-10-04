@@ -57,9 +57,7 @@ use crate::domain::agent_intelligence_catalog::qualification::{
 use crate::platform::runtime_adapters::{
     RuntimeAdapter, RuntimeAdapterError, adapter_for_agent_public,
 };
-use crate::platform::work_context_ports::{
-    AdapterTransport, bind_adapter_work_context, bind_host_work_context,
-};
+use licoup_agent_drivers::AdapterTransport;
 
 use super::adoption::{AdoptionPolicy, stage_from_coverage};
 use super::cognition::{
@@ -414,7 +412,7 @@ impl ContinuityHost {
 
     pub fn bind_hermetic(&self, protocol: HermeticProtocol, config: WorkContextConfig) {
         let key = work_runtime_key_from_binding(config.child.clone(), 0);
-        let runtime = Arc::new(bind_host_work_context(protocol, config));
+        let runtime = Arc::new(crate::agent_port::bind_hermetic_work_context(protocol, config));
         lock(&self.work_runtimes).insert(key, runtime);
     }
 
@@ -446,7 +444,7 @@ impl ContinuityHost {
         let binding = self.child_binding(parent_conversation_id, goal_id)?;
         let key = work_runtime_key_from_binding(binding.clone(), generation);
         let config = WorkContextConfig::child(binding);
-        let runtime = Arc::new(bind_adapter_work_context(
+        let runtime = Arc::new(crate::agent_port::bind_work_context(
             family,
             config,
             transport,
@@ -482,7 +480,7 @@ impl ContinuityHost {
             parent_conversation_id,
             goal_id,
             family,
-            Arc::new(crate::platform::work_context_ports::host_driver_transport(family)),
+            crate::agent_port::work_context_transport(family),
             generation,
         )
     }

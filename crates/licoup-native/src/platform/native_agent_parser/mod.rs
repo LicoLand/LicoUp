@@ -10,26 +10,27 @@
 //! lifecycle machine. None of that is here any more, and none of it is
 //! duplicated here.
 //!
-//! What is here is one Agent each. `adapters` holds the parsers this host still
-//! carries that classify one Agent's vendor frames, and the `REGISTRATIONS` list
-//! that names every Agent's declaration — including the moved packages' own
-//! registrations; `replay` holds the arm that drives each of them from a
+//! What is here is one Agent each. `adapters` holds the composition's own
+//! declarations — the `REGISTRATIONS` list that names every Agent's declaration,
+//! all thirteen of them the moved packages' own registrations; `replay` holds
+//! the arm that drives each of them from a
 //! recorded transcript and the corpus checks that belong to the family; and
 //! `tests` holds the family's own claims. Each per-Agent subtree and its arm
 //! move to that Agent's crate (`licoup-agent-<agent>`); this root and the
 //! composition are what remain, because they are what names thirteen parsers
-//! and, later, thirteen crates. Eight subtrees have moved — Antigravity's,
-//! Claude Code's, Codex's, Copilot's, Cursor's, DeepSeek Harness', Hermes' and
-//! Kimi Code's: their parsers are reached through the packages that own them and
-//! no copy stays here.
+//! and, later, thirteen crates. Thirteen subtrees have moved — Antigravity's,
+//! Claude Code's, Codex's, Copilot's, Cursor's, DeepSeek Harness', Hermes',
+//! Kilo Code's, Kimi Code's, Lico Agent's, OpenClaw's, OpenCode's and Pi's:
+//! their parsers are reached through the packages that own them and no copy
+//! stays here.
 //!
 //! The SDK's two protocol-agnostic `port::ParserRegistration` queries are
 //! answered in `adapters::REGISTRATIONS` by the Agents whose facts a reader
 //! actually reaches: Hermes answers `execution_transitions` from its own
 //! package, because it reports no transition list of its own and the host's
 //! Hermes normalization reads that query; the Agents the Subagent mesh
-//! dispatches — Antigravity and Claude Code here, Codex and Cursor from their
-//! own packages — answer `valid_identity` from their own recorded evidence; and
+//! dispatches — Antigravity, Claude Code, Codex and Cursor from their own
+//! packages — answer `valid_identity` from their own recorded evidence; and
 //! a package entry answers both queries from the package's wire vocabulary.
 //! Every other entry leaves `execution_transitions` unanswered because its
 //! driver carries the parser's own transition list, and the identity query stays

@@ -76,9 +76,6 @@ pub mod secure_mesh_secret_store;
 pub mod subagent_mcp_ensure;
 
 pub use acp_session_transport::resolve_interaction_approval as resolve_native_agent_interaction_approval;
-pub use conversation_lane::{
-    cancel_turn, cleanup_conversation, dispatch_lane_operation, lane_capabilities, open_or_resume,
-};
 pub use native_agent_interaction::resolve as resolve_native_agent_interaction;
 pub use native_agent_interaction::resolve_scoped as resolve_scoped_native_agent_interaction;
 pub use turn_event_emit::{
@@ -112,6 +109,21 @@ pub(crate) fn antigravity_turn_event_port()
 pub(crate) fn codex_turn_event_port() -> licoup_agent_codex::port::turn_event::TurnEventPort {
     licoup_agent_codex::port::turn_event::TurnEventPort {
         emit: emit_turn_event,
+    }
+}
+
+/// This host's answer for the Pi adapter package's turn-event port.
+///
+/// The package owns *what* one Pi turn emits; this host owns *where* it goes,
+/// because the host owns the consumer. The answer is this host's own emitters
+/// rather than a second sink, so a Pi event and a Cursor event reach the same
+/// reader through the same path.
+pub(crate) fn pi_turn_event_port() -> licoup_agent_pi::port::turn_event::TurnEventPort {
+    licoup_agent_pi::port::turn_event::TurnEventPort {
+        emit_turn_event,
+        emit_agent_message_chunk,
+        emit_agent_message_completed,
+        emit_agent_processing,
     }
 }
 

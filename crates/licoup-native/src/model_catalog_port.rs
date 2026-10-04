@@ -13,23 +13,41 @@
 //! domain concern, and a domain module that reached into `crate::platform`
 //! would be the coupling the layering exists to prevent.
 //!
+//! [`selection_matrix_port`] is the one composition function for the effective
+//! execution policy, and it answers both consumers of that policy from the same
+//! owner: the catalogue's client projection reads
+//! [`SelectionMatrixPort::agent_scope_admission`] directly, and
+//! [`install_routing_policy_owner`] installs that same admission answer together
+//! with the candidate facts for the dispatch entry that routes with it. One
+//! owner, one answer, so the scope outcome a client renders and the scope
+//! outcome routing obeys cannot disagree.
+//!
 //! Two members are deliberately answered with less than a caller might wish,
 //! and the difference is the point of the port:
 //!
 //! - **credentials.** No owner publishes a mapping from a catalogue provider id
 //!   to the credential records it holds, and inventing one — matching a model
 //!   or provider name against a credential label — would fabricate access. The
-//!   honest answer is [`CredentialState::Unknown`] for every provider.
+//!   honest answer is [`CredentialState::Unknown`] for every provider, and the
+//!   candidate policy therefore excludes every alternative instead of running
+//!   one whose access nothing established.
 //! - **the source generation.** It is the revision of the canonical registry
 //!   snapshot an observation was taken against. A host with no catalog
 //!   publishes no revision, and then no observation is reused.
 
 use licoup_model_catalog::availability::ObservedModel;
+use licoup_model_catalog::candidate_policy::{CandidateId, QuotaState};
 use licoup_model_catalog::port::{CredentialState, ModelCatalogPort};
 use licoup_model_catalog::selection_matrix::{
     ScopeAdmissionFacts, ScopeOutcomeState, SelectionMatrixPort, SelectionScope,
 };
 use serde_json::Value;
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use crate::domain::candidate_routing::{
+    CandidateFactSource, CandidateFacts, install_candidate_facts, install_scope_admission,
+};
 
 /// The port this host composes: every catalogue fact answered by its owner.
 pub fn model_catalog_port() -> ModelCatalogPort {
@@ -43,23 +61,43 @@ pub fn model_catalog_port() -> ModelCatalogPort {
 
 /// The effective per-scope execution policy this host composes.
 ///
-/// ## Why every scope is undetermined
+/// ## What this owner decides
 ///
-/// Deciding whether one Agent may run *right now* is policy, and this host
-/// composes no policy owner yet: no module answers "is this Agent admitted for a
-/// direct request, and for a workflow turn". The catalogue must not invent one,
-/// and readiness evidence is not a substitute — a probed conversation runtime
-/// says the Agent can be reached, not that the effective policy permits the
-/// request.
+/// Deciding whether one Agent may run *right now* is policy, and the owner of
+/// that policy states its answer for one scope at a time. Readiness evidence is
+/// not a substitute — a probed conversation runtime says the Agent can be
+/// reached, not that the effective policy permits the request — so this
+/// composition states no outcome of its own and never reports `allowed` on the
+/// strength of a reachability fact.
 ///
-/// So this composition states no outcome for any Agent and any scope, which the
-/// client renders as `undetermined`. It never reports `allowed`, and the two
-/// scopes are answered separately the moment an owner exists: the substitution
-/// point is this function, not the projection.
+/// The two scopes stay separate: one Agent may be admitted for a direct request
+/// and refused for a workflow turn, and each answer carries the scope it was
+/// decided for. The substitution point for a real policy owner is
+/// [`agent_scope_admission`]; until one is composed, every scope stays
+/// `Undetermined`, which a client renders as such and routing treats as "not
+/// allowed" rather than as permission.
 pub fn selection_matrix_port() -> SelectionMatrixPort {
     SelectionMatrixPort {
         agent_scope_admission: agent_scope_admission,
     }
+}
+
+/// Compose the routing policy owner the dispatch entry asks.
+///
+/// This is the composition step that makes a routing decision a policy decision
+/// instead of an ad-hoc choice: it installs the effective scope admission
+/// [`selection_matrix_port`] answers with, and the candidate facts the owners
+/// on this host establish. A dispatch entry then asks one question — which
+/// allowed alternative may run — and receives the catalogue's ranked answer or
+/// an inspectable unavailable result.
+///
+/// The consequence of an admission owner that states no outcome is deliberate:
+/// the policy allows no alternative, so no route and no suggestion is produced.
+/// That is the fail-closed direction, and it is what this host reports while the
+/// effective per-scope policy has no owner above the catalogue.
+pub fn install_routing_policy_owner() {
+    install_scope_admission(agent_scope_admission);
+    install_candidate_facts(Arc::new(ComposedCandidateFacts));
 }
 
 fn agent_scope_admission(
@@ -74,6 +112,80 @@ fn agent_scope_admission(
         );
     }
     ScopeAdmissionFacts::undetermined()
+}
+
+/// The candidate facts the owners on this host establish.
+///
+/// ## What is established, and what deliberately is not
+///
+/// * **what the Agent offers on this host.** The Agent inventory owns which
+///   models one Agent offers and which provider serves them, and
+///   `inspect_target_read_only` reads exactly that without executing the
+///   Agent's binary or touching its history store. Availability is recorded from
+///   that read and timed at the read, because the catalogue's availability
+///   question is *has a source on this host reported the model*, and this
+///   read-only owner is such a source. A candidate whose Agent or model the
+///   declaration does not carry is answered `None` — nothing on this host
+///   reported it — and no model is ever synthesized from a name, a price row or
+///   an intelligence score.
+/// * **a credential.** No owner publishes a catalogue-provider to credential
+///   mapping, so the answer stays [`CredentialState::Unknown`] rather than a
+///   claim that a credential exists.
+/// * **a quota window.** The local quota owner publishes per-provider windows,
+///   and no mapping from a catalogue provider id to one of those windows is
+///   established here; the answer stays [`QuotaState::Unknown`], which the
+///   policy records without reading as exhaustion.
+///
+/// Requirements are answered only where the declaration establishes them, so a
+/// requirement nothing establishes stays `Unknown` and the candidate is
+/// excluded under its own name instead of being read as satisfying it.
+struct ComposedCandidateFacts;
+
+impl CandidateFactSource for ComposedCandidateFacts {
+    fn facts(&self, candidate: &CandidateId) -> Option<CandidateFacts> {
+        let declared = declared_models(&candidate.agent_id)?;
+        let model = declared
+            .models
+            .iter()
+            .find(|model| model.name == candidate.model_id)?;
+        Some(CandidateFacts {
+            observed_at_unix_ms: Some(declared.observed_at_unix_ms),
+            credential: (model_catalog_port().provider_credential)(
+                model.provider_id.as_deref().unwrap_or_default(),
+            ),
+            quota: QuotaState::Unknown,
+            requirements: BTreeMap::new(),
+        })
+    }
+}
+
+/// The models one Agent declares, with the time this host read them.
+///
+/// `None` means this host does not know the Agent, which is not the same as an
+/// Agent that declares no model: the first is no evidence at all, and the
+/// candidate policy answers it `Unknown`.
+struct DeclaredModels {
+    models: Vec<ObservedModel>,
+    observed_at_unix_ms: u64,
+}
+
+fn declared_models(agent: &str) -> Option<DeclaredModels> {
+    if !crate::domain::agent_catalog::contains(agent) {
+        return None;
+    }
+    let inspected = crate::domain::targets::inspect_target_read_only(
+        &crate::target_port::agent_target_port(),
+        agent,
+    )
+    .ok()?;
+    let models = observed_models(agent, &inspected);
+    if models.is_empty() {
+        return None;
+    }
+    Some(DeclaredModels {
+        models,
+        observed_at_unix_ms: licoup_model_catalog::now_unix_ms(),
+    })
 }
 
 /// The Agent inventory's declaration labels. The inventory owns which Agents
@@ -211,6 +323,35 @@ mod tests {
         );
         assert_eq!(unknown.state, ScopeOutcomeState::Undetermined);
         assert_eq!(unknown.reason, "agent_not_declared_on_host");
+    }
+
+    /// The routing owner reads its admission answer and its candidate facts from
+    /// the owners this composition names: no credential owner and no quota owner
+    /// are composed, so a candidate with a declared model is still excluded by
+    /// the policy under its own credential name rather than selected on a
+    /// declaration alone.
+    #[test]
+    fn the_routing_owner_reads_the_same_admission_the_projection_reads() {
+        use crate::domain::candidate_routing::{CandidateFactSource, CandidateId};
+
+        assert!(
+            CandidateFactSource::facts(
+                &ComposedCandidateFacts,
+                &CandidateId::new("not-a-declared-agent", "any-model", None)
+            )
+            .is_none(),
+            "an Agent this host does not declare establishes no candidate fact"
+        );
+
+        for scope in SelectionScope::ALL {
+            let decision = (selection_matrix_port().agent_scope_admission)(
+                "codex",
+                scope,
+                &json!({}),
+            );
+            assert_eq!(decision.state, ScopeOutcomeState::Undetermined);
+            assert_eq!(decision.reason, "selection_policy_owner_absent");
+        }
     }
 
     #[test]

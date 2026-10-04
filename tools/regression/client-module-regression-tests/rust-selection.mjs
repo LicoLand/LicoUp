@@ -224,6 +224,8 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "--",
     "tests::rpc::",
     "stdio_rpc::server::conversation::",
+    "stdio_rpc::server::work_control_routing_tests::",
+    "stdio_rpc::request::work_control_routing_tests::",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/mcp_adapter/plan.rs",

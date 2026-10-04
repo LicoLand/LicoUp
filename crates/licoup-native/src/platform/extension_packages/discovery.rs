@@ -142,7 +142,7 @@ pub struct Recommendation {
 impl Recommendation {
     /// The user chose this candidate: record the intent, install nothing.
     pub fn accept(&self, log: &mut RecommendationLog) -> PendingInstall {
-        log.accepted.insert(self.package_id.clone());
+        log.record_acceptance(&self.package_id);
         PendingInstall {
             package_id: self.package_id.clone(),
             version: self.version.clone(),
@@ -153,10 +153,7 @@ impl Recommendation {
 
     /// The user declined this candidate: recommendation only, nothing else.
     pub fn decline(&self, log: &mut RecommendationLog, reason: &str) {
-        log.accepted.remove(&self.package_id);
-        log.declined.insert(self.package_id.clone());
-        log.declined_reasons
-            .insert(self.package_id.clone(), reason.to_owned());
+        log.record_decline(&self.package_id, reason);
     }
 }
 
@@ -182,6 +179,23 @@ pub struct RecommendationLog {
 impl RecommendationLog {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Record that the user chose one package.
+    ///
+    /// The one implementation of the decision log, shared with the availability
+    /// offers in [`super::compatibility`], so a package the user chose once is
+    /// accepted on every surface that reads this log.
+    pub fn record_acceptance(&mut self, package_id: &str) {
+        self.accepted.insert(package_id.to_owned());
+    }
+
+    /// Record that the user refused one package, and why.
+    pub fn record_decline(&mut self, package_id: &str, reason: &str) {
+        self.accepted.remove(package_id);
+        self.declined.insert(package_id.to_owned());
+        self.declined_reasons
+            .insert(package_id.to_owned(), reason.to_owned());
     }
 
     pub fn accepted(&self) -> impl Iterator<Item = &str> {

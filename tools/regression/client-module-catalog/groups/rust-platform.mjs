@@ -126,6 +126,15 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::extension_packages::release_index::tests::"),
     }),
   defineModule({
+      id: "rust.platform.extension-packages.compatibility",
+      kind: "rust-platform",
+      summary: "Declared adapter strategy intervals, manifest-read client compatibility, and the version-keyed availability cache",
+      inputs: [
+        "crates/licoup-native/src/platform/extension_packages/compatibility.rs",
+      ],
+      command: rustLayer("platform::extension_packages::compatibility::tests::"),
+    }),
+  defineModule({
       id: "rust.ffi.typed-error-chain",
       kind: "rust-ffi",
       summary: "Generated typed conversation errors across runtime, FFI, and stdio terminal frames",
@@ -1565,7 +1574,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Pi result, error binding, effective setting, and capability projections",
       inputs: [
-        "crates/licoup-native/src/platform/pi_driver/model.rs",
+        "crates/licoup-agent-pi/src/driver/model.rs",
         "crates/licoup-native/src/platform/pi_driver/tests/model.rs",
       ],
       command: rustLayer("platform::pi_driver::tests::model::"),
@@ -1575,7 +1584,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Pi static redacted failures and exact native identifier binding",
       inputs: [
-        "crates/licoup-native/src/platform/pi_driver/errors.rs",
+        "crates/licoup-agent-pi/src/driver/errors.rs",
         "crates/licoup-native/src/platform/pi_driver/tests/errors.rs",
       ],
       command: rustLayer("platform::pi_driver::tests::errors::"),
@@ -1585,7 +1594,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Pi request, working-directory, override, and thinking validation",
       inputs: [
-        "crates/licoup-native/src/platform/pi_driver/params.rs",
+        "crates/licoup-agent-pi/src/driver/params.rs",
         "crates/licoup-native/src/platform/pi_driver/tests/params.rs",
       ],
       command: rustLayer("platform::pi_driver::tests::params::"),
@@ -1595,8 +1604,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Pi model and thinking configuration through the official RPC channel",
       inputs: [
-        "crates/licoup-native/src/platform/pi_driver/params.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/pi/protocol.rs",
+        "crates/licoup-agent-pi/src/driver/params.rs",
+        "crates/licoup-agent-pi/src/parser/protocol.rs",
         "crates/licoup-native/src/platform/pi_driver/tests/settings.rs",
       ],
       command: rustLayer("platform::pi_driver::tests::settings::"),
@@ -1606,8 +1615,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Pi parser RPC state machine, effects, prompt completion, and exact active identity",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/pi.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/pi/protocol.rs",
+        "crates/licoup-agent-pi/src/parser.rs",
+        "crates/licoup-agent-pi/src/parser/protocol.rs",
         "crates/licoup-native/src/platform/pi_driver/tests/parser_protocol.rs",
       ],
       command: rustLayer("platform::pi_driver::tests::parser_protocol::"),
@@ -1617,8 +1626,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Pi dialog callbacks park once while notification UI methods remain fire-and-forget",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/pi.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/pi/protocol.rs",
+        "crates/licoup-agent-pi/src/parser.rs",
+        "crates/licoup-agent-pi/src/parser/protocol.rs",
         "crates/licoup-native/src/platform/pi_driver/tests/interaction.rs",
       ],
       command: rustLayer("platform::pi_driver::tests::interaction::"),
@@ -1628,7 +1637,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Pi parser allowlisted event metadata without raw message or tool argument projection",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/pi/events.rs",
+        "crates/licoup-agent-pi/src/parser/events.rs",
         "crates/licoup-native/src/platform/pi_driver/tests/parser_events.rs",
       ],
       command: rustLayer("platform::pi_driver::tests::parser_events::"),
@@ -1638,8 +1647,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Pi bounded session-root discovery, exact header matching, and ambiguity rejection",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/pi.rs",
-        "crates/licoup-native/src/platform/pi_driver/sessions.rs",
+        "crates/licoup-agent-pi/src/parser.rs",
+        "crates/licoup-agent-pi/src/driver/sessions.rs",
         "crates/licoup-native/src/platform/pi_driver/tests/sessions.rs",
       ],
       command: rustLayer("platform::pi_driver::tests::sessions::"),
@@ -1649,7 +1658,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Pi bounded stdout lines and fully drained non-projecting stderr",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/pi.rs",
+        "crates/licoup-agent-pi/src/parser.rs",
         "crates/licoup-native/src/platform/pi_driver/io.rs",
         "crates/licoup-native/src/platform/pi_driver/tests/io.rs",
       ],
@@ -1998,8 +2007,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.runtime-adapters",
       kind: "rust-platform",
-      summary: "Native runtime registry, evidence binding, probe, dispatch, and response aggregate",
+      summary: "Native runtime registry, evidence binding, probe, dispatch, approval authority, and the agent-execution port entry",
       inputs: [
+        "crates/licoup-native/src/agent_port.rs",
         "crates/licoup-native/src/platform/runtime_adapters.rs",
         "crates/licoup-native/src/platform/runtime_adapters/**",
         "crates/licoup-native/resources/agent-conversation-drivers.json",
@@ -2102,7 +2112,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-agent-lico-agent/src/parser.rs",
         "crates/licoup-agent-lico-agent/src/session.rs",
         "crates/licoup-native/src/platform/native_agent_parser/adapters/mod.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/opencode.rs",
+        "crates/licoup-agent-opencode/src/parser.rs",
         "crates/licoup-native/src/platform/native_agent_parser/mod.rs",
         "crates/licoup-native/src/platform/native_agent_parser/tests.rs",
         "crates/licoup-native/src/platform/copilot_driver.rs",
@@ -2409,6 +2419,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
           "--",
           "tests::rpc::",
           "stdio_rpc::server::conversation::",
+          "stdio_rpc::server::work_control_routing_tests::",
+          "stdio_rpc::request::work_control_routing_tests::",
         ],
         10 * 60_000,
       ),

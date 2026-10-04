@@ -50,6 +50,8 @@ export const RUST_CORE_MODULES = Object.freeze([
     "Claude Code adapter package program, vendor protocol, registration, and replay corpus"),
   agentPackageCrateModule("codex",
     "Codex adapter package program, vendor protocol, registration, and replay corpus"),
+  agentPackageCrateModule("pi",
+    "Pi adapter package program, vendor protocol, registration, and replay corpus"),
   agentPackageCrateModule("antigravity",
     "Antigravity adapter package program, Agent Hooks receipt, PTY protocol, registration, and replay corpus"),
   agentPackageCrateModule("cursor",
@@ -92,6 +94,17 @@ export const RUST_CORE_MODULES = Object.freeze([
       command: command(
         "cargo",
         ["test", "--manifest-path", "crates/licoup-agent-openclaw/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "rust.core.agent-opencode-package",
+      kind: "rust-core",
+      summary: "OpenCode adapter package program, serve HTTP and SSE protocol, registration, and replay arm",
+      inputs: ["crates/licoup-agent-opencode/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-opencode/Cargo.toml"],
         10 * 60_000,
       ),
     }),

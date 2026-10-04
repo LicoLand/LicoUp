@@ -281,3 +281,113 @@ fn reading_a_declared_location_reports_materialization_from_the_declared_root() 
     );
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// A declared change is a wire contract too: a payload this owner did not
+/// declare is refused rather than dropped, and both shapes of input decode.
+#[test]
+fn a_declared_change_decodes_only_its_own_fields() {
+    let decoded: ChangeRequest = serde_json::from_value(serde_json::json!({
+        "projectId": "alpha",
+        "changes": [{
+            "workItemId": "test",
+            "inputs": [
+                {"kind": "local", "producerWorkItemId": "build", "path": "dist/out.bin"},
+                {"kind": "cross-project", "projectId": "bravo", "workItemId": "build"},
+            ],
+        }],
+    }))
+    .expect("a declared change decodes");
+    assert_eq!(
+        decoded.project_id,
+        ProjectId::declare("alpha").expect("a bounded identity")
+    );
+    assert_eq!(decoded.changes.len(), 1);
+    assert_eq!(decoded.changes[0].inputs.len(), 2);
+    assert_eq!(
+        decoded.changes[0].inputs[1],
+        ArtifactReference::cross_project(
+            ProjectId::declare("bravo").expect("a bounded identity"),
+            WorkItemId::declare("build").expect("a bounded identity"),
+        )
+    );
+
+    let smuggled: Result<ChangeRequest, _> = serde_json::from_value(serde_json::json!({
+        "projectId": "alpha",
+        "changes": [],
+        "authority": {"kind": "grant", "reference": "grant:owner"},
+    }));
+    assert!(
+        smuggled.is_err(),
+        "an undeclared field is refused rather than dropped"
+    );
+
+    let refused_input: Result<ChangeRequest, _> = serde_json::from_value(serde_json::json!({
+        "projectId": "alpha",
+        "changes": [{
+            "workItemId": "test",
+            "inputs": [
+                {"kind": "local", "producerWorkItemId": "../etc", "path": "dist/out.bin"},
+            ],
+        }],
+    }));
+    assert!(refused_input.is_err());
+
+    // The answer carries the same declared values, one stable spelling each.
+    let preview = ChangePreview {
+        project_id: ProjectId::declare("alpha").expect("a bounded identity"),
+        affected: vec![AffectedWorkItem {
+            work: WorkRef::new(
+                ProjectId::declare("alpha").expect("a bounded identity"),
+                WorkItemId::declare("test").expect("a bounded identity"),
+            ),
+            path: vec![WorkRef::new(
+                ProjectId::declare("alpha").expect("a bounded identity"),
+                WorkItemId::declare("test").expect("a bounded identity"),
+            )],
+            impact: ChangeImpact::Consumer,
+            inputs: vec![DeclaredInputState {
+                producer: WorkRef::new(
+                    ProjectId::declare("alpha").expect("a bounded identity"),
+                    WorkItemId::declare("build").expect("a bounded identity"),
+                ),
+                artifact: ArtifactReference::local(
+                    WorkItemId::declare("build").expect("a bounded identity"),
+                    "dist/absent.bin",
+                )
+                .expect("a declared location"),
+                state: ArtifactState::Missing,
+                pending: true,
+            }],
+            activity: WorkActivity::Accepted,
+            handoff: ChangeHandoff::Required,
+        }],
+        untouched_projects: vec![ProjectId::declare("bravo").expect("a bounded identity")],
+    };
+    let encoded = serde_json::to_value(&preview).expect("the answer encodes");
+    assert_eq!(encoded["affected"][0]["impact"], "consumer");
+    assert_eq!(encoded["affected"][0]["handoff"], "required");
+    assert_eq!(encoded["affected"][0]["activity"], "accepted");
+    assert_eq!(encoded["affected"][0]["inputs"][0]["state"], "missing");
+    assert_eq!(encoded["affected"][0]["inputs"][0]["pending"], true);
+    assert_eq!(encoded["untouchedProjects"][0], "bravo");
+}
+
+#[test]
+fn an_activity_answer_round_trips_through_its_own_spelling() {
+    for activity in [
+        WorkActivity::NotStarted,
+        WorkActivity::InFlight,
+        WorkActivity::Accepted,
+        WorkActivity::Unknown,
+    ] {
+        assert_eq!(WorkActivity::parse(activity.as_str()), Some(activity));
+        let encoded = serde_json::to_value(activity).expect("the answer encodes");
+        assert_eq!(
+            encoded,
+            serde_json::Value::String(activity.as_str().to_owned())
+        );
+        let decoded: WorkActivity = serde_json::from_value(encoded).expect("the answer decodes");
+        assert_eq!(decoded, activity);
+    }
+    assert_eq!(WorkActivity::parse("running"), None);
+}

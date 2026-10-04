@@ -378,10 +378,11 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "test/native_stdio_rpc_line_framer_test.dart",
     "test/native_stdio_rpc_protocol_test.dart",
   ]);
-  // The transport module gained the bounded flow-control suites, so the command
-  // executes twelve targets. The assertion covers all of them rather than the
-  // original eight: a suite that is selected but no longer executed is exactly
-  // what this check exists to catch.
+  // The transport module gained the bounded flow-control suites and then the
+  // production stream-observation suite, so the command executes thirteen
+  // targets. The assertion covers all of them rather than the original eight: a
+  // suite that is selected but no longer executed is exactly what this check
+  // exists to catch.
   const stdioTransportTests = [
     "test/stdio_rpc_method_policy_test.dart",
     "test/native_stdio_rpc_client_test.dart",
@@ -392,11 +393,12 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "test/stdio_transport_flow_control/control_lane_priority_test.dart",
     "test/stdio_transport_flow_control/native_child_backlog_test.dart",
     "test/stdio_transport_flow_control/stream_observation_test.dart",
+    "test/stdio_transport_flow_control/stream_observation_production_test.dart",
     "test/conversation_execution_transport_test.dart",
     "test/native_conversation_port_test.dart",
     "test/stdio_rpc_operation_queue_test.dart",
   ];
-  assert.deepEqual(stdioTransport.command.args.slice(-12), stdioTransportTests);
+  assert.deepEqual(stdioTransport.command.args.slice(-13), stdioTransportTests);
   // Every selected dart suite must also be executed, and the other way round.
   const selectedTransportTests = stdioTransport.inputs
     .filter((input) => /^apps\/desktop\/test\/.*_test\.dart$/u.test(input))
@@ -1468,15 +1470,40 @@ test("Pi driver leaves retain exact tests and complete source ownership", async 
   for (const relativePath of [
     "crates/licoup-native/src/platform/pi_driver.rs",
     ...splitSources,
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/pi.rs",
-    ...await sourceFiles(
-      "crates/licoup-native/src/platform/native_agent_parser/adapters/pi",
-      ".rs",
-    ),
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
-      `Pi driver source must have a precise regression owner: ${relativePath}`);
+      `Pi driver process source must have a precise regression owner: ${relativePath}`);
   }
+
+  // The protocol vocabulary moved into the Pi adapter package, where a source
+  // is owned by a precise narrow group or by the package's own module. The
+  // kernel keeps only the process half and names the package from its facade.
+  const packageModuleId = "rust.core.agent-pi-package";
+  const narrowInputs = new Set([
+    ...modules.flatMap((module) => module.inputs),
+    ...sourceCheck.inputs,
+  ]);
+  for (const relativePath of [
+    "crates/licoup-agent-pi/src/parser.rs",
+    ...await sourceFiles("crates/licoup-agent-pi/src/parser", ".rs"),
+    ...await sourceFiles("crates/licoup-agent-pi/src/driver", ".rs"),
+  ]) {
+    assert.equal(narrowInputs.has(relativePath), true,
+      `Pi protocol source must have a precise regression owner: ${relativePath}`);
+  }
+  const owns = (relativePath) => CLIENT_MODULE_CATALOG.some((module) =>
+    module.inputs.some((input) => input.endsWith("/**")
+      ? relativePath.startsWith(input.slice(0, -2))
+      : input === relativePath));
+  const packageSources = await sourceFiles("crates/licoup-agent-pi/src", ".rs");
+  assert.ok(packageSources.length > 0);
+  for (const relativePath of packageSources) {
+    assert.equal(owns(relativePath), true,
+      `Pi package source must have a regression owner: ${relativePath}`);
+  }
+  const packageModule = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === packageModuleId);
+  assert.deepEqual(packageModule.inputs, ["crates/licoup-agent-pi/**"]);
 });
 
 test("OpenCode driver leaves retain exact tests and complete source ownership", async () => {
@@ -1517,6 +1544,11 @@ test("OpenCode driver leaves retain exact tests and complete source ownership", 
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/platform/opencode_driver/continuity.rs",
   ])), [
+    // The OpenCode adapter package's own ownership contract reads this file: the
+    // package owns the serve protocol, and the driver that supervises the
+    // endpoint is where the host reads it, so a change here is a change to the
+    // claim that the host keeps no copy.
+    "regression.opencode-adapter-package-source-bundle",
     "architecture.client-boundaries",
     "rust.platform.opencode-driver.serve-transport",
   ]);
@@ -1580,7 +1612,9 @@ test("Hermes driver leaves retain exact tests and complete source ownership", as
 test("native CLI modules retain exact binary-scoped command filters", () => {
   const filters = new Map([
     ["rust.bin.licoup", ["tests::"]],
-    ["rust.bin.licoup.rpc", ["--", "tests::rpc::", "stdio_rpc::server::conversation::"]],
+    ["rust.bin.licoup.rpc", ["--", "tests::rpc::", "stdio_rpc::server::conversation::",
+      "stdio_rpc::server::work_control_routing_tests::",
+      "stdio_rpc::request::work_control_routing_tests::"]],
     ["rust.bin.licoup.core-commands", ["tests::core_commands::"]],
     ["rust.bin.licoup.skill-commands", ["tests::skill_commands::"]],
     ["rust.bin.licoup.parsing", ["tests::parsing::"]],

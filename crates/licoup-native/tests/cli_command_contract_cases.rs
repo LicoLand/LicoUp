@@ -23,7 +23,7 @@ const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
 // The merged authority is the union of both branches: 183 routes plus the
 // fourteen package-lifecycle routes this branch adds.
-const AUTHORITATIVE_ROUTE_COUNT: usize = 197;
+const AUTHORITATIVE_ROUTE_COUNT: usize = 198;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -2326,6 +2326,7 @@ fn route_authorities() -> Vec<RouteAuthority> {
             "mobile relay commands result-secure",
             "mobile relay commands result-replay-proof",
             "mobile relay e2ee secret-store-cleanup",
+            "mobile relay e2ee secret-store-cleanup-inventory",
             "mobile relay e2ee secret-store-self-test",
         ],
         Options,
@@ -3304,7 +3305,7 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("type", Text, false),
             value_option("stdin-json", Json, false),
         ],
-        "mobile relay e2ee secret-store-cleanup" => &[value_option("disposable-proof", Text, true)],
+        "mobile relay e2ee secret-store-cleanup" => &[value_option("cleanup-confirmation", Json, true)],
         "secure-mesh status"
         | "secure-mesh envelope validate"
         | "secure-mesh command policy"
