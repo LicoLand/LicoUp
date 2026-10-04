@@ -33,10 +33,11 @@ mod result;
 
 pub use actor::{ActorClaim, ActorClaimError};
 pub use command::{
-    AUTHORITY_KINDS, ApplicationCommand, AssistantCommand, CallbackDecision, CancelRequest,
-    CommandFamily, ConversationCommand, DispatchRequest, ExportRequest, ImportRequest,
-    MAX_DISPLAY_NAME_BYTES, MAX_PROMPT_BYTES, MAX_QUERY_BYTES, MAX_STABLE_ID_BYTES, Operation,
-    ProjectCommand, ProjectRegistrationRequest, SearchRequest, SubagentCommand, TaskType,
+    AUTHORITY_KINDS, ApplicationCommand, ArtifactInputRequest, AssistantCommand, CallbackDecision,
+    CancelRequest, CommandFamily, ConversationCommand, DependencyDeclarationRequest,
+    DispatchRequest, ExportRequest, ImportRequest, MAX_ARTIFACT_PATH_BYTES, MAX_DISPLAY_NAME_BYTES,
+    MAX_PROMPT_BYTES, MAX_QUERY_BYTES, MAX_STABLE_ID_BYTES, Operation, ProjectCommand,
+    ProjectRegistrationRequest, SearchRequest, SubagentCommand, TaskType,
 };
 pub use extension::{
     AUTHORITY_FIELDS, ActivationMode, AdoptedAttributes, CapabilityDescriptor,

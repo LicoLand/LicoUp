@@ -8,9 +8,10 @@
 
 use licoup_application::{
     ActorClaim, ApplicationCommand, ApplicationFacade, ApplicationFailure, ApplicationPorts,
-    AssistantCommand, CallbackDecision, CommandOutcome, ConversationCommand, DispatchRequest,
-    EffectCertainty, ExportRequest, Operation, OperationReference, OperationState, ProjectCommand,
-    ProjectRegistrationRequest, RecoveryAction, SearchRequest, SubagentCommand, TaskType,
+    ArtifactInputRequest, AssistantCommand, CallbackDecision, CommandOutcome, ConversationCommand,
+    DependencyDeclarationRequest, DispatchRequest, EffectCertainty, ExportRequest, Operation,
+    OperationReference, OperationState, ProjectCommand, ProjectRegistrationRequest, RecoveryAction,
+    SearchRequest, SubagentCommand, TaskType,
 };
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -105,6 +106,36 @@ fn every_command_family_round_trips_through_json_unchanged() {
             project_id: "alpha-project".into(),
         }),
         ApplicationCommand::Project(ProjectCommand::List),
+        ApplicationCommand::Project(ProjectCommand::DeclareDependency(
+            DependencyDeclarationRequest {
+                project_id: "alpha-project".into(),
+                work_item_id: "test".into(),
+                artifact: ArtifactInputRequest::Local {
+                    producer_work_item_id: "build".into(),
+                    path: "dist/out.bin".into(),
+                },
+            },
+        )),
+        ApplicationCommand::Project(ProjectCommand::DeclareDependency(
+            DependencyDeclarationRequest {
+                project_id: "bravo-project".into(),
+                work_item_id: "integrate".into(),
+                artifact: ArtifactInputRequest::CrossProject {
+                    project_id: "alpha-project".into(),
+                    work_item_id: "build".into(),
+                },
+            },
+        )),
+        ApplicationCommand::Project(ProjectCommand::Dependencies {
+            project_id: "alpha-project".into(),
+        }),
+        ApplicationCommand::Project(ProjectCommand::UnresolvedArtifacts {
+            project_id: "alpha-project".into(),
+        }),
+        ApplicationCommand::Project(ProjectCommand::BlockedConsumers {
+            project_id: "alpha-project".into(),
+            work_item_id: "build".into(),
+        }),
     ];
 
     for command in commands {
@@ -137,7 +168,20 @@ fn operation_names_are_stable_and_effect_producing_ones_are_marked() {
     assert_eq!(
         Operation::ProjectImportApply.as_str(),
         "project.import.apply"
+        Operation::ProjectDeclareDependency.as_str(),
+        "project.declare-dependency"
     );
+    assert_eq!(
+        Operation::ProjectDependencies.as_str(),
+        "project.dependencies"
+    );
+    assert_eq!(
+        Operation::ProjectUnresolvedArtifacts.as_str(),
+        "project.unresolved-artifacts"
+    );
+    assert_eq!(
+        Operation::ProjectBlockedConsumers.as_str(),
+        "project.blocked-consumers"    );
 
     for operation in [
         Operation::WorkflowExecute,
@@ -166,7 +210,9 @@ fn operation_names_are_stable_and_effect_producing_ones_are_marked() {
         Operation::ProjectList,
         Operation::ProjectImportPreview,
         Operation::ProjectImportApply,
-    ] {
+        Operation::ProjectDependencies,
+        Operation::ProjectUnresolvedArtifacts,
+        Operation::ProjectBlockedConsumers,    ] {
         assert!(
             !operation.produces_effect(),
             "{} is a read and must not claim an effect",
@@ -176,7 +222,9 @@ fn operation_names_are_stable_and_effect_producing_ones_are_marked() {
     // Registration writes this product's own durable record and never touches a
     // provider, and a repeated identity is refused rather than replayed, so it
     // claims neither a provider effect nor the reconciliation that follows one.
+    // Declaring an input is the same kind of write.
     assert!(!Operation::ProjectRegister.produces_effect());
+    assert!(!Operation::ProjectDeclareDependency.produces_effect());
     assert_eq!(
         ApplicationCommand::Project(ProjectCommand::Register(ProjectRegistrationRequest {
             project_id: "alpha-project".into(),
@@ -292,7 +340,56 @@ fn malformed_commands_are_refused_before_any_port_runs() {
                 expected_revision: 0,
             }),
             "document",
+            ApplicationCommand::Project(ProjectCommand::DeclareDependency(
+                DependencyDeclarationRequest {
+                    project_id: "alpha-project".into(),
+                    work_item_id: "  ".into(),
+                    artifact: ArtifactInputRequest::Local {
+                        producer_work_item_id: "build".into(),
+                        path: "dist/out.bin".into(),
+                    },
+                },
+            )),
+            "work_item_id",
         ),
+        (
+            ApplicationCommand::Project(ProjectCommand::DeclareDependency(
+                DependencyDeclarationRequest {
+                    project_id: "alpha-project".into(),
+                    work_item_id: "test".into(),
+                    artifact: ArtifactInputRequest::Local {
+                        producer_work_item_id: "build".into(),
+                        path: "  ".into(),
+                    },
+                },
+            )),
+            "path",
+        ),
+        (
+            ApplicationCommand::Project(ProjectCommand::DeclareDependency(
+                DependencyDeclarationRequest {
+                    project_id: "alpha-project".into(),
+                    work_item_id: "test".into(),
+                    artifact: ArtifactInputRequest::CrossProject {
+                        project_id: String::new(),
+                        work_item_id: "build".into(),
+                    },
+                },
+            )),
+            "project_id",
+        ),
+        (
+            ApplicationCommand::Project(ProjectCommand::UnresolvedArtifacts {
+                project_id: String::new(),
+            }),
+            "project_id",
+        ),
+        (
+            ApplicationCommand::Project(ProjectCommand::BlockedConsumers {
+                project_id: "alpha-project".into(),
+                work_item_id: String::new(),
+            }),
+            "work_item_id",        ),
     ];
 
     for (command, field) in cases {
@@ -318,6 +415,50 @@ fn an_undecodable_command_is_refused_rather_than_partially_accepted() {
         assert_eq!(failure.code, "invalid_request");
         assert_eq!(failure.effect, EffectCertainty::NotAttempted);
     }
+}
+
+/// A declared artifact reference has exactly two shapes at the surface too. A
+/// payload that names a third shape, omits the producer, or carries a field
+/// this product did not declare is refused rather than interpreted.
+#[test]
+fn a_declaration_payload_must_name_one_of_the_two_declared_artifact_shapes() {
+    for artifact in [
+        json!({"kind": "discovered", "path": "dist/out.bin"}),
+        json!({"kind": "local", "path": "dist/out.bin"}),
+        json!({
+            "kind": "local",
+            "producerWorkItemId": "build",
+            "path": "dist/out.bin",
+            "credential": "synthetic-secret-material",
+        }),
+        json!({"kind": "cross-project", "projectId": "alpha-project"}),
+    ] {
+        let value = json!({
+            "family": "project",
+            "command": "declare-dependency",
+            "projectId": "alpha-project",
+            "workItemId": "test",
+            "artifact": artifact,
+        });
+        let failure = ApplicationCommand::decode(&value).expect_err("must not decode");
+        assert_eq!(failure.code, "invalid_request");
+    }
+
+    let decoded = ApplicationCommand::decode(&json!({
+        "family": "project",
+        "command": "declare-dependency",
+        "projectId": "alpha-project",
+        "workItemId": "test",
+        "artifact": {
+            "kind": "local",
+            "producerWorkItemId": "build",
+            "path": "dist/out.bin",
+        },
+    }))
+    .expect("one declared shape decodes");
+    assert_eq!(decoded.operation(), Operation::ProjectDeclareDependency);
+    assert_eq!(decoded.family(), licoup_application::CommandFamily::Project);
+    assert_eq!(decoded.validate(), Ok(()));
 }
 
 // ---------------------------------------------------------------------------
