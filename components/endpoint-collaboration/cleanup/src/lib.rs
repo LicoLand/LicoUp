@@ -27,7 +27,7 @@ pub use cleanup::{
     CLEANUP_STATE_DIRECTORY, CleanupFileOwner, CleanupInventory, CleanupInventoryEntry,
     CleanupInventoryKind, CleanupJournal, CleanupJournalStore, CleanupMaterialSettlement,
     CleanupReceiptKind, CleanupReceiptPath, CleanupStage, CleanupSubject, CleanupTarget, DeviceId,
-    EntryOutcome, FileStage, FileStageOutcome, FileStageProgress, FileStageReceipt, FileStageReport,
-    OperationId, PendingEntry, PrivateDataRootFileOwner, ReceiptDelivery,
+    EntryOutcome, FileStage, FileStageOutcome, FileStageProgress, FileStageReceipt,
+    FileStageReport, OperationId, PendingEntry, PrivateDataRootFileOwner, ReceiptDelivery,
     RestrictedReceiptEnvelope, StageEntryClass, WriterQuiescence, canonical_relative_posix,
 };

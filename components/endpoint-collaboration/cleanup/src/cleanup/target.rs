@@ -28,11 +28,7 @@ fn bounded_identifier(value: &str, code: &'static str) -> Result<String> {
     let trimmed = value.trim();
     ensure!(!trimmed.is_empty(), "{}", code);
     ensure!(trimmed.len() <= MAX_CLEANUP_IDENTIFIER_BYTES, "{}", code);
-    ensure!(
-        !trimmed.chars().any(char::is_control),
-        "{}",
-        code
-    );
+    ensure!(!trimmed.chars().any(char::is_control), "{}", code);
     Ok(trimmed.to_string())
 }
 
