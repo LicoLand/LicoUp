@@ -38,7 +38,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_shell.dart",
-      "digest": "sha256:133921a14b7eb40921813cd97acf0a88dc1f3be56d7220a5addc9f740d54a28b"
+      "digest": "sha256:b15f94ebca17300ea6158f829734e2d57ac6662bf13af3259e69a20bec21a745"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_tokens.dart",
@@ -58,15 +58,15 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/presentation/dashboard_mobile_destination_presentations.dart",
-      "digest": "sha256:10ad83d6a57e32092516c2302bc71f165b1332d6dc8ae4f42c06a265a85de8bc"
+      "digest": "sha256:1369b2f2e9d334da708362026cfb70d7e75895ae569e4e3262c31b667c82f198"
     },
     {
       "path": "apps/desktop/test/goldens/layout/dashboard/mobile/production-baseline/agents.png",
-      "digest": "sha256:b38c9cd30e18bb80db99016fc7b1028d26514c520f18e2b251982bf07762dfee"
+      "digest": "sha256:1eb4dc47fc4fe99956e33babd26d9db738f9bb9bf0a623849d9f45bdaa125b01"
     },
     {
       "path": "apps/desktop/test/goldens/layout/dashboard/mobile/production-baseline/settings.png",
-      "digest": "sha256:a31dbb3db981e739a8504339181f9acf1b77484fec74cf7691734185d5bf77d4"
+      "digest": "sha256:ac7c09abf77e4a9f5b9a83631a7af52e9fb4bd5cbeb16ce014b9cb5808b5fb25"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/mobile/dashboard_mobile_bundle_test.dart",
@@ -74,12 +74,12 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/mobile/dashboard_mobile_shell_test.dart",
-      "digest": "sha256:6624c35942d2f28c48855e0283b3048d05482a5c588b4572167560138d1245c3"
+      "digest": "sha256:5ddd3f3b8a99c5510945c737a58ddf2c7aed2d128154588abf6a0725ddb7db67"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/mobile/dashboard_mobile_test_harness.dart",
       "digest": "sha256:32cb32b81a4bbf991fd36e4a09ad612aaddb3ceccdf616b28a0d59de8dc2cbc2"
     }
   ],
-  "manifestDigest": "sha256:1bfd3eb036b942da90405a9d91a2e7415dc191d313a939a4c090142bfae7c814"
+  "manifestDigest": "sha256:ca18bdaff58528738ed34a6f4349fdae0b03a870bf313f656077e556cf7bb680"
 }
