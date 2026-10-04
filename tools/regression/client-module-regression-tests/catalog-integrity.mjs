@@ -401,6 +401,101 @@ test("catalog inputs exist and exclude local-only document roots", async () => {
   }
 });
 
+// A repository path literal a source reads is a registration, and the reverse
+// of "every real source file has an owner" is "every registered file exists".
+// Only a path a read helper consumes is a registration: a path used as a
+// fixture object key names a temporary directory entry, and a helper that
+// catches a missing file probes existence instead of reading its owner.
+const REPOSITORY_PATH_PATTERN =
+  /(?<quote>["'`])(?<path>(?:apps|crates|tests|tools|schemas|packages|components|sdk|docs|\.github)\/[A-Za-z0-9._@/-]*)\k<quote>/gu;
+
+function readHelperNames(source) {
+  const helpers = new Set();
+  for (const match of source.matchAll(
+    /const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>\s*([^;]*);/gu)) {
+    if (match[2].includes("readFile")) helpers.add(match[1]);
+  }
+  for (const match of source.matchAll(/function\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/gu)) {
+    const body = source.slice(match.index, match.index + 600);
+    const end = body.indexOf("\n}");
+    if (body.includes("readFile") &&
+        !(end < 0 ? body : body.slice(0, end)).includes("catch")) {
+      helpers.add(match[1]);
+    }
+  }
+  return helpers;
+}
+
+function registeredReadPaths(source) {
+  const helpers = readHelperNames(source);
+  if (helpers.size === 0) return new Set();
+  const literals = () => new RegExp(REPOSITORY_PATH_PATTERN.source, "gu");
+  const bindings = new Map();
+  for (const match of source.matchAll(new RegExp(
+    `(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${REPOSITORY_PATH_PATTERN.source}`, "gu"))) {
+    if (!bindings.has(match[1])) bindings.set(match[1], new Set());
+    bindings.get(match[1]).add(match.groups.path);
+  }
+  const fixtureKeys = new Set();
+  for (const match of source.matchAll(new RegExp(
+    `(?:\\[\\s*([A-Za-z_$][\\w$]*)\\s*\\]|${REPOSITORY_PATH_PATTERN.source})\\s*:`, "gu"))) {
+    if (match[1]) fixtureKeys.add(match[1]);
+    if (match.groups?.path) fixtureKeys.add(match.groups.path);
+  }
+  const single = new Map();
+  for (const [identifier, values] of bindings) {
+    if (values.size === 1 && !fixtureKeys.has(identifier)) {
+      single.set(identifier, [...values][0]);
+    }
+  }
+  const named = [...helpers].join("|");
+  const paths = new Set();
+  for (const match of source.matchAll(new RegExp(
+    `(?:${named})\\s*\\(\\s*${REPOSITORY_PATH_PATTERN.source}`, "gu"))) {
+    paths.add(match.groups.path);
+  }
+  for (const match of source.matchAll(/\[([^\][]*)\]\s*\.map\(\s*([A-Za-z_$][\w$]*)\s*\)/gu)) {
+    if (!helpers.has(match[2])) continue;
+    for (const identifier of match[1].matchAll(/[A-Za-z_$][\w$]*/gu)) {
+      if (single.has(identifier[0])) paths.add(single.get(identifier[0]));
+    }
+  }
+  for (const match of source.matchAll(/readFile(?:Sync)?\s*\(([^;]*?)\)\s*[,;)]/gu)) {
+    for (const identifier of match[1].matchAll(/[A-Za-z_$][\w$]*/gu)) {
+      if (single.has(identifier[0])) paths.add(single.get(identifier[0]));
+    }
+    for (const literal of match[1].matchAll(literals())) paths.add(literal.groups.path);
+  }
+  return paths;
+}
+
+test("every repository file a registered contract source reads really exists", async () => {
+  const registered = new Set();
+  for (const module of CLIENT_MODULE_CATALOG) {
+    for (const candidate of [...module.inputs, ...module.command.args]) {
+      if (typeof candidate === "string" && candidate.endsWith(".test.mjs")) {
+        registered.add(candidate);
+      }
+    }
+  }
+  const checked = new Set();
+  const missing = [];
+  for (const relativePath of [...registered].sort()) {
+    const source = await fs.readFile(path.join(repoRoot, relativePath), "utf8");
+    for (const declared of registeredReadPaths(source)) {
+      // A `**` registration owns a directory prefix, so the prefix is what the
+      // repository must carry; a concrete registration must name a real file.
+      const target = declared.endsWith("/**") ? declared.slice(0, -3) : declared;
+      checked.add(target);
+      if (!await fs.stat(path.join(repoRoot, target)).then(() => true, () => false)) {
+        missing.push(`${relativePath} registers ${declared}`);
+      }
+    }
+  }
+  assert.ok(checked.size > 0, "the reverse registration check found no declarations");
+  assert.deepEqual(missing, []);
+});
+
 test("startup and client-state checks select every production owner they execute", () => {
   const bootstrap = CLIENT_MODULE_CATALOG.find((module) =>
     module.id === "flutter.controller.scenario.bootstrap");
