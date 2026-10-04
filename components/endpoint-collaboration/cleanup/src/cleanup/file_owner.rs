@@ -11,7 +11,7 @@
 //! A completed removal is not reversible and this owner never claims it is. A
 //! failure leaves that entry exactly where it was and reports it pending.
 
-use anyhow::{Result, Context, anyhow, ensure};
+use anyhow::{Context, Result, anyhow, ensure};
 use fs2::FileExt;
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -205,10 +205,7 @@ impl CleanupFileOwner for PrivateDataRootFileOwner {
                 Ok(FileStageOutcome::Removed { bytes })
             }
             CleanupInventoryKind::Directory => {
-                ensure!(
-                    metadata.file_type().is_dir(),
-                    "cleanup_entry_kind_mismatch"
-                );
+                ensure!(metadata.file_type().is_dir(), "cleanup_entry_kind_mismatch");
                 // Only an empty directory is a consistent boundary. A
                 // non-empty one means the frozen inventory did not account for
                 // its contents, so this stage stops instead of guessing.
@@ -303,7 +300,11 @@ fn remove_tree_without_links(
     );
     let mut children: Vec<PathBuf> = Vec::new();
     for child in fs::read_dir(path).map_err(|_| anyhow!("cleanup_material_unreadable"))? {
-        children.push(child.map_err(|_| anyhow!("cleanup_material_unreadable"))?.path());
+        children.push(
+            child
+                .map_err(|_| anyhow!("cleanup_material_unreadable"))?
+                .path(),
+        );
     }
     children.sort();
     for child in children {

@@ -206,10 +206,7 @@ impl CleanupJournal {
     }
 
     /// The two entry maps a stage writes into.
-    pub fn entries_mut(
-        &mut self,
-        class: StageEntryClass,
-    ) -> &mut BTreeMap<String, RecordedEntry> {
+    pub fn entries_mut(&mut self, class: StageEntryClass) -> &mut BTreeMap<String, RecordedEntry> {
         match class {
             StageEntryClass::Files => &mut self.files,
             StageEntryClass::Credentials => &mut self.credentials,
@@ -362,11 +359,7 @@ impl CleanupJournalStore {
         ensure_private_dir(&self.state_directory())?;
         let text = serde_json::to_string(journal)
             .map_err(|_| anyhow::anyhow!("cleanup_journal_unencodable"))?;
-        atomic_write_private_text_bounded(
-            &self.journal_path(),
-            &text,
-            MAX_CLEANUP_JOURNAL_BYTES,
-        )?;
+        atomic_write_private_text_bounded(&self.journal_path(), &text, MAX_CLEANUP_JOURNAL_BYTES)?;
         Ok(())
     }
 }

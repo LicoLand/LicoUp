@@ -113,10 +113,7 @@ impl CleanupFileOwner for FixtureFileOwner {
     }
 
     fn remove_owned_entry(&self, entry: &CleanupInventoryEntry) -> Result<FileStageOutcome> {
-        self.removals
-            .lock()
-            .unwrap()
-            .push(entry.path().to_string());
+        self.removals.lock().unwrap().push(entry.path().to_string());
         if self.refusing.lock().unwrap().contains(entry.path()) {
             return Err(anyhow!("cleanup_entry_removal_failed"));
         }

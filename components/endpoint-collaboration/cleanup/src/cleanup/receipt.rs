@@ -341,11 +341,7 @@ mod tests {
         assert_eq!(envelope.digest().len(), 64);
         assert_eq!(
             envelope.body()["outstandingStages"],
-            serde_json::json!([
-                "credentials-settled",
-                "terminal-settlement",
-                "complete"
-            ])
+            serde_json::json!(["credentials-settled", "terminal-settlement", "complete"])
         );
     }
 

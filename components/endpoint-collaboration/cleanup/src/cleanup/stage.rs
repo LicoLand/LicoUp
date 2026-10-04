@@ -165,7 +165,10 @@ impl<'a> FileStage<'a> {
         let _quiescence: WriterQuiescence = self.owner.quiesce_writers(inventory.target())?;
 
         for entry in inventory.entries() {
-            let recorded = journal.entries(StageEntryClass::Files).get(entry.path()).cloned();
+            let recorded = journal
+                .entries(StageEntryClass::Files)
+                .get(entry.path())
+                .cloned();
             if let Some(recorded) = &recorded
                 && recorded.outcome().is_settled()
             {
