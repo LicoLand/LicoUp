@@ -16,10 +16,41 @@ restates them.
 
 | Module | What it owns |
 | --- | --- |
+| `components/endpoint-collaboration/src/lib.rs` | The package's availability boundary: which of *missing*, *disabled*, *capability-undeclared*, *unreadable* and *active* the host resolved, and the single outbound cut every caller checks. |
+| `components/endpoint-collaboration/src/capability_catalogue.rs` | The client-side catalogue capability flows are announced into: device and group identity kept apart, explicit local grants, rotation epochs that only advance, and pending protected material that outlives every catalogue change. |
+| `components/endpoint-collaboration/src/durable_delivery.rs` | The package's implementation of the caller-owned durable protocol store: one commit applies snapshot, custody mutations and delivery units together, and only an accepted attempt settles a committed unit. |
 | `components/endpoint-collaboration/cleanup/` | The file half of a staged erase: close the data root's writer admission, settle the frozen file inventory entry by entry with durable, replay-safe progress, and report a partial file-stage result to the replacement endpoint. It deletes no credential and reads no protected key. |
 | `components/endpoint-collaboration/transfer/` | Device-transfer ownership inventory: classify one full-data-root archive into managed payloads, external references and nonportable credential requirements. |
 | `crates/licoup-native/src/domain/mobile_relay/secret_custody/cleanup_authority.rs` | The cleanup-specific authorization: derive the custody subject from persisted identity, accept a replacement endpoint only against a locally signed device trust record that verifies, enumerate the bounded custody inventory, and require an explicit informed confirmation naming that subject, that replacement endpoint, the inventory digest and every scope entry. |
 | `crates/licoup-native/src/domain/mobile_relay/secret_custody/cleanup.rs` | The custody consumer: delete exactly the authorized credentials through the platform secret store's own authorized session, remove exactly the authorized durable-store files, and report observed settlement. |
+
+## Capability synchronisation
+
+`capability_catalogue.rs` is the client-side catalogue the package's capability
+flows are announced into. It keeps apart the facts that are easy to collapse:
+
+* A **device identity** and a **group identity** are different facts, and a peer
+  is the pair. The same device in two groups is two peers, and a group is never
+  re-owned by whichever device announced it last.
+* An **announcement is not authority**. A recorded announcement answers
+  `AnnouncedNotAuthorized` until this client grants that capability explicitly;
+  recording a peer's own claim grants nothing, and no announcement revokes a
+  grant either.
+* A **stale announcement is an explicit answer**. An older revision is refused
+  with both revisions, because offline catch-up must be able to tell "nothing
+  new" from "I am behind" instead of silently dropping the batch.
+* A **rotation epoch only advances**, mirroring the directory's own
+  `identityRotationEpoch` rule. A rolled-back epoch is refused with both epochs;
+  an advancing one keeps the device identity, its local grants and its protected
+  material, so material committed before the rotation stays recoverable
+  afterwards.
+* A **required capability cannot be downgraded away**, and neither can one this
+  client still holds protected material for. Protected material leaves the
+  catalogue only through an explicit settlement of that material's own identity.
+
+None of this changes a session. Applying a catalogue change never rebuilds a
+peer, re-admits a call or rewrites a stored conversation, and the module performs
+no cryptographic operation, opens no store and sends no packet.
 
 ## The approved credential deletion route
 
@@ -73,11 +104,13 @@ document promises forensic or backup erasure.
 ## Tests
 
 ```sh
+cargo test --manifest-path components/endpoint-collaboration/Cargo.toml
 cargo test --manifest-path components/endpoint-collaboration/cleanup/Cargo.toml
 cargo test -p licoup-native --lib secret_custody
 ```
 
 The component's fixtures are synthetic: an in-memory file owner, a recording
-receipt path and disposable temporary roots. The native custody fixtures seed
-synthetic identities, trust records and an ephemeral secret store; no test reads
-or removes a real credential, keychain entry or installed application's data.
+receipt path, disposable temporary roots and synthetic peers with synthetic
+capability announcements. The native custody fixtures seed synthetic identities,
+trust records and an ephemeral secret store; no test reads or removes a real
+credential, keychain entry or installed application's data.

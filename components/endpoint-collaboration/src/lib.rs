@@ -24,6 +24,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod capability_catalogue;
 pub mod durable_delivery;
 
 /// The namespaced identity of this package.
