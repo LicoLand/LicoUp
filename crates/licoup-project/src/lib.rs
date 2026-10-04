@@ -1,5 +1,5 @@
-//! Authorized project and plan identity, and the dependency inputs a project
-//! declares.
+//! Authorized project and plan identity, the canonical plan document an explicit
+//! import carries, and the dependency inputs a project declares.
 //!
 //! This crate owns one thing: the explicit record that says a project exists,
 //! who authorized it, where its authorized root is, which workspace and plan
@@ -36,6 +36,16 @@
 //!   [`ArtifactState::Unavailable`], explicitly, and never resolved by walking
 //!   outside the declared roots.
 //!
+//! The import boundary is the fifth rule, and it is deliberately narrow: an
+//! arbitrary source document is converted by a caller into one canonical
+//! [`PlanDocument`] whose work items declare an outcome, acceptance criteria,
+//! inputs, role references and the source anchor they were read from. A
+//! declaration is never a fact — the model has no field for a run, a completion
+//! or an acceptance, a document that carries one is refused by path
+//! (`project_plan_progress_not_admitted`), and [`PlanDocument::admit`] resolves
+//! the document's own references and returns the source correspondence before
+//! anything is stored.
+//!
 //! Durability reuses the existing state root: the store writes one SQLite
 //! database inside the client-state root, by the same location rule the
 //! workflow store follows, with the same private-directory, schema-version and
@@ -45,6 +55,7 @@ mod authority;
 mod dependency;
 mod failure;
 mod identity;
+mod import;
 mod store;
 
 pub use authority::{NoAuthorityDirectory, ProjectAuthorityDirectory};
@@ -53,13 +64,19 @@ pub use dependency::{
     WorkRef, read_local_artifact, render_dependency_path, stays_inside_authorized_root,
 };
 pub use failure::{
-    DEPENDENCY_STAGE, IDENTITY_STAGE, ProjectFailure, REGISTRATION_STAGE, STORE_STAGE,
+    DEPENDENCY_STAGE, IDENTITY_STAGE, IMPORT_STAGE, ProjectFailure, REGISTRATION_STAGE, STORE_STAGE,
 };
 pub use identity::{
     AuthorityKind, AuthorityReference, AuthorizedRoot, MAX_AUTHORITY_REFERENCE_BYTES,
     MAX_AUTHORIZED_ROOT_BYTES, MAX_DISPLAY_NAME_BYTES, MAX_PLAN_ID_BYTES, MAX_PROJECT_ID_BYTES,
     MAX_WORK_ITEM_ID_BYTES, MAX_WORKSPACE_ID_BYTES, PlanId, ProjectId, ProjectIdentitySource,
     ProjectRegistration, RegisteredProject, WorkItemId, WorkspaceId,
+};
+pub use import::{
+    CapabilityId, ImportDiagnostic, MAX_PLAN_ACCEPTANCE, MAX_PLAN_INPUTS, MAX_PLAN_ROLES,
+    MAX_PLAN_TEXT_BYTES, MAX_PLAN_WORK_ITEMS, MAX_SOURCE_LOCATOR_BYTES, PLAN_DOCUMENT_SCHEMA,
+    PLAN_IMPORT_STAGE, PlanAdmission, PlanDocument, PlanWorkItem, RoleId, RoleReference, RoleScope,
+    SourceId, SourceIdentity, SourceKind, SourceLocator, SourceMapping,
 };
 pub use store::{
     PROJECT_DEPENDENCY_COLUMNS, PROJECT_IDENTITY_COLUMNS, PROJECT_STORE_SCHEMA_VERSION,

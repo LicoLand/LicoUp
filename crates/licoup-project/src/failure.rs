@@ -15,6 +15,8 @@ pub const REGISTRATION_STAGE: &str = "project/register";
 pub const DEPENDENCY_STAGE: &str = "project/dependency";
 /// Where a durable store operation failed.
 pub const STORE_STAGE: &str = "project/store";
+/// Where a plan document that could not be admitted was refused.
+pub const IMPORT_STAGE: &str = "project/import";
 
 /// One refusal, with the owner's own code and the stage that produced it.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -46,6 +48,11 @@ impl ProjectFailure {
     /// A refusal raised while admitting one declared dependency.
     pub const fn dependency(code: &'static str) -> Self {
         Self::new(code, DEPENDENCY_STAGE)
+    }
+
+    /// A refusal raised while admitting one canonical plan document.
+    pub const fn import(code: &'static str) -> Self {
+        Self::new(code, IMPORT_STAGE)
     }
 
     /// A refusal raised by the durable store itself.
