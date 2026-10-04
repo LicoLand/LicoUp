@@ -21,12 +21,6 @@ use licoup_workflow::{
 
 const DATABASE_FILE: &str = "strategies.sqlite3";
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum LeaseRecovery {
-    Standard,
-    AbandonedHost,
-}
-
 #[derive(Clone, Debug)]
 pub struct StrategyStore {
     db_path: PathBuf,
@@ -1064,30 +1058,27 @@ impl StrategyStore {
         })
     }
 
-    /// Atomically fence and recover one expired command.
+    /// Atomically fence and recover the next expired effect claim of one run.
     ///
     /// Lease renewal and this recovery both require the same SQLite write
     /// lock. The winner observes and commits one state transition; the loser
     /// cannot act on a stale pre-lock observation. Claimed-before-start work
     /// is retried in the same transaction, while expired running work is
     /// retained as in-doubt and is never blindly retried.
+    ///
+    /// A previous host process disappearing is **not** an input here. There is
+    /// no abandoned-host path: an unexpired claim stays held by its recorded
+    /// owner, so process exit is neither lease revocation nor authority to
+    /// repeat an external effect. Only the persisted lease clock resolves a
+    /// claim, and only in one of two ways: a claim whose effect never started is
+    /// retried against the same attempt identity, while a claim whose effect was
+    /// already in flight stays in doubt and is never blindly repeated.
     pub(crate) fn recover_next_expired_command(&self, run_id: &str) -> Result<bool> {
         let Some(command_id) = self.next_expired_leased_command_id(run_id)? else {
             return Ok(false);
         };
-        self.recover_leased_command(run_id, &command_id, LeaseRecovery::Standard)?;
+        self.recover_leased_command(run_id, &command_id)?;
         Ok(true)
-    }
-
-    /// Drop still-valid leases left by a previous host process and retry the
-    /// commands. Expired-running recovery stays InDoubt; only this path treats
-    /// a running effect as Transient `host_runtime_lost`.
-    pub(crate) fn reclaim_abandoned_host_commands(&self, run_id: &str) -> Result<()> {
-        let command_ids = self.release_live_host_leases(run_id)?;
-        for command_id in command_ids {
-            self.recover_leased_command(run_id, &command_id, LeaseRecovery::AbandonedHost)?;
-        }
-        Ok(())
     }
 
     fn next_expired_leased_command_id(&self, run_id: &str) -> Result<Option<String>> {
@@ -1106,39 +1097,7 @@ impl StrategyStore {
         })
     }
 
-    fn release_live_host_leases(&self, run_id: &str) -> Result<Vec<String>> {
-        self.with_connection(|connection| {
-            let transaction =
-                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-            let command_ids = {
-                let mut statement = transaction.prepare(
-                    "SELECT command_id FROM strategy_commands
-                     WHERE run_id=?1 AND status IN ('claimed', 'running')
-                       AND lease_until IS NOT NULL AND lease_until>?2
-                     ORDER BY command_id ASC",
-                )?;
-                let command_ids = statement
-                    .query_map(params![run_id, now_ms()], |row| row.get(0))?
-                    .collect::<rusqlite::Result<Vec<String>>>()?;
-                command_ids
-            };
-            for command_id in &command_ids {
-                transaction.execute(
-                    "UPDATE strategy_commands SET lease_until=0 WHERE command_id=?1",
-                    params![command_id],
-                )?;
-            }
-            transaction.commit()?;
-            Ok(command_ids)
-        })
-    }
-
-    fn recover_leased_command(
-        &self,
-        run_id: &str,
-        command_id: &str,
-        recovery: LeaseRecovery,
-    ) -> Result<()> {
+    fn recover_leased_command(&self, run_id: &str, command_id: &str) -> Result<()> {
         self.with_connection(|connection| {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1174,13 +1133,8 @@ impl StrategyStore {
             );
             let workflow = workflow_for_revision(&transaction, &previous.definition_digest)?;
             let compiled = compile_workflow(workflow)?;
-            let (class, code) = match (command.status, recovery) {
-                (CommandStatus::Claimed, _) => {
-                    (FailureClass::Transient, "lease_expired_before_start")
-                }
-                (CommandStatus::Running, LeaseRecovery::AbandonedHost) => {
-                    (FailureClass::Transient, "host_runtime_lost")
-                }
+            let (class, code) = match command.status {
+                CommandStatus::Claimed => (FailureClass::Transient, "lease_expired_before_start"),
                 _ => (FailureClass::InDoubt, "effect_outcome_unknown"),
             };
             let failure_event = ReducerEvent::CommandFailed {
@@ -3086,7 +3040,7 @@ mod tests {
     }
 
     #[test]
-    fn abandoned_running_effect_is_retried_when_this_host_becomes_driver() {
+    fn an_unexpired_claim_stays_held_when_this_host_becomes_the_driver() {
         let store = StrategyStore::open_in_memory().unwrap();
         let revision = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
         store
@@ -3122,23 +3076,76 @@ mod tests {
             )
             .unwrap();
 
-        store.reclaim_abandoned_host_commands(&run.run_id).unwrap();
-        let recovered = store.run(&run.run_id).unwrap();
-        assert_eq!(
-            recovered.commands[&claimed.id].status,
-            CommandStatus::Cancelled
-        );
-        assert_eq!(
-            recovered.commands[&claimed.id].failure_code.as_deref(),
-            Some("host_runtime_lost")
-        );
+        // A previous host process disappearing is not lease revocation, so the
+        // still-valid claim is neither released nor retried.
+        assert!(!store.recover_next_expired_command(&run.run_id).unwrap());
+        let held = store.run(&run.run_id).unwrap();
+        assert_eq!(held.commands[&claimed.id].status, CommandStatus::Running);
+        assert!(held.commands[&claimed.id].failure_code.is_none());
         assert!(
-            recovered
+            !held
                 .commands
                 .values()
-                .any(|command| command.attempt == 2 && command.status == CommandStatus::Pending)
+                .any(|command| command.attempt == 2),
+            "an unexpired in-flight effect is never repeated"
         );
-        assert_eq!(recovered.status, StrategyRunStatus::Running);
+        assert_eq!(held.status, StrategyRunStatus::Running);
+    }
+
+    #[test]
+    fn a_released_unexpired_claim_never_becomes_retryable() {
+        let store = StrategyStore::open_in_memory().unwrap();
+        let revision = "5656565656565656565656565656565656565656565656565656565656565656";
+        store
+            .register_definition(
+                revision,
+                "7878787878787878787878787878787878787878787878787878787878787878",
+                &workflow(),
+                1,
+                1,
+            )
+            .unwrap();
+        store
+            .update_binding(revision, "worker", "agent:test", "", "", None)
+            .unwrap();
+        let preview = store.authorization_preview(revision).unwrap();
+        store
+            .grant_authorization(revision, &preview.authorization_digest)
+            .unwrap();
+        let run = store
+            .start_run(revision, json!({}), "held-claim", None, None)
+            .unwrap();
+        let claimed = store
+            .claim_next_command(&run.run_id, "claimant", now_ms() + 60_000)
+            .unwrap()
+            .unwrap();
+        store
+            .apply_event(
+                &run.run_id,
+                ReducerEvent::CommandStarted {
+                    command_id: claimed.id.clone(),
+                    attempt_token: claimed.attempt_token.clone(),
+                },
+            )
+            .unwrap();
+
+        // The owner settles its own attempt; nothing else may report on it.
+        assert!(
+            store
+                .apply_event(
+                    &run.run_id,
+                    ReducerEvent::CommandSucceeded {
+                        command_id: claimed.id.clone(),
+                        attempt_token: "attempt:someone-else".into(),
+                        output: json!({ "ok": true }),
+                    },
+                )
+                .is_err(),
+            "a stale owner result cannot settle an attempt it does not own"
+        );
+        let unchanged = store.run(&run.run_id).unwrap();
+        assert_eq!(unchanged.commands[&claimed.id].status, CommandStatus::Running);
+        assert!(unchanged.commands[&claimed.id].output_digest.is_none());
     }
 
     #[test]

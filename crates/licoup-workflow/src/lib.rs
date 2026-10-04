@@ -7,6 +7,7 @@
 pub mod analysis;
 pub mod compile;
 pub mod diagnostic;
+pub mod dispatch;
 pub mod ir;
 pub mod machine;
 pub mod syntax;
@@ -19,6 +20,12 @@ pub use compile::CompiledWorkflow;
 pub use diagnostic::{
     PreflightDiagnostic, WorkflowDiagnosticActualKind, WorkflowDiagnosticCode,
     WorkflowDiagnosticExpected, WorkflowDiagnosticRecovery, WorkflowDiagnosticStage,
+};
+pub use dispatch::{
+    ClaimLease, ClaimVerdict, CompletionVerdict, DispatchDecision, DispatchGate, DispatchIntent,
+    DispatchRecipient, DispatchRefusal, EffectCompletion, EffectProgress, RecoveryVerdict,
+    SuccessorAdmission, SuccessorEdge, SuccessorGate, SuccessorRefusal, claim_effect,
+    recover_claim, settle_effect,
 };
 pub use ir::*;
 pub use machine::{

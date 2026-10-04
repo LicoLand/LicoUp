@@ -1385,7 +1385,10 @@ impl StrategyService {
         run_id: &str,
         mut entry: Option<EntryTurnRegistration>,
     ) -> Result<()> {
-        self.store.reclaim_abandoned_host_commands(run_id)?;
+        // A previous host process disappearing is not lease revocation, so an
+        // unexpired claim is left held by its recorded owner; only the persisted
+        // lease clock resolves a claim, and only an effect that never started is
+        // retried.
         self.recover_expired_commands(run_id)?;
         let _ = self.transition.reconcile_pending();
         let recovered = self.store.run(run_id)?;
