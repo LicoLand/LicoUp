@@ -94,6 +94,17 @@ export const RUST_CORE_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "rust.core.agent-lico-agent-package",
+      kind: "rust-core",
+      summary: "Lico Agent adapter package program, stdio JSONL RPC protocol, session layout, registration, and replay arm",
+      inputs: ["crates/licoup-agent-lico-agent/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-lico-agent/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
       id: "rust.core.acp.composition",
       kind: "rust-core",
       summary: "ACP facade, shared protocol types, validation, and error boundaries",

@@ -38,6 +38,7 @@ const packageAdapters = new Map([
   ['cursor', 'crates/licoup-agent-cursor'],
   ['deepseek_harness', 'crates/licoup-agent-deepseek'],
   ['kimi_code', 'crates/licoup-agent-kimi'],
+  ['lico_agent', 'crates/licoup-agent-lico-agent'],
 ]);
 
 // The package-owned parsers, under the alias the composition composes them by:
@@ -62,6 +63,10 @@ const packaged = {
   kimi_code: {
     crate: 'licoup_agent_kimi',
     parser: 'crates/licoup-agent-kimi/src/parser.rs',
+  },
+  lico_agent: {
+    crate: 'licoup_agent_lico_agent',
+    parser: 'crates/licoup-agent-lico-agent/src/parser.rs',
   },
 };
 

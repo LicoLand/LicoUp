@@ -4,25 +4,31 @@ use crate::domain::lico_agent::{Agent, AgentProfileKind};
 use crate::platform::agent_workspace::{
     default_local_agent_workspace, resolve_local_agent_workspace,
 };
-use crate::platform::native_agent_parser::adapters::NativeLineParser;
-use crate::platform::native_agent_parser::adapters::lico_agent::{
-    RpcEffect, RpcParser, encode_request,
-};
 use crate::platform::process_sandbox::lico_agent_plan_command;
 use crate::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded};
 use crate::platform::raw_execution::{
     RawExecutionBinding, RawExecutionDirection, RawExecutionObserver, RawExecutionReader,
     RawExecutionScope,
 };
-use licoup_foundation::platform::file_security::ensure_private_dir;
+use licoup_agent_adapter_sdk::adapters::NativeLineParser;
+// The RPC wire, the request envelopes, the transition projection and the
+// session, transcript and plan layout belong to the adapter package that owns
+// this protocol. This module keeps only the *process* half the client still
+// composes: spawning the packaged program, supervising the turn, the workspace
+// bound and the raw-execution observation. That half moves onto the package's
+// agent-execution port next; until it does, the client reads the protocol from
+// the package and owns only the process.
+use licoup_agent_lico_agent::parser::{
+    RpcEffect, RpcParser, encode_request, prompt_request, readiness_request,
+};
+use licoup_agent_lico_agent::session;
 use licoup_foundation::platform::paths::portable_data_dir;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use uuid::Uuid;
 
 /// Upper bound for the `get_state` readiness handshake. Lico Agent is expected
 /// to answer immediately after start; a hang (auto-update, gateway startup)
@@ -227,7 +233,7 @@ fn execute_with_handshake_bound(
         "lico-agent",
         RawExecutionDirection::Received,
     ));
-    if write_line(&mut stdin, &json!({"id":"lico-1","type":"get_state"})).is_err() {
+    if write_line(&mut stdin, &readiness_request()).is_err() {
         cleanup_process(&mut child, &mut stderr_handle);
         return failed_for_session(
             ProtocolFailure::new(
@@ -281,12 +287,7 @@ fn execute_with_handshake_bound(
         );
     }
 
-    if write_line(
-        &mut stdin,
-        &json!({"id":"lico-2","type":"prompt","message":prompt}),
-    )
-    .is_err()
-    {
+    if write_line(&mut stdin, &prompt_request(prompt)).is_err() {
         cleanup_process(&mut child, &mut stderr_handle);
         return failed_for_session(
             ProtocolFailure::new(
@@ -394,12 +395,11 @@ fn execute_with_handshake_bound(
     let sid = native_session_id;
     RunResult {
         ok: true,
-        transitions:
-            crate::platform::native_agent_parser::adapters::lico_agent::success_transitions(
-                &output,
-                saw_processing,
-                &controls,
-            ),
+        transitions: licoup_agent_lico_agent::parser::success_transitions(
+            &output,
+            saw_processing,
+            &controls,
+        ),
         output,
         error: None,
         session_id: sid.clone(),
@@ -488,25 +488,16 @@ fn spawn_agent(
     })
 }
 
+/// The plan file a plan-mode turn is bound to.
+///
+/// The `params` shape, the absolute-path rule and the data root's active plan
+/// location are the adapter package's facts; this host supplies the data root,
+/// because the root is the client's.
 fn resolve_plan_path(params: &Value) -> Option<PathBuf> {
-    if let Some(path) = params
-        .get("planPath")
-        .or_else(|| params.get("plan_path"))
-        .and_then(Value::as_str)
-    {
-        let path = PathBuf::from(path);
-        if path.is_absolute() {
-            return Some(path);
-        }
-    }
-    portable_data_dir().ok().map(|root| {
-        let dir = root.join("client-state").join("plans");
-        let _ = std::fs::create_dir_all(&dir);
-        let plan = dir.join("active-plan.md");
-        if !plan.exists() {
-            let _ = std::fs::write(&plan, b"");
-        }
-        plan
+    session::named_plan_path(params).or_else(|| {
+        portable_data_dir()
+            .ok()
+            .map(|root| session::ensure_active_plan(&root))
     })
 }
 
@@ -542,52 +533,40 @@ fn workspace_failure() -> ProtocolFailure {
     )
 }
 
+/// Resolve the session one turn runs against.
+///
+/// The identity rule and the session, transcript and plan layout are the adapter
+/// package's; this host supplies the data root and reads the transcript the
+/// package names, because reading a persisted Lico Agent conversation belongs to
+/// `licoup-agent-targets` rather than to the protocol that resumes it.
 fn prepare_session(session_id: &str) -> Result<(String, bool, PathBuf), ProtocolFailure> {
-    let sessions_dir = portable_data_dir()
-        .map_err(|_| session_store_failure())?
-        .join("client-state")
-        .join("lico-agent")
-        .join("sessions");
-    ensure_private_dir(&sessions_dir).map_err(|_| session_store_failure())?;
-    if !session_id.trim().is_empty() {
-        let session_id = canonical_session_id(session_id)?;
-        let path = sessions_dir.join(format!("{session_id}.jsonl"));
-        Agent::load_persisted_history(&path, &session_id).map_err(transcript_failure)?;
-        return Ok((session_id, true, path));
+    let root = portable_data_dir().map_err(|_| session_store_failure())?;
+    let prepared = session::prepare(&root, session_id).map_err(session_failure)?;
+    if prepared.resume {
+        Agent::load_persisted_history(&prepared.transcript, &prepared.session_id)
+            .map_err(transcript_failure)?;
     }
-    for _ in 0..8 {
-        let session_id = Uuid::new_v4().to_string();
-        let path = sessions_dir.join(format!("{session_id}.jsonl"));
-        if !path.exists() {
-            return Ok((session_id, false, path));
-        }
-    }
-    Err(ProtocolFailure::new(
-        "lico_agent_session_id_unavailable",
-        "Lico Agent could not allocate a new native session identity.",
-        "session/create",
-    ))
+    Ok((prepared.session_id, prepared.resume, prepared.transcript))
 }
 
-fn canonical_session_id(session_id: &str) -> Result<String, ProtocolFailure> {
-    let trimmed = session_id.trim();
-    let canonical = Uuid::parse_str(trimmed)
-        .map_err(|_| {
-            ProtocolFailure::new(
-                "lico_agent_session_id_invalid",
-                "Lico Agent requires a valid native session identity.",
-                "session/resume",
-            )
-        })?
-        .to_string();
-    if canonical != trimmed {
-        return Err(ProtocolFailure::new(
+/// The protocol failure one of the adapter package's session answers becomes.
+///
+/// The code is the package's own — it is part of the RPC's contract — and the
+/// sentence and stage are this host's presentation of it.
+fn session_failure(code: &'static str) -> ProtocolFailure {
+    match code {
+        session::SESSION_ID_INVALID => ProtocolFailure::new(
             "lico_agent_session_id_invalid",
             "Lico Agent requires a valid native session identity.",
             "session/resume",
-        ));
+        ),
+        session::SESSION_ID_UNAVAILABLE => ProtocolFailure::new(
+            "lico_agent_session_id_unavailable",
+            "Lico Agent could not allocate a new native session identity.",
+            "session/create",
+        ),
+        _ => session_store_failure(),
     }
-    Ok(canonical)
 }
 
 fn transcript_failure(code: &'static str) -> ProtocolFailure {
@@ -750,6 +729,9 @@ fn cleanup_process(
 #[cfg(test)]
 mod raw_execution_tests {
     use super::*;
+    // The request envelope this module no longer builds is still the payload the
+    // wire test reads back, so the macro is imported where it is used.
+    use serde_json::json;
     use std::io::Cursor;
     use std::sync::{Arc, Mutex};
 

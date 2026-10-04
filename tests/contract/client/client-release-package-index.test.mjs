@@ -137,6 +137,14 @@ const declaredPackages = Object.freeze([
     clientRange: ">=0.3.0, <1.0.0",
   },
   {
+    packageId: "org.licoland.adapter.lico-agent",
+    source: "crates/licoup-agent-lico-agent/package",
+    payloadRole: "lico-agent-adapter-package-payload",
+    payloadAsset: "LicoUp-package-org.licoland.adapter.lico-agent.licopkg",
+    converterEntry: "bin/lico-agent-lico-agent",
+    clientRange: ">=0.3.0, <1.0.0",
+  },
+  {
     packageId: "org.licoland.feature.mcp",
     source: "crates/licoup-mcp/package",
     payloadRole: "mcp-package-payload",
@@ -202,6 +210,12 @@ const kimiPackageId = "org.licoland.adapter.kimi";
 const kimiPackageSource = "crates/licoup-agent-kimi/package";
 const kimiPayloadRole = "kimi-adapter-package-payload";
 const kimiPayloadAsset = `LicoUp-package-${kimiPackageId}.licopkg`;
+// The Lico Agent adapter package is released the same way, on its own payload
+// role, so one Agent's artifact can never stand in for another's.
+const licoAgentPackageId = "org.licoland.adapter.lico-agent";
+const licoAgentPackageSource = "crates/licoup-agent-lico-agent/package";
+const licoAgentPayloadRole = "lico-agent-adapter-package-payload";
+const licoAgentPayloadAsset = `LicoUp-package-${licoAgentPackageId}.licopkg`;
 const clientProductVersion = JSON.parse(readFileSync(
   path.join(repoRoot, "tools/client-version.json"), "utf8",
 )).productVersion;
@@ -327,6 +341,7 @@ test("the canonical release configuration declares every package payload role ex
   assert.equal(publication.assetRoles.includes(cursorPayloadRole), false);
   assert.equal(publication.assetRoles.includes(deepseekPayloadRole), false);
   assert.equal(publication.assetRoles.includes(kimiPayloadRole), false);
+  assert.equal(publication.assetRoles.includes(licoAgentPayloadRole), false);
   assert.equal(publication.assetRoles.includes(PACKAGE_INDEX_ROLE), false);
   for (const config of [stable, nightly]) {
     assert.deepEqual(
@@ -336,7 +351,7 @@ test("the canonical release configuration declares every package payload role ex
     );
     for (const role of [PACKAGE_PAYLOAD_ROLE, mcpPayloadRole, codexPayloadRole,
       antigravityPayloadRole, cursorPayloadRole, deepseekPayloadRole,
-      kimiPayloadRole, PACKAGE_INDEX_ROLE]) {
+      kimiPayloadRole, licoAgentPayloadRole, PACKAGE_INDEX_ROLE]) {
       assert.equal(config.artifacts.some((entry) => entry.role === role), false,
         `${role} must not enter the closed client draft`);
     }
@@ -560,6 +575,13 @@ test("the plan reports every declared package without writing, and the tool reac
   assert.deepEqual(kimiPlan.clientCompatibility,
     { kind: "range", range: ">=0.3.0, <1.0.0" });
   assert.equal(kimiPlan.converterEntry, "bin/lico-agent-kimi");
+  const licoAgentPlan = plan.packages.find((reported) =>
+    reported.packageId === licoAgentPackageId);
+  assert.equal(licoAgentPlan.source, licoAgentPackageSource);
+  assert.match(licoAgentPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
+  assert.deepEqual(licoAgentPlan.clientCompatibility,
+    { kind: "range", range: ">=0.3.0, <1.0.0" });
+  assert.equal(licoAgentPlan.converterEntry, "bin/lico-agent-lico-agent");
   assert.equal(readdirSync(root).length, 0, "plan must not write anything");
 
   const sources = [

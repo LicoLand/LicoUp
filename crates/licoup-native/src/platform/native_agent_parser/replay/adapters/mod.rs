@@ -4,18 +4,14 @@
 //! parser. An Agent whose parser has moved into its own package also moved the
 //! arm that drives it, because an arm is only meaningful beside the parser it
 //! constructs; this composition reaches it through the SDK's parser-set port.
-//! Codex and DeepSeek Harness have both moved, so their arms are built by the
-//! packages that own their parsers.
+//! Six Agents have moved that way — Antigravity, Codex, Cursor, DeepSeek
+//! Harness, Kimi Code and Lico Agent — so their arms are built by the packages
+//! that own their parsers.
+//!
 //! Two Agents keep their protocol state machine outside this module tree
-//! (`acp_driver_runtime` for copilot and kimi-code, `openclaw_driver` for
-//! openclaw), so those arms live next to the code they replay. Codex and
-//! Antigravity have moved into their packages, so their arms are reached through
-//! those crates' own `replay` modules rather than kept here.
-//! Codex's and Kimi Code's arms have moved that way — Kimi Code's dialect lives
-//! in `licoup-agent-kimi` now, so its arm does too. Two Agents keep their
-//! protocol state machine outside this module tree (`acp_driver_runtime` for
-//! copilot, `openclaw_driver` for openclaw), so those arms live next to the code
-//! they replay.
+//! (`acp_driver_runtime` for copilot and `openclaw_driver` for openclaw), so
+//! those arms live next to the code they replay. The remaining five hold their
+//! parser in this tree and their arm beside it.
 //!
 //! The arms are `pub(in crate::platform)` to this module's parent — it is the
 //! only reader, and it hands them to the SDK's harness through the parser set.
@@ -23,7 +19,6 @@
 mod claude_code;
 mod hermes;
 mod kilo_code;
-mod lico_agent;
 mod opencode;
 mod pi;
 
@@ -40,29 +35,31 @@ pub(in crate::platform) fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameR
     // same installed port the production transport reads, so the host's
     // composition installs it here exactly as a production entry point does.
     // Installation is idempotent and first-wins, so an arm built after a running
-    // turn cannot replace the dialects that turn is reading. Kimi Code's arm
+    // turn cannot replace the dialect that turn is reading. The moved ACP Agent
     // needs no installation: its package owns the dialect and hands it to the
     // shared reducer directly, so the arm cannot drift from the dialect.
     if matches!(adapter_id, "copilot") {
         crate::platform::runtime_adapters::install();
     }
     Ok(match adapter_id {
-        // The arm moved with the parser into the Antigravity adapter package, so a
-        // regression in that parser fails the package's own corpus as well as this
-        // composition's.
+        // The arms that moved with their parsers into the adapter packages, so a
+        // regression in one of those parsers fails the package's own corpus as
+        // well as this composition's.
         "antigravity" => licoup_agent_antigravity::replay::replay_arm(adapter_id)?,
-        "claude-code" => Box::new(claude_code::Replay::new()?),
         "codex" => licoup_agent_codex::replay::replay_arm(adapter_id)?,
-        "copilot" => Box::new(acp_driver_runtime::replay::Replay::new(adapter_id)?),
         "cursor" => licoup_agent_cursor::replay::replay_arm(adapter_id)?,
         "deepseek-harness" => licoup_agent_deepseek::replay::replay_arm(adapter_id)?,
-        "copilot" => Box::new(acp_driver_runtime::replay::Replay::new(adapter_id, "copilot-acp")?),
-        "cursor" => Box::new(cursor::Replay::new()?),
-        "deepseek-harness" => Box::new(deepseek_harness::Replay::new()?),
+        "kimi-code" => licoup_agent_kimi::replay::replay_arm(adapter_id)?,
+        "lico-agent" => licoup_agent_lico_agent::replay::replay_arm(adapter_id)?,
+        // The arms whose parser is still in this tree or beside its state
+        // machine.
+        "claude-code" => Box::new(claude_code::Replay::new()?),
+        "copilot" => Box::new(acp_driver_runtime::replay::Replay::new(
+            adapter_id,
+            "copilot-acp",
+        )?),
         "hermes" => Box::new(hermes::Replay::new()?),
         "kilo-code" => Box::new(kilo_code::Replay::new()?),
-        "kimi-code" => licoup_agent_kimi::replay::replay_arm(adapter_id)?,
-        "lico-agent" => Box::new(lico_agent::Replay::new()?),
         "openclaw" => Box::new(openclaw_driver::replay::Replay::new()?),
         "opencode" => Box::new(opencode::Replay::new()?),
         "pi" => Box::new(pi::Replay::new()?),
