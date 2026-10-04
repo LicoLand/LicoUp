@@ -2,6 +2,11 @@
   "schemaVersion": "licomesh.client-release-package-set.v1",
   "packages": [
     {
+      "packageId": "org.licoland.adapter.antigravity",
+      "source": "crates/licoup-agent-antigravity/package",
+      "payloadRole": "antigravity-adapter-package-payload"
+    },
+    {
       "packageId": "org.licoland.adapter.codex",
       "source": "crates/licoup-agent-codex/package",
       "payloadRole": "codex-adapter-package-payload"

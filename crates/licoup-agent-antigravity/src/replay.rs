@@ -22,16 +22,22 @@
 //! A frame carrying both a receipt and a process outcome runs the receipt first
 //! and the terminal classification second, which is the order the driver reads
 //! them in. Nothing is timed or derived from the clock.
+//!
+//! The arm travels with the parser: a program that composes this package's
+//! parser set gets the arm that can only fail when *this* parser regresses. The
+//! framing it accepts is read from this package's own declaration, so a frame
+//! recorded under another channel cannot pass.
 
-use super::super::{FrameReplay, RecordedFrame};
-use crate::platform::native_agent_parser::Transition;
-use crate::platform::native_agent_parser::adapters::antigravity::{
-    PtyOutputParser, TerminalFacts, classify_terminal, parse_hook_receipt,
-};
-use crate::platform::runtime_adapters::RuntimeAdapter;
+use licoup_agent_adapter_sdk::replay::{FrameReplay, RecordedFrame};
 use serde_json::{Value, json};
 
-pub(super) struct Replay {
+use crate::parser::{
+    CONTRACT, PtyOutputParser, TerminalFacts, classify_terminal, parse_hook_receipt,
+};
+use crate::registration::ADAPTER_ID;
+use licoup_agent_adapter_sdk::Transition;
+
+pub struct Replay {
     /// The live stdout parser: strips ANSI control and accumulates the turn's
     /// output exactly as the driver's PTY lane does.
     pty: PtyOutputParser,
@@ -43,7 +49,7 @@ pub(super) struct Replay {
 }
 
 impl Replay {
-    pub(super) fn new() -> Result<Self, String> {
+    pub fn new() -> Result<Self, String> {
         Ok(Self {
             pty: PtyOutputParser::new(),
             requested_session: String::new(),
@@ -51,11 +57,10 @@ impl Replay {
         })
     }
 
-    /// The framing this boundary consumes, taken from the adapter's own
-    /// contract so a frame recorded under another channel cannot pass.
+    /// The framing this boundary consumes, taken from this package's own
+    /// declaration so a frame recorded under another channel cannot pass.
     fn framing() -> &'static str {
-        crate::platform::native_agent_parser::adapters::contract_for(RuntimeAdapter::Antigravity)
-            .framing
+        CONTRACT.framing
     }
 
     /// Classify the turn from the state this boundary accumulated and the
@@ -137,6 +142,19 @@ impl FrameReplay for Replay {
             .map(|text| vec![json!({"effect": "pty_text", "text": text})])
             .unwrap_or_default())
     }
+}
+
+/// Build the replay arm of this package's parser.
+///
+/// An adapter this package does not carry is refused rather than defaulted, so a
+/// fixture can never pass against a parser that was never constructed.
+pub fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameReplay>, String> {
+    if adapter_id != ADAPTER_ID {
+        return Err(format!(
+            "no replayable parser is registered for adapter {adapter_id}"
+        ));
+    }
+    Ok(Box::new(Replay::new()?))
 }
 
 /// The PTY lane's process outcome, recorded as the turn's terminal frame: the

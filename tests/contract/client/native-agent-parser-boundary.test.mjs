@@ -31,18 +31,35 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     composition.indexOf('/// The parser registrations this host injects'),
   );
   // Every entry names its Agent's declaration exactly once, and none inherits
-  // another Agent's answer.
-  assert.equal((registrations.match(/ParserRegistration::(?:unanswered|new)\(/g) ?? []).length, 13);
+  // another Agent's answer. Two of the thirteen are their package's own
+  // registration constant, because the crate that owns the parser also owns
+  // that parser's answers.
+  const hostedEntries =
+    (registrations.match(/ParserRegistration::(?:unanswered|new)\(/g) ?? []).length;
+  const packageEntries =
+    (registrations.match(/registration::REGISTRATION,/g) ?? []).length;
+  assert.equal(hostedEntries + packageEntries, 13);
+  assert.equal(packageEntries, 2);
   // The queries a reader reaches are answered by the Agent that owns the fact:
   // Hermes' normalized transitions, and the exact-resume identity of the four
   // Agents the Subagent mesh dispatches. Every other entry stays declared and
-  // unanswered rather than inheriting a neighbouring Agent's answer.
+  // unanswered rather than inheriting a neighbouring Agent's answer. Codex and
+  // Antigravity answer both queries from their own packages, so their answers
+  // are read where they live instead of here.
   const answered = {
-    antigravity: ['no_transitions', 'antigravity_identity'],
     claude_code: ['no_transitions', 'claude_code_identity'],
-    codex: ['codex_transitions', 'codex_identity'],
     cursor: ['no_transitions', 'cursor_identity'],
     hermes: ['hermes_transitions', 'no_identity'],
+  };
+  const packaged = {
+    antigravity: {
+      crate: 'licoup-agent-antigravity',
+      parser: 'crates/licoup-agent-antigravity/src/parser.rs',
+    },
+    codex: {
+      crate: 'licoup-agent-codex',
+      parser: 'crates/licoup-agent-codex/src/parser.rs',
+    },
   };
   // One entry per Agent, so a per-Agent answer is read from its own entry
   // rather than from a neighbouring one that happens to name the same helper.
@@ -51,8 +68,22 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     const contract = chunk.match(/(\w+)::CONTRACT/);
     if (contract) entries.set(contract[1], chunk);
   }
-  assert.equal(entries.size, 13);
+  assert.equal(entries.size, 13 - Object.keys(packaged).length);
   for (const adapter of adapters) {
+    const source = packaged[adapter]
+      ? readFileSync(packaged[adapter].parser, 'utf8')
+      : readFileSync(`${parserRoot}/adapters/${adapter}.rs`, 'utf8');
+    assert.match(source, /AdapterContract::new/);
+    if (packaged[adapter]) {
+      // The host names the package's registration; it may not declare the
+      // module or retype the declaration a second time.
+      assert.match(
+        composition,
+        new RegExp(`licoup_agent_${adapter.replaceAll('-', '_')}::registration::REGISTRATION`),
+      );
+      assert.doesNotMatch(composition, new RegExp(`mod ${adapter};`));
+      continue;
+    }
     assert.match(composition, new RegExp(`mod ${adapter};`));
     const entry = entries.get(adapter);
     assert.ok(entry, `no registration entry for ${adapter}`);
@@ -64,11 +95,6 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     } else {
       assert.match(entry, /^unanswered\(/u);
     }
-    const component = readFileSync(
-      `${parserRoot}/adapters/${adapter}.rs`,
-      'utf8',
-    );
-    assert.match(component, /AdapterContract::new/);
   }
 });
 

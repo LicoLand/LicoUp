@@ -24,7 +24,13 @@ pub(in crate::platform) use licoup_agent_adapter_sdk::{
 // package also owns the app-server process that speaks the protocol, so no
 // kernel module declares either one.
 
-pub(in crate::platform) mod antigravity;
+// The second Agent to move: Antigravity's Agent Hooks receipt, PTY parser and
+// terminal classification now live in `licoup-agent-antigravity`. The driver that
+// still supervises the vendor CLI reads them through this path, and the
+// composition names the package for the registration and the replay arm that
+// belong to the same parser.
+pub(in crate::platform) use licoup_agent_antigravity::parser as antigravity;
+
 pub(in crate::platform) mod claude_code;
 pub(in crate::platform) mod copilot;
 pub(in crate::platform) mod cursor;
@@ -81,12 +87,6 @@ fn cursor_identity(request: &DurableIdentityRequest<'_>) -> bool {
     cursor::safe_session_id(request.session_id)
 }
 
-/// Whether an Antigravity Agent Hooks receipt identity is one that Agent's
-/// protocol accepts.
-fn antigravity_identity(request: &DurableIdentityRequest<'_>) -> bool {
-    antigravity::valid_session_id(request.session_id)
-}
-
 /// Whether a Claude Code session identity is one that Agent's protocol accepts.
 fn claude_code_identity(request: &DurableIdentityRequest<'_>) -> bool {
     opaque_identity(request.session_id)
@@ -112,11 +112,10 @@ fn opaque_identity(session_id: &str) -> bool {
 /// result* rather than through the query, and answers the identity query
 /// fail-closed because the mesh never dispatches that Agent.
 pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
-    ParserRegistration::new(
-        antigravity::CONTRACT,
-        no_transitions,
-        antigravity_identity,
-    ),
+    // The Antigravity package answers both protocol-agnostic queries from its own
+    // protocol facts — the identity rule is its parser's, and the transitions are
+    // its own reply projection — so this entry is the package's own registration.
+    licoup_agent_antigravity::registration::REGISTRATION,
     ParserRegistration::new(
         claude_code::CONTRACT,
         no_transitions,

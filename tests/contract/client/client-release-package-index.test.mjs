@@ -73,6 +73,14 @@ const releaseSourcePrefix = "build/apps/desktop/native-release/macos-direct-arm6
 // row here fails them.
 const declaredPackages = Object.freeze([
   {
+    packageId: "org.licoland.adapter.antigravity",
+    source: "crates/licoup-agent-antigravity/package",
+    payloadRole: "antigravity-adapter-package-payload",
+    payloadAsset: "LicoUp-package-org.licoland.adapter.antigravity.licopkg",
+    converterEntry: "bin/lico-agent-antigravity",
+    clientRange: ">=0.3.0, <1.0.0",
+  },
+  {
     packageId: "org.licoland.adapter.codex",
     source: "crates/licoup-agent-codex/package",
     payloadRole: "codex-adapter-package-payload",
@@ -132,6 +140,24 @@ const fixturePackage = declaredPackage(PACKAGE_PAYLOAD_ROLE);
 const mcpPackage = declaredPackage("mcp-package-payload");
 const fixtureSource = fixturePackage.source;
 const payloadAsset = fixturePackage.payloadAsset;
+// The MCP service package is the first real declared package: it is released
+// beside the synthetic fixture under the same contract, on its own payload role.
+const mcpPackageId = "org.licoland.feature.mcp";
+const mcpPackageSource = "crates/licoup-mcp/package";
+const mcpPayloadRole = "mcp-package-payload";
+const mcpPayloadAsset = `LicoUp-package-${mcpPackageId}.licopkg`;
+// An Agent adapter package is released on its own payload role beside the MCP
+// service and the synthetic fixture, so one package's asset can never stand in
+// for another's. Antigravity is the second Agent adapter to declare one; Codex
+// was the first.
+const antigravityPackageId = "org.licoland.adapter.antigravity";
+const antigravityPackageSource = "crates/licoup-agent-antigravity/package";
+const antigravityPayloadRole = "antigravity-adapter-package-payload";
+const antigravityPayloadAsset = `LicoUp-package-${antigravityPackageId}.licopkg`;
+const codexPackageId = "org.licoland.adapter.codex";
+const codexPackageSource = "crates/licoup-agent-codex/package";
+const codexPayloadRole = "codex-adapter-package-payload";
+const codexPayloadAsset = `LicoUp-package-${codexPackageId}.licopkg`;
 const clientProductVersion = JSON.parse(readFileSync(
   path.join(repoRoot, "tools/client-version.json"), "utf8",
 )).productVersion;
@@ -220,6 +246,9 @@ test("the canonical release configuration declares every package payload role ex
     assert.equal(
       roles.includes(PACKAGE_INDEX_ROLE) ||
         declaredPackages.some((entry) => roles.includes(entry.payloadRole)),
+      roles.includes(PACKAGE_PAYLOAD_ROLE) || roles.includes(PACKAGE_INDEX_ROLE) ||
+        roles.includes(mcpPayloadRole) || roles.includes(codexPayloadRole) ||
+        roles.includes(antigravityPayloadRole),
       target.id === "macos-direct-arm64",
       `${target.id} must not carry an independent package asset`,
     );
@@ -245,12 +274,22 @@ test("the canonical release configuration declares every package payload role ex
         `${role} must not enter the closed client draft`);
     }
   }
+  assert.equal(publication.assetRoles.includes(PACKAGE_PAYLOAD_ROLE), false);
+  assert.equal(publication.assetRoles.includes(mcpPayloadRole), false);
+  assert.equal(publication.assetRoles.includes(codexPayloadRole), false);
+  assert.equal(publication.assetRoles.includes(antigravityPayloadRole), false);
+  assert.equal(publication.assetRoles.includes(PACKAGE_INDEX_ROLE), false);
   for (const config of [stable, nightly]) {
     assert.deepEqual(
       config.artifacts.map((entry) => entry.role),
       publication.assetRoles,
       "exactDraftAssetSetRequired still holds with the independent package assets",
     );
+    for (const role of [PACKAGE_PAYLOAD_ROLE, mcpPayloadRole, codexPayloadRole,
+      antigravityPayloadRole, PACKAGE_INDEX_ROLE]) {
+      assert.equal(config.artifacts.some((entry) => entry.role === role), false,
+        `${role} must not enter the closed client draft`);
+    }
   }
   // The declared set and the publication contract name the same payload roles:
   // a package without a role, or a role without a package, is a release that
@@ -422,6 +461,32 @@ test("the plan reports every declared package without writing, and the tool reac
       { kind: "range", range: declared.clientRange });
     assert.equal(reported.converterEntry, declared.converterEntry);
   }
+  const fixturePlan = plan.packages.find((reported) =>
+    reported.packageId === "org.licoland.fixture.native-converter");
+  assert.match(fixturePlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
+  assert.equal(fixturePlan.source, fixtureSource);
+  assert.deepEqual(fixturePlan.clientCompatibility,
+    { kind: "range", range: ">=0.2.0, <1.0.0" });
+  assert.equal(fixturePlan.converterEntry, "bin/licoup-fixture-converter");
+  const mcpPlan = plan.packages.find((reported) =>
+    reported.packageId === mcpPackageId);
+  assert.equal(mcpPlan.source, mcpPackageSource);
+  assert.match(mcpPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
+  assert.deepEqual(mcpPlan.clientCompatibility,
+    { kind: "range", range: ">=0.3.0, <1.0.0" });
+  assert.equal(mcpPlan.converterEntry, "bin/lico-subagent-mcp");
+  const codexPlan = plan.packages[1];
+  assert.equal(codexPlan.source, codexPackageSource);
+  assert.match(codexPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
+  assert.deepEqual(codexPlan.clientCompatibility,
+    { kind: "range", range: ">=0.3.0, <1.0.0" });
+  assert.equal(codexPlan.converterEntry, "bin/lico-agent-codex");
+  const antigravityPlan = plan.packages[0];
+  assert.equal(antigravityPlan.source, antigravityPackageSource);
+  assert.match(antigravityPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
+  assert.deepEqual(antigravityPlan.clientCompatibility,
+    { kind: "range", range: ">=0.3.0, <1.0.0" });
+  assert.equal(antigravityPlan.converterEntry, "bin/lico-agent-antigravity");
   assert.equal(readdirSync(root).length, 0, "plan must not write anything");
 
   const sources = [

@@ -2071,6 +2071,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-agent-antigravity"
+version = "0.14.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-extension-contracts",
+ "licoup-foundation",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "licoup-agent-codex"
 version = "0.14.0"
 dependencies = [
@@ -2319,6 +2330,7 @@ dependencies = [
  "licoarc-rust",
  "licoup-agent-adapter-sdk",
  "licoup-agent-adapters",
+ "licoup-agent-antigravity",
  "licoup-agent-codex",
  "licoup-agent-drivers",
  "licoup-agent-runtime",

@@ -85,6 +85,23 @@ pub use turn_event_emit::{
     emit_agent_processing, emit_turn_event, install_stdout_ndjson_sink, install_stream_sink,
 };
 
+/// This host's answer for the Antigravity adapter package's turn-event port.
+///
+/// The package owns *what* one Antigravity turn emits; this host owns *where* it
+/// goes, because the host owns the consumer. The answer is this host's own
+/// emitters rather than a second sink, so an Antigravity event and a Cursor
+/// event reach the same reader through the same path. The package emits no tool
+/// failure of its own, so it declares no such sink.
+pub(crate) fn antigravity_turn_event_port()
+-> licoup_agent_antigravity::port::turn_event::TurnEventPort {
+    licoup_agent_antigravity::port::turn_event::TurnEventPort {
+        emit_turn_event,
+        emit_agent_message_chunk,
+        emit_agent_message_completed,
+        emit_agent_processing,
+    }
+}
+
 /// This host's answer for the Codex adapter package's turn-event port.
 ///
 /// The package owns *what* one Codex turn emits; this host owns *where* it goes,
