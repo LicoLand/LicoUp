@@ -513,7 +513,10 @@ test("neutral ACP runtime and session transport retain bounded ownership", async
     "crates/licoup-agent-drivers/src/acp_driver_runtime.rs",
     ...sources,
     "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot.rs",
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/kimi_code.rs",
+    // Kimi Code's ACP dialect moved into its own package, so the shared ACP
+    // runtime's second dialect is owned there now rather than in the host tree.
+    "crates/licoup-agent-kimi/src/dialect.rs",
+    "crates/licoup-agent-kimi/src/parser.rs",
     "crates/licoup-agent-drivers/src/acp_driver_runtime/events.rs",
     "crates/licoup-agent-drivers/src/acp_driver_runtime/protocol.rs",
   ]) {

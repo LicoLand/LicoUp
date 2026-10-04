@@ -25,8 +25,11 @@ export async function checkTargetServeAndGateway(context, { localServiceSource }
   const openCodeServePolicySource = await readText(
     "crates/licoup-native/src/platform/opencode_serve/policy.rs"
   );
+  // The serve frame interpretation lives in the package that owns the protocol,
+  // not in the host tree: the facade above reads it through the composition's
+  // own name for it, and the host keeps no copy.
   const openCodeParserSource = await readText(
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/opencode.rs"
+    "crates/licoup-agent-opencode/src/parser.rs"
   );
   const kiloCodeServeFacadeSource = await readText(
     "crates/licoup-native/src/platform/kilo_code_serve.rs"

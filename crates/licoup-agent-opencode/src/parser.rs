@@ -1,39 +1,87 @@
-use super::{AdapterContract, LifecycleStage, Transition, TransitionReducer};
+//! OpenCode's `serve` protocol, interpreted once below the adapter port.
+//!
+//! `opencode serve` is a loopback HTTP service. One turn reads three real
+//! document kinds from it and nothing else: the session identity document the
+//! session endpoint returns, the SSE `data:` payloads of the event stream, and
+//! the whole-message document the message endpoint returns when the turn
+//! completes. What each of those means for a turn is stated here, exactly once,
+//! and no reader above re-parses a vendor frame (ADR-0008).
+//!
+//! The module is the interpreter, not the engine. It starts no process, opens
+//! no socket, keeps no session state, settles no turn and writes nothing; the
+//! shared local-service engine in `licoup-agent-drivers` owns the process, the
+//! HTTP and SSE transports and the active-turn registry, and reads this module
+//! through the client's own `opencode_serve` facade.
+//!
+//! Two directions are stated here rather than in a caller:
+//!
+//! * [`ServeEventParser`] is the streaming half. It binds to one native session
+//!   and reports assistant text only after the message it belongs to has been
+//!   announced as an assistant message, so a user part or another session's part
+//!   is never projected as the Agent's reply.
+//! * [`message`] is the terminal half. It folds the completed message document
+//!   into the turn's reply and its typed transitions, including one
+//!   [`Transition::Control`] per native tool interaction the Agent reported.
+
+use licoup_agent_adapter_sdk::adapters::AdapterContract;
+use licoup_agent_adapter_sdk::{LifecycleStage, Transition, TransitionReducer};
+use licoup_agent_drivers::local_service::{ServeModel, ServeModelCatalog, ServeReadiness};
 use serde_json::Value;
 use std::collections::HashSet;
 
-use crate::platform::local_service::{ServeModel, ServeModelCatalog, ServeReadiness};
+/// This Agent's adapter declaration, as composition and the corpus check read it.
+pub const CONTRACT: AdapterContract = AdapterContract::new("opencode", "http-sse");
 
-pub(super) const CONTRACT: AdapterContract = AdapterContract::new("opencode", "http-sse");
-
+/// Why one SSE event frame could not be interpreted.
+///
+/// The variants are a closed vocabulary rather than a forwarded vendor error: a
+/// frame that does not decode is the only thing the parser rejects, and the
+/// caller decides what a stream that carried it means for the turn.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum ServeEventFailure {
+pub enum ServeEventFailure {
+    /// The frame was not a JSON document.
     InvalidJson,
 }
 
+/// One completed OpenCode message, and the transitions it reports.
 #[derive(Debug)]
-pub(in crate::platform) struct ServeMessage {
-    pub(in crate::platform) output: String,
-    pub(in crate::platform) transitions: Vec<Transition>,
+pub struct ServeMessage {
+    /// The assistant text the message document carried, in part order.
+    pub output: String,
+    /// The typed transitions one completed OpenCode turn reports.
+    pub transitions: Vec<Transition>,
 }
 
-pub(in crate::platform) struct ServeEventParser {
+/// The streaming half: one native session's assistant text, exactly once.
+///
+/// The drive builds this once the session identity is known, feeds it every SSE
+/// `data:` payload in arrival order, and gets back the text of each assistant
+/// part that belongs to this session. A part is reported only when the message
+/// it belongs to has already been announced as an assistant message on this
+/// session, so a user's own part and a neighbouring session's part are both
+/// excluded rather than guessed at.
+pub struct ServeEventParser {
     session_id: String,
     assistant_messages: HashSet<String>,
 }
 
 impl ServeEventParser {
-    pub(in crate::platform) fn new(session_id: &str) -> Self {
+    /// Bind the parser to one native session identity.
+    pub fn new(session_id: &str) -> Self {
         Self {
             session_id: session_id.to_owned(),
             assistant_messages: HashSet::new(),
         }
     }
 
-    pub(in crate::platform) fn observe(
-        &mut self,
-        frame: &str,
-    ) -> Result<Option<String>, ServeEventFailure> {
+    /// Interpret one SSE `data:` payload, in the order the stream delivered it.
+    ///
+    /// `Ok(None)` is the parser's answer for a frame that carries no assistant
+    /// text: a message announcement, a part of another session, a non-text part,
+    /// or a frame the protocol does not classify. `Err` is reserved for a frame
+    /// that is not JSON at all, which is the stream's own framing failure rather
+    /// than a turn outcome.
+    pub fn observe(&mut self, frame: &str) -> Result<Option<String>, ServeEventFailure> {
         let event =
             serde_json::from_str::<Value>(frame).map_err(|_| ServeEventFailure::InvalidJson)?;
         let Some(event_type) = event.get("type").and_then(Value::as_str) else {
@@ -77,11 +125,17 @@ impl ServeEventParser {
     }
 }
 
-pub(in crate::platform) fn health_ready(frame: &Value) -> bool {
+/// Whether one health document reports a ready endpoint.
+pub fn health_ready(frame: &Value) -> bool {
     frame.get("healthy").and_then(Value::as_bool) == Some(true)
 }
 
-pub(in crate::platform) fn session_id(frame: &Value) -> Option<&str> {
+/// The native session identity one OpenCode document carries.
+///
+/// The three spellings are the protocol's own: a session document names `id`, a
+/// stream payload names `sessionID`, and a session-scoped document names
+/// `sessionId`. An empty value is not an identity and is reported as absent.
+pub fn session_id(frame: &Value) -> Option<&str> {
     frame
         .get("sessionID")
         .or_else(|| frame.get("sessionId"))
@@ -90,11 +144,25 @@ pub(in crate::platform) fn session_id(frame: &Value) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
-pub(in crate::platform) fn session_collection(frame: &Value) -> bool {
+/// Whether one session endpoint document is the session collection.
+pub fn session_collection(frame: &Value) -> bool {
     frame.as_array().is_some()
 }
 
-pub(in crate::platform) fn readiness(
+/// The readiness one attached endpoint reports, or `None` when it is not ready.
+///
+/// The four documents are the health probe, the session collection, the
+/// configuration document and the provider catalogue, in the order the serve
+/// policy reads them. Readiness is a conjunction of protocol facts — a healthy
+/// endpoint, a session collection, a named version — and a selected model: the
+/// configured model when the configuration names one, otherwise the provider's
+/// own default in provider order.
+///
+/// The session documents are read for their shape only. A session's own recorded
+/// model is deliberately not consulted: a stale session is not evidence about
+/// what the endpoint can run now, and readiness decides what a new turn may ask
+/// for.
+pub fn readiness(
     health: &Value,
     sessions: &Value,
     config: &Value,
@@ -226,7 +294,14 @@ fn push_model(models: &mut Vec<ServeModel>, provider_id: &str, model_id: &str) {
     }
 }
 
-pub(in crate::platform) fn message(frame: &Value) -> Option<ServeMessage> {
+/// The terminal half: one completed message document, and its transitions.
+///
+/// `None` is the parser's literal answer for a document that carries no
+/// assistant text. A `serve` turn has no in-band error terminal — it fails out
+/// of band, through the HTTP status and the abort control lane — so a
+/// whole-message document without assistant text leaves this boundary with
+/// nothing to report rather than inventing a failure.
+pub fn message(frame: &Value) -> Option<ServeMessage> {
     let output = assistant_text(frame);
     if output.is_empty() {
         return None;
@@ -272,8 +347,13 @@ fn append_text_parts(parts: &[Value], chunks: &mut Vec<String>) {
     }
 }
 
-#[cfg(test)]
-pub(in crate::platform) fn completed_transitions(output: &str) -> Vec<Transition> {
+/// The transitions one completed OpenCode turn with no tool interaction reports.
+///
+/// It is the same projection [`message`] builds for a message document that
+/// names no tool part, stated as its own entry point so a reader that already
+/// holds the reply text — the host's own response normalization, for one — reads
+/// the parser's transitions rather than retyping them.
+pub fn completed_transitions(output: &str) -> Vec<Transition> {
     completed_transitions_with_controls(output, Vec::new())
 }
 
@@ -293,11 +373,12 @@ fn completed_transitions_with_controls(output: &str, controls: Vec<Transition>) 
     transitions
 }
 
-pub(in crate::platform) fn failure_transitions(
-    code: &str,
-    stage: &str,
-    message: &str,
-) -> Vec<Transition> {
+/// The transitions one failed OpenCode turn reports, in arrival order.
+///
+/// The turn is submitted and then fails with the caller's own code, stage and
+/// redacted message: the reducer is the authority on what a failure may be
+/// reported after, and the first failure stays write-once.
+pub fn failure_transitions(code: &str, stage: &str, message: &str) -> Vec<Transition> {
     let mut reducer = TransitionReducer::default();
     let mut transitions = reducer.advance(LifecycleStage::Submitted);
     if let Some(failure) = reducer.fail(code, stage, message) {
@@ -338,89 +419,5 @@ fn append_tool_controls(parts: &[Value], controls: &mut Vec<Transition>) {
             method,
             summary: "OpenCode reported a native tool interaction.".to_owned(),
         });
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn serve_frames_decode_only_inside_the_opencode_component() {
-        assert!(health_ready(&json!({"healthy": true})));
-        assert_eq!(session_id(&json!({"id": "open-1"})), Some("open-1"));
-        assert!(session_collection(&json!([])));
-        let parsed = message(&json!({"parts": [
-            {"type": "reasoning", "text": "hidden"},
-            {"type": "text", "text": "answer"}
-        ]}))
-        .unwrap();
-        assert_eq!(parsed.output, "answer");
-    }
-
-    #[test]
-    fn serve_event_parser_is_exact_session_and_assistant_only() {
-        let mut parser = ServeEventParser::new("open-1");
-        let assistant = json!({
-            "type": "message.updated",
-            "properties": {"info": {
-                "id": "agent", "role": "assistant", "sessionID": "open-1"
-            }}
-        });
-        assert_eq!(parser.observe(&assistant.to_string()), Ok(None));
-        let part = json!({
-            "type": "message.part.updated",
-            "properties": {
-                "sessionId": "open-1",
-                "part": {"messageID": "agent", "type": "text", "text": "delta"}
-            }
-        });
-        assert_eq!(parser.observe(&part.to_string()), Ok(Some("delta".into())));
-        assert_eq!(parser.observe("{"), Err(ServeEventFailure::InvalidJson));
-    }
-
-    #[test]
-    fn serve_execution_produces_closed_typed_transitions() {
-        let transitions = completed_transitions("answer");
-        assert!(matches!(
-            transitions.last(),
-            Some(Transition::Lifecycle(LifecycleStage::Completed))
-        ));
-        let failed = failure_transitions("code", "serve/sse", "safe");
-        assert!(matches!(
-            failed.last(),
-            Some(Transition::Failed { code, .. }) if code == "code"
-        ));
-    }
-
-    #[test]
-    fn readiness_uses_config_then_provider_order_and_never_session_models() {
-        let providers = json!({
-            "all": [
-                {"id": "anthropic", "models": {"claude-current": {}}},
-                {"id": "openai", "models": {"gpt-current": {}}}
-            ],
-            "default": {"anthropic": "claude-current", "openai": "gpt-current"}
-        });
-        let configured = readiness(
-            &json!({"healthy": true, "version": "2.0.0"}),
-            &json!([{"id": "old", "model": "stale-session-model"}]),
-            &json!({"model": "openai/gpt-current"}),
-            &providers,
-        )
-        .unwrap();
-        assert_eq!(configured.catalog.current.selector(), "openai/gpt-current");
-        let defaulted = readiness(
-            &json!({"healthy": true, "version": "2.0.0"}),
-            &json!([]),
-            &json!({}),
-            &providers,
-        )
-        .unwrap();
-        assert_eq!(
-            defaulted.catalog.current.selector(),
-            "anthropic/claude-current"
-        );
     }
 }

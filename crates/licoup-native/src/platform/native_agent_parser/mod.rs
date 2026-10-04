@@ -11,15 +11,15 @@
 //!
 //! What is here is one Agent each. `adapters` holds the parsers this host still
 //! carries that classify one Agent's vendor frames, and the `REGISTRATIONS` list
-//! that names every Agent's declaration — including the two packages' own
+//! that names every Agent's declaration — including the moved packages' own
 //! registrations; `replay` holds the arm that drives each of them from a
 //! recorded transcript and the corpus checks that belong to the family; and
 //! `tests` holds the family's own claims. Each per-Agent subtree and its arm
 //! move to that Agent's crate (`licoup-agent-<agent>`); this root and the
 //! composition are what remain, because they are what names thirteen parsers
-//! and, later, thirteen crates. Codex's and Kimi Code's subtrees have moved:
-//! their parsers are reached through the packages that own them and no copy
-//! stays here.
+//! and, later, thirteen crates. Six subtrees have moved — Antigravity's, Codex's,
+//! Cursor's, the DeepSeek Harness's, Kimi Code's and OpenCode's: their parsers
+//! are reached through the packages that own them and no copy stays here.
 //!
 //! The SDK's two protocol-agnostic `port::ParserRegistration` queries are
 //! answered in `adapters::REGISTRATIONS` by the Agents whose facts a reader

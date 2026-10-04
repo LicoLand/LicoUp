@@ -137,6 +137,14 @@ const declaredPackages = Object.freeze([
     clientRange: ">=0.3.0, <1.0.0",
   },
   {
+    packageId: "org.licoland.adapter.opencode",
+    source: "crates/licoup-agent-opencode/package",
+    payloadRole: "opencode-adapter-package-payload",
+    payloadAsset: "LicoUp-package-org.licoland.adapter.opencode.licopkg",
+    converterEntry: "bin/lico-agent-opencode",
+    clientRange: ">=0.3.0, <1.0.0",
+  },
+  {
     packageId: "org.licoland.feature.mcp",
     source: "crates/licoup-mcp/package",
     payloadRole: "mcp-package-payload",

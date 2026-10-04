@@ -94,6 +94,17 @@ export const RUST_CORE_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "rust.core.agent-opencode-package",
+      kind: "rust-core",
+      summary: "OpenCode adapter package program, serve HTTP and SSE protocol, registration, and replay arm",
+      inputs: ["crates/licoup-agent-opencode/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-opencode/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
       id: "rust.core.acp.composition",
       kind: "rust-core",
       summary: "ACP facade, shared protocol types, validation, and error boundaries",

@@ -42,6 +42,11 @@
       "payloadRole": "kimi-adapter-package-payload"
     },
     {
+      "packageId": "org.licoland.adapter.opencode",
+      "source": "crates/licoup-agent-opencode/package",
+      "payloadRole": "opencode-adapter-package-payload"
+    },
+    {
       "packageId": "org.licoland.feature.mcp",
       "source": "crates/licoup-mcp/package",
       "payloadRole": "mcp-package-payload"

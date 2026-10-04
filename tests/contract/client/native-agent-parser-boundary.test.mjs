@@ -4,14 +4,11 @@ import test from 'node:test';
 
 // The per-Agent parsers the host still holds and the composition that names
 // them; the shared adapter contract, the registry lookup, the replay harness
-// and the lifecycle authority moved to `licoup-agent-adapter-sdk`. Two Agents
+// and the lifecycle authority moved to `licoup-agent-adapter-sdk`. Six Agents
 // have moved further: their vendor protocol, wire vocabulary and replay arm are
 // their own package's, and the composition names the package instead of keeping
-// a second copy.
-// The thirteen per-Agent parsers and the composition that names them stay in
-// the host until that Agent's own package owns the protocol; the shared adapter
-// contract, the registry lookup, the replay harness and the lifecycle authority
-// moved to `licoup-agent-adapter-sdk`.
+// a second copy. Everything below is derived from the two maps, so adding the
+// next Agent's package changes a map and not a count.
 const parserRoot = 'crates/licoup-native/src/platform/native_agent_parser';
 const compositionRoot = `${parserRoot}/adapters`;
 const sdkRoot = 'crates/licoup-agent-adapter-sdk/src';
@@ -25,7 +22,6 @@ const adapters = [
   'kilo_code',
   'kimi_code',
   'openclaw',
-  'opencode',
   'pi',
   'lico_agent',
   'deepseek_harness',
@@ -38,6 +34,7 @@ const packageAdapters = new Map([
   ['cursor', 'crates/licoup-agent-cursor'],
   ['deepseek_harness', 'crates/licoup-agent-deepseek'],
   ['kimi_code', 'crates/licoup-agent-kimi'],
+  ['opencode', 'crates/licoup-agent-opencode'],
 ]);
 
 // The package-owned parsers, under the alias the composition composes them by:
@@ -62,6 +59,10 @@ const packaged = {
   kimi_code: {
     crate: 'licoup_agent_kimi',
     parser: 'crates/licoup-agent-kimi/src/parser.rs',
+  },
+  opencode: {
+    crate: 'licoup_agent_opencode',
+    parser: 'crates/licoup-agent-opencode/src/parser.rs',
   },
 };
 
@@ -178,12 +179,20 @@ test('serve HTTP and SSE frames decode only in target parser components', () => 
   );
   assert.doesNotMatch(neutralServe, /message\.updated|message\.part\.updated|serde_json::from_str/);
 
-  for (const adapter of ['opencode', 'kilo_code']) {
-    const parser = readFileSync(`${parserRoot}/adapters/${adapter}.rs`, 'utf8');
-    assert.match(parser, /struct ServeEventParser/);
-    assert.match(parser, /fn session_id/);
-    assert.match(parser, /fn message/);
-    assert.match(parser, /message\.part\.updated/);
+  // Each serve-family Agent's frame interpretation lives in the component that
+  // owns it: OpenCode's in its own package, Kilo Code's still in the host's
+  // parser tree. The shared engine carries neither reading, and a host that kept
+  // a copy beside the package would fail the composition check above.
+  const serveParsers = new Map([
+    ['opencode', packaged.opencode.parser],
+    ['kilo_code', `${parserRoot}/adapters/kilo_code.rs`],
+  ]);
+  for (const [adapter, parser] of serveParsers) {
+    const source = readFileSync(parser, 'utf8');
+    assert.match(source, /struct ServeEventParser/, adapter);
+    assert.match(source, /fn session_id/, adapter);
+    assert.match(source, /fn message/, adapter);
+    assert.match(source, /message\.part\.updated/, adapter);
   }
   const openCodeTransport = readFileSync(
     'crates/licoup-native/src/platform/opencode_driver/serve_transport.rs',
@@ -193,7 +202,14 @@ test('serve HTTP and SSE frames decode only in target parser components', () => 
     'crates/licoup-native/src/platform/kilo_code_driver/transport.rs',
     'utf8',
   );
+  // The host's transport reads the package's parser through the composition's
+  // own name for it, so the frames are classified once and below this port.
+  const composition = readFileSync(`${compositionRoot}/mod.rs`, 'utf8');
   assert.match(openCodeTransport, /adapters::opencode as serve_parser/);
+  assert.match(
+    composition,
+    new RegExp(`use ${packaged.opencode.crate}::parser as opencode;`),
+  );
   assert.match(kiloTransport, /adapters::kilo_code as serve_parser/);
 });
 
