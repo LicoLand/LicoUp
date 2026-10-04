@@ -259,6 +259,11 @@ impl CleanupInventory {
             .map(|entry| (entry.path(), entry.kind()))
             .collect();
         for entry in &entries {
+            // A directory may hold other declared members; only a *file* that is
+            // an ancestor of another declared member is structurally impossible.
+            if entry.kind() != CleanupInventoryKind::File {
+                continue;
+            }
             let mut prefix = String::from(entry.path());
             prefix.push('/');
             let position = entries.partition_point(|candidate| candidate.path() < prefix.as_str());
