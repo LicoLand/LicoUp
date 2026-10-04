@@ -485,6 +485,12 @@ impl ConversationService {
                 let filters: super::CandidateFilters = serde_json::from_value(
                     object.get("filters").cloned().unwrap_or_else(|| json!({})),
                 )?;
+                // The selection policy this host adopted is read once, at the
+                // boundary a new task is admitted through, and captured for
+                // this request: the ranking below runs under it, and the
+                // receipt freezes the revision it ran under.
+                let selection_policy = super::selection_policy::current_binding();
+                let filters = selection_policy.apply_to_filters(&filters);
                 let pairs = self.profile_projection_pairs(conversation_id)?;
                 let authority = super::production_snapshot_authority();
                 let snapshots =
@@ -493,7 +499,11 @@ impl ConversationService {
                     super::rank_candidates(snapshots, &filters).map_err(anyhow::Error::msg)?;
                 Ok(json!({
                     "candidates": serde_json::to_value(&candidates)?,
-                    "routeReceipt": route_receipt(conversation_id, &candidates),
+                    "routeReceipt": route_receipt_under(
+                        conversation_id,
+                        &candidates,
+                        &selection_policy,
+                    ),
                     "timeoutPolicy": crate::domain::dispatch_timeout_policy::policy_envelope(
                         &crate::domain::dispatch_timeout_policy::load_or_default(),
                     ),
@@ -1774,9 +1784,9 @@ impl ConversationService {
                 // Pre-dispatch rejection: settle the turn only when its
                 // dispatch was never opened. An opened dispatch already
                 // belongs to the completion authority.
-                let projected = serde_json::to_value(crate::platform::runtime_adapters::client_error::client_error(
-                    &error,
-                ))?;
+                let projected = serde_json::to_value(
+                    crate::platform::runtime_adapters::client_error::client_error(&error),
+                )?;
                 let diagnostic = serde_json::to_string(&json!({
                     "code": safe_failure_field(
                         &projected,
@@ -1869,9 +1879,27 @@ pub(crate) fn route_receipt(
     conversation_id: &str,
     snapshots: &[super::MembershipProfileSnapshot],
 ) -> Value {
+    route_receipt_under(
+        conversation_id,
+        snapshots,
+        &super::selection_policy::current_binding(),
+    )
+}
+
+/// The same receipt under the selection policy the caller captured.
+///
+/// A durable admission stores the receipt it was admitted with, so an
+/// in-flight task keeps the revision captured here while a later adoption
+/// governs only the next task.
+pub(crate) fn route_receipt_under(
+    conversation_id: &str,
+    snapshots: &[super::MembershipProfileSnapshot],
+    selection_policy: &super::selection_policy::SelectionPolicyBinding,
+) -> Value {
     json!({
         "conversationId": conversation_id,
         "sourceRevisions": [
+            {"source": "selectionPolicy", "revision": selection_policy.revision_name()},
             {"source": "targets", "revision": "read-only-v1"},
             {"source": "nativeCapabilities", "revision": "v0.0.1"},
             {"source": "providerModelPricing", "revision": "catalog-v1"},
