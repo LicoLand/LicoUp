@@ -1,142 +1,133 @@
+import 'package:presentation_contract/presentation_contract.dart';
+
+import 'package:licoup/src/composition/client_feature_mounts.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 
-/// The closed declaration of which feature compositions a running client owns.
+/// The declaration of which feature mounts a running client owns.
 ///
-/// `ClientAppComposition` is the only assembly point and constructs exactly the
-/// feature compositions this declaration names. A feature that is not named
-/// here has no composition, no binding, no provider override, no destination
-/// mount and no surface, so an absent feature cannot start a background owner
-/// and cannot be reached from the shell. Absence is a property of the value the
-/// root is given, never a runtime availability check performed while the client
-/// is running, and it is never a state the renderer has to discover.
+/// The declaration is the directory itself: [mounts] holds one entry per
+/// feature mount, and each entry carries the destinations and capabilities its
+/// own feature declares. `ClientAppComposition` is the only assembly point and
+/// constructs exactly the feature compositions the enabled entries name; a
+/// feature no entry names has no composition, no binding, no provider override,
+/// no destination mount and no surface, so an absent feature cannot start a
+/// background owner and cannot be reached from the shell.
 ///
-/// The declaration is typed on purpose: one named field per feature
-/// composition, a typed constructor with required named parameters, and no
-/// string key, map, registry, plugin interface or reflection path. Adding or
-/// removing a capability is therefore a change to this declaration and to the
-/// feature's own module, which is what keeps an installed capability and an
-/// absent one different in exactly one place.
+/// Absence is a property of the directory value the root is given, never a
+/// runtime availability check performed while the client is running, and it is
+/// never a state the renderer has to discover. Mounting, unmounting and
+/// enabling return a new directory, so a client can be given the phase it
+/// should run in without any other file changing:
 ///
-/// The shell's own feature compositions — [chrome], which serves the renderer
-/// chrome, and [monitoring], which the agents destination renders — are named by
-/// both constants because the shell cannot serve a destination without them.
-/// [minimum] and [full] otherwise differ only in the five optional features that
-/// the minimum leaves out.
+/// ```dart
+/// final reduced = ClientCompositionSet.fromRequests(
+///   ClientFeatureMounts.without([ClientFeatureMounts.models.id]),
+/// );
+/// ```
+///
+/// The shell's own feature mounts — the renderer chrome, the conversation
+/// planes, the target catalog, the agent catalog and the agent usage surface —
+/// are named by both constants because the shell cannot serve its destinations
+/// without them. [minimum] and [full] otherwise differ only in the optional
+/// mounts that the minimum leaves unmounted.
 final class ClientCompositionSet {
-  const ClientCompositionSet({
-    required this.agents,
-    required this.conversation,
-    required this.targets,
-    required this.chrome,
-    required this.monitoring,
-    required this.agentHub,
-    required this.mobileRelay,
-    required this.models,
-    required this.pluginManagement,
-    required this.search,
-    required this.settings,
-    required this.skillHub,
-  });
+  /// The declaration [requests] describes.
+  ///
+  /// A request that repeats an identity is rejected by the directory, so two
+  /// features can never claim the same mount.
+  factory ClientCompositionSet.fromRequests(
+    Iterable<FeatureMountRequest> requests,
+  ) => ClientCompositionSet._(FeatureMountDirectory(requests));
 
-  /// The minimum client: the shell's own feature compositions, the three
-  /// features the required operations traverse — the agent catalog, the
-  /// conversation planes and the target catalog — and the cross-device relay
-  /// composition.
+  const ClientCompositionSet._(this.mounts);
+
+  /// The directory of feature mounts this declaration owns.
+  final FeatureMountDirectory mounts;
+
+  /// The minimum client: the shell's own mounts, with every optional mount left
+  /// unmounted.
   ///
   /// The relay composition belongs to the minimum because the shell cannot
-  /// serve the agents destination without it:
-  /// `agent_conversation_workspace.dart` renders its remote-approval region
-  /// from a `MobileRelayBinding`, so the agents destination needs the feature's
-  /// absent value when the composition does not install the feature itself.
-  /// Every other optional feature is absent, so none of their owners, provider
-  /// overrides, destinations or surfaces exist.
-  static const ClientCompositionSet minimum = ClientCompositionSet(
-    agents: true,
-    conversation: true,
-    targets: true,
-    chrome: true,
-    monitoring: true,
-    agentHub: false,
-    mobileRelay: false,
-    models: false,
-    pluginManagement: false,
-    search: false,
-    settings: false,
-    skillHub: false,
+  /// serve the agents destination without it: the agent workspace renders its
+  /// remote-approval region from a `MobileRelayBinding`, so an unmounted relay
+  /// contributes its absent value rather than a surface of its own. Every other
+  /// optional feature is absent, so none of their owners, provider overrides,
+  /// destinations or surfaces exist.
+  static final ClientCompositionSet minimum = ClientCompositionSet.fromRequests(
+    ClientFeatureMounts.minimum,
   );
 
   /// The full client: the minimum plus every optional feature.
-  static const ClientCompositionSet full = ClientCompositionSet(
-    agents: true,
-    conversation: true,
-    targets: true,
-    chrome: true,
-    monitoring: true,
-    agentHub: true,
-    mobileRelay: true,
-    models: true,
-    pluginManagement: true,
-    search: true,
-    settings: true,
-    skillHub: true,
+  static final ClientCompositionSet full = ClientCompositionSet.fromRequests(
+    ClientFeatureMounts.full,
   );
 
-  /// The agent catalog composition (`AgentsFeatureComposition`).
-  final bool agents;
+  /// The agent catalog composition.
+  bool get agents => mounts.isEnabled(ClientFeatureMounts.agents.id);
 
-  /// The conversation planes composition (`ConversationFeatureComposition`).
-  final bool conversation;
+  /// The conversation planes composition.
+  bool get conversation =>
+      mounts.isEnabled(ClientFeatureMounts.conversation.id);
 
-  /// The target catalog composition (`TargetsFeatureComposition`).
-  final bool targets;
+  /// The target catalog composition.
+  bool get targets => mounts.isEnabled(ClientFeatureMounts.targets.id);
 
-  /// The renderer chrome composition (`ChromeFeatureComposition`).
-  final bool chrome;
+  /// The renderer chrome composition.
+  bool get chrome => mounts.isEnabled(ClientFeatureMounts.chrome.id);
 
-  /// The agent usage composition (`MonitoringFeatureComposition`).
-  final bool monitoring;
+  /// The agent usage composition.
+  bool get monitoring => mounts.isEnabled(ClientFeatureMounts.monitoring.id);
 
-  /// The agent hub composition (`AgentHubFeatureComposition`).
-  final bool agentHub;
+  /// The agent hub composition.
+  bool get agentHub => mounts.isEnabled(ClientFeatureMounts.agentHub.id);
 
-  /// The cross-device relay composition (`MobileRelayFeatureComposition`).
+  /// The cross-device relay composition.
   ///
   /// Optional, but the agents destination still renders its remote-approval
-  /// region: an absent relay feature contributes its absent value rather than a
-  /// surface of its own.
-  final bool mobileRelay;
+  /// region: an unmounted relay feature contributes its absent value rather
+  /// than a surface of its own.
+  bool get mobileRelay => mounts.isEnabled(ClientFeatureMounts.mobileRelay.id);
 
-  /// The model catalog composition (`ModelsFeatureComposition`).
-  final bool models;
+  /// The model catalog composition.
+  bool get models => mounts.isEnabled(ClientFeatureMounts.models.id);
 
-  /// The adapter plugin composition (`PluginManagementFeatureComposition`).
-  final bool pluginManagement;
+  /// The adapter plugin composition.
+  bool get pluginManagement =>
+      mounts.isEnabled(ClientFeatureMounts.pluginManagement.id);
 
-  /// The global search composition (`SearchFeatureComposition`).
-  final bool search;
+  /// The global search composition.
+  bool get search => mounts.isEnabled(ClientFeatureMounts.search.id);
 
-  /// The settings composition (`SettingsFeatureComposition`).
-  final bool settings;
+  /// The settings composition.
+  bool get settings => mounts.isEnabled(ClientFeatureMounts.settings.id);
 
-  /// The skill hub composition (`SkillHubFeatureComposition`).
-  final bool skillHub;
+  /// The skill hub composition.
+  bool get skillHub => mounts.isEnabled(ClientFeatureMounts.skillHub.id);
 
-  /// Whether the feature composition that serves [destination] is named by
-  /// this declaration.
+  /// The phase the declaration gives [id]; an identity no entry names is
+  /// [FeatureMountPhase.unmounted].
+  FeatureMountPhase phaseOf(FeatureMountId id) => mounts.phaseOf(id);
+
+  /// Whether the declaration owns the mount [id] names, at any phase but
+  /// [FeatureMountPhase.unmounted].
+  bool isFeatureMounted(FeatureMountId id) => mounts.isMounted(id);
+
+  /// Every destination and capability the declaration's enabled entries
+  /// contribute.
+  Set<MountDestinationId> get destinations => mounts.destinations;
+
+  Set<MountCapabilityId> get capabilities => mounts.capabilities;
+
+  /// Whether the feature that contributes [destination] is mounted.
   ///
   /// This is the single destination-to-feature decision in the client: the
-  /// capability catalogue, the shell renderer and the shell navigation
-  /// projection all ask this method instead of repeating the mapping. Every
-  /// destination belongs to exactly one feature composition, so the answer is
-  /// total and no runtime availability probe can disagree with it.
-  bool isInstalled(ClientSection destination) => switch (destination) {
-    ClientSection.agents => agents,
-    ClientSection.monitoring => monitoring,
-    ClientSection.skillHub => skillHub,
-    ClientSection.pluginManagement => pluginManagement,
-    ClientSection.mobileRelay => mobileRelay,
-    ClientSection.models => models,
-    ClientSection.settings => settings,
-    ClientSection.agentHub => agentHub,
-  };
+  /// mount directory, the shell renderer and the shell navigation projection
+  /// all ask the directory instead of repeating the mapping. A destination no
+  /// enabled entry contributes is absent, and no runtime availability probe can
+  /// disagree with it.
+  bool isInstalled(ClientSection destination) =>
+      mounts.contributes(mountDestinationOf(destination));
+
+  @override
+  String toString() => 'ClientCompositionSet(${mounts.mounts.length} mounts)';
 }

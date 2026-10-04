@@ -2,6 +2,8 @@ library presentation_contract;
 
 import 'dart:async';
 
+export 'feature_mount_contract.dart';
+
 /// Stable ownership scope for a presentation resource.
 ///
 /// A scope is part of identity. It is not a widget or provider lifetime.

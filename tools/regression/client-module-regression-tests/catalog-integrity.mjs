@@ -920,6 +920,9 @@ test("agent-usage routing sources select the dedicated evidence verifier", () =>
   assert.ok(module);
   for (const relativePath of [
     "apps/desktop/lib/src/composition/binding_shell_renderer.dart",
+    "apps/desktop/lib/src/composition/binding_shell_renderer/shell_destinations.dart",
+    "apps/desktop/lib/src/composition/client_feature_catalogue.dart",
+    "apps/desktop/lib/src/composition/client_feature_mounts.dart",
     "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_panel.dart",
     "apps/desktop/lib/src/frontend/shell/client_shell.dart",
   ]) {
