@@ -21,6 +21,7 @@ mod gateway;
 mod llm_gateway;
 mod mcp;
 mod mobile;
+mod mobile_peer;
 mod model_registry;
 pub mod native_rpc;
 mod opencode_serve;
@@ -3484,6 +3485,88 @@ fn build_command_table() -> CommandTable {
         cardinality: CommandCardinality::Exact,
         handler: mobile::handle_mobile_relay,
         help: "",
+    });
+    // The cross-device entry's own routes. They are the native surface through
+    // which a protocol line is admitted, an inbound packet reaches the device
+    // edge, and a verified device is bound to a membership this host owns.
+    table.register_command(CommandSpec {
+        source_module: "mobile_peer.rs",
+        handler_name: "handle_mobile_peer",
+        path: &["mobile", "relay", "peer", "status"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: mobile_peer::handle_mobile_peer,
+        help: "Read the cross-device entry's own state: installation, attached device edge, recorded verifications, and peer bindings.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "mobile_peer.rs",
+        handler_name: "handle_mobile_peer",
+        path: &["mobile", "relay", "peer", "protocol-line"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "authority-file",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: mobile_peer::handle_mobile_peer,
+        help: "Admit the caller's LicoArc authority artifact through the pinned SDK and report the verified Protocol Line it accepted.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "mobile_peer.rs",
+        handler_name: "handle_mobile_peer",
+        path: &["mobile", "relay", "peer", "record"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "stdin-json",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Json,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: mobile_peer::handle_mobile_peer,
+        help: "Verify one inbound protected packet through the attached device edge and admit the unit it committed.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "mobile_peer.rs",
+        handler_name: "handle_mobile_peer",
+        path: &["mobile", "relay", "peer", "bind"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "stdin-json",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Json,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: mobile_peer::handle_mobile_peer,
+        help: "Bind one verified device digest to an existing active membership of an existing conversation.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "mobile_peer.rs",
+        handler_name: "handle_mobile_peer",
+        path: &["mobile", "relay", "peer", "revoke"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "stdin-json",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Json,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: mobile_peer::handle_mobile_peer,
+        help: "Remove one peer binding; revocation is expressed by answering no binding again.",
     });
     table.register_command(CommandSpec {
         source_module: "opencode_serve.rs",

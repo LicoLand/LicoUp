@@ -491,6 +491,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.domain.secure-mesh-mls.group-state",
   "rust.domain.secure-mesh-mls.input-codec",
   "rust.domain.conversation-snapshot-relocation",
+  "rust.domain.cross-device-entry",
   "rust.core.acp.composition",
   "rust.core.acp.requests",
   "rust.core.acp.responses",

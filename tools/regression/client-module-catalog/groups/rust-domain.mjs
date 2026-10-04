@@ -3116,5 +3116,15 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/conversation/snapshots/tests/relocation.rs",
       ],
       command: rustLayer("domain::conversation::snapshots::"),
+    }),
+  defineModule({
+      id: "rust.domain.cross-device-entry",
+      kind: "rust-domain",
+      summary: "Cross-device production entry: one owner joining the work-setup spine, the verified-unit mapping, and peer-ingress admission, with its native proof",
+      inputs: [
+        "crates/licoup-native/src/domain/cross_device_entry.rs",
+        "crates/licoup-native/tests/cross_device_entry.rs",
+      ],
+      command: rustCrateIntegrationTest("licoup-native", "cross_device_entry"),
     })
 ]);

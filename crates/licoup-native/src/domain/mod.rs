@@ -18,6 +18,7 @@ pub mod conversation_archive_jobs;
 pub mod conversation_semantic;
 pub mod conversation_snapshots;
 pub mod conversations;
+pub mod cross_device_entry;
 pub mod dispatch_timeout_policy;
 pub mod history_backup;
 pub mod integration_state;
