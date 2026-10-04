@@ -257,7 +257,7 @@ mod tests {
             "package_maintenance_work_in_flight"
         );
         assert_eq!(
-            ADMISSION_CLOSED,
+            PACKAGE_ADMISSION_CLOSED,
             "package_maintenance_admission_closed",
             "the refusal is a maintenance one, not the guard's own release code"
         );

@@ -1883,7 +1883,7 @@ fn a_removed_data_package_falls_back_to_the_system_default_and_reports_it() {
             .expect("begin")
             .drain(&mut registry, RemainingWork::Cancel)
             .expect("drain");
-    let removed = drained.collect(&store, &registry).expect("collect");
+    let removed = drained.collect(&store, &registry, &licoup_native::platform::package_registration_release::PackageRegistrationOwners::default()).expect("collect");
     assert_eq!(removed.unknown_work, 1);
     assert!(!store.installed_path(id, version).exists());
 
