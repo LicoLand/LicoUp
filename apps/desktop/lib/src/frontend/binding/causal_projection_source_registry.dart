@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:presentation_contract/presentation_contract.dart';
 
-import 'package:licoup/src/frontend/binding/causal_frame_telemetry.dart';
+import 'package:licoup/src/frontend/binding/presentation_observation.dart';
 
 /// Composition-owned trace boundary between semantic producers and Flutter.
 ///
@@ -12,7 +12,7 @@ import 'package:licoup/src/frontend/binding/causal_frame_telemetry.dart';
 final class CausalProjectionSourceRegistry {
   CausalProjectionSourceRegistry(this._telemetry);
 
-  final CausalFrameTelemetry? _telemetry;
+  final PresentationObservation? _telemetry;
   final List<_DisposableTracedSource> _sources = [];
   bool _disposed = false;
 
@@ -46,7 +46,7 @@ final class _TracedProjectionSource<T>
   }
 
   final ProjectionSource<T> _source;
-  final CausalFrameTelemetry _telemetry;
+  final PresentationObservation _telemetry;
   final StreamController<ProjectionUpdate<T>> _changes =
       StreamController<ProjectionUpdate<T>>.broadcast(sync: true);
   late final StreamSubscription<ProjectionUpdate<T>> _subscription;
