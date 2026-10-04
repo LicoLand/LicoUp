@@ -1338,4 +1338,56 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '安装失败，请重试。' : 'Installation failed. Please try again.';
   String get agentHubDownloadSource => isChinese ? '下载源' : 'Download source';
   String get agentHubPendingCommand => isChinese ? '即将执行的命令' : 'Command to run';
+
+  // Selection facts and the adopted selection policy.
+  String get selectionFactsTitle => isChinese ? '选择依据' : 'Selection facts';
+  String selectionFactsCaption(String agent) => isChinese
+      ? '按维度说明为何选择 $agent 的候选路线。'
+      : 'Why $agent\u2019s candidate route was selected, by dimension.';
+  String get selectionFactsLoading =>
+      isChinese ? '正在读取选择依据…' : 'Loading selection facts…';
+  String get selectionFactsEmpty => isChinese
+      ? '尚未记录该 Agent 的选择依据。'
+      : 'No selection facts were recorded for this Agent.';
+  String get selectionSupport => isChinese ? '支持' : 'Support';
+  String get selectionAvailability => isChinese ? '可用性' : 'Availability';
+  String get selectionCredentials => isChinese ? '凭据' : 'Credential';
+
+  String get selectionPolicyTitle =>
+      isChinese ? '路线选择策略' : 'Route selection policy';
+  String get selectionPolicyUnadopted =>
+      isChinese ? '尚未采纳任何策略' : 'No policy is adopted';
+  String get selectionPolicyRevisionInForce =>
+      isChinese ? '生效版本' : 'Revision in force';
+  String get selectionPolicySuggestions => isChinese ? '待决建议' : 'Suggestions';
+  String get selectionPolicyNoSuggestions => isChinese
+      ? '当前没有可采纳的建议。'
+      : 'There is no suggestion to adopt right now.';
+  String get selectionPolicyEvaluatorLabel =>
+      isChinese ? '评估 Agent' : 'Evaluating Agent';
+  String get selectionPolicyEvidenceLimitsLabel =>
+      isChinese ? '证据范围' : 'Evidence limits';
+  String get selectionPolicyRationaleLabel => isChinese ? '理由' : 'Rationale';
+  String get selectionPolicyEffectsLabel =>
+      isChinese ? '预期影响' : 'Proposed effects';
+  String get selectionPolicyEvidenceDigestLabel =>
+      isChinese ? '证据摘要' : 'Evidence digest';
+  String get selectionPolicyRoutingOnlyNote => isChinese
+      ? '该样本仅测量了候选顺序，不构成上下文或协作方面的改进。'
+      : 'This sample measured candidate order only; it is not a context or '
+            'collaboration improvement.';
+  String get selectionPolicyInvalidated =>
+      isChinese ? '已被更新的结果作废' : 'Invalidated by a newer outcome';
+  String get selectionPolicyAdopt => isChinese ? '采纳' : 'Adopt';
+  String get selectionPolicyDismiss => isChinese ? '忽略' : 'Dismiss';
+  String get selectionPolicyRevoke =>
+      isChinese ? '撤销已采纳策略' : 'Revoke adopted policy';
+  String selectionPolicyRefused(String reasonCode) =>
+      isChinese ? '未能完成：$reasonCode' : 'Not applied: $reasonCode';
+  String get selectionPolicyOwnerAbsent => isChinese
+      ? '此版本未组合策略所有者，未做任何更改。'
+      : 'This build composes no policy owner; nothing was changed.';
+  String get selectionPolicyKeptCurrent => isChinese
+      ? '已忽略该建议，当前策略保持不变。'
+      : 'The suggestion was dismissed; the current policy stays in force.';
 }
