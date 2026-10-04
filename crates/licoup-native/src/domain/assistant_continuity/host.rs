@@ -28,21 +28,21 @@ use licoup_conversation::continuity::{
     child_work_named_key, child_work_operation_id, child_work_started, claim_collection_operation,
     clear_child_work_live, commit_collected_qualification, commit_user_posted_proposal,
     consume_logical_wake, continuity_now_ms, current_host_generation, enqueue_review_wake,
-    ingress_execution_recorded, list_all_pending_wakes, list_child_work_live, list_due_goals,
-    list_pending_completion_notices, list_qualification_evidence, list_unacked_child_work_page,
-    list_unapplied_settlements, list_unknown_effect_ids, load_adoption_policy_values,
-    load_effect_status, load_evaluation_corpus, load_evaluation_session,
-    load_qualification_evidence_for, persist_adoption_enabled, persist_adoption_stage,
-    put_agreement, put_qualification_evidence, read_agreements, read_child_links,
-    read_child_work_accepted, read_child_work_intent, read_child_work_live, read_goal,
-    read_goal_bundle, read_oldest_pending_child_work, read_pending_wakes,
-    read_qualification_invalidations, read_relation_for_child, read_settlement_applied,
-    read_settlement_pending, record_child_work_accepted, record_child_work_intent,
-    record_child_work_live, record_child_work_started, record_ingress_execution,
-    record_qualification_invalidation, record_settlement_applied, record_settlement_pending,
-    release_collection_operation, replay_effect, resolve_completion_notice,
-    resolve_stored_owner_authority, schedule_goal_due, settlement_applied,
-    update_wake_host_generation, wake_repeats_recorded_sources,
+    hand_off_conversation_goals, ingress_execution_recorded, list_all_pending_wakes,
+    list_child_work_live, list_due_goals, list_pending_completion_notices,
+    list_qualification_evidence, list_unacked_child_work_page, list_unapplied_settlements,
+    list_unknown_effect_ids, load_adoption_policy_values, load_effect_status,
+    load_evaluation_corpus, load_evaluation_session, load_qualification_evidence_for,
+    persist_adoption_enabled, persist_adoption_stage, put_agreement, put_qualification_evidence,
+    read_agreements, read_child_links, read_child_work_accepted, read_child_work_intent,
+    read_child_work_live, read_goal, read_goal_bundle, read_oldest_pending_child_work,
+    read_pending_wakes, read_qualification_invalidations, read_relation_for_child,
+    read_settlement_applied, read_settlement_pending, record_child_work_accepted,
+    record_child_work_intent, record_child_work_live, record_child_work_started,
+    record_ingress_execution, record_qualification_invalidation, record_settlement_applied,
+    record_settlement_pending, release_collection_operation, replay_effect,
+    resolve_completion_notice, resolve_stored_owner_authority, schedule_goal_due,
+    settlement_applied, update_wake_host_generation, wake_repeats_recorded_sources,
 };
 use licoup_conversation::{
     Conversation, ConversationStore, DispatchState, EventPartKind, MembershipStatus, PrincipalKind,
@@ -482,7 +482,9 @@ impl ContinuityHost {
             parent_conversation_id,
             goal_id,
             family,
-            Arc::new(crate::platform::work_context_ports::host_driver_transport(family)),
+            Arc::new(crate::platform::work_context_ports::host_driver_transport(
+                family,
+            )),
             generation,
         )
     }
@@ -743,6 +745,10 @@ impl ContinuityHost {
                 Some(membership_id),
             )
             .map_err(|_| source_unavailable())?;
+        // The work follows the new owner: unfinished Goals keep their contract,
+        // criteria, evidence and in-flight executions, advance one revision so
+        // the previous owner's proposals are stale, and are announced once.
+        hand_off_conversation_goals(&self.store, conversation_id, membership_id)?;
         let updated = self
             .store
             .get(conversation_id)
