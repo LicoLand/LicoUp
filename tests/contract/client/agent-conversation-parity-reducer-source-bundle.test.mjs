@@ -14,6 +14,7 @@ const moduleRoot = "tests/product-e2e/cli/agent-conversations/support/reducer";
 const leaves = Object.freeze([
   "cli.mjs",
   "constants.mjs",
+  "digest-audit.mjs",
   "digests.mjs",
   "errors.mjs",
   "evidence.mjs",
@@ -104,7 +105,7 @@ test("agent conversation parity reducer facade is a thin serial CLI entry", asyn
   assert.equal(typeof module.main, "function");
 });
 
-test("agent conversation parity reducer owns exactly twelve bounded ordinary modules", async () => {
+test("agent conversation parity reducer owns exactly thirteen bounded ordinary modules", async () => {
   assert.deepEqual(await collectModules(moduleRoot), [...leaves]);
   const source = await sources();
   for (const leaf of Object.keys(source)) {

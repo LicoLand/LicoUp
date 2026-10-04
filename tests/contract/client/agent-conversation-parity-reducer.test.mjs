@@ -9,12 +9,14 @@ import {
   CONDITIONAL_CHECK_IDS,
   CONTRACT_VERSION,
   CORE_CHECK_IDS,
+  EVIDENCE_DIGEST_FIELD_NAMES,
   EVIDENCE_SCHEMA_VERSION,
   ReducerError,
-  adapterManifestDigestFor,
   adapterEvidenceDigestFor,
+  adapterManifestDigestFor,
   assertReadinessMatchesReduction,
   assertReleaseReady,
+  auditEvidenceDigests,
   capabilityMatrixDigestFor,
   driverInventoryDigestFor,
   packagedAgentIds,
@@ -467,6 +469,127 @@ test("checked-in readiness is the honest canonical-evidence reduction", () => {
   const receipt = runCli(["--check"]);
   assert.equal(receipt.ok, true);
   assert.equal(receipt.operation, "check");
+});
+
+test("every canonical evidence digest is reconciled with its declared source", () => {
+  const audit = auditEvidenceDigests({
+    evidence: canonicalEvidence,
+    packagingRegistry,
+    inventory,
+    readiness: readinessResource,
+  });
+  assert.equal(audit.fieldCount, 9);
+  assert.deepEqual(audit.sourceClasses, {
+    "contract-input": 4,
+    "record-self-hash": 1,
+    "run-local-artifact": 4,
+  });
+  assert.equal(audit.adapters.length, canonicalEvidence.adapters.length);
+  assert.equal(audit.digestCount, audit.adapters.length * audit.fieldCount);
+
+  for (const adapter of audit.adapters) {
+    assert.equal(adapter.status, "unverified", `${adapter.agentId} status`);
+    assert.equal(adapter.current, false, `${adapter.agentId} must not be presented as current`);
+    assert.equal(
+      adapter.staleContractFields.length > 0,
+      true,
+      `${adapter.agentId} must record a contract digest that differs from its current source`,
+    );
+    for (const field of EVIDENCE_DIGEST_FIELD_NAMES) {
+      const { sourceClass, recorded, recomputed } = adapter.digests[field];
+      if (sourceClass === "run-local-artifact") {
+        // Minted by the acceptance run from the host it executed on. A checkout
+        // cannot reproduce it, so the row-level self-hash is what holds it.
+        assert.equal(recomputed, null, `${adapter.agentId}.${field} is not checkout-derivable`);
+      } else if (sourceClass === "record-self-hash") {
+        assert.equal(recorded, recomputed, `${adapter.agentId}.${field}`);
+      } else {
+        // A contract-input digest is either reproduced by the current source or
+        // it is the recorded reason this row is stale. Nothing else is allowed.
+        assert.equal(
+          recorded !== recomputed,
+          adapter.staleContractFields.includes(field),
+          `${adapter.agentId}.${field} staleness must be reconciled with its source`,
+        );
+      }
+    }
+  }
+});
+
+test("every recorded canonical evidence digest is falsifiable", () => {
+  for (const [index, row] of canonicalEvidence.adapters.entries()) {
+    for (const field of EVIDENCE_DIGEST_FIELD_NAMES) {
+      const corrupted = structuredClone(canonicalEvidence);
+      corrupted.adapters[index][field] =
+        row[field] === `sha256:${"0".repeat(64)}`
+          ? `sha256:${"1".repeat(64)}`
+          : `sha256:${"0".repeat(64)}`;
+      assert.throws(
+        () =>
+          auditEvidenceDigests({
+            evidence: corrupted,
+            packagingRegistry,
+            inventory,
+            readiness: readinessResource,
+          }),
+        (error) => error instanceof ReducerError && error.code === "evidence_digest_mismatch",
+        `${row.agentId}.${field} must not be alterable without failing the audit`,
+      );
+    }
+  }
+});
+
+test("canonical evidence cannot silently re-bind its recorded digests to the current sources", () => {
+  const rebound = structuredClone(canonicalEvidence);
+  for (const row of rebound.adapters) {
+    const driver = inventory.drivers.find((item) => item.agentId === row.agentId);
+    row.capabilitySnapshotDigest = capabilityMatrixDigestFor(driver);
+    row.adapterManifestDigest = adapterManifestDigestFor(row.agentId);
+    row.registryDigest = registryDigest;
+    row.driverInventoryDigest = inventoryDigest;
+    row.evidenceDigest = adapterEvidenceDigestFor(row);
+  }
+  assert.throws(
+    () =>
+      auditEvidenceDigests({
+        evidence: rebound,
+        packagingRegistry,
+        inventory,
+        readiness: readinessResource,
+      }),
+    (error) =>
+      error instanceof ReducerError &&
+      error.code === "evidence_digest_staleness_unattributed",
+  );
+
+  const presented = structuredClone(readinessResource);
+  presented.adapters.find((adapter) => adapter.agentId === "codex").evidenceBinding = {
+    agentId: "codex",
+  };
+  assert.throws(
+    () =>
+      auditEvidenceDigests({
+        evidence: canonicalEvidence,
+        packagingRegistry,
+        inventory,
+        readiness: presented,
+      }),
+    (error) => error instanceof ReducerError && error.code === "evidence_digest_source_mismatch",
+  );
+
+  const undeclared = structuredClone(canonicalEvidence);
+  undeclared.adapters[0].runtimeProvenanceDigest = `sha256:${"a".repeat(64)}`;
+  assert.throws(
+    () =>
+      auditEvidenceDigests({
+        evidence: undeclared,
+        packagingRegistry,
+        inventory,
+        readiness: readinessResource,
+      }),
+    (error) =>
+      error instanceof ReducerError && error.code === "evidence_digest_field_unclassified",
+  );
 });
 
 test("release readiness requires every packaged adapter to be ready and send-enabled", () => {

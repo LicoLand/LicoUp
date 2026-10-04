@@ -20,6 +20,12 @@ export {
   adapterManifestDigestFor,
   adapterEvidenceDigestFor,
 } from "./reducer/digests.mjs";
+export {
+  CONTRACT_INPUT_DIGEST_FIELDS,
+  EVIDENCE_DIGEST_FIELD_NAMES,
+  EVIDENCE_DIGEST_PROVENANCE,
+  auditEvidenceDigests,
+} from "./reducer/digest-audit.mjs";
 export { validateDriverInventory } from "./reducer/inventory.mjs";
 export {
   reduceConversationParity,
