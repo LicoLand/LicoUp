@@ -233,3 +233,84 @@ const _: () = assert!(
     STDIO_RPC_MAX_ID_BYTES
         == licoup_native::contracts::conversation_protocol::CONVERSATION_PROTOCOL_MAX_ID_BYTES
 );
+
+/// Manual stop and force stop must keep routing to the owned conversation lane.
+///
+/// The generated contract declares the three wire names as conversation-lane
+/// control methods; this file is the hand-written half that turns a decoded
+/// method into a process-local operation. A wire name that stops being mapped
+/// here stays invisible to the client while the schema still advertises it.
+#[cfg(test)]
+mod work_control_routing_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn route(method: ConversationProtocolMethod, params: Value) -> StdioRpcMethod {
+        let frame = ConversationCommand::frame("request-1", "workflow-1", method, params);
+        let bytes = serde_json::to_vec(&frame).expect("a protocol frame serializes");
+        parse_stdio_rpc_request(&bytes)
+            .expect("a well-formed control frame is admitted")
+            .method
+    }
+
+    fn owned_operation(routed: StdioRpcMethod) -> (String, Value) {
+        match routed {
+            StdioRpcMethod::Conversation {
+                operation, params, ..
+            } => (operation, params),
+            other => panic!("work control must use the conversation lane, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn work_control_methods_reach_their_native_operations() {
+        for (method, expected) in [
+            (ConversationProtocolMethod::AgentConversationStop, "stop"),
+            (
+                ConversationProtocolMethod::AgentConversationForcePreview,
+                "force.preview",
+            ),
+            (
+                ConversationProtocolMethod::AgentConversationForceConfirm,
+                "force.confirm",
+            ),
+        ] {
+            let (operation, _) = owned_operation(route(method, json!({})));
+            assert_eq!(operation, expected, "{method:?} must reach its native owner");
+        }
+    }
+
+    #[test]
+    fn work_control_params_survive_routing_unchanged() {
+        let (operation, params) = owned_operation(route(
+            ConversationProtocolMethod::AgentConversationStop,
+            json!({"turnHandle": "turn-1", "conversationId": "c-1"}),
+        ));
+        assert_eq!(operation, "stop");
+        assert_eq!(
+            params,
+            json!({"turnHandle": "turn-1", "conversationId": "c-1"})
+        );
+
+        // An omitted scope is how the client asks the host to name its own
+        // candidate scopes; routing must not invent one.
+        let (operation, params) = owned_operation(route(
+            ConversationProtocolMethod::AgentConversationForcePreview,
+            json!({}),
+        ));
+        assert_eq!(operation, "force.preview");
+        assert_eq!(params, json!({}));
+
+        let confirmed = json!({
+            "scopeId": "scope-1",
+            "confirmationToken": "token-1",
+            "confirmed": true
+        });
+        let (operation, params) = owned_operation(route(
+            ConversationProtocolMethod::AgentConversationForceConfirm,
+            confirmed.clone(),
+        ));
+        assert_eq!(operation, "force.confirm");
+        assert_eq!(params, confirmed);
+    }
+}
