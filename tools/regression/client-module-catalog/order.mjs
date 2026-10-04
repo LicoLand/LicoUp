@@ -511,6 +511,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.core.agent-copilot-package",
   "rust.core.agent-hermes-package",
   "rust.core.agent-kilo-package",
+  "rust.core.agent-lico-agent-package",
   "rust.core.mcp.composition",
   "rust.core.mcp.wire",
   "rust.core.mcp.transfer",

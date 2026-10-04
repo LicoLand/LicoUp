@@ -43,7 +43,6 @@ pub(in crate::platform) use licoup_agent_cursor::parser as cursor;
 // below. Hermes' dialect reaches the shared ACP transport through the package's
 // own registration in `runtime_adapters::drivers` rather than through this tree.
 
-pub(in crate::platform) mod lico_agent;
 pub(in crate::platform) mod openclaw;
 pub(in crate::platform) mod opencode;
 pub(in crate::platform) mod pi;
@@ -86,7 +85,7 @@ fn opaque_identity(session_id: &str) -> bool {
 ///
 /// An entry answers the two protocol-agnostic queries when a reader reaches it:
 /// the Agents the Subagent mesh dispatches answer whether a durable identity is
-/// theirs, and the eight Agents whose protocol has moved into its own package
+/// theirs, and the nine Agents whose protocol has moved into its own package
 /// contribute the package's own registration — which answers both queries from
 /// that Agent's wire evidence. Hermes' entry is the package's for a second
 /// reason: Hermes reports no transition list with its execution result, so its
@@ -96,7 +95,7 @@ fn opaque_identity(session_id: &str) -> bool {
 /// parser's own execution result* rather than through the query, and answers the
 /// identity query fail-closed because the mesh never dispatches that Agent.
 ///
-/// Eight entries are the moved packages' own registrations rather than constants
+/// Nine entries are the moved packages' own registrations rather than constants
 /// restated here, so the declaration a package publishes and the declaration
 /// this host dispatches are one value and cannot drift.
 pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
@@ -132,7 +131,10 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     ParserRegistration::unanswered(openclaw::CONTRACT),
     ParserRegistration::unanswered(opencode::CONTRACT),
     ParserRegistration::unanswered(pi::CONTRACT),
-    ParserRegistration::unanswered(lico_agent::CONTRACT),
+    // The Lico Agent package owns its stdio RPC protocol and reports its
+    // transitions with its own execution result, and the mesh never dispatches
+    // this Agent, so this entry is the package's own registration.
+    licoup_agent_lico_agent::registration::REGISTRATION,
     // The DeepSeek Harness package answers its own registration, from the parser
     // and the session reader it owns; the mesh never dispatches this Agent, so
     // both SDK queries stay declared and unanswered exactly as before.

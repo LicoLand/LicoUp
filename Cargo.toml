@@ -21,6 +21,7 @@ members = [
     "crates/licoup-agent-kimi",
     "crates/licoup-agent-hermes",
     "crates/licoup-agent-kilo",
+"crates/licoup-agent-lico-agent",
     "crates/licoup-agent-runtime",
     "crates/licoup-application",
     "crates/licoup-extension-contracts",

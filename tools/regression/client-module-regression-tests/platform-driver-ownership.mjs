@@ -918,6 +918,64 @@ test("DeepSeek Harness leaves retain exact narrow regression ownership", async (
   ]);
 });
 
+test("Lico Agent leaves retain exact narrow regression ownership", async () => {
+  const packageModuleId = "rust.core.agent-lico-agent-package";
+  // The RPC wire, the request envelopes, the session layout and the plan layout
+  // moved into the Lico Agent adapter package; the process half is still
+  // composed by the client under `platform::lico_agent_driver`. Both keep a
+  // precise owner, and a source that moved selects the package's own module.
+  const selections = new Map([
+    ["crates/licoup-native/src/platform/lico_agent_driver/execution.rs",
+      ["rust.platform"]],
+    ["crates/licoup-agent-lico-agent/src/parser.rs", [packageModuleId]],
+    ["crates/licoup-agent-lico-agent/src/session.rs", [packageModuleId]],
+    ["crates/licoup-agent-lico-agent/src/bin/lico-agent-lico-agent.rs", [packageModuleId]],
+    ["crates/licoup-agent-lico-agent/tests/package_artifact.rs", [packageModuleId]],
+    ["crates/licoup-agent-lico-agent/package/manifest.json", [packageModuleId]],
+  ]);
+  for (const [source, moduleIds] of selections) {
+    const selected = ids(selectModulesForChangedPaths([source]));
+    for (const moduleId of moduleIds) {
+      assert.ok(selected.includes(moduleId),
+        `${source} must select ${moduleId}: ${selected.join(", ")}`);
+    }
+  }
+
+  // The package's own module runs its own crate tests, so a change anywhere in
+  // the package is exercised by the package rather than by the kernel.
+  const packageModule = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === packageModuleId);
+  assert.deepEqual(packageModule.inputs, ["crates/licoup-agent-lico-agent/**"]);
+  assert.deepEqual(packageModule.command.args,
+    ["test", "--no-fail-fast", "--manifest-path", "crates/licoup-agent-lico-agent/Cargo.toml"]);
+
+  // Every source the package ships has a regression owner.
+  const owns = (relativePath) => CLIENT_MODULE_CATALOG.some((module) =>
+    module.inputs.some((input) => input.endsWith("/**")
+      ? relativePath.startsWith(input.slice(0, -2))
+      : input === relativePath));
+  const packageSources = await sourceFiles("crates/licoup-agent-lico-agent/src", ".rs");
+  assert.ok(packageSources.length > 0);
+  for (const relativePath of packageSources) {
+    assert.equal(owns(relativePath), true,
+      `Lico Agent package source must have a regression owner: ${relativePath}`);
+  }
+
+  // No module may still name a host copy the package took over as an exact
+  // input: a deleted file kept as a measured input looks owned while nothing
+  // runs it, and the package's own copy is what a change must select. A
+  // directory glob over a tree that still exists is a live owner of that tree,
+  // not a reference to the file that left it, so the check is exact.
+  const exactInputs = new Set(CLIENT_MODULE_CATALOG.flatMap((module) => module.inputs));
+  for (const relativePath of [
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/lico_agent.rs",
+    "crates/licoup-native/src/platform/native_agent_parser/replay/adapters/lico_agent.rs",
+  ]) {
+    assert.equal(exactInputs.has(relativePath), false,
+      `a moved host copy must not stay a measured catalog input: ${relativePath}`);
+  }
+});
+
 test("local service leaves retain exact tests and complete source ownership", async () => {
   const filters = new Map([
     ["rust.platform.local-service.composition", "platform::local_service::tests::composition::"],

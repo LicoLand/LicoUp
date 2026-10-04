@@ -73,6 +73,12 @@ licoup-agent-hermes = { path = "../licoup-agent-hermes", features = ["test-suppo
 # registration, its endpoint policy and its host ports while the extension
 # host's binary route is completed by the agent-execution port.
 licoup-agent-kilo = { path = "../licoup-agent-kilo" }
+# The Lico Agent adapter package. Composition names it for its parser
+# registration and its replay arm, and this host's own RPC driver reads the
+# package's frame parser, request envelopes, transitions, session layout and
+# runtime protocol id, while the extension host's binary route is completed by
+# the agent-execution port.
+licoup-agent-lico-agent = { path = "../licoup-agent-lico-agent" }
 licoup-agent-runtime = { path = "../licoup-agent-runtime" }
 licoup-application = { path = "../licoup-application" }
 licoup-project = { path = "../licoup-project" }

@@ -101,6 +101,13 @@ const packaged = {
     contractId: 'kimi-code',
     readsParser: false,
   },
+  lico_agent: {
+    crate: 'licoup_agent_lico_agent',
+    module: 'parser',
+    source: 'crates/licoup-agent-lico-agent/src/parser.rs',
+    contractId: 'lico-agent',
+    readsParser: false,
+  },
 };
 
 // The one Agent whose normalized transitions the host reads through the SDK's

@@ -133,6 +133,10 @@ const declaredPackages = Object.freeze([
     payloadRole: "hermes-adapter-package-payload",
   }),
   declaredRelease({
+    source: "crates/licoup-agent-lico-agent/package",
+    payloadRole: "lico-agent-adapter-package-payload",
+  }),
+  declaredRelease({
     source: "crates/licoup-mcp/package",
     payloadRole: "mcp-package-payload",
   }),
