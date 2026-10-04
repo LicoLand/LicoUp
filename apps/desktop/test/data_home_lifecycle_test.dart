@@ -12,7 +12,7 @@ import 'package:licoup/src/presentation/settings/settings_effect.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:licoup/src/platform/native_client/data_home_executor.dart';
-import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
+import 'package:licoup/src/platform/presentation/file_presentation_preferences_repository.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 import 'fixtures/client_controller/support/fake_agent_service.dart';

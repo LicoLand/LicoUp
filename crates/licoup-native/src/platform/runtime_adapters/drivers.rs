@@ -139,19 +139,17 @@ pub(super) fn parser_for_agent(agent_id: &str) -> ParserRegistration {
 /// The table is keyed by **driver identity** rather than by Agent, because two
 /// Agents legitimately share one ACP dialect. Measured on the parsers here:
 /// `copilot`, `opencode` and `kilo-code` all select the same Copilot-profile
-/// dialect. Kimi Code's entry is not restated here at all: its package owns the
-/// dialect and publishes it whole, so this composition installs the package's
-/// registration rather than assembling a second copy of it.
+/// dialect. Copilot's, Kimi Code's and Hermes' entries are not restated here at
+/// all: each package owns its dialect and publishes it whole, so this
+/// composition installs the package's registration rather than assembling a
+/// second copy of it.
 ///
 /// The dialect an Agent's own package carries is named by that package rather
-/// than rebuilt here: Copilot's entry is the constant
-/// `licoup-agent-copilot` registers, so the frame policy the transport reads is
-/// the one the package ships.
-///
-/// `hermes` is the one Agent on the persistent ACP dialect, and its entry
-/// borrows nothing: every member is Hermes' own parser function.
+/// than rebuilt here: Copilot's entry is the constant `licoup-agent-copilot`
+/// registers, and Kimi Code's and Hermes' are the registrations their own
+/// packages publish, so the frame policy the transport reads is the one the
+/// package ships. No parser path is imported for any of the three.
 pub(super) fn acp_dialects() -> &'static [AcpParserRegistration] {
-    use crate::platform::native_agent_parser::adapters::hermes;
 
     static DIALECTS: OnceLock<Vec<AcpParserRegistration>> = OnceLock::new();
     DIALECTS.get_or_init(|| {
@@ -164,20 +162,10 @@ pub(super) fn acp_dialects() -> &'static [AcpParserRegistration] {
             // restated: the package owns the parser behind it, so the two cannot
             // drift.
             licoup_agent_kimi::dialect::registration(),
-            AcpParserRegistration {
-                driver_id: "hermes-acp",
-                decode_frame: hermes::decode_frame,
-                is_notification: hermes::is_notification,
-                response_id_matches: hermes::response_id_matches,
-                response_is_error: hermes::response_is_error,
-                session_update: hermes::session_update,
-                prompt_stop_reason: hermes::prompt_stop_reason,
-                initialize_response: hermes::initialize_response,
-                client_request: super::dialects::no_client_request,
-                permission_request: super::dialects::hermes_permission_request,
-                completed_transitions: hermes::completed_transitions,
-                failed_transitions: hermes::failed_transitions,
-            },
+            // The Hermes package's own dialect, installed the same way. Hermes is
+            // the one Agent on the persistent ACP dialect, and its entry borrows
+            // nothing: every member is the package's own parser function.
+            licoup_agent_hermes::dialect::registration(),
         ]
     })
 }
@@ -229,7 +217,11 @@ pub(super) fn registrations() -> &'static [AgentDriverRegistration] {
             },
             AgentDriverRegistration {
                 agent_id: "hermes",
-                driver_id: "hermes-acp",
+                // The dialect identity is the package's own declaration: the
+                // transport resolves Hermes' frames by this identity, so a
+                // second literal here could silently reach the fail-closed
+                // dialect instead of the package's parser.
+                driver_id: licoup_agent_hermes::dialect::DRIVER_ID,
                 runtime_protocol: hermes_driver::RUNTIME_PROTOCOL,
                 probe: probe_hermes,
                 run: run_hermes,
@@ -829,7 +821,7 @@ fn run_hermes(run: &AgentRun<'_>) -> NormalizedExecution {
             stderr_truncated: result.stderr_truncated,
             started_at: result.started_at,
             runtime_protocol,
-            driver_id: "hermes-acp",
+            driver_id: licoup_agent_hermes::dialect::DRIVER_ID,
         },
         parser,
     )

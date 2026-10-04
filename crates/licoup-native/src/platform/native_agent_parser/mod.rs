@@ -18,19 +18,23 @@
 //! `tests` holds the family's own claims. Each per-Agent subtree and its arm
 //! move to that Agent's crate (`licoup-agent-<agent>`); this root and the
 //! composition are what remain, because they are what names thirteen parsers
-//! and, later, thirteen crates.
+//! and, later, thirteen crates. Eight subtrees have moved — Antigravity's,
+//! Claude Code's, Codex's, Copilot's, Cursor's, DeepSeek Harness', Hermes' and
+//! Kimi Code's: their parsers are reached through the packages that own them and
+//! no copy stays here.
 //!
 //! The SDK's two protocol-agnostic `port::ParserRegistration` queries are
 //! answered in `adapters::REGISTRATIONS` by the Agents whose facts a reader
-//! actually reaches: Hermes answers `execution_transitions`, because it reports
-//! no transition list of its own and the host's Hermes normalization reads that
-//! query; the Agents the Subagent mesh dispatches — Antigravity and Claude Code
-//! here, Codex and Cursor from their own packages — answer `valid_identity`
-//! from their own recorded evidence; and a package entry answers both queries
-//! from the package's wire vocabulary. Every other entry leaves
-//! `execution_transitions` unanswered because its driver carries the parser's
-//! own transition list, and the identity query stays fail-closed for an Agent
-//! the mesh never dispatches. No entry inherits a neighbouring Agent's answer.
+//! actually reaches: Hermes answers `execution_transitions` from its own
+//! package, because it reports no transition list of its own and the host's
+//! Hermes normalization reads that query; the Agents the Subagent mesh
+//! dispatches — Antigravity and Claude Code here, Codex and Cursor from their
+//! own packages — answer `valid_identity` from their own recorded evidence; and
+//! a package entry answers both queries from the package's wire vocabulary.
+//! Every other entry leaves `execution_transitions` unanswered because its
+//! driver carries the parser's own transition list, and the identity query stays
+//! fail-closed for an Agent the mesh never dispatches. No entry inherits a
+//! neighbouring Agent's answer.
 
 pub(in crate::platform) mod adapters;
 #[cfg(test)]
@@ -69,9 +73,10 @@ const PACKAGED_ADAPTER_IDS: [&str; 13] = [
 
 /// The parser set this host injects into the adapter SDK.
 ///
-/// The declarations live in `adapters`, where the thirteen parsers that report
-/// them live; this is the composition's name for the set, so a caller outside
-/// the family never names a parser to reach the SDK.
+/// The declarations live in `adapters`, in the one list that names all
+/// thirteen parsers — the eleven this tree still holds and the two their
+/// packages own; this is the composition's name for the set, so a caller
+/// outside the family never names a parser to reach the SDK.
 pub(in crate::platform) const fn parser_set() -> licoup_agent_adapter_sdk::port::AdapterParserSet {
     adapters::parser_set()
 }

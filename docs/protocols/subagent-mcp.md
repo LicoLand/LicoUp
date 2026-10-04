@@ -65,18 +65,30 @@ routes callers to the appropriate interface.
 
 ## Independent lifecycle and development
 
-The packaged executable is `lico-subagent-mcp`. The local native façade manages
-it with `licoup mcp start`, `stop`, `status`, and `reload`. `start` and `reload`
-accept `--binary` to select a separately built module executable. They ensure
-the native host is available without requiring Flutter. Normal desktop host
-startup also starts the optional module; failure degrades MCP availability and
-does not stop the native host.
+The executable `lico-subagent-mcp` is the payload of the optional
+`org.licoland.feature.mcp` package, not a bundled part of the client. The client
+neither ships a copy nor starts the service on its own: the package declares
+`on-demand` activation, so a caller starts it, and an absent or switched-off
+package starts no process and publishes no endpoint. `licoup mcp start`, `stop`,
+`status`, and `reload` remain the local native façade for that process; `start`
+and `reload` accept `--binary` to select a separately built module executable.
+They ensure the native host is available without requiring Flutter.
 
 For independent module development:
 
 ```sh
 node tools/scripts/cargo-client.mjs build -p licoup-mcp
 licoup mcp reload --binary <built-lico-subagent-mcp>
+```
+
+A release fills the package's declared native entry before that directory is
+packaged into a payload, so the committed entry is a staged placeholder rather
+than a program:
+
+```sh
+node tools/distribution/client-release-package-stage.mjs stage
+node tools/distribution/client-release-package-stage.mjs verify
+npm run client:release:package-index:build
 ```
 
 The module also accepts `service start|stop|status|reload` directly. Its native

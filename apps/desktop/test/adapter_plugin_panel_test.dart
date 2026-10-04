@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/features/plugin_management/plugin_management_feature_composition.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/plugin_surface.dart';
@@ -808,6 +809,12 @@ final class _PanelPreferencesRepository
   @override
   Future<PresentationPreferences> setLoadingEffect(String id) async =>
       _preferences = _preferences.copyWith(loadingEffectId: id);
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) async => _preferences = _preferences.withResourceSelection(kind, selection);
 
   @override
   Future<PresentationPreferences> setAppearancePreset(String id) async =>

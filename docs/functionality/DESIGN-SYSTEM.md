@@ -40,6 +40,49 @@ Settings labels this control **Theme style / 主题风格**. The existing preset
 identifiers remain storage identifiers; they are not product-facing names.
 Theme files load and reload at runtime through the existing catalog.
 
+## Appearance resource preferences
+
+A resource package may supply a theme, layout, style, font, language or
+composition. Two owners answer for one such kind, and neither answers for the
+other:
+
+| Fact | Owner |
+| --- | --- |
+| Which resource the user asked this client to serve | The durable appearance preference, `client-state/appearance-preferences.json` |
+| Which resource is served, and why a request is not | The package owner, through the resource lifecycle |
+
+The client's own appearance style (`appearancePresetId`) and layout profile
+(`layoutProfileId`) remain the stored choice *within* the declared default; a
+resource request is recorded beside them under `resourceSelections`, keyed by
+the host contract's own kind spelling. The record carries the resource identity,
+the package that supplied it and the generation that was reported when the
+choice was made. A generation is an observation, not the identity: a reinstall
+publishes the same identity at a new generation and the user's request still
+applies.
+
+A surface reports one of five states, resolved from the request and the report
+alone:
+
+| State | Rendered |
+| --- | --- |
+| The user asked for the declared default | The client's own appearance |
+| The reported resource is the requested one | The requested resource |
+| The request is recorded and the report says it is not served | The declared appearance, with the reason `disabled`, `uninstalled` or `replaced` |
+| The request is recorded and no report answered yet | The declared appearance; the surface reports that the answer is pending rather than claiming the resource is served or that it failed |
+| A resource is reported serving that no record names | The reported resource; the surface reports that no stored request explains it |
+
+Disabling, uninstalling or replacing a package never rewrites the request and
+never records a fallback as the user's choice. Switching the package back on or
+reinstalling it restores the request without a new selection, and a request is
+stored exactly as chosen rather than being replaced by an identifier the client
+happens to publish. Changing a resource preference is an ordinary preference
+operation: it changes no layout, navigation, running work, subscription, input
+or scroll ownership, and it waits for no unrelated work.
+
+An unreadable resource entry refuses the document instead of being dropped or
+reinterpreted, and a kind a build does not know keeps the identity it was
+written with, so a newer client's request survives an older client's write.
+
 The optional visual tokens are intentionally bounded:
 
 | Token | Values | Effect |
@@ -66,10 +109,17 @@ translucent.
 
 ## Typography and content
 
-Geist Sans is the interface family. Geist Mono marks commands, paths, identifiers
-and exact values. Noto Sans SC supplies Chinese glyphs before any platform
-fallback. All three families ship locally under the SIL Open Font License 1.1;
-font loading causes no network requests.
+The platform's own interface family renders the interface: `.AppleSystemUIFont`
+on macOS, `Segoe UI Variable Text` on Windows, `Roboto` on Android and `Ubuntu`
+on Linux, with that platform's Chinese face behind it. A first launch, an offline
+client and an installed client all render from fonts the operating system
+already owns. Geist Mono marks commands, paths, identifiers and exact values, and
+the bundled Geist Sans covers glyphs no platform face supplies; both ship locally
+under the SIL Open Font License 1.1, and font loading causes no network requests.
+
+The interface family is a preference. An installed font family can be preferred
+through the appearance font preference, and it is then placed first with the
+platform chain behind it.
 
 `LicoTypography` owns the scale and fallback order. Titles use 18–24 px with
 semibold weight; the Agent detail identity uses 28 px. Conversation reading text

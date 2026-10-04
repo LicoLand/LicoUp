@@ -22,7 +22,7 @@ use super::events::projected_event;
 use super::execution::execute;
 use super::io::{TransportEvent, drain_stderr, read_protocol_messages};
 use super::model::{EffectiveSettings, RUNTIME_PROTOCOL, RunResult};
-use super::params::{ProtocolConfig, normalize_agent_id};
+use super::params::{ProtocolConfig, from_params as client_params, normalize_agent_id};
 use super::probe::{first_nonempty_line, probe};
 use super::protocol::{OpenClawProtocol, ProtocolEffect, ProtocolPhase};
 use super::supervision::{ATTACH_ARGS_PREFIX, LaunchSpec, attach_mode, resolve_gateway_endpoint};

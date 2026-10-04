@@ -1,5 +1,9 @@
 import path from "node:path";
 import process from "node:process";
+import {
+  OPTIONAL_CAPABILITY_ARTIFACTS,
+  OPTIONAL_CAPABILITY_BUNDLES,
+} from "../ratchet/definitions.mjs";
 
 const requiredFutureModules = [
   "desktop-app",
@@ -12,13 +16,24 @@ const requiredFutureModules = [
   "mobile-relay",
   "activity-snapshots",
   "settings",
-  "subagents-mcp",
-  "gateway-sidecar",
   "lico-agent-sidecar",
   "codex-plugin"
 ];
 const optionalFutureModules = [
-  "extension-packages"
+  "extension-packages",
+  "subagents-mcp",
+  // The Gateway Runtime is an optional capability: `org.licoland.feature.gateway`
+  // is released as its own package and appears in `OPTIONAL_CAPABILITY_CRATES`.
+  // The default client still ships the sidecar, so the module stays enabled, but
+  // it is no longer a prerequisite every distribution must contain.
+  "gateway-sidecar"
+];
+// Optional modules whose implementation an independently released package
+// carries. The minimal client must not bundle a second copy: an enabled module
+// here would put the payload back into every distribution and make the
+// package's own install state a lie.
+const packageDeliveredModules = [
+  "subagents-mcp"
 ];
 const allFutureModules = [...requiredFutureModules, ...optionalFutureModules];
 const packageClientFacadePath = "apps/desktop/scripts/package-client.mjs";
@@ -101,6 +116,40 @@ export async function checkPackagingAndTargetProjection(context) {
         !(module.requires || []).includes(moduleId)),
       `required module must not depend on optional module: ${moduleId}`
     );
+  }
+  for (const moduleId of packageDeliveredModules) {
+    assert(optionalFutureModules.includes(moduleId),
+      `package-delivered module must stay optional: ${moduleId}`);
+    assert(modules[moduleId]?.enabled === false,
+      `package-delivered module must not be bundled: ${moduleId}`);
+    assert(
+      modules[moduleId]?.cargoBin === undefined &&
+        modules[moduleId]?.embeddedCargoBin === undefined,
+      `no packaging module may bundle the package's own binary: ${moduleId}`
+    );
+  }
+  // An optional capability's payload may still be bundled by the default client,
+  // but never by a module the release cannot omit, and never by more modules
+  // than the reviewed declaration already names. Both halves are measured from
+  // this config against the ratchet's own declaration, so re-bundling the
+  // payload is a reviewed declaration change rather than a quiet packaging
+  // edit, and `optionalCapabilitiesBundledInPackaging` can only fall.
+  const optionalCapabilityPayloads = new Set(Object.values(OPTIONAL_CAPABILITY_ARTIFACTS)
+    .flatMap((record) => record.artifacts));
+  assert(optionalCapabilityPayloads.size > 0,
+    "the optional capability declaration must name at least one payload");
+  const declaredCarriers = new Set(Object.values(OPTIONAL_CAPABILITY_BUNDLES)
+    .flatMap((moduleIds) => moduleIds));
+  const bundlingCarriers = Object.entries(modules)
+    .filter(([, module]) => module.enabled !== false)
+    .filter(([, module]) => [module.cargoBin, module.embeddedCargoBin]
+      .some((binary) => binary !== undefined && optionalCapabilityPayloads.has(binary)))
+    .map(([id]) => id);
+  for (const moduleId of bundlingCarriers) {
+    assert(modules[moduleId]?.required === false,
+      `a module bundling an optional capability payload must not be required: ${moduleId}`);
+    assert(declaredCarriers.has(moduleId),
+      `enabled module ${moduleId} bundles an optional capability payload the reviewed declaration does not name; optionalCapabilitiesBundledInPackaging may only fall, never grow`);
   }
   for (const moduleId of enabledConfigModules) {
     assert(allFutureModules.includes(moduleId), `enabled module must be known: ${moduleId}`);
@@ -282,8 +331,12 @@ export async function checkPackageDryRuns(context, { futureModules, modules }) {
     if (packagePlan) {
       packagePlanCheckedPlatforms.push(platform);
       const enabledPlanModules = packagePlan.enabledModules.map((item) => item.id).sort();
+      // A module the configuration disables is not enabled by any platform; it
+      // is reported as a target-skipped module instead.
       const expectedPlanModules = futureModules
-        .filter((moduleId) => moduleSupportsPlatform(modules[moduleId], platform))
+        .filter((moduleId) =>
+          modules[moduleId]?.enabled !== false &&
+          moduleSupportsPlatform(modules[moduleId], platform))
         .sort();
       assert(packagePlan.platform === platform, `package dry-run must report platform ${platform}`);
       assert(

@@ -4,25 +4,12 @@ use std::path::PathBuf;
 use super::super::local_service::state::ServicePaths;
 use super::policy;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct GatewayEndpoint {
-    pub host: String,
-    pub port: u16,
-    pub attach_url: String,
-    pub ws_url: String,
-}
-
-impl GatewayEndpoint {
-    pub fn new(host: impl Into<String>, port: u16) -> Self {
-        let host = host.into();
-        Self {
-            attach_url: format!("http://{}:{}", host, port),
-            ws_url: format!("ws://{}:{}", host, port),
-            host,
-            port,
-        }
-    }
-}
+// The paired HTTP/WebSocket endpoint model is OpenClaw's own protocol
+// vocabulary, so it is owned by the OpenClaw adapter package and re-exported
+// here at its former path. What stays in this module is the client's half: the
+// service state paths it resolves and the projection of its own state document
+// onto that model.
+pub use licoup_agent_openclaw::gateway::GatewayEndpoint;
 
 #[derive(Clone, Debug)]
 pub(super) struct GatewayPaths {

@@ -2172,6 +2172,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-agent-hermes"
+version = "0.1.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
+ "licoup-agent-hermes",
+ "licoup-extension-contracts",
+ "licoup-foundation",
+ "serde_json",
+]
+
+[[package]]
+name = "licoup-agent-kilo"
+version = "0.14.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-extension-contracts",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "licoup-agent-kimi"
 version = "0.1.0"
 dependencies = [
@@ -2181,6 +2203,30 @@ dependencies = [
  "licoup-extension-contracts",
  "licoup-foundation",
  "serde_json",
+]
+
+[[package]]
+name = "licoup-agent-lico-agent"
+version = "0.14.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-extension-contracts",
+ "licoup-foundation",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "licoup-agent-openclaw"
+version = "0.14.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-agent-targets",
+ "licoup-extension-contracts",
+ "licoup-foundation",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -2405,7 +2451,11 @@ dependencies = [
  "licoup-agent-cursor",
  "licoup-agent-deepseek",
  "licoup-agent-drivers",
+ "licoup-agent-hermes",
+ "licoup-agent-kilo",
  "licoup-agent-kimi",
+ "licoup-agent-lico-agent",
+ "licoup-agent-openclaw",
  "licoup-agent-runtime",
  "licoup-agent-targets",
  "licoup-application",

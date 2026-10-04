@@ -2,12 +2,14 @@ import {
   NATIVE_MANIFEST,
   claudeCodeAgentPackageLayer,
   codexAgentPackageLayer,
+  kiloAgentPackageLayer,
   RUST_COMPOSITION_INPUTS,
   command,
   foundationLayer,
   node,
   rustLayer,
   rustAgentPackageLayer,
+  openClawAgentPackageLayer,
   gatewayCoreLayer,
   gatewayIntegrationTest,
   gatewayLayer,
@@ -63,11 +65,12 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.extension-packages",
       kind: "rust-platform",
-      summary: "Offline extension package lifecycle, installed-generation selection, typed data-package admission, and bounded archive consumer",
+      summary: "Offline extension package lifecycle, installed-generation selection, typed data-package admission, published mount plan, and bounded archive consumer",
       inputs: [
         "crates/licoup-native/src/platform/extension_packages/artifact.rs",
         "crates/licoup-native/src/platform/extension_packages/install.rs",
         "crates/licoup-native/src/platform/extension_packages/mod.rs",
+        "crates/licoup-native/src/platform/extension_packages/mount_plan.rs",
         "crates/licoup-native/src/platform/extension_packages/selection.rs",
         "crates/licoup-native/tests/package_lifecycle/**",
         "tests/integration/package_lifecycle/**",
@@ -1018,7 +1021,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-agent-drivers/src/acp_session_transport/continuity.rs",
         "crates/licoup-agent-drivers/src/acp_session_transport/errors.rs",
         "crates/licoup-agent-drivers/src/acp_session_transport/events.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes/framing.rs",
+        "crates/licoup-agent-hermes/src/dialect.rs",
         "crates/licoup-agent-drivers/src/acp_session_transport/io.rs",
         "crates/licoup-agent-drivers/src/acp_session_transport/protocol.rs",
         "crates/licoup-agent-drivers/src/acp_session_transport/supervision.rs",
@@ -1033,8 +1036,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-agent-drivers/src/acp_session_transport/command.rs",
         "crates/licoup-agent-drivers/src/acp_session_transport/execution.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes/protocol.rs",
+        "crates/licoup-agent-hermes/src/parser.rs",
         "crates/licoup-agent-drivers/src/acp_session_transport/tests.rs",
       ],
       command: rustLayer("platform::acp_session_transport::tests::"),
@@ -1042,7 +1044,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.kilo-code-driver.composition",
       kind: "rust-platform",
-      summary: "Thin Kilo Code serve adapter over neutral runtime contracts",
+      summary: "Thin Kilo Code compose-side driver, its parser re-export, and the force-stop descriptor",
       inputs: [
         "crates/licoup-native/src/platform/kilo_code_driver.rs",
         "crates/licoup-native/src/platform/kilo_code_driver/tests/mod.rs",
@@ -1051,19 +1053,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::kilo_code_driver::tests::composition::"),
     }),
   defineModule({
-      id: "rust.platform.kilo-code-driver.config",
-      kind: "rust-platform",
-      summary: "Kilo Code absolute-workspace and explicit turn settings",
-      inputs: [
-        "crates/licoup-native/src/platform/kilo_code_driver/config.rs",
-        "crates/licoup-native/src/platform/kilo_code_driver/tests/config.rs",
-      ],
-      command: rustLayer("platform::kilo_code_driver::tests::config::"),
-    }),
-  defineModule({
       id: "rust.platform.kilo-code-driver.execution",
       kind: "rust-platform",
-      summary: "Kilo Code capability-aware serve execution without session fallback",
+      summary: "Kilo Code capability-aware serve execution composed over the package",
       inputs: [
         "crates/licoup-native/src/platform/kilo_code_driver/execution.rs",
         "crates/licoup-native/src/platform/kilo_code_driver/tests/execution.rs",
@@ -1073,32 +1065,12 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.kilo-code-driver.probe",
       kind: "rust-platform",
-      summary: "Kilo Code serve capability probe",
+      summary: "Kilo Code serve capability probe composed over the package",
       inputs: [
         "crates/licoup-native/src/platform/kilo_code_driver/probe.rs",
         "crates/licoup-native/src/platform/kilo_code_driver/tests/probe.rs",
       ],
       command: rustLayer("platform::kilo_code_driver::tests::probe::"),
-    }),
-  defineModule({
-      id: "rust.platform.kilo-code-driver.projection",
-      kind: "rust-platform",
-      summary: "Kilo Code assistant chunks, settings, and capability projection",
-      inputs: [
-        "crates/licoup-native/src/platform/kilo_code_driver/projection.rs",
-        "crates/licoup-native/src/platform/kilo_code_driver/tests/projection.rs",
-      ],
-      command: rustLayer("platform::kilo_code_driver::tests::projection::"),
-    }),
-  defineModule({
-      id: "rust.platform.kilo-code-driver.transport",
-      kind: "rust-platform",
-      summary: "Deadline-bounded loopback Kilo Code HTTP/SSE turn transport",
-      inputs: [
-        "crates/licoup-native/src/platform/kilo_code_driver/transport.rs",
-        "crates/licoup-native/src/platform/kilo_code_driver/tests/transport.rs",
-      ],
-      command: rustLayer("platform::kilo_code_driver::tests::transport::"),
     }),
   defineModule({
       id: "rust.platform.opencode-serve.composition",
@@ -1131,34 +1103,52 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::opencode_serve::tests::events::"),
     }),
   defineModule({
-      id: "rust.platform.kilo-code-serve.composition",
+      id: "rust.platform.kilo-code-host",
       kind: "rust-platform",
-      summary: "Kilo Code private serve facade and driver transport surface",
+      summary: "Client answer for the Kilo Code package ports: serve engine, byte record, admission",
       inputs: [
-        "crates/licoup-native/src/platform/kilo_code_serve.rs",
-        "crates/licoup-native/src/platform/kilo_code_serve/tests/mod.rs",
-        "crates/licoup-native/src/platform/kilo_code_serve/tests/composition.rs",
+        "crates/licoup-native/src/platform/kilo_code_host.rs",
+        "crates/licoup-native/src/platform/kilo_code_driver/tests/host.rs",
       ],
-      command: rustLayer("platform::kilo_code_serve::tests::composition::"),
+      command: rustLayer("platform::kilo_code_driver::tests::host::"),
     }),
   defineModule({
-      id: "rust.platform.kilo-code-serve.policy",
+      id: "rust.platform.kilo-code-package.parser",
       kind: "rust-platform",
-      summary: "Kilo Code ports, executable, launch shape, and static error policy",
+      summary: "Kilo Code serve protocol reader and event parser, in the package that owns them",
       inputs: [
-        "crates/licoup-native/src/platform/kilo_code_serve/policy.rs",
-        "crates/licoup-native/src/platform/kilo_code_serve/tests/policy.rs",
+                "crates/licoup-agent-kilo/src/parser/**",
       ],
-      command: rustLayer("platform::kilo_code_serve::tests::policy::"),
+      command: kiloAgentPackageLayer("parser::"),
     }),
   defineModule({
-      id: "rust.platform.kilo-code-serve.events",
+      id: "rust.platform.kilo-code-package.driver",
       kind: "rust-platform",
-      summary: "Kilo Code exact-session allowlisted SSE event projection",
+      summary: "Kilo Code turn configuration, request shaping, projection and capability probe",
       inputs: [
-        "crates/licoup-native/src/platform/kilo_code_serve/tests/events.rs",
+                "crates/licoup-agent-kilo/src/driver/**",
       ],
-      command: rustLayer("platform::kilo_code_serve::tests::events::"),
+      command: kiloAgentPackageLayer("driver::"),
+    }),
+  defineModule({
+      id: "rust.platform.kilo-code-package.registration",
+      kind: "rust-platform",
+      summary: "Kilo Code adapter registration, replay arm and package claims",
+      inputs: [
+        "crates/licoup-agent-kilo/src/registration.rs",
+                "crates/licoup-agent-kilo/src/replay/**",
+        "crates/licoup-agent-kilo/src/tests.rs",
+      ],
+      command: kiloAgentPackageLayer("registration::"),
+    }),
+  defineModule({
+      id: "rust.platform.kilo-code-package.policy",
+      kind: "rust-platform",
+      summary: "Kilo Code endpoint identity, ports, paths, executable names and failure codes",
+      inputs: [
+        "crates/licoup-agent-kilo/src/policy.rs",
+      ],
+      command: kiloAgentPackageLayer("policy::"),
     }),
   defineModule({
       id: "rust.platform.openclaw-gateway.composition",
@@ -1415,6 +1405,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "OpenClaw result, effective setting, and capability projections",
       inputs: [
         "crates/licoup-native/src/platform/openclaw_driver/model.rs",
+        "crates/licoup-agent-openclaw/src/gateway_acp/model.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/model.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::model::"),
@@ -1425,6 +1416,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "OpenClaw static redacted failures and minimum identifier binding",
       inputs: [
         "crates/licoup-native/src/platform/openclaw_driver/errors.rs",
+        "crates/licoup-agent-openclaw/src/gateway_acp/errors.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/errors.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::errors::"),
@@ -1435,6 +1427,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "OpenClaw request, session, private-value, and optional MCP registration validation",
       inputs: [
         "crates/licoup-native/src/platform/openclaw_driver/params.rs",
+        "crates/licoup-agent-openclaw/src/gateway_acp/params.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/params.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::params::"),
@@ -1444,7 +1437,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "OpenClaw ACP JSON-line codec and request identifier matching",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/codec.rs",
+        "crates/licoup-native/src/platform/openclaw_driver/codec.rs",
+        "crates/licoup-agent-openclaw/src/parser/codec.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/codec.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::codec::"),
@@ -1455,6 +1449,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "OpenClaw exact Gateway continuation with bounded MCP server initialization options",
       inputs: [
         "crates/licoup-native/src/platform/openclaw_driver/continuity.rs",
+        "crates/licoup-agent-openclaw/src/gateway_acp/continuity.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/continuity.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::continuity::"),
@@ -1464,7 +1459,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "OpenClaw allowlisted event projection without metadata, tool input, or thought leakage",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/events.rs",
+        "crates/licoup-native/src/platform/openclaw_driver/events.rs",
+        "crates/licoup-agent-openclaw/src/parser/events.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/events.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::events::"),
@@ -1474,8 +1470,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "OpenClaw ACP state machine, exact session association, mode, and prompt completion",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/protocol.rs",
+        "crates/licoup-agent-openclaw/src/parser.rs",
+        "crates/licoup-agent-openclaw/src/parser/protocol.rs",
+        "crates/licoup-native/src/platform/openclaw_driver/protocol.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/protocol.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::protocol::"),
@@ -1485,8 +1482,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "OpenClaw permission requests fail closed into explicit user interaction",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/protocol.rs",
+        "crates/licoup-agent-openclaw/src/parser.rs",
+        "crates/licoup-agent-openclaw/src/parser/protocol.rs",
+        "crates/licoup-native/src/platform/openclaw_driver/protocol.rs",
         "crates/licoup-native/src/platform/openclaw_driver/tests/interaction.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::interaction::"),
@@ -1536,9 +1534,10 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Recorded Gateway ACP transcript replay arm for the openclaw protocol state machine",
       inputs: [
-        "crates/licoup-native/src/platform/openclaw_driver/replay.rs",
+        "crates/licoup-agent-openclaw/src/replay.rs",
+        "crates/licoup-agent-adapter-sdk/src/replay/mod.rs",
       ],
-      command: rustLayer("platform::native_agent_parser::replay::"),
+      command: openClawAgentPackageLayer("replay::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.composition",
@@ -2067,6 +2066,16 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::runtime_adapters::tests::probe::"),
     }),
   defineModule({
+      id: "rust.platform.diagnostics-observation",
+      kind: "rust-platform",
+      summary: "Bounded switchable observation probe: segmented records, correlation ids and counted drops",
+      inputs: [
+        "crates/licoup-native/src/platform/diagnostics/mod.rs",
+        "crates/licoup-native/src/platform/diagnostics/observation/**",
+      ],
+      command: rustLayer("platform::diagnostics::observation::"),
+    }),
+  defineModule({
       id: "rust.platform",
       kind: "rust-platform",
       summary: "Remaining unsplit native platform adapters and shared utilities",
@@ -2090,8 +2099,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-agent-antigravity/src/registration.rs",
         "crates/licoup-agent-antigravity/src/replay.rs",
         "crates/licoup-agent-deepseek/src/parser.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/kilo_code.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/lico_agent.rs",
+        "crates/licoup-agent-lico-agent/src/parser.rs",
+        "crates/licoup-agent-lico-agent/src/session.rs",
         "crates/licoup-native/src/platform/native_agent_parser/adapters/mod.rs",
         "crates/licoup-native/src/platform/native_agent_parser/adapters/opencode.rs",
         "crates/licoup-native/src/platform/native_agent_parser/mod.rs",
@@ -2451,8 +2460,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.extension-resource-lifecycle",
       kind: "rust-platform",
-      summary: "Ordinary resource selection, guarded package-generation replacement, and deterministic system-default fallback",
+      summary: "Ordinary resource selection, guarded package-generation replacement, published mount plan, and deterministic system-default fallback",
       inputs: [
+        "crates/licoup-native/src/platform/extension_packages/mount_plan.rs",
         "crates/licoup-native/src/platform/extension_packages/resources.rs",
         "crates/licoup-extension-contracts/src/manifest.rs",
       ],

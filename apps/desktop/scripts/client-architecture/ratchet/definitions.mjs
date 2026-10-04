@@ -79,7 +79,7 @@ export const OPTIONAL_CAPABILITY_CRATES = Object.freeze({
   "org.licoland.feature.mcp": Object.freeze({
     crates: Object.freeze(["licoup-mcp"]),
     evidence:
-      "crates/licoup-mcp builds the lico-subagent-mcp binary bundled by the subagents-mcp packaging module.",
+      "crates/licoup-mcp builds the lico-subagent-mcp binary the release stage stages into the org.licoland.feature.mcp package; no enabled packaging module bundles it.",
   }),
   "org.licoland.adapter.generic": Object.freeze({
     crates: Object.freeze([]),
@@ -126,7 +126,7 @@ export const OPTIONAL_CAPABILITY_ARTIFACTS = Object.freeze({
   "org.licoland.feature.mcp": Object.freeze({
     artifacts: Object.freeze(["lico-subagent-mcp"]),
     evidence:
-      "crates/licoup-mcp builds lico-subagent-mcp; subagents-mcp bundles it and codex-plugin embeds it.",
+      "crates/licoup-mcp builds lico-subagent-mcp; the release stage stages it into the org.licoland.feature.mcp package payload and no enabled packaging module bundles it.",
   }),
   "org.licoland.adapter.generic": Object.freeze({
     artifacts: Object.freeze([]),
@@ -161,7 +161,12 @@ export const OPTIONAL_CAPABILITY_ARTIFACTS = Object.freeze({
  */
 export const OPTIONAL_CAPABILITY_BUNDLES = Object.freeze({
   "org.licoland.feature.analytics": Object.freeze([]),
-  "org.licoland.feature.mcp": Object.freeze(["subagents-mcp", "codex-plugin"]),
+  // The minimal client ships no MCP payload: the subagents-mcp module is
+  // disabled, and the Codex plugin no longer embeds a second copy of the
+  // connector. The service arrives only as the independently released
+  // org.licoland.feature.mcp package, so an empty bundle list is the truth a
+  // future re-bundling must re-declare and review.
+  "org.licoland.feature.mcp": Object.freeze([]),
   "org.licoland.adapter.generic": Object.freeze([]),
   "org.licoland.provider.compat": Object.freeze([]),
   "org.licoland.feature.gateway": Object.freeze(["gateway-sidecar"]),

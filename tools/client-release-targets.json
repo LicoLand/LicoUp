@@ -59,9 +59,19 @@
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.antigravity.licopkg"
         },
         {
+          "role": "kilo-adapter-package-payload",
+          "file": "LicoUp-package-org.licoland.adapter.kilo.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.kilo.licopkg"
+        },
+        {
           "role": "codex-adapter-package-payload",
           "file": "LicoUp-package-org.licoland.adapter.codex.licopkg",
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.codex.licopkg"
+        },
+        {
+          "role": "openclaw-adapter-package-payload",
+          "file": "LicoUp-package-org.licoland.adapter.openclaw.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.openclaw.licopkg"
         },
         {
           "role": "copilot-adapter-package-payload",
@@ -97,6 +107,16 @@
           "role": "kimi-adapter-package-payload",
           "file": "LicoUp-package-org.licoland.adapter.kimi.licopkg",
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.kimi.licopkg"
+        },
+        {
+          "role": "hermes-adapter-package-payload",
+          "file": "LicoUp-package-org.licoland.adapter.hermes.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.hermes.licopkg"
+        },
+        {
+          "role": "lico-agent-adapter-package-payload",
+          "file": "LicoUp-package-org.licoland.adapter.lico-agent.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.lico-agent.licopkg"
         },
         {
           "role": "mcp-package-payload",

@@ -6,6 +6,7 @@ import 'package:licoup/src/composition/features/settings/settings_feature_compos
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
 import 'package:licoup/src/presentation/settings/settings_effect.dart';
@@ -121,6 +122,12 @@ final class _SettingsPreferencesRepository
     if (failMotionWrite) throw StateError('synthetic_write_failure');
     return value = value.copyWith(loadingEffectId: id);
   }
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) async => value = value.withResourceSelection(kind, selection);
 
   @override
   Future<PresentationPreferences> setAppearancePreset(String id) async =>

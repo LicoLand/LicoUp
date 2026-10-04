@@ -1,4 +1,55 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+/// The font preferences that name no family.
+///
+/// They ask for the platform's own interface face, which is what a first launch
+/// and an offline client render with: the operating system already has these
+/// glyphs, so no bundled font has to be present.
+abstract final class LicoFontPreference {
+  /// The default preference: the platform's own interface face.
+  static const String system = 'system';
+
+  /// The persisted spelling of the same preference.
+  static const String systemDefault = 'system-default';
+
+  static const List<String> values = <String>[system, systemDefault];
+
+  /// Whether [value] names a font family to prefer over the platform's.
+  static bool namesFamily(String value) {
+    final normalized = value.trim().toLowerCase();
+    return normalized.isNotEmpty && !values.contains(normalized);
+  }
+}
+
+/// The family chain one font preference resolves to.
+final class LicoFontSelection {
+  const LicoFontSelection({required this.family, required this.fallback});
+
+  /// The family the interface asks for first.
+  final String family;
+
+  /// The families consulted after it, most platform-specific first.
+  final List<String> fallback;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LicoFontSelection &&
+          other.family == family &&
+          other.fallback.length == fallback.length &&
+          _sameFamilies(other.fallback, fallback);
+
+  @override
+  int get hashCode => Object.hash(family, Object.hashAll(fallback));
+
+  static bool _sameFamilies(List<String> left, List<String> right) {
+    for (var index = 0; index < left.length; index += 1) {
+      if (left[index] != right[index]) return false;
+    }
+    return true;
+  }
+}
 
 /// The client's typographic system.
 ///
@@ -11,20 +62,52 @@ import 'package:flutter/material.dart';
 /// 2. **Numbers that change in place use [numeric].** Proportional digits
 ///    reflow as values update, which makes charts, token counters, byte sizes,
 ///    and timestamps visibly jitter.
+///
+/// The interface baseline is the platform's own family. A client that has
+/// installed no font resource — a first launch, or any launch without network —
+/// renders every role from faces the operating system already owns, and the
+/// per-context Chinese faces head the chain so Chinese interface text has a
+/// platform owner before the bundled family is consulted.
 abstract final class LicoTypography {
-  /// Families are bundled with their SIL Open Font License.
-  static const String sansFamily = 'Geist Sans';
+  /// The bundled monospace family. It ships with the client and carries the
+  /// commands, paths, identifiers and numeric readouts.
   static const String monoFamily = 'Geist Mono';
 
-  /// Fallback chain for the UI family.
+  /// The bundled interface family.
   ///
-  /// Bundled Noto Sans SC owns Chinese text. Platform families only supply
-  /// glyphs outside the bundled font coverage.
+  /// It is no longer the baseline: a preference that names it makes it the
+  /// first family, and it stays in [sansFallback] to cover glyphs no platform
+  /// face supplies.
+  static const String bundledSansFamily = 'Geist Sans';
+
+  /// The interface family chain, most platform-specific first.
+  ///
+  /// The head of each group is the family the owning platform renders its own
+  /// interface with. The bundled face comes last, so nothing bundled is
+  /// required for the interface to render.
   static const List<String> sansFallback = <String>[
-    'Noto Sans SC',
+    // macOS and iOS, then their Chinese faces.
+    '.AppleSystemUIFont',
+    'SF Pro Text',
+    'SF Pro Display',
+    'Helvetica Neue',
     'PingFang SC',
+    'Hiragino Sans GB',
+    // Windows, then its Chinese face.
+    'Segoe UI Variable Text',
+    'Segoe UI',
     'Microsoft YaHei',
+    // Android, Fuchsia and Linux, then their Chinese faces.
+    'Roboto',
+    'Ubuntu',
+    'Cantarell',
+    'Noto Sans',
     'Noto Sans CJK SC',
+    'Source Han Sans SC',
+    'DejaVu Sans',
+    // Glyphs no platform face supplies still resolve inside the client.
+    bundledSansFamily,
+    'sans-serif',
   ];
 
   /// Fallback chain for monospace. Ends at the generic family so a platform
@@ -42,6 +125,40 @@ abstract final class LicoTypography {
   static const List<FontFeature> tabular = <FontFeature>[
     FontFeature.tabularFigures(),
   ];
+
+  /// The interface family the platform itself owns.
+  static String sansFamilyFor(TargetPlatform platform) => switch (platform) {
+    TargetPlatform.macOS || TargetPlatform.iOS => '.AppleSystemUIFont',
+    TargetPlatform.windows => 'Segoe UI Variable Text',
+    TargetPlatform.android || TargetPlatform.fuchsia => 'Roboto',
+    TargetPlatform.linux => 'Ubuntu',
+  };
+
+  /// The interface family of the platform this build is running on.
+  static String get platformSansFamily => sansFamilyFor(defaultTargetPlatform);
+
+  /// Resolves an appearance font preference into the family chain a theme uses.
+  ///
+  /// A preference that names no family keeps the preset's declared family, and
+  /// when the preset declares none either — which is what the built-in presets
+  /// do — the platform's own face heads the chain. A named preference puts that
+  /// family first and keeps the platform chain behind it, so a family that is
+  /// not installed on this machine still renders in the system face instead of
+  /// an empty style.
+  static LicoFontSelection resolveFont(
+    String preference, {
+    String? presetFamily,
+    TargetPlatform? platform,
+  }) {
+    final resolvedPlatform = platform ?? defaultTargetPlatform;
+    final named = LicoFontPreference.namesFamily(preference)
+        ? preference.trim()
+        : presetFamily;
+    return LicoFontSelection(
+      family: named ?? sansFamilyFor(resolvedPlatform),
+      fallback: sansFallback,
+    );
+  }
 
   /// The monospace style for paths, commands, ids, and code.
   ///
@@ -72,9 +189,9 @@ abstract final class LicoTypography {
   /// ones the sidebar, palette, and menu group labels converged on; they used
   /// to be restated inline at every call site with drifting weight and
   /// tracking.
-  static TextStyle eyebrow({required Color color}) {
+  static TextStyle eyebrow({required Color color, String? fontFamily}) {
     return TextStyle(
-      fontFamily: sansFamily,
+      fontFamily: fontFamily ?? platformSansFamily,
       fontFamilyFallback: sansFallback,
       color: color,
       fontSize: 11,
@@ -89,9 +206,9 @@ abstract final class LicoTypography {
   /// Action labels identify commands and navigation controls, not content
   /// headings. Keeping this role separate prevents a new text action from
   /// inheriting title emphasis merely because it occupies a prominent row.
-  static TextStyle actionLabel({required Color color}) {
+  static TextStyle actionLabel({required Color color, String? fontFamily}) {
     return TextStyle(
-      fontFamily: sansFamily,
+      fontFamily: fontFamily ?? platformSansFamily,
       fontFamilyFallback: sansFallback,
       color: color,
       fontSize: 13,
@@ -102,9 +219,13 @@ abstract final class LicoTypography {
   }
 
   /// The style for a large metric value in a monitoring tile.
-  static TextStyle metric({required Color color, double fontSize = 24}) {
+  static TextStyle metric({
+    required Color color,
+    double fontSize = 24,
+    String? fontFamily,
+  }) {
     return TextStyle(
-      fontFamily: sansFamily,
+      fontFamily: fontFamily ?? platformSansFamily,
       fontFamilyFallback: sansFallback,
       color: color,
       fontSize: fontSize,
@@ -115,7 +236,7 @@ abstract final class LicoTypography {
     );
   }
 
-  /// Builds the application text theme.
+  /// Builds the application text theme from one resolved font family.
   ///
   /// The scale steps by roughly 1.2 between adjacent levels
   /// (10 → 11 → 12 → 13 → 14 → 15 → 18 → 20 → 24 → 28). Negative tracking on
@@ -125,7 +246,8 @@ abstract final class LicoTypography {
     required Color text,
     required Color textSecondary,
     required Color textMuted,
-    String? fontFamily = sansFamily,
+    required String fontFamily,
+    List<String> fontFamilyFallback = sansFallback,
   }) {
     TextStyle style(
       double size,
@@ -137,7 +259,7 @@ abstract final class LicoTypography {
     }) {
       return TextStyle(
         fontFamily: fontFamily,
-        fontFamilyFallback: sansFallback,
+        fontFamilyFallback: fontFamilyFallback,
         fontSize: size,
         fontWeight: weight,
         color: color,

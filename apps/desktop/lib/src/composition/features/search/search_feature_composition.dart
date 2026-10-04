@@ -194,7 +194,14 @@ final class _SearchCatalog {
   Map<String, Future<void> Function()> _actions = const {};
 
   SearchCatalogEntries read(String localeCode) {
-    final strings = LicoStrings.forLocale(Locale(localeCode));
+    final strings = LicoStrings.forLocale(
+      Locale(localeCode),
+      // The catalogue indexes the labels the interface renders, so an installed
+      // language resource reaches search as well as the sidebar.
+      resources: LicoStringResources.installed(
+        _controller.localeResourceOwner.packs,
+      ),
+    );
     final resolvedFeatures =
         features ??
         buildGlobalSearchFeatures(

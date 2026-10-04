@@ -68,7 +68,9 @@
       "payloadRoles": [
         "claude-code-adapter-package-payload",
         "antigravity-adapter-package-payload",
+        "kilo-adapter-package-payload",
         "codex-adapter-package-payload",
+        "openclaw-adapter-package-payload",
         "copilot-adapter-package-payload",
         "appearance-converter-package-payload",
         "analytics-package-payload",
@@ -76,6 +78,8 @@
         "cursor-adapter-package-payload",
         "deepseek-adapter-package-payload",
         "kimi-adapter-package-payload",
+        "hermes-adapter-package-payload",
+        "lico-agent-adapter-package-payload",
         "mcp-package-payload",
         "package-payload"
       ],

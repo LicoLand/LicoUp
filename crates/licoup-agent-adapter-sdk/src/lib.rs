@@ -38,6 +38,7 @@ pub mod port;
 mod reconciliation;
 pub mod registry;
 pub mod replay;
+pub mod serve;
 pub mod skill_invocation_projection;
 
 pub use lifecycle::{LifecycleStage, Transition, TransitionReducer};

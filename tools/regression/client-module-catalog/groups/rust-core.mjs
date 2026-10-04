@@ -31,8 +31,11 @@ export const RUST_CORE_MODULES = Object.freeze([
   defineModule({
       id: "rust.core.mcp-server",
       kind: "rust-core",
-      summary: "Independent MCP protocol, caller admission, and public CLI process adapter",
-      inputs: ["crates/licoup-mcp/**"],
+      summary: "Independent MCP protocol, caller admission, the staged package entry, and public CLI process adapter",
+      inputs: [
+        "crates/licoup-mcp/**",
+        "tools/distribution/client-release-package-stage.mjs",
+      ],
       command: command(
         "cargo",
         ["test", "--manifest-path", "crates/licoup-mcp/Cargo.toml"],
@@ -57,6 +60,41 @@ export const RUST_CORE_MODULES = Object.freeze([
     "Kimi Code adapter package program, ACP frame dialect, registration, and replay arm"),
   agentPackageCrateModule("copilot",
     "Copilot adapter package program, ACP frame dialect, registration, and replay corpus"),
+  agentPackageCrateModule("hermes",
+    "Hermes adapter package program, persistent ACP frame dialect, normalized transitions, registration, and replay arm"),
+  defineModule({
+      id: "rust.core.agent-kilo-package",
+      kind: "rust-core",
+      summary: "Kilo Code adapter package program, serve protocol, endpoint policy, and replay corpus",
+      inputs: ["crates/licoup-agent-kilo/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-kilo/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "rust.core.agent-lico-agent-package",
+      kind: "rust-core",
+      summary: "Lico Agent adapter package program, stdio JSONL RPC protocol, session layout, registration, and replay arm",
+      inputs: ["crates/licoup-agent-lico-agent/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-lico-agent/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "rust.core.agent-openclaw-package",
+      kind: "rust-core",
+      summary: "OpenClaw adapter package program, Gateway ACP protocol, registration, and replay corpus",
+      inputs: ["crates/licoup-agent-openclaw/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-openclaw/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
   defineModule({
       id: "rust.core.acp.composition",
       kind: "rust-core",
