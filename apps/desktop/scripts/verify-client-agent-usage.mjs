@@ -128,12 +128,20 @@ const usagePanel = await readJoinedText([
 ]);
 const clientShell = await readText("apps/desktop/lib/src/frontend/shell/client_shell.dart");
 const bindingShellRenderer = await readText(bindingShellRendererPath);
-/// The destination dispatch lives in its own owner beside the renderer; the
-/// monitoring route is still mounted by the binding-renderer path, so the
-/// requirement is read across both files rather than relaxed to a directory.
+/// The destination mount lives in the client's feature mount catalogue: the
+/// declarations decide which destinations exist, the catalogue pairs each one
+/// with its surface, and the renderer's resolver only forwards. The monitoring
+/// route is therefore read from the catalogue and the resolver that answers it,
+/// not from a per-destination case in the renderer.
 const shellDestinationsPath =
   "apps/desktop/lib/src/composition/binding_shell_renderer/shell_destinations.dart";
 const shellDestinations = await readText(shellDestinationsPath);
+const featureCataloguePath =
+  "apps/desktop/lib/src/composition/client_feature_catalogue.dart";
+const featureCatalogue = await readText(featureCataloguePath);
+const featureMountsPath =
+  "apps/desktop/lib/src/composition/client_feature_mounts.dart";
+const featureMounts = await readText(featureMountsPath);
 const flutterProductionSources = new Map(
   await Promise.all(
     (await collectSourceFiles("apps/desktop/lib", ".dart")).map(
@@ -381,14 +389,19 @@ assertIncludes(
 const usagePanelMountedByComposition =
   bindingShellRenderer.includes("class BindingShellRenderer") &&
   bindingShellRenderer.includes("shell_destinations.dart") &&
-  shellDestinations.includes(
+  featureMounts.includes("mountDestinationOf(ClientSection.monitoring)") &&
+  featureCatalogue.includes(
     "frontend/features/agents/ui/agent_usage_panel.dart",
   ) &&
-  /case ClientSection\.monitoring:\s*(?:if \(!installed\) return absentSurface;\s*)?return AgentUsagePanel\(\s*binding:\s*(?:_monitoring|monitoring)\s*,?\s*\)/u
-    .test(shellDestinations);
+  /id: ClientFeatureMounts\.monitoring\.id,[\s\S]*?AgentUsagePanel\(\s*binding:\s*surface\.monitoring\s*,?\s*\)/u
+    .test(featureCatalogue) &&
+  /// The renderer's resolver names no destination of its own: the monitoring
+  /// route reaches its panel through the mount catalogue it answers.
+  !/\bswitch\s*\(\s*destination\s*\)/u.test(shellDestinations) &&
+  !/\bcase\s+ClientSection\./u.test(shellDestinations);
 assert(
   usagePanelMountedByComposition,
-  "desktop monitoring route must mount the dedicated local-token usage panel through the binding renderer",
+  "desktop monitoring route must mount the dedicated local-token usage panel through the feature mount catalogue",
 );
 
 const clientShellDelegatesFeatureConstruction =
@@ -413,7 +426,7 @@ const usagePanelReferencePaths = [...flutterProductionSources]
   .map(([relativePath]) => relativePath);
 const expectedUsagePanelReferencePaths = new Set([
   agentUsagePanelPath,
-  shellDestinationsPath,
+  featureCataloguePath,
 ]);
 const usagePanelConstructionIsCompositionOnly =
   usagePanelReferencePaths.length === expectedUsagePanelReferencePaths.size &&

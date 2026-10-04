@@ -7,6 +7,7 @@ import 'package:presentation_contract/presentation_contract.dart';
 import 'package:licoup/src/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/composition/binding_shell_renderer/shell_destinations.dart';
 import 'package:licoup/src/composition/client_composition_set.dart';
+import 'package:licoup/src/composition/client_feature_catalogue.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/client_update_models.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';

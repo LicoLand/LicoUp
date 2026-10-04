@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/binding_shell_renderer/shell_destinations.dart';
 import 'package:licoup/src/composition/client_app_composition.dart';
 import 'package:licoup/src/composition/client_composition_set.dart';
+import 'package:licoup/src/composition/client_feature_mounts.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel.dart';
@@ -16,10 +18,28 @@ import 'package:licoup/src/frontend/features/settings/ui/settings_panel.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
 import 'package:licoup/src/presentation/shell/shell_intent.dart';
 
-/// The destination owner is the seam this Task moved the section switch into.
-/// Every case drives [ShellDestinations.build] directly, so each assertion is
-/// about which surface a declaration produces and never about the layout host
-/// that would eventually mount it.
+/// The resolver answers the mount directory, so every case here drives
+/// [ShellDestinations.build] with a declaration and asserts only which surface
+/// that declaration produces. The expected surface of each destination is a
+/// table of expectations, never a dispatch the resolver could fall back to.
+const List<ClientSection> _optionalDestinations = <ClientSection>[
+  ClientSection.skillHub,
+  ClientSection.pluginManagement,
+  ClientSection.mobileRelay,
+  ClientSection.models,
+  ClientSection.settings,
+  ClientSection.agentHub,
+];
+
+/// The declaration that mounts exactly the features named by [enabled].
+ClientCompositionSet _declaration(Iterable<FeatureMountId> enabled) {
+  final mounted = Set<FeatureMountId>.of(enabled);
+  return ClientCompositionSet.fromRequests(<FeatureMountRequest>[
+    for (final request in ClientFeatureMounts.full)
+      mounted.contains(request.id) ? request : request.unmounted(),
+  ]);
+}
+
 void main() {
   testWidgets('an undeclared capability renders no surface at all', (
     tester,
@@ -40,31 +60,25 @@ void main() {
         destination,
         agentsHomeKey: destinations.createAgentsHomeKey(),
       );
-      switch (destination) {
-        case ClientSection.agents:
-          expect(
-            widget,
-            isA<WorkspaceHomeDirectoryScope>(),
-            reason: 'agents is declared',
-          );
-        case ClientSection.monitoring:
-          expect(widget, isA<AgentUsagePanel>());
-        case ClientSection.skillHub:
-        case ClientSection.pluginManagement:
-        case ClientSection.mobileRelay:
-        case ClientSection.models:
-        case ClientSection.settings:
-        case ClientSection.agentHub:
-          expect(
-            widget,
-            same(ShellDestinations.absentSurface),
-            reason: '$destination has no declared feature',
-          );
+      if (destination == ClientSection.agents) {
+        expect(
+          widget,
+          isA<WorkspaceHomeDirectoryScope>(),
+          reason: 'agents is mounted',
+        );
+      } else if (destination == ClientSection.monitoring) {
+        expect(widget, isA<AgentUsagePanel>());
+      } else {
+        expect(
+          widget,
+          same(ShellDestinations.absentSurface),
+          reason: '$destination has no mounted feature',
+        );
       }
     }
   });
 
-  testWidgets('a declared capability renders exactly its own panel', (
+  testWidgets('a mounted capability renders exactly its own panel', (
     tester,
   ) async {
     final composition = ClientAppComposition(controller: ClientController());
@@ -90,7 +104,7 @@ void main() {
   });
 
   testWidgets(
-    'installing and removing a synthetic capability changes only its mount',
+    'mounting and unmounting a declaration changes only its own destination',
     (tester) async {
       final withoutModels = ClientAppComposition(
         controller: ClientController(),
@@ -98,20 +112,14 @@ void main() {
       );
       final withModels = ClientAppComposition(
         controller: ClientController(),
-        compositionSet: const ClientCompositionSet(
-          agents: true,
-          conversation: true,
-          targets: true,
-          chrome: true,
-          monitoring: true,
-          agentHub: false,
-          mobileRelay: false,
-          models: true,
-          pluginManagement: false,
-          search: false,
-          settings: false,
-          skillHub: false,
-        ),
+        compositionSet: _declaration(<FeatureMountId>{
+          ClientFeatureMounts.agents.id,
+          ClientFeatureMounts.conversation.id,
+          ClientFeatureMounts.targets.id,
+          ClientFeatureMounts.chrome.id,
+          ClientFeatureMounts.monitoring.id,
+          ClientFeatureMounts.models.id,
+        }),
       );
       addTearDown(withoutModels.dispose);
       addTearDown(withModels.dispose);
@@ -126,9 +134,19 @@ void main() {
             agentsHomeKey: composition.shellDestinations.createAgentsHomeKey(),
           );
 
-      // Removing the capability: the declaration alone reports it absent, so
-      // the destination projects no surface and every other mount is intact.
-      expect(withoutModels.compositionSet.models, isFalse);
+      // The minimum declaration leaves the models mount unmounted: the entry is
+      // still declared, and the phase alone decides that it contributes
+      // nothing.
+      expect(
+        withoutModels.compositionSet.phaseOf(ClientFeatureMounts.models.id),
+        FeatureMountPhase.unmounted,
+      );
+      expect(
+        withoutModels.compositionSet.mounts.entryFor(
+          ClientFeatureMounts.models.id,
+        ),
+        isNotNull,
+      );
       expect(
         withoutModels.mountedDestinations.isMounted(ClientSection.models),
         isFalse,
@@ -146,9 +164,12 @@ void main() {
         isA<AgentUsagePanel>(),
       );
 
-      // Installing it: the capability changes its own declaration field, its
-      // own binding and its own destination, and nothing else.
-      expect(withModels.compositionSet.models, isTrue);
+      // Enabling it: the mount changes its own phase, its own binding and its
+      // own destination, and nothing else.
+      expect(
+        withModels.compositionSet.phaseOf(ClientFeatureMounts.models.id),
+        FeatureMountPhase.enabled,
+      );
       expect(
         withModels.mountedDestinations.isMounted(ClientSection.models),
         isTrue,
@@ -159,13 +180,8 @@ void main() {
         isA<WorkspaceHomeDirectoryScope>(),
         reason: 'the mount that was present before is still present',
       );
-      for (final section in const [
-        ClientSection.skillHub,
-        ClientSection.pluginManagement,
-        ClientSection.mobileRelay,
-        ClientSection.settings,
-        ClientSection.agentHub,
-      ]) {
+      for (final section in _optionalDestinations) {
+        if (section == ClientSection.models) continue;
         expect(
           surface(withModels, section),
           same(ShellDestinations.absentSurface),
@@ -175,7 +191,7 @@ void main() {
     },
   );
 
-  testWidgets('the shell navigation plane reports the absent capabilities', (
+  testWidgets('the shell navigation plane reports the unmounted capabilities', (
     tester,
   ) async {
     final composition = ClientAppComposition(
@@ -191,34 +207,30 @@ void main() {
     ]);
     expect(navigation.destination, ClientSection.agents);
     expect(navigation.recoveryDestination, isNull);
-    expect(navigation.unavailable, const [
-      ClientSection.skillHub,
-      ClientSection.pluginManagement,
-      ClientSection.mobileRelay,
-      ClientSection.models,
-      ClientSection.settings,
-      ClientSection.agentHub,
-    ]);
+    expect(navigation.unavailable, _optionalDestinations);
   });
 
-  test('a restored view naming an absent capability recovers to a mount', () {
-    final composition = ClientAppComposition(
-      controller: ClientController(),
-      compositionSet: ClientCompositionSet.minimum,
-    );
-    addTearDown(composition.dispose);
+  test(
+    'a restored view naming an unmounted capability recovers to a mount',
+    () {
+      final composition = ClientAppComposition(
+        controller: ClientController(),
+        compositionSet: ClientCompositionSet.minimum,
+      );
+      addTearDown(composition.dispose);
 
-    composition.binding.intents.send(
-      const SelectShellDestination(ClientSection.settings),
-    );
+      composition.binding.intents.send(
+        const SelectShellDestination(ClientSection.settings),
+      );
 
-    final navigation = composition.binding.navigation.current;
-    expect(navigation.destination, ClientSection.agents);
-    expect(navigation.recoveryDestination, ClientSection.agents);
-    expect(
-      navigation.destinations,
-      isNot(contains(ClientSection.settings)),
-      reason: 'an absent capability is never offered as a selection',
-    );
-  });
+      final navigation = composition.binding.navigation.current;
+      expect(navigation.destination, ClientSection.agents);
+      expect(navigation.recoveryDestination, ClientSection.agents);
+      expect(
+        navigation.destinations,
+        isNot(contains(ClientSection.settings)),
+        reason: 'an unmounted capability is never offered as a selection',
+      );
+    },
+  );
 }

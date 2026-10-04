@@ -76,10 +76,11 @@ final class ClientAppComposition {
     ClientController? controller,
     CausalFrameTelemetry? telemetry,
     Stream<bool>? systemReduceMotionChanges,
-    ClientCompositionSet compositionSet = ClientCompositionSet.full,
+    ClientCompositionSet? compositionSet,
     WorkControlGateway workControlGateway =
         const UnavailableWorkControlGateway(),
   }) {
+    final resolvedCompositionSet = compositionSet ?? ClientCompositionSet.full;
     final resolvedTelemetry = telemetry ?? createOptInCausalFrameTelemetry();
     final layout = controller == null
         ? BuiltInLayoutComposition()
@@ -105,7 +106,7 @@ final class ClientAppComposition {
       resolvedController,
       layout,
       resolvedTelemetry,
-      compositionSet,
+      resolvedCompositionSet,
       workControlGateway,
       systemReduceMotionChanges ??
           (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS
