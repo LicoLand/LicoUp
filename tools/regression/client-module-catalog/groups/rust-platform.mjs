@@ -2401,6 +2401,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
           "--",
           "tests::rpc::",
           "stdio_rpc::server::conversation::",
+          "stdio_rpc::server::work_control_routing_tests::",
+          "stdio_rpc::request::work_control_routing_tests::",
         ],
         10 * 60_000,
       ),

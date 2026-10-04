@@ -1495,7 +1495,9 @@ test("Hermes driver leaves retain exact tests and complete source ownership", as
 test("native CLI modules retain exact binary-scoped command filters", () => {
   const filters = new Map([
     ["rust.bin.licoup", ["tests::"]],
-    ["rust.bin.licoup.rpc", ["--", "tests::rpc::", "stdio_rpc::server::conversation::"]],
+    ["rust.bin.licoup.rpc", ["--", "tests::rpc::", "stdio_rpc::server::conversation::",
+      "stdio_rpc::server::work_control_routing_tests::",
+      "stdio_rpc::request::work_control_routing_tests::"]],
     ["rust.bin.licoup.core-commands", ["tests::core_commands::"]],
     ["rust.bin.licoup.skill-commands", ["tests::skill_commands::"]],
     ["rust.bin.licoup.parsing", ["tests::parsing::"]],
