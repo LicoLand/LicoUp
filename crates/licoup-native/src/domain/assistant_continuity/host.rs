@@ -42,7 +42,7 @@ use licoup_conversation::continuity::{
     record_qualification_invalidation, record_settlement_applied, record_settlement_pending,
     release_collection_operation, replay_effect, resolve_completion_notice,
     resolve_stored_owner_authority, schedule_goal_due, settlement_applied,
-    update_wake_host_generation,
+    update_wake_host_generation, wake_repeats_recorded_sources,
 };
 use licoup_conversation::{
     Conversation, ConversationStore, DispatchState, EventPartKind, MembershipStatus, PrincipalKind,
@@ -782,7 +782,7 @@ impl ContinuityHost {
                 drain.preserved.push(wake.logical_wake_id);
                 continue;
             }
-            let Some(progress) = read_goal(&self.store, &wake.goal_id)? else {
+            let Some((contract, progress)) = read_goal_bundle(&self.store, &wake.goal_id)? else {
                 drain.preserved.push(wake.logical_wake_id);
                 continue;
             };
@@ -801,6 +801,21 @@ impl ContinuityHost {
                 || progress.control == ContinuityGoalControl::CancelRequested
             {
                 drain.preserved.push(wake.logical_wake_id);
+                continue;
+            }
+            // A Goal that is already waiting re-reads the same sources on every
+            // reminder. Settling that reminder deterministically keeps duplicate
+            // notifications from buying a model call, and leaves the Goal, its
+            // revision and its pause/resume/cancel controls intact.
+            if progress.lifecycle == ContinuityGoalLifecycle::Waiting
+                && wake_repeats_recorded_sources(&wake, &contract, &progress)
+            {
+                if consume_logical_wake(&self.store, &wake.logical_wake_id)? {
+                    drain.consumed.push(wake.logical_wake_id.clone());
+                    drain
+                        .no_ops
+                        .push((wake.logical_wake_id, "dependency-wait".into()));
+                }
                 continue;
             }
             if !self.effects_runtime_ready() {

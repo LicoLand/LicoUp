@@ -1,16 +1,17 @@
 use super::admission::{
-    admit_achieved_required_current_evidence, admit_completion_against_current,
-    admit_completion_transition, admit_goal_progress, admit_idempotency, admit_source_ref,
-    admit_task_child_admission, admit_utf8_span, admit_versions, admit_wake,
-    current_required_evidence,
+    ContinuityCommitmentAdmission, admit_achieved_required_current_evidence,
+    admit_commitment_admission, admit_completion_against_current, admit_completion_transition,
+    admit_goal_progress, admit_idempotency, admit_source_ref, admit_task_child_admission,
+    admit_utf8_span, admit_versions, admit_wake, current_required_evidence,
+    retain_current_criterion_evidence,
 };
 use super::error::{continuity_failure, sql_failure, store_to_continuity};
 use super::generated::{
     CONTINUITY_MAX_PAGE_SIZE, ContinuityAgreement, ContinuityAgreementProposal,
-    ContinuityCandidateIdentity, ContinuityCommitBasis, ContinuityEffectClass,
-    ContinuityEvidenceRef, ContinuityFailure, ContinuityFailureCode, ContinuityFailureStage,
-    ContinuityFollowThroughKind, ContinuityGoalCompletionTransition, ContinuityGoalContract,
-    ContinuityGoalControl, ContinuityGoalLifecycle, ContinuityGoalProgress,
+    ContinuityCandidateIdentity, ContinuityCommitBasis, ContinuityCommitmentProposal,
+    ContinuityEffectClass, ContinuityEvidenceRef, ContinuityFailure, ContinuityFailureCode,
+    ContinuityFailureStage, ContinuityFollowThroughKind, ContinuityGoalCompletionTransition,
+    ContinuityGoalContract, ContinuityGoalControl, ContinuityGoalLifecycle, ContinuityGoalProgress,
     ContinuityInterpretationProposal, ContinuityMatter, ContinuityMatterStatus,
     ContinuityNextAttention, ContinuityParentContextGrant, ContinuityParentGrantBasis,
     ContinuityParentGrantStatus, ContinuitySourceOwnerKind, ContinuitySourceRef,
@@ -298,99 +299,45 @@ fn apply_proposal(
             continue;
         }
         let goal_id = derived_goal_id(proposal, commitment);
-        if let Some((_, progress)) = load_goal(unit, &goal_id)? {
-            if is_terminal(progress.lifecycle) {
-                return Err(continuity_failure(
-                    ContinuityFailureCode::InvalidRequest,
-                    ContinuityFailureStage::ContinuityAdmission,
-                ));
+        let stored = load_goal(unit, &goal_id)?;
+        match admit_commitment_admission(
+            proposal.speech_act,
+            commitment,
+            stored
+                .as_ref()
+                .map(|(contract, progress)| (contract, progress)),
+        )? {
+            // Ordinary conversation, questions and hypothetical material keep
+            // their matter association and admit no durable work.
+            ContinuityCommitmentAdmission::Chat => continue,
+            // The same commitment restated: the stored Goal and its revision
+            // stay untouched, so nothing is duplicated or rewritten.
+            ContinuityCommitmentAdmission::Reuse => continue,
+            ContinuityCommitmentAdmission::Create => {
+                admit_new_goal(
+                    unit,
+                    conversation_id,
+                    proposal,
+                    commitment,
+                    &goal_id,
+                    index,
+                    basis,
+                )?;
             }
-            if suppresses_new_work(progress.control) {
-                return Err(continuity_failure(
-                    ContinuityFailureCode::InvalidRequest,
-                    ContinuityFailureStage::ContinuityAdmission,
-                ));
+            ContinuityCommitmentAdmission::Amend => {
+                let (contract, progress) = stored.ok_or_else(invalid_request)?;
+                amend_stored_goal(
+                    unit,
+                    conversation_id,
+                    proposal,
+                    commitment,
+                    goal_id,
+                    index,
+                    contract,
+                    progress,
+                )?;
             }
         }
-        let matter_id = commitment
-            .matter_id
-            .clone()
-            .or_else(|| {
-                proposal
-                    .matter_associations
-                    .first()
-                    .map(|association| association.matter_id.clone())
-            })
-            .unwrap_or_else(|| new_continuity_id("matter"));
-        let source = proposal
-            .envelope
-            .source_event_refs
-            .first()
-            .cloned()
-            .ok_or_else(|| {
-                continuity_failure(
-                    ContinuityFailureCode::InvalidRequest,
-                    ContinuityFailureStage::ContinuityAdmission,
-                )
-            })?;
-        if load_matter_label(unit, &matter_id)?.is_none() {
-            upsert_matter(
-                unit,
-                &ContinuityMatter {
-                    id: matter_id.clone(),
-                    conversation_id: conversation_id.clone(),
-                    revision: basis.revision + 1,
-                    label: matter_id.clone(),
-                    association_refs: vec![source.clone()],
-                    created_event: source.clone(),
-                    status: ContinuityMatterStatus::Open,
-                },
-            )?;
-        }
-        let contract = ContinuityGoalContract {
-            id: goal_id.clone(),
-            matter_id: matter_id.clone(),
-            source_intent_refs: proposal.envelope.source_event_refs.clone(),
-            contract_revision: 1,
-            expected_result: commitment.expected_result.clone(),
-            criteria: commitment.criteria.clone(),
-            scope_refs: Vec::new(),
-            responsible_role_ref: basis
-                .assistant_membership_id
-                .clone()
-                .unwrap_or_else(|| "role:assistant".into()),
-            resource_envelope_ref: format!("envelope:{goal_id}"),
-            acceptance_method: "goal-evaluation".into(),
-            created_event: source,
-        };
-        let progress = ContinuityGoalProgress {
-            goal_id: goal_id.clone(),
-            revision: 1,
-            lifecycle: ContinuityGoalLifecycle::Active,
-            control: ContinuityGoalControl::Enabled,
-            criterion_evidence_refs: Vec::new(),
-            active_execution_refs: Vec::new(),
-            blockers: Vec::new(),
-            next_attention: Some(ContinuityNextAttention::DispatchableStep {
-                step_ref: format!("step:{goal_id}:{index}"),
-            }),
-            closure_ref: None,
-        };
-        admit_goal_progress(&progress)?;
-        upsert_goal(unit, conversation_id, &contract, &progress)?;
-        let wake = ContinuityWake {
-            logical_wake_id: format!("wake:{goal_id}:{}", progress.revision),
-            goal_id: goal_id.clone(),
-            cause_refs: proposal.envelope.source_event_refs.clone(),
-            due_at: due_from_attention(&progress.next_attention),
-            review_policy: "event-priority".into(),
-            goal_revision: progress.revision,
-            epoch: basis.designation_epoch,
-            host_generation: read_host_generation(unit)?,
-            claim: None,
-            settlement: None,
-        };
-        enqueue_wake(unit, &wake, conversation_id)?;
     }
 
     let mut created_card = false;
@@ -454,9 +401,162 @@ fn apply_proposal(
     Ok(receipt)
 }
 
+/// Admit one new Goal for an explicit ongoing commitment. The matter is created
+/// on first use and the first wake re-engages the Assistant at revision 1.
+fn admit_new_goal(
+    unit: &ContinuityUnitOfWork<'_>,
+    conversation_id: &str,
+    proposal: &ContinuityInterpretationProposal,
+    commitment: &ContinuityCommitmentProposal,
+    goal_id: &str,
+    index: usize,
+    basis: &ContinuityCommitBasis,
+) -> Result<(), ContinuityFailure> {
+    let matter_id = commitment
+        .matter_id
+        .clone()
+        .or_else(|| {
+            proposal
+                .matter_associations
+                .first()
+                .map(|association| association.matter_id.clone())
+        })
+        .unwrap_or_else(|| new_continuity_id("matter"));
+    let source = admitted_intent_source(proposal)?;
+    if load_matter_label(unit, &matter_id)?.is_none() {
+        upsert_matter(
+            unit,
+            &ContinuityMatter {
+                id: matter_id.clone(),
+                conversation_id: conversation_id.to_owned(),
+                revision: basis.revision + 1,
+                label: matter_id.clone(),
+                association_refs: vec![source.clone()],
+                created_event: source.clone(),
+                status: ContinuityMatterStatus::Open,
+            },
+        )?;
+    }
+    let contract = ContinuityGoalContract {
+        id: goal_id.to_owned(),
+        matter_id: matter_id.clone(),
+        source_intent_refs: proposal.envelope.source_event_refs.clone(),
+        contract_revision: 1,
+        expected_result: commitment.expected_result.clone(),
+        criteria: commitment.criteria.clone(),
+        scope_refs: Vec::new(),
+        responsible_role_ref: basis
+            .assistant_membership_id
+            .clone()
+            .unwrap_or_else(|| "role:assistant".into()),
+        resource_envelope_ref: format!("envelope:{goal_id}"),
+        acceptance_method: "goal-evaluation".into(),
+        created_event: source,
+    };
+    let progress = ContinuityGoalProgress {
+        goal_id: goal_id.to_owned(),
+        revision: 1,
+        lifecycle: ContinuityGoalLifecycle::Active,
+        control: ContinuityGoalControl::Enabled,
+        criterion_evidence_refs: Vec::new(),
+        active_execution_refs: Vec::new(),
+        blockers: Vec::new(),
+        next_attention: Some(ContinuityNextAttention::DispatchableStep {
+            step_ref: format!("step:{goal_id}:{index}"),
+        }),
+        closure_ref: None,
+    };
+    admit_goal_progress(&progress)?;
+    upsert_goal(unit, conversation_id, &contract, &progress)?;
+    let wake = goal_wake(unit, proposal, basis, goal_id, &progress, "event-priority")?;
+    enqueue_wake(unit, &wake, conversation_id)?;
+    Ok(())
+}
+
+/// Apply a corrected commitment to the Goal that already owns the identity. The
+/// revision advances monotonically instead of restarting, accumulated control
+/// and in-flight executions survive, and only criteria whose definition is
+/// unchanged keep their evidence. The corrected revision is announced once.
+fn amend_stored_goal(
+    unit: &ContinuityUnitOfWork<'_>,
+    conversation_id: &str,
+    proposal: &ContinuityInterpretationProposal,
+    commitment: &ContinuityCommitmentProposal,
+    goal_id: String,
+    index: usize,
+    contract: ContinuityGoalContract,
+    mut progress: ContinuityGoalProgress,
+) -> Result<(), ContinuityFailure> {
+    let previous_criteria = contract.criteria.clone();
+    let mut contract = contract;
+    contract.contract_revision += 1;
+    contract.source_intent_refs = proposal.envelope.source_event_refs.clone();
+    contract.expected_result = commitment.expected_result.clone();
+    contract.criteria = commitment.criteria.clone();
+    progress.criterion_evidence_refs = retain_current_criterion_evidence(
+        &previous_criteria,
+        &commitment.criteria,
+        &progress.criterion_evidence_refs,
+    );
+    progress.revision += 1;
+    if progress.active_execution_refs.is_empty() {
+        progress.next_attention = Some(ContinuityNextAttention::DispatchableStep {
+            step_ref: format!("step:{goal_id}:{index}"),
+        });
+    }
+    admit_goal_progress(&progress)?;
+    upsert_goal(unit, conversation_id, &contract, &progress)?;
+    let basis = unit
+        .read_commit_basis(conversation_id)
+        .map_err(store_to_continuity)?;
+    let wake = goal_wake(unit, proposal, &basis, &goal_id, &progress, "correction-priority")?;
+    enqueue_wake(unit, &wake, conversation_id)?;
+    Ok(())
+}
+
+fn goal_wake(
+    unit: &ContinuityUnitOfWork<'_>,
+    proposal: &ContinuityInterpretationProposal,
+    basis: &ContinuityCommitBasis,
+    goal_id: &str,
+    progress: &ContinuityGoalProgress,
+    review_policy: &str,
+) -> Result<ContinuityWake, ContinuityFailure> {
+    Ok(ContinuityWake {
+        logical_wake_id: format!("wake:{goal_id}:{}", progress.revision),
+        goal_id: goal_id.to_owned(),
+        cause_refs: proposal.envelope.source_event_refs.clone(),
+        due_at: due_from_attention(&progress.next_attention),
+        review_policy: review_policy.into(),
+        goal_revision: progress.revision,
+        epoch: basis.designation_epoch,
+        host_generation: read_host_generation(unit)?,
+        claim: None,
+        settlement: None,
+    })
+}
+
+fn invalid_request() -> ContinuityFailure {
+    continuity_failure(
+        ContinuityFailureCode::InvalidRequest,
+        ContinuityFailureStage::ContinuityAdmission,
+    )
+}
+
+fn admitted_intent_source(
+    proposal: &ContinuityInterpretationProposal,
+) -> Result<ContinuitySourceRef, ContinuityFailure> {
+    proposal
+        .envelope
+        .source_event_refs
+        .first()
+        .cloned()
+        .ok_or_else(invalid_request)
+}
+
 fn derived_goal_id(
     proposal: &ContinuityInterpretationProposal,
-    commitment: &super::ContinuityCommitmentProposal,
+    commitment: &ContinuityCommitmentProposal,
 ) -> String {
     if let Some(admission) = &proposal.task_child_admission {
         return admission.goal_id.clone();
@@ -2724,4 +2824,368 @@ pub fn schedule_goal_due(
         unit.request_commit();
         Ok(progress)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client_conversation::{EventKind, EventPartKind, Principal, PrincipalKind};
+    use crate::continuity::generated::{
+        ContinuityCriterion, ContinuityEvidenceResult, ContinuityMatterAssociation,
+        ContinuityMatterSubject, ContinuityMatterStatus, ContinuityOracleKind,
+        ContinuityVerificationKind, ContinuityWriteEnvelope,
+    };
+    use crate::continuity::ports::{ContinuityCommitPort, ContinuityReadPort};
+    use crate::store::NewEventPart;
+
+    const MATTER: &str = "matter:notes";
+    const GOAL: &str = "goal:notes";
+
+    fn human() -> Principal {
+        Principal {
+            id: "principal:human".into(),
+            kind: PrincipalKind::Human,
+            display_name: "Fixture human".into(),
+            agent_id: None,
+            created_at_unix_ms: 1,
+        }
+    }
+
+    fn digest(seed: char) -> String {
+        format!("sha256:{}", seed.to_string().repeat(64))
+    }
+
+    fn source_ref(event_id: &str, sequence: i64, seed: char) -> ContinuitySourceRef {
+        ContinuitySourceRef {
+            owner_kind: ContinuitySourceOwnerKind::Event,
+            opaque_id: event_id.to_owned(),
+            part_id: None,
+            span: None,
+            source_revision: sequence,
+            digest: digest(seed),
+            visibility_scope: ContinuityVisibilityScope::Conversation,
+            validity: ContinuitySourceValidity::Current,
+        }
+    }
+
+    fn criterion(id: &str, required: bool, rule: &str) -> ContinuityCriterion {
+        ContinuityCriterion {
+            id: id.into(),
+            description_ref: source_ref("event:criterion", 1, 'b'),
+            required,
+            oracle_kind: ContinuityOracleKind::Machine,
+            artifact_version_rule: rule.into(),
+            freshness_rule: "current".into(),
+            evaluator_policy: "goal-evaluation".into(),
+        }
+    }
+
+    fn evidence(event: &crate::client_conversation::ConversationEvent, criterion_id: &str) -> ContinuityEvidenceRef {
+        ContinuityEvidenceRef {
+            source: source_ref(&event.id, event.sequence, 'c'),
+            issuer: "member:worker".into(),
+            subject_version: 1,
+            criterion_id: criterion_id.into(),
+            observed_at: 10,
+            result: ContinuityEvidenceResult::Pass,
+            verification_kind: ContinuityVerificationKind::Deterministic,
+            scope: ContinuityVisibilityScope::Goal,
+            validity: ContinuitySourceValidity::Current,
+        }
+    }
+
+    /// One deterministic dialogue: a canonical conversation whose events and
+    /// proposals stand in for what a user and the Assistant actually say.
+    struct Dialogue {
+        store: ConversationStore,
+        conversation_id: String,
+        event_id: String,
+        event_sequence: i64,
+    }
+
+    impl Dialogue {
+        fn new(title: &str) -> Self {
+            let store = ConversationStore::open_in_memory().unwrap();
+            let conversation = store.create_conversation(title, human()).unwrap();
+            let owner = conversation.memberships[0].id.clone();
+            let event = store
+                .append_event(
+                    &conversation.id,
+                    Some(&owner),
+                    EventKind::Message,
+                    &[NewEventPart {
+                        id: String::new(),
+                        kind: EventPartKind::Text,
+                        content: "fixture dialogue".into(),
+                    }],
+                    None,
+                    None,
+                    true,
+                )
+                .unwrap();
+            store.ensure_continuity_migrated().unwrap();
+            Self {
+                store,
+                conversation_id: conversation.id,
+                event_id: event.id,
+                event_sequence: event.sequence,
+            }
+        }
+
+        /// A dialogue turn: one speech act, one matter association and one
+        /// commitment whose expected result the proposer chose.
+        fn turn(
+            &self,
+            request_id: &str,
+            speech_act: ContinuitySpeechAct,
+            expected_result: &str,
+            create_goal: bool,
+            criteria: Vec<ContinuityCriterion>,
+        ) -> ContinuityInterpretationProposal {
+            let basis = self
+                .store
+                .continuity_commit_basis(&self.conversation_id)
+                .unwrap();
+            ContinuityInterpretationProposal {
+                envelope: ContinuityWriteEnvelope {
+                    conversation_id: self.conversation_id.clone(),
+                    source_event_refs: vec![source_ref(&self.event_id, self.event_sequence, 'a')],
+                    observed_revision: basis.revision,
+                    designation_epoch: basis.designation_epoch,
+                    request_id: request_id.to_owned(),
+                },
+                matter_associations: vec![ContinuityMatterAssociation {
+                    matter_id: MATTER.into(),
+                    source_ref: source_ref(&self.event_id, self.event_sequence, 'a'),
+                    association_revision: 1,
+                    proposed_by: "membership:fixture".into(),
+                    reason_code: "user-intent".into(),
+                    supersedes: None,
+                }],
+                speech_act,
+                commitment_proposals: vec![ContinuityCommitmentProposal {
+                    matter_id: Some(MATTER.into()),
+                    subject: ContinuityMatterSubject::New,
+                    expected_result: expected_result.into(),
+                    criteria,
+                    create_goal,
+                }],
+                agreement_proposals: Vec::new(),
+                capability_needs: Vec::new(),
+                uncertainty_reasons: Vec::new(),
+                requested_reads: Vec::new(),
+                task_child_admission: None,
+            }
+        }
+
+        fn says(&self, proposal: &ContinuityInterpretationProposal) {
+            self.store.commit(proposal).unwrap();
+        }
+
+        fn goal(&self) -> Option<(ContinuityGoalContract, ContinuityGoalProgress)> {
+            read_goal_bundle(&self.store, GOAL).unwrap()
+        }
+
+        fn pending_notifications(&self) -> i64 {
+            read_pending_outbox(&self.store, &self.conversation_id).unwrap()
+        }
+
+        fn matters(&self) -> Vec<ContinuityMatter> {
+            self.store.list_matters(&self.conversation_id, None, 8).unwrap()
+        }
+    }
+
+    #[test]
+    fn ordinary_chat_keeps_its_matter_and_admits_no_goal() {
+        let dialogue = Dialogue::new("intent-chat");
+        dialogue.says(&dialogue.turn(
+            "request:chat",
+            ContinuitySpeechAct::Exploration,
+            "reply",
+            false,
+            Vec::new(),
+        ));
+        assert!(dialogue.goal().is_none());
+        assert_eq!(dialogue.matters().len(), 1);
+        assert_eq!(dialogue.matters()[0].id, MATTER);
+        assert_eq!(dialogue.matters()[0].status, ContinuityMatterStatus::Open);
+        assert_eq!(dialogue.pending_notifications(), 0);
+    }
+
+    #[test]
+    fn questions_and_hypotheticals_stay_ordinary_even_when_marked_as_goals() {
+        for (index, speech_act) in [
+            ContinuitySpeechAct::Question,
+            ContinuitySpeechAct::Hypothetical,
+            ContinuitySpeechAct::Quotation,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let dialogue = Dialogue::new(&format!("intent-nonassertive-{index}"));
+            dialogue.says(&dialogue.turn(
+                "request:nonassertive",
+                speech_act,
+                "Draft the notes",
+                true,
+                Vec::new(),
+            ));
+            assert!(dialogue.goal().is_none(), "{speech_act:?} admitted a goal");
+            assert_eq!(dialogue.pending_notifications(), 0);
+        }
+    }
+
+    #[test]
+    fn explicit_commitment_admits_one_goal_and_restating_it_changes_nothing() {
+        let dialogue = Dialogue::new("intent-commit");
+        dialogue.says(&dialogue.turn(
+            "request:commit-1",
+            ContinuitySpeechAct::Delegation,
+            "Draft the notes",
+            true,
+            Vec::new(),
+        ));
+        let (contract, progress) = dialogue.goal().expect("explicit commitment admits a goal");
+        assert_eq!(contract.contract_revision, 1);
+        assert_eq!(progress.revision, 1);
+        assert_eq!(progress.lifecycle, ContinuityGoalLifecycle::Active);
+        assert_eq!(dialogue.pending_notifications(), 1);
+
+        dialogue.says(&dialogue.turn(
+            "request:commit-2",
+            ContinuitySpeechAct::Delegation,
+            "Draft the notes",
+            true,
+            Vec::new(),
+        ));
+        let (restated_contract, restated_progress) = dialogue.goal().unwrap();
+        assert_eq!(restated_contract.contract_revision, 1);
+        assert_eq!(restated_contract, contract);
+        assert_eq!(restated_progress, progress);
+        assert_eq!(
+            dialogue.pending_notifications(),
+            1,
+            "a repeated commitment must not notify twice"
+        );
+    }
+
+    #[test]
+    fn user_correction_amends_the_goal_instead_of_duplicating_it() {
+        let dialogue = Dialogue::new("intent-correction");
+        dialogue.says(&dialogue.turn(
+            "request:correction-1",
+            ContinuitySpeechAct::Delegation,
+            "Draft the notes",
+            true,
+            vec![criterion("criterion:notes-done", true, "exact-source")],
+        ));
+        dialogue.says(&dialogue.turn(
+            "request:correction-2",
+            ContinuitySpeechAct::Correction,
+            "Draft the notes and send them",
+            true,
+            vec![criterion("criterion:notes-done", true, "exact-source")],
+        ));
+        let (contract, progress) = dialogue.goal().unwrap();
+        assert_eq!(contract.expected_result, "Draft the notes and send them");
+        assert_eq!(contract.contract_revision, 2);
+        assert_eq!(progress.revision, 2);
+        assert_eq!(dialogue.pending_notifications(), 2);
+        assert_eq!(dialogue.matters().len(), 1);
+    }
+
+    #[test]
+    fn correction_keeps_evidence_only_for_unchanged_criteria() {
+        let dialogue = Dialogue::new("intent-evidence");
+        dialogue.says(&dialogue.turn(
+            "request:evidence-1",
+            ContinuitySpeechAct::Delegation,
+            "Draft the notes",
+            true,
+            vec![criterion("criterion:notes-done", true, "exact-source")],
+        ));
+        let observed = dialogue
+            .store
+            .append_event(
+                &dialogue.conversation_id,
+                None,
+                EventKind::Message,
+                &[NewEventPart {
+                    id: String::new(),
+                    kind: EventPartKind::Text,
+                    content: "notes reviewed".into(),
+                }],
+                None,
+                None,
+                true,
+            )
+            .unwrap();
+        append_criterion_evidence(
+            &dialogue.store,
+            &dialogue.conversation_id,
+            GOAL,
+            evidence(&observed, "criterion:notes-done"),
+        )
+        .unwrap();
+        assert_eq!(dialogue.goal().unwrap().1.criterion_evidence_refs.len(), 1);
+
+        // Same criteria, changed expectation: the sign-off still applies.
+        dialogue.says(&dialogue.turn(
+            "request:evidence-2",
+            ContinuitySpeechAct::Correction,
+            "Draft the notes and send them",
+            true,
+            vec![criterion("criterion:notes-done", true, "exact-source")],
+        ));
+        let (contract, progress) = dialogue.goal().unwrap();
+        assert_eq!(contract.contract_revision, 2);
+        assert_eq!(progress.criterion_evidence_refs.len(), 1);
+
+        // Redefined criterion: the previous sign-off cannot carry over.
+        dialogue.says(&dialogue.turn(
+            "request:evidence-3",
+            ContinuitySpeechAct::Correction,
+            "Draft the notes and send them",
+            true,
+            vec![criterion("criterion:notes-done", true, "latest-source")],
+        ));
+        let (contract, progress) = dialogue.goal().unwrap();
+        assert_eq!(contract.contract_revision, 3);
+        assert_eq!(progress.revision, 4);
+        assert!(progress.criterion_evidence_refs.is_empty());
+    }
+
+    #[test]
+    fn a_paused_goal_still_refuses_new_work_and_keeps_its_revision() {
+        let dialogue = Dialogue::new("intent-paused");
+        dialogue.says(&dialogue.turn(
+            "request:paused-1",
+            ContinuitySpeechAct::Delegation,
+            "Draft the notes",
+            true,
+            Vec::new(),
+        ));
+        apply_goal_control(
+            &dialogue.store,
+            &dialogue.conversation_id,
+            GOAL,
+            ContinuityGoalEvent::Pause,
+        )
+        .unwrap();
+        let paused = dialogue.goal().unwrap().1;
+        assert_eq!(paused.control, ContinuityGoalControl::Paused);
+        let revision = paused.revision;
+        let error = dialogue
+            .store
+            .commit(&dialogue.turn(
+                "request:paused-2",
+                ContinuitySpeechAct::Delegation,
+                "Draft the notes again",
+                true,
+                Vec::new(),
+            ))
+            .unwrap_err();
+        assert_eq!(error.code, ContinuityFailureCode::InvalidRequest);
+        assert_eq!(dialogue.goal().unwrap().1.revision, revision);
+    }
 }
