@@ -32,10 +32,13 @@ pub(in crate::platform) use licoup_agent_antigravity::parser as antigravity;
 pub(in crate::platform) use licoup_agent_cursor::parser as cursor;
 // Codex's, the DeepSeek Harness SDK's and Kimi Code's parsers moved into their
 // own packages (`licoup-agent-codex`, `licoup-agent-deepseek`,
-// `licoup-agent-kimi`) as well. None is named here: this host parses none of
-// those Agents' frames, so no path in this tree re-exports their parsers — an
-// alias nothing reads is a forwarding shell the compiler reports as an unused
-// import — and each package answers its own registration below.
+// `licoup-agent-kimi`) as well, and this composition keeps no parser path for
+// them: no alias is declared here and nothing under this parser tree re-exports
+// one, so host code that still reads one of those parsers — as
+// `deepseek_harness_driver` reads `licoup-agent-deepseek`'s — names the package's
+// own module instead. An alias nothing reads is a forwarding shell the compiler
+// reports as an unused import, and each package answers its own registration
+// below.
 
 pub(in crate::platform) mod claude_code;
 pub(in crate::platform) mod copilot;

@@ -27,39 +27,60 @@ const adapters = [
   'deepseek_harness',
 ];
 // The Agents whose protocol is a package's own: their parser module, their
-// declaration and their replay arm live in the package's crate.
-const packageAdapters = new Map([
-  ['antigravity', 'crates/licoup-agent-antigravity'],
-  ['codex', 'crates/licoup-agent-codex'],
-  ['cursor', 'crates/licoup-agent-cursor'],
-  ['deepseek_harness', 'crates/licoup-agent-deepseek'],
-  ['kimi_code', 'crates/licoup-agent-kimi'],
-]);
-
-// The package-owned parsers, under the alias the composition composes them by:
-// the crate that owns the parser, and the parser source the package ships.
+// declaration and their replay arm live in the package's crate. Every fact the
+// boundary reads for one of them is named here once, as a literal — the crate,
+// the module inside that crate which exposes the parser, the source publishing
+// the declaration, the contract id that declaration carries, and whether this
+// composition reads that parser. Nothing below is derived by rewriting a name:
+// `kimi_code` is `licoup_agent_kimi` because this table says so, and the crate
+// whose parser module sits deeper than `parser` writes that path here.
 const packaged = {
   antigravity: {
     crate: 'licoup_agent_antigravity',
-    parser: 'crates/licoup-agent-antigravity/src/parser.rs',
+    module: 'parser',
+    source: 'crates/licoup-agent-antigravity/src/parser.rs',
+    contractId: 'antigravity',
+    readsParser: true,
   },
   codex: {
     crate: 'licoup_agent_codex',
-    parser: 'crates/licoup-agent-codex/src/parser.rs',
+    module: 'parser',
+    source: 'crates/licoup-agent-codex/src/parser.rs',
+    contractId: 'codex',
+    readsParser: false,
   },
   cursor: {
     crate: 'licoup_agent_cursor',
-    parser: 'crates/licoup-agent-cursor/src/parser.rs',
+    module: 'parser',
+    source: 'crates/licoup-agent-cursor/src/parser.rs',
+    contractId: 'cursor',
+    readsParser: true,
   },
   deepseek_harness: {
     crate: 'licoup_agent_deepseek',
-    parser: 'crates/licoup-agent-deepseek/src/parser.rs',
+    module: 'parser',
+    source: 'crates/licoup-agent-deepseek/src/parser.rs',
+    contractId: 'deepseek-harness',
+    readsParser: false,
   },
   kimi_code: {
     crate: 'licoup_agent_kimi',
-    parser: 'crates/licoup-agent-kimi/src/parser.rs',
+    module: 'parser',
+    source: 'crates/licoup-agent-kimi/src/parser.rs',
+    contractId: 'kimi-code',
+    readsParser: false,
   },
 };
+
+// The packaged parsers this composition reads, derived from the table so the two
+// cannot drift: a parser alias belongs exactly where a production reader reads
+// the parser, and an alias kept for an Agent nothing reads is the unused import
+// the compiler reports.
+const readParserAliases = new Set(
+  Object.entries(packaged)
+    .filter(([, moved]) => moved.readsParser)
+    .map(([adapter]) => adapter),
+);
 
 test('packaged adapter registry is bijective with the thirteen-entry inventory', () => {
   const composition = readFileSync(`${compositionRoot}/mod.rs`, 'utf8');
@@ -75,7 +96,7 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
   const packageEntries =
     (registrations.match(/licoup_agent_\w+::registration::REGISTRATION/g) ?? []).length;
   assert.equal(hostedEntries + packageEntries, 13);
-  assert.equal(packageEntries, packageAdapters.size);
+  assert.equal(packageEntries, Object.keys(packaged).length);
   // The queries a reader reaches are answered by the Agent that owns the fact:
   // Hermes' normalized transitions, and the exact-resume identity of the Agents
   // the Subagent mesh dispatches. Every other entry stays declared and
@@ -94,37 +115,35 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     if (contract) entries.set(contract[1], chunk);
   }
   assert.equal(entries.size, 13 - Object.keys(packaged).length);
-  // The packaged parsers the composition still reads: a parser alias belongs
-  // exactly where this host parses that Agent's frames. Codex, the DeepSeek
-  // Harness and Kimi Code are reached for their registration and their replay
-  // arm instead, so an alias for any of them would be a forwarding shell with no
-  // reader — which is what the compiler reports as an unused import.
-  const readParserAliases = new Set(['antigravity', 'cursor']);
   for (const adapter of adapters) {
     const moved = packaged[adapter];
     const source = readFileSync(
-      moved ? moved.parser : `${parserRoot}/adapters/${adapter}.rs`, 'utf8');
+      moved ? moved.source : `${parserRoot}/adapters/${adapter}.rs`, 'utf8');
     assert.match(source, /AdapterContract::new/);
     if (moved) {
       // The package owns the parser, the declaration and the replay arm. The
       // composition reaches that Agent through the package's own crate, names
-      // the package's own REGISTRATION constant, may not declare the module,
-      // may not retype the declaration here, and keeps a parser alias only
-      // where it actually reads one. `crate` is the Rust crate name, so it is
-      // the path the composition is searched for.
-      const packageCrate = `${moved.crate}::`;
-      assert.ok(composition.includes(packageCrate),
+      // the package's own REGISTRATION constant, may not declare the module, and
+      // may not restate the declaration the package publishes.
+      assert.ok(composition.includes(`${moved.crate}::`),
         `${adapter} must be reached through ${moved.crate}`);
       assert.match(registrations,
-        new RegExp(`${packageCrate}registration::REGISTRATION`));
+        new RegExp(`${moved.crate}::registration::REGISTRATION`));
       assert.doesNotMatch(composition, new RegExp(`mod ${adapter};`));
+      // The contract id is the package's, so it is read from the package: the
+      // table records it and the composition may not carry a second copy of it.
+      assert.match(source, new RegExp(`AdapterContract::new\\("${moved.contractId}"`),
+        `${adapter}'s parser publishes the contract id this table records`);
       assert.doesNotMatch(composition,
-        new RegExp(`AdapterContract::new\\("${adapter.replace('_harness', '-harness')}"`),
+        new RegExp(`AdapterContract::new\\("${moved.contractId}"`),
         `${adapter}'s declaration is the package's, not a second one here`);
-      const alias =
-        `use licoup_agent_${adapter.replace('_harness', '')}::parser as ${adapter};`;
+      // A package alias is the composition naming the package's parser in order
+      // to read it. The assertion is bidirectional: the alias is there exactly
+      // when the table says a production reader reads that parser, so removing a
+      // needed alias and re-adding an unread one both fail here.
+      const alias = `use ${moved.crate}::${moved.module} as ${adapter};`;
       assert.equal(composition.includes(alias), readParserAliases.has(adapter),
-        `${adapter} keeps a package parser alias exactly where the host reads one`);
+        `${adapter} composes \`${alias}\` exactly where production reads its parser`);
       continue;
     }
     assert.match(composition, new RegExp(`mod ${adapter};`));
@@ -138,6 +157,22 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     } else {
       assert.match(entry, /^unanswered\(/u);
     }
+  }
+  // The other direction of the alias rule: every package parser the composition
+  // composes is a row of this table that says production reads it. A second name
+  // for a package parser — a new alias, or the alias an unread parser would leave
+  // behind — fails here even under a name the loop above never asks about.
+  const composed = [...composition.matchAll(
+    /use\s+(licoup_agent_[a-z_]+)::([A-Za-z_][A-Za-z0-9_:]*?)\s+as\s+([a-z_][A-Za-z0-9_]*)\s*;/g,
+  )].map(([, crate, module, alias]) => ({ crate, module, alias }));
+  for (const { crate, module, alias } of composed) {
+    const moved = packaged[alias];
+    assert.ok(moved,
+      `the composition composes ${crate}::${module} as ${alias}, which no package row records`);
+    assert.deepEqual({ crate: moved.crate, module: moved.module }, { crate, module },
+      `${alias} composes the module its package row names`);
+    assert.ok(moved.readsParser,
+      `${alias} is composed as a package parser but no production reader reads it`);
   }
 });
 
