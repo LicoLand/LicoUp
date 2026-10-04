@@ -125,6 +125,10 @@ const declaredPackages = Object.freeze([
     payloadRole: "kimi-adapter-package-payload",
   }),
   declaredRelease({
+    source: "crates/licoup-agent-hermes/package",
+    payloadRole: "hermes-adapter-package-payload",
+  }),
+  declaredRelease({
     source: "crates/licoup-mcp/package",
     payloadRole: "mcp-package-payload",
   }),

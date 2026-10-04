@@ -4,16 +4,15 @@
 //! parser. An Agent whose parser has moved into its own package also moved the
 //! arm that drives it, because an arm is only meaningful beside the parser it
 //! constructs; this composition reaches it through the SDK's parser-set port.
-//! Seven Agents' arms have moved that way — Antigravity, Claude Code, Codex,
-//! Copilot, Cursor, DeepSeek Harness and Kimi Code — so each is built by the
-//! package that owns its parser. One Agent keeps its protocol state machine
+//! Eight Agents' arms have moved that way — Antigravity, Claude Code, Codex,
+//! Copilot, Cursor, DeepSeek Harness, Hermes and Kimi Code — so each is built by
+//! the package that owns its parser. One Agent keeps its protocol state machine
 //! outside this module tree (`openclaw_driver` for openclaw), so that arm lives
 //! next to the code it replays.
 //!
 //! The arms are `pub(in crate::platform)` to this module's parent — it is the
 //! only reader, and it hands them to the SDK's harness through the parser set.
 
-mod hermes;
 mod kilo_code;
 mod lico_agent;
 mod opencode;
@@ -28,16 +27,16 @@ use crate::platform::openclaw_driver;
 /// so a fixture can never pass against a parser that was never constructed.
 pub(in crate::platform) fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameReplay>, String> {
     Ok(match adapter_id {
-        // The arm moved with the parser into the Antigravity adapter package, so a
-        // regression in that parser fails the package's own corpus as well as this
-        // composition's.
         "antigravity" => licoup_agent_antigravity::replay::replay_arm(adapter_id)?,
         "claude-code" => licoup_agent_claude_code::replay::replay_arm(adapter_id)?,
         "codex" => licoup_agent_codex::replay::replay_arm(adapter_id)?,
         "copilot" => licoup_agent_copilot::replay::replay_arm(adapter_id)?,
         "cursor" => licoup_agent_cursor::replay::replay_arm(adapter_id)?,
         "deepseek-harness" => licoup_agent_deepseek::replay::replay_arm(adapter_id)?,
-        "hermes" => Box::new(hermes::Replay::new()?),
+        // The arm moved with the parser into the Hermes adapter package, so a
+        // regression in that parser fails the package's own corpus as well as
+        // this composition's.
+        "hermes" => licoup_agent_hermes::replay::replay_arm(adapter_id)?,
         "kilo-code" => Box::new(kilo_code::Replay::new()?),
         "kimi-code" => licoup_agent_kimi::replay::replay_arm(adapter_id)?,
         "lico-agent" => Box::new(lico_agent::Replay::new()?),

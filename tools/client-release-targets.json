@@ -99,6 +99,11 @@
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.kimi.licopkg"
         },
         {
+          "role": "hermes-adapter-package-payload",
+          "file": "LicoUp-package-org.licoland.adapter.hermes.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.hermes.licopkg"
+        },
+        {
           "role": "mcp-package-payload",
           "file": "LicoUp-package-org.licoland.feature.mcp.licopkg",
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.feature.mcp.licopkg"

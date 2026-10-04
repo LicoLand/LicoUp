@@ -5,7 +5,7 @@ import test from 'node:test';
 // The thirteen per-Agent parsers and the composition that names them stay in the
 // host until that Agent's own package owns the protocol; the shared adapter
 // contract, the registry lookup, the replay harness and the lifecycle authority
-// moved to `licoup-agent-adapter-sdk`. Seven Agents have moved further: their
+// moved to `licoup-agent-adapter-sdk`. Eight Agents have moved further: their
 // vendor protocol, wire vocabulary, parser declaration and replay arm are their
 // own package's, and the composition names the package instead of keeping a
 // second copy.
@@ -80,12 +80,31 @@ const packaged = {
     contractId: 'deepseek-harness',
     readsParser: false,
   },
+  hermes: {
+    crate: 'licoup_agent_hermes',
+    module: 'parser',
+    source: 'crates/licoup-agent-hermes/src/parser.rs',
+    contractId: 'hermes',
+    readsParser: false,
+  },
   kimi_code: {
     crate: 'licoup_agent_kimi',
     module: 'parser',
     source: 'crates/licoup-agent-kimi/src/parser.rs',
     contractId: 'kimi-code',
     readsParser: false,
+  },
+};
+
+// The one Agent whose normalized transitions the host reads through the SDK's
+// query rather than from its own execution result: Hermes reports no transition
+// list with a turn, so the package that owns its parser owns that answer, and a
+// fail-closed identity stays beside it. The fact is asserted on the package the
+// composition names, because that is where the answer now lives.
+const packagedAnswers = {
+  hermes: {
+    registration: 'crates/licoup-agent-hermes/src/registration.rs',
+    answers: ['execution_transitions', 'no_identity'],
   },
 };
 
@@ -114,14 +133,13 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     (registrations.match(/licoup_agent_\w+::registration::REGISTRATION/g) ?? []).length;
   assert.equal(hostedEntries + packageEntries, 13);
   assert.equal(packageEntries, Object.keys(packaged).length);
-  // The queries a reader reaches are answered by the Agent that owns the fact:
-  // Hermes' normalized transitions, and the exact-resume identity of the Agents
-  // the Subagent mesh dispatches. Every other entry stays declared and
-  // unanswered rather than inheriting a neighbouring Agent's answer, and a
-  // package entry answers from the package's own evidence.
-  const answered = {
-    hermes: ['hermes_transitions', 'no_identity'],
-  };
+  // No entry this composition still holds answers a protocol-agnostic query:
+  // Hermes' normalized transitions moved with its parser into the package that
+  // owns them (asserted below), the Agents the Subagent mesh dispatches answer
+  // their identity from their own packages, and every remaining host-held entry
+  // reports its transitions with its own execution result and stays fail-closed
+  // on identity rather than inheriting a neighbouring Agent's answer.
+  const answered = {};
   // One entry per Agent, so a per-Agent answer is read from its own entry
   // rather than from a neighbouring one that happens to name the same helper.
   const entries = new Map();
@@ -159,6 +177,17 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
       const alias = `use ${moved.crate}::${moved.module} as ${adapter};`;
       assert.equal(composition.includes(alias), readParserAliases.has(adapter),
         `${adapter} composes \`${alias}\` exactly where production reads its parser`);
+      // The answer travels with the parser as well: the package's own
+      // registration is the one that answers, and it answers with its own
+      // functions rather than inheriting the SDK's fail-closed default.
+      const packagedAnswer = packagedAnswers[adapter];
+      if (packagedAnswer) {
+        const registration = readFileSync(packagedAnswer.registration, 'utf8');
+        assert.match(registration, /ParserRegistration::new\(/u);
+        for (const answer of packagedAnswer.answers) {
+          assert.match(registration, new RegExp(`\\b${answer}\\b`, 'u'));
+        }
+      }
       continue;
     }
     assert.match(composition, new RegExp(`mod ${adapter};`));

@@ -57,6 +57,8 @@ export const RUST_CORE_MODULES = Object.freeze([
     "Kimi Code adapter package program, ACP frame dialect, registration, and replay arm"),
   agentPackageCrateModule("copilot",
     "Copilot adapter package program, ACP frame dialect, registration, and replay corpus"),
+  agentPackageCrateModule("hermes",
+    "Hermes adapter package program, persistent ACP frame dialect, normalized transitions, registration, and replay arm"),
   defineModule({
       id: "rust.core.acp.composition",
       kind: "rust-core",

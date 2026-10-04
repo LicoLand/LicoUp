@@ -1,0 +1,54 @@
+[package]
+name = "licoup-agent-hermes"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95.0"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/LicoLand/LicoUp.git"
+description = "Hermes Agent adapter package: the persistent ACP frame dialect and its registration"
+
+# The crate is one package's program. `parser` is this Agent's vendor protocol
+# below the adapter port: the persistent ACP frame interpretation that classifies
+# one LF-delimited JSON line exactly once, per ADR-0008, and the normalized
+# transitions Hermes reports for a completed or failed turn. `dialect` answers
+# the shared ACP transport's port from that parser, `registration` is what
+# composition injects into `licoup-agent-adapter-sdk`, and `replay` is the arm
+# that drives the same reducer from a recorded transcript.
+#
+# The kernel links no part of this crate's protocol. Composition names the crate
+# for its dialect registration, its registration constant and its replay arm
+# while the client still composes Hermes' process half; nothing here reaches back
+# into a client crate.
+[features]
+default = []
+# The recorded-transcript replay arm. It is a feature rather than `cfg(test)`
+# because the arm is driven from the host's test build, which links this crate
+# as a dependency — and `cfg(test)` is false for a dependency, so a `cfg(test)`
+# arm is compiled out of exactly the build that calls it.
+test-support = ["licoup-agent-drivers/test-support"]
+
+[dependencies]
+licoup-agent-adapter-sdk = { path = "../licoup-agent-adapter-sdk" }
+# The shared ACP transport engines and the port they read one Agent's frame
+# dialect through. This package owns Hermes' half of that dialect; it owns no
+# part of the engine, and the engine names no Agent.
+licoup-agent-drivers = { path = "../licoup-agent-drivers" }
+# The ACP envelope codec every ACP dialect decodes through.
+licoup-foundation = { path = "../licoup-foundation" }
+serde_json.workspace = true
+
+[[bin]]
+name = "lico-agent-hermes"
+path = "src/bin/lico-agent-hermes.rs"
+
+# Test-only. The committed package artifact is validated with the host's own
+# manifest, permission and client-compatibility contract instead of a second
+# reading of it. Nothing here enters the package binary, which links no kernel
+# crate and reads its own package documents as data.
+[dev-dependencies]
+licoup-extension-contracts = { path = "../licoup-extension-contracts" }
+licoup-agent-drivers = { path = "../licoup-agent-drivers", features = ["test-support"] }
+# The package's own integration test drives the replay arm, so the test build
+# enables the feature that compiles it. It is a self-dependency because
+# `dev-dependencies` features apply to the test targets and nothing else.
+licoup-agent-hermes = { path = ".", features = ["test-support"] }

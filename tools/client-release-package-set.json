@@ -52,6 +52,11 @@
       "payloadRole": "kimi-adapter-package-payload"
     },
     {
+      "packageId": "org.licoland.adapter.hermes",
+      "source": "crates/licoup-agent-hermes/package",
+      "payloadRole": "hermes-adapter-package-payload"
+    },
+    {
       "packageId": "org.licoland.feature.mcp",
       "source": "crates/licoup-mcp/package",
       "payloadRole": "mcp-package-payload"

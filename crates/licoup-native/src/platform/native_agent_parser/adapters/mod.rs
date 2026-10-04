@@ -30,19 +30,19 @@ pub(in crate::platform) use licoup_agent_antigravity::parser as antigravity;
 // strict-NDJSON turn dialect and the wire vocabulary it reads are the package's,
 // and this composition reads them through the package's own module.
 pub(in crate::platform) use licoup_agent_cursor::parser as cursor;
-// Claude Code's, Codex's, Copilot's, the DeepSeek Harness SDK's and Kimi Code's
-// parsers moved into their own packages (`licoup-agent-claude-code`,
+// Claude Code's, Codex's, Copilot's, the DeepSeek Harness SDK's, Hermes' and Kimi
+// Code's parsers moved into their own packages (`licoup-agent-claude-code`,
 // `licoup-agent-codex`, `licoup-agent-copilot`, `licoup-agent-deepseek`,
-// `licoup-agent-kimi`) as well, and this composition keeps no parser path for
-// them: no alias is declared here and nothing under this parser tree re-exports
-// one, so host code that still reads one of those parsers — as
+// `licoup-agent-hermes`, `licoup-agent-kimi`) as well, and this composition keeps
+// no parser path for them: no alias is declared here and nothing under this parser
+// tree re-exports one, so host code that still reads one of those parsers — as
 // `deepseek_harness_driver` reads `licoup-agent-deepseek`'s, and Claude Code's
 // driver reads `licoup-agent-claude-code`'s protocol module — names the package's
 // own module instead. An alias nothing reads is a forwarding shell the compiler
 // reports as an unused import, and each package answers its own registration
-// below.
+// below. Hermes' dialect reaches the shared ACP transport through the package's
+// own registration in `runtime_adapters::drivers` rather than through this tree.
 
-pub(in crate::platform) mod hermes;
 pub(in crate::platform) mod kilo_code;
 pub(in crate::platform) mod lico_agent;
 pub(in crate::platform) mod openclaw;
@@ -59,35 +59,12 @@ use licoup_agent_adapter_sdk::port::{
 /// Every parser this host still holds answers that way: its driver carries the
 /// `transitions` list the parser's own reducer built, so the query stays
 /// declared and unanswered for it, exactly as
-/// [`ParserRegistration::unanswered`] states. Hermes is the exception the host
-/// answers from its own builders, and the six Agents that have moved into their
-/// own packages answer from the package's registration instead.
+/// [`ParserRegistration::unanswered`] states. The eight Agents whose protocol
+/// has moved into its own package answer from the package's registration
+/// instead, which is where each one's own transitions are worded — including
+/// Hermes, whose normalized transitions the host reads through that query.
 fn no_transitions(_: &ExecutionOutcome<'_>) -> Vec<Transition> {
     Vec::new()
-}
-
-/// The fail-closed identity answer, for an Agent the Subagent mesh never
-/// dispatches.
-///
-/// The mesh reaches exact resume for four Agents; an Agent it does not dispatch
-/// has no durable dispatch identity for this query to validate, so the answer
-/// stays the one [`ParserRegistration::unanswered`] states.
-fn no_identity(_: &DurableIdentityRequest<'_>) -> bool {
-    false
-}
-
-/// Hermes' normalized transitions for one execution outcome.
-///
-/// Hermes reports no transition list of its own, so it is the one Agent whose
-/// transitions the host reads through the shared query. The host's Hermes
-/// normalization read these two builders directly before the query moved behind
-/// the contract, so the answer is the same one, reached without naming Hermes
-/// above the parser boundary.
-fn hermes_transitions(outcome: &ExecutionOutcome<'_>) -> Vec<Transition> {
-    match outcome.failure {
-        Some(failure) => hermes::failed_transitions(failure.code, failure.stage, failure.message),
-        None => hermes::completed_transitions(outcome.output),
-    }
 }
 
 /// Whether a Cursor chat identity is one that Agent's protocol accepts.
@@ -109,15 +86,18 @@ fn opaque_identity(session_id: &str) -> bool {
 /// so an Agent parser is one entry rather than four lists that can drift.
 ///
 /// An entry answers the two protocol-agnostic queries when a reader reaches it:
-/// Hermes answers its normalized transitions, the Agents the Subagent mesh
-/// dispatches answer whether a durable identity is theirs, and the six Agents
-/// whose protocol has moved into its own package contribute the package's own
-/// registration — which answers both queries from that Agent's wire evidence.
-/// Every other entry declares its Agent's transition answer as *the parser's own
-/// execution result* rather than through the query, and answers the identity
-/// query fail-closed because the mesh never dispatches that Agent.
+/// the Agents the Subagent mesh dispatches answer whether a durable identity is
+/// theirs, and the eight Agents whose protocol has moved into its own package
+/// contribute the package's own registration — which answers both queries from
+/// that Agent's wire evidence. Hermes' entry is the package's for a second
+/// reason: Hermes reports no transition list with its execution result, so its
+/// normalized transitions are the package's own answer to the SDK's query — the
+/// host's Hermes normalization reads them there rather than from a driver-side
+/// list. Every other entry declares its Agent's transition answer as *the
+/// parser's own execution result* rather than through the query, and answers the
+/// identity query fail-closed because the mesh never dispatches that Agent.
 ///
-/// Six entries are the moved packages' own registrations rather than constants
+/// Eight entries are the moved packages' own registrations rather than constants
 /// restated here, so the declaration a package publishes and the declaration
 /// this host dispatches are one value and cannot drift.
 pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
@@ -140,7 +120,9 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     // parser's own reply transitions and the session-id rule it binds with — so this
     // entry is the package's own registration rather than a second answer kept here.
     licoup_agent_cursor::registration::REGISTRATION,
-    ParserRegistration::new(hermes::CONTRACT, hermes_transitions, no_identity),
+    // The Hermes package owns the persistent ACP dialect and is the one Agent whose
+    // normalized transitions the host reads through the query the package answers.
+    licoup_agent_hermes::registration::REGISTRATION,
     ParserRegistration::unanswered(kilo_code::CONTRACT),
     // The Kimi Code package owns its dialect and reports its transitions with its
     // own execution result, so this entry is the package's own registration.
