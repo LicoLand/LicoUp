@@ -29,7 +29,17 @@ export const DEFAULT_LAYOUT_BOUNDARY_CONFIG = Object.freeze({
     "apps/desktop/lib/src/platform/storage/client_workspace_manifest.dart",
 });
 
+// Layout-owned contracts a profile shell may import directly.
+//
+// Each member is a `frontend/layout/` file that carries no profile identity
+// and imports only Flutter: a presentation value type plus, where the shared
+// feature widgets need to read it, an `InheritedWidget` scope. The renderer
+// infrastructure in the same directory (`layout_host`, `layout_registry`,
+// `layout_state_store`, `layout_definition`, `layout_focus_coordinator`,
+// `layout_destination_port_mount`) is deliberately absent — a profile shell
+// never imports it.
 export const NEUTRAL_LAYOUT_CONTRACTS = new Set([
+  "apps/desktop/lib/src/frontend/layout/layout_agents_directive.dart",
   "apps/desktop/lib/src/frontend/layout/layout_agents_strategy.dart",
   "apps/desktop/lib/src/frontend/layout/layout_chrome_features.dart",
   "apps/desktop/lib/src/frontend/layout/layout_chrome_port.dart",
