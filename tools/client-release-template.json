@@ -66,6 +66,7 @@
     "exactDraftAssetSetRequired": true,
     "independentPackageAssets": {
       "payloadRoles": [
+        "claude-code-adapter-package-payload",
         "antigravity-adapter-package-payload",
         "codex-adapter-package-payload",
         "copilot-adapter-package-payload",

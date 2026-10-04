@@ -1,5 +1,5 @@
 use super::*;
-use crate::platform::native_agent_parser::adapters::claude_code::events::processing_evidence_kind;
+use licoup_agent_claude_code::protocol::parser::events::processing_evidence_kind;
 
 #[test]
 fn parser_extracts_only_the_text_delta() {

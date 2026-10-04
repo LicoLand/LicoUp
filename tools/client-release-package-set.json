@@ -2,6 +2,11 @@
   "schemaVersion": "licomesh.client-release-package-set.v1",
   "packages": [
     {
+      "packageId": "org.licoland.adapter.claude-code",
+      "source": "crates/licoup-agent-claude-code/package",
+      "payloadRole": "claude-code-adapter-package-payload"
+    },
+    {
       "packageId": "org.licoland.adapter.antigravity",
       "source": "crates/licoup-agent-antigravity/package",
       "payloadRole": "antigravity-adapter-package-payload"

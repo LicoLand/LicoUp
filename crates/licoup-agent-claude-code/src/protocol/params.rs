@@ -1,28 +1,28 @@
-use super::errors::ProtocolFailure;
+use super::failure::ProtocolFailure;
 use serde_json::Value;
 use std::io;
 use std::path::Path;
 use uuid::Uuid;
 
 #[derive(Clone, Debug)]
-pub(in crate::platform) struct DriverConfig {
-    pub(in crate::platform) prompt: String,
-    pub(in crate::platform) requested_session_id: String,
-    pub(in crate::platform) model: Option<String>,
-    pub(in crate::platform) reasoning_effort: Option<String>,
+pub struct DriverConfig {
+    pub prompt: String,
+    pub requested_session_id: String,
+    pub model: Option<String>,
+    pub reasoning_effort: Option<String>,
     /// Vendor permission mode requested by the caller, or None when the turn
     /// leaves it to the launch default. LaunchIdentity resolves the default
     /// (bypassPermissions, the vendor YOLO mode) before argv and effective
     /// settings are projected, so an unspecified turn remains compatible with
     /// any live process while an explicit supported value stays authoritative.
-    pub(in crate::platform) permission_mode: Option<String>,
-    pub(in crate::platform) allowed_tools: Option<String>,
-    pub(in crate::platform) private_instructions: Option<String>,
-    pub(in crate::platform) turn_id: String,
+    pub permission_mode: Option<String>,
+    pub allowed_tools: Option<String>,
+    pub private_instructions: Option<String>,
+    pub turn_id: String,
 }
 
 impl DriverConfig {
-    pub(in crate::platform) fn from_params(
+    pub fn from_params(
         params: &Value,
         prompt: &str,
         session_id: &str,
@@ -127,10 +127,10 @@ impl DriverConfig {
         })
     }
 
-    pub(in crate::platform) fn stdin_message(&self) -> io::Result<Value> {
+    pub fn stdin_message(&self) -> io::Result<Value> {
         // The prompt stays off argv entirely; a fresh-process resume passes
         // only the native session identifier via --resume (LaunchIdentity).
-        Ok(crate::platform::native_agent_parser::adapters::claude_code::user_message(&self.prompt))
+        Ok(super::parser::user_message(&self.prompt))
     }
 }
 

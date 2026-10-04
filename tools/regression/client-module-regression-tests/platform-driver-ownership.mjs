@@ -1132,15 +1132,15 @@ test("Claude Code driver leaves retain exact tests and complete source ownership
       "platform::claude_code_driver::tests::"],
     ["rust.platform.claude-code-driver.model",
       "platform::claude_code_driver::tests::model::"],
-    ["rust.platform.claude-code-driver.errors",
-      "platform::claude_code_driver::tests::errors::"],
-    ["rust.platform.claude-code-driver.params",
-      "platform::claude_code_driver::tests::params::"],
-    ["rust.platform.claude-code-driver.command",
+    ["rust.platform.claude-code-driver.failure",
+      "platform::claude_code_driver::tests::failure::"],
+    ["rust.platform.claude-code-driver.launch-params",
+      "platform::claude_code_driver::tests::launch::"],
+    ["rust.platform.claude-code-driver.launch-argv",
       "platform::claude_code_driver::tests::command::"],
     ["rust.platform.claude-code-driver.events",
       "platform::claude_code_driver::tests::events::"],
-    ["rust.platform.claude-code-driver.protocol",
+    ["rust.platform.claude-code-package.protocol",
       "platform::claude_code_driver::tests::protocol::"],
     ["rust.platform.claude-code-driver.io",
       "platform::claude_code_driver::tests::io::"],
@@ -1156,7 +1156,8 @@ test("Claude Code driver leaves retain exact tests and complete source ownership
       "platform::claude_code_driver::tests::execution::"],
   ]);
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
-    candidate.id.startsWith("rust.platform.claude-code-driver."));
+    candidate.id.startsWith("rust.platform.claude-code-driver.")
+      || candidate.id === "rust.platform.claude-code-package.protocol");
   assert.equal(modules.length, filters.size);
   for (const [id, filter] of filters) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
@@ -1167,14 +1168,42 @@ test("Claude Code driver leaves retain exact tests and complete source ownership
     }
   }
 
+  // A source that moved into the package selects the package's own module as
+  // well as the leaf that owns the concern, and the client's driver tree keeps
+  // its own precise narrow owner.
+  const ownership = new Map([
+    ["crates/licoup-native/src/platform/claude_code_driver/launch.rs",
+      ["rust.platform.claude-code-driver.launch-params"]],
+    ["crates/licoup-native/src/platform/claude_code_driver/reset.rs",
+      ["rust.platform.claude-code-driver.failure"]],
+    ["crates/licoup-agent-claude-code/src/protocol/parser/state.rs",
+      ["rust.core.agent-claude-code-package",
+        "rust.platform.claude-code-package.protocol"]],
+    ["crates/licoup-agent-claude-code/src/protocol/parser/events.rs",
+      ["rust.core.agent-claude-code-package",
+        "rust.platform.claude-code-driver.events"]],
+  ]);
+  for (const [source, expected] of ownership) {
+    const selected = ids(selectModulesForChangedPaths([source]));
+    for (const id of expected) {
+      assert.equal(selected.includes(id), true,
+        `${source} must select ${id}, selected ${selected.join(", ")}`);
+    }
+  }
+
   const sourceCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
     candidate.id === "regression.claude-code-driver-source-bundle");
   assert.deepEqual(sourceCheck.command.args,
     ["--test", "tests/contract/client/claude-code-driver-source-bundle.test.mjs"]);
+  const packageCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "regression.claude-code-package-source-bundle");
+  assert.deepEqual(packageCheck.command.args,
+    ["--test", "tests/contract/client/claude-code-package-source-bundle.test.mjs"]);
 
   const ownedInputs = new Set([
     ...modules.flatMap((module) => module.inputs),
     ...sourceCheck.inputs,
+    ...packageCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
     "crates/licoup-native/src/platform/claude_code_driver",
@@ -1183,15 +1212,25 @@ test("Claude Code driver leaves retain exact tests and complete source ownership
   for (const relativePath of [
     "crates/licoup-native/src/platform/claude_code_driver.rs",
     ...splitSources,
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code.rs",
-    ...await sourceFiles(
-      "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code",
-      ".rs",
-    ),
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `Claude Code driver source must have a precise regression owner: ${relativePath}`);
   }
+  // The package's own crate keeps one fallback owner for every source it ships,
+  // and its protocol and document leaves are named precisely.
+  const owns = (relativePath) => CLIENT_MODULE_CATALOG.some((module) =>
+    module.inputs.some((input) => input.endsWith("/**")
+      ? relativePath.startsWith(input.slice(0, -2))
+      : input === relativePath));
+  const packageSources = await sourceFiles("crates/licoup-agent-claude-code/src", ".rs");
+  assert.ok(packageSources.length > 0);
+  for (const relativePath of packageSources) {
+    assert.equal(owns(relativePath), true,
+      `Claude Code package source must have a regression owner: ${relativePath}`);
+  }
+  const packageModule = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "rust.core.agent-claude-code-package");
+  assert.deepEqual(packageModule.inputs, ["crates/licoup-agent-claude-code/**"]);
 });
 
 test("OpenClaw driver leaves retain exact tests and complete source ownership", async () => {

@@ -1,16 +1,17 @@
 use super::approval::{PendingApproval, park_external_approval};
 use super::control::ControlRequest;
-use super::errors::{ProtocolFailure, requires_transport_reset, supervisor_failure};
+use super::failure::{ProtocolFailure, supervisor_failure};
+use super::reset::requires_transport_reset;
 use super::io::{TransportEvent, write_message};
 use super::model::{PROCESS_POLL_INTERVAL, RunResult};
-use super::params::DriverConfig;
+use super::launch::DriverConfig;
 use super::supervision::{
     ManagedTransport, bind_session, lookup_session_transport, record_success, remove_transport,
     set_active_session, spawn_transport,
 };
 use super::transport::PersistentTransport;
 use crate::platform::native_agent_parser::adapters::NativeLineParser;
-use crate::platform::native_agent_parser::adapters::claude_code::{
+use licoup_agent_claude_code::protocol::parser::{
     ClaudeCodeParser, ClaudeEffect, ProtocolFinishReport, interrupt_request, steer_message,
 };
 use serde_json::Value;
@@ -174,7 +175,7 @@ pub(in crate::platform) fn execute(
             &outcome.output,
         );
         let transitions =
-            crate::platform::native_agent_parser::adapters::claude_code::completed_transitions(
+            licoup_agent_claude_code::protocol::parser::completed_transitions(
                 &outcome.output,
             );
         return RunResult {
@@ -300,9 +301,10 @@ fn run_turn_loop(
                             );
                         }
                         let session_id = state
+                            .state()
                             .observed_session_id
                             .as_deref()
-                            .or(state.expected_session_id.as_deref())
+                            .or(state.state().expected_session_id.as_deref())
                             .unwrap_or_default();
                         let approval =
                             match park_external_approval(session_id, &config.turn_id, &request) {
@@ -401,9 +403,10 @@ fn handle_control_requests(
                 acknowledged,
             }) => {
                 let current = state
+                    .state()
                     .observed_session_id
                     .as_deref()
-                    .or(state.expected_session_id.as_deref());
+                    .or(state.state().expected_session_id.as_deref());
                 let matches = current == Some(session_id.as_str());
                 if matches {
                     // Bind the user cancel before the interrupt reaches the
@@ -428,9 +431,10 @@ fn handle_control_requests(
                 acknowledged,
             }) => {
                 let current = state
+                    .state()
                     .observed_session_id
                     .as_deref()
-                    .or(state.expected_session_id.as_deref());
+                    .or(state.state().expected_session_id.as_deref());
                 let matches = current == Some(session_id.as_str());
                 let written = matches
                     && steer_message(&text).is_some_and(|message| {

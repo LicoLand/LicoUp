@@ -30,16 +30,17 @@ pub(in crate::platform) use licoup_agent_antigravity::parser as antigravity;
 // strict-NDJSON turn dialect and the wire vocabulary it reads are the package's,
 // and this composition reads them through the package's own module.
 pub(in crate::platform) use licoup_agent_cursor::parser as cursor;
-// Codex's, Copilot's, the DeepSeek Harness SDK's and Kimi Code's parsers moved
-// into their own packages (`licoup-agent-codex`, `licoup-agent-copilot`,
-// `licoup-agent-deepseek`, `licoup-agent-kimi`) as well. None is named here:
-// this host parses none of those Agents' frames — Copilot's shared ACP engine
-// reads its frame policy through the dialect the package registers — so no path
-// in this tree re-exports their parsers, because an alias nothing reads is a
-// forwarding shell the compiler reports as an unused import, and each package
-// answers its own registration below.
+// Claude Code's, Codex's, Copilot's, the DeepSeek Harness SDK's and Kimi Code's
+// parsers moved into their own packages (`licoup-agent-claude-code`,
+// `licoup-agent-codex`, `licoup-agent-copilot`, `licoup-agent-deepseek`,
+// `licoup-agent-kimi`) as well. None is named here: this host parses none of
+// those Agents' frames through this tree — Claude Code's driver reads the
+// package's own protocol module, and Copilot's shared ACP engine reads its frame
+// policy through the dialect the package registers — so no path here re-exports
+// their parsers, because an alias nothing reads is a forwarding shell the
+// compiler reports as an unused import, and each package answers its own
+// registration below.
 
-pub(in crate::platform) mod claude_code;
 pub(in crate::platform) mod hermes;
 pub(in crate::platform) mod kilo_code;
 pub(in crate::platform) mod lico_agent;
@@ -93,17 +94,6 @@ fn cursor_identity(request: &DurableIdentityRequest<'_>) -> bool {
     cursor::safe_session_id(request.session_id)
 }
 
-/// Whether an Antigravity Agent Hooks receipt identity is one that Agent's
-/// protocol accepts.
-fn antigravity_identity(request: &DurableIdentityRequest<'_>) -> bool {
-    antigravity::valid_session_id(request.session_id)
-}
-
-/// Whether a Claude Code session identity is one that Agent's protocol accepts.
-fn claude_code_identity(request: &DurableIdentityRequest<'_>) -> bool {
-    opaque_identity(request.session_id)
-}
-
 /// The shared opaque-identity rule the mesh states for the Agents whose
 /// protocols record no further evidence than the identity itself.
 fn opaque_identity(session_id: &str) -> bool {
@@ -134,7 +124,9 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     // protocol facts — the identity rule is its parser's, and the transitions are
     // its own reply projection — so this entry is the package's own registration.
     licoup_agent_antigravity::registration::REGISTRATION,
-    ParserRegistration::new(claude_code::CONTRACT, no_transitions, claude_code_identity),
+    // The Claude Code package answers both queries from its own recorded evidence,
+    // so this entry is the package's own registration rather than a second copy.
+    licoup_agent_claude_code::registration::REGISTRATION,
     // The Codex package answers both protocol-agnostic queries from its own recorded
     // evidence, so this entry is the package's own registration.
     licoup_agent_codex::registration::REGISTRATION,

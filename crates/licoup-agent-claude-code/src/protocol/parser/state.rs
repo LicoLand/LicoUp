@@ -1,26 +1,46 @@
+//! The Claude Code protocol state machine.
+//!
+//! One instance is one turn: it binds the native conversation identity the CLI
+//! reports, accumulates visible text without inventing any, remembers the
+//! redacted evidence a transcript may carry, and reports one terminal result.
+//! It never settles a turn and never times one out.
+
 use super::events::{
     partial_text_delta, processing_evidence_kind, processing_tool_name, transcript_event,
 };
-use crate::platform::claude_code_driver::command::LaunchIdentity;
-use crate::platform::claude_code_driver::errors::ProtocolFailure;
-use crate::platform::claude_code_driver::model::EffectiveSettings;
-use crate::platform::claude_code_driver::params::DriverConfig;
+use crate::protocol::ProtocolFailure;
+use crate::protocol::launch::LaunchIdentity;
+use crate::protocol::params::DriverConfig;
+use crate::protocol::settings::EffectiveSettings;
+use licoup_foundation::platform::turn_event_emit;
 use serde_json::{Value, json};
 
+/// The terminal report one consumed `result` frame produces.
+///
+/// It carries the frame's own facts and the identity the parser bound earlier,
+/// so a reader never re-derives either from the raw line.
 #[derive(Debug)]
-pub(in crate::platform) struct ProtocolFinishReport {
-    pub(in crate::platform) output: String,
-    pub(in crate::platform) session_id: String,
-    pub(in crate::platform) turn_id: String,
-    pub(in crate::platform) effective: EffectiveSettings,
-    pub(in crate::platform) events: Vec<Value>,
+pub struct ProtocolFinishReport {
+    /// The terminal assistant message.
+    pub output: String,
+    /// The native conversation identity.
+    pub session_id: String,
+    /// The turn the client dispatched.
+    pub turn_id: String,
+    /// The settings the CLI reported for this turn.
+    pub effective: EffectiveSettings,
+    /// The redacted transcript evidence retained for this turn.
+    pub events: Vec<Value>,
 }
 
-pub(in crate::platform) struct ClaudeCodeParser<'a> {
-    pub(super) config: &'a DriverConfig,
-    pub(in crate::platform) expected_session_id: Option<String>,
-    pub(in crate::platform) observed_session_id: Option<String>,
-    pub(super) effective: EffectiveSettings,
+/// One Claude Code turn's state machine.
+pub struct ClaudeCodeStateMachine<'a> {
+    pub(crate) config: &'a DriverConfig,
+    /// The native identity the launch expected, when it had one.
+    pub expected_session_id: Option<String>,
+    /// The native identity the CLI actually reported.
+    pub observed_session_id: Option<String>,
+    effective: EffectiveSettings,
     started_emitted: bool,
     next_message_unit: u64,
     pending_native_message_id: String,
@@ -43,8 +63,9 @@ struct ClaudeMessageUnit {
     assistant_snapshot_seen: bool,
 }
 
-impl<'a> ClaudeCodeParser<'a> {
-    pub(in crate::platform) fn new(
+impl<'a> ClaudeCodeStateMachine<'a> {
+    /// A state machine for one turn, bound to the identity the launch knew.
+    pub fn new(
         config: &'a DriverConfig,
         identity: &LaunchIdentity,
         known_session: Option<String>,
@@ -64,7 +85,11 @@ impl<'a> ClaudeCodeParser<'a> {
         }
     }
 
-    pub(in crate::platform) fn handle(
+    /// Consume one already-decoded frame.
+    ///
+    /// This is the parser's real body; the byte-line ingress in [`super`]
+    /// decodes into it, so replay and production drive one implementation.
+    pub fn handle(
         &mut self,
         message: Value,
     ) -> Result<Option<ProtocolFinishReport>, ProtocolFailure> {
@@ -82,7 +107,7 @@ impl<'a> ClaudeCodeParser<'a> {
         if message.get("type").and_then(Value::as_str) == Some("system")
             && message.get("subtype").and_then(Value::as_str) == Some("permission_denied")
         {
-            crate::platform::turn_event_emit::emit_turn_event(
+            turn_event_emit::emit_turn_event(
                 "permission.denied",
                 self.observed_session_id
                     .as_deref()
@@ -123,7 +148,7 @@ impl<'a> ClaudeCodeParser<'a> {
         }
         if let Some(text) = partial_text_delta(&message) {
             let (message_unit, suffix) = self.observe_text_delta(text);
-            crate::platform::turn_event_emit::emit_agent_message_chunk_for_unit(
+            turn_event_emit::emit_agent_message_chunk_for_unit(
                 self.observed_session_id
                     .as_deref()
                     .or(self.expected_session_id.as_deref())
@@ -143,7 +168,7 @@ impl<'a> ClaudeCodeParser<'a> {
             && let Some((message_unit, suffix)) =
                 self.observe_assistant_snapshot(&message, &snapshot)
         {
-            crate::platform::turn_event_emit::emit_agent_message_chunk_for_unit(
+            turn_event_emit::emit_agent_message_chunk_for_unit(
                 self.observed_session_id
                     .as_deref()
                     .or(self.expected_session_id.as_deref())
@@ -154,7 +179,7 @@ impl<'a> ClaudeCodeParser<'a> {
             );
         }
         if let Some(evidence_kind) = processing_evidence_kind(&message) {
-            crate::platform::turn_event_emit::emit_agent_processing(
+            turn_event_emit::emit_agent_processing(
                 self.observed_session_id
                     .as_deref()
                     .or(self.expected_session_id.as_deref())
@@ -170,7 +195,12 @@ impl<'a> ClaudeCodeParser<'a> {
         self.finish(message).map(Some)
     }
 
-    pub(super) fn record_session(&mut self, value: &str) -> Result<(), ProtocolFailure> {
+    /// Bind the native conversation identity one frame reported.
+    ///
+    /// An identity that is malformed, or that contradicts the conversation this
+    /// turn was launched for, is a failure rather than a silent re-bind: the
+    /// client must never read another conversation's reply.
+    pub(crate) fn record_session(&mut self, value: &str) -> Result<(), ProtocolFailure> {
         if value.len() > 512 || value.chars().any(char::is_control) {
             return Err(self.failure(
                 "claude_code_session_id_invalid",
@@ -195,11 +225,11 @@ impl<'a> ClaudeCodeParser<'a> {
         }
         self.observed_session_id = Some(value.to_string());
         if !self.started_emitted {
-            crate::platform::turn_event_emit::emit_turn_event(
+            turn_event_emit::emit_turn_event(
                 "agent.turn.accepted",
                 value,
                 &self.config.turn_id,
-                serde_json::json!({"evidenceKind": "stream-init"}),
+                json!({"evidenceKind": "stream-init"}),
             );
             self.started_emitted = true;
         }
@@ -241,7 +271,7 @@ impl<'a> ClaudeCodeParser<'a> {
                     .as_deref()
                     .or(self.expected_session_id.as_deref())
                     .unwrap_or_default();
-                crate::platform::turn_event_emit::emit_turn_event(
+                turn_event_emit::emit_turn_event(
                     "permission.denied",
                     session_id,
                     &self.config.turn_id,
@@ -324,13 +354,13 @@ impl<'a> ClaudeCodeParser<'a> {
                 .with_session(Some(&session_id))
             })?;
         let (message_unit, visible_output) = self.complete_message(output);
-        crate::platform::turn_event_emit::emit_agent_message_completed_for_unit(
+        turn_event_emit::emit_agent_message_completed_for_unit(
             &session_id,
             &self.config.turn_id,
             &message_unit,
             &visible_output,
         );
-        crate::platform::turn_event_emit::emit_turn_event(
+        turn_event_emit::emit_turn_event(
             "dispatch.turn.completed",
             &session_id,
             &self.config.turn_id,
@@ -466,15 +496,18 @@ impl<'a> ClaudeCodeParser<'a> {
         self.next_message_unit.to_string()
     }
 
-    pub(in crate::platform) fn mark_cancel_requested(&mut self) {
+    /// Record that the client wrote a user-initiated interrupt for this turn.
+    pub fn mark_cancel_requested(&mut self) {
         self.cancel_requested = true;
     }
 
-    pub(in crate::platform) fn cancel_was_requested(&self) -> bool {
+    /// Whether the client wrote a user-initiated interrupt for this turn.
+    pub fn cancel_was_requested(&self) -> bool {
         self.cancel_requested
     }
 
-    pub(in crate::platform) fn failure(
+    /// This Agent's failure, carrying the identity the parser has bound.
+    pub fn failure(
         &self,
         code: &'static str,
         message: &'static str,

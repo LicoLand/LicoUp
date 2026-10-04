@@ -8,34 +8,57 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
 );
+// The client keeps the process half; the vendor protocol, its parser and the
+// replay arm moved into the Claude Code adapter package, so this contract reads
+// the client's own leaves here and the package's leaves from its own crate.
 const driverRoot = "crates/licoup-native/src/platform/claude_code_driver";
-const parserRoot = "crates/licoup-native/src/platform/native_agent_parser/adapters/claude_code";
+const packageRoot = "crates/licoup-agent-claude-code";
+const parserRoot = `${packageRoot}/src/protocol/parser`;
 
 const productionLeaves = Object.freeze([
   "approval.rs",
-  "command.rs",
   "control.rs",
-  "errors.rs",
   "execution.rs",
+  "failure.rs",
   "io.rs",
+  "launch.rs",
   "model.rs",
-  "params.rs",
   "probe.rs",
+  "reset.rs",
   "supervision.rs",
   "transport.rs",
 ]);
-const parserLeaves = Object.freeze(["events.rs", "state.rs"]);
+const parserLeaves = Object.freeze([
+  "../parser.rs",
+  "../params.rs",
+  "../launch.rs",
+  "../failure.rs",
+  "../control.rs",
+  "adapter.rs",
+  "events.rs",
+  "state.rs",
+]);
 
 async function read(relativePath) {
   return fs.readFile(path.join(repoRoot, relativePath), "utf8");
 }
 
 async function sources() {
-  return Object.fromEntries(await Promise.all([
-    ...productionLeaves.map(async (leaf) => [leaf, await read(`${driverRoot}/${leaf}`)]),
-    ["parser.rs", await read(`${parserRoot}.rs`)],
-    ...parserLeaves.map(async (leaf) => [`parser/${leaf}`, await read(`${parserRoot}/${leaf}`)]),
-  ]));
+  const client = Object.fromEntries(await Promise.all(
+    productionLeaves.map(async (leaf) => [leaf, await read(`${driverRoot}/${leaf}`)]),
+  ));
+  // The package's protocol lives under its own `protocol/` root, so a leaf that
+  // did not move keeps its client name and a leaf that moved is read from its
+  // package path.
+  const packageLeaves = Object.fromEntries(await Promise.all(
+    parserLeaves.map(async (leaf) => {
+      const relative = leaf.startsWith("../")
+        ? `${packageRoot}/src/protocol/${leaf.slice(3)}`
+        : `${parserRoot}/${leaf}`;
+      return [leaf.startsWith("../") ? leaf.slice(3) : leaf, await read(relative)];
+    }),
+  ));
+  return { ...client, ...packageLeaves };
 }
 
 test("Claude Code driver facade is thin and owns every production leaf", async () => {
@@ -56,19 +79,25 @@ test("Claude Code driver facade is thin and owns every production leaf", async (
 test("Claude Code keeps the fixed streaming-input lane with native resume and no shell fallback", async () => {
   const source = await sources();
   const joined = Object.values(source).join("\n");
-  assert.ok(source["model.rs"].includes(
-    'RUNTIME_PROTOCOL: &str = "claude-code-cli-stream-json"',
-  ));
+  // The runtime protocol is the package's declaration, re-exported where the
+  // client's own model reads it.
+  assert.ok(source["model.rs"].includes("licoup_agent_claude_code::protocol::RUNTIME_PROTOCOL"));
+  assert.ok(source["parser.rs"].includes('"claude-code.stream-json.v1"') === false);
+  assert.ok(
+    (await read(`${packageRoot}/src/protocol/mod.rs`)).includes(
+      'RUNTIME_PROTOCOL: &str = "claude-code-cli-stream-json"',
+    ),
+  );
   for (const token of [
     '"--input-format"',
     '"stream-json"',
     '"--output-format"',
     '"--include-partial-messages"',
   ]) {
-    assert.ok(source["command.rs"].includes(token), `missing fixed command token: ${token}`);
+    assert.ok(source["launch.rs"].includes(token), `missing fixed command token: ${token}`);
   }
   assert.ok(source["params.rs"].includes("stdin_message"));
-  assert.ok(source["command.rs"].includes('"--append-system-prompt"'));
+  assert.ok(source["launch.rs"].includes('"--append-system-prompt"'));
   assert.equal(source["params.rs"].includes("claude_code_private_instructions_unsupported"), false);
   for (const forbidden of [
     '"--continue"',
@@ -79,7 +108,7 @@ test("Claude Code keeps the fixed streaming-input lane with native resume and no
   ]) {
     assert.equal(joined.includes(forbidden), false);
   }
-  assert.ok(source["command.rs"].includes('"--resume"'));
+  assert.ok(source["launch.rs"].includes('"--resume"'));
 });
 
 test("Claude Code public lifecycle contract is bounded and exact-session scoped", async () => {
@@ -118,11 +147,11 @@ test("Claude Code IO, events, controls, probe, and failures stay bounded and red
   ]) {
     assert.ok(joined.includes(token), `missing bounded lifecycle token: ${token}`);
   }
-  assert.ok(source["parser/events.rs"].includes("processing_evidence_kind"));
-  assert.ok(source["parser.rs"].includes("fn parse_line"));
+  assert.ok(source["events.rs"].includes("processing_evidence_kind"));
+  assert.ok(source["adapter.rs"].includes("fn parse_line"));
   assert.ok(source["io.rs"].includes("Line(Vec<u8>)"));
   assert.equal(source["io.rs"].includes("serde_json::from"), false);
-  assert.ok(source["errors.rs"].includes("message: &'static str"));
+  assert.ok(source["failure.rs"].includes("message: &'static str"));
   for (const rawProjection of [
     "stderr: String",
     "stderr: Vec",
@@ -166,7 +195,7 @@ test("Claude Code process-local lifecycle and transcript have one complete super
       `missing frozen lifecycle symbol: ${symbol}`,
     );
   }
-  assert.ok(source["parser/state.rs"].includes("claude_code_authentication_required"));
+  assert.ok(source["state.rs"].includes("claude_code_authentication_required"));
 });
 
 test("Claude Code product controls and parity use one persistent stdio RPC owner", async () => {
@@ -250,7 +279,7 @@ test("Claude Code routing remains model-data driven and native resume stays expl
   ]) {
     assert.equal(joined.includes(forbidden), false);
   }
-  assert.ok(source["command.rs"].includes('"--model"'));
-  assert.ok(source["command.rs"].includes('"--resume"'));
-  assert.equal(source["command.rs"].includes('"--no-session-persistence"'), false);
+  assert.ok(source["launch.rs"].includes('"--model"'));
+  assert.ok(source["launch.rs"].includes('"--resume"'));
+  assert.equal(source["launch.rs"].includes('"--no-session-persistence"'), false);
 });

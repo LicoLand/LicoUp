@@ -2094,6 +2094,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-agent-claude-code"
+version = "0.3.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-extension-contracts",
+ "licoup-foundation",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "licoup-agent-codex"
 version = "0.14.0"
 dependencies = [
@@ -2387,6 +2399,7 @@ dependencies = [
  "licoup-agent-adapter-sdk",
  "licoup-agent-adapters",
  "licoup-agent-antigravity",
+ "licoup-agent-claude-code",
  "licoup-agent-codex",
  "licoup-agent-copilot",
  "licoup-agent-cursor",

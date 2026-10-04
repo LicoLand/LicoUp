@@ -1,4 +1,4 @@
-use super::errors::ProtocolFailure;
+use licoup_agent_claude_code::protocol::{EffectiveSettings, ProtocolFailure};
 use serde_json::Value;
 use serde_json::json;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -8,7 +8,9 @@ use std::time::Duration;
 
 /// Official Claude Code streaming-input lane. Prompt and process-local
 /// conversation identity never use the command line.
-pub(in crate::platform) const RUNTIME_PROTOCOL: &str = "claude-code-cli-stream-json";
+/// The runtime protocol this Agent's CLI lane reports, named by the package.
+pub(in crate::platform) const RUNTIME_PROTOCOL: &str =
+    licoup_agent_claude_code::protocol::RUNTIME_PROTOCOL;
 pub(super) const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 #[repr(u8)]
@@ -194,16 +196,6 @@ impl CompleteTranscript {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub(in crate::platform) struct EffectiveSettings {
-    pub(in crate::platform) cwd: Option<String>,
-    pub(in crate::platform) model: Option<String>,
-    pub(in crate::platform) reasoning_effort: Option<String>,
-    pub(in crate::platform) permission_mode: Option<String>,
-    pub(in crate::platform) sandbox: Option<Value>,
-    pub(in crate::platform) approval_policy: Option<Value>,
-}
-
 #[derive(Debug)]
 pub(in crate::platform) struct RunResult {
     pub(in crate::platform) ok: bool,
@@ -230,7 +222,7 @@ impl RunResult {
     ) -> Self {
         let session_id = failure.session_id.clone().unwrap_or_default();
         let transitions =
-            crate::platform::native_agent_parser::adapters::claude_code::failure_transitions(
+            licoup_agent_claude_code::protocol::parser::failure_transitions(
                 failure.code,
                 failure.stage,
                 failure.message,
@@ -256,38 +248,3 @@ impl RunResult {
     }
 }
 
-/// Continuation is available only while the exact supervised streaming-input
-/// process remains live. Persisted CLI resume is intentionally not used because
-/// the vendor contract puts the native session identifier on argv.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(in crate::platform) struct CapabilityProbe {
-    pub(in crate::platform) available: bool,
-    pub(in crate::platform) version_command_ok: bool,
-    pub(in crate::platform) help_command_ok: bool,
-    pub(in crate::platform) stdin_prompt: bool,
-    pub(in crate::platform) structured_stream: bool,
-    pub(in crate::platform) new_session: bool,
-    pub(in crate::platform) resume_session: bool,
-    pub(in crate::platform) model: bool,
-    pub(in crate::platform) reasoning_effort: bool,
-    pub(in crate::platform) permission_mode: bool,
-    pub(in crate::platform) interactive_approval_events: bool,
-}
-
-impl CapabilityProbe {
-    pub(super) fn official(version_command_ok: bool, help_command_ok: bool) -> Self {
-        Self {
-            available: version_command_ok || help_command_ok,
-            version_command_ok,
-            help_command_ok,
-            stdin_prompt: true,
-            structured_stream: true,
-            new_session: true,
-            resume_session: true,
-            model: true,
-            reasoning_effort: true,
-            permission_mode: true,
-            interactive_approval_events: false,
-        }
-    }
-}

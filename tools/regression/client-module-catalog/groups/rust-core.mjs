@@ -43,6 +43,8 @@ export const RUST_CORE_MODULES = Object.freeze([
   // row names the package and what its program owns; the id, the input tree and
   // the manifest path follow that one name. Adding an Agent's package adds one
   // call here and nothing else in this file.
+  agentPackageCrateModule("claude-code",
+    "Claude Code adapter package program, vendor protocol, registration, and replay corpus"),
   agentPackageCrateModule("codex",
     "Codex adapter package program, vendor protocol, registration, and replay corpus"),
   agentPackageCrateModule("antigravity",
@@ -53,17 +55,8 @@ export const RUST_CORE_MODULES = Object.freeze([
     "DeepSeek Harness adapter package program, vendor protocol, session-log reader, registration, and replay corpus"),
   agentPackageCrateModule("kimi",
     "Kimi Code adapter package program, ACP frame dialect, registration, and replay arm"),
-  defineModule({
-      id: "rust.core.agent-copilot-package",
-      kind: "rust-core",
-      summary: "Copilot adapter package program, ACP frame dialect, registration, and replay corpus",
-      inputs: ["crates/licoup-agent-copilot/**"],
-      command: command(
-        "cargo",
-        ["test", "--manifest-path", "crates/licoup-agent-copilot/Cargo.toml"],
-        10 * 60_000,
-      ),
-    }),
+  agentPackageCrateModule("copilot",
+    "Copilot adapter package program, ACP frame dialect, registration, and replay corpus"),
   defineModule({
       id: "rust.core.acp.composition",
       kind: "rust-core",

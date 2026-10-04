@@ -281,6 +281,16 @@ export function agentPackageCrateModule(name, summary) {
   });
 }
 
+/// One module of the Codex adapter package's library.
+export function codexAgentPackageLayer(filter, harnessArgs = []) {
+  return rustAgentPackageLayer(filter, harnessArgs, agentPackageManifest("codex"));
+}
+
+/// One module of the Claude Code adapter package's library.
+export function claudeCodeAgentPackageLayer(filter, harnessArgs = []) {
+  return rustAgentPackageLayer(filter, harnessArgs, agentPackageManifest("claude-code"));
+}
+
 export function gatewayCoreLayer(filter, harnessArgs = []) {
   return command(
     "cargo",

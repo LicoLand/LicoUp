@@ -49,8 +49,8 @@ const SOURCES = Object.freeze({
   [N + "platform/antigravity_driver/auth.rs"]: "cf7f6d1607aef2f200b2cb075d5f05a99ff482555ef57d7d77ce6a8c54621bfa",
   [N + "platform/antigravity_driver/execution.rs"]: "f1c00ca0af5f89b35593f7fa98865c57f5333f232027f2e5df7588464c615deb",
   [N + "platform/antigravity_driver/probe.rs"]: "75c62a13bccda44854d39b98ba41eaf2a146f2e0f64fed7b98edfc7e8b9972ae",
-  [N + "platform/claude_code_driver/command.rs"]: "d5261fa6577d9ddae24027b1b58a165d239fe3122b7b648cae50256c9ee65d6d",
-  [N + "platform/claude_code_driver/probe.rs"]: "490b5c591d9d65a1714116d75198cb93b604be1b11ad5cf29f333291a14b8c29",
+  [N + "platform/claude_code_driver/launch.rs"]: "a67ab51fb21b65a26226a9140eb40bb3891fff3e51cc333482d122facfdb7730",
+  [N + "platform/claude_code_driver/probe.rs"]: "5f199b762add6be8f28ac7b4f557590b899a71e3d4f727f7b98fb4f3ce529195",
   [C + "app_server/driver/launch.rs"]: "de5dfbad8261b94a1bb37d1bf9ae4620af35e1856434b16c74b5ad7cc9f8b862",
   [N + "platform/cursor_driver/execution.rs"]: "e50f484719e8828fb7842711337d8886d6b220986fced0d2757fedbe6038576f",
   [N + "platform/cursor_driver/probe.rs"]: "e5fb151d35ada8ac16770cfa444a46edc9b07dfbfd02b36f165c0947b3f69c77",
@@ -184,8 +184,8 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
   ...entries(N + "platform/antigravity_driver/probe.rs", parameter("executable: &str"), [
     ["de42112b0028", "Construct the bounded Antigravity version/help capability probe around the executable supplied by its driver, with untrusted-Agent environment preparation."],
   ]),
-  ...entries(N + "platform/claude_code_driver/command.rs", field("Command::new(&self.executable)"), [
-    ["22e72e5babe5", "Launch the configured Claude Code process with source-owned arguments and workspace, retaining the executable-directory PATH head needed by sibling vendor tools."],
+  ...entries(N + "platform/claude_code_driver/launch.rs", field("Command::new(&identity.executable)"), [
+    ["952372b549c7", "Launch the configured Claude Code process with source-owned arguments and workspace, retaining the executable-directory PATH head needed by sibling vendor tools."],
   ]),
   ...entries(N + "platform/claude_code_driver/probe.rs", parameter("executable: &str"), [
     ["c6034ed13778", "Construct Claude Code's bounded capability probe from its caller-selected executable; the source supervisor and untrusted environment remain separate runtime guarantees."],

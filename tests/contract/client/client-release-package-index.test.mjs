@@ -85,6 +85,10 @@ const releaseSourcePrefix = "build/apps/desktop/native-release/macos-direct-arm6
 // adding one is one row: no field of it is copied from the package.
 const declaredPackages = Object.freeze([
   declaredRelease({
+    source: "crates/licoup-agent-claude-code/package",
+    payloadRole: "claude-code-adapter-package-payload",
+  }),
+  declaredRelease({
     source: "crates/licoup-agent-antigravity/package",
     payloadRole: "antigravity-adapter-package-payload",
   }),
@@ -265,8 +269,7 @@ test("the canonical release configuration declares every package payload role ex
   const releaseTarget = catalog.targets.find((target) => target.id === "macos-direct-arm64");
   for (const role of [...declaredPayloadRoles, PACKAGE_INDEX_ROLE]) {
     assert.equal(releaseTarget.artifacts.some((artifact) => artifact.role === role), true,
-      `the release closure must carry an asset for ${role}`);
-  }
+      `the release closure must carry an asset for ${role}`);  }
 
   // The publication authority owns a closed draft asset contract, so the package
   // assets are declared beside the client draft rather than inside it.

@@ -1,8 +1,8 @@
-use super::command::LaunchIdentity;
+use super::launch::LaunchIdentity;
 use super::control::{ControlDisposition, ControlRequest};
-use super::errors::{ProtocolFailure, supervisor_failure};
+use super::failure::{ProtocolFailure, supervisor_failure};
 use super::model::{CompleteTranscript, TransportLifecycle};
-use super::params::DriverConfig;
+use super::launch::DriverConfig;
 use super::transport::PersistentTransport;
 use serde_json::{Value, json};
 use std::collections::HashMap;

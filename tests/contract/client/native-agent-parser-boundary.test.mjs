@@ -2,15 +2,18 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-// The thirteen per-Agent parsers and the composition that names them stay in
-// the host until that Agent's own package owns the protocol; the shared adapter
+// The thirteen per-Agent parsers and the composition that names them stay in the
+// host until that Agent's own package owns the protocol; the shared adapter
 // contract, the registry lookup, the replay harness and the lifecycle authority
-// moved to `licoup-agent-adapter-sdk`. Six Agents have moved further: their
-// vendor protocol, wire vocabulary and replay arm are their own package's, and
-// the composition names the package instead of keeping a second copy.
+// moved to `licoup-agent-adapter-sdk`. Seven Agents have moved further: their
+// vendor protocol, wire vocabulary, parser declaration and replay arm are their
+// own package's, and the composition names the package instead of keeping a
+// second copy.
 const parserRoot = 'crates/licoup-native/src/platform/native_agent_parser';
 const compositionRoot = `${parserRoot}/adapters`;
 const sdkRoot = 'crates/licoup-agent-adapter-sdk/src';
+
+// Every adapter this composition carries, in `RuntimeAdapter` order.
 const adapters = [
   'antigravity',
   'claude_code',
@@ -34,6 +37,7 @@ const adapters = [
 // package is one row.
 const packageCrates = new Map([
   ['antigravity', 'crates/licoup-agent-antigravity'],
+  ['claude_code', 'crates/licoup-agent-claude-code'],
   ['codex', 'crates/licoup-agent-codex'],
   ['copilot', 'crates/licoup-agent-copilot'],
   ['cursor', 'crates/licoup-agent-cursor'],
@@ -41,16 +45,28 @@ const packageCrates = new Map([
   ['kimi_code', 'crates/licoup-agent-kimi'],
 ]);
 
-// The crate a package-owned parser is reached through, and the source that
-// parser ships. Both follow the crate directory's own name; the assertions below
-// read the derived values back from `adapters/mod.rs` rather than trusting the
-// convention, so a row that names the wrong directory fails instead of passing.
+// The crate a package-owned parser is reached through, the module path that crate
+// exposes it at, and the source that parser ships. The crate and the source
+// follow the crate directory's own name; a package places its parser where its
+// own protocol lives, at the crate root or inside the protocol module it owns, so
+// that path is a property of the package and is named here for the one that
+// differs. The assertions below read the derived values back from
+// `adapters/mod.rs` rather than trusting the convention, so a row that names the
+// wrong directory fails instead of passing.
+const packageParserModules = new Map([
+  ['claude_code', 'protocol::parser'],
+]);
+
 function packageCrate(directory) {
   return directory.split('/').at(-1).replaceAll('-', '_');
 }
 
-function packagedParser(directory) {
-  return `${directory}/src/parser.rs`;
+function packageParserModule(adapter) {
+  return packageParserModules.get(adapter) ?? 'parser';
+}
+
+function packagedParser(adapter, directory) {
+  return `${directory}/src/${packageParserModule(adapter).replaceAll('::', '/')}.rs`;
 }
 
 test('packaged adapter registry is bijective with the thirteen-entry inventory', () => {
@@ -74,8 +90,6 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
   // unanswered rather than inheriting a neighbouring Agent's answer, and a
   // package entry answers from the package's own evidence.
   const answered = {
-    claude_code: ['no_transitions', 'claude_code_identity'],
-    cursor: ['no_transitions', 'cursor_identity'],
     hermes: ['hermes_transitions', 'no_identity'],
   };
   // One entry per Agent, so a per-Agent answer is read from its own entry
@@ -87,15 +101,19 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
   }
   assert.equal(entries.size, 13 - packageCrates.size);
   // The packaged parsers the composition still reads: a parser alias belongs
-  // exactly where this host parses that Agent's frames. Codex, Copilot, the
-  // DeepSeek Harness and Kimi Code are reached for their registration and their
-  // replay arm instead, so an alias for any of them would be a forwarding shell
-  // with no reader — which is what the compiler reports as an unused import.
+  // exactly where this host parses that Agent's frames. Claude Code, Codex,
+  // Copilot, the DeepSeek Harness and Kimi Code are reached for their
+  // registration and their replay arm instead — each driver reads its own
+  // package's protocol module — so an alias for any of them would be a
+  // forwarding shell with no reader, which is what the compiler reports as an
+  // unused import.
   const readParserAliases = new Set(['antigravity', 'cursor']);
   for (const adapter of adapters) {
     const directory = packageCrates.get(adapter);
     const source = readFileSync(
-      directory ? packagedParser(directory) : `${parserRoot}/adapters/${adapter}.rs`,
+      directory
+        ? packagedParser(adapter, directory)
+        : `${parserRoot}/adapters/${adapter}.rs`,
       'utf8');
     assert.match(source, /AdapterContract::new/);
     if (directory) {
@@ -103,9 +121,9 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
       // composition reaches that Agent through the package's own crate, names
       // the package's own REGISTRATION constant, may not declare the module, may
       // not retype the declaration here, and keeps a parser alias only where it
-      // actually reads one. The crate and the parser source are derived from the
-      // row above, so this test and the map cannot disagree about which package
-      // owns the parser.
+      // actually reads one. The crate, the module path and the parser source are
+      // derived from the row above, so this test and the map cannot disagree
+      // about which package owns the parser.
       const crate = packageCrate(directory);
       assert.match(composition, new RegExp(`${crate}::`),
         `${adapter} must be reached through ${crate}`);
@@ -115,7 +133,8 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
       assert.doesNotMatch(composition,
         new RegExp(`AdapterContract::new\\("${adapter.replace('_harness', '-harness')}"`),
         `${adapter}'s declaration is the package's, not a second one here`);
-      const alias = `use ${crate}::parser as ${adapter};`;
+      const alias =
+        `use ${crate}::${packageParserModule(adapter)} as ${adapter};`;
       assert.equal(composition.includes(alias), readParserAliases.has(adapter),
         `${adapter} keeps a package parser alias exactly where the host reads one`);
       continue;
@@ -131,6 +150,8 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     } else {
       assert.match(entry, /^unanswered\(/u);
     }
+    const component = readFileSync(`${parserRoot}/adapters/${adapter}.rs`, 'utf8');
+    assert.match(component, /AdapterContract::new/);
   }
 });
 
