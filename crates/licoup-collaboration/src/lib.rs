@@ -40,6 +40,7 @@
 pub mod authority;
 pub mod context;
 pub mod graph;
+pub mod retention;
 pub mod subscription;
 
 pub use authority::{
@@ -55,6 +56,11 @@ pub use graph::{
     MAX_GRAPH_EDGES, MAX_GRAPH_NODES, MAX_NODE_ALTERNATIVES, NodeId, NodeKind, NodeValue, OpaqueId,
     PrincipalId, ProjectId, Provenance, ProvenanceSource, Relation, Removal, RetentionReason,
     Revision, Root,
+};
+pub use retention::{
+    CollectionPlan, CollectionRecord, MAX_COLLECTION_BATCH, RetentionNote, Watermarks, collect,
+    collectable_nodes, is_collectable_kind, plan_collection, released_holdings, retention_roots,
+    rootless_cycle_nodes,
 };
 pub use subscription::{
     CatchUp, Channel, Epoch, GraphChange, GraphChannelLog, GraphCursor, GraphDelta, GraphSnapshot,
