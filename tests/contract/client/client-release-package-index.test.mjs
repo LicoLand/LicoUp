@@ -64,103 +64,97 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)
 const script = "tools/scripts/client-release-package-index.mjs";
 const indexAsset = "LicoUp-package-index.json";
 const releaseSourcePrefix = "build/apps/desktop/native-release/macos-direct-arm64";
-// Every package the tree ships, in the order the declared set names them. This
-// table is what this file asserts: the declared set must equal it, the macOS
-// release target must declare one payload asset per role from it, the
-// publication contract must publish each of its roles once, and the two tests at
-// the end of this file must find exactly these package directories on disk and
-// exactly these payloads in a trial index. A package added to the tree without a
-// row here fails them.
+// Every package the tree ships, in the order the declared set names them. A row
+// names only what no package document owns: the source directory the release
+// registration publishes from, and the one payload role that package's asset is
+// published as. The identity, the client line the package serves and the native
+// entry it ships are read from the package's own `package-release.json`, and the
+// payload asset name follows the identity from that document.
+//
+// That split is what keeps this file able to fail. The package is the independent
+// authority for its own facts; the release registration, the release target and
+// the publishing tool are the producers this file checks against them. Reading
+// the release registration to build these rows would make the comparison below a
+// restatement of one document instead of a check between two.
+//
+// What this file asserts: the declared set must equal these rows, the macOS
+// release target must declare one payload asset per row, the publication contract
+// must publish each row's role once, and the tests at the end of this file must
+// find exactly these package directories on disk and exactly these payloads in a
+// trial index. A package added to the tree without a row here fails them, and
+// adding one is one row: no field of it is copied from the package.
 const declaredPackages = Object.freeze([
-  {
-    packageId: "org.licoland.adapter.antigravity",
+  declaredRelease({
     source: "crates/licoup-agent-antigravity/package",
     payloadRole: "antigravity-adapter-package-payload",
-    payloadAsset: "LicoUp-package-org.licoland.adapter.antigravity.licopkg",
-    converterEntry: "bin/lico-agent-antigravity",
-    clientRange: ">=0.3.0, <1.0.0",
-  },
-  {
-    packageId: "org.licoland.adapter.codex",
+  }),
+  declaredRelease({
     source: "crates/licoup-agent-codex/package",
     payloadRole: "codex-adapter-package-payload",
-    payloadAsset: "LicoUp-package-org.licoland.adapter.codex.licopkg",
-    converterEntry: "bin/lico-agent-codex",
-    clientRange: ">=0.3.0, <1.0.0",
-  },
-  {
-    packageId: "org.licoland.adapter.copilot",
+  }),
+  declaredRelease({
     source: "crates/licoup-agent-copilot/package",
     payloadRole: "copilot-adapter-package-payload",
-    payloadAsset: "LicoUp-package-org.licoland.adapter.copilot.licopkg",
-    converterEntry: "bin/lico-agent-copilot",
-    clientRange: ">=0.3.0, <1.0.0",
-  },
-  {
-    packageId: "org.licoland.converter.appearance",
+  }),
+  declaredRelease({
     source: "components/appearance/package",
     payloadRole: "appearance-converter-package-payload",
-    payloadAsset: "LicoUp-package-org.licoland.converter.appearance.licopkg",
-    converterEntry: "bin/licoup-appearance-convert",
-    clientRange: ">=0.3.0, <1.0.0",
-  },
-  {
-    packageId: "org.licoland.feature.analytics",
+  }),
+  declaredRelease({
     source: "components/analytics/package",
     payloadRole: "analytics-package-payload",
-    payloadAsset: "LicoUp-package-org.licoland.feature.analytics.licopkg",
-    converterEntry: "bin/licoup-analytics",
-    clientRange: ">=0.3.0, <1.0.0",
-  },
-  {
-    packageId: "org.licoland.feature.gateway",
+  }),
+  declaredRelease({
     source: "crates/licoup-gateway/package",
     payloadRole: "gateway-package-payload",
-    payloadAsset: "LicoUp-package-org.licoland.feature.gateway.licopkg",
-    converterEntry: "bin/lico-gateway",
-    clientRange: ">=0.3.0, <1.0.0",
-  },
-  {
-    packageId: "org.licoland.adapter.cursor",
+  }),
+  declaredRelease({
     source: "crates/licoup-agent-cursor/package",
     payloadRole: "cursor-adapter-package-payload",
-    payloadAsset: "LicoUp-package-org.licoland.adapter.cursor.licopkg",
-    converterEntry: "bin/lico-agent-cursor",
-    clientRange: ">=0.3.0, <1.0.0",
-  },
-  {
-    packageId: "org.licoland.adapter.deepseek",
+  }),
+  declaredRelease({
     source: "crates/licoup-agent-deepseek/package",
     payloadRole: "deepseek-adapter-package-payload",
-    payloadAsset: "LicoUp-package-org.licoland.adapter.deepseek.licopkg",
-    converterEntry: "bin/lico-agent-deepseek",
-    clientRange: ">=0.3.0, <1.0.0",
-  },
-  {
-    packageId: "org.licoland.adapter.kimi",
+  }),
+  declaredRelease({
     source: "crates/licoup-agent-kimi/package",
     payloadRole: "kimi-adapter-package-payload",
-    payloadAsset: "LicoUp-package-org.licoland.adapter.kimi.licopkg",
-    converterEntry: "bin/lico-agent-kimi",
-    clientRange: ">=0.3.0, <1.0.0",
-  },
-  {
-    packageId: "org.licoland.feature.mcp",
+  }),
+  declaredRelease({
     source: "crates/licoup-mcp/package",
     payloadRole: "mcp-package-payload",
-    payloadAsset: "LicoUp-package-org.licoland.feature.mcp.licopkg",
-    converterEntry: "bin/lico-subagent-mcp",
-    clientRange: ">=0.3.0, <1.0.0",
-  },
-  {
-    packageId: "org.licoland.fixture.native-converter",
+  }),
+  declaredRelease({
     source: "tests/fixtures/client_package_release/fixture-native-converter",
     payloadRole: PACKAGE_PAYLOAD_ROLE,
+    // The one row that names its asset: this directory is the disposable
+    // synthetic fixture the trial itself packages, and the asset name is already
+    // committed in the release target and in the fixture bytes this file reads
+    // back. Its declared identity deliberately differs from that name, so deriving
+    // the name from the identity would describe a payload nobody publishes.
     payloadAsset: "LicoUp-package-fixture-native-converter.licopkg",
-    converterEntry: "bin/licoup-fixture-converter",
-    clientRange: ">=0.2.0, <1.0.0",
-  },
+  }),
 ]);
+
+/**
+ * One declared package row. The payload role and the source directory belong to
+ * the release registration and stay in the row above; everything the package can
+ * declare about itself is read from the package's own release declaration in that
+ * directory. The asset name follows the package's own identity, so the release
+ * target is checked against the package rather than restating it.
+ */
+function declaredRelease({ source, payloadRole, payloadAsset }) {
+  const declaration = readJson(`${source}/package-release.json`);
+  const packageId = declaration.packageId;
+  return Object.freeze({
+    packageId,
+    source,
+    payloadRole,
+    payloadAsset: payloadAsset ?? `LicoUp-package-${packageId}.licopkg`,
+    converterEntry: declaration.converter.entry,
+    clientRange: declaration.clientCompatibility.range,
+  });
+}
 
 function declaredPackage(payloadRole) {
   const found = declaredPackages.find((entry) => entry.payloadRole === payloadRole);
@@ -172,44 +166,6 @@ const fixturePackage = declaredPackage(PACKAGE_PAYLOAD_ROLE);
 const mcpPackage = declaredPackage("mcp-package-payload");
 const fixtureSource = fixturePackage.source;
 const payloadAsset = fixturePackage.payloadAsset;
-// The MCP service package is the first real declared package: it is released
-// beside the synthetic fixture under the same contract, on its own payload role.
-const mcpPackageId = "org.licoland.feature.mcp";
-const mcpPackageSource = "crates/licoup-mcp/package";
-const mcpPayloadRole = "mcp-package-payload";
-const mcpPayloadAsset = `LicoUp-package-${mcpPackageId}.licopkg`;
-// An Agent adapter package is released on its own payload role beside the MCP
-// service and the synthetic fixture, so one package's asset can never stand in
-// for another's. Antigravity is the second Agent adapter to declare one; Codex
-// was the first.
-const antigravityPackageId = "org.licoland.adapter.antigravity";
-const antigravityPackageSource = "crates/licoup-agent-antigravity/package";
-const antigravityPayloadRole = "antigravity-adapter-package-payload";
-const antigravityPayloadAsset = `LicoUp-package-${antigravityPackageId}.licopkg`;
-const codexPackageId = "org.licoland.adapter.codex";
-const codexPackageSource = "crates/licoup-agent-codex/package";
-const codexPayloadRole = "codex-adapter-package-payload";
-const codexPayloadAsset = `LicoUp-package-${codexPackageId}.licopkg`;
-// The Cursor adapter package is released the same way, on its own payload role,
-// so one adapter's asset can never stand in for another's.
-const cursorPackageId = "org.licoland.adapter.cursor";
-const cursorPackageSource = "crates/licoup-agent-cursor/package";
-const cursorPayloadRole = "cursor-adapter-package-payload";
-const cursorPayloadAsset = `LicoUp-package-${cursorPackageId}.licopkg`;
-// The DeepSeek Harness adapter package is the second Agent adapter released
-// this way, declared beside Codex on its own payload role so one adapter's asset
-// can never stand in for another's.
-const deepseekPackageId = "org.licoland.adapter.deepseek";
-const deepseekPackageSource = "crates/licoup-agent-deepseek/package";
-const deepseekPayloadRole = "deepseek-adapter-package-payload";
-const deepseekPayloadAsset = `LicoUp-package-${deepseekPackageId}.licopkg`;
-// The Kimi Code adapter package is the second Agent adapter released this way,
-// on its own payload role, so one Agent's artifact can never stand in for
-// another's.
-const kimiPackageId = "org.licoland.adapter.kimi";
-const kimiPackageSource = "crates/licoup-agent-kimi/package";
-const kimiPayloadRole = "kimi-adapter-package-payload";
-const kimiPayloadAsset = `LicoUp-package-${kimiPackageId}.licopkg`;
 const clientProductVersion = JSON.parse(readFileSync(
   path.join(repoRoot, "tools/client-version.json"), "utf8",
 )).productVersion;
@@ -292,15 +248,24 @@ test("the canonical release configuration declares every package payload role ex
     ],
   );
   // The payload assets belong to the one target that owns a release closure
-  // today; no other target silently inherits a package asset.
+  // today; no other target silently inherits a package asset. The role list is
+  // read from the declared rows rather than restated, so extracting a package
+  // cannot leave a hand-written role behind in this check.
+  const declaredPayloadRoles = declaredPackages.map((entry) => entry.payloadRole);
   for (const target of catalog.targets) {
     const roles = target.artifacts.map((artifact) => artifact.role);
-    assert.equal(
-      roles.includes(PACKAGE_INDEX_ROLE) ||
-        declaredPackages.some((entry) => roles.includes(entry.payloadRole)),
-      target.id === "macos-direct-arm64",
-      `${target.id} must not carry an independent package asset`,
-    );
+    const carriesPackageClosure = roles.includes(PACKAGE_INDEX_ROLE) ||
+      declaredPayloadRoles.some((role) => roles.includes(role));
+    assert.equal(carriesPackageClosure, target.id === "macos-direct-arm64",
+      `${target.id} must not carry an independent package asset`);
+  }
+  // The target that carries the closure carries all of it: one asset per
+  // declared payload role and the signed index, so a package cannot be declared
+  // and then dropped from the only closure that publishes it.
+  const releaseTarget = catalog.targets.find((target) => target.id === "macos-direct-arm64");
+  for (const role of [...declaredPayloadRoles, PACKAGE_INDEX_ROLE]) {
+    assert.equal(releaseTarget.artifacts.some((artifact) => artifact.role === role), true,
+      `the release closure must carry an asset for ${role}`);
   }
 
   // The publication authority owns a closed draft asset contract, so the package
@@ -323,6 +288,26 @@ test("the canonical release configuration declares every package payload role ex
         `${role} must not enter the closed client draft`);
     }
   }
+  assert.equal(publication.assetRoles.includes(PACKAGE_PAYLOAD_ROLE), false);
+  for (const role of declaredPayloadRoles) {
+    assert.equal(publication.assetRoles.includes(role), false,
+      `${role} is published in its own right, not as a client draft asset`);
+  }
+  assert.equal(publication.assetRoles.includes(PACKAGE_INDEX_ROLE), false);
+  for (const config of [stable, nightly]) {
+    assert.deepEqual(
+      config.artifacts.map((entry) => entry.role),
+      publication.assetRoles,
+      "exactDraftAssetSetRequired still holds with the independent package assets",
+    );
+    for (const role of [...declaredPayloadRoles, PACKAGE_INDEX_ROLE]) {
+      assert.equal(config.artifacts.some((entry) => entry.role === role), false,
+        `${role} must not enter the closed client draft`);
+    }
+  }
+  // The declared set and the publication contract name the same payload roles:
+  // a package without a role, or a role without a package, is a release that
+  // cannot be staged.
   assert.deepEqual(
     [...set.packages.map((entry) => entry.payloadRole)].sort(),
     [...publication.independentPackageAssets.payloadRoles].sort(),
@@ -481,64 +466,34 @@ test("the plan reports every declared package without writing, and the tool reac
     entry.payloadAsset]));
   // Every declared package is reported with its own committed source, a digest
   // over the payload it would publish, the client line it declares and the
-  // native entry it names.
-  for (const [position, declared] of declaredPackages.entries()) {
-    const reported = plan.packages[position];
-    assert.equal(reported.source, declared.source);
-    assert.match(reported.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
+  // native entry it names. The expectation is the package's own declaration, so
+  // this loop covers a package added to the tree without a row written for it
+  // here; the failure names the package the report disagrees about.
+  for (const declared of declaredPackages) {
+    const reported = plan.packages.find((entry) =>
+      entry.packageId === declared.packageId);
+    assert.ok(reported, `${declared.packageId} must be reported by the plan`);
+    assert.equal(reported.source, declared.source,
+      `${declared.packageId} must be packaged from its own source`);
+    assert.match(reported.payloadDigest, /^sha256:[0-9a-f]{64}$/u,
+      `${declared.packageId} must be reported with a payload digest`);
     assert.deepEqual(reported.clientCompatibility,
-      { kind: "range", range: declared.clientRange });
-    assert.equal(reported.converterEntry, declared.converterEntry);
+      { kind: "range", range: declared.clientRange },
+      `${declared.packageId} must be reported with the line it declares`);
+    assert.equal(reported.converterEntry, declared.converterEntry,
+      `${declared.packageId} must be reported with the entry it declares`);
+    // The package's two committed documents are one claim in two formats: the
+    // manifest the host reads and the release declaration the index republishes.
+    // The entry they share is checked by the tool; the client line is checked
+    // here, so a package cannot publish one line and admit another.
+    const manifest = readJson(`${declared.source}/manifest.json`);
+    assert.equal(manifest.id, declared.packageId,
+      `${declared.packageId} must declare one identity in both documents`);
+    assert.deepEqual(manifest.compatibility.clientVersions, [declared.clientRange],
+      `${declared.packageId} must declare one client line in both documents`);
+    assert.equal(manifest.runtime.entry, declared.converterEntry,
+      `${declared.packageId} must declare one entry in both documents`);
   }
-  const fixturePlan = plan.packages.find((reported) =>
-    reported.packageId === "org.licoland.fixture.native-converter");
-  assert.match(fixturePlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
-  assert.equal(fixturePlan.source, fixtureSource);
-  assert.deepEqual(fixturePlan.clientCompatibility,
-    { kind: "range", range: ">=0.2.0, <1.0.0" });
-  assert.equal(fixturePlan.converterEntry, "bin/licoup-fixture-converter");
-  const deepseekPlan = plan.packages.find((reported) =>
-    reported.packageId === deepseekPackageId);
-  assert.equal(deepseekPlan.source, deepseekPackageSource);
-  assert.match(deepseekPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
-  assert.deepEqual(deepseekPlan.clientCompatibility,
-    { kind: "range", range: ">=0.3.0, <1.0.0" });
-  assert.equal(deepseekPlan.converterEntry, "bin/lico-agent-deepseek");
-  const mcpPlan = plan.packages.find((reported) =>
-    reported.packageId === mcpPackageId);
-  assert.equal(mcpPlan.source, mcpPackageSource);
-  assert.match(mcpPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
-  assert.deepEqual(mcpPlan.clientCompatibility,
-    { kind: "range", range: ">=0.3.0, <1.0.0" });
-  assert.equal(mcpPlan.converterEntry, "bin/lico-subagent-mcp");
-  const codexPlan = plan.packages.find((reported) =>
-    reported.packageId === codexPackageId);
-  assert.equal(codexPlan.source, codexPackageSource);
-  assert.match(codexPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
-  assert.deepEqual(codexPlan.clientCompatibility,
-    { kind: "range", range: ">=0.3.0, <1.0.0" });
-  assert.equal(codexPlan.converterEntry, "bin/lico-agent-codex");
-  const antigravityPlan = plan.packages.find((reported) =>
-    reported.packageId === antigravityPackageId);
-  assert.equal(antigravityPlan.source, antigravityPackageSource);
-  assert.match(antigravityPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
-  assert.deepEqual(antigravityPlan.clientCompatibility,
-    { kind: "range", range: ">=0.3.0, <1.0.0" });
-  assert.equal(antigravityPlan.converterEntry, "bin/lico-agent-antigravity");
-  const cursorPlan = plan.packages.find((reported) =>
-    reported.packageId === cursorPackageId);
-  assert.equal(cursorPlan.source, cursorPackageSource);
-  assert.match(cursorPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
-  assert.deepEqual(cursorPlan.clientCompatibility,
-    { kind: "range", range: ">=0.3.0, <1.0.0" });
-  assert.equal(cursorPlan.converterEntry, "bin/lico-agent-cursor");
-  const kimiPlan = plan.packages.find((reported) =>
-    reported.packageId === kimiPackageId);
-  assert.equal(kimiPlan.source, kimiPackageSource);
-  assert.match(kimiPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
-  assert.deepEqual(kimiPlan.clientCompatibility,
-    { kind: "range", range: ">=0.3.0, <1.0.0" });
-  assert.equal(kimiPlan.converterEntry, "bin/lico-agent-kimi");
   assert.equal(readdirSync(root).length, 0, "plan must not write anything");
 
   const sources = [

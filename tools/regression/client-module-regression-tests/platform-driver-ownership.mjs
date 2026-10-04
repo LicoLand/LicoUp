@@ -512,16 +512,38 @@ test("neutral ACP runtime and session transport retain bounded ownership", async
   for (const relativePath of [
     "crates/licoup-agent-drivers/src/acp_driver_runtime.rs",
     ...sources,
-    // The per-Agent frame policy the shared reducer reads: Copilot's and Kimi
-    // Code's dialects both moved into their own packages, so the sources this
-    // table holds to an owner are the packages' own dialect modules.
-    "crates/licoup-agent-copilot/src/dialect.rs",
-    "crates/licoup-agent-kimi/src/dialect.rs",
     "crates/licoup-agent-drivers/src/acp_driver_runtime/events.rs",
     "crates/licoup-agent-drivers/src/acp_driver_runtime/protocol.rs",
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `neutral ACP runtime source must have a precise regression owner: ${relativePath}`);
+  }
+  // The dialects this neutral runtime parses itself. A dialect the host holds is
+  // a parser source here; a dialect whose Agent moved into its own package is
+  // that package's source, because the composition names the package instead of
+  // keeping a copy. The requirement follows the dialect rather than pinning the
+  // path an extraction retires, so moving the next dialect changes one entry and
+  // cannot leave a requirement behind on a file that no longer exists.
+  const neutralDialects = [
+    "crates/licoup-agent-copilot/src/dialect.rs",
+    "crates/licoup-agent-copilot/src/parser.rs",
+    "crates/licoup-agent-kimi/src/dialect.rs",
+    "crates/licoup-agent-kimi/src/parser.rs",
+  ];
+  for (const relativePath of neutralDialects) {
+    assert.equal(await exists(relativePath), true,
+      `a composed dialect the neutral ACP runtime parses must ship: ${relativePath}`);
+    assert.equal(ownedInputs.has(relativePath), true,
+      `neutral ACP dialect must have a precise regression owner: ${relativePath}`);
+  }
+  // The host paths the Copilot and Kimi Code extractions retired must not come
+  // back as a second owner of the dialect each package now owns.
+  for (const retiredPath of [
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot.rs",
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/kimi_code.rs",
+  ]) {
+    assert.equal(await exists(retiredPath), false,
+      `${retiredPath} is retired: each moved dialect has one owner, its own package`);
   }
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-agent-drivers/src/acp_driver_runtime/session_plan.rs",

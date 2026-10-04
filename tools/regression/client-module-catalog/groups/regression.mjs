@@ -10,6 +10,20 @@ function nodeTestModule(id, summary, testFiles, extraInputs = []) {
   });
 }
 
+/// One Agent adapter package's source-bundle contract: the package's own sources
+/// plus the client leaves the extraction left behind, run through the node test
+/// file that asserts the split. The shape is defined once, so an Agent's package
+/// is one call and a new bundle cannot drift from the bundles beside it.
+function agentSourceBundleModule({ id, summary, inputs, test }) {
+  return defineModule({
+    id,
+    kind: "regression-infrastructure",
+    summary,
+    inputs: [...inputs, test],
+    command: command("node", ["--test", test], 60_000),
+  });
+}
+
 export const REGRESSION_MODULES = Object.freeze([
   defineModule({
     id: "regression.flutter-dependencies",
@@ -681,79 +695,55 @@ export const REGRESSION_MODULES = Object.freeze([
         60_000,
       ),
     }),
-  defineModule({
-      id: "regression.codex-app-server-source-bundle",
-      kind: "regression-infrastructure",
-      summary: "Codex app-server package ownership, fail-closed protocol, bounded IO, and redaction contract",
-      inputs: [
-        "crates/licoup-agent-codex/src/bin/lico-agent-codex.rs",
-        "crates/licoup-agent-codex/src/parser.rs",
-        "crates/licoup-agent-codex/src/parser/**",
-        "crates/licoup-agent-codex/src/app_server.rs",
-        "crates/licoup-agent-codex/src/app_server/**",
-        "crates/licoup-agent-codex/package/**",
-        "tests/contract/client/codex-app-server-source-bundle.test.mjs",
-      ],
-      command: command(
-        "node",
-        ["--test", "tests/contract/client/codex-app-server-source-bundle.test.mjs"],
-        60_000,
-      ),
-    }),
-  defineModule({
-      id: "regression.antigravity-adapter-package-source-bundle",
-      kind: "regression-infrastructure",
-      summary: "Antigravity adapter package ownership, native receipt hook, single parse, and replay corpus",
-      inputs: [
-        "crates/licoup-native/src/platform/antigravity_driver/**",
-        "crates/licoup-agent-antigravity/src/parser.rs",
-        "crates/licoup-agent-antigravity/src/hook.rs",
-        "crates/licoup-agent-antigravity/src/registration.rs",
-        "crates/licoup-agent-antigravity/src/replay.rs",
-        "crates/licoup-agent-antigravity/package/**",
-        "tests/contract/client/antigravity-adapter-package-source-bundle.test.mjs",
-      ],
-      command: command(
-        "node",
-        ["--test", "tests/contract/client/antigravity-adapter-package-source-bundle.test.mjs"],
-        60_000,
-      ),
-    }),
-    defineModule({
-      id: "regression.deepseek-harness-source-bundle",
-      kind: "regression-infrastructure",
-      summary: "DeepSeek Harness split ownership, native session-log reader, declared external dependency, and no-Node-runtime contract",
-      inputs: [
-        "crates/licoup-native/src/platform/deepseek_harness_driver.rs",
-        "crates/licoup-agent-deepseek/src/**",
-        "crates/licoup-agent-deepseek/package/**",
-        "tests/contract/client/deepseek-harness-source-bundle.test.mjs",
-      ],
-      command: command(
-        "node",
-        ["--test", "tests/contract/client/deepseek-harness-source-bundle.test.mjs"],
-        60_000,
-      ),
-    }),
-    defineModule({
-      id: "regression.kimi-code-acp-source-bundle",
-      kind: "regression-infrastructure",
-      summary: "Kimi Code package ownership: one ACP dialect, one parser, no agent branch in the shared engine",
-      inputs: [
-        "crates/licoup-agent-kimi/src/**",
-        "crates/licoup-agent-kimi/package/**",
-        "crates/licoup-native/src/platform/kimi_code_driver.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/mod.rs",
-        "crates/licoup-native/src/platform/runtime_adapters/drivers.rs",
-        "crates/licoup-native/src/platform/runtime_adapters/dialects.rs",
-        "tests/contract/client/kimi-code-acp-source-bundle.test.mjs",
-      ],
-      command: command(
-        "node",
-        ["--test", "tests/contract/client/kimi-code-acp-source-bundle.test.mjs"],
-        60_000,
-      ),
-    }),
+  agentSourceBundleModule({
+    id: "regression.codex-app-server-source-bundle",
+    summary: "Codex app-server package ownership, fail-closed protocol, bounded IO, and redaction contract",
+    inputs: [
+      "crates/licoup-agent-codex/src/bin/lico-agent-codex.rs",
+      "crates/licoup-agent-codex/src/parser.rs",
+      "crates/licoup-agent-codex/src/parser/**",
+      "crates/licoup-agent-codex/src/app_server.rs",
+      "crates/licoup-agent-codex/src/app_server/**",
+      "crates/licoup-agent-codex/package/**",
+    ],
+    test: "tests/contract/client/codex-app-server-source-bundle.test.mjs",
+  }),
+  agentSourceBundleModule({
+    id: "regression.antigravity-adapter-package-source-bundle",
+    summary: "Antigravity adapter package ownership, native receipt hook, single parse, and replay corpus",
+    inputs: [
+      "crates/licoup-native/src/platform/antigravity_driver/**",
+      "crates/licoup-agent-antigravity/src/parser.rs",
+      "crates/licoup-agent-antigravity/src/hook.rs",
+      "crates/licoup-agent-antigravity/src/registration.rs",
+      "crates/licoup-agent-antigravity/src/replay.rs",
+      "crates/licoup-agent-antigravity/package/**",
+    ],
+    test: "tests/contract/client/antigravity-adapter-package-source-bundle.test.mjs",
+  }),
+  agentSourceBundleModule({
+    id: "regression.deepseek-harness-source-bundle",
+    summary: "DeepSeek Harness split ownership, native session-log reader, declared external dependency, and no-Node-runtime contract",
+    inputs: [
+      "crates/licoup-native/src/platform/deepseek_harness_driver.rs",
+      "crates/licoup-agent-deepseek/src/**",
+      "crates/licoup-agent-deepseek/package/**",
+    ],
+    test: "tests/contract/client/deepseek-harness-source-bundle.test.mjs",
+  }),
+  agentSourceBundleModule({
+    id: "regression.kimi-code-acp-source-bundle",
+    summary: "Kimi Code package ownership: one ACP dialect, one parser, no agent branch in the shared engine",
+    inputs: [
+      "crates/licoup-agent-kimi/src/**",
+      "crates/licoup-agent-kimi/package/**",
+      "crates/licoup-native/src/platform/kimi_code_driver.rs",
+      "crates/licoup-native/src/platform/native_agent_parser/adapters/mod.rs",
+      "crates/licoup-native/src/platform/runtime_adapters/drivers.rs",
+      "crates/licoup-native/src/platform/runtime_adapters/dialects.rs",
+    ],
+    test: "tests/contract/client/kimi-code-acp-source-bundle.test.mjs",
+  }),
   defineModule({
       id: "regression.key-transparency-source-bundle",
       kind: "regression-infrastructure",
