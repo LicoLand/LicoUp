@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::Display;
 
-use crate::domain::workflow_runtime::routing::{
+use crate::routing::{
     ChannelKind, QueueBounds, QueueCapacityExceeded, QueuedItem,
 };
 

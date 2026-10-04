@@ -4,7 +4,7 @@
 //! Gating prevents fabricating pause or steer by killing/restarting processes.
 //! Enforces single-writer session binding: one native session has one writer across facades.
 
-use super::routing::NodeCapability;
+use crate::routing::NodeCapability;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-use licoup_workflow::{FallbackReceipt, PendingCallback, StrategyRunStatus, WorkflowDefinition};
+use crate::{FallbackReceipt, PendingCallback, StrategyRunStatus, WorkflowDefinition};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -196,3 +196,8 @@ impl std::fmt::Display for StrategyError {
 }
 
 impl std::error::Error for StrategyError {}
+
+/// Source prefix naming a definition the Assistant created for one temporary
+/// Graph run rather than one the user imported. The prefix is part of the
+/// definition identity, so it stays with the definition vocabulary.
+pub const ASSISTANT_TEMPORARY_DEFINITION_PREFIX: &str = "assistant-temporary";

@@ -108,6 +108,7 @@ export const RUST_COMPONENT_MODULES = Object.freeze([
       "crates/licoup-model-catalog/src/selection.rs",
       "crates/licoup-model-catalog/src/selection_matrix.rs",
       "crates/licoup-model-catalog/src/candidate_policy.rs",
+      "crates/licoup-model-catalog/src/candidate_routing.rs",
       "crates/licoup-model-catalog/src/planning.rs",
       "crates/licoup-model-catalog/src/pricing.rs",
       "crates/licoup-model-catalog/src/pricing/pricing_catalog.json",

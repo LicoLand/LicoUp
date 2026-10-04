@@ -11,7 +11,7 @@ use super::{
     BindingCandidate, BindingValue, STRATEGY_SCHEMA_VERSION, StrategyAuthorization,
     StrategyDefinition, StrategyDefinitionSummary, StrategyDiagnostic, StrategyProjection,
 };
-use crate::domain::workflow_runtime::ASSISTANT_TEMPORARY_DEFINITION_PREFIX;
+use crate::ASSISTANT_TEMPORARY_DEFINITION_PREFIX;
 use licoup_foundation::core::sqlite_contract::ColumnVariant;
 use licoup_workflow::{
     BindingKind, CommandStatus, FailureClass, GraphState, GraphStateKind, ReducerEvent, RunCommand,
@@ -20,12 +20,6 @@ use licoup_workflow::{
 };
 
 const DATABASE_FILE: &str = "strategies.sqlite3";
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum LeaseRecovery {
-    Standard,
-    AbandonedHost,
-}
 
 #[derive(Clone, Debug)]
 pub struct StrategyStore {
@@ -56,7 +50,7 @@ impl StrategyStore {
         Ok(store)
     }
 
-    pub(crate) fn open_for_migration(portable_root: &Path) -> Result<Self> {
+    pub fn open_for_migration(portable_root: &Path) -> Result<Self> {
         let root = portable_root.join("client-state").join("adaptive-flywheel");
         // Native admission validates the published physical input before this
         // private conversion entry. Keep the owner's lower-level transforms
@@ -99,7 +93,7 @@ impl StrategyStore {
         super::DurableControlledStore::from_store(self.clone())
     }
 
-    pub(crate) fn with_connection<T>(
+    pub fn with_connection<T>(
         &self,
         operation: impl FnOnce(&mut Connection) -> Result<T>,
     ) -> Result<T> {
@@ -119,7 +113,7 @@ impl StrategyStore {
         operation(&mut connection)
     }
 
-    pub(crate) fn register_definition(
+    pub fn register_definition(
         &self,
         revision_digest: &str,
         semantics_digest: &str,
@@ -584,7 +578,7 @@ impl StrategyStore {
     /// digest already commits to the route receipt; existing rows must be
     /// byte-for-byte equivalent and can never be rebound.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn admit_assistant_run(
+    pub fn admit_assistant_run(
         &self,
         revision_digest: &str,
         semantics_digest: &str,
@@ -792,7 +786,7 @@ impl StrategyStore {
         })
     }
 
-    pub(crate) fn run_id_by_idempotency_key(
+    pub fn run_id_by_idempotency_key(
         &self,
         idempotency_key: &str,
     ) -> Result<Option<String>> {
@@ -871,7 +865,7 @@ impl StrategyStore {
         })
     }
 
-    pub(crate) fn claim_next_command(
+    pub fn claim_next_command(
         &self,
         run_id: &str,
         claimant: &str,
@@ -971,7 +965,7 @@ impl StrategyStore {
         })
     }
 
-    pub(crate) fn renew_command_lease(
+    pub fn renew_command_lease(
         &self,
         command_id: &str,
         claimant: &str,
@@ -995,7 +989,7 @@ impl StrategyStore {
     /// effect permit is issued. The write lock serializes this admission with
     /// binding updates and authorization revocation; a later revoke does not
     /// retroactively invalidate the already-issued one-shot permit.
-    pub(crate) fn authorize_effect(
+    pub fn authorize_effect(
         &self,
         run_id: &str,
         command_id: &str,
@@ -1064,30 +1058,27 @@ impl StrategyStore {
         })
     }
 
-    /// Atomically fence and recover one expired command.
+    /// Atomically fence and recover the next expired effect claim of one run.
     ///
     /// Lease renewal and this recovery both require the same SQLite write
     /// lock. The winner observes and commits one state transition; the loser
     /// cannot act on a stale pre-lock observation. Claimed-before-start work
     /// is retried in the same transaction, while expired running work is
     /// retained as in-doubt and is never blindly retried.
-    pub(crate) fn recover_next_expired_command(&self, run_id: &str) -> Result<bool> {
+    ///
+    /// A previous host process disappearing is **not** an input here. There is
+    /// no abandoned-host path: an unexpired claim stays held by its recorded
+    /// owner, so process exit is neither lease revocation nor authority to
+    /// repeat an external effect. Only the persisted lease clock resolves a
+    /// claim, and only in one of two ways: a claim whose effect never started is
+    /// retried against the same attempt identity, while a claim whose effect was
+    /// already in flight stays in doubt and is never blindly repeated.
+    pub fn recover_next_expired_command(&self, run_id: &str) -> Result<bool> {
         let Some(command_id) = self.next_expired_leased_command_id(run_id)? else {
             return Ok(false);
         };
-        self.recover_leased_command(run_id, &command_id, LeaseRecovery::Standard)?;
+        self.recover_leased_command(run_id, &command_id)?;
         Ok(true)
-    }
-
-    /// Drop still-valid leases left by a previous host process and retry the
-    /// commands. Expired-running recovery stays InDoubt; only this path treats
-    /// a running effect as Transient `host_runtime_lost`.
-    pub(crate) fn reclaim_abandoned_host_commands(&self, run_id: &str) -> Result<()> {
-        let command_ids = self.release_live_host_leases(run_id)?;
-        for command_id in command_ids {
-            self.recover_leased_command(run_id, &command_id, LeaseRecovery::AbandonedHost)?;
-        }
-        Ok(())
     }
 
     fn next_expired_leased_command_id(&self, run_id: &str) -> Result<Option<String>> {
@@ -1106,39 +1097,7 @@ impl StrategyStore {
         })
     }
 
-    fn release_live_host_leases(&self, run_id: &str) -> Result<Vec<String>> {
-        self.with_connection(|connection| {
-            let transaction =
-                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-            let command_ids = {
-                let mut statement = transaction.prepare(
-                    "SELECT command_id FROM strategy_commands
-                     WHERE run_id=?1 AND status IN ('claimed', 'running')
-                       AND lease_until IS NOT NULL AND lease_until>?2
-                     ORDER BY command_id ASC",
-                )?;
-                let command_ids = statement
-                    .query_map(params![run_id, now_ms()], |row| row.get(0))?
-                    .collect::<rusqlite::Result<Vec<String>>>()?;
-                command_ids
-            };
-            for command_id in &command_ids {
-                transaction.execute(
-                    "UPDATE strategy_commands SET lease_until=0 WHERE command_id=?1",
-                    params![command_id],
-                )?;
-            }
-            transaction.commit()?;
-            Ok(command_ids)
-        })
-    }
-
-    fn recover_leased_command(
-        &self,
-        run_id: &str,
-        command_id: &str,
-        recovery: LeaseRecovery,
-    ) -> Result<()> {
+    fn recover_leased_command(&self, run_id: &str, command_id: &str) -> Result<()> {
         self.with_connection(|connection| {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1174,13 +1133,8 @@ impl StrategyStore {
             );
             let workflow = workflow_for_revision(&transaction, &previous.definition_digest)?;
             let compiled = compile_workflow(workflow)?;
-            let (class, code) = match (command.status, recovery) {
-                (CommandStatus::Claimed, _) => {
-                    (FailureClass::Transient, "lease_expired_before_start")
-                }
-                (CommandStatus::Running, LeaseRecovery::AbandonedHost) => {
-                    (FailureClass::Transient, "host_runtime_lost")
-                }
+            let (class, code) = match command.status {
+                CommandStatus::Claimed => (FailureClass::Transient, "lease_expired_before_start"),
                 _ => (FailureClass::InDoubt, "effect_outcome_unknown"),
             };
             let failure_event = ReducerEvent::CommandFailed {
@@ -1417,7 +1371,7 @@ impl StrategyStore {
         })
     }
 
-    pub(crate) fn bind_conversation_if_absent(
+    pub fn bind_conversation_if_absent(
         &self,
         run_id: &str,
         conversation_id: &str,
@@ -1486,7 +1440,7 @@ fn initialize_schema(connection: &mut Connection) -> Result<Vec<String>> {
     super::queue::initialize_schema(connection)?;
     super::subscriptions::initialize_schema(connection)?;
     super::commit::initialize_schema(connection)?;
-    super::control::initialize_schema(connection)?;
+    super::controlled::initialize_schema(connection)?;
     Ok(retired)
 }
 
@@ -1638,7 +1592,7 @@ fn validate_current_schema(connection: &mut Connection) -> Result<()> {
     super::queue::initialize_schema(connection)?;
     super::subscriptions::initialize_schema(connection)?;
     super::commit::initialize_schema(connection)?;
-    super::control::initialize_schema(connection)?;
+    super::controlled::initialize_schema(connection)?;
     Ok(())
 }
 
@@ -1674,7 +1628,7 @@ pub(crate) fn preflight_existing_store(path: &Path) -> Result<()> {
 /// named indexes are then checked exactly, so a database that merely carries a
 /// version row — or a seven-table database whose ordinal primary key or unique
 /// authorization index is missing — is refused without writing a byte.
-pub(crate) fn validate_published_core_layout(
+pub fn validate_published_core_layout(
     connection: &Connection,
     expected_meta_version: &str,
 ) -> Result<()> {
@@ -1698,7 +1652,7 @@ pub(crate) fn validate_published_core_layout(
     super::queue::initialize_schema(&reference)?;
     super::subscriptions::initialize_schema(&reference)?;
     super::commit::initialize_schema(&reference)?;
-    super::control::initialize_schema(&reference)?;
+    super::controlled::initialize_schema(&reference)?;
     let existing = licoup_foundation::core::sqlite_contract::tables(connection)?;
     for table in licoup_foundation::core::sqlite_contract::tables(&reference)? {
         if !existing.contains(&table) && !required.contains(&table) {
@@ -1821,7 +1775,10 @@ fn migrate_legacy_workflow_definitions(connection: &Connection) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn normalize_legacy_workflow(
+/// Rewrite one stored definition into the current canonical shape when it was
+/// written by an earlier development implementation. The returned definition is
+/// the identity the current machine reduces; `None` means it already is.
+pub fn normalize_legacy_workflow(
     mut workflow: WorkflowDefinition,
 ) -> Option<WorkflowDefinition> {
     let mut changed = false;
@@ -3086,7 +3043,7 @@ mod tests {
     }
 
     #[test]
-    fn abandoned_running_effect_is_retried_when_this_host_becomes_driver() {
+    fn an_unexpired_claim_stays_held_when_this_host_becomes_the_driver() {
         let store = StrategyStore::open_in_memory().unwrap();
         let revision = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
         store
@@ -3122,23 +3079,76 @@ mod tests {
             )
             .unwrap();
 
-        store.reclaim_abandoned_host_commands(&run.run_id).unwrap();
-        let recovered = store.run(&run.run_id).unwrap();
-        assert_eq!(
-            recovered.commands[&claimed.id].status,
-            CommandStatus::Cancelled
-        );
-        assert_eq!(
-            recovered.commands[&claimed.id].failure_code.as_deref(),
-            Some("host_runtime_lost")
-        );
+        // A previous host process disappearing is not lease revocation, so the
+        // still-valid claim is neither released nor retried.
+        assert!(!store.recover_next_expired_command(&run.run_id).unwrap());
+        let held = store.run(&run.run_id).unwrap();
+        assert_eq!(held.commands[&claimed.id].status, CommandStatus::Running);
+        assert!(held.commands[&claimed.id].failure_code.is_none());
         assert!(
-            recovered
+            !held
                 .commands
                 .values()
-                .any(|command| command.attempt == 2 && command.status == CommandStatus::Pending)
+                .any(|command| command.attempt == 2),
+            "an unexpired in-flight effect is never repeated"
         );
-        assert_eq!(recovered.status, StrategyRunStatus::Running);
+        assert_eq!(held.status, StrategyRunStatus::Running);
+    }
+
+    #[test]
+    fn a_released_unexpired_claim_never_becomes_retryable() {
+        let store = StrategyStore::open_in_memory().unwrap();
+        let revision = "5656565656565656565656565656565656565656565656565656565656565656";
+        store
+            .register_definition(
+                revision,
+                "7878787878787878787878787878787878787878787878787878787878787878",
+                &workflow(),
+                1,
+                1,
+            )
+            .unwrap();
+        store
+            .update_binding(revision, "worker", "agent:test", "", "", None)
+            .unwrap();
+        let preview = store.authorization_preview(revision).unwrap();
+        store
+            .grant_authorization(revision, &preview.authorization_digest)
+            .unwrap();
+        let run = store
+            .start_run(revision, json!({}), "held-claim", None, None)
+            .unwrap();
+        let claimed = store
+            .claim_next_command(&run.run_id, "claimant", now_ms() + 60_000)
+            .unwrap()
+            .unwrap();
+        store
+            .apply_event(
+                &run.run_id,
+                ReducerEvent::CommandStarted {
+                    command_id: claimed.id.clone(),
+                    attempt_token: claimed.attempt_token.clone(),
+                },
+            )
+            .unwrap();
+
+        // The owner settles its own attempt; nothing else may report on it.
+        assert!(
+            store
+                .apply_event(
+                    &run.run_id,
+                    ReducerEvent::CommandSucceeded {
+                        command_id: claimed.id.clone(),
+                        attempt_token: "attempt:someone-else".into(),
+                        output: json!({ "ok": true }),
+                    },
+                )
+                .is_err(),
+            "a stale owner result cannot settle an attempt it does not own"
+        );
+        let unchanged = store.run(&run.run_id).unwrap();
+        assert_eq!(unchanged.commands[&claimed.id].status, CommandStatus::Running);
+        assert!(unchanged.commands[&claimed.id].output_digest.is_none());
     }
 
     #[test]

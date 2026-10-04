@@ -49,6 +49,7 @@
 
 pub mod availability;
 pub mod candidate_policy;
+pub mod candidate_routing;
 pub mod identity;
 pub mod planning;
 pub mod port;
@@ -64,6 +65,13 @@ pub use candidate_policy::{
     CandidatePolicyPort, CandidateQuota, CandidateRelation, CandidateRequest, CandidateRequirement,
     CandidateUnavailable, ExcludedCandidate, ExclusionCategory, ExclusionCode, QuotaState,
     RankedCandidate, RequirementAnswer, RequirementState, select_candidates,
+};
+pub use candidate_routing::{
+    CandidateFactSource, CandidateFactTable, CandidateFacts, CandidateOffer, CandidateRoutingGap,
+    CandidateRoutingOutcome, CandidateRoutingPort, CandidateRoutingRequest, PolicyCandidateRouting,
+    RoutingWithFacts, admission_facts, install_candidate_facts, install_scope_admission,
+    installed_candidate_facts, route_candidates, route_with, routing_rationale,
+    scope_admission_port,
 };
 pub use identity::{
     CanonicalModel, RegistrySnapshot, SnapshotProvenance, model_display_name, snapshot_report,

@@ -2497,6 +2497,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/platform/data_home_relocation.rs",
         "crates/licoup-native/src/domain/local_recovery/**",
+        "crates/licoup-workflow-runtime/**",
+        "crates/licoup-workflow-store/**",
         "crates/licoup-native/src/ffi/commands/full_backup.rs",
         "crates/licoup-native/tests/data_home_process.rs",
         "crates/licoup-native/tests/local_recovery/**",

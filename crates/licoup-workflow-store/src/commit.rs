@@ -220,7 +220,7 @@ fn unix_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::workflow_runtime::BindingValue;
+    use crate::BindingValue;
     use licoup_workflow::{
         ActorSlot, GraphState, GraphStateKind, RetryPolicy, Transition, TransitionEvent,
         TransitionMode, WorkflowDefinition, WorkflowLimits, WorkflowMetadata,

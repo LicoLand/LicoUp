@@ -224,7 +224,7 @@ impl StrategyPackageImporter {
             "strategy_revision_content_drifted"
         );
         let definition =
-            crate::domain::workflow_store::normalize_legacy_workflow(definition.clone())
+            licoup_workflow_store::normalize_legacy_workflow(definition.clone())
                 .unwrap_or(definition);
         compile_workflow(definition).map_err(|_| anyhow!("strategy_revision_content_drifted"))?;
         Ok(content)
@@ -234,7 +234,7 @@ impl StrategyPackageImporter {
     ///
     /// A data root whose committed revisions never existed is legitimate; reading it
     /// back must not create package state merely to observe its absence.
-    pub(crate) fn open_restored(portable_root: &Path) -> Result<Option<Self>> {
+    pub fn open_restored(portable_root: &Path) -> Result<Option<Self>> {
         let root = portable_root
             .join("client-state")
             .join("adaptive-flywheel")
@@ -253,7 +253,7 @@ impl StrategyPackageImporter {
     /// then verifies each revision digest, semantics digest and asset inventory through
     /// the ordinary `verified_revision_content` readback. No revision byte is rewritten;
     /// a missing, altered or unexpected revision is refused instead of accepted.
-    pub(crate) fn restore_revision_invariants(&self) -> Result<Vec<String>> {
+    pub fn restore_revision_invariants(&self) -> Result<Vec<String>> {
         let revisions = self.root.join("revisions");
         let entries = match fs::read_dir(&revisions) {
             Ok(entries) => entries,

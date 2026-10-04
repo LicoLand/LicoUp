@@ -492,8 +492,12 @@ impl ConversationService {
                 let filters = selection_policy.apply_to_filters(&filters);
                 let pairs = self.profile_projection_pairs(conversation_id)?;
                 let authority = super::production_snapshot_authority();
-                let snapshots =
-                    super::project_profile_snapshots(conversation_id, &pairs, &authority);
+                let snapshots = super::project_profile_snapshots(
+                    conversation_id,
+                    &pairs,
+                    &authority,
+                    &crate::workflow_host::ProductionModelFacts,
+                );
                 let candidates =
                     super::rank_candidates(snapshots, &filters).map_err(anyhow::Error::msg)?;
                 Ok(json!({
@@ -1887,48 +1891,23 @@ pub(crate) fn route_receipt(
 
 /// The same receipt under the selection policy the caller captured.
 ///
-/// A durable admission stores the receipt it was admitted with, so an
-/// in-flight task keeps the revision captured here while a later adoption
-/// governs only the next task.
+/// The receipt shape is owned by the runtime that consumes it; this host
+/// supplies its own answer for the model facts inside it and the exact
+/// selection-policy revision the decision was admitted under. A durable
+/// admission stores the receipt it was admitted with, so an in-flight task
+/// keeps the revision captured here while a later adoption governs only the
+/// next task.
 pub(crate) fn route_receipt_under(
     conversation_id: &str,
     snapshots: &[super::MembershipProfileSnapshot],
     selection_policy: &super::selection_policy::SelectionPolicyBinding,
 ) -> Value {
-    json!({
-        "conversationId": conversation_id,
-        "sourceRevisions": [
-            {"source": "selectionPolicy", "revision": selection_policy.revision_name()},
-            {"source": "targets", "revision": "read-only-v1"},
-            {"source": "nativeCapabilities", "revision": "v0.0.1"},
-            {"source": "providerModelPricing", "revision": "catalog-v1"},
-            {"source": "agentIntelligenceCatalog", "revision": "catalog-v1"},
-            {"source": "skillHub", "revision": "request-snapshot-v1"},
-            {"source": "assistantWorkflowAuthoringBundle", "revision": "v1"},
-        ],
-        "rankedMembershipIds": snapshots
-            .iter()
-            .map(|snapshot| snapshot.membership_id.clone())
-            .collect::<Vec<_>>(),
-        "candidates": snapshots.iter().map(|snapshot| json!({
-            "membershipId": snapshot.membership_id,
-            "profileRevision": snapshot.intent_revision,
-            "responsibility": snapshot.responsibility,
-            "model": snapshot.model,
-            "capabilities": snapshot.capabilities,
-            "skills": snapshot.skills,
-            "environment": snapshot.environment,
-            "readiness": snapshot.readiness,
-            "inputPriceUsdPerMillionTokens": snapshot.price_input_usd_per_million_tokens,
-            "outputPriceUsdPerMillionTokens": snapshot.price_output_usd_per_million_tokens,
-            "codingScore": snapshot.intelligence_score,
-            "taskTags": snapshot.task_tags,
-            "intelligence": snapshot.model.as_deref().and_then(crate::domain::agent_intelligence_catalog::project_allowlisted_model),
-            "reliabilityClass": snapshot.reliability_class,
-            "latencyClass": snapshot.latency_class,
-            "authority": snapshot.authority,
-        })).collect::<Vec<_>>(),
-    })
+    licoup_workflow_runtime::ports::route_receipt(
+        conversation_id,
+        snapshots,
+        &crate::workflow_host::ProductionModelFacts,
+        selection_policy.revision_name(),
+    )
 }
 
 fn merge_live_turn(live_turns: &mut Vec<Value>, turn: Value) {
