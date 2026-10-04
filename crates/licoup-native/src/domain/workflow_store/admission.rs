@@ -7,11 +7,22 @@
 //!
 //! # What blocks, and what does not
 //!
+//! Every durable category of locally owned work participates, so a maintenance
+//! decision cannot mistake a *request* for an observed exit:
+//!
 //! * An unfinished run (`strategy_runs.terminal=0`) blocks: its commands and
-//!   transitions still have to settle.
+//!   transitions still have to settle. A run waiting on approval or a callback
+//!   is not terminal, so it blocks too.
 //! * A `pending` or `claimed` queue item blocks: `pending` is work this host
 //!   queued, `claimed` is work a local claimant holds. A claimant that
 //!   disconnected without settling leaves exactly this row.
+//! * An in-flight or unresolved effect blocks. `claimed`, `running` and
+//!   `cancel_requested` are work that has left, or is leaving, this host;
+//!   `in_doubt` is work whose outcome could not be established. A cancellation
+//!   request therefore does not prove idleness, a lost local carrier does not
+//!   prove idleness, and an unknown effect position stays owned here until its
+//!   owner resolves it. This is also how a run whose cancellation outcome is
+//!   unknown is reported, since the run itself reaches a terminal status.
 //! * An active pause request blocks: the graph is negotiating a pause and the
 //!   paused work is still owned here.
 //! * An active graph barrier blocks: the graph is deliberately held, and
@@ -20,10 +31,6 @@
 //!   the same write that admits the invocation, so this arm covers records a
 //!   recovery path has yet to settle rather than a normal transient.
 //!
-//! A `workflow_stop_requests` row does **not** block by itself. It is a durable
-//! control fact that stays true after the stop is honoured; counting it would
-//! keep this host permanently busy after its first stop. What blocks is the
-//! run, queue item or held graph the stop has not finished settling.
 //! `workflow_transition_intents`, `workflow_control_admissions` and
 //! `workflow_subscriptions` are delivery and idempotency records, not locally
 //! owned tasks, so they never block on their own.
@@ -43,6 +50,8 @@ pub enum WorkflowWorkKind {
     Run,
     /// A queued or claimed delivery item.
     QueueItem,
+    /// An effect that has left, is leaving, or whose outcome is unknown.
+    Effect,
     /// An invocation this host has not settled.
     Invocation,
     /// A graph negotiating a pause.
@@ -57,6 +66,7 @@ impl WorkflowWorkKind {
         match self {
             Self::Run => "workflow-run",
             Self::QueueItem => "workflow-queue-item",
+            Self::Effect => "workflow-effect",
             Self::Invocation => "workflow-invocation",
             Self::PauseRequest => "workflow-pause-request",
             Self::GraphBarrier => "workflow-graph-barrier",
@@ -69,12 +79,12 @@ impl WorkflowWorkKind {
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowWorkBlocker {
     pub kind: WorkflowWorkKind,
-    /// The graph or run the record belongs to. Empty for a queue item, which
-    /// is not bound to one graph.
+    /// The graph, run or command the record belongs to. Empty for a queue item,
+    /// which is not bound to one graph; the run id for a run or effect.
     pub graph_id: String,
-    /// Stable identity inside its kind: run id, queue item id,
-    /// `node#invocation` for an invocation, a stop/pause target, or `graph`
-    /// for a held graph.
+    /// Stable identity inside its kind: run id, queue item id, a command id, a
+    /// stop/pause target, `node#invocation` for an invocation, or `graph` for a
+    /// held graph.
     pub identity: String,
     /// The stored state that makes the record a blocker.
     pub state: String,
@@ -145,6 +155,7 @@ pub fn read_unfinished_local_work(portable_root: &Path) -> Result<UnfinishedWork
     )?;
     for table in [
         "strategy_runs",
+        "strategy_commands",
         "workflow_queue",
         "workflow_invocations",
         "workflow_pause_requests",
@@ -172,6 +183,10 @@ fn unfinished_local_work(connection: &Connection) -> Result<UnfinishedWorkflowWo
              FROM workflow_queue
             WHERE status IN ('pending','claimed')
            UNION ALL
+           SELECT '{effect}', run_id, command_id, status
+             FROM strategy_commands
+            WHERE status IN ('claimed','running','cancel-requested','in-doubt')
+           UNION ALL
            SELECT '{invocation}', graph_id, node_id||'#'||invocation_id, 'unsettled'
              FROM workflow_invocations
             WHERE settled=0
@@ -188,6 +203,7 @@ fn unfinished_local_work(connection: &Connection) -> Result<UnfinishedWorkflowWo
          LIMIT {limit}",
         run = WorkflowWorkKind::Run.as_str(),
         queue = WorkflowWorkKind::QueueItem.as_str(),
+        effect = WorkflowWorkKind::Effect.as_str(),
         invocation = WorkflowWorkKind::Invocation.as_str(),
         pause = WorkflowWorkKind::PauseRequest.as_str(),
         barrier = WorkflowWorkKind::GraphBarrier.as_str(),
@@ -210,6 +226,7 @@ fn unfinished_local_work(connection: &Connection) -> Result<UnfinishedWorkflowWo
         let kind = match kind.as_str() {
             "workflow-run" => WorkflowWorkKind::Run,
             "workflow-queue-item" => WorkflowWorkKind::QueueItem,
+            "workflow-effect" => WorkflowWorkKind::Effect,
             "workflow-invocation" => WorkflowWorkKind::Invocation,
             "workflow-pause-request" => WorkflowWorkKind::PauseRequest,
             "workflow-graph-barrier" => WorkflowWorkKind::GraphBarrier,
