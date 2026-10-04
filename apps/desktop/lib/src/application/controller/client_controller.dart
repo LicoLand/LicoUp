@@ -82,6 +82,7 @@ import 'package:licoup/src/platform/agents/agent_tab_order_store.dart';
 import 'package:licoup/src/platform/agents/agent_tool_allowlist_store.dart';
 import 'package:licoup/src/platform/agents/scanned_targets_cache_store.dart';
 import 'package:licoup/src/platform/appearance/appearance_preset_catalog_service.dart';
+import 'package:licoup/src/platform/presentation/presentation_mount_plan_service.dart';
 import 'package:licoup/src/platform/client_clipboard_service.dart';
 import 'package:licoup/src/platform/conversation/conversation_image_byte_reader.dart';
 import 'package:licoup/src/platform/documents/plan_document_reader.dart';
@@ -150,6 +151,7 @@ class ClientController extends AgentConversationController
     ClientCurrentViewTracker? currentViewTracker,
     AgentToolAllowlistRepository? agentToolAllowlistRepository,
     AppearancePresetCatalogService? appearancePresetCatalogService,
+    PresentationMountPlanService? presentationMountPlanService,
     LayoutCatalog? layoutCatalog,
     LayoutManager? layoutManager,
     PresentationPreferencesRepository? presentationPreferencesRepository,
@@ -198,6 +200,8 @@ class ClientController extends AgentConversationController
        appearancePresetCatalogService =
            appearancePresetCatalogService ??
            const AppearancePresetCatalogService(),
+       presentationMountPlanService =
+           presentationMountPlanService ?? const PresentationMountPlanService(),
        clientLogExportService =
            clientLogExportService ?? const ClientLogExportService(),
        clientClipboardService =
@@ -392,6 +396,8 @@ class ClientController extends AgentConversationController
   final ScannedTargetsCacheStore scannedTargetsCacheStore;
   @override
   final AppearancePresetCatalogService appearancePresetCatalogService;
+  @override
+  final PresentationMountPlanService presentationMountPlanService;
   final ClientLogExportService clientLogExportService;
   final ClientClipboardService clientClipboardService;
   @override

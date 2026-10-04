@@ -154,6 +154,8 @@ AppearanceProjection resolveAppearanceProjection(
   fontPreference: appearance.fontPreference,
   reduceMotion: appearance.reduceMotion,
   loadingEffectId: appearance.loadingEffectId,
+  planTokens: appearance.planAppearance?.tokens ?? const <String, String>{},
+  planFallbackReason: appearance.planAppearance?.fallbackReason,
   presets: appearance.presets.map(
     ShellProjectionProducer._projectAppearancePreset,
   ),
