@@ -1704,6 +1704,8 @@ export const REGRESSION_MODULES = Object.freeze([
         "crates/licoup-mcp/src/**",
         "crates/licoup-migrate/Cargo.toml",
         "crates/licoup-migrate/src/**",
+        "crates/licoup-mobile-core/Cargo.toml",
+        "crates/licoup-mobile-core/src/**",
         "crates/licoup-platform-bridges/Cargo.toml",
         "crates/licoup-platform-bridges/src/**",
         "crates/licoup-project/Cargo.toml",

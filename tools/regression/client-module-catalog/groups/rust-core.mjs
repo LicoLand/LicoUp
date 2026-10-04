@@ -1597,5 +1597,22 @@ export const RUST_CORE_MODULES = Object.freeze([
         "tests::",
         ["secure-mesh-acceptance-mock-kt"],
       ),
+    }),
+  defineModule({
+      id: "rust.core.mobile-entry-boundary",
+      kind: "rust-core",
+      summary:
+        "Paired mobile entry: declared pairing/group/settings surface, endpoint application port, and dependency closure",
+      inputs: [
+        "crates/licoup-mobile-core/Cargo.toml",
+        "crates/licoup-mobile-core/src/**",
+        "crates/licoup-mobile-core/tests/**",
+        "crates/licoup-platform-bridges/src/abi.rs",
+      ],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-mobile-core/Cargo.toml"],
+        10 * 60_000,
+      ),
     })
 ]);
