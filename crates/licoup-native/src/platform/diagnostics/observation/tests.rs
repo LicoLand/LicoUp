@@ -1,4 +1,4 @@
-//! Contract C07 tests for the v7 observation port.
+//! Contract C07 tests for the observation port.
 //!
 //! The capturing backend below is test-only and bounded: the port ships no
 //! in-memory history store, so the crate keeps no second database to keep honest.

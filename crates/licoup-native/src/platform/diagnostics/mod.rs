@@ -5,4 +5,4 @@
 //! surfaces for the client). A port added here must adapt to an existing owner
 //! rather than open a second history store, log sink, or correlation carrier.
 
-pub mod v7;
+pub mod observation;
