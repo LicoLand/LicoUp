@@ -705,7 +705,6 @@ export const REGRESSION_MODULES = Object.freeze([
       kind: "regression-infrastructure",
       summary: "Antigravity adapter package ownership, native receipt hook, single parse, and replay corpus",
       inputs: [
-        "crates/licoup-native/src/platform/antigravity_driver.rs",
         "crates/licoup-native/src/platform/antigravity_driver/**",
         "crates/licoup-agent-antigravity/src/parser.rs",
         "crates/licoup-agent-antigravity/src/hook.rs",

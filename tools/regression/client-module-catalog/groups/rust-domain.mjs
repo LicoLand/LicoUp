@@ -350,6 +350,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cache_variant_tests.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cursor.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/deepseek.rs",
+        "crates/licoup-native/src/domain/agent_usage/agent_usage_native/deepseek_tests.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/files.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/identity_refresh.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/models.rs",
