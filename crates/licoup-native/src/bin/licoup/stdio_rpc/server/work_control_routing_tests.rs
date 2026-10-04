@@ -105,7 +105,9 @@ fn force_confirm_without_a_decision_signals_nothing() {
         "got {response}"
     );
     assert_eq!(
-        response.pointer("/result/signalled").and_then(Value::as_bool),
+        response
+            .pointer("/result/signalled")
+            .and_then(Value::as_bool),
         Some(false),
         "an unconfirmed force stop must signal nothing, got {response}"
     );
@@ -131,7 +133,9 @@ fn force_confirm_for_a_changed_target_is_refused_after_the_decision() {
         "got {response}"
     );
     assert_eq!(
-        response.pointer("/result/signalled").and_then(Value::as_bool),
+        response
+            .pointer("/result/signalled")
+            .and_then(Value::as_bool),
         Some(false),
         "a changed target must signal nothing, got {response}"
     );

@@ -276,7 +276,10 @@ mod work_control_routing_tests {
             ),
         ] {
             let (operation, _) = owned_operation(route(method, json!({})));
-            assert_eq!(operation, expected, "{method:?} must reach its native owner");
+            assert_eq!(
+                operation, expected,
+                "{method:?} must reach its native owner"
+            );
         }
     }
 
