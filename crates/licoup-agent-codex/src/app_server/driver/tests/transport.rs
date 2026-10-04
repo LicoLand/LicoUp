@@ -1,4 +1,4 @@
-use crate::platform::codex_app_server::{
+use crate::app_server::driver::{
     active_control::{ControlDisposition, interrupt, steer},
     execute,
 };
@@ -10,12 +10,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
 fn fake_child_proves_spawn_stdin_concurrent_drain_and_completion() {
-    use crate::platform::raw_execution::{
+    use licoup_foundation::platform::raw_execution::{
         RawExecutionDirection, RawExecutionObserver, RawExecutionScope,
     };
     use std::sync::{Arc, Mutex};
 
+    // One fixture, shared with the host's own end-to-end Codex suites.
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("licoup-native")
         .join("tests")
         .join("fixtures")
         .join("fake_codex_app_server.rs");
@@ -56,6 +59,7 @@ fn fake_child_proves_spawn_stdin_concurrent_drain_and_completion() {
         10_000,
         Some(1024 * 1024),
         1024,
+        None,
     );
 
     assert!(result.ok, "fake child protocol failed: {:?}", result.error);
@@ -66,8 +70,8 @@ fn fake_child_proves_spawn_stdin_concurrent_drain_and_completion() {
     assert_eq!(result.turn_status, "completed");
     assert!(matches!(
         result.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
-            crate::platform::native_agent_parser::LifecycleStage::Completed
+        Some(licoup_agent_adapter_sdk::Transition::Lifecycle(
+            licoup_agent_adapter_sdk::LifecycleStage::Completed
         ))
     ));
     assert_eq!(result.effective.model.as_deref(), Some("gpt-5.6-luna"));
@@ -102,7 +106,10 @@ fn fake_child_proves_spawn_stdin_concurrent_drain_and_completion() {
 
 #[test]
 fn fake_child_acknowledges_native_guidance_during_the_active_turn() {
+    // One fixture, shared with the host's own end-to-end Codex suites.
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("licoup-native")
         .join("tests")
         .join("fixtures")
         .join("fake_codex_app_server.rs");
@@ -138,6 +145,7 @@ fn fake_child_acknowledges_native_guidance_during_the_active_turn() {
             10_000,
             Some(1024 * 1024),
             1024,
+            None,
         )
     });
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
@@ -164,7 +172,10 @@ fn fake_child_acknowledges_native_guidance_during_the_active_turn() {
 
 #[test]
 fn fake_child_keeps_the_turn_active_after_steer_so_interrupt_is_observable() {
+    // One fixture, shared with the host's own end-to-end Codex suites.
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("licoup-native")
         .join("tests")
         .join("fixtures")
         .join("fake_codex_app_server.rs");
@@ -206,6 +217,7 @@ fn fake_child_keeps_the_turn_active_after_steer_so_interrupt_is_observable() {
             10_000,
             Some(1024 * 1024),
             1024,
+            None,
         )
     });
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);

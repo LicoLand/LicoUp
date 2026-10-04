@@ -172,45 +172,18 @@ pub(super) fn caller_config() -> CallerConfigPort {
     }
 }
 
-/// The caller-integration manager of the one Agent whose plugin this host
-/// installs.
+/// The caller-integration manager for a plugin this client installs.
+///
+/// It installs none. The caller integration a Codex client needs is carried by
+/// a plugin that belongs to Codex's own marketplace, and the adapter package
+/// owns that side; this host refuses rather than cloning a plugin repository on
+/// the user's behalf. Every member fails closed, so a caller registration is
+/// reported as unapplied instead of being invented.
 pub(super) fn caller_manager() -> CallerManagerPort {
     CallerManagerPort {
-        plan_digest: |binary| {
-            crate::platform::codex_plugin_manager::CodexPluginInstallPlan::prepare("codex", binary)
-                .map(|plan| plan.digest().to_owned())
-                .map_err(|_| ())
-        },
-        ready: |binary| {
-            crate::platform::codex_plugin_manager::status(binary)
-                == crate::domain::integration_state::IntegrationState::Ready
-        },
-        apply: |binary, digest, remove| {
-            let plan =
-                crate::platform::codex_plugin_manager::CodexPluginInstallPlan::prepare("codex", binary)
-                    .map_err(|_| ())?;
-            let mut permit = plan.approve(true, digest).map_err(|_| ())?;
-            if remove {
-                crate::platform::codex_plugin_manager::remove(&plan, &mut permit).map_err(|_| ())
-            } else {
-                crate::platform::codex_plugin_manager::install(&plan, &mut permit)
-                    .map(|_| ())
-                    .map_err(|_| ())
-            }
-        },
-    }
-}
-
-/// Whether the one plugin-managing Agent's integration is installed.
-pub(super) fn codex_plugin_installation_state(cli_executable: Option<&std::path::Path>) -> &'static str {
-    use crate::domain::integration_state::IntegrationState;
-    let Some(executable) = cli_executable else {
-        return "unavailable";
-    };
-    match crate::platform::codex_plugin_manager::status(executable) {
-        IntegrationState::Ready => "installed",
-        IntegrationState::Missing => "not-installed",
-        IntegrationState::Unavailable => "unavailable",
+        plan_digest: |_| Err(()),
+        ready: |_| false,
+        apply: |_, _, _| Err(()),
     }
 }
 

@@ -551,7 +551,7 @@ fn bind_pi(
 }
 
 fn execute_codex(invocation: &DriverInvocation<'_>) -> DriverExecution {
-    let result = crate::platform::codex_app_server::execute(
+    let result = licoup_agent_codex::app_server::driver::execute(
         invocation.executable,
         invocation.params,
         invocation.prompt,
@@ -560,6 +560,7 @@ fn execute_codex(invocation: &DriverInvocation<'_>) -> DriverExecution {
         invocation.timeout_ms,
         invocation.max_stdout,
         invocation.max_stderr,
+        Some(crate::platform::codex_app_server_environment()),
     );
     let failure = result.error.as_ref().map(|error| DriverFailure {
         code: error.code,

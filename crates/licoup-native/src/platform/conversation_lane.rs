@@ -614,11 +614,11 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
                 })?;
         let disposition = match adapter {
             RuntimeAdapter::Codex => {
-                match super::codex_app_server::active_control::interrupt(&session_id) {
-                    super::codex_app_server::active_control::ControlDisposition::Accepted => 0,
-                    super::codex_app_server::active_control::ControlDisposition::NoActiveTurn => 1,
-                    super::codex_app_server::active_control::ControlDisposition::SessionUnavailable => 2,
-                    super::codex_app_server::active_control::ControlDisposition::TransportUnavailable => 3,
+                match licoup_agent_codex::app_server::driver::active_control::interrupt(&session_id) {
+                    licoup_agent_codex::app_server::driver::active_control::ControlDisposition::Accepted => 0,
+                    licoup_agent_codex::app_server::driver::active_control::ControlDisposition::NoActiveTurn => 1,
+                    licoup_agent_codex::app_server::driver::active_control::ControlDisposition::SessionUnavailable => 2,
+                    licoup_agent_codex::app_server::driver::active_control::ControlDisposition::TransportUnavailable => 3,
                 }
             }
             RuntimeAdapter::ClaudeCode => match super::claude_code_driver::cancel(&session_id) {
@@ -985,13 +985,13 @@ pub fn steer_turn(params: &Value) -> Result<Value> {
             let turn_id = runtime_adapters::text_param_public(params, &["turnId"])
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| anyhow!("Codex steer requires the active native turn identifier"))?;
-            match super::codex_app_server::active_control::steer(&session_id, &turn_id, &text) {
-                super::codex_app_server::active_control::ControlDisposition::Accepted => "accepted",
-                super::codex_app_server::active_control::ControlDisposition::NoActiveTurn => "no_active_turn",
-                super::codex_app_server::active_control::ControlDisposition::SessionUnavailable => {
+            match licoup_agent_codex::app_server::driver::active_control::steer(&session_id, &turn_id, &text) {
+                licoup_agent_codex::app_server::driver::active_control::ControlDisposition::Accepted => "accepted",
+                licoup_agent_codex::app_server::driver::active_control::ControlDisposition::NoActiveTurn => "no_active_turn",
+                licoup_agent_codex::app_server::driver::active_control::ControlDisposition::SessionUnavailable => {
                     "session_unavailable"
                 }
-                super::codex_app_server::active_control::ControlDisposition::TransportUnavailable => "unavailable",
+                licoup_agent_codex::app_server::driver::active_control::ControlDisposition::TransportUnavailable => "unavailable",
             }
         }
         RuntimeAdapter::Pi => {

@@ -1,10 +1,10 @@
-use super::super::process_supervisor::{BoundedStdinWriter, SupervisedChild};
+use licoup_foundation::platform::process_supervisor::{BoundedStdinWriter, SupervisedChild};
 use super::active_control::{ActiveTurnGuard, ControlRequest, bind};
 use super::io::{TransportEvent, write_message};
-use super::limits::PROCESS_POLL_INTERVAL;
-use super::model::{ProtocolEffect, ProtocolFailure, ProtocolOutcome, RunResult};
-use crate::platform::native_agent_parser::adapters::codex::CodexEffect;
-use crate::platform::native_agent_parser::adapters::codex::CodexParser;
+use super::super::limits::PROCESS_POLL_INTERVAL;
+use super::super::model::{ProtocolEffect, ProtocolFailure, ProtocolOutcome, RunResult};
+use crate::parser::CodexEffect;
+use crate::parser::CodexParser;
 use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TryRecvError};
 use std::time::Instant;
@@ -29,7 +29,7 @@ pub(super) fn run_protocol_loop(
             if active_guard.is_none() {
                 active_guard = bind(thread_id, turn_id, control_sender.clone());
                 if active_guard.is_some() {
-                    super::super::turn_event_emit::emit_turn_event(
+                    crate::port::turn_event::emit_turn_event(
                         "dispatch.turn.bound",
                         thread_id,
                         turn_id,

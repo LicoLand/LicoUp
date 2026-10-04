@@ -19,7 +19,6 @@
 //!    changed since the user approved its removal, and removing the new one under
 //!    the old approval is exactly what the digest binding prevents.
 
-use crate::platform::codex_plugin_manager;
 use crate::platform::extension_packages::refusal;
 use crate::platform::extension_packages::registration::{
     RecordedRegistration, RegistrationOwner, RegistrationOwners, ReleasedRegistration, STAGE,
@@ -52,7 +51,13 @@ pub struct ProviderMcpRelease {
     pub approved_digest: String,
 }
 
-/// What releasing the Codex plugin surface needs.
+/// What releasing the Codex plugin surface would need.
+///
+/// The caller's description of the plugin is still part of the request
+/// vocabulary, so a route can report which surface a record names. This build
+/// owns no such surface: the Codex caller plugin belongs to Codex's own
+/// marketplace, so `release` refuses the owner instead of acting on these
+/// inputs.
 #[derive(Clone, Debug)]
 pub struct CodexPluginRelease {
     pub executable: PathBuf,
@@ -119,7 +124,7 @@ impl PackageRegistrationOwners {
             RegistrationOwner::AntigravityMcp => {
                 self.provider_inputs(ProviderConfigKind::Antigravity)
             }
-            RegistrationOwner::CodexPlugin => self.inputs.codex_plugin.is_some(),
+            RegistrationOwner::CodexPlugin => false,
         }
     }
 
@@ -160,27 +165,6 @@ impl PackageRegistrationOwners {
             Err(_) => Err(failed(registration)),
         }
     }
-
-    fn release_codex_plugin(
-        &self,
-        registration: &RecordedRegistration,
-    ) -> Result<ReleasedRegistration, ApplicationFailure> {
-        let Some(release) = self.inputs.codex_plugin.as_ref() else {
-            return Err(missing_inputs(registration));
-        };
-        // The plugin surface belongs to the Codex CLI, so its own `remove` drives
-        // it. This adapter never edits the plugin directory itself.
-        let plan =
-            codex_plugin_manager::CodexPluginInstallPlan::prepare("codex", &release.executable)
-                .map_err(|_| failed(registration))?;
-        let mut permit = plan
-            .approve(true, &release.approved_digest)
-            .map_err(|_| stale_approval(registration))?;
-        match codex_plugin_manager::remove(&plan, &mut permit) {
-            Ok(()) => Ok(ReleasedRegistration::removed(registration)),
-            Err(_) => Err(failed(registration)),
-        }
-    }
 }
 
 impl RegistrationOwners for PackageRegistrationOwners {
@@ -202,7 +186,13 @@ impl RegistrationOwners for PackageRegistrationOwners {
             RegistrationOwner::AntigravityMcp => {
                 self.release_provider_mcp(registration, ProviderConfigKind::Antigravity)
             }
-            RegistrationOwner::CodexPlugin => self.release_codex_plugin(registration),
+            // The Codex caller plugin belongs to Codex's own marketplace: this
+            // client neither installs nor removes one, so a record naming that
+            // surface is a fact this build cannot act on. The refusal names the
+            // owner module that would have to grow it back, exactly as the
+            // login-item arm does, and a caller that still describes a plugin
+            // gets the same answer rather than a silent success.
+            RegistrationOwner::CodexPlugin => Err(owner_unavailable(registration)),
         }
     }
 }

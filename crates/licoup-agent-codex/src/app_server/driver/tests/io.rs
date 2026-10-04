@@ -1,11 +1,11 @@
-use crate::platform::codex_app_server::io::{TransportEvent, drain_stderr, read_protocol_messages};
+use crate::app_server::driver::io::{TransportEvent, drain_stderr, read_protocol_messages};
 use std::io::Cursor;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 
 #[test]
 fn raw_protocol_capture_preserves_unknown_fields_and_malformed_frames() {
-    use crate::platform::raw_execution::{
+    use licoup_foundation::platform::raw_execution::{
         RawExecutionBinding, RawExecutionDirection, RawExecutionObserver, RawExecutionReader,
         RawExecutionScope,
     };

@@ -1,8 +1,8 @@
 use super::support::{
     completed_outcome, config, failed_effect, initialize, open_thread, start_turn,
 };
-use crate::platform::native_agent_parser::adapters::codex::CodexParser;
-use crate::platform::turn_event_emit::{StreamSinkGuard, install_stream_sink};
+use crate::parser::CodexParser;
+use crate::port::turn_event::{TestSinkGuard, install_test_sink};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 
@@ -59,10 +59,10 @@ fn matching_completion_uses_last_agent_message_and_thread_authority() {
 fn native_item_started_emits_redacted_processing_receipt() {
     let captured = Arc::new(Mutex::new(Vec::new()));
     let sink_target = Arc::clone(&captured);
-    install_stream_sink(Box::new(move |event| {
+    install_test_sink(Box::new(move |event| {
         sink_target.lock().unwrap().push(event);
     }));
-    let _guard = StreamSinkGuard;
+    let _guard = TestSinkGuard;
     let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
     initialize(&mut protocol);
     open_thread(&mut protocol);
@@ -99,10 +99,10 @@ fn native_item_started_emits_redacted_processing_receipt() {
 fn mcp_tool_call_projects_only_the_tool_name() {
     let captured = Arc::new(Mutex::new(Vec::new()));
     let sink_target = Arc::clone(&captured);
-    install_stream_sink(Box::new(move |event| {
+    install_test_sink(Box::new(move |event| {
         sink_target.lock().unwrap().push(event);
     }));
-    let _guard = StreamSinkGuard;
+    let _guard = TestSinkGuard;
     let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
     initialize(&mut protocol);
     open_thread(&mut protocol);
@@ -139,10 +139,10 @@ fn mcp_tool_call_projects_only_the_tool_name() {
 fn mcp_tool_call_ignores_a_server_name_and_keeps_a_frozen_suffix() {
     let captured = Arc::new(Mutex::new(Vec::new()));
     let sink_target = Arc::clone(&captured);
-    install_stream_sink(Box::new(move |event| {
+    install_test_sink(Box::new(move |event| {
         sink_target.lock().unwrap().push(event);
     }));
-    let _guard = StreamSinkGuard;
+    let _guard = TestSinkGuard;
     let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
     initialize(&mut protocol);
     open_thread(&mut protocol);
@@ -193,10 +193,10 @@ fn mcp_tool_call_ignores_a_server_name_and_keeps_a_frozen_suffix() {
 fn mcp_tool_completion_projects_only_allowlisted_application_codes() {
     let captured = Arc::new(Mutex::new(Vec::new()));
     let sink_target = Arc::clone(&captured);
-    install_stream_sink(Box::new(move |event| {
+    install_test_sink(Box::new(move |event| {
         sink_target.lock().unwrap().push(event);
     }));
-    let _guard = StreamSinkGuard;
+    let _guard = TestSinkGuard;
     let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
     initialize(&mut protocol);
     open_thread(&mut protocol);
@@ -243,10 +243,10 @@ fn mcp_tool_completion_projects_only_allowlisted_application_codes() {
 fn native_item_started_and_completed_emit_one_processing_receipt() {
     let captured = Arc::new(Mutex::new(Vec::new()));
     let sink_target = Arc::clone(&captured);
-    install_stream_sink(Box::new(move |event| {
+    install_test_sink(Box::new(move |event| {
         sink_target.lock().unwrap().push(event);
     }));
-    let _guard = StreamSinkGuard;
+    let _guard = TestSinkGuard;
     let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
     initialize(&mut protocol);
     open_thread(&mut protocol);
@@ -278,10 +278,10 @@ fn native_item_started_and_completed_emit_one_processing_receipt() {
 fn idless_completed_item_emits_once_with_or_without_started_receipt() {
     let captured = Arc::new(Mutex::new(Vec::new()));
     let sink_target = Arc::clone(&captured);
-    install_stream_sink(Box::new(move |event| {
+    install_test_sink(Box::new(move |event| {
         sink_target.lock().unwrap().push(event);
     }));
-    let _guard = StreamSinkGuard;
+    let _guard = TestSinkGuard;
     let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
     initialize(&mut protocol);
     open_thread(&mut protocol);
@@ -314,10 +314,10 @@ fn idless_completed_item_emits_once_with_or_without_started_receipt() {
 fn failed_turn_classifies_closed_codex_error_without_leaking_details() {
     let captured = Arc::new(Mutex::new(Vec::new()));
     let sink_target = Arc::clone(&captured);
-    install_stream_sink(Box::new(move |event| {
+    install_test_sink(Box::new(move |event| {
         sink_target.lock().unwrap().push(event);
     }));
-    let _guard = StreamSinkGuard;
+    let _guard = TestSinkGuard;
     let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
     initialize(&mut protocol);
     open_thread(&mut protocol);
@@ -449,10 +449,10 @@ fn failed_turn_classifies_current_codex_error_shapes() {
 fn missing_final_message_fails_without_a_completed_lifecycle_event() {
     let captured = Arc::new(Mutex::new(Vec::new()));
     let sink_target = Arc::clone(&captured);
-    install_stream_sink(Box::new(move |event| {
+    install_test_sink(Box::new(move |event| {
         sink_target.lock().unwrap().push(event);
     }));
-    let _guard = StreamSinkGuard;
+    let _guard = TestSinkGuard;
     let mut protocol = CodexParser::new(config(json!({}), "hello", ""));
     initialize(&mut protocol);
     open_thread(&mut protocol);

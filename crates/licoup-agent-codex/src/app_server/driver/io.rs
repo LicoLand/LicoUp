@@ -1,5 +1,5 @@
-use super::super::process_supervisor::BoundedStdinWriter;
-use crate::platform::raw_execution::{RawExecutionDirection, RawExecutionObserver};
+use licoup_foundation::platform::process_supervisor::BoundedStdinWriter;
+use licoup_foundation::platform::raw_execution::{RawExecutionDirection, RawExecutionObserver};
 use serde_json::Value;
 use std::io::{self, BufRead, Read};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,7 +14,7 @@ pub(super) enum TransportEvent {
 }
 
 pub(super) fn write_message(stdin: &mut BoundedStdinWriter, message: &Value) -> io::Result<()> {
-    let bytes = crate::platform::native_agent_parser::adapters::codex::encode_message(message)?;
+    let bytes = crate::parser::encode_message(message)?;
     if let Some(observer) = RawExecutionObserver::current() {
         observer.record_bytes("codex-app-server", RawExecutionDirection::Sent, &bytes);
     }

@@ -2,7 +2,7 @@
 
 use crate::domain::integration_state::IntegrationState;
 use crate::platform::{
-    antigravity_subagent_mcp_manager, claude_code_subagent_mcp_manager, codex_plugin_manager,
+    antigravity_subagent_mcp_manager, claude_code_subagent_mcp_manager,
     cursor_subagent_mcp_manager,
 };
 use std::path::Path;
@@ -76,19 +76,11 @@ pub fn status(
     config_path: Option<&Path>,
 ) -> SubagentMcpEnsureState {
     match agent_id {
-        "codex" => {
-            if config_path.is_some() {
-                return SubagentMcpEnsureState::Unsupported;
-            }
-            let Some(path) = binary_path else {
-                return SubagentMcpEnsureState::Unavailable;
-            };
-            match codex_plugin_manager::status(path) {
-                IntegrationState::Ready => SubagentMcpEnsureState::Ready,
-                IntegrationState::Missing => SubagentMcpEnsureState::Missing,
-                IntegrationState::Unavailable => SubagentMcpEnsureState::Unavailable,
-            }
-        }
+        // This client installs no caller integration into Codex: the plugin
+        // that carries it belongs to Codex's own marketplace, and the adapter
+        // package owns the Codex side of that registration. An unsupported
+        // answer is the truthful one, not a status this client cannot observe.
+        "codex" => SubagentMcpEnsureState::Unsupported,
         "antigravity" => {
             if binary_path.is_none() {
                 return SubagentMcpEnsureState::Unavailable;
@@ -148,22 +140,7 @@ pub fn plan(
     config_path: Option<&Path>,
 ) -> Result<SubagentMcpEnsurePlan, SubagentMcpEnsureError> {
     match agent_id {
-        "codex" => {
-            if config_path.is_some() {
-                return Err(SubagentMcpEnsureError::Unsupported);
-            }
-            let path = binary_path.ok_or(SubagentMcpEnsureError::InvalidBinary)?;
-            let plan = codex_plugin_manager::CodexPluginInstallPlan::prepare("codex", path)
-                .map_err(map_codex_error)?;
-            Ok(SubagentMcpEnsurePlan {
-                agent_id: agent_id.to_owned(),
-                digest: plan.digest().to_owned(),
-                plugin_version: codex_plugin_manager::CodexPluginInstallPlan::version().to_owned(),
-                source: codex_plugin_manager::CodexPluginInstallPlan::source().to_owned(),
-                release: codex_plugin_manager::CodexPluginInstallPlan::release().to_owned(),
-                requires_confirmation: true,
-            })
-        }
+        "codex" => Err(SubagentMcpEnsureError::Unsupported),
         "antigravity" => {
             if binary_path.is_none_or(|path| !path.is_file()) {
                 return Err(SubagentMcpEnsureError::InvalidBinary);
@@ -240,21 +217,8 @@ pub fn install(
 ) -> Result<(bool, bool), SubagentMcpEnsureError> {
     match agent_id {
         "codex" => {
-            if config_path.is_some() {
-                return Err(SubagentMcpEnsureError::Unsupported);
-            }
-            let path = binary_path.ok_or(SubagentMcpEnsureError::InvalidBinary)?;
-            let plan = codex_plugin_manager::CodexPluginInstallPlan::prepare("codex", path)
-                .map_err(map_codex_error)?;
-            let mut permit = plan
-                .approve(confirmed, confirmation)
-                .map_err(map_codex_error)?;
-            let receipt =
-                codex_plugin_manager::install(&plan, &mut permit).map_err(map_codex_error)?;
-            Ok((
-                receipt.installed,
-                receipt.plugin_ready_for_new_conversations,
-            ))
+            let _ = (binary_path, confirmation, confirmed);
+            Err(SubagentMcpEnsureError::Unsupported)
         }
         "antigravity" => {
             if binary_path.is_none_or(|path| !path.is_file()) {
@@ -330,19 +294,6 @@ pub fn install(
             Ok((true, true))
         }
         _ => Err(SubagentMcpEnsureError::Unsupported),
-    }
-}
-
-fn map_codex_error(error: codex_plugin_manager::CodexPluginInstallError) -> SubagentMcpEnsureError {
-    use codex_plugin_manager::CodexPluginInstallError::*;
-    match error {
-        NotCodex => SubagentMcpEnsureError::Unsupported,
-        InvalidExecutable => SubagentMcpEnsureError::InvalidBinary,
-        ApprovalRequired => SubagentMcpEnsureError::ApprovalRequired,
-        ApprovalMismatch => SubagentMcpEnsureError::ApprovalMismatch,
-        ApprovalConsumed => SubagentMcpEnsureError::ApprovalConsumed,
-        ProcessUnavailable => SubagentMcpEnsureError::ProcessUnavailable,
-        InstallFailed => SubagentMcpEnsureError::InstallFailed,
     }
 }
 

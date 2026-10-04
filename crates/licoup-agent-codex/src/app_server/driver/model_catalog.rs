@@ -1,8 +1,8 @@
-use super::super::process_supervisor::{BoundedStdinWriter, finish_protocol_transport};
+use licoup_foundation::platform::process_supervisor::{BoundedStdinWriter, finish_protocol_transport};
 use super::io::{TransportEvent, drain_stderr, read_protocol_messages, write_message};
 use super::launch::CodexLaunchSpec;
-use super::reserve::{LUNA_RESERVE_MODEL, reserve_model_available};
-use crate::platform::native_agent_parser::adapters::codex::parse_response_line;
+use super::super::reserve::{LUNA_RESERVE_MODEL, reserve_model_available};
+use crate::parser::parse_response_line;
 use serde_json::{Map, Value, json};
 use std::io::BufReader;
 use std::path::Path;
@@ -27,7 +27,7 @@ const MAX_MODELS: usize = 256;
 /// Reads the exact visible model directory exposed by the installed Codex
 /// App Server. Only the model projection crosses this boundary; initialize
 /// metadata, installation identity, stderr, and notifications are discarded.
-pub(crate) fn list_models(executable: &Path) -> Result<Value, ()> {
+pub fn list_models(executable: &Path) -> Result<Value, ()> {
     let executable = executable.to_str().ok_or(())?;
     let mut child = CodexLaunchSpec::new(executable, None)
         .spawn()

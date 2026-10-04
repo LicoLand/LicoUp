@@ -5,14 +5,17 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-// The process half of the Codex driver, still composed by the client.
-const facadePath = "crates/licoup-native/src/platform/codex_app_server.rs";
-const moduleRoot = "crates/licoup-native/src/platform/codex_app_server";
-// The wire half, owned by the Codex adapter package since CODEX-PACKAGE moved
-// it out of the kernel. One package carries one Agent's protocol; the client
-// names the package for its vocabulary instead of keeping a second copy.
+// The client keeps no Codex module at all since CODEX-PACKAGE moved the whole
+// app-server into its adapter package. These two paths are the ones the move
+// removed; the first test asserts they are gone rather than assuming it.
+const kernelPlatformRoot = "crates/licoup-native/src/platform";
+const retiredFacadePath = `${kernelPlatformRoot}/codex_app_server.rs`;
+const retiredModuleRoot = `${kernelPlatformRoot}/codex_app_server`;
+// One package carries one Agent: the wire half, the process half and the
+// program an extension host starts.
 const packageRoot = "crates/licoup-agent-codex/src";
 const appServerRoot = `${packageRoot}/app_server`;
+const driverRoot = `${appServerRoot}/driver`;
 const parserRoot = `${packageRoot}/parser`;
 const productionLeaves = Object.freeze([
   "active_control.rs",
@@ -52,9 +55,18 @@ async function read(relativePath) {
   return fs.readFile(path.join(repoRoot, relativePath), "utf8");
 }
 
+async function missing(relativePath) {
+  try {
+    await fs.stat(path.join(repoRoot, relativePath));
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 async function readLeaves(leaves) {
   return Object.fromEntries(await Promise.all([
-    ...leaves.map(async (leaf) => [leaf, await read(`${moduleRoot}/${leaf}`)]),
+    ...leaves.map(async (leaf) => [leaf, await read(`${driverRoot}/${leaf}`)]),
     ["protocol.rs", await read(`${appServerRoot}.rs`)],
     ...protocolLeaves.map(async (leaf) =>
       [`protocol/${leaf}`, await read(`${appServerRoot}/${leaf}`)]),
@@ -63,34 +75,32 @@ async function readLeaves(leaves) {
   ]));
 }
 
-test("the client keeps a thin Codex facade and names the package for the protocol", async () => {
-  const facade = await read(facadePath);
-  assert.deepEqual(
-    [...facade.matchAll(/^(?:pub\(in crate::platform\) )?mod ([a-z_]+);$/gmu)]
-      .map((match) => match[1])
-      .filter((name) => name !== "tests")
-      .sort(),
-    ["active_control", "io", "launch", "model_catalog", "supervision", "transport"],
-  );
-  // The protocol vocabulary is read from the package rather than declared here:
-  // one Agent, one copy.
-  assert.ok(facade.includes("licoup_agent_codex::app_server"));
-  for (const implementationToken of [
-    "struct CodexProtocol",
-    "struct ProtocolConfig",
-    "Command::new",
-    "fn run_protocol_loop",
-    "fn read_protocol_messages",
-    // The protocol modules may not be re-declared beside the package that owns
-    // them: a `mod config;` here would be a second copy.
-    "mod config;",
-    "mod contract;",
-    "mod limits;",
-    "mod model;",
-    "mod reserve;",
+test("the client keeps no Codex module and the package owns the driver", async () => {
+  // The retired client half is absent, not empty: neither the facade file nor
+  // the module directory survives, so no second copy can drift from the
+  // package's.
+  assert.ok(await missing(retiredFacadePath), retiredFacadePath);
+  assert.ok(await missing(retiredModuleRoot), retiredModuleRoot);
+  const platformFacade = await read(`${kernelPlatformRoot}/mod.rs`);
+  assert.equal(platformFacade.includes("mod codex_app_server;"), false);
+  assert.equal(platformFacade.includes("codex_app_server::"), false);
+
+  // The package declares the one driver module and the program the extension
+  // host starts, and neither reaches back into the client.
+  const appServerFacade = await read(`${appServerRoot}.rs`);
+  assert.ok(appServerFacade.includes("pub mod driver;"));
+  const program = await read(`${packageRoot}/bin/lico-agent-codex.rs`);
+  for (const executionVerb of [
+    "extension.initialize",
+    "extension.ready",
+    "agent.describe",
+    "agent.execute",
+    "agent.cancel",
+    "extension.shutdown",
   ]) {
-    assert.equal(facade.includes(implementationToken), false, implementationToken);
+    assert.ok(program.includes(executionVerb), executionVerb);
   }
+  assert.ok(program.includes("driver::execute"));
 });
 
 test("Codex protocol, state, events, and approval control have single owners", async () => {
@@ -133,6 +143,7 @@ test("Codex protocol, state, events, and approval control have single owners", a
     sources["protocol.rs"],
     ...protocolLeaves.map((leaf) => sources[`protocol/${leaf}`]),
     ...parserLeaves.map((leaf) => sources[`parser/${leaf}`]),
+    ...productionLeaves.map((leaf) => sources[leaf]),
   ].join("\n");
   for (const clientPath of ["crate::platform", "licoup_native", "licoup-native"]) {
     assert.equal(packageSources.includes(clientPath), false, clientPath);
@@ -155,6 +166,10 @@ test("Codex transport stays bounded, supervised, and redacted", async () => {
     assert.ok(ioSource.includes(token), `missing bounded IO token: ${token}`);
   }
   assert.ok(transport.includes("finish_protocol_transport"));
+  // The execution entry is the package's, and it is public because the program
+  // the extension host starts is what calls it.
+  assert.ok(transport.includes("pub fn execute("));
+  assert.ok(transport.includes("licoup_foundation::platform::process_supervisor"));
   for (const token of ["PROCESS_POLL_INTERVAL", "contextualize", "terminate_tree"]) {
     assert.ok(supervision.includes(token), `missing supervision token: ${token}`);
   }
@@ -176,7 +191,7 @@ test("Codex transport stays bounded, supervised, and redacted", async () => {
 });
 
 test("Codex regressions remain independently selectable ordinary leaves", async () => {
-  const entries = await fs.readdir(path.join(repoRoot, moduleRoot, "tests"), {
+  const entries = await fs.readdir(path.join(repoRoot, driverRoot, "tests"), {
     withFileTypes: true,
   });
   assert.deepEqual(
@@ -186,7 +201,7 @@ test("Codex regressions remain independently selectable ordinary leaves", async 
       .sort(),
     [...testLeaves].sort(),
   );
-  const testFacade = await read(`${moduleRoot}/tests.rs`);
+  const testFacade = await read(`${driverRoot}/tests.rs`);
   assert.equal(testFacade.includes("mod tests {"), false);
   assert.equal(testFacade.includes("#[path"), false);
 });

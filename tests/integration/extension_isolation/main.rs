@@ -23,6 +23,7 @@
 mod a19_process_isolation;
 mod a39_permissions_and_quota;
 mod boundary_verification;
+mod codex_package_turn;
 mod creation_paths;
 mod package_execution;
 mod silent_writer;

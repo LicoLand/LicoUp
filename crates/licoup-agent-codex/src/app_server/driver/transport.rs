@@ -1,13 +1,13 @@
-use super::super::process_supervisor::{
+use licoup_foundation::platform::process_supervisor::{
     BoundedStdinWriter, TransportFinishFailure, finish_protocol_transport,
 };
-use super::config::ProtocolConfig;
+use super::super::config::ProtocolConfig;
 use super::io::{drain_stderr, read_protocol_messages, write_message};
 use super::launch::CodexLaunchSpec;
-use super::model::{ProtocolFailure, RunResult};
+use super::super::model::{ProtocolFailure, RunResult};
 use super::supervision::{pipe_failure, run_protocol_loop};
-use crate::platform::native_agent_parser::adapters::codex::CodexParser;
-use crate::platform::raw_execution::{
+use crate::parser::CodexParser;
+use licoup_foundation::platform::raw_execution::{
     RawExecutionBinding, RawExecutionDirection, RawExecutionObserver, RawExecutionReader,
     RawExecutionScope,
 };
@@ -21,7 +21,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[allow(clippy::too_many_arguments)]
-pub(in crate::platform) fn execute(
+pub fn execute(
     executable: &str,
     params: &Value,
     prompt: &str,
@@ -30,13 +30,17 @@ pub(in crate::platform) fn execute(
     timeout_ms: u64,
     max_stdout: Option<usize>,
     max_stderr: usize,
+    environment: Option<Vec<(String, String)>>,
 ) -> RunResult {
     let started_at = timestamp();
     let config = match ProtocolConfig::from_params(params, prompt, session_id, cwd) {
         Ok(config) => config,
         Err(failure) => return RunResult::failed(failure, started_at, None, false, false),
     };
-    let launch = CodexLaunchSpec::new(executable, cwd);
+    let launch = match environment {
+        Some(environment) => CodexLaunchSpec::new(executable, cwd).with_environment(environment),
+        None => CodexLaunchSpec::new(executable, cwd),
+    };
     let mut child = match launch.spawn_with_context(Some(params)) {
         Ok(child) => child,
         Err(error) => {
@@ -175,7 +179,7 @@ pub(in crate::platform) fn execute(
 
     if let Some(outcome) = outcome {
         let transitions =
-            crate::platform::native_agent_parser::adapters::codex::completed_transitions(
+            crate::parser::completed_transitions(
                 &outcome.output,
             );
         return RunResult {

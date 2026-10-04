@@ -4,6 +4,9 @@
  * New sites never inherit a neighbouring record or a file-level tool mention.
  */
 const N = "crates/licoup-native/src/";
+// The Codex adapter package owns the one Agent whose process an extension host
+// starts; its reviewed launch sites are keyed here rather than under N.
+const C = "crates/licoup-agent-codex/src/";
 const DR = "crates/licoup-agent-drivers/src/";
 const F = "crates/licoup-foundation/src/";
 const T = "crates/licoup-agent-targets/src/";
@@ -50,8 +53,7 @@ const SOURCES = Object.freeze({
   [N + "platform/antigravity_driver/probe.rs"]: "75c62a13bccda44854d39b98ba41eaf2a146f2e0f64fed7b98edfc7e8b9972ae",
   [N + "platform/claude_code_driver/command.rs"]: "d5261fa6577d9ddae24027b1b58a165d239fe3122b7b648cae50256c9ee65d6d",
   [N + "platform/claude_code_driver/probe.rs"]: "490b5c591d9d65a1714116d75198cb93b604be1b11ad5cf29f333291a14b8c29",
-  [N + "platform/codex_app_server/launch.rs"]: "20ee62c1c353f0107257c723e1f3bd6a61128aa3439c2245300569b5d98c65ef",
-  [N + "platform/codex_plugin_manager.rs"]: "58aa902449d5a9f25b342f4541ed6c56488af6c0c23c633892cce24bbea31855",
+  [C + "app_server/driver/launch.rs"]: "de5dfbad8261b94a1bb37d1bf9ae4620af35e1856434b16c74b5ad7cc9f8b862",
   [N + "platform/cursor_driver/execution.rs"]: "e50f484719e8828fb7842711337d8886d6b220986fced0d2757fedbe6038576f",
   [N + "platform/cursor_driver/probe.rs"]: "e5fb151d35ada8ac16770cfa444a46edc9b07dfbfd02b36f165c0947b3f69c77",
   [N + "platform/deepseek_harness_driver.rs"]: "4069c51e24d5e58698f37034eb3685ce6a235be2f8eb72b999c681942dc6094d",
@@ -197,20 +199,8 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
   ...entries(N + "platform/claude_code_driver/probe.rs", parameter("executable: &str"), [
     ["c6034ed13778", "Construct Claude Code's bounded capability probe from its caller-selected executable; the source supervisor and untrusted environment remain separate runtime guarantees."],
   ]),
-  ...entries(N + "platform/codex_app_server/launch.rs", field("Command::new(&self.executable)"), [
-    ["8bed3b547011", "Launch the configured Codex app-server command with stdio and scoped launch environment; Membership and MCP root binding are not inferred from a fixed executable spelling."],
-  ]),
-  ...entries(N + "platform/codex_plugin_manager.rs", {kind: "discovery", evidence: "fs::canonicalize(path)"}, [
-    ["d588a28cbc65", "Query the exact managed Codex plugin using a canonicalized caller-selected Codex executable; filesystem identity is verified by the owner rather than treated as a source literal."],
-  ]),
-  ...entries(N + "platform/codex_plugin_manager.rs", command, [
-    ["350edd5414cf", "Capture the prepared Codex plugin-status command with bounded output; raw plugin inventory remains inside its source owner."],
-    ["dab0f898128f", "Capture a Codex plugin lifecycle command using the prepared executable and argv, without interpreting a runtime-selected binary as a literal tool name or granting the lifecycle effect."],
-    ["dab0f898128f#2", "Capture a Codex plugin lifecycle JSON command under the same selected-executable and bounded-output contract; this is distinct from the non-JSON invocation."],
-  ]),
-  ...entries(N + "platform/codex_plugin_manager.rs", parameter("executable: &Path"), [
-    ["785fe394d370", "Construct a Codex plugin lifecycle invocation from its prepared runtime executable and caller-provided arguments; this review does not authorize installation effects."],
-    ["785fe394d370#2", "Construct the JSON-returning Codex plugin lifecycle invocation from the same explicit runtime binding while retaining a separate execution-site identity."],
+  ...entries(C + "app_server/driver/launch.rs", field("Command::new(&self.executable)"), [
+    ["0727a31cdeef", "Launch the installed Codex client's app-server for one turn with stdio and the scoped launch environment: the portable LicoUp root and the Membership caller context are bound explicitly, and neither is inferred from a fixed executable spelling. The site is the Codex adapter package's, so it is the same launch whether the client composes the package or an extension host starts the package's own program; the executable is always a caller-selected path and never a literal tool name."],
   ]),
   ...entries(N + "platform/cursor_driver/execution.rs", parameter("executable: &str"), [
     ["526a5bc1f041", "Create a Cursor chat session using the selected Agent executable and bounded workspace, with the same scoped caller context as the resumed turn."],

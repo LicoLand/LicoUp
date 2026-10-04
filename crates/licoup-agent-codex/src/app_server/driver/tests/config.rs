@@ -1,5 +1,5 @@
 use super::support::config;
-use crate::platform::codex_app_server::config::{ProtocolConfig, spark_default_reasoning_effort};
+use crate::app_server::config::{ProtocolConfig, spark_default_reasoning_effort};
 use serde_json::json;
 use std::fs;
 

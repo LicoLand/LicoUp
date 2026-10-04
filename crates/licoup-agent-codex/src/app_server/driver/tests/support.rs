@@ -1,9 +1,9 @@
-use crate::platform::codex_app_server::config::ProtocolConfig;
-use crate::platform::codex_app_server::limits::{
+use crate::app_server::config::ProtocolConfig;
+use crate::app_server::limits::{
     ACCOUNT_RATE_LIMITS_REQUEST_ID, INITIALIZE_REQUEST_ID, THREAD_REQUEST_ID, TURN_REQUEST_ID,
 };
-use crate::platform::codex_app_server::model::{ProtocolEffect, ProtocolFailure, ProtocolOutcome};
-use crate::platform::native_agent_parser::adapters::codex::CodexParser;
+use crate::app_server::model::{ProtocolEffect, ProtocolFailure, ProtocolOutcome};
+use crate::parser::CodexParser;
 use serde_json::{Value, json};
 use std::path::Path;
 

@@ -357,8 +357,6 @@ pub struct HostComposition {
     pub dispatch_timeout: fn(&Value) -> Result<u64, ()>,
     /// Whether one Agent's own lane declares a capability flag.
     pub declared_capability_flag: fn(RuntimeAdapter, &str) -> Option<bool>,
-    /// Whether one Agent's integration is installed, and what recovery it needs.
-    pub codex_plugin_installation_state: fn(Option<&Path>) -> &'static str,
     /// End one Agent's persisted conversation.
     pub cleanup_conversation: fn(&Value) -> Result<Value, String>,
 }

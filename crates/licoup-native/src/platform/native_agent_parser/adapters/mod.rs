@@ -18,10 +18,11 @@ pub(in crate::platform) use licoup_agent_adapter_sdk::{
     LifecycleStage, Transition, TransitionReducer,
 };
 
-// One Agent's parser has moved: Codex's vendor protocol now lives in its own package
-// (`licoup-agent-codex`), parsed once below this port, and this composition names the
-// package rather than keeping a second copy.
-pub(in crate::platform) use licoup_agent_codex::parser as codex;
+// One Agent's parser has moved: Codex's vendor protocol now lives in its own
+// package (`licoup-agent-codex`), which this composition names through that
+// package's own parser registration rather than by keeping a second copy. The
+// package also owns the app-server process that speaks the protocol, so no
+// kernel module declares either one.
 
 pub(in crate::platform) mod antigravity;
 pub(in crate::platform) mod claude_code;

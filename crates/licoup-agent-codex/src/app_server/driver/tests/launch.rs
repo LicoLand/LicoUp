@@ -1,4 +1,4 @@
-use crate::platform::codex_app_server::launch::{
+use crate::app_server::driver::launch::{
     CodexLaunchSpec, apply_launch_environment, apply_launch_environment_with_root,
 };
 use serde_json::json;
@@ -30,7 +30,7 @@ fn command_environment(command: &Command, key: &str) -> Option<String> {
 }
 
 #[test]
-fn launch_forwards_caller_context_and_inherits_the_portable_root() {
+fn launch_forwards_caller_context_and_binds_only_the_named_environment() {
     let previous_root = licoup_foundation::platform::paths::set_portable_data_dir_override(Some(
         std::path::PathBuf::from("/synthetic/licoup-home"),
     ));
@@ -43,6 +43,7 @@ fn launch_forwards_caller_context_and_inherits_the_portable_root() {
             "membershipId": "membership:codex",
             "dispatchId": "turn:direct"
         })),
+        Some(&[("PATH".to_owned(), "/user/shell/bin".to_owned())]),
     )
     .expect("the selected data root should be available to the child");
 
@@ -62,6 +63,12 @@ fn launch_forwards_caller_context_and_inherits_the_portable_root() {
         command_environment(&command, "LICOUP_HOME").as_deref(),
         Some("/synthetic/licoup-home")
     );
+    // The caller's own environment is the child's whole environment: the
+    // package process's variables are not inherited on top of it.
+    assert_eq!(
+        command_environment(&command, "PATH").as_deref(),
+        Some("/user/shell/bin")
+    );
     assert_eq!(
         command_environment(&command, "LICOUP_MCP_PARENT_DISPATCH_ID"),
         None
@@ -71,14 +78,8 @@ fn launch_forwards_caller_context_and_inherits_the_portable_root() {
 
 #[test]
 fn launch_binds_only_the_live_process_portable_root() {
-    let _snapshot =
-        crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[
-            ("LICOUP_HOME", "/shell/home"),
-            ("LICOUP_PORTABLE_DIR", "/shell/legacy"),
-        ]);
-
-    // Without a live process root the launch environment never binds
-    // either root name, even when a captured shell value carries one.
+    // Without a live process root the launch environment never binds either
+    // root name, even when the caller's environment carries one.
     let mut command = Command::new("codex-test");
     apply_launch_environment_with_root(
         &mut command,
@@ -87,16 +88,21 @@ fn launch_binds_only_the_live_process_portable_root() {
             "conversationId": "conversation:fixture",
             "membershipId": "membership:codex"
         })),
+        Some(&[
+            ("LICOUP_HOME".to_owned(), "/caller/home".to_owned()),
+            ("LICOUP_PORTABLE_DIR".to_owned(), "/caller/legacy".to_owned()),
+        ]),
         None,
     );
     assert_eq!(command_environment(&command, "LICOUP_HOME"), None);
     assert_eq!(command_environment(&command, "LICOUP_PORTABLE_DIR"), None);
 
-    // The plugin server forwards the legacy name through its released
-    // allowlist, but both names carry the same selected root.
+    // Both names carry the same selected root: the released Subagent MCP
+    // server forwards the legacy name through its allowlist.
     let mut command = Command::new("codex-test");
     apply_launch_environment_with_root(
         &mut command,
+        None,
         None,
         Some(OsString::from("/portable/lico-up")),
     );
