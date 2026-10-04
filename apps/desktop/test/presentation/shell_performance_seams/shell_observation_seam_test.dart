@@ -63,6 +63,13 @@ void main() {
         isNull,
         reason: 'a bounded owner never evicted a trace under this interaction',
       );
+      expect(
+        observation.frameObservationAttached,
+        isTrue,
+        reason:
+            'the installed owner is the one observer of the frame phase, so '
+            'the composition attached it to the real binding',
+      );
 
       await fixture.dispose();
     },
@@ -71,6 +78,7 @@ void main() {
   testWidgets('a composition that installs no owner records nothing', (
     tester,
   ) async {
+    final observation = CountedShellObservation();
     final controller = ClientController(agentService: FakeAgentService());
     final composition = ClientAppComposition(controller: controller);
     expect(
@@ -95,6 +103,13 @@ void main() {
       findsNothing,
       reason: 'without an installed owner no renderer scope is created',
     );
+    expect(
+      observation.frameObservationAttached,
+      isFalse,
+      reason:
+          'no installed owner means no frame-phase observer is attached, so '
+          'no frame fact can be recorded',
+    );
 
     composition.binding.intents.send(
       const SelectShellDestination(ClientSection.settings),
@@ -112,20 +127,23 @@ void main() {
     await tester.runAsync(composition.dispose);
   });
 
-  test('an installed owner is the only owner of the phase facts it retains', () {
-    final observation = CountedShellObservation();
-    expect(observation.pendingTraceCount, 0);
-    expect(observation.frameSamples, 0);
+  test(
+    'an installed owner is the only owner of the phase facts it retains',
+    () {
+      final observation = CountedShellObservation();
+      expect(observation.pendingTraceCount, 0);
+      expect(observation.frameSamples, 0);
 
-    final trace = observation.projectionEmitted();
-    observation.flutterReceived(trace);
-    expect(observation.projectionEmissions, 1);
-    expect(observation.pendingTraceCount, 1);
+      final trace = observation.projectionEmitted();
+      observation.flutterReceived(trace);
+      expect(observation.projectionEmissions, 1);
+      expect(observation.pendingTraceCount, 1);
 
-    observation.dispose();
-    observation.dispose();
-    expect(observation.pendingTraceCount, 0);
-    expect(observation.disposed, isTrue);
-    expect(trace.traceId, isNotNull);
-  });
+      observation.dispose();
+      observation.dispose();
+      expect(observation.pendingTraceCount, 0);
+      expect(observation.disposed, isTrue);
+      expect(trace.traceId, isNotNull);
+    },
+  );
 }

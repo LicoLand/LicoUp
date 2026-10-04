@@ -57,7 +57,10 @@ abstract interface class PresentationObservation
   /// Releases a trace whose projection or frame can no longer be observed.
   ///
   /// Callers choose the truthful phase-specific reason.
-  void discardTrace(TraceContext trace, CausalTelemetryUnavailableReason reason);
+  void discardTrace(
+    TraceContext trace,
+    CausalTelemetryUnavailableReason reason,
+  );
 
   /// Releases a delivered trace only when no renderer observer accepted it.
   void discardIfNotReceived(

@@ -128,6 +128,7 @@ export const FLUTTER_MODULES = Object.freeze([
         "apps/desktop/test/settings_feature_composition_test.dart",
         "apps/desktop/test/support/agent_conversation_workspace_fixture.dart",
         "apps/desktop/test/support/canonical_group/canonical_group_binding_fixture.dart",
+        "tools/development/performance/shell-interaction-workloads.json",
       ],
       command: flutterTests([
         "test/presentation",

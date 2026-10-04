@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -6,15 +8,20 @@ import 'package:licoup/app.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/client_app_composition.dart';
 import 'package:licoup/src/composition/client_composition_set.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/binding/presentation_observation.dart';
 import 'package:licoup/src/frontend/binding/shell_renderer_port.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/presentation/shell/shell_binding.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:licoup/src/presentation/shell/shell_intent.dart';
 
 import '../../../fixtures/client_controller/support/fake_agent_service.dart';
 import 'counted_shell_observation.dart';
+import 'measurement_preferences.dart';
 import 'shell_rebuild_counter.dart';
 
 /// One counted measurement of a named ordinary shell interaction.
@@ -77,12 +84,17 @@ final class ShellSeamFixture {
     required this.controller,
     required this.composition,
     required this.rebuilds,
+    required this.dataRoot,
   });
 
   final WidgetTester tester;
   final ClientController controller;
   final ClientAppComposition composition;
   final ShellRebuildCounter rebuilds;
+
+  /// Disposable data root, so a measurement never reads or writes the
+  /// developer's own presentation preferences.
+  final Directory dataRoot;
   Future<void>? _disposal;
 
   static Future<ShellSeamFixture> create(
@@ -91,7 +103,18 @@ final class ShellSeamFixture {
     ClientCompositionSet compositionSet = ClientCompositionSet.full,
     Widget Function(BuildContext, ShellBinding, ShellRendererPort)? homeBuilder,
   }) async {
-    final controller = ClientController(agentService: FakeAgentService());
+    final dataRoot = Directory.systemTemp.createTempSync('licoup-shell-seams-');
+    final controller = ClientController(
+      agentService: FakeAgentService(),
+      portableData: PortableDataRoot(dataDirectoryOverride: dataRoot),
+      presentationPreferencesRepository: MeasurementPreferences(
+        PresentationPreferences(
+          layoutProfileId: LayoutProfileId.parse('dashboard'),
+          appearancePresetId: AppearancePresetIds.licoSoda,
+          localePreference: LocalePreference.english,
+        ),
+      ),
+    );
     final composition = ClientAppComposition(
       controller: controller,
       telemetry: observation,
@@ -102,8 +125,13 @@ final class ShellSeamFixture {
       ..statusCaption = 'Ready'
       ..statusMessage = 'Deterministic measurement surface ready.';
     final rebuilds = ShellRebuildCounter()..install();
+    // The mount carries a fresh key: without it a second fixture in the same
+    // process updates the existing LicoApp element instead of mounting a new
+    // one, and the measured shell would be the composition of the previous
+    // fixture rather than the one this measurement owns.
     await tester.pumpWidget(
       LicoApp(
+        key: UniqueKey(),
         compositionFactory: () => composition,
         initializeController: false,
         homeBuilder: homeBuilder,
@@ -116,6 +144,7 @@ final class ShellSeamFixture {
       controller: controller,
       composition: composition,
       rebuilds: rebuilds,
+      dataRoot: dataRoot,
     );
   }
 
@@ -141,8 +170,7 @@ final class ShellSeamFixture {
       interaction: interaction,
       widgetRebuilds: Map<String, int>.of(rebuilds.byWidget),
       framesPumped: 2,
-      acceptedProjections:
-          observation.acceptedProjections - acceptedBefore,
+      acceptedProjections: observation.acceptedProjections - acceptedBefore,
       frameConsumedProjections:
           observation.frameConsumedProjections - consumedBefore,
       consumedFrames: observation.frameConsumptionStamps
@@ -189,6 +217,7 @@ final class ShellSeamFixture {
     return _disposal ??= () async {
       rebuilds.remove();
       await tester.runAsync(composition.dispose);
+      if (dataRoot.existsSync()) dataRoot.deleteSync(recursive: true);
     }();
   }
 }

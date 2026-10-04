@@ -44,11 +44,10 @@ final class CountedShellObservation implements PresentationObservation {
       <CausalTelemetryUnavailableReason, int>{};
 
   /// Frame phase samples the binding reported.
+  ///
+  /// A virtual-clock widget run reports none, so a counted fixture never turns
+  /// this into a frame-duration claim.
   int frameSamples = 0;
-
-  /// Build and raster phase durations of the samples, when a real engine ran.
-  final List<int> buildMicroseconds = <int>[];
-  final List<int> rasterMicroseconds = <int>[];
 
   final LinkedHashSet<String> _pending = LinkedHashSet<String>();
   final Set<String> _received = <String>{};
@@ -58,22 +57,10 @@ final class CountedShellObservation implements PresentationObservation {
 
   bool get disposed => _disposed;
 
-  int get pendingTraceCount => _pending.length;
+  /// Whether this owner is the installed frame-phase observer of a binding.
+  bool get frameObservationAttached => _frameBinding != null;
 
-  /// Clears every count so the next interaction is measured on its own.
-  void reset() {
-    rendererIntents = 0;
-    projectionEmissions = 0;
-    acceptedProjections = 0;
-    frameConsumedProjections = 0;
-    frameConsumptionStamps.clear();
-    unavailableCounts.clear();
-    frameSamples = 0;
-    buildMicroseconds.clear();
-    rasterMicroseconds.clear();
-    _pending.clear();
-    _received.clear();
-  }
+  int get pendingTraceCount => _pending.length;
 
   @override
   TraceContext beginRendererIntent() {
@@ -165,11 +152,7 @@ final class CountedShellObservation implements PresentationObservation {
   }
 
   void _onTimings(List<FrameTiming> timings) {
-    for (final timing in timings) {
-      frameSamples += 1;
-      buildMicroseconds.add(timing.buildDuration.inMicroseconds);
-      rasterMicroseconds.add(timing.rasterDuration.inMicroseconds);
-    }
+    frameSamples += timings.length;
   }
 
   void _recordUnavailable(CausalTelemetryUnavailableReason reason) {
