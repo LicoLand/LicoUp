@@ -2,6 +2,7 @@ use super::super::envelope::{relay_envelope_from_value, secure_envelope_param};
 use super::super::station::{delivery_transport_hint, station_binding_digest, station_context};
 use crate::core::secure_mesh_crypto::SecureMeshPayloadKind;
 use crate::core::secure_mesh_pairwise::SecureMeshPairwisePendingDelivery;
+use crate::domain::mobile_relay::endpoint_collaboration_gate::ensure_outbound_permitted;
 use crate::domain::mobile_relay::endpoint_trust::ensure_peer_verified;
 use crate::domain::mobile_relay::pairwise_session::{
     mobile_relay_pairwise_operation_with_runtime_secret_context,
@@ -48,6 +49,7 @@ fn require_relay_private_key(material: &RuntimeSecretMaterial) -> Result<()> {
 }
 
 pub fn command_create(params: &Value) -> Result<Value> {
+    ensure_outbound_permitted()?;
     ensure_secure_mesh_protected_operation_allowed()?;
     let config = load_config()?;
     let secure_envelope = secure_envelope_param(params)
@@ -63,6 +65,7 @@ pub fn command_create(params: &Value) -> Result<Value> {
 }
 
 pub fn command_create_secure(params: &Value) -> Result<Value> {
+    ensure_outbound_permitted()?;
     let (config, mut secret_context) = load_config_with_runtime_secret_context_for_operation(
         params,
         "Mobile Relay secure command create authorization batch",
