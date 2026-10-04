@@ -17,6 +17,7 @@ import { spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -52,6 +53,8 @@ import {
   PACKAGE_PAYLOAD_MANIFEST_NAME,
   interpreterScriptEntryName,
   readPackagePayload,
+  sha256Hex,
+  writePackagePayload,
 } from "../../../tools/scripts/lib/client-release-package-payload.mjs";
 import {
   loadClientReleaseTargetCatalog,
@@ -59,32 +62,101 @@ import {
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const script = "tools/scripts/client-release-package-index.mjs";
-const fixtureSource = "tests/fixtures/client_package_release/fixture-native-converter";
-const payloadAsset = "LicoUp-package-fixture-native-converter.licopkg";
 const indexAsset = "LicoUp-package-index.json";
-// The MCP service package is the first real declared package: it is released
-// beside the synthetic fixture under the same contract, on its own payload role.
-const mcpPackageId = "org.licoland.feature.mcp";
-const mcpPackageSource = "crates/licoup-mcp/package";
-const mcpPayloadRole = "mcp-package-payload";
-const mcpPayloadAsset = `LicoUp-package-${mcpPackageId}.licopkg`;
-// The Codex adapter package is the first Agent adapter released this way: it is
-// declared beside the MCP service and the synthetic fixture, on its own payload
-// role, so one package's asset can never stand in for another's.
-const codexPackageId = "org.licoland.adapter.codex";
-const codexPackageSource = "crates/licoup-agent-codex/package";
-const codexPayloadRole = "codex-adapter-package-payload";
-const codexPayloadAsset = `LicoUp-package-${codexPackageId}.licopkg`;
-// The Gateway Runtime package is released the same way: it is declared beside
-// the adapters, the MCP service and the synthetic fixture, and only its own
-// asset may claim its payload role.
-const gatewayPackageId = "org.licoland.feature.gateway";
-const gatewayPackageSource = "crates/licoup-gateway/package";
-const gatewayPayloadRole = "gateway-package-payload";
-const gatewayPayloadAsset = `LicoUp-package-${gatewayPackageId}.licopkg`;
+const releaseSourcePrefix = "build/apps/desktop/native-release/macos-direct-arm64";
+// Every package the tree ships, in the order the declared set names them. This
+// table is what this file asserts: the declared set must equal it, the macOS
+// release target must declare one payload asset per role from it, the
+// publication contract must publish each of its roles once, and the two tests at
+// the end of this file must find exactly these package directories on disk and
+// exactly these payloads in a trial index. A package added to the tree without a
+// row here fails them.
+const declaredPackages = Object.freeze([
+  {
+    packageId: "org.licoland.adapter.codex",
+    source: "crates/licoup-agent-codex/package",
+    payloadRole: "codex-adapter-package-payload",
+    payloadAsset: "LicoUp-package-org.licoland.adapter.codex.licopkg",
+    converterEntry: "bin/lico-agent-codex",
+    clientRange: ">=0.3.0, <1.0.0",
+  },
+  {
+    packageId: "org.licoland.converter.appearance",
+    source: "components/appearance/package",
+    payloadRole: "appearance-converter-package-payload",
+    payloadAsset: "LicoUp-package-org.licoland.converter.appearance.licopkg",
+    converterEntry: "bin/licoup-appearance-convert",
+    clientRange: ">=0.3.0, <1.0.0",
+  },
+  {
+    packageId: "org.licoland.feature.analytics",
+    source: "components/analytics/package",
+    payloadRole: "analytics-package-payload",
+    payloadAsset: "LicoUp-package-org.licoland.feature.analytics.licopkg",
+    converterEntry: "bin/licoup-analytics",
+    clientRange: ">=0.3.0, <1.0.0",
+  },
+  {
+    packageId: "org.licoland.feature.gateway",
+    source: "crates/licoup-gateway/package",
+    payloadRole: "gateway-package-payload",
+    payloadAsset: "LicoUp-package-org.licoland.feature.gateway.licopkg",
+    converterEntry: "bin/lico-gateway",
+    clientRange: ">=0.3.0, <1.0.0",
+  },
+  {
+    packageId: "org.licoland.feature.mcp",
+    source: "crates/licoup-mcp/package",
+    payloadRole: "mcp-package-payload",
+    payloadAsset: "LicoUp-package-org.licoland.feature.mcp.licopkg",
+    converterEntry: "bin/lico-subagent-mcp",
+    clientRange: ">=0.3.0, <1.0.0",
+  },
+  {
+    packageId: "org.licoland.fixture.native-converter",
+    source: "tests/fixtures/client_package_release/fixture-native-converter",
+    payloadRole: PACKAGE_PAYLOAD_ROLE,
+    payloadAsset: "LicoUp-package-fixture-native-converter.licopkg",
+    converterEntry: "bin/licoup-fixture-converter",
+    clientRange: ">=0.2.0, <1.0.0",
+  },
+]);
+
+function declaredPackage(payloadRole) {
+  const found = declaredPackages.find((entry) => entry.payloadRole === payloadRole);
+  assert.ok(found, `the declared packages name ${payloadRole}`);
+  return found;
+}
+
+const fixturePackage = declaredPackage(PACKAGE_PAYLOAD_ROLE);
+const mcpPackage = declaredPackage("mcp-package-payload");
+const fixtureSource = fixturePackage.source;
+const payloadAsset = fixturePackage.payloadAsset;
 const clientProductVersion = JSON.parse(readFileSync(
   path.join(repoRoot, "tools/client-version.json"), "utf8",
 )).productVersion;
+
+// The two answers a manifest may give about its own persisted data when it
+// declares no conversion, and what each answer claims.
+const persistedDataAnswers = Object.freeze({
+  none: "the package writes and keeps no persistent data of its own",
+  "self-owned": "the package keeps data under its own directory whose format only that package reads and rewrites, so it owns no published conversion",
+});
+
+/**
+ * Every package directory the tree ships: a `crates/*` or `components/*`
+ * component whose `package/` directory carries the manifest the host reads.
+ * The tree is the authority here, so a package that is added without a
+ * registration fails the completeness test instead of being ignored.
+ */
+function packageSourceDirectories() {
+  return ["crates", "components"].flatMap((root) =>
+    readdirSync(path.join(repoRoot, root), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => `${root}/${entry.name}/package`)
+      .filter((source) => existsSync(path.join(repoRoot, source, "manifest.json"))))
+    .sort();
+}
 
 function readJson(relativePath) {
   return JSON.parse(readFileSync(path.join(repoRoot, relativePath), "utf8"));
@@ -115,34 +187,29 @@ test("the canonical release configuration declares every package payload role ex
   const nightly = readJson("tools/apple-release/macos-direct-arm64-nightly.json");
   const macos = catalog.targets.find((target) => target.id === "macos-direct-arm64");
 
+  // The declared set is this file's table, entry for entry: identity, source
+  // directory and the one payload role the package's own asset is published as.
+  const set = readJson("tools/client-release-package-set.json");
+  assert.equal(set.schemaVersion, PACKAGE_SET_SCHEMA);
+  assert.deepEqual(set.packages, declaredPackages.map((entry) => ({
+    packageId: entry.packageId,
+    source: entry.source,
+    payloadRole: entry.payloadRole,
+  })));
+
   assert.deepEqual(
     macos.artifacts.filter((artifact) => artifact.role.endsWith("-payload") ||
       artifact.role === PACKAGE_INDEX_ROLE),
     [
-      {
-        role: codexPayloadRole,
-        file: codexPayloadAsset,
-        source: `build/apps/desktop/native-release/macos-direct-arm64/${codexPayloadAsset}`,
-      },
-      {
-        role: gatewayPayloadRole,
-        file: gatewayPayloadAsset,
-        source: `build/apps/desktop/native-release/macos-direct-arm64/${gatewayPayloadAsset}`,
-      },
-      {
-        role: mcpPayloadRole,
-        file: mcpPayloadAsset,
-        source: `build/apps/desktop/native-release/macos-direct-arm64/${mcpPayloadAsset}`,
-      },
-      {
-        role: PACKAGE_PAYLOAD_ROLE,
-        file: payloadAsset,
-        source: `build/apps/desktop/native-release/macos-direct-arm64/${payloadAsset}`,
-      },
+      ...declaredPackages.map((entry) => ({
+        role: entry.payloadRole,
+        file: entry.payloadAsset,
+        source: `${releaseSourcePrefix}/${entry.payloadAsset}`,
+      })),
       {
         role: PACKAGE_INDEX_ROLE,
         file: indexAsset,
-        source: `build/apps/desktop/native-release/macos-direct-arm64/${indexAsset}`,
+        source: `${releaseSourcePrefix}/${indexAsset}`,
       },
     ],
   );
@@ -151,9 +218,8 @@ test("the canonical release configuration declares every package payload role ex
   for (const target of catalog.targets) {
     const roles = target.artifacts.map((artifact) => artifact.role);
     assert.equal(
-      roles.includes(PACKAGE_PAYLOAD_ROLE) || roles.includes(PACKAGE_INDEX_ROLE) ||
-        roles.includes(mcpPayloadRole) || roles.includes(codexPayloadRole) ||
-        roles.includes(gatewayPayloadRole),
+      roles.includes(PACKAGE_INDEX_ROLE) ||
+        declaredPackages.some((entry) => roles.includes(entry.payloadRole)),
       target.id === "macos-direct-arm64",
       `${target.id} must not carry an independent package asset`,
     );
@@ -164,34 +230,31 @@ test("the canonical release configuration declares every package payload role ex
   const publication = template.publication;
   assert.equal(publication.exactDraftAssetSetRequired, true);
   assert.deepEqual(publication.independentPackageAssets, {
-    payloadRoles: [codexPayloadRole, gatewayPayloadRole, mcpPayloadRole,
-      PACKAGE_PAYLOAD_ROLE],
+    payloadRoles: declaredPackages.map((entry) => entry.payloadRole),
     indexRole: PACKAGE_INDEX_ROLE,
     producer: "tools/scripts/client-release-package-index.mjs",
     clientDraftCarries: false,
     signedIndexRequired: true,
   });
-  assert.equal(publication.assetRoles.includes(PACKAGE_PAYLOAD_ROLE), false);
-  assert.equal(publication.assetRoles.includes(mcpPayloadRole), false);
-  assert.equal(publication.assetRoles.includes(codexPayloadRole), false);
-  assert.equal(publication.assetRoles.includes(gatewayPayloadRole), false);
-  assert.equal(publication.assetRoles.includes(PACKAGE_INDEX_ROLE), false);
+  for (const role of [...declaredPackages.map((entry) => entry.payloadRole),
+    PACKAGE_INDEX_ROLE]) {
+    assert.equal(publication.assetRoles.includes(role), false,
+      `${role} is published in its own right, not as a client draft asset`);
+    for (const config of [stable, nightly]) {
+      assert.equal(config.artifacts.some((entry) => entry.role === role), false,
+        `${role} must not enter the closed client draft`);
+    }
+  }
   for (const config of [stable, nightly]) {
     assert.deepEqual(
       config.artifacts.map((entry) => entry.role),
       publication.assetRoles,
       "exactDraftAssetSetRequired still holds with the independent package assets",
     );
-    for (const role of [PACKAGE_PAYLOAD_ROLE, mcpPayloadRole, codexPayloadRole,
-      gatewayPayloadRole, PACKAGE_INDEX_ROLE]) {
-      assert.equal(config.artifacts.some((entry) => entry.role === role), false,
-        `${role} must not enter the closed client draft`);
-    }
   }
   // The declared set and the publication contract name the same payload roles:
   // a package without a role, or a role without a package, is a release that
   // cannot be staged.
-  const set = readJson("tools/client-release-package-set.json");
   assert.deepEqual(
     [...set.packages.map((entry) => entry.payloadRole)].sort(),
     [...publication.independentPackageAssets.payloadRoles].sort(),
@@ -209,11 +272,12 @@ test("the trial packages every declared payload and one signed index without pro
   assert.equal(firstResult.signingKeysGeneratedInMemory, true);
   assert.equal(firstResult.privatePathsIncluded, false);
   assert.deepEqual(firstResult.payloads.map((entry) => entry.payloadRole),
-    [codexPayloadRole, gatewayPayloadRole, mcpPayloadRole, PACKAGE_PAYLOAD_ROLE]);
-  assert.equal(firstResult.payloads[0].payloadPath.endsWith(codexPayloadAsset), true);
-  assert.equal(firstResult.payloads[1].payloadPath.endsWith(gatewayPayloadAsset), true);
-  assert.equal(firstResult.payloads[2].payloadPath.endsWith(mcpPayloadAsset), true);
-  assert.equal(firstResult.payloads[3].payloadPath.endsWith(payloadAsset), true);
+    declaredPackages.map((entry) => entry.payloadRole));
+  for (const [position, declared] of declaredPackages.entries()) {
+    assert.equal(firstResult.payloads[position].packageId, declared.packageId);
+    assert.equal(firstResult.payloads[position].payloadPath.endsWith(declared.payloadAsset),
+      true);
+  }
   assert.equal(firstResult.indexPath.endsWith(indexAsset), true);
 
   const indexText = readFileSync(path.join(root, "first", indexAsset), "utf8");
@@ -224,10 +288,10 @@ test("the trial packages every declared payload and one signed index without pro
   assert.equal(index.schemaVersion, PACKAGE_INDEX_SCHEMA);
   // One index carries one entry per declared package, ordered by identity, and
   // every entry is the package's own declaration rather than the caller's.
-  assert.deepEqual(index.packages.map((item) => item.packageId),
-    [codexPackageId, gatewayPackageId, mcpPackageId,
-      "org.licoland.fixture.native-converter"]);
-  const entry = index.packages[3];
+  const publishedIds = declaredPackages.map((entry) => entry.packageId).sort();
+  assert.deepEqual(index.packages.map((item) => item.packageId), publishedIds);
+  const entry = index.packages.find((item) =>
+    item.packageId === fixturePackage.packageId);
   const manifest = JSON.parse(readFileSync(path.join(repoRoot, fixtureSource, "manifest.json"), "utf8"));
   const declaration = JSON.parse(
     readFileSync(path.join(repoRoot, fixtureSource, "package-release.json"), "utf8"),
@@ -241,9 +305,7 @@ test("the trial packages every declared payload and one signed index without pro
   assert.deepEqual(entry.clientCompatibility, declaration.clientCompatibility);
   assert.equal(entry.payload.fileName, payloadAsset);
   assert.match(entry.payload.sha256, /^sha256:[0-9a-f]{64}$/u);
-  assert.deepEqual(verifiedPackageIds(index, path.join(root, "first")),
-    [codexPackageId, gatewayPackageId, mcpPackageId,
-      "org.licoland.fixture.native-converter"]);
+  assert.deepEqual(verifiedPackageIds(index, path.join(root, "first")), publishedIds);
 
   // The payload carries exactly the package's own declaration and no
   // interpreter entry, and the release document names no network location: the
@@ -274,13 +336,12 @@ test("the trial packages every declared payload and one signed index without pro
   const secondResult = JSON.parse(second.stdout);
   assert.deepEqual(secondResult.payloads.map((entry) => entry.payloadDigest),
     firstResult.payloads.map((entry) => entry.payloadDigest));
-  for (const [position, asset] of [codexPayloadAsset, gatewayPayloadAsset,
-    mcpPayloadAsset, payloadAsset].entries()) {
+  for (const declared of declaredPackages) {
     assert.equal(
-      readFileSync(path.join(root, "second", asset))
-        .equals(readFileSync(path.join(root, "first", asset))),
+      readFileSync(path.join(root, "second", declared.payloadAsset))
+        .equals(readFileSync(path.join(root, "first", declared.payloadAsset))),
       true,
-      `${firstResult.payloads[position].packageId} packages to the same bytes`,
+      `${declared.packageId} packages to the same bytes`,
     );
   }
   assert.notEqual(
@@ -348,36 +409,19 @@ test("the plan reports every declared package without writing, and the tool reac
   assert.equal(plan.indexFile, indexAsset);
   assert.deepEqual(plan.packages.map((entry) => [entry.packageId, entry.payloadRole,
     entry.payloadFile]),
-  [
-    [codexPackageId, codexPayloadRole, codexPayloadAsset],
-    [gatewayPackageId, gatewayPayloadRole, gatewayPayloadAsset],
-    [mcpPackageId, mcpPayloadRole, mcpPayloadAsset],
-    ["org.licoland.fixture.native-converter", PACKAGE_PAYLOAD_ROLE, payloadAsset],
-  ]);
-  const fixturePlan = plan.packages[3];
-  assert.match(fixturePlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
-  assert.equal(fixturePlan.source, fixtureSource);
-  assert.deepEqual(fixturePlan.clientCompatibility,
-    { kind: "range", range: ">=0.2.0, <1.0.0" });
-  assert.equal(fixturePlan.converterEntry, "bin/licoup-fixture-converter");
-  const gatewayPlan = plan.packages[1];
-  assert.equal(gatewayPlan.source, gatewayPackageSource);
-  assert.match(gatewayPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
-  assert.deepEqual(gatewayPlan.clientCompatibility,
-    { kind: "range", range: ">=0.3.0, <1.0.0" });
-  assert.equal(gatewayPlan.converterEntry, "bin/lico-gateway");
-  const mcpPlan = plan.packages[2];
-  assert.equal(mcpPlan.source, mcpPackageSource);
-  assert.match(mcpPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
-  assert.deepEqual(mcpPlan.clientCompatibility,
-    { kind: "range", range: ">=0.3.0, <1.0.0" });
-  assert.equal(mcpPlan.converterEntry, "bin/lico-subagent-mcp");
-  const codexPlan = plan.packages[0];
-  assert.equal(codexPlan.source, codexPackageSource);
-  assert.match(codexPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
-  assert.deepEqual(codexPlan.clientCompatibility,
-    { kind: "range", range: ">=0.3.0, <1.0.0" });
-  assert.equal(codexPlan.converterEntry, "bin/lico-agent-codex");
+  declaredPackages.map((entry) => [entry.packageId, entry.payloadRole,
+    entry.payloadAsset]));
+  // Every declared package is reported with its own committed source, a digest
+  // over the payload it would publish, the client line it declares and the
+  // native entry it names.
+  for (const [position, declared] of declaredPackages.entries()) {
+    const reported = plan.packages[position];
+    assert.equal(reported.source, declared.source);
+    assert.match(reported.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
+    assert.deepEqual(reported.clientCompatibility,
+      { kind: "range", range: declared.clientRange });
+    assert.equal(reported.converterEntry, declared.converterEntry);
+  }
   assert.equal(readdirSync(root).length, 0, "plan must not write anything");
 
   const sources = [
@@ -494,10 +538,10 @@ test("the package's own declaration decides its identity, compatibility form and
 
 test("the real MCP service package builds a deterministic payload and its own index entry", () => {
   const declared = loadPackageSet().packages.find((entry) =>
-    entry.packageId === mcpPackageId);
-  assert.ok(declared, `${mcpPackageId} must be a declared package`);
-  assert.equal(declared.payloadRole, mcpPayloadRole);
-  assert.equal(declared.source, mcpPackageSource);
+    entry.packageId === mcpPackage.packageId);
+  assert.ok(declared, `${mcpPackage.packageId} must be a declared package`);
+  assert.equal(declared.payloadRole, mcpPackage.payloadRole);
+  assert.equal(declared.source, mcpPackage.source);
 
   // The committed sources package to the same bytes on every run, so the signed
   // digest binds exactly what the release stages.
@@ -513,9 +557,9 @@ test("the real MCP service package builds a deterministic payload and its own in
   assert.deepEqual(entries.map((entry) => entry.name),
     ["bin/lico-subagent-mcp", "contributions/service-status.json", "manifest.json",
       "package-release.json"]);
-  const manifestText = readFileSync(path.join(repoRoot, mcpPackageSource, "manifest.json"), "utf8");
+  const manifestText = readFileSync(path.join(repoRoot, mcpPackage.source, "manifest.json"), "utf8");
   const declarationText = readFileSync(
-    path.join(repoRoot, mcpPackageSource, "package-release.json"), "utf8",
+    path.join(repoRoot, mcpPackage.source, "package-release.json"), "utf8",
   );
   assert.equal(entries.find((entry) => entry.name === PACKAGE_PAYLOAD_MANIFEST_NAME)
     .content.toString("utf8"), manifestText);
@@ -523,8 +567,8 @@ test("the real MCP service package builds a deterministic payload and its own in
     .content.toString("utf8"), declarationText);
   const manifest = JSON.parse(manifestText);
   const declaration = JSON.parse(declarationText);
-  assert.equal(manifest.id, mcpPackageId);
-  assert.equal(produced.manifest.packageId, mcpPackageId);
+  assert.equal(manifest.id, mcpPackage.packageId);
+  assert.equal(produced.manifest.packageId, mcpPackage.packageId);
   assert.equal(manifest.version, declaration.packageVersion);
   assert.deepEqual(manifest.hostProtocol, produced.manifest.hostProtocol);
   // The manifest's required compatibility list and the release declaration's
@@ -551,7 +595,7 @@ test("the real MCP service package builds a deterministic payload and its own in
   // actually ships and that parses as a declarative interface contribution.
   assert.equal(manifest.permissions.length, 3);
   for (const permission of manifest.permissions) {
-    assert.equal(permission.capability.startsWith(`${mcpPackageId}/`), true,
+    assert.equal(permission.capability.startsWith(`${mcpPackage.packageId}/`), true,
       `${permission.capability} must be requested under the package's own namespace`);
     assert.equal(permission.scope.length > 0, true);
   }
@@ -595,139 +639,221 @@ test("the real MCP service package builds a deterministic payload and its own in
     }));
     const signed = signIndex(buildIndex({
       releaseTrack: "stable",
-      packages: [indexEntry(produced, mcpPayloadAsset)],
+      packages: [indexEntry(produced, mcpPackage.payloadAsset)],
       offlineRootKeyId: keys[0].keyId,
       onlineSigningKeyId: keys[1].keyId,
     }), keys);
-    writeFileSync(path.join(root, mcpPayloadAsset), produced.payload);
+    writeFileSync(path.join(root, mcpPackage.payloadAsset), produced.payload);
     const verified = verifyPackageIndex(JSON.stringify(signed), JSON.stringify({
       keys: Object.fromEntries(keys.map((key) => [key.keyId, { publicKey: key.publicKey }])),
     }));
     const entry = verified.packages[0];
-    assert.equal(entry.packageId, mcpPackageId);
+    assert.equal(entry.packageId, mcpPackage.packageId);
     assert.equal(entry.packageVersion, declaration.packageVersion);
     assert.deepEqual(entry.hostProtocol, manifest.hostProtocol);
     assert.deepEqual(entry.clientCompatibility, declaration.clientCompatibility);
     assert.deepEqual(entry.converter, declaration.converter);
-    assert.equal(entry.payload.fileName, mcpPayloadAsset);
+    assert.equal(entry.payload.fileName, mcpPackage.payloadAsset);
     assert.equal(entry.payload.sha256, produced.sha256);
-    assert.deepEqual(verifiedPackageIds(verified, root), [mcpPackageId]);
+    assert.deepEqual(verifiedPackageIds(verified, root), [mcpPackage.packageId]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("the real Gateway Runtime package builds a deterministic payload and its own index entry", () => {
-  const declared = loadPackageSet().packages.find((entry) =>
-    entry.packageId === gatewayPackageId);
-  assert.ok(declared, `${gatewayPackageId} must be a declared package`);
-  assert.equal(declared.payloadRole, gatewayPayloadRole);
-  assert.equal(declared.source, gatewayPackageSource);
-
-  // The committed sources package to the same bytes on every run, so the signed
-  // digest binds exactly what the release stages.
-  const produced = producePackagePayload(declared);
-  const repeated = producePackagePayload(declared);
-  assert.equal(produced.sha256, repeated.sha256);
-  assert.equal(produced.payload.equals(repeated.payload), true);
-  assert.equal(produced.byteSize, produced.payload.length);
-
-  // The payload carries the package's own committed documents verbatim and its
-  // native entry, and nothing else.
-  const entries = readPackagePayload(produced.payload);
-  assert.deepEqual(entries.map((entry) => entry.name),
-    ["bin/lico-gateway", "manifest.json", "package-release.json"]);
-  const manifestText = readFileSync(path.join(repoRoot, gatewayPackageSource, "manifest.json"), "utf8");
-  const declarationText = readFileSync(
-    path.join(repoRoot, gatewayPackageSource, "package-release.json"), "utf8",
+// The completeness guard: the tree, not this file, decides which packages
+// exist. A package directory that carries a host manifest but no registration
+// would be built, tested and shipped by the client while never being published,
+// and this test refuses that state instead of restating a list of packages.
+test("every package directory the tree ships is declared and published", (t) => {
+  const directories = packageSourceDirectories();
+  assert.notEqual(directories.length, 0, "the tree ships at least one package");
+  const set = readJson("tools/client-release-package-set.json");
+  const declaredSources = set.packages.map((entry) => entry.source);
+  // Every package directory the tree ships is declared. The one declared payload
+  // that is not a package directory is the disposable synthetic fixture the
+  // trial itself packages, so a source outside both is a registration of
+  // something the tree does not ship.
+  const syntheticSources = declaredPackages
+    .filter((entry) => entry.source.startsWith("tests/fixtures/"))
+    .map((entry) => entry.source)
+    .sort();
+  for (const source of directories) {
+    assert.equal(declaredSources.includes(source), true,
+      `${source} ships a manifest but no release payload role`);
+  }
+  assert.deepEqual(
+    [...declaredSources].filter((source) => !directories.includes(source)).sort(),
+    syntheticSources,
+    "a declared source outside the package directories must be the synthetic fixture",
   );
-  assert.equal(entries.find((entry) => entry.name === PACKAGE_PAYLOAD_MANIFEST_NAME)
-    .content.toString("utf8"), manifestText);
-  assert.equal(entries.find((entry) => entry.name === PACKAGE_PAYLOAD_DECLARATION_NAME)
-    .content.toString("utf8"), declarationText);
-  const manifest = JSON.parse(manifestText);
-  const declaration = JSON.parse(declarationText);
-  assert.equal(manifest.id, gatewayPackageId);
-  assert.equal(produced.manifest.packageId, gatewayPackageId);
-  assert.equal(manifest.version, declaration.packageVersion);
-  assert.deepEqual(manifest.hostProtocol, produced.manifest.hostProtocol);
-  // The manifest's required compatibility list and the release declaration's
-  // compatibility form are the same claim in the two formats the host reads.
-  assert.deepEqual(manifest.compatibility.clientVersions, [declaration.clientCompatibility.range]);
 
-  // The declared runtime is a native process: no interpreter, no runtime
-  // reference and no install script anywhere in the payload.
-  assert.deepEqual(manifest.runtime, {
-    mode: "process",
-    entry: declaration.converter.entry,
-  });
-  assert.equal(manifest.runtime.entry, "bin/lico-gateway");
-  assert.equal(Object.hasOwn(manifest, "installScript"), false);
-  const nativeEntry = entries.find((entry) => entry.name === manifest.runtime.entry);
-  assert.equal(nativeEntry.mode & 0o111, 0o111, "the declared entry is executable");
-  for (const entry of entries) {
-    assert.equal(interpreterScriptEntryName(entry.name), "");
-    assert.notEqual(entry.content.subarray(0, 2).toString("utf8"), "#!");
+  const root = temporaryRoot(t);
+  const trial = invoke(["fixture", "--output", path.join(root, "trial")]);
+  assert.equal(trial.status, 0, trial.stderr);
+  const result = JSON.parse(trial.stdout);
+  const index = verifyPackageIndex(
+    readFileSync(path.join(root, "trial", indexAsset), "utf8"),
+    readFileSync(
+      path.join(root, "trial", result.publicKeysPath.split("/").at(-1)), "utf8",
+    ),
+  );
+  for (const source of directories) {
+    const manifestText = readFileSync(path.join(repoRoot, source, "manifest.json"), "utf8");
+    const manifest = JSON.parse(manifestText);
+    const published = result.payloads.find((entry) => entry.packageId === manifest.id);
+    assert.ok(published, `${manifest.id} must be produced by the trial index`);
+    // The payload is that package's own committed source rather than a stand-in.
+    const entries = readPackagePayload(readFileSync(published.payloadPath));
+    assert.equal(
+      entries.find((entry) => entry.name === PACKAGE_PAYLOAD_MANIFEST_NAME)
+        .content.toString("utf8"),
+      manifestText,
+      `${manifest.id} must ship its own manifest`,
+    );
+    const declaration = JSON.parse(entries.find((entry) =>
+      entry.name === PACKAGE_PAYLOAD_DECLARATION_NAME).content.toString("utf8"));
+    // Where the payload declares a native entry, that entry is inside the
+    // payload it describes, is executable and is not carried by an interpreter.
+    const runtimeEntry = manifest.runtime?.entry;
+    if (runtimeEntry) {
+      const native = entries.find((entry) => entry.name === runtimeEntry);
+      assert.ok(native, `${manifest.id} must carry its declared entry ${runtimeEntry}`);
+      assert.equal(native.mode & 0o111, 0o111, `${runtimeEntry} must be executable`);
+      assert.equal(interpreterScriptEntryName(runtimeEntry), "");
+      assert.notEqual(native.content.subarray(0, 2).toString("utf8"), "#!");
+    }
+    assert.equal(declaration.converter.entry, runtimeEntry,
+      `${manifest.id} declares one entry in both documents`);
+    const entryInIndex = index.packages.find((item) => item.packageId === manifest.id);
+    assert.ok(entryInIndex, `${manifest.id} must be published in the signed index`);
+    assert.equal(entryInIndex.converter.entry, declaration.converter.entry);
   }
+});
 
-  // The declared data footprint is attributable: every permission belongs to the
-  // package's own namespace, and the profile names the capability the host's own
-  // ownership table attributes to this package.
-  assert.equal(manifest.permissions.length, 2);
-  for (const permission of manifest.permissions) {
-    assert.equal(permission.capability.startsWith(`${gatewayPackageId}/`), true,
-      `${permission.capability} must be requested under the package's own namespace`);
-    assert.equal(permission.scope.length > 0, true);
+// The persisted-data rule every package manifest answers: it declares the native
+// conversion it owns for the published client-state formats, or it states
+// explicitly what it does with its own persisted data and why. A silent manifest
+// is a gap rather than a complete declaration, and no node owned this check.
+test("every package manifest declares the persisted data it owns", () => {
+  const directories = packageSourceDirectories();
+  assert.notEqual(directories.length, 0, "the tree ships at least one package");
+  for (const source of directories) {
+    const manifest = JSON.parse(
+      readFileSync(path.join(repoRoot, source, "manifest.json"), "utf8"),
+    );
+    const conversion = manifest.conversion;
+    if (conversion) {
+      // A declared conversion is a claim to own a published format: the entry is
+      // inside the payload, at least one source format is read, and the target
+      // is not also an endpoint of the same move.
+      assert.equal(conversion.kind, "native-executable", `${manifest.id} converts natively`);
+      assert.equal(conversion.entry, manifest.runtime?.entry,
+        `${manifest.id} converts through the entry it ships`);
+      assert.equal(Array.isArray(conversion.sourceFormats) &&
+        conversion.sourceFormats.length > 0, true,
+      `${manifest.id} declares the formats it reads`);
+      assert.equal(conversion.sourceFormats.includes(conversion.targetFormat), false,
+        `${manifest.id} does not convert a format into itself`);
+      // The release declaration the signed index republishes is the same claim,
+      // so a package cannot publish one pair and convert another.
+      const declaration = JSON.parse(readFileSync(
+        path.join(repoRoot, source, PACKAGE_PAYLOAD_DECLARATION_NAME), "utf8",
+      ));
+      assert.equal(declaration.converter.kind, conversion.kind);
+      assert.equal(declaration.converter.entry, conversion.entry);
+      assert.equal(conversion.sourceFormats.includes(declaration.converter.sourceFormat), true,
+        `${manifest.id} publishes a source format it declares`);
+      assert.equal(declaration.converter.targetFormat, conversion.targetFormat);
+      continue;
+    }
+    const answer = manifest.extensions?.[`${manifest.id}/persistentData`];
+    const reason = manifest.extensions?.[`${manifest.id}/persistentDataReason`];
+    assert.equal(Object.hasOwn(persistedDataAnswers, answer), true,
+      `${source} must declare either a conversion or that it owns no persistent ` +
+      `package data (${Object.keys(persistedDataAnswers).join(" or ")})`);
+    assert.equal(typeof reason, "string",
+      `${source} must state why it declares no conversion`);
+    assert.notEqual(reason.trim(), "",
+      `${source} must state why it declares no conversion`);
   }
-  assert.equal(manifest.profiles.length, 1);
-  assert.deepEqual(manifest.profiles[0].capabilities, ["model-gateway.v1"]);
-  assert.equal(manifest.contributions.length, 0);
+});
 
-  // The package's own compatibility list admits the declared client line and
-  // refuses a client outside it, before any client reads the index.
-  const compatibility = publicClientCompatibility(produced.declaration.clientCompatibility);
-  assert.equal(clientVersionSatisfies(compatibility, "0.3.0"), true);
-  assert.equal(clientVersionSatisfies(compatibility, "0.9.9"), true);
-  assert.equal(clientVersionSatisfies(compatibility, "0.2.9"), false);
-  assert.equal(clientVersionSatisfies(compatibility, "1.0.0"), false);
+// The fail-closed half of the tooling: an entry that is still a placeholder
+// script is not a native package, whatever the signed index says about it, and a
+// build without the release authority's keys writes nothing.
+test("re-verification refuses a payload whose declared entry is a placeholder", (t) => {
+  const root = temporaryRoot(t);
+  const source = path.join(root, "source");
+  mkdirSync(path.join(source, "bin"), { recursive: true });
+  const manifest = JSON.parse(
+    readFileSync(path.join(repoRoot, fixtureSource, "manifest.json"), "utf8"),
+  );
+  const declaration = JSON.parse(
+    readFileSync(path.join(repoRoot, fixtureSource, PACKAGE_PAYLOAD_DECLARATION_NAME), "utf8"),
+  );
+  const entryName = declaration.converter.entry;
+  writeFileSync(path.join(source, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  writeFileSync(path.join(source, PACKAGE_PAYLOAD_DECLARATION_NAME),
+    `${JSON.stringify(declaration, null, 2)}\n`);
+  // The staged entry the release stage replaces: present, executable and not a
+  // script, so the payload packages and verifies.
+  writeFileSync(path.join(source, entryName), "staged entry\n");
+  chmodSync(path.join(source, entryName), 0o755);
+  const setPath = path.join(root, "package-set.json");
+  writeFileSync(setPath, `${JSON.stringify({
+    schemaVersion: PACKAGE_SET_SCHEMA,
+    packages: [{
+      packageId: manifest.id,
+      source: "source",
+      payloadRole: PACKAGE_PAYLOAD_ROLE,
+    }],
+  }, null, 2)}\n`);
+  const produced = producePackagePayload(loadPackageSet(setPath, { root }).packages[0]);
 
-  // The signed index republishes that declaration beside the payload digest, and
-  // re-verification reads the payload back and finds the same package.
-  const root = mkdtempSync(path.join(realpathSync(os.tmpdir()), "lico-gateway-package-"));
-  try {
-    const keys = ["gateway-offline-root", "gateway-online-signing"].map((keyId) => ({
-      keyId,
-      ...(() => {
-        const pair = generateKeyPairSync("ed25519");
-        return {
-          privateKey: pair.privateKey,
-          publicKey: Buffer.from(pair.publicKey.export({ type: "spki", format: "der" }))
-            .subarray(-32).toString("base64"),
-        };
-      })(),
-    }));
-    const signed = signIndex(buildIndex({
-      releaseTrack: "stable",
-      packages: [indexEntry(produced, gatewayPayloadAsset)],
-      offlineRootKeyId: keys[0].keyId,
-      onlineSigningKeyId: keys[1].keyId,
-    }), keys);
-    writeFileSync(path.join(root, gatewayPayloadAsset), produced.payload);
-    const verified = verifyPackageIndex(JSON.stringify(signed), JSON.stringify({
-      keys: Object.fromEntries(keys.map((key) => [key.keyId, { publicKey: key.publicKey }])),
-    }));
-    const entry = verified.packages[0];
-    assert.equal(entry.packageId, gatewayPackageId);
-    assert.equal(entry.packageVersion, declaration.packageVersion);
-    assert.deepEqual(entry.hostProtocol, manifest.hostProtocol);
-    assert.deepEqual(entry.clientCompatibility, declaration.clientCompatibility);
-    assert.deepEqual(entry.converter, declaration.converter);
-    assert.equal(entry.payload.fileName, gatewayPayloadAsset);
-    assert.equal(entry.payload.sha256, produced.sha256);
-    assert.deepEqual(verifiedPackageIds(verified, root), [gatewayPackageId]);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  // A payload that still carries a script at the declared entry describes a
+  // package the host would have to interpret.
+  const swapped = writePackagePayload(readPackagePayload(produced.payload).map((entry) =>
+    entry.name === entryName
+      ? { name: entry.name, content: Buffer.from("#!/bin/sh\nexec true\n"), mode: 0o100755 }
+      : { name: entry.name, content: entry.content, mode: entry.mode }));
+  const keyPair = () => {
+    const pair = generateKeyPairSync("ed25519");
+    return {
+      privateKey: pair.privateKey,
+      publicKey: Buffer.from(pair.publicKey.export({ type: "spki", format: "der" }))
+        .subarray(-32).toString("base64"),
+    };
+  };
+  const offlineRoot = keyPair();
+  const onlineSigning = keyPair();
+  const keys = [
+    { keyId: "placeholder-offline-root", privateKey: offlineRoot.privateKey },
+    { keyId: "placeholder-online-signing", privateKey: onlineSigning.privateKey },
+  ];
+  const assetName = "LicoUp-package-placeholder.licopkg";
+  const payloadRoot = path.join(root, "payloads");
+  mkdirSync(payloadRoot, { recursive: true });
+  const payloadPath = path.join(payloadRoot, assetName);
+  const indexOver = (payload) => signIndex(buildIndex({
+    releaseTrack: "stable",
+    packages: [indexEntry({
+      ...produced,
+      payload,
+      byteSize: payload.length,
+      sha256: `sha256:${sha256Hex(payload)}`,
+    }, assetName)],
+    offlineRootKeyId: keys[0].keyId,
+    onlineSigningKeyId: keys[1].keyId,
+  }), keys);
+
+  writeFileSync(payloadPath, produced.payload);
+  assert.deepEqual(verifiedPackageIds(indexOver(produced.payload), payloadRoot), [manifest.id],
+    "the same payload with a real staged entry verifies");
+  writeFileSync(payloadPath, swapped);
+  assert.throws(() => verifyIndexPayloads(indexOver(swapped), payloadRoot),
+    /package_payload_converter_not_native/u,
+    "a placeholder script at the declared entry is refused at re-verification");
 });
 
 function verifiedPackageIds(index, payloadRoot) {

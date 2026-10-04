@@ -119,7 +119,9 @@ node tools/scripts/client-release-package-index.mjs verify --index <index> --pay
 ```
 
 `tools/client-release-package-set.json` 是声明集：每一项给出该包在仓库内的源目录，以及它
-自身载荷发布时使用的发布载荷角色；发布目标为每个角色各声明一次对应资产。`plan` 不写任何
+自身载荷发布时使用的发布载荷角色；发布目标为每个角色各声明一次对应资产。该声明集在构造上
+即要求完整：凡是带有 `manifest.json` 的 `crates/*/package` 与 `components/*/package`
+目录都必须出现在其中，发布契约测试直接枚举这些目录，而不是复述一份名单。`plan` 不写任何
 文件，只报告每个已声明包的身份、版本、客户端兼容范围、载荷角色与载荷摘要。`fixture` 用
 本次运行在内存中生成的密钥对打包整个声明集：不读取任何受保护密钥，仅作为流水线证据，
 不是发布。`build` 读取发布权威的两把私钥

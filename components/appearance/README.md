@@ -72,9 +72,13 @@ synthetic source converts through the tool's own conversion entry.
 
 ## Wiring this package needs from its owners
 
-- **Packaging (M3)**: the carrier that lays this manifest and the built
-  `licoup-appearance-convert` binary into one package payload at the declared entry. The
-  manifest is generated from this crate, so the carrier transcribes no format name.
+- **Packaging**: the carrier that lays this manifest and the built
+  `licoup-appearance-convert` binary into one package payload at the declared entry now
+  exists. The package is declared in `tools/client-release-package-set.json` under the
+  `appearance-converter-package-payload` role, its `package/package-release.json` is the
+  release declaration the index republishes, and `bin/licoup-appearance-convert` is the
+  staged entry the release stage replaces with the compiled program. The manifest is
+  generated from this crate, so the carrier transcribes no format name.
 - **Migration coordination (PACKAGE-MIGRATION-COORDINATOR)**: acquisition, verification and
   execution of a package converter entry. This package declares the seam and provides the
   program; it does not acquire, verify or run itself, and it holds no second coordinator.

@@ -44,11 +44,14 @@ test("LicoUp is one declarative Apple Release use case", () => {
   // The publication authority owns a closed draft asset contract. The
   // independently released package payloads and their signed index are declared
   // in the client release template beside that draft, never inside it, and the
-  // package index tool produces them outside the application bundle.
+  // package index tool produces them outside the application bundle. One payload
+  // role per declared package: the declared set is the authority on which
+  // packages exist, and the release package-index contract test holds it to the
+  // package directories the tree ships.
   const template = readJson("tools/client-release-template.json");
+  const declaredPackages = readJson("tools/client-release-package-set.json").packages;
   assert.deepEqual(template.publication.independentPackageAssets, {
-    payloadRoles: ["codex-adapter-package-payload", "gateway-package-payload",
-      "mcp-package-payload", "package-payload"],
+    payloadRoles: declaredPackages.map((entry) => entry.payloadRole),
     indexRole: "package-index",
     producer: "tools/scripts/client-release-package-index.mjs",
     clientDraftCarries: false,

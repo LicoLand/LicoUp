@@ -67,6 +67,8 @@
     "independentPackageAssets": {
       "payloadRoles": [
         "codex-adapter-package-payload",
+        "appearance-converter-package-payload",
+        "analytics-package-payload",
         "gateway-package-payload",
         "mcp-package-payload",
         "package-payload"

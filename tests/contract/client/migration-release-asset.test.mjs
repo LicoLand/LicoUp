@@ -54,14 +54,9 @@ const migrationToolAsset = "LicoUp-migrate-macos-arm64";
 const migrationToolDigest = `${migrationToolAsset}.sha256`;
 // The macOS direct target also carries the independent package assets produced
 // by the package index tool: one payload per declared package plus the signed
-// index. This fixture must supply every producer output so the same builder and
-// staging commands stay exercised end to end.
-const codexPackagePayloadAsset =
-  "LicoUp-package-org.licoland.adapter.codex.licopkg";
-const gatewayPackagePayloadAsset =
-  "LicoUp-package-org.licoland.feature.gateway.licopkg";
-const mcpPackagePayloadAsset = "LicoUp-package-org.licoland.feature.mcp.licopkg";
-const packagePayloadAsset = "LicoUp-package-fixture-native-converter.licopkg";
+// index. This fixture reads the payload set from the target catalog and supplies
+// every producer output, so the same builder and staging commands stay exercised
+// end to end for a package set that grows.
 const packageIndexAsset = "LicoUp-package-index.json";
 const productVersion = JSON.parse(
   readFileSync(path.join(repoRoot, "tools/client-version.json"), "utf8"),
@@ -165,6 +160,19 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
     fixture,
     "build", "releases", productVersion, "macos-direct-arm64",
   );
+  // Every payload the target declares is produced by the package index tool into
+  // one producer directory. The fixture supplies all of them from the catalog
+  // rather than from a list that goes stale when a package is registered, and it
+  // supplies nothing the target does not declare.
+  const declaredPayloads = resolvedMacosTarget().artifacts
+    .filter((artifact) => artifact.role.endsWith("-payload"))
+    .map((artifact) => ({ role: artifact.role, file: artifact.file }));
+  assert.notEqual(declaredPayloads.length, 0, "the target carries package payloads");
+  const packageProducerDirectory = path.join(
+    fixture, "build", "apps", "desktop", "release-packages", "macos",
+  );
+  const syntheticPayloads = Object.fromEntries(declaredPayloads.map(({ role, file }) =>
+    [role, `synthetic ${role} bytes\n`]));
   const syntheticCandidates = {
     installer: path.join(fixture, "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.dmg"),
     update: path.join(fixture, "build/apps/desktop/distribution/macos/LicoUp-macos-arm64-update.zip"),
@@ -173,31 +181,9 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
       releaseToolsDirectory("macos"),
       migrationToolAsset,
     ),
-    "codex-adapter-package-payload": path.join(
-      fixture,
-      "build", "apps", "desktop", "release-packages", "macos",
-      codexPackagePayloadAsset,
-    ),
-    "gateway-package-payload": path.join(
-      fixture,
-      "build", "apps", "desktop", "release-packages", "macos",
-      gatewayPackagePayloadAsset,
-    ),
-    "mcp-package-payload": path.join(
-      fixture,
-      "build", "apps", "desktop", "release-packages", "macos",
-      mcpPackagePayloadAsset,
-    ),
-    "package-payload": path.join(
-      fixture,
-      "build", "apps", "desktop", "release-packages", "macos",
-      packagePayloadAsset,
-    ),
-    "package-index": path.join(
-      fixture,
-      "build", "apps", "desktop", "release-packages", "macos",
-      packageIndexAsset,
-    ),
+    ...Object.fromEntries(declaredPayloads.map(({ role, file }) =>
+      [role, path.join(packageProducerDirectory, file)])),
+    "package-index": path.join(packageProducerDirectory, packageIndexAsset),
   };
   mkdirSync(path.dirname(syntheticCandidates.installer), { recursive: true });
   writeFileSync(syntheticCandidates.installer, "synthetic installer payload\n");
@@ -207,14 +193,10 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
     syntheticCandidates["migration-tool"],
     "synthetic migration tool payload\n",
   );
-  mkdirSync(path.dirname(syntheticCandidates["package-payload"]), { recursive: true });
-  writeFileSync(syntheticCandidates["codex-adapter-package-payload"],
-    "synthetic codex adapter package payload\n");
-  writeFileSync(syntheticCandidates["gateway-package-payload"],
-    "synthetic gateway package payload\n");
-  writeFileSync(syntheticCandidates["mcp-package-payload"],
-    "synthetic MCP package payload\n");
-  writeFileSync(syntheticCandidates["package-payload"], "synthetic package payload\n");
+  mkdirSync(packageProducerDirectory, { recursive: true });
+  for (const { role } of declaredPayloads) {
+    writeFileSync(syntheticCandidates[role], syntheticPayloads[role]);
+  }
   writeFileSync(syntheticCandidates["package-index"], "{\"synthetic\":true}\n");
 
   const built = run(fixture, builderScript, ["--target", "macos-direct-arm64"]);
@@ -226,30 +208,14 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
     ),
     "the builder materializes the tool from its unbundled build output",
   );
-  assert.ok(
-    builtRecord.outputSources.includes(
-      `build/apps/desktop/native-release/macos-direct-arm64/${packagePayloadAsset}`,
-    ),
-    "the builder materializes the package payload from its own producer output",
-  );
-  assert.ok(
-    builtRecord.outputSources.includes(
-      `build/apps/desktop/native-release/macos-direct-arm64/${codexPackagePayloadAsset}`,
-    ),
-    "every declared package payload comes from its own producer output",
-  );
-  assert.ok(
-    builtRecord.outputSources.includes(
-      `build/apps/desktop/native-release/macos-direct-arm64/${gatewayPackagePayloadAsset}`,
-    ),
-    "every declared package payload comes from its own producer output",
-  );
-  assert.ok(
-    builtRecord.outputSources.includes(
-      `build/apps/desktop/native-release/macos-direct-arm64/${mcpPackagePayloadAsset}`,
-    ),
-    "every declared package payload comes from its own producer output",
-  );
+  for (const { file } of declaredPayloads) {
+    assert.ok(
+      builtRecord.outputSources.includes(
+        `build/apps/desktop/native-release/macos-direct-arm64/${file}`,
+      ),
+      `${file} must come from the package index tool's own producer output`,
+    );
+  }
 
   const staged = run(fixture, stagingScript, ["stage", "--target", "macos-direct-arm64"]);
   assert.equal(staged.status, 0, staged.stderr);
@@ -262,22 +228,13 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
     `${hexDigest(stagedTool)}  ${migrationToolAsset}\n`,
     "the checksum file binds the staged tool's own bytes",
   );
-  assert.equal(
-    readFileSync(path.join(releaseDirectory, packagePayloadAsset), "utf8"),
-    "synthetic package payload\n",
-  );
-  assert.equal(
-    readFileSync(path.join(releaseDirectory, codexPackagePayloadAsset), "utf8"),
-    "synthetic codex adapter package payload\n",
-  );
-  assert.equal(
-    readFileSync(path.join(releaseDirectory, gatewayPackagePayloadAsset), "utf8"),
-    "synthetic gateway package payload\n",
-  );
-  assert.equal(
-    readFileSync(path.join(releaseDirectory, mcpPackagePayloadAsset), "utf8"),
-    "synthetic MCP package payload\n",
-  );
+  for (const { role, file } of declaredPayloads) {
+    assert.equal(
+      readFileSync(path.join(releaseDirectory, file), "utf8"),
+      syntheticPayloads[role],
+      `${role} stages the bytes its own producer wrote`,
+    );
+  }
   assert.equal(
     readFileSync(path.join(releaseDirectory, packageIndexAsset), "utf8"),
     "{\"synthetic\":true}\n",
@@ -289,53 +246,31 @@ test("the platform fixture stages the tool with checksum metadata and no bundle"
   ));
   const toolRecord = packageManifest.artifacts.find((artifact) =>
     artifact.role === "migration-tool");
-  assert.deepEqual(toolRecord, {
-    role: "migration-tool",
-    file: migrationToolAsset,
-    byteSize: readFileSync(stagedTool).length,
-    sha256: sha256File(stagedTool),
-  });
+  assert.deepEqual(
+    packageManifest.artifacts.find((artifact) => artifact.role === "migration-tool"),
+    {
+      role: "migration-tool",
+      file: migrationToolAsset,
+      byteSize: readFileSync(stagedTool).length,
+      sha256: sha256File(stagedTool),
+    },
+  );
   assert.equal(
     packageManifest.artifacts.find((artifact) => artifact.file === migrationToolDigest)?.for,
     "migration-tool",
   );
-  assert.deepEqual(
-    packageManifest.artifacts.find((artifact) => artifact.role === "package-payload"),
-    {
-      role: "package-payload",
-      file: packagePayloadAsset,
-      byteSize: readFileSync(path.join(releaseDirectory, packagePayloadAsset)).length,
-      sha256: sha256File(path.join(releaseDirectory, packagePayloadAsset)),
-    },
-  );
-  assert.deepEqual(
-    packageManifest.artifacts.find((artifact) =>
-      artifact.role === "codex-adapter-package-payload"),
-    {
-      role: "codex-adapter-package-payload",
-      file: codexPackagePayloadAsset,
-      byteSize: readFileSync(path.join(releaseDirectory, codexPackagePayloadAsset)).length,
-      sha256: sha256File(path.join(releaseDirectory, codexPackagePayloadAsset)),
-    },
-  );
-  assert.deepEqual(
-    packageManifest.artifacts.find((artifact) => artifact.role === "gateway-package-payload"),
-    {
-      role: "gateway-package-payload",
-      file: gatewayPackagePayloadAsset,
-      byteSize: readFileSync(path.join(releaseDirectory, gatewayPackagePayloadAsset)).length,
-      sha256: sha256File(path.join(releaseDirectory, gatewayPackagePayloadAsset)),
-    },
-  );
-  assert.deepEqual(
-    packageManifest.artifacts.find((artifact) => artifact.role === "mcp-package-payload"),
-    {
-      role: "mcp-package-payload",
-      file: mcpPackagePayloadAsset,
-      byteSize: readFileSync(path.join(releaseDirectory, mcpPackagePayloadAsset)).length,
-      sha256: sha256File(path.join(releaseDirectory, mcpPackagePayloadAsset)),
-    },
-  );
+  for (const { role, file } of declaredPayloads) {
+    assert.deepEqual(
+      packageManifest.artifacts.find((artifact) => artifact.role === role),
+      {
+        role,
+        file,
+        byteSize: readFileSync(path.join(releaseDirectory, file)).length,
+        sha256: sha256File(path.join(releaseDirectory, file)),
+      },
+      `${role} carries its own digest metadata`,
+    );
+  }
   assert.deepEqual(
     packageManifest.artifacts.find((artifact) => artifact.role === "package-index"),
     {
