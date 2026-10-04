@@ -59,6 +59,9 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     platform::gateway_composition::install_readiness()?;
     platform::stop_control::install_subagent_claim_stop(stop_subagent_claim)?;
     licoup_model_catalog::install_model_catalog_port(model_catalog_port::model_catalog_port())?;
+    // The routing policy owner is composed after the catalogue port it reads,
+    // so one dispatch entry asks the policy instead of choosing ad hoc.
+    model_catalog_port::install_routing_policy_owner();
     platform::extension_packages::install_maintenance_admission(std::sync::Arc::new(
         PackageGenerationAdmission,
     ))?;

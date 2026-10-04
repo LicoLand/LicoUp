@@ -8,8 +8,11 @@
 //! - The Assistant receives usable facts and actionable suggestions via callbacks.
 //! - Strategy versions (from T06.1) feed selection without granting execution permission.
 //!   Every [`StrategySuggestion`] explicitly marks `has_execution_permission: false`.
-//!   Suggestions are drawn from the candidate catalog the enricher is given; with no
-//!   catalog wired the payload carries no strategy advice instead of an invented model.
+//!   The configured choice and the adopted default decide first; with neither, the
+//!   selection is routed by the candidate policy
+//!   ([`crate::domain::candidate_routing`]) over the same candidate catalog and the
+//!   effective scope admission, so an alternative the policy does not allow is never
+//!   suggested — including the first entry of the list, which is not a decision.
 //! - Permission, version, and resource recheck is strictly evaluated before any effect execution
 //!   through [`EffectRecheckContext::for_run_command`], the single construction path used by
 //!   the executor.
@@ -26,6 +29,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::domain::agent_usage::workflow_ledger;
+use crate::domain::candidate_routing::{
+    CandidateId, CandidateOffer, CandidateRoutingPort, CandidateRoutingRequest,
+    PolicyCandidateRouting, SelectionScope, routing_rationale,
+};
 use crate::domain::workflow_runtime::adapter::SingleWriterSessionRegistry;
 use crate::domain::workflow_store::{StrategyAuthorization, StrategyDefinition};
 
@@ -51,7 +58,7 @@ impl GroupBIntegrationGaps {
             t03_observation_gap: "assistant_continuity::observation with continuity_source_cursors is in group B branch (fix/t03-1-observation); wired here against run snapshots and NodeObservationSummary, whose producer is the T07.4 Node Facade observe() seam rather than native NodeObservation",
             t04_cost_budget_pool_gap: "workflow_ledger graph_usage_budget_pools and graph_usage_reservations are in group B branch (fix/t04-1-usage-admission); wired here against workflow_ledger v2 numeric token accounting, so the configured budget pool and its reservations stay unavailable and the pre-effect budget recheck has no remaining-token fact to compare",
             t05_context_composition_gap: "assistant_continuity::context multi-source refinement with parent grants is in group B branch (fix/t05-1-context); wired here against conversation run/causation metadata",
-            t06_replaceable_strategy_gap: "domain::model_planning durable SQLite defaults and qualification policy are in group B branch (fix/t06-1-replaceable-strategy); wired here against the typed suggestion port and an injected candidate catalog, which stays empty until that branch supplies durable defaults, so no strategy suggestion reaches a callback yet",
+            t06_replaceable_strategy_gap: "the replaceable strategy seam is wired to the non-learning candidate policy: an explicit user choice and an adopted default decide first, and every other selection is routed by domain::candidate_routing over the configured candidate catalog and the effective scope admission. Durable learned defaults and the qualification policy of domain::model_planning are not composed into this seam yet, so no learned default reaches a callback; the catalogue's ranking is not used to choose a model either, because the seam carries no price or intelligence facts",
         }
     }
 }
@@ -328,6 +335,7 @@ pub trait EvolutionStrategyPort: Send + Sync {
 pub struct DefaultEvolutionStrategyPort {
     defaults: RwLock<BTreeMap<PlanningScopeSeam, AdoptedPlanningDefaultSeam>>,
     revocations: RwLock<BTreeSet<String>>,
+    routing: Arc<dyn CandidateRoutingPort>,
 }
 
 impl DefaultEvolutionStrategyPort {
@@ -335,7 +343,18 @@ impl DefaultEvolutionStrategyPort {
         Self {
             defaults: RwLock::new(BTreeMap::new()),
             revocations: RwLock::new(BTreeSet::new()),
+            routing: Arc::new(PolicyCandidateRouting),
         }
+    }
+
+    /// Replace the routing owner this port asks for a non-default selection.
+    ///
+    /// A caller that composes its own policy facts supplies its owner here; a
+    /// caller that supplies none keeps [`PolicyCandidateRouting`], which reads
+    /// the facts the host installed and selects nothing when none were.
+    pub fn with_routing(mut self, routing: Arc<dyn CandidateRoutingPort>) -> Self {
+        self.routing = routing;
+        self
     }
 
     /// Adopt a revocable default strategy per D21.
@@ -404,15 +423,23 @@ impl EvolutionStrategyPort for DefaultEvolutionStrategyPort {
             }
         }
 
-        // Fallback: pick the first candidate from available candidate set
-        candidates.first().map(|first| StrategySuggestion {
-            candidate: first.clone(),
-            ranking_basis: "catalog-fallback".to_owned(),
+        // Fallback: ask the routing policy which of the caller's alternatives
+        // may run. The configured order is the preference, not the answer, and
+        // an alternative the policy does not allow is never suggested — a
+        // process that composes no admission owner therefore gets no
+        // suggestion at all instead of the first entry of the list.
+        let outcome = self.routing.route(&candidate_routing_request(candidates));
+        let suggestion = outcome
+            .selected()
+            .and_then(|selected| configured_option(candidates, selected))?;
+        Some(StrategySuggestion {
+            candidate: suggestion.clone(),
+            ranking_basis: "candidate-policy".to_owned(),
             source: None,
             scope: Some(scope.clone()),
             is_default: false,
             has_execution_permission: false, // Invariant: no execution permission granted
-            rationale: "Fallback to available candidate".to_owned(),
+            rationale: routing_rationale(&outcome),
         })
     }
 }
@@ -420,6 +447,46 @@ impl EvolutionStrategyPort for DefaultEvolutionStrategyPort {
 // ============================================================================
 // Usable Callback Facts & Suggestions
 // ============================================================================
+
+/// The policy question one strategy suggestion is answered by.
+///
+/// It is a workflow turn: the alternatives are the configured candidate list
+/// the enricher was given, in its configured order, and the scope is the
+/// catalogue's own [`SelectionScope::Workflow`]. A direct request asks the same
+/// question under `SelectionScope::Direct`; the policy answers each scope on its
+/// own, so one Agent can be suggested for one and not the other.
+fn candidate_routing_request(candidates: &[AgentModelOptionSeam]) -> CandidateRoutingRequest {
+    CandidateRoutingRequest::new(
+        SelectionScope::Workflow,
+        candidates
+            .iter()
+            .enumerate()
+            .map(|(index, candidate)| CandidateOffer {
+                candidate: CandidateId::new(
+                    candidate.agent_id.clone(),
+                    candidate.model_id.clone(),
+                    None,
+                ),
+                configured_position: index + 1,
+            })
+            .collect(),
+    )
+}
+
+/// The configured option one routed candidate names.
+///
+/// The policy ranks Agent/provider/model identities; the suggestion carries the
+/// configured option with its thinking setting. A recommended identity the
+/// configured list does not carry is reported as no suggestion rather than as an
+/// invented option, so the suggestion can never leave the caller's candidate set.
+fn configured_option<'a>(
+    candidates: &'a [AgentModelOptionSeam],
+    candidate: &CandidateId,
+) -> Option<&'a AgentModelOptionSeam> {
+    candidates
+        .iter()
+        .find(|option| option.agent_id == candidate.agent_id && option.model_id == candidate.model_id)
+}
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -931,6 +998,49 @@ pub fn recheck_before_effect(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::candidate_routing::{
+        CandidateFactTable, CandidateFacts, CandidateRoutingOutcome, CandidateRoutingRequest,
+        RoutingWithFacts,
+    };
+    use licoup_model_catalog::port::CredentialState;
+    use licoup_model_catalog::selection_matrix::{
+        ScopeAdmissionFacts, ScopeOutcomeState, SelectionMatrixPort, SelectionScope,
+    };
+
+    /// A routing owner that admits exactly the alternatives the test states
+    /// facts for, under the workflow scope.
+    fn routing_owner(rows: &[&AgentModelOptionSeam]) -> Arc<dyn CandidateRoutingPort> {
+        fn workflow_only(_agent: &str, scope: SelectionScope, _params: &Value) -> ScopeAdmissionFacts {
+            match scope {
+                SelectionScope::Workflow => {
+                    ScopeAdmissionFacts::new(ScopeOutcomeState::Allowed, "workflow_scope_admitted")
+                }
+                SelectionScope::Direct => {
+                    ScopeAdmissionFacts::new(ScopeOutcomeState::Blocked, "direct_scope_blocked")
+                }
+            }
+        }
+        let mut facts = CandidateFactTable::new();
+        for row in rows {
+            facts.record(
+                CandidateId::new(row.agent_id.clone(), row.model_id.clone(), None),
+                CandidateFacts {
+                    observed_at_unix_ms: Some(1_726_000_000_000),
+                    credential: CredentialState::Present,
+                    quota: licoup_model_catalog::candidate_policy::QuotaState::Available {
+                        window: "primary".to_owned(),
+                    },
+                    requirements: std::collections::BTreeMap::new(),
+                },
+            );
+        }
+        Arc::new(RoutingWithFacts::new(
+            Arc::new(facts),
+            SelectionMatrixPort {
+                agent_scope_admission: workflow_only,
+            },
+        ))
+    }
 
     #[test]
     fn test_group_b_gap_report_identifies_all_four_subsystems() {
@@ -949,13 +1059,12 @@ mod tests {
         assert!(
             report
                 .t06_replaceable_strategy_gap
-                .contains("fix/t06-1-replaceable-strategy")
+                .contains("domain::candidate_routing")
         );
     }
 
     #[test]
     fn test_strategy_suggestion_has_no_execution_permission() {
-        let port = DefaultEvolutionStrategyPort::new();
         let scope = PlanningScopeSeam {
             task_kind: "coding".into(),
             configuration: "default".into(),
@@ -972,6 +1081,9 @@ mod tests {
                 thinking: "high".into(),
             },
         ];
+        // The fallback is the routing policy's answer, so this port is given
+        // the owner the composed host installs instead of one with no facts.
+        let port = DefaultEvolutionStrategyPort::new().with_routing(routing_owner(&candidates));
 
         let suggestion = port.suggest_strategy(&scope, &candidates, None).unwrap();
         assert_eq!(suggestion.candidate.agent_id, "agent-1");
@@ -1024,7 +1136,6 @@ mod tests {
 
     #[test]
     fn test_strategy_adopted_default_selection_and_revocation_d21() {
-        let port = DefaultEvolutionStrategyPort::new();
         let scope = PlanningScopeSeam {
             task_kind: "review".into(),
             configuration: "default".into(),
@@ -1041,6 +1152,9 @@ mod tests {
                 thinking: "high".into(),
             },
         ];
+        // After revocation the routing policy decides, so this port is given
+        // the owner the composed host installs instead of one with no facts.
+        let port = DefaultEvolutionStrategyPort::new().with_routing(routing_owner(&candidates));
 
         // Adopt reviewer-2
         port.adopt_default(AdoptedPlanningDefaultSeam {
@@ -1064,12 +1178,17 @@ mod tests {
         );
         assert_eq!(suggestion.has_execution_permission, false);
 
-        // Revoking the strategy drops back to catalog fallback
+        // Revoking the strategy drops back to the routing policy, which selects
+        // the configured alternative it admits.
         port.revoke_strategy("eval-42");
         let after_revoke = port.suggest_strategy(&scope, &candidates, None).unwrap();
         assert_eq!(after_revoke.candidate.agent_id, "reviewer-1");
         assert_eq!(after_revoke.is_default, false);
-        assert_eq!(after_revoke.ranking_basis, "catalog-fallback");
+        assert_eq!(
+            after_revoke.ranking_basis,
+            "candidate-policy",
+            "the basis the routing port reports for a policy-selected alternative"
+        );
     }
 
     #[test]
@@ -1330,11 +1449,13 @@ mod tests {
 
     #[test]
     fn callback_payload_carries_the_adopted_default_until_it_is_revoked() {
-        let strategy = Arc::new(DefaultEvolutionStrategyPort::new());
         let candidates = vec![
             option("reviewer-1", "fast", "low"),
             option("reviewer-2", "deep", "high"),
         ];
+        let strategy = Arc::new(
+            DefaultEvolutionStrategyPort::new().with_routing(routing_owner(&candidates)),
+        );
         strategy.adopt_default(AdoptedPlanningDefaultSeam {
             // The enricher scopes suggestions by the parked state.
             scope: PlanningScopeSeam {
@@ -1366,6 +1487,9 @@ mod tests {
         assert!(suggested.is_default);
         assert!(!suggested.has_execution_permission);
 
+        // Revocation restores the previous policy: the configured order decides
+        // again, and the routing policy — not insertion order — names the
+        // alternative that runs.
         strategy.revoke_strategy("eval-7");
         let revoked = enricher
             .enrich_callback_request(
@@ -1375,10 +1499,60 @@ mod tests {
             )
             .suggestions
             .strategy_suggestion
-            .expect("the catalog fallback remains available after revocation");
+            .expect("the routing policy selects after revocation");
         assert_eq!(revoked.candidate.model_id, "fast");
+        assert_eq!(revoked.ranking_basis, "candidate-policy");
         assert!(!revoked.is_default);
         assert!(!revoked.has_execution_permission);
+    }
+
+    /// With no routing owner composed there is no selection to make: the
+    /// payload carries no strategy advice instead of the first entry of the
+    /// caller's list.
+    #[test]
+    fn a_callback_without_a_routing_owner_carries_no_strategy_advice() {
+        let enricher = CallbackEvolutionEnricher::new(&temp_root("no-routing-owner"))
+            .with_strategy_port(Arc::new(DefaultEvolutionStrategyPort::new()))
+            .with_strategy_candidates(vec![
+                option("reviewer-1", "fast", "low"),
+                option("reviewer-2", "deep", "high"),
+            ]);
+
+        let payload = enricher.enrich_callback_request(
+            &waiting_snapshot(),
+            &callback_pending(),
+            "strategy.run.resume",
+        );
+        assert!(
+            payload.suggestions.strategy_suggestion.is_none(),
+            "an unanswered policy must not fall back to the first candidate"
+        );
+    }
+
+    /// The decision keeps the scope it was asked for, so the same alternatives
+    /// answer differently for a direct request than for a workflow turn.
+    #[test]
+    fn routing_keeps_direct_and_workflow_outcomes_apart() {
+        let candidates = vec![option("reviewer-1", "fast", "low")];
+        let owner = routing_owner(&candidates);
+        let workflow = owner.route(&candidate_routing_request(&candidates));
+        assert_eq!(
+            workflow.selected().map(|selected| selected.model_id.as_str()),
+            Some("fast")
+        );
+        let direct = owner.route(&CandidateRoutingRequest::new(
+            SelectionScope::Direct,
+            vec![CandidateOffer {
+                candidate: CandidateId::new("reviewer-1", "fast", None),
+                configured_position: 1,
+            }],
+        ));
+        assert_eq!(direct.selected(), None);
+        assert!(matches!(
+            direct.unavailable(),
+            Some(licoup_model_catalog::candidate_policy::CandidateUnavailable::NoAllowedCandidate)
+        ));
+        let _: CandidateRoutingOutcome = direct;
     }
 
     #[test]
