@@ -22,6 +22,7 @@ const productionLeaves = Object.freeze([
   "io.rs",
   "launch.rs",
   "model_catalog.rs",
+  "reserve.rs",
   "supervision.rs",
   "transport.rs",
 ]);
