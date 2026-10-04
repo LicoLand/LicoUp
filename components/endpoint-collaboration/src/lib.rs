@@ -24,6 +24,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod durable_delivery;
+
 /// The namespaced identity of this package.
 pub const PACKAGE_ID: &str = "org.licoland.feature.endpoint-collaboration";
 
