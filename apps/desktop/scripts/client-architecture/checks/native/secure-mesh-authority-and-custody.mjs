@@ -424,10 +424,20 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
   const codexAppServerFacadeSource = await readText(
     "crates/licoup-native/src/platform/codex_app_server.rs"
   );
+  // The Codex app-server's process half is still composed by the client; its
+  // wire half moved into the Codex adapter package, which owns the runtime
+  // protocol name, the thread and turn vocabulary and the control requests.
+  // Both halves are read, because the canonical transport and the approval
+  // ownership they state are one seam.
   const codexAppServerRustSource = await readJoinedText([
     "crates/licoup-native/src/platform/codex_app_server.rs",
     ...await collectSourceFiles(
       "crates/licoup-native/src/platform/codex_app_server",
+      ".rs"
+    ),
+    "crates/licoup-agent-codex/src/app_server.rs",
+    ...await collectSourceFiles(
+      "crates/licoup-agent-codex/src/app_server",
       ".rs"
     ),
     "crates/licoup-agent-codex/src/parser/control.rs",
