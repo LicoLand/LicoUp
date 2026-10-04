@@ -62,6 +62,11 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     platform::extension_packages::install_maintenance_admission(std::sync::Arc::new(
         PackageGenerationAdmission,
     ))?;
+    // The cross-device entry is this host's own inbound door for verified peer
+    // units. It is installed here so the native route and the device layer reach
+    // one owner; a process that never installs it refuses every admission
+    // instead of inventing an entry with no bindings.
+    domain::cross_device_entry::install()?;
     // An adapter package owns what one of its turns emits; this host owns where
     // it goes, because the host owns the consumer. Each package is linked here
     // for its registration while its binary route is completed by the
