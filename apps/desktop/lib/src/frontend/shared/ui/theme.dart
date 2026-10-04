@@ -16,6 +16,8 @@ ThemeData buildLicoTheme({
   String presetId = AppearancePresetIds.licoSoda,
   List<AppearancePresetConfig> presets = builtInAppearancePresetConfigs,
   Brightness platformBrightness = Brightness.dark,
+  String fontPreference = LicoFontPreference.system,
+  TargetPlatform? platform,
 }) {
   final colors = licoColorsFor(
     presetId,
@@ -29,13 +31,23 @@ ThemeData buildLicoTheme({
       ? ThemeData.dark(useMaterial3: true)
       : ThemeData.light(useMaterial3: true);
 
+  // The interface family is the resolved font preference, not a fixed bundled
+  // face: a first launch has installed nothing and offline has no network, so
+  // the platform's own family heads the chain.
+  final fonts = LicoTypography.resolveFont(
+    fontPreference,
+    presetFamily: visuals.presetFontFamily,
+    platform: platform,
+  );
+
   // The type scale is owned by LicoTypography so the roles, tracking, and
   // tabular-figure decisions live in one place instead of being restated here.
   final textTheme = LicoTypography.textTheme(
     text: colors.text,
     textSecondary: colors.textSecondary,
     textMuted: colors.textMuted,
-    fontFamily: visuals.fontFamily,
+    fontFamily: fonts.family,
+    fontFamilyFallback: fonts.fallback,
   );
 
   return base.copyWith(
@@ -148,19 +160,22 @@ ThemeData buildLicoTheme({
     filledButtonTheme: FilledButtonThemeData(
       style: AppleControlButtons.glassFilled(
         colors,
-        fontFamily: visuals.fontFamily,
+        fontFamily: fonts.family,
+        fontFamilyFallback: fonts.fallback,
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: AppleControlButtons.glassOutlined(
         colors,
-        fontFamily: visuals.fontFamily,
+        fontFamily: fonts.family,
+        fontFamilyFallback: fonts.fallback,
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: AppleControlButtons.glassText(
         colors,
-        fontFamily: visuals.fontFamily,
+        fontFamily: fonts.family,
+        fontFamilyFallback: fonts.fallback,
       ),
     ),
     switchTheme: SwitchThemeData(
