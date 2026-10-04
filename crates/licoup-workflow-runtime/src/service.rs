@@ -5,17 +5,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use crate::domain::workflow_store::{
+use licoup_workflow_store::{
     CommittedTransition, StrategyStore, TransitionDecorator, TransitionObserver,
 };
-use crate::platform::runtime_adapters::RuntimeAdapterError;
-use crate::platform::strategy_runtime::{
-    RuntimeCatalog, StrategyEffectPermit, actor_fingerprint, admit_strategy_cwd, execute_actor,
-    execute_script, predecessor_locator,
-};
 
-use super::assistant::sha256_hex;
-use super::{
+use crate::assistant::sha256_hex;
+use crate::ports::{ActorTurnError, HostPorts, SharedSnapshotAuthority, StrategyEffectPermit, host_ports};
+use crate::{
     ASSISTANT_TEMPORARY_DEFINITION_PREFIX, AssistantPreflight, BindingCandidate, BindingValue,
     PreflightFailure, StrategyDefinition, StrategyPackageImporter, preflight_assistant_graph,
 };
@@ -44,9 +40,8 @@ const CANCEL_OWNER_LOOKUP_STEP: std::time::Duration = std::time::Duration::from_
 /// Composition happens where the persistent host runtime exists; the strategy
 /// service treats the port as opaque.
 pub struct ActorTurnPort {
-    pub open: Arc<dyn Fn(&Value) -> std::result::Result<String, RuntimeAdapterError> + Send + Sync>,
-    pub run:
-        Arc<dyn Fn(&str, &Value) -> std::result::Result<Value, RuntimeAdapterError> + Send + Sync>,
+    pub open: Arc<dyn Fn(&Value) -> std::result::Result<String, ActorTurnError> + Send + Sync>,
+    pub run: Arc<dyn Fn(&str, &Value) -> std::result::Result<Value, ActorTurnError> + Send + Sync>,
     pub cancel: Arc<dyn Fn(&str) -> TurnCancelDisposition + Send + Sync>,
     pub abandon: Arc<dyn Fn(&str) + Send + Sync>,
 }
@@ -250,7 +245,7 @@ pub struct StrategyService {
     actor_port: Option<Arc<ActorTurnPort>>,
     transition: TransitionDecorator,
     post_commit: Arc<PostCommitDispatcher>,
-    profile_authority: crate::domain::client_conversation::SharedSnapshotAuthority,
+    ports: Arc<HostPorts>,
 }
 
 impl std::fmt::Debug for StrategyService {
@@ -289,8 +284,21 @@ impl StrategyService {
             actor_port: None,
             transition,
             post_commit,
-            profile_authority: crate::domain::client_conversation::production_snapshot_authority(),
+            // The host that composes this process installs its own answers at
+            // its crate root; a process that installed none stays fail-closed.
+            ports: Arc::new(host_ports().clone()),
         }
+    }
+
+    /// Replace the whole host composition for this service.
+    pub fn with_host_ports(mut self, ports: HostPorts) -> Self {
+        self.ports = Arc::new(ports);
+        self
+    }
+
+    /// The host composition this service reads.
+    pub fn host_ports(&self) -> &HostPorts {
+        &self.ports
     }
 
     pub fn with_actor_turn_port(mut self, actor_port: ActorTurnPort) -> Self {
@@ -305,9 +313,11 @@ impl StrategyService {
 
     pub fn with_profile_snapshot_authority(
         mut self,
-        authority: crate::domain::client_conversation::SharedSnapshotAuthority,
+        authority: SharedSnapshotAuthority,
     ) -> Self {
-        self.profile_authority = authority;
+        let mut ports = (*self.ports).clone();
+        ports.profile = authority;
+        self.ports = Arc::new(ports);
         self
     }
 
@@ -408,7 +418,7 @@ impl StrategyService {
                         model_display_names
                             .entry(binding.model.clone())
                             .or_insert_with(|| {
-                                crate::domain::model_registry::model_display_name(&binding.model)
+                                self.ports.model.model_display_name(&binding.model)
                             });
                     }
                 }
@@ -418,9 +428,9 @@ impl StrategyService {
                     "modelDisplayNames": model_display_names,
                 }))
             }
-            "strategy.runtime.discover" | "strategy.runtime.list" => Ok(serde_json::to_value(
-                RuntimeCatalog::discover().descriptors(),
-            )?),
+            "strategy.runtime.discover" | "strategy.runtime.list" => {
+                Ok(Value::Array(self.ports.effect.runtime_descriptors()))
+            }
             "strategy.binding.update" => {
                 let revision = required_string(object, "revisionDigest")?;
                 self.admit_revision_identity(revision)?;
@@ -501,7 +511,7 @@ impl StrategyService {
                 let revision = required_string(object, "revisionDigest")?;
                 self.admit_revision_identity(revision)?;
                 let conversation_id = optional_string(object, "conversationId")?;
-                let cwd = optional_cwd(object)?;
+                let cwd = optional_cwd(&self.ports, object)?;
                 let snapshot = self.store.start_run(
                     revision,
                     object.get("input").cloned().unwrap_or_else(|| json!({})),
@@ -680,7 +690,7 @@ impl StrategyService {
                 let bindings: Vec<BindingValue> = serde_json::from_value(
                     object.get("bindings").cloned().unwrap_or_else(|| json!([])),
                 )?;
-                let filters: crate::domain::client_conversation::CandidateFilters =
+                let filters: crate::CandidateFilters =
                     serde_json::from_value(
                         object.get("filters").cloned().unwrap_or_else(|| json!({})),
                     )?;
@@ -766,10 +776,10 @@ impl StrategyService {
         assistant_membership_id: &str,
         workflow: &Value,
         bindings: &[BindingValue],
-        filters: &crate::domain::client_conversation::CandidateFilters,
+        filters: &crate::CandidateFilters,
     ) -> std::result::Result<AssistantPreflight, PreflightFailure> {
         let store =
-            crate::domain::client_conversation::ConversationStore::open(&self.portable_root)
+            licoup_conversation::ConversationStore::open(&self.portable_root)
                 .map_err(|_| assistant_state_failure("conversation_state_unavailable", None))?;
         let conversation = store
             .get(conversation_id)
@@ -778,9 +788,9 @@ impl StrategyService {
             || !conversation.memberships.iter().any(|membership| {
                 membership.id == assistant_membership_id
                     && membership.status
-                        == crate::domain::client_conversation::MembershipStatus::Active
+                        == licoup_conversation::MembershipStatus::Active
                     && membership.principal.kind
-                        == crate::domain::client_conversation::PrincipalKind::Agent
+                        == licoup_conversation::PrincipalKind::Agent
             })
         {
             return Err(assistant_state_failure(
@@ -798,10 +808,11 @@ impl StrategyService {
                 (membership, intent, designated)
             })
             .collect::<Vec<_>>();
-        let snapshots = crate::domain::client_conversation::project_profile_snapshots(
+        let snapshots = crate::project_profile_snapshots(
             conversation_id,
             &pairs,
-            &self.profile_authority,
+            &self.ports.profile,
+            self.ports.model.as_ref(),
         );
         preflight_assistant_graph(
             conversation_id,
@@ -810,6 +821,7 @@ impl StrategyService {
             bindings,
             &snapshots,
             filters,
+            self.ports.model.as_ref(),
         )
     }
 
@@ -823,7 +835,7 @@ impl StrategyService {
         admitted: &AssistantPreflight,
     ) -> std::result::Result<(), PreflightFailure> {
         let store =
-            crate::domain::client_conversation::ConversationStore::open(&self.portable_root)
+            licoup_conversation::ConversationStore::open(&self.portable_root)
                 .map_err(|_| assistant_state_failure("conversation_state_unavailable", None))?;
         let conversation = store
             .get(conversation_id)
@@ -847,9 +859,9 @@ impl StrategyService {
                     Some(membership_id),
                 ));
             };
-            if membership.status != crate::domain::client_conversation::MembershipStatus::Active
+            if membership.status != licoup_conversation::MembershipStatus::Active
                 || membership.principal.kind
-                    != crate::domain::client_conversation::PrincipalKind::Agent
+                    != licoup_conversation::PrincipalKind::Agent
                 || profile.revision != *expected_revision
             {
                 return Err(assistant_state_failure(
@@ -1020,7 +1032,6 @@ impl StrategyService {
 
     fn bind_detected_runtimes(&self, revision: &str) -> Result<()> {
         let definition = self.store.definition_by_revision(revision)?;
-        let catalog = RuntimeCatalog::discover();
         for slot in definition
             .workflow
             .actor_slots
@@ -1037,8 +1048,10 @@ impl StrategyService {
                 .bindings
                 .iter()
                 .find(|binding| binding.slot_id == slot.id);
-            if let Some(runtime_id) =
-                catalog.compatible_id(requirement.kind, &requirement.version_requirement)
+            if let Some(runtime_id) = self
+                .ports
+                .effect
+                .compatible_runtime_id(requirement.kind, &requirement.version_requirement)
             {
                 if current.is_none_or(|binding| binding.value_id != runtime_id) {
                     self.store.update_binding(
@@ -1097,7 +1110,7 @@ impl StrategyService {
     /// must never orphan a run or open an unattached turn.
     fn require_actor_port(&self) -> Result<&Arc<ActorTurnPort>> {
         self.actor_port.as_ref().ok_or_else(|| {
-            anyhow!(crate::domain::client_conversation::PERSISTENT_TRANSPORT_REQUIRED)
+            anyhow!(licoup_conversation::PERSISTENT_TRANSPORT_REQUIRED)
         })
     }
 
@@ -1207,15 +1220,18 @@ impl StrategyService {
                     .iter()
                     .find(|runtime| runtime.id == slot.id)
                     .ok_or_else(|| anyhow!("runtime_unavailable"))?;
-                RuntimeCatalog::discover().resolve(
+                self.ports.effect.resolve_runtime(
                     value_id,
                     requirement.kind,
                     &requirement.version_requirement,
                 )?;
             }
             BindingKind::Actor => {
-                actor_fingerprint(value_id, "", "")?;
-                let capabilities = crate::agent_port::capabilities(value_id)
+                self.ports.effect.actor_fingerprint(value_id, "", "")?;
+                let capabilities = self
+                    .ports
+                    .effect
+                    .actor_capabilities(value_id)
                     .map_err(|_| anyhow!("runtime_unavailable"))?;
                 ensure!(
                     capabilities.get("ok").and_then(Value::as_bool) == Some(true),
@@ -1241,15 +1257,14 @@ impl StrategyService {
             .store
             .definition_by_revision(&snapshot.definition_digest)?;
         let status = wire_enum(snapshot.status)?;
-        crate::domain::agent_usage::workflow_ledger::begin_graph_run(&json!({
+        self.ports.usage.begin_graph_run(&json!({
             "stateRoot": self.portable_root,
             "runId": snapshot.run_id,
             "revisionDigest": snapshot.definition_digest,
             "conversationId": snapshot.conversation_id,
             "assistantMembershipId": snapshot.assistant_membership_id,
             "status": status,
-        }))
-        .map_err(|error| anyhow!(error.code))?;
+        }))?;
         for command in snapshot.commands.values() {
             let binding = command.binding_id.as_deref().and_then(|slot_id| {
                 definition.bindings.iter().find(|binding| {
@@ -1275,7 +1290,7 @@ impl StrategyService {
             let usage = settled
                 .filter(|(settled_command, _)| settled_command.id == command.id)
                 .and_then(|(_, output)| numeric_usage_projection(output));
-            crate::domain::agent_usage::workflow_ledger::record_graph_command(&json!({
+            self.ports.usage.record_graph_command(&json!({
                 "stateRoot": self.portable_root,
                 "runId": snapshot.run_id,
                 "commandId": command.id,
@@ -1287,8 +1302,7 @@ impl StrategyService {
                 "agentId": agent_id,
                 "model": binding.map(|binding| binding.model.as_str()).filter(|model| !model.is_empty()),
                 "usage": usage,
-            }))
-            .map_err(|error| anyhow!(error.code))?;
+            }))?;
         }
         Ok(())
     }
@@ -1708,7 +1722,7 @@ impl StrategyService {
                     }
                     _ => binding.value_id.clone(),
                 };
-                let fingerprint = actor_fingerprint(
+                let fingerprint = self.ports.effect.actor_fingerprint(
                     &fingerprint_value_id,
                     &binding.model,
                     &binding.reasoning_effort,
@@ -1751,7 +1765,7 @@ impl StrategyService {
                     .find(|requirement| requirement.id == requirement_id)
                     .ok_or_else(|| anyhow!("runtime_unavailable"))?;
                 let runtime_id = &binding_for(&definition, requirement_id, 0)?.value_id;
-                let runtime = RuntimeCatalog::discover().resolve(
+                let runtime = self.ports.effect.resolve_runtime(
                     runtime_id,
                     requirement.kind,
                     &requirement.version_requirement,
@@ -1779,15 +1793,17 @@ impl StrategyService {
                     .join("adaptive-flywheel")
                     .join("runtime")
                     .join(run_id);
-                execute_script(
-                    command,
-                    &authorization.authorization_digest,
-                    &runtime,
-                    &revision_content,
-                    &runtime_state,
-                    &mut permit,
-                )
-                .map(|value| (value, false))
+                self.ports
+                    .effect
+                    .execute_script(
+                        command,
+                        &authorization.authorization_digest,
+                        &runtime,
+                        &revision_content,
+                        &runtime_state,
+                        &mut permit,
+                    )
+                    .map(|value| (value, false))
             }
             CommandKind::Authorization => Err(anyhow!("authorization_required")),
         }
@@ -1850,7 +1866,7 @@ impl StrategyService {
             ReducerEvent::FallbackIssued {
                 failed_command_id: current.id,
                 next_ordinal,
-                locator: predecessor_locator(&facts),
+                locator: self.ports.effect.predecessor_locator(&facts),
                 from_value_id: previous.value_id.clone(),
                 to_value_id: next.value_id.clone(),
                 reason: reason.into(),
@@ -1874,7 +1890,10 @@ impl StrategyService {
         live: &mut LiveTurnRegistration,
     ) -> Result<(Value, bool)> {
         let Some(conversation_id) = conversation_id.filter(|value| !value.is_empty()) else {
-            return execute_actor(command, authorization_digest, binding, permit, cwd)
+            return self
+                .ports
+                .effect
+                .execute_actor(command, authorization_digest, binding, permit, cwd)
                 .map(|value| (value, false));
         };
         // A Conversation-bound run must run a registered Membership
@@ -1933,7 +1952,7 @@ impl StrategyService {
             .get("correlationId")
             .and_then(Value::as_str)
             .map(str::to_owned)
-            .unwrap_or_else(crate::platform::stop_control::new_correlation_id);
+            .unwrap_or_else(|| self.ports.effect.new_correlation_id());
         let cancelled = self
             .store
             .apply_event(run_id, ReducerEvent::CancelRequested)?;
@@ -1968,11 +1987,9 @@ impl StrategyService {
                 )?;
             }
         }
-        crate::platform::stop_control::record_run_stop(
-            &self.portable_root,
-            &correlation_id,
-            unacknowledged == 0,
-        );
+        self.ports
+            .effect
+            .record_run_stop(&self.portable_root, &correlation_id, unacknowledged == 0)?;
         Ok(())
     }
 
@@ -2182,7 +2199,7 @@ impl StrategyService {
         causation_id: Option<&str>,
         part: Value,
     ) -> Result<()> {
-        let store = crate::domain::client_conversation::ConversationStore::open(portable_root)?;
+        let store = licoup_conversation::ConversationStore::open(portable_root)?;
         let conversation = store.get(conversation_id)?;
         let master_id = preferred_master_id.or(conversation.assistant_membership_id.as_deref());
         let Some(master) = master_id
@@ -2190,7 +2207,7 @@ impl StrategyService {
                 conversation.memberships.iter().find(|membership| {
                     membership.id == master_id
                         && membership.status
-                            == crate::domain::client_conversation::MembershipStatus::Active
+                            == licoup_conversation::MembershipStatus::Active
                 })
             })
             .map(|membership| membership.id.clone())
@@ -2200,10 +2217,10 @@ impl StrategyService {
         store.append_event(
             conversation_id,
             Some(&master),
-            crate::domain::client_conversation::EventKind::Message,
-            &[crate::domain::client_conversation::NewEventPart {
+            licoup_conversation::EventKind::Message,
+            &[licoup_conversation::NewEventPart {
                 id: String::new(),
-                kind: crate::domain::client_conversation::EventPartKind::Metadata,
+                kind: licoup_conversation::EventPartKind::Metadata,
                 content: part.to_string(),
             }],
             None,
@@ -2245,11 +2262,11 @@ impl StrategyService {
             return Ok(());
         };
         let store =
-            crate::domain::client_conversation::ConversationStore::open(&self.portable_root)?;
+            licoup_conversation::ConversationStore::open(&self.portable_root)?;
         let conversation = store.get(conversation_id)?;
         let Some(membership) = conversation.memberships.iter().find(|membership| {
             membership.id == binding.value_id
-                && membership.status == crate::domain::client_conversation::MembershipStatus::Active
+                && membership.status == licoup_conversation::MembershipStatus::Active
         }) else {
             return Ok(());
         };
@@ -2260,7 +2277,7 @@ impl StrategyService {
         store.append_event(
             conversation_id,
             Some(&membership.id),
-            crate::domain::client_conversation::EventKind::Message,
+            licoup_conversation::EventKind::Message,
             &parts,
             None,
             Some(run_id),
@@ -2402,7 +2419,7 @@ fn group_actor_target(
     binding_identity: &str,
     portable_root: &Path,
 ) -> Result<GroupActorTarget> {
-    let store = crate::domain::client_conversation::ConversationStore::open(portable_root)
+    let store = licoup_conversation::ConversationStore::open(portable_root)
         .map_err(|_| anyhow!("strategy_actor_dispatch_failed"))?;
     let conversation = store
         .get(conversation_id)
@@ -2412,7 +2429,7 @@ fn group_actor_target(
         .iter()
         .find(|membership| {
             membership.id == binding_identity
-                && membership.status == crate::domain::client_conversation::MembershipStatus::Active
+                && membership.status == licoup_conversation::MembershipStatus::Active
         })
         .and_then(|membership| {
             membership
@@ -2505,8 +2522,8 @@ fn group_actor_prompt(input: &Value) -> String {
 
 fn group_actor_event_parts(
     output: &Value,
-) -> Vec<crate::domain::client_conversation::NewEventPart> {
-    use crate::domain::client_conversation::{EventPartKind, NewEventPart};
+) -> Vec<licoup_conversation::NewEventPart> {
+    use licoup_conversation::{EventPartKind, NewEventPart};
 
     let raw = output
         .get("output")
@@ -2777,12 +2794,12 @@ fn numeric_usage_projection(output: &Value) -> Option<Value> {
     }))
 }
 
-fn optional_cwd(object: &Map<String, Value>) -> Result<Option<String>> {
+fn optional_cwd(ports: &HostPorts, object: &Map<String, Value>) -> Result<Option<String>> {
     match object.get("cwd") {
         None => Ok(None),
         Some(Value::String(value)) if value.trim().is_empty() => Ok(None),
         Some(Value::String(value)) => {
-            admit_strategy_cwd(value)?;
+            ports.effect.admit_strategy_cwd(value)?;
             Ok(Some(value.clone()))
         }
         _ => Err(anyhow!("invalid_request")),
@@ -2947,9 +2964,9 @@ fn error_projection(error: &anyhow::Error) -> Value {
     }
     let message = error.to_string();
     let (code, stage, component, retryable, recovery) =
-        if message.contains(crate::domain::client_conversation::PERSISTENT_TRANSPORT_REQUIRED) {
+        if message.contains(licoup_conversation::PERSISTENT_TRANSPORT_REQUIRED) {
             (
-                crate::domain::client_conversation::PERSISTENT_TRANSPORT_REQUIRED,
+                licoup_conversation::PERSISTENT_TRANSPORT_REQUIRED,
                 "run/dispatch",
                 "strategy_runtime",
                 true,
@@ -3337,7 +3354,7 @@ mod tests {
         let zip_path = root.join("fixture.zip");
         fs::write(
             &zip_path,
-            crate::domain::workflow_runtime::synthetic_fixture_package_bytes().unwrap(),
+            crate::synthetic_fixture_package_bytes().unwrap(),
         )
         .unwrap();
         let prepared = service
@@ -3523,12 +3540,12 @@ mod tests {
         }));
         let text: Vec<_> = parts
             .iter()
-            .filter(|part| part.kind == crate::domain::client_conversation::EventPartKind::Text)
+            .filter(|part| part.kind == licoup_conversation::EventPartKind::Text)
             .collect();
         assert_eq!(text.len(), 1);
         assert_eq!(text[0].content, "你好，我在。");
         assert!(parts.iter().any(|part| {
-            part.kind == crate::domain::client_conversation::EventPartKind::Metadata
+            part.kind == licoup_conversation::EventPartKind::Metadata
         }));
     }
 
@@ -3542,11 +3559,11 @@ mod tests {
             "worksets": {"tasks": []}
         }));
         assert!(parts.iter().all(|part| {
-            part.kind == crate::domain::client_conversation::EventPartKind::Metadata
+            part.kind == licoup_conversation::EventPartKind::Metadata
         }));
         assert!(
             parts.iter().all(|part| {
-                part.kind != crate::domain::client_conversation::EventPartKind::Text
+                part.kind != licoup_conversation::EventPartKind::Text
             })
         );
     }
@@ -3643,7 +3660,7 @@ mod tests {
         );
     }
 
-    use crate::domain::client_conversation::{MembershipAccess, Principal, PrincipalKind};
+    use licoup_conversation::{MembershipAccess, Principal, PrincipalKind};
 
     fn entry_workflow() -> licoup_workflow::WorkflowDefinition {
         use licoup_workflow::{
@@ -3731,12 +3748,12 @@ mod tests {
     fn conversation_bound_fixture(
         root: &Path,
     ) -> (
-        crate::domain::client_conversation::ConversationStore,
+        licoup_conversation::ConversationStore,
         String,
         String,
     ) {
         let conversation_store =
-            crate::domain::client_conversation::ConversationStore::open(root).unwrap();
+            licoup_conversation::ConversationStore::open(root).unwrap();
         let conversation = conversation_store
             .create_conversation(
                 "Group",
@@ -3786,13 +3803,13 @@ mod tests {
         calls: Arc<Mutex<BTreeMap<&'static str, usize>>>,
     }
 
-    impl crate::domain::client_conversation::ProfileSnapshotAuthority for FixtureProfileAuthority {
+    impl crate::ProfileSnapshotAuthority for FixtureProfileAuthority {
         fn target_facts(
             &mut self,
             _agent_id: &str,
-        ) -> Option<crate::domain::client_conversation::TargetFacts> {
+        ) -> Option<crate::TargetFacts> {
             *self.calls.lock().unwrap().entry("target").or_default() += 1;
-            Some(crate::domain::client_conversation::TargetFacts {
+            Some(crate::TargetFacts {
                 status: Some("available".to_owned()),
                 model: Some("model-a".to_owned()),
                 environment: Some("local".to_owned()),
@@ -3806,9 +3823,9 @@ mod tests {
         fn model_price_usd_per_million_tokens(
             &mut self,
             _model: &str,
-        ) -> Option<crate::domain::client_conversation::PriceFacts> {
+        ) -> Option<crate::PriceFacts> {
             *self.calls.lock().unwrap().entry("price").or_default() += 1;
-            Some(crate::domain::client_conversation::PriceFacts {
+            Some(crate::PriceFacts {
                 input: 1.0,
                 output: 2.0,
             })
@@ -3821,14 +3838,14 @@ mod tests {
 
         fn skill_names(&mut self, _agent_id: &str) -> Vec<String> {
             *self.calls.lock().unwrap().entry("skills").or_default() += 1;
-            vec![crate::domain::client_conversation::LICOUP_GUIDE_SKILL_ID.to_owned()]
+            vec![licoup_conversation::LICOUP_GUIDE_SKILL_ID.to_owned()]
         }
     }
 
     fn fixture_profile_authority(
         readiness: &'static str,
         calls: Arc<Mutex<BTreeMap<&'static str, usize>>>,
-    ) -> crate::domain::client_conversation::SharedSnapshotAuthority {
+    ) -> crate::SharedSnapshotAuthority {
         Arc::new(Mutex::new(Box::new(FixtureProfileAuthority {
             readiness,
             calls,
@@ -3836,7 +3853,7 @@ mod tests {
     }
 
     struct MutatingProfileAuthority {
-        store: crate::domain::client_conversation::ConversationStore,
+        store: licoup_conversation::ConversationStore,
         conversation_id: String,
         membership_id: String,
         owner_membership_id: String,
@@ -3844,13 +3861,13 @@ mod tests {
         mutated: bool,
     }
 
-    impl crate::domain::client_conversation::ProfileSnapshotAuthority for MutatingProfileAuthority {
+    impl crate::ProfileSnapshotAuthority for MutatingProfileAuthority {
         fn target_facts(
             &mut self,
             _agent_id: &str,
-        ) -> Option<crate::domain::client_conversation::TargetFacts> {
+        ) -> Option<crate::TargetFacts> {
             *self.calls.lock().unwrap().entry("target").or_default() += 1;
-            Some(crate::domain::client_conversation::TargetFacts {
+            Some(crate::TargetFacts {
                 model: Some("model-a".to_owned()),
                 environment: Some("local".to_owned()),
                 capabilities: vec!["conversationDriver:supported".to_owned()],
@@ -3862,9 +3879,9 @@ mod tests {
         fn model_price_usd_per_million_tokens(
             &mut self,
             _model: &str,
-        ) -> Option<crate::domain::client_conversation::PriceFacts> {
+        ) -> Option<crate::PriceFacts> {
             *self.calls.lock().unwrap().entry("price").or_default() += 1;
-            Some(crate::domain::client_conversation::PriceFacts {
+            Some(crate::PriceFacts {
                 input: 1.0,
                 output: 2.0,
             })
@@ -3890,7 +3907,7 @@ mod tests {
                         &self.membership_id,
                         &self.owner_membership_id,
                         revision,
-                        &crate::domain::client_conversation::ProfileIntentUpdate {
+                        &licoup_conversation::ProfileIntentUpdate {
                             preferred_capabilities: vec!["changed-during-preflight".to_owned()],
                             ..Default::default()
                         },
@@ -3898,7 +3915,7 @@ mod tests {
                     .unwrap();
                 self.mutated = true;
             }
-            vec![crate::domain::client_conversation::LICOUP_GUIDE_SKILL_ID.to_owned()]
+            vec![licoup_conversation::LICOUP_GUIDE_SKILL_ID.to_owned()]
         }
     }
 
@@ -3929,7 +3946,7 @@ mod tests {
 
     fn recording_port(
         calls: Arc<Mutex<Vec<(String, Value)>>>,
-        run: impl Fn(&str, &Value) -> std::result::Result<Value, RuntimeAdapterError>
+        run: impl Fn(&str, &Value) -> std::result::Result<Value, ActorTurnError>
         + Send
         + Sync
         + 'static,
@@ -4025,7 +4042,7 @@ mod tests {
             assert_eq!(response["ok"], false);
             assert_eq!(
                 response["error"]["code"],
-                crate::domain::client_conversation::PERSISTENT_TRANSPORT_REQUIRED
+                licoup_conversation::PERSISTENT_TRANSPORT_REQUIRED
             );
         }
         let store = StrategyStore::open(&root).unwrap();
@@ -4218,7 +4235,7 @@ mod tests {
             conversation_bound_fixture(&root);
         let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
         let port = recording_port(Arc::clone(&calls), |_, _| {
-            Err(RuntimeAdapterError::ConversationDispatchFailed)
+            Err(ActorTurnError::dispatch_failed("conversation_dispatch_failed"))
         });
         let authority_calls = Arc::new(Mutex::new(BTreeMap::new()));
         let service = StrategyService::from_parts(
@@ -4298,7 +4315,7 @@ mod tests {
         .with_actor_turn_port(ActorTurnPort {
             open: Arc::new(move |_| {
                 recorded_opens.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                Err(RuntimeAdapterError::ConversationDispatchFailed)
+                Err(ActorTurnError::dispatch_failed("conversation_dispatch_failed"))
             }),
             run: Arc::new(|_, _| panic!("a rejected registration has no effect to run")),
             cancel: Arc::new(|_| TurnCancelDisposition::NoActiveTurn),
@@ -4521,7 +4538,7 @@ mod tests {
             .unwrap()
             .id;
         let authority_calls = Arc::new(Mutex::new(BTreeMap::new()));
-        let authority: crate::domain::client_conversation::SharedSnapshotAuthority =
+        let authority: crate::SharedSnapshotAuthority =
             Arc::new(Mutex::new(Box::new(MutatingProfileAuthority {
                 store: conversation_store,
                 conversation_id: conversation_id.clone(),
@@ -4598,7 +4615,7 @@ mod tests {
             StrategyPackageImporter::open(&root).unwrap(),
         )
         .with_actor_turn_port(ActorTurnPort {
-            open: Arc::new(|_| Err(RuntimeAdapterError::ConversationDispatchFailed)),
+            open: Arc::new(|_| Err(ActorTurnError::dispatch_failed("conversation_dispatch_failed"))),
             run: Arc::new(|_, _| panic!("a failed registration must not run")),
             cancel: Arc::new(|_| TurnCancelDisposition::NoActiveTurn),
             abandon: Arc::new(|_| {}),
@@ -4853,7 +4870,7 @@ mod tests {
         let run_attempts = Arc::clone(&attempts);
         let port = recording_port(Arc::clone(&calls), move |_, _| {
             if run_attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
-                Err(RuntimeAdapterError::ConversationDispatchFailed)
+                Err(ActorTurnError::dispatch_failed("conversation_dispatch_failed"))
             } else {
                 Ok(json!({"ok": true, "output": "done"}))
             }
@@ -4983,10 +5000,10 @@ mod tests {
     }
 
     fn wait_for_master_report(
-        conversation_store: &crate::domain::client_conversation::ConversationStore,
+        conversation_store: &licoup_conversation::ConversationStore,
         conversation_id: &str,
         kind: &str,
-    ) -> crate::domain::client_conversation::ConversationEvent {
+    ) -> licoup_conversation::ConversationEvent {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         loop {
             let page = conversation_store
@@ -4994,7 +5011,7 @@ mod tests {
                 .unwrap();
             if let Some(event) = page.events.iter().find(|event| {
                 event.parts.iter().any(|part| {
-                    part.kind == crate::domain::client_conversation::EventPartKind::Metadata
+                    part.kind == licoup_conversation::EventPartKind::Metadata
                         && serde_json::from_str::<Value>(&part.content)
                             .is_ok_and(|content| content["kind"] == json!(kind))
                 })
@@ -5064,7 +5081,7 @@ mod tests {
         let part = report_event
             .parts
             .iter()
-            .find(|part| part.kind == crate::domain::client_conversation::EventPartKind::Metadata)
+            .find(|part| part.kind == licoup_conversation::EventPartKind::Metadata)
             .unwrap();
         let report: Value = serde_json::from_str(&part.content).unwrap();
         assert_eq!(report["runId"], json!(run_id));
@@ -5350,7 +5367,7 @@ mod tests {
         let (store, revision) = authorized_entry_store(&root, &membership_id);
         let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
         let port = recording_port(Arc::clone(&calls), |_, _| {
-            Err(RuntimeAdapterError::ConversationDispatchFailed)
+            Err(ActorTurnError::dispatch_failed("conversation_dispatch_failed"))
         });
         let service = StrategyService::from_parts(
             root.clone(),
@@ -5385,7 +5402,7 @@ mod tests {
         let part = report_event
             .parts
             .iter()
-            .find(|part| part.kind == crate::domain::client_conversation::EventPartKind::Metadata)
+            .find(|part| part.kind == licoup_conversation::EventPartKind::Metadata)
             .unwrap();
         let report: Value = serde_json::from_str(&part.content).unwrap();
         assert_eq!(report["runId"], json!(run_id));
@@ -5425,7 +5442,7 @@ mod tests {
         let part = report_event
             .parts
             .iter()
-            .find(|part| part.kind == crate::domain::client_conversation::EventPartKind::Metadata)
+            .find(|part| part.kind == licoup_conversation::EventPartKind::Metadata)
             .unwrap();
         let report: Value = serde_json::from_str(&part.content).unwrap();
         assert_eq!(
@@ -5471,7 +5488,7 @@ mod tests {
         let part = report_event
             .parts
             .iter()
-            .find(|part| part.kind == crate::domain::client_conversation::EventPartKind::Metadata)
+            .find(|part| part.kind == licoup_conversation::EventPartKind::Metadata)
             .unwrap();
         let report: Value = serde_json::from_str(&part.content).unwrap();
         assert_eq!(
@@ -5524,7 +5541,7 @@ mod tests {
         let part = report_event
             .parts
             .iter()
-            .find(|part| part.kind == crate::domain::client_conversation::EventPartKind::Metadata)
+            .find(|part| part.kind == licoup_conversation::EventPartKind::Metadata)
             .unwrap();
         let report: Value = serde_json::from_str(&part.content).unwrap();
         assert_eq!(
@@ -5604,7 +5621,7 @@ mod tests {
         let part = report_event
             .parts
             .iter()
-            .find(|part| part.kind == crate::domain::client_conversation::EventPartKind::Metadata)
+            .find(|part| part.kind == licoup_conversation::EventPartKind::Metadata)
             .unwrap();
         let report: Value = serde_json::from_str(&part.content).unwrap();
         assert_eq!(report["runId"], json!(run_id));
@@ -5757,7 +5774,7 @@ mod tests {
                         .parts
                         .iter()
                         .filter(|part| {
-                            part.kind == crate::domain::client_conversation::EventPartKind::Metadata
+                            part.kind == licoup_conversation::EventPartKind::Metadata
                         })
                         .filter_map(|part| serde_json::from_str::<Value>(&part.content).ok())
                 })
@@ -5920,7 +5937,7 @@ mod tests {
             .iter()
             .filter(|event| {
                 event.parts.iter().any(|part| {
-                    part.kind == crate::domain::client_conversation::EventPartKind::Metadata
+                    part.kind == licoup_conversation::EventPartKind::Metadata
                         && serde_json::from_str::<Value>(&part.content)
                             .is_ok_and(|content| content["kind"] == json!("strategy-flow-settled"))
                 })
