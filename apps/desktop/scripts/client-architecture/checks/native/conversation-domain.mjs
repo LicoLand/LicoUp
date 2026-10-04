@@ -23,7 +23,7 @@ export async function checkConversationDomain(context, { agentConversationServic
     "crates/licoup-native/src/ffi/commands/agent_conversation.rs"
   );
   assert(
-    agentConversationCommandsRustSource.includes("dispatch_lane_operation(operation, &params)") &&
+    agentConversationCommandsRustSource.includes("agent_port::dispatch(operation, &params)") &&
       !agentConversationCommandsRustSource.includes("handle_agent_message_send") &&
       !agentConversationCommandsRustSource.includes("runtime_adapters::send_message"),
     "native conversation CLI commands must enter the shared conversation lane without a legacy send bypass"

@@ -9,6 +9,26 @@ pub mod domain;
 pub mod ffi;
 pub mod platform;
 
+/// The agent-execution port every caller above the platform layer reaches.
+///
+/// One port owns execution, cancellation, steering, session resume and history
+/// for every Agent. `licoup-agent-drivers` declares it; the platform layer
+/// answers it with this host's own conversation lane; this module is the entry
+/// a caller names, so no caller reaches the lane, the registry or an Agent's
+/// own module directly.
+///
+/// It stays at the crate root, above both layers, for the same reason
+/// [`target_port`] does, and the binaries and suites below reach it through the
+/// facade functions re-exported here rather than through a new public module.
+pub(crate) mod agent_port;
+
+// The agent-execution port's public entries. A binary or an integration suite
+// names these; every caller inside this crate names `crate::agent_port`.
+pub use agent_port::{
+    cancel as cancel_agent_turn, dispatch as dispatch_agent_operation, send as send_agent_turn,
+    steer as steer_agent_turn,
+};
+
 /// Every declarative state machine this host compiles from
 /// `resources/state-machines`. The JSON configuration is the transition
 /// authority; an owner that reads a machine names it through this module.

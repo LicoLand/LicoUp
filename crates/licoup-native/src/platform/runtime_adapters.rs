@@ -16,6 +16,10 @@
 //! * this host's own conversation lane, its generic CLI fallback lane, its
 //!   Subagent caller manager and its cleanup entry point, in
 //!   [`crate::host_lane`], none of which is any Agent's protocol;
+//! * the approval authority an ACP park is raised and fanned out against, in
+//!   [`evaluate_approval_request`] and [`evaluate_approval_fanout`], which is
+//!   this host's Secure Mesh approval ledger rather than anything the moved
+//!   transport may name for itself;
 //! * the endpoint layer's client-error projection, in [`client_error`], which
 //!   travels with the endpoint crate when `ffi/` extracts.
 //!
@@ -62,12 +66,34 @@ pub use licoup_agent_drivers::runtime_adapters::send_message as dispatch_send_me
 pub use licoup_agent_drivers::runtime_adapters::protocol_selector;
 pub use licoup_agent_drivers::runtime_adapters::probe::probe_runtime_driver as probe_through_port;
 
+/// Whether one parked ACP interaction may be raised, answered by this host's
+/// own approval authority.
+///
+/// The transport reads the authority through
+/// `licoup_agent_drivers::acp_session_transport::approval_port`; the authority
+/// itself is this host's Secure Mesh approval ledger, which is why the answer
+/// is composed here rather than built into the transport. A refusal is the
+/// authority's own reason, and the transport turns it into a failed
+/// registration — never into an assumed approval.
+fn evaluate_approval_request(params: &Value) -> Result<Value, String> {
+    crate::core::secure_mesh_approval::evaluate_approval_request_json(params)
+        .map_err(|error| error.to_string())
+}
+
+/// Whether one parked ACP operation may be fanned out to the endpoints that may
+/// answer it, answered by this host's own approval authority.
+fn evaluate_approval_fanout(params: &Value) -> Result<Value, String> {
+    crate::core::secure_mesh_approval::evaluate_approval_fanout_json(params)
+        .map_err(|error| error.to_string())
+}
+
 /// Install this host's composition into the moved crate, once.
 ///
-/// The moved crate reads every Agent, its own lane, its parser set and its
-/// fallback lane through the port, so the installation happens at this host's
-/// own entry points rather than at each caller. It is idempotent: the first
-/// installation wins, so a running turn cannot have the answers under it
+/// The moved crate reads every Agent, its own lane, its parser set, its
+/// fallback lane and the approval authority its parked interactions are
+/// evaluated against through the port, so the installation happens at this
+/// host's own entry points rather than at each caller. It is idempotent: the
+/// first installation wins, so a running turn cannot have the answers under it
 /// replaced.
 pub(crate) fn install() {
     static INSTALLED: OnceLock<bool> = OnceLock::new();
@@ -77,6 +103,16 @@ pub(crate) fn install() {
         // because naming which Agent speaks which dialect is this composition's
         // job and the moved crate names no Agent.
         licoup_agent_drivers::acp_driver_runtime::parser_port::install(drivers::acp_dialects().to_vec());
+        // The approval authority one ACP park is raised and fanned out
+        // against. It is installed rather than named by the moved crate, so the
+        // transport keeps no Secure Mesh edge and an uncomposed host refuses
+        // every park instead of silently approving one.
+        licoup_agent_drivers::acp_session_transport::approval_port::install(
+            licoup_agent_drivers::ApprovalPort {
+                evaluate_request: evaluate_approval_request,
+                evaluate_fanout: evaluate_approval_fanout,
+            },
+        );
         port::install(port::HostComposition {
             target_port: || Some(crate::target_port::agent_target_port()),
             parser_set: crate::platform::native_agent_parser::parser_set,

@@ -1215,11 +1215,8 @@ impl StrategyService {
             }
             BindingKind::Actor => {
                 actor_fingerprint(value_id, "", "")?;
-                let capabilities = crate::platform::dispatch_lane_operation(
-                    "capabilities",
-                    &json!({"agent": value_id}),
-                )
-                .map_err(|_| anyhow!("runtime_unavailable"))?;
+                let capabilities = crate::agent_port::capabilities(value_id)
+                    .map_err(|_| anyhow!("runtime_unavailable"))?;
                 ensure!(
                     capabilities.get("ok").and_then(Value::as_bool) == Some(true),
                     "runtime_unavailable"
