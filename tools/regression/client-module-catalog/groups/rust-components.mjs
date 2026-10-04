@@ -124,4 +124,44 @@ export const RUST_COMPONENT_MODULES = Object.freeze([
       "crates/licoup-state-machine-codegen/tests/compiler.rs",
     ],
   ),
+  defineModule({
+    id: "rust.component.endpoint-collaboration",
+    kind: "rust-crate",
+    summary:
+      "Optional endpoint collaboration package: boundary vocabulary, availability contract and capability catalogue",
+    inputs: [
+      "components/endpoint-collaboration/Cargo.toml",
+      "components/endpoint-collaboration/Cargo.lock",
+      "components/endpoint-collaboration/README.md",
+      "components/endpoint-collaboration/src/**",
+      "components/endpoint-collaboration/package/**",
+    ],
+    command: command(
+      "cargo",
+      [
+        "test",
+        "--manifest-path",
+        "components/endpoint-collaboration/Cargo.toml",
+      ],
+      20 * 60_000,
+    ),
+  }),
+  defineModule({
+    id: "rust.component.endpoint-collaboration-cleanup",
+    kind: "rust-crate",
+    summary:
+      "Endpoint cleanup slice: the bounded, resumable file half of an app-data erase for one revoked endpoint",
+    inputs: [
+      "components/endpoint-collaboration/cleanup/**",
+    ],
+    command: command(
+      "cargo",
+      [
+        "test",
+        "--manifest-path",
+        "components/endpoint-collaboration/cleanup/Cargo.toml",
+      ],
+      20 * 60_000,
+    ),
+  }),
 ]);

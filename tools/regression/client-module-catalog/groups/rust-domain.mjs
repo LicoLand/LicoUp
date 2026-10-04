@@ -1493,6 +1493,16 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::mobile_relay::endpoint_ports::tests::"),
     }),
   defineModule({
+      id: "rust.domain.mobile-relay.endpoint-collaboration",
+      kind: "rust-domain",
+      summary: "Endpoint collaboration gate composing the optional package boundary with local custody",
+      inputs: [
+        "crates/licoup-native/src/domain/mobile_relay.rs",
+        "crates/licoup-native/src/domain/mobile_relay/endpoint_collaboration_gate.rs",
+      ],
+      command: rustLayer("domain::mobile_relay::endpoint_collaboration_gate::"),
+    }),
+  defineModule({
       id: "rust.domain.mobile-relay.pairing",
       kind: "rust-domain",
       summary: "Directly approved endpoint pairing and invitation policy",

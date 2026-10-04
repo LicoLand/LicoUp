@@ -78,6 +78,15 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustIntegrationTest("package_lifecycle"),
     }),
   defineModule({
+      id: "rust.platform.endpoint-collaboration-admission",
+      kind: "rust-platform",
+      summary: "Optional endpoint collaboration package admission against installed-generation and capability facts",
+      inputs: [
+        "crates/licoup-native/src/platform/extension_packages/endpoint_collaboration.rs",
+      ],
+      command: rustLayer("platform::extension_packages::endpoint_collaboration::"),
+    }),
+  defineModule({
       id: "rust.platform.extension-host",
       kind: "rust-platform",
       summary: "Generation-bound catalog, effect admission, lifecycle, and host contracts",

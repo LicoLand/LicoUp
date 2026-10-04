@@ -432,11 +432,13 @@ contributions/*.json        # the declarative contributions the manifest names
 
 The store expands the archive in a private staging directory and refuses, before
 anything is written, an archive over the published bounds, a missing or malformed
-manifest, a declared entry that is not a real file inside the payload, and an
-archive that carries an install script (`platform/extension_packages/artifact.rs`,
-which also publishes the refused script names). Nothing in a package runs during
-install, and an archive that relies on an install step has no path through the
-store.
+manifest, and a declared entry that is not a real file inside the payload. It
+also reports any install script it finds (`install.sh`, `postinstall.sh`,
+`setup.py` and the other names published in
+`platform/extension_packages/artifact.rs`) as a fact about the archive: such a
+file is payload like any other, is never put on an install path and is never
+executed. Nothing in a package runs during install, so an extension that relies
+on an install step has no way to run one.
 
 ### 12.3 Fill the manifest
 
@@ -486,7 +488,7 @@ A local import names a package identity, a version, the bytes and a trust record
 that binds those specific bytes:
 
 ```rust
-PackageStore::install_local_import(package_id, version, trust, &bytes)?;
+store.install_local_import(package_id, version, trust, &bytes)?;
 ```
 
 The byte path is offline end to end: no registry, directory service or account is
@@ -522,9 +524,11 @@ them is a request the package can talk its way out of.
   is in flight is read as data for the data root the operation would change, a
   verdict nobody read is a refusal rather than an assumed idle host, and read-only
   work — checking for an update, reading the catalogue — is not gated at all. A
-  package is never asked whether its own replacement is safe; the host decides,
-  and new calls follow the new generation while in-flight work stays on the one it
-  started under (`PackageGenerationAdmission` in `crates/licoup-native/src/lib.rs`).
+  package is never asked whether its own replacement is safe; the host decides.
+  New calls follow the generation the switch published while in-flight work stays
+  on the generation it started under, and the client's own answer for the seam is
+  `PackageGenerationAdmission` (`crates/licoup-native/src/lib.rs`); the generation
+  rules are proved in `crates/licoup-native/tests/extension_contract/a30_generation.rs`.
 - **Private, bounded diagnostics.** `stdout` carries the program protocol and
   nothing else, and diagnostics go to `stderr` under the published line bound
   (section 3): a chatty package is truncated rather than allowed to stop the

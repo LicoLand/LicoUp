@@ -548,6 +548,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.core.secure-mesh.command.codec",
   "rust.core.endpoint-core",
   "rust.core.protocol-bindings",
+  "rust.core.mobile-entry-boundary",
   "rust.core.secure-mesh.crypto",
   "rust.core.secure-mesh.crypto.roundtrip",
   "rust.core.secure-mesh.crypto.tamper",
@@ -919,4 +920,8 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "release.migration-asset",
   "release.package-index",
   "release.workflows",
+  "rust.component.endpoint-collaboration",
+  "rust.component.endpoint-collaboration-cleanup",
+  "rust.domain.mobile-relay.endpoint-collaboration",
+  "rust.platform.endpoint-collaboration-admission",
 ]);

@@ -2419,6 +2419,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-mobile-core"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "licoup-client-state",
+ "licoup-conversation",
+ "licoup-endpoint-core",
+ "licoup-foundation",
+ "licoup-platform-bridges",
+ "licoup-protocol-bindings",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
 name = "licoup-model-catalog"
 version = "0.3.0"
 dependencies = [

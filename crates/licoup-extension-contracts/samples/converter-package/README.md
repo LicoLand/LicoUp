@@ -28,9 +28,10 @@ Node.js runtime, a Python runtime or a developer toolchain on the target device.
 
 The entry is a path with at least one directory component. `manifest.json` at the
 archive root, the entry file and the optional `contributions/` documents are the
-whole payload: an archive that carries an install script (`install`, `preinstall`,
-`postinstall` and the rest of the published list in
-`platform/extension_packages/artifact.rs`) is refused rather than executed.
+whole payload: the store reports any install script it finds (`install.sh`,
+`postinstall.sh`, `setup.py` and the rest of the published list in
+`platform/extension_packages/artifact.rs`) as a fact about the archive, never puts
+one on an install path and never executes one.
 
 ## How it reaches the host
 
