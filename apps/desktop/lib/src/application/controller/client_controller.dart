@@ -89,6 +89,8 @@ import 'package:licoup/src/platform/mobile_relay/mobile_home_layout_store.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/stream_observation.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:licoup/src/platform/process/client_process_lifecycle.dart';
 import 'package:licoup/src/platform/presentation/client_current_view_store.dart';
 import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
@@ -127,6 +129,8 @@ class ClientController extends AgentConversationController
   ClientController({
     PortableDataRoot? portableData,
     AgentService? agentService,
+    NativeCliProcessContext? processContext,
+    StreamObservationBackend? streamObservationBackend,
     AgentConversationService? conversationService,
     AgentUsageService? agentUsageService,
     ClientUpdateService? clientUpdateService,
@@ -215,7 +219,9 @@ class ClientController extends AgentConversationController
     this.agentService =
         agentService ??
         AgentService(
+          processContext: processContext,
           dataHomeSelection: () => this.portableData.dataHomeSelection(),
+          streamObservation: streamObservationBackend,
         );
     this.conversationService =
         conversationService ??

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
+import 'package:licoup/src/platform/storage/bounded_json_lines.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:path/path.dart' as p;
 
@@ -71,7 +72,7 @@ final class ClientMemoryDiagnosticLog implements ClientMemoryDiagnosticSink {
       await handle.close();
     }
 
-    final retained = retainMemoryDiagnosticTail(
+    final retained = retainJsonLinesTail(
       await file.readAsBytes(),
       encoded,
       maxBytes,
@@ -95,29 +96,4 @@ final class ClientMemoryDiagnosticLog implements ClientMemoryDiagnosticSink {
       await directory.create(recursive: true);
     }
   }
-}
-
-/// Keeps the newest complete JSONL lines so a long session can still record
-/// the samples that precede a crash.
-List<int> retainMemoryDiagnosticTail(
-  List<int> current,
-  List<int> incoming,
-  int maxBytes,
-) {
-  if (incoming.length >= maxBytes) {
-    return incoming.sublist(incoming.length - maxBytes);
-  }
-  final combined = <int>[...current, ...incoming];
-  if (combined.length <= maxBytes) {
-    return combined;
-  }
-  final overflow = combined.length - maxBytes;
-  var start = overflow;
-  while (start < combined.length && combined[start] != 10) {
-    start += 1;
-  }
-  if (start < combined.length && combined[start] == 10) {
-    start += 1;
-  }
-  return combined.sublist(start);
 }
