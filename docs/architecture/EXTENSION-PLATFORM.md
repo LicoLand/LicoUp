@@ -107,6 +107,19 @@ middle. Cancellation is a request: once an effect has left the machine, the clie
 can stop waiting and stop local work, and it cannot claim the remote effect was
 withdrawn.
 
+A `process` runtime may declare the interpreter or virtual machine its entry needs,
+and where that reference points decides who owns it
+(`crates/licoup-extension-contracts/src/manifest.rs`). A `user:` reference names
+something the user installed: the host reuses it, never removes it, and never
+bundles an interpreter of its own for it. Any other shared runtime the host
+installed is reference-counted and released only when no package needs it. A
+`declarative` descriptor, a `service` endpoint and a `data` package own no runtime
+at all: the first two are projections of something that already exists, and the
+third is its typed resources. The two categories are exclusive in both directions
+— a package that declares typed resources must be carried by `data`
+(`data_package_executable_refused`), and a data package may declare no profile
+(`data_package_profile_refused`).
+
 ## 4. Lifecycle and identity
 
 The handshake is three methods and no business call:
