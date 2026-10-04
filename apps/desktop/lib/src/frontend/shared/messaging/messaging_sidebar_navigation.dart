@@ -23,7 +23,22 @@ import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 
 /// Telegram-style tabs at the bottom of the shared sidebar foundation.
+///
+/// This is the *desktop sidebar* tab set: its 功能 tab owns the seven
+/// sidebar-hosted feature panes. The mobile shell does not use it — see
+/// [MessagingMobileNavItem].
 enum MessagingSidebarNavItem { features, conversations, settings }
+
+/// The mobile shell bottom tab set, in the required order:
+/// **Pairing → Chats → Settings**.
+///
+/// Declaration order *is* the rendered order — [MessagingMobileBottomNav]
+/// walks `values`, so reordering these three entries reorders the shell's
+/// bottom tabs. Exactly three tabs, one per mobile destination declared by
+/// `BuiltInLayoutSpec.mobileDestinations` (`{agents, mobileRelay, settings}`),
+/// which is the same triple `ClientNavigationController.resolve` admits on
+/// the mobile runtime.
+enum MessagingMobileNavItem { pairing, conversations, settings }
 
 /// One row of the Dashboard 功能 list. 模型网关 and 聊天频道 both target the
 /// models destination and differ only in the pane they select through the
@@ -94,6 +109,42 @@ String messagingSidebarNavLabel(
 
 String messagingSidebarNavKey(MessagingSidebarNavItem item) =>
     'messaging-sidebar-nav-${item.name}';
+
+/// Where a mobile shell bottom tab lands. Deliberately *total* — it takes no
+/// `current` input — so every tab owns one fixed mobile destination and the
+/// three tabs can never collapse onto the same target the way the desktop 功能
+/// tab does by returning `current`.
+ClientSection messagingMobileNavTarget(MessagingMobileNavItem item) =>
+    switch (item) {
+      MessagingMobileNavItem.pairing => ClientSection.mobileRelay,
+      MessagingMobileNavItem.conversations => ClientSection.agents,
+      MessagingMobileNavItem.settings => ClientSection.settings,
+    };
+
+bool messagingMobileNavItemSelected({
+  required MessagingMobileNavItem item,
+  required ClientSection current,
+}) => messagingMobileNavTarget(item) == current;
+
+IconData messagingMobileNavIcon(MessagingMobileNavItem item) => switch (item) {
+  MessagingMobileNavItem.pairing => Icons.qr_code_2_rounded,
+  MessagingMobileNavItem.conversations => Icons.chat_bubble_outline_rounded,
+  MessagingMobileNavItem.settings => Icons.settings_outlined,
+};
+
+/// The visible tab labels. The middle tab reuses the shared "Chats"/"对话"
+/// string (`conversationListNav`) rather than 功能.
+String messagingMobileNavLabel(
+  LicoStrings strings,
+  MessagingMobileNavItem item,
+) => switch (item) {
+  MessagingMobileNavItem.pairing => strings.mobilePairing,
+  MessagingMobileNavItem.conversations => strings.conversationListNav,
+  MessagingMobileNavItem.settings => strings.settings,
+};
+
+String messagingMobileNavKey(MessagingMobileNavItem item) =>
+    'messaging-mobile-nav-${item.name}';
 
 String messagingFeatureItemLabel(
   LicoStrings strings,
@@ -206,6 +257,10 @@ Widget messagingSidebarListFor({
 }
 
 /// Persistent bottom bar for the shared sidebar foundation.
+///
+/// Desktop sidebar chrome: 功能 / 对话 / 设置. The mobile shell owns a
+/// different tab set drawn by the same implementation — see
+/// [MessagingMobileBottomNav].
 final class MessagingSidebarBottomNav extends StatelessWidget {
   const MessagingSidebarBottomNav({
     super.key,
@@ -218,10 +273,90 @@ final class MessagingSidebarBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.layoutPalette;
     final strings = LicoStrings.of(context);
+    return _MessagingBottomNavBar(
+      barKey: const Key('messaging-sidebar-bottom-nav'),
+      tabs: [
+        for (final item in MessagingSidebarNavItem.values)
+          (
+            key: Key(messagingSidebarNavKey(item)),
+            label: messagingSidebarNavLabel(strings, item),
+            icon: messagingSidebarNavIcon(item),
+            selected: messagingSidebarNavItemSelected(
+              item: item,
+              current: current,
+            ),
+            onPressed: () => onSelectDestination(
+              messagingSidebarNavTarget(item: item, current: current),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// The bottom tab bar owned by the mobile shell.
+///
+/// Renders exactly the three [MessagingMobileNavItem] tabs in declaration
+/// order — Pairing → Chats → Settings — reporting each tab's fixed destination
+/// through [onSelectDestination]. Mounted as chrome by the Dashboard mobile
+/// shell (`dashboard_mobile_shell.dart`), so the tabs are reachable from every
+/// mobile destination instead of only from the Agents conversation list.
+final class MessagingMobileBottomNav extends StatelessWidget {
+  const MessagingMobileBottomNav({
+    super.key,
+    required this.current,
+    required this.onSelectDestination,
+  });
+
+  final ClientSection current;
+  final ValueChanged<ClientSection> onSelectDestination;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    return _MessagingBottomNavBar(
+      barKey: const Key('messaging-mobile-bottom-nav'),
+      tabs: [
+        for (final item in MessagingMobileNavItem.values)
+          (
+            key: Key(messagingMobileNavKey(item)),
+            label: messagingMobileNavLabel(strings, item),
+            icon: messagingMobileNavIcon(item),
+            selected: messagingMobileNavItemSelected(
+              item: item,
+              current: current,
+            ),
+            onPressed: () =>
+                onSelectDestination(messagingMobileNavTarget(item)),
+          ),
+      ],
+    );
+  }
+}
+
+/// One resolved bottom-navigation tab.
+typedef _MessagingBottomNavTab = ({
+  Key key,
+  String label,
+  IconData icon,
+  bool selected,
+  VoidCallback onPressed,
+});
+
+/// The single drawing implementation behind every bottom tab bar: a hairline
+/// top edge and one equal-width button per tab, in list order.
+final class _MessagingBottomNavBar extends StatelessWidget {
+  const _MessagingBottomNavBar({required this.barKey, required this.tabs});
+
+  final Key barKey;
+  final List<_MessagingBottomNavTab> tabs;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.layoutPalette;
     return CustomPaint(
-      key: const Key('messaging-sidebar-bottom-nav'),
+      key: barKey,
       painter: ContinuousEdgeHairlinePainter(
         color: colors.line,
         edge: AxisDirection.up,
@@ -231,19 +366,14 @@ final class MessagingSidebarBottomNav extends StatelessWidget {
         padding: const EdgeInsets.all(LicoContentSpacing.compact),
         child: Row(
           children: [
-            for (final item in MessagingSidebarNavItem.values)
+            for (final tab in tabs)
               Expanded(
                 child: _MessagingSidebarNavButton(
-                  key: Key(messagingSidebarNavKey(item)),
-                  item: item,
-                  label: messagingSidebarNavLabel(strings, item),
-                  selected: messagingSidebarNavItemSelected(
-                    item: item,
-                    current: current,
-                  ),
-                  onPressed: () => onSelectDestination(
-                    messagingSidebarNavTarget(item: item, current: current),
-                  ),
+                  key: tab.key,
+                  icon: tab.icon,
+                  label: tab.label,
+                  selected: tab.selected,
+                  onPressed: tab.onPressed,
                 ),
               ),
           ],
@@ -256,13 +386,13 @@ final class MessagingSidebarBottomNav extends StatelessWidget {
 final class _MessagingSidebarNavButton extends StatefulWidget {
   const _MessagingSidebarNavButton({
     super.key,
-    required this.item,
+    required this.icon,
     required this.label,
     required this.selected,
     required this.onPressed,
   });
 
-  final MessagingSidebarNavItem item;
+  final IconData icon;
   final String label;
   final bool selected;
   final VoidCallback onPressed;
@@ -331,11 +461,7 @@ final class _MessagingSidebarNavButtonState
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    messagingSidebarNavIcon(widget.item),
-                    size: 20,
-                    color: foreground,
-                  ),
+                  Icon(widget.icon, size: 20, color: foreground),
                   const SizedBox(height: LicoContentSpacing.inline),
                   Text(
                     widget.label,

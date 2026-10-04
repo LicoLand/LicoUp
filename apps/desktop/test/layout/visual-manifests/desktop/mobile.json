@@ -70,7 +70,7 @@
     },
     {
       "path": "apps/desktop/test/goldens/layout/desktop/mobile/production-baseline/settings.png",
-      "digest": "sha256:7a60a11ec4f81e6b5be0fcedda13657cba48d95de2f2da97db94dffda452b5b0"
+      "digest": "sha256:b7fd5da580013d117ff8fcdfdf1991d446a9725cdcbcf8814c02945c0a7b447a"
     },
     {
       "path": "apps/desktop/test/layout/profiles/desktop/mobile/desktop_mobile_bundle_test.dart",
@@ -97,5 +97,5 @@
       "digest": "sha256:29f3a10cad07703661fd567e5fbfaaadfd4f1ebd60c1e62206ae0c4fb5286bbd"
     }
   ],
-  "manifestDigest": "sha256:bb82faf3fcd627d966d02b55ad8a7596143ee21e0683fd103073adcae545f0c0"
+  "manifestDigest": "sha256:c0f2a153766419cdaa14d86cf114504f94caa27eac48aee3e4aa61a7d8379373"
 }

@@ -39,8 +39,13 @@ final class DashboardMobileAgentsPresentation
   @override
   bool get showConversationSidebarControl => false;
 
+  /// The mobile shell itself carries the Pairing / Chats / Settings bottom
+  /// tabs, so the Agents conversation list must not re-add the desktop
+  /// 功能 / 对话 / 设置 row — that row's 功能 tab targets `agentHub`, which is
+  /// not a mobile destination at all. This is the same suppression the
+  /// Desktop dock profile applies for its own chrome.
   @override
-  bool get showSidebarBottomNav => true;
+  bool get showSidebarBottomNav => false;
 
   @override
   Widget frameWorkspace(

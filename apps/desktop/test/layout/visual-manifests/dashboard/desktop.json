@@ -110,7 +110,7 @@
     },
     {
       "path": "apps/desktop/test/goldens/layout/dashboard/desktop/production-baseline/settings.png",
-      "digest": "sha256:f77052a6e5f95e093139177e6172f9e5044a59daf936d951135e8af39eaa8615"
+      "digest": "sha256:9d9e8e9033b38c89255e96d325254b17e1c7760acb9e9e6d4258ea9d64143804"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_desktop_bundle_test.dart",
@@ -153,5 +153,5 @@
       "digest": "sha256:9b0e06a119c0275973f6f524e668bb1d06a2244719f0bf7d32e38271ebca9109"
     }
   ],
-  "manifestDigest": "sha256:827da1593d20a4e2fee912b57850e983ad1daea643de85d13c8404ba98b8e659"
+  "manifestDigest": "sha256:48db6ce2244ad12e5e745a50cd8c9b81a69cb8ecc1f2b5d3f4cf335ef0c9ce1a"
 }

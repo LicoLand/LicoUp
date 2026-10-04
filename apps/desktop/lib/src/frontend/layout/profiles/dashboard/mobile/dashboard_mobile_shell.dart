@@ -9,6 +9,7 @@ import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_components.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_tokens.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 
 Widget buildDashboardMobileCompactShell(
@@ -129,6 +130,13 @@ final class _DashboardCompactMobileShellState
                               ),
                             ),
                           ),
+                        ),
+                      ),
+                      FocusTraversalOrder(
+                        order: const NumericFocusOrder(3),
+                        child: MessagingMobileBottomNav(
+                          current: data.activeDestination,
+                          onSelectDestination: _selectDestination,
                         ),
                       ),
                     ],
@@ -377,22 +385,36 @@ final class _DashboardMediumMobileShell extends StatelessWidget {
           padding: contentInsets,
           child: FocusTraversalGroup(
             policy: OrderedTraversalPolicy(),
-            child: Row(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                FocusTraversalOrder(
-                  order: const NumericFocusOrder(0),
-                  child: _DashboardMediumNavigationRail(data: data),
-                ),
                 Expanded(
-                  child: FocusTraversalOrder(
-                    order: const NumericFocusOrder(1),
-                    child: KeyedSubtree(
-                      key: ValueKey(
-                        'dashboard-mobile-medium-content-${data.initialFocusTarget}',
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      FocusTraversalOrder(
+                        order: const NumericFocusOrder(0),
+                        child: _DashboardMediumNavigationRail(data: data),
                       ),
-                      child: data.destination,
-                    ),
+                      Expanded(
+                        child: FocusTraversalOrder(
+                          order: const NumericFocusOrder(1),
+                          child: KeyedSubtree(
+                            key: ValueKey(
+                              'dashboard-mobile-medium-content-${data.initialFocusTarget}',
+                            ),
+                            child: data.destination,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                FocusTraversalOrder(
+                  order: const NumericFocusOrder(2),
+                  child: MessagingMobileBottomNav(
+                    current: data.activeDestination,
+                    onSelectDestination: data.onSelectDestination,
                   ),
                 ),
               ],
