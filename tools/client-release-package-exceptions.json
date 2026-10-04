@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "licomesh.client-release-package-exceptions.v1",
+  "packagesWithoutPayload": [
+    {
+      "packageId": "org.licoland.feature.endpoint-collaboration",
+      "source": "components/endpoint-collaboration/package",
+      "reason": "Declarative package that ships inside the client build: its native implementation is linked from components/endpoint-collaboration behind the kernel's off-by-default endpoint-collaboration cargo feature, it declares no conversion and owns no persisted format of its own, so it carries no native payload entry. It keeps no release payload role until ENDPOINT-PROTOCOL-RETIREMENT removes the kernel's own pre-package path.",
+      "owner": "TASK-ENDPOINT-PACKAGE"
+    }
+  ]
+}

@@ -64,6 +64,11 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)
 const script = "tools/scripts/client-release-package-index.mjs";
 const indexAsset = "LicoUp-package-index.json";
 const releaseSourcePrefix = "build/apps/desktop/native-release/macos-direct-arm64";
+// The packages the tree ships inside the client build rather than as their own
+// release payload. Each entry is per-package, reasoned and owned; the same
+// package may not also appear in the published release set.
+const PACKAGE_EXCEPTIONS_PATH = "tools/client-release-package-exceptions.json";
+const PACKAGE_EXCEPTIONS_SCHEMA = "licomesh.client-release-package-exceptions.v1";
 // Every package the tree ships, in the order the declared set names them. A row
 // names only what no package document owns: the source directory the release
 // registration publishes from, and the one payload role that package's asset is
@@ -745,14 +750,40 @@ test("the real MCP service package builds a deterministic payload and its own in
 });
 
 // The completeness guard: the tree, not this file, decides which packages
-// exist. A package directory that carries a host manifest but no registration
-// would be built, tested and shipped by the client while never being published,
-// and this test refuses that state instead of restating a list of packages.
+// exist. A package directory that carries a host manifest is either registered
+// for publication or named in the reasoned exception list, and this test refuses
+// any third state instead of restating a list of packages. The exception list is
+// its own document because the release set's schema is an exact-key document the
+// publishing tool validates: an exception is a reviewed decision on the release
+// line, not a payload field.
 test("every package directory the tree ships is declared and published", (t) => {
   const directories = packageSourceDirectories();
   assert.notEqual(directories.length, 0, "the tree ships at least one package");
   const set = readJson("tools/client-release-package-set.json");
   const declaredSources = set.packages.map((entry) => entry.source);
+  const exceptions = readJson(PACKAGE_EXCEPTIONS_PATH);
+  assert.equal(exceptions.schemaVersion, PACKAGE_EXCEPTIONS_SCHEMA,
+    "the exception list declares the schema this test reads");
+  assert.equal(Array.isArray(exceptions.packagesWithoutPayload) &&
+    exceptions.packagesWithoutPayload.length > 0, true,
+  "the exception list names the packages it excepts");
+  const exceptedSources = exceptions.packagesWithoutPayload.map((entry) => entry.source);
+  for (const exception of exceptions.packagesWithoutPayload) {
+    // An exception is per-package and reasoned, never a wildcard: it names one
+    // package directory the tree actually ships, that package's own identity,
+    // why it carries no payload and which owner decided it, and it is refused if
+    // the same package is also declared for publication.
+    assert.equal(directories.includes(exception.source), true,
+      `${exception.source} is excepted from the release payload set but the tree ships no such package`);
+    assert.equal(declaredSources.includes(exception.source), false,
+      `${exception.source} is both declared for publication and excepted from it`);
+    assert.equal(readJson(`${exception.source}/manifest.json`).id, exception.packageId,
+      `${exception.source} must name that package's own identity`);
+    for (const field of ["reason", "owner"]) {
+      assert.equal(typeof exception[field] === "string" && exception[field].trim() !== "", true,
+        `${exception.source} must state its ${field}`);
+    }
+  }
   // Every package directory the tree ships is declared. The one declared payload
   // that is not a package directory is the disposable synthetic fixture the
   // trial itself packages, so a source outside both is a registration of
@@ -762,8 +793,8 @@ test("every package directory the tree ships is declared and published", (t) => 
     .map((entry) => entry.source)
     .sort();
   for (const source of directories) {
-    assert.equal(declaredSources.includes(source), true,
-      `${source} ships a manifest but no release payload role`);
+    assert.equal(declaredSources.includes(source) || exceptedSources.includes(source), true,
+      `${source} ships a manifest but is neither a declared release payload nor a reasoned exception`);
   }
   assert.deepEqual(
     [...declaredSources].filter((source) => !directories.includes(source)).sort(),
@@ -782,6 +813,11 @@ test("every package directory the tree ships is declared and published", (t) => 
     ),
   );
   for (const source of directories) {
+    // An excepted package ships inside the client build instead of as its own
+    // payload, so the trial produces no payload for it. Everything else the tree
+    // ships is published and must come back from the trial byte-identical to its
+    // own committed source.
+    if (exceptedSources.includes(source)) continue;
     const manifestText = readFileSync(path.join(repoRoot, source, "manifest.json"), "utf8");
     const manifest = JSON.parse(manifestText);
     const published = result.payloads.find((entry) => entry.packageId === manifest.id);
