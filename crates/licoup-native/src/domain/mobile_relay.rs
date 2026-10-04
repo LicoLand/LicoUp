@@ -1,5 +1,6 @@
 mod command_sync;
 mod config;
+mod endpoint_collaboration_gate;
 pub mod endpoint_transport;
 mod endpoint_ports;
 mod endpoint_trust;

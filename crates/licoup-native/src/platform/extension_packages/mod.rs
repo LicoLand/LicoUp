@@ -54,6 +54,7 @@ use std::path::Path;
 
 pub mod artifact;
 pub mod discovery;
+pub mod endpoint_collaboration;
 pub mod install;
 pub mod journal;
 pub mod resources;
@@ -76,6 +77,13 @@ pub use artifact::{
 pub use discovery::{
     CatalogEntry, CatalogIndex, Detector, DiscoveryEnvironment, DiscoveryRule, DiscoveryScan,
     OffFrameLane, PendingInstall, Recommendation, RecommendationLog, scan,
+};
+pub use endpoint_collaboration::{
+    ENDPOINT_COLLABORATION_CAPABILITY_ID, ENDPOINT_COLLABORATION_MANIFEST_PATH,
+    ENDPOINT_COLLABORATION_PACKAGE_ID, ENDPOINT_COLLABORATION_PROFILE_ID,
+    EndpointCollaborationAvailability, EndpointCollaborationBinding, EndpointCollaborationGate,
+    EndpointOutboundAuthority, EndpointOutboundRefusal, endpoint_collaboration_gate,
+    resolve_availability,
 };
 pub use install::{
     ActivationAdmission, FaultPlan, InstallOutcome, InstallPhase, InstallRequest, InstalledPackage,
