@@ -283,6 +283,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e17dd265a7d0f31ef544e1b20e03add05d3b45b491b633b10d67145d2acc1a38"
 dependencies = [
  "find-msvc-tools",
+ "jobserver",
+ "libc",
  "shlex 2.0.1",
 ]
 
@@ -1722,6 +1724,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "jobserver"
+version = "0.1.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c00acbd29eabad4a2392fa0e921c874934dbbf4194312ad20f04a0ed67a3cb3"
+dependencies = [
+ "getrandom 0.4.3",
+ "libc",
+]
+
+[[package]]
 name = "js-sys"
 version = "0.3.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2071,6 +2083,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-agent-antigravity"
+version = "0.14.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-extension-contracts",
+ "licoup-foundation",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "licoup-agent-codex"
 version = "0.14.0"
 dependencies = [
@@ -2080,6 +2103,26 @@ dependencies = [
  "serde",
  "serde_json",
  "uuid",
+]
+
+[[package]]
+name = "licoup-agent-cursor"
+version = "0.14.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-extension-contracts",
+ "serde_json",
+]
+
+[[package]]
+name = "licoup-agent-deepseek"
+version = "0.14.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-extension-contracts",
+ "serde",
+ "serde_json",
+ "zstd",
 ]
 
 [[package]]
@@ -2103,6 +2146,18 @@ dependencies = [
  "ureq",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "licoup-agent-kimi"
+version = "0.1.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
+ "licoup-agent-kimi",
+ "licoup-extension-contracts",
+ "licoup-foundation",
+ "serde_json",
 ]
 
 [[package]]
@@ -2131,6 +2186,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "libc",
+ "licoup-agent-deepseek",
  "licoup-client-state",
  "licoup-foundation",
  "rusqlite",
@@ -2330,8 +2386,12 @@ dependencies = [
  "licoarc-rust",
  "licoup-agent-adapter-sdk",
  "licoup-agent-adapters",
+ "licoup-agent-antigravity",
  "licoup-agent-codex",
+ "licoup-agent-cursor",
+ "licoup-agent-deepseek",
  "licoup-agent-drivers",
+ "licoup-agent-kimi",
  "licoup-agent-pi",
  "licoup-agent-runtime",
  "licoup-agent-targets",
@@ -4575,4 +4635,32 @@ dependencies = [
  "crc32fast",
  "log",
  "simd-adler32",
+]
+
+[[package]]
+name = "zstd"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
+dependencies = [
+ "zstd-safe",
+]
+
+[[package]]
+name = "zstd-safe"
+version = "7.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64d80649ab6db9d9f6f9c80a40becd948eda4714a0a5ac8c4d157a32231c7882"
+dependencies = [
+ "zstd-sys",
+]
+
+[[package]]
+name = "zstd-sys"
+version = "2.1.0+zstd.1.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ef0a8027ec3ee71300ab3bcbcd0393f434aa72b91ca6d635a39941deae8eea0"
+dependencies = [
+ "cc",
+ "pkg-config",
 ]

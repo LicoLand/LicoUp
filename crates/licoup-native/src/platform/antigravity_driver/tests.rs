@@ -2,10 +2,8 @@ use super::*;
 use serde_json::{Value, json};
 use std::fs;
 #[cfg(unix)]
-use std::io::Write;
 use std::path::{Path, PathBuf};
 #[cfg(unix)]
-use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 #[cfg(unix)]
 use std::time::Duration;
@@ -917,7 +915,7 @@ fn antigravity_effective_settings_match_executed_command() {
 
 #[cfg(unix)]
 #[test]
-fn hook_script_encodes_one_direct_object_from_stdin() {
+fn hook_bridge_installs_the_package_program_as_the_stop_hook() {
     let _environment_guard = environment_lock();
     let gemini = std::env::temp_dir().join(format!(
         "lico-agy-hook-gemini-{}-{}",
@@ -934,32 +932,37 @@ fn hook_script_encodes_one_direct_object_from_stdin() {
     }
 
     ensure_hook_bridge().unwrap();
-    let script = gemini
-        .join("lico-up-antigravity")
-        .join("session-receipt-hook.sh");
-    let receipt = gemini.join("receipt.json");
-    run_hook_script(
-        &script,
-        &receipt,
-        r#"{"conversationId":"11111111-2222-3333-4444-555555555555","transcriptPath":"/workspace/transcript","cwd":"/workspace"}"#,
-        None,
-    );
-    let text = fs::read_to_string(&receipt).unwrap();
-    assert_eq!(
-        serde_json::from_str::<serde_json::Value>(&text).unwrap(),
-        json!({"conversationId": DEFAULT_RECEIPT_ID}),
-        "the hook must write one direct JSON object, not a wrapped payload"
-    );
-    let hooks_json = fs::read_to_string(gemini.join("hooks.json")).unwrap();
-    let hook_entry = hooks_json
-        .split("lico-up-antigravity-session")
-        .nth(1)
-        .expect("hook namespace registered");
+    let hooks_path = gemini.join("hooks.json");
+    let hooks_json = fs::read_to_string(&hooks_path).unwrap();
+    let root: serde_json::Value = serde_json::from_str(&hooks_json).unwrap();
+    let namespace = root
+        .get("lico-up-antigravity-session")
+        .expect("the Lico namespace is registered");
+    // Only Stop is installed: an earlier lifecycle hook can overwrite the
+    // receipt with an empty identity.
+    assert!(namespace.get("Stop").is_some());
+    assert!(namespace.get("SessionStart").is_none());
+    let command = namespace["Stop"][0]["command"]
+        .as_str()
+        .expect("the Stop hook names one command");
+    // The acceptance this node states: the receipt hook is a native package
+    // subcommand. There is no generated script and no interpreter in the path.
     assert!(
-        hook_entry.contains("\"Stop\""),
-        "only Stop must be installed"
+        command.contains("lico-agent-antigravity"),
+        "the hook runs the adapter package program: {command}"
     );
-    assert!(!hook_entry.contains("SessionStart"));
+    assert!(
+        command.ends_with(" receipt"),
+        "the hook runs the package's receipt subcommand: {command}"
+    );
+    assert!(!command.contains("python"), "no interpreter: {command}");
+    assert!(!command.contains(".sh"), "no generated script: {command}");
+
+    // A previous client's generated script is removed, not merely unreferenced.
+    let retired = gemini
+        .join("lico-up-antigravity")
+        .join("session-receipt-hook.sh");
+    assert!(!retired.exists(), "the retired hook script is not on disk");
 
     if let Some(value) = previous_gemini {
         unsafe {
@@ -974,10 +977,10 @@ fn hook_script_encodes_one_direct_object_from_stdin() {
 
 #[cfg(unix)]
 #[test]
-fn hook_script_uses_vendor_environment_identifier_as_fallback() {
+fn hook_bridge_replaces_a_retired_generated_script() {
     let _environment_guard = environment_lock();
     let gemini = std::env::temp_dir().join(format!(
-        "lico-agy-hook-env-gemini-{}-{}",
+        "lico-agy-hook-retire-{}-{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -990,79 +993,25 @@ fn hook_script_uses_vendor_environment_identifier_as_fallback() {
         std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
     }
 
-    ensure_hook_bridge().unwrap();
-    let script = gemini
-        .join("lico-up-antigravity")
-        .join("session-receipt-hook.sh");
-    let receipt = gemini.join("receipt.json");
-    run_hook_script(
-        &script,
-        &receipt,
-        r#"{"transcriptPath":"/workspace/transcript","cwd":"/workspace"}"#,
-        Some(DEFAULT_RECEIPT_ID),
-    );
-    let text = fs::read_to_string(&receipt).unwrap();
-    assert_eq!(
-        serde_json::from_str::<serde_json::Value>(&text).unwrap(),
-        json!({"conversationId": DEFAULT_RECEIPT_ID})
-    );
-
-    if let Some(value) = previous_gemini {
-        unsafe {
-            std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
-        }
-    } else {
-        unsafe {
-            std::env::remove_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
-        }
-    }
-}
-
-#[cfg(unix)]
-#[test]
-fn hook_script_preserves_vendor_first_receipt_when_input_carries_no_id() {
-    let _environment_guard = environment_lock();
-    let gemini = std::env::temp_dir().join(format!(
-        "lico-agy-hook-order-gemini-{}-{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    fs::create_dir_all(&gemini).unwrap();
-    let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
-    unsafe {
-        std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
-    }
-
-    ensure_hook_bridge().unwrap();
-    let script = gemini
-        .join("lico-up-antigravity")
-        .join("session-receipt-hook.sh");
-    let receipt = gemini.join("receipt.json");
-    // The vendor/another Stop-hook writer ran first with an accepted alias key.
+    // A machine that ran the script version still has it on disk, and an
+    // unrelated file in the same directory is not this client's to remove.
+    let directory = gemini.join("lico-up-antigravity");
+    fs::create_dir_all(&directory).unwrap();
     fs::write(
-        &receipt,
-        r#"{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}"#,
+        directory.join("session-receipt-hook.sh"),
+        "#!/bin/sh\necho retired\n",
     )
     .unwrap();
-    run_hook_script(
-        &script,
-        &receipt,
-        r#"{"transcriptPath":"/workspace/transcript","cwd":"/workspace"}"#,
-        None,
+    fs::write(directory.join("user-notes.txt"), "keep me\n").unwrap();
+
+    ensure_hook_bridge().unwrap();
+    assert!(
+        !directory.join("session-receipt-hook.sh").exists(),
+        "the retired script is removed on install"
     );
-    let text = fs::read_to_string(&receipt).unwrap();
-    assert_eq!(
-        serde_json::from_str::<serde_json::Value>(&text).unwrap(),
-        json!({"conversationId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}),
-        "the LicoUp hook must not erase a vendor receipt written first"
-    );
-    assert_eq!(
-        crate::platform::native_agent_parser::adapters::antigravity::parse_hook_receipt(&text)
-            .as_deref(),
-        Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+    assert!(
+        directory.join("user-notes.txt").exists(),
+        "a file this client did not write is never removed with it"
     );
 
     if let Some(value) = previous_gemini {
@@ -1077,28 +1026,52 @@ fn hook_script_preserves_vendor_first_receipt_when_input_carries_no_id() {
 }
 
 #[cfg(unix)]
-fn run_hook_script(script: &Path, receipt: &Path, stdin_text: &str, environment_id: Option<&str>) {
-    let mut command = Command::new(script);
-    command
-        .env("LICO_ANTIGRAVITY_SESSION_RECEIPT", receipt)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null());
-    match environment_id {
-        Some(environment_id) => {
-            command.env("ANTIGRAVITY_CONVERSATION_ID", environment_id);
+#[test]
+fn hook_bridge_status_reports_the_program_the_hook_names() {
+    let _environment_guard = environment_lock();
+    let gemini = std::env::temp_dir().join(format!(
+        "lico-agy-hook-status-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&gemini).unwrap();
+    let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+    unsafe {
+        std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
+    }
+
+    // Before installation the bridge reports itself absent rather than claiming
+    // a hook the vendor client cannot see.
+    let before = super::hook_bridge_status();
+    assert_eq!(before["installed"], json!(false));
+    assert_eq!(before["hookRegistered"], json!(false));
+
+    ensure_hook_bridge().unwrap();
+    let after = super::hook_bridge_status();
+    assert_eq!(after["hookRegistered"], json!(true));
+    assert!(after["hookCommand"].as_str().is_some());
+    assert_eq!(
+        after["installed"],
+        json!(after["scriptInstalled"].as_bool().unwrap()),
+        "the hook is installed exactly when the program it names is present"
+    );
+
+    uninstall_hook_bridge().unwrap();
+    let removed = super::hook_bridge_status();
+    assert_eq!(removed["hookRegistered"], json!(false));
+
+    if let Some(value) = previous_gemini {
+        unsafe {
+            std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
         }
-        None => {
-            command.env_remove("ANTIGRAVITY_CONVERSATION_ID");
+    } else {
+        unsafe {
+            std::env::remove_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
         }
     }
-    let mut child = command.spawn().unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(stdin_text.as_bytes())
-        .unwrap();
-    assert!(child.wait().unwrap().success());
 }
 
 #[cfg(unix)]
@@ -1117,17 +1090,19 @@ enum ReceiptStyle {
 
 #[cfg(unix)]
 impl ReceiptStyle {
+    /// The shell body a fake vendor CLI runs to write one receipt.
+    ///
+    /// It is a shell fragment rather than a `python3` program on purpose: the
+    /// receipt writers under test stand in for the vendor client, and a fixture
+    /// that needed an interpreter would test a machine this product no longer
+    /// requires.
     fn writer_body(self, receipt_id: &str) -> String {
         match self {
             ReceiptStyle::Direct => format!(
-                r#"import json, sys
-json.dump({{"conversationId": "{receipt_id}"}}, open(sys.argv[1], "w"))
-"#
+                r#"printf '{{"conversationId":"%s"}}\n' '{receipt_id}' > "$1""#
             ),
             ReceiptStyle::Wrapped => format!(
-                r#"import json, sys
-json.dump({{"hookPayload": json.dumps({{"conversationId": "{receipt_id}"}}), "environmentConversationId": ""}}, open(sys.argv[1], "w"))
-"#
+                r#"printf '{{"hookPayload":"{{\"conversationId\":\"%s\"}}","environmentConversationId":""}}\n' '{receipt_id}' > "$1""#
             ),
         }
     }
@@ -1186,9 +1161,9 @@ for arg in "$@"; do
   esac
 done
 receipt="${{LICO_ANTIGRAVITY_SESSION_RECEIPT:?}}"
-python3 - "$receipt" <<'PY'
+sh -s "$receipt" <<'SH'
 {writer}
-PY
+SH
 printf '%s\n' 'PONG'
 exit 0
 "#
@@ -1240,9 +1215,9 @@ for arg in "$@"; do
   esac
 done
 receipt="${{LICO_ANTIGRAVITY_SESSION_RECEIPT:?}}"
-python3 - "$receipt" <<'PY'
+sh -s "$receipt" <<'SH'
 {writer}
-PY
+SH
 printf '%s\n' 'first'
 sleep 0.4
 printf '%s\n' 'second'
@@ -1293,9 +1268,9 @@ for arg in "$@"; do
 done
 receipt="${{LICO_ANTIGRAVITY_SESSION_RECEIPT:?}}"
 write_receipt() {{
-  python3 - "$receipt" <<'PY'
+  sh -s "$receipt" <<'SH'
 {writer}
-PY
+SH
 }}
 printf '%s\n' 'pre-cancel-output'
 trap 'printf "%s\n" "post-cancel-output"; write_receipt; exit 0' TERM
@@ -1371,9 +1346,9 @@ for arg in "$@"; do
 done
 printf '%s\n' "$@" > "$ARGV_CAPTURE_PATH"
 receipt="${{LICO_ANTIGRAVITY_SESSION_RECEIPT:?}}"
-python3 - "$receipt" <<'PY'
+sh -s "$receipt" <<'SH'
 {writer}
-PY
+SH
 printf '%s\n' 'PONG'
 exit 0
 "#,
@@ -1468,9 +1443,9 @@ for arg in "$@"; do
         : > "$login_flag"
       fi
       if [ -n "${{LICO_ANTIGRAVITY_SESSION_RECEIPT:-}}" ]; then
-        python3 - "$LICO_ANTIGRAVITY_SESSION_RECEIPT" <<'PY'
+        sh -s "$LICO_ANTIGRAVITY_SESSION_RECEIPT" <<'SH'
 {writer}
-PY
+SH
       fi
       printf '%s\n' 'PONG'
       exit 0
@@ -1486,9 +1461,9 @@ PY
   esac
 done
 receipt="${{LICO_ANTIGRAVITY_SESSION_RECEIPT:?}}"
-python3 - "$receipt" <<'PY'
+sh -s "$receipt" <<'SH'
 {writer}
-PY
+SH
 printf '%s\n' 'PONG'
 exit 0
 "#,

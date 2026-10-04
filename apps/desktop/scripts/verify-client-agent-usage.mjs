@@ -128,6 +128,12 @@ const usagePanel = await readJoinedText([
 ]);
 const clientShell = await readText("apps/desktop/lib/src/frontend/shell/client_shell.dart");
 const bindingShellRenderer = await readText(bindingShellRendererPath);
+/// The destination dispatch lives in its own owner beside the renderer; the
+/// monitoring route is still mounted by the binding-renderer path, so the
+/// requirement is read across both files rather than relaxed to a directory.
+const shellDestinationsPath =
+  "apps/desktop/lib/src/composition/binding_shell_renderer/shell_destinations.dart";
+const shellDestinations = await readText(shellDestinationsPath);
 const flutterProductionSources = new Map(
   await Promise.all(
     (await collectSourceFiles("apps/desktop/lib", ".dart")).map(
@@ -374,11 +380,12 @@ assertIncludes(
 );
 const usagePanelMountedByComposition =
   bindingShellRenderer.includes("class BindingShellRenderer") &&
-  bindingShellRenderer.includes(
+  bindingShellRenderer.includes("shell_destinations.dart") &&
+  shellDestinations.includes(
     "frontend/features/agents/ui/agent_usage_panel.dart",
   ) &&
-  /ClientSection\.monitoring\s*=>\s*AgentUsagePanel\s*\(\s*binding:\s*_monitoring\s*,?/u
-    .test(bindingShellRenderer);
+  /case ClientSection\.monitoring:\s*(?:if \(!installed\) return absentSurface;\s*)?return AgentUsagePanel\(\s*binding:\s*(?:_monitoring|monitoring)\s*,?\s*\)/u
+    .test(shellDestinations);
 assert(
   usagePanelMountedByComposition,
   "desktop monitoring route must mount the dedicated local-token usage panel through the binding renderer",
@@ -406,7 +413,7 @@ const usagePanelReferencePaths = [...flutterProductionSources]
   .map(([relativePath]) => relativePath);
 const expectedUsagePanelReferencePaths = new Set([
   agentUsagePanelPath,
-  bindingShellRendererPath,
+  shellDestinationsPath,
 ]);
 const usagePanelConstructionIsCompositionOnly =
   usagePanelReferencePaths.length === expectedUsagePanelReferencePaths.size &&

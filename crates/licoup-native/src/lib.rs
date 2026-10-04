@@ -49,9 +49,11 @@ pub(crate) mod host_lane;
 /// the other: a layer declares the port it needs, the other owns the fact, and
 /// this function joins them once per process. That covers the environment
 /// ports the domain asks, the gateway runtime's ports, the stop control's
-/// Subagent-claim dispatcher, which the domain answers, and the progressive
-/// turn-event port the Codex adapter package asks for. A process that never
-/// calls it keeps every port fail-closed.
+/// Subagent-claim dispatcher, which the domain answers, and the ports the four
+/// Agent adapter packages ask for — the progressive turn-event sinks Codex,
+/// Antigravity and Pi emit through, and the execution admission Antigravity and
+/// Kimi Code ask for. A process that never calls it keeps every port
+/// fail-closed.
 pub fn install_environment_ports() -> Result<(), &'static str> {
     domain::conversation::history::install_open_codex_rollouts(
         licoup_agent_codex::observation::open_rollout_paths,
@@ -62,15 +64,67 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     platform::extension_packages::install_maintenance_admission(std::sync::Arc::new(
         PackageGenerationAdmission,
     ))?;
-    // The Codex adapter package owns what one Codex turn emits; this host owns
-    // where it goes, because the host owns the consumer. The package is linked
-    // here for its registration while its binary route is completed by the
-    // agent-execution port, and a host that never installs this port leaves the
-    // package's emitters silent rather than inventing a consumer.
+    // An adapter package owns what one of its turns emits; this host owns where
+    // it goes, because the host owns the consumer. Each package is linked here
+    // for its registration while its binary route is completed by the
+    // agent-execution port, and a host that never installs these ports leaves the
+    // packages' emitters silent rather than inventing a consumer.
     licoup_agent_codex::port::turn_event::install(platform::codex_turn_event_port())?;
     // The Pi adapter package answers the same way, for the same reason: one
     // consumer per process, installed once, and the package silent until then.
-    licoup_agent_pi::port::turn_event::install(platform::pi_turn_event_port())
+    licoup_agent_pi::port::turn_event::install(platform::pi_turn_event_port())?;
+    licoup_agent_antigravity::port::turn_event::install(
+        platform::antigravity_turn_event_port(),
+    )?;
+    // The Antigravity package asks this host two execution questions. The caller
+    // context belongs to the Subagent mesh's own binding, and the admission
+    // answer is the host's close-admission barrier, which a launching turn may
+    // not bypass.
+    licoup_agent_antigravity::port::execution::install(
+        licoup_agent_antigravity::port::execution::ExecutionPort {
+            subagent_caller_context: subagent_caller_context,
+            admits_execution: admits_agent_execution,
+        },
+    )?;
+    // The Kimi Code adapter package owns what one Kimi execution is; the one fact
+    // it cannot derive is whether this host currently admits new work, because the
+    // idle-admission decision is the host's. Installing the answer is what lets a
+    // Kimi turn run at all, and a host that never installs it refuses rather than
+    // running.
+    licoup_agent_kimi::port::execution::install(licoup_agent_kimi::port::execution::ExecutionPort {
+        admits_execution: admits_agent_execution,
+    })
+}
+
+/// The composition's answer for the Antigravity adapter package's caller-context
+/// query: the exported Subagent caller context this host's own drivers bind.
+///
+/// It is the same environment contract the launcher applies, read through the
+/// port so the package asks the host rather than reading a second copy of the
+/// variable names.
+fn subagent_caller_context() -> Option<String> {
+    let provider = std::env::var("LICOUP_MCP_CALLER_PROVIDER").ok()?;
+    if provider.trim().is_empty() {
+        return None;
+    }
+    Some(provider)
+}
+
+/// Whether this host admits a new Agent execution right now: admission is open
+/// unless a maintenance switch holds the close-admission barrier.
+///
+/// The barrier is the same record package activation and data conversion hold,
+/// and it is read when the question is asked rather than cached, so a turn
+/// cannot start from a decision the host has since closed. A data root whose
+/// barrier cannot be read admits nothing: an unreadable record is not evidence
+/// that admission is open.
+fn admits_agent_execution() -> bool {
+    let Ok(data_root) = licoup_foundation::platform::paths::portable_data_dir() else {
+        return false;
+    };
+    domain::work_admission::WorkAdmission::open(data_root)
+        .barrier()
+        .is_ok_and(|barrier| barrier.is_none())
 }
 
 /// The composition's answer for the package-generation admission port: the

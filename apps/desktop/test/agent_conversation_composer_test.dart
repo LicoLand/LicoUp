@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/contracts/presentation/work_control_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
@@ -1113,6 +1114,110 @@ void main() {
           .height,
       64,
     );
+  });
+  testWidgets('the composer hides the stop stage while a turn is idle', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const _ComposerTestApp(
+        child: SizedBox(
+          width: 420,
+          child: RuntimeMessageComposer(
+            targetLabel: 'Fixture Agent',
+            initialDraft: '',
+            busy: false,
+            enabled: true,
+            modelOptions: [],
+            selectedModel: '',
+            reasoningEffortOptions: [],
+            selectedReasoningEffort: '',
+            onModelChanged: _noopModel,
+            onReasoningEffortChanged: _noopModel,
+            onDraftChanged: _noopModel,
+            onSend: _sendTrue,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('work-stop-indicator')), findsNothing);
+    expect(find.byKey(const Key('work-stop-force')), findsNothing);
+  });
+
+  testWidgets('the composer projects a stopping stage with its reference', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const _ComposerTestApp(
+        child: SizedBox(
+          width: 420,
+          child: RuntimeMessageComposer(
+            targetLabel: 'Fixture Agent',
+            initialDraft: '',
+            busy: true,
+            enabled: true,
+            cancelEnabled: true,
+            modelOptions: [],
+            selectedModel: '',
+            reasoningEffortOptions: [],
+            selectedReasoningEffort: '',
+            onModelChanged: _noopModel,
+            onReasoningEffortChanged: _noopModel,
+            onDraftChanged: _noopModel,
+            onSend: _sendTrue,
+            workStopStage: WorkStopStage.stopping,
+            workStopDiagnosticReference: 'stop:corr-1',
+          ),
+        ),
+      ),
+    );
+    // The busy composer keeps a spinner running; settle by frames instead.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('Stopping…'), findsOneWidget);
+    expect(find.text('stop:corr-1'), findsOneWidget);
+    // A request that was accepted is never escalated automatically.
+    expect(find.byKey(const Key('work-stop-force')), findsNothing);
+  });
+
+  testWidgets('an unconfirmed stop offers the explicit force-stop route', (
+    tester,
+  ) async {
+    var opened = 0;
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: SizedBox(
+          width: 420,
+          child: RuntimeMessageComposer(
+            targetLabel: 'Fixture Agent',
+            initialDraft: '',
+            busy: true,
+            enabled: true,
+            cancelEnabled: true,
+            modelOptions: const [],
+            selectedModel: '',
+            reasoningEffortOptions: const [],
+            selectedReasoningEffort: '',
+            onModelChanged: _noopModel,
+            onReasoningEffortChanged: _noopModel,
+            onDraftChanged: _noopModel,
+            onSend: _sendTrue,
+            workStopStage: WorkStopStage.unconfirmed,
+            workStopDiagnosticReference: 'stop:corr-9',
+            onForceStop: () => opened += 1,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('Stop unconfirmed'), findsOneWidget);
+    expect(find.text('stop:corr-9'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('work-stop-force')));
+    expect(opened, 1);
   });
 }
 

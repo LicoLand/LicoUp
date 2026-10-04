@@ -49,6 +49,11 @@
           "for": "migration-tool"
         },
         {
+          "role": "antigravity-adapter-package-payload",
+          "file": "LicoUp-package-org.licoland.adapter.antigravity.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.antigravity.licopkg"
+        },
+        {
           "role": "codex-adapter-package-payload",
           "file": "LicoUp-package-org.licoland.adapter.codex.licopkg",
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.codex.licopkg"
@@ -57,6 +62,36 @@
           "role": "pi-adapter-package-payload",
           "file": "LicoUp-package-org.licoland.adapter.pi.licopkg",
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.pi.licopkg"
+        },
+        {
+          "role": "appearance-converter-package-payload",
+          "file": "LicoUp-package-org.licoland.converter.appearance.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.converter.appearance.licopkg"
+        },
+        {
+          "role": "analytics-package-payload",
+          "file": "LicoUp-package-org.licoland.feature.analytics.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.feature.analytics.licopkg"
+        },
+        {
+          "role": "gateway-package-payload",
+          "file": "LicoUp-package-org.licoland.feature.gateway.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.feature.gateway.licopkg"
+        },
+        {
+          "role": "cursor-adapter-package-payload",
+          "file": "LicoUp-package-org.licoland.adapter.cursor.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.cursor.licopkg"
+        },
+        {
+          "role": "deepseek-adapter-package-payload",
+          "file": "LicoUp-package-org.licoland.adapter.deepseek.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.deepseek.licopkg"
+        },
+        {
+          "role": "kimi-adapter-package-payload",
+          "file": "LicoUp-package-org.licoland.adapter.kimi.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.kimi.licopkg"
         },
         {
           "role": "mcp-package-payload",

@@ -129,10 +129,24 @@ export async function checkPackagingAndTargetProjection(context) {
   assert(sameSet([...nativeRuntimeAdapterIds].sort(), [...packagedTargets].sort()),
     "native runtime dispatch projection must exactly match target-adapters.targetAdapters");
   const platformModuleSource = await readText("crates/licoup-native/src/platform/mod.rs");
+  // Twelve of the thirteen packaged targets keep their canonical driver module
+  // in this host. Codex's driver is the Codex adapter package's, so the kernel
+  // must declare no Codex driver module at all and the package must declare the
+  // one it owns; a kernel copy reappearing here fails this check rather than
+  // silently becoming a second owner.
+  const codexDriverPackageSource = await readText("crates/licoup-agent-codex/src/app_server.rs");
   for (const target of packagedTargets) {
-    const moduleName = target === "codex"
-      ? "codex_app_server"
-      : `${target.replaceAll("-", "_")}_driver`;
+    if (target === "codex") {
+      assert(
+        !platformModuleSource.includes("mod codex_app_server;") &&
+          !platformModuleSource.includes("mod codex_driver;"),
+        "the Codex driver is the adapter package's, so the host must declare no Codex driver module"
+      );
+      assert(codexDriverPackageSource.includes("pub mod driver;"),
+        "the Codex adapter package must declare the packaged target's canonical driver module");
+      continue;
+    }
+    const moduleName = `${target.replaceAll("-", "_")}_driver`;
     assert(platformModuleSource.includes(`mod ${moduleName};`),
       `packaged target ${target} must have canonical native driver module ${moduleName}`);
   }

@@ -1,14 +1,26 @@
 import {
   assert,
+  fs,
   path,
   process,
   test,
   CLIENT_MODULE_CATALOG,
+  repoRoot,
   selectModulesForChangedPaths,
   main,
   ids,
   sourceFiles,
 } from "./support.mjs";
+
+/// Whether one repository path exists, for the paths a move retired.
+async function exists(relativePath) {
+  try {
+    await fs.access(path.join(repoRoot, relativePath));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 test("layer, FFI, bridge, packaging, and release paths select dedicated modules", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
@@ -620,18 +632,19 @@ test("runtime adapter modules retain leaf-owned inputs and exact command filters
 test("Codex app-server leaves retain exact narrow regression ownership", async () => {
   const sourceBundleId = "regression.codex-app-server-source-bundle";
   const packageModuleId = "rust.core.agent-codex-package";
-  // The process half is still composed by the client; the wire half moved into
-  // the Codex adapter package. Both keep a precise narrow owner, and a source
-  // that moved selects the package's own module as well.
+  // The whole Codex driver — protocol, process and the program an extension
+  // host starts — is the Codex adapter package's since CODEX-PACKAGE. Every
+  // leaf keeps a precise narrow owner inside the package instead of the
+  // package's whole-directory fallback.
   const selections = new Map([
-    ["crates/licoup-native/src/platform/codex_app_server/io.rs",
-      ["rust.platform.codex-app-server.io"]],
-    ["crates/licoup-native/src/platform/codex_app_server/launch.rs",
-      ["rust.platform.codex-app-server.launch"]],
-    ["crates/licoup-native/src/platform/codex_app_server/supervision.rs",
-      ["rust.platform.codex-app-server.transport"]],
-    ["crates/licoup-native/src/platform/codex_app_server/transport.rs",
-      ["rust.platform.codex-app-server.transport"]],
+    ["crates/licoup-agent-codex/src/app_server/driver/io.rs",
+      [packageModuleId, "rust.platform.codex-app-server.io"]],
+    ["crates/licoup-agent-codex/src/app_server/driver/launch.rs",
+      [packageModuleId, "rust.platform.codex-app-server.launch"]],
+    ["crates/licoup-agent-codex/src/app_server/driver/supervision.rs",
+      [packageModuleId, "rust.platform.codex-app-server.transport"]],
+    ["crates/licoup-agent-codex/src/app_server/driver/transport.rs",
+      [packageModuleId, "rust.platform.codex-app-server.transport"]],
     ["crates/licoup-agent-codex/src/app_server/config.rs",
       [packageModuleId, "rust.platform.codex-app-server.config"]],
     ["crates/licoup-agent-codex/src/parser/session.rs",
@@ -648,21 +661,21 @@ test("Codex app-server leaves retain exact narrow regression ownership", async (
   }
 
   const filters = new Map([
-    ["rust.platform.codex-app-server", "platform::codex_app_server::tests::"],
+    ["rust.platform.codex-app-server", "app_server::driver::tests::"],
     ["rust.platform.codex-app-server.config",
-      "platform::codex_app_server::tests::config::"],
+      "app_server::driver::tests::config::"],
     ["rust.platform.codex-app-server.session",
-      "platform::codex_app_server::tests::session::"],
+      "app_server::driver::tests::session::"],
     ["rust.platform.codex-app-server.events",
-      "platform::codex_app_server::tests::events::"],
+      "app_server::driver::tests::events::"],
     ["rust.platform.codex-app-server.control",
-      "platform::codex_app_server::tests::control::"],
+      "app_server::driver::tests::control::"],
     ["rust.platform.codex-app-server.io",
-      "platform::codex_app_server::tests::io::"],
+      "app_server::driver::tests::io::"],
     ["rust.platform.codex-app-server.launch",
-      "platform::codex_app_server::tests::launch::"],
+      "app_server::driver::tests::launch::"],
     ["rust.platform.codex-app-server.transport",
-      "platform::codex_app_server::tests::transport::"],
+      "app_server::driver::tests::transport::"],
   ]);
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
     candidate.id.startsWith("rust.platform.codex-app-server"));
@@ -676,11 +689,6 @@ test("Codex app-server leaves retain exact narrow regression ownership", async (
   // narrow owner rather than the package's whole-directory fallback.
   const narrowInputs = new Set(modules.flatMap((module) => module.inputs));
   for (const relativePath of [
-    "crates/licoup-native/src/platform/codex_app_server.rs",
-    ...await sourceFiles(
-      "crates/licoup-native/src/platform/codex_app_server",
-      ".rs",
-    ),
     "crates/licoup-agent-codex/src/app_server.rs",
     ...await sourceFiles("crates/licoup-agent-codex/src/app_server", ".rs"),
     "crates/licoup-agent-codex/src/parser.rs",
@@ -689,6 +697,10 @@ test("Codex app-server leaves retain exact narrow regression ownership", async (
     assert.equal(narrowInputs.has(relativePath), true,
       `Codex app-server source must have a precise regression owner: ${relativePath}`);
   }
+  // The client keeps no Codex module: the path the move retired must not come
+  // back as a second owner.
+  assert.equal(await exists("crates/licoup-native/src/platform/codex_app_server.rs"), false);
+  assert.equal(await exists("crates/licoup-native/src/platform/codex_app_server"), false);
   // Every other file the package ships is owned by the package's own module,
   // which owns the crate tree as a whole.
   const owns = (relativePath) => CLIENT_MODULE_CATALOG.some((module) =>
@@ -710,6 +722,151 @@ test("Codex app-server leaves retain exact narrow regression ownership", async (
   assert.deepEqual(sourceBundle.command.args, [
     "--test",
     "tests/contract/client/codex-app-server-source-bundle.test.mjs",
+  ]);
+});
+
+test("Cursor leaves and the Cursor adapter package retain exact regression ownership", async () => {
+  const packageModuleId = "rust.core.agent-cursor-package";
+  const subagentMcpId = "regression.subagent-mcp-common";
+  const owns = (relativePath) => CLIENT_MODULE_CATALOG.some((module) =>
+    module.inputs.some((input) => input.endsWith("/**")
+      ? relativePath.startsWith(input.slice(0, -2))
+      : input === relativePath));
+  // The process half is still composed by the client, under the platform
+  // fallback that owns the driver it launches; the wire half moved into the
+  // Cursor adapter package, and the Subagent MCP caller contract reaches the
+  // package's own parser and registration. A source that moved selects the
+  // package's own module, and the contract that names it selects the verifier.
+  // The kernel sources the process half still owns are measured roots, so they
+  // select the client-boundary architecture module as well.
+  const hostSelections = new Map([
+    ["crates/licoup-native/src/platform/cursor_driver.rs",
+      ["rust.platform"]],
+    ["crates/licoup-native/src/platform/cursor_driver/model.rs",
+      ["rust.platform"]],
+    ["crates/licoup-native/src/platform/cursor_driver/errors.rs",
+      ["rust.platform"]],
+    ["crates/licoup-native/src/platform/cursor_driver/probe.rs",
+      ["rust.platform"]],
+    ["crates/licoup-native/src/platform/cursor_driver/update_watcher.rs",
+      ["rust.platform"]],
+  ]);
+  for (const [source, moduleIds] of hostSelections) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([
+      source,
+    ])), ["architecture.client-boundaries", ...moduleIds]);
+  }
+  // The package's own sources select the package's module, and the two the
+  // Subagent MCP caller contract reads select that contract's verifier too.
+  const packageSelections = new Map([
+    ["crates/licoup-agent-cursor/package/manifest.json", [packageModuleId]],
+    ["crates/licoup-agent-cursor/tests/package_artifact.rs", [packageModuleId]],
+    ["crates/licoup-agent-cursor/src/replay.rs",
+      ["architecture.client-boundaries", packageModuleId]],
+    ["crates/licoup-agent-cursor/src/parser.rs",
+      [subagentMcpId, "architecture.client-boundaries", packageModuleId]],
+    ["crates/licoup-agent-cursor/src/registration.rs",
+      [subagentMcpId, "architecture.client-boundaries", packageModuleId]],
+  ]);
+  for (const [source, moduleIds] of packageSelections) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([
+      source,
+    ])), moduleIds);
+  }
+
+  // The package runs its own tests against its own manifest, and the module
+  // owns the crate tree as a whole rather than a list that can drift from it.
+  const packageModule = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === packageModuleId);
+  assert.deepEqual(packageModule.inputs, ["crates/licoup-agent-cursor/**"]);
+  assert.deepEqual(packageModule.command.args, [
+    "test",
+    "--no-fail-fast",
+    "--manifest-path",
+    "crates/licoup-agent-cursor/Cargo.toml",
+  ]);
+
+  // Every source the package ships has a regression owner, and the kernel
+  // sources it left behind keep one too.
+  const packageSources2 = await sourceFiles("crates/licoup-agent-cursor", ".rs");
+  assert.ok(packageSources2.length > 0);
+  for (const relativePath of packageSources2) {
+    assert.equal(owns(relativePath), true,
+      `Cursor package source must have a regression owner: ${relativePath}`);
+  }
+  for (const relativePath of [
+    "crates/licoup-native/src/platform/cursor_driver.rs",
+    ...await sourceFiles("crates/licoup-native/src/platform/cursor_driver", ".rs"),
+  ]) {
+    assert.equal(owns(relativePath), true,
+      `Cursor process-half source must keep a regression owner: ${relativePath}`);
+  }
+});
+
+test("DeepSeek Harness leaves retain exact narrow regression ownership", async () => {
+  const sourceBundleId = "regression.deepseek-harness-source-bundle";
+  const packageModuleId = "rust.core.agent-deepseek-package";
+  const protocolModuleId = "rust.platform.deepseek-harness-package-protocol";
+  // The process half is still composed by the client; the wire half and the
+  // session-log reader moved into the DeepSeek adapter package. Both keep a
+  // precise owner, and a source that moved selects the package's own module as
+  // well.
+  const selections = new Map([
+    ["crates/licoup-native/src/platform/deepseek_harness_driver.rs",
+      ["regression.deepseek-harness-source-bundle",
+        "rust.platform.deepseek-harness-driver"]],
+    ["crates/licoup-agent-deepseek/src/parser.rs",
+      [packageModuleId, protocolModuleId]],
+    ["crates/licoup-agent-deepseek/src/session_store.rs",
+      [packageModuleId, "rust.domain.agent-usage.deepseek-reader"]],
+    ["crates/licoup-agent-deepseek/package/manifest.json",
+      ["regression.agent-deepseek-adapter-package", packageModuleId]],
+    ["crates/licoup-agent-deepseek/src/bin/lico-agent-deepseek.rs",
+      [packageModuleId, "rust.domain.agent-usage.deepseek-reader"]],
+    ["crates/licoup-agent-deepseek/tests/package_artifact.rs",
+      [packageModuleId, "rust.domain.agent-usage.deepseek-reader"]],
+  ]);
+  for (const [source, moduleIds] of selections) {
+    const selected = ids(selectModulesForChangedPaths([source]));
+    for (const moduleId of moduleIds) {
+      assert.ok(selected.includes(moduleId),
+        `${source} must select ${moduleId}: ${selected.join(", ")}`);
+    }
+  }
+
+  // The package's own module runs its own crate tests, so a change anywhere in
+  // the package is exercised by the package rather than by the kernel.
+  const packageModule = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === packageModuleId);
+  assert.deepEqual(packageModule.inputs, ["crates/licoup-agent-deepseek/**"]);
+  assert.deepEqual(packageModule.command.args,
+    ["test", "--no-fail-fast", "--manifest-path", "crates/licoup-agent-deepseek/Cargo.toml"]);
+
+  // Every source the package ships has a regression owner, and the reader's own
+  // module names the package's crate rather than the removed Node script.
+  const owns = (relativePath) => CLIENT_MODULE_CATALOG.some((module) =>
+    module.inputs.some((input) => input.endsWith("/**")
+      ? relativePath.startsWith(input.slice(0, -2))
+      : input === relativePath));
+  const packageSources2 = await sourceFiles("crates/licoup-agent-deepseek/src", ".rs");
+  assert.ok(packageSources2.length > 0);
+  for (const relativePath of packageSources2) {
+    assert.equal(owns(relativePath), true,
+      `DeepSeek package source must have a regression owner: ${relativePath}`);
+  }
+  const readerModule = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "rust.domain.agent-usage.deepseek-reader");
+  assert.equal(
+    readerModule.inputs.some((input) => input.includes("deepseek_reader.mjs")),
+    false,
+    "the removed Node reader must not keep a regression owner",
+  );
+
+  const sourceBundle = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === sourceBundleId);
+  assert.deepEqual(sourceBundle.command.args, [
+    "--test",
+    "tests/contract/client/deepseek-harness-source-bundle.test.mjs",
   ]);
 });
 

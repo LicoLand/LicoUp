@@ -25,7 +25,10 @@ use std::process::Command;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use licoup_native::platform::extension_packages::{GenerationSelection, PackageStore, uninstall};
+use licoup_native::platform::extension_packages::{
+    GenerationSelection, PackageStore, uninstall,
+};
+use licoup_native::platform::package_registration_release::PackageRegistrationOwners;
 use licoup_native::platform::mcp_service_process::{
     MCP_PACKAGE_ID, McpServiceBinding, PackageConsent, ProcessState, package_store_root,
 };
@@ -503,7 +506,7 @@ fn uninstall_stops_the_process_and_withdraws_every_caller() {
         licoup_native::platform::extension_packages::RemainingWork::Wait,
     )
     .expect("drain")
-    .collect(&store, &registry)
+    .collect(&store, &registry, &PackageRegistrationOwners::default())
     .expect("collect");
     assert!(
         !store.installed_path(MCP_PACKAGE_ID, "0.14.0").exists(),

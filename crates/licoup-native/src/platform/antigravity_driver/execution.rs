@@ -45,6 +45,25 @@ pub(in crate::platform) fn execute(
         Ok(config) => config,
         Err(failure) => return RunResult::failed(failure, started_at, false, false),
     };
+    // Admission gate: the adapter package asks this host whether it currently
+    // admits a new execution, and the answer is the host's own close-admission
+    // barrier. A turn started while a maintenance switch holds that barrier
+    // would run a vendor CLI the switch may be replacing, so the refusal is
+    // reported before any process starts. A host that installed no port on the
+    // package answers fail-closed and this turn never claims it was admitted.
+    if !licoup_agent_antigravity::port::execution::admits_execution() {
+        return RunResult::failed(
+            ProtocolFailure::new(
+                "antigravity_execution_admission_closed",
+                "Antigravity execution is not admitted while this client is changing installed state.",
+                "turn/execute",
+            )
+            .with_session(Some(session_id)),
+            started_at,
+            false,
+            false,
+        );
+    }
     // Consent gate: the vendor CLI opens a browser OAuth flow for print turns
     // while logged out. Probe first so a send never jumps to the browser. The
     // validated configuration above already rejects unsupported executions.

@@ -49,6 +49,13 @@ const canonicalFamilies = [
     dartOutput: "apps/desktop/lib/src/contracts/generated/strategy.g.dart",
   },
   {
+    id: "package",
+    status: "active",
+    schema: "schemas/client_bridge/package.json",
+    rustOutput: "crates/licoup-native/src/ffi/generated/package.rs",
+    dartOutput: "apps/desktop/lib/src/contracts/generated/package.g.dart",
+  },
+  {
     id: "adapter_plugin",
     status: "planned",
     schema: "schemas/client_bridge/adapter_plugin.json",
@@ -170,7 +177,7 @@ test("1) exact ordered manifest entries and unique safe contract schema/output p
   assert.deepEqual(
     manifest.families.map((family) => family.id),
     expectedOrder,
-    "manifest order must be client_error -> state -> secure_mesh -> conversation -> strategy -> adapter_plugin -> agent_usage",
+    "manifest order must be client_error -> state -> secure_mesh -> conversation -> strategy -> package -> adapter_plugin -> agent_usage",
   );
 
   const expectedMap = new Map(canonicalFamilies.map((family) => [family.id, family]));

@@ -297,7 +297,6 @@ impl RuntimeAdapter {
     pub fn managed_adapter_plugin_id(self) -> Option<&'static str> {
         match self {
             Self::Antigravity => Some("acp-bridge"),
-            Self::Codex => Some("lico-up-codex"),
             _ => None,
         }
     }

@@ -14,6 +14,7 @@ mod external_fixtures;
 mod failure;
 mod lifecycle;
 mod security;
+mod surface;
 
 use crate::platform::extension_packages::artifact::content_digest;
 use crate::platform::extension_packages::install::{InstallOutcome, PackageStore};

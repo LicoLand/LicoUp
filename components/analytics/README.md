@@ -47,6 +47,26 @@ that was already settled — only a retraction withdraws its own observation.
   values and scrapers. `complete_uninstall` drops the index and the bindings
   once in-flight reads have drained, and reports exactly what was released and
   that the facts were preserved.
+- The lifecycle itself is declarative: `resources/state-machines/package.json`
+  is the transition authority and `build.rs` compiles it, so the package can
+  only move along the edges it publishes.
+
+## The committed package
+
+`package/` is the release source the packaging tool turns into one payload:
+
+| File | What it is |
+|:---|:---|
+| `manifest.json` | The host manifest: namespaced id, host protocol, the client line it supports, the `usage-metric` profile carrying `analytics.v1`, a process runtime with a native entry, its permissions and its `metric-panel` contribution |
+| `package-release.json` | The package's own release declaration: identity, version, client compatibility and the native conversion its entry owns |
+| `contributions/usage-panel.json` | The declarative panel: the general C11 series it draws, each in the unit the metric catalog defines |
+| `bin/licoup-analytics` | The staged native entry, replaced by the compiled program at release time |
+
+The host registers what that manifest declares when the formal package store
+installs it: `PackageSurface` reads the installed manifest, and an uninstall may
+release only those resources — its contribution and its runtime entry — through
+the store's one transaction. Another package's contribution, a page the user
+closed and the kernel's own ledger are not this package's to claim.
 
 ## Tests
 
@@ -54,10 +74,15 @@ that was already settled — only a retraction withdraws its own observation.
 cargo test --locked --manifest-path components/analytics/Cargo.toml
 ```
 
-That runs the package's unit tests and the V7-U6 component-integration suite in
-`tests/integration/usage_sources/` (A34 and the component-level part of
-A31). Everything is synthetic; no account, ledger, usage file or network is
-involved.
+That runs the package's unit tests, the component-integration suite in
+`tests/integration/usage_sources/` (A34 and the component-level part of A31) and
+`tests/package_artifact.rs`, which reads the committed `package/` directory the
+way the host and the release tooling read it. Everything is synthetic; no
+account, ledger, usage file or network is involved.
+
+The store-level half of A31 — the installed package, its registered surface, and
+the base usage, execution and journal that survive its removal — is
+`cargo test -p licoup-native --lib extension_packages::scenarios::surface`.
 
 ## Wiring this package needs from its owners
 
@@ -65,9 +90,9 @@ involved.
   usage store, and the host composition that lends it to this package. The port
   is defined here because this package is its consumer; the ledger stays with
   its current owner.
-- **Packaging (U10/U11/U12)**: the deployment carrier and manifest for
-  `org.licoland.feature.analytics`. The distribution graph already declares the
-  package, its `requires_package` and its `analytics.v1` capability; no manifest
-  is invented here because the carrier shape belongs to packaging.
+- **Release set**: `components/analytics/package` still needs its own
+  `payloadRole` in the client release package set, and the entry it stages needs
+  the compiled program the release stage places there. Both are the release
+  owner's registration, not this package's.
 - **Regression catalog**: the exact commands above, registered by the
   coordinator in the existing catalog.

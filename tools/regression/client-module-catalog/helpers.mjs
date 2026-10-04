@@ -19,6 +19,10 @@ export const MODEL_CATALOG_MANIFEST = "crates/licoup-model-catalog/Cargo.toml";
 // An Agent adapter package is its own crate and program, so the modules that
 // own its protocol and its document run against its manifest rather than the host.
 export const AGENT_CODEX_MANIFEST = "crates/licoup-agent-codex/Cargo.toml";
+export const AGENT_ANTIGRAVITY_MANIFEST =
+  "crates/licoup-agent-antigravity/Cargo.toml";
+export const AGENT_DEEPSEEK_MANIFEST = "crates/licoup-agent-deepseek/Cargo.toml";
+export const AGENT_KIMI_MANIFEST = "crates/licoup-agent-kimi/Cargo.toml";
 
 export const FLUTTER_COMPOSITION_INPUTS = Object.freeze([
   "apps/desktop/analysis_options.yaml",
@@ -233,16 +237,18 @@ export function rustAdapterSdkLayer(filter, harnessArgs = []) {
   );
 }
 
-/// One module of the Codex adapter package's library. The package is its own
+/// One module of an Agent adapter package's library. The package is its own
 /// crate and program, so its leaves run against its own manifest rather than
-/// against the host that composes it.
-export function rustAgentPackageLayer(filter, harnessArgs = []) {
+/// against the host that composes it. The manifest is a parameter because there
+/// is more than one package: a second Agent's leaves must not silently run
+/// against the first Agent's crate.
+export function rustAgentPackageLayer(filter, harnessArgs = [], manifest = AGENT_CODEX_MANIFEST) {
   return command(
     "cargo",
     [
       "test",
       "--manifest-path",
-      AGENT_CODEX_MANIFEST,
+      manifest,
       "--lib",
       filter,
       ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),

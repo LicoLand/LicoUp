@@ -317,6 +317,15 @@ review:
   section 9 describes for any other package. A first-party package gets no
   exemption from the rule, and no first-party package is admitted by version
   equality with the client.
+- Every first-party package says what persisted data it owns. Its manifest either
+  declares the native `conversion` for the published client-state formats it
+  reads and produces, or carries its own namespaced `persistentData` answer with
+  the `persistentDataReason` that justifies it: `none` when the package writes
+  and keeps nothing, `self-owned` when it keeps data under its own directory
+  whose format only that package reads and rewrites and which is not one of the
+  formats a migration converts. A silent manifest is a gap rather than a complete
+  declaration, and the release contract test reads every `crates/*/package` and
+  `components/*/package` manifest to refuse one.
 
 ## 12. What this milestone implements
 

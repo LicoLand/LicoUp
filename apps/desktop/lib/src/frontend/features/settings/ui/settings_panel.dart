@@ -14,6 +14,7 @@ import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/frontend/features/settings/ui/archived_conversations_settings_section.dart';
+import 'package:licoup/src/contracts/client_update_models.dart';
 import 'package:licoup/src/frontend/features/settings/ui/client_update_settings_card.dart';
 import 'package:licoup/src/frontend/features/settings/ui/diagnostics_settings_section.dart';
 import 'package:licoup/src/frontend/features/settings/ui/layout_profile_selector.dart';
@@ -58,10 +59,15 @@ class SettingsPanel extends StatefulWidget {
     super.key,
     required this.binding,
     required this.layoutRegistry,
+    this.clientUpdateAdmission = clientUpdateAdmissionUnavailable,
   });
 
   final SettingsBinding binding;
   final LayoutRegistry layoutRegistry;
+
+  /// Live read of the host maintenance answer the update card gates apply on.
+  /// Hosts that do not supply one keep the fail-closed default.
+  final ClientUpdateAdmission Function() clientUpdateAdmission;
 
   @override
   State<SettingsPanel> createState() => _SettingsPanelState();
@@ -510,7 +516,10 @@ class _SettingsPanelState extends State<SettingsPanel> {
         layoutRegistry: widget.layoutRegistry,
         surface: LayoutRuntimeSurface.desktop,
       ),
-      'updates' => ClientUpdateSettingsCard(binding: widget.binding),
+      'updates' => ClientUpdateSettingsCard(
+        binding: widget.binding,
+        admission: widget.clientUpdateAdmission,
+      ),
       'storage' => _StorageSettings(binding: widget.binding),
       'startup' => StartupAutostartCard(binding: widget.binding),
       'archived-conversations' => ArchivedConversationsSettingsSection(

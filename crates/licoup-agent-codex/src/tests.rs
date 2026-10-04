@@ -215,22 +215,11 @@ fn the_turn_event_port_is_fail_closed_until_the_host_installs_it() {
     turn_event::emit_agent_processing("s", "t", "evidence", Some("tool"));
     turn_event::emit_agent_tool_error("s", "t", "tool", "code");
 
-    // The port is installed once: a second, different answer is refused rather
-    // than silently replacing the consumer.
+    // The port answers one question — where an event goes — because what an
+    // event is belongs to this package. The host installs its own emitter; this
+    // test asserts the seam has that one answer and no second one.
     fn sink(_kind: &str, _session_id: &str, _turn_id: &str, _payload: serde_json::Value) {}
-    fn chunk(_session_id: &str, _turn_id: &str, _text: &str) {}
-    fn completed(_session_id: &str, _turn_id: &str, _text: &str) {}
-    fn processing(_session_id: &str, _turn_id: &str, _evidence_kind: &str, _tool: Option<&str>) {}
-    fn tool_error(_session_id: &str, _turn_id: &str, _tool: &str, _code: &str) {}
-    let port = TurnEventPort {
-        emit_turn_event: sink,
-        emit_agent_message_chunk: chunk,
-        emit_agent_message_completed: completed,
-        emit_agent_processing: processing,
-        emit_agent_tool_error: tool_error,
-    };
-    // The shape is stated here so the host's own functions are what it installs;
-    // this test asserts the seam accepts exactly five answers and no others.
+    let port = TurnEventPort { emit: sink };
     let _ = port;
 }
 

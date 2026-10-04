@@ -83,8 +83,21 @@ impl AcpProtocol {
         // failing closed; see `crate::test_support`.
         #[cfg(any(test, feature = "test-support"))]
         crate::test_support::ensure();
+        let parser = super::parser_port::parser_for(driver_id);
+        Self::with_dialect(config, parser)
+    }
+
+    /// Build one turn's reducer over a dialect the caller already resolved.
+    ///
+    /// This is the constructor an Agent's own package uses: the package owns the
+    /// dialect, so no port installation is needed for the reducer to read the
+    /// right frames, and the dialect a caller hands over is the one this reducer
+    /// reads for the whole turn. The driver identity the turn is keyed on is the
+    /// dialect's own, so a reducer cannot read one Agent's frames while being
+    /// keyed on another's.
+    pub fn with_dialect(config: ProtocolConfig, parser: super::parser_port::AcpParserRegistration) -> Self {
         Self {
-            parser: super::parser_port::parser_for(driver_id),
+            parser,
             config,
             phase: protocol_machine::INITIAL,
             capabilities: CapabilityProbe::default(),

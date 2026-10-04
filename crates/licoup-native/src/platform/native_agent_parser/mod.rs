@@ -10,23 +10,26 @@
 //! duplicated here.
 //!
 //! What is here is one Agent each. `adapters` holds the thirteen parser
-//! entries this host composes — eleven declared here and two, Codex and Pi,
-//! named from the package that owns their protocol — plus the `REGISTRATIONS`
-//! list that names their declarations; `replay` holds the arm that drives each
-//! of them from a recorded transcript and the corpus checks that belong to the
-//! family; and `tests` holds the family's own claims. Each per-Agent subtree
-//! and its arm move to that Agent's crate (`licoup-agent-<agent>`); this root
-//! and the composition are what remain, because they are what names thirteen
-//! parsers and, later, thirteen crates.
+//! entries this host composes — seven declared here and six, Antigravity,
+//! Codex, Cursor, DeepSeek Harness, Kimi Code and Pi, named from the packages
+//! that own their protocols — plus the `REGISTRATIONS` list that names their
+//! declarations; `replay` holds the arm that drives each of them from a
+//! recorded transcript and the corpus checks that belong to the family; and
+//! `tests` holds the family's own claims. Each per-Agent subtree and its arm
+//! move to that Agent's crate (`licoup-agent-<agent>`); this root and the
+//! composition are what remain, because they are what names thirteen parsers
+//! and, later, thirteen crates. Six subtrees have moved already: their parsers
+//! are reached through the packages that own them and no copy stays here.
 //!
 //! The SDK's two protocol-agnostic `port::ParserRegistration` queries are
 //! answered in `adapters::REGISTRATIONS` by the Agents whose facts a reader
 //! actually reaches: Hermes answers `execution_transitions`, because it reports
 //! no transition list of its own and the host's Hermes normalization reads that
-//! query; and the four Agents the Subagent mesh dispatches — Codex, Cursor,
-//! Antigravity and Claude Code — answer `valid_identity` from their own
-//! recorded evidence. Twelve of the thirteen entries leave
-//! `execution_transitions` unanswered because their driver carries the parser's
+//! query; the Agents the Subagent mesh dispatches — Antigravity and Claude Code
+//! here, Codex and Cursor from their own packages — answer `valid_identity`
+//! from their own recorded evidence; and a package entry answers both queries
+//! from the package's wire vocabulary. Every other entry leaves
+//! `execution_transitions` unanswered because its driver carries the parser's
 //! own transition list, and the identity query stays fail-closed for an Agent
 //! the mesh never dispatches. No entry inherits a neighbouring Agent's answer.
 
@@ -42,7 +45,7 @@ mod tests;
 /// caller that already reaches this module keeps one path to the vocabulary
 /// while the definitions live in exactly one crate.
 pub(in crate::platform) use licoup_agent_adapter_sdk::{
-    LifecycleStage, TextForm, TextReconciler, Transition, TransitionReducer,
+    LifecycleStage, Transition, TransitionReducer,
 };
 
 /// Complete packaged inventory. The registry test proves this is bijective

@@ -421,14 +421,13 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
       )
     ]),
   ].join("\n");
-  const codexAppServerFacadeSource = await readText(
-    "crates/licoup-native/src/platform/codex_app_server.rs"
-  );
-  // The Codex app-server protocol identity belongs to the Codex adapter package:
-  // its app-server contract declares the wire that package's driver speaks, and
-  // the host facade re-exports that constant for the driver leaves that execute
-  // it. The transport identity is read from its owning package, while the host
-  // keeps the process half the assertions below still require.
+  // The Codex app-server belongs to the Codex adapter package, end to end: the
+  // protocol vocabulary, the bounded transport that speaks it, and the
+  // execution entry the extension host starts the installed package binary
+  // with. Both groups below are read from its owning package, and the kernel is
+  // read for the opposite fact — that neither the module nor a plugin-repository
+  // route is left there. The absence is asserted, not assumed: a re-introduced
+  // kernel copy fails here instead of shipping as a second owner.
   const codexAppServerProtocolSource = await readJoinedText([
     "crates/licoup-agent-codex/src/app_server.rs",
     ...await collectSourceFiles(
@@ -437,20 +436,36 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     ),
   ]);
   const codexAppServerRustSource = await readJoinedText([
-    "crates/licoup-native/src/platform/codex_app_server.rs",
+    "crates/licoup-agent-codex/src/app_server.rs",
     ...await collectSourceFiles(
-      "crates/licoup-native/src/platform/codex_app_server",
+      "crates/licoup-agent-codex/src/app_server",
       ".rs"
     ),
+    // The app-server protocol identity belongs to the Codex adapter package, so
+    // the assertion reads it where it now lives rather than from the process half
+    // that only re-exports it.
+    "crates/licoup-agent-codex/src/app_server/contract.rs",
     "crates/licoup-agent-codex/src/parser/control.rs",
+    // The package's own program is what the extension host starts; the
+    // execution verbs it serves are part of the entry, not a second launcher.
+    "crates/licoup-agent-codex/src/bin/lico-agent-codex.rs",
   ]);
+  const kernelRustSource = await readJoinedText(
+    await collectSourceFiles("crates/licoup-native/src", ".rs")
+  );
   assert(runtimeAdaptersRustSource.includes("enum RuntimeAdapter") &&
     runtimeAdaptersRustSource.includes('"runtime-adapter"') &&
     runtimeAdaptersRustSource.includes("PACKAGED_RUNTIME_ADAPTER_IDS") &&
     runtimeAdaptersRustSource.includes("parse_runtime_driver_registry") &&
     runtimeAdaptersRustSource.includes("DRIVER_INVENTORY_JSON") &&
     runtimeAdaptersRustSource.includes("READINESS_JSON") &&
-    runtimeAdaptersRustSource.includes("codex_app_server::execute") &&
+    // The execute entry lives in the owning package, and the package's own
+    // program serves the extension host's execution verbs through it.
+    codexAppServerRustSource.includes("pub fn execute(") &&
+    codexAppServerRustSource.includes("agent.execute") &&
+    codexAppServerRustSource.includes("extension.initialize") &&
+    codexAppServerRustSource.includes("list_models") &&
+    !runtimeAdaptersRustSource.includes("codex_app_server::") &&
     runtimeAdaptersRustSource.includes("nativeSessionId") &&
     runtimeAdaptersRustSource.includes("approvalOwner") &&
     codexAppServerProtocolSource.includes('"codex-app-server-stdio-jsonrpc"') &&
@@ -461,7 +476,12 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     codexAppServerRustSource.includes("decline_server_request") &&
     codexAppServerRustSource.includes("finish_protocol_transport") &&
     codexAppServerRustSource.includes("StdoutLimitExceeded") &&
-    !codexAppServerRustSource.includes("struct AcpProtocol"),
+    !codexAppServerRustSource.includes("struct AcpProtocol") &&
+    // No Codex app-server module and no plugin-repository route remain in the
+    // kernel: the client starts the installed package and owns neither.
+    !kernelRustSource.includes("mod codex_app_server;") &&
+    !kernelRustSource.includes("codex_app_server::") &&
+    !kernelRustSource.includes("LicoUp-Plugins"),
     "runtime adapters must expose canonical per-agent transports and explicit approval ownership"
   );
   assert(mobileRelayRustSource.includes("BadTowerStationTransport") &&

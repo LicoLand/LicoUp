@@ -22,6 +22,10 @@ licoup-foundation = { path = "../licoup-foundation" }
 # The portable client-state store the discovery cache and the target-route
 # records are written through.
 licoup-client-state = { path = "../licoup-client-state" }
+# The DeepSeek Harness adapter package owns the provider catalogue a default
+# installation starts from; the registry here merges it rather than executing a
+# Node probe to discover it.
+licoup-agent-deepseek = { path = "../licoup-agent-deepseek" }
 rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true

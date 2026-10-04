@@ -17,7 +17,12 @@
 //!
 //! What is deliberately not here: no network, no marketplace, no account, no
 //! process launch. A local import has to work with the machine offline, and this
-//! harness would fail if anything on these paths needed to reach out.
+//! harness would fail if anything on these paths needed to reach out. The
+//! `commands` module drives the native routes over the same synthetic data home,
+//! including the maintenance seam, which asks the real native idle guard and its
+//! own canonical stores.
+
+mod commands;
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -40,6 +45,10 @@ use licoup_native::platform::extension_packages::{
     ResourceChange, ResourceHost, StorageKind, SystemDefault, TrustRecord, UninstallTransaction,
     account_store, close_surface, plan_gc, preview, running_client_version, scan,
 };
+
+/// GATEWAY-PACKAGE-LIFECYCLE: the Gateway login item and the package that owns
+/// it, driven through the real store and the real registration owner.
+mod gateway_package;
 
 /// MCP-PACKAGE-LIFECYCLE: the optional service process and its callers, bound to
 /// the installed and enabled package generation.
@@ -903,7 +912,15 @@ fn uninstall_withdraws_admission_first_and_then_reclaims_only_its_own_bytes() {
         registry.get(&instance_id).expect("instance").state(),
         InstanceLifecycle::Stopped
     );
-    let outcome = drained.collect(&store, &registry).expect("collect");
+    // This package registered nothing outside its own bytes, so the real owners
+    // are asked for nothing and the reclaim proceeds.
+    let outcome = drained
+        .collect(
+            &store,
+            &registry,
+            &licoup_native::platform::package_registration_release::PackageRegistrationOwners::default(),
+        )
+        .expect("collect");
 
     assert_eq!(outcome.unknown_work, 1, "cancelled work is Unknown");
     assert!(outcome.reclaimed_bytes > 0);
@@ -1866,7 +1883,7 @@ fn a_removed_data_package_falls_back_to_the_system_default_and_reports_it() {
             .expect("begin")
             .drain(&mut registry, RemainingWork::Cancel)
             .expect("drain");
-    let removed = drained.collect(&store, &registry).expect("collect");
+    let removed = drained.collect(&store, &registry, &licoup_native::platform::package_registration_release::PackageRegistrationOwners::default()).expect("collect");
     assert_eq!(removed.unknown_work, 1);
     assert!(!store.installed_path(id, version).exists());
 

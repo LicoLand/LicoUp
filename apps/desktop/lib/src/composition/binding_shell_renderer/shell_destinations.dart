@@ -3,6 +3,7 @@ import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/composition/client_composition_set.dart';
+import 'package:licoup/src/contracts/client_update_models.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/environment/workspace_home_directory_scope.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_panel.dart';
@@ -63,6 +64,7 @@ final class ShellDestinations {
     required this.targets,
     required this.openExternalUri,
     required this.workspaceHomeDirectory,
+    required this.clientUpdateAdmission,
     this.skillHub,
     this.pluginManagement,
     this.models,
@@ -83,6 +85,11 @@ final class ShellDestinations {
   final TargetsBinding targets;
   final ExternalUriOpener openExternalUri;
   final String workspaceHomeDirectory;
+
+  /// Live read of the host maintenance answer the settings surface renders its
+  /// upgrade actions from. The composition supplies the application controller
+  /// read; the renderer's fail-closed default reaches here unchanged.
+  final ClientUpdateAdmission Function() clientUpdateAdmission;
 
   /// The optional feature bindings. Null means the composition did not install
   /// that feature, so its destination has no surface.
@@ -181,6 +188,7 @@ final class ShellDestinations {
         return SettingsPanel(
           binding: settings,
           layoutRegistry: layout.registry,
+          clientUpdateAdmission: clientUpdateAdmission,
         );
       case ClientSection.agentHub:
         final agentHub = this.agentHub;

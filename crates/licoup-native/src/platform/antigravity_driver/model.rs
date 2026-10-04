@@ -12,7 +12,12 @@ use std::time::Duration;
 pub(in crate::platform) const RUNTIME_PROTOCOL: &str = "antigravity-cli-argv-hook-v1";
 pub(in crate::platform) const DRIVER_ID: &str = "antigravity-cli";
 pub(super) const HOOK_NAMESPACE: &str = "lico-up-antigravity-session";
-pub(super) const RECEIPT_ENV: &str = "LICO_ANTIGRAVITY_SESSION_RECEIPT";
+/// The receipt path variable the launching driver exports for one turn.
+///
+/// The name belongs to the package that writes the receipt, so this host reads
+/// it from there rather than retyping it: the writer and the launcher cannot
+/// disagree about which variable names the file.
+pub(super) use licoup_agent_antigravity::hook::RECEIPT_ENV;
 pub(super) const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 #[derive(Clone, Debug, Default)]
