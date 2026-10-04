@@ -12,7 +12,7 @@ const manifest = JSON.parse(read("schemas/client_bridge/manifest.json"));
 const contract = JSON.parse(read("schemas/client_bridge/strategy.json"));
 const fixture = JSON.parse(
   read(
-    "crates/licoup-native/tests/fixtures/workflow_runtime/synthetic-entry-worker.fixture",
+    "crates/licoup-workflow-runtime/tests/fixtures/workflow_runtime/synthetic-entry-worker.fixture",
   ),
 );
 
