@@ -13,11 +13,13 @@
 
 mod authority;
 mod port;
+mod schedule;
 #[cfg(test)]
 mod tests;
 
 pub use authority::VerifiedClaimAuthority;
 pub use port::NativeProjectApplication;
+pub use schedule::{NativeProjectWorkDirectory, ProjectWorkDirectory};
 
 use licoup_foundation::platform::paths::portable_data_dir;
 use licoup_project::{ProjectFailure, ProjectIdentityStore};

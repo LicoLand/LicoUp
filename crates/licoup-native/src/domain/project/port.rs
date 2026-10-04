@@ -423,7 +423,7 @@ fn declared_item(work_item_id: &str) -> Result<WorkItemId, ProjectFailure> {
 /// built from identities the caller declared. Every other detail stays with the
 /// owner, because it is a diagnostic — an escaping location's detail names
 /// filesystem paths, which are not public failure arguments.
-fn failure(error: ProjectFailure) -> ApplicationFailure {
+pub(super) fn failure(error: ProjectFailure) -> ApplicationFailure {
     let normalization = if error.code() == "project_identity_store_unavailable" {
         FailureNormalization::RETRYABLE
     } else {

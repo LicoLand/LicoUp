@@ -56,6 +56,7 @@ mod dependency;
 mod failure;
 mod identity;
 mod import;
+mod schedule;
 mod store;
 
 pub use authority::{NoAuthorityDirectory, ProjectAuthorityDirectory};
@@ -64,7 +65,8 @@ pub use dependency::{
     WorkRef, read_local_artifact, render_dependency_path, stays_inside_authorized_root,
 };
 pub use failure::{
-    DEPENDENCY_STAGE, IDENTITY_STAGE, IMPORT_STAGE, ProjectFailure, REGISTRATION_STAGE, STORE_STAGE,
+    DEPENDENCY_STAGE, IDENTITY_STAGE, IMPORT_STAGE, ProjectFailure, REGISTRATION_STAGE,
+    SCHEDULE_STAGE, STORE_STAGE,
 };
 pub use identity::{
     AuthorityKind, AuthorityReference, AuthorizedRoot, MAX_AUTHORITY_REFERENCE_BYTES,
@@ -79,6 +81,9 @@ pub use import::{
     PLAN_DOCUMENT_SCHEMA, PLAN_IMPORT_STAGE, PlanAdmission, PlanDocument, PlanImportChange,
     PlanImportOutcome, PlanWorkItem, RoleId, RoleReference, RoleScope, SourceId, SourceIdentity,
     SourceKind, SourceLocator, SourceMapping,
+};
+pub use schedule::{
+    BlockedWork, OutstandingWork, SCHEDULE_PROJECT_UNAUTHORIZED, StopScope, WorkReadiness,
 };
 pub use store::{
     PROJECT_DEPENDENCY_COLUMNS, PROJECT_IDENTITY_COLUMNS, PROJECT_IMPORT_SOURCE_COLUMNS,

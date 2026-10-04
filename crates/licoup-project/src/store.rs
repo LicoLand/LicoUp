@@ -30,6 +30,7 @@ use crate::import::{
     ImportSlice, PlanAdmission, PlanImportChange, PlanImportOutcome, SourceId, SourceKind,
     SourceLocator,
 };
+use crate::schedule::{BlockedWork, OutstandingWork, StopScope, WorkReadiness};
 use anyhow::{Result, anyhow, ensure};
 use licoup_foundation::platform::file_security::{ensure_private_dir, harden_private_path};
 use rusqlite::{Connection, ErrorCode, OptionalExtension, TransactionBehavior, params};
@@ -514,6 +515,100 @@ impl ProjectIdentityStore {
         })
     }
 
+    /// Which declared work of one project may begin now.
+    ///
+    /// Readiness is decided per admitted work item from its own declared inputs,
+    /// so one waiting branch never holds back an independent one. A work item
+    /// whose declared inputs are all materialized — and one that declares none —
+    /// is ready; the rest name the producers they actually wait for.
+    pub fn work_readiness(&self, project_id: &ProjectId) -> Result<WorkReadiness, ProjectFailure> {
+        let connection = self.connect()?;
+        if !project_exists(&connection, project_id.as_str())? {
+            return Err(OutstandingWork::unauthorized());
+        }
+        let admitted = admitted_work_items(&connection, project_id)?;
+        let mut waiting: BTreeMap<WorkItemId, Vec<WorkRef>> = BTreeMap::new();
+        for declared in self.dependencies(project_id)? {
+            if declared.artifact_state != ArtifactState::Materialized {
+                waiting
+                    .entry(declared.dependency.work_item_id.clone())
+                    .or_default()
+                    .push(declared.producer());
+            }
+        }
+        let mut ready = Vec::new();
+        let mut blocked = Vec::new();
+        for work_item_id in admitted {
+            match waiting.remove(&work_item_id) {
+                Some(blocked_by) if !blocked_by.is_empty() => blocked.push(BlockedWork {
+                    work_item_id,
+                    blocked_by,
+                }),
+                _ => ready.push(work_item_id),
+            }
+        }
+        Ok(WorkReadiness {
+            project_id: project_id.clone(),
+            ready,
+            blocked,
+        })
+    }
+
+    /// The work one stop releases: the selection and its declared consumers.
+    ///
+    /// The scope follows the declared dependency direction only, so it names
+    /// exactly the work that waits on the selection and never an unrelated
+    /// branch or a whole project. It signals nothing: the caller takes it to the
+    /// existing stop owners, and an owner that does not acknowledge leaves its
+    /// work unconfirmed rather than released.
+    pub fn stop_scope(
+        &self,
+        project_id: &ProjectId,
+        work_item_id: &WorkItemId,
+    ) -> Result<StopScope, ProjectFailure> {
+        let connection = self.connect()?;
+        if !project_exists(&connection, project_id.as_str())? {
+            return Err(OutstandingWork::unauthorized());
+        }
+        let selected = WorkRef::new(project_id.clone(), work_item_id.clone());
+        let mut released = vec![selected.clone()];
+        released.extend(self.blocked_consumers(&selected)?);
+        let projects = released
+            .iter()
+            .map(|work| work.project_id.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        Ok(StopScope {
+            project_id: project_id.clone(),
+            work_item_id: work_item_id.clone(),
+            released,
+            projects,
+        })
+    }
+
+    /// Whether one project still holds admitted responsibility.
+    ///
+    /// The answer comes from the durable rows, so a card, a status or a detached
+    /// view cannot release it. Settled means the project holds no admitted plan
+    /// work and no declared input.
+    pub fn outstanding_work(
+        &self,
+        project_id: &ProjectId,
+    ) -> Result<OutstandingWork, ProjectFailure> {
+        let readiness = self.work_readiness(project_id)?;
+        let declared_inputs = self.dependencies(project_id)?.len();
+        let admitted_work_items = readiness.ready.len() + readiness.blocked.len();
+        Ok(OutstandingWork {
+            project_id: project_id.clone(),
+            admitted_work_items,
+            ready: readiness.ready.len(),
+            blocked: readiness.blocked.len(),
+            declared_inputs,
+            settled: admitted_work_items == 0 && declared_inputs == 0,
+        })
+    }
+
     fn connect(&self) -> Result<Connection, ProjectFailure> {
         let connection = Connection::open(&self.db_path).map_err(|error| {
             ProjectFailure::store("project_identity_store_unavailable")
@@ -737,6 +832,35 @@ fn dependency_error(error: impl std::fmt::Display) -> ProjectFailure {
 
 fn import_error(error: impl std::fmt::Display) -> ProjectFailure {
     ProjectFailure::import(IMPORT_RECORD_INVALID).with_detail(error.to_string())
+}
+
+/// Every admitted work item one project holds, in admission order.
+///
+/// The rows are the responsibility: a work item is admitted because a document
+/// declared it, and it stays admitted until the explicit change rules retire it.
+fn admitted_work_items(
+    connection: &Connection,
+    project_id: &ProjectId,
+) -> Result<Vec<WorkItemId>, ProjectFailure> {
+    let mut statement = connection
+        .prepare(
+            "SELECT work_item_id FROM project_plan_imports
+              WHERE project_id = ?1
+              ORDER BY import_sequence",
+        )
+        .map_err(store_error)?;
+    let declared = statement
+        .query_map(params![project_id.as_str()], |row| row.get::<_, String>(0))
+        .map_err(store_error)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(store_error)?;
+    let mut work_item_ids = Vec::with_capacity(declared.len());
+    for work_item_id in declared {
+        work_item_ids.push(WorkItemId::declare(work_item_id).map_err(|_| {
+            import_error("a stored work-item identity is not one this owner admits")
+        })?);
+    }
+    Ok(work_item_ids)
 }
 
 /// One source-owned slice, read from the rows the store already holds.
