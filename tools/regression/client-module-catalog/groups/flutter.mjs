@@ -1653,12 +1653,17 @@ export const FLUTTER_MODULES = Object.freeze([
         "apps/desktop/lib/src/contracts/work_control_gateway.dart",
         "apps/desktop/lib/src/contracts/presentation/work_control_models.dart",
         "apps/desktop/lib/src/frontend/features/runtime_control/**",
+        "apps/desktop/lib/src/platform/native_client/native_work_control_gateway.dart",
         "apps/desktop/test/force_stop_dialog_test.dart",
+        "apps/desktop/test/native_work_control_gateway_test.dart",
         "apps/desktop/test/work_control_controller_test.dart",
+        "apps/desktop/test/work_control_gateway_wiring_test.dart",
       ],
       command: flutterTests([
         "test/force_stop_dialog_test.dart",
+        "test/native_work_control_gateway_test.dart",
         "test/work_control_controller_test.dart",
+        "test/work_control_gateway_wiring_test.dart",
       ]),
     }),
   defineModule({
