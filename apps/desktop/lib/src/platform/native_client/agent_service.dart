@@ -53,6 +53,7 @@ class AgentService
     NativeCommandExecutor? oneShotCommandExecutor,
     NativeStdioRpcTransport? stdioRpcTransport,
     ConversationNativePort? conversationNativePort,
+    WorkControlGateway? workControlGateway,
     AgentCommandRunner? processIo,
     NativeCommandActions? commandActions,
     bool? persistentStdioRpcEnabled,
@@ -86,10 +87,14 @@ class AgentService
         );
     // The work-control lane is a peer of the conversation lane over the same
     // owned transport, so it is composed here rather than left unavailable.
-    _workControlGateway = NativeWorkControlGateway(
-      transport: rpcTransport,
-      desktopRuntime: desktopRuntime,
-    );
+    // A caller that supplies its own conversation lane injects this one too,
+    // so a synthetic fixture never inherits a live native control plane.
+    _workControlGateway =
+        workControlGateway ??
+        NativeWorkControlGateway(
+          transport: rpcTransport,
+          desktopRuntime: desktopRuntime,
+        );
     final persistentEnabled =
         persistentStdioRpcEnabled ??
         (desktopRuntime &&
