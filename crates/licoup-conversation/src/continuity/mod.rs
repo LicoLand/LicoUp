@@ -19,10 +19,11 @@ pub mod unavailable;
 
 pub use crate::store::ContinuityUnitOfWork;
 pub use admission::{
-    admit_card_anchor, admit_card_identity_stable, admit_completion_transition,
-    admit_composition_request, admit_goal_progress, admit_idempotency, admit_page_limit,
-    admit_parent_context_grant, admit_sibling_card_order, admit_source_ref,
-    admit_task_child_admission, admit_task_relation, admit_utf8_span, admit_versions,
+    ContinuityCommitmentAdmission, admit_card_anchor, admit_card_identity_stable,
+    admit_commitment_admission, admit_completion_transition, admit_composition_request,
+    admit_goal_progress, admit_idempotency, admit_page_limit, admit_parent_context_grant,
+    admit_sibling_card_order, admit_source_ref, admit_task_child_admission, admit_task_relation,
+    admit_utf8_span, admit_versions, retain_current_criterion_evidence,
 };
 pub use commit::{
     CHILD_WORK_ACCEPTED_DESIGNATION, CHILD_WORK_INTENT_DESIGNATION, CHILD_WORK_LIVE_DESIGNATION,
