@@ -115,6 +115,21 @@ pub(crate) fn codex_turn_event_port() -> licoup_agent_codex::port::turn_event::T
     }
 }
 
+/// This host's answer for the Pi adapter package's turn-event port.
+///
+/// The package owns *what* one Pi turn emits; this host owns *where* it goes,
+/// because the host owns the consumer. The answer is this host's own emitters
+/// rather than a second sink, so a Pi event and a Cursor event reach the same
+/// reader through the same path.
+pub(crate) fn pi_turn_event_port() -> licoup_agent_pi::port::turn_event::TurnEventPort {
+    licoup_agent_pi::port::turn_event::TurnEventPort {
+        emit_turn_event,
+        emit_agent_message_chunk,
+        emit_agent_message_completed,
+        emit_agent_processing,
+    }
+}
+
 /// The environment one Codex app-server child is launched with.
 ///
 /// The user's own login shell is the default command authority (ADR 0007), so

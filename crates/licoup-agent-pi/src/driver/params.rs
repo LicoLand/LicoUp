@@ -5,20 +5,20 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 #[derive(Clone, Debug)]
-pub(in crate::platform) struct ProtocolConfig {
-    pub(in crate::platform) prompt: String,
-    pub(in crate::platform) requested_session_id: String,
-    pub(in crate::platform) resume_session_path: Option<PathBuf>,
-    pub(in crate::platform) cwd: String,
-    pub(in crate::platform) model: Option<String>,
-    pub(in crate::platform) model_provider: Option<String>,
-    pub(in crate::platform) model_id: Option<String>,
-    pub(in crate::platform) thinking_level: Option<String>,
-    pub(in crate::platform) turn_id: String,
+pub struct ProtocolConfig {
+    pub prompt: String,
+    pub requested_session_id: String,
+    pub resume_session_path: Option<PathBuf>,
+    pub cwd: String,
+    pub model: Option<String>,
+    pub model_provider: Option<String>,
+    pub model_id: Option<String>,
+    pub thinking_level: Option<String>,
+    pub turn_id: String,
 }
 
 impl ProtocolConfig {
-    pub(in crate::platform) fn from_params(
+    pub fn from_params(
         params: &Value,
         prompt: &str,
         session_id: &str,
@@ -121,7 +121,7 @@ impl ProtocolConfig {
         })
     }
 
-    pub(in crate::platform) fn is_resume(&self) -> bool {
+    pub fn is_resume(&self) -> bool {
         self.resume_session_path.is_some()
     }
 }

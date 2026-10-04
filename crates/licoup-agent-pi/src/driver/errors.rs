@@ -1,16 +1,16 @@
 #[derive(Clone, Debug)]
-pub(in crate::platform) struct ProtocolFailure(Box<ProtocolFailurePayload>);
+pub struct ProtocolFailure(Box<ProtocolFailurePayload>);
 
 #[derive(Clone, Debug)]
-pub(in crate::platform) struct ProtocolFailurePayload {
-    pub(in crate::platform) code: &'static str,
-    pub(in crate::platform) message: &'static str,
-    pub(in crate::platform) stage: &'static str,
-    pub(in crate::platform) user_interaction_required: bool,
-    pub(in crate::platform) request_method: Option<String>,
-    pub(in crate::platform) session_id: Option<String>,
-    pub(in crate::platform) turn_id: Option<String>,
-    pub(in crate::platform) turn_status: Option<String>,
+pub struct ProtocolFailurePayload {
+    pub code: &'static str,
+    pub message: &'static str,
+    pub stage: &'static str,
+    pub user_interaction_required: bool,
+    pub request_method: Option<String>,
+    pub session_id: Option<String>,
+    pub turn_id: Option<String>,
+    pub turn_status: Option<String>,
 }
 
 impl std::ops::Deref for ProtocolFailure {
@@ -28,11 +28,11 @@ impl std::ops::DerefMut for ProtocolFailure {
 }
 
 impl ProtocolFailure {
-    pub(in crate::platform) fn into_payload(self) -> ProtocolFailurePayload {
+    pub fn into_payload(self) -> ProtocolFailurePayload {
         *self.0
     }
 
-    pub(in crate::platform) fn new(
+    pub fn new(
         code: &'static str,
         message: &'static str,
         stage: &'static str,
@@ -49,7 +49,7 @@ impl ProtocolFailure {
         }))
     }
 
-    pub(in crate::platform) fn with_session(mut self, session_id: Option<&str>) -> Self {
+    pub fn with_session(mut self, session_id: Option<&str>) -> Self {
         let session_id = session_id.map(str::trim).filter(|value| !value.is_empty());
         self.session_id = session_id.map(str::to_string);
         self
@@ -57,7 +57,7 @@ impl ProtocolFailure {
 }
 
 impl ProtocolFailure {
-    pub(in crate::platform) fn with_turn(mut self, turn_id: &str) -> Self {
+    pub fn with_turn(mut self, turn_id: &str) -> Self {
         if !turn_id.is_empty() {
             self.turn_id = Some(turn_id.to_string());
         }

@@ -109,6 +109,10 @@ const declaredPackages = Object.freeze([
     payloadRole: "copilot-adapter-package-payload",
   }),
   declaredRelease({
+    source: "crates/licoup-agent-pi/package",
+    payloadRole: "pi-adapter-package-payload",
+  }),
+  declaredRelease({
     source: "components/appearance/package",
     payloadRole: "appearance-converter-package-payload",
   }),

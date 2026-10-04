@@ -505,6 +505,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.core.mcp-server",
   "rust.core.agent-claude-code-package",
   "rust.core.agent-codex-package",
+  "rust.core.agent-pi-package",
   "rust.core.agent-antigravity-package",
   "rust.core.agent-cursor-package",
   "rust.core.agent-deepseek-package",

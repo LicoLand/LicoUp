@@ -15,6 +15,7 @@ members = [
     "crates/licoup-agent-codex",
     "crates/licoup-agent-claude-code",
     "crates/licoup-agent-copilot",
+    "crates/licoup-agent-pi",
     "crates/licoup-agent-antigravity",
     "crates/licoup-agent-cursor",
     "crates/licoup-agent-deepseek",

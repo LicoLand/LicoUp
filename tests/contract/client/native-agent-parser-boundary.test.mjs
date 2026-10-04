@@ -5,7 +5,7 @@ import test from 'node:test';
 // The thirteen per-Agent parsers and the composition that names them stay in the
 // host until that Agent's own package owns the protocol; the shared adapter
 // contract, the registry lookup, the replay harness and the lifecycle authority
-// moved to `licoup-agent-adapter-sdk`. Twelve Agents have moved further: their
+// moved to `licoup-agent-adapter-sdk`. Thirteen Agents have moved further: their
 // vendor protocol, wire vocabulary, parser declaration and replay arm are their
 // own package's, and the composition names the package instead of keeping a
 // second copy. Everything below is derived from the two maps, so adding the
@@ -120,6 +120,13 @@ const packaged = {
     module: 'parser',
     source: 'crates/licoup-agent-opencode/src/parser.rs',
     contractId: 'opencode',
+    readsParser: true,
+  },
+  pi: {
+    crate: 'licoup_agent_pi',
+    module: 'parser',
+    source: 'crates/licoup-agent-pi/src/parser.rs',
+    contractId: 'pi',
     readsParser: true,
   },
 };

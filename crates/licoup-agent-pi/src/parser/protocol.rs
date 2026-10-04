@@ -1,20 +1,20 @@
 use super::{processing_evidence_kind, sanitized_event};
-use crate::platform::pi_driver::errors::ProtocolFailure;
-use crate::platform::pi_driver::model::EffectiveSettings;
-use crate::platform::pi_driver::params::ProtocolConfig;
+use crate::driver::errors::ProtocolFailure;
+use crate::driver::model::EffectiveSettings;
+use crate::driver::params::ProtocolConfig;
 use serde_json::{Value, json};
 use std::sync::mpsc::TryRecvError;
 
 #[derive(Clone, Debug)]
-pub(in crate::platform) struct ProtocolOutcome {
-    pub(in crate::platform) output: String,
-    pub(in crate::platform) session_id: String,
-    pub(in crate::platform) turn_id: String,
-    pub(in crate::platform) turn_status: String,
-    pub(in crate::platform) effective: EffectiveSettings,
+pub struct ProtocolOutcome {
+    pub output: String,
+    pub session_id: String,
+    pub turn_id: String,
+    pub turn_status: String,
+    pub effective: EffectiveSettings,
 }
 
-pub(in crate::platform) enum ProtocolEffect {
+pub enum ProtocolEffect {
     Send(Value),
     Interact(PendingInteraction),
     Complete(Box<ProtocolOutcome>),
@@ -24,27 +24,28 @@ pub(in crate::platform) enum ProtocolEffect {
 /// Parser-owned parked Pi dialog. It retains the exact native request until
 /// the single structured client response is available for conversion back to
 /// one matching `extension_ui_response` frame.
-pub(in crate::platform) struct PendingInteraction {
+pub struct PendingInteraction {
     request: Value,
-    parked: crate::platform::native_agent_interaction::ParkedInteraction,
+    parked: licoup_foundation::platform::native_agent_interaction::ParkedInteraction,
 }
 
 impl PendingInteraction {
-    #[cfg(test)]
-    pub(in crate::platform) fn callback_token(&self) -> &str {
+    /// The parked dialog's callback token, as the interaction registry issued
+    /// it. The tests that drive a dialog from either side read it here.
+    pub fn callback_token(&self) -> &str {
         &self.parked.token
     }
 
-    #[cfg(test)]
-    pub(in crate::platform) fn exact_request(&self) -> &Value {
+    /// The exact native request the dialog parked, retained for conversion back
+    /// to one matching `extension_ui_response` frame.
+    pub fn exact_request(&self) -> &Value {
         &self.request
     }
 
-    #[cfg(test)]
-    pub(in crate::platform) fn response(
-        self,
-        protocol: &PiProtocol,
-    ) -> Result<Value, ProtocolFailure> {
+    /// Take the single structured client response, waiting for it. The
+    /// production loop polls with [`Self::try_response`] so a parked dialog
+    /// never blocks the turn it belongs to.
+    pub fn response(self, protocol: &PiProtocol) -> Result<Value, ProtocolFailure> {
         let response = self.parked.response_rx.recv().map_err(|_| {
             protocol.failure_with_ids(
                 "pi_interaction_transport_closed",
@@ -55,7 +56,7 @@ impl PendingInteraction {
         self.encode_response(response, protocol)
     }
 
-    pub(in crate::platform) fn try_response(
+    pub fn try_response(
         &self,
         protocol: &PiProtocol,
     ) -> Result<Option<Value>, ProtocolFailure> {
@@ -126,12 +127,12 @@ impl PendingInteraction {
 
 impl Drop for PendingInteraction {
     fn drop(&mut self) {
-        crate::platform::native_agent_interaction::abandon(&self.parked.token);
+        licoup_foundation::platform::native_agent_interaction::abandon(&self.parked.token);
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum ProtocolPhase {
+pub enum ProtocolPhase {
     AwaitSwitch,
     AwaitInitialState,
     AwaitAvailableModels,
@@ -145,21 +146,21 @@ pub(in crate::platform) enum ProtocolPhase {
 }
 
 #[derive(Debug)]
-pub(in crate::platform) struct PiProtocol {
-    pub(in crate::platform) config: ProtocolConfig,
-    pub(in crate::platform) phase: ProtocolPhase,
-    pub(in crate::platform) session_id: Option<String>,
-    pub(in crate::platform) output: String,
-    pub(in crate::platform) events: Vec<Value>,
-    pub(in crate::platform) effective: EffectiveSettings,
-    pub(in crate::platform) pending_request: Option<&'static str>,
+pub struct PiProtocol {
+    pub config: ProtocolConfig,
+    pub phase: ProtocolPhase,
+    pub session_id: Option<String>,
+    pub output: String,
+    pub events: Vec<Value>,
+    pub effective: EffectiveSettings,
+    pub pending_request: Option<&'static str>,
     /// Last provider/turn error observed during the active prompt (not echoed
     /// raw to callers; used only to classify a typed failure when text is empty).
     turn_error: Option<String>,
 }
 
 impl PiProtocol {
-    pub(in crate::platform) fn new(config: ProtocolConfig) -> Self {
+    pub fn new(config: ProtocolConfig) -> Self {
         let effective = EffectiveSettings {
             cwd: Some(config.cwd.clone()),
             model: config.model.clone(),
@@ -183,7 +184,7 @@ impl PiProtocol {
         }
     }
 
-    pub(in crate::platform) fn initial_request(&mut self) -> Value {
+    pub fn initial_request(&mut self) -> Value {
         if let Some(path) = self.config.resume_session_path.clone() {
             self.pending_request = Some("switch_session");
             return json!({
@@ -282,7 +283,7 @@ impl PiProtocol {
         }
     }
 
-    pub(in crate::platform) fn failure_with_ids(
+    pub fn failure_with_ids(
         &self,
         code: &'static str,
         message: &'static str,
@@ -297,14 +298,14 @@ impl PiProtocol {
             .with_turn(&self.config.turn_id)
     }
 
-    pub(in crate::platform) fn active_turn_binding(&self) -> Option<(&str, &str)> {
+    pub fn active_turn_binding(&self) -> Option<(&str, &str)> {
         if self.phase != ProtocolPhase::AwaitSettled {
             return None;
         }
         Some((self.session_id.as_deref()?, &self.config.turn_id))
     }
 
-    pub(in crate::platform) fn handle_message(&mut self, message: Value) -> Vec<ProtocolEffect> {
+    pub fn handle_message(&mut self, message: Value) -> Vec<ProtocolEffect> {
         let message_type = message.get("type").and_then(Value::as_str).unwrap_or("");
         if message_type == "extension_ui_request" {
             let Some(method) = message
@@ -373,10 +374,10 @@ impl PiProtocol {
                 )
             })?;
         let response_shape = match method {
-            "select" => crate::platform::native_agent_interaction::ResponseShape::Select,
-            "confirm" => crate::platform::native_agent_interaction::ResponseShape::Confirm,
-            "input" => crate::platform::native_agent_interaction::ResponseShape::Input,
-            "editor" => crate::platform::native_agent_interaction::ResponseShape::Editor,
+            "select" => licoup_foundation::platform::native_agent_interaction::ResponseShape::Select,
+            "confirm" => licoup_foundation::platform::native_agent_interaction::ResponseShape::Confirm,
+            "input" => licoup_foundation::platform::native_agent_interaction::ResponseShape::Input,
+            "editor" => licoup_foundation::platform::native_agent_interaction::ResponseShape::Editor,
             _ => {
                 return Err(self.failure_with_ids(
                     "pi_extension_ui_method_unsupported",
@@ -413,8 +414,8 @@ impl PiProtocol {
             .take(32)
             .map(|option| option.chars().take(128).collect())
             .collect::<Vec<String>>();
-        let parked = crate::platform::native_agent_interaction::park(
-            crate::platform::native_agent_interaction::InteractionRequest {
+        let parked = licoup_foundation::platform::native_agent_interaction::park(
+            licoup_foundation::platform::native_agent_interaction::InteractionRequest {
                 adapter_id: "pi".to_string(),
                 session_id: session_id.to_string(),
                 turn_id: self.config.turn_id.clone(),
@@ -432,7 +433,7 @@ impl PiProtocol {
                 "extension-ui/request",
             )
         })?;
-        crate::platform::turn_event_emit::emit_turn_event(
+        crate::port::turn_event::emit_turn_event(
             "agent.interaction.needed",
             session_id,
             &self.config.turn_id,
@@ -688,7 +689,7 @@ impl PiProtocol {
                     ))];
                 }
                 self.session_id = Some(session_id.clone());
-                crate::platform::turn_event_emit::emit_agent_message_completed(
+                crate::port::turn_event::emit_agent_message_completed(
                     &session_id,
                     &self.config.turn_id,
                     &self.output,
@@ -712,7 +713,7 @@ impl PiProtocol {
             if let Some(evidence_kind) = processing_evidence_kind(message)
                 && let Some(session_id) = self.session_id.as_deref()
             {
-                crate::platform::turn_event_emit::emit_agent_processing(
+                crate::port::turn_event::emit_agent_processing(
                     session_id,
                     &self.config.turn_id,
                     evidence_kind,
@@ -751,7 +752,7 @@ impl PiProtocol {
                 if let Some(delta) = event.get("delta").and_then(Value::as_str) {
                     self.output.push_str(delta);
                     if let Some(session_id) = self.session_id.as_deref() {
-                        crate::platform::turn_event_emit::emit_agent_message_chunk(
+                        crate::port::turn_event::emit_agent_message_chunk(
                             session_id,
                             &self.config.turn_id,
                             delta,

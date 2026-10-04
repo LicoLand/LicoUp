@@ -1,21 +1,21 @@
-use super::AdapterContract;
-use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
-use crate::platform::pi_driver::errors::ProtocolFailure;
+use licoup_agent_adapter_sdk::adapters::AdapterContract;
+use licoup_agent_adapter_sdk::{LifecycleStage, Transition, TransitionReducer};
+use crate::driver::errors::ProtocolFailure;
 use serde_json::Value;
 
 mod events;
 mod protocol;
 
-pub(in crate::platform) use events::{processing_evidence_kind, sanitized_event};
-pub(in crate::platform) use protocol::{
+pub use events::{processing_evidence_kind, sanitized_event};
+pub use protocol::{
     PendingInteraction, PiProtocol, ProtocolEffect, ProtocolOutcome,
 };
 
-pub(super) const CONTRACT: AdapterContract = AdapterContract::new("pi", "lf-jsonl-rpc");
+pub const CONTRACT: AdapterContract = AdapterContract::new("pi", "lf-jsonl-rpc");
 
 /// Decode one Pi JSONL frame at the parser boundary. The stdio transport owns
 /// line acquisition only and never interprets vendor payloads.
-pub(in crate::platform) fn decode_jsonl_line(line: &str) -> Result<Option<Value>, ()> {
+pub fn decode_jsonl_line(line: &str) -> Result<Option<Value>, ()> {
     let line = line.strip_suffix('\n').unwrap_or(line);
     let line = line.strip_suffix('\r').unwrap_or(line);
     if line.is_empty() {
@@ -24,7 +24,7 @@ pub(in crate::platform) fn decode_jsonl_line(line: &str) -> Result<Option<Value>
     serde_json::from_str(line).map(Some).map_err(|_| ())
 }
 
-pub(in crate::platform) fn session_header_has_id(line: &str, expected_id: &str) -> bool {
+pub fn session_header_has_id(line: &str, expected_id: &str) -> bool {
     serde_json::from_str::<Value>(line.trim_end_matches('\r'))
         .ok()
         .is_some_and(|header| {
@@ -33,12 +33,12 @@ pub(in crate::platform) fn session_header_has_id(line: &str, expected_id: &str) 
         })
 }
 
-pub(in crate::platform) struct SteerAcknowledgement {
-    pub(in crate::platform) request_id: String,
-    pub(in crate::platform) accepted: bool,
+pub struct SteerAcknowledgement {
+    pub request_id: String,
+    pub accepted: bool,
 }
 
-pub(in crate::platform) fn classify_steer_response(
+pub fn classify_steer_response(
     message: &Value,
 ) -> Option<SteerAcknowledgement> {
     let request_id = message.get("id").and_then(Value::as_str)?;
@@ -52,7 +52,7 @@ pub(in crate::platform) fn classify_steer_response(
     })
 }
 
-pub(in crate::platform) fn encode_steer(text: String) -> (String, Value) {
+pub fn encode_steer(text: String) -> (String, Value) {
     let request_id = format!("lico-pi-steer-{}", uuid::Uuid::new_v4().simple());
     let message = serde_json::json!({
         "id": request_id,
@@ -62,7 +62,7 @@ pub(in crate::platform) fn encode_steer(text: String) -> (String, Value) {
     (request_id, message)
 }
 
-pub(in crate::platform) fn completed_transitions(output: &str) -> Vec<Transition> {
+pub fn completed_transitions(output: &str) -> Vec<Transition> {
     let mut reducer = TransitionReducer::default();
     let mut transitions = reducer.advance(LifecycleStage::Accepted);
     transitions.extend(reducer.advance(LifecycleStage::Processing));
@@ -75,7 +75,7 @@ pub(in crate::platform) fn completed_transitions(output: &str) -> Vec<Transition
     transitions
 }
 
-pub(in crate::platform) fn failed_transitions(failure: &ProtocolFailure) -> Vec<Transition> {
+pub fn failed_transitions(failure: &ProtocolFailure) -> Vec<Transition> {
     let mut reducer = TransitionReducer::default();
     let mut transitions = reducer.advance(LifecycleStage::Accepted);
     if let Some(failed) = reducer.fail(failure.code, failure.stage, failure.message) {

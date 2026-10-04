@@ -48,6 +48,10 @@ licoup-agent-claude-code = { path = "../licoup-agent-claude-code" }
 # registration, its ACP frame dialect and its driver declaration while the
 # extension host's binary route is completed by the agent-execution port.
 licoup-agent-copilot = { path = "../licoup-agent-copilot" }
+# The Pi adapter package. Composition names it for its parser registration and
+# its turn-event port while the extension host's binary route is completed by
+# the agent-execution port.
+licoup-agent-pi = { path = "../licoup-agent-pi" }
 # The Antigravity adapter package. Composition names it for its parser
 # registration and its ports while the extension host's binary route is
 # completed by the agent-execution port.

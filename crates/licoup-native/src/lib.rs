@@ -50,9 +50,9 @@ pub(crate) mod host_lane;
 /// this function joins them once per process. That covers the environment
 /// ports the domain asks, the gateway runtime's ports, the stop control's
 /// Subagent-claim dispatcher, which the domain answers, and the ports the Agent
-/// adapter packages ask for — the progressive turn-event sinks Codex and
-/// Antigravity emit through and the execution admission the Antigravity, Kimi
-/// Code and OpenCode packages ask for. A process that never calls it keeps
+/// adapter packages ask for — the progressive turn-event sinks Codex,
+/// Antigravity and Pi emit through and the execution admission the Antigravity,
+/// Kimi Code and OpenCode packages ask for. A process that never calls it keeps
 /// every port fail-closed.
 pub fn install_environment_ports() -> Result<(), &'static str> {
     domain::conversation::history::install_open_codex_rollouts(
@@ -75,6 +75,9 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     // agent-execution port, and a host that never installs these ports leaves the
     // packages' emitters silent rather than inventing a consumer.
     licoup_agent_codex::port::turn_event::install(platform::codex_turn_event_port())?;
+    // The Pi adapter package answers the same way, for the same reason: one
+    // consumer per process, installed once, and the package silent until then.
+    licoup_agent_pi::port::turn_event::install(platform::pi_turn_event_port())?;
     licoup_agent_antigravity::port::turn_event::install(
         platform::antigravity_turn_event_port(),
     )?;

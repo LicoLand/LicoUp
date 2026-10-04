@@ -79,6 +79,11 @@
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.copilot.licopkg"
         },
         {
+          "role": "pi-adapter-package-payload",
+          "file": "LicoUp-package-org.licoland.adapter.pi.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.pi.licopkg"
+        },
+        {
           "role": "appearance-converter-package-payload",
           "file": "LicoUp-package-org.licoland.converter.appearance.licopkg",
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.converter.appearance.licopkg"

@@ -6,11 +6,11 @@ use std::path::{Path, PathBuf};
 
 const MAX_SESSION_HEADER_BYTES: usize = 64 * 1024;
 
-pub(super) fn resolve_session_path(session_id: &str) -> Result<PathBuf, ProtocolFailure> {
+pub fn resolve_session_path(session_id: &str) -> Result<PathBuf, ProtocolFailure> {
     resolve_session_path_in_roots(session_id, &session_roots())
 }
 
-pub(super) fn resolve_session_path_in_roots(
+pub fn resolve_session_path_in_roots(
     session_id: &str,
     roots: &[PathBuf],
 ) -> Result<PathBuf, ProtocolFailure> {
@@ -48,7 +48,7 @@ pub(super) fn resolve_session_path_in_roots(
     .with_session(Some(trimmed)))
 }
 
-pub(super) fn session_roots() -> Vec<PathBuf> {
+pub fn session_roots() -> Vec<PathBuf> {
     let session_dir = env::var("PI_CODING_AGENT_SESSION_DIR").ok();
     let agent_dir = env::var("PI_CODING_AGENT_DIR").ok();
     let home = env::var_os("HOME")
@@ -57,7 +57,7 @@ pub(super) fn session_roots() -> Vec<PathBuf> {
     session_roots_from_sources(session_dir.as_deref(), agent_dir.as_deref(), home)
 }
 
-pub(super) fn session_roots_from_sources(
+pub fn session_roots_from_sources(
     session_dir: Option<&str>,
     agent_dir: Option<&str>,
     home: Option<PathBuf>,
@@ -80,7 +80,7 @@ pub(super) fn session_roots_from_sources(
     Vec::new()
 }
 
-pub(super) fn find_session_files(
+pub fn find_session_files(
     root: &Path,
     session_id: &str,
     matches: &mut Vec<PathBuf>,
@@ -122,7 +122,7 @@ pub(super) fn find_session_files(
     Ok(())
 }
 
-pub(super) fn session_header_matches(
+pub fn session_header_matches(
     path: &Path,
     session_id: &str,
 ) -> Result<bool, ProtocolFailure> {
@@ -151,5 +151,5 @@ pub(super) fn session_header_matches(
     let Ok(line) = std::str::from_utf8(&bytes) else {
         return Ok(false);
     };
-    Ok(crate::platform::native_agent_parser::adapters::pi::session_header_has_id(line, session_id))
+    Ok(crate::parser::session_header_has_id(line, session_id))
 }
