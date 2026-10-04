@@ -46,6 +46,12 @@ use licoup_native::platform::extension_packages::{
     account_store, close_surface, plan_gc, preview, running_client_version, scan,
 };
 
+/// MCP-OPTIONAL-COMPOSITION: with no installed package the optional MCP service
+/// composes into nothing — no process, no published endpoint, an ordinary
+/// conversation that still works, and an availability answer that says
+/// `not-installed`.
+mod mcp_optional;
+
 /// GATEWAY-PACKAGE-LIFECYCLE: the Gateway login item and the package that owns
 /// it, driven through the real store and the real registration owner.
 mod gateway_package;

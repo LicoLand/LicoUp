@@ -310,7 +310,6 @@ fn dedicated_relocation_stops_an_existing_conversation_host_before_copy() {
             .env_remove("LICOUP_PORTABLE_DIR")
             .env_remove("XDG_CONFIG_HOME")
             .env_remove("LICOUP_CLIENT_PID")
-            .env("LICOUP_MCP_AUTOSTART", "0")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())

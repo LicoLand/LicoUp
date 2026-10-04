@@ -1443,7 +1443,6 @@ fn native_cli_starts_and_reuses_its_durable_host_without_flutter() {
             .args(["--stdin-json", "true"])
             .env("LICOUP_HOME", &root)
             .env("LICOUP_CLIENT_PID", std::process::id().to_string())
-            .env("LICOUP_MCP_AUTOSTART", "0")
             .env_remove("RUST_LOG")
             .env_remove("RUST_BACKTRACE")
             .stdin(Stdio::piped())
@@ -4026,7 +4025,6 @@ impl SyntheticCliHome {
             .env("LOCALAPPDATA", self.home.join("local-appdata"))
             .env("LICOUP_HOME", &self.root)
             .env_remove("LICOUP_CLIENT_PID")
-            .env("LICOUP_MCP_AUTOSTART", "0")
             .env("LICO_MOBILE_RELAY_NATIVE_SECRET_STORE", "disabled")
             .env_remove("RUST_LOG")
             .env_remove("RUST_BACKTRACE");
