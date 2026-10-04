@@ -101,6 +101,10 @@ const declaredPackages = Object.freeze([
     payloadRole: "codex-adapter-package-payload",
   }),
   declaredRelease({
+    source: "crates/licoup-agent-openclaw/package",
+    payloadRole: "openclaw-adapter-package-payload",
+  }),
+  declaredRelease({
     source: "crates/licoup-agent-copilot/package",
     payloadRole: "copilot-adapter-package-payload",
   }),

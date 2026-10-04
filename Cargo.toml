@@ -22,6 +22,7 @@ members = [
     "crates/licoup-agent-hermes",
     "crates/licoup-agent-kilo",
 "crates/licoup-agent-lico-agent",
+"crates/licoup-agent-openclaw",
     "crates/licoup-agent-runtime",
     "crates/licoup-application",
     "crates/licoup-extension-contracts",

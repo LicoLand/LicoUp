@@ -1352,7 +1352,7 @@ test("OpenClaw driver leaves retain exact tests and complete source ownership", 
     ["rust.platform.openclaw-driver.execution",
       "platform::openclaw_driver::tests::execution::"],
     ["rust.platform.openclaw-driver.replay",
-      "platform::native_agent_parser::replay::"],
+      "replay::"],
   ]);
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
     candidate.id.startsWith("rust.platform.openclaw-driver."));
@@ -1396,11 +1396,13 @@ test("OpenClaw driver leaves retain exact tests and complete source ownership", 
   for (const relativePath of [
     "crates/licoup-native/src/platform/openclaw_driver.rs",
     ...splitSources,
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw.rs",
-    ...await sourceFiles(
-      "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw",
-      ".rs",
-    ),
+    // The Gateway ACP protocol moved to the OpenClaw adapter package, whose own
+    // module owns it; the client keeps only the re-export leaves above.
+    "crates/licoup-agent-openclaw/src/parser.rs",
+    ...await sourceFiles("crates/licoup-agent-openclaw/src/parser", ".rs"),
+    ...await sourceFiles("crates/licoup-agent-openclaw/src/gateway_acp", ".rs"),
+    "crates/licoup-agent-openclaw/src/gateway.rs",
+    "crates/licoup-agent-openclaw/src/replay.rs",
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `OpenClaw driver source must have a precise regression owner: ${relativePath}`);

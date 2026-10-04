@@ -85,6 +85,17 @@ export const RUST_CORE_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "rust.core.agent-openclaw-package",
+      kind: "rust-core",
+      summary: "OpenClaw adapter package program, Gateway ACP protocol, registration, and replay corpus",
+      inputs: ["crates/licoup-agent-openclaw/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-openclaw/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
       id: "rust.core.acp.composition",
       kind: "rust-core",
       summary: "ACP facade, shared protocol types, validation, and error boundaries",

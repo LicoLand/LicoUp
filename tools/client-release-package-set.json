@@ -22,6 +22,11 @@
       "payloadRole": "codex-adapter-package-payload"
     },
     {
+      "packageId": "org.licoland.adapter.openclaw",
+      "source": "crates/licoup-agent-openclaw/package",
+      "payloadRole": "openclaw-adapter-package-payload"
+    },
+    {
       "packageId": "org.licoland.adapter.copilot",
       "source": "crates/licoup-agent-copilot/package",
       "payloadRole": "copilot-adapter-package-payload"

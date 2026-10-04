@@ -10,7 +10,7 @@
 //!
 //! Each subtree below is one Agent's protocol and moves with that Agent's crate
 //! (`licoup-agent-<agent>`); the composition travels last, because it is what
-//! tilts from naming thirteen parsers to naming the crates that hold them. Six
+//! tilts from naming thirteen parsers to naming the crates that hold them. Eleven
 //! parsers have moved already and their subtrees are gone: the composition names
 //! the package that owns each one, and no copy stays here.
 
@@ -30,8 +30,8 @@ pub(in crate::platform) use licoup_agent_antigravity::parser as antigravity;
 // strict-NDJSON turn dialect and the wire vocabulary it reads are the package's,
 // and this composition reads them through the package's own module.
 pub(in crate::platform) use licoup_agent_cursor::parser as cursor;
-// Claude Code's, Codex's, Copilot's, the DeepSeek Harness SDK's, Hermes' and Kimi
-// Code's parsers moved into their own packages (`licoup-agent-claude-code`,
+// Claude Code's, Codex's, Copilot's, the DeepSeek Harness SDK's, Hermes', Kilo
+// Code's, Kimi Code's, Lico Agent's and OpenClaw's parsers moved into their own packages (`licoup-agent-claude-code`,
 // `licoup-agent-codex`, `licoup-agent-copilot`, `licoup-agent-deepseek`,
 // `licoup-agent-hermes`, `licoup-agent-kimi`) as well, and this composition keeps
 // no parser path for them: no alias is declared here and nothing under this parser
@@ -43,7 +43,6 @@ pub(in crate::platform) use licoup_agent_cursor::parser as cursor;
 // below. Hermes' dialect reaches the shared ACP transport through the package's
 // own registration in `runtime_adapters::drivers` rather than through this tree.
 
-pub(in crate::platform) mod openclaw;
 pub(in crate::platform) mod opencode;
 pub(in crate::platform) mod pi;
 
@@ -128,7 +127,10 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     // The Kimi Code package owns its dialect and reports its transitions with its
     // own execution result, so this entry is the package's own registration.
     licoup_agent_kimi::registration::REGISTRATION,
-    ParserRegistration::unanswered(openclaw::CONTRACT),
+    // The OpenClaw package answers its own registration, from the parser it owns;
+    // both protocol-agnostic queries stay declared and fail-closed exactly as the
+    // host answered them before the parser moved.
+    licoup_agent_openclaw::registration::REGISTRATION,
     ParserRegistration::unanswered(opencode::CONTRACT),
     ParserRegistration::unanswered(pi::CONTRACT),
     // The Lico Agent package owns its stdio RPC protocol and reports its

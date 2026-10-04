@@ -128,6 +128,21 @@ pub(crate) fn codex_app_server_environment() -> Vec<(String, String)> {
         .collect()
 }
 
+
+/// This host's answer for the OpenClaw adapter package's turn-event port.
+///
+/// The package owns *what* one OpenClaw turn emits as its Gateway frames arrive;
+/// this host owns *where* they go, because the host owns the consumer. The
+/// answer is the same emitters the host's own drivers and the Codex package
+/// reach, so an OpenClaw message chunk and a Codex one arrive at one reader
+/// through one path rather than two sinks that can drift.
+pub(crate) fn openclaw_turn_event_port() -> licoup_agent_openclaw::port::turn_event::TurnEventPort {
+    licoup_agent_openclaw::port::turn_event::TurnEventPort {
+        emit_agent_message_chunk,
+        emit_agent_processing,
+    }
+}
+
 // The bounded process owner moved to `licoup-foundation`. It is re-exported at
 // its former path and former visibility, because the driver engines, the
 // sandboxed execution helpers and the Agent inventory all supervise the same

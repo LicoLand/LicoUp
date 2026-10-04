@@ -95,6 +95,12 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     licoup_agent_kimi::port::execution::install(licoup_agent_kimi::port::execution::ExecutionPort {
         admits_execution: admits_agent_execution,
     })?;
+    // The OpenClaw adapter package asks the same question about its own turns,
+    // and this host answers it with the same emitters. Its agent-execution port
+    // stays declared and fail-closed for the same reason: the kernel still
+    // executes OpenClaw through its own transport, so no admission is claimed
+    // for a binary route that is not completed yet.
+    licoup_agent_openclaw::port::turn_event::install(platform::openclaw_turn_event_port())?;
     // The Kilo Code adapter package owns what one Kilo turn is — the request
     // shape, the session protocol, the stream classification and the projection —
     // and this host owns the serve engine it runs on and the consumer its events

@@ -1,9 +1,12 @@
-use super::AdapterContract;
-use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
-pub(super) const CONTRACT: AdapterContract =
-    AdapterContract::new("openclaw", "gateway-jsonrpc-acp");
+pub mod codec;
+pub mod events;
+pub mod protocol;
 
-pub(in crate::platform) fn completed_transitions(output: &str) -> Vec<Transition> {
+use licoup_agent_adapter_sdk::adapters::AdapterContract;
+use licoup_agent_adapter_sdk::{LifecycleStage, Transition, TransitionReducer};
+pub const CONTRACT: AdapterContract = AdapterContract::new("openclaw", "gateway-jsonrpc-acp");
+
+pub fn completed_transitions(output: &str) -> Vec<Transition> {
     let mut reducer = TransitionReducer::default();
     let mut transitions = reducer.advance(LifecycleStage::Accepted);
     transitions.extend(reducer.advance(LifecycleStage::Processing));
@@ -16,11 +19,7 @@ pub(in crate::platform) fn completed_transitions(output: &str) -> Vec<Transition
     transitions
 }
 
-pub(in crate::platform) fn failed_transitions(
-    code: &str,
-    stage: &str,
-    message: &str,
-) -> Vec<Transition> {
+pub fn failed_transitions(code: &str, stage: &str, message: &str) -> Vec<Transition> {
     let mut reducer = TransitionReducer::default();
     let mut transitions = reducer.advance(LifecycleStage::Accepted);
     if let Some(failure) = reducer.fail(code, stage, message) {

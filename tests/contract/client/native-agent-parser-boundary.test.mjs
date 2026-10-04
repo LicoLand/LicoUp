@@ -108,6 +108,13 @@ const packaged = {
     contractId: 'lico-agent',
     readsParser: false,
   },
+  openclaw: {
+    crate: 'licoup_agent_openclaw',
+    module: 'parser',
+    source: 'crates/licoup-agent-openclaw/src/parser.rs',
+    contractId: 'openclaw',
+    readsParser: false,
+  },
 };
 
 // The one Agent whose normalized transitions the host reads through the SDK's

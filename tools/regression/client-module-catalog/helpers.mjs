@@ -297,6 +297,11 @@ export function kiloAgentPackageLayer(filter, harnessArgs = []) {
   return rustAgentPackageLayer(filter, harnessArgs, agentPackageManifest("kilo"));
 }
 
+/// One module of the OpenClaw adapter package's library.
+export function openClawAgentPackageLayer(filter, harnessArgs = []) {
+  return rustAgentPackageLayer(filter, harnessArgs, agentPackageManifest("openclaw"));
+}
+
 export function gatewayCoreLayer(filter, harnessArgs = []) {
   return command(
     "cargo",

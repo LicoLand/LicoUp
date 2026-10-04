@@ -79,6 +79,7 @@ licoup-agent-kilo = { path = "../licoup-agent-kilo" }
 # runtime protocol id, while the extension host's binary route is completed by
 # the agent-execution port.
 licoup-agent-lico-agent = { path = "../licoup-agent-lico-agent" }
+licoup-agent-openclaw = { path = "../licoup-agent-openclaw" }
 licoup-agent-runtime = { path = "../licoup-agent-runtime" }
 licoup-application = { path = "../licoup-application" }
 licoup-project = { path = "../licoup-project" }

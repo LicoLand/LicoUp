@@ -73,9 +73,10 @@ const PACKAGED_ADAPTER_IDS: [&str; 13] = [
 
 /// The parser set this host injects into the adapter SDK.
 ///
-/// The declarations live in `adapters`, where the thirteen parsers that report
-/// them live; this is the composition's name for the set, so a caller outside
-/// the family never names a parser to reach the SDK.
+/// The declarations live in `adapters`, in the one list that names all
+/// thirteen parsers — the eleven this tree still holds and the two their
+/// packages own; this is the composition's name for the set, so a caller
+/// outside the family never names a parser to reach the SDK.
 pub(in crate::platform) const fn parser_set() -> licoup_agent_adapter_sdk::port::AdapterParserSet {
     adapters::parser_set()
 }
