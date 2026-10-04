@@ -57,6 +57,10 @@ export const RUST_CORE_MODULES = Object.freeze([
       command: command(
         "cargo",
         ["test", "--manifest-path", "crates/licoup-agent-antigravity/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
       id: "rust.core.agent-cursor-package",
       kind: "rust-core",
       summary: "Cursor adapter package program, vendor protocol, registration, and replay corpus",
@@ -64,6 +68,10 @@ export const RUST_CORE_MODULES = Object.freeze([
       command: command(
         "cargo",
         ["test", "--manifest-path", "crates/licoup-agent-cursor/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
       id: "rust.core.agent-deepseek-package",
       kind: "rust-core",
       summary: "DeepSeek Harness adapter package program, vendor protocol, session-log reader, registration, and replay corpus",

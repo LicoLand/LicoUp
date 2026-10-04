@@ -717,6 +717,10 @@ export const REGRESSION_MODULES = Object.freeze([
       command: command(
         "node",
         ["--test", "tests/contract/client/antigravity-adapter-package-source-bundle.test.mjs"],
+        60_000,
+      ),
+    }),
+    defineModule({
       id: "regression.deepseek-harness-source-bundle",
       kind: "regression-infrastructure",
       summary: "DeepSeek Harness split ownership, native session-log reader, declared external dependency, and no-Node-runtime contract",

@@ -728,6 +728,10 @@ test("Codex app-server leaves retain exact narrow regression ownership", async (
 test("Cursor leaves and the Cursor adapter package retain exact regression ownership", async () => {
   const packageModuleId = "rust.core.agent-cursor-package";
   const subagentMcpId = "regression.subagent-mcp-common";
+  const owns = (relativePath) => CLIENT_MODULE_CATALOG.some((module) =>
+    module.inputs.some((input) => input.endsWith("/**")
+      ? relativePath.startsWith(input.slice(0, -2))
+      : input === relativePath));
   // The process half is still composed by the client, under the platform
   // fallback that owns the driver it launches; the wire half moved into the
   // Cursor adapter package, and the Subagent MCP caller contract reaches the
@@ -784,6 +788,21 @@ test("Cursor leaves and the Cursor adapter package retain exact regression owner
 
   // Every source the package ships has a regression owner, and the kernel
   // sources it left behind keep one too.
+  const packageSources2 = await sourceFiles("crates/licoup-agent-cursor", ".rs");
+  assert.ok(packageSources2.length > 0);
+  for (const relativePath of packageSources2) {
+    assert.equal(owns(relativePath), true,
+      `Cursor package source must have a regression owner: ${relativePath}`);
+  }
+  for (const relativePath of [
+    "crates/licoup-native/src/platform/cursor_driver.rs",
+    ...await sourceFiles("crates/licoup-native/src/platform/cursor_driver", ".rs"),
+  ]) {
+    assert.equal(owns(relativePath), true,
+      `Cursor process-half source must keep a regression owner: ${relativePath}`);
+  }
+});
+
 test("DeepSeek Harness leaves retain exact narrow regression ownership", async () => {
   const sourceBundleId = "regression.deepseek-harness-source-bundle";
   const packageModuleId = "rust.core.agent-deepseek-package";
@@ -829,22 +848,9 @@ test("DeepSeek Harness leaves retain exact narrow regression ownership", async (
     module.inputs.some((input) => input.endsWith("/**")
       ? relativePath.startsWith(input.slice(0, -2))
       : input === relativePath));
-  const packageSources = await sourceFiles("crates/licoup-agent-cursor", ".rs");
-  assert.ok(packageSources.length > 0);
-  for (const relativePath of packageSources) {
-    assert.equal(owns(relativePath), true,
-      `Cursor package source must have a regression owner: ${relativePath}`);
-  }
-  for (const relativePath of [
-    "crates/licoup-native/src/platform/cursor_driver.rs",
-    ...await sourceFiles("crates/licoup-native/src/platform/cursor_driver", ".rs"),
-  ]) {
-    assert.equal(owns(relativePath), true,
-      `Cursor process-half source must keep a regression owner: ${relativePath}`);
-  }
-  const packageSources = await sourceFiles("crates/licoup-agent-deepseek/src", ".rs");
-  assert.ok(packageSources.length > 0);
-  for (const relativePath of packageSources) {
+  const packageSources2 = await sourceFiles("crates/licoup-agent-deepseek/src", ".rs");
+  assert.ok(packageSources2.length > 0);
+  for (const relativePath of packageSources2) {
     assert.equal(owns(relativePath), true,
       `DeepSeek package source must have a regression owner: ${relativePath}`);
   }
