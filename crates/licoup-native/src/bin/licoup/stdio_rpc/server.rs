@@ -22,6 +22,9 @@ mod blocking_commands;
 mod data_home_tests;
 #[path = "server/state.rs"]
 mod state;
+#[cfg(test)]
+#[path = "server/work_control_routing_tests.rs"]
+mod work_control_routing_tests;
 
 pub(crate) fn serve_stdio_rpc<R, W, F>(reader: R, writer: W, execute: F) -> Result<W>
 where

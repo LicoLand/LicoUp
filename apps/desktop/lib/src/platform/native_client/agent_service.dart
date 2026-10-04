@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/generated/client_state.g.dart';
+import 'package:licoup/src/contracts/work_control_gateway.dart';
 import 'package:licoup/src/contracts/mcp_adapter.dart';
 import 'package:licoup/src/contracts/skill_delete.dart';
 import 'package:licoup/src/contracts/skill_hub.dart';
@@ -22,6 +23,7 @@ import 'package:licoup/src/platform/native_client/native_conversation_port.dart'
 import 'package:licoup/src/platform/native_client/native_mcp_actions.dart';
 import 'package:licoup/src/platform/native_client/native_one_shot_command_executor.dart';
 import 'package:licoup/src/platform/native_client/native_state_actions.dart';
+import 'package:licoup/src/platform/native_client/native_work_control_gateway.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 export 'package:licoup/src/contracts/target_candidate.dart';
@@ -53,6 +55,7 @@ class AgentService
     NativeStdioRpcTransport? stdioRpcTransport,
     StreamObservationBackend? streamObservation,
     ConversationNativePort? conversationNativePort,
+    WorkControlGateway? workControlGateway,
     AgentCommandRunner? processIo,
     NativeCommandActions? commandActions,
     bool? persistentStdioRpcEnabled,
@@ -87,16 +90,27 @@ class AgentService
           processContext: runtimeContext,
           observation: observation,
         );
+    final desktopRuntime =
+        Platform.isMacOS || Platform.isLinux || Platform.isWindows;
     _conversationNativePort =
         conversationNativePort ??
         StdioConversationNativePort(
           transport: rpcTransport,
-          desktopRuntime:
-              Platform.isMacOS || Platform.isLinux || Platform.isWindows,
+          desktopRuntime: desktopRuntime,
+        );
+    // The work-control lane is a peer of the conversation lane over the same
+    // owned transport, so it is composed here rather than left unavailable.
+    // A caller that supplies its own conversation lane injects this one too,
+    // so a synthetic fixture never inherits a live native control plane.
+    _workControlGateway =
+        workControlGateway ??
+        NativeWorkControlGateway(
+          transport: rpcTransport,
+          desktopRuntime: desktopRuntime,
         );
     final persistentEnabled =
         persistentStdioRpcEnabled ??
-        ((Platform.isMacOS || Platform.isLinux || Platform.isWindows) &&
+        (desktopRuntime &&
             runCliExecutable == null &&
             startCliExecutable == null &&
             oneShotCommandExecutor == null &&
@@ -139,6 +153,7 @@ class AgentService
   late final ConversationNativePort _conversationNativePort;
   late final NativeStdioRpcTransport _stdioRpcTransport;
   late final StreamObservationPort? _streamObservation;
+  late final WorkControlGateway _workControlGateway;
   late final AgentCommandRunner _processIo;
   late final NativeCommandActions _commandActions;
   late final NativeMcpActions _mcpActions;
@@ -154,6 +169,13 @@ class AgentService
   /// did not opt in. Exposed as the composition's own evidence that observation
   /// is installed rather than inferred from a silent stream.
   StreamObservationPort? get streamObservation => _streamObservation;
+
+  /// The manual-stop and force-stop lane over the same owned structured
+  /// transport as [conversationNativePort].
+  ///
+  /// The root composition hands this to the work-control controller; without it
+  /// every work-control action would stay fail closed.
+  WorkControlGateway get workControlGateway => _workControlGateway;
 
   @override
   Future<Map<String, dynamic>> runCli(List<String> args) =>
