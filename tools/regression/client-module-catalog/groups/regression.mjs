@@ -64,10 +64,11 @@ export const REGRESSION_MODULES = Object.freeze([
   defineModule({
     id: "regression.client-version",
     kind: "regression-infrastructure",
-    summary: "Cross-language client version and build-number synchronization",
+    summary: "Cross-language client version, build-number, and package compatibility synchronization",
     inputs: [
       "tools/client-version.json",
       "tools/scripts/client-version.mjs",
+      "tools/scripts/lib/client-package-compatibility.mjs",
       "package.json",
       "package-lock.json",
       "Cargo.toml",
@@ -79,6 +80,22 @@ export const REGRESSION_MODULES = Object.freeze([
       "apps/desktop/macos/Runner/Info.plist",
       "apps/desktop/macos/Runner.xcodeproj/project.pbxproj",
       "apps/desktop/android/app/build.gradle.kts",
+      // Every package whose declared client compatibility has to cover the
+      // product version, plus the release set that declares which packages the
+      // release publishes or installs. The check reads manifests from the
+      // tracked tree and checks one it finds even when it is not named here;
+      // these inputs are what selects this module for a manifest change.
+      "tools/client-release-package-set.json",
+      "components/analytics/package/manifest.json",
+      "components/appearance/package/manifest.json",
+      "crates/licoup-agent-antigravity/package/manifest.json",
+      "crates/licoup-agent-codex/package/manifest.json",
+      "crates/licoup-agent-cursor/package/manifest.json",
+      "crates/licoup-agent-deepseek/package/manifest.json",
+      "crates/licoup-agent-kimi/package/manifest.json",
+      "crates/licoup-gateway/package/manifest.json",
+      "crates/licoup-mcp/package/manifest.json",
+      "tests/fixtures/client_package_release/fixture-native-converter/manifest.json",
     ],
     command: node("tools/scripts/client-version.mjs", ["check"], 60_000),
   }),
