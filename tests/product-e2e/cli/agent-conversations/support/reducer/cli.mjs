@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { READINESS_FILE, READINESS_SCHEMA_VERSION } from "./constants.mjs";
+import { auditEvidenceDigests } from "./digest-audit.mjs";
 import { ReducerError, fail } from "./errors.mjs";
 import { maybeReloadGatewayInventory } from "./gateway-reload.mjs";
 import { loadCanonicalInputs } from "./inputs.mjs";
@@ -77,6 +78,15 @@ export function runCli(argv = process.argv.slice(2)) {
   });
 
   if (options.write) {
+    // Reconcile the record before it becomes the readiness the runtime embeds.
+    // A record whose digests do not describe what they claim can never be
+    // promoted, and `--write` can never launder one.
+    auditEvidenceDigests({
+      evidence,
+      packagingRegistry: canonical.packagingRegistry,
+      inventory: canonical.inventory,
+      readiness: result,
+    });
     const nextText = `${JSON.stringify(result, null, 2)}\n`;
     let previousText = null;
     if (existsSync(READINESS_FILE)) {
@@ -97,6 +107,14 @@ export function runCli(argv = process.argv.slice(2)) {
       "readiness_resource_invalid",
     );
     assertReadinessMatchesReduction(current, result);
+    // The reduction is blind to a digest that cannot change any status, so the
+    // recorded digests are reconciled directly against the frozen projection.
+    auditEvidenceDigests({
+      evidence,
+      packagingRegistry: canonical.packagingRegistry,
+      inventory: canonical.inventory,
+      readiness: current,
+    });
     if (options.requireReady) assertReleaseReady(result);
     return receipt("check", result);
   }

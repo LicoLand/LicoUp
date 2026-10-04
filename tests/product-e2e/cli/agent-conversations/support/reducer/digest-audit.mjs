@@ -206,9 +206,10 @@ function readProducer(path, marker) {
  * - `evidence_digest_source_mismatch`: a current row's contract-input digest
  *   differs from the contract input it claims.
  * - `evidence_digest_staleness_unattributed`: a row the projection does not
- *   present as current yet whose contract-input digests all equal the current
- *   inputs, or whose row-level binding drifted. The recorded digests would then
- *   not explain the row's own state.
+ *   present as current, whose driver the reduction does evaluate, yet whose
+ *   contract-input digests all equal the current inputs, or whose row-level
+ *   binding drifted. The recorded digests would then not explain the row's own
+ *   state.
  */
 export function auditEvidenceDigests({
   evidence,
@@ -314,6 +315,8 @@ export function auditEvidenceDigests({
       const staleContractFields = CONTRACT_INPUT_DIGEST_FIELDS.filter(
         (field) => row[field] !== recomputed[field],
       );
+      const bindingEvaluated =
+        driver.driverMode === "conversation" && driver.blockerCodes.length === 0;
       const entry = projection.get(agentId);
       if (entry === undefined) {
         add("evidence_readiness_missing", { agentId });
@@ -343,8 +346,10 @@ export function auditEvidenceDigests({
               agentId,
               reason: "row_binding_drifted",
             });
-          }
-          if (staleContractFields.length === 0) {
+          } else if (bindingEvaluated && staleContractFields.length === 0) {
+            // A blocked or history-only driver reports without consulting the
+            // binding at all. Otherwise the recorded contract digests are the
+            // only admissible explanation for this row not being current.
             add("evidence_digest_staleness_unattributed", {
               agentId,
               reason: "contract_digests_match_current_sources",

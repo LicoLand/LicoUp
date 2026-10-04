@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -590,6 +592,43 @@ test("canonical evidence cannot silently re-bind its recorded digests to the cur
     (error) =>
       error instanceof ReducerError && error.code === "evidence_digest_field_unclassified",
   );
+});
+
+test("the canonical entry point reconciles the recorded digests, not only the reduction", () => {
+  const directory = mkdtempSync(join(tmpdir(), "licoup-canonical-evidence-"));
+  try {
+    const tampered = structuredClone(canonicalEvidence);
+    tampered.adapters.find((row) => row.agentId === "kimi-code").releaseSidecarDigest =
+      `sha256:${"0".repeat(64)}`;
+    const evidencePath = join(directory, "agent-conversation-evidence.json");
+    writeFileSync(evidencePath, `${JSON.stringify(tampered, null, 2)}\n`, { mode: 0o600 });
+
+    // The reduction is blind to this change, otherwise the receipt below could
+    // fail for a reason that is not the audit.
+    assert.deepEqual(
+      reduceConversationParity({ packagingRegistry, inventory, evidence: tampered }),
+      readinessResource,
+    );
+
+    const execution = spawnSync(
+      process.execPath,
+      [
+        "tests/product-e2e/cli/agent-conversations/support/reducer-facade.mjs",
+        "--check",
+        "--evidence",
+        evidencePath,
+      ],
+      { cwd: REPOSITORY_ROOT, encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
+    );
+    assert.equal(execution.status, 1, execution.stdout);
+    assert.equal(execution.stdout.includes('"ok":true'), false);
+    assert.equal(
+      JSON.parse(execution.stderr.trim()).errorCode,
+      "evidence_digest_mismatch",
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("release readiness requires every packaged adapter to be ready and send-enabled", () => {
