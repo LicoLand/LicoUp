@@ -238,10 +238,10 @@ fn repeating_an_identical_import_changes_nothing() {
 
 #[test]
 fn an_apply_that_expects_another_state_conflicts_and_overwrites_nothing() {
-    let (_root, store, document) = fixture("stale");
+    let (_root, store, first) = fixture("stale");
     store
-        .apply_import(&document, 0)
-        .expect("the import applies");
+        .apply_import(&first, 0)
+        .expect("the first import applies");
 
     // A caller that previewed nothing (revision 0) must not overwrite what a
     // concurrent import already admitted.
@@ -285,10 +285,10 @@ fn an_apply_that_expects_another_state_conflicts_and_overwrites_nothing() {
 
 #[test]
 fn an_omitted_work_item_is_retained_and_never_deleted_or_cancelled() {
-    let (_root, store, document) = fixture("retain");
+    let (_root, store, first) = fixture("retain");
     store
-        .apply_import(&document, 0)
-        .expect("the import applies");
+        .apply_import(&first, 0)
+        .expect("the first import applies");
 
     let shortened = admit(document(
         "project:alpha",

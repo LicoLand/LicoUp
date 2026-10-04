@@ -24,7 +24,7 @@
 //! does not answer leaves its work unconfirmed, and unconfirmed work is never
 //! reported as released.
 
-use crate::dependency::{ArtifactState, WorkRef};
+use crate::dependency::WorkRef;
 use crate::failure::ProjectFailure;
 use crate::identity::{ProjectId, WorkItemId};
 use serde::Serialize;
