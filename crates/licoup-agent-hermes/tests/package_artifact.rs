@@ -17,7 +17,7 @@
 //!
 //! Nothing is generated, nothing is executed, and nothing reaches the network.
 
-use licoup_agent_adapter_sdk::replay::{FrameReplay as _, RecordedFrame};
+use licoup_agent_adapter_sdk::replay::RecordedFrame;
 
 use licoup_agent_hermes::dialect;
 use licoup_extension_contracts::deployment::{PackOwnership, capability_owner};
@@ -364,7 +364,7 @@ fn the_declared_format_is_the_one_a_recorded_hermes_turn_crosses() {
         // the host's own suite alone.
         assert_eq!(
             Value::Array(produced.clone()),
-            frame["projection"],
+            frame["projection"].clone(),
             "frame {index} no longer projects what the transcript recorded"
         );
         for effect in produced {
@@ -523,7 +523,7 @@ fn the_package_program_serves_describe_and_shutdown_and_refuses_the_rest() {
         Some(ADAPTER_ID)
     );
     assert_eq!(
-        described["hostProtocol"],
+        described["hostProtocol"].clone(),
         json!({"major": 1, "minimumMinor": 0})
     );
 }

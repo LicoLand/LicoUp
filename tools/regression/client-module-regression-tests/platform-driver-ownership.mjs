@@ -513,7 +513,9 @@ test("neutral ACP runtime and session transport retain bounded ownership", async
     "crates/licoup-agent-drivers/src/acp_driver_runtime.rs",
     ...sources,
     "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot.rs",
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/kimi_code.rs",
+    // The moved Agent's dialect and parser are its package's, so the neutral ACP
+    // runtime's precise owner for them is the package source it really reads.
+    "crates/licoup-agent-kimi/src/parser.rs",
     "crates/licoup-agent-drivers/src/acp_driver_runtime/events.rs",
     "crates/licoup-agent-drivers/src/acp_driver_runtime/protocol.rs",
   ]) {

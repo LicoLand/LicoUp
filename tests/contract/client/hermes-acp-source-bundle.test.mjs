@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -166,14 +166,31 @@ test("the moved Hermes parser leaves no copy in the host and the inventory keeps
     "the composition keeps a second copy of Hermes' transition answer");
   assert.equal(composition.includes("hermes::CONTRACT"), false,
     "the composition restates the package's adapter declaration");
-  assert.equal((composition.match(/ParserRegistration::(?:unanswered|new)\(/gu) ?? []).length, 7);
+  // The inventory is the authority for how many entries the composition holds,
+  // so a moved Agent cannot leave a stale count behind: every packaged adapter
+  // contributes the package's own registration, and every other adapter one
+  // declared entry.
+  const adapterIds = JSON.parse(
+    read("crates/licoup-native/resources/agent-conversation-drivers.json"))
+    .drivers.map((driver) => driver.agentId);
+  const packageEntries =
+    (composition.match(/licoup_agent_\w+::registration::REGISTRATION/gu) ?? []).length;
+  const packagedAdapters = readdirSync(path.join(repoRoot, "crates"), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith("licoup-agent-"))
+    .map((entry) => `crates/${entry.name}/package/manifest.json`)
+    .filter((relativePath) => existsSync(path.join(repoRoot, relativePath)))
+    .filter((relativePath) => read(relativePath).includes("agent-execution.v1"));
+  assert.equal(packageEntries, packagedAdapters.length,
+    "the composition dispatches one package registration per packaged adapter");
+  const hostedEntries =
+    (composition.match(/ParserRegistration::(?:unanswered|new)\(/gu) ?? []).length;
+  assert.equal(hostedEntries + packageEntries, adapterIds.length);
   const registrations = composition.slice(
     composition.indexOf("pub(in crate::platform) static REGISTRATIONS"),
     composition.indexOf("/// The parser registrations this host injects"),
   );
-  // Seven declared entries plus the six packages' own registrations.
   assert.equal((registrations.match(/^\s{4}(?:ParserRegistration::\w+\(|licoup_agent_\w+::registration::REGISTRATION,)/gmu)
-    ?? []).length, 13);
+    ?? []).length, adapterIds.length);
 
   // The replay arm moved with the parser: the composition builds it from the
   // package and declares no arm module for Hermes.
@@ -183,9 +200,13 @@ test("the moved Hermes parser leaves no copy in the host and the inventory keeps
   assert.doesNotMatch(replay, /mod hermes;/u);
   assert.equal(replay.includes("hermes::Replay"), false,
     "the replay composition keeps a second Hermes arm");
-  // One arm per Agent, and the shared ACP arm is the one this file still
-  // assembles.
-  assert.equal((replay.match(/^\s{8}"[a-z-]+" =>/gmu) ?? []).length, 13);
+  // One arm per packaged Agent, matched against the same inventory rather than
+  // against a literal, and each Agent exactly once.
+  const arms = [...replay.matchAll(/^\s{8}"([a-z-]+)" =>/gmu)].map((match) => match[1]);
+  assert.deepEqual([...arms].sort(), [...adapterIds].sort(),
+    "the replay composition builds exactly one arm per packaged adapter");
+  assert.equal(new Set(arms).size, arms.length);
+  // The three shared-ACP Agents keep one arm each rather than one per merge.
   assert.equal((replay.match(/"copilot" =>/gu) ?? []).length, 1);
   assert.equal((replay.match(/"cursor" =>/gu) ?? []).length, 1);
   assert.equal((replay.match(/"deepseek-harness" =>/gu) ?? []).length, 1);

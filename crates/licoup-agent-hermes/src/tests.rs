@@ -54,35 +54,24 @@ fn a_completed_execution_reduces_to_the_hermes_reply_transitions() {
         failure: None,
     };
     let transitions = registration::execution_transitions(&outcome);
-    assert!(
-        !transitions.is_empty(),
-        "Hermes' normalized transitions may not become an empty answer"
-    );
+    // The whole sequence, in arrival order: the stages Hermes reached, the reply
+    // under Hermes' own unit id, and the terminal stage. Hermes reports no
+    // transition list of its own, so this answer is the one the host's Hermes
+    // normalization reads — an empty or re-worded answer moves this vector.
     assert_eq!(
-        transitions.first(),
-        Some(&Transition::Lifecycle(LifecycleStage::Accepted))
+        transitions,
+        vec![
+            Transition::Lifecycle(LifecycleStage::Submitted),
+            Transition::Lifecycle(LifecycleStage::Accepted),
+            Transition::Lifecycle(LifecycleStage::Processing),
+            Transition::Lifecycle(LifecycleStage::Responding),
+            Transition::Text {
+                unit_id: "hermes:reply".to_owned(),
+                text: "the recorded reply".to_owned(),
+            },
+            Transition::Lifecycle(LifecycleStage::Completed),
+        ]
     );
-    assert_eq!(
-        transitions.last(),
-        Some(&Transition::Lifecycle(LifecycleStage::Completed))
-    );
-    assert_eq!(
-        transitions
-            .iter()
-            .filter(
-                |transition| matches!(transition, Transition::Text { unit_id, .. }
-                if unit_id == "hermes:reply")
-            )
-            .count(),
-        1,
-        "the turn carries exactly one Hermes reply unit: {transitions:?}"
-    );
-    // The projection is a field copy of the outcome, so the reply text is the
-    // driver's own output rather than a re-derivation.
-    assert!(transitions.iter().any(|transition| matches!(
-        transition,
-        Transition::Text { text, .. } if text == "the recorded reply"
-    )));
 }
 
 /// A failed execution reports the protocol's own failure, and it never also
@@ -141,9 +130,11 @@ fn the_durable_identity_query_stays_fail_closed() {
     // The declaration is not [`ParserRegistration::unanswered`]'s: Hermes owns a
     // real transition answer, so a reader that saw only a fail-closed identity
     // must not conclude the whole registration is unanswered.
+    let answered: licoup_agent_adapter_sdk::port::ExecutionTransitions =
+        registration::execution_transitions;
     assert!(
-        registration::REGISTRATION.execution_transitions as usize
-            == registration::execution_transitions as usize
+        registration::REGISTRATION.execution_transitions as usize == answered as usize,
+        "the registration answers with this package's own transition builder"
     );
 }
 
@@ -153,7 +144,7 @@ fn the_durable_identity_query_stays_fail_closed() {
 fn one_raw_line_becomes_exactly_one_decoded_frame() {
     let line = br#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1}}"#;
     let frame = parser::decode_frame(line).expect("a well-formed ACP line decodes");
-    assert_eq!(frame["id"], json!(1));
+    assert_eq!(frame["id"].clone(), json!(1));
     assert!(parser::decode_frame(b"not json").is_err());
     let notification = json!({"jsonrpc": "2.0", "method": "session/update"});
     assert!(parser::is_notification(&notification));
