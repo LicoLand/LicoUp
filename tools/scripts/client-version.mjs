@@ -1,12 +1,19 @@
 #!/usr/bin/env node
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  clientPackageManifestPaths,
+  evaluateClientPackageCompatibility,
+  parseVersion,
+} from "./lib/client-package-compatibility.mjs";
 import { sanitizeError } from "./lib/sanitize-error.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const versionManifestPath = path.join(repoRoot, "tools", "client-version.json");
+const packageSetPath = "tools/client-release-package-set.json";
 const versionManifestSchema = "v0.0.1:client-version-manifest-1";
 export const cargoWorkspaceVersionPackages = Object.freeze([
   // licoup-native declares a literal version but is version-synced with the
@@ -228,6 +235,68 @@ function checkAllEqual(records, label, actualValues, expected) {
   return ok;
 }
 
+/**
+ * Every package manifest whose declared client compatibility has to cover the
+ * client this release builds.
+ *
+ * The inventory is read from the tracked tree rather than from a list written
+ * here, so a package cannot add a manifest without being checked. The release
+ * set is folded in as well, so a package the release declares is checked even
+ * from a source directory that does not carry the `package/` name, and an
+ * inventory that resolved to nothing is an error rather than a green run that
+ * checked no package.
+ */
+export function packageManifestInventory() {
+  const tracked = spawnSync("git", ["ls-files", "-z"], {
+    cwd: repoRoot,
+    encoding: "buffer",
+    shell: false,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (tracked.status !== 0) {
+    throw new Error("the package manifest inventory requires git ls-files");
+  }
+  const set = readJson(packageSetPath);
+  if (!Array.isArray(set.packages)) {
+    throw new Error(`${packageSetPath} must declare a packages list`);
+  }
+  const paths = clientPackageManifestPaths({
+    trackedFiles: tracked.stdout.toString("utf8").split("\0").filter(Boolean),
+    declaredSources: set.packages
+      .map((entry) => String(entry?.source ?? ""))
+      .filter(Boolean),
+  });
+  if (paths.length === 0) {
+    throw new Error(
+      "no package manifest is tracked; the client compatibility check would cover nothing");
+  }
+  return paths;
+}
+
+/**
+ * One verdict per package manifest: the compatibility declaration it carries
+ * and whether that declaration covers `productVersion`.
+ *
+ * The verdict is decided with the semantics the host applies when it installs a
+ * package, so a range this check accepts is a range the install accepts, and a
+ * client the packages stop covering fails here rather than on a user's machine
+ * with `package_client_incompatible`.
+ */
+export function packageClientCompatibility(productVersion) {
+  const manifests = packageManifestInventory().map((manifestPath) => {
+    try {
+      return { path: manifestPath, manifest: readJson(manifestPath) };
+    } catch (error) {
+      return {
+        path: manifestPath,
+        manifest: null,
+        readError: `package manifest is unreadable: ${sanitizeError(error)}`,
+      };
+    }
+  });
+  return evaluateClientPackageCompatibility({ productVersion, manifests });
+}
+
 function checkVersion() {
   const manifest = loadManifest();
   const records = [];
@@ -342,7 +411,40 @@ function checkVersion() {
     String(manifest.buildNumber)
   ) && ok;
 
-  console.log(JSON.stringify({ ok, productVersion: manifest.productVersion, buildNumber: manifest.buildNumber, records }, null, 2));
+  // Every shipped package declares the client versions it loads on, and the host
+  // refuses an install of one whose declaration does not cover the client being
+  // built. The version strings above can all agree while this is already false,
+  // so it is checked here rather than discovered on a user's machine.
+  const packageCompatibility = packageClientCompatibility(manifest.productVersion);
+  // A product version outside the grammar the host matches with leaves every
+  // package uncovered for a reason that is not the package's own declaration, so
+  // the cause is recorded before the packages it explains.
+  if (parseVersion(manifest.productVersion) === null) {
+    records.push({
+      label: "client product version readability",
+      expected: "a version the host requirement grammar reads",
+      actual: manifest.productVersion,
+      ok: false,
+    });
+    ok = false;
+  }
+  for (const verdict of packageCompatibility) {
+    records.push({
+      label: `${verdict.path} client compatibility`,
+      expected: `a declared client line covering ${manifest.productVersion}`,
+      actual: verdict.covered ? verdict.clientVersions : verdict.reasons,
+      ok: verdict.covered,
+    });
+    ok = verdict.covered && ok;
+  }
+
+  console.log(JSON.stringify({
+    ok,
+    productVersion: manifest.productVersion,
+    buildNumber: manifest.buildNumber,
+    packageClientCompatibility: packageCompatibility,
+    records,
+  }, null, 2));
   if (!ok) {
     process.exitCode = 1;
   }

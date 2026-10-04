@@ -782,9 +782,12 @@ test("Cursor leaves and the Cursor adapter package retain exact regression owner
     ])), ["architecture.client-boundaries", ...moduleIds]);
   }
   // The package's own sources select the package's module, and the two the
-  // Subagent MCP caller contract reads select that contract's verifier too.
+  // Subagent MCP caller contract reads select that contract's verifier too. The
+  // manifest is also the client compatibility declaration the client version
+  // check reads, so it selects that check as well.
   const packageSelections = new Map([
-    ["crates/licoup-agent-cursor/package/manifest.json", [packageModuleId]],
+    ["crates/licoup-agent-cursor/package/manifest.json",
+      ["regression.client-version", packageModuleId]],
     ["crates/licoup-agent-cursor/tests/package_artifact.rs", [packageModuleId]],
     ["crates/licoup-agent-cursor/src/replay.rs",
       ["architecture.client-boundaries", packageModuleId]],
