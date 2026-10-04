@@ -10,7 +10,7 @@
 //!
 //! Each subtree below is one Agent's protocol and moves with that Agent's crate
 //! (`licoup-agent-<agent>`); the composition travels last, because it is what
-//! tilts from naming thirteen parsers to naming the crates that hold them. Two
+//! tilts from naming thirteen parsers to naming the crates that hold them. Six
 //! parsers have moved already and their subtrees are gone: the composition names
 //! the package that owns each one, and no copy stays here.
 
@@ -21,29 +21,23 @@ pub(in crate::platform) use licoup_agent_adapter_sdk::{
     LifecycleStage, Transition, TransitionReducer,
 };
 
-// The parsers that have moved into their own packages: Antigravity's Agent
-// Hooks receipt, PTY parser and terminal classification
-// (`licoup-agent-antigravity`); Codex's vendor protocol
-// (`licoup-agent-codex`); Cursor's strict-NDJSON turn dialect
-// (`licoup-agent-cursor`); the DeepSeek Harness SDK's protocol
-// (`licoup-agent-deepseek`); Kimi Code's ACP dialect (`licoup-agent-kimi`);
-// and Copilot's ACP frame policy (`licoup-agent-copilot`). Each is parsed
-// once, by the package that owns it; this composition re-exports each parser
-// under its Agent's alias, so all thirteen stay reachable at one path, and names
-// the packages rather than keeping a second copy. Codex's parser is read through
-// that path by the client's own app-server process half. Nothing reads Copilot's
-// parser by name — the shared ACP engine reads it through the dialect the
-// package registers — so its registration below is the whole of what this
-// composition needs from it.
+// Antigravity's Agent Hooks receipt, PTY parser and terminal classification live
+// in `licoup-agent-antigravity`. The driver that still supervises the vendor CLI
+// reads them through this path, and the composition names the package for the
+// registration and the replay arm that belong to the same parser.
 pub(in crate::platform) use licoup_agent_antigravity::parser as antigravity;
-pub(in crate::platform) use licoup_agent_codex::parser as codex;
-pub(in crate::platform) use licoup_agent_copilot::parser as copilot;
 // Cursor's vendor protocol has moved the same way, into `licoup-agent-cursor`: its
 // strict-NDJSON turn dialect and the wire vocabulary it reads are the package's,
 // and this composition reads them through the package's own module.
 pub(in crate::platform) use licoup_agent_cursor::parser as cursor;
-pub(in crate::platform) use licoup_agent_deepseek::parser as deepseek_harness;
-pub(in crate::platform) use licoup_agent_kimi::parser as kimi_code;
+// Codex's, Copilot's, the DeepSeek Harness SDK's and Kimi Code's parsers moved
+// into their own packages (`licoup-agent-codex`, `licoup-agent-copilot`,
+// `licoup-agent-deepseek`, `licoup-agent-kimi`) as well. None is named here:
+// this host parses none of those Agents' frames — Copilot's shared ACP engine
+// reads its frame policy through the dialect the package registers — so no path
+// in this tree re-exports their parsers, because an alias nothing reads is a
+// forwarding shell the compiler reports as an unused import, and each package
+// answers its own registration below.
 
 pub(in crate::platform) mod claude_code;
 pub(in crate::platform) mod hermes;
@@ -64,7 +58,7 @@ use licoup_agent_adapter_sdk::port::{
 /// `transitions` list the parser's own reducer built, so the query stays
 /// declared and unanswered for it, exactly as
 /// [`ParserRegistration::unanswered`] states. Hermes is the exception the host
-/// answers from its own builders, and the two Agents that have moved into their
+/// answers from its own builders, and the six Agents that have moved into their
 /// own packages answer from the package's registration instead.
 fn no_transitions(_: &ExecutionOutcome<'_>) -> Vec<Transition> {
     Vec::new()
@@ -125,19 +119,14 @@ fn opaque_identity(session_id: &str) -> bool {
 ///
 /// An entry answers the two protocol-agnostic queries when a reader reaches it:
 /// Hermes answers its normalized transitions, the Agents the Subagent mesh
-/// dispatches answer whether a durable identity is theirs, and the two Agents
+/// dispatches answer whether a durable identity is theirs, and the six Agents
 /// whose protocol has moved into its own package contribute the package's own
 /// registration — which answers both queries from that Agent's wire evidence.
 /// Every other entry declares its Agent's transition answer as *the parser's own
 /// execution result* rather than through the query, and answers the identity
 /// query fail-closed because the mesh never dispatches that Agent.
-/// Hermes answers its normalized transitions, and the four Agents the Subagent
-/// mesh dispatches answer whether a durable identity is theirs. Every other
-/// entry declares its Agent's transition answer as *the parser's own execution
-/// result* rather than through the query, and answers the identity query
-/// fail-closed because the mesh never dispatches that Agent.
 ///
-/// Two entries are the moved packages' own registrations rather than constants
+/// Six entries are the moved packages' own registrations rather than constants
 /// restated here, so the declaration a package publishes and the declaration
 /// this host dispatches are one value and cannot drift.
 pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [

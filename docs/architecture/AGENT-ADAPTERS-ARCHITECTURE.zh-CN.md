@@ -64,7 +64,7 @@ flowchart TB
 无论底层是标准 ACP、命令行 PTY，还是 Codex / OpenCode 的私有协议，LicoUp 均通过以下四层机制实现架构解耦与归一：
 
 ### ① 报文边界单点解析（ADR 0008）
-- **每个智能体在 `crates/licoup-native/src/platform/native_agent_parser/adapters/<agent>/` 下拥有独立的解析器**；
+- **每个智能体都拥有独立解析器**：内核仍持有的智能体把解析器放在 `crates/licoup-native/src/platform/native_agent_parser/adapters/<agent>/`；协议已迁入适配器包的智能体把解析器放在该包内（`crates/licoup-agent-<agent>/src/parser.rs`），组合处只引用该包，不保留第二份拷贝；
 - 原始返回帧（无论 JSON-RPC、NDJSON、SSE 还是 ANSI 字符串）**只进入一次**该解析器；
 - 解析器输出且仅输出封闭的 `Typed Transition`：
   - `ThinkingDelta` / `Reasoning`（思考推理步骤）；
@@ -92,7 +92,7 @@ flowchart TB
 
 1. **禁止在 Flutter 端解析厂商原始协议**：Flutter 永远只消费 Rust 持久化后的 `ClientConversationEvent` 与 `EventPart`，不感知任何 ACP、SSE 或 App Server 细节。
 2. **禁止驱动擅自判定完成**：严禁 13 个驱动各自猜完成（如依赖 100ms 静默），完成判定必须由 L1 解析器根据协议显式信号或传输 EOF 独占裁决。
-3. **私有协议隔离演进**：Codex 与 OpenCode 等私有协议的变化只影响其对应的 `adapters/<agent>/` 模块，绝对不扩散至统一 Conversation 领域层。
+3. **私有协议隔离演进**：Codex、Cursor、Antigravity 与 DeepSeek Harness 的私有协议变化只影响其适配器包（`crates/licoup-agent-<agent>/src/`）；内核仍持有的智能体的协议变化只影响其 `adapters/<agent>/` 目录。两者都不扩散至统一 Conversation 领域层。
 4. **用户终端环境等价**：LicoUp 调起的 CLI 子智能体，其可见环境必须与用户从自身 ZSH 登录终端启动同一 CLI 时完全一致——代理变量、PATH、登录态、工作目录设置均不缺失、不增加、不筛选。禁止通过全局 shell export 或 `launchctl setenv` 实现该等价；等价本身是铁律，而非注入某个子集。
 5. **禁止强制回复格式**：LicoUp 只按 Agent 原本产出的样子显示它的回复。不下发任何要求 Agent 自身文本形状的 schema、响应格式或输出契约；纯自然语言的回复，不会因为没有格式就被判成无效、空回复或弃权。宿主需要什么，都从 Agent 说了什么里得出。源码门禁强制这条：原生 Agent 回合上出现回复格式键，`client:verify:agent-native-output` 就会失败；上面各处边界声明也必须一直存在。
 
@@ -100,8 +100,15 @@ flowchart TB
 
 ## 5. 供应商无关 Subagent Mesh
 
-Codex、Cursor 与 Antigravity 还会同时以已认证 caller 和 Membership 作用域
-target 身份参与独立的 [Subagent MCP](../protocols/subagent-mcp.zh-CN.md)。
+Codex、Cursor、Antigravity 与 Claude Code 还会以 Membership 作用域 target 身份参与
+独立的 [Subagent MCP](../protocols/subagent-mcp.zh-CN.md)，mesh 也为这四个供应商各携带
+一个 caller 集成。
+
+客户端为 Cursor、Antigravity 与 Claude Code 把 caller 注册写进这些 Agent 各自的用户
+MCP 配置，每次写入都需要 digest 绑定的一次性批准。Codex 不安装任何注册：承载 Codex
+caller 注册的 plugin 属于 Codex 自身的 marketplace，由 Codex 适配器包负责；因此
+ensure 面对 Codex 直接报告 `unsupported`，caller manager 的每个成员都拒绝，而不是替
+用户克隆插件仓库。
 
 ```mermaid
 flowchart LR
@@ -123,13 +130,18 @@ flowchart LR
 
 Codex 保持准确 App Server thread 身份与原生 developer instructions。Cursor 保持
 准确 create-chat/resume 身份、prompt acknowledgement 与 PTY 传输。Antigravity
-保持准确 Hook receipt 身份、OAuth/权限预检与 PTY 传输。Cursor 和 Antigravity 的
-生成指令只使用一段普通、无标记、临时 wire prefix，不成为 Canonical Event 内容。
+保持准确 Hook receipt 身份、OAuth/权限预检与 PTY 传输。Cursor、Antigravity 与
+Claude Code 的生成指令只使用一段普通、无标记、临时 wire prefix，不成为 Canonical
+Event 内容。
 
-验证分为两条相互独立的路径。upstream 先证明服务健康，再并发检查每个供应商只读的
+验证分为两条相互独立的路径。upstream 先证明服务健康，再并发检查每个被覆盖供应商
+只读的
 标准 MCP 启动表面，不依赖自定义插件，不创建 Conversation、不发送 turn，也不修改
-配置。Codex 使用只在当前进程生效的标准声明；Cursor 与 Antigravity 使用各自支持的
-文本 `mcp list` 表面，缺少归属明确的 entry 时显式要求 Installer 配置。downstream 默认零效果；只有显式现场执行才直接发送一次已认证 delegate，并以
+配置。该启动识别覆盖 CLI 暴露该表面的三个 Agent：Codex 通过只在当前进程生效的
+`-c mcp_servers=…` 声明配合 `mcp list --json` 读回；Cursor 与 Antigravity 使用各自
+支持的文本 `mcp list` 表面，缺少归属明确的 entry 时报告
+`installer_configuration_required` 而不是失败。Claude Code 在这条路径上没有启动识别
+探针。downstream 默认零效果；只有显式现场执行才直接发送一次已认证 delegate，并以
 Canonical 入站记录、claim、选中的 Membership 与 PersistentTurn dispatch 事实作为
 oracle。预检通过既有 target/Agent Hub 表面解析 Agent 版本、运行时就绪状态与报告的模型清单，复用共享
 验证模型权威，并在 Conversation 或付费工作前按实际 caller 身份验证服务健康。最近版本的证据按 target 建 key，并在任何付费效果前去重。自动回归只使用

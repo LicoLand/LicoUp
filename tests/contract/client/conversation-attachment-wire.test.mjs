@@ -11,7 +11,9 @@ test("conversation attachments use one typed Dart-to-Rust wire", async () => {
   const dartContract = "apps/desktop/lib/src/contracts/agent_conversation_attachment.dart";
   const dartService = "apps/desktop/lib/src/platform/native_client/native_conversation_port.dart";
   const rustParams = "crates/licoup-agent-drivers/src/runtime_adapters/params.rs";
-  const codexSession = "crates/licoup-native/src/platform/native_agent_parser/adapters/codex/session.rs";
+  // Codex's parser is the Codex adapter package's since CODEX-PACKAGE moved it
+  // out of the kernel, so the attachment field names are read from its owner.
+  const codexSession = "crates/licoup-agent-codex/src/parser/session.rs";
   const [contract, service, params, session] = await Promise.all(
     [dartContract, dartService, rustParams, codexSession].map(read),
   );

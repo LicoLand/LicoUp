@@ -65,7 +65,7 @@ flowchart TB
 Regardless of whether an agent speaks standard ACP, CLI PTY, or proprietary Codex/OpenCode protocols, LicoUp decouples and normalizes them through four core layers:
 
 ### ① Returned-Frame Parser Boundary (ADR 0008)
-- Each runtime owns an isolated parser under `crates/licoup-native/src/platform/native_agent_parser/adapters/<agent>/`.
+- Each runtime owns an isolated parser. An Agent the kernel still holds keeps it under `crates/licoup-native/src/platform/native_agent_parser/adapters/<agent>/`; an Agent whose protocol has moved into its adapter package keeps it in that package (`crates/licoup-agent-<agent>/src/parser.rs`), and the composition names the package instead of keeping a second copy.
 - Raw returned frames enter this parser **exactly once**.
 - The parser outputs closed `Typed Transitions`:
   - `ThinkingDelta` / `Reasoning` (thinking/reasoning trace);
@@ -93,7 +93,7 @@ Regardless of whether an agent speaks standard ACP, CLI PTY, or proprietary Code
 
 1. **No Vendor Protocol Parsing in Flutter**: Flutter exclusively renders persisted `ClientConversationEvent` and `EventPart` structures.
 2. **No Heuristic Completion Guessing**: Drivers never guess completion (e.g. 100ms silence); L1 parsers arbitrate completion solely via explicit EOF or terminal transitions.
-3. **Isolated Evolution for Proprietary Protocols**: Protocol changes in Codex or OpenCode remain isolated inside their respective `adapters/<agent>/` directory and never pollute upper domain layers.
+3. **Isolated Evolution for Proprietary Protocols**: Protocol changes in Codex, Cursor, Antigravity or DeepSeek Harness stay inside that Agent's adapter package (`crates/licoup-agent-<agent>/src/`); a protocol change in an Agent the kernel still holds stays inside its `adapters/<agent>/` directory. Neither pollutes upper domain layers.
 4. **User Terminal Environment Equivalence**: A CLI subagent launched by LicoUp must observe exactly the same environment as when the user starts the same CLI from their own terminal login shell — same proxy variables, same PATH, same login state, same working setup. No global shell/launchd mutation is used to achieve this; the equivalence itself is the invariant, never an injected subset.
 5. **No Imposed Reply Format**: LicoUp shows an Agent's reply as the Agent produced it. It sends no reply schema, response format or output contract that shapes the Agent's own text, and a plain reply is never invalid, empty or an abstention for having no format. Whatever the host needs, it works out from what the Agent said. The source gate enforces this: a reply-format key on a native Agent turn fails `client:verify:agent-native-output`, and the boundary statements above must stay present.
 
@@ -101,9 +101,18 @@ Regardless of whether an agent speaks standard ACP, CLI PTY, or proprietary Code
 
 ## 5. Provider-Neutral Subagent Mesh
 
-Codex, Cursor, and Antigravity additionally participate in the independent
-[Subagent MCP](../protocols/subagent-mcp.md) as both authenticated callers and
-Membership-scoped targets.
+Codex, Cursor, Antigravity and Claude Code additionally participate in the
+independent [Subagent MCP](../protocols/subagent-mcp.md) as Membership-scoped
+targets, and the mesh carries one caller integration for each of those four
+providers.
+
+The client installs a caller registration for Cursor, Antigravity and Claude Code
+into those Agents' own user MCP configuration, each behind a digest-bound
+single-use approval. It installs none for Codex: the plugin that carries a Codex
+caller registration belongs to Codex's own marketplace, and the Codex adapter
+package owns that side, so the ensure surface reports `unsupported` for Codex and
+the caller manager refuses every member rather than cloning a plugin repository on
+the user's behalf.
 
 ```mermaid
 flowchart LR
@@ -127,15 +136,19 @@ tool arguments. A durable active-edge claim is committed before adapter work.
 Codex keeps exact App Server thread identity and native developer instructions.
 Cursor keeps exact create-chat/resume identity, prompt acknowledgement, and PTY
 transport. Antigravity keeps exact Hook receipt identity, OAuth/permission
-preflight, and PTY transport. Cursor and Antigravity receive generated guidance
-as one ordinary unmarked ephemeral prefix; it is not Canonical Event content.
+preflight, and PTY transport. Cursor, Antigravity and Claude Code receive
+generated guidance as one ordinary unmarked ephemeral prefix; it is not Canonical
+Event content.
 
 Verification has two independent routes. The upstream route proves service
-health, then concurrently checks each provider's read-only standard MCP startup
-surface without a custom plugin, conversation, turn, or configuration change.
-Codex uses a process-local standard declaration; Cursor and Antigravity use
-their supported text `mcp list` surfaces and explicitly require Installer
-configuration when the owned entry is absent.
+health, then concurrently checks each covered provider's read-only standard MCP
+startup surface without a custom plugin, conversation, turn, or configuration
+change. That startup recognition covers the three Agents whose CLI exposes the
+surface: Codex is read back through a transient process-local `-c mcp_servers=…`
+declaration with `mcp list --json`, and Cursor and Antigravity use their supported
+text `mcp list` surfaces, reporting `installer_configuration_required` when the
+owned entry is absent instead of a failure. Claude Code has no startup-recognition
+probe on this route.
 The downstream route is zero-effect by default; explicit live execution sends
 one direct authenticated delegate call and uses Canonical inbound, claim,
 selected Membership, and PersistentTurn dispatch facts as its oracle. The

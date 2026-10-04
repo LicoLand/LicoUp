@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-// The thirteen per-Agent parsers stay one inventory; the composition that names
-// them, the shared adapter contract, the registry lookup, the replay harness and
-// the lifecycle authority are split between the host, the adapter SDK and the
-// Agent packages the moved parsers live in.
+// The thirteen per-Agent parsers and the composition that names them stay in
+// the host until that Agent's own package owns the protocol; the shared adapter
+// contract, the registry lookup, the replay harness and the lifecycle authority
+// moved to `licoup-agent-adapter-sdk`. Six Agents have moved further: their
+// vendor protocol, wire vocabulary and replay arm are their own package's, and
+// the composition names the package instead of keeping a second copy.
 const parserRoot = 'crates/licoup-native/src/platform/native_agent_parser';
 const compositionRoot = `${parserRoot}/adapters`;
 const sdkRoot = 'crates/licoup-agent-adapter-sdk/src';
@@ -84,6 +86,12 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     if (contract) entries.set(contract[1], chunk);
   }
   assert.equal(entries.size, 13 - packageCrates.size);
+  // The packaged parsers the composition still reads: a parser alias belongs
+  // exactly where this host parses that Agent's frames. Codex, Copilot, the
+  // DeepSeek Harness and Kimi Code are reached for their registration and their
+  // replay arm instead, so an alias for any of them would be a forwarding shell
+  // with no reader — which is what the compiler reports as an unused import.
+  const readParserAliases = new Set(['antigravity', 'cursor']);
   for (const adapter of adapters) {
     const directory = packageCrates.get(adapter);
     const source = readFileSync(
@@ -91,16 +99,25 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
       'utf8');
     assert.match(source, /AdapterContract::new/);
     if (directory) {
-      // The package owns the parser, the declaration and the replay arm; the
-      // composition reads them through the package's own module, may not declare
-      // the module, and names the package's own registration constant. The crate
-      // and the parser source are derived from the row above, so this test and
-      // the map cannot disagree about which package owns the parser.
-      assert.match(composition,
-        new RegExp(`use ${packageCrate(directory)}::parser as ${adapter};`));
+      // The package owns the parser, the declaration and the replay arm. The
+      // composition reaches that Agent through the package's own crate, names
+      // the package's own REGISTRATION constant, may not declare the module, may
+      // not retype the declaration here, and keeps a parser alias only where it
+      // actually reads one. The crate and the parser source are derived from the
+      // row above, so this test and the map cannot disagree about which package
+      // owns the parser.
+      const crate = packageCrate(directory);
+      assert.match(composition, new RegExp(`${crate}::`),
+        `${adapter} must be reached through ${crate}`);
       assert.match(registrations,
-        new RegExp(`${packageCrate(directory)}::registration::REGISTRATION`));
+        new RegExp(`${crate}::registration::REGISTRATION`));
       assert.doesNotMatch(composition, new RegExp(`mod ${adapter};`));
+      assert.doesNotMatch(composition,
+        new RegExp(`AdapterContract::new\\("${adapter.replace('_harness', '-harness')}"`),
+        `${adapter}'s declaration is the package's, not a second one here`);
+      const alias = `use ${crate}::parser as ${adapter};`;
+      assert.equal(composition.includes(alias), readParserAliases.has(adapter),
+        `${adapter} keeps a package parser alias exactly where the host reads one`);
       continue;
     }
     assert.match(composition, new RegExp(`mod ${adapter};`));

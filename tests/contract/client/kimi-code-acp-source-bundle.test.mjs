@@ -181,33 +181,33 @@ test("the moved parser leaves no copy in the host and the inventory keeps thirte
   const composition = read(
     "crates/licoup-native/src/platform/native_agent_parser/adapters/mod.rs",
   );
-  // The composition reaches a moved parser only through its alias re-export:
-  // Kimi Code's parser is named exactly once, as the package's own module under
-  // the alias this composition composes it by, and the parser registration is
-  // the package's own value. No host copy and no local module stay here.
+  // The composition names no Kimi Code parser at all: this host parses none of
+  // that Agent's frames, so the package's own dialect registration is what
+  // reaches the transport and the parser registration is the package's own
+  // value. An alias nothing reads would be a forwarding shell the compiler
+  // reports as an unused import, so no path in this tree re-exports it.
   assert.deepEqual(
     composition.match(/^.*licoup_agent_kimi::parser.*$/gmu) ?? [],
-    ["pub(in crate::platform) use licoup_agent_kimi::parser as kimi_code;"],
-    "the composition reaches the package's parser through its alias and nothing else",
+    [],
+    "the composition names no Kimi Code parser",
   );
   assert.doesNotMatch(composition, /mod kimi_code;/u);
   assert.match(composition, /licoup_agent_kimi::registration::REGISTRATION/u);
   assert.match(composition, /licoup_agent_codex::registration::REGISTRATION/u);
   // One declaration per Agent: the entries the host still answers itself plus
   // one package registration per moved parser. The moved set is derived from the
-  // composition's own re-exports rather than restated here, so a package whose
-  // parser leaves the host cannot leave the count behind.
+  // registrations the composition names rather than restated here, so a package
+  // whose parser leaves the host cannot leave the count behind.
   const hostedEntries =
     (composition.match(/ParserRegistration::(?:unanswered|new)\(/gu) ?? []).length;
   const movedPackages = [
     ...composition.matchAll(
-      /^pub\(in crate::platform\) use (licoup_agent_\w+)::parser as (\w+);$/gmu,
+      /^ {4}licoup_agent_(\w+)::registration::REGISTRATION,$/gmu,
     ),
   ];
   assert.ok(
-    movedPackages.some((match) =>
-      match[1] === "licoup_agent_kimi" && match[2] === "kimi_code"),
-    "the composition names the Kimi Code package's parser under its alias",
+    movedPackages.some((match) => match[1] === "kimi"),
+    "the composition names the Kimi Code package's own registration",
   );
   assert.equal(hostedEntries + movedPackages.length, 13);
   const registrations = composition.slice(
