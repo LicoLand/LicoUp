@@ -1,4 +1,5 @@
 import {
+  agentPackageCrateModule,
   command,
   foundationLayer,
   rustCrateIntegrationTest,
@@ -38,61 +39,20 @@ export const RUST_CORE_MODULES = Object.freeze([
         10 * 60_000,
       ),
     }),
-  defineModule({
-      id: "rust.core.agent-codex-package",
-      kind: "rust-core",
-      summary: "Codex adapter package program, vendor protocol, registration, and replay corpus",
-      inputs: ["crates/licoup-agent-codex/**"],
-      command: command(
-        "cargo",
-        ["test", "--manifest-path", "crates/licoup-agent-codex/Cargo.toml"],
-        10 * 60_000,
-      ),
-    }),
-  defineModule({
-      id: "rust.core.agent-antigravity-package",
-      kind: "rust-core",
-      summary: "Antigravity adapter package program, Agent Hooks receipt, PTY protocol, registration, and replay corpus",
-      inputs: ["crates/licoup-agent-antigravity/**"],
-      command: command(
-        "cargo",
-        ["test", "--manifest-path", "crates/licoup-agent-antigravity/Cargo.toml"],
-        10 * 60_000,
-      ),
-    }),
-  defineModule({
-      id: "rust.core.agent-cursor-package",
-      kind: "rust-core",
-      summary: "Cursor adapter package program, vendor protocol, registration, and replay corpus",
-      inputs: ["crates/licoup-agent-cursor/**"],
-      command: command(
-        "cargo",
-        ["test", "--manifest-path", "crates/licoup-agent-cursor/Cargo.toml"],
-        10 * 60_000,
-      ),
-    }),
-  defineModule({
-      id: "rust.core.agent-deepseek-package",
-      kind: "rust-core",
-      summary: "DeepSeek Harness adapter package program, vendor protocol, session-log reader, registration, and replay corpus",
-      inputs: ["crates/licoup-agent-deepseek/**"],
-      command: command(
-        "cargo",
-        ["test", "--manifest-path", "crates/licoup-agent-deepseek/Cargo.toml"],
-        10 * 60_000,
-      ),
-    }),
-  defineModule({
-      id: "rust.core.agent-kimi-package",
-      kind: "rust-core",
-      summary: "Kimi Code adapter package program, ACP frame dialect, registration, and replay arm",
-      inputs: ["crates/licoup-agent-kimi/**"],
-      command: command(
-        "cargo",
-        ["test", "--manifest-path", "crates/licoup-agent-kimi/Cargo.toml"],
-        10 * 60_000,
-      ),
-    }),
+  // Every Agent adapter package is one crate against its own manifest, so each
+  // row names the package and what its program owns; the id, the input tree and
+  // the manifest path follow that one name. Adding an Agent's package adds one
+  // call here and nothing else in this file.
+  agentPackageCrateModule("codex",
+    "Codex adapter package program, vendor protocol, registration, and replay corpus"),
+  agentPackageCrateModule("antigravity",
+    "Antigravity adapter package program, Agent Hooks receipt, PTY protocol, registration, and replay corpus"),
+  agentPackageCrateModule("cursor",
+    "Cursor adapter package program, vendor protocol, registration, and replay corpus"),
+  agentPackageCrateModule("deepseek",
+    "DeepSeek Harness adapter package program, vendor protocol, session-log reader, registration, and replay corpus"),
+  agentPackageCrateModule("kimi",
+    "Kimi Code adapter package program, ACP frame dialect, registration, and replay arm"),
   defineModule({
       id: "rust.core.acp.composition",
       kind: "rust-core",

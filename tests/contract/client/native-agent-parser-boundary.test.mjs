@@ -30,9 +30,13 @@ const adapters = [
   'lico_agent',
   'deepseek_harness',
 ];
-// The Agents whose protocol is a package's own: their parser module, their
-// declaration and their replay arm live in the package's crate.
-const packageAdapters = new Map([
+// The Agents whose protocol is a package's own, under the alias the composition
+// composes them by, mapped to the crate directory that owns the parser. One map:
+// the bijection with the registration constants and the crate/parser pair the
+// composition must name are two views derived from it below, so an Agent cannot
+// be registered as packaged here and described as host-held there. Adding a
+// package is one row.
+const packageCrates = new Map([
   ['antigravity', 'crates/licoup-agent-antigravity'],
   ['codex', 'crates/licoup-agent-codex'],
   ['cursor', 'crates/licoup-agent-cursor'],
@@ -40,30 +44,17 @@ const packageAdapters = new Map([
   ['kimi_code', 'crates/licoup-agent-kimi'],
 ]);
 
-// The package-owned parsers, under the alias the composition composes them by:
-// the crate that owns the parser, and the parser source the package ships.
-const packaged = {
-  antigravity: {
-    crate: 'licoup_agent_antigravity',
-    parser: 'crates/licoup-agent-antigravity/src/parser.rs',
-  },
-  codex: {
-    crate: 'licoup_agent_codex',
-    parser: 'crates/licoup-agent-codex/src/parser.rs',
-  },
-  cursor: {
-    crate: 'licoup_agent_cursor',
-    parser: 'crates/licoup-agent-cursor/src/parser.rs',
-  },
-  deepseek_harness: {
-    crate: 'licoup_agent_deepseek',
-    parser: 'crates/licoup-agent-deepseek/src/parser.rs',
-  },
-  kimi_code: {
-    crate: 'licoup_agent_kimi',
-    parser: 'crates/licoup-agent-kimi/src/parser.rs',
-  },
-};
+// The crate a package-owned parser is reached through, and the source that
+// parser ships. Both follow the crate directory's own name; the assertions below
+// read the derived values back from `adapters/mod.rs` rather than trusting the
+// convention, so a row that names the wrong directory fails instead of passing.
+function packageCrate(directory) {
+  return directory.split('/').at(-1).replaceAll('-', '_');
+}
+
+function packagedParser(directory) {
+  return `${directory}/src/parser.rs`;
+}
 
 test('packaged adapter registry is bijective with the thirteen-entry inventory', () => {
   const composition = readFileSync(`${compositionRoot}/mod.rs`, 'utf8');
@@ -79,7 +70,7 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
   const packageEntries =
     (registrations.match(/licoup_agent_\w+::registration::REGISTRATION/g) ?? []).length;
   assert.equal(hostedEntries + packageEntries, 13);
-  assert.equal(packageEntries, packageAdapters.size);
+  assert.equal(packageEntries, packageCrates.size);
   // The queries a reader reaches are answered by the Agent that owns the fact:
   // Hermes' normalized transitions, and the exact-resume identity of the Agents
   // the Subagent mesh dispatches. Every other entry stays declared and
@@ -97,20 +88,23 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     const contract = chunk.match(/(\w+)::CONTRACT/);
     if (contract) entries.set(contract[1], chunk);
   }
-  assert.equal(entries.size, 13 - Object.keys(packaged).length);
+  assert.equal(entries.size, 13 - packageCrates.size);
   for (const adapter of adapters) {
-    const moved = packaged[adapter];
+    const directory = packageCrates.get(adapter);
     const source = readFileSync(
-      moved ? moved.parser : `${parserRoot}/adapters/${adapter}.rs`, 'utf8');
+      directory ? packagedParser(directory) : `${parserRoot}/adapters/${adapter}.rs`,
+      'utf8');
     assert.match(source, /AdapterContract::new/);
-    if (moved) {
+    if (directory) {
       // The package owns the parser, the declaration and the replay arm; the
       // composition reads them through the package's own module, may not declare
-      // the module, and names the package's own registration constant.
+      // the module, and names the package's own registration constant. The crate
+      // and the parser source are derived from the row above, so this test and
+      // the map cannot disagree about which package owns the parser.
       assert.match(composition,
-        new RegExp(`use ${moved.crate}::parser as ${adapter};`));
+        new RegExp(`use ${packageCrate(directory)}::parser as ${adapter};`));
       assert.match(registrations,
-        new RegExp(`${moved.crate}::registration::REGISTRATION`));
+        new RegExp(`${packageCrate(directory)}::registration::REGISTRATION`));
       assert.doesNotMatch(composition, new RegExp(`mod ${adapter};`));
       continue;
     }

@@ -1156,10 +1156,16 @@ export function selfTest() {
       offlineRootKeyId,
       onlineSigningKeyId,
     }), keys);
+    // The index carries exactly the declared packages, ordered by identity. The
+    // declared set is a registration list, so its own order is the order packages
+    // were added and not the index's: comparing the two directly would fail for a
+    // complete set whose newest package sorts before an older one.
     const verified = verifyPackageIndex(JSON.stringify(index), publicKeysText);
+    const verifiedIds = verified.packages.map((entry) => entry.packageId);
     if (verified.packages.length !== selfTestAssets.length ||
-      JSON.stringify(verified.packages.map((entry) => entry.packageId)) !==
-        JSON.stringify(selfTestAssets.map((entry) => entry.packageId))) {
+      JSON.stringify(verifiedIds) !== JSON.stringify([...verifiedIds].sort()) ||
+      JSON.stringify(verifiedIds) !==
+        JSON.stringify(selfTestAssets.map((entry) => entry.packageId).sort())) {
       fail("package_index_self_test_index_invalid");
     }
     const tampered = JSON.parse(JSON.stringify(index));
@@ -1274,8 +1280,10 @@ export function selfTest() {
     for (const [position, entry] of selfTestAssets.entries()) {
       writeFileSync(payloadPaths[position], first[position].payload);
     }
-    if (JSON.stringify(verifyIndexPayloads(verified, payloadRoot)) !==
-      JSON.stringify(selfTestAssets.map((entry) => entry.packageId))) {
+    // Re-verification walks the index in the index's own order, so it is the
+    // verified set of identities that must equal the declared one.
+    if (JSON.stringify([...verifyIndexPayloads(verified, payloadRoot)].sort()) !==
+      JSON.stringify(selfTestAssets.map((entry) => entry.packageId).sort())) {
       fail("package_index_self_test_index_invalid");
     }
     const tamperedContent = Buffer.concat([first[0].payload, Buffer.from("tampered")]);

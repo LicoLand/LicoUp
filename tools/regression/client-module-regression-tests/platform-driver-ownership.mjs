@@ -512,14 +512,35 @@ test("neutral ACP runtime and session transport retain bounded ownership", async
   for (const relativePath of [
     "crates/licoup-agent-drivers/src/acp_driver_runtime.rs",
     ...sources,
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot.rs",
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/kimi_code.rs",
     "crates/licoup-agent-drivers/src/acp_driver_runtime/events.rs",
     "crates/licoup-agent-drivers/src/acp_driver_runtime/protocol.rs",
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `neutral ACP runtime source must have a precise regression owner: ${relativePath}`);
   }
+  // The dialects this neutral runtime parses itself. A dialect the host holds is
+  // a parser source here; a dialect whose Agent moved into its own package is
+  // that package's source, because the composition names the package instead of
+  // keeping a copy. The requirement follows the dialect rather than pinning the
+  // path an extraction retires, so moving the next dialect changes one entry and
+  // cannot leave a requirement behind on a file that no longer exists.
+  const neutralDialects = [
+    "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot.rs",
+    "crates/licoup-agent-kimi/src/dialect.rs",
+    "crates/licoup-agent-kimi/src/parser.rs",
+  ];
+  for (const relativePath of neutralDialects) {
+    assert.equal(await exists(relativePath), true,
+      `a composed dialect the neutral ACP runtime parses must ship: ${relativePath}`);
+    assert.equal(ownedInputs.has(relativePath), true,
+      `neutral ACP dialect must have a precise regression owner: ${relativePath}`);
+  }
+  // The host path the Kimi Code extraction retired must not come back as a
+  // second owner of the dialect the package now owns.
+  assert.equal(
+    await exists("crates/licoup-native/src/platform/native_agent_parser/adapters/kimi_code.rs"),
+    false,
+    "the Kimi Code dialect has one owner, its own package");
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-agent-drivers/src/acp_driver_runtime/session_plan.rs",
   ])), ["architecture.client-boundaries", "rust.platform.acp-runtime.continuity"]);

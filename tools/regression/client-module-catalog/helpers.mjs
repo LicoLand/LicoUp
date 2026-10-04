@@ -17,12 +17,12 @@ export const CLIENT_STATE_MANIFEST = "crates/licoup-client-state/Cargo.toml";
 export const AGENT_TARGETS_MANIFEST = "crates/licoup-agent-targets/Cargo.toml";
 export const MODEL_CATALOG_MANIFEST = "crates/licoup-model-catalog/Cargo.toml";
 // An Agent adapter package is its own crate and program, so the modules that
-// own its protocol and its document run against its manifest rather than the host.
-export const AGENT_CODEX_MANIFEST = "crates/licoup-agent-codex/Cargo.toml";
-export const AGENT_ANTIGRAVITY_MANIFEST =
-  "crates/licoup-agent-antigravity/Cargo.toml";
-export const AGENT_DEEPSEEK_MANIFEST = "crates/licoup-agent-deepseek/Cargo.toml";
-export const AGENT_KIMI_MANIFEST = "crates/licoup-agent-kimi/Cargo.toml";
+// own its protocol and its document run against its manifest rather than the
+// host's. The path follows the package's own directory name, so no per-package
+// constant is restated here when another Agent's package lands.
+export function agentPackageManifest(name) {
+  return `crates/licoup-agent-${name}/Cargo.toml`;
+}
 
 export const FLUTTER_COMPOSITION_INPUTS = Object.freeze([
   "apps/desktop/analysis_options.yaml",
@@ -239,10 +239,15 @@ export function rustAdapterSdkLayer(filter, harnessArgs = []) {
 
 /// One module of an Agent adapter package's library. The package is its own
 /// crate and program, so its leaves run against its own manifest rather than
-/// against the host that composes it. The manifest is a parameter because there
-/// is more than one package: a second Agent's leaves must not silently run
-/// against the first Agent's crate.
-export function rustAgentPackageLayer(filter, harnessArgs = [], manifest = AGENT_CODEX_MANIFEST) {
+/// against the host that composes it. The manifest is named per call because
+/// there is more than one package: a second Agent's leaves must not silently run
+/// against the first Agent's crate. The default stays the first Agent's package
+/// so the existing call sites keep their meaning.
+export function rustAgentPackageLayer(
+  filter,
+  harnessArgs = [],
+  manifest = agentPackageManifest("codex"),
+) {
   return command(
     "cargo",
     [
@@ -255,6 +260,25 @@ export function rustAgentPackageLayer(filter, harnessArgs = [], manifest = AGENT
     ],
     10 * 60_000,
   );
+}
+
+/// One Agent adapter package's whole crate. The package is its own crate and
+/// program, so its tree is one test target that runs against its own manifest.
+/// The module id and the manifest both follow the package's own directory name,
+/// so adding an Agent's package is one call rather than a copied block, and two
+/// packages cannot silently run against one crate.
+export function agentPackageCrateModule(name, summary) {
+  return defineModule({
+    id: `rust.core.agent-${name}-package`,
+    kind: "rust-core",
+    summary,
+    inputs: [`crates/licoup-agent-${name}/**`],
+    command: command(
+      "cargo",
+      ["test", "--manifest-path", agentPackageManifest(name)],
+      10 * 60_000,
+    ),
+  });
 }
 
 export function gatewayCoreLayer(filter, harnessArgs = []) {
