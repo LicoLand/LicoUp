@@ -336,17 +336,19 @@ fn the_read_model_reads_the_canonical_conversation_authority() -> Result<()> {
     let thread = entry.thread(&store.get(&conversation.id)?, &page);
     assert_eq!(thread.conversation_id, conversation.id);
     assert_eq!(thread.members.len(), 3);
-    assert_eq!(thread.total_count, 1);
-    assert_eq!(thread.events.len(), 1);
+    assert_eq!(thread.total_count, 3);
+    assert_eq!(thread.events.len(), 3);
+    let message = thread
+        .events
+        .iter()
+        .find(|event| event.text.is_some())
+        .ok_or_else(|| anyhow!("the page carries the posted message"))?;
+    assert_eq!(message.text.as_deref(), Some("hello from the paired client"));
     assert_eq!(
-        thread.events[0].text.as_deref(),
-        Some("hello from the paired client")
-    );
-    assert_eq!(
-        thread.events[0].author_membership_id.as_deref(),
+        message.author_membership_id.as_deref(),
         Some(owner_membership.as_str())
     );
-    assert!(thread.events[0].finalized);
+    assert!(message.finalized);
     Ok(())
 }
 
