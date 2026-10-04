@@ -475,13 +475,6 @@
       "reason": "Reviewed schema-only output captured from synthetic native Conversation and continuity initialization. The compiled fixture preserves the exact bytes and both Rust and JavaScript structural admission oracles."
     }
   ],
-  "reviewedSchemaFixtures": [
-    {
-      "path": "tests/fixtures/client_state_migration/retained_related_tables.sql",
-      "reason": "Synthetic schema-only fixture proving that current initialization preserves unrelated retained tables without reading or altering runtime rows."
-    }
-  ],
-  "reviewedSchemaHistory": [],
   "publicReferenceDomains": [
     "claude.ai",
     "claude.com",
