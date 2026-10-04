@@ -74,7 +74,7 @@ fn append_activity_event(
 /// Read the Codex App Server model catalog, naming its failure in this host's
 /// error type so the port reports one error type to the inventory.
 fn codex_app_server_model_catalog(binary: &std::path::Path) -> anyhow::Result<serde_json::Value> {
-    crate::platform::codex_app_server_model_catalog(binary)
+    licoup_agent_codex::app_server::driver::list_models(binary)
         .map_err(|()| anyhow::anyhow!("codex_app_server_model_catalog_unavailable"))
 }
 

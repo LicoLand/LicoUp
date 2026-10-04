@@ -29,18 +29,25 @@
 //!   neither the package nor its instances.
 
 use crate::platform::extension_packages::install::{InstalledPackage, PackageStore};
+use crate::platform::extension_packages::registration::{
+    RecordedRegistration, RegistrationOwners, ReleasedRegistration,
+};
 use crate::platform::extension_packages::state::{InstanceRegistry, Settlement};
-use crate::platform::extension_packages::{refusal, remove_managed_tree};
+use crate::platform::extension_packages::{
+    read_bounded_text, refusal, remove_managed_tree, replace_file_atomically,
+};
 use licoup_application::ApplicationFailure;
 use licoup_extension_contracts::deployment::{InstanceLifecycle, LocalCatalogue};
 use licoup_extension_contracts::manifest::USER_RUNTIME_PREFIX;
-use std::path::Path;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 const UNINSTALL_STAGE: &str = "extension/package-uninstall";
 
 /// The facts an uninstall preserves, stated so they can be asserted rather than
 /// assumed.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PreservedFacts {
     /// The conversation and result history the package produced.
     pub history: bool,
@@ -72,7 +79,8 @@ pub enum RemainingWork {
 }
 
 /// What uninstall would do, shown before anything is removed.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UninstallPlan {
     pub package_id: String,
     pub version: String,
@@ -85,6 +93,10 @@ pub struct UninstallPlan {
     pub exclusive_bytes: u64,
     /// A shared runtime this package references, when it references one.
     pub shared_runtime_ref: Option<String>,
+    /// Registrations this version recorded in surfaces other modules own. The
+    /// preview names them because uninstall releases them, and a user is told
+    /// what will be touched outside the package's own bytes.
+    pub registrations: Vec<RecordedRegistration>,
     pub preserved: PreservedFacts,
 }
 
@@ -110,6 +122,14 @@ impl UninstallPlan {
         if let Some(reference) = &self.shared_runtime_ref {
             lines.push(format!(
                 "shared runtime {reference} stays until nothing uses it"
+            ));
+        }
+        for registration in &self.registrations {
+            lines.push(format!(
+                "{} registration {} is released through {}",
+                registration.owner.wire_name(),
+                registration.key,
+                registration.owner.owner_module()
             ));
         }
         lines
@@ -155,6 +175,7 @@ pub fn preview(
             .runtime_ref
             .clone()
             .filter(|reference| !reference.starts_with(USER_RUNTIME_PREFIX)),
+        registrations: installed.registrations.clone(),
         preserved: PreservedFacts::all_kept(),
     })
 }
@@ -342,15 +363,47 @@ impl Drained {
         &self.plan
     }
 
-    /// Reclaim this version's managed bytes.
+    /// The drained decision, as a value that can survive this process.
     ///
-    /// Refuses while an instance of the package is still running: draining is
-    /// what makes deletion safe, and this is the check that notices a caller who
-    /// drained a *different* set of instances.
+    /// A one-shot caller cannot hold the transaction in memory between two
+    /// invocations, so the decision is written down and read back. What is *not*
+    /// written down is permission: [`Drained::collect`] re-derives the running
+    /// set and re-checks it, so a record that outlived the state it described
+    /// fails closed instead of reclaiming bytes.
+    pub fn record(&self) -> DrainedRecord {
+        DrainedRecord {
+            schema: DRAINED_RECORD_SCHEMA.to_owned(),
+            plan: self.plan.clone(),
+            drained_instances: self.drained_instances.clone(),
+            canceled_work: self.canceled_work,
+            unknown_work: self.unknown_work,
+            removed_together: self.removed_together.clone(),
+        }
+    }
+
+    /// Reclaim this version's managed bytes, after releasing what it registered.
+    ///
+    /// Three things happen in this order, and the order is the point:
+    ///
+    /// 1. **Refuse while an instance is still running.** Draining is what makes
+    ///    deletion safe, and this check notices a caller who drained a *different*
+    ///    set of instances.
+    /// 2. **Release every registration the record names**, through the owner
+    ///    module for that surface. The package's own record says what it created;
+    ///    nothing here guesses. A refusal from an owner stops the uninstall with
+    ///    the bytes still in place, so a half-removed package is not
+    ///    representable: registration entries never outlive the bytes that used
+    ///    them and bytes never disappear while an entry still points at them.
+    /// 3. **Reclaim this version's managed bytes.**
+    ///
+    /// User data is not on this path at all: history, credentials and protocol
+    /// state are preserved, and clearing them is the separate
+    /// [`purge_user_data`] operation.
     pub fn collect(
         self,
         store: &PackageStore,
         registry: &InstanceRegistry,
+        owners: &dyn RegistrationOwners,
     ) -> Result<UninstallOutcome, ApplicationFailure> {
         let still_running: Vec<String> = registry
             .instances()
@@ -376,6 +429,9 @@ impl Drained {
                 ));
         }
 
+        // The registrations are released before a single managed byte moves.
+        let released_registrations = owners.release_all(&self.plan.registrations)?;
+
         let installed = store.installed_version(&self.plan.package_id, &self.plan.version)?;
         let user_runtime_kept = installed
             .as_ref()
@@ -393,7 +449,126 @@ impl Drained {
             shared_runtime_retained: self.plan.shared_runtime_ref.clone(),
             user_runtime_kept,
             removed_together: self.removed_together,
+            released_registrations,
         })
+    }
+}
+
+/// The schema of the drained handoff record.
+pub const DRAINED_RECORD_SCHEMA: &str = "licoup.package-uninstall-drained.v1";
+
+/// The longest drained handoff record accepted.
+pub const MAX_DRAINED_RECORD_BYTES: usize = 64 * 1024;
+
+/// A drained uninstall decision, written down so it survives one process.
+///
+/// It carries the plan and what the drain observed. It does not carry a
+/// permission: reading one back is evidence about a decision that was taken, not
+/// authority to reclaim anything, and [`Drained::collect`] still checks.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DrainedRecord {
+    pub schema: String,
+    pub plan: UninstallPlan,
+    pub drained_instances: Vec<String>,
+    pub canceled_work: u32,
+    pub unknown_work: u32,
+    pub removed_together: Vec<String>,
+}
+
+impl DrainedRecord {
+    /// Validate the record before any of it is believed.
+    pub fn validate(&self) -> Result<(), ApplicationFailure> {
+        if self.schema != DRAINED_RECORD_SCHEMA {
+            return Err(
+                refusal("package_uninstall_record_invalid", UNINSTALL_STAGE).with_field("schema")
+            );
+        }
+        if self.plan.package_id.is_empty() || self.plan.version.is_empty() {
+            return Err(refusal("package_uninstall_record_invalid", UNINSTALL_STAGE)
+                .with_field("packageId"));
+        }
+        self.plan
+            .registrations
+            .iter()
+            .try_for_each(RecordedRegistration::validate)
+    }
+
+    /// Return the drained value this record describes.
+    ///
+    /// Re-reading a decision is not re-authorizing it: `collect` re-checks the
+    /// running set and the store before anything is removed.
+    pub fn resume(self) -> Result<Drained, ApplicationFailure> {
+        self.validate()?;
+        Ok(Drained {
+            plan: self.plan,
+            drained_instances: self.drained_instances,
+            canceled_work: self.canceled_work,
+            unknown_work: self.unknown_work,
+            removed_together: self.removed_together,
+        })
+    }
+}
+
+/// Where the drained handoff for one version lives inside the store.
+///
+/// It sits outside `records/`, so the installed-version reader can never mistake
+/// a drain decision for a package record.
+pub fn drained_record_path(store: &PackageStore, package_id: &str, version: &str) -> PathBuf {
+    store
+        .root()
+        .join("uninstall")
+        .join(format!("{package_id}@{version}.json"))
+}
+
+/// Write down one drained decision.
+pub fn write_drained_record(
+    store: &PackageStore,
+    drained: &Drained,
+) -> Result<PathBuf, ApplicationFailure> {
+    let record = drained.record();
+    let text = serde_json::to_string_pretty(&record).map_err(|_| {
+        refusal("package_uninstall_record_invalid", UNINSTALL_STAGE).with_field("record")
+    })?;
+    let path = drained_record_path(store, &record.plan.package_id, &record.plan.version);
+    replace_file_atomically(&path, &text)?;
+    Ok(path)
+}
+
+/// Read back the drained decision for one version.
+///
+/// An absent record is a refusal and not an empty drain: reclaiming bytes without
+/// a recorded drain would be exactly the "uninstall while a generation is still
+/// serving" path the transaction exists to make unrepresentable.
+pub fn read_drained_record(
+    store: &PackageStore,
+    package_id: &str,
+    version: &str,
+) -> Result<DrainedRecord, ApplicationFailure> {
+    let path = drained_record_path(store, package_id, version);
+    let Some(text) = read_bounded_text(&path, MAX_DRAINED_RECORD_BYTES)? else {
+        return Err(refusal("package_uninstall_not_drained", UNINSTALL_STAGE)
+            .with_field("packageId")
+            .with_presentation_arg("package", package_id));
+    };
+    serde_json::from_str(&text).map_err(|_| {
+        refusal("package_uninstall_record_invalid", UNINSTALL_STAGE).with_field("record")
+    })
+}
+
+/// Remove the drained handoff once its collect succeeded.
+pub fn clear_drained_record(
+    store: &PackageStore,
+    package_id: &str,
+    version: &str,
+) -> Result<(), ApplicationFailure> {
+    let path = drained_record_path(store, package_id, version);
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(_) => Err(
+            refusal("package_uninstall_record_unavailable", UNINSTALL_STAGE).with_field("record"),
+        ),
     }
 }
 
@@ -417,6 +592,8 @@ pub struct UninstallOutcome {
     pub user_runtime_kept: bool,
     /// Dependent packages the user chose to remove in the same decision.
     pub removed_together: Vec<String>,
+    /// What the owning modules reported releasing, in the order they were asked.
+    pub released_registrations: Vec<ReleasedRegistration>,
 }
 
 /// Removing a package never removes an interpreter the user installed.
@@ -489,6 +666,19 @@ pub fn purge_user_data(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::package_registration_release::PackageRegistrationOwners;
+
+    /// The production registration adapter with no caller-supplied release inputs.
+    ///
+    /// These scenarios record no external registration, so every owner is asked for
+    /// nothing and the reclaim proceeds. One shared value keeps a `'static` reference
+    /// available without each test naming or rebuilding the adapter.
+    static OWNERS: std::sync::LazyLock<PackageRegistrationOwners> =
+        std::sync::LazyLock::new(PackageRegistrationOwners::default);
+
+    fn owners() -> &'static PackageRegistrationOwners {
+        &OWNERS
+    }
 
     /// The client versions a fixture declares it supports: the client this test
     /// binary runs as, up to but not including the next major line. The value
@@ -622,7 +812,9 @@ mod tests {
         let drained = transaction
             .drain(&mut registry, RemainingWork::Wait)
             .expect("drain");
-        let outcome = drained.collect(&store, &registry).expect("collect");
+        let outcome = drained
+            .collect(&store, &registry, owners())
+            .expect("collect");
         assert!(outcome.reclaimed_bytes > 0);
         assert_eq!(outcome.preserved, PreservedFacts::all_kept());
         assert!(store.installed().expect("installed").is_empty());
@@ -675,7 +867,9 @@ mod tests {
         let drained = transaction
             .drain(&mut registry, RemainingWork::Cancel)
             .expect("cancel");
-        let outcome = drained.collect(&store, &registry).expect("collect");
+        let outcome = drained
+            .collect(&store, &registry, owners())
+            .expect("collect");
         assert_eq!(outcome.canceled_work, 1);
         assert_eq!(
             outcome.unknown_work, 1,
@@ -739,7 +933,9 @@ mod tests {
         let drained = transaction
             .drain(&mut registry, RemainingWork::Wait)
             .expect("drain");
-        let outcome = drained.collect(&store, &registry).expect("collect");
+        let outcome = drained
+            .collect(&store, &registry, owners())
+            .expect("collect");
         assert_eq!(
             outcome.removed_together,
             vec!["example.host.panel".to_owned()]
@@ -767,7 +963,7 @@ mod tests {
         // be able to have its package deleted underneath it.
         active_instance("example.specialist.echo", 2, &mut registry);
         let failure = drained
-            .collect(&store, &registry)
+            .collect(&store, &registry, owners())
             .expect_err("instance still running");
         assert_eq!(failure.code, "package_instance_still_active");
         assert!(
@@ -822,7 +1018,9 @@ mod tests {
                 .expect("begin")
                 .drain(&mut registry, RemainingWork::Wait)
                 .expect("drain");
-        let outcome = drained.collect(&store, &registry).expect("collect");
+        let outcome = drained
+            .collect(&store, &registry, owners())
+            .expect("collect");
         assert!(outcome.user_runtime_kept);
         remove_managed_tree(&root).expect("cleanup");
     }
@@ -930,7 +1128,7 @@ mod tests {
             .expect("begin")
             .drain(&mut registry, RemainingWork::Wait)
             .expect("drain")
-            .collect(&store, &registry)
+            .collect(&store, &registry, owners())
             .expect("collect");
 
         assert!(

@@ -137,6 +137,7 @@ name = "licoup-analytics"
 version = "0.1.0"
 dependencies = [
  "licoup-extension-contracts",
+ "licoup-state-machine-codegen",
  "licoup-usage-source-sdk",
  "serde",
  "serde_json",
@@ -159,6 +160,14 @@ dependencies = [
  "serde",
  "serde_json",
  "url",
+]
+
+[[package]]
+name = "licoup-state-machine-codegen"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

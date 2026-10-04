@@ -708,14 +708,12 @@ pub fn adapter_management_catalog(antigravity_bridge_installed: bool) -> Value {
                 } else {
                     Vec::new()
                 };
-                let cli_executable = licoup_agent_targets::domain::targets::agent_cli_executable(agent_id);
                 let native_capabilities = capability_entries.get(*agent_id).cloned().unwrap_or_default();
                 let adapter_plugins = adapter_plugin_entries(
                     adapter,
                     &driver.runtime_protocol,
                     installation_state,
                     &lifecycle_actions,
-                    cli_executable.as_deref(),
                 );
                 Some(json!({
                     "agentId": adapter.id(),
@@ -803,7 +801,6 @@ fn adapter_plugin_entries(
     runtime_protocol: &str,
     installation_state: &str,
     lifecycle_actions: &[&str],
-    cli_executable: Option<&Path>,
 ) -> Vec<Value> {
     match adapter.managed_adapter_plugin_id() {
         Some("acp-bridge") => vec![json!({
@@ -813,41 +810,8 @@ fn adapter_plugin_entries(
             "installationState": installation_state,
             "lifecycleActions": lifecycle_actions,
         })],
-        Some("lico-up-codex") => {
-            let installation_state = codex_plugin_installation_state(cli_executable);
-            vec![json!({
-                "id": "lico-up-codex",
-                "label": "LicoUp Codex Plugin",
-                "detail": "lico-subagent-mcp",
-                "installationState": installation_state,
-                "lifecycleActions": codex_plugin_lifecycle_actions(installation_state),
-            })]
-        }
+        // A Codex caller integration is carried by a plugin in Codex's own
+        // marketplace. This client installs none, so it advertises none.
         _ => Vec::new(),
     }
-}
-
-/// The LicoUp Codex Plugin is installable only from a confirmed
-/// not-installed state; execution always goes through the digest-bound
-/// confirmation flow, never the generic unmanaged lane.
-pub fn codex_plugin_lifecycle_actions(installation_state: &str) -> Vec<&'static str> {
-    if installation_state == "not-installed" {
-        vec!["install"]
-    } else {
-        Vec::new()
-    }
-}
-
-fn codex_plugin_installation_state(cli_executable: Option<&Path>) -> &'static str {
-    let Some(executable) = cli_executable else {
-        return "unavailable";
-    };
-    // Which Agent this integration belongs to, and what its manager reports,
-    // arrives through the composition: the registry reports the state and
-    // never names the plugin.
-    let state = super::port::composition()
-        .map(|composition| (composition.codex_plugin_installation_state)(Some(executable)))
-        .unwrap_or("unavailable");
-    debug_assert!(matches!(state, "installed" | "not-installed" | "unavailable"));
-    state
 }

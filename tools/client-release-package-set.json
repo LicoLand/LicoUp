@@ -7,9 +7,44 @@
       "payloadRole": "claude-code-adapter-package-payload"
     },
     {
+      "packageId": "org.licoland.adapter.antigravity",
+      "source": "crates/licoup-agent-antigravity/package",
+      "payloadRole": "antigravity-adapter-package-payload"
+    },
+    {
       "packageId": "org.licoland.adapter.codex",
       "source": "crates/licoup-agent-codex/package",
       "payloadRole": "codex-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.converter.appearance",
+      "source": "components/appearance/package",
+      "payloadRole": "appearance-converter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.feature.analytics",
+      "source": "components/analytics/package",
+      "payloadRole": "analytics-package-payload"
+    },
+    {
+      "packageId": "org.licoland.feature.gateway",
+      "source": "crates/licoup-gateway/package",
+      "payloadRole": "gateway-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.cursor",
+      "source": "crates/licoup-agent-cursor/package",
+      "payloadRole": "cursor-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.deepseek",
+      "source": "crates/licoup-agent-deepseek/package",
+      "payloadRole": "deepseek-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.kimi",
+      "source": "crates/licoup-agent-kimi/package",
+      "payloadRole": "kimi-adapter-package-payload"
     },
     {
       "packageId": "org.licoland.feature.mcp",

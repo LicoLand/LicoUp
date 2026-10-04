@@ -4,16 +4,17 @@
 //! parser. An Agent whose parser has moved into its own package also moved the
 //! arm that drives it, because an arm is only meaningful beside the parser it
 //! constructs; this composition reaches it through the SDK's parser-set port.
+//! Six Agents' arms have moved that way — Antigravity, Claude Code, Codex,
+//! Cursor, DeepSeek Harness and Kimi Code — so each is built by the package that
+//! owns its parser.
+//!
 //! Two Agents keep their protocol state machine outside this module tree
-//! (`acp_driver_runtime` for copilot and kimi-code, `openclaw_driver` for
-//! openclaw), so those arms live next to the code they replay.
+//! (`acp_driver_runtime` for copilot, `openclaw_driver` for openclaw), so those
+//! arms live next to the code they replay.
 //!
 //! The arms are `pub(in crate::platform)` to this module's parent — it is the
 //! only reader, and it hands them to the SDK's harness through the parser set.
 
-mod antigravity;
-mod cursor;
-mod deepseek_harness;
 mod hermes;
 mod kilo_code;
 mod lico_agent;
@@ -29,23 +30,29 @@ use crate::platform::openclaw_driver;
 /// An adapter this host composes no arm for is refused rather than defaulted,
 /// so a fixture can never pass against a parser that was never constructed.
 pub(in crate::platform) fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameReplay>, String> {
-    // The two shared ACP arms read their Agent's frame dialect through the same
-    // installed port the production transport reads, so the host's composition
-    // installs it here exactly as a production entry point does. Installation is
-    // idempotent and first-wins, so an arm built after a running turn cannot
-    // replace the dialects that turn is reading.
-    if matches!(adapter_id, "copilot" | "kimi-code") {
+    // The one remaining shared ACP arm reads its Agent's frame dialect through
+    // the same installed port the production transport reads, so the host's
+    // composition installs it here exactly as a production entry point does.
+    // Installation is idempotent and first-wins, so an arm built after a running
+    // turn cannot replace the dialects that turn is reading. Kimi Code's arm
+    // needs no installation: its package owns the dialect and hands it to the
+    // shared reducer directly, so the arm cannot drift from the dialect.
+    if matches!(adapter_id, "copilot") {
         crate::platform::runtime_adapters::install();
     }
     Ok(match adapter_id {
-        "antigravity" => Box::new(antigravity::Replay::new()?),
+        // The arm moved with the parser into the Antigravity adapter package, so a
+        // regression in that parser fails the package's own corpus as well as this
+        // composition's.
+        "antigravity" => licoup_agent_antigravity::replay::replay_arm(adapter_id)?,
         "claude-code" => licoup_agent_claude_code::replay::replay_arm(adapter_id)?,
         "codex" => licoup_agent_codex::replay::replay_arm(adapter_id)?,
-        "copilot" | "kimi-code" => Box::new(acp_driver_runtime::replay::Replay::new(adapter_id)?),
-        "cursor" => Box::new(cursor::Replay::new()?),
-        "deepseek-harness" => Box::new(deepseek_harness::Replay::new()?),
+        "copilot" => Box::new(acp_driver_runtime::replay::Replay::new(adapter_id, "copilot-acp")?),
+        "cursor" => licoup_agent_cursor::replay::replay_arm(adapter_id)?,
+        "deepseek-harness" => licoup_agent_deepseek::replay::replay_arm(adapter_id)?,
         "hermes" => Box::new(hermes::Replay::new()?),
         "kilo-code" => Box::new(kilo_code::Replay::new()?),
+        "kimi-code" => licoup_agent_kimi::replay::replay_arm(adapter_id)?,
         "lico-agent" => Box::new(lico_agent::Replay::new()?),
         "openclaw" => Box::new(openclaw_driver::replay::Replay::new()?),
         "opencode" => Box::new(opencode::Replay::new()?),

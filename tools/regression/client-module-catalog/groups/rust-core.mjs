@@ -61,6 +61,50 @@ export const RUST_CORE_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "rust.core.agent-antigravity-package",
+      kind: "rust-core",
+      summary: "Antigravity adapter package program, Agent Hooks receipt, PTY protocol, registration, and replay corpus",
+      inputs: ["crates/licoup-agent-antigravity/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-antigravity/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "rust.core.agent-cursor-package",
+      kind: "rust-core",
+      summary: "Cursor adapter package program, vendor protocol, registration, and replay corpus",
+      inputs: ["crates/licoup-agent-cursor/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-cursor/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "rust.core.agent-deepseek-package",
+      kind: "rust-core",
+      summary: "DeepSeek Harness adapter package program, vendor protocol, session-log reader, registration, and replay corpus",
+      inputs: ["crates/licoup-agent-deepseek/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-deepseek/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "rust.core.agent-kimi-package",
+      kind: "rust-core",
+      summary: "Kimi Code adapter package program, ACP frame dialect, registration, and replay arm",
+      inputs: ["crates/licoup-agent-kimi/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-kimi/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
       id: "rust.core.acp.composition",
       kind: "rust-core",
       summary: "ACP facade, shared protocol types, validation, and error boundaries",
@@ -445,6 +489,20 @@ export const RUST_CORE_MODULES = Object.freeze([
         "crates/licoup-native/src/core/secure_mesh_crypto/tests/tamper.rs",
       ],
       command: rustLayer("core::secure_mesh_crypto::tests::tamper::"),
+    }),
+  defineModule({
+      id: "rust.core.endpoint-core",
+      kind: "rust-core",
+      summary: "Caller-owned session, custody, transport, and durable-state port contracts",
+      inputs: [
+        "crates/licoup-endpoint-core/Cargo.toml",
+        "crates/licoup-endpoint-core/src/**",
+      ],
+      command: command(
+        "cargo",
+        ["test", "-p", "licoup-endpoint-core"],
+        10 * 60_000,
+      ),
     }),
   defineModule({
       id: "rust.core.protocol-bindings",

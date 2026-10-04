@@ -37,6 +37,13 @@
       "dartOutput": "apps/desktop/lib/src/contracts/generated/strategy.g.dart"
     },
     {
+      "id": "package",
+      "status": "active",
+      "schema": "schemas/client_bridge/package.json",
+      "rustOutput": "crates/licoup-native/src/ffi/generated/package.rs",
+      "dartOutput": "apps/desktop/lib/src/contracts/generated/package.g.dart"
+    },
+    {
       "id": "adapter_plugin",
       "status": "planned",
       "schema": "schemas/client_bridge/adapter_plugin.json",

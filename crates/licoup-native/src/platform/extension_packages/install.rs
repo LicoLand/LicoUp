@@ -27,6 +27,7 @@ use crate::platform::extension_packages::artifact::{
 use crate::platform::extension_packages::journal::{
     AbandonedStage, InstallJournal, JournalOperation, RecoveryReport, StagedDirectory,
 };
+use crate::platform::extension_packages::registration::RecordedRegistration;
 use crate::platform::extension_packages::state::{InstallActivation, PackageMachine, TrustRecord};
 use crate::platform::extension_packages::{
     content_digest, directory_bytes, ensure_private_directory, now_unix_ms, read_bounded_text,
@@ -181,6 +182,9 @@ pub struct InstallRequest {
     pub activation: InstallActivation,
     pub limits: ArtifactLimits,
     pub faults: FaultPlan,
+    /// Registrations this version creates while it is installed. The owner that
+    /// writes one records it here, so uninstall releases exactly what exists.
+    pub registrations: Vec<RecordedRegistration>,
 }
 
 impl InstallRequest {
@@ -198,7 +202,17 @@ impl InstallRequest {
             activation: InstallActivation::EnabledOnDemand,
             limits: ArtifactLimits::default(),
             faults: FaultPlan::none(),
+            registrations: Vec::new(),
         }
+    }
+
+    /// Declare the registrations this version creates.
+    pub fn with_registrations(
+        mut self,
+        registrations: Vec<RecordedRegistration>,
+    ) -> Self {
+        self.registrations = registrations;
+        self
     }
 
     pub fn with_activation(mut self, activation: InstallActivation) -> Self {
@@ -241,6 +255,14 @@ pub struct InstalledPackage {
     pub runtime_ref: Option<String>,
     #[serde(default)]
     pub permissions: Vec<PermissionRequest>,
+    /// Registrations this version created in surfaces other modules own.
+    ///
+    /// Empty for a package that registered nothing, which is the ordinary case
+    /// for a package the host starts itself. Uninstall releases exactly this set
+    /// through the owning modules, so a package is never credited with a surface
+    /// it did not write and never left holding one it did.
+    #[serde(default)]
+    pub registrations: Vec<RecordedRegistration>,
 }
 
 impl InstalledPackage {
@@ -254,6 +276,20 @@ impl InstalledPackage {
     pub fn key(&self) -> String {
         format!("{}@{}", self.package_id, self.version)
     }
+}
+
+/// The user's own switch for one installed version.
+///
+/// Installing decides availability; this decides whether the version is switched
+/// on. It is a durable preference and not a running instance: flipping it starts
+/// nothing, replaces nothing and touches no bytes, so it never needs the
+/// maintenance guard. A version with no preference recorded was never explicitly
+/// switched off.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackagePreference {
+    pub enabled: bool,
+    pub updated_at_unix_ms: i64,
 }
 
 /// The result of one successful install.
@@ -285,7 +321,7 @@ pub struct PackageStore {
 impl PackageStore {
     /// Open (creating when absent) the managed root.
     pub fn open(root: &Path) -> Result<Self, ApplicationFailure> {
-        for directory in ["packages", "records", "staging", "cache"] {
+        for directory in ["packages", "records", "staging", "cache", "preferences"] {
             ensure_private_directory(&root.join(directory))?;
         }
         // The managed root is resolved once so every path derived from it is a
@@ -296,6 +332,98 @@ impl PackageStore {
         })?;
         let journal = InstallJournal::open(&root)?;
         Ok(Self { root, journal })
+    }
+
+    /// Every installed version, reconciled first.
+    ///
+    /// This is the only route to the catalogue, and the recovery runs *before*
+    /// the records are read so a crash in the middle of an install can never be
+    /// presented as a half-installed version: a stage whose publication was
+    /// interrupted is finished or reclaimed while nothing has read the record
+    /// set yet. A caller cannot forget the recovery because it cannot reach
+    /// [`PackageStore::installed`] through this route without it.
+    pub fn catalogue(
+        &self,
+    ) -> Result<(RecoveryReport, Vec<InstalledPackage>), ApplicationFailure> {
+        let report = self.recover()?;
+        Ok((report, self.installed()?))
+    }
+
+    /// Where the user's switch for one version lives.
+    pub fn preference_path(&self, package_id: &str, version: &str) -> PathBuf {
+        self.root
+            .join("preferences")
+            .join(package_id)
+            .join(format!("{version}.json"))
+    }
+
+    /// The user's switch for one version, or `None` when never set.
+    pub fn preference(
+        &self,
+        package_id: &str,
+        version: &str,
+    ) -> Result<Option<PackagePreference>, ApplicationFailure> {
+        checked_identity(package_id, version)?;
+        let Some(text) = read_bounded_text(&self.preference_path(package_id, version), MAX_RECORD_BYTES)?
+        else {
+            return Ok(None);
+        };
+        serde_json::from_str(&text)
+            .map(Some)
+            .map_err(|_| refusal("package_record_invalid", INSTALL_STAGE).with_field("preference"))
+    }
+
+    /// Switch one installed version on or off.
+    ///
+    /// Refuses a version that is not installed: a preference about bytes this
+    /// client does not hold would be a fact with nothing behind it. Enabling is
+    /// not activation — no instance starts, no generation moves and no byte
+    /// changes — so this is not maintenance and does not pass the idle seam.
+    pub fn set_enabled(
+        &self,
+        package_id: &str,
+        version: &str,
+        enabled: bool,
+    ) -> Result<PackagePreference, ApplicationFailure> {
+        if self.installed_version(package_id, version)?.is_none() {
+            return Err(refusal("package_not_installed", INSTALL_STAGE)
+                .with_field("packageId")
+                .with_presentation_arg("package", package_id));
+        }
+        let preference = PackagePreference {
+            enabled,
+            updated_at_unix_ms: now_unix_ms(),
+        };
+        let text = serde_json::to_string_pretty(&preference)
+            .map_err(|_| refusal("package_record_invalid", INSTALL_STAGE).with_field("preference"))?;
+        replace_file_atomically(&self.preference_path(package_id, version), &text)?;
+        Ok(preference)
+    }
+
+    /// Record that an installed version created one registration.
+    ///
+    /// The owner that writes the registration calls this at the moment it writes
+    /// it, so the record is what exists rather than what a manifest promised. A
+    /// repeated call for the same owner and key is idempotent: recording the same
+    /// fact twice does not make uninstall release it twice.
+    pub fn record_registration(
+        &self,
+        package_id: &str,
+        version: &str,
+        registration: RecordedRegistration,
+    ) -> Result<InstalledPackage, ApplicationFailure> {
+        registration.validate()?;
+        let mut installed = self.installed_version(package_id, version)?.ok_or_else(|| {
+            refusal("package_not_installed", INSTALL_STAGE)
+                .with_field("packageId")
+                .with_presentation_arg("package", package_id)
+        })?;
+        if installed.registrations.contains(&registration) {
+            return Ok(installed);
+        }
+        installed.registrations.push(registration);
+        self.write_record(&installed)?;
+        Ok(installed)
     }
 
     pub fn root(&self) -> &Path {
@@ -460,6 +588,7 @@ impl PackageStore {
             install_scripts: expanded.install_scripts().to_vec(),
             runtime_ref: runtime_reference(expanded.manifest()),
             permissions: requested,
+            registrations: request.registrations.clone(),
         };
         // The host record lands before the journal's commit line: it is the fact
         // that makes the version installable at all. A crash between the two is

@@ -1,22 +1,31 @@
-//! Exact usage from the installed Harness's read-only session persistence API.
-//! The provider owns format migration, compression and inherited-prefix decoding.
+//! Exact usage from the installed Harness's own durable session log.
+//!
+//! The row format, its versioning and its compression belong to the Harness,
+//! so its reader lives in the DeepSeek adapter package
+//! (`licoup_agent_deepseek::session_store`) rather than here. What stays in the
+//! kernel is the *accounting*: which artifact is the current generation of one
+//! session, how a sample becomes a request record, and which calendar day it
+//! lands on. That division is the same one the removed Node worker had — it
+//! resolved the vendor's store and this pipeline did the arithmetic — with no
+//! Node runtime and no vendor library in the middle.
 
 use super::super::contract::{HistoryUsageSummary, MessageUsage};
 use super::super::variant::{UsageVariant, model_label};
 use super::super::window::UsageWindow;
 use super::models::ParseResult;
-use crate::domain::conversation::source_catalog::deepseek_generation;
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
-const READER: &str = include_str!("deepseek_reader.mjs");
+/// The exact upper bound a JSON number can carry before a JavaScript reader
+/// loses integer fidelity: the reader used to be a Node script, and the
+/// accounting the kernel kept then keeps the same bound now.
 const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
+
+/// A read of one session artifact failed, named by the stage it failed at.
 #[derive(Debug)]
 pub(super) struct ReadFailure(pub(super) &'static str);
 impl std::fmt::Display for ReadFailure {
@@ -26,46 +35,20 @@ impl std::fmt::Display for ReadFailure {
 }
 impl std::error::Error for ReadFailure {}
 
-/// Generations are representations of one session, never additional consumption.
+/// The one artifact that represents each session, when several generations of it
+/// are present on disk: the newest generation, since generations are
+/// representations of one session and never additional consumption.
 pub(super) fn canonical_sources(sources: BTreeMap<PathBuf, String>) -> BTreeMap<PathBuf, String> {
-    let mut sessions = BTreeMap::<PathBuf, (u64, PathBuf, String)>::new();
-    for (path, kind) in sources {
-        let Some(version) = deepseek_generation(&path) else {
-            continue;
-        };
-        let Some(directory) = path.parent() else {
-            continue;
-        };
-        let slot = sessions
-            .entry(directory.to_path_buf())
-            .or_insert_with(|| (version, path.clone(), kind.clone()));
-        if version > slot.0 {
-            *slot = (version, path, kind);
-        }
-    }
-    sessions
-        .into_values()
-        .map(|(_, path, kind)| (path, kind))
-        .collect()
+    licoup_agent_deepseek::session_store::newest_generation(sources)
 }
 
+/// The usage reader, as this pipeline holds it.
+///
+/// It carries no handle: the artifact is read whole, from the package that owns
+/// the format, so there is no worker process to keep alive and nothing to shut
+/// down between sources.
 #[derive(Default)]
-pub(super) struct Reader {
-    process: Option<ReaderProcess>,
-}
-
-struct ReaderProcess {
-    child: Child,
-    input: Option<ChildStdin>,
-    output: BufReader<ChildStdout>,
-}
-
-impl Drop for ReaderProcess {
-    fn drop(&mut self) {
-        self.input.take();
-        let _ = self.child.wait();
-    }
-}
+pub(super) struct Reader;
 
 impl Reader {
     pub(super) fn parse(
@@ -74,120 +57,40 @@ impl Reader {
         size: u64,
         calendar: &UsageWindow,
     ) -> Result<ParseResult> {
-        if self.process.is_none() {
-            self.process = Some(Self::start().context(ReadFailure("reader-start"))?);
-        }
-        self.read(path, size, calendar)
-            .context(ReadFailure("session-read"))
-    }
-
-    fn read(&mut self, path: &Path, size: u64, calendar: &UsageWindow) -> Result<ParseResult> {
-        let process = self.process.as_mut().expect("reader started");
-        let input = process
-            .input
-            .as_mut()
-            .context("DeepSeek Harness reader closed")?;
-        serde_json::to_writer(&mut *input, &json!({"path":path}))?;
-        input.write_all(b"\n")?;
-        input.flush()?;
-        let mut line = String::new();
-        anyhow::ensure!(
-            process.output.read_line(&mut line)? > 0,
-            "DeepSeek Harness usage reader stopped"
-        );
-        let response: ReaderResponse =
-            serde_json::from_str(&line).context("DeepSeek Harness reader metadata invalid")?;
-        let output = response
-            .ok
-            .context("DeepSeek Harness usage source could not be decoded")?;
-        summarize_samples(output, size, calendar)
-    }
-
-    fn start() -> Result<ReaderProcess> {
-        let program = licoup_agent_targets::domain::targets::find_binary(&["dsh"])
-            .context("DeepSeek Harness reader unavailable")?;
-        let node = licoup_agent_targets::domain::targets::find_binary(&["node"])
-            .context("DeepSeek Harness Node runtime unavailable")?;
-        anyhow::ensure!(
-            [&program, &node].into_iter().all(|path| {
-                crate::domain::targets::scan_paths::discovered_agent_may_execute(path, true)
-            }),
-            "DeepSeek Harness reader execution denied"
-        );
-        let mut child = Command::new(node)
-            .args([
-                "--input-type=module",
-                "--eval",
-                READER,
-                "--",
-                "--licoup-deepseek-usage",
-            ])
-            .arg(program)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .context("DeepSeek Harness reader failed")?;
-        let input = child.stdin.take();
-        let output = BufReader::new(
-            child
-                .stdout
-                .take()
-                .context("DeepSeek Harness reader output unavailable")?,
-        );
-        Ok(ReaderProcess {
-            child,
-            input,
-            output,
-        })
+        let samples = licoup_agent_deepseek::session_store::read_usage_samples(path)
+            .map_err(anyhow::Error::from)
+            .context(ReadFailure("session-read"))?;
+        summarize_samples(samples, size, calendar)
     }
 }
 
-#[derive(Deserialize)]
-struct ReaderResponse {
-    ok: Option<ReaderOutput>,
-}
-
-#[derive(Deserialize)]
-struct ReaderOutput {
-    samples: Vec<Sample>,
-}
-
-#[derive(Deserialize)]
-struct Sample {
-    time: Value,
-    model: Option<String>,
-    provider: Option<String>,
-    effort: Option<String>,
-    usage: Option<Value>,
-}
-
+/// One sample of the shape the package's own reader reports, kept here so this
+/// module's tests can describe a fold without the vendor's file format.
 #[cfg(test)]
 fn parse_samples(bytes: &[u8], size: u64, calendar: &UsageWindow) -> Result<ParseResult> {
-    summarize_samples(serde_json::from_slice(bytes)?, size, calendar)
+    let samples: Vec<licoup_agent_deepseek::session_store::UsageSample> =
+        serde_json::from_slice(bytes)?;
+    summarize_samples(samples, size, calendar)
 }
 
+/// Fold the package's own samples into this pipeline's accounting.
 fn summarize_samples(
-    output: ReaderOutput,
+    samples: Vec<licoup_agent_deepseek::session_store::UsageSample>,
     size: u64,
     calendar: &UsageWindow,
 ) -> Result<ParseResult> {
     let mut summary = HistoryUsageSummary::default();
     let mut saw_session = false;
-    for sample in output.samples {
-        let timestamp = sample
-            .time
-            .as_u64()
-            .context("DeepSeek Harness usage timestamp invalid")?;
+    for sample in samples {
         let Some(day) = calendar
-            .date_key(&timestamp.to_string())
+            .date_key(&sample.time.to_string())
             .filter(|day| calendar.contains(day))
         else {
             continue;
         };
         saw_session = true;
-        let model = model_label(&json!({"model":sample.model,"providerId":sample.provider}));
-        let variant = UsageVariant::from_metadata(&json!({"reasoningEffort":sample.effort}));
+        let model = model_label(&json!({"model": sample.model, "providerId": sample.provider}));
+        let variant = UsageVariant::from_metadata(&json!({"reasoningEffort": sample.effort}));
         if let Some(mut usage) = sample.usage.as_ref().and_then(exact_usage) {
             usage.model = model;
             usage.variant = variant;

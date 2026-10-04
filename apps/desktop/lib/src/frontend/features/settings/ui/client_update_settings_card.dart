@@ -16,14 +16,31 @@ import 'package:licoup/src/presentation/settings/settings_intent.dart';
 import 'package:licoup/src/presentation/settings/settings_projection.dart';
 import 'package:licoup/src/presentation/settings/settings_providers.dart';
 
+/// Fail-closed default admission source: a card built without a native
+/// maintenance answer never unlocks apply.
+ClientUpdateAdmission clientUpdateAdmissionUnavailable() =>
+    const ClientUpdateAdmission.unavailable();
+
 /// Status-first update card: the headline answers "do I need to do anything?"
 /// at a glance, one state-adaptive action follows it, and configuration that
 /// rarely changes (channel, source address, offline download) lives behind
 /// the Advanced disclosure.
+///
+/// Apply is gated by [admission] — the native host decision read through
+/// [ClientUpdateAdmission.allowsMaintenance]. Nothing on this card, including
+/// closing it or changing its labels, clears that gate.
 class ClientUpdateSettingsCard extends StatefulWidget {
-  const ClientUpdateSettingsCard({super.key, required this.binding});
+  const ClientUpdateSettingsCard({
+    super.key,
+    required this.binding,
+    this.admission = clientUpdateAdmissionUnavailable,
+  });
 
   final SettingsBinding binding;
+
+  /// Live read of the host maintenance answer. Called during build so the
+  /// card always renders the current native decision.
+  final ClientUpdateAdmission Function() admission;
 
   @override
   State<ClientUpdateSettingsCard> createState() =>
@@ -74,6 +91,7 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     final phase = status.phase;
+    final admission = widget.admission();
     final busy =
         phase == ClientUpdatePhase.checking ||
         phase == ClientUpdatePhase.downloading ||
@@ -83,10 +101,19 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
         !busy &&
         status.updateAvailable &&
         phase == ClientUpdatePhase.updateAvailable;
+    // Derived from the native admission answer, never from the phase alone:
+    // a verified artifact whose host still owns unfinished work cannot be
+    // applied by this client.
     final canApply =
         !busy &&
+        admission.allowsMaintenance &&
         (phase == ClientUpdatePhase.verified ||
             phase == ClientUpdatePhase.applyPlanned);
+    final applyLocked =
+        !admission.allowsMaintenance &&
+        (phase == ClientUpdatePhase.verified ||
+            phase == ClientUpdatePhase.applyPlanned ||
+            phase == ClientUpdatePhase.blocked);
     final sourceAddress = clientUpdatePublicSourceAddress(
       repo: repository,
       githubReleaseUrl: status.githubReleaseUrl,
@@ -167,6 +194,12 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
                     ),
                   ),
                 ),
+              if (applyLocked)
+                _UpgradeBlockers(
+                  admission: admission,
+                  chinese: strings.isChinese,
+                  colors: colors,
+                ),
               _AdvancedDisclosure(
                 expanded: _advancedExpanded,
                 onToggle: () =>
@@ -216,12 +249,103 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
   }
 }
 
+/// The native blockers behind a locked update.
+///
+/// Shows which unfinished tasks hold the switch: the reporting owner, the
+/// owner's own kind name, the stored state and the bounded record identity.
+/// Only stable identities appear — never payloads, paths or owner errors.
+class _UpgradeBlockers extends StatelessWidget {
+  const _UpgradeBlockers({
+    required this.admission,
+    required this.chinese,
+    required this.colors,
+  });
+
+  final ClientUpdateAdmission admission;
+  final bool chinese;
+  final LicoThemeColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    final bodyStyle = Theme.of(context).textTheme.bodyMedium;
+    final reason = switch (admission.decision) {
+      ClientUpdateAdmissionDecision.blocked =>
+        chinese
+            ? '仍有未完成的任务，更新已锁定。请先停止它们。'
+            : 'Unfinished work still blocks this update. Stop it first.',
+      ClientUpdateAdmissionDecision.closed =>
+        chinese
+            ? '另一个维护操作正在进行，更新已锁定。'
+            : 'Another maintenance operation holds the switch. The update is locked.',
+      ClientUpdateAdmissionDecision.unknown =>
+        chinese
+            ? '无法确认主机是否空闲，更新保持锁定。'
+            : 'The host could not confirm it is idle, so the update stays locked.',
+      ClientUpdateAdmissionDecision.idle => '',
+    };
+    return Padding(
+      key: const Key('client-update-blockers'),
+      padding: const EdgeInsets.only(top: LicoContentSpacing.inline),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            reason,
+            key: const Key('client-update-blocker-reason'),
+            style: bodyStyle?.copyWith(color: colors.warning),
+          ),
+          if (admission.blockers.isNotEmpty) ...[
+            const SizedBox(height: LicoContentSpacing.inline),
+            for (final blocker in admission.blockers)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(
+                  _blockerLine(blocker),
+                  key: Key(
+                    'client-update-blocker-${blocker.owner.wireName}-${blocker.identity}',
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+                ),
+              ),
+          ],
+          if (admission.truncated)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                chinese ? '还有更多未列出的任务。' : 'More unfinished tasks exist.',
+                key: const Key('client-update-blockers-truncated'),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: colors.textMuted),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+String _blockerLine(ClientUpdateBlocker blocker) {
+  final parts = <String>[
+    if (blocker.owner.wireName.isNotEmpty) blocker.owner.wireName,
+    if (blocker.kind.isNotEmpty) blocker.kind,
+    if (blocker.state.isNotEmpty) blocker.state,
+    if (blocker.identity.isNotEmpty) blocker.identity,
+  ];
+  return parts.join(' · ');
+}
+
 bool _updateFlowPhase(ClientUpdatePhase phase) => switch (phase) {
   ClientUpdatePhase.updateAvailable ||
   ClientUpdatePhase.downloading ||
   ClientUpdatePhase.downloaded ||
   ClientUpdatePhase.verifying ||
   ClientUpdatePhase.verified ||
+  ClientUpdatePhase.blocked ||
   ClientUpdatePhase.applyPlanned => true,
   _ => false,
 };
@@ -462,6 +586,8 @@ String _updateStatusLabel(
   ClientUpdatePhase.verifying => chinese ? '正在验证…' : 'Verifying…',
   ClientUpdatePhase.verified ||
   ClientUpdatePhase.applyPlanned => chinese ? '可以更新并重启' : 'Ready to restart',
+  ClientUpdatePhase.blocked =>
+    chinese ? '等待未完成的任务' : 'Waiting for unfinished work',
   ClientUpdatePhase.applied => chinese ? '更新已安装' : 'Update installed',
   ClientUpdatePhase.failed => chinese ? '更新失败' : 'Update failed',
 };
@@ -472,6 +598,7 @@ Color _updateStatusColor(ClientUpdatePhase phase, LicoThemeColors colors) =>
       ClientUpdatePhase.updateAvailable ||
       ClientUpdatePhase.verified ||
       ClientUpdatePhase.applyPlanned => colors.accent,
+      ClientUpdatePhase.blocked => colors.warning,
       ClientUpdatePhase.failed => colors.error,
       _ => colors.textSecondary,
     };
@@ -486,5 +613,12 @@ String _updateFailureDetail(String errorCode, bool chinese) =>
         chinese ? '更新包验证失败，请重新下载' : 'Verification failed. Download again.',
       'client_update_apply_failed' =>
         chinese ? '安装失败，请重试' : 'Installation failed. Try again.',
+      'client_update_admission_blocked' =>
+        chinese ? '未完成的任务阻止安装。' : 'Unfinished work blocks the install.',
+      'client_update_admission_closed' =>
+        chinese ? '另一个维护操作正在进行。' : 'Another maintenance operation is running.',
+      'client_update_admission_unavailable' ||
+      'client_update_admission_unreadable' =>
+        chinese ? '无法确认主机空闲状态。' : 'The host idle state could not be confirmed.',
       _ => chinese ? '更新未完成，请重试' : 'Update incomplete. Try again.',
     };

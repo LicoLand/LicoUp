@@ -370,7 +370,9 @@ test("catalog commands reference existing dedicated scripts and test targets", a
             crate === "licoup-protocol-bindings" ||
             crate === "licoup-foundation" ||
             (crate === "licoup-conversation" &&
-              module.id === "rust.domain.conversation-continuity-store"),
+              module.id === "rust.domain.conversation-continuity-store") ||
+            (crate === "licoup-endpoint-core" &&
+              module.id === "rust.core.endpoint-core"),
           true,
           `${module.id} cargo package ${crate} is not a catalog crate`,
         );

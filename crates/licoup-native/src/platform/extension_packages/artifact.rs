@@ -22,6 +22,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
 const ARTIFACT_STAGE: &str = "extension/package-artifact";
@@ -133,6 +134,51 @@ fn collect_directory(
         files.insert(relative.to_string_lossy().replace('\\', "/"), path);
     }
     Ok(())
+}
+
+/// The longest manifest this module will read out of an archive.
+const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
+
+/// Read the manifest one archive declares, without expanding or writing anything.
+///
+/// A plan is not an install: it needs the package's own declaration — its
+/// identity, its compatibility list, its permissions — and nothing else. This
+/// reads exactly one entry, under the same bounds the expansion uses, so a plan
+/// costs no staging directory and leaves no bytes on disk. It is the only
+/// manifest reader for an archive that has not been expanded, so archive parsing
+/// stays in one module.
+pub fn read_manifest(
+    bytes: &[u8],
+    limits: &ArtifactLimits,
+) -> Result<PackageManifest, ApplicationFailure> {
+    preflight(bytes, limits)?;
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|_| refusal("package_artifact_invalid", ARTIFACT_STAGE).with_field("artifact"))?;
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|_| refusal("package_artifact_invalid", ARTIFACT_STAGE).with_field("entry"))?;
+        if entry.is_dir() || entry.name().replace('\\', "/") != MANIFEST_FILE {
+            continue;
+        }
+        if entry.size() > MAX_MANIFEST_BYTES {
+            return Err(
+                refusal("package_manifest_too_large", ARTIFACT_STAGE).with_field("manifest")
+            );
+        }
+        let mut buffer = Vec::with_capacity(entry.size() as usize);
+        (&mut entry)
+            .take(MAX_MANIFEST_BYTES)
+            .read_to_end(&mut buffer)
+            .map_err(|_| {
+                refusal("package_manifest_invalid", ARTIFACT_STAGE).with_field("manifest")
+            })?;
+        let value: Value = serde_json::from_slice(&buffer).map_err(|_| {
+            refusal("package_manifest_invalid", ARTIFACT_STAGE).with_field("manifest")
+        })?;
+        return PackageManifest::from_value(value);
+    }
+    Err(refusal("package_manifest_missing", ARTIFACT_STAGE).with_field("manifest"))
 }
 
 /// What an archive's own metadata says about it, before anything is written.

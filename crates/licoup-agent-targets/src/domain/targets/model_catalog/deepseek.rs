@@ -1,46 +1,21 @@
+//! The DeepSeek Harness provider catalogue, owned by the DeepSeek adapter
+//! package.
+//!
+//! The advisory rows a default Harness installation starts from are the
+//! provider's own data, so they live in the package that carries this Agent
+//! (`licoup_agent_deepseek::model_catalog`) rather than beside the client's
+//! registry. What stays here is the *merge*: how one catalogue document becomes
+//! rows in this target's model registry, which is the client's business.
+//!
+//! Reading the catalogue is a read of data, not an execution: no Node runtime is
+//! started, nothing is resolved through the installed package tree, and no
+//! vendor library is loaded. The transcription declares the vendor generation it
+//! describes, so a reader can tell which build it follows rather than assuming
+//! it tracks whatever is installed.
+
 use super::*;
-use licoup_foundation::platform::process_supervisor::run_bounded_untrusted_agent_output;
-use std::time::Duration;
 
 pub(super) const SOURCE: &str = "deepseek-harness-installed-adapter";
-const MAX_OUTPUT_BYTES: usize = 512 * 1024;
-// Model discovery shares the existing one-minute catalog scan policy.
-const LOOKUP_TIMEOUT: Duration = Duration::from_secs(60);
-
-// Query the installed official adapter's public metadata API. Do not boot a
-// Cordis profile, apply a plugin, resolve credentials, or make a model request.
-const METADATA_PROBE: &str = r#"
-import { createRequire } from 'node:module';
-import { realpathSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
-const entry = realpathSync(process.argv[1]);
-const require = createRequire(pathToFileURL(entry));
-const modulePath = require.resolve('@deepseek-ai/dsh-llm-deepseek', {
-  paths: [dirname(entry), join(dirname(entry), 'node_modules/@deepseek-ai/dsh')],
-});
-const { DeepSeekAdapter, resolveAdapterOptions, catalogModelInfo } =
-  await import(pathToFileURL(modulePath));
-const options = resolveAdapterOptions({});
-const adapter = new DeepSeekAdapter({
-  options: () => options,
-  resolveFiles: () => ({}),
-  discoverModels: provider => options.models.map(row => catalogModelInfo(provider, row)),
-});
-const provider = adapter.providerInfo('deepseek-official');
-const models = [];
-for (const row of await adapter.listModels(provider.id)) {
-  const resolved = await adapter.resolveModel(provider.id, row.id);
-  models.push({
-    name: row.id,
-    displayName: row.name,
-    providerId: provider.id,
-    provider: provider.name,
-    reasoningEfforts: resolved.reasoning?.efforts?.map(effort => effort.id) ?? [],
-  });
-}
-process.stdout.write(JSON.stringify({ models }));
-"#;
 
 pub(super) fn collect_installed_model_catalog(
     params: &Value,
@@ -51,40 +26,11 @@ pub(super) fn collect_installed_model_catalog(
         diagnostics.push(json!({"source":SOURCE,"status":"disabled"}));
         return false;
     }
-    let program = param_string(params, "deepseekHarnessCliPath")
-        .map(PathBuf::from)
-        .or_else(|| find_binary(&["dsh"]));
-    let node = param_string(params, "deepseekHarnessNodePath")
-        .map(PathBuf::from)
-        .or_else(|| find_binary(&["node"]));
-    let (Some(program), Some(node)) = (program, node) else {
-        return false;
-    };
-    if ![&program, &node]
-        .into_iter()
-        .all(|path| crate::domain::targets::scan_paths::discovered_agent_may_execute(path, true))
-    {
-        diagnostics.push(json!({"source":SOURCE,"status":"execution-denied"}));
-        return false;
-    }
-    let mut command = Command::new(node);
-    command.args(["--input-type=module", "--eval", METADATA_PROBE]);
-    command.arg(program);
-    let Ok(output) =
-        run_bounded_untrusted_agent_output(&mut command, LOOKUP_TIMEOUT, MAX_OUTPUT_BYTES)
-    else {
-        diagnostics.push(json!({"source":SOURCE,"status":"command-failed"}));
-        return false;
-    };
-    if output.timed_out || output.truncated || !output.status.is_some_and(|status| status.success())
-    {
-        diagnostics.push(json!({"source":SOURCE,"status":"unavailable"}));
-        return false;
-    }
-    let Ok(catalog) = serde_json::from_slice::<Value>(&output.stdout) else {
-        diagnostics.push(json!({"source":SOURCE,"status":"invalid-catalog"}));
-        return false;
-    };
+    // The catalogue is this package's own declared data, so nothing has to be
+    // found on disk for it to be read. An installation whose provider replaced
+    // its advisory list keeps its own replacement; what is advertised here is
+    // what a default installation starts from.
+    let catalog = licoup_agent_deepseek::model_catalog::installed_catalog();
     let mut installed = BTreeMap::new();
     let mut sources = BTreeSet::new();
     merge_model_catalog_value_into(&catalog, SOURCE, &mut installed, &mut sources, diagnostics);

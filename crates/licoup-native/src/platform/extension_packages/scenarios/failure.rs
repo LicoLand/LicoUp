@@ -9,7 +9,20 @@ use crate::platform::extension_packages::{
     DependentsDecision, InstalledPackage, InstanceRegistry, RemainingWork, UninstallTransaction,
     now_unix_ms, preview,
 };
+use crate::platform::package_registration_release::PackageRegistrationOwners;
 use licoup_extension_contracts::deployment::{LocalCatalogue, PackageLifecycle, PackageSource};
+
+/// The production registration adapter with no caller-supplied release inputs.
+///
+/// These scenarios record no external registration, so every owner is asked for
+/// nothing and the reclaim proceeds. One shared value keeps a `'static` reference
+/// available without each test naming or rebuilding the adapter.
+static OWNERS: std::sync::LazyLock<PackageRegistrationOwners> =
+    std::sync::LazyLock::new(PackageRegistrationOwners::default);
+
+fn owners() -> &'static PackageRegistrationOwners {
+    &OWNERS
+}
 
 #[test]
 fn an_interrupted_publication_is_reclaimed_and_can_be_installed_again() {
@@ -110,6 +123,7 @@ fn a_record_that_outlived_its_journal_commit_is_reconciled_as_installed() {
         install_scripts: Vec::new(),
         runtime_ref: None,
         permissions: vec![net_permission()],
+        registrations: Vec::new(),
     };
     crate::platform::extension_packages::replace_file_atomically(
         &store.record_path(ECHO, "2.0.0"),
@@ -251,7 +265,7 @@ fn a_restart_that_lost_an_instance_records_unknown_before_its_package_is_removed
             .expect("begin")
             .drain(&mut registry, RemainingWork::Wait)
             .expect("drain")
-            .collect(&store, &registry)
+            .collect(&store, &registry, owners())
             .expect("collect");
     assert_eq!(outcome.reclaimed_bytes, bytes + record_bytes);
     assert_eq!(

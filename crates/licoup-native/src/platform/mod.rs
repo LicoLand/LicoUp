@@ -16,13 +16,13 @@ pub(crate) mod antigravity_driver;
 pub mod authorized_secure_record;
 pub(crate) mod badtower_station;
 mod claude_code_driver;
-mod codex_app_server;
 pub(crate) mod conversation_lane;
 mod copilot_driver;
 mod cursor_driver;
 mod deepseek_harness_driver;
 pub mod extension_host;
 pub mod extension_packages;
+pub mod package_registration_release;
 pub(crate) mod generic_cli_driver;
 mod hermes_driver;
 pub(crate) mod hermes_tui_gateway;
@@ -57,7 +57,6 @@ pub mod catalog_cache_store;
 pub mod claude_code_subagent_mcp_manager;
 pub mod client_autostart;
 pub mod client_state;
-pub mod codex_plugin_manager;
 pub mod conversation_host_client;
 pub mod conversation_host_transport;
 pub mod cursor_subagent_mcp_manager;
@@ -76,7 +75,6 @@ pub mod secure_mesh_secret_store;
 pub mod subagent_mcp_ensure;
 
 pub use acp_session_transport::resolve_interaction_approval as resolve_native_agent_interaction_approval;
-pub(crate) use codex_app_server::list_models as codex_app_server_model_catalog;
 pub use conversation_lane::{
     cancel_turn, cleanup_conversation, dispatch_lane_operation, lane_capabilities, open_or_resume,
 };
@@ -87,20 +85,46 @@ pub use turn_event_emit::{
     emit_agent_processing, emit_turn_event, install_stdout_ndjson_sink, install_stream_sink,
 };
 
-/// This host's answer for the Codex adapter package's turn-event port.
+/// This host's answer for the Antigravity adapter package's turn-event port.
 ///
-/// The package owns *what* one Codex turn emits; this host owns *where* it goes,
-/// because the host owns the consumer. The answer is this host's own emitters
-/// rather than a second sink, so a Codex event and a Cursor event reach the same
-/// reader through the same path.
-pub(crate) fn codex_turn_event_port() -> licoup_agent_codex::port::turn_event::TurnEventPort {
-    licoup_agent_codex::port::turn_event::TurnEventPort {
+/// The package owns *what* one Antigravity turn emits; this host owns *where* it
+/// goes, because the host owns the consumer. The answer is this host's own
+/// emitters rather than a second sink, so an Antigravity event and a Cursor
+/// event reach the same reader through the same path. The package emits no tool
+/// failure of its own, so it declares no such sink.
+pub(crate) fn antigravity_turn_event_port()
+-> licoup_agent_antigravity::port::turn_event::TurnEventPort {
+    licoup_agent_antigravity::port::turn_event::TurnEventPort {
         emit_turn_event,
         emit_agent_message_chunk,
         emit_agent_message_completed,
         emit_agent_processing,
-        emit_agent_tool_error: turn_event_emit::emit_agent_tool_error,
     }
+}
+
+/// This host's answer for the Codex adapter package's turn-event port.
+///
+/// The package owns *what* one Codex turn emits; this host owns *where* it goes,
+/// because the host owns the consumer. The answer is this host's own emitter
+/// rather than a second sink, so a Codex event and a Cursor event reach the same
+/// reader through the same path.
+pub(crate) fn codex_turn_event_port() -> licoup_agent_codex::port::turn_event::TurnEventPort {
+    licoup_agent_codex::port::turn_event::TurnEventPort {
+        emit: emit_turn_event,
+    }
+}
+
+/// The environment one Codex app-server child is launched with.
+///
+/// The user's own login shell is the default command authority (ADR 0007), so
+/// the child is cleared to exactly that snapshot rather than inheriting this
+/// process's environment. The package applies the set; this host owns where it
+/// came from.
+pub(crate) fn codex_app_server_environment() -> Vec<(String, String)> {
+    user_shell_environment::snapshot()
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
 }
 
 // The bounded process owner moved to `licoup-foundation`. It is re-exported at

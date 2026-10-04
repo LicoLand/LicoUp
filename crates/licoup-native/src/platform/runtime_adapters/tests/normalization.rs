@@ -2,7 +2,12 @@ use super::super::model::{NormalizedEffectiveSettings, NormalizedExecution};
 use super::super::normalization::{execution_response, normalize_codex, normalize_cursor};
 use super::super::{RUNTIME_SCHEMA_VERSION, RuntimeAdapter};
 use super::super::drivers::{codex_driven, cursor_driven};
-use crate::platform::{codex_app_server, cursor_driver, opencode_driver};
+use crate::platform::{cursor_driver, opencode_driver};
+use licoup_agent_codex::app_server::contract::RUNTIME_PROTOCOL as CODEX_RUNTIME_PROTOCOL;
+use licoup_agent_codex::app_server::model::{
+    EffectiveSettings as CodexEffectiveSettings, ProtocolFailure as CodexProtocolFailure,
+    RunResult as CodexRunResult,
+};
 use serde_json::json;
 
 /// The transitions one composed Agent's parser reports for one outcome, read
@@ -22,7 +27,7 @@ fn execution_transitions(agent_id: &str, output: &str) -> Vec<licoup_agent_adapt
 fn codex_response_uses_the_canonical_shape() {
     let response = execution_response(
         RuntimeAdapter::Codex,
-        normalize_codex(codex_driven(codex_app_server::RunResult {
+        normalize_codex(codex_driven(CodexRunResult {
             ok: true,
             output: "answer".to_string(),
             transitions: execution_transitions("codex", "answer"),
@@ -31,7 +36,7 @@ fn codex_response_uses_the_canonical_shape() {
             thread_id: "thread-1".to_string(),
             turn_id: "turn-1".to_string(),
             turn_status: "completed".to_string(),
-            effective: codex_app_server::EffectiveSettings {
+            effective: CodexEffectiveSettings {
                 cwd: Some("/workspace/project".to_string()),
                 model: Some("model-1".to_string()),
                 reasoning_effort: Some("high".to_string()),
@@ -49,7 +54,7 @@ fn codex_response_uses_the_canonical_shape() {
     assert_eq!(response["driverId"], "codex-app-server");
     assert_eq!(
         response["runtimeProtocol"],
-        codex_app_server::RUNTIME_PROTOCOL
+        CODEX_RUNTIME_PROTOCOL
     );
     assert_eq!(response["threadId"], "thread-1");
     assert_eq!(response["nativeSessionId"], "thread-1");
@@ -60,7 +65,7 @@ fn codex_response_uses_the_canonical_shape() {
 
 #[test]
 fn codex_usage_limit_response_preserves_safe_resolution_contract() {
-    let failure = codex_app_server::model::ProtocolFailure::new(
+    let failure = CodexProtocolFailure::new(
         "codex_usage_limit_exceeded",
         "Codex usage limit exceeded.",
         "turn/completed",
@@ -72,7 +77,7 @@ fn codex_usage_limit_response_preserves_safe_resolution_contract() {
     );
     let response = execution_response(
         RuntimeAdapter::Codex,
-        normalize_codex(codex_driven(codex_app_server::RunResult {
+        normalize_codex(codex_driven(CodexRunResult {
             ok: false,
             output: String::new(),
             transitions: Vec::new(),
@@ -81,7 +86,7 @@ fn codex_usage_limit_response_preserves_safe_resolution_contract() {
             thread_id: String::new(),
             turn_id: String::new(),
             turn_status: "failed/UsageLimitExceeded".to_string(),
-            effective: codex_app_server::EffectiveSettings::default(),
+            effective: CodexEffectiveSettings::default(),
             status_code: None,
             stdout_truncated: false,
             stderr_truncated: false,
@@ -104,14 +109,14 @@ fn codex_usage_limit_response_preserves_safe_resolution_contract() {
 
 #[test]
 fn spawn_failure_response_carries_env_mismatch_root_cause_and_recovery() {
-    let failure = codex_app_server::model::ProtocolFailure::new(
+    let failure = CodexProtocolFailure::new(
         "codex_app_server_start_failed",
         "The Codex executable is not available.",
         "process/start",
     );
     let response = execution_response(
         RuntimeAdapter::Codex,
-        normalize_codex(codex_driven(codex_app_server::RunResult {
+        normalize_codex(codex_driven(CodexRunResult {
             ok: false,
             output: String::new(),
             transitions: Vec::new(),
@@ -120,7 +125,7 @@ fn spawn_failure_response_carries_env_mismatch_root_cause_and_recovery() {
             thread_id: String::new(),
             turn_id: String::new(),
             turn_status: "failed".to_string(),
-            effective: codex_app_server::EffectiveSettings::default(),
+            effective: CodexEffectiveSettings::default(),
             status_code: None,
             stdout_truncated: false,
             stderr_truncated: false,
@@ -138,14 +143,14 @@ fn spawn_failure_response_carries_env_mismatch_root_cause_and_recovery() {
 
 #[test]
 fn unmatched_failure_response_carries_unknown_root_cause_with_review_hint() {
-    let failure = codex_app_server::model::ProtocolFailure::new(
+    let failure = CodexProtocolFailure::new(
         "codex_final_message_missing",
         "Codex completed the turn without a final agent message.",
         "turn/completed",
     );
     let response = execution_response(
         RuntimeAdapter::Codex,
-        normalize_codex(codex_driven(codex_app_server::RunResult {
+        normalize_codex(codex_driven(CodexRunResult {
             ok: false,
             output: String::new(),
             transitions: Vec::new(),
@@ -154,7 +159,7 @@ fn unmatched_failure_response_carries_unknown_root_cause_with_review_hint() {
             thread_id: String::new(),
             turn_id: String::new(),
             turn_status: "failed".to_string(),
-            effective: codex_app_server::EffectiveSettings::default(),
+            effective: CodexEffectiveSettings::default(),
             status_code: None,
             stdout_truncated: false,
             stderr_truncated: false,
