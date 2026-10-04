@@ -79,7 +79,7 @@ fn mobile_relay_native_secret_store_cleanup_uses_single_authorization_batch() {
         config["mobileRelayE2ee"][field] = json!(secret);
     }
     persist_config_secret_material_to_secret_store(&mut config, &store, namespace).unwrap();
-    let handles = disposable_cleanup_root_secret_handles(&config, namespace).unwrap();
+    let handles = custody_cleanup_root_secret_handles(&config, namespace).unwrap();
     assert!(!handles.is_empty());
     // Root cleanup deletes the full handle set (bundle + token + field + paired-device
     // keys). Seed any missing handles so the single-batch delete budget is observable.

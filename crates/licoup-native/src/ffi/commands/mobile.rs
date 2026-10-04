@@ -32,9 +32,14 @@ pub(super) fn handle_mobile_relay(command: AdmittedCommand) -> Result<CliExecuti
                         command.option_text("acknowledge-receipt-id"),
                     ),
                     ("type", command.option_text("type")),
-                    ("disposableProof", command.option_text("disposable-proof")),
                 ],
-                &[("body", command.option_json("body"))],
+                &[
+                    ("body", command.option_json("body")),
+                    (
+                        "cleanupConfirmation",
+                        command.option_json("cleanup-confirmation"),
+                    ),
+                ],
                 &[],
             )
         });
@@ -68,6 +73,9 @@ pub(super) fn handle_mobile_relay(command: AdmittedCommand) -> Result<CliExecuti
         ("e2ee", "secret-store-cleanup") => {
             crate::domain::mobile_relay::e2ee_secret_store_cleanup(&params)?
         }
+        ("e2ee", "secret-store-cleanup-inventory") => {
+            crate::domain::mobile_relay::e2ee_secret_store_cleanup_inventory()?
+        }
         ("e2ee", "secret-store-self-test") => {
             crate::domain::mobile_relay::e2ee_secret_store_self_test(&params)?
         }
@@ -80,7 +88,6 @@ pub(super) fn handle_mobile_relay(command: AdmittedCommand) -> Result<CliExecuti
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::domain::mobile_relay::with_mobile_relay_secret_store_override;
     use crate::platform::secure_mesh_secret_store::{EphemeralSecretStore, SecureMeshSecretStore};
     use licoup_foundation::platform::paths::set_portable_data_dir_override;
@@ -88,8 +95,11 @@ mod tests {
     use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    /// A well-formed confirmation is not authority: the CLI route must still
+    /// reach the custody authority, which refuses without a verified device
+    /// trust record for the replacement endpoint.
     #[test]
-    fn disposable_secret_cleanup_is_wired_to_the_exact_guarded_cli_path() {
+    fn custody_cleanup_cli_refuses_a_confirmation_without_an_authenticated_replacement_endpoint() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -101,29 +111,37 @@ mod tests {
         let previous = set_portable_data_dir_override(Some(root.clone()));
         let store = Arc::new(EphemeralSecretStore::new());
         let store_override: Arc<dyn SecureMeshSecretStore> = store.clone();
+        let confirmation = serde_json::json!({
+            "schemaVersion": "licoup.custody-cleanup-confirmation.v1",
+            "consequence": "irreversibleLocalSecretErasure",
+            "subjectEndpointId": "endpoint-unauthenticated",
+            "subjectIdentityFingerprint": "sha256:unauthenticated",
+            "custodyNamespace": "mobileRelayPqxdhMlKem1024Runtime",
+            "replacementEndpointId": "endpoint-unauthenticated",
+            "replacementDeviceTrustFingerprint": "sha256:unauthenticated",
+            "inventoryDigest": "0".repeat(64),
+            "scope": ["secret-handle:unauthenticated:pcToken"],
+        })
+        .to_string();
 
-        let execution = with_mobile_relay_secret_store_override(store_override, || {
+        let error = with_mobile_relay_secret_store_override(store_override, || {
             crate::ffi::commands::execute_cli(vec![
                 "mobile".to_string(),
                 "relay".to_string(),
                 "e2ee".to_string(),
                 "secret-store-cleanup".to_string(),
-                "--disposable-proof".to_string(),
-                "true".to_string(),
+                "--cleanup-confirmation".to_string(),
+                confirmation,
             ])
         })
-        .unwrap();
-        let CliExecution::Json(output) = execution else {
-            assert!(false, "guarded disposable cleanup CLI did not return JSON");
-            return;
-        };
-        assert_eq!(output["ok"], true);
-        assert_eq!(output["disposableProof"], true);
-        assert_eq!(
-            output["secretStoreAuthorization"]["allowInteraction"],
-            false
+        .unwrap_err()
+        .to_string();
+
+        assert!(
+            error.contains("custody cleanup requires an authenticated replacement endpoint"),
+            "unexpected custody cleanup refusal: {error}"
         );
-        assert_eq!(store.authorization_session_count(), 1);
+        assert_eq!(store.authorization_session_count(), 0);
 
         set_portable_data_dir_override(previous);
         let _ = fs::remove_dir_all(root);

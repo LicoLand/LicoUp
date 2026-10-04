@@ -1,6 +1,6 @@
 mod authorization_batches;
+mod cleanup_authority;
 mod config_integrity;
-mod disposable_cleanup;
 mod e2ee_status_authorization;
 mod ffi_dispatcher;
 mod native_store_boundary;

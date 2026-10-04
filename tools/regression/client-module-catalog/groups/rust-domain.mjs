@@ -2130,12 +2130,23 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.mobile-relay.secret-custody.cleanup",
       kind: "rust-domain",
-      summary: "Explicit disposable-proof secret-store cleanup",
+      summary: "Authorized custody cleanup execution over the bounded inventory",
       inputs: [
         "crates/licoup-native/src/domain/mobile_relay/secret_custody/cleanup.rs",
       ],
       command: rustLayer(
         "domain::mobile_relay::secret_custody::cleanup::tests::",
+      ),
+    }),
+  defineModule({
+      id: "rust.domain.mobile-relay.secret-custody.cleanup-authority",
+      kind: "rust-domain",
+      summary: "Authenticated replacement endpoint, bounded custody inventory, and informed confirmation authority",
+      inputs: [
+        "crates/licoup-native/src/domain/mobile_relay/secret_custody/cleanup_authority.rs",
+      ],
+      command: rustLayer(
+        "domain::mobile_relay::secret_custody::cleanup_authority::tests::",
       ),
     }),
   defineModule({
@@ -2271,14 +2282,14 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       ),
     }),
   defineModule({
-      id: "rust.domain.mobile-relay.secret-custody.scenario.disposable-cleanup",
+      id: "rust.domain.mobile-relay.secret-custody.scenario.cleanup-authority",
       kind: "rust-domain",
-      summary: "Exact-confirmation disposable cleanup, bounded deletion, and failure propagation",
+      summary: "Authenticated-replacement cleanup admission, out-of-scope refusal, bounded deletion, and failure propagation",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody/disposable_cleanup.rs",
+        "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody/cleanup_authority.rs",
       ],
       command: rustLayer(
-        "domain::mobile_relay::tests::secret_custody::disposable_cleanup::",
+        "domain::mobile_relay::tests::secret_custody::cleanup_authority::",
       ),
     }),
   defineModule({
