@@ -64,6 +64,8 @@ import 'package:licoup/src/platform/presentation/presentation_preferences_reposi
 import 'package:licoup/src/platform/presentation/macos_reduce_motion_channel.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:licoup/src/platform/native_client/data_home_executor.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/stream_observation_journal.dart';
 import 'package:licoup/src/projections/environment/environment_projection_source.dart';
 import 'package:licoup/src/projections/conversation/conversation_markdown_preparation.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
@@ -85,7 +87,7 @@ final class ClientAppComposition {
         ? BuiltInLayoutComposition()
         : BuiltInLayoutComposition.attach(catalog: controller.layoutCatalog);
     final resolvedController =
-        controller ?? _createProductionController(layout);
+        controller ?? createProductionController(layout: layout);
     AgentRenderAdapterRegistry.instance = AgentRenderAdapterRegistry(
       loadJson: DefaultAgentRenderAdapterJsonSource(
         dataDirectory: () async =>
@@ -114,10 +116,25 @@ final class ClientAppComposition {
     );
   }
 
-  static ClientController _createProductionController(
-    BuiltInLayoutComposition layout,
-  ) {
-    final portableData = PortableDataRoot();
+  /// Builds the client controller every production application startup owns.
+  ///
+  /// This is the composition point: it owns the client's data root instance and
+  /// is therefore the only production site that may decide which app-managed
+  /// writers exist for that root. The transport observation backend is installed
+  /// here, over the same root, so the records the native stdio transport admits
+  /// land inside the client's own state tree and are covered by the write
+  /// admission `PortableDataRoot` drains before a data-home relocation.
+  ///
+  /// Observation stays opt-in: the injection seams exist so verification can
+  /// build this exact production controller over a one-off root and a synthetic
+  /// native peer, and a controller built without a backend composes no
+  /// observation state at all.
+  static ClientController createProductionController({
+    required BuiltInLayoutComposition layout,
+    PortableDataRoot? portableData,
+    NativeCliProcessContext? processContext,
+  }) {
+    final root = portableData ?? PortableDataRoot();
     final preferredLayout = switch (defaultTargetPlatform) {
       TargetPlatform.macOS ||
       TargetPlatform.windows ||
@@ -131,7 +148,7 @@ final class ClientAppComposition {
       localePreference: LocalePreference.system,
     );
     final preferences = FilePresentationPreferencesRepository(
-      portableData: portableData,
+      portableData: root,
       fallback: fallback,
     );
     final manager = LayoutManager(
@@ -141,9 +158,11 @@ final class ClientAppComposition {
       preferredDefaultId: preferredLayout,
     );
     return ClientController(
-      portableData: portableData,
+      portableData: root,
       layoutCatalog: layout.catalog,
       layoutManager: manager,
+      processContext: processContext,
+      streamObservationBackend: StreamObservationJournal(portableData: root),
     );
   }
 

@@ -12,6 +12,7 @@ import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/platform/native_client/agent_service_actions.dart';
 import 'package:licoup/src/platform/native_client/agent_service_process_io.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/stream_observation.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:licoup/src/platform/native_client/data_home_executor.dart';
 import 'package:licoup/src/platform/native_client/native_catalog_actions.dart';
@@ -50,6 +51,7 @@ class AgentService
     NativeCliProcessContext? processContext,
     NativeCommandExecutor? oneShotCommandExecutor,
     NativeStdioRpcTransport? stdioRpcTransport,
+    StreamObservationBackend? streamObservation,
     ConversationNativePort? conversationNativePort,
     AgentCommandRunner? processIo,
     NativeCommandActions? commandActions,
@@ -71,9 +73,20 @@ class AgentService
           processContext: runtimeContext,
           runCliExecutable: runCliExecutable,
         );
+    // Observation stays opt-in: without a backend this composition builds no
+    // port at all, so an unobserved transport is the transport that existed
+    // before the port did. With one, the port is installed once here and
+    // reaches every stdio session through the transport that owns them.
+    final observation = streamObservation == null
+        ? null
+        : (StreamObservationPort()..installBackend(streamObservation));
+    _streamObservation = observation;
     final rpcTransport =
         stdioRpcTransport ??
-        NativeStdioRpcClient(processContext: runtimeContext);
+        NativeStdioRpcClient(
+          processContext: runtimeContext,
+          observation: observation,
+        );
     _conversationNativePort =
         conversationNativePort ??
         StdioConversationNativePort(
@@ -125,6 +138,7 @@ class AgentService
   late final NativeCliProcessContext _processContext;
   late final ConversationNativePort _conversationNativePort;
   late final NativeStdioRpcTransport _stdioRpcTransport;
+  late final StreamObservationPort? _streamObservation;
   late final AgentCommandRunner _processIo;
   late final NativeCommandActions _commandActions;
   late final NativeMcpActions _mcpActions;
@@ -135,6 +149,11 @@ class AgentService
       NativeCommandActions.packagedScanTargetIds;
 
   ConversationNativePort get conversationNativePort => _conversationNativePort;
+
+  /// The installed transport observation port, or null when this composition
+  /// did not opt in. Exposed as the composition's own evidence that observation
+  /// is installed rather than inferred from a silent stream.
+  StreamObservationPort? get streamObservation => _streamObservation;
 
   @override
   Future<Map<String, dynamic>> runCli(List<String> args) =>

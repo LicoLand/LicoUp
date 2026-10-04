@@ -456,6 +456,7 @@ export const FLUTTER_MODULES = Object.freeze([
         "apps/desktop/lib/src/contracts/plan_document_reader.dart",
         "apps/desktop/lib/src/platform/conversation/conversation_image_byte_reader.dart",
         "apps/desktop/lib/src/platform/documents/plan_document_reader.dart",
+        "apps/desktop/lib/src/platform/storage/bounded_json_lines.dart",
         "apps/desktop/lib/src/platform/storage/client_memory_diagnostic_log.dart",
         "packages/contracts/client/semantic-conversation.schema.json",
         "apps/desktop/test/agent_conversation_archive_component_test.dart",

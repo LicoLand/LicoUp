@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
+import 'package:licoup/src/platform/storage/bounded_json_lines.dart';
 import 'package:licoup/src/platform/storage/client_memory_diagnostic_log.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:path/path.dart' as p;
@@ -68,7 +69,7 @@ void main() {
     final incoming = utf8.encode(
       '${jsonEncode({'event': 'sample', 'n': 3})}\n',
     );
-    final retained = retainMemoryDiagnosticTail(older, incoming, 80);
+    final retained = retainJsonLinesTail(older, incoming, 80);
     final text = utf8.decode(retained);
     expect(text, contains('"n":3'));
     expect(text.startsWith('{'), isTrue);
