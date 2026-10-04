@@ -4,4 +4,5 @@
 //! a document or a live Agent.
 
 mod authority;
+mod context;
 mod fixtures;

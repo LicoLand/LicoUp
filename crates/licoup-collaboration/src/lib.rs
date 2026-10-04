@@ -38,17 +38,28 @@
 //! store and reads it through the ports this crate defines.
 
 pub mod authority;
+pub mod context;
 pub mod graph;
+pub mod subscription;
 
 pub use authority::{
     AuthorityDenial, GraphSession, GraphTarget, GrantTable, Permission, ProjectGrant, WriteOutcome,
     WriteRefusal,
+};
+pub use context::{
+    ContextEntry, ContextRequest, ContextSlice, CorrectionOutcome, GraphContextPort,
+    GraphContextSelection, MAX_CONTEXT_ENTRIES, correct_preference, reclaim_debug_material,
 };
 pub use graph::{
     Alternative, CollaborationGraph, CurrentNode, Edge, EdgeId, EdgeKind, MAX_BODY_BYTES,
     MAX_GRAPH_EDGES, MAX_GRAPH_NODES, MAX_NODE_ALTERNATIVES, NodeId, NodeKind, NodeValue, OpaqueId,
     PrincipalId, ProjectId, Provenance, ProvenanceSource, Relation, Removal, RetentionReason,
     Revision, Root,
+};
+pub use subscription::{
+    CatchUp, Channel, Epoch, GraphChange, GraphChannelLog, GraphCursor, GraphDelta, GraphSnapshot,
+    MAX_RETAINED_DELTAS, MAX_SNAPSHOT_NODES, Sequence, SnapshotEdge, SnapshotNode, TopologySnapshot,
+    catch_up, snapshot,
 };
 
 /// The persisted-format name of the current collaboration graph.
