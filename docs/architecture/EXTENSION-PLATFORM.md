@@ -19,7 +19,7 @@ This document publishes the contract an extension is written against, and the
 kernel decision that decides which packages the client may load at all. It is a
 contract, not a claim about a shipped feature set: what the running client already
 enforces is recorded in [STATUS.md](../STATUS.md) and in release evidence, and
-section 12 states which parts of this document this milestone implements.
+section 13 states which parts of this document this milestone implements.
 
 ## 1. What an extension is
 
@@ -391,7 +391,165 @@ the published bound is truncated rather than allowed to stop the client from
 responding. An instance identity token is not diagnostics: an identity prints its
 label and never its token (`platform/extension_host/identity.rs`).
 
-## 12. What this milestone implements
+## 12. Build, package and import an extension
+
+Sections 1 to 11 are the contract; this section is the path an author walks, and
+every step names the code that enforces it. It describes the client as it is, and
+section 13 states what this document does not claim.
+
+### 12.1 Write the program
+
+An extension is a program that reads one JSON-RPC 2.0 object per line on `stdin`
+and writes one JSON-RPC 2.0 object per line on `stdout` (section 3). Any language
+works: no SDK runtime is loaded into the process and no client internals are
+reachable from it.
+
+The smallest complete Agent implements exactly the six methods `agent-execution`
+requires: the handshake (`extension.initialize`, `extension.ready`,
+`extension.shutdown`) and `agent.describe`, `agent.execute`, `agent.event`. Every
+other method is optional, and an Agent that implements none of the optional ones
+is complete rather than degraded (section 2).
+
+`samples/echo-agent/agent.py` is that program, written in Python with no
+dependency beyond the standard library. Its authored wire vectors are held
+against the published contract by `tests/minimal_agent_sample.rs`, and the
+program itself is executed by `tests/test_echo_agent.py`:
+
+```bash
+cd crates/licoup-extension-contracts
+python3 -B -m unittest discover -s tests -p 'test_*.py'
+```
+
+### 12.2 Lay out the package
+
+An installable package is a ZIP archive whose **root** carries `manifest.json`:
+
+```
+manifest.json
+bin/your-program            # the entry the host starts, when the package has one
+contributions/*.json        # the declarative contributions the manifest names
+```
+
+The store expands the archive in a private staging directory and refuses, before
+anything is written, an archive over the published bounds, a missing or malformed
+manifest, a declared entry that is not a real file inside the payload, and an
+archive that carries an install script (`platform/extension_packages/artifact.rs`,
+which also publishes the refused script names). Nothing in a package runs during
+install, and an archive that relies on an install step has no path through the
+store.
+
+### 12.3 Fill the manifest
+
+Every field below is read before the host runs anything; an absent required field,
+an unknown property and a value that breaks its bound are refused with a stable
+code that names the field.
+
+| Field | What it decides |
+|:---|:---|
+| `schema` | `licoup.extension-package.v1`. The published schema is `schemas/extensions/manifest.schema.json` |
+| `id`, `version`, `displayName` | Namespaced identity, the package's own version and the label a surface shows. The identity is never a client version |
+| `hostProtocol` | The wire range the program needs, negotiated per connection |
+| `compatibility.clientVersions` | Which client builds may load the package. Required: a package that declares none is admitted by nothing |
+| `profiles` | The narrow profiles the package serves (section 2). A profile id this host does not publish is preserved and acted on by nothing |
+| `runtime` | How the package is carried: `process` (an entry the host starts), `declarative` (a descriptor that maps onto an existing protocol), `service` (an endpoint the user configured) or `data` (typed resources and no program) |
+| `activation` | `on-demand` starts the package when a call needs it; `explicit` starts it only when the user asks. A data package is never started |
+| `requires`, `optionalRequires` | The install closure. A required dependency that is absent makes the capability unavailable by name; an optional one that is absent declines silently |
+| `permissions` | The capabilities and scopes the package asks for. A package that asks for nothing gets nothing |
+| `contributions` | Declarative contributions whose definition files live inside the payload |
+| `conversion` | The one published format conversion this package owns, when it owns one |
+| `resources`, `hostPrimitives`, `hostActions` | For a `data` package only: the typed resources it contributes and the host primitives its composition binds |
+
+**User-local runtime declarations.** A `process` runtime may name the interpreter
+or virtual machine its entry needs. A `user:` reference (`user:python3`) names
+something the user installed: the host reuses it, never removes it and never
+bundles its own copy for it. A runtime the host installed is reference-counted and
+released only when no package needs it. Without a `runtimeRef` the package is
+assumed to carry what it needs, and the entry must be a real file inside the
+payload — a package cannot point at the client's own runtime or at a binary it
+does not ship.
+
+**Converter metadata.** A package that converts a persisted format declares
+`conversion` with `kind: "native-executable"`, an `entry` inside the payload, one
+to eight published source formats and one target format. The formats are
+identities (`licoup-state-0.1.1`), never client versions, and one format cannot be
+both endpoints. `PackageManifest::conversion_owner` answers whether this package
+owns the pair a caller required, and refuses a pair it never declared with
+`manifest_conversion_endpoint_mismatch`. The two checked samples are
+`samples/converter-package/` (the smallest complete declaration, read by
+`tests/minimal_agent_sample.rs` without installing or running anything) and
+`tests/fixtures/client_package_release/fixture-native-converter/` (the same
+converter declared in both the manifest and the release index).
+
+### 12.4 Import it locally
+
+A local import names a package identity, a version, the bytes and a trust record
+that binds those specific bytes:
+
+```rust
+PackageStore::install_local_import(package_id, version, trust, &bytes)?;
+```
+
+The byte path is offline end to end: no registry, directory service or account is
+consulted (section 10). Install and activation are separate — installing records
+the package and its journal entry; activating selects the generation work is
+admitted against, and a package is not started because it was installed.
+`tests/integration/extension_isolation/package_execution.rs` imports a synthetic
+package archive through the production store and starts its own program end to
+end, and `tests/integration/extension_isolation/codex_package_turn.rs` drives a
+real packaged adapter turn.
+
+### 12.5 What the host guarantees while your package runs
+
+Three host guarantees change what an extension author may assume, and none of
+them is a request the package can talk its way out of.
+
+- **Stop truthfulness.** An `agent.cancel` answer is one of four distinct facts
+  (`CancelOutcome` in `crates/licoup-extension-contracts/src/agent.rs`).
+  `acknowledged` means the extension confirmed it stopped its own work;
+  `requested` means the request left and no answer arrived; `unsupported` means
+  the extension has no cancel at all; `unknown` means the answer was not observed.
+  Only `acknowledged` means the work demonstrably stopped, no outcome settles an
+  external effect, and the host never upgrades a weaker answer into a stronger
+  one. Manual stop resolves the durable owner of the admitted work and routes the
+  request to that owner; force stop may terminate only a LicoUp-owned process
+  group whose ownership record is re-verified at execution time, and a bounded
+  observation that sees no exit records the stop as unconfirmed
+  (`platform/stop_control.rs`).
+- **Idle-only replacement.** Installing, replacing or activating an installed
+  version changes state that running work may be reading, so both mutating
+  operations pass one idle-guard seam
+  (`platform/extension_packages/maintenance.rs`). The verdict that no local work
+  is in flight is read as data for the data root the operation would change, a
+  verdict nobody read is a refusal rather than an assumed idle host, and read-only
+  work — checking for an update, reading the catalogue — is not gated at all. A
+  package is never asked whether its own replacement is safe; the host decides,
+  and new calls follow the new generation while in-flight work stays on the one it
+  started under (`PackageGenerationAdmission` in `crates/licoup-native/src/lib.rs`).
+- **Private, bounded diagnostics.** `stdout` carries the program protocol and
+  nothing else, and diagnostics go to `stderr` under the published line bound
+  (section 3): a chatty package is truncated rather than allowed to stop the
+  client from responding. Stop and force-stop outcomes are recorded as local,
+  redacted events keyed by an opaque correlation id, with no content, credential
+  or private path in the record. An instance identity prints its label and never
+  its token (`platform/extension_host/identity.rs`).
+
+### 12.6 Check your package before you ship it
+
+```bash
+cargo test -p licoup-extension-contracts               # contract, schemas and the samples
+cargo test -p licoup-native --test extension_contract  # catalog, isolation, generation, lifecycle
+cargo test -p licoup-native --test extension_isolation # a real package program on real pipes
+npm run repo:docs                                      # the documentation and its links
+```
+
+The first command is the one an author runs while iterating: it reads the
+manifest, the profile declaration, the schemas and both samples without starting
+a program. The second and third need a built client and exercise the real store,
+carrier and isolation boundary; `tests/integration/extension_isolation/` is also
+where a package's own execution is proved.
+
+## 13. What this milestone implements
+
 
 Stated plainly, because a contract document is not evidence:
 
@@ -409,7 +567,7 @@ center reads cached catalogue metadata and the probe locations the user allowed,
 and a package reaches the store through local import. The schemas and the crate
 are the contract; the store enforces what section 9 and section 10 describe.
 
-## 13. Not claimed here
+## 14. Not claimed here
 
 This document does not install, download, execute or verify any package, and it
 does not attest that any third-party extension exists or works. It publishes the
