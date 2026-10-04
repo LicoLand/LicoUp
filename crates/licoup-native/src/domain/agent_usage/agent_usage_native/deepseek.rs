@@ -19,6 +19,12 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+/// The exact upper bound a JSON number can carry before a JavaScript reader
+/// loses integer fidelity: the reader used to be a Node script, and the
+/// accounting the kernel kept then keeps the same bound now.
+const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
+
+
 /// A read of one session artifact failed, named by the stage it failed at.
 #[derive(Debug)]
 pub(super) struct ReadFailure(pub(super) &'static str);
@@ -61,25 +67,10 @@ impl Reader {
 /// One sample of the shape the package's own reader reports, kept here so this
 /// module's tests can describe a fold without the vendor's file format.
 #[cfg(test)]
-#[derive(Deserialize)]
-struct Sample {
-    time: u64,
-    model: Option<String>,
-    provider: Option<String>,
-    effort: Option<String>,
-    usage: Option<Value>,
-}
-
-#[cfg(test)]
 fn parse_samples(bytes: &[u8], size: u64, calendar: &UsageWindow) -> Result<ParseResult> {
-    let output: SampleList = serde_json::from_slice(bytes)?;
-    summarize_samples(output.samples, size, calendar)
-}
-
-#[cfg(test)]
-#[derive(Deserialize)]
-struct SampleList {
-    samples: Vec<Sample>,
+    let samples: Vec<licoup_agent_deepseek::session_store::UsageSample> =
+        serde_json::from_slice(bytes)?;
+    summarize_samples(samples, size, calendar)
 }
 
 /// Fold the package's own samples into this pipeline's accounting.

@@ -67,7 +67,7 @@ pub const COMPRESSED_SUFFIX: &str = ".zstd";
 /// Nothing here is projected or interpreted: `usage` is the vendor's own token
 /// object, handed on unchanged, and the route and effort are the values the
 /// attempt was actually made with.
-#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UsageSample {
     /// The event's own sequence number, which is also its position in the log.
     pub seq: u64,

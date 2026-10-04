@@ -2107,12 +2107,19 @@ dependencies = [
 
 [[package]]
 name = "licoup-agent-cursor"
-name = "licoup-agent-deepseek"
 version = "0.14.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
  "licoup-extension-contracts",
  "serde_json",
+]
+
+[[package]]
+name = "licoup-agent-deepseek"
+version = "0.14.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-extension-contracts",
  "serde",
  "serde_json",
  "zstd",
@@ -2156,6 +2163,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "libc",
+ "licoup-agent-deepseek",
  "licoup-client-state",
  "licoup-foundation",
  "rusqlite",

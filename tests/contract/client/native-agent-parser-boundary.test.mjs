@@ -32,6 +32,7 @@ const packageAdapters = new Map([
   ['codex', 'crates/licoup-agent-codex'],
   ['antigravity', 'crates/licoup-agent-antigravity'],
   ['cursor', 'crates/licoup-agent-cursor'],
+  ['deepseek_harness', 'crates/licoup-agent-deepseek'],
 ]);
 
 test('packaged adapter registry is bijective with the thirteen-entry inventory', () => {
@@ -88,6 +89,10 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
       crate: 'licoup-agent-cursor',
       parser: 'crates/licoup-agent-cursor/src/parser.rs',
     },
+    deepseek_harness: {
+      crate: 'licoup-agent-deepseek',
+      parser: 'crates/licoup-agent-deepseek/src/parser.rs',
+    },
   };
   // One entry per Agent, so a per-Agent answer is read from its own entry
   // rather than from a neighbouring one that happens to name the same helper.
@@ -106,10 +111,15 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
       // The package owns the parser, the declaration and the replay arm; the
       // composition reads them through the package's own module and may not
       // declare the module or retype the declaration a second time.
+      const crateName = packaged[adapter].crate;
+      // The composition names the alias it composes (the details differ per
+      // adapter only in the crate that sits behind it), and the registration
+      // line names the package's own REGISTRATION constant.
       assert.match(composition,
-        new RegExp(`use licoup_agent_${adapter}::parser as ${adapter};`));
+        new RegExp(`use licoup_agent_${adapter.replace('_harness', '')}::parser as ${adapter};`
+          .replace('codex', 'codex')));
       assert.match(registrations,
-        new RegExp(`licoup_agent_${adapter}::registration::REGISTRATION`));
+        new RegExp(`licoup_agent_${packaged[adapter].crate.replace('licoup-agent-', '')}::registration::REGISTRATION`));
       assert.doesNotMatch(composition, new RegExp(`mod ${adapter};`));
       continue;
     }

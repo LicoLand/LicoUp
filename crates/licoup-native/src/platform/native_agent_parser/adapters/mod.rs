@@ -37,11 +37,10 @@ pub(in crate::platform) use licoup_agent_codex::parser as codex;
 // strict-NDJSON turn dialect and the wire vocabulary it reads are the package's,
 // and this composition reads them through the package's own module.
 pub(in crate::platform) use licoup_agent_cursor::parser as cursor;
+pub(in crate::platform) use licoup_agent_deepseek::parser as deepseek_harness;
 
 pub(in crate::platform) mod claude_code;
 pub(in crate::platform) mod copilot;
-pub(in crate::platform) mod deepseek_harness;
-pub(in crate::platform) mod cursor;
 pub(in crate::platform) mod hermes;
 pub(in crate::platform) mod kilo_code;
 pub(in crate::platform) mod kimi_code;
@@ -133,12 +132,6 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     // protocol facts — the identity rule is its parser's, and the transitions are
     // its own reply projection — so this entry is the package's own registration.
     licoup_agent_antigravity::registration::REGISTRATION,
-    ParserRegistration::new(
-        claude_code::CONTRACT,
-        no_transitions,
-        claude_code_identity,
-    ),
-    ParserRegistration::new(antigravity::CONTRACT, no_transitions, antigravity_identity),
     ParserRegistration::new(claude_code::CONTRACT, no_transitions, claude_code_identity),
     // The Codex package answers both protocol-agnostic queries from its own recorded
     // evidence, so this entry is the package's own registration.
