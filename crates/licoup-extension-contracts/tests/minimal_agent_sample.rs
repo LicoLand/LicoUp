@@ -1,23 +1,29 @@
-//! The sample under `samples/echo-agent/` is checked against the contract.
+//! The samples under `samples/` are checked against the contract.
 //!
-//! The sample is the smallest complete extension: a program in a language that
-//! is not Rust, implementing three Agent methods and the handshake, asking for no
-//! permission, and installed from a directory the user already has. These tests
-//! read authored synthetic wire vectors and assert their declared contract — that the
-//! required set is satisfied exactly, that no optional method was needed, that
-//! nothing was resolved over the network, and that the frames it emits are valid
-//! envelopes.
+//! `samples/echo-agent/` is the smallest complete extension: a program in a
+//! language that is not Rust, implementing three Agent methods and the handshake,
+//! asking for no permission, and installed from a directory the user already has.
+//! `samples/converter-package/` is the smallest complete converter package: a
+//! manifest that owns one published format conversion with a program it carries
+//! itself. These tests read authored synthetic wire vectors and manifests and
+//! assert their declared contract — that the required set is satisfied exactly,
+//! that no optional method was needed, that nothing was resolved over the network,
+//! that the frames it emits are valid envelopes, and that a conversion declaration
+//! is refused exactly where the published rules say it is.
 //!
-//! They do not run the program. A language-agnostic contract is checked against
-//! frames, not against one interpreter being installed. The separate Python
-//! subprocess suite verifies actual execution; these vectors are not runtime logs.
+//! They do not run the programs. A language-agnostic contract is checked against
+//! frames and manifests, not against one interpreter being installed. The separate
+//! Python subprocess suite verifies actual execution; these vectors are not runtime
+//! logs.
 
 use licoup_application::ContractRange;
-use licoup_extension_contracts::agent::AgentEvent;
+use licoup_extension_contracts::agent::{AgentEvent, CancelOutcome};
 use licoup_extension_contracts::deployment::{
     InstallClosure, LocalCatalogue, PackageEntry, PackageSource, install_closure,
 };
-use licoup_extension_contracts::manifest::PackageManifest;
+use licoup_extension_contracts::manifest::{
+    ConversionDeclaration, ConverterKind, FrozenEndpoints, PackageManifest, conversion_code,
+};
 use licoup_extension_contracts::profile::{
     DeclaredMethods, ExtensionProfile, PROFILE_MAJOR, ProfileStatus, all_contracts,
 };
@@ -29,6 +35,7 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 
 const MANIFEST: &str = include_str!("../samples/echo-agent/manifest.json");
+const CONVERTER_MANIFEST: &str = include_str!("../samples/converter-package/manifest.json");
 const FIXTURE: &str = include_str!("../samples/echo-agent/wire_fixture.json");
 const TRANSCRIPT: &str = "requestLines";
 const EVENTS: &str = "eventLines";
@@ -317,4 +324,249 @@ fn the_sample_session_stays_inside_the_published_carrier() {
     // The program is a sample of the carrier, not of a language binding: it is
     // not Rust, and the contract does not care.
     assert!(AGENT_SOURCE.starts_with("#!/usr/bin/env python3"));
+}
+
+/// The converter sample's manifest, as the store would read it.
+fn converter_sample() -> PackageManifest {
+    PackageManifest::from_value(
+        serde_json::from_str(CONVERTER_MANIFEST).expect("converter sample manifest JSON"),
+    )
+    .expect("the converter sample manifest is accepted")
+}
+
+#[test]
+fn the_converter_sample_declares_the_conversion_it_owns() {
+    let manifest = converter_sample();
+    let conversion = manifest
+        .conversion
+        .as_ref()
+        .expect("the sample owns one conversion");
+
+    assert_eq!(conversion.kind, ConverterKind::NativeExecutable);
+    assert_eq!(conversion.kind.as_str(), "native-executable");
+    assert_eq!(conversion.entry, "bin/example-converter");
+    assert_eq!(conversion.source_formats, vec!["licoup-state-0.1.1"]);
+    assert_eq!(conversion.target_format, "licoup-state-0.3.0");
+    conversion
+        .validate()
+        .expect("the published declaration is structurally valid");
+
+    // The declaration answers one catalogue question: does this package own the
+    // pair a caller requires?
+    assert!(conversion.converts_from("licoup-state-0.1.1"));
+    assert!(!conversion.converts_from("licoup-state-0.3.0"));
+    let required = FrozenEndpoints::new("licoup-state-0.1.1", "licoup-state-0.3.0");
+    assert_eq!(
+        manifest
+            .conversion_owner(&required)
+            .expect("the sample owns the required conversion"),
+        conversion
+    );
+    let elsewhere = FrozenEndpoints::new("licoup-state-0.1.1", "licoup-state-0.9.0");
+    assert_eq!(
+        manifest
+            .conversion_owner(&elsewhere)
+            .expect_err("the sample does not own a pair it never declared")
+            .code,
+        conversion_code::ENDPOINT_MISMATCH
+    );
+
+    // The converter runs as a program the package carries, so uninstalling the
+    // package cannot remove a runtime it borrowed from somewhere else.
+    assert_eq!(manifest.runtime.mode(), "process");
+    let licoup_extension_contracts::manifest::Runtime::Process { entry, .. } = &manifest.runtime
+    else {
+        panic!("the sample is carried by a program");
+    };
+    assert_eq!(
+        entry, &conversion.entry,
+        "the program that converts is the program the package declares"
+    );
+    // No `user:` reference is declared: nothing outside the payload is borrowed,
+    // so the host removes nothing on this package's behalf. The echo sample
+    // declares the other case — an interpreter the user installed, which the host
+    // reuses and never removes.
+    assert!(manifest.runtime.owns_its_runtime());
+
+    // The published schema and the sample agree in both directions.
+    let schema: Value = serde_json::from_str(include_str!(
+        "../../../schemas/extensions/manifest.schema.json"
+    ))
+    .expect("manifest schema");
+    let raw: Value = serde_json::from_str(CONVERTER_MANIFEST).expect("manifest JSON");
+    let object = raw.as_object().expect("object");
+    for required in schema["required"].as_array().expect("required") {
+        let key = required.as_str().expect("string");
+        assert!(object.contains_key(key), "the sample omits {key}");
+    }
+    let properties = schema["properties"]
+        .as_object()
+        .expect("properties")
+        .keys()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    for key in object.keys() {
+        assert!(
+            properties.contains(key),
+            "the sample carries {key}, which the schema does not publish"
+        );
+    }
+}
+
+#[test]
+fn the_converter_sample_is_refused_exactly_where_the_contract_says_it_is() {
+    /// The refusal one mutation of the sample's declaration produces.
+    fn mutate(
+        declaration: &ConversionDeclaration,
+        change: impl FnOnce(&mut ConversionDeclaration),
+    ) -> licoup_application::ApplicationFailure {
+        let mut candidate = declaration.clone();
+        change(&mut candidate);
+        candidate
+            .validate()
+            .expect_err("the mutation is not a valid declaration")
+    }
+
+    let base = converter_sample();
+    let declaration = base.conversion.clone().expect("a conversion");
+
+    // A converter that needed an interpreter would borrow a runtime the package
+    // does not carry, so no other kind is expressible.
+    let not_native = mutate(&declaration, |candidate| {
+        candidate.kind = ConverterKind::Unsupported;
+    });
+    assert_eq!(not_native.code, conversion_code::NOT_NATIVE);
+    assert_eq!(not_native.field.as_deref(), Some("conversion.kind"));
+
+    // The entry is a path inside the payload: a bare name, a parent directory and
+    // a Windows-style path are all someone else's program.
+    for entry in ["example-converter", "../example-converter", "bin\\converter"] {
+        let outside = mutate(&declaration, |candidate| {
+            candidate.entry = entry.to_owned();
+        });
+        assert_eq!(
+            outside.code,
+            conversion_code::ENTRY_OUTSIDE_PACKAGE,
+            "{entry} was not refused as an outside-payload entry"
+        );
+        assert_eq!(outside.field.as_deref(), Some("conversion.entry"));
+    }
+
+    // A declaration that names no source, or a target that is not a format
+    // identity, is incomplete rather than invalid: the field is missing a value.
+    let no_source = mutate(&declaration, |candidate| candidate.source_formats.clear());
+    assert_eq!(no_source.code, conversion_code::INCOMPLETE);
+    assert_eq!(
+        no_source.field.as_deref(),
+        Some("conversion.sourceFormats")
+    );
+
+    let no_target = mutate(&declaration, |candidate| {
+        candidate.target_format = "LicoUp State".to_owned();
+    });
+    assert_eq!(no_target.code, conversion_code::INCOMPLETE);
+    assert_eq!(no_target.field.as_deref(), Some("conversion.targetFormat"));
+
+    // A duplicated source and a format that is both endpoints are malformed
+    // declarations: nothing about them can be repaired by filling in a field.
+    let duplicate = mutate(&declaration, |candidate| {
+        candidate
+            .source_formats
+            .push(candidate.source_formats[0].clone());
+    });
+    assert_eq!(duplicate.code, conversion_code::INVALID);
+    assert_eq!(
+        duplicate.field.as_deref(),
+        Some("conversion.sourceFormats")
+    );
+
+    let circular = mutate(&declaration, |candidate| {
+        candidate.target_format = candidate.source_formats[0].clone();
+    });
+    assert_eq!(circular.code, conversion_code::INVALID);
+    assert_eq!(circular.field.as_deref(), Some("conversion.targetFormat"));
+}
+
+#[test]
+fn the_converter_sample_carries_the_facts_a_replacement_reads() {
+    let manifest = converter_sample();
+    let conversion = manifest.conversion.as_ref().expect("a conversion");
+
+    // Which client builds may load this package is `compatibility`, and a package
+    // that declares none is admitted by nothing — including as a replacement.
+    let product: Value = serde_json::from_str(include_str!("../../../tools/client-version.json"))
+        .expect("client version manifest");
+    let product_version = product["productVersion"]
+        .as_str()
+        .expect("the client version manifest declares a product version");
+    assert!(
+        manifest.client_compatibility(product_version).is_covered(),
+        "the converter sample must cover the client it ships against ({product_version})"
+    );
+
+    // The conversion spans two distinct published formats: replacing an installed
+    // version moves one format to another, and a converter that produced what it
+    // reads would have nothing to move.
+    assert_ne!(conversion.source_formats[0], conversion.target_format);
+    assert!(conversion.source_formats.iter().all(|source| {
+        licoup_extension_contracts::manifest::is_format_identity(source)
+            && *source != conversion.target_format
+    }));
+
+    // The sample asks for no permission and starts no work by itself, so nothing
+    // it declares can widen what a replacement is allowed to do. The idle verdict
+    // that admits the replacement belongs to the host's own owner
+    // (`platform/extension_packages/maintenance.rs`, proven by its unit tests and
+    // `tests/extension_contract/a30_generation.rs`); a package is never asked
+    // whether its own replacement is safe, and this sample declares no such claim.
+    assert!(manifest.permissions.is_empty());
+    assert!(matches!(
+        manifest.activation,
+        licoup_application::ActivationMode::OnDemand
+    ));
+}
+
+#[test]
+fn the_sample_states_the_stop_contract_it_must_keep() {
+    // The four cancel outcomes are four different facts, and only one of them
+    // says the work stopped. These are the facts a sample author is told to keep
+    // truthful; the host never upgrades a package's answer into a stronger one.
+    let outcomes = [
+        CancelOutcome::Requested,
+        CancelOutcome::Acknowledged,
+        CancelOutcome::Unsupported,
+        CancelOutcome::Unknown,
+    ];
+    let stopped = outcomes
+        .iter()
+        .filter(|outcome| outcome.is_stopped())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        stopped,
+        vec![&CancelOutcome::Acknowledged],
+        "only a confirmation means the work demonstrably stopped"
+    );
+    assert!(
+        outcomes
+            .iter()
+            .all(|outcome| !outcome.settles_external_effect()),
+        "a cancellation is a request and never settles an external effect"
+    );
+
+    // Cancel is an optional Agent method, so the smallest complete Agent is
+    // complete without it and the host then reports `unsupported` rather than
+    // pretending. The sample that implements the required set exactly is the
+    // proof: it implements no cancel and declares no unsupported capability.
+    let contract = ExtensionProfile::AgentExecution.contract_profile();
+    assert!(contract.optional.contains(&"agent.cancel"));
+    assert!(!contract.required.contains(&"agent.cancel"));
+    assert!(!declared_methods().implements("agent.cancel"));
+    assert!(
+        !converter_sample()
+            .profiles
+            .iter()
+            .any(|profile| profile.capabilities.iter().any(|capability| capability
+                .contains("cancel"))),
+        "a converter package declares no cancel capability"
+    );
 }
