@@ -806,6 +806,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.platform.runtime-adapters.artifact",
   "rust.platform.runtime-adapters.normalization",
   "rust.platform.runtime-adapters.probe",
+  "rust.platform.diagnostics-observation",
   "rust.platform",
   "rust.ffi",
   "rust.ffi.cli-command-admission",

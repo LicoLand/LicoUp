@@ -2056,6 +2056,16 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::runtime_adapters::tests::probe::"),
     }),
   defineModule({
+      id: "rust.platform.diagnostics-observation",
+      kind: "rust-platform",
+      summary: "Bounded switchable observation probe: segmented records, correlation ids and counted drops",
+      inputs: [
+        "crates/licoup-native/src/platform/diagnostics/mod.rs",
+        "crates/licoup-native/src/platform/diagnostics/observation/**",
+      ],
+      command: rustLayer("platform::diagnostics::observation::"),
+    }),
+  defineModule({
       id: "rust.platform",
       kind: "rust-platform",
       summary: "Remaining unsplit native platform adapters and shared utilities",
