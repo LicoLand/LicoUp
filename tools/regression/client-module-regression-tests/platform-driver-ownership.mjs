@@ -378,10 +378,11 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "test/native_stdio_rpc_line_framer_test.dart",
     "test/native_stdio_rpc_protocol_test.dart",
   ]);
-  // The transport module gained the bounded flow-control suites, so the command
-  // executes twelve targets. The assertion covers all of them rather than the
-  // original eight: a suite that is selected but no longer executed is exactly
-  // what this check exists to catch.
+  // The transport module gained the bounded flow-control suites and then the
+  // production stream-observation suite, so the command executes thirteen
+  // targets. The assertion covers all of them rather than the original eight: a
+  // suite that is selected but no longer executed is exactly what this check
+  // exists to catch.
   const stdioTransportTests = [
     "test/stdio_rpc_method_policy_test.dart",
     "test/native_stdio_rpc_client_test.dart",
@@ -392,11 +393,12 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "test/stdio_transport_flow_control/control_lane_priority_test.dart",
     "test/stdio_transport_flow_control/native_child_backlog_test.dart",
     "test/stdio_transport_flow_control/stream_observation_test.dart",
+    "test/stdio_transport_flow_control/stream_observation_production_test.dart",
     "test/conversation_execution_transport_test.dart",
     "test/native_conversation_port_test.dart",
     "test/stdio_rpc_operation_queue_test.dart",
   ];
-  assert.deepEqual(stdioTransport.command.args.slice(-12), stdioTransportTests);
+  assert.deepEqual(stdioTransport.command.args.slice(-13), stdioTransportTests);
   // Every selected dart suite must also be executed, and the other way round.
   const selectedTransportTests = stdioTransport.inputs
     .filter((input) => /^apps\/desktop\/test\/.*_test\.dart$/u.test(input))
