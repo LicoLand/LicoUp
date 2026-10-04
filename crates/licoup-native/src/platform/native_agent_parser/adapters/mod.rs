@@ -89,6 +89,8 @@ fn hermes_transitions(outcome: &ExecutionOutcome<'_>) -> Vec<Transition> {
 /// Whether a Cursor chat identity is one that Agent's protocol accepts.
 fn cursor_identity(request: &DurableIdentityRequest<'_>) -> bool {
     cursor::safe_session_id(request.session_id)
+}
+
 /// Whether an Antigravity Agent Hooks receipt identity is one that Agent's
 /// protocol accepts.
 fn antigravity_identity(request: &DurableIdentityRequest<'_>) -> bool {
