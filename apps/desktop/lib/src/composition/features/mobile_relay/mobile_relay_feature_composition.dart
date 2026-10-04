@@ -3,6 +3,7 @@ import 'package:riverpod/misc.dart' show Override;
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller.dart';
+import 'package:licoup/src/composition/features/mobile_relay/device_entry_join.dart';
 import 'package:licoup/src/composition/features/mobile_relay/mobile_relay_effect_producer.dart';
 import 'package:licoup/src/composition/features/mobile_relay/mobile_relay_intent_adapter.dart';
 import 'package:licoup/src/composition/renderer_intent_trace.dart';
@@ -20,6 +21,8 @@ final class MobileRelayFeatureComposition {
     required MobileHomeLayoutController homeLayout,
     required bool Function() readMobileRuntime,
     RendererIntentTraceFactory? beginRendererIntent,
+    EndpointCollaborationAvailabilityPort? endpointCollaboration,
+    DeviceReplacementControlPort? replacementControl,
   }) {
     projection = MobileRelayProjectionProducer(
       relay: relay,
@@ -39,6 +42,13 @@ final class MobileRelayFeatureComposition {
       projection: projection,
       intents: intents,
       effects: effects,
+    );
+    deviceEntry = DeviceEntryJoin.production(
+      relay: binding,
+      package:
+          endpointCollaboration ??
+          const UnboundEndpointCollaborationAvailability(),
+      control: replacementControl ?? const AbsentDeviceReplacementControl(),
     );
     _pairingSource = mobileRelayRegionPresentationSource(
       mobileRelayPairingRegion,
@@ -81,6 +91,10 @@ final class MobileRelayFeatureComposition {
   late final MobileRelayIntentAdapter intents;
   late final MobileRelayBinding binding;
 
+  /// The production entry that joins this feature with the optional endpoint
+  /// collaboration package and the device replacement/control entry.
+  late final DeviceEntryJoin deviceEntry;
+
   late final MobileRelayRegionPresentationSource<MobileRelayPairingInputs>
   _pairingSource;
   late final MobileRelayRegionPresentationSource<MobileRelayTrustInputs>
@@ -103,6 +117,7 @@ final class MobileRelayFeatureComposition {
   Future<void> dispose() => _disposal ??= _dispose();
 
   Future<void> _dispose() async {
+    await deviceEntry.dispose();
     await _pairingSource.dispose();
     await _trustSource.dispose();
     await _approvalsSource.dispose();
