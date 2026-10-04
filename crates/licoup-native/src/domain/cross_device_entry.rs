@@ -402,7 +402,7 @@ pub struct CrossDeviceEntry<RecordKey> {
     edge: Option<Arc<dyn CrossDeviceEdge>>,
 }
 
-impl<RecordKey> CrossDeviceEntry<RecordKey> {
+impl<RecordKey: Clone + Eq> CrossDeviceEntry<RecordKey> {
     /// Builds the entry over the host's binding table.
     #[must_use]
     pub fn new(bindings: Arc<HostPeerBindings>) -> Self {

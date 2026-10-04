@@ -56,7 +56,7 @@ fn status() -> Result<Value> {
         Ok(values) => (true, values.0, values.1, values.2),
         // A process that never installed the entry answers exactly that: it is
         // not an error to ask, and nothing may be reported as present.
-        Err(_) => (false, 0, 0, 0),
+        Err(_) => (false, false, 0usize, 0usize),
     };
     Ok(json!({
         "ok": true,
