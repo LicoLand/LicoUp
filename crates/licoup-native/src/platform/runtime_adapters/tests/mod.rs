@@ -1,4 +1,5 @@
 mod adapter_dispatch;
+mod agent_execution_port;
 mod approval_authority;
 mod artifact;
 mod conversation_integrity;

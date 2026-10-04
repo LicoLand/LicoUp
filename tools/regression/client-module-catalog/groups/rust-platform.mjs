@@ -1931,8 +1931,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.runtime-adapters",
       kind: "rust-platform",
-      summary: "Native runtime registry, evidence binding, probe, dispatch, and response aggregate",
+      summary: "Native runtime registry, evidence binding, probe, dispatch, approval authority, and the agent-execution port entry",
       inputs: [
+        "crates/licoup-native/src/agent_port.rs",
         "crates/licoup-native/src/platform/runtime_adapters.rs",
         "crates/licoup-native/src/platform/runtime_adapters/**",
         "crates/licoup-native/resources/agent-conversation-drivers.json",

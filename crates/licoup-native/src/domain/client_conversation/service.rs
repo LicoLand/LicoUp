@@ -384,11 +384,10 @@ impl ConversationService {
                     let sessions = report.archived_native_sessions.clone();
                     std::thread::spawn(move || {
                         for session in sessions {
-                            let _ =
-                                crate::platform::conversation_lane::cleanup_conversation(&json!({
-                                    "agent": session.agent_id,
-                                    "nativeSessionId": session.native_session_id,
-                                }));
+                            let _ = crate::agent_port::cleanup(&json!({
+                                "agent": session.agent_id,
+                                "nativeSessionId": session.native_session_id,
+                            }));
                         }
                     });
                 }

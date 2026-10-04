@@ -34,7 +34,7 @@ pub(super) fn handle_agent_conversation(command: AdmittedCommand) -> Result<CliE
                 "streamTransport": "stdio_ndjson_on_send"
             }),
         );
-        let result = match crate::platform::dispatch_lane_operation(operation, &params) {
+        let result = match crate::agent_port::dispatch(operation, &params) {
             Ok(result) => result,
             Err(error) => agent_conversation_failure(&error),
         };
@@ -47,7 +47,7 @@ pub(super) fn handle_agent_conversation(command: AdmittedCommand) -> Result<CliE
         return Ok(CliExecution::Streamed);
     }
 
-    let result = match crate::platform::dispatch_lane_operation(operation, &params) {
+    let result = match crate::agent_port::dispatch(operation, &params) {
         Ok(result) => result,
         Err(error) => agent_conversation_failure(&error),
     };

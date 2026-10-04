@@ -13,7 +13,7 @@
 //!   [`adapter`], which move to `licoup-agent-codex` and `licoup-agent-pi` when
 //!   those crates exist;
 //! * this host's own conversation lane, reached through
-//!   [`crate::platform::dispatch_lane_operation`] and the Agent inventory port
+//!   [`crate::agent_port::dispatch`] and the Agent inventory port
 //!   [`crate::target_port::agent_target_port`] composes, neither of
 //!   which is any Agent's protocol.
 //!
@@ -100,8 +100,7 @@ pub fn host_lane_reach() -> licoup_agent_drivers::LaneReach {
 /// before the seam moved.
 fn dispatch_lane(port: &AgentTargetPort, operation: &str, params: &Value) -> Result<Value, String> {
     let _ = port;
-    crate::platform::dispatch_lane_operation(operation, params)
-        .map_err(|error| error.to_string())
+    crate::agent_port::dispatch(operation, params).map_err(|error| error.to_string())
 }
 
 /// The production driver transport for one Agent, over this host's lane.

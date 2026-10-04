@@ -306,7 +306,7 @@ pub(crate) fn execute_actor(
             object.insert("workingDirectory".into(), Value::String(cwd.to_owned()));
         }
     }
-    let response = match crate::platform::dispatch_lane_operation("send", &request) {
+    let response = match crate::agent_port::send(&request) {
         Ok(value) => value,
         Err(error) => return Err(anyhow!("strategy_actor_dispatch_failed:{error}")),
     };

@@ -856,7 +856,7 @@ impl PersistentConversationRuntime {
             cancel_params["turnId"] = json!(turn_id);
         }
         let response =
-            match licoup_native::platform::dispatch_lane_operation("cancel", &cancel_params) {
+            match licoup_native::cancel_agent_turn(&cancel_params) {
                 Ok(response) => response,
                 Err(_) => {
                     turn.cancel_requested.store(true, Ordering::Release);
@@ -1005,7 +1005,7 @@ impl PersistentConversationRuntime {
         let params = self
             .scoped_control_params(params)
             .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)?;
-        licoup_native::platform::dispatch_lane_operation("steer", &params)
+        licoup_native::steer_agent_turn(&params)
     }
 
     fn begin_accepted(
@@ -1060,7 +1060,7 @@ impl PersistentConversationRuntime {
         ));
         let execution = catch_unwind(AssertUnwindSafe(|| {
             let _guard = PortableDataDirOverrideGuard::set(portable_data_dir);
-            licoup_native::platform::dispatch_lane_operation("send", &params)
+            licoup_native::send_agent_turn(&params)
         }));
         drop(stream_guard);
         drop(raw_scope);
@@ -2109,7 +2109,7 @@ where
     });
     let execution = catch_unwind(AssertUnwindSafe(|| {
         let _guard = PortableDataDirOverrideGuard::set(portable_data_dir);
-        licoup_native::platform::dispatch_lane_operation(operation, &params)
+        licoup_native::dispatch_agent_operation(operation, &params)
             .map(licoup_native::ffi::commands::CliExecution::Json)
     }));
     drop(stream_guard);

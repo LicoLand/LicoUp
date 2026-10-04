@@ -524,7 +524,7 @@ fn stop_lane_session(session_id: &str, agent_id: Option<&str>) -> OwnerStopDispo
         "agentId": agent_id,
         "sessionId": session_id,
     });
-    match super::dispatch_lane_operation("cancel", &params) {
+    match crate::agent_port::cancel(&params) {
         Ok(response) => match response.get("ok").and_then(Value::as_bool) {
             Some(true) => OwnerStopDisposition::Acknowledged,
             _ => match response.get("status").and_then(Value::as_str) {

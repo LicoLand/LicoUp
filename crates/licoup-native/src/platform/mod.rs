@@ -77,9 +77,6 @@ pub mod subagent_mcp_ensure;
 
 pub use acp_session_transport::resolve_interaction_approval as resolve_native_agent_interaction_approval;
 pub(crate) use codex_app_server::list_models as codex_app_server_model_catalog;
-pub use conversation_lane::{
-    cancel_turn, cleanup_conversation, dispatch_lane_operation, lane_capabilities, open_or_resume,
-};
 pub use native_agent_interaction::resolve as resolve_native_agent_interaction;
 pub use native_agent_interaction::resolve_scoped as resolve_scoped_native_agent_interaction;
 pub use turn_event_emit::{

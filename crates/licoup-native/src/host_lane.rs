@@ -215,8 +215,11 @@ pub(super) fn codex_plugin_installation_state(cli_executable: Option<&std::path:
 }
 
 /// End one Agent's persisted conversation, as the Subagent mesh reaches it.
+///
+/// The answer is the port's own cleanup entry rather than the lane's, so the
+/// mesh and this host's other callers end a conversation through one path.
 pub(super) fn cleanup_conversation(params: &Value) -> Result<Value, String> {
-    crate::platform::cleanup_conversation(params).map_err(|error| error.to_string())
+    crate::agent_port::cleanup(params).map_err(|error| error.to_string())
 }
 
 /// The MCP servers one ACP runtime reaches this host's collaboration surface
