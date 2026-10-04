@@ -133,8 +133,8 @@ pub(super) fn parser_for_agent(agent_id: &str) -> ParserRegistration {
 /// The ACP transport engines in `licoup-agent-drivers` read one Agent's frames
 /// — how a line decodes, what a frame means, how a failure is worded — through
 /// this table rather than by naming a parser, so that crate names no Agent and
-/// an Agent that changes its dialect is a change to this file and to that
-/// Agent's parser, never to the transport.
+/// an Agent that changes its dialect is a change to that Agent's package and to
+/// this table, never to the transport.
 ///
 /// The table is keyed by **driver identity** rather than by Agent, because two
 /// Agents legitimately share one ACP dialect. Measured on the parsers here:
@@ -143,29 +143,23 @@ pub(super) fn parser_for_agent(agent_id: &str) -> ParserRegistration {
 /// dialect and publishes it whole, so this composition installs the package's
 /// registration rather than assembling a second copy of it.
 ///
+/// The dialect an Agent's own package carries is named by that package rather
+/// than rebuilt here: Copilot's entry is the constant
+/// `licoup-agent-copilot` registers, so the frame policy the transport reads is
+/// the one the package ships.
+///
 /// `hermes` is the one Agent on the persistent ACP dialect, and its entry
 /// borrows nothing: every member is Hermes' own parser function.
 pub(super) fn acp_dialects() -> &'static [AcpParserRegistration] {
-    use crate::platform::native_agent_parser::adapters::{copilot, hermes};
+    use crate::platform::native_agent_parser::adapters::hermes;
 
     static DIALECTS: OnceLock<Vec<AcpParserRegistration>> = OnceLock::new();
     DIALECTS.get_or_init(|| {
-        let copilot_acp = AcpParserRegistration {
-            driver_id: "copilot-acp",
-            decode_frame: copilot::decode_frame,
-            is_notification: copilot::is_notification,
-            response_id_matches: copilot::response_id_matches,
-            response_is_error: super::dialects::acp_response_is_error,
-            session_update: copilot::session_update,
-            prompt_stop_reason: copilot::prompt_stop_reason,
-            initialize_response: copilot::initialize_response,
-            client_request: super::dialects::copilot_client_request,
-            permission_request: super::dialects::no_permission_request,
-            completed_transitions: copilot::completed_transitions,
-            failed_transitions: copilot::failed_transitions,
-        };
         vec![
-            copilot_acp,
+            // The Copilot package's own dialect, installed rather than
+            // restated: the package owns the parser behind the frame policy and
+            // the request projection it needs, so the two cannot drift.
+            licoup_agent_copilot::registration::DIALECT,
             // The Kimi Code package's own dialect, installed rather than
             // restated: the package owns the parser behind it, so the two cannot
             // drift.

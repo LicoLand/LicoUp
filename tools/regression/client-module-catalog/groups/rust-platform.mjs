@@ -899,7 +899,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Fail-closed ACP permission interaction projection",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot.rs",
+        "crates/licoup-agent-copilot/src/dialect.rs",
+        "crates/licoup-agent-copilot/src/parser.rs",
         "crates/licoup-agent-kimi/src/dialect.rs",
         "crates/licoup-agent-kimi/src/parser.rs",
         "crates/licoup-agent-drivers/src/acp_driver_runtime/parser_port.rs",
@@ -953,7 +954,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "ACP initialize, optional MCP server injection, session, prompt, and response state machine",
       inputs: [
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot.rs",
+        "crates/licoup-agent-copilot/src/dialect.rs",
+        "crates/licoup-agent-copilot/src/parser.rs",
         "crates/licoup-agent-kimi/src/dialect.rs",
         "crates/licoup-agent-kimi/src/parser.rs",
         "crates/licoup-agent-drivers/src/acp_driver_runtime/parser_port.rs",
@@ -995,7 +997,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.acp-runtime.replay",
       kind: "rust-platform",
-      summary: "Recorded ACP transcript replay arms for the copilot and kimi-code protocol state machine; the Kimi Code arm is built by its own package",
+      summary: "Recorded ACP transcript replay arms for the copilot and kimi-code protocol state machine; each arm is built by the package that owns its parser",
       inputs: [
         "crates/licoup-agent-drivers/src/acp_driver_runtime/replay.rs",
       ],

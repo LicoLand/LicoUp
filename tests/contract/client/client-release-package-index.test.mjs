@@ -89,6 +89,14 @@ const declaredPackages = Object.freeze([
     clientRange: ">=0.3.0, <1.0.0",
   },
   {
+    packageId: "org.licoland.adapter.copilot",
+    source: "crates/licoup-agent-copilot/package",
+    payloadRole: "copilot-adapter-package-payload",
+    payloadAsset: "LicoUp-package-org.licoland.adapter.copilot.licopkg",
+    converterEntry: "bin/lico-agent-copilot",
+    clientRange: ">=0.3.0, <1.0.0",
+  },
+  {
     packageId: "org.licoland.converter.appearance",
     source: "components/appearance/package",
     payloadRole: "appearance-converter-package-payload",
@@ -290,11 +298,6 @@ test("the canonical release configuration declares every package payload role ex
     assert.equal(
       roles.includes(PACKAGE_INDEX_ROLE) ||
         declaredPackages.some((entry) => roles.includes(entry.payloadRole)),
-      roles.includes(PACKAGE_PAYLOAD_ROLE) || roles.includes(PACKAGE_INDEX_ROLE) ||
-        roles.includes(mcpPayloadRole) || roles.includes(codexPayloadRole) ||
-        roles.includes(antigravityPayloadRole) || roles.includes(cursorPayloadRole),
-        roles.includes(deepseekPayloadRole),
-        roles.includes(kimiPayloadRole),
       target.id === "macos-direct-arm64",
       `${target.id} must not carry an independent package asset`,
     );
@@ -320,30 +323,6 @@ test("the canonical release configuration declares every package payload role ex
         `${role} must not enter the closed client draft`);
     }
   }
-  assert.equal(publication.assetRoles.includes(PACKAGE_PAYLOAD_ROLE), false);
-  assert.equal(publication.assetRoles.includes(mcpPayloadRole), false);
-  assert.equal(publication.assetRoles.includes(codexPayloadRole), false);
-  assert.equal(publication.assetRoles.includes(antigravityPayloadRole), false);
-  assert.equal(publication.assetRoles.includes(cursorPayloadRole), false);
-  assert.equal(publication.assetRoles.includes(deepseekPayloadRole), false);
-  assert.equal(publication.assetRoles.includes(kimiPayloadRole), false);
-  assert.equal(publication.assetRoles.includes(PACKAGE_INDEX_ROLE), false);
-  for (const config of [stable, nightly]) {
-    assert.deepEqual(
-      config.artifacts.map((entry) => entry.role),
-      publication.assetRoles,
-      "exactDraftAssetSetRequired still holds with the independent package assets",
-    );
-    for (const role of [PACKAGE_PAYLOAD_ROLE, mcpPayloadRole, codexPayloadRole,
-      antigravityPayloadRole, cursorPayloadRole, deepseekPayloadRole,
-      kimiPayloadRole, PACKAGE_INDEX_ROLE]) {
-      assert.equal(config.artifacts.some((entry) => entry.role === role), false,
-        `${role} must not enter the closed client draft`);
-    }
-  }
-  // The declared set and the publication contract name the same payload roles:
-  // a package without a role, or a role without a package, is a release that
-  // cannot be staged.
   assert.deepEqual(
     [...set.packages.map((entry) => entry.payloadRole)].sort(),
     [...publication.independentPackageAssets.payloadRoles].sort(),

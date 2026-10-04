@@ -2,16 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-// The per-Agent parsers the host still holds and the composition that names
-// them; the shared adapter contract, the registry lookup, the replay harness
-// and the lifecycle authority moved to `licoup-agent-adapter-sdk`. Two Agents
-// have moved further: their vendor protocol, wire vocabulary and replay arm are
-// their own package's, and the composition names the package instead of keeping
-// a second copy.
-// The thirteen per-Agent parsers and the composition that names them stay in
-// the host until that Agent's own package owns the protocol; the shared adapter
-// contract, the registry lookup, the replay harness and the lifecycle authority
-// moved to `licoup-agent-adapter-sdk`.
+// The thirteen per-Agent parsers stay one inventory; the composition that names
+// them, the shared adapter contract, the registry lookup, the replay harness and
+// the lifecycle authority are split between the host, the adapter SDK and the
+// Agent packages the moved parsers live in.
 const parserRoot = 'crates/licoup-native/src/platform/native_agent_parser';
 const compositionRoot = `${parserRoot}/adapters`;
 const sdkRoot = 'crates/licoup-agent-adapter-sdk/src';
@@ -35,6 +29,7 @@ const adapters = [
 const packageAdapters = new Map([
   ['antigravity', 'crates/licoup-agent-antigravity'],
   ['codex', 'crates/licoup-agent-codex'],
+  ['copilot', 'crates/licoup-agent-copilot'],
   ['cursor', 'crates/licoup-agent-cursor'],
   ['deepseek_harness', 'crates/licoup-agent-deepseek'],
   ['kimi_code', 'crates/licoup-agent-kimi'],
@@ -50,6 +45,10 @@ const packaged = {
   codex: {
     crate: 'licoup_agent_codex',
     parser: 'crates/licoup-agent-codex/src/parser.rs',
+  },
+  copilot: {
+    crate: 'licoup_agent_copilot',
+    parser: 'crates/licoup-agent-copilot/src/parser.rs',
   },
   cursor: {
     crate: 'licoup_agent_cursor',

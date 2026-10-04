@@ -12,6 +12,11 @@
       "payloadRole": "codex-adapter-package-payload"
     },
     {
+      "packageId": "org.licoland.adapter.copilot",
+      "source": "crates/licoup-agent-copilot/package",
+      "payloadRole": "copilot-adapter-package-payload"
+    },
+    {
       "packageId": "org.licoland.converter.appearance",
       "source": "components/appearance/package",
       "payloadRole": "appearance-converter-package-payload"

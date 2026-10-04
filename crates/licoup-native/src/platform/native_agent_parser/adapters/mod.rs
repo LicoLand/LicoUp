@@ -21,27 +21,23 @@ pub(in crate::platform) use licoup_agent_adapter_sdk::{
     LifecycleStage, Transition, TransitionReducer,
 };
 
-// The second Agent to move: Antigravity's Agent Hooks receipt, PTY parser and
-// terminal classification now live in `licoup-agent-antigravity`. The driver that
-// still supervises the vendor CLI reads them through this path, and the
-// composition names the package for the registration and the replay arm that
-// belong to the same parser.
+// The parsers that have moved into their own packages: Antigravity's Agent
+// Hooks receipt, PTY parser and terminal classification
+// (`licoup-agent-antigravity`); Codex's vendor protocol
+// (`licoup-agent-codex`); Cursor's strict-NDJSON turn dialect
+// (`licoup-agent-cursor`); the DeepSeek Harness SDK's protocol
+// (`licoup-agent-deepseek`); Kimi Code's ACP dialect (`licoup-agent-kimi`);
+// and Copilot's ACP frame policy (`licoup-agent-copilot`). Each is parsed
+// once, by the package that owns it; this composition re-exports each parser
+// under its Agent's alias, so all thirteen stay reachable at one path, and names
+// the packages rather than keeping a second copy. Codex's parser is read through
+// that path by the client's own app-server process half. Nothing reads Copilot's
+// parser by name — the shared ACP engine reads it through the dialect the
+// package registers — so its registration below is the whole of what this
+// composition needs from it.
 pub(in crate::platform) use licoup_agent_antigravity::parser as antigravity;
-// One Agent's parser has moved: Codex's vendor protocol now lives in its own package
-// (`licoup-agent-codex`), parsed once below this port, and this composition names the
-// package rather than keeping a second copy.
-// Two Agents' parsers have moved: Codex's vendor protocol lives in
-// `licoup-agent-codex` and the DeepSeek Harness SDK's in
-// `licoup-agent-deepseek`, each parsed once below this port, and this
-// composition names the packages rather than keeping a second copy.
-// Two Agents' parsers have moved: Codex's vendor protocol lives in
-// `licoup-agent-codex` and Kimi Code's ACP dialect in `licoup-agent-kimi`, each
-// parsed once below this port, and this composition names the package rather
-// than keeping a second copy. Codex's is re-exported here because the host's
-// Codex leaves still read it through this tree; Kimi Code's is reached through
-// the package's dialect registration in `runtime_adapters::drivers`, so this
-// tree names no Kimi parser at all.
 pub(in crate::platform) use licoup_agent_codex::parser as codex;
+pub(in crate::platform) use licoup_agent_copilot::parser as copilot;
 // Cursor's vendor protocol has moved the same way, into `licoup-agent-cursor`: its
 // strict-NDJSON turn dialect and the wire vocabulary it reads are the package's,
 // and this composition reads them through the package's own module.
@@ -50,7 +46,6 @@ pub(in crate::platform) use licoup_agent_deepseek::parser as deepseek_harness;
 pub(in crate::platform) use licoup_agent_kimi::parser as kimi_code;
 
 pub(in crate::platform) mod claude_code;
-pub(in crate::platform) mod copilot;
 pub(in crate::platform) mod hermes;
 pub(in crate::platform) mod kilo_code;
 pub(in crate::platform) mod lico_agent;
@@ -154,7 +149,11 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     // The Codex package answers both protocol-agnostic queries from its own recorded
     // evidence, so this entry is the package's own registration.
     licoup_agent_codex::registration::REGISTRATION,
-    ParserRegistration::unanswered(copilot::CONTRACT),
+    // The Copilot package answers those two queries fail-closed — its driver
+    // carries its own transition list and the Subagent mesh never dispatches it —
+    // so this entry is the package's own registration, reached without a second
+    // declaration here.
+    licoup_agent_copilot::registration::REGISTRATION,
     // The Cursor package answers both queries from its own wire vocabulary — the
     // parser's own reply transitions and the session-id rule it binds with — so this
     // entry is the package's own registration rather than a second answer kept here.
