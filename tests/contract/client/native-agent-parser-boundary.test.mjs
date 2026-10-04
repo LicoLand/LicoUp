@@ -87,6 +87,13 @@ const packaged = {
     contractId: 'hermes',
     readsParser: false,
   },
+  kilo_code: {
+    crate: 'licoup_agent_kilo',
+    module: 'parser',
+    source: 'crates/licoup-agent-kilo/src/parser/mod.rs',
+    contractId: 'kilo-code',
+    readsParser: false,
+  },
   kimi_code: {
     crate: 'licoup_agent_kimi',
     module: 'parser',
@@ -142,6 +149,8 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
   const answered = {};
   // One entry per Agent, so a per-Agent answer is read from its own entry
   // rather than from a neighbouring one that happens to name the same helper.
+  // A moved Agent's entry is its package's registration constant, which the
+  // package's own suite proves answers both queries.
   const entries = new Map();
   for (const chunk of registrations.split('    ParserRegistration::').slice(1)) {
     const contract = chunk.match(/(\w+)::CONTRACT/);
@@ -272,23 +281,36 @@ test('serve HTTP and SSE frames decode only in target parser components', () => 
   );
   assert.doesNotMatch(neutralServe, /message\.updated|message\.part\.updated|serde_json::from_str/);
 
-  for (const adapter of ['opencode', 'kilo_code']) {
-    const parser = readFileSync(`${parserRoot}/adapters/${adapter}.rs`, 'utf8');
-    assert.match(parser, /struct ServeEventParser/);
-    assert.match(parser, /fn session_id/);
-    assert.match(parser, /fn message/);
-    assert.match(parser, /message\.part\.updated/);
-  }
+  // Kilo Code's parser moved into its own package, so its protocol text is read
+  // from the package root; OpenCode's is still composed by the client.
+  const kiloParser = readFileSync(
+    'crates/licoup-agent-kilo/src/parser/serve.rs',
+    'utf8',
+  );
+  assert.match(kiloParser, /struct ServeEventParser/);
+  assert.match(kiloParser, /message\.part\.updated/);
+  const kiloProtocol = readFileSync('crates/licoup-agent-kilo/src/parser/mod.rs', 'utf8');
+  assert.match(kiloProtocol, /fn session_id/);
+  assert.match(kiloProtocol, /fn message/);
+  const openCodeParser = readFileSync(`${parserRoot}/adapters/opencode.rs`, 'utf8');
+  assert.match(openCodeParser, /struct ServeEventParser/);
+  assert.match(openCodeParser, /fn session_id/);
+  assert.match(openCodeParser, /fn message/);
+  assert.match(openCodeParser, /message\.part\.updated/);
   const openCodeTransport = readFileSync(
     'crates/licoup-native/src/platform/opencode_driver/serve_transport.rs',
     'utf8',
   );
+  // The client's Kilo turn is the composition that asks the package to perform
+  // it, not a transport that classifies frames of its own.
   const kiloTransport = readFileSync(
-    'crates/licoup-native/src/platform/kilo_code_driver/transport.rs',
+    'crates/licoup-native/src/platform/kilo_code_driver/execution.rs',
     'utf8',
   );
   assert.match(openCodeTransport, /adapters::opencode as serve_parser/);
-  assert.match(kiloTransport, /adapters::kilo_code as serve_parser/);
+  // The client's Kilo turn reads the package's own parser rather than a local
+  // copy, which is what makes the corpus a statement about the shipped ingress.
+  assert.match(kiloTransport, /driver::execute_via_serve|licoup_agent_kilo/);
 });
 
 test('Cursor PTY isolation precedes its strict NDJSON parser', () => {

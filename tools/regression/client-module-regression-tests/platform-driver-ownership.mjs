@@ -602,37 +602,55 @@ test("Kilo Code adapter leaves retain exact tests and complete source ownership"
   const filters = new Map([
     ["rust.platform.kilo-code-driver.composition",
       "platform::kilo_code_driver::tests::composition::"],
-    ["rust.platform.kilo-code-driver.config",
-      "platform::kilo_code_driver::tests::config::"],
     ["rust.platform.kilo-code-driver.execution",
       "platform::kilo_code_driver::tests::execution::"],
     ["rust.platform.kilo-code-driver.probe",
       "platform::kilo_code_driver::tests::probe::"],
-    ["rust.platform.kilo-code-driver.projection",
-      "platform::kilo_code_driver::tests::projection::"],
-    ["rust.platform.kilo-code-driver.transport",
-      "platform::kilo_code_driver::tests::transport::"],
+    ["rust.platform.kilo-code-host",
+      "platform::kilo_code_driver::tests::host::"],
   ]);
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
-    candidate.id.startsWith("rust.platform.kilo-code-driver."));
+    candidate.id.startsWith("rust.platform.kilo-code-driver.") ||
+    candidate.id === "rust.platform.kilo-code-host");
   assert.equal(modules.length, filters.size);
   for (const [id, filter] of filters) {
     assert.equal(CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id)
       .command.args.at(-1), filter);
   }
   const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
-  const sources = await sourceFiles(
-    "crates/licoup-native/src/platform/kilo_code_driver", ".rs");
+  // Every source the client still holds for this Agent has a precise narrow
+  // owner: the compose-side driver tree and the host answer for its ports.
   for (const relativePath of [
     "crates/licoup-native/src/platform/kilo_code_driver.rs",
-    ...sources,
+    ...await sourceFiles(
+      "crates/licoup-native/src/platform/kilo_code_driver", ".rs"),
+    "crates/licoup-native/src/platform/kilo_code_host.rs",
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `Kilo Code adapter source must have a precise regression owner: ${relativePath}`);
   }
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/kilo_code_driver/transport.rs",
-  ])), ["architecture.client-boundaries", "rust.platform.kilo-code-driver.transport"]);
+    "crates/licoup-native/src/platform/kilo_code_driver/execution.rs",
+  ])), ["architecture.client-boundaries", "rust.platform.kilo-code-driver.execution"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-native/src/platform/kilo_code_host.rs",
+  ])), ["architecture.client-boundaries", "rust.platform.kilo-code-host"]);
+  // The Agent's own half carries its own narrow owners, and every source the
+  // package ships is owned by the package's whole-tree module.
+  const packageModuleId = "rust.core.agent-kilo-package";
+  const packageSources = await sourceFiles("crates/licoup-agent-kilo/src", ".rs");
+  assert.ok(packageSources.length > 0);
+  const owns = (relativePath) => CLIENT_MODULE_CATALOG.some((module) =>
+    module.inputs.some((input) => input.endsWith("/**")
+      ? relativePath.startsWith(input.slice(0, -2))
+      : input === relativePath));
+  for (const relativePath of packageSources) {
+    assert.equal(owns(relativePath), true,
+      `Kilo Code package source must have a regression owner: ${relativePath}`);
+  }
+  const packageModule = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === packageModuleId);
+  assert.deepEqual(packageModule.inputs, ["crates/licoup-agent-kilo/**"]);
 });
 
 test("runtime adapter modules retain leaf-owned inputs and exact command filters", () => {
@@ -1065,33 +1083,40 @@ test("OpenCode serve leaves retain exact tests and complete source ownership", a
   }
 });
 
-test("Kilo Code serve leaves retain exact tests and complete source ownership", async () => {
+test("Kilo Code protocol leaves retain exact tests in the package that owns them", async () => {
+  // The parser, the endpoint policy and the driver's own half moved into the
+  // Agent's package, so their leaves run against the package's manifest rather
+  // than against the host that composes it.
   const filters = new Map([
-    ["rust.platform.kilo-code-serve.composition", "platform::kilo_code_serve::tests::composition::"],
-    ["rust.platform.kilo-code-serve.policy", "platform::kilo_code_serve::tests::policy::"],
-    ["rust.platform.kilo-code-serve.events", "platform::kilo_code_serve::tests::events::"],
+    ["rust.platform.kilo-code-package.parser",
+      "parser::"],
+    ["rust.platform.kilo-code-package.driver",
+      "driver::"],
+    ["rust.platform.kilo-code-package.registration",
+      "registration::"],
+    ["rust.platform.kilo-code-package.policy",
+      "policy::"],
   ]);
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
-    candidate.id.startsWith("rust.platform.kilo-code-serve."));
+    candidate.id.startsWith("rust.platform.kilo-code-package."));
   assert.equal(modules.length, filters.size);
   for (const [id, filter] of filters) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
+    assert.equal(module.command.args.includes("crates/licoup-agent-kilo/Cargo.toml"), true,
+      `${id} must run against the package's own manifest`);
   }
-  const sourceCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
-    candidate.id === "regression.kilo-code-serve-source-bundle");
-  const ownedInputs = new Set([
-    ...modules.flatMap((module) => module.inputs),
-    ...sourceCheck.inputs,
-  ]);
-  const splitSources = await sourceFiles(
-    "crates/licoup-native/src/platform/kilo_code_serve", ".rs");
+  const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
   for (const relativePath of [
-    "crates/licoup-native/src/platform/kilo_code_serve.rs",
-    ...splitSources,
+    "crates/licoup-agent-kilo/src/parser.rs",
+    ...await sourceFiles("crates/licoup-agent-kilo/src/parser", ".rs"),
+    "crates/licoup-agent-kilo/src/policy.rs",
+    "crates/licoup-agent-kilo/src/driver.rs",
+    ...await sourceFiles("crates/licoup-agent-kilo/src/driver", ".rs"),
+    "crates/licoup-agent-kilo/src/registration.rs",
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
-      `Kilo Code serve source must have a precise regression owner: ${relativePath}`);
+      `Kilo Code package source must have a precise regression owner: ${relativePath}`);
   }
 });
 

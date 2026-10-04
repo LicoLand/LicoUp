@@ -93,6 +93,10 @@ const declaredPackages = Object.freeze([
     payloadRole: "antigravity-adapter-package-payload",
   }),
   declaredRelease({
+    source: "crates/licoup-agent-kilo/package",
+    payloadRole: "kilo-adapter-package-payload",
+  }),
+  declaredRelease({
     source: "crates/licoup-agent-codex/package",
     payloadRole: "codex-adapter-package-payload",
   }),

@@ -68,6 +68,7 @@
       "payloadRoles": [
         "claude-code-adapter-package-payload",
         "antigravity-adapter-package-payload",
+        "kilo-adapter-package-payload",
         "codex-adapter-package-payload",
         "copilot-adapter-package-payload",
         "appearance-converter-package-payload",

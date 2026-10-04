@@ -60,6 +60,17 @@ export const RUST_CORE_MODULES = Object.freeze([
   agentPackageCrateModule("hermes",
     "Hermes adapter package program, persistent ACP frame dialect, normalized transitions, registration, and replay arm"),
   defineModule({
+      id: "rust.core.agent-kilo-package",
+      kind: "rust-core",
+      summary: "Kilo Code adapter package program, serve protocol, endpoint policy, and replay corpus",
+      inputs: ["crates/licoup-agent-kilo/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-kilo/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
       id: "rust.core.acp.composition",
       kind: "rust-core",
       summary: "ACP facade, shared protocol types, validation, and error boundaries",

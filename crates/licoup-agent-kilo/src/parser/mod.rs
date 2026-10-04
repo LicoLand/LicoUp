@@ -1,87 +1,67 @@
-use super::{AdapterContract, LifecycleStage, Transition, TransitionReducer};
+//! This Agent's vendor protocol: the `serve` documents Kilo Code answers, read
+//! once below the adapter port.
+//!
+//! Kilo Code's headless program runs an OpenCode-compatible HTTP service. Every
+//! fact LicoUp reads out of that service is read here and nowhere else: the
+//! health document, the session identity document, the session collection, the
+//! provider catalogue that decides readiness, and the whole-message document
+//! that closes a turn. The event stream's own documents are classified by
+//! [`serve`], which is the same protocol's stream half.
+//!
+//! The module is the sole ingress, per ADR-0008. Nothing above it re-reads a
+//! vendor document: a caller that needs a session identity calls [`session_id`],
+//! not `Value::get`.
+//!
+//! [`CONTRACT`] is this Agent's adapter declaration. `http-sse` is the framing
+//! its protocol really speaks — an HTTP request/response pair for the turn, an
+//! SSE stream for its progress — and it is the same string the fixtures record,
+//! so a corpus cannot pass against another channel.
+
+use licoup_agent_adapter_sdk::adapters::AdapterContract;
+use licoup_agent_adapter_sdk::serve::{ServeModel, ServeModelCatalog, ServeReadiness};
 use serde_json::Value;
-use std::collections::HashSet;
 
-use crate::platform::local_service::{ServeModel, ServeModelCatalog, ServeReadiness};
+pub mod serve;
 
-pub(super) const CONTRACT: AdapterContract = AdapterContract::new("kilo-code", "http-sse");
+pub use serve::{ServeEventFailure, ServeEventParser};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum ServeEventFailure {
-    InvalidJson,
-}
+/// The shared lifecycle vocabulary, re-exported so a caller of this module's
+/// projections names one path rather than two.
+pub use licoup_agent_adapter_sdk::{LifecycleStage, Transition};
 
+use licoup_agent_adapter_sdk::TransitionReducer;
+
+/// This Agent's adapter declaration.
+pub const CONTRACT: AdapterContract = AdapterContract::new("kilo-code", FRAMING);
+
+/// The adapter id this package carries.
+pub const ID: &str = "kilo-code";
+
+/// The framing this Agent's protocol speaks, and the channel its fixtures
+/// record.
+pub const FRAMING: &str = "http-sse";
+
+/// The one assistant message a completed serve turn carries.
 #[derive(Debug)]
-pub(in crate::platform) struct ServeMessage {
-    pub(in crate::platform) output: String,
-    pub(in crate::platform) transitions: Vec<Transition>,
+pub struct ServeMessage {
+    /// The turn's assistant text.
+    pub output: String,
+    /// The native tool interactions the same document reported.
+    pub transitions: Vec<Transition>,
 }
 
-pub(in crate::platform) struct ServeEventParser {
-    session_id: String,
-    assistant_messages: HashSet<String>,
-}
-
-impl ServeEventParser {
-    pub(in crate::platform) fn new(session_id: &str) -> Self {
-        Self {
-            session_id: session_id.to_owned(),
-            assistant_messages: HashSet::new(),
-        }
-    }
-
-    pub(in crate::platform) fn observe(
-        &mut self,
-        frame: &str,
-    ) -> Result<Option<String>, ServeEventFailure> {
-        let event =
-            serde_json::from_str::<Value>(frame).map_err(|_| ServeEventFailure::InvalidJson)?;
-        let Some(event_type) = event.get("type").and_then(Value::as_str) else {
-            return Ok(None);
-        };
-        let Some(properties) = event.get("properties") else {
-            return Ok(None);
-        };
-        if event_type == "message.updated" {
-            if let Some(info) = properties.get("info")
-                && session_id(info) == Some(self.session_id.as_str())
-                && info.get("role").and_then(Value::as_str) == Some("assistant")
-                && let Some(message_id) = info.get("id").and_then(Value::as_str)
-            {
-                self.assistant_messages.insert(message_id.to_owned());
-            }
-            return Ok(None);
-        }
-        if event_type != "message.part.updated"
-            || session_id(properties) != Some(self.session_id.as_str())
-        {
-            return Ok(None);
-        }
-        let Some(part) = properties.get("part") else {
-            return Ok(None);
-        };
-        if part.get("type").and_then(Value::as_str) != Some("text") {
-            return Ok(None);
-        }
-        let Some(message_id) = message_id(part) else {
-            return Ok(None);
-        };
-        if !self.assistant_messages.contains(message_id) {
-            return Ok(None);
-        }
-        Ok(part
-            .get("text")
-            .and_then(Value::as_str)
-            .filter(|text| !text.is_empty())
-            .map(str::to_owned))
-    }
-}
-
-pub(in crate::platform) fn health_ready(frame: &Value) -> bool {
+/// Whether the service's health document reports a healthy endpoint.
+pub fn health_ready(frame: &Value) -> bool {
     frame.get("healthy").and_then(Value::as_bool) == Some(true)
 }
 
-pub(in crate::platform) fn session_id(frame: &Value) -> Option<&str> {
+/// The native session identity a serve document carries.
+///
+/// Kilo Code answers the identity under `sessionID`, the OpenCode-compatible
+/// spelling, and older documents use `sessionId` or a bare `id`. An empty
+/// identity is not an identity: it is reported as absent so a caller never binds
+/// a turn to nothing.
+pub fn session_id(frame: &Value) -> Option<&str> {
     frame
         .get("sessionID")
         .or_else(|| frame.get("sessionId"))
@@ -90,20 +70,19 @@ pub(in crate::platform) fn session_id(frame: &Value) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
-pub(in crate::platform) fn session_collection(frame: &Value) -> bool {
+/// Whether the service's session document is the collection it must be.
+pub fn session_collection(frame: &Value) -> bool {
     frame.as_array().is_some()
 }
 
-pub(in crate::platform) fn readiness(
-    health: &Value,
-    sessions: &Value,
-    config: &Value,
-    providers: &Value,
-) -> Option<ServeReadiness> {
-    compatible_readiness(health, sessions, config, providers)
-}
-
-fn compatible_readiness(
+/// What one capability probe learned from this Agent's endpoint.
+///
+/// Readiness needs all four documents: a healthy endpoint, a session
+/// collection, a non-empty version and a provider catalogue that yields a
+/// current model. Any one of them missing reports `None` — the endpoint is not
+/// ready, and a partial answer would let a turn start against a service that
+/// cannot serve it.
+pub fn readiness(
     health: &Value,
     sessions: &Value,
     config: &Value,
@@ -168,6 +147,8 @@ fn compatible_readiness(
     })
 }
 
+/// The model the service's own configuration names, resolved against the
+/// catalogue it reported.
 fn configured_model(
     config: &Value,
     models: &[ServeModel],
@@ -235,7 +216,13 @@ fn push_model(models: &mut Vec<ServeModel>, provider_id: &str, model_id: &str) {
     }
 }
 
-pub(in crate::platform) fn message(frame: &Value) -> Option<ServeMessage> {
+/// The completed message a serve message document carries, or `None` when it
+/// carries no assistant text.
+///
+/// `None` is an answer: this protocol fails a turn out of band (an HTTP status,
+/// the abort control lane), so a document without assistant text is a message
+/// with nothing to report rather than a malformed one.
+pub fn message(frame: &Value) -> Option<ServeMessage> {
     let output = assistant_text(frame);
     if output.is_empty() {
         return None;
@@ -245,13 +232,6 @@ pub(in crate::platform) fn message(frame: &Value) -> Option<ServeMessage> {
         output,
         transitions,
     })
-}
-
-fn message_id(value: &Value) -> Option<&str> {
-    value
-        .get("messageID")
-        .or_else(|| value.get("messageId"))
-        .and_then(Value::as_str)
 }
 
 fn assistant_text(response: &Value) -> String {
@@ -281,8 +261,12 @@ fn append_text_parts(parts: &[Value], chunks: &mut Vec<String>) {
     }
 }
 
-#[cfg(test)]
-pub(in crate::platform) fn completed_transitions(output: &str) -> Vec<Transition> {
+/// The transitions one completed serve turn produces.
+///
+/// It is the shared lifecycle machine's own answer, advanced in arrival order,
+/// with the assistant reply emitted as this Agent's text unit. It settles no
+/// turn: the caller decides what a completed protocol turn means.
+pub fn completed_transitions(output: &str) -> Vec<Transition> {
     completed_transitions_with_controls(output, Vec::new())
 }
 
@@ -302,11 +286,8 @@ fn completed_transitions_with_controls(output: &str, controls: Vec<Transition>) 
     transitions
 }
 
-pub(in crate::platform) fn failure_transitions(
-    code: &str,
-    stage: &str,
-    message: &str,
-) -> Vec<Transition> {
+/// The transitions one failed serve turn produces.
+pub fn failure_transitions(code: &str, stage: &str, message: &str) -> Vec<Transition> {
     let mut reducer = TransitionReducer::default();
     let mut transitions = reducer.advance(LifecycleStage::Submitted);
     if let Some(failure) = reducer.fail(code, stage, message) {
@@ -315,6 +296,7 @@ pub(in crate::platform) fn failure_transitions(
     transitions
 }
 
+/// The control transitions a serve document's native tool parts report.
 fn tool_controls(response: &Value) -> Vec<Transition> {
     let mut controls = Vec::new();
     if let Some(parts) = response.get("parts").and_then(Value::as_array) {
@@ -335,6 +317,9 @@ fn append_tool_controls(parts: &[Value], controls: &mut Vec<Transition>) {
         if part.get("type").and_then(Value::as_str) != Some("tool") {
             continue;
         }
+        // The method is a control label, not content: it is bounded so one
+        // document cannot grow an unbounded field, and the summary is this
+        // Agent's own fixed wording rather than the vendor's text.
         let method = part
             .get("tool")
             .or_else(|| part.get("name"))
@@ -366,27 +351,6 @@ mod tests {
         ]}))
         .unwrap();
         assert_eq!(parsed.output, "answer");
-    }
-
-    #[test]
-    fn serve_event_parser_is_exact_session_and_assistant_only() {
-        let mut parser = ServeEventParser::new("kilo-1");
-        let assistant = json!({
-            "type": "message.updated",
-            "properties": {"info": {
-                "id": "agent", "role": "assistant", "sessionID": "kilo-1"
-            }}
-        });
-        assert_eq!(parser.observe(&assistant.to_string()), Ok(None));
-        let part = json!({
-            "type": "message.part.updated",
-            "properties": {
-                "sessionID": "kilo-1",
-                "part": {"messageID": "agent", "type": "text", "text": "delta"}
-            }
-        });
-        assert_eq!(parser.observe(&part.to_string()), Ok(Some("delta".into())));
-        assert_eq!(parser.observe("{"), Err(ServeEventFailure::InvalidJson));
     }
 
     #[test]
@@ -427,5 +391,32 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn tool_controls_are_bounded_and_text_parts_come_from_both_shapes() {
+        let long = "t".repeat(200);
+        let parsed = message(&json!({"parts": [
+            {"type": "tool", "tool": long},
+            {"type": "text", "text": "answer"}
+        ]}))
+        .unwrap();
+        let control = parsed
+            .transitions
+            .iter()
+            .find_map(|transition| match transition {
+                Transition::Control { method, summary } => Some((method, summary)),
+                _ => None,
+            })
+            .expect("a native tool part must report one control transition");
+        assert_eq!(control.0.len(), 64, "the control label is bounded");
+        assert_eq!(control.1, "Kilo reported a native tool interaction.");
+        // A bare array of items is the other accepted whole-message shape.
+        let list = message(&json!([
+            {"parts": [{"type": "text", "text": "first "}]},
+            {"parts": [{"type": "text", "text": "second"}]}
+        ]))
+        .unwrap();
+        assert_eq!(list.output, "first second");
     }
 }

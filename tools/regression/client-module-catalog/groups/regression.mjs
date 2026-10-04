@@ -1707,6 +1707,8 @@ export const REGRESSION_MODULES = Object.freeze([
         "crates/licoup-agent-copilot/src/**",
         "crates/licoup-agent-hermes/Cargo.toml",
         "crates/licoup-agent-hermes/src/**",
+        "crates/licoup-agent-kilo/Cargo.toml",
+        "crates/licoup-agent-kilo/src/**",
         "crates/licoup-agent-drivers/Cargo.toml",
         "crates/licoup-agent-drivers/src/**",
         "crates/licoup-agent-runtime/Cargo.toml",
@@ -2111,11 +2113,13 @@ export const REGRESSION_MODULES = Object.freeze([
   defineModule({
       id: "regression.kilo-code-serve-source-bundle",
       kind: "regression-infrastructure",
-      summary: "Kilo Code thin serve facade, target policy, and privacy source proof",
+      summary: "Kilo Code package protocol and endpoint policy, the client's host answer, and privacy source proof",
       inputs: [
-        "crates/licoup-native/src/platform/kilo_code_serve.rs",
-        "crates/licoup-native/src/platform/kilo_code_serve/policy.rs",
-        "crates/licoup-native/src/platform/kilo_code_serve/tests/**",
+        "crates/licoup-agent-kilo/src/parser/**",
+        "crates/licoup-agent-kilo/src/policy.rs",
+        "crates/licoup-native/src/platform/kilo_code_host.rs",
+        "crates/licoup-native/src/platform/kilo_code_driver.rs",
+        "crates/licoup-native/src/platform/kilo_code_driver/execution.rs",
         "tests/contract/client/kilo-code-serve-source-bundle.test.mjs",
       ],
       command: command(

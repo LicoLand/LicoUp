@@ -43,7 +43,6 @@ pub(in crate::platform) use licoup_agent_cursor::parser as cursor;
 // below. Hermes' dialect reaches the shared ACP transport through the package's
 // own registration in `runtime_adapters::drivers` rather than through this tree.
 
-pub(in crate::platform) mod kilo_code;
 pub(in crate::platform) mod lico_agent;
 pub(in crate::platform) mod openclaw;
 pub(in crate::platform) mod opencode;
@@ -123,7 +122,10 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     // The Hermes package owns the persistent ACP dialect and is the one Agent whose
     // normalized transitions the host reads through the query the package answers.
     licoup_agent_hermes::registration::REGISTRATION,
-    ParserRegistration::unanswered(kilo_code::CONTRACT),
+    // The Kilo Code package answers both protocol-agnostic queries from its own
+    // parser, so this entry is the package's own registration rather than a
+    // fail-closed placeholder.
+    licoup_agent_kilo::registration::REGISTRATION,
     // The Kimi Code package owns its dialect and reports its transitions with its
     // own execution result, so this entry is the package's own registration.
     licoup_agent_kimi::registration::REGISTRATION,

@@ -69,6 +69,10 @@ licoup-agent-kimi = { path = "../licoup-agent-kimi", features = ["test-support"]
 # dialect, its parser registration and its replay arm while the client still
 # composes Hermes' process half.
 licoup-agent-hermes = { path = "../licoup-agent-hermes", features = ["test-support"] }
+# The Kilo Code adapter package. Composition names it for its parser
+# registration, its endpoint policy and its host ports while the extension
+# host's binary route is completed by the agent-execution port.
+licoup-agent-kilo = { path = "../licoup-agent-kilo" }
 licoup-agent-runtime = { path = "../licoup-agent-runtime" }
 licoup-application = { path = "../licoup-application" }
 licoup-project = { path = "../licoup-project" }

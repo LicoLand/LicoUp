@@ -2,6 +2,7 @@ import {
   NATIVE_MANIFEST,
   claudeCodeAgentPackageLayer,
   codexAgentPackageLayer,
+  kiloAgentPackageLayer,
   RUST_COMPOSITION_INPUTS,
   command,
   foundationLayer,
@@ -1042,7 +1043,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.kilo-code-driver.composition",
       kind: "rust-platform",
-      summary: "Thin Kilo Code serve adapter over neutral runtime contracts",
+      summary: "Thin Kilo Code compose-side driver, its parser re-export, and the force-stop descriptor",
       inputs: [
         "crates/licoup-native/src/platform/kilo_code_driver.rs",
         "crates/licoup-native/src/platform/kilo_code_driver/tests/mod.rs",
@@ -1051,19 +1052,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::kilo_code_driver::tests::composition::"),
     }),
   defineModule({
-      id: "rust.platform.kilo-code-driver.config",
-      kind: "rust-platform",
-      summary: "Kilo Code absolute-workspace and explicit turn settings",
-      inputs: [
-        "crates/licoup-native/src/platform/kilo_code_driver/config.rs",
-        "crates/licoup-native/src/platform/kilo_code_driver/tests/config.rs",
-      ],
-      command: rustLayer("platform::kilo_code_driver::tests::config::"),
-    }),
-  defineModule({
       id: "rust.platform.kilo-code-driver.execution",
       kind: "rust-platform",
-      summary: "Kilo Code capability-aware serve execution without session fallback",
+      summary: "Kilo Code capability-aware serve execution composed over the package",
       inputs: [
         "crates/licoup-native/src/platform/kilo_code_driver/execution.rs",
         "crates/licoup-native/src/platform/kilo_code_driver/tests/execution.rs",
@@ -1073,32 +1064,12 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.kilo-code-driver.probe",
       kind: "rust-platform",
-      summary: "Kilo Code serve capability probe",
+      summary: "Kilo Code serve capability probe composed over the package",
       inputs: [
         "crates/licoup-native/src/platform/kilo_code_driver/probe.rs",
         "crates/licoup-native/src/platform/kilo_code_driver/tests/probe.rs",
       ],
       command: rustLayer("platform::kilo_code_driver::tests::probe::"),
-    }),
-  defineModule({
-      id: "rust.platform.kilo-code-driver.projection",
-      kind: "rust-platform",
-      summary: "Kilo Code assistant chunks, settings, and capability projection",
-      inputs: [
-        "crates/licoup-native/src/platform/kilo_code_driver/projection.rs",
-        "crates/licoup-native/src/platform/kilo_code_driver/tests/projection.rs",
-      ],
-      command: rustLayer("platform::kilo_code_driver::tests::projection::"),
-    }),
-  defineModule({
-      id: "rust.platform.kilo-code-driver.transport",
-      kind: "rust-platform",
-      summary: "Deadline-bounded loopback Kilo Code HTTP/SSE turn transport",
-      inputs: [
-        "crates/licoup-native/src/platform/kilo_code_driver/transport.rs",
-        "crates/licoup-native/src/platform/kilo_code_driver/tests/transport.rs",
-      ],
-      command: rustLayer("platform::kilo_code_driver::tests::transport::"),
     }),
   defineModule({
       id: "rust.platform.opencode-serve.composition",
@@ -1131,34 +1102,52 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::opencode_serve::tests::events::"),
     }),
   defineModule({
-      id: "rust.platform.kilo-code-serve.composition",
+      id: "rust.platform.kilo-code-host",
       kind: "rust-platform",
-      summary: "Kilo Code private serve facade and driver transport surface",
+      summary: "Client answer for the Kilo Code package ports: serve engine, byte record, admission",
       inputs: [
-        "crates/licoup-native/src/platform/kilo_code_serve.rs",
-        "crates/licoup-native/src/platform/kilo_code_serve/tests/mod.rs",
-        "crates/licoup-native/src/platform/kilo_code_serve/tests/composition.rs",
+        "crates/licoup-native/src/platform/kilo_code_host.rs",
+        "crates/licoup-native/src/platform/kilo_code_driver/tests/host.rs",
       ],
-      command: rustLayer("platform::kilo_code_serve::tests::composition::"),
+      command: rustLayer("platform::kilo_code_driver::tests::host::"),
     }),
   defineModule({
-      id: "rust.platform.kilo-code-serve.policy",
+      id: "rust.platform.kilo-code-package.parser",
       kind: "rust-platform",
-      summary: "Kilo Code ports, executable, launch shape, and static error policy",
+      summary: "Kilo Code serve protocol reader and event parser, in the package that owns them",
       inputs: [
-        "crates/licoup-native/src/platform/kilo_code_serve/policy.rs",
-        "crates/licoup-native/src/platform/kilo_code_serve/tests/policy.rs",
+                "crates/licoup-agent-kilo/src/parser/**",
       ],
-      command: rustLayer("platform::kilo_code_serve::tests::policy::"),
+      command: kiloAgentPackageLayer("parser::"),
     }),
   defineModule({
-      id: "rust.platform.kilo-code-serve.events",
+      id: "rust.platform.kilo-code-package.driver",
       kind: "rust-platform",
-      summary: "Kilo Code exact-session allowlisted SSE event projection",
+      summary: "Kilo Code turn configuration, request shaping, projection and capability probe",
       inputs: [
-        "crates/licoup-native/src/platform/kilo_code_serve/tests/events.rs",
+                "crates/licoup-agent-kilo/src/driver/**",
       ],
-      command: rustLayer("platform::kilo_code_serve::tests::events::"),
+      command: kiloAgentPackageLayer("driver::"),
+    }),
+  defineModule({
+      id: "rust.platform.kilo-code-package.registration",
+      kind: "rust-platform",
+      summary: "Kilo Code adapter registration, replay arm and package claims",
+      inputs: [
+        "crates/licoup-agent-kilo/src/registration.rs",
+                "crates/licoup-agent-kilo/src/replay/**",
+        "crates/licoup-agent-kilo/src/tests.rs",
+      ],
+      command: kiloAgentPackageLayer("registration::"),
+    }),
+  defineModule({
+      id: "rust.platform.kilo-code-package.policy",
+      kind: "rust-platform",
+      summary: "Kilo Code endpoint identity, ports, paths, executable names and failure codes",
+      inputs: [
+        "crates/licoup-agent-kilo/src/policy.rs",
+      ],
+      command: kiloAgentPackageLayer("policy::"),
     }),
   defineModule({
       id: "rust.platform.openclaw-gateway.composition",
@@ -2090,7 +2079,6 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-agent-antigravity/src/registration.rs",
         "crates/licoup-agent-antigravity/src/replay.rs",
         "crates/licoup-agent-deepseek/src/parser.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/kilo_code.rs",
         "crates/licoup-native/src/platform/native_agent_parser/adapters/lico_agent.rs",
         "crates/licoup-native/src/platform/native_agent_parser/adapters/mod.rs",
         "crates/licoup-native/src/platform/native_agent_parser/adapters/opencode.rs",

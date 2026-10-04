@@ -13,7 +13,6 @@
 //! The arms are `pub(in crate::platform)` to this module's parent — it is the
 //! only reader, and it hands them to the SDK's harness through the parser set.
 
-mod kilo_code;
 mod lico_agent;
 mod opencode;
 mod pi;
@@ -37,7 +36,10 @@ pub(in crate::platform) fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameR
         // regression in that parser fails the package's own corpus as well as
         // this composition's.
         "hermes" => licoup_agent_hermes::replay::replay_arm(adapter_id)?,
-        "kilo-code" => Box::new(kilo_code::Replay::new()?),
+        // The arm moved with the parser into the Kilo Code adapter package, so a
+        // regression in that parser fails the package's own corpus as well as
+        // this composition's.
+        "kilo-code" => licoup_agent_kilo::replay::replay_arm(adapter_id)?,
         "kimi-code" => licoup_agent_kimi::replay::replay_arm(adapter_id)?,
         "lico-agent" => Box::new(lico_agent::Replay::new()?),
         "openclaw" => Box::new(openclaw_driver::replay::Replay::new()?),
