@@ -135,6 +135,16 @@ one version token. A package version may produce several instances with differen
 permissions, and `packageVersion`, `instanceId`, `generation` and the registry
 epoch are four separate identities.
 
+Replacing an installed version, or activating one, changes state that running work
+is reading, so both mutating maintenance operations pass one seam
+(`platform/extension_packages/maintenance.rs`). The verdict that no local work is
+in flight belongs to a single idle-guard owner, it is read as data for the data
+root the operation would change, and a verdict nobody read is a refusal rather
+than an assumed idle host. Read-only work — checking for an update, reading the
+catalogue — is not gated at all. Asking is not holding: the seam answers whether
+the operation may proceed, and the caller that actually changes installed state
+takes the durable close-admission barrier itself.
+
 ## 5. Agent execution
 
 | Method or event | Requirement | Meaning |
@@ -164,6 +174,26 @@ Two rules keep the client from telling a comfortable story:
 An ordinary CLI is carried by the generic adapter in the kernel, which converts
 its output into text and terminal events. A user does not have to modify an Agent
 to emit client JSON, and text that merely *looks* like an envelope is still text.
+
+A declared cancel capability states what the extension can do; the host never
+upgrades it. The four `agent.cancel` outcomes stay distinct
+(`crates/licoup-extension-contracts/src/agent.rs`): only `acknowledged` means the
+work has demonstrably stopped, `requested` means the request left the machine and
+the effect may still be running, `unsupported` means the extension has no cancel at
+all, and `unknown` means the answer was not observed. Cancellation is a request in
+every case, and no outcome settles an external effect.
+
+Manual stop and force stop are separate authorities
+(`platform/stop_control.rs`). One manual-stop entry point resolves the durable
+owner of a piece of admitted work — the persistent conversation turn, the durable
+workflow run, the Subagent MCP dispatch claim, or the supervised lane session — and
+routes the request to that owner's own dispatcher. Force stop is narrower: it may
+terminate only a LicoUp-owned process group whose durable ownership record is
+re-verified at execution time, and it never widens to a shared or external process.
+A request is never proof of exit: a bounded observation that sees no exit reports
+the stop as unconfirmed rather than as a stopped process, and every outcome is
+recorded through the private activity log as a bounded, redacted event keyed by an
+opaque correlation id.
 
 ## 6. Model providers
 
@@ -326,6 +356,27 @@ review:
   formats a migration converts. A silent manifest is a gap rather than a complete
   declaration, and the release contract test reads every `crates/*/package` and
   `components/*/package` manifest to refuse one.
+
+A package that converts a published client-state format declares how it does so,
+and the contract publishes one kind: a native executable the package itself
+carries (`ConverterKind::NativeExecutable`,
+`crates/licoup-extension-contracts/src/manifest.rs`). The entry must be a program
+inside the package payload, so a converter cannot borrow the client's own runtime
+and make a migration depend on what happens to be installed instead of on the
+package that declared the format. The declaration names the published source
+formats it reads and the one it produces, each a format identity rather than a
+client version; the two endpoints may not be the same format, the source list is
+bounded, and every refusal names the rule and the field it broke
+(`manifest_converter_not_native`, `manifest_converter_entry_outside_package`,
+`manifest_conversion_incomplete`, `manifest_conversion_invalid`,
+`manifest_conversion_endpoint_mismatch`).
+
+Diagnostics a package writes stay local and bounded. `stdout` carries the program
+protocol and nothing else, diagnostics go to `stderr`
+(`crates/licoup-extension-contracts/src/transport.rs`), and a diagnostic line over
+the published bound is truncated rather than allowed to stop the client from
+responding. An instance identity token is not diagnostics: an identity prints its
+label and never its token (`platform/extension_host/identity.rs`).
 
 ## 12. What this milestone implements
 
