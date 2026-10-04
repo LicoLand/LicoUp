@@ -4,9 +4,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.adaptive-flywheel",
       kind: "rust-domain",
-      summary: "Immutable strategy packages, compiled Graphs, durable reducer/outbox, and authorized effects",
+      summary: "Immutable strategy packages, compiled Graphs, durable reducer/outbox, authorized effects, and the candidate routing owner a dispatch entry asks",
       inputs: [
         "crates/licoup-native/src/domain/workflow_runtime/**",
+        "crates/licoup-native/src/domain/candidate_routing.rs",
         "crates/licoup-native/src/domain/workflow_store/**",
         "crates/licoup-workflow/**",
         "crates/licoup-foundation/src/core/safe_archive.rs",

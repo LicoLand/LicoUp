@@ -5,6 +5,7 @@ pub mod agent_resource_usage;
 pub mod agent_usage;
 pub mod application_port;
 pub mod assistant_continuity;
+pub mod candidate_routing;
 pub mod catalog_convergence;
 pub mod cli_registration;
 pub mod client_authority_registry;
