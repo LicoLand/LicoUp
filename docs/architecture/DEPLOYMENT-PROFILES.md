@@ -44,6 +44,15 @@ are absent must not be loaded, must not open listeners, must not require
 migrations of schemas that do not exist and must not ask for keys or an online
 catalog.
 
+A released client bundle carries no optional package payload at all. Each
+capability in the table below arrives as its own released package, so the minimal
+client is not "the full client with features switched off": the payload is not in
+the bundle, nothing starts it and no listener is opened for it. The MCP service is
+the worked example — `lico-subagent-mcp` is staged into the
+`org.licoland.feature.mcp` package at release time, no packaging module bundles
+it, and the package's own `on-demand` activation means a caller starts it rather
+than client startup.
+
 ## 2. The kernel and its rule
 
 The installed client is the minimal trusted host, and it carries:

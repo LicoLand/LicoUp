@@ -24,7 +24,7 @@ const APPLY = `${N}domain/client_update/native_runner/mod.rs`;
 const SOURCES = Object.freeze({
   [D + "native_cli_runtime_context.dart"]: "122f710193c31b53eb152b95cb7960b51f67208a3c6e7f96ae63e2d0bd89c405",
   [D + "native_one_shot_command_executor.dart"]: "a9aceae0873a4603bae360eb9a08f81449078074a80602c2672f3ddd76b41045",
-  "crates/licoup-mcp/src/application.rs": "b55110ba2db3ac10d493f151dbb5ee76a85ae1a9aa498f8da1caff777643f061",
+  "crates/licoup-mcp/src/application.rs": "bbc38e974fdc0a087a4d5e89350530bbe531e680bea8aac56562d109604832cc",
   [N + "domain/agent_hub/argv.rs"]: "4f942a0f7df3f2e2e8396a40906381811ae6dcd656c2a7bcf9d7ceb5c214d911",
   [N + "domain/agent_hub/version_check.rs"]: "fd0b8afba2b39f844a4a232af074954e452e8eae60ca49ba979ffe7b6e23970b",
   [N + "domain/agent_usage/agent_usage_native/openclaw.rs"]: "b1f9a6a2b74b7477e24d0fea2b1a3c9d658a2a66542af5676b2537cfb6b49a52",
@@ -62,9 +62,7 @@ const SOURCES = Object.freeze({
   [N + "platform/lico_agent_driver/probe.rs"]: "b968dbfd55ec7e1ca7c83aa5d5fedfc244c6b554d8fe96a441923fa22e0d3179",
   [N + "platform/local_service/process.rs"]: "ab1a749eeffbdca47267a6c888882e033eb2c647da48a0beef7fa79399e38adc",
   [MIGRATE_CONVERTER]: "1a468623ec8a3a0d23371c0dad7fdfdcb145f5cd6886cb306776c6f3acc59277",
-  [N + "platform/mcp_service_process.rs"]: "2489fdf68618b2aeb3e803114636017898ff2e805aa0d947e693085599a204e9",
-  [N + "platform/local_service/process.rs"]: "ab1a749eeffbdca47267a6c888882e033eb2c647da48a0beef7fa79399e38adc",
-  [N + "platform/mcp_service_process.rs"]: "2489fdf68618b2aeb3e803114636017898ff2e805aa0d947e693085599a204e9",
+  [N + "platform/mcp_service_process.rs"]: "745cd52c988672ebdfee6a52d020c02f0d56f62a6c9acd3247ee38109d5a6976",
   [N + "platform/openclaw_driver/probe.rs"]: "49a1e80055550a28d5de652f4236dfbf3c99ba53ea53c86692b44810f0d23862",
   [N + "platform/openclaw_driver/supervision.rs"]: "c41128bbbaf81904d6c263ea97988ea1265dd74fa30d8867be73cdce134079bd",
   [N + "platform/openclaw_gateway/command.rs"]: "5b747fa62fa6cd21074aa05990cf195377eeafed75907262598c40a1ac842601",
@@ -100,7 +98,7 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
     ["24892bcbafb7", "Run one native command through the injected executable port, using resolved licoup-cli or its PATH fallback rather than assuming a literal installation path."],
   ], [D + "native_cli_runtime_context.dart"]),
   ...entries("crates/licoup-mcp/src/application.rs", {kind: "environment", evidence: 'std::env::var_os("LICOUP_CLI_BINARY")'}, [
-    ["df6167de50f6", "The independent MCP process starts its owning CLI from the host-provided LICOUP_CLI_BINARY binding for rpc stdio; this is a native bridge, not permission to run an arbitrary remote command."],
+    ["c87e251bea3b", "The independent MCP process starts its owning CLI from the host-provided LICOUP_CLI_BINARY binding for rpc stdio; this is a native bridge, not permission to run an arbitrary remote command."],
   ], [N + "platform/mcp_service_process.rs"]),
   ...entries(N + "domain/agent_hub/argv.rs", parameter("program: &str"), [
     ["db471ee64ae2", "Agent Hub lifecycle execution accepts a validated program/argv pair from the selected vendor installation channel; package-manager use is visible here, not hidden as a native client prerequisite."],

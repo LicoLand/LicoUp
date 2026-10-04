@@ -31,8 +31,11 @@ export const RUST_CORE_MODULES = Object.freeze([
   defineModule({
       id: "rust.core.mcp-server",
       kind: "rust-core",
-      summary: "Independent MCP protocol, caller admission, and public CLI process adapter",
-      inputs: ["crates/licoup-mcp/**"],
+      summary: "Independent MCP protocol, caller admission, the staged package entry, and public CLI process adapter",
+      inputs: [
+        "crates/licoup-mcp/**",
+        "tools/distribution/client-release-package-stage.mjs",
+      ],
       command: command(
         "cargo",
         ["test", "--manifest-path", "crates/licoup-mcp/Cargo.toml"],
