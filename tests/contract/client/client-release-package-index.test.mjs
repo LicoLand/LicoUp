@@ -121,6 +121,14 @@ const declaredPackages = Object.freeze([
     clientRange: ">=0.3.0, <1.0.0",
   },
   {
+    packageId: "org.licoland.adapter.deepseek",
+    source: "crates/licoup-agent-deepseek/package",
+    payloadRole: "deepseek-adapter-package-payload",
+    payloadAsset: "LicoUp-package-org.licoland.adapter.deepseek.licopkg",
+    converterEntry: "bin/lico-agent-deepseek",
+    clientRange: ">=0.3.0, <1.0.0",
+  },
+  {
     packageId: "org.licoland.feature.mcp",
     source: "crates/licoup-mcp/package",
     payloadRole: "mcp-package-payload",
@@ -172,6 +180,13 @@ const cursorPackageId = "org.licoland.adapter.cursor";
 const cursorPackageSource = "crates/licoup-agent-cursor/package";
 const cursorPayloadRole = "cursor-adapter-package-payload";
 const cursorPayloadAsset = `LicoUp-package-${cursorPackageId}.licopkg`;
+// The DeepSeek Harness adapter package is the second Agent adapter released
+// this way, declared beside Codex on its own payload role so one adapter's asset
+// can never stand in for another's.
+const deepseekPackageId = "org.licoland.adapter.deepseek";
+const deepseekPackageSource = "crates/licoup-agent-deepseek/package";
+const deepseekPayloadRole = "deepseek-adapter-package-payload";
+const deepseekPayloadAsset = `LicoUp-package-${deepseekPackageId}.licopkg`;
 const clientProductVersion = JSON.parse(readFileSync(
   path.join(repoRoot, "tools/client-version.json"), "utf8",
 )).productVersion;
@@ -263,6 +278,7 @@ test("the canonical release configuration declares every package payload role ex
       roles.includes(PACKAGE_PAYLOAD_ROLE) || roles.includes(PACKAGE_INDEX_ROLE) ||
         roles.includes(mcpPayloadRole) || roles.includes(codexPayloadRole) ||
         roles.includes(antigravityPayloadRole) || roles.includes(cursorPayloadRole),
+        roles.includes(deepseekPayloadRole),
       target.id === "macos-direct-arm64",
       `${target.id} must not carry an independent package asset`,
     );
@@ -293,6 +309,7 @@ test("the canonical release configuration declares every package payload role ex
   assert.equal(publication.assetRoles.includes(codexPayloadRole), false);
   assert.equal(publication.assetRoles.includes(antigravityPayloadRole), false);
   assert.equal(publication.assetRoles.includes(cursorPayloadRole), false);
+  assert.equal(publication.assetRoles.includes(deepseekPayloadRole), false);
   assert.equal(publication.assetRoles.includes(PACKAGE_INDEX_ROLE), false);
   for (const config of [stable, nightly]) {
     assert.deepEqual(
@@ -301,7 +318,8 @@ test("the canonical release configuration declares every package payload role ex
       "exactDraftAssetSetRequired still holds with the independent package assets",
     );
     for (const role of [PACKAGE_PAYLOAD_ROLE, mcpPayloadRole, codexPayloadRole,
-      antigravityPayloadRole, cursorPayloadRole, PACKAGE_INDEX_ROLE]) {
+      antigravityPayloadRole, cursorPayloadRole, deepseekPayloadRole,
+      PACKAGE_INDEX_ROLE]) {
       assert.equal(config.artifacts.some((entry) => entry.role === role), false,
         `${role} must not enter the closed client draft`);
     }
@@ -483,6 +501,13 @@ test("the plan reports every declared package without writing, and the tool reac
   assert.deepEqual(fixturePlan.clientCompatibility,
     { kind: "range", range: ">=0.2.0, <1.0.0" });
   assert.equal(fixturePlan.converterEntry, "bin/licoup-fixture-converter");
+  const deepseekPlan = plan.packages.find((reported) =>
+    reported.packageId === deepseekPackageId);
+  assert.equal(deepseekPlan.source, deepseekPackageSource);
+  assert.match(deepseekPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
+  assert.deepEqual(deepseekPlan.clientCompatibility,
+    { kind: "range", range: ">=0.3.0, <1.0.0" });
+  assert.equal(deepseekPlan.converterEntry, "bin/lico-agent-deepseek");
   const mcpPlan = plan.packages.find((reported) =>
     reported.packageId === mcpPackageId);
   assert.equal(mcpPlan.source, mcpPackageSource);

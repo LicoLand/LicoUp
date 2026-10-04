@@ -15,6 +15,7 @@ members = [
     "crates/licoup-agent-codex",
     "crates/licoup-agent-antigravity",
     "crates/licoup-agent-cursor",
+    "crates/licoup-agent-deepseek",
     "crates/licoup-agent-runtime",
     "crates/licoup-application",
     "crates/licoup-extension-contracts",
@@ -96,6 +97,11 @@ uuid = { version = "1.11", features = ["v4", "serde"] }
 x25519-dalek = { version = "2.0", features = ["static_secrets", "zeroize"] }
 zeroize = "1.8"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
+# The DeepSeek Harness records a session as a concatenated Zstandard container,
+# one independently decodable frame per durable batch. The DeepSeek adapter
+# package reads that artifact natively, so the decoder is a real dependency of
+# the package rather than of the kernel.
+zstd = "0.13"
 
 # RUSTSEC-2026-0173 (proc-macro-error2 unmaintained) resolution: hax-lib
 # 0.3.7 on crates.io still vendors proc-macro-error2, and no newer release

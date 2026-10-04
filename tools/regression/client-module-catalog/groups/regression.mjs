@@ -112,6 +112,18 @@ export const REGRESSION_MODULES = Object.freeze([
     command: node("tools/scripts/client-agent-adapter-standard.mjs", [], 5 * 60_000),
   }),
   defineModule({
+    id: "regression.agent-deepseek-adapter-package",
+    kind: "regression-infrastructure",
+    summary: "DeepSeek Harness adapter package manifest, inventory, release entry, and native converter standard",
+    inputs: [
+      "tools/scripts/client-agent-adapter-standard.mjs",
+      "crates/licoup-agent-deepseek/package/**",
+      "crates/licoup-agent-deepseek/src/registration.rs",
+      "crates/licoup-agent-deepseek/src/bin/lico-agent-deepseek.rs",
+    ],
+    command: node("tools/scripts/client-agent-adapter-standard.mjs", [], 5 * 60_000),
+  }),
+  defineModule({
     id: "regression.agent-native-output",
     kind: "regression-infrastructure",
     summary: "Native Agent reply relay and no imposed reply-format boundary",
@@ -705,6 +717,18 @@ export const REGRESSION_MODULES = Object.freeze([
       command: command(
         "node",
         ["--test", "tests/contract/client/antigravity-adapter-package-source-bundle.test.mjs"],
+      id: "regression.deepseek-harness-source-bundle",
+      kind: "regression-infrastructure",
+      summary: "DeepSeek Harness split ownership, native session-log reader, declared external dependency, and no-Node-runtime contract",
+      inputs: [
+        "crates/licoup-native/src/platform/deepseek_harness_driver.rs",
+        "crates/licoup-agent-deepseek/src/**",
+        "crates/licoup-agent-deepseek/package/**",
+        "tests/contract/client/deepseek-harness-source-bundle.test.mjs",
+      ],
+      command: command(
+        "node",
+        ["--test", "tests/contract/client/deepseek-harness-source-bundle.test.mjs"],
         60_000,
       ),
     }),
@@ -1610,6 +1634,8 @@ export const REGRESSION_MODULES = Object.freeze([
         "crates/licoup-agent-antigravity/src/**",
         "crates/licoup-agent-cursor/Cargo.toml",
         "crates/licoup-agent-cursor/src/**",
+        "crates/licoup-agent-deepseek/Cargo.toml",
+        "crates/licoup-agent-deepseek/src/**",
         "crates/licoup-agent-drivers/Cargo.toml",
         "crates/licoup-agent-drivers/src/**",
         "crates/licoup-agent-runtime/Cargo.toml",

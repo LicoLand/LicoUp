@@ -2478,20 +2478,13 @@ mod deepseek {
     use super::super::deepseek::SOURCE;
     use super::*;
 
-    const OFFICIAL_ADAPTER_FIXTURE: &str =
-        include_str!("test_support/deepseek_adapter_fixture.mjs");
-
     #[test]
-    fn disabled_lookup_does_not_execute_an_installed_adapter() {
+    fn disabled_lookup_does_not_publish_an_installed_catalogue() {
         let catalog = model_catalog_for_target(
             &fixture(),
             "deepseek-harness",
             None,
-            &json!({
-                "enableAgentCliModelLookup":false,
-                "deepseekHarnessCliPath":"not-a-real-harness",
-                "deepseekHarnessNodePath":"not-a-real-node",
-            }),
+            &json!({ "enableAgentCliModelLookup": false }),
         );
         assert!(catalog["models"].as_array().unwrap().is_empty());
         assert!(
@@ -2503,54 +2496,40 @@ mod deepseek {
         );
     }
 
-    #[cfg(unix)]
+    // The catalogue is the adapter package's own data, so reading it starts no
+    // process, resolves nothing on disk and needs no installed Harness — which
+    // is exactly what this test asserts by passing no paths at all.
     #[test]
     fn installed_catalog_preserves_native_ids_provider_and_supported_efforts() {
-        use std::os::unix::fs::{PermissionsExt, symlink};
-        let directory =
-            std::env::temp_dir().join(format!("lico-dsh-catalog-{}", uuid::Uuid::new_v4()));
-        fs::create_dir_all(&directory).unwrap();
-        let node_target = std::env::split_paths(&std::env::var_os("PATH").unwrap())
-            .map(|directory| directory.join("node"))
-            .find(|path| path.is_file())
-            .expect("the test runner's Node executable is on PATH");
-        let node = directory.join("node");
-        symlink(node_target, &node).unwrap();
-
-        let harness = directory.join("dsh");
-        fs::write(&harness, "fixture package resolver entry\n").unwrap();
-        fs::set_permissions(&harness, fs::Permissions::from_mode(0o700)).unwrap();
-        let package = directory.join("node_modules/@deepseek-ai/dsh-llm-deepseek");
-        fs::create_dir_all(&package).unwrap();
-        fs::write(
-            package.join("package.json"),
-            r#"{"name":"@deepseek-ai/dsh-llm-deepseek","type":"module","exports":"./index.mjs"}"#,
-        )
-        .unwrap();
-        fs::write(package.join("index.mjs"), OFFICIAL_ADAPTER_FIXTURE).unwrap();
-
         let catalog = model_catalog_for_target(
             &fixture(),
             "deepseek-harness",
             None,
-            &json!({
-                "enableAgentCliModelLookup":true,
-                "deepseekHarnessCliPath":harness,
-                "deepseekHarnessNodePath":node,
-            }),
+            &json!({ "enableAgentCliModelLookup": true }),
         );
         let models = catalog["models"].as_array().unwrap();
-        assert_eq!(models.len(), 1);
-        let model = models
+        assert_eq!(models.len(), 2, "the provider advertises two advisory rows");
+        let flash = models
             .iter()
             .find(|model| model["name"] == "deepseek-flash")
             .unwrap();
-        assert_eq!(model["displayName"], "DeepSeek V41 Flash");
-        assert_eq!(model["providerId"], "deepseek-official");
-        assert_eq!(model["provider"], "DeepSeek");
+        assert_eq!(flash["displayName"], "DeepSeek-V41-Flash");
+        assert_eq!(flash["providerId"], "deepseek-official");
+        assert_eq!(flash["provider"], "DeepSeek");
         assert_eq!(
-            model["reasoningEfforts"],
-            json!(["off", "low", "high", "max"])
+            flash["reasoningEfforts"],
+            json!(["off"]),
+            "the provider advertises this row as not reasoning"
+        );
+        let pro = models
+            .iter()
+            .find(|model| model["name"] == "deepseek-v4-pro")
+            .unwrap();
+        assert_eq!(pro["displayName"], "DeepSeek-V4-Pro");
+        assert_eq!(
+            pro["reasoningEfforts"],
+            json!(["off", "low", "high", "max"]),
+            "the reasoning row advertises the provider's own efforts"
         );
         assert!(
             catalog["sources"]
@@ -2559,6 +2538,30 @@ mod deepseek {
                 .contains(&json!(SOURCE))
         );
         assert_eq!(catalog["defaultModel"], "");
-        fs::remove_dir_all(directory).unwrap();
+    }
+
+    // A harness path is still a scan fact: naming one that cannot execute does
+    // not make the catalogue disappear, because the catalogue is data.
+    #[test]
+    fn a_named_but_unextractable_harness_still_answers_its_own_catalogue() {
+        let catalog = model_catalog_for_target(
+            &fixture(),
+            "deepseek-harness",
+            None,
+            &json!({
+                "enableAgentCliModelLookup": true,
+                "deepseekHarnessCliPath": "not-a-real-harness",
+                "deepseekHarnessNodePath": "not-a-real-node",
+            }),
+        );
+        assert_eq!(catalog["models"].as_array().unwrap().len(), 2);
+        assert!(
+            catalog["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|item| item["status"] != "execution-denied"),
+            "no process is started, so nothing can be denied execution"
+        );
     }
 }

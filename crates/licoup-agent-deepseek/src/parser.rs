@@ -1,30 +1,46 @@
-use super::{AdapterContract, NativeLineParser};
-use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
+//! The DeepSeek Harness SDK's JSON-RPC vocabulary, parsed once below the port.
+//!
+//! The Harness speaks one JSON object per line on a child process's standard
+//! streams. Two stages read that wire and this module owns both: [`FrameParser`]
+//! is the byte-line ingress that decides whether a line is JSON at all, and
+//! [`TurnParser`] attributes the frames of one admitted turn — the prompt
+//! acknowledgement, the inbox splice that receipts it, the assistant messages
+//! and the terminal idle status — to the turn the driver started.
+//!
+//! Nothing here settles a turn or hides content: the module reports what the
+//! protocol said, and the client's conversation layer decides what it means.
+//! The request builders are here for the same reason — the wire shape of an
+//! initialize, a prompt and a shutdown is this Agent's fact, not the host's.
+
+use licoup_agent_adapter_sdk::adapters::{AdapterContract, NativeLineParser};
+use licoup_agent_adapter_sdk::{LifecycleStage, Transition, TransitionReducer};
 use serde_json::{Value, json};
 
+/// This Agent's adapter declaration: the id dispatch names it by and the
+/// framing its bytes cross.
 pub(super) const CONTRACT: AdapterContract =
     AdapterContract::new("deepseek-harness", "lf-jsonl-jsonrpc");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum FrameError {
+pub enum FrameError {
     InvalidJson,
     OutputLimit,
 }
 
 #[derive(Debug)]
-pub(in crate::platform) struct ProtocolFrame {
+pub struct ProtocolFrame {
     value: Value,
     wire_bytes: usize,
 }
 
 impl ProtocolFrame {
-    pub(in crate::platform) fn wire_bytes(&self) -> usize {
+    pub fn wire_bytes(&self) -> usize {
         self.wire_bytes
     }
 }
 
 #[derive(Default)]
-pub(in crate::platform) struct FrameParser;
+pub struct FrameParser;
 
 impl NativeLineParser for FrameParser {
     type Report = ProtocolFrame;
@@ -39,13 +55,13 @@ impl NativeLineParser for FrameParser {
     }
 }
 
-pub(in crate::platform) fn encode_request(value: &Value) -> Result<Vec<u8>, serde_json::Error> {
+pub fn encode_request(value: &Value) -> Result<Vec<u8>, serde_json::Error> {
     let mut encoded = serde_json::to_vec(value)?;
     encoded.push(b'\n');
     Ok(encoded)
 }
 
-pub(in crate::platform) fn initialize_request(
+pub fn initialize_request(
     cwd: &str,
     provider: &str,
     model: &str,
@@ -62,7 +78,7 @@ pub(in crate::platform) fn initialize_request(
     json!({"jsonrpc":"2.0","id":"initialize","method":"initialize","params":params})
 }
 
-pub(in crate::platform) fn initialize_accepted(frame: &ProtocolFrame) -> Option<bool> {
+pub fn initialize_accepted(frame: &ProtocolFrame) -> Option<bool> {
     (frame.value.get("id").and_then(Value::as_str) == Some("initialize")).then(|| {
         frame
             .value
@@ -72,33 +88,29 @@ pub(in crate::platform) fn initialize_accepted(frame: &ProtocolFrame) -> Option<
     })
 }
 
-pub(in crate::platform) fn prompt_request(
-    request_id: &str,
-    session_id: &str,
-    prompt: &str,
-) -> Value {
+pub fn prompt_request(request_id: &str, session_id: &str, prompt: &str) -> Value {
     json!({"jsonrpc":"2.0","id":request_id,"method":"session/prompt","params":{"sessionId":session_id,"contentBlocks":[{"type":"text","text":prompt}]}})
 }
 
-pub(in crate::platform) fn shutdown_request() -> Value {
+pub fn shutdown_request() -> Value {
     json!({"jsonrpc":"2.0","id":"shutdown","method":"shutdown"})
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum TurnParseError {
+pub enum TurnParseError {
     Incomplete,
     PromptRejected,
     SessionMismatch,
 }
 
 #[derive(Debug)]
-pub(in crate::platform) struct TurnResult {
-    pub(in crate::platform) turn_id: String,
-    pub(in crate::platform) output: String,
-    pub(in crate::platform) transitions: Vec<Transition>,
+pub struct TurnResult {
+    pub turn_id: String,
+    pub output: String,
+    pub transitions: Vec<Transition>,
 }
 
-pub(in crate::platform) struct TurnParser {
+pub struct TurnParser {
     request_id: String,
     session_id: String,
     message_id: Option<String>,
@@ -109,14 +121,14 @@ pub(in crate::platform) struct TurnParser {
     message_ordinal: usize,
 }
 
-pub(in crate::platform) struct CompletedMessage {
-    pub(in crate::platform) turn_id: String,
-    pub(in crate::platform) unit_id: String,
-    pub(in crate::platform) text: String,
+pub struct CompletedMessage {
+    pub turn_id: String,
+    pub unit_id: String,
+    pub text: String,
 }
 
 impl TurnParser {
-    pub(in crate::platform) fn new(request_id: &str, session_id: &str) -> Self {
+    pub fn new(request_id: &str, session_id: &str) -> Self {
         Self {
             request_id: request_id.to_owned(),
             session_id: session_id.to_owned(),
@@ -129,10 +141,7 @@ impl TurnParser {
         }
     }
 
-    pub(in crate::platform) fn ingest(
-        &mut self,
-        frame: ProtocolFrame,
-    ) -> Result<Option<TurnResult>, TurnParseError> {
+    pub fn ingest(&mut self, frame: ProtocolFrame) -> Result<Option<TurnResult>, TurnParseError> {
         if frame.value.get("id").and_then(Value::as_str) == Some(self.request_id.as_str()) {
             if frame.value.get("error").is_some() {
                 return Err(TurnParseError::PromptRejected);
@@ -196,7 +205,7 @@ impl TurnParser {
     /// Publish only messages attributed to the acknowledged inbox receipt.
     /// Each completed native message is available before the agent becomes idle;
     /// its embedded timed stream is historical data, never replayed as live deltas.
-    pub(in crate::platform) fn take_completed_messages(&mut self) -> Vec<CompletedMessage> {
+    pub fn take_completed_messages(&mut self) -> Vec<CompletedMessage> {
         let Some(turn_id) = self.message_id.as_ref().filter(|_| self.receipt_seen) else {
             return Vec::new();
         };
@@ -261,11 +270,7 @@ fn success_transitions(output: &str, frames: &[ProtocolFrame]) -> Vec<Transition
     transitions
 }
 
-pub(in crate::platform) fn failure_transitions(
-    code: &str,
-    stage: &str,
-    message: &str,
-) -> Vec<Transition> {
+pub fn failure_transitions(code: &str, stage: &str, message: &str) -> Vec<Transition> {
     let mut reducer = TransitionReducer::default();
     let mut transitions = reducer.advance(LifecycleStage::Accepted);
     if let Some(failure) = reducer.fail(code, stage, message) {

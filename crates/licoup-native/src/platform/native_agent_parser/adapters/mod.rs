@@ -28,6 +28,10 @@ pub(in crate::platform) use licoup_agent_antigravity::parser as antigravity;
 // One Agent's parser has moved: Codex's vendor protocol now lives in its own package
 // (`licoup-agent-codex`), parsed once below this port, and this composition names the
 // package rather than keeping a second copy.
+// Two Agents' parsers have moved: Codex's vendor protocol lives in
+// `licoup-agent-codex` and the DeepSeek Harness SDK's in
+// `licoup-agent-deepseek`, each parsed once below this port, and this
+// composition names the packages rather than keeping a second copy.
 pub(in crate::platform) use licoup_agent_codex::parser as codex;
 // Cursor's vendor protocol has moved the same way, into `licoup-agent-cursor`: its
 // strict-NDJSON turn dialect and the wire vocabulary it reads are the package's,
@@ -37,6 +41,7 @@ pub(in crate::platform) use licoup_agent_cursor::parser as cursor;
 pub(in crate::platform) mod claude_code;
 pub(in crate::platform) mod copilot;
 pub(in crate::platform) mod deepseek_harness;
+pub(in crate::platform) mod cursor;
 pub(in crate::platform) mod hermes;
 pub(in crate::platform) mod kilo_code;
 pub(in crate::platform) mod kimi_code;
@@ -133,6 +138,8 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
         no_transitions,
         claude_code_identity,
     ),
+    ParserRegistration::new(antigravity::CONTRACT, no_transitions, antigravity_identity),
+    ParserRegistration::new(claude_code::CONTRACT, no_transitions, claude_code_identity),
     // The Codex package answers both protocol-agnostic queries from its own recorded
     // evidence, so this entry is the package's own registration.
     licoup_agent_codex::registration::REGISTRATION,
@@ -148,7 +155,10 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     ParserRegistration::unanswered(opencode::CONTRACT),
     ParserRegistration::unanswered(pi::CONTRACT),
     ParserRegistration::unanswered(lico_agent::CONTRACT),
-    ParserRegistration::unanswered(deepseek_harness::CONTRACT),
+    // The DeepSeek Harness package answers its own registration, from the parser
+    // and the session reader it owns; the mesh never dispatches this Agent, so
+    // both SDK queries stay declared and unanswered exactly as before.
+    licoup_agent_deepseek::registration::REGISTRATION,
 ];
 
 /// The parser registrations this host injects into the adapter SDK.

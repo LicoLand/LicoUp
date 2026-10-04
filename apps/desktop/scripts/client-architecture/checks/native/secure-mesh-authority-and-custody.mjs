@@ -441,6 +441,10 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
       "crates/licoup-agent-codex/src/app_server",
       ".rs"
     ),
+    // The app-server protocol identity belongs to the Codex adapter package, so
+    // the assertion reads it where it now lives rather than from the process half
+    // that only re-exports it.
+    "crates/licoup-agent-codex/src/app_server/contract.rs",
     "crates/licoup-agent-codex/src/parser/control.rs",
     // The package's own program is what the extension host starts; the
     // execution verbs it serves are part of the entry, not a second launcher.

@@ -32,6 +32,11 @@
       "payloadRole": "cursor-adapter-package-payload"
     },
     {
+      "packageId": "org.licoland.adapter.deepseek",
+      "source": "crates/licoup-agent-deepseek/package",
+      "payloadRole": "deepseek-adapter-package-payload"
+    },
+    {
       "packageId": "org.licoland.feature.mcp",
       "source": "crates/licoup-mcp/package",
       "payloadRole": "mcp-package-payload"

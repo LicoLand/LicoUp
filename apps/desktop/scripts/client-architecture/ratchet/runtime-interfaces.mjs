@@ -27,7 +27,6 @@ const SOURCES = Object.freeze({
   "crates/licoup-mcp/src/application.rs": "b55110ba2db3ac10d493f151dbb5ee76a85ae1a9aa498f8da1caff777643f061",
   [N + "domain/agent_hub/argv.rs"]: "4f942a0f7df3f2e2e8396a40906381811ae6dcd656c2a7bcf9d7ceb5c214d911",
   [N + "domain/agent_hub/version_check.rs"]: "fd0b8afba2b39f844a4a232af074954e452e8eae60ca49ba979ffe7b6e23970b",
-  [N + "domain/agent_usage/agent_usage_native/deepseek.rs"]: "c317130155bec59b96525b71e5a6fa763e7d3aa2a38062ed5846fba49b3e1fb5",
   [N + "domain/agent_usage/agent_usage_native/openclaw.rs"]: "b1f9a6a2b74b7477e24d0fea2b1a3c9d658a2a66542af5676b2537cfb6b49a52",
   [APPLY]: "07491d6d0ff170596be9ed55f3b6ca558422f7e141cd9f2445fc7211346f0071",
   [PLAN]: "473f8f8716db2a35b7af98ac649cf82093f61a857ddceb1870e0c5a842b6e635",
@@ -39,7 +38,6 @@ const SOURCES = Object.freeze({
   [BINARIES]: "7c71b58d968831ac48e6200130e04b542d6c163392f5f0b9e49ebb95d4798872",
   [T + "domain/targets/model_catalog/antigravity.rs"]: "c18e9624e37d563cebb74c71cceef0a6495d40e0df39025998557f9c11fc3308",
   [T + "domain/targets/model_catalog/cursor.rs"]: "cc30dc2803e20c9fe938faf58ea5b49caf319eb83492f7096a631b570b7f6464",
-  [T + "domain/targets/model_catalog/deepseek.rs"]: "ad8de7ce729f12bf3ca6bc78864e258a2412bf54db3a15c70e193e23be0183be",
   [T + "domain/targets/model_catalog/kilo.rs"]: "1945c633ad10cb99c2dc62e063e2778c8d7930eee17d7eeedb9c75eabc531dfe",
   [T + "domain/targets/model_catalog/opencode.rs"]: "e20e6e35d4e13d55f3359c3356b9f480a13a8a7f80249dd035fdf2b62e96ac20",
   [T + "domain/targets/model_catalog/pi.rs"]: "22466bce8b6d17b8125cbcb036ccd549e64867b56fdbf3883589610f0dcc3f2e",
@@ -56,7 +54,7 @@ const SOURCES = Object.freeze({
   [C + "app_server/driver/launch.rs"]: "de5dfbad8261b94a1bb37d1bf9ae4620af35e1856434b16c74b5ad7cc9f8b862",
   [N + "platform/cursor_driver/execution.rs"]: "e50f484719e8828fb7842711337d8886d6b220986fced0d2757fedbe6038576f",
   [N + "platform/cursor_driver/probe.rs"]: "e5fb151d35ada8ac16770cfa444a46edc9b07dfbfd02b36f165c0947b3f69c77",
-  [N + "platform/deepseek_harness_driver.rs"]: "4069c51e24d5e58698f37034eb3685ce6a235be2f8eb72b999c681942dc6094d",
+  [N + "platform/deepseek_harness_driver.rs"]: "10aae4193ca615fdc77460d798172cd369c856babf4a6d773880ad3a1b7490d5",
   [N + "platform/extension_host/isolation/confinement.rs"]: "2cc72396a086eea81f47ce7fabe818dd4b5f2c054d3280e06c45cd8ac8046956",
   [N + "platform/generic_cli_driver.rs"]: "6970fd309539bbfa2d5b4fbd7191cb292b86b5b1a3f1ebdde8b184c7747c6341",
   [N + "platform/hermes_driver/probe.rs"]: "973dddadc2653371f6c19a21a3987a19fa62aae3edb2694994bd7abf4e242d23",
@@ -110,9 +108,6 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
   ...entries(N + "domain/agent_hub/version_check.rs", parameter("program: &Path"), [
     ["599a57a1fc1d", "Probe the installed Agent's supplied executable binding with a bounded version command; available installation paths and wrapper identities are runtime data."],
   ]),
-  ...entries(N + "domain/agent_usage/agent_usage_native/deepseek.rs", {kind: "discovery", file: BINARIES, symbol: "find_binary", evidence: "fn find_binary(names: &[&str])"}, [
-    ["aa789fdbbd01", "DeepSeek Harness usage reads run the installed Agent's PATH-discovered Node runtime against the source-owned READER program after the discovered-agent execution gate; Node is an explicit external runtime dependency at this interface."],
-  ], [SHELL]),
   ...entries(N + "domain/agent_usage/agent_usage_native/openclaw.rs", parameter("fn query_gateway_once(executable: &Path"), [
     ["360f213083b9", "Query OpenClaw usage.cost through the locally advertised runtime executable passed from the discovery result callback; no remote request chooses the local binary path."],
   ]),
@@ -146,10 +141,6 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
   ...entries(T + "domain/targets/model_catalog/cursor.rs", command, [
     ["3f179eee8ffb", "Capture the prepared Cursor model-catalog command under the source-owned bounded runner; its configured executable is not replaced with a fixed name to satisfy measurement."],
   ], [PARAMETERS, BINARIES]),
-  ...entries(T + "domain/targets/model_catalog/deepseek.rs", configuration, [
-    ["163f4356c3db", "Construct the DeepSeek metadata reader from a configured or PATH-discovered Node runtime and selected dsh binding; both executable gates and the fixed METADATA_PROBE remain source-owned."],
-    ["1754e96dd539", "Run the prepared DeepSeek metadata reader through the scrubbed untrusted-Agent capture interface; the explicit Node dependency and selected Agent binding remain visible."],
-  ], [BINARIES, SHELL, SUPERVISOR]),
   ...entries(T + "domain/targets/model_catalog/kilo.rs", configuration, [
     ["76eaaa43aad7", "Construct the selected Kilo models query using caller path settings and discovery fallback; provider availability is observed in the user's shell environment, not assumed from a literal command name."],
   ], [BINARIES, SHELL]),

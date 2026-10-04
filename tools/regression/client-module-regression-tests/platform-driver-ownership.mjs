@@ -784,6 +784,47 @@ test("Cursor leaves and the Cursor adapter package retain exact regression owner
 
   // Every source the package ships has a regression owner, and the kernel
   // sources it left behind keep one too.
+test("DeepSeek Harness leaves retain exact narrow regression ownership", async () => {
+  const sourceBundleId = "regression.deepseek-harness-source-bundle";
+  const packageModuleId = "rust.core.agent-deepseek-package";
+  const protocolModuleId = "rust.platform.deepseek-harness-package-protocol";
+  // The process half is still composed by the client; the wire half and the
+  // session-log reader moved into the DeepSeek adapter package. Both keep a
+  // precise owner, and a source that moved selects the package's own module as
+  // well.
+  const selections = new Map([
+    ["crates/licoup-native/src/platform/deepseek_harness_driver.rs",
+      ["regression.deepseek-harness-source-bundle",
+        "rust.platform.deepseek-harness-driver"]],
+    ["crates/licoup-agent-deepseek/src/parser.rs",
+      [packageModuleId, protocolModuleId]],
+    ["crates/licoup-agent-deepseek/src/session_store.rs",
+      [packageModuleId, "rust.domain.agent-usage.deepseek-reader"]],
+    ["crates/licoup-agent-deepseek/package/manifest.json",
+      ["regression.agent-deepseek-adapter-package", packageModuleId]],
+    ["crates/licoup-agent-deepseek/src/bin/lico-agent-deepseek.rs",
+      [packageModuleId, "rust.domain.agent-usage.deepseek-reader"]],
+    ["crates/licoup-agent-deepseek/tests/package_artifact.rs",
+      [packageModuleId, "rust.domain.agent-usage.deepseek-reader"]],
+  ]);
+  for (const [source, moduleIds] of selections) {
+    const selected = ids(selectModulesForChangedPaths([source]));
+    for (const moduleId of moduleIds) {
+      assert.ok(selected.includes(moduleId),
+        `${source} must select ${moduleId}: ${selected.join(", ")}`);
+    }
+  }
+
+  // The package's own module runs its own crate tests, so a change anywhere in
+  // the package is exercised by the package rather than by the kernel.
+  const packageModule = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === packageModuleId);
+  assert.deepEqual(packageModule.inputs, ["crates/licoup-agent-deepseek/**"]);
+  assert.deepEqual(packageModule.command.args,
+    ["test", "--no-fail-fast", "--manifest-path", "crates/licoup-agent-deepseek/Cargo.toml"]);
+
+  // Every source the package ships has a regression owner, and the reader's own
+  // module names the package's crate rather than the removed Node script.
   const owns = (relativePath) => CLIENT_MODULE_CATALOG.some((module) =>
     module.inputs.some((input) => input.endsWith("/**")
       ? relativePath.startsWith(input.slice(0, -2))
@@ -801,6 +842,26 @@ test("Cursor leaves and the Cursor adapter package retain exact regression owner
     assert.equal(owns(relativePath), true,
       `Cursor process-half source must keep a regression owner: ${relativePath}`);
   }
+  const packageSources = await sourceFiles("crates/licoup-agent-deepseek/src", ".rs");
+  assert.ok(packageSources.length > 0);
+  for (const relativePath of packageSources) {
+    assert.equal(owns(relativePath), true,
+      `DeepSeek package source must have a regression owner: ${relativePath}`);
+  }
+  const readerModule = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "rust.domain.agent-usage.deepseek-reader");
+  assert.equal(
+    readerModule.inputs.some((input) => input.includes("deepseek_reader.mjs")),
+    false,
+    "the removed Node reader must not keep a regression owner",
+  );
+
+  const sourceBundle = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === sourceBundleId);
+  assert.deepEqual(sourceBundle.command.args, [
+    "--test",
+    "tests/contract/client/deepseek-harness-source-bundle.test.mjs",
+  ]);
 });
 
 test("local service leaves retain exact tests and complete source ownership", async () => {

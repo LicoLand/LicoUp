@@ -79,6 +79,11 @@
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.cursor.licopkg"
         },
         {
+          "role": "deepseek-adapter-package-payload",
+          "file": "LicoUp-package-org.licoland.adapter.deepseek.licopkg",
+          "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.adapter.deepseek.licopkg"
+        },
+        {
           "role": "mcp-package-payload",
           "file": "LicoUp-package-org.licoland.feature.mcp.licopkg",
           "source": "build/apps/desktop/native-release/macos-direct-arm64/LicoUp-package-org.licoland.feature.mcp.licopkg"
