@@ -27,6 +27,7 @@ pub mod authority;
 pub mod intent;
 pub mod ledger;
 pub mod owner;
+pub mod settlement;
 #[cfg(test)]
 mod tests;
 

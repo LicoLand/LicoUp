@@ -20,7 +20,7 @@ restates them.
 | `components/endpoint-collaboration/src/capability_catalogue.rs` | The client-side catalogue capability flows are announced into: device and group identity kept apart, explicit local grants, rotation epochs that only advance, and pending protected material that outlives every catalogue change. |
 | `components/endpoint-collaboration/src/durable_delivery.rs` | The package's implementation of the caller-owned durable protocol store: one commit applies snapshot, custody mutations and delivery units together, and only an accepted attempt settles a committed unit. |
 | `components/endpoint-collaboration/cleanup/` | The file half of a staged erase: close the data root's writer admission, settle the frozen file inventory entry by entry with durable, replay-safe progress, and report a partial file-stage result to the replacement endpoint. It deletes no credential and reads no protected key. |
-| `components/endpoint-collaboration/control/` | Remote work control: the typed inspect/stop/owned-child/force intents, the local grant and verified-ingress decision, the durable request ledger that admits before any effect, and the consumer-owned port the kernel's own work owners implement. It performs no effect itself. |
+| `components/endpoint-collaboration/control/` | Remote work control and settlement: the typed inspect/stop/owned-child/force intents, the local grant and verified-ingress decision, the durable request ledger that admits before any effect, the consumer-owned port the kernel's own work owners implement, and the rules for what the local update gate may wait for. It performs no effect itself. |
 | `components/endpoint-collaboration/transfer/` | Device-transfer ownership inventory: classify one full-data-root archive into managed payloads, external references and nonportable credential requirements. |
 | `crates/licoup-native/src/domain/mobile_relay/secret_custody/cleanup_authority.rs` | The cleanup-specific authorization: derive the custody subject from persisted identity, accept a replacement endpoint only against a locally signed device trust record that verifies, enumerate the bounded custody inventory, and require an explicit informed confirmation naming that subject, that replacement endpoint, the inventory digest and every scope entry. |
 | `crates/licoup-native/src/domain/mobile_relay/secret_custody/cleanup.rs` | The custody consumer: delete exactly the authorized credentials through the platform secret store's own authorized session, remove exactly the authorized durable-store files, and report observed settlement. |
@@ -52,6 +52,39 @@ flows are announced into. It keeps apart the facts that are easy to collapse:
 None of this changes a session. Applying a catalogue change never rebuilds a
 peer, re-admits a call or rewrites a stored conversation, and the module performs
 no cryptographic operation, opens no store and sends no packet.
+
+## Remote work control and settlement
+
+`control/` owns the decision half of a remote stop. It performs no effect: the
+kernel's own work owners — the persistent conversation turn, the durable
+workflow run, the Subagent MCP dispatch claim and the supervised lane session —
+implement the `LocalWorkOwner` port, and the kernel's force control terminates
+only a process group whose durable ownership record it re-verifies at execution
+time.
+
+* **Admission precedes effect.** A request is recorded before any owner is asked,
+  and a second delivery of one request identity is answered from the record, so a
+  duplicate or replayed control cannot repeat a stop. A request that reuses an
+  identity with different content is refused rather than treated as new work.
+* **Authority is local and current.** A verified ingress is necessary and not
+  sufficient; the requester must also hold a current local grant covering the
+  intent. Force control additionally requires a target scope this host verifies
+  as its own and the locally produced redacted diagnostics.
+* **A request is never proof of exit.** Only an observed end is recorded as
+  confirmed; an owner's acknowledgement, an unobserved end and an unknown effect
+  each stay visible as what they are.
+* **Only locally admitted execution enters the local idle guard.** Work this host
+  performs blocks a local update until its end is authenticated, including work a
+  peer asked for, which still passes this host's own admission. Awaiting or
+  displaying a peer-owned result creates no local work and never holds the gate.
+* **A local observation is not a remote outcome.** Losing the carrier, losing a
+  grant or letting time pass moves no recorded remote state and permits no blind
+  retry. Only an authenticated receipt settles a remote state, and only forwards:
+  an older cursor is refused as stale and a confirmed end is absorbing.
+* **Compatible local updates preserve what this host owes.** Identities, cursors
+  and unknown-effect records survive an update that keeps the local identity; an
+  incompatible update changes nothing here, because remote abandonment belongs to
+  the protocol owner rather than to this slice.
 
 ## The approved credential deletion route
 
