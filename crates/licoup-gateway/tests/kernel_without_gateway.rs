@@ -113,7 +113,10 @@ fn kernel_conversation_and_execution_owners_have_no_gateway_dependency() {
     let kernel_owners = [
         "crates/licoup-native/src/domain/conversations.rs",
         "crates/licoup-native/src/platform/conversation_lane.rs",
-        "crates/licoup-native/src/platform/runtime_adapters/dispatch.rs",
+        // The execution dispatch owner lives in the drivers crate the kernel
+        // links unconditionally; the kernel re-exports it rather than holding a
+        // second copy, so the invariant is pinned where the owner is.
+        "crates/licoup-agent-drivers/src/runtime_adapters/dispatch.rs",
         "crates/licoup-native/src/bin/licoup/stdio_rpc/server/conversation.rs",
         "crates/licoup-native/src/bin/licoup/conversation_host.rs",
     ];
