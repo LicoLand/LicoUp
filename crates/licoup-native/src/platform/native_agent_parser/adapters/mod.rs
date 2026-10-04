@@ -19,25 +19,19 @@ pub(in crate::platform) use licoup_agent_adapter_sdk::{
     LifecycleStage, Transition, TransitionReducer,
 };
 
-// The second Agent to move: Antigravity's Agent Hooks receipt, PTY parser and
-// terminal classification now live in `licoup-agent-antigravity`. The driver that
-// still supervises the vendor CLI reads them through this path, and the
-// composition names the package for the registration and the replay arm that
-// belong to the same parser.
+// Antigravity's Agent Hooks receipt, PTY parser and terminal classification live
+// in `licoup-agent-antigravity`. The driver that still supervises the vendor CLI
+// reads them through this path, and the composition names the package for the
+// registration and the replay arm that belong to the same parser.
 pub(in crate::platform) use licoup_agent_antigravity::parser as antigravity;
-// One Agent's parser has moved: Codex's vendor protocol now lives in its own package
-// (`licoup-agent-codex`), parsed once below this port, and this composition names the
-// package rather than keeping a second copy.
-// Two Agents' parsers have moved: Codex's vendor protocol lives in
-// `licoup-agent-codex` and the DeepSeek Harness SDK's in
-// `licoup-agent-deepseek`, each parsed once below this port, and this
-// composition names the packages rather than keeping a second copy.
-pub(in crate::platform) use licoup_agent_codex::parser as codex;
 // Cursor's vendor protocol has moved the same way, into `licoup-agent-cursor`: its
 // strict-NDJSON turn dialect and the wire vocabulary it reads are the package's,
 // and this composition reads them through the package's own module.
 pub(in crate::platform) use licoup_agent_cursor::parser as cursor;
-pub(in crate::platform) use licoup_agent_deepseek::parser as deepseek_harness;
+// Codex's and the DeepSeek Harness SDK's parsers moved into their own packages
+// (`licoup-agent-codex`, `licoup-agent-deepseek`) as well. Neither is named here:
+// this host parses neither Agent's frames, so no path in this tree re-exports
+// either parser, and each package answers its own registration below.
 
 pub(in crate::platform) mod claude_code;
 pub(in crate::platform) mod copilot;
@@ -60,7 +54,7 @@ use licoup_agent_adapter_sdk::port::{
 /// `transitions` list the parser's own reducer built, so the query stays
 /// declared and unanswered for it, exactly as
 /// [`ParserRegistration::unanswered`] states. Hermes is the exception the host
-/// answers from its own builders, and the two Agents that have moved into their
+/// answers from its own builders, and the four Agents that have moved into their
 /// own packages answer from the package's registration instead.
 fn no_transitions(_: &ExecutionOutcome<'_>) -> Vec<Transition> {
     Vec::new()
@@ -121,7 +115,7 @@ fn opaque_identity(session_id: &str) -> bool {
 ///
 /// An entry answers the two protocol-agnostic queries when a reader reaches it:
 /// Hermes answers its normalized transitions, the Agents the Subagent mesh
-/// dispatches answer whether a durable identity is theirs, and the two Agents
+/// dispatches answer whether a durable identity is theirs, and the four Agents
 /// whose protocol has moved into its own package contribute the package's own
 /// registration — which answers both queries from that Agent's wire evidence.
 /// Every other entry declares its Agent's transition answer as *the parser's own

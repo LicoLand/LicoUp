@@ -4,13 +4,12 @@
 //! parser. An Agent whose parser has moved into its own package also moved the
 //! arm that drives it, because an arm is only meaningful beside the parser it
 //! constructs; this composition reaches it through the SDK's parser-set port.
-//! Codex and DeepSeek Harness have both moved, so their arms are built by the
-//! packages that own their parsers.
 //! Two Agents keep their protocol state machine outside this module tree
 //! (`acp_driver_runtime` for copilot and kimi-code, `openclaw_driver` for
-//! openclaw), so those arms live next to the code they replay. Codex and
-//! Antigravity have moved into their packages, so their arms are reached through
-//! those crates' own `replay` modules rather than kept here.
+//! openclaw), so those arms live next to the code they replay. Antigravity,
+//! Codex, Cursor and DeepSeek Harness have moved into their packages, so their
+//! arms are reached through those crates' own `replay` modules rather than kept
+//! here.
 //!
 //! The arms are `pub(in crate::platform)` to this module's parent — it is the
 //! only reader, and it hands them to the SDK's harness through the parser set.

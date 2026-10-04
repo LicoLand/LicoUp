@@ -14,7 +14,6 @@ use super::super::variant::{UsageVariant, model_label};
 use super::super::window::UsageWindow;
 use super::models::ParseResult;
 use anyhow::{Context, Result};
-use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -23,7 +22,6 @@ use std::path::{Path, PathBuf};
 /// loses integer fidelity: the reader used to be a Node script, and the
 /// accounting the kernel kept then keeps the same bound now.
 const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
-
 
 /// A read of one session artifact failed, named by the stage it failed at.
 #[derive(Debug)]

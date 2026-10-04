@@ -52,7 +52,13 @@ pub enum RegistrationOwner {
     /// One entry in Antigravity's user MCP configuration
     /// (`platform::antigravity_subagent_mcp_manager`).
     AntigravityMcp,
-    /// One installed Codex plugin (`platform::codex_plugin_manager`).
+    /// One installed Codex plugin.
+    ///
+    /// The caller plugin is Codex's own marketplace artefact and the Codex
+    /// adapter package owns that side. The kernel module that used to install and
+    /// remove it (`platform::codex_plugin_manager`) is gone with the Codex
+    /// package move, so `RegistrationOwners::release` refuses this surface
+    /// instead of reporting configuration released that it never touched.
     CodexPlugin,
 }
 
@@ -69,13 +75,19 @@ impl RegistrationOwner {
     }
 
     /// The command or module whose `remove` is authoritative for this surface.
+    ///
+    /// A surface no module in this tree can remove names the owner that would
+    /// have to grow the route back instead. The Codex caller plugin is the one
+    /// such surface: it belongs to Codex's own marketplace, the Codex adapter
+    /// package owns that side, and this client installs none — so its name is
+    /// the package rather than a kernel module.
     pub const fn owner_module(self) -> &'static str {
         match self {
             Self::LoginItem => "platform::client_autostart",
             Self::ClaudeCodeMcp => "platform::claude_code_subagent_mcp_manager",
             Self::CursorMcp => "platform::cursor_subagent_mcp_manager",
             Self::AntigravityMcp => "platform::antigravity_subagent_mcp_manager",
-            Self::CodexPlugin => "platform::codex_plugin_manager",
+            Self::CodexPlugin => "licoup-agent-codex",
         }
     }
 
@@ -226,19 +238,33 @@ mod tests {
 
     #[test]
     fn every_owner_names_the_module_that_can_remove_its_surface() {
+        // Four surfaces belong to a kernel module; the fifth belongs to the Codex
+        // adapter package, because the Codex caller plugin is Codex's own
+        // marketplace artefact and this client installs none. Every name is
+        // asserted exactly: a prefix check let a retired module path
+        // (`platform::codex_plugin_manager`) survive here after its module moved.
         assert_eq!(RegistrationOwner::ALL.len(), 5);
         for owner in RegistrationOwner::ALL {
             assert!(!owner.wire_name().is_empty());
-            assert!(owner.owner_module().starts_with("platform::"));
         }
-        assert_eq!(
-            RegistrationOwner::ClaudeCodeMcp.owner_module(),
-            "platform::claude_code_subagent_mcp_manager"
-        );
-        assert_eq!(
-            RegistrationOwner::LoginItem.owner_module(),
-            "platform::client_autostart"
-        );
+        for (owner, module) in [
+            (RegistrationOwner::LoginItem, "platform::client_autostart"),
+            (
+                RegistrationOwner::ClaudeCodeMcp,
+                "platform::claude_code_subagent_mcp_manager",
+            ),
+            (
+                RegistrationOwner::CursorMcp,
+                "platform::cursor_subagent_mcp_manager",
+            ),
+            (
+                RegistrationOwner::AntigravityMcp,
+                "platform::antigravity_subagent_mcp_manager",
+            ),
+            (RegistrationOwner::CodexPlugin, "licoup-agent-codex"),
+        ] {
+            assert_eq!(owner.owner_module(), module, "{}", owner.wire_name());
+        }
     }
 
     #[test]
