@@ -1,3 +1,4 @@
+import 'appearance_resource_state.dart';
 import 'layout_profile.dart';
 
 enum PresentationPreferencesLoadIssue { invalidDocument }
@@ -21,6 +22,7 @@ final class PresentationPreferences {
     required String localePreference,
     bool reduceMotion = false,
     String loadingEffectId = 'spinner',
+    Map<String, PresentationResourceSelection> resourceSelections = const {},
   }) {
     final appearance = appearancePresetId.trim();
     final locale = localePreference.trim();
@@ -36,6 +38,9 @@ final class PresentationPreferences {
       localePreference: locale,
       reduceMotion: reduceMotion,
       loadingEffectId: loadingEffectId,
+      resourceSelections: Map<String, PresentationResourceSelection>.unmodifiable(
+        Map<String, PresentationResourceSelection>.of(resourceSelections),
+      ),
     );
   }
 
@@ -66,8 +71,20 @@ final class PresentationPreferences {
       loadingEffectId: json['loadingEffectId'] is String
           ? json['loadingEffectId']! as String
           : 'spinner',
+      resourceSelections: readResourceSelections(json['resourceSelections']),
     );
   }
+
+  /// Reads the stored resource requests strictly.
+  ///
+  /// A key this build does not know is kept with the identity it was written
+  /// with, so a newer client's request survives an older client's write. A
+  /// value this build cannot read refuses the document instead of being
+  /// dropped or reinterpreted: an unreadable request is not a different
+  /// request.
+  static Map<String, PresentationResourceSelection> readResourceSelections(
+    Object? value,
+  ) => readPresentationResourceSelections(value);
 
   const PresentationPreferences._({
     required this.layoutProfileId,
@@ -75,6 +92,7 @@ final class PresentationPreferences {
     required this.localePreference,
     required this.reduceMotion,
     required this.loadingEffectId,
+    required this.resourceSelections,
   });
 
   static const schemaVersion = 1;
@@ -107,12 +125,26 @@ final class PresentationPreferences {
   final bool reduceMotion;
   final String loadingEffectId;
 
+  /// The resource the user asked this client to serve, per resource kind id.
+  ///
+  /// An absent kind is not "unavailable" and not "the declared default was
+  /// chosen": it records no request for that kind. The map is the only durable
+  /// owner of a resource request; whether the request is served is the package
+  /// owner's answer and is never written here.
+  final Map<String, PresentationResourceSelection> resourceSelections;
+
+  /// The stored request for one kind, if the user made one.
+  PresentationResourceSelection? resourceSelection(
+    PresentationResourceKind kind,
+  ) => resourceSelections[kind.id];
+
   PresentationPreferences copyWith({
     LayoutProfileId? layoutProfileId,
     String? appearancePresetId,
     String? localePreference,
     bool? reduceMotion,
     String? loadingEffectId,
+    Map<String, PresentationResourceSelection>? resourceSelections,
   }) {
     return PresentationPreferences(
       layoutProfileId: layoutProfileId ?? this.layoutProfileId,
@@ -120,7 +152,27 @@ final class PresentationPreferences {
       localePreference: localePreference ?? this.localePreference,
       reduceMotion: reduceMotion ?? this.reduceMotion,
       loadingEffectId: loadingEffectId ?? this.loadingEffectId,
+      resourceSelections: resourceSelections ?? this.resourceSelections,
     );
+  }
+
+  /// Records, or clears, one kind's request.
+  ///
+  /// Clearing means the user asked for the client's own declared default; it is
+  /// not a fallback and leaves no entry behind.
+  PresentationPreferences withResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) {
+    final next = Map<String, PresentationResourceSelection>.of(
+      resourceSelections,
+    );
+    if (selection == null) {
+      next.remove(kind.id);
+    } else {
+      next[kind.id] = selection;
+    }
+    return copyWith(resourceSelections: next);
   }
 
   Map<String, Object> toJson() => {
@@ -130,6 +182,13 @@ final class PresentationPreferences {
     'localePreference': localePreference,
     'reduceMotion': reduceMotion,
     'loadingEffectId': loadingEffectId,
+    // Omitted while no resource request is recorded, so a document that never
+    // made one keeps the shape the previous release wrote.
+    if (resourceSelections.isNotEmpty)
+      'resourceSelections': <String, Object>{
+        for (final key in _sortedResourceKeys(resourceSelections))
+          key: resourceSelections[key]!.toJson(),
+      },
   };
 
   @override
@@ -140,7 +199,8 @@ final class PresentationPreferences {
           other.appearancePresetId == appearancePresetId &&
           other.localePreference == localePreference &&
           other.reduceMotion == reduceMotion &&
-          other.loadingEffectId == loadingEffectId;
+          other.loadingEffectId == loadingEffectId &&
+          _sameResourceSelections(other.resourceSelections, resourceSelections);
 
   @override
   int get hashCode => Object.hash(
@@ -149,7 +209,31 @@ final class PresentationPreferences {
     localePreference,
     reduceMotion,
     loadingEffectId,
+    Object.hashAll(
+      _sortedResourceKeys(resourceSelections).map(
+        (key) => Object.hash(key, resourceSelections[key]),
+      ),
+    ),
   );
+}
+
+List<String> _sortedResourceKeys(
+  Map<String, PresentationResourceSelection> selections,
+) => selections.keys.toList(growable: false)..sort();
+
+bool _sameResourceSelections(
+  Map<String, PresentationResourceSelection> left,
+  Map<String, PresentationResourceSelection> right,
+) {
+  if (left.length != right.length) {
+    return false;
+  }
+  for (final entry in left.entries) {
+    if (right[entry.key] != entry.value) {
+      return false;
+    }
+  }
+  return true;
 }
 
 final class PresentationPreferencesLoadResult {
@@ -176,4 +260,14 @@ abstract interface class PresentationPreferencesRepository {
   Future<PresentationPreferences> setReduceMotion(bool enabled);
 
   Future<PresentationPreferences> setLoadingEffect(String id);
+
+  /// Records one kind's resource request, or clears it when [selection] is
+  /// `null` (the user asked for the client's own declared default).
+  ///
+  /// This is the only durable write a resource choice makes: the request is
+  /// stored as the user made it, and no availability answer is written with it.
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  );
 }

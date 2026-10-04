@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:presentation_contract/presentation_contract.dart';
 
-import 'package:licoup/src/application/controller/appearance_preference_owner.dart';
+import 'package:licoup/src/application/features/settings/controller/appearance_preference_owner.dart';
 import 'package:licoup/src/application/controller/functional_status_runtime.dart';
 import 'package:licoup/src/application/controller/locale_preference_owner.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';

@@ -4,9 +4,10 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
-import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
+import 'package:licoup/src/platform/presentation/file_presentation_preferences_repository.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -256,6 +257,174 @@ void main() {
         (await initial.load()).preferences.layoutProfileId,
         LayoutProfileId.parse('dashboard'),
       );
+    },
+  );
+
+  test(
+    'a resource request survives restart without an availability claim',
+    () async {
+      final file = await preferencesFile(portableData);
+      final repository = FilePresentationPreferencesRepository(
+        portableData: portableData,
+        fallback: fallback,
+      );
+
+      await repository.setResourceSelection(
+        PresentationResourceKind.theme,
+        PresentationResourceSelection(
+          resourceId: 'org.example.orbital',
+          packageId: 'org.example.orbital-package',
+          packageGeneration: 3,
+        ),
+      );
+
+      final decoded = jsonDecode(await file.readAsString()) as Map;
+      expect(decoded['resourceSelections'], {
+        'theme': {
+          'resourceId': 'org.example.orbital',
+          'packageId': 'org.example.orbital-package',
+          'packageGeneration': 3,
+        },
+      });
+
+      // A restart reads the request back with the identity, the package and the
+      // generation it was written with. Nothing in the document answers whether
+      // the resource is served: that is the package owner's fact.
+      final restarted = FilePresentationPreferencesRepository(
+        portableData: portableData,
+        fallback: fallback,
+      );
+      final loaded = await restarted.load();
+      final request = loaded.preferences.resourceSelection(
+        PresentationResourceKind.theme,
+      );
+      expect(request, isNotNull);
+      expect(request!.resourceId, 'org.example.orbital');
+      expect(request.packageId, 'org.example.orbital-package');
+      expect(request.packageGeneration, 3);
+      expect(loaded.preferences.resourceSelections.keys, ['theme']);
+    },
+  );
+
+  test('an unrelated write keeps the recorded resource requests', () async {
+    final repository = FilePresentationPreferencesRepository(
+      portableData: portableData,
+      fallback: fallback,
+    );
+    await repository.setResourceSelection(
+      PresentationResourceKind.font,
+      PresentationResourceSelection(
+        resourceId: 'org.example.mono',
+        packageId: 'org.example.fonts',
+      ),
+    );
+
+    await repository.setReduceMotion(true);
+
+    final reloaded = FilePresentationPreferencesRepository(
+      portableData: portableData,
+      fallback: fallback,
+    );
+    final loaded = await reloaded.load();
+    expect(loaded.preferences.reduceMotion, isTrue);
+    expect(
+      loaded.preferences
+          .resourceSelection(PresentationResourceKind.font)
+          ?.resourceId,
+      'org.example.mono',
+    );
+  });
+
+  test(
+    'clearing a request records the declared default and leaves no entry',
+    () async {
+      final file = await preferencesFile(portableData);
+      final repository = FilePresentationPreferencesRepository(
+        portableData: portableData,
+        fallback: fallback,
+      );
+      await repository.setResourceSelection(
+        PresentationResourceKind.language,
+        PresentationResourceSelection(resourceId: 'org.example.french'),
+      );
+
+      await repository.setResourceSelection(
+        PresentationResourceKind.language,
+        null,
+      );
+
+      final decoded = jsonDecode(await file.readAsString()) as Map;
+      expect(decoded.containsKey('resourceSelections'), isFalse);
+      expect((await repository.load()).preferences.resourceSelections, isEmpty);
+    },
+  );
+
+  test(
+    'a kind this build does not know keeps the identity it was written with',
+    () async {
+      final file = await preferencesFile(portableData);
+      await file.writeAsString(
+        jsonEncode({
+          'schemaVersion': 1,
+          'layoutProfileId': 'dashboard',
+          'appearancePresetId': 'default-system',
+          'localePreference': 'system',
+          'resourceSelections': {
+            'orbital-behavior': {
+              'resourceId': 'org.example.behavior',
+              'packageGeneration': 7,
+            },
+          },
+        }),
+      );
+      final repository = FilePresentationPreferencesRepository(
+        portableData: portableData,
+        fallback: fallback,
+      );
+
+      await repository.setLayoutProfile(LayoutProfileId.parse('atlas'));
+
+      final decoded = jsonDecode(await file.readAsString()) as Map;
+      expect(decoded['resourceSelections'], {
+        'orbital-behavior': {
+          'resourceId': 'org.example.behavior',
+          'packageGeneration': 7,
+        },
+      });
+      expect(decoded['layoutProfileId'], 'atlas');
+    },
+  );
+
+  test(
+    'an unreadable resource request refuses the document without rewriting it',
+    () async {
+      final file = await preferencesFile(portableData);
+      final stored = jsonEncode({
+        'schemaVersion': 1,
+        'layoutProfileId': 'dashboard',
+        'appearancePresetId': 'default-system',
+        'localePreference': 'system',
+        'resourceSelections': {
+          'theme': {'resourceId': ''},
+        },
+      });
+      await file.writeAsString(stored);
+      final repository = FilePresentationPreferencesRepository(
+        portableData: portableData,
+        fallback: fallback,
+      );
+
+      await expectLater(
+        repository.load(),
+        throwsA(
+          isA<PresentationPreferencesRepositoryException>().having(
+            (error) => error.code,
+            'code',
+            PresentationPreferencesRepositoryErrorCode.readFailed,
+          ),
+        ),
+      );
+      expect(await file.readAsString(), stored);
     },
   );
 }

@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:licoup/src/application/controller/appearance_preference_owner.dart';
+import 'package:licoup/src/application/features/settings/controller/appearance_preference_owner.dart';
 import 'package:licoup/src/application/controller/functional_status_runtime.dart';
 import 'package:licoup/src/application/controller/locale_preference_owner.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
@@ -12,6 +12,7 @@ import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/presentation/environment/environment_projection.dart';
 import 'package:licoup/src/projections/application_projection_source.dart';
@@ -219,6 +220,12 @@ final class _MemoryPreferencesRepository
   @override
   Future<PresentationPreferences> setLoadingEffect(String id) async =>
       value = value.copyWith(loadingEffectId: id);
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) async => value = value.withResourceSelection(kind, selection);
 
   @override
   Future<PresentationPreferences> setAppearancePreset(String id) async =>

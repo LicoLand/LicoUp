@@ -61,7 +61,7 @@ import 'package:licoup/src/presentation/shell/shell_binding.dart';
 import 'package:licoup/src/presentation/environment/environment_projection.dart';
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
-import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
+import 'package:licoup/src/platform/presentation/file_presentation_preferences_repository.dart';
 import 'package:licoup/src/platform/presentation/macos_reduce_motion_channel.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:licoup/src/platform/native_client/data_home_executor.dart';

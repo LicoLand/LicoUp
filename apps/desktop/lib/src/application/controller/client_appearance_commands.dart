@@ -1,5 +1,5 @@
 import 'package:licoup/src/application/state/application_signal.dart';
-import 'package:licoup/src/application/controller/appearance_preference_owner.dart';
+import 'package:licoup/src/application/features/settings/controller/appearance_preference_owner.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/platform/appearance/appearance_preset_catalog_service.dart';

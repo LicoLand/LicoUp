@@ -262,6 +262,12 @@ mixin ClientLifecycleFacade
     appearancePreferenceOwner.replaceLoadingEffect(
       presentation?.loadingEffectId ?? 'spinner',
     );
+    // The stored resource requests reach the owner as the user made them. No
+    // availability answer is adopted here: the package owner reports that
+    // later, and until it does the surface says so instead of guessing.
+    appearancePreferenceOwner.adoptResourceSelections(
+      presentation?.resourceSelections ?? const {},
+    );
   }
 
   Future<void> _initializeClientCore() async {
