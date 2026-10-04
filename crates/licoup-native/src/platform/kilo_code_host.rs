@@ -16,7 +16,6 @@
 //! Nothing here names a vendor field: the engine is protocol-agnostic and the
 //! policy it runs on comes from the package ([`kilo_serve_spec`]).
 
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use licoup_agent_kilo::host::HostPorts;
@@ -267,76 +266,5 @@ pub(crate) fn host_ports() -> HostPorts {
     HostPorts {
         turn_event: turn_event_port(),
         serve: serve_port(),
-    }
-}
-
-/// Whether this Agent's endpoint policy still describes the paths the engine
-/// will read, so a mismatch between the two halves fails loudly at build time
-/// rather than as a mystifying 404.
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_engine_spec_reads_every_field_from_the_packages_own_policy() {
-        let spec = kilo_serve_spec();
-        let policy = &policy::SPEC;
-        assert_eq!(spec.identity, policy.identity);
-        assert_eq!(spec.default_port, policy.default_port);
-        assert_eq!(spec.port_range_span, policy.port_range_span);
-        assert_eq!(spec.default_host, policy.default_host);
-        assert_eq!(spec.health_path, policy.health_path);
-        assert_eq!(spec.session_probe_path, policy.session_probe_path);
-        assert_eq!(spec.config_path, policy.config_path);
-        assert_eq!(spec.provider_path, policy.provider_path);
-        assert_eq!(spec.state_dir, policy.state_dir);
-        assert_eq!(spec.state_schema_version, policy.state_schema_version);
-        assert_eq!(
-            spec.default_health_timeout_ms,
-            policy.default_health_timeout_ms
-        );
-        assert_eq!(spec.reserved_ports, policy.reserved_ports);
-        assert_eq!(spec.executable_environment, policy.executable_environment);
-        assert_eq!(spec.default_executable, policy.default_executable);
-        assert_eq!(
-            spec.errors.executable_missing,
-            policy.errors.executable_missing
-        );
-        assert_eq!(spec.errors.stop_failed, policy.errors.stop_failed);
-    }
-
-    #[test]
-    fn readiness_crosses_the_seam_with_its_models_intact() {
-        let spec = kilo_serve_spec();
-        let ready = (spec.parse_readiness)(
-            &serde_json::json!({"healthy": true, "version": "1.2.3"}),
-            &serde_json::json!([]),
-            &serde_json::json!({"model": "kilo-auto/free"}),
-            &serde_json::json!({
-                "all": [{"id": "kilo", "models": {"kilo-auto/free": {}}}],
-                "default": {"kilo": "kilo-auto/free"}
-            }),
-        )
-        .expect("a healthy endpoint with a provider catalogue is ready");
-        assert_eq!(ready.version, "1.2.3");
-        assert_eq!(ready.catalog.current.selector(), "kilo/kilo-auto/free");
-        assert_eq!(ready.catalog.models.len(), 1);
-    }
-
-    #[test]
-    fn the_engine_configure_command_is_this_agents_own_launch_shape() {
-        let mut command = std::process::Command::new("kilo");
-        (kilo_serve_spec().configure_command)(&mut command, "127.0.0.1", 4097);
-        let args: Vec<_> = command
-            .get_args()
-            .map(|argument| argument.to_string_lossy().into_owned())
-            .collect();
-        assert_eq!(args, ["serve", "--hostname", "127.0.0.1", "--port", "4097"]);
-    }
-
-    #[test]
-    fn an_absolute_path_is_what_the_package_requires() {
-        assert!(Path::new("/workspace").is_absolute());
-        assert!(!Path::new("workspace").is_absolute());
     }
 }

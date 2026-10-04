@@ -26,8 +26,31 @@ fn the_engine_specification_and_the_force_stop_descriptor_are_one_contract() {
     assert_eq!(spec.default_executable, control.default_executable);
     assert_eq!(spec.errors.executable_missing, control.errors.executable_missing);
     assert_eq!(spec.errors.stop_failed, control.errors.stop_failed);
-    // And both are the package's policy, not a second copy of it.
-    assert_eq!(spec.identity, policy::SPEC.identity);
+    // And both are the package's policy, not a second copy of it: every field
+    // the engine reads is read from the package's own declaration.
+    let policy = &policy::SPEC;
+    assert_eq!(spec.identity, policy.identity);
+    assert_eq!(spec.default_port, policy.default_port);
+    assert_eq!(spec.port_range_span, policy.port_range_span);
+    assert_eq!(spec.default_host, policy.default_host);
+    assert_eq!(spec.health_path, policy.health_path);
+    assert_eq!(spec.session_probe_path, policy.session_probe_path);
+    assert_eq!(spec.config_path, policy.config_path);
+    assert_eq!(spec.provider_path, policy.provider_path);
+    assert_eq!(spec.state_dir, policy.state_dir);
+    assert_eq!(spec.state_schema_version, policy.state_schema_version);
+    assert_eq!(
+        spec.default_health_timeout_ms,
+        policy.default_health_timeout_ms
+    );
+    assert_eq!(spec.reserved_ports, policy.reserved_ports);
+    assert_eq!(spec.executable_environment, policy.executable_environment);
+    assert_eq!(spec.default_executable, policy.default_executable);
+    assert_eq!(
+        spec.errors.executable_missing,
+        policy.errors.executable_missing
+    );
+    assert_eq!(spec.errors.stop_failed, policy.errors.stop_failed);
 }
 
 #[test]
