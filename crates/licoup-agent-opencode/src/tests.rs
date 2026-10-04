@@ -141,14 +141,30 @@ fn serve_event_parser_is_exact_session_and_assistant_only() {
 #[test]
 fn serve_execution_produces_closed_typed_transitions() {
     let transitions = parser::completed_transitions("answer");
+    // The projection is prefix closed from the declared initial stage and ends
+    // at the terminal one, so a reader never sees a stage without the stages
+    // that must precede it.
     assert!(matches!(
         transitions.first(),
-        Some(Transition::Lifecycle(LifecycleStage::Accepted))
+        Some(Transition::Lifecycle(LifecycleStage::Submitted))
     ));
     assert!(matches!(
         transitions.last(),
         Some(Transition::Lifecycle(LifecycleStage::Completed))
     ));
+    let reported = transitions
+        .iter()
+        .filter(|transition| matches!(transition, Transition::Text { text, .. } if text == "answer"))
+        .count();
+    assert_eq!(reported, 1, "the reply is reported exactly once");
+    let position = transitions
+        .iter()
+        .position(|transition| matches!(transition, Transition::Text { .. }))
+        .expect("the reply is projected");
+    assert!(
+        position + 1 < transitions.len(),
+        "the reply precedes the terminal stage"
+    );
     let with_tool = parser::message(&json!({"parts": [
         {"type": "tool", "tool": "bash"},
         {"type": "text", "text": "answer"}
@@ -159,6 +175,10 @@ fn serve_execution_produces_closed_typed_transitions() {
         Transition::Control { method, .. } if method == "bash"
     )));
     let failed = parser::failure_transitions("code", "serve/sse", "safe");
+    assert!(matches!(
+        failed.first(),
+        Some(Transition::Lifecycle(LifecycleStage::Submitted))
+    ));
     assert!(matches!(
         failed.last(),
         Some(Transition::Failed { code, .. }) if code == "code"
