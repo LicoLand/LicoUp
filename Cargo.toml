@@ -31,6 +31,7 @@ members = [
     "crates/licoup-migrate",
     "crates/licoup-gateway-core",
     "crates/licoup-gateway",
+    "crates/licoup-mobile-core",
     "crates/licoup-native",
     "crates/trybuild",
 ]

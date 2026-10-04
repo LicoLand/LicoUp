@@ -4,7 +4,9 @@ mod abi;
 mod handle_arena;
 
 pub use abi::{
-    AbiIdentity, CLIENT_RUNTIME_ABI_JSON, CLIENT_RUNTIME_ABI_VERSION, CLIENT_RUNTIME_OPERATIONS,
+    mobile_abi_identity, AbiIdentity, CLIENT_RUNTIME_ABI_JSON, CLIENT_RUNTIME_ABI_VERSION,
+    CLIENT_RUNTIME_OPERATIONS, MOBILE_RUNTIME_ABI_VERSION, MOBILE_RUNTIME_LAYOUT_IDENTITY,
+    MOBILE_RUNTIME_OPERATIONS,
 };
 pub use handle_arena::{ArenaError, Handle, HandleArena};
 
