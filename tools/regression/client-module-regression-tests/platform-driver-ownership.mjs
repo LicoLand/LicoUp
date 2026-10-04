@@ -562,9 +562,8 @@ test("neutral ACP runtime and session transport retain bounded ownership", async
       "crates/licoup-agent-drivers/src/acp_session_transport",
       ".rs",
     ),
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes.rs",
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes/framing.rs",
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes/protocol.rs",
+    "crates/licoup-agent-hermes/src/dialect.rs",
+    "crates/licoup-agent-hermes/src/parser.rs",
   ]) {
     assert.equal(sessionInputs.has(relativePath), true,
       `neutral ACP session source must have a precise regression owner: ${relativePath}`);

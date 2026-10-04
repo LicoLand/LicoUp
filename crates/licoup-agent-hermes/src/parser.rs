@@ -1,15 +1,37 @@
-use super::AdapterContract;
-use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
+//! Hermes' persistent-ACP parser: one raw stdio line in, one classified frame
+//! out.
+//!
+//! The parser is the sole ingress for Hermes frames, per ADR-0008: a byte line
+//! becomes the ACP envelope here, is validated against the request it answers,
+//! and is never decoded again above this port. The two facts that belong to no
+//! other Agent live beside it:
+//!
+//! * [`permission_request`] reads Hermes' own permission question — the one ACP
+//!   frame shape that carries a display summary and a requested-tool list.
+//! * [`completed_transitions`] and [`failed_transitions`] word one Hermes turn
+//!   in the shared transition vocabulary. Hermes' driver reports no transition
+//!   list of its own, so these are the answer the host's normalization reads
+//!   through the SDK's protocol-agnostic query rather than from an execution
+//!   result.
+//!
+//! Everything else delegates to `licoup_foundation::core::acp`, because the ACP
+//! envelope is a published contract and not one Agent's protocol.
+
+use licoup_agent_adapter_sdk::adapters::AdapterContract;
+use licoup_agent_adapter_sdk::{LifecycleStage, Transition, TransitionReducer};
 use licoup_foundation::core::acp::{self, AcpSessionUpdate, AcpStopReason};
 use serde_json::Value;
 
-pub(super) const CONTRACT: AdapterContract = AdapterContract::new("hermes", "stdio-jsonrpc-acp");
+/// The adapter declaration Hermes' parser reports.
+pub const CONTRACT: AdapterContract = AdapterContract::new("hermes", "stdio-jsonrpc-acp");
 
-pub(in crate::platform) fn decode_frame(line: &[u8]) -> Result<Value, acp::AcpError> {
+/// Decode one raw byte line into a frame, or report why it is not one.
+pub fn decode_frame(line: &[u8]) -> Result<Value, acp::AcpError> {
     acp::decode_json_line(line)
 }
 
-pub(in crate::platform) fn initialize_response(
+/// Read the initialize response out of a raw byte line, when the line is it.
+pub fn initialize_response(
     line: &[u8],
     request_id: i64,
 ) -> Result<Option<acp::AcpInitializeResponse>, acp::AcpError> {
@@ -20,17 +42,33 @@ pub(in crate::platform) fn initialize_response(
     acp::validate_initialize_response(&frame, request_id).map(Some)
 }
 
+/// One permission question Hermes asks the client to answer.
+///
+/// It is Hermes' own frame shape: the ACP persistent profile asks on a request
+/// id and may carry the tool calls it is asking about, which is more than the
+/// shared ACP profile's client request states.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::platform) struct PermissionRequest {
-    pub(in crate::platform) id: Value,
-    pub(in crate::platform) method: String,
-    pub(in crate::platform) session_id: Option<String>,
-    pub(in crate::platform) display_summary: String,
-    pub(in crate::platform) option_id: Option<String>,
-    pub(in crate::platform) requested_tools: Vec<String>,
+pub struct PermissionRequest {
+    /// The JSON request id this question must be answered on.
+    pub id: Value,
+    /// The ACP method Hermes asked the client to answer.
+    pub method: String,
+    /// The session the question belongs to, when the frame names one.
+    pub session_id: Option<String>,
+    /// The redacted summary shown to the user.
+    pub display_summary: String,
+    /// The single option id the frame offers for a one-time approval.
+    pub option_id: Option<String>,
+    /// The tools Hermes is asking permission to use, bounded and deduplicated by
+    /// position rather than by content.
+    pub requested_tools: Vec<String>,
 }
 
-pub(in crate::platform) fn permission_request(message: &Value) -> Option<PermissionRequest> {
+/// Read one permission question out of a frame, when the frame is one.
+///
+/// A frame that answers a request (`result` or `error`) is never a question, and
+/// the summary and the tool list are derived here rather than above the port.
+pub fn permission_request(message: &Value) -> Option<PermissionRequest> {
     let id = message.get("id")?.clone();
     let method = message.get("method")?.as_str()?.to_owned();
     if message.get("result").is_some() || message.get("error").is_some() {
@@ -95,11 +133,13 @@ pub(in crate::platform) fn permission_request(message: &Value) -> Option<Permiss
     })
 }
 
-pub(in crate::platform) fn is_notification(message: &Value) -> bool {
+/// Whether a frame is a notification rather than a response.
+pub fn is_notification(message: &Value) -> bool {
     message.get("method").is_some() && message.get("id").is_none()
 }
 
-pub(in crate::platform) fn response_id_matches(message: &Value, expected: i64) -> bool {
+/// Whether a frame is the response to the request carrying `expected`.
+pub fn response_id_matches(message: &Value, expected: i64) -> bool {
     message.get("id").is_some_and(|id| {
         id.as_i64() == Some(expected)
             || id
@@ -108,25 +148,33 @@ pub(in crate::platform) fn response_id_matches(message: &Value, expected: i64) -
     })
 }
 
-pub(in crate::platform) fn response_is_error(message: &Value) -> bool {
+/// Whether a frame reports a protocol-level error.
+pub fn response_is_error(message: &Value) -> bool {
     message.get("error").is_some()
 }
 
-pub(in crate::platform) fn session_update(
+/// Read one session update out of a frame.
+pub fn session_update(
     message: &Value,
     expected_session_id: Option<&str>,
 ) -> Result<AcpSessionUpdate, acp::AcpError> {
     acp::validate_session_update(message, expected_session_id)
 }
 
-pub(in crate::platform) fn prompt_stop_reason(
+/// Read one prompt result's stop reason out of a frame.
+pub fn prompt_stop_reason(
     message: &Value,
     request_id: i64,
 ) -> Result<AcpStopReason, acp::AcpError> {
     acp::validate_prompt_response(message, request_id).map(|response| response.stop_reason)
 }
 
-pub(in crate::platform) fn completed_transitions(output: &str) -> Vec<Transition> {
+/// Hermes' normalized transitions for one completed turn.
+///
+/// Hermes reports no transition list with its execution result, so this is the
+/// answer the host reads through the SDK's protocol-agnostic query: the turn is
+/// walked from acceptance to completion, and the reply is Hermes' own unit id.
+pub fn completed_transitions(output: &str) -> Vec<Transition> {
     let mut reducer = TransitionReducer::default();
     let mut transitions = reducer.advance(LifecycleStage::Accepted);
     transitions.extend(reducer.advance(LifecycleStage::Processing));
@@ -139,11 +187,11 @@ pub(in crate::platform) fn completed_transitions(output: &str) -> Vec<Transition
     transitions
 }
 
-pub(in crate::platform) fn failed_transitions(
-    code: &str,
-    stage: &str,
-    message: &str,
-) -> Vec<Transition> {
+/// Hermes' normalized transitions for one failed turn.
+///
+/// The failure carries the protocol's own code, stage and redacted message, and
+/// the first failure is write-once in the shared reducer.
+pub fn failed_transitions(code: &str, stage: &str, message: &str) -> Vec<Transition> {
     let mut reducer = TransitionReducer::default();
     let mut transitions = reducer.advance(LifecycleStage::Accepted);
     if let Some(failure) = reducer.fail(code, stage, message) {

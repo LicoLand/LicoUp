@@ -1014,7 +1014,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-agent-drivers/src/acp_session_transport/continuity.rs",
         "crates/licoup-agent-drivers/src/acp_session_transport/errors.rs",
         "crates/licoup-agent-drivers/src/acp_session_transport/events.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes/framing.rs",
+        "crates/licoup-agent-hermes/src/dialect.rs",
         "crates/licoup-agent-drivers/src/acp_session_transport/io.rs",
         "crates/licoup-agent-drivers/src/acp_session_transport/protocol.rs",
         "crates/licoup-agent-drivers/src/acp_session_transport/supervision.rs",
@@ -1029,8 +1029,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-agent-drivers/src/acp_session_transport/command.rs",
         "crates/licoup-agent-drivers/src/acp_session_transport/execution.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes.rs",
-        "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes/protocol.rs",
+        "crates/licoup-agent-hermes/src/parser.rs",
         "crates/licoup-agent-drivers/src/acp_session_transport/tests.rs",
       ],
       command: rustLayer("platform::acp_session_transport::tests::"),

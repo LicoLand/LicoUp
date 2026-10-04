@@ -1,4 +1,5 @@
 import {
+  AGENT_HERMES_MANIFEST,
   command,
   foundationLayer,
   rustCrateIntegrationTest,
@@ -90,6 +91,17 @@ export const RUST_CORE_MODULES = Object.freeze([
       command: command(
         "cargo",
         ["test", "--manifest-path", "crates/licoup-agent-kimi/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "rust.core.agent-hermes-package",
+      kind: "rust-core",
+      summary: "Hermes adapter package program, persistent ACP frame dialect, normalized transitions, registration, and replay arm",
+      inputs: ["crates/licoup-agent-hermes/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", AGENT_HERMES_MANIFEST],
         10 * 60_000,
       ),
     }),

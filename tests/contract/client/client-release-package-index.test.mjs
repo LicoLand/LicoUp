@@ -137,6 +137,14 @@ const declaredPackages = Object.freeze([
     clientRange: ">=0.3.0, <1.0.0",
   },
   {
+    packageId: "org.licoland.adapter.hermes",
+    source: "crates/licoup-agent-hermes/package",
+    payloadRole: "hermes-adapter-package-payload",
+    payloadAsset: "LicoUp-package-org.licoland.adapter.hermes.licopkg",
+    converterEntry: "bin/lico-agent-hermes",
+    clientRange: ">=0.3.0, <1.0.0",
+  },
+  {
     packageId: "org.licoland.feature.mcp",
     source: "crates/licoup-mcp/package",
     payloadRole: "mcp-package-payload",
@@ -202,6 +210,12 @@ const kimiPackageId = "org.licoland.adapter.kimi";
 const kimiPackageSource = "crates/licoup-agent-kimi/package";
 const kimiPayloadRole = "kimi-adapter-package-payload";
 const kimiPayloadAsset = `LicoUp-package-${kimiPackageId}.licopkg`;
+// The Hermes adapter package is released the same way, on its own payload role,
+// so one Agent's artifact can never stand in for another's.
+const hermesPackageId = "org.licoland.adapter.hermes";
+const hermesPackageSource = "crates/licoup-agent-hermes/package";
+const hermesPayloadRole = "hermes-adapter-package-payload";
+const hermesPayloadAsset = `LicoUp-package-${hermesPackageId}.licopkg`;
 const clientProductVersion = JSON.parse(readFileSync(
   path.join(repoRoot, "tools/client-version.json"), "utf8",
 )).productVersion;
@@ -295,6 +309,7 @@ test("the canonical release configuration declares every package payload role ex
         roles.includes(antigravityPayloadRole) || roles.includes(cursorPayloadRole),
         roles.includes(deepseekPayloadRole),
         roles.includes(kimiPayloadRole),
+        roles.includes(hermesPayloadRole),
       target.id === "macos-direct-arm64",
       `${target.id} must not carry an independent package asset`,
     );
@@ -327,6 +342,7 @@ test("the canonical release configuration declares every package payload role ex
   assert.equal(publication.assetRoles.includes(cursorPayloadRole), false);
   assert.equal(publication.assetRoles.includes(deepseekPayloadRole), false);
   assert.equal(publication.assetRoles.includes(kimiPayloadRole), false);
+  assert.equal(publication.assetRoles.includes(hermesPayloadRole), false);
   assert.equal(publication.assetRoles.includes(PACKAGE_INDEX_ROLE), false);
   for (const config of [stable, nightly]) {
     assert.deepEqual(
@@ -336,7 +352,7 @@ test("the canonical release configuration declares every package payload role ex
     );
     for (const role of [PACKAGE_PAYLOAD_ROLE, mcpPayloadRole, codexPayloadRole,
       antigravityPayloadRole, cursorPayloadRole, deepseekPayloadRole,
-      kimiPayloadRole, PACKAGE_INDEX_ROLE]) {
+      kimiPayloadRole, hermesPayloadRole, PACKAGE_INDEX_ROLE]) {
       assert.equal(config.artifacts.some((entry) => entry.role === role), false,
         `${role} must not enter the closed client draft`);
     }
@@ -560,6 +576,13 @@ test("the plan reports every declared package without writing, and the tool reac
   assert.deepEqual(kimiPlan.clientCompatibility,
     { kind: "range", range: ">=0.3.0, <1.0.0" });
   assert.equal(kimiPlan.converterEntry, "bin/lico-agent-kimi");
+  const hermesPlan = plan.packages.find((reported) =>
+    reported.packageId === hermesPackageId);
+  assert.equal(hermesPlan.source, hermesPackageSource);
+  assert.match(hermesPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
+  assert.deepEqual(hermesPlan.clientCompatibility,
+    { kind: "range", range: ">=0.3.0, <1.0.0" });
+  assert.equal(hermesPlan.converterEntry, "bin/lico-agent-hermes");
   assert.equal(readdirSync(root).length, 0, "plan must not write anything");
 
   const sources = [

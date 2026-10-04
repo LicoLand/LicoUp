@@ -1,14 +1,35 @@
-//! Replay arm for the `hermes` adapter.
+//! The recorded-transcript replay arm for Hermes.
+//!
+//! The arm constructs the same persistent ACP session reducer the production
+//! Hermes transport constructs, keyed by the same driver identity, so a recorded
+//! transcript can only pass if Hermes' real dialect still reports the recorded
+//! facts. The projection, the corpus resolution and the fail-closed properties
+//! stay in the SDK's harness; this module is the one thing the harness cannot
+//! know — how to build *this* Agent's arm.
+//!
+//! It is behind `test-support` rather than `cfg(test)` because the host's replay
+//! suite drives it, and the host links this crate as a dependency: `cfg(test)`
+//! is false for a dependency, so a `cfg(test)` arm is compiled out of exactly the
+//! build that calls it.
+//!
+//! The reducer resolves Hermes' dialect from the transport's port by driver
+//! identity, exactly as a production session does: a build that installed the
+//! composition reads the composition's Hermes dialect, and a build that installed
+//! none reads the transport's own test dialect, whose frame readers are the same
+//! shared ACP semantics. The arm installs nothing, so it can never displace the
+//! dialects a running composition already installed.
 
-use super::super::{FrameReplay, RecordedFrame};
-use crate::platform::acp_session_transport::{
+use licoup_agent_adapter_sdk::replay::{FrameReplay, RecordedFrame};
+use licoup_agent_drivers::acp_session_transport::{
     EffectiveSettings, ProtocolConfig, ProtocolEffect, ProtocolFailure, SessionProtocol,
 };
 use serde_json::{Value, json};
 
+use crate::dialect;
+
 /// The exact-resume request configuration. `SessionProtocol` fixes its
-/// configuration for the whole transcript, and the recorded transcripts open
-/// the conversation the client already knew, so the arm replays the driver's
+/// configuration for the whole transcript, and the recorded transcripts open the
+/// conversation the client already knew, so the arm replays the driver's
 /// exact-resume configuration: `session/load` carrying `REQUESTED_SESSION_ID`.
 const REQUESTED_SESSION_ID: &str = "native-session";
 const PROMPT: &str = "<REDACTED_CONTENT>";
@@ -17,22 +38,38 @@ const CWD: &str = "/workspace/synthetic-project";
 /// keeps it fixed; it is never projected.
 const TURN_ID: &str = "synthetic-turn";
 
-pub(super) struct Replay {
+/// Build the replay arm for this package's adapter.
+///
+/// An adapter id this package does not carry is refused rather than defaulted,
+/// so a transcript can never pass against a parser that was never constructed.
+pub fn replay_arm(adapter_id: &str) -> Result<Box<dyn FrameReplay>, String> {
+    if adapter_id != crate::registration::ADAPTER_ID {
+        return Err(format!(
+            "no replayable parser is registered for adapter {adapter_id}"
+        ));
+    }
+    Ok(Box::new(Replay::new()))
+}
+
+struct Replay {
     protocol: SessionProtocol,
 }
 
 impl Replay {
-    pub(super) fn new() -> Result<Self, String> {
-        Ok(Self {
-            protocol: SessionProtocol::new(ProtocolConfig {
-                prompt: PROMPT.to_owned(),
-                requested_session_id: REQUESTED_SESSION_ID.to_owned(),
-                cwd: CWD.to_owned(),
-                model: None,
-                turn_id: TURN_ID.to_owned(),
-                mcp_servers: Vec::new(),
-            }, "hermes-acp"),
-        })
+    fn new() -> Self {
+        Self {
+            protocol: SessionProtocol::new(
+                ProtocolConfig {
+                    prompt: PROMPT.to_owned(),
+                    requested_session_id: REQUESTED_SESSION_ID.to_owned(),
+                    cwd: CWD.to_owned(),
+                    model: None,
+                    turn_id: TURN_ID.to_owned(),
+                    mcp_servers: Vec::new(),
+                },
+                dialect::DRIVER_ID,
+            ),
+        }
     }
 }
 
