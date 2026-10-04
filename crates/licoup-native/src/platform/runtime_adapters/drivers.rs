@@ -137,17 +137,16 @@ pub(super) fn parser_for_agent(agent_id: &str) -> ParserRegistration {
 /// Agent's parser, never to the transport.
 ///
 /// The table is keyed by **driver identity** rather than by Agent, because two
-/// Agents legitimately share one ACP dialect. Measured on the parsers below:
+/// Agents legitimately share one ACP dialect. Measured on the parsers here:
 /// `copilot`, `opencode` and `kilo-code` all select the same Copilot-profile
-/// dialect, and Copilot and Kimi Code differ only in how they word a completed
-/// or failed turn — every frame-reading function is the same function. Kimi
-/// Code's entry therefore borrows the shared frame readers and overrides only
-/// its own two transition builders, which is the shape the port exists for.
+/// dialect. Kimi Code's entry is not restated here at all: its package owns the
+/// dialect and publishes it whole, so this composition installs the package's
+/// registration rather than assembling a second copy of it.
 ///
 /// `hermes` is the one Agent on the persistent ACP dialect, and its entry
 /// borrows nothing: every member is Hermes' own parser function.
 pub(super) fn acp_dialects() -> &'static [AcpParserRegistration] {
-    use crate::platform::native_agent_parser::adapters::{copilot, hermes, kimi_code};
+    use crate::platform::native_agent_parser::adapters::{copilot, hermes};
 
     static DIALECTS: OnceLock<Vec<AcpParserRegistration>> = OnceLock::new();
     DIALECTS.get_or_init(|| {
@@ -167,20 +166,10 @@ pub(super) fn acp_dialects() -> &'static [AcpParserRegistration] {
         };
         vec![
             copilot_acp,
-            AcpParserRegistration {
-                driver_id: "kimi-code-acp",
-                decode_frame: kimi_code::decode_frame,
-                is_notification: kimi_code::is_notification,
-                response_id_matches: kimi_code::response_id_matches,
-                response_is_error: super::dialects::acp_response_is_error,
-                session_update: kimi_code::session_update,
-                prompt_stop_reason: kimi_code::prompt_stop_reason,
-                initialize_response: kimi_code::initialize_response,
-                client_request: super::dialects::kimi_code_client_request,
-                permission_request: super::dialects::no_permission_request,
-                completed_transitions: kimi_code::completed_transitions,
-                failed_transitions: kimi_code::failed_transitions,
-            },
+            // The Kimi Code package's own dialect, installed rather than
+            // restated: the package owns the parser behind it, so the two cannot
+            // drift.
+            licoup_agent_kimi::dialect::registration(),
             AcpParserRegistration {
                 driver_id: "hermes-acp",
                 decode_frame: hermes::decode_frame,

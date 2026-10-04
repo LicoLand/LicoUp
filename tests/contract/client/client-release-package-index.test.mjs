@@ -129,6 +129,14 @@ const declaredPackages = Object.freeze([
     clientRange: ">=0.3.0, <1.0.0",
   },
   {
+    packageId: "org.licoland.adapter.kimi",
+    source: "crates/licoup-agent-kimi/package",
+    payloadRole: "kimi-adapter-package-payload",
+    payloadAsset: "LicoUp-package-org.licoland.adapter.kimi.licopkg",
+    converterEntry: "bin/lico-agent-kimi",
+    clientRange: ">=0.3.0, <1.0.0",
+  },
+  {
     packageId: "org.licoland.feature.mcp",
     source: "crates/licoup-mcp/package",
     payloadRole: "mcp-package-payload",
@@ -187,6 +195,13 @@ const deepseekPackageId = "org.licoland.adapter.deepseek";
 const deepseekPackageSource = "crates/licoup-agent-deepseek/package";
 const deepseekPayloadRole = "deepseek-adapter-package-payload";
 const deepseekPayloadAsset = `LicoUp-package-${deepseekPackageId}.licopkg`;
+// The Kimi Code adapter package is the second Agent adapter released this way,
+// on its own payload role, so one Agent's artifact can never stand in for
+// another's.
+const kimiPackageId = "org.licoland.adapter.kimi";
+const kimiPackageSource = "crates/licoup-agent-kimi/package";
+const kimiPayloadRole = "kimi-adapter-package-payload";
+const kimiPayloadAsset = `LicoUp-package-${kimiPackageId}.licopkg`;
 const clientProductVersion = JSON.parse(readFileSync(
   path.join(repoRoot, "tools/client-version.json"), "utf8",
 )).productVersion;
@@ -279,6 +294,7 @@ test("the canonical release configuration declares every package payload role ex
         roles.includes(mcpPayloadRole) || roles.includes(codexPayloadRole) ||
         roles.includes(antigravityPayloadRole) || roles.includes(cursorPayloadRole),
         roles.includes(deepseekPayloadRole),
+        roles.includes(kimiPayloadRole),
       target.id === "macos-direct-arm64",
       `${target.id} must not carry an independent package asset`,
     );
@@ -310,6 +326,7 @@ test("the canonical release configuration declares every package payload role ex
   assert.equal(publication.assetRoles.includes(antigravityPayloadRole), false);
   assert.equal(publication.assetRoles.includes(cursorPayloadRole), false);
   assert.equal(publication.assetRoles.includes(deepseekPayloadRole), false);
+  assert.equal(publication.assetRoles.includes(kimiPayloadRole), false);
   assert.equal(publication.assetRoles.includes(PACKAGE_INDEX_ROLE), false);
   for (const config of [stable, nightly]) {
     assert.deepEqual(
@@ -319,7 +336,7 @@ test("the canonical release configuration declares every package payload role ex
     );
     for (const role of [PACKAGE_PAYLOAD_ROLE, mcpPayloadRole, codexPayloadRole,
       antigravityPayloadRole, cursorPayloadRole, deepseekPayloadRole,
-      PACKAGE_INDEX_ROLE]) {
+      kimiPayloadRole, PACKAGE_INDEX_ROLE]) {
       assert.equal(config.artifacts.some((entry) => entry.role === role), false,
         `${role} must not enter the closed client draft`);
     }
@@ -522,7 +539,8 @@ test("the plan reports every declared package without writing, and the tool reac
   assert.deepEqual(codexPlan.clientCompatibility,
     { kind: "range", range: ">=0.3.0, <1.0.0" });
   assert.equal(codexPlan.converterEntry, "bin/lico-agent-codex");
-  const antigravityPlan = plan.packages[0];
+  const antigravityPlan = plan.packages.find((reported) =>
+    reported.packageId === antigravityPackageId);
   assert.equal(antigravityPlan.source, antigravityPackageSource);
   assert.match(antigravityPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
   assert.deepEqual(antigravityPlan.clientCompatibility,
@@ -535,6 +553,13 @@ test("the plan reports every declared package without writing, and the tool reac
   assert.deepEqual(cursorPlan.clientCompatibility,
     { kind: "range", range: ">=0.3.0, <1.0.0" });
   assert.equal(cursorPlan.converterEntry, "bin/lico-agent-cursor");
+  const kimiPlan = plan.packages.find((reported) =>
+    reported.packageId === kimiPackageId);
+  assert.equal(kimiPlan.source, kimiPackageSource);
+  assert.match(kimiPlan.payloadDigest, /^sha256:[0-9a-f]{64}$/u);
+  assert.deepEqual(kimiPlan.clientCompatibility,
+    { kind: "range", range: ">=0.3.0, <1.0.0" });
+  assert.equal(kimiPlan.converterEntry, "bin/lico-agent-kimi");
   assert.equal(readdirSync(root).length, 0, "plan must not write anything");
 
   const sources = [

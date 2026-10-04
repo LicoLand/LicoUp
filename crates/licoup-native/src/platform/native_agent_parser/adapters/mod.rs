@@ -10,7 +10,9 @@
 //!
 //! Each subtree below is one Agent's protocol and moves with that Agent's crate
 //! (`licoup-agent-<agent>`); the composition travels last, because it is what
-//! tilts from naming thirteen parsers to naming the crates that hold them.
+//! tilts from naming thirteen parsers to naming the crates that hold them. Five
+//! parsers have moved already and their subtrees are gone: the composition names
+//! the package that owns each one, and no copy stays here.
 
 pub(in crate::platform) use licoup_agent_adapter_sdk::adapters::{
     AdapterContract, NativeLineParser,
@@ -28,16 +30,17 @@ pub(in crate::platform) use licoup_agent_antigravity::parser as antigravity;
 // strict-NDJSON turn dialect and the wire vocabulary it reads are the package's,
 // and this composition reads them through the package's own module.
 pub(in crate::platform) use licoup_agent_cursor::parser as cursor;
-// Codex's and the DeepSeek Harness SDK's parsers moved into their own packages
-// (`licoup-agent-codex`, `licoup-agent-deepseek`) as well. Neither is named here:
-// this host parses neither Agent's frames, so no path in this tree re-exports
-// either parser, and each package answers its own registration below.
+// Codex's, the DeepSeek Harness SDK's and Kimi Code's parsers moved into their
+// own packages (`licoup-agent-codex`, `licoup-agent-deepseek`,
+// `licoup-agent-kimi`) as well. None is named here: this host parses none of
+// those Agents' frames, so no path in this tree re-exports their parsers — an
+// alias nothing reads is a forwarding shell the compiler reports as an unused
+// import — and each package answers its own registration below.
 
 pub(in crate::platform) mod claude_code;
 pub(in crate::platform) mod copilot;
 pub(in crate::platform) mod hermes;
 pub(in crate::platform) mod kilo_code;
-pub(in crate::platform) mod kimi_code;
 pub(in crate::platform) mod lico_agent;
 pub(in crate::platform) mod openclaw;
 pub(in crate::platform) mod opencode;
@@ -54,7 +57,7 @@ use licoup_agent_adapter_sdk::port::{
 /// `transitions` list the parser's own reducer built, so the query stays
 /// declared and unanswered for it, exactly as
 /// [`ParserRegistration::unanswered`] states. Hermes is the exception the host
-/// answers from its own builders, and the four Agents that have moved into their
+/// answers from its own builders, and the five Agents that have moved into their
 /// own packages answer from the package's registration instead.
 fn no_transitions(_: &ExecutionOutcome<'_>) -> Vec<Transition> {
     Vec::new()
@@ -115,12 +118,16 @@ fn opaque_identity(session_id: &str) -> bool {
 ///
 /// An entry answers the two protocol-agnostic queries when a reader reaches it:
 /// Hermes answers its normalized transitions, the Agents the Subagent mesh
-/// dispatches answer whether a durable identity is theirs, and the four Agents
+/// dispatches answer whether a durable identity is theirs, and the five Agents
 /// whose protocol has moved into its own package contribute the package's own
 /// registration — which answers both queries from that Agent's wire evidence.
 /// Every other entry declares its Agent's transition answer as *the parser's own
 /// execution result* rather than through the query, and answers the identity
 /// query fail-closed because the mesh never dispatches that Agent.
+///
+/// Five entries are the moved packages' own registrations rather than constants
+/// restated here, so the declaration a package publishes and the declaration
+/// this host dispatches are one value and cannot drift.
 pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     // The Antigravity package answers both protocol-agnostic queries from its own
     // protocol facts — the identity rule is its parser's, and the transitions are
@@ -137,7 +144,9 @@ pub(in crate::platform) static REGISTRATIONS: [ParserRegistration; 13] = [
     licoup_agent_cursor::registration::REGISTRATION,
     ParserRegistration::new(hermes::CONTRACT, hermes_transitions, no_identity),
     ParserRegistration::unanswered(kilo_code::CONTRACT),
-    ParserRegistration::unanswered(kimi_code::CONTRACT),
+    // The Kimi Code package owns its dialect and reports its transitions with its
+    // own execution result, so this entry is the package's own registration.
+    licoup_agent_kimi::registration::REGISTRATION,
     ParserRegistration::unanswered(openclaw::CONTRACT),
     ParserRegistration::unanswered(opencode::CONTRACT),
     ParserRegistration::unanswered(pi::CONTRACT),

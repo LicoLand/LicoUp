@@ -49,8 +49,9 @@ pub(crate) mod host_lane;
 /// the other: a layer declares the port it needs, the other owns the fact, and
 /// this function joins them once per process. That covers the environment
 /// ports the domain asks, the gateway runtime's ports, the stop control's
-/// Subagent-claim dispatcher, which the domain answers, and the progressive
-/// turn-event port the Codex adapter package asks for. A process that never
+/// Subagent-claim dispatcher, which the domain answers, and the ports the two
+/// Agent adapter packages ask for — the progressive turn-event sink Codex emits
+/// through and the execution admission Kimi Code asks for. A process that never
 /// calls it keeps every port fail-closed.
 pub fn install_environment_ports() -> Result<(), &'static str> {
     domain::conversation::history::install_open_codex_rollouts(
@@ -78,9 +79,17 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     licoup_agent_antigravity::port::execution::install(
         licoup_agent_antigravity::port::execution::ExecutionPort {
             subagent_caller_context: subagent_caller_context,
-            admits_execution: admits_antigravity_execution,
+            admits_execution: admits_agent_execution,
         },
-    )
+    )?;
+    // The Kimi Code adapter package owns what one Kimi execution is; the one fact
+    // it cannot derive is whether this host currently admits new work, because the
+    // idle-admission decision is the host's. Installing the answer is what lets a
+    // Kimi turn run at all, and a host that never installs it refuses rather than
+    // running.
+    licoup_agent_kimi::port::execution::install(licoup_agent_kimi::port::execution::ExecutionPort {
+        admits_execution: admits_agent_execution,
+    })
 }
 
 /// The composition's answer for the Antigravity adapter package's caller-context
@@ -97,17 +106,15 @@ fn subagent_caller_context() -> Option<String> {
     Some(provider)
 }
 
-/// The composition's answer for the Antigravity adapter package's admission
-/// query: this host's own close-admission barrier.
+/// Whether this host admits a new Agent execution right now: admission is open
+/// unless a maintenance switch holds the close-admission barrier.
 ///
-/// The barrier is the durable record a maintenance switch holds while it changes
-/// installed state, and it lives in the domain layer. The answer is composed here
-/// because that is where a platform port may be joined to a domain fact — the
-/// package asks the port, and a turn launched under the barrier is refused rather
-/// than started against a client that may be replacing it. A data root with no
-/// record is idle: reading creates nothing. An unreadable record refuses, exactly
-/// as the barrier's owner states.
-fn admits_antigravity_execution() -> bool {
+/// The barrier is the same record package activation and data conversion hold,
+/// and it is read when the question is asked rather than cached, so a turn
+/// cannot start from a decision the host has since closed. A data root whose
+/// barrier cannot be read admits nothing: an unreadable record is not evidence
+/// that admission is open.
+fn admits_agent_execution() -> bool {
     let Ok(data_root) = licoup_foundation::platform::paths::portable_data_dir() else {
         return false;
     };
