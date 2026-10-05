@@ -53,7 +53,12 @@ enum ConversationProtocolMethod {
   dataHomeRelocate("data.home.relocate"),
   dataHomeStatus("data.home.status"),
   dataHomeRecover("data.home.recover"),
-  dataHomeCleanup("data.home.cleanup");
+  dataHomeCleanup("data.home.cleanup"),
+  selectionMatrix("selection.matrix"),
+  selectionPolicyGet("selection.policy.get"),
+  selectionPolicyAdopt("selection.policy.adopt"),
+  selectionPolicySupersede("selection.policy.supersede"),
+  selectionPolicyRevoke("selection.policy.revoke");
 
   const ConversationProtocolMethod(this.wireName);
 
@@ -348,6 +353,41 @@ conversationProtocolMethodMetadata =
         inFlightControl: false,
       ),
       'data.home.cleanup': ConversationProtocolMethodMetadata(
+        kind: ConversationProtocolMethodKind.command,
+        lane: ConversationProtocolLane.command,
+        structured: true,
+        stream: false,
+        inFlightControl: false,
+      ),
+      'selection.matrix': ConversationProtocolMethodMetadata(
+        kind: ConversationProtocolMethodKind.command,
+        lane: ConversationProtocolLane.command,
+        structured: true,
+        stream: false,
+        inFlightControl: false,
+      ),
+      'selection.policy.get': ConversationProtocolMethodMetadata(
+        kind: ConversationProtocolMethodKind.command,
+        lane: ConversationProtocolLane.command,
+        structured: true,
+        stream: false,
+        inFlightControl: false,
+      ),
+      'selection.policy.adopt': ConversationProtocolMethodMetadata(
+        kind: ConversationProtocolMethodKind.command,
+        lane: ConversationProtocolLane.command,
+        structured: true,
+        stream: false,
+        inFlightControl: false,
+      ),
+      'selection.policy.supersede': ConversationProtocolMethodMetadata(
+        kind: ConversationProtocolMethodKind.command,
+        lane: ConversationProtocolLane.command,
+        structured: true,
+        stream: false,
+        inFlightControl: false,
+      ),
+      'selection.policy.revoke': ConversationProtocolMethodMetadata(
         kind: ConversationProtocolMethodKind.command,
         lane: ConversationProtocolLane.command,
         structured: true,
@@ -671,6 +711,11 @@ const List<String> conversationProtocolMethods = <String>[
   'data.home.status',
   'data.home.recover',
   'data.home.cleanup',
+  'selection.matrix',
+  'selection.policy.get',
+  'selection.policy.adopt',
+  'selection.policy.supersede',
+  'selection.policy.revoke',
 ];
 
 final class ConversationCommand {

@@ -96,6 +96,26 @@ pub enum ClientErrorCode {
     InvalidDocument,
     #[serde(rename = "state_operation_failed")]
     StateOperationFailed,
+    #[serde(rename = "selection_matrix_unavailable")]
+    SelectionMatrixUnavailable,
+    #[serde(rename = "selection_policy_unavailable")]
+    SelectionPolicyUnavailable,
+    #[serde(rename = "selection_policy_invalid_revision")]
+    SelectionPolicyInvalidRevision,
+    #[serde(rename = "selection_policy_already_adopted")]
+    SelectionPolicyAlreadyAdopted,
+    #[serde(rename = "selection_policy_predecessor_unexpected")]
+    SelectionPolicyPredecessorUnexpected,
+    #[serde(rename = "selection_policy_revision_conflict")]
+    SelectionPolicyRevisionConflict,
+    #[serde(rename = "selection_policy_not_adopted")]
+    SelectionPolicyNotAdopted,
+    #[serde(rename = "selection_policy_supersede_stale")]
+    SelectionPolicySupersedeStale,
+    #[serde(rename = "selection_policy_not_in_force")]
+    SelectionPolicyNotInForce,
+    #[serde(rename = "selection_policy_predecessor_unknown")]
+    SelectionPolicyPredecessorUnknown,
     #[serde(rename = "workflow_mismatch")]
     WorkflowMismatch,
     #[serde(rename = "command_usage")]
