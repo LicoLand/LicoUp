@@ -76,7 +76,7 @@
     "client:test": "node tools/scripts/client-toolchain-runner.mjs --check flutter --cwd apps/desktop -- flutter test",
     "client:test:flutter:pinned": "node tools/scripts/client-flutter-pinned-test.mjs",
     "client:native:test": "node tools/scripts/cargo-client.mjs test -p licoup-native -p licoup-workflow",
-    "client:native:test:helpers": "node tools/scripts/cargo-client.mjs build -p licoup-mcp --bin lico-subagent-mcp",
+    "client:native:test:helpers": "node tools/scripts/cargo-client.mjs build -p licoup-mcp --bin lico-subagent-mcp -p licoup-agent-antigravity --bin lico-agent-antigravity",
     "client:native:smoke": "node tests/smoke/native-client-smoke.mjs",
     "client:native:smoke:runtime-data": "node tests/smoke/native-client-smoke.mjs --runtime-data",
     "client:native:smoke:policy:self-test": "node tests/smoke/native-client-smoke-policy-self-test.mjs",
