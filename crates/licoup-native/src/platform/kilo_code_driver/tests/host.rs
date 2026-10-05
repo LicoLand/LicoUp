@@ -5,29 +5,16 @@ use licoup_agent_kilo::policy;
 
 #[test]
 fn the_engine_specification_and_the_force_stop_descriptor_are_one_contract() {
+    // Force stop and the serve engine read one specification, so no second
+    // descriptor exists that could drift from the one the engine runs.
     let spec = kilo_code_host::kilo_serve_spec();
     let control = kilo_code_host::CONTROL_SPEC;
     assert_eq!(spec.identity, control.identity);
-    assert_eq!(spec.default_port, control.default_port);
-    assert_eq!(spec.port_range_span, control.port_range_span);
-    assert_eq!(spec.default_host, control.default_host);
-    assert_eq!(spec.health_path, control.health_path);
-    assert_eq!(spec.session_probe_path, control.session_probe_path);
-    assert_eq!(spec.config_path, control.config_path);
-    assert_eq!(spec.provider_path, control.provider_path);
     assert_eq!(spec.state_dir, control.state_dir);
-    assert_eq!(spec.state_schema_version, control.state_schema_version);
-    assert_eq!(
-        spec.default_health_timeout_ms,
-        control.default_health_timeout_ms
-    );
-    assert_eq!(spec.reserved_ports, control.reserved_ports);
-    assert_eq!(spec.executable_environment, control.executable_environment);
-    assert_eq!(spec.default_executable, control.default_executable);
     assert_eq!(spec.errors.executable_missing, control.errors.executable_missing);
     assert_eq!(spec.errors.stop_failed, control.errors.stop_failed);
-    // And both are the package's policy, not a second copy of it: every field
-    // the engine reads is read from the package's own declaration.
+    // And it is the package's policy, not a second copy of it: every field the
+    // engine reads is read from the package's own declaration.
     let policy = &policy::SPEC;
     assert_eq!(spec.identity, policy.identity);
     assert_eq!(spec.default_port, policy.default_port);

@@ -199,7 +199,10 @@ impl EffectPort for ProductionEffects {
     }
 
     fn dispatch_lane_operation(&self, operation: &str, params: &Value) -> anyhow::Result<Value> {
-        crate::platform::dispatch_lane_operation(operation, params)
+        // The agent-execution port is the one entry a caller above the platform
+        // layer names; this host answers the runtime's effect port through it
+        // rather than reaching the lane directly.
+        crate::agent_port::dispatch(operation, params)
             .map_err(|error| anyhow::anyhow!(error.to_string()))
     }
 
