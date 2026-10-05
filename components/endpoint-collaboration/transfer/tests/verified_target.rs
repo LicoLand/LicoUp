@@ -20,18 +20,16 @@ fn binding() -> TargetBinding {
 
 #[test]
 fn evidence_exists_only_when_every_required_owner_settled() {
-    // Nothing settled, and every one-owner-missing subset: no partial evidence
-    // exists for a caller to round up to "good enough".
-    let mut partials = vec![Vec::new()];
+    // Nothing settled produces nothing.
+    assert!(VerifiedTargetEvidence::from_settled_owners(binding(), Vec::new()).is_none());
+
+    // Neither does every maximal partial subset — each owner but one — so a
+    // caller cannot round a nearly-finished target up to "good enough".
     for missing in RequiredOwner::ALL {
-        partials.push(
-            RequiredOwner::ALL
-                .into_iter()
-                .filter(|owner| *owner != missing)
-                .collect::<Vec<_>>(),
-        );
-    }
-    for settled in partials {
+        let settled = RequiredOwner::ALL
+            .into_iter()
+            .filter(|owner| *owner != missing)
+            .collect::<Vec<_>>();
         assert_eq!(settled.len(), RequiredOwner::ALL.len() - 1);
         assert!(
             VerifiedTargetEvidence::from_settled_owners(binding(), settled.clone()).is_none(),
