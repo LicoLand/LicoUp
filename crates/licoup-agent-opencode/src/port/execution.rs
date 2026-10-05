@@ -8,14 +8,13 @@
 //! The port is declared here, on the package side, because the package is what
 //! has to name the seam. Most of the profile it maps onto —
 //! `licoup-extension-contracts`' agent-execution profile: execute, describe,
-//! resume/observe, cancel, steer, history and models — is performed today by the
-//! client's own `opencode_driver` over the shared local-service engine, so the
-//! one fact the package genuinely cannot derive is the host's admission
-//! decision. That is the member stated below, and it is the reason this seam
-//! exists rather than being an empty declaration.
+//! resume/observe, cancel, steer, history and models — is this package's own
+//! driver over the shared local-service engine, reached through
+//! [`crate::port::serve`], so the one fact the package genuinely cannot derive is
+//! the host's admission decision. That is the member stated below, and it is the
+//! reason this seam exists rather than being an empty declaration.
 //!
-//! Until the extension host drives this package's binary, the client's driver
-//! asks the same question through this port before it starts a turn: the
+//! The driver asks the question through this port before it starts a turn: the
 //! admission answer is the host's close-admission barrier, and a turn launched
 //! while a maintenance switch holds that barrier would run an Agent the switch
 //! may be replacing. A package that never installed the port is refused rather

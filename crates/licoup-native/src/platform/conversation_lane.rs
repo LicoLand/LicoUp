@@ -647,7 +647,7 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
                 super::acp_session_transport::ControlDisposition::SessionUnavailable => 2,
                 super::acp_session_transport::ControlDisposition::TransportUnavailable => 3,
             },
-            RuntimeAdapter::OpenCode => match super::opencode_driver::cancel(&session_id) {
+            RuntimeAdapter::OpenCode => match licoup_agent_opencode::driver::cancel(&session_id) {
                 super::local_service::turn_control::ControlDisposition::Accepted => 0,
                 super::local_service::turn_control::ControlDisposition::NoActiveTurn => 1,
                 super::local_service::turn_control::ControlDisposition::SessionUnavailable => 2,

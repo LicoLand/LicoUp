@@ -8,7 +8,7 @@ use super::super::registry::{
     native_capability_catalog_entry, parse_runtime_driver_registry, runtime_driver_profile,
 };
 use super::super::{PACKAGED_RUNTIME_ADAPTER_IDS, RuntimeAdapter};
-use crate::platform::opencode_driver;
+use licoup_agent_opencode::driver as opencode_driver;
 use serde_json::{Value, json};
 
 fn fact(facts: &[CapabilityFact], name: &str) -> CapabilityFact {

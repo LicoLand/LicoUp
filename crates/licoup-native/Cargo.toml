@@ -84,10 +84,10 @@ licoup-agent-kilo = { path = "../licoup-agent-kilo" }
 # the agent-execution port.
 licoup-agent-lico-agent = { path = "../licoup-agent-lico-agent" }
 licoup-agent-openclaw = { path = "../licoup-agent-openclaw" }
-# The OpenCode adapter package. Composition names it for its serve-protocol
-# parser registration, its replay arm and the execution-admission port the
-# client's own `opencode_driver` asks before it starts a turn, while the
-# extension host's binary route is completed by that same port.
+# The OpenCode adapter package. Composition names it for its serve driver — the
+# declaration, the session protocol, the turn and its endpoint policy — and this
+# host answers the ports that driver asks: the serve engine, the consumer its
+# events reach and the admission decision its turn may not make for itself.
 licoup-agent-opencode = { path = "../licoup-agent-opencode" }
 licoup-agent-runtime = { path = "../licoup-agent-runtime" }
 licoup-application = { path = "../licoup-application" }

@@ -138,16 +138,21 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     // still performs the turn, and removing that is the named remainder on
     // VENDOR-CODE-REMOVAL.
     licoup_agent_kilo::host::install(platform::kilo_code_host::host_ports())?;
-    // The OpenCode adapter package owns the `serve` protocol; the client's own
-    // `opencode_driver` still performs one turn, and the one fact it may not
-    // decide for itself is whether this host admits a new execution. Installing
-    // the answer is what lets an OpenCode turn start at all, and a host that
-    // never installs it refuses rather than running.
+    // The OpenCode adapter package owns what one OpenCode turn is — the request
+    // shape, the session protocol, the stream classification, the projection and
+    // the endpoint contract — and this host owns the serve engine it runs on and
+    // the consumer its events reach. Both ports are installed together because a
+    // package with an engine and no consumer, or a consumer and no engine, is
+    // half-wired. The admission answer is installed beside them: it is the one
+    // fact a turn may not decide for itself, because a turn started under the
+    // close-admission barrier would run an Agent a maintenance switch may be
+    // replacing.
     licoup_agent_opencode::port::execution::install(
         licoup_agent_opencode::port::execution::ExecutionPort {
             admits_execution: admits_agent_execution,
         },
-    )
+    )?;
+    licoup_agent_opencode::host::install(platform::opencode_host::host_ports())
 }
 
 /// The composition's answer for the Antigravity adapter package's caller-context

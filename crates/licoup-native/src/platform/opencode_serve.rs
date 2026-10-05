@@ -1,28 +1,32 @@
 //! OpenCode headless serve facade.
+//!
+//! The Agent's own half of a turn — the launch declaration, the session-open
+//! protocol, the request shape, the stream classification, the capability probe
+//! and the endpoint contract — belongs to the OpenCode adapter package
+//! (`licoup-agent-opencode`). What stays here is the one thing a package cannot
+//! hold: the client's own serve engine, reached at this facade's width and run
+//! on the package's specification ([`policy`]).
+//!
+//! Nothing here classifies a frame or owns a vendor fact: [`policy::SPEC`] is
+//! assembled from the package's `policy`, the readiness reader is the package's
+//! parser, and force-stop control reads the same descriptor through
+//! [`CONTROL_SPEC`].
 
 mod policy;
 
 use anyhow::Result;
 use serde_json::Value;
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::SyncSender;
 
 use super::local_service::{self, http::HttpFailure};
-use super::native_agent_parser::adapters::opencode::{ServeEventFailure, ServeEventParser};
 
 pub use super::local_service::ServeEndpoint;
 
 /// The durable serve owner descriptor used by force-stop control. Control
 /// reads the same state and pid records this owner writes.
 pub(in crate::platform) const CONTROL_SPEC: super::local_service::ServeSpec = policy::SPEC;
-pub const DEFAULT_PORT: u16 = policy::DEFAULT_PORT;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum EventStreamFailure {
-    Closed,
-    Decode(ServeEventFailure),
-    Framing(super::local_service::sse::SseFailure),
-}
+/// The port this Agent's endpoint prefers, read from the package that owns it.
+pub const DEFAULT_PORT: u16 = licoup_agent_opencode::policy::SPEC.default_port;
 
 pub fn ensure(params: &Value) -> Result<Value> {
     local_service::serve::ensure(policy::SPEC, params)
@@ -83,47 +87,17 @@ pub(super) fn post_json_with_optional_timeout(
     local_service::http::post_json_observed(url, body, timeout, "opencode.http")
 }
 
-pub(super) fn watch_session_events_url(
+/// The engine's framed event ingress, at this facade's width.
+///
+/// The engine performs the framing and hands each frame to the caller's
+/// callback; what a frame means is the adapter package's, so no classification
+/// happens here.
+pub(super) fn watch_frames(
     url: &str,
-    session_id: &str,
     stop: &AtomicBool,
-    chunks: &SyncSender<String>,
-) -> std::result::Result<(), EventStreamFailure> {
-    let mut parser = ServeEventParser::new(session_id);
-    let mut decode_failure = None;
-    let raw_observer = super::raw_execution::RawExecutionObserver::current();
-    let result = local_service::sse::watch_frames(url, stop, |data, frame| {
-        if let Some(observer) = raw_observer.as_ref()
-            && local_service::sse::frame_belongs_to_session(data, session_id)
-        {
-            observer.record_bytes(
-                "opencode.sse",
-                super::raw_execution::RawExecutionDirection::Received,
-                frame,
-            );
-        }
-        match parser.observe(data) {
-            Ok(Some(text)) => {
-                let _ = chunks.try_send(text);
-                true
-            }
-            Ok(None) => true,
-            Err(failure) => {
-                decode_failure = Some(failure);
-                false
-            }
-        }
-    });
-    if let Some(failure) = decode_failure {
-        return Err(EventStreamFailure::Decode(failure));
-    }
-    match result {
-        Ok(()) if !stop.load(std::sync::atomic::Ordering::Relaxed) => {
-            Err(EventStreamFailure::Closed)
-        }
-        Ok(()) => Ok(()),
-        Err(failure) => Err(EventStreamFailure::Framing(failure)),
-    }
+    on_frame: &mut dyn FnMut(&str, &[u8]) -> bool,
+) -> std::result::Result<(), local_service::sse::SseFailure> {
+    local_service::sse::watch_frames(url, stop, &mut *on_frame)
 }
 
 #[cfg(test)]

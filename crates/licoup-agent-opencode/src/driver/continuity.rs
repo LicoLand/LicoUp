@@ -1,6 +1,13 @@
-use super::super::acp_driver_runtime::{ProtocolConfig, ProtocolFailure};
-use super::super::opencode_serve::ServeEndpoint;
-use crate::platform::native_agent_parser::adapters::opencode as serve_parser;
+//! Binding the native conversation one turn runs against.
+//!
+//! A resume loads exactly the requested native session; a fresh turn creates
+//! one. Both are this Agent's continuity contract, and both go through the
+//! engine's document reader rather than a socket of this package's own.
+
+use super::serve_transport::{remaining_turn_timeout, request_failure, workspace_request_url};
+use super::{ProtocolConfig, ProtocolFailure};
+use crate::parser as serve_parser;
+use crate::port::serve::{self, ServeEndpoint};
 use serde_json::{Value, json};
 use std::time::Instant;
 
@@ -10,12 +17,12 @@ pub(super) fn open_serve_session(
     deadline: Option<Instant>,
 ) -> Result<String, ProtocolFailure> {
     if config.is_resume() {
-        let url = super::serve_transport::workspace_request_url(
+        let url = workspace_request_url(
             &endpoint.attach_url,
             &["session", &config.requested_session_id],
             &config.cwd,
         )?;
-        return match super::super::opencode_serve::get_session_json(&url) {
+        return match serve::get_json(&url, true) {
             Ok(payload) => match serve_parser::session_id(&payload) {
                 Some(id) if id == config.requested_session_id => Ok(id.to_string()),
                 // A returned different identity is an exact-lookup mismatch:
@@ -24,7 +31,7 @@ pub(super) fn open_serve_session(
                 Some(_) => Err(load_identity_mismatch(&config.requested_session_id)),
                 None => Err(load_session_not_found(&config.requested_session_id)),
             },
-            Err(failure) => Err(super::serve_transport::request_failure(
+            Err(failure) => Err(request_failure(
                 failure,
                 "session/load",
                 Some(&config.requested_session_id),
@@ -32,22 +39,16 @@ pub(super) fn open_serve_session(
         };
     }
 
-    let timeout = super::serve_transport::remaining_turn_timeout(deadline)?;
-    let url = super::serve_transport::workspace_request_url(
-        &endpoint.attach_url,
-        &["session"],
-        &config.cwd,
-    )?;
+    let timeout = remaining_turn_timeout(deadline)?;
+    let url = workspace_request_url(&endpoint.attach_url, &["session"], &config.cwd)?;
     let body = build_session_create_body();
-    let created =
-        super::super::opencode_serve::post_json_with_optional_timeout(&url, &body, timeout)
-            .map_err(|failure| {
-                if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
-                    super::serve_transport::turn_timeout_failure()
-                } else {
-                    super::serve_transport::request_failure(failure, "session/new", None)
-                }
-            })?;
+    let created = serve::post_json(&url, &body, timeout).map_err(|failure| {
+        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            super::serve_transport::turn_timeout_failure()
+        } else {
+            request_failure(failure, "session/new", None)
+        }
+    })?;
     serve_parser::session_id(&created)
         .map(str::to_string)
         .ok_or_else(|| {

@@ -2236,7 +2236,10 @@ dependencies = [
  "licoup-agent-adapter-sdk",
  "licoup-agent-drivers",
  "licoup-extension-contracts",
+ "licoup-foundation",
  "serde_json",
+ "url",
+ "uuid",
 ]
 
 [[package]]

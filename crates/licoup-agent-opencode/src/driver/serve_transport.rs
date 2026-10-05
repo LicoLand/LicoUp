@@ -1,13 +1,30 @@
+//! One OpenCode turn, performed against the engine's port.
+//!
+//! The shape of a turn is this Agent's contract and is therefore here: bind a
+//! native session, admit the turn so force stop can reach it, post the message,
+//! watch the event stream for assistant chunks, and settle on the terminal
+//! message document. The sockets, the framing, the process and the raw byte
+//! record belong to the engine and arrive through [`crate::port::serve`]; the
+//! consumer the progressive events reach arrives through
+//! [`crate::port::turn_event`].
+//!
+//! One rule the turn keeps is the whole reason it is not in the client: a turn
+//! that hits its deadline stops *before* the next request rather than after a
+//! socket timeout, because the remaining budget is this Agent's contract and not
+//! the engine's.
+
 use super::continuity::open_serve_session;
-use super::{OPENCODE_DRIVER, serve_capabilities};
-use crate::platform::acp_driver_runtime::{
-    CapabilityProbe, EffectiveSettings, ProtocolConfig, ProtocolFailure, RunResult, timestamp,
+use super::{OPENCODE_DRIVER, ProtocolFailure, serve_capabilities};
+use crate::parser as serve_parser;
+use crate::port::serve::{self, ServeFramingFailure, ServeRequestFailure, ServeTurnAdmission};
+use crate::port::turn_event;
+use licoup_agent_drivers::acp_driver_runtime::{
+    CapabilityProbe, EffectiveSettings, ProtocolConfig, RunResult, timestamp,
 };
-use crate::platform::native_agent_parser::adapters::opencode as serve_parser;
 use serde_json::{Value, json};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::mpsc::{self, RecvTimeoutError, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -18,7 +35,7 @@ const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 struct ServeOutcome {
     output: String,
-    transitions: Vec<crate::platform::native_agent_parser::Transition>,
+    transitions: Vec<licoup_agent_adapter_sdk::Transition>,
     session_id: String,
     thread_id: String,
     turn_id: String,
@@ -27,7 +44,7 @@ struct ServeOutcome {
     capabilities: CapabilityProbe,
 }
 
-pub(in crate::platform) fn execute(
+pub fn execute(
     executable: &str,
     params: &Value,
     prompt: &str,
@@ -52,7 +69,7 @@ pub(in crate::platform) fn execute(
     // the endpoint is attached and before any process starts. A host that
     // installed no port on the package answers fail-closed and this turn never
     // claims it was admitted.
-    if !licoup_agent_opencode::port::execution::admits_execution() {
+    if !crate::port::execution::admits_execution() {
         return failed(
             ProtocolFailure::new(
                 "opencode_execution_admission_closed",
@@ -70,10 +87,10 @@ pub(in crate::platform) fn execute(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_owned);
-    let attachment = match super::super::opencode_serve::ensure_attachment(executable) {
+    let attachment = match serve::ensure_attachment(executable) {
         Ok(attachment) => attachment,
         Err(error) => {
-            return failed(endpoint_failure(&error.to_string()), started_at);
+            return failed(endpoint_failure(&error), started_at);
         }
     };
     let Some(model) = attachment.catalog.resolve(config.settings.model.as_deref()) else {
@@ -143,6 +160,7 @@ fn failed(failure: ProtocolFailure, started_at: String) -> RunResult {
     }
 }
 
+/// The failure one engine attach code means, in this Agent's own vocabulary.
 pub(super) fn endpoint_failure(error_code: &str) -> ProtocolFailure {
     match error_code.trim() {
         "opencode_executable_missing" => ProtocolFailure::new(
@@ -174,7 +192,7 @@ pub(super) fn endpoint_failure(error_code: &str) -> ProtocolFailure {
 }
 
 fn execute_via_serve(
-    endpoint: &super::super::opencode_serve::ServeEndpoint,
+    endpoint: &serve::ServeEndpoint,
     config: &ProtocolConfig,
     private_instructions: Option<&str>,
     deadline: Option<Instant>,
@@ -189,32 +207,30 @@ fn execute_via_serve(
     let control_failure = Arc::clone(&first_failure);
     let control_completed = Arc::clone(&turn_completed);
     let control_session = session_id.clone();
-    let _active_turn = super::super::local_service::turn_control::register(
-        OPENCODE_DRIVER.agent_id,
+    // The guard is held for the whole turn: it is what makes force stop able to
+    // reach this session's turn, and dropping it is what releases it.
+    let _active_turn = match serve::admit_turn(
         &workspace_attach_url,
         &session_id,
-        Some(Arc::new(move |failure| {
+        Some(Arc::new(move |failure: ServeRequestFailure| {
             record_preterminal_failure(
                 &control_failure,
                 &control_completed,
                 request_failure(failure, "turn/control", Some(&control_session)),
             );
         })),
-    )
-    .map_err(|_| {
-        ProtocolFailure::new(
-            "opencode_serve_control_capacity",
-            "The OpenCode active-turn control registry is at capacity.",
-            "turn/control",
-        )
-        .with_session(Some(&session_id))
-    })?;
-    super::super::turn_event_emit::emit_turn_event(
-        "dispatch.turn.bound",
-        &session_id,
-        &turn_id,
-        json!({}),
-    );
+    ) {
+        ServeTurnAdmission::Admitted(guard) => guard,
+        ServeTurnAdmission::AtCapacity => {
+            return Err(ProtocolFailure::new(
+                "opencode_serve_control_capacity",
+                "The OpenCode active-turn control registry is at capacity.",
+                "turn/control",
+            )
+            .with_session(Some(&session_id)));
+        }
+    };
+    turn_event::emit_turn_event("dispatch.turn.bound", &session_id, &turn_id, json!({}));
     let watch_stop = Arc::new(AtomicBool::new(false));
     let watch_flag = Arc::clone(&watch_stop);
     let watch_url = workspace_request_url(&endpoint.attach_url, &["event"], &config.cwd)?;
@@ -222,15 +238,10 @@ fn execute_via_serve(
     let (chunk_sender, chunk_receiver) = mpsc::sync_channel::<String>(64);
     let watch_failure = Arc::clone(&first_failure);
     let watch_completed = Arc::clone(&turn_completed);
-    let watch_observer = crate::platform::raw_execution::RawExecutionObserver::current();
     let watch_handle = thread::spawn(move || {
-        let _raw_scope = crate::platform::raw_execution::RawExecutionScope::enter(watch_observer);
-        if let Err(failure) = super::super::opencode_serve::watch_session_events_url(
-            &watch_url,
-            &watch_session,
-            &watch_flag,
-            &chunk_sender,
-        ) {
+        if let Err(failure) =
+            watch_session_events(&watch_url, &watch_session, &watch_flag, &chunk_sender)
+        {
             record_preterminal_failure(
                 &watch_failure,
                 &watch_completed,
@@ -245,9 +256,7 @@ fn execute_via_serve(
     )?;
     let post_failure = Arc::clone(&first_failure);
     let post_completed = Arc::clone(&turn_completed);
-    let post_observer = crate::platform::raw_execution::RawExecutionObserver::current();
     let post_handle = thread::spawn(move || {
-        let _raw_scope = crate::platform::raw_execution::RawExecutionScope::enter(post_observer);
         let response = wait_post_json(&post_url, &message_body, deadline);
         if let Err(failure) = &response {
             post_failure.record(failure.clone());
@@ -259,11 +268,7 @@ fn execute_via_serve(
     while !post_handle.is_finished() {
         match chunk_receiver.recv_timeout(PROCESS_POLL_INTERVAL) {
             Ok(text) => {
-                super::super::turn_event_emit::emit_agent_message_chunk(
-                    &session_id,
-                    &turn_id,
-                    &text,
-                );
+                turn_event::emit_agent_message_chunk(&session_id, &turn_id, &text);
             }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
@@ -295,7 +300,7 @@ fn execute_via_serve(
         );
     }
     for text in chunk_receiver.try_iter() {
-        super::super::turn_event_emit::emit_agent_message_chunk(&session_id, &turn_id, &text);
+        turn_event::emit_agent_message_chunk(&session_id, &turn_id, &text);
     }
     if let Some(failure) = first_failure.get() {
         return Err(failure.with_session(Some(&session_id)));
@@ -317,7 +322,7 @@ fn execute_via_serve(
         .with_session(Some(&session_id))
     })?;
     let output = parsed.output;
-    super::super::turn_event_emit::emit_agent_message_completed(&session_id, &turn_id, &output);
+    turn_event::emit_agent_message_completed(&session_id, &turn_id, &output);
     Ok(ServeOutcome {
         output: output.clone(),
         transitions: parsed.transitions,
@@ -366,30 +371,90 @@ pub(super) fn record_preterminal_failure(
     }
 }
 
-pub(super) fn sse_failure(
-    failure: super::super::opencode_serve::EventStreamFailure,
+/// Why an event stream ended without the turn being stopped.
+///
+/// The variants are this package's own closed vocabulary over the engine's
+/// framing answer: a stream that closed, a frame this Agent's parser rejected,
+/// and the engine's own framing limit.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ServeStreamFailure {
+    /// The stream ended before the turn completed.
+    Closed,
+    /// A stream document did not decode.
+    Decode(serve_parser::ServeEventFailure),
+    /// The engine's framing refused a frame.
+    Framing(ServeFramingFailure),
+}
+
+/// Watch the endpoint's event stream, forwarding assistant chunks.
+///
+/// The stream is the engine's; what a frame means is this parser's. A decode
+/// failure is recorded once and ends the watch, because the stream can no longer
+/// be trusted to report the turn's progress.
+pub fn watch_session_events(
+    url: &str,
     session_id: &str,
-) -> ProtocolFailure {
-    use super::super::local_service::sse::SseFailure;
-    use super::super::opencode_serve::EventStreamFailure;
+    stop: &AtomicBool,
+    chunks: &SyncSender<String>,
+) -> Result<(), ServeStreamFailure> {
+    let mut parser = serve_parser::ServeEventParser::new(session_id);
+    let mut decode_failure = None;
+    let result = serve::watch_frames(url, stop, &mut |data, frame| {
+        // The whole framed text is what the diagnostic record keeps; the frame's
+        // own payload is what decides it belongs to this session.
+        serve::observe_bytes(
+            "opencode.sse",
+            serve::ServeByteDirection::Received,
+            Some(session_id),
+            data,
+            frame,
+        );
+        match parser.observe(data) {
+            Ok(Some(text)) => {
+                let _ = chunks.try_send(text);
+                true
+            }
+            Ok(None) => true,
+            Err(failure) => {
+                decode_failure = Some(failure);
+                false
+            }
+        }
+    });
+    if let Some(failure) = decode_failure {
+        return Err(ServeStreamFailure::Decode(failure));
+    }
+    match result {
+        Ok(()) if !stop.load(Ordering::Relaxed) => Err(ServeStreamFailure::Closed),
+        Ok(()) => Ok(()),
+        Err(failure) => Err(ServeStreamFailure::Framing(failure)),
+    }
+}
+
+pub(super) fn sse_failure(failure: ServeStreamFailure, session_id: &str) -> ProtocolFailure {
+    use ServeStreamFailure as StreamFailure;
     let code = match failure {
-        EventStreamFailure::Closed => "opencode_serve_sse_closed",
-        EventStreamFailure::Decode(_) => "opencode_serve_sse_invalid_json",
-        EventStreamFailure::Framing(SseFailure::Busy) => "opencode_serve_sse_busy",
-        EventStreamFailure::Framing(SseFailure::EventLimit) => "opencode_serve_sse_event_limit",
-        EventStreamFailure::Framing(SseFailure::FrameTooLarge) => {
+        StreamFailure::Closed => "opencode_serve_sse_closed",
+        StreamFailure::Decode(_) => "opencode_serve_sse_invalid_json",
+        StreamFailure::Framing(ServeFramingFailure::Busy) => "opencode_serve_sse_busy",
+        StreamFailure::Framing(ServeFramingFailure::EventLimit) => "opencode_serve_sse_event_limit",
+        StreamFailure::Framing(ServeFramingFailure::FrameTooLarge) => {
             "opencode_serve_sse_frame_too_large"
         }
-        EventStreamFailure::Framing(SseFailure::HeadersTooLarge) => {
+        StreamFailure::Framing(ServeFramingFailure::HeadersTooLarge) => {
             "opencode_serve_sse_headers_too_large"
         }
-        EventStreamFailure::Framing(SseFailure::InvalidUtf8) => "opencode_serve_sse_invalid_utf8",
-        EventStreamFailure::Framing(SseFailure::InvalidUrl) => "opencode_serve_sse_url_invalid",
-        EventStreamFailure::Framing(SseFailure::LineTooLarge) => {
+        StreamFailure::Framing(ServeFramingFailure::InvalidUtf8) => {
+            "opencode_serve_sse_invalid_utf8"
+        }
+        StreamFailure::Framing(ServeFramingFailure::InvalidUrl) => "opencode_serve_sse_url_invalid",
+        StreamFailure::Framing(ServeFramingFailure::LineTooLarge) => {
             "opencode_serve_sse_line_too_large"
         }
-        EventStreamFailure::Framing(SseFailure::Request) => "opencode_serve_sse_request_failed",
-        EventStreamFailure::Framing(SseFailure::Unavailable) => "opencode_serve_sse_unavailable",
+        StreamFailure::Framing(ServeFramingFailure::Request) => "opencode_serve_sse_request_failed",
+        StreamFailure::Framing(ServeFramingFailure::Unavailable) => {
+            "opencode_serve_sse_unavailable"
+        }
     };
     ProtocolFailure::new(
         code,
@@ -432,15 +497,13 @@ pub(super) fn wait_post_json(
     deadline: Option<Instant>,
 ) -> Result<Value, ProtocolFailure> {
     let timeout = remaining_turn_timeout(deadline)?;
-    super::super::opencode_serve::post_json_with_optional_timeout(url, body, timeout).map_err(
-        |failure| {
-            if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
-                turn_timeout_failure()
-            } else {
-                request_failure(failure, "session/prompt", None)
-            }
-        },
-    )
+    serve::post_json(url, body, timeout).map_err(|failure| {
+        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            turn_timeout_failure()
+        } else {
+            request_failure(failure, "session/prompt", None)
+        }
+    })
 }
 
 pub(super) fn workspace_request_url(
@@ -471,59 +534,59 @@ pub(super) fn workspace_request_url(
 }
 
 pub(super) fn request_failure(
-    failure: super::super::local_service::http::HttpFailure,
+    failure: ServeRequestFailure,
     stage: &'static str,
     session_id: Option<&str>,
 ) -> ProtocolFailure {
-    use super::super::local_service::http::HttpFailure;
+    use ServeRequestFailure as RequestFailure;
 
     let (code, message) = match failure {
-        HttpFailure::BodyTooLarge => (
+        RequestFailure::BodyTooLarge => (
             "opencode_serve_request_too_large",
             "The OpenCode serve request exceeds the supported size.",
         ),
-        HttpFailure::Busy => (
+        RequestFailure::Busy => (
             "opencode_serve_client_busy",
             "The OpenCode serve client is busy with other requests.",
         ),
-        HttpFailure::HeadersTooLarge => (
+        RequestFailure::HeadersTooLarge => (
             "opencode_serve_response_headers_too_large",
             "The OpenCode serve response headers exceed the supported size.",
         ),
-        HttpFailure::InvalidJson => (
+        RequestFailure::InvalidJson => (
             "opencode_serve_invalid_json",
             "The OpenCode serve endpoint returned invalid JSON.",
         ),
-        HttpFailure::InvalidUrl => (
+        RequestFailure::InvalidUrl => (
             "opencode_serve_url_invalid",
             "The OpenCode serve endpoint URL is invalid.",
         ),
-        HttpFailure::NotFound => (
+        RequestFailure::NotFound => (
             "opencode_serve_not_found",
             "The requested OpenCode serve resource does not exist.",
         ),
-        HttpFailure::Serialize => (
+        RequestFailure::Serialize => (
             "opencode_serve_request_invalid",
             "The OpenCode serve request could not be encoded.",
         ),
-        HttpFailure::Status(401 | 403) => (
+        RequestFailure::Status(401 | 403) => (
             "opencode_serve_authentication_required",
             "The OpenCode serve endpoint requires authentication.",
         ),
-        HttpFailure::Status(400 | 422) => (
+        RequestFailure::Status(400 | 422) => (
             "opencode_serve_request_rejected",
             "The OpenCode serve endpoint rejected the request.",
         ),
-        HttpFailure::Status(409) => (
+        RequestFailure::Status(409) => (
             "opencode_serve_session_busy",
             "The OpenCode session is already processing another request.",
         ),
-        HttpFailure::Status(429) => (
+        RequestFailure::Status(429) => (
             "opencode_serve_rate_limited",
             "The OpenCode provider rate-limited the request.",
         ),
-        HttpFailure::Status(500..=599) | HttpFailure::Unavailable => phase_failure(stage),
-        HttpFailure::Request | HttpFailure::Status(_) => (
+        RequestFailure::Status(500..=599) | RequestFailure::Unavailable => phase_failure(stage),
+        RequestFailure::Request | RequestFailure::Status(_) => (
             "opencode_serve_request_failed",
             "The OpenCode serve request could not be completed.",
         ),
