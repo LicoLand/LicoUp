@@ -1,5 +1,5 @@
-use super::super::lico_agent_driver::{self, RUNTIME_PROTOCOL};
 use super::execution::execute_with_test_handshake_bound;
+use super::{RUNTIME_PROTOCOL, RunResult, execute};
 use serde_json::json;
 use std::fs;
 use std::path::PathBuf;
@@ -19,7 +19,7 @@ const FAKE_RESPONSE_BOUND: Duration = Duration::from_secs(30);
 
 #[test]
 fn private_instructions_fail_before_process_launch() {
-    let result = lico_agent_driver::execute(
+    let result = execute(
         "definitely-not-a-real-lico-agent",
         &json!({"model":"test","privateInstructions":"private sentinel"}),
         "exact user prompt",
@@ -104,7 +104,7 @@ fn readiness_handshake_hang_fails_bounded() {
         std::env::set_var("LICOUP_HOME", &portable_dir);
     }
     // Pin the fixture steering channel into the launch snapshot explicitly.
-    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+    let _pin = licoup_agent_targets::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let started = Instant::now();
     let result = execute_with_production_bound(executable.to_string_lossy().as_ref(), &dir);
     unsafe {
@@ -147,7 +147,7 @@ fn rejected_readiness_handshake_fails_before_prompt() {
         std::env::set_var("LICOUP_HOME", &portable_dir);
     }
     // Pin the fixture steering channel into the launch snapshot explicitly.
-    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+    let _pin = licoup_agent_targets::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let result = execute_with(executable.to_string_lossy().as_ref(), &dir);
     unsafe {
         std::env::remove_var("LICO_FAKE_LICO_AGENT_REJECT");
@@ -236,7 +236,7 @@ fn resume_requires_persisted_header_and_observed_native_identity() {
     }
     // Re-pin the launch snapshot so the fixture observes the drifted
     // session-id steering through its environment.
-    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+    let _pin = licoup_agent_targets::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let mismatch = execute_with_test_handshake_bound(
         executable.to_string_lossy().as_ref(),
         &json!({"model": "test-gateway-model"}),
@@ -274,7 +274,7 @@ fn explicit_output_bound_and_persistence_failure_are_visible() {
         std::env::set_var("LICO_FAKE_OUTPUT", "complete synthetic output");
     }
     // Pin the fixture steering channel into the launch snapshot explicitly.
-    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+    let _pin = licoup_agent_targets::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let bounded = execute_with_test_handshake_bound(
         executable.to_string_lossy().as_ref(),
         &json!({"model": "test-gateway-model"}),
@@ -292,7 +292,7 @@ fn explicit_output_bound_and_persistence_failure_are_visible() {
     }
     // Re-pin: the persistence-failure steering replaced the output steering.
     drop(_pin);
-    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+    let _pin = licoup_agent_targets::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let persistence = execute_with_test_handshake_bound(
         executable.to_string_lossy().as_ref(),
         &json!({"model": "test-gateway-model"}),
@@ -334,7 +334,7 @@ fn omitted_output_bound_is_complete_and_sustained_stderr_cannot_deadlock() {
         std::env::set_var("LICO_FAKE_STDERR_BYTES", "262144");
     }
     // Pin the fixture steering channel into the launch snapshot explicitly.
-    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+    let _pin = licoup_agent_targets::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let result = execute_with_test_handshake_bound(
         executable.to_string_lossy().as_ref(),
         &json!({"model": "test-gateway-model"}),
@@ -358,7 +358,7 @@ fn omitted_output_bound_is_complete_and_sustained_stderr_cannot_deadlock() {
     let _ = fs::remove_dir_all(dir);
 }
 
-fn execute_with(executable: &str, dir: &PathBuf) -> lico_agent_driver::RunResult {
+fn execute_with(executable: &str, dir: &PathBuf) -> RunResult {
     execute_with_test_handshake_bound(
         executable,
         &json!({"model": "test-gateway-model"}),
@@ -372,8 +372,8 @@ fn execute_with(executable: &str, dir: &PathBuf) -> lico_agent_driver::RunResult
     )
 }
 
-fn execute_with_production_bound(executable: &str, dir: &PathBuf) -> lico_agent_driver::RunResult {
-    lico_agent_driver::execute(
+fn execute_with_production_bound(executable: &str, dir: &PathBuf) -> RunResult {
+    execute(
         executable,
         &json!({"model": "test-gateway-model"}),
         "private first prompt",
@@ -471,4 +471,23 @@ fn stamp_nanos() -> u128 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos()
+}
+
+/// Plan mode without a host that can sandbox is not a Lico Agent turn: the
+/// package refuses rather than spawning the program unsandboxed.
+#[test]
+fn plan_mode_without_a_sandbox_host_fails_closed() {
+    use super::sandbox::{PlanSandboxFailure, plan_command};
+    let root = std::env::temp_dir().join(format!("lico-plan-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let plan = root.join("active-plan.md");
+    let workspace = root.join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+    // No sandbox port is installed in this package's own test binary, so the
+    // question cannot be asked and the answer is the refusal.
+    assert_eq!(
+        plan_command(&workspace, &plan, &workspace, 15_722, &[]).unwrap_err(),
+        PlanSandboxFailure::Unavailable
+    );
+    let _ = fs::remove_dir_all(root);
 }

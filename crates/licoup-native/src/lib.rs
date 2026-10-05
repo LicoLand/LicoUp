@@ -152,7 +152,15 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
             admits_execution: admits_agent_execution,
         },
     )?;
-    licoup_agent_opencode::host::install(platform::opencode_host::host_ports())
+    licoup_agent_opencode::host::install(platform::opencode_host::host_ports())?;
+    // The Lico Agent adapter package owns the whole of one Lico Agent turn — the
+    // RPC launch, the stdio JSONL exchange, the session and plan layout and the
+    // sealed profile a Plan turn runs under — and this host owns the two facts it
+    // may not decide for itself: whether a new execution is admitted, and how the
+    // platform's sandbox primitive turns a profile into a running command. Both
+    // are installed from this client's own primitives, so Plan mode cannot run
+    // unsandboxed and a turn cannot start under the close-admission barrier.
+    licoup_agent_lico_agent::port::sandbox::install(platform::lico_agent_host::sandbox_port())
 }
 
 /// The composition's answer for the Antigravity adapter package's caller-context

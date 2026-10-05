@@ -29,8 +29,7 @@ use std::sync::OnceLock;
 
 use crate::platform::{
     acp_driver_runtime, antigravity_driver, claude_code_driver, cursor_driver,
-    deepseek_harness_driver, hermes_driver, kilo_code_driver, lico_agent_driver,
-    openclaw_driver, pi_driver,
+    deepseek_harness_driver, hermes_driver, kilo_code_driver, openclaw_driver, pi_driver,
 };
 // The Copilot driver — the `--acp --stdio` launch, the probe and the turn it
 // runs — is the Copilot package's. The composition names the package and keeps
@@ -42,6 +41,12 @@ use licoup_agent_copilot::driver as copilot_driver;
 // package and keeps the host's own projection of its result; it holds no launch
 // metadata, no ACP dialect and no turn phase of its own.
 use licoup_agent_kimi::driver as kimi_code_driver;
+// The Lico Agent driver — the `--mode rpc` launch, the stdio JSONL exchange it
+// supervises and the outcome it reports — is the Lico Agent package's. The
+// composition names the package and keeps the host's own projection of its
+// result; it holds no RPC frame, no session layout and no sandbox profile of its
+// own.
+use licoup_agent_lico_agent::driver as lico_agent_driver;
 // The OpenCode driver — the serve endpoint's launch, the session-open protocol
 // and the turn it runs — is the OpenCode package's. The composition names the
 // package and keeps the host's own projection of its result; it holds no launch

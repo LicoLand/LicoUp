@@ -1,8 +1,18 @@
+//! The capability probe this Agent answers before it is offered.
+//!
+//! A host asks one thing before it offers Lico Agent: is the packaged program
+//! present and does it answer `--help`? The probe answers by running that one
+//! bounded command in the same login-shell environment every Agent launch
+//! starts from, so the answer describes the program the turn would actually
+//! run.
+
 use super::model::CapabilityProbe;
+use licoup_agent_targets::platform::user_shell_environment;
+use licoup_foundation::platform::process_supervisor::configure_untrusted_agent_command;
 use std::path::Path;
 use std::process::Command;
 
-pub(in crate::platform) fn probe(executable: &Path) -> CapabilityProbe {
+pub fn probe(executable: &Path) -> CapabilityProbe {
     if !executable.is_file() {
         return CapabilityProbe {
             available: false,
@@ -15,8 +25,8 @@ pub(in crate::platform) fn probe(executable: &Path) -> CapabilityProbe {
     let help_ok = {
         let mut command = Command::new(executable);
         command.arg("--help");
-        crate::platform::user_shell_environment::apply_to_command(&mut command);
-        crate::platform::configure_untrusted_agent_command(&mut command);
+        user_shell_environment::apply_to_command(&mut command);
+        configure_untrusted_agent_command(&mut command);
         command
             .output()
             .map(|o| o.status.success() || !o.stderr.is_empty() || !o.stdout.is_empty())

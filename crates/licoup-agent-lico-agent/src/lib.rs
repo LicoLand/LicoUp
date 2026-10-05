@@ -6,9 +6,11 @@
 //! packaged `lico-agent` program answers on ([`parser`]), classified exactly
 //! once below the adapter port, the RPC session identity, transcript layout and
 //! active plan layout that protocol's `--session-id`/`--resume`/`--plan-path`
-//! contract defines ([`session`]), the registration composition injects into
-//! the adapter SDK ([`registration`]), the recorded-transcript replay arm
-//! ([`replay`]), and the ports the host answers ([`port`]).
+//! contract defines ([`session`]), the Agent's own half of one turn ([`driver`])
+//! — the launch, the supervised stdio exchange and the sealed profile a Plan
+//! turn runs under — the registration composition injects into the adapter SDK
+//! ([`registration`]), the recorded-transcript replay arm ([`replay`]), and the
+//! ports the host answers ([`port`]).
 //!
 //! # The boundaries this crate keeps
 //!
@@ -36,17 +38,20 @@
 //! packaged program speak, and the session, transcript and plan locations that
 //! wire resumes by.
 //!
-//! # What this package does not own yet
+//! # Who executes Lico Agent
 //!
-//! Lico Agent's *process* half — spawning the packaged program, supervising the
-//! turn, the raw-execution observation, the workspace bound and the macOS
-//! seatbelt plan-isolation command — is still composed by the client in
-//! `licoup-native`'s `platform::lico_agent_driver`, which reads this package's
-//! parser, request envelopes, transitions, session layout and runtime protocol
-//! id. That half moves onto [`port::execution`] next, and until it does this
-//! package is a protocol package: it ships its declared native entry and its
-//! recorded-transcript parity, and it claims no end-to-end execution.
+//! The package ships the whole of one Lico Agent turn: the `--mode rpc` launch,
+//! the supervised stdio exchange, the raw-execution observation, the workspace
+//! bound, the persisted-transcript resume rule and the sealed profile a Plan turn
+//! runs under. `licoup-native`'s composition names [`driver`] directly and keeps
+//! no Lico Agent module of its own; what the client keeps is the answer for the
+//! two facts this package may not decide for itself — admission to run at all
+//! ([`port::execution`]) and the platform's sandbox primitive
+//! ([`port::sandbox`]) — plus the endpoint-free process primitives it shares with
+//! every Agent. The extension host's binary route is what will move the process
+//! behind that port.
 
+pub mod driver;
 pub mod parser;
 pub mod port;
 pub mod registration;

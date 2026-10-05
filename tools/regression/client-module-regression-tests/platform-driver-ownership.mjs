@@ -922,15 +922,20 @@ test("DeepSeek Harness leaves retain exact narrow regression ownership", async (
 
 test("Lico Agent leaves retain exact narrow regression ownership", async () => {
   const packageModuleId = "rust.core.agent-lico-agent-package";
-  // The RPC wire, the request envelopes, the session layout and the plan layout
-  // moved into the Lico Agent adapter package; the process half is still
-  // composed by the client under `platform::lico_agent_driver`. Both keep a
-  // precise owner, and a source that moved selects the package's own module.
+  // The whole Agent — the RPC wire, the request envelopes, the session and plan
+  // layout, the supervised stdio exchange and the sealed Plan profile — is the
+  // Lico Agent adapter package's. The client keeps only the answer for the
+  // package's sandbox port (`platform::lico_agent_host`) and its own process
+  // primitives. Both keep a precise owner, and a source that moved selects the
+  // package's own module.
   const selections = new Map([
-    ["crates/licoup-native/src/platform/lico_agent_driver/execution.rs",
-      ["rust.platform"]],
+    ["crates/licoup-native/src/platform/lico_agent_host.rs", ["rust.platform"]],
+    ["crates/licoup-native/src/platform/lico_agent_host/tests.rs", ["rust.platform"]],
     ["crates/licoup-agent-lico-agent/src/parser.rs", [packageModuleId]],
     ["crates/licoup-agent-lico-agent/src/session.rs", [packageModuleId]],
+    ["crates/licoup-agent-lico-agent/src/driver/execution.rs", [packageModuleId]],
+    ["crates/licoup-agent-lico-agent/src/driver/sandbox.rs", [packageModuleId]],
+    ["crates/licoup-agent-lico-agent/src/port/sandbox.rs", [packageModuleId]],
     ["crates/licoup-agent-lico-agent/src/bin/lico-agent-lico-agent.rs", [packageModuleId]],
     ["crates/licoup-agent-lico-agent/tests/package_artifact.rs", [packageModuleId]],
     ["crates/licoup-agent-lico-agent/package/manifest.json", [packageModuleId]],
@@ -972,9 +977,15 @@ test("Lico Agent leaves retain exact narrow regression ownership", async () => {
   for (const relativePath of [
     "crates/licoup-native/src/platform/native_agent_parser/adapters/lico_agent.rs",
     "crates/licoup-native/src/platform/native_agent_parser/replay/adapters/lico_agent.rs",
+    "crates/licoup-native/src/platform/lico_agent_driver.rs",
+    "crates/licoup-native/src/platform/lico_agent_driver/execution.rs",
+    "crates/licoup-native/src/platform/lico_agent_driver/probe.rs",
+    "crates/licoup-native/src/platform/lico_agent_driver/tests.rs",
   ]) {
     assert.equal(exactInputs.has(relativePath), false,
       `a moved host copy must not stay a measured catalog input: ${relativePath}`);
+    assert.equal(await exists(relativePath), false,
+      `the host still carries the retired Lico Agent path ${relativePath}`);
   }
 });
 
@@ -1558,7 +1569,6 @@ test("OpenCode driver source is the package's and the host keeps no tree for it"
     "regression.opencode-serve-source-bundle",
   ]);
 });
-
 
 test("Hermes driver leaves retain exact tests and complete source ownership", async () => {
   const filters = new Map([

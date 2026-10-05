@@ -29,7 +29,7 @@ pub(crate) mod hermes_tui_gateway;
 mod hermes_tui_gateway_driver;
 pub(crate) mod kilo_code_driver;
 pub(crate) mod kilo_code_host;
-mod lico_agent_driver;
+pub(crate) mod lico_agent_host;
 pub(crate) use licoup_agent_drivers::local_service;
 pub(crate) mod mcp_approval_plan_store;
 pub(crate) mod mcp_streamable_http;
