@@ -1,36 +1,28 @@
 //! Starting the supervised Claude Code process.
 //!
 //! The launch identity, the fixed streaming-input argv and its compatibility
-//! rule are this Agent's protocol and live in the package. What is added here is
-//! the part the package cannot own: creating the child process, giving it the
-//! user's own shell environment, and augmenting `PATH` so sibling vendor tools
-//! keep resolving.
+//! rule are this Agent's protocol and live in [`crate::protocol`]. What is added
+//! here is the part the protocol leaf does not state: creating the child
+//! process, giving it the user's own shell environment, and augmenting `PATH` so
+//! sibling vendor tools keep resolving.
 
-use super::super::process_supervisor::SupervisedChild;
+use crate::protocol::LaunchIdentity;
+use licoup_foundation::platform::process_supervisor::SupervisedChild;
 use std::ffi::{OsStr, OsString};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-// This Agent's launch vocabulary, owned by the package that carries the Agent
-// and re-exported where the client's own leaves already name it.
-pub(in crate::platform) use licoup_agent_claude_code::protocol::{
-    DriverConfig, FIXED_STREAM_ARGS, LaunchIdentity,
-};
-
 /// Start this Agent's CLI for one turn.
 ///
-/// The launch identity is the package's, and a Rust inherent method cannot be
-/// added to another crate's type, so starting it stays a function here. The
-/// identity owns the constructor and the argv this Agent's lane requires; this
-/// adds the one thing the package cannot do without a client process.
-///
-/// The prompt never reaches argv: it is written to the child's standard input
-/// by the process half. A resumed conversation passes only the native session
-/// identifier.
-pub(in crate::platform) fn spawn(identity: &LaunchIdentity) -> io::Result<SupervisedChild> {
+/// The identity owns the constructor and the argv this Agent's lane requires;
+/// this free function, rather than a method on the identity, keeps the protocol
+/// leaf free of any process. The prompt never reaches argv: it is written to the
+/// child's standard input by the process half. A resumed conversation passes
+/// only the native session identifier.
+pub(crate) fn spawn(identity: &LaunchIdentity) -> io::Result<SupervisedChild> {
     let mut command = Command::new(&identity.executable);
-    super::super::user_shell_environment::apply_to_command(&mut command);
+    licoup_agent_targets::platform::user_shell_environment::apply_to_command(&mut command);
     command
         .args(identity.args())
         .stdin(Stdio::piped())
@@ -40,7 +32,7 @@ pub(in crate::platform) fn spawn(identity: &LaunchIdentity) -> io::Result<Superv
     // shell snapshot PATH, so sibling vendor tools keep resolving.
     if let Some(path) = executable_augmented_path(
         &identity.executable,
-        super::super::user_shell_environment::get("PATH").map(OsStr::new),
+        licoup_agent_targets::platform::user_shell_environment::get("PATH").map(OsStr::new),
     ) {
         command.env("PATH", path);
     }
@@ -52,7 +44,7 @@ pub(in crate::platform) fn spawn(identity: &LaunchIdentity) -> io::Result<Superv
 
 /// The `PATH` a launched CLI sees: the executable's own directory first, then
 /// the user's shell snapshot.
-pub(in crate::platform) fn executable_augmented_path(
+pub(crate) fn executable_augmented_path(
     executable: &str,
     inherited: Option<&OsStr>,
 ) -> Option<OsString> {

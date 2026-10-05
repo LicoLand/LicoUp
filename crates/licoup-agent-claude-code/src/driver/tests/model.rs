@@ -12,7 +12,7 @@ fn failed_result_projects_bound_ids_and_parser_failure_transition() {
     assert_eq!(result.turn_id, "turn-1");
     assert!(matches!(
         result.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Failed { code, .. }) if code == "static"
+        Some(licoup_agent_adapter_sdk::Transition::Failed { code, .. }) if code == "static"
     ));
     assert_eq!(result.effective.cwd, EffectiveSettings::default().cwd);
 }

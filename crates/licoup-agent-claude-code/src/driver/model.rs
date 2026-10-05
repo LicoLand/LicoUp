@@ -1,4 +1,4 @@
-use licoup_agent_claude_code::protocol::{EffectiveSettings, ProtocolFailure};
+use crate::protocol::{EffectiveSettings, ProtocolFailure};
 use serde_json::Value;
 use serde_json::json;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -9,8 +9,7 @@ use std::time::Duration;
 /// Official Claude Code streaming-input lane. Prompt and process-local
 /// conversation identity never use the command line.
 /// The runtime protocol this Agent's CLI lane reports, named by the package.
-pub(in crate::platform) const RUNTIME_PROTOCOL: &str =
-    licoup_agent_claude_code::protocol::RUNTIME_PROTOCOL;
+pub const RUNTIME_PROTOCOL: &str = crate::protocol::RUNTIME_PROTOCOL;
 pub(super) const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 #[repr(u8)]
@@ -21,7 +20,7 @@ enum TransportState {
 }
 
 #[derive(Debug)]
-pub(in crate::platform) struct TransportLifecycle {
+pub(crate) struct TransportLifecycle {
     state: AtomicU8,
     #[cfg(test)]
     changed: Mutex<()>,
@@ -42,21 +41,21 @@ impl Default for TransportLifecycle {
 }
 
 impl TransportLifecycle {
-    pub(in crate::platform) fn is_live(&self) -> bool {
+    pub(crate) fn is_live(&self) -> bool {
         self.state.load(Ordering::Acquire) == TransportState::Live as u8
     }
 
     #[cfg(test)]
-    pub(in crate::platform) fn is_closing(&self) -> bool {
+    pub(crate) fn is_closing(&self) -> bool {
         self.state.load(Ordering::Acquire) == TransportState::Closing as u8
     }
 
     #[cfg(test)]
-    pub(in crate::platform) fn is_closed(&self) -> bool {
+    pub(crate) fn is_closed(&self) -> bool {
         self.state.load(Ordering::Acquire) == TransportState::Closed as u8
     }
 
-    pub(in crate::platform) fn begin_closing(&self) -> bool {
+    pub(crate) fn begin_closing(&self) -> bool {
         let claimed = self
             .state
             .compare_exchange(
@@ -73,7 +72,7 @@ impl TransportLifecycle {
         claimed
     }
 
-    pub(in crate::platform) fn mark_closed(&self) -> bool {
+    pub(crate) fn mark_closed(&self) -> bool {
         let closed = self
             .state
             .compare_exchange(
@@ -91,7 +90,7 @@ impl TransportLifecycle {
     }
 
     #[cfg(test)]
-    pub(in crate::platform) fn wait_until_closing(&self, timeout: Duration) -> bool {
+    pub(crate) fn wait_until_closing(&self, timeout: Duration) -> bool {
         if !self.is_live() {
             return true;
         }
@@ -105,7 +104,7 @@ impl TransportLifecycle {
     }
 
     #[cfg(test)]
-    pub(in crate::platform) fn wait_until_closed(&self, timeout: Duration) -> bool {
+    pub(crate) fn wait_until_closed(&self, timeout: Duration) -> bool {
         if self.is_closed() {
             return true;
         }
@@ -128,20 +127,20 @@ struct TranscriptTurn {
 }
 
 #[derive(Debug)]
-pub(in crate::platform) struct CompleteTranscript {
+pub(crate) struct CompleteTranscript {
     turns: Vec<TranscriptTurn>,
     byte_count: usize,
 }
 
 impl CompleteTranscript {
-    pub(in crate::platform) fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             turns: Vec::new(),
             byte_count: 0,
         }
     }
 
-    pub(in crate::platform) fn record_success(
+    pub(crate) fn record_success(
         &mut self,
         turn_id: &str,
         prompt: &str,
@@ -161,7 +160,7 @@ impl CompleteTranscript {
         self.byte_count = self.byte_count.saturating_add(output_bytes);
     }
 
-    pub(in crate::platform) fn project_backward_page(
+    pub(crate) fn project_backward_page(
         &self,
         before: Option<usize>,
         limit: usize,
@@ -182,35 +181,35 @@ impl CompleteTranscript {
         (turns, (start > 0).then_some(start))
     }
 
-    pub(in crate::platform) fn turn_count(&self) -> usize {
+    pub(crate) fn turn_count(&self) -> usize {
         self.turns.len()
     }
 
-    pub(in crate::platform) fn byte_count(&self) -> usize {
+    pub(crate) fn byte_count(&self) -> usize {
         self.byte_count
     }
 
-    pub(in crate::platform) fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.turns.clear();
         self.byte_count = 0;
     }
 }
 
 #[derive(Debug)]
-pub(in crate::platform) struct RunResult {
-    pub(in crate::platform) ok: bool,
-    pub(in crate::platform) output: String,
-    pub(in crate::platform) transitions: Vec<crate::platform::native_agent_parser::Transition>,
-    pub(in crate::platform) error: Option<ProtocolFailure>,
-    pub(in crate::platform) session_id: String,
-    pub(in crate::platform) thread_id: String,
-    pub(in crate::platform) turn_id: String,
-    pub(in crate::platform) turn_status: String,
-    pub(in crate::platform) effective: EffectiveSettings,
-    pub(in crate::platform) status_code: Option<i32>,
-    pub(in crate::platform) stdout_truncated: bool,
-    pub(in crate::platform) stderr_truncated: bool,
-    pub(in crate::platform) started_at: String,
+pub struct RunResult {
+    pub ok: bool,
+    pub output: String,
+    pub transitions: Vec<licoup_agent_adapter_sdk::Transition>,
+    pub error: Option<ProtocolFailure>,
+    pub session_id: String,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub turn_status: String,
+    pub effective: EffectiveSettings,
+    pub status_code: Option<i32>,
+    pub stdout_truncated: bool,
+    pub stderr_truncated: bool,
+    pub started_at: String,
 }
 
 impl RunResult {
@@ -221,12 +220,11 @@ impl RunResult {
         stderr_truncated: bool,
     ) -> Self {
         let session_id = failure.session_id.clone().unwrap_or_default();
-        let transitions =
-            licoup_agent_claude_code::protocol::parser::failure_transitions(
-                failure.code,
-                failure.stage,
-                failure.message,
-            );
+        let transitions = crate::protocol::parser::failure_transitions(
+            failure.code,
+            failure.stage,
+            failure.message,
+        );
         Self {
             ok: false,
             output: String::new(),
@@ -247,4 +245,3 @@ impl RunResult {
         }
     }
 }
-

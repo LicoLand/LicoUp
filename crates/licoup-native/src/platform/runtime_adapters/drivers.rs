@@ -53,6 +53,12 @@ use licoup_agent_hermes::driver as hermes_driver;
 // which MCP servers an OpenClaw turn registers, because that is read from the
 // user's collaboration-plugin configuration and the package may not reach it.
 use licoup_agent_openclaw::driver as openclaw_driver;
+// The Claude Code driver — the supervised streaming-input CLI, the frames it
+// classifies and the turn it reports — is the Claude Code package's. The
+// composition names the package and keeps the host's own projection of its
+// result; it holds no launch field, no frame dialect and no turn phase of its
+// own.
+use licoup_agent_claude_code::driver as claude_code_driver;
 // The Copilot driver — the `--acp --stdio` launch, the probe and the turn it
 // runs — is the Copilot package's. The composition names the package and keeps
 // the host's own projection of its result; it holds no launch declaration and

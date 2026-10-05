@@ -1,11 +1,11 @@
-use super::super::process_supervisor::{
-    BoundedStdinWriter, SupervisedChild, TransportFinishFailure, finish_protocol_transport,
-};
-use super::launch::LaunchIdentity;
 use super::control::ControlRequest;
 use super::failure::{ProtocolFailure, pipe_failure};
 use super::io::{TransportEvent, drain_stderr, read_protocol_messages};
-use crate::platform::raw_execution::{
+use crate::protocol::LaunchIdentity;
+use licoup_foundation::platform::process_supervisor::{
+    BoundedStdinWriter, SupervisedChild, TransportFinishFailure, finish_protocol_transport,
+};
+use licoup_foundation::platform::raw_execution::{
     RawExecutionBinding, RawExecutionBindingGuard, RawExecutionDirection, RawExecutionReader,
 };
 use std::io::BufReader;

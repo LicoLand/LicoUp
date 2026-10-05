@@ -2241,12 +2241,15 @@ export const REGRESSION_MODULES = Object.freeze([
   defineModule({
       id: "regression.claude-code-driver-source-bundle",
       kind: "regression-infrastructure",
-      summary: "Claude Code thin facade, fixed streaming-input lane, exact live continuation, bounded IO, cleanup, and privacy source proof",
+      summary: "Claude Code driver composition, fixed streaming-input lane, exact live continuation, bounded IO, cleanup, and privacy source proof",
       inputs: [
-        "crates/licoup-native/src/platform/claude_code_driver.rs",
-        "crates/licoup-native/src/platform/claude_code_driver/**",
         "crates/licoup-agent-claude-code/src/**",
+        "crates/licoup-agent-claude-code/tests/fixtures/**",
         "crates/licoup-agent-claude-code/package/**",
+        "crates/licoup-native/src/platform/mod.rs",
+        "crates/licoup-native/src/platform/runtime_adapters/drivers.rs",
+        "crates/licoup-native/tests/fixtures/fake_claude_code.rs",
+        "crates/licoup-native/tests/fixtures/claude_process_local_test_lock.rs",
         "tests/contract/client/claude-code-driver-source-bundle.test.mjs",
         "tests/contract/client/claude-code-package-source-bundle.test.mjs",
       ],
@@ -2265,8 +2268,6 @@ export const REGRESSION_MODULES = Object.freeze([
         "crates/licoup-agent-claude-code/package/**",
         "crates/licoup-agent-claude-code/tests/package_artifact.rs",
         "crates/licoup-agent-claude-code/tests/package_program.rs",
-        "crates/licoup-native/src/platform/claude_code_driver.rs",
-        "crates/licoup-native/src/platform/claude_code_driver/**",
         "tests/contract/client/claude-code-package-source-bundle.test.mjs",
       ],
       command: command(

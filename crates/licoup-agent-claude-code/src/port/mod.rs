@@ -26,9 +26,11 @@
 //! injected port here would be a behaviour regression today rather than a
 //! boundary.
 //!
-//! Moving that seam is part of the same remaining half as the process: once one
-//! host installs the port on every path that can start Claude Code, the emitters
-//! can route through it. Until then this package states the arrangement instead
-//! of claiming a port it does not use.
+//! Moving that seam is a boundary step, not a move of code: the process half
+//! is already this package's ([`crate::driver`]), and the bus it writes to is
+//! still the only one every consumer reads. Once one host installs the port on
+//! every path that can start Claude Code, the emitters can route through it.
+//! Until then this package states the arrangement instead of claiming a port it
+//! does not use.
 
 pub mod execution;

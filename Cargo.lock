@@ -2098,6 +2098,8 @@ name = "licoup-agent-claude-code"
 version = "0.3.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
+ "licoup-agent-targets",
  "licoup-extension-contracts",
  "licoup-foundation",
  "serde",

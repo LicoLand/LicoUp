@@ -621,11 +621,11 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
                     licoup_agent_codex::app_server::driver::active_control::ControlDisposition::TransportUnavailable => 3,
                 }
             }
-            RuntimeAdapter::ClaudeCode => match super::claude_code_driver::cancel(&session_id) {
-                super::claude_code_driver::ControlDisposition::Accepted => 0,
-                super::claude_code_driver::ControlDisposition::NoActiveTurn => 1,
-                super::claude_code_driver::ControlDisposition::SessionUnavailable => 2,
-                super::claude_code_driver::ControlDisposition::TransportUnavailable => 3,
+            RuntimeAdapter::ClaudeCode => match licoup_agent_claude_code::driver::cancel(&session_id) {
+                licoup_agent_claude_code::driver::ControlDisposition::Accepted => 0,
+                licoup_agent_claude_code::driver::ControlDisposition::NoActiveTurn => 1,
+                licoup_agent_claude_code::driver::ControlDisposition::SessionUnavailable => 2,
+                licoup_agent_claude_code::driver::ControlDisposition::TransportUnavailable => 3,
             },
             RuntimeAdapter::Cursor => match super::cursor_driver::cancel(&session_id) {
                 super::cursor_driver::ControlDisposition::Accepted => 0,
@@ -803,12 +803,13 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
         .filter(|value| !value.is_empty())
         .ok_or_else(|| anyhow!("cleanup requires an exact native session identifier"))?;
     let disposition = match adapter {
-        RuntimeAdapter::ClaudeCode => match super::claude_code_driver::cleanup_session(&session_id)
-        {
-            super::claude_code_driver::ControlDisposition::Accepted => 0,
-            super::claude_code_driver::ControlDisposition::SessionUnavailable => 1,
-            _ => 2,
-        },
+        RuntimeAdapter::ClaudeCode => {
+            match licoup_agent_claude_code::driver::cleanup_session(&session_id) {
+                licoup_agent_claude_code::driver::ControlDisposition::Accepted => 0,
+                licoup_agent_claude_code::driver::ControlDisposition::SessionUnavailable => 1,
+                _ => 2,
+            }
+        }
         RuntimeAdapter::Cursor => match super::cursor_driver::cleanup_session(&session_id) {
             super::cursor_driver::ControlDisposition::Accepted => 0,
             super::cursor_driver::ControlDisposition::NotPersisted => 3,
@@ -912,7 +913,8 @@ pub fn process_local_history(params: &Value) -> Result<Value> {
         })
         .transpose()?
         .unwrap_or(50);
-    let Some(mut history) = super::claude_code_driver::history(&session_id, before, limit) else {
+    let Some(mut history) = licoup_agent_claude_code::driver::history(&session_id, before, limit)
+    else {
         return Ok(json!({
             "ok": false,
             "error": {
@@ -973,14 +975,20 @@ pub fn steer_turn(params: &Value) -> Result<Value> {
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| anyhow!("steer requires non-empty guidance"))?;
     let disposition = match adapter {
-        RuntimeAdapter::ClaudeCode => match super::claude_code_driver::steer(&session_id, &text) {
-            super::claude_code_driver::ControlDisposition::Accepted => "accepted",
-            super::claude_code_driver::ControlDisposition::NoActiveTurn => "no_active_turn",
-            super::claude_code_driver::ControlDisposition::SessionUnavailable => {
-                "session_unavailable"
+        RuntimeAdapter::ClaudeCode => {
+            match licoup_agent_claude_code::driver::steer(&session_id, &text) {
+                licoup_agent_claude_code::driver::ControlDisposition::Accepted => "accepted",
+                licoup_agent_claude_code::driver::ControlDisposition::NoActiveTurn => {
+                    "no_active_turn"
+                }
+                licoup_agent_claude_code::driver::ControlDisposition::SessionUnavailable => {
+                    "session_unavailable"
+                }
+                licoup_agent_claude_code::driver::ControlDisposition::TransportUnavailable => {
+                    "unavailable"
+                }
             }
-            super::claude_code_driver::ControlDisposition::TransportUnavailable => "unavailable",
-        },
+        }
         RuntimeAdapter::Codex => {
             let turn_id = runtime_adapters::text_param_public(params, &["turnId"])
                 .filter(|value| !value.is_empty())

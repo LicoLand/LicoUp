@@ -1,9 +1,9 @@
-use super::launch::LaunchIdentity;
 use super::control::{ControlDisposition, ControlRequest};
 use super::failure::{ProtocolFailure, supervisor_failure};
 use super::model::{CompleteTranscript, TransportLifecycle};
-use super::launch::DriverConfig;
 use super::transport::PersistentTransport;
+use crate::protocol::DriverConfig;
+use crate::protocol::LaunchIdentity;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::Path;
@@ -147,7 +147,7 @@ pub(super) fn lookup_session_transport(session_id: &str) -> Option<Arc<ManagedTr
     managed.lifecycle.is_live().then_some(managed)
 }
 #[cfg(test)]
-pub(in crate::platform) fn has_live_session(session_id: &str) -> bool {
+pub(crate) fn has_live_session(session_id: &str) -> bool {
     lookup_session_transport(session_id).is_some()
 }
 
@@ -185,11 +185,7 @@ pub(super) fn record_success(
     }
 }
 
-pub(in crate::platform) fn history(
-    session_id: &str,
-    before: Option<usize>,
-    limit: usize,
-) -> Option<Value> {
+pub fn history(session_id: &str, before: Option<usize>, limit: usize) -> Option<Value> {
     let managed = lookup_session_transport(session_id)?;
     let transcript = managed.transcript.lock().ok()?;
     let (turns, next_before) = transcript.project_backward_page(before, limit);
@@ -210,7 +206,7 @@ fn clear_transcript(managed: &ManagedTransport) {
     }
 }
 
-pub(in crate::platform) fn cancel(session_id: &str) -> ControlDisposition {
+pub fn cancel(session_id: &str) -> ControlDisposition {
     let Some(managed) = lookup_session_transport(session_id) else {
         return ControlDisposition::SessionUnavailable;
     };
@@ -240,7 +236,7 @@ pub(in crate::platform) fn cancel(session_id: &str) -> ControlDisposition {
     }
 }
 
-pub(in crate::platform) fn steer(session_id: &str, text: &str) -> ControlDisposition {
+pub fn steer(session_id: &str, text: &str) -> ControlDisposition {
     if text.trim().is_empty() || text.len() > 1024 * 1024 {
         return ControlDisposition::TransportUnavailable;
     }
@@ -274,7 +270,7 @@ pub(in crate::platform) fn steer(session_id: &str, text: &str) -> ControlDisposi
     }
 }
 
-pub(in crate::platform) fn cleanup_session(session_id: &str) -> ControlDisposition {
+pub fn cleanup_session(session_id: &str) -> ControlDisposition {
     let Some(managed) = lookup_session_transport(session_id) else {
         return ControlDisposition::SessionUnavailable;
     };
@@ -315,7 +311,7 @@ pub(in crate::platform) fn cleanup_session(session_id: &str) -> ControlDispositi
 }
 
 #[cfg(test)]
-pub(in crate::platform) fn clear_all_for_test() -> ControlDisposition {
+pub(crate) fn clear_all_for_test() -> ControlDisposition {
     let managed = {
         let Ok(mut registry) = supervisor().lock() else {
             return ControlDisposition::TransportUnavailable;

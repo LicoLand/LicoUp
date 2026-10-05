@@ -5,10 +5,10 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 // The Claude Code adapter is one Agent's program: its vendor protocol, its
-// parser and the registration composition injects live in
-// `licoup-agent-claude-code`, and the client keeps only the process half. This
-// contract holds the two apart: what is the package's, what is the client's, and
-// the fact that the package names no client crate at all.
+// parser, the registration composition injects and the process that speaks them
+// all live in `licoup-agent-claude-code`. This contract holds the package's
+// leaves to the package and holds the package's protocol half away from every
+// client crate, so one Agent's vocabulary cannot acquire a second owner.
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -17,7 +17,7 @@ const repoRoot = path.resolve(
 const packageRoot = "crates/licoup-agent-claude-code";
 const protocolRoot = `${packageRoot}/src/protocol`;
 const parserRoot = `${protocolRoot}/parser`;
-const driverRoot = "crates/licoup-native/src/platform/claude_code_driver";
+const driverRoot = `${packageRoot}/src/driver`;
 
 const protocolLeaves = Object.freeze([
   "control.rs",
@@ -65,16 +65,16 @@ async function driverSources() {
   ));
 }
 
-test("the package carries one Agent's protocol and the client keeps the process", async () => {
+test("the package carries one Agent's protocol and its own process", async () => {
   const [facade, sources] = await Promise.all([
     read(`${driverRoot}.rs`),
     driverSources(),
   ]);
-  // The client's Claude Code file is a composition, not an implementation: it
-  // declares the process leaves it still owns and names the package for the
-  // protocol.
+  // The driver root is a composition, not an implementation: it declares the
+  // process leaves below it and re-exports the protocol entries the host reads,
+  // so the package holds one name for each of them.
   assert.deepEqual(
-    [...facade.matchAll(/^(?:pub\(in crate::platform\) )?mod ([a-z_]+);$/gmu)]
+    [...facade.matchAll(/^mod ([a-z_]+);$/gmu)]
       .map((match) => match[1])
       .filter((moduleName) => moduleName !== "tests")
       .map((moduleName) => `${moduleName}.rs`)
@@ -85,55 +85,68 @@ test("the package carries one Agent's protocol and the client keeps the process"
     assert.equal(
       facade.includes(`mod ${movedModule};`),
       false,
-      `${movedModule} moved with the protocol and is not a client module`,
+      `${movedModule} belongs to the protocol and is not a process leaf`,
     );
   }
+  // The process half reads the protocol at the package's own path. It never
+  // re-exports it: a second name for one Agent's vocabulary is exactly the
+  // duplicate owner this contract exists to prevent.
+  assert.equal(
+    facade.includes("licoup_agent_claude_code::"),
+    false,
+    "the package names itself as if it were a client crate",
+  );
   assert.ok(
-    facade.includes("licoup_agent_claude_code::protocol"),
-    "the client names the package for the protocol it reads",
+    sources["model.rs"].includes("crate::protocol::RUNTIME_PROTOCOL"),
+    "the driver does not read the protocol at its own path",
   );
   for (const implementationToken of ["include!(", "#[path"]) {
     assert.equal(facade.includes(implementationToken), false);
   }
-  // The client carries no copy of the protocol: the leaves that moved are gone.
+  // The driver carries no copy of the protocol: the leaves the protocol owns
+  // are not driver leaves.
   for (const movedLeaf of ["command.rs", "errors.rs", "params.rs"]) {
     assert.equal(
       Object.hasOwn(sources, movedLeaf),
       false,
-      `${movedLeaf} is no longer a client leaf`,
+      `${movedLeaf} is not a process leaf`,
     );
   }
   assert.equal(
     sources["model.rs"].includes("struct EffectiveSettings"),
     false,
-    "the effective settings are the package's vocabulary",
+    "the effective settings are the protocol's vocabulary",
   );
   assert.equal(
     sources["model.rs"].includes("struct CapabilityProbe"),
     false,
-    "the capability facts are the package's vocabulary",
+    "the capability facts are the protocol's vocabulary",
   );
   assert.equal(
     sources["launch.rs"].includes("struct DriverConfig"),
     false,
-    "the launch configuration is the package's vocabulary",
+    "the launch configuration is the protocol's vocabulary",
   );
 });
 
-test("the package names no client crate and reparses no raw vendor detail", async () => {
-  const sources = await packageSources();
-  const joined = Object.values(sources).join("\n");
-  // Documentation may name the boundary it keeps; code may not cross it. A
-  // block doc comment opens with `/*!` or `/**` and continues on lines that do
-  // not start with a comment marker, so the markers are dropped and the
-  // remaining lines are checked.
-  const code = Object.entries(sources)
+/// The leaves' code, with documentation and comment lines dropped: a doc
+/// comment may name the boundary it keeps, a code path may not cross it.
+function codeOf(sources) {
+  return Object.entries(sources)
     .flatMap(([leaf, source]) => source
       .split("\n")
       .map((line) => line.replace(/\/\/.*$/u, ""))
       .filter((line) => !/^\s*(?:\*|\/\*)/u.test(line))
       .map((line) => `${leaf}: ${line}`))
     .join("\n");
+}
+
+test("the package names no client crate and reparses no raw vendor detail", async () => {
+  const sources = await packageSources();
+  const joined = Object.values(sources).join("\n");
+  // The protocol half reaches no client crate at all, not even the shared
+  // engines: it is one Agent's vocabulary and nothing else.
+  const code = codeOf(sources);
   for (const clientPath of [
     "crate::platform",
     "licoup_native",
@@ -143,7 +156,20 @@ test("the package names no client crate and reparses no raw vendor detail", asyn
     assert.equal(
       code.includes(clientPath),
       false,
-      `the package must not reach into a client crate: ${clientPath}`,
+      `the protocol half must not reach into a client crate: ${clientPath}`,
+    );
+  }
+  // The process half does read the two shared libraries below the composition
+  // — the user-shell environment every launcher observes and the approval park
+  // registry every Agent's permission route parks in — and still names no
+  // composition crate. A driver that reached `licoup-native` would be a second
+  // composition inside one package.
+  const driverCode = codeOf(await driverSources());
+  for (const compositionPath of ["crate::platform", "licoup_native", "licoup-native"]) {
+    assert.equal(
+      driverCode.includes(compositionPath),
+      false,
+      `the process half must not reach into the composition crate: ${compositionPath}`,
     );
   }
   assert.equal(joined.includes("unsafe {"), false);
