@@ -32,7 +32,17 @@ fn evidence_exists_only_when_every_required_owner_settled() {
         );
     }
     for settled in partials {
-        assert_eq!(settled.len(), RequiredOwner::ALL.len() - 1);
+        // Every partial is a *proper* subset of the required set: the empty one
+        // and each one-owner-missing one beside it. The property is stated as the
+        // missing owner rather than as an arithmetic relation, because the
+        // arithmetic holds for the one-owner-missing subsets only and would
+        // demand a length no settled set in this list can have.
+        assert!(
+            RequiredOwner::ALL
+                .iter()
+                .any(|owner| !settled.contains(owner)),
+            "settled owners {settled:?} must leave a required owner unsettled"
+        );
         assert!(
             VerifiedTargetEvidence::from_settled_owners(binding(), settled.clone()).is_none(),
             "settled owners {settled:?} must produce no evidence"
