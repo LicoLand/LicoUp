@@ -15,28 +15,22 @@ pub(crate) mod antigravity_driver;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 pub mod authorized_secure_record;
 pub(crate) mod badtower_station;
-mod claude_code_driver;
 pub(crate) mod conversation_lane;
-mod copilot_driver;
 mod cursor_driver;
-mod deepseek_harness_driver;
 pub mod diagnostics;
 pub mod extension_host;
 pub mod extension_packages;
 pub mod package_registration_release;
 pub(crate) mod generic_cli_driver;
-mod hermes_driver;
 pub(crate) mod hermes_tui_gateway;
 mod hermes_tui_gateway_driver;
-pub(crate) mod kilo_code_driver;
 pub(crate) mod kilo_code_host;
-mod kimi_code_driver;
 mod lico_agent_driver;
 pub(crate) use licoup_agent_drivers::local_service;
 pub(crate) mod mcp_approval_plan_store;
 pub(crate) mod mcp_streamable_http;
 mod native_agent_parser;
-mod openclaw_driver;
+pub(crate) mod openclaw_host;
 mod opencode_driver;
 mod pi_driver;
 pub mod process_sandbox;
@@ -138,21 +132,6 @@ pub(crate) fn codex_app_server_environment() -> Vec<(String, String)> {
         .iter()
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect()
-}
-
-
-/// This host's answer for the OpenClaw adapter package's turn-event port.
-///
-/// The package owns *what* one OpenClaw turn emits as its Gateway frames arrive;
-/// this host owns *where* they go, because the host owns the consumer. The
-/// answer is the same emitters the host's own drivers and the Codex package
-/// reach, so an OpenClaw message chunk and a Codex one arrive at one reader
-/// through one path rather than two sinks that can drift.
-pub(crate) fn openclaw_turn_event_port() -> licoup_agent_openclaw::port::turn_event::TurnEventPort {
-    licoup_agent_openclaw::port::turn_event::TurnEventPort {
-        emit_agent_message_chunk,
-        emit_agent_processing,
-    }
 }
 
 // The bounded process owner moved to `licoup-foundation`. It is re-exported at

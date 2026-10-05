@@ -2098,6 +2098,8 @@ name = "licoup-agent-claude-code"
 version = "0.3.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
+ "licoup-agent-targets",
  "licoup-extension-contracts",
  "licoup-foundation",
  "serde",
@@ -2143,8 +2145,11 @@ version = "0.14.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
  "licoup-extension-contracts",
+ "licoup-foundation",
  "serde",
  "serde_json",
+ "time",
+ "uuid",
  "zstd",
 ]
 
@@ -2178,9 +2183,11 @@ dependencies = [
  "licoup-agent-adapter-sdk",
  "licoup-agent-drivers",
  "licoup-agent-hermes",
+ "licoup-agent-targets",
  "licoup-extension-contracts",
  "licoup-foundation",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -2188,6 +2195,7 @@ name = "licoup-agent-kilo"
 version = "0.14.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
  "licoup-extension-contracts",
  "serde_json",
  "uuid",
@@ -2221,6 +2229,7 @@ name = "licoup-agent-openclaw"
 version = "0.14.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
  "licoup-agent-targets",
  "licoup-extension-contracts",
  "licoup-foundation",

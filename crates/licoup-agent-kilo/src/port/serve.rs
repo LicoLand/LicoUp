@@ -84,13 +84,23 @@ pub enum ServeByteDirection {
     Sent,
 }
 
-/// Whether the engine admitted an active turn for one session.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ServeTurnAdmission {
-    /// Force stop can now reach this session's turn.
-    Admitted,
-    /// The engine's active-turn registry is at capacity.
-    AtCapacity,
+/// The engine's active-turn registration, held for as long as one turn runs.
+///
+/// The registration belongs to the engine: force stop reaches an active turn
+/// through the record this guard keeps alive, and dropping the guard is how the
+/// turn gives that record up. The package holds it and reads nothing from it,
+/// which is why the engine's own registration type is carried rather than named.
+pub struct ServeTurnGuard {
+    _held: Box<dyn Send>,
+}
+
+impl ServeTurnGuard {
+    /// Hold one engine registration for as long as this guard lives.
+    pub fn hold(registration: impl Send + 'static) -> Self {
+        Self {
+            _held: Box::new(registration),
+        }
+    }
 }
 
 /// The host facilities one Kilo turn needs from the serve engine.
@@ -127,14 +137,15 @@ pub struct ServePort {
     ///
     /// A host with no record ignores the call, which is the same shape of answer
     /// as a return the host has no consumer for.
-    pub observe_bytes: fn(
-        source: &str,
-        direction: ServeByteDirection,
-        session_id: Option<&str>,
-        bytes: &str,
-    ),
-    /// Admit one active turn so force stop can reach it.
-    pub admit_turn: fn(attach_url: &str, session_id: &str) -> ServeTurnAdmission,
+    pub observe_bytes:
+        fn(source: &str, direction: ServeByteDirection, session_id: Option<&str>, bytes: &str),
+    /// Register one active turn so force stop can reach it, and hold that
+    /// registration for as long as the returned guard lives.
+    ///
+    /// `None` is the engine's refusal — the active-turn registry is at capacity,
+    /// or this process never installed a serve engine — and a refused turn never
+    /// runs: a turn force stop cannot reach is a turn this client cannot stop.
+    pub register_turn: fn(attach_url: &str, session_id: &str) -> Option<ServeTurnGuard>,
 }
 
 static PORT: OnceLock<ServePort> = OnceLock::new();
@@ -148,6 +159,15 @@ pub fn install(port: ServePort) -> Result<(), &'static str> {
 /// Whether the host has installed its serve engine.
 pub fn installed() -> bool {
     PORT.get().is_some()
+}
+
+/// The serve engine this process installed, or `None` before composition.
+///
+/// It answers the one installed value rather than a copy of it, so a caller
+/// holding this port and a caller reaching the module's own accessors cannot
+/// disagree about which engine a turn runs on.
+pub fn port() -> Option<ServePort> {
+    PORT.get().copied()
 }
 
 /// Attach to this Agent's service, or report that no host answered.
@@ -190,14 +210,5 @@ pub(crate) fn observe_bytes(
 ) {
     if let Some(port) = PORT.get() {
         (port.observe_bytes)(source, direction, session_id, bytes);
-    }
-}
-
-pub(crate) fn admit_turn(attach_url: &str, session_id: &str) -> ServeTurnAdmission {
-    match PORT.get() {
-        Some(port) => (port.admit_turn)(attach_url, session_id),
-        // Fail-closed: a package that cannot ask the engine's admission never
-        // claims it was admitted.
-        None => ServeTurnAdmission::AtCapacity,
     }
 }

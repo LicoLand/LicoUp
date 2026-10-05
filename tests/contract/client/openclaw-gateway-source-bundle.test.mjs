@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const facadePath = "crates/licoup-native/src/platform/openclaw_gateway.rs";
 const root = "crates/licoup-native/src/platform/openclaw_gateway";
+const packageRoot = "crates/licoup-agent-openclaw/src";
 const leaves = Object.freeze([
   "command.rs", "config.rs", "health.rs", "lifecycle.rs", "model.rs", "policy.rs",
 ]);
@@ -30,7 +31,16 @@ test("OpenClaw keeps vendor attach WebSocket config and owned stop semantics ind
   const health = await read(`${root}/health.rs`);
   const lifecycle = await read(`${root}/lifecycle.rs`);
   const config = await read(`${root}/config.rs`);
-  assert.match(policy, /VENDOR_DEFAULT_PORT: u16 = 18789/u);
+  // The vendor-default port is OpenClaw's own endpoint fact, so it lives in the
+  // adapter package that carries the Agent: the client's engine reads it there
+  // rather than keeping a second copy beside its own state and process
+  // configuration.
+  const packagePolicy = await read(`${packageRoot}/policy.rs`);
+  assert.match(packagePolicy, /VENDOR_DEFAULT_PORT: u16 = 18_789/u);
+  assert.match(packagePolicy, /DEFAULT_PORT: u16 = 24_189/u);
+  assert.match(policy,
+    /pub\(super\) use licoup_agent_openclaw::policy::\{DEFAULT_PORT, VENDOR_DEFAULT_PORT\};/u);
+  assert.equal(policy.includes("18_789"), false);
   assert.match(health, /attachMode": "vendor-default"/u);
   assert.match(health, /http::probe_status/u);
   assert.match(lifecycle, /stoppedOwnedProcess": false/u);

@@ -40,14 +40,12 @@
 //! Until that side is installed the execution port is fail-closed, so a package
 //! running outside the client cannot claim it was admitted.
 //!
-//! # What this package does not own yet
+//! # Who reaches this package
 //!
-//! The kernel still reaches this Agent's driver through
-//! `licoup-native`'s `platform::kimi_code_driver`, which composes the package's
-//! [`driver`] half over the shared engine and its own conversation lane; the
-//! packaged binary route is not the route a turn takes. That remainder belongs
-//! to `VENDOR-CODE-REMOVAL`, and nothing here claims Kimi runs from this
-//! package's binary.
+//! The kernel reaches this Agent's driver only here: `licoup-native`'s
+//! composition names [`driver`] directly and keeps no Kimi module of its own, so
+//! one Kimi execution is described in exactly one place. The packaged binary
+//! route is completed by the agent-execution port above.
 
 pub mod dialect;
 pub mod driver;

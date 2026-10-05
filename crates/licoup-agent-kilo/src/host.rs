@@ -52,3 +52,15 @@ pub fn install_execution(port: ExecutionPort) -> Result<(), &'static str> {
 pub fn installed() -> bool {
     turn_event::installed() && serve::installed()
 }
+
+/// The ports this process installed, or `None` before composition.
+///
+/// It reads the one installation rather than keeping a second copy of it: a
+/// port answered here is the port this package's own accessors reach, so the two
+/// names cannot disagree about which engine a turn runs on.
+pub fn ports() -> Option<HostPorts> {
+    Some(HostPorts {
+        turn_event: turn_event::port()?,
+        serve: serve::port()?,
+    })
+}
