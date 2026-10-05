@@ -42,13 +42,7 @@
       "scope": "configured-station"
     }
   ],
-  "contributions": [
-    {
-      "kind": "control-surface",
-      "id": "org.licoland.feature.endpoint-collaboration/control-surface",
-      "definition": "contributions/control-surface.json"
-    }
-  ],
+  "contributions": [],
   "extensions": {
     "org.licoland.feature.endpoint-collaboration/purpose": "The optional endpoint collaboration capability: paired-device pairing, secure mesh relay delivery and remote work control. The kernel owns custody, durable state, the Canonical Conversation and authority, and reaches this capability only through those ports; a client without the package keeps its local conversations, its local work and its history, and its outbound endpoint capability is cut rather than hidden.",
     "org.licoland.feature.endpoint-collaboration/outboundAuthority": "Outbound endpoint traffic is permitted only while this package resolves active. Absent, disabled or capability-undeclared packages refuse the send at the transport entry instead of leaving an outbound path that a user interface merely stops showing.",
