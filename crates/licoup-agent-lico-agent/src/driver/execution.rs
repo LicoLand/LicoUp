@@ -1,28 +1,32 @@
+//! One Lico Agent turn, performed as a supervised stdio RPC exchange.
+//!
+//! The packaged program is spawned with `--mode rpc`, supervised for the whole
+//! turn, and read as `lf-jsonl-jsonrpc` frames this package's parser classifies.
+//! What the host owns arrives from the crates that own it: the process
+//! supervision and raw-execution primitives from `licoup-foundation`, the login
+//! shell environment from `licoup-agent-targets`, the persisted-transcript and
+//! profile vocabulary from the Agent core in `licoup-agent-targets`, and the
+//! platform sandbox primitive from [`crate::port::sandbox`].
+
 use super::errors::ProtocolFailure;
 use super::model::{EffectiveSettings, RunResult};
-use crate::domain::lico_agent::{Agent, AgentProfileKind};
-use crate::platform::agent_workspace::{
+use super::sandbox::plan_command;
+use crate::parser::{RpcEffect, RpcParser, encode_request, prompt_request, readiness_request};
+use crate::session;
+use licoup_agent_adapter_sdk::adapters::NativeLineParser;
+use licoup_agent_targets::domain::lico_agent::{Agent, AgentProfileKind};
+use licoup_agent_targets::platform::user_shell_environment;
+use licoup_foundation::platform::agent_workspace::{
     default_local_agent_workspace, resolve_local_agent_workspace,
 };
-use crate::platform::process_sandbox::lico_agent_plan_command;
-use crate::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded};
-use crate::platform::raw_execution::{
+use licoup_foundation::platform::paths::portable_data_dir;
+use licoup_foundation::platform::process_supervisor::{
+    IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded,
+};
+use licoup_foundation::platform::raw_execution::{
     RawExecutionBinding, RawExecutionDirection, RawExecutionObserver, RawExecutionReader,
     RawExecutionScope,
 };
-use licoup_agent_adapter_sdk::adapters::NativeLineParser;
-// The RPC wire, the request envelopes, the transition projection and the
-// session, transcript and plan layout belong to the adapter package that owns
-// this protocol. This module keeps only the *process* half the client still
-// composes: spawning the packaged program, supervising the turn, the workspace
-// bound and the raw-execution observation. That half moves onto the package's
-// agent-execution port next; until it does, the client reads the protocol from
-// the package and owns only the process.
-use licoup_agent_lico_agent::parser::{
-    RpcEffect, RpcParser, encode_request, prompt_request, readiness_request,
-};
-use licoup_agent_lico_agent::session;
-use licoup_foundation::platform::paths::portable_data_dir;
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -35,7 +39,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 /// must fail visibly instead of blocking the send forever.
 const HANDSHAKE_BOUND: Duration = Duration::from_secs(5);
 
-pub(in crate::platform) fn execute(
+pub fn execute(
     executable: &str,
     params: &Value,
     prompt: &str,
@@ -59,7 +63,7 @@ pub(in crate::platform) fn execute(
 }
 
 #[cfg(test)]
-pub(super) fn execute_with_test_handshake_bound(
+pub(crate) fn execute_with_test_handshake_bound(
     executable: &str,
     params: &Value,
     prompt: &str,
@@ -395,11 +399,7 @@ fn execute_with_handshake_bound(
     let sid = native_session_id;
     RunResult {
         ok: true,
-        transitions: licoup_agent_lico_agent::parser::success_transitions(
-            &output,
-            saw_processing,
-            &controls,
-        ),
+        transitions: crate::parser::success_transitions(&output, saw_processing, &controls),
         output,
         error: None,
         session_id: sid.clone(),
@@ -461,7 +461,7 @@ fn spawn_agent(
                 "params/planPath",
             )
         })?;
-        lico_agent_plan_command(&exe, plan, workspace, gateway_port, &args).map_err(|_| {
+        plan_command(&exe, plan, workspace, gateway_port, &args).map_err(|_| {
             ProtocolFailure::new(
                 "lico_agent_plan_reliable_sandbox_unavailable",
                 "Plan mode requires a reliable OS sandbox on this platform.",
@@ -470,7 +470,7 @@ fn spawn_agent(
         })?
     } else {
         let mut command = Command::new(&exe);
-        super::super::user_shell_environment::apply_to_command(&mut command);
+        user_shell_environment::apply_to_command(&mut command);
         command.args(&args);
         command
     };
@@ -491,8 +491,8 @@ fn spawn_agent(
 /// The plan file a plan-mode turn is bound to.
 ///
 /// The `params` shape, the absolute-path rule and the data root's active plan
-/// location are the adapter package's facts; this host supplies the data root,
-/// because the root is the client's.
+/// location are this package's facts; the data root itself is the client's, read
+/// through the shared path primitive.
 fn resolve_plan_path(params: &Value) -> Option<PathBuf> {
     session::named_plan_path(params).or_else(|| {
         portable_data_dir()
@@ -535,10 +535,9 @@ fn workspace_failure() -> ProtocolFailure {
 
 /// Resolve the session one turn runs against.
 ///
-/// The identity rule and the session, transcript and plan layout are the adapter
-/// package's; this host supplies the data root and reads the transcript the
-/// package names, because reading a persisted Lico Agent conversation belongs to
-/// `licoup-agent-targets` rather than to the protocol that resumes it.
+/// The identity rule and the session, transcript and plan layout are this
+/// package's; the data root is the client's, and the persisted transcript is read
+/// through the Agent core in `licoup-agent-targets`, which owns that record.
 fn prepare_session(session_id: &str) -> Result<(String, bool, PathBuf), ProtocolFailure> {
     let root = portable_data_dir().map_err(|_| session_store_failure())?;
     let prepared = session::prepare(&root, session_id).map_err(session_failure)?;
@@ -549,10 +548,10 @@ fn prepare_session(session_id: &str) -> Result<(String, bool, PathBuf), Protocol
     Ok((prepared.session_id, prepared.resume, prepared.transcript))
 }
 
-/// The protocol failure one of the adapter package's session answers becomes.
+/// The protocol failure one of this package's session answers becomes.
 ///
-/// The code is the package's own — it is part of the RPC's contract — and the
-/// sentence and stage are this host's presentation of it.
+/// The code is the protocol's own — it is part of the RPC's contract — and the
+/// sentence and stage are this package's presentation of it.
 fn session_failure(code: &'static str) -> ProtocolFailure {
     match code {
         session::SESSION_ID_INVALID => ProtocolFailure::new(

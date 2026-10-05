@@ -328,7 +328,7 @@ test('serve HTTP and SSE frames decode only in target parser components', () => 
   assert.match(openCodeParser, /fn message/);
   assert.match(openCodeParser, /message\.part\.updated/);
   const openCodeTransport = readFileSync(
-    'crates/licoup-native/src/platform/opencode_driver/serve_transport.rs',
+    'crates/licoup-agent-opencode/src/driver/serve_transport.rs',
     'utf8',
   );
   // The Kilo turn is the package's own composition: it asks the installed serve
@@ -338,16 +338,31 @@ test('serve HTTP and SSE frames decode only in target parser components', () => 
     'crates/licoup-agent-kilo/src/driver/turn.rs',
     'utf8',
   );
-  // The host's transport reads the package's parser through the composition's
-  // own name for it, so the frames are classified once and below this port.
-  const composition = readFileSync(`${compositionRoot}/mod.rs`, 'utf8');
-  assert.match(openCodeTransport, /adapters::opencode as serve_parser/);
+  // OpenCode's own driver reads its package's parser directly, so the frames are
+  // classified once and below the port the client answers, and the kernel keeps
+  // no driver tree of its own to read them through.
+  assert.match(openCodeTransport, /use crate::parser as serve_parser;/);
+  assert.match(readFileSync(
+    'crates/licoup-agent-opencode/src/driver/probe.rs',
+    'utf8',
+  ), /use crate::parser as serve_parser;/);
+  assert.equal(existsSync(
+    'crates/licoup-native/src/platform/opencode_driver.rs',
+  ), false);
   // The composition names the package's parser as `opencode`, which is the name
-  // the host's own transport reads the frames by.
+  // the client's endpoint specification reads this Agent's readiness by.
+  const composition = readFileSync(`${compositionRoot}/mod.rs`, 'utf8');
   assert.match(
     composition,
     new RegExp(`use ${packaged.opencode.crate}::parser as opencode;`),
   );
+  // The kernel keeps no driver tree of its own to read OpenCode's frames
+  // through: the readiness the endpoint specification asks for is the parser the
+  // composition names above.
+  assert.match(readFileSync(
+    'crates/licoup-native/src/platform/opencode_serve/policy.rs',
+    'utf8',
+  ), /adapters::opencode::readiness/);
   // The Kilo turn reads the package's own parser rather than a local copy, which
   // is what makes the corpus a statement about the shipped ingress, and the
   // client keeps no Kilo transport for it to be read from.

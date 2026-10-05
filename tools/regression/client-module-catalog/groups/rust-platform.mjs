@@ -1084,10 +1084,11 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::opencode_serve::tests::policy::"),
     }),
   defineModule({
-      id: "rust.platform.opencode-serve.events",
+      id: "rust.platform.opencode-host",
       kind: "rust-platform",
-      summary: "OpenCode exact-session allowlisted SSE event projection",
+      summary: "Client answer for the OpenCode package ports: serve engine, byte record, admission",
       inputs: [
+        "crates/licoup-native/src/platform/opencode_host.rs",
         "crates/licoup-native/src/platform/opencode_serve/tests/events.rs",
       ],
       command: rustLayer("platform::opencode_serve::tests::events::"),
@@ -1710,48 +1711,6 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::runtime_adapters::tests::pi_turn_events::"),
     }),
   defineModule({
-      id: "rust.platform.opencode-driver.composition",
-      kind: "rust-platform",
-      summary: "OpenCode stable facade and split module composition",
-      inputs: [
-        "crates/licoup-native/src/platform/opencode_driver.rs",
-        "crates/licoup-native/src/platform/opencode_driver/control.rs",
-        "crates/licoup-native/src/platform/opencode_driver/tests/mod.rs",
-        "crates/licoup-native/src/platform/opencode_driver/tests/composition.rs",
-      ],
-      command: rustLayer("platform::opencode_driver::tests::composition::"),
-    }),
-  defineModule({
-      id: "rust.platform.opencode-driver.test-support",
-      kind: "rust-platform",
-      summary: "OpenCode isolated executable fixtures and shared protocol test support",
-      inputs: [
-        "crates/licoup-native/src/platform/opencode_driver/tests/support.rs",
-      ],
-      command: rustLayer("platform::opencode_driver::tests::"),
-    }),
-  defineModule({
-      id: "rust.platform.opencode-driver.probe",
-      kind: "rust-platform",
-      summary: "OpenCode serve health and stdio ACP capability probes with finite bounds",
-      inputs: [
-        "crates/licoup-native/src/platform/opencode_driver/probe.rs",
-        "crates/licoup-native/src/platform/opencode_driver/tests/probe.rs",
-      ],
-      command: rustLayer("platform::opencode_driver::tests::probe::"),
-    }),
-  defineModule({
-      id: "rust.platform.opencode-driver.serve-transport",
-      kind: "rust-platform",
-      summary: "OpenCode serve HTTP attach, streaming, request projection, timeout, and redaction",
-      inputs: [
-        "crates/licoup-native/src/platform/opencode_driver/continuity.rs",
-        "crates/licoup-native/src/platform/opencode_driver/serve_transport.rs",
-        "crates/licoup-native/src/platform/opencode_driver/tests/serve_transport.rs",
-      ],
-      command: rustLayer("platform::opencode_driver::tests::serve_transport::"),
-    }),
-  defineModule({
       id: "rust.platform.hermes-driver.composition",
       kind: "rust-platform",
       summary: "Hermes stable public facade and split module composition",
@@ -2124,8 +2083,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/native_agent_parser/mod.rs",
         "crates/licoup-native/src/platform/native_agent_parser/tests.rs",
         "crates/licoup-native/src/platform/gateway_runtime/**",
-        "crates/licoup-native/src/platform/lico_agent_driver.rs",
-        "crates/licoup-native/src/platform/lico_agent_driver/**",
+        "crates/licoup-native/src/platform/lico_agent_host.rs",
+        "crates/licoup-native/src/platform/lico_agent_host/**",
         "crates/licoup-native/src/platform/llm_api_key_vault.rs",
         "crates/licoup-native/src/platform/llm_api_key_vault/**",
         "crates/licoup-native/src/platform/llm_gateway_autostart.rs",

@@ -28,7 +28,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use crate::platform::{
-    acp_driver_runtime, lico_agent_driver, opencode_driver,
+    acp_driver_runtime,
 };
 // The DeepSeek Harness driver — the `--profile sdk` transport, the turn it
 // carries and the cleanup of one session — is the DeepSeek Harness package's.
@@ -85,6 +85,17 @@ use licoup_agent_cursor::driver as cursor_driver;
 // package and keeps the host's own projection of its result; it holds no launch
 // metadata, no ACP dialect and no turn phase of its own.
 use licoup_agent_kimi::driver as kimi_code_driver;
+// The Lico Agent driver — the `--mode rpc` launch, the stdio JSONL exchange it
+// supervises and the outcome it reports — is the Lico Agent package's. The
+// composition names the package and keeps the host's own projection of its
+// result; it holds no RPC frame, no session layout and no sandbox profile of its
+// own.
+use licoup_agent_lico_agent::driver as lico_agent_driver;
+// The OpenCode driver — the serve endpoint's launch, the session-open protocol
+// and the turn it runs — is the OpenCode package's. The composition names the
+// package and keeps the host's own projection of its result; it holds no launch
+// declaration, no document shape and no stream rule of its own.
+use licoup_agent_opencode::driver as opencode_driver;
 // The Codex driver — the app-server process and the protocol it speaks — is the
 // Codex package's. The composition names the package and keeps the host's own
 // projection of its result; it holds no app-server field, no launch and no

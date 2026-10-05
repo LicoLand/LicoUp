@@ -2163,11 +2163,13 @@ export const REGRESSION_MODULES = Object.freeze([
   defineModule({
       id: "regression.opencode-serve-source-bundle",
       kind: "regression-infrastructure",
-      summary: "OpenCode thin serve facade, target policy, and privacy source proof",
+      summary: "OpenCode thin serve facade, package endpoint policy, and privacy source proof",
       inputs: [
         "crates/licoup-native/src/platform/opencode_serve.rs",
         "crates/licoup-native/src/platform/opencode_serve/policy.rs",
         "crates/licoup-native/src/platform/opencode_serve/tests/**",
+        "crates/licoup-agent-opencode/src/policy.rs",
+        "crates/licoup-agent-opencode/src/driver/**",
         "tests/contract/client/opencode-serve-source-bundle.test.mjs",
       ],
       command: command(
@@ -2187,10 +2189,7 @@ export const REGRESSION_MODULES = Object.freeze([
         "crates/licoup-native/src/lib.rs",
         "crates/licoup-native/src/platform/opencode_serve.rs",
         "crates/licoup-native/src/platform/opencode_serve/policy.rs",
-        "crates/licoup-native/src/platform/opencode_driver.rs",
-        "crates/licoup-native/src/platform/opencode_driver/serve_transport.rs",
-        "crates/licoup-native/src/platform/opencode_driver/continuity.rs",
-        "crates/licoup-native/src/platform/opencode_driver/probe.rs",
+        "crates/licoup-native/src/platform/opencode_host.rs",
         "crates/licoup-native/src/platform/native_agent_parser/adapters/mod.rs",
         "crates/licoup-native/src/platform/native_agent_parser/replay/adapters/mod.rs",
         "tests/contract/client/opencode-adapter-package-source-bundle.test.mjs",

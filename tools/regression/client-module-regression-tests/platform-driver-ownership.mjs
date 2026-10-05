@@ -927,15 +927,20 @@ test("DeepSeek Harness leaves retain exact narrow regression ownership", async (
 
 test("Lico Agent leaves retain exact narrow regression ownership", async () => {
   const packageModuleId = "rust.core.agent-lico-agent-package";
-  // The RPC wire, the request envelopes, the session layout and the plan layout
-  // moved into the Lico Agent adapter package; the process half is still
-  // composed by the client under `platform::lico_agent_driver`. Both keep a
-  // precise owner, and a source that moved selects the package's own module.
+  // The whole Agent — the RPC wire, the request envelopes, the session and plan
+  // layout, the supervised stdio exchange and the sealed Plan profile — is the
+  // Lico Agent adapter package's. The client keeps only the answer for the
+  // package's sandbox port (`platform::lico_agent_host`) and its own process
+  // primitives. Both keep a precise owner, and a source that moved selects the
+  // package's own module.
   const selections = new Map([
-    ["crates/licoup-native/src/platform/lico_agent_driver/execution.rs",
-      ["rust.platform"]],
+    ["crates/licoup-native/src/platform/lico_agent_host.rs", ["rust.platform"]],
+    ["crates/licoup-native/src/platform/lico_agent_host/tests.rs", ["rust.platform"]],
     ["crates/licoup-agent-lico-agent/src/parser.rs", [packageModuleId]],
     ["crates/licoup-agent-lico-agent/src/session.rs", [packageModuleId]],
+    ["crates/licoup-agent-lico-agent/src/driver/execution.rs", [packageModuleId]],
+    ["crates/licoup-agent-lico-agent/src/driver/sandbox.rs", [packageModuleId]],
+    ["crates/licoup-agent-lico-agent/src/port/sandbox.rs", [packageModuleId]],
     ["crates/licoup-agent-lico-agent/src/bin/lico-agent-lico-agent.rs", [packageModuleId]],
     ["crates/licoup-agent-lico-agent/tests/package_artifact.rs", [packageModuleId]],
     ["crates/licoup-agent-lico-agent/package/manifest.json", [packageModuleId]],
@@ -977,9 +982,15 @@ test("Lico Agent leaves retain exact narrow regression ownership", async () => {
   for (const relativePath of [
     "crates/licoup-native/src/platform/native_agent_parser/adapters/lico_agent.rs",
     "crates/licoup-native/src/platform/native_agent_parser/replay/adapters/lico_agent.rs",
+    "crates/licoup-native/src/platform/lico_agent_driver.rs",
+    "crates/licoup-native/src/platform/lico_agent_driver/execution.rs",
+    "crates/licoup-native/src/platform/lico_agent_driver/probe.rs",
+    "crates/licoup-native/src/platform/lico_agent_driver/tests.rs",
   ]) {
     assert.equal(exactInputs.has(relativePath), false,
       `a moved host copy must not stay a measured catalog input: ${relativePath}`);
+    assert.equal(await exists(relativePath), false,
+      `the host still carries the retired Lico Agent path ${relativePath}`);
   }
 });
 
@@ -1122,10 +1133,11 @@ test("OpenCode serve leaves retain exact tests and complete source ownership", a
   const filters = new Map([
     ["rust.platform.opencode-serve.composition", "platform::opencode_serve::tests::composition::"],
     ["rust.platform.opencode-serve.policy", "platform::opencode_serve::tests::policy::"],
-    ["rust.platform.opencode-serve.events", "platform::opencode_serve::tests::events::"],
+    ["rust.platform.opencode-host", "platform::opencode_serve::tests::events::"],
   ]);
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
-    candidate.id.startsWith("rust.platform.opencode-serve."));
+    candidate.id.startsWith("rust.platform.opencode-serve.") ||
+    candidate.id === "rust.platform.opencode-host");
   assert.equal(modules.length, filters.size);
   for (const [id, filter] of filters) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
@@ -1146,6 +1158,11 @@ test("OpenCode serve leaves retain exact tests and complete source ownership", a
     assert.equal(ownedInputs.has(relativePath), true,
       `OpenCode serve source must have a precise regression owner: ${relativePath}`);
   }
+  // The port answer is the layer whose test binds the client's engine to the
+  // package's watcher, so a change to it owns exactly that layer.
+  assert.equal(ownedInputs.has(
+    "crates/licoup-native/src/platform/opencode_host.rs"), true,
+  "the OpenCode host answer must have a precise regression owner");
 });
 
 test("Kilo Code protocol leaves retain exact tests in the package that owns them", async () => {
@@ -1602,51 +1619,50 @@ test("Pi driver leaves retain exact tests and complete source ownership", async 
   assert.deepEqual(packageModule.inputs, ["crates/licoup-agent-pi/**"]);
 });
 
-test("OpenCode driver leaves retain exact tests and complete source ownership", async () => {
-  const filters = new Map([
-    ["rust.platform.opencode-driver.composition",
-      "platform::opencode_driver::tests::composition::"],
-    ["rust.platform.opencode-driver.test-support",
-      "platform::opencode_driver::tests::"],
-    ["rust.platform.opencode-driver.probe",
-      "platform::opencode_driver::tests::probe::"],
-    ["rust.platform.opencode-driver.serve-transport",
-      "platform::opencode_driver::tests::serve_transport::"],
-  ]);
-  const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
-    candidate.id.startsWith("rust.platform.opencode-driver."));
-  assert.equal(modules.length, filters.size);
-  for (const [id, filter] of filters) {
-    const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
-    assert.equal(module.command.args.at(-1), filter);
-    if (!id.endsWith(".composition")) {
-      assert.equal(module.inputs.includes(
-        "crates/licoup-native/src/platform/opencode_driver.rs"), false);
-    }
-  }
+test("OpenCode driver source is the package's and the host keeps no tree for it", async () => {
+  // The kernel declares no OpenCode driver module and keeps no OpenCode driver
+  // tree: the launch declaration, the session-open protocol, the request shape,
+  // the stream classification, the projection and their tests are
+  // `licoup-agent-opencode`'s, and composition reads them as
+  // `licoup_agent_opencode::driver`. The client keeps `opencode_serve` as the
+  // engine facade and `opencode_host` as the package's port answer.
+  assert.equal(CLIENT_MODULE_CATALOG.some((candidate) =>
+    candidate.id.startsWith("rust.platform.opencode-driver.")), false,
+  "the catalog still claims a kernel OpenCode driver tree");
+  assert.equal(await exists(
+    "crates/licoup-native/src/platform/opencode_driver.rs"), false,
+  "the kernel still carries an OpenCode driver facade");
+  assert.equal(await exists(
+    "crates/licoup-native/src/platform/opencode_driver"), false,
+  "the kernel still carries an OpenCode driver tree");
 
-  const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
-  const splitSources = await sourceFiles(
-    "crates/licoup-native/src/platform/opencode_driver",
-    ".rs",
-  );
-  for (const relativePath of [
-    "crates/licoup-native/src/platform/opencode_driver.rs",
-    ...splitSources,
-  ]) {
-    assert.equal(ownedInputs.has(relativePath), true,
-      `OpenCode driver source must have a precise regression owner: ${relativePath}`);
+  // The moved source is owned by the package's own module, so a change to it
+  // selects the package rather than a kernel layer.
+  const packageModule = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "rust.core.agent-opencode-package");
+  assert.deepEqual(packageModule.inputs, ["crates/licoup-agent-opencode/**"]);
+  const owns = (relativePath) => CLIENT_MODULE_CATALOG.some((module) =>
+    module.inputs.some((input) => input.endsWith("/**")
+      ? relativePath.startsWith(input.slice(0, -2))
+      : input === relativePath));
+  const packageSources = await sourceFiles(
+    "crates/licoup-agent-opencode/src", ".rs");
+  assert.ok(packageSources.length > 0);
+  for (const relativePath of packageSources) {
+    assert.equal(owns(relativePath), true,
+      `OpenCode package source must have a regression owner: ${relativePath}`);
   }
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/opencode_driver/continuity.rs",
+    "crates/licoup-agent-opencode/src/driver/serve_transport.rs",
   ])), [
-    // The OpenCode adapter package's own ownership contract reads this file: the
-    // package owns the serve protocol, and the driver that supervises the
-    // endpoint is where the host reads it, so a change here is a change to the
-    // claim that the host keeps no copy.
+    // The package's own ownership contract reads the driver's turn: the package
+    // owns the serve protocol and the turn it runs, the client's host answer is
+    // what performs the engine effects it asks for, and the serve bundle's
+    // privacy proof reads the same driver's failure vocabulary.
     "regression.opencode-adapter-package-source-bundle",
     "architecture.client-boundaries",
-    "rust.platform.opencode-driver.serve-transport",
+    "rust.core.agent-opencode-package",
+    "regression.opencode-serve-source-bundle",
   ]);
 });
 

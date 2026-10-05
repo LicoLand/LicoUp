@@ -154,16 +154,29 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     licoup_agent_deepseek::port::launch_environment::install(
         platform::user_shell_environment::apply_to_command,
     )?;
-    // The OpenCode adapter package owns the `serve` protocol; the client's own
-    // `opencode_driver` still performs one turn, and the one fact it may not
-    // decide for itself is whether this host admits a new execution. Installing
-    // the answer is what lets an OpenCode turn start at all, and a host that
-    // never installs it refuses rather than running.
+    // The OpenCode adapter package owns what one OpenCode turn is — the request
+    // shape, the session protocol, the stream classification, the projection and
+    // the endpoint contract — and this host owns the serve engine it runs on and
+    // the consumer its events reach. Both ports are installed together because a
+    // package with an engine and no consumer, or a consumer and no engine, is
+    // half-wired. The admission answer is installed beside them: it is the one
+    // fact a turn may not decide for itself, because a turn started under the
+    // close-admission barrier would run an Agent a maintenance switch may be
+    // replacing.
     licoup_agent_opencode::port::execution::install(
         licoup_agent_opencode::port::execution::ExecutionPort {
             admits_execution: admits_agent_execution,
         },
     )?;
+    licoup_agent_opencode::host::install(platform::opencode_host::host_ports())?;
+    // The Lico Agent adapter package owns the whole of one Lico Agent turn — the
+    // RPC launch, the stdio JSONL exchange, the session and plan layout and the
+    // sealed profile a Plan turn runs under — and this host owns the two facts it
+    // may not decide for itself: whether a new execution is admitted, and how the
+    // platform's sandbox primitive turns a profile into a running command. Both
+    // are installed from this client's own primitives, so Plan mode cannot run
+    // unsandboxed and a turn cannot start under the close-admission barrier.
+    licoup_agent_lico_agent::port::sandbox::install(platform::lico_agent_host::sandbox_port())?;
     // The Cursor adapter package owns one Cursor turn — the launch on the shared
     // pty, the strict-NDJSON stream, the update signals and the outcome — and
     // this host owns the reader its events reach. Its agent-execution port stays

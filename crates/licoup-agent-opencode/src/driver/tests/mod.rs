@@ -9,10 +9,11 @@ use super::serve_transport::{
     remaining_turn_timeout, request_failure, sse_failure, turn_timeout_failure, wait_post_json,
     workspace_request_url,
 };
-use super::{OPENCODE_DRIVER, RUNTIME_PROTOCOL, capability_probe, serve_capabilities};
-use crate::platform::acp_driver_runtime::ProtocolConfig;
-use crate::platform::acp_driver_runtime::ProtocolFailure;
-use crate::platform::local_service::http::HttpFailure;
+use super::{
+    OPENCODE_DRIVER, RUNTIME_PROTOCOL, ServeStreamFailure, capability_probe, serve_capabilities,
+};
+use crate::port::serve::{ServeFramingFailure, ServeRequestFailure};
+use licoup_agent_drivers::acp_driver_runtime::{ProtocolConfig, ProtocolFailure};
 use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;

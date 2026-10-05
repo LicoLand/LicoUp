@@ -23,13 +23,13 @@ pub(crate) mod generic_cli_driver;
 pub(crate) mod hermes_tui_gateway;
 mod hermes_tui_gateway_driver;
 pub(crate) mod kilo_code_host;
-mod lico_agent_driver;
+pub(crate) mod lico_agent_host;
 pub(crate) use licoup_agent_drivers::local_service;
 pub(crate) mod mcp_approval_plan_store;
 pub(crate) mod mcp_streamable_http;
 mod native_agent_parser;
 pub(crate) mod openclaw_host;
-mod opencode_driver;
+pub(crate) mod opencode_host;
 pub mod process_sandbox;
 pub(crate) mod provider_mcp_registration;
 pub(crate) mod remote_acp_history;
@@ -157,8 +157,7 @@ pub(crate) fn codex_app_server_environment() -> Vec<(String, String)> {
 // child processes and one implementation serves them all.
 pub(crate) use licoup_foundation::platform::process_supervisor;
 pub(crate) use licoup_foundation::platform::process_supervisor::{
-    configure_untrusted_agent_command, run_bounded_command_input, run_bounded_command_output,
-    run_bounded_untrusted_agent_output,
+    run_bounded_command_input, run_bounded_command_output, run_bounded_untrusted_agent_output,
 };
 // The pseudo-terminal transport moved to `licoup-foundation` with it, for the
 // same reason: attaching a child to a pty is a primitive every Agent's CLI lane

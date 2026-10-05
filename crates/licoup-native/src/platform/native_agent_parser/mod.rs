@@ -43,15 +43,6 @@ pub(in crate::platform) mod replay;
 #[cfg(test)]
 mod tests;
 
-/// The shared adapter vocabulary this host's parsers and drivers speak.
-///
-/// The SDK owns the definitions; this is the family's name for them, so a
-/// caller that already reaches this module keeps one path to the vocabulary
-/// while the definitions live in exactly one crate.
-pub(in crate::platform) use licoup_agent_adapter_sdk::{
-    LifecycleStage, Transition, TransitionReducer,
-};
-
 /// Complete packaged inventory. The registry test proves this is bijective
 /// with `RuntimeAdapter`; adding an adapter requires adding its parser here.
 #[cfg(test)]

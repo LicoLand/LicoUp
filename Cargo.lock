@@ -2228,6 +2228,7 @@ name = "licoup-agent-lico-agent"
 version = "0.14.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
+ "licoup-agent-targets",
  "licoup-extension-contracts",
  "licoup-foundation",
  "serde_json",
@@ -2255,7 +2256,10 @@ dependencies = [
  "licoup-agent-adapter-sdk",
  "licoup-agent-drivers",
  "licoup-extension-contracts",
+ "licoup-foundation",
  "serde_json",
+ "url",
+ "uuid",
 ]
 
 [[package]]
