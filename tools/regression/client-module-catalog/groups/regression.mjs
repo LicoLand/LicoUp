@@ -806,7 +806,6 @@ export const REGRESSION_MODULES = Object.freeze([
     inputs: [
       "crates/licoup-agent-kimi/src/**",
       "crates/licoup-agent-kimi/package/**",
-      "crates/licoup-native/src/platform/kimi_code_driver.rs",
       "crates/licoup-native/src/platform/native_agent_parser/adapters/mod.rs",
       "crates/licoup-native/src/platform/runtime_adapters/drivers.rs",
       "crates/licoup-native/src/platform/runtime_adapters/dialects.rs",

@@ -671,7 +671,7 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
                 super::acp_driver_runtime::ControlDisposition::SessionUnavailable => 2,
                 super::acp_driver_runtime::ControlDisposition::TransportUnavailable => 3,
             },
-            RuntimeAdapter::KimiCode => match super::kimi_code_driver::cancel(&session_id) {
+            RuntimeAdapter::KimiCode => match licoup_agent_kimi::driver::cancel(&session_id) {
                 super::acp_driver_runtime::ControlDisposition::Accepted => 0,
                 super::acp_driver_runtime::ControlDisposition::NoActiveTurn => 1,
                 super::acp_driver_runtime::ControlDisposition::SessionUnavailable => 2,

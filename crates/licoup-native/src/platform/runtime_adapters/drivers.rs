@@ -29,9 +29,14 @@ use std::sync::OnceLock;
 
 use crate::platform::{
     acp_driver_runtime, antigravity_driver, claude_code_driver, copilot_driver, cursor_driver,
-    deepseek_harness_driver, hermes_driver, kilo_code_driver, kimi_code_driver, lico_agent_driver,
+    deepseek_harness_driver, hermes_driver, kilo_code_driver, lico_agent_driver,
     openclaw_driver, opencode_driver, pi_driver,
 };
+// The Kimi Code driver — the `kimi acp` launch, the frames it classifies and
+// the outcome it reports — is the Kimi Code package's. The composition names the
+// package and keeps the host's own projection of its result; it holds no launch
+// metadata, no ACP dialect and no turn phase of its own.
+use licoup_agent_kimi::driver as kimi_code_driver;
 // The Codex driver — the app-server process and the protocol it speaks — is the
 // Codex package's. The composition names the package and keeps the host's own
 // projection of its result; it holds no app-server field, no launch and no

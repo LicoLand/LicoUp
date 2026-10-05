@@ -17,9 +17,9 @@ const packageFiles = Object.freeze([
   "manifest.json",
   "package-release.json",
 ]);
-// The driver half still composed by the client. It reads the package and owns
-// no vendor fact of its own.
-const facadePath = "crates/licoup-native/src/platform/kimi_code_driver.rs";
+// The kernel's composition, which names this package's driver directly. The
+// host keeps no Kimi module of its own.
+const compositionPath = "crates/licoup-native/src/platform/runtime_adapters/drivers.rs";
 // The shared ACP engine, which names no Agent.
 const enginePath = "crates/licoup-agent-drivers/src/acp_driver_runtime";
 
@@ -121,20 +121,30 @@ test("the committed package artifact is the one the host reads", () => {
     "string");
 });
 
-test("the client keeps a thin Kimi facade and names the package for the protocol", () => {
-  const facade = read(facadePath);
-  for (const packageToken of [
-    "licoup_agent_kimi::driver::RUNTIME_PROTOCOL",
-    "licoup_agent_kimi::driver::DRIVER",
-    "licoup_agent_kimi::driver::capability_probe",
-    "licoup_agent_kimi::driver::execute",
-    "licoup_agent_kimi::driver::cancel",
-  ]) {
-    assert.ok(facade.includes(packageToken),
-      `the client facade does not read the package's ${packageToken}`);
-  }
-  // No second copy of the vendor fact stays behind: the launch metadata, the
+test("the client names the package for the protocol and keeps no Kimi driver module", () => {
+  // The kernel has no Kimi driver module at all: the host reaches the Agent
+  // through the package and cannot hold a second owner of its protocol.
+  assert.equal(
+    exists("crates/licoup-native/src/platform/kimi_code_driver.rs"),
+    false,
+    "the host still declares a Kimi Code driver module",
+  );
+  assert.equal(
+    exists("crates/licoup-native/src/platform/kimi_code_driver"),
+    false,
+    "the host still declares a Kimi Code driver tree",
+  );
+  const platform = read("crates/licoup-native/src/platform/mod.rs");
+  assert.doesNotMatch(platform, /mod kimi_code_driver;/u,
+    "the host module tree still declares a Kimi Code driver module");
+
+  const composition = read(compositionPath);
+  // The composition reads the package's driver, so the launch metadata, the
   // runtime protocol and the frame interpretation are the package's.
+  assert.match(composition, /use licoup_agent_kimi::driver as kimi_code_driver;/u,
+    "the composition does not read the package's driver");
+  // The composition keeps no second copy of the vendor fact: every Kimi protocol
+  // decision is the package's.
   for (const forbidden of [
     "AcpDriverSpec::new",
     "with_identity",
@@ -145,8 +155,8 @@ test("the client keeps a thin Kimi facade and names the package for the protocol
     "validate_prompt_response",
     "AdapterContract::new",
   ]) {
-    assert.equal(facade.includes(forbidden), false,
-      `the client facade keeps a copy of the package's protocol: ${forbidden}`);
+    assert.equal(composition.includes(forbidden), false,
+      `the client composition keeps a copy of the package's protocol: ${forbidden}`);
   }
 });
 

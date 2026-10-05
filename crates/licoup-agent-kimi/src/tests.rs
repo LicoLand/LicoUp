@@ -252,6 +252,26 @@ fn the_execution_port_is_fail_closed_before_its_host_answers() {
     assert!(execution::admits_execution(), "the first answer stands");
 }
 
+/// The launch metadata this package declares is the whole of what the shared
+/// engine runs, so the host cannot describe a different Kimi than the package
+/// publishes: the single official ACP entrypoint, its model and reasoning
+/// settings, and the one flag that preserves an explicit `allowAll` request.
+#[test]
+fn canonical_driver_is_only_official_acp_entrypoint() {
+    assert_eq!(RUNTIME_PROTOCOL, "kimi-code-acp-v1-stdio-ndjson");
+    assert_eq!(DRIVER.runtime_protocol, RUNTIME_PROTOCOL);
+    assert_eq!(DRIVER.agent_id, "kimi-code-acp");
+    assert_eq!(DRIVER.error_prefix, "kimi_code_acp");
+    assert_eq!(DRIVER.launch_args, &["acp"]);
+    assert_eq!(DRIVER.launch_model_arg, Some("--model"));
+    assert_eq!(
+        DRIVER.launch_reasoning_env,
+        Some("KIMI_MODEL_THINKING_EFFORT")
+    );
+    assert_eq!(DRIVER.launch_reasoning_values, &["low", "high", "max"]);
+    assert_eq!(DRIVER.launch_allow_all_arg, Some("--auto"));
+}
+
 /// A relative working directory is refused before any process is started, and
 /// the refusal carries this Agent's namespaced code rather than a privacy leak.
 #[test]
