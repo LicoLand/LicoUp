@@ -9,9 +9,6 @@ test("migration privacy fixtures require the exact owner, rule, full value and b
     const input = { file: "crates/licoup-migrate/src/archive.rs", rule: "FORBIDDEN_MACOS_HOME_PATH",
       source: `error at ${value}"`, start: 9, match: prefix };
     assert.equal(isReviewedPrivacyFixture(input), true);
-    const policyInput = { ...input, file: ".lico-auditor/policy.json", source: `"value":"${value}"` };
-    assert.equal(isReviewedPrivacyFixture(policyInput), true);
-    assert.equal(isReviewedPrivacyFixture({ ...policyInput, source: `"other":"${value}"` }), false);
     assert.equal(isReviewedPrivacyFixture({ ...input, file: "other.rs" }), false);
     assert.equal(isReviewedPrivacyFixture({ ...input, rule: "FORBIDDEN_SECRET_ASSIGNMENT" }), false);
     for (const changed of [value + "/child", value + ".extra", value.replace("maintainer", "private-account")]) {

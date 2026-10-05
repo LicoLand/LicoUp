@@ -440,13 +440,9 @@ test("architecture edges follow runtime package definitions instead of impact co
 });
 
 // The reviewed report sources are reusable repository data, not private evidence.
-// Each one carries an exact admission in the maintained Auditor policy; the policy
-// uses the published exact policy declarations without wildcard admissions.
-test("reviewed report sources keep exact policy admissions", () => {
+// Exact privacy admissions are owned by the central General-Auditor profile.
+test("reviewed report sources keep their documented data shapes", () => {
   const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
-  const policy = JSON.parse(readFileSync(path.join(repoRoot, ".lico-auditor/policy.json"), "utf8"));
-  assert.deepEqual(Object.keys(policy), ["schemaVersion", "allowedJsonPaths", "reviewedSchemaFixtures", "reviewedSchemaHistory", "publicReferenceDomains", "reviewedUnixPathLiterals"]);
-  assert.equal(policy.schemaVersion, 1);
   const workflowNames = [
     "01-requirements",
     "02-milestone",
@@ -467,10 +463,6 @@ test("reviewed report sources keep exact policy admissions", () => {
     ["tools/development/state-machines.json", "json"],
     ...workflowNames.map((name) => [`tools/development/workflows/${name}.json`, "config-object"]),
   ];
-  const developmentDeclarations = policy.allowedJsonPaths
-    .filter((entry) => entry.path.startsWith("tools/development/"))
-    .map((entry) => ({ path: entry.path, kind: entry.kind }));
-  assert.deepEqual(developmentDeclarations, reviewed.map(([relativePath, kind]) => ({ path: relativePath, kind })));
   for (const [relativePath, kind] of reviewed) {
     const data = JSON.parse(readFileSync(path.join(repoRoot, relativePath), "utf8"));
     if (kind === "json") assert.ok(Array.isArray(data), `${relativePath} keeps its declared array shape`);
