@@ -112,11 +112,16 @@ fn work_item(id: &str) -> Value {
 }
 
 /// Import one synthetic slice over the given work items.
-fn import(store: &ProjectIdentityStore, project_id: &str, work_items: Vec<Value>) {
+///
+/// The document declares the plan identity its project was registered under:
+/// the store admits a slice only when its plan is the plan that registration
+/// carries, and a plan identity is a caller declaration rather than something
+/// derived from the project identity.
+fn import(store: &ProjectIdentityStore, project_id: &str, plan_id: &str, work_items: Vec<Value>) {
     let document = json!({
         "schema": PLAN_DOCUMENT_SCHEMA,
         "projectId": project_id,
-        "planId": format!("plan:{project_id}"),
+        "planId": plan_id,
         "source": {
             "sourceId": "source:roadmap",
             "sourceKind": "markdown",
@@ -163,6 +168,7 @@ fn dependent_plan(label: &str) -> (TempRoot, ProjectIdentityStore) {
     import(
         &store,
         "project:alpha",
+        "plan:alpha",
         vec![
             work_item("work:a"),
             work_item("work:b"),
@@ -244,11 +250,13 @@ fn a_stop_in_one_project_leaves_unrelated_projects_alone() {
     import(
         &store,
         "project:alpha",
+        "plan:alpha",
         vec![work_item("work:a"), work_item("work:b")],
     );
     import(
         &store,
         "project:beta",
+        "plan:beta",
         vec![work_item("work:c"), work_item("work:independent")],
     );
     // Beta's `C` waits on alpha's `A`: the declared cross-project edge is what a
