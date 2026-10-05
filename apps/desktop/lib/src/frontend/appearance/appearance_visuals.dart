@@ -34,7 +34,14 @@ class AppearanceVisuals extends ThemeExtension<AppearanceVisuals> {
   final bool glassFinish;
   final ComposerActivityEffect composerActivityEffect;
 
-  String? get fontFamily => useSystemFont ? null : LicoTypography.sansFamily;
+  /// The family this preset declares, or `null` when it declares none.
+  ///
+  /// A preset is one of two authorities on the interface family; the other is
+  /// the user's font preference, which wins when it names a family. Neither of
+  /// them is required for the interface to render: the platform's own face is
+  /// the baseline.
+  String? get presetFontFamily =>
+      useSystemFont ? null : LicoTypography.bundledSansFamily;
 
   IconData iconFor(IconData icon) {
     if (!roundedIcons) {

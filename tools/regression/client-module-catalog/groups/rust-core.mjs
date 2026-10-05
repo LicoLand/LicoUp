@@ -31,8 +31,11 @@ export const RUST_CORE_MODULES = Object.freeze([
   defineModule({
       id: "rust.core.mcp-server",
       kind: "rust-core",
-      summary: "Independent MCP protocol, caller admission, and public CLI process adapter",
-      inputs: ["crates/licoup-mcp/**"],
+      summary: "Independent MCP protocol, caller admission, the staged package entry, and public CLI process adapter",
+      inputs: [
+        "crates/licoup-mcp/**",
+        "tools/distribution/client-release-package-stage.mjs",
+      ],
       command: command(
         "cargo",
         ["test", "--manifest-path", "crates/licoup-mcp/Cargo.toml"],
@@ -47,6 +50,8 @@ export const RUST_CORE_MODULES = Object.freeze([
     "Claude Code adapter package program, vendor protocol, registration, and replay corpus"),
   agentPackageCrateModule("codex",
     "Codex adapter package program, vendor protocol, registration, and replay corpus"),
+  agentPackageCrateModule("pi",
+    "Pi adapter package program, vendor protocol, registration, and replay corpus"),
   agentPackageCrateModule("antigravity",
     "Antigravity adapter package program, Agent Hooks receipt, PTY protocol, registration, and replay corpus"),
   agentPackageCrateModule("cursor",
@@ -57,6 +62,52 @@ export const RUST_CORE_MODULES = Object.freeze([
     "Kimi Code adapter package program, ACP frame dialect, registration, and replay arm"),
   agentPackageCrateModule("copilot",
     "Copilot adapter package program, ACP frame dialect, registration, and replay corpus"),
+  agentPackageCrateModule("hermes",
+    "Hermes adapter package program, persistent ACP frame dialect, normalized transitions, registration, and replay arm"),
+  defineModule({
+      id: "rust.core.agent-kilo-package",
+      kind: "rust-core",
+      summary: "Kilo Code adapter package program, serve protocol, endpoint policy, and replay corpus",
+      inputs: ["crates/licoup-agent-kilo/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-kilo/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "rust.core.agent-lico-agent-package",
+      kind: "rust-core",
+      summary: "Lico Agent adapter package program, stdio JSONL RPC protocol, session layout, registration, and replay arm",
+      inputs: ["crates/licoup-agent-lico-agent/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-lico-agent/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "rust.core.agent-openclaw-package",
+      kind: "rust-core",
+      summary: "OpenClaw adapter package program, Gateway ACP protocol, registration, and replay corpus",
+      inputs: ["crates/licoup-agent-openclaw/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-openclaw/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "rust.core.agent-opencode-package",
+      kind: "rust-core",
+      summary: "OpenCode adapter package program, serve HTTP and SSE protocol, registration, and replay arm",
+      inputs: ["crates/licoup-agent-opencode/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-agent-opencode/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
   defineModule({
       id: "rust.core.acp.composition",
       kind: "rust-core",
@@ -1596,6 +1647,23 @@ export const RUST_CORE_MODULES = Object.freeze([
         "lico-secure-mesh-kt-mock",
         "tests::",
         ["secure-mesh-acceptance-mock-kt"],
+      ),
+    }),
+  defineModule({
+      id: "rust.core.mobile-entry-boundary",
+      kind: "rust-core",
+      summary:
+        "Paired mobile entry: declared pairing/group/settings surface, endpoint application port, and dependency closure",
+      inputs: [
+        "crates/licoup-mobile-core/Cargo.toml",
+        "crates/licoup-mobile-core/src/**",
+        "crates/licoup-mobile-core/tests/**",
+        "crates/licoup-platform-bridges/src/abi.rs",
+      ],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-mobile-core/Cargo.toml"],
+        10 * 60_000,
       ),
     })
 ]);

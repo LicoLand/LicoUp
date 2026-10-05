@@ -34,7 +34,7 @@ export async function checkCommandAndFileTransport(context, { secureMeshMobileFf
   );
   assert(
     secureMeshCommandRuntimeRustSource.includes("dispatch_ready_agent_message") &&
-      secureMeshCommandRuntimeRustSource.includes("dispatch_lane_operation") &&
+      secureMeshCommandRuntimeRustSource.includes("agent_port::dispatch") &&
       !secureMeshCommandRuntimeRustSource.includes("runtime_adapters::send_message") &&
       !secureMeshCommandRustSource.includes("crate::platform") &&
       !secureMeshCommandRustSource.includes("crate::domain"),

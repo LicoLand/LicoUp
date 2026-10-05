@@ -21,7 +21,7 @@ fn request_validation_normalizes_agent_and_keeps_private_values_off_command_conf
 
 #[test]
 fn conflicting_native_session_identity_fails_closed() {
-    let failure = ProtocolConfig::from_params(
+    let failure = client_params(
         &json!({"sessionKey": "different"}),
         "prompt",
         "requested",
@@ -33,7 +33,7 @@ fn conflicting_native_session_identity_fails_closed() {
 
 #[test]
 fn private_instructions_fail_as_a_typed_capability_without_prompt_rewrite() {
-    let failure = ProtocolConfig::from_params(
+    let failure = client_params(
         &json!({"privateInstructions": "private-system-canary"}),
         "exact-user-prompt",
         "",

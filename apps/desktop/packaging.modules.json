@@ -180,17 +180,16 @@
       "cargoBin": "licoup-cli"
     },
     "subagents-mcp": {
-      "label": "Independent LicoUp MCP connector and service using the native CLI",
+      "label": "Independent LicoUp MCP connector and service, delivered by the org.licoland.feature.mcp package",
       "category": "agents",
-      "enabled": true,
-      "required": true,
+      "enabled": false,
+      "required": false,
       "platforms": [
         "macos",
         "linux",
         "windows"
       ],
-      "packaging": "sidecar-binary",
-      "cargoBin": "lico-subagent-mcp",
+      "packaging": "runtime-capability",
       "requires": [
         "native-sidecar",
         "target-adapters",
@@ -201,7 +200,7 @@
       "label": "LicoUp Gateway Runtime (LLM Gateway + Communication Channels)",
       "category": "agents",
       "enabled": true,
-      "required": true,
+      "required": false,
       "platforms": [
         "macos",
         "linux",
@@ -226,12 +225,11 @@
       "packaging": "sidecar-binary",
       "cargoBin": "lico-agent",
       "requires": [
-        "native-sidecar",
-        "gateway-sidecar"
+        "native-sidecar"
       ]
     },
     "codex-plugin": {
-      "label": "LicoUp Codex Plugin 0.2.0 thin connector",
+      "label": "LicoUp Codex Plugin 0.2.0 thin connector, installed from the Codex plugin marketplace",
       "category": "agents",
       "enabled": true,
       "required": true,
@@ -240,11 +238,9 @@
         "linux",
         "windows"
       ],
-      "packaging": "module-resources",
-      "embeddedCargoBin": "lico-subagent-mcp",
-      "embeddedCargoTarget": "plugins/lico-up-codex/bin/lico-subagent-mcp",
+      "packaging": "runtime-capability",
       "requires": [
-        "subagents-mcp"
+        "native-sidecar"
       ]
     },
     "extension-packages": {

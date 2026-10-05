@@ -113,6 +113,10 @@ jobs:
           echo "ANDROID_SDK_ROOT=$RUNNER_TEMP/licoup-android-sdk" >> "$GITHUB_ENV"
           node tools/scripts/client-android-sdk-bootstrap.mjs \
             --sdk-root "$RUNNER_TEMP/licoup-android-sdk"
+      - name: Warm the Gradle dependency cache
+        run: |
+          (cd apps/desktop && flutter pub get --enforce-lockfile)
+          (cd apps/desktop/android && ./gradlew :app:compileDebugKotlin :app:verifyReleaseAcceptanceIsolation :app:testDebugUnitTest --no-daemon)
       - name: Install pinned cargo-audit
         run: cargo install cargo-audit --version 0.22.2 --locked
       - name: Run the complete registered engineering profile
@@ -129,6 +133,7 @@ jobs:
           path: |
             build/reports/
             build/test-reports/
+            build/private/client-regression/
           if-no-files-found: ignore
           retention-days: 14
 
@@ -157,6 +162,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends libdbus-1-dev pkg-config
       - run: npm ci
+      - name: Fetch locked Rust dependencies
+        run: |
+          cargo fetch --locked --manifest-path Cargo.toml
+          cargo fetch --locked --manifest-path components/analytics/Cargo.toml
+          cargo fetch --locked --manifest-path sdk/usage-source/Cargo.toml
       - name: Run affected Linux target modules
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
@@ -184,6 +194,11 @@ jobs:
           flutter-version: "3.44.2"
           cache: true
       - run: npm ci
+      - name: Fetch locked Rust dependencies
+        run: |
+          cargo fetch --locked --manifest-path Cargo.toml
+          cargo fetch --locked --manifest-path components/analytics/Cargo.toml
+          cargo fetch --locked --manifest-path sdk/usage-source/Cargo.toml
       - name: Run affected macOS target modules
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
@@ -211,6 +226,11 @@ jobs:
           flutter-version: "3.44.2"
           cache: true
       - run: npm ci
+      - name: Fetch locked Rust dependencies
+        run: |
+          cargo fetch --locked --manifest-path Cargo.toml
+          cargo fetch --locked --manifest-path components/analytics/Cargo.toml
+          cargo fetch --locked --manifest-path sdk/usage-source/Cargo.toml
       - name: Run affected Windows target modules
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}

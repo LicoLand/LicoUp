@@ -2,8 +2,9 @@
 //!
 //! The Gateway Runtime process (`lico-gateway`) never links conversation or
 //! custody internals. It asks the ports below; this composition supplies the
-//! verified lane answers, the credential handoff lease and the readiness
-//! callback once per process.
+//! agent-execution port's lane answers, the credential handoff lease and the
+//! readiness callback once per process, so the Telegram channel reaches every
+//! Agent through the same port the host's own callers use.
 
 use anyhow::{Result, anyhow};
 use licoup_gateway_core::credentials::llm_api_key_vault::{
@@ -30,8 +31,13 @@ impl GatewayVaultPort for ProductionGatewayVault {
     }
 }
 
+/// The channel's lane dispatch, answered by the agent-execution port.
+///
+/// The channel names no lane module: every operation it asks for — send,
+/// steer, cancel, cleanup — arrives here and travels the same port the rest of
+/// the host's Agent callers use.
 fn dispatch_lane(operation: &str, params: &Value) -> Result<Value> {
-    super::dispatch_lane_operation(operation, params)
+    crate::agent_port::dispatch(operation, params)
         .map_err(|error| anyhow!("gateway_lane_dispatch_failed:{error}"))
 }
 
@@ -39,9 +45,9 @@ fn dispatch_lane(operation: &str, params: &Value) -> Result<Value> {
 pub fn install() -> Result<(), &'static str> {
     readiness::install(super::runtime_adapters::reload_conversation_readiness_document)?;
     lane::install(LanePort {
-        scan_targets: super::conversation_lane::lane_target_scan,
-        conversation_list: super::conversation_lane::lane_conversation_list,
-        open_or_resume: super::open_or_resume,
+        scan_targets: crate::agent_port::scan_targets,
+        conversation_list: crate::agent_port::conversation_list,
+        open_or_resume: crate::agent_port::open_or_resume,
         dispatch: dispatch_lane,
     })?;
     let vault = PlatformLlmApiKeyVault::production().map_err(|_| "gateway_vault_unavailable")?;

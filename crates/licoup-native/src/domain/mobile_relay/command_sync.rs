@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
+use super::endpoint_collaboration_gate::ensure_outbound_permitted;
 use super::endpoint_trust::{ensure_peer_verified, now_iso};
 #[cfg(test)]
 use super::pairwise_session::mobile_relay_pairwise_operation;
@@ -44,6 +45,7 @@ struct PendingSecureResultBinding {
 
 /// Synchronize relay deliveries using one bounded secret-store authorization context.
 pub fn commands_sync(params: &Value) -> Result<Value> {
+    ensure_outbound_permitted()?;
     let command_limit = params.get("limit").and_then(Value::as_u64).unwrap_or(10) as usize;
     let (config, mut secret_context) = load_config_with_runtime_secret_context_for_operation(
         params,
@@ -178,6 +180,7 @@ fn complete_authenticated_station_command(
     result_envelope: &Value,
     pairwise_operation: &mut MobileRelayPairwiseOperation,
 ) -> Result<Value> {
+    ensure_outbound_permitted()?;
     let received = relay_envelope_from_value(received_envelope)?;
     let result = relay_envelope_from_value(result_envelope)?;
     let station = station_context(params, config)?;

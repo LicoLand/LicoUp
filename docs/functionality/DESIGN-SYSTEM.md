@@ -109,10 +109,17 @@ translucent.
 
 ## Typography and content
 
-Geist Sans is the interface family. Geist Mono marks commands, paths, identifiers
-and exact values. Noto Sans SC supplies Chinese glyphs before any platform
-fallback. All three families ship locally under the SIL Open Font License 1.1;
-font loading causes no network requests.
+The platform's own interface family renders the interface: `.AppleSystemUIFont`
+on macOS, `Segoe UI Variable Text` on Windows, `Roboto` on Android and `Ubuntu`
+on Linux, with that platform's Chinese face behind it. A first launch, an offline
+client and an installed client all render from fonts the operating system
+already owns. Geist Mono marks commands, paths, identifiers and exact values, and
+the bundled Geist Sans covers glyphs no platform face supplies; both ship locally
+under the SIL Open Font License 1.1, and font loading causes no network requests.
+
+The interface family is a preference. An installed font family can be preferred
+through the appearance font preference, and it is then placed first with the
+platform chain behind it.
 
 `LicoTypography` owns the scale and fallback order. Titles use 18–24 px with
 semibold weight; the Agent detail identity uses 28 px. Conversation reading text

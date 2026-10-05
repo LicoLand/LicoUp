@@ -37,6 +37,7 @@ export const RUST_COMPOSITION_INPUTS = Object.freeze([
   FOUNDATION_MANIFEST,
   CLIENT_STATE_MANIFEST,
   "crates/licoup-client-state/src/lib.rs",
+  agentPackageManifest("kilo"),
   AGENT_TARGETS_MANIFEST,
   "crates/licoup-agent-targets/src/lib.rs",
   MODEL_CATALOG_MANIFEST,
@@ -289,6 +290,16 @@ export function codexAgentPackageLayer(filter, harnessArgs = []) {
 /// One module of the Claude Code adapter package's library.
 export function claudeCodeAgentPackageLayer(filter, harnessArgs = []) {
   return rustAgentPackageLayer(filter, harnessArgs, agentPackageManifest("claude-code"));
+}
+
+/// One module of the Kilo Code adapter package's library.
+export function kiloAgentPackageLayer(filter, harnessArgs = []) {
+  return rustAgentPackageLayer(filter, harnessArgs, agentPackageManifest("kilo"));
+}
+
+/// One module of the OpenClaw adapter package's library.
+export function openClawAgentPackageLayer(filter, harnessArgs = []) {
+  return rustAgentPackageLayer(filter, harnessArgs, agentPackageManifest("openclaw"));
 }
 
 export function gatewayCoreLayer(filter, harnessArgs = []) {

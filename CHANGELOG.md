@@ -30,8 +30,10 @@ manifests.
   native host, so work continues after the CLI exits.
 - The `lico-up-subagents` MCP server moved to 0.14.0 with its allowlist cut from
   nine tools to five, so Assistant profiles and workflows are local-CLI only for
-  MCP clients. The separate `lico-conversation-mcp` server was removed, and MCP
-  now autostarts with the desktop host, opt-out via `LICOUP_MCP_AUTOSTART=0`.
+  MCP clients. The separate `lico-conversation-mcp` server was removed, and the
+  service is no longer bundled with the client: it is released and installed as
+  the optional `org.licoland.feature.mcp` package, and the client neither starts
+  it at launch nor depends on it being present.
 - Bundled `LicoUpCustody.app` as the CLI's Keychain custodian, so one biometric
   authorization covers all selected Gateway keys instead of per-item prompts.
   `Contents/MacOS/licoup-cli` remains as a permanent relative symlink, the

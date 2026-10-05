@@ -97,6 +97,12 @@ mixin ClientLifecycleFacade
       id: 'client_preferences',
       action: _initializeClientPreferences,
     ),
+    // The stored preference decides which built-in appearance the plan's
+    // declared default renders over, so the plan is read after it, never before.
+    ClientBootstrapStep(
+      id: 'client_presentation_plan',
+      action: loadPresentationMountPlan,
+    ),
     ClientBootstrapStep(
       id: 'client_target_order',
       requiredForStartup: false,
@@ -217,6 +223,9 @@ mixin ClientLifecycleFacade
       portableData,
     );
     applyAppearancePresetCatalog(catalog);
+    // Installed language resources render the interface strings. A first launch
+    // has none, and the compiled baseline renders instead.
+    await loadInstalledLocaleResources();
     await layoutManager.initialize(
       loadStoredState: !_unavailableFeatureDomains.contains(
         'appearance-presentation',

@@ -616,18 +616,14 @@ test("packaging bindings derive from artifact owners including kernel-compiled i
     const metric = await measureOptionalCapabilitiesInPackaging({ repoRoot: root });
     assert.deepEqual(metric.ratchet.bindings, [
       "org.licoland.feature.gateway -> gateway-sidecar",
-      "org.licoland.feature.mcp -> codex-plugin",
-      "org.licoland.feature.mcp -> subagents-mcp",
     ]);
     assert.deepEqual(metric.details.problems, []);
   });
 });
 
-test("packaging rejects a new host bundle, a replaced binary, an unknown binary, and an unknown package", async () => {
+test("packaging rejects a new host bundle, a replaced binary, an unknown binary, an unknown package, and the retired MCP payload", async () => {
   await withFixtureTree(packagingFixture({
     modules: {
-      "subagents-mcp": { enabled: true, cargoBin: "lico-subagent-mcp" },
-      "codex-plugin": { enabled: true, embeddedCargoBin: "lico-subagent-mcp" },
       "gateway-sidecar": { enabled: true, cargoBin: "lico-gateway" },
       "extra-host": { enabled: true, embeddedCargoBin: "lico-gateway" },
       "mystery-host": { enabled: true, cargoBin: "mystery-bin" },
@@ -644,30 +640,51 @@ test("packaging rejects a new host bundle, a replaced binary, an unknown binary,
         message.includes("mystery-host") && message.includes("no first-party manifest builds")),
       true,
     );
-    assert.equal(metric.ratchet.bundled_bindings, 4);
+    assert.equal(metric.ratchet.bundled_bindings, 2);
   });
 
   await withFixtureTree(packagingFixture({
     modules: {
-      "subagents-mcp": { enabled: true, cargoBin: "lico-other" },
-      "codex-plugin": { enabled: true, embeddedCargoBin: "lico-subagent-mcp" },
-      "gateway-sidecar": { enabled: true, cargoBin: "lico-gateway" },
+      "gateway-sidecar": { enabled: true, cargoBin: "lico-other" },
     },
-    nativeBins: ["licoup-cli", "lico-gateway", "lico-other"],
+    nativeBins: ["licoup-cli", "lico-other"],
   }), async (root) => {
     const metric = await measureOptionalCapabilitiesInPackaging({ repoRoot: root });
     assert.equal(
       metric.details.problems.some((message) =>
-        message.includes("subagents-mcp") && message.includes("is not produced")),
+        message.includes("gateway-sidecar") && message.includes("is not produced")),
       true,
+    );
+  });
+
+  // The payload the client retired cannot return as a quiet packaging edit: the
+  // artifact is still built and still declared as optional, and bundling it is
+  // refused until the declaration says so again.
+  await withFixtureTree(packagingFixture({
+    modules: {
+      "subagents-mcp": { enabled: true, cargoBin: "lico-subagent-mcp" },
+      "codex-plugin": { enabled: true, embeddedCargoBin: "lico-subagent-mcp" },
+      "gateway-sidecar": { enabled: true, cargoBin: "lico-gateway" },
+    },
+  }), async (root) => {
+    const metric = await measureOptionalCapabilitiesInPackaging({ repoRoot: root });
+    assert.deepEqual(metric.ratchet.bindings, [
+      "org.licoland.feature.gateway -> gateway-sidecar",
+      "org.licoland.feature.mcp -> codex-plugin",
+      "org.licoland.feature.mcp -> subagents-mcp",
+    ]);
+    assert.equal(
+      metric.details.problems.filter((message) =>
+        message.includes("org.licoland.feature.mcp") &&
+        message.includes("without a declaration")).length,
+      2,
+      "re-bundling the retired MCP payload must be refused until it is declared",
     );
   });
 });
 
 function packagingFixture({
   modules = {
-    "subagents-mcp": { enabled: true, cargoBin: "lico-subagent-mcp" },
-    "codex-plugin": { enabled: true, embeddedCargoBin: "lico-subagent-mcp" },
     "gateway-sidecar": { enabled: true, cargoBin: "lico-gateway" },
   },
   deploymentRows = [
@@ -823,7 +840,12 @@ test("recording refuses to raise a value and accepts an improvement", async () =
 function completeFixture(extraFiles = {}) {
   return {
     "Cargo.toml": "[workspace]\nmembers = [\"crates/licoup-native\"]\n",
-    "crates/licoup-native/Cargo.toml": crateManifest("licoup-native"),
+    "crates/licoup-native/Cargo.toml": crateManifest(
+      "licoup-native",
+      {},
+      '[[bin]]\nname = "licoup-cli"\n',
+    ),
+    "crates/licoup-native/src/bin/licoup-cli.rs": "fn main() {}\n",
     "crates/licoup-native/src/lib.rs": "pub mod domain;\npub mod platform;\n",
     "crates/licoup-native/src/domain/mod.rs": "use crate::platform::thing;\npub fn domain_only() {}\n",
     "crates/licoup-native/src/platform/mod.rs": "pub fn platform_only() {}\n",
@@ -837,10 +859,13 @@ function completeFixture(extraFiles = {}) {
       '[[bin]]\nname = "lico-subagent-mcp"\n',
     ),
     "crates/licoup-mcp/src/main.rs": "fn main() {}\n",
+    // The released client bundles no optional payload, and neither does this
+    // fixture: the retired MCP connector is not a declared bundle any more, so
+    // a fixture that still carried it would be refused as undeclared. The one
+    // module left bundles a kernel artifact and derives no optional binding.
     "apps/desktop/packaging.modules.json": JSON.stringify({
       modules: {
-        "subagents-mcp": { enabled: true, cargoBin: "lico-subagent-mcp" },
-        "codex-plugin": { enabled: true, embeddedCargoBin: "lico-subagent-mcp" },
+        "native-sidecar": { enabled: true, cargoBin: "licoup-cli" },
       },
     }, null, 2),
     ...extraFiles,

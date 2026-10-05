@@ -31,7 +31,7 @@ pub const MAX_AUTHORITY_REFERENCE_BYTES: usize = 256;
 /// The alphabet is the product's stable-identifier alphabet with no path
 /// separator, so an identity that could be read as a location — `../etc`,
 /// `a/b`, `C:\src` — is refused as an identity rather than normalized into one.
-fn declared_identifier(value: &str, max: usize) -> bool {
+pub(crate) fn declared_identifier(value: &str, max: usize) -> bool {
     !value.is_empty()
         && value.len() <= max
         && !value.contains('\0')

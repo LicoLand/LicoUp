@@ -384,11 +384,10 @@ impl ConversationService {
                     let sessions = report.archived_native_sessions.clone();
                     std::thread::spawn(move || {
                         for session in sessions {
-                            let _ =
-                                crate::platform::conversation_lane::cleanup_conversation(&json!({
-                                    "agent": session.agent_id,
-                                    "nativeSessionId": session.native_session_id,
-                                }));
+                            let _ = crate::agent_port::cleanup(&json!({
+                                "agent": session.agent_id,
+                                "nativeSessionId": session.native_session_id,
+                            }));
                         }
                     });
                 }
@@ -485,15 +484,29 @@ impl ConversationService {
                 let filters: super::CandidateFilters = serde_json::from_value(
                     object.get("filters").cloned().unwrap_or_else(|| json!({})),
                 )?;
+                // The selection policy this host adopted is read once, at the
+                // boundary a new task is admitted through, and captured for
+                // this request: the ranking below runs under it, and the
+                // receipt freezes the revision it ran under.
+                let selection_policy = super::selection_policy::current_binding();
+                let filters = selection_policy.apply_to_filters(&filters);
                 let pairs = self.profile_projection_pairs(conversation_id)?;
                 let authority = super::production_snapshot_authority();
-                let snapshots =
-                    super::project_profile_snapshots(conversation_id, &pairs, &authority);
+                let snapshots = super::project_profile_snapshots(
+                    conversation_id,
+                    &pairs,
+                    &authority,
+                    &crate::workflow_host::ProductionModelFacts,
+                );
                 let candidates =
                     super::rank_candidates(snapshots, &filters).map_err(anyhow::Error::msg)?;
                 Ok(json!({
                     "candidates": serde_json::to_value(&candidates)?,
-                    "routeReceipt": route_receipt(conversation_id, &candidates),
+                    "routeReceipt": route_receipt_under(
+                        conversation_id,
+                        &candidates,
+                        &selection_policy,
+                    ),
                     "timeoutPolicy": crate::domain::dispatch_timeout_policy::policy_envelope(
                         &crate::domain::dispatch_timeout_policy::load_or_default(),
                     ),
@@ -1774,9 +1787,9 @@ impl ConversationService {
                 // Pre-dispatch rejection: settle the turn only when its
                 // dispatch was never opened. An opened dispatch already
                 // belongs to the completion authority.
-                let projected = serde_json::to_value(crate::platform::runtime_adapters::client_error::client_error(
-                    &error,
-                ))?;
+                let projected = serde_json::to_value(
+                    crate::platform::runtime_adapters::client_error::client_error(&error),
+                )?;
                 let diagnostic = serde_json::to_string(&json!({
                     "code": safe_failure_field(
                         &projected,
@@ -1869,39 +1882,32 @@ pub(crate) fn route_receipt(
     conversation_id: &str,
     snapshots: &[super::MembershipProfileSnapshot],
 ) -> Value {
-    json!({
-        "conversationId": conversation_id,
-        "sourceRevisions": [
-            {"source": "targets", "revision": "read-only-v1"},
-            {"source": "nativeCapabilities", "revision": "v0.0.1"},
-            {"source": "providerModelPricing", "revision": "catalog-v1"},
-            {"source": "agentIntelligenceCatalog", "revision": "catalog-v1"},
-            {"source": "skillHub", "revision": "request-snapshot-v1"},
-            {"source": "assistantWorkflowAuthoringBundle", "revision": "v1"},
-        ],
-        "rankedMembershipIds": snapshots
-            .iter()
-            .map(|snapshot| snapshot.membership_id.clone())
-            .collect::<Vec<_>>(),
-        "candidates": snapshots.iter().map(|snapshot| json!({
-            "membershipId": snapshot.membership_id,
-            "profileRevision": snapshot.intent_revision,
-            "responsibility": snapshot.responsibility,
-            "model": snapshot.model,
-            "capabilities": snapshot.capabilities,
-            "skills": snapshot.skills,
-            "environment": snapshot.environment,
-            "readiness": snapshot.readiness,
-            "inputPriceUsdPerMillionTokens": snapshot.price_input_usd_per_million_tokens,
-            "outputPriceUsdPerMillionTokens": snapshot.price_output_usd_per_million_tokens,
-            "codingScore": snapshot.intelligence_score,
-            "taskTags": snapshot.task_tags,
-            "intelligence": snapshot.model.as_deref().and_then(crate::domain::agent_intelligence_catalog::project_allowlisted_model),
-            "reliabilityClass": snapshot.reliability_class,
-            "latencyClass": snapshot.latency_class,
-            "authority": snapshot.authority,
-        })).collect::<Vec<_>>(),
-    })
+    route_receipt_under(
+        conversation_id,
+        snapshots,
+        &super::selection_policy::current_binding(),
+    )
+}
+
+/// The same receipt under the selection policy the caller captured.
+///
+/// The receipt shape is owned by the runtime that consumes it; this host
+/// supplies its own answer for the model facts inside it and the exact
+/// selection-policy revision the decision was admitted under. A durable
+/// admission stores the receipt it was admitted with, so an in-flight task
+/// keeps the revision captured here while a later adoption governs only the
+/// next task.
+pub(crate) fn route_receipt_under(
+    conversation_id: &str,
+    snapshots: &[super::MembershipProfileSnapshot],
+    selection_policy: &super::selection_policy::SelectionPolicyBinding,
+) -> Value {
+    licoup_workflow_runtime::ports::route_receipt(
+        conversation_id,
+        snapshots,
+        &crate::workflow_host::ProductionModelFacts,
+        selection_policy.revision_name(),
+    )
 }
 
 fn merge_live_turn(live_turns: &mut Vec<Value>, turn: Value) {

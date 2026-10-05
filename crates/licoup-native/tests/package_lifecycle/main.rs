@@ -40,11 +40,18 @@ use licoup_native::platform::extension_packages::{
     ADMISSION_BLOCKED, ADMISSION_CLOSED, Admission, ArtifactLimits, CatalogEntry, CatalogIndex,
     DependentsDecision, Detector, DiscoveryEnvironment, Drained, FallbackReason, FaultPlan,
     InFlightPins, InstallPhase, InstallRequest, InstanceIdentity, InstanceLifecycle,
-    InstanceMachine, InstanceRegistry, MaintenanceAdmission, OffFrameLane, PackageMachine,
-    PackageStore, PreparedGeneration, RecommendationLog, RemainingWork, ResourceBinding,
-    ResourceChange, ResourceHost, StorageKind, SystemDefault, TrustRecord, UninstallTransaction,
-    account_store, close_surface, plan_gc, preview, running_client_version, scan,
+    InstanceMachine, InstanceRegistry, MOUNT_PLAN_FORMAT, MaintenanceAdmission, OffFrameLane,
+    PackageMachine, PackageStore, PreparedGeneration, RecommendationLog, RemainingWork,
+    ResourceBinding, ResourceChange, ResourceHost, StorageKind, SystemDefault, TrustRecord,
+    UninstallTransaction, account_store, close_surface, plan_gc, plan_generation_mount,
+    plan_generation_mount_with_actions, preview, running_client_version, scan,
 };
+
+/// MCP-OPTIONAL-COMPOSITION: with no installed package the optional MCP service
+/// composes into nothing — no process, no published endpoint, an ordinary
+/// conversation that still works, and an availability answer that says
+/// `not-installed`.
+mod mcp_optional;
 
 /// GATEWAY-PACKAGE-LIFECYCLE: the Gateway login item and the package that owns
 /// it, driven through the real store and the real registration owner.
@@ -1755,6 +1762,174 @@ fn resource_id_of(resources: &[ResourceDeclaration], kind: ResourceKind) -> Stri
         .unwrap_or_else(|| panic!("the synthetic package declares a {kind:?} resource"))
         .id()
         .to_owned()
+}
+
+#[test]
+fn the_mount_plan_publishes_the_typed_resources_a_generation_serves() {
+    let (root, store) = store("mount-plan-publication");
+    let id = "org.licoland.appearance.synthetic";
+    let version = "1.0.0";
+    let resources = installed_data_package(&store, id, version);
+
+    let seam = SeamAnswer::answering("");
+    let admission = Arc::clone(&seam) as Arc<dyn MaintenanceAdmission>;
+    let mut host = ResourceHost::with_admission(root.clone(), admission);
+    let prepared = PreparedGeneration::new(id, version, 1, resources.clone()).expect("prepared");
+    host.begin_replacement(&prepared)
+        .expect("an idle host admits the switch")
+        .commit();
+
+    // The user's ordinary selection of the installed theme: a presentation
+    // preference, so it replaces no generation and asks no admission question.
+    let theme = resource_id_of(&resources, ResourceKind::Theme);
+    host.select(ResourceKind::Theme, &theme)
+        .expect("a compiled theme resource is selectable");
+
+    // The shell states the action it registered; the plan is decided against it.
+    let registered = ["org.licoland.action.apply-appearance"];
+    let plan = plan_generation_mount_with_actions(&host.bindings(), id, 1, &resources, &registered);
+    assert_eq!(plan.revision, host.bindings().revision());
+
+    // The document is data: an identity, bindings, plain values. It has no
+    // member a widget, a builder, a callback or a client object could travel in.
+    let document = plan.to_document();
+    assert_eq!(document["format"], MOUNT_PLAN_FORMAT);
+    assert_eq!(document["version"], 1);
+    assert_eq!(document["revision"], plan.revision);
+
+    // The theme binding names the resource and the generation that serves it.
+    let bindings = document["bindings"].as_array().expect("bindings");
+    let theme_binding = bindings
+        .iter()
+        .find(|binding| binding["kind"] == "theme")
+        .expect("the theme kind is published");
+    assert_eq!(theme_binding["resourceId"], theme.as_str());
+    assert_eq!(theme_binding["packageId"], id);
+    assert_eq!(theme_binding["packageGeneration"], 1);
+    assert!(theme_binding.get("system").is_none());
+
+    // A kind nothing selected serves the client's own system fact instead.
+    let font_binding = bindings
+        .iter()
+        .find(|binding| binding["kind"] == "font")
+        .expect("the font kind is published");
+    assert_eq!(font_binding["system"], "font");
+
+    // The composition the generation declares reaches the plan through the
+    // contract's own planner: every component of the served generation mounts
+    // when the shell registered the action it binds.
+    let composition = resources
+        .iter()
+        .find(|resource| resource.kind() == ResourceKind::Composition)
+        .expect("composition resource");
+    let action_component = composition
+        .components()
+        .iter()
+        .find(|component| component.action_ref.is_some())
+        .expect("the synthetic composition binds an action");
+    assert_eq!(plan.mounted().count(), composition.components().len());
+    assert_eq!(plan.refused().count(), 0);
+
+    // Only the mounted contributions are published, and each carries the plain
+    // values its primitive renders.
+    let published = document["contributions"].as_array().expect("contributions");
+    assert_eq!(published.len(), composition.components().len());
+    for component in composition.components() {
+        let found = published
+            .iter()
+            .find(|contribution| contribution["id"] == component.component.as_str())
+            .unwrap_or_else(|| panic!("{} is published", component.component));
+        assert_eq!(found["primitive"], component.primitive.as_str());
+        assert!(found["inputs"]["label"].is_string());
+    }
+
+    // A shell that did not register the action refuses only that component, and
+    // names the declaration that decided it.
+    let unregistered = plan_generation_mount(&host.bindings(), id, 1, &resources);
+    assert_eq!(
+        unregistered.mounted().count(),
+        composition.components().len() - 1
+    );
+    let refusals: Vec<(String, &str)> = unregistered
+        .refused()
+        .map(|(contribution, reason)| (contribution.id.clone(), reason))
+        .collect();
+    assert_eq!(
+        refusals,
+        vec![(action_component.component.clone(), "action_unregistered")]
+    );
+    let refused_document = unregistered.to_document();
+    let refused_published = refused_document["contributions"]
+        .as_array()
+        .expect("contributions");
+    assert_eq!(refused_published.len(), composition.components().len() - 1);
+    assert!(
+        refused_published
+            .iter()
+            .all(|contribution| contribution["id"] != action_component.component.as_str())
+    );
+
+    // Reading the same published bindings twice gives the same document.
+    let again =
+        plan_generation_mount_with_actions(&host.bindings(), id, 1, &resources, &registered);
+    assert_eq!(again.to_document(), document);
+
+    cleanup(&root);
+}
+
+#[test]
+fn a_disabled_generation_publishes_the_declared_default_and_its_reason() {
+    let (root, store) = store("mount-plan-fallback");
+    let id = "org.licoland.appearance.synthetic";
+    let version = "1.0.0";
+    let resources = installed_data_package(&store, id, version);
+    let theme = resource_id_of(&resources, ResourceKind::Theme);
+
+    let seam = SeamAnswer::answering("");
+    let admission = Arc::clone(&seam) as Arc<dyn MaintenanceAdmission>;
+    let mut host = ResourceHost::with_admission(root.clone(), admission);
+    let prepared = PreparedGeneration::new(id, version, 1, resources.clone()).expect("prepared");
+    host.begin_replacement(&prepared)
+        .expect("an idle host admits the switch")
+        .commit();
+    host.select(ResourceKind::Theme, &theme)
+        .expect("the installed theme is selectable");
+
+    let fallbacks = host.withdraw(id, ResourceChange::Disabled);
+    assert_eq!(fallbacks.len(), 1);
+    assert_eq!(fallbacks[0].kind, ResourceKind::Theme);
+    assert_eq!(fallbacks[0].reason, FallbackReason::Disabled);
+
+    let plan = plan_generation_mount(&host.bindings(), id, 1, &resources);
+    let document = plan.to_document();
+    let bindings = document["bindings"].as_array().expect("bindings");
+    let theme_binding = bindings
+        .iter()
+        .find(|binding| binding["kind"] == "theme")
+        .expect("the theme kind is published");
+    assert_eq!(theme_binding["system"], "appearance");
+    assert!(theme_binding.get("resourceId").is_none());
+
+    // The reason travels with the document: a renderer reports it instead of
+    // inferring why the default is serving.
+    let published_fallbacks = document["fallbacks"].as_array().expect("fallbacks");
+    assert_eq!(published_fallbacks.len(), 1);
+    assert_eq!(published_fallbacks[0]["kind"], "theme");
+    assert_eq!(published_fallbacks[0]["resourceId"], theme.as_str());
+    assert_eq!(published_fallbacks[0]["packageId"], id);
+    assert_eq!(published_fallbacks[0]["reason"], "disabled");
+
+    // A generation this host no longer serves contributes nothing, whatever it
+    // used to declare.
+    let stale = plan_generation_mount(&host.bindings(), id, 2, &resources);
+    assert_eq!(stale.mounted().count(), 0);
+    assert!(
+        stale
+            .refused()
+            .all(|(_, reason)| reason == "generation_not_served")
+    );
+
+    cleanup(&root);
 }
 
 #[test]

@@ -5,9 +5,11 @@
 //! Agent's protocol. Everything it needs *from* one Agent arrives through
 //! [`AgentProtocolRegistration`] — how that Agent's protocol adapter is built,
 //! how its driver is executed and which inventory id lane control addresses it
-//! by — and the composition above this crate supplies those implementations:
-//! `licoup-native` today, `licoup-agent-codex` and `licoup-agent-pi` once
-//! those crates exist.
+//! by — and the composition above this crate supplies those implementations.
+//! `licoup-native` answers them today, reading each Agent's protocol from the
+//! package that owns it (`licoup-agent-codex`, `licoup-agent-pi`); each package
+//! answers this seam itself once the extension host's binary route is completed
+//! by the agent-execution port the package declares.
 //!
 //! The seam also reaches the host's own conversation lane on the steer and
 //! cancel paths. That reach is not any Agent's protocol either, so it arrives

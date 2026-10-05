@@ -598,15 +598,10 @@ pub(super) fn serve_host() -> Result<()> {
                 .map_err(|err| err.to_string())
         });
     }
-    // Optional protocol services have their own process and lifecycle.
-    // A startup failure never changes this host or an active turn. The installed
-    // package decides whether there is anything to start: an absent or
-    // switched-off package starts no process and is never reported as running.
-    if std::env::var_os("LICOUP_MCP_AUTOSTART").as_deref() != Some(std::ffi::OsStr::new("0")) {
-        thread::spawn(|| {
-            let _ = licoup_native::platform::mcp_service_process::start_on_host_startup();
-        });
-    }
+    // The optional MCP service is not this host's to start. Its package
+    // declares `on-demand` activation, so nothing launches it here: a caller
+    // starts it, an absent or switched-off package starts nothing, and the
+    // client neither bundles it nor keeps a switch that changes that.
     serve_bound_host(listener, service, runtime, None)
 }
 
@@ -811,7 +806,6 @@ mod tests {
                 .env("APPDATA", root.join("home/appdata"))
                 .env("LOCALAPPDATA", root.join("home/local-appdata"))
                 .env("LICOUP_HOME", &root)
-                .env("LICOUP_MCP_AUTOSTART", "0")
                 .env("LICO_MOBILE_RELAY_NATIVE_SECRET_STORE", "disabled")
                 .output().unwrap();
             let _ = std::fs::remove_dir_all(&root);

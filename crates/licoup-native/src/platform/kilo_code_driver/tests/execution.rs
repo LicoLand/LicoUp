@@ -1,4 +1,7 @@
-use super::*;
+//! The client's composition of one Kilo turn.
+
+use super::super::{RUNTIME_PROTOCOL, execute};
+use serde_json::json;
 
 #[test]
 fn empty_executable_fails_closed_without_session_fallback() {
@@ -22,7 +25,29 @@ fn empty_executable_fails_closed_without_session_fallback() {
     );
     assert!(matches!(
         result.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Failed { code, .. })
+        Some(licoup_agent_kilo::driver::Transition::Failed { code, .. })
             if code == "kilo_code_serve_process_start_failed"
     ));
+    // No native session is invented for a turn that never ran.
+    assert_eq!(result.session_id, "");
+    assert_eq!(result.thread_id, "");
+}
+
+#[test]
+fn a_relative_workspace_is_refused_before_the_endpoint_is_attached() {
+    let result = execute(
+        "kilo",
+        &json!({}),
+        "prompt",
+        "native",
+        Some(std::path::Path::new("relative")),
+        1_000,
+        None,
+        1024,
+    );
+    assert!(!result.ok);
+    assert_eq!(
+        result.error.as_ref().map(|failure| failure.code.as_str()),
+        Some("acp_working_directory_invalid")
+    );
 }
