@@ -211,7 +211,7 @@ export async function checkPackagingAndTargetProjection(context) {
     ["hermes", { crate: "licoup-agent-hermes", module: "driver",
       source: "crates/licoup-agent-hermes/src/driver.rs" }],
     ["kilo-code", { crate: "licoup-agent-kilo", module: "driver",
-      source: "crates/licoup-agent-kilo/src/driver.rs" }],
+      source: "crates/licoup-agent-kilo/src/driver/mod.rs" }],
     ["kimi-code", { crate: "licoup-agent-kimi", module: "driver",
       source: "crates/licoup-agent-kimi/src/driver.rs" }],
     ["lico-agent", { crate: "licoup-agent-lico-agent", module: "driver",
