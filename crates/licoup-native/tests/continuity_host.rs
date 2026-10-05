@@ -1537,11 +1537,11 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                     );
                 }
                 if seq == 20 {
-                    extras["lastLateUnachieved"] = json!(
-                        read_goal(host.store(), &relation.goal_id)
+                    extras["lastLateUnachieved"] = json!(read_goal(host.store(), &relation.goal_id)
                             .unwrap()
-                            .is_some_and(|item| item.lifecycle != ContinuityGoalLifecycle::Achieved)
-                    );
+                            .is_some_and(
+                                |item| item.lifecycle != ContinuityGoalLifecycle::Achieved
+                            ));
                 }
             }
             "fault" => {
@@ -7389,11 +7389,9 @@ fn waiting_goal_reminder_is_filtered_without_a_model_call_and_keeps_its_controls
         "a reminder that repeats recorded sources must not call a model: {drain}"
     );
     assert!(
-        drain["noOps"]
-            .as_array()
-            .is_some_and(|items| items
-                .iter()
-                .any(|item| item["reason"].as_str() == Some("dependency-wait"))),
+        drain["noOps"].as_array().is_some_and(|items| items
+            .iter()
+            .any(|item| item["reason"].as_str() == Some("dependency-wait"))),
         "the reminder must be reported as a deterministic no-op: {drain}"
     );
     set_continuity_clock(None);
@@ -7430,6 +7428,9 @@ fn waiting_goal_reminder_is_filtered_without_a_model_call_and_keeps_its_controls
         .unwrap()
         .expect("restart retains the unfinished responsibility");
     assert_eq!(after_restart.lifecycle, ContinuityGoalLifecycle::Waiting);
-    assert_eq!(after_restart.control, ContinuityGoalControl::CancelRequested);
+    assert_eq!(
+        after_restart.control,
+        ContinuityGoalControl::CancelRequested
+    );
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -10,12 +10,12 @@ use super::generated::{
     ContinuityDecisionLayer, ContinuityEffectClass, ContinuityEvidenceRef,
     ContinuityEvidenceResult, ContinuityFailure, ContinuityFailureCode, ContinuityFailureStage,
     ContinuityFollowThroughKind, ContinuityGoalCompletionTransition, ContinuityGoalContract,
-    ContinuityGoalControl, ContinuityGoalLifecycle, ContinuityGoalProgress, ContinuityParentCardAnchor,
-    ContinuityParentContextGrant, ContinuityParentGrantBasis, ContinuityParentGrantStatus,
-    ContinuityRecoveryClass, ContinuitySourceOwnerKind, ContinuitySourceRef,
-    ContinuitySourceValidity, ContinuitySpeechAct, ContinuityTaskChildAdmission,
-    ContinuityTaskConversationRelation, ContinuityTaskListingKind, ContinuityUtf8ByteSpan,
-    ContinuityVisibilityScope, ContinuityWake, ContinuityWriteEnvelope,
+    ContinuityGoalControl, ContinuityGoalLifecycle, ContinuityGoalProgress,
+    ContinuityParentCardAnchor, ContinuityParentContextGrant, ContinuityParentGrantBasis,
+    ContinuityParentGrantStatus, ContinuityRecoveryClass, ContinuitySourceOwnerKind,
+    ContinuitySourceRef, ContinuitySourceValidity, ContinuitySpeechAct,
+    ContinuityTaskChildAdmission, ContinuityTaskConversationRelation, ContinuityTaskListingKind,
+    ContinuityUtf8ByteSpan, ContinuityVisibilityScope, ContinuityWake, ContinuityWriteEnvelope,
 };
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -290,7 +290,8 @@ pub fn retain_current_criterion_evidence(
     evidence
         .iter()
         .filter(|item| {
-            let Some(previous_criterion) = previous.iter().find(|c| c.id == item.criterion_id) else {
+            let Some(previous_criterion) = previous.iter().find(|c| c.id == item.criterion_id)
+            else {
                 return false;
             };
             next.iter()
@@ -727,6 +728,12 @@ pub fn admit_wake(wake: &ContinuityWake) -> Result<(), ContinuityFailure> {
     Ok(())
 }
 
+/// Review policy carried by the wake that announces a new responsible owner.
+///
+/// An ownership handoff is an explicit event, not a reminder: the new owner
+/// must be engaged even though the Goal's recorded sources did not change.
+pub const OWNER_HANDOFF_REVIEW_POLICY: &str = "owner-handoff";
+
 /// Whether a pending wake re-reads only sources the Goal already recorded.
 ///
 /// A reminder exists so the Assistant looks again; it is not by itself new
@@ -741,7 +748,7 @@ pub fn wake_repeats_recorded_sources(
     contract: &ContinuityGoalContract,
     progress: &ContinuityGoalProgress,
 ) -> bool {
-    if wake.settlement.is_some() {
+    if wake.settlement.is_some() || wake.review_policy == OWNER_HANDOFF_REVIEW_POLICY {
         return false;
     }
     let mut recorded: BTreeSet<(&str, i64)> = BTreeSet::new();
@@ -793,7 +800,10 @@ mod tests {
         }
     }
 
-    fn commitment(expected: &str, criteria: Vec<ContinuityCriterion>) -> ContinuityCommitmentProposal {
+    fn commitment(
+        expected: &str,
+        criteria: Vec<ContinuityCriterion>,
+    ) -> ContinuityCommitmentProposal {
         ContinuityCommitmentProposal {
             matter_id: Some("matter:notes".into()),
             subject: super::super::generated::ContinuityMatterSubject::New,
@@ -803,7 +813,10 @@ mod tests {
         }
     }
 
-    fn stored(expected: &str, criteria: Vec<ContinuityCriterion>) -> (ContinuityGoalContract, ContinuityGoalProgress) {
+    fn stored(
+        expected: &str,
+        criteria: Vec<ContinuityCriterion>,
+    ) -> (ContinuityGoalContract, ContinuityGoalProgress) {
         let contract = ContinuityGoalContract {
             id: "goal:notes".into(),
             matter_id: "matter:notes".into(),
@@ -825,9 +838,11 @@ mod tests {
             criterion_evidence_refs: Vec::new(),
             active_execution_refs: Vec::new(),
             blockers: Vec::new(),
-            next_attention: Some(super::super::generated::ContinuityNextAttention::DispatchableStep {
-                step_ref: "step:goal:notes:0".into(),
-            }),
+            next_attention: Some(
+                super::super::generated::ContinuityNextAttention::DispatchableStep {
+                    step_ref: "step:goal:notes:0".into(),
+                },
+            ),
             closure_ref: None,
         };
         (contract, progress)
@@ -873,7 +888,10 @@ mod tests {
             ContinuityCommitmentAdmission::Reuse
         );
         // Criteria order is not identity.
-        let ordered = commitment("Draft the notes", vec![criterion("b", true, "x"), criterion("a", false, "y")]);
+        let ordered = commitment(
+            "Draft the notes",
+            vec![criterion("b", true, "x"), criterion("a", false, "y")],
+        );
         let (contract, progress) = stored(
             "Draft the notes",
             vec![criterion("a", false, "y"), criterion("b", true, "x")],
@@ -903,7 +921,10 @@ mod tests {
             ContinuityCommitmentAdmission::Amend
         );
         // Same identity, different criteria: an amendment, never a reset.
-        let narrowed = commitment("Draft the notes", vec![criterion("c1", true, "exact-source")]);
+        let narrowed = commitment(
+            "Draft the notes",
+            vec![criterion("c1", true, "exact-source")],
+        );
         assert_eq!(
             admit_commitment_admission(
                 ContinuitySpeechAct::Delegation,
