@@ -26,9 +26,10 @@ use std::collections::BTreeMap;
 
 use super::authority::EndpointIdentity;
 use super::ledger::RequestId;
+use super::replacement::ResponsibilityBinding;
 
 /// The schema of [`SettlementRecord`].
-pub const REMOTE_SETTLEMENT_RECORD_SCHEMA: &str = "licoup.endpoint-remote-settlement.v1";
+pub const REMOTE_SETTLEMENT_RECORD_SCHEMA: &str = "licoup.endpoint-remote-settlement.v2";
 
 /// Who performs one execution.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -192,6 +193,89 @@ impl ObservationRecord {
     }
 }
 
+/// Which local endpoint issued one effect, and which local endpoints are
+/// currently allowed to invoke it.
+///
+/// [`Self::Unresolved`] is a real, reportable answer and not an absent value: it
+/// says the effect's original issuer is not known here, which is exactly what
+/// this host must report after a transfer that did not carry that fact. An
+/// unresolved effect is never re-dispatched on a guess.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ResponsibilityWriter {
+    /// The effect was issued by this local endpoint.
+    Local { dispatcher: EndpointIdentity },
+    /// The effect was issued by another local endpoint of the same subject, and
+    /// this host knows which one. Only this endpoint may invoke it again.
+    Transferred { dispatcher: EndpointIdentity },
+    /// The effect's original issuer is not known here. Nothing may invoke it.
+    Unresolved,
+}
+
+impl ResponsibilityWriter {
+    /// The endpoint that issued the effect, when this host knows it.
+    #[must_use]
+    pub const fn dispatcher(&self) -> Option<&EndpointIdentity> {
+        match self {
+            Self::Local { dispatcher } | Self::Transferred { dispatcher } => Some(dispatcher),
+            Self::Unresolved => None,
+        }
+    }
+
+    /// The stable, non-secret name of this attribution.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Local { .. } => "local",
+            Self::Transferred { .. } => "transferred",
+            Self::Unresolved => "unresolved",
+        }
+    }
+}
+
+/// Whether one effect has already been issued, and by whom.
+///
+/// It is the record's re-dispatch guard. A transferred effect keeps its count, so
+/// the replacement cannot issue a second one: settling it needs the peer's own
+/// authenticated receipt, which is what [`RemoteSettlement::record_receipt`]
+/// accepts.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DispatchState {
+    dispatched: bool,
+    in_flight: bool,
+}
+
+impl DispatchState {
+    /// No effect has been issued for this execution.
+    #[must_use]
+    pub const fn undispatched() -> Self {
+        Self {
+            dispatched: false,
+            in_flight: false,
+        }
+    }
+
+    /// Whether an effect was ever issued for this execution.
+    #[must_use]
+    pub const fn was_dispatched(self) -> bool {
+        self.dispatched
+    }
+
+    /// Whether an issued effect is still unsettled.
+    #[must_use]
+    pub const fn is_in_flight(self) -> bool {
+        self.in_flight
+    }
+
+    /// An effect that was issued, and whether it is still unsettled.
+    #[must_use]
+    pub const fn issued(in_flight: bool) -> Self {
+        Self {
+            dispatched: true,
+            in_flight,
+        }
+    }
+}
+
 /// One execution this host tracks.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TrackedExecution {
@@ -200,10 +284,15 @@ pub struct TrackedExecution {
     state: RemoteOutcomeState,
     cursor: RemoteCursor,
     late_receipt: Option<AuthenticatedReceipt>,
+    writer: ResponsibilityWriter,
+    dispatch: DispatchState,
 }
 
 impl TrackedExecution {
     /// A peer-owned execution this host requested and awaits.
+    ///
+    /// Merely awaiting a peer's result issues no effect here, so the record
+    /// starts with nothing dispatched and no writer attributed.
     #[must_use]
     pub fn remote(identity: ExecutionIdentity, cursor: RemoteCursor) -> Self {
         Self {
@@ -212,10 +301,15 @@ impl TrackedExecution {
             state: RemoteOutcomeState::Requested,
             cursor,
             late_receipt: None,
+            writer: ResponsibilityWriter::Unresolved,
+            dispatch: DispatchState::undispatched(),
         }
     }
 
     /// Work a peer asked this host to perform, after local admission.
+    ///
+    /// Local admission is the decision, not the effect: nothing has been issued
+    /// for it yet, which is why the dispatch record starts empty.
     #[must_use]
     pub fn local(identity: ExecutionIdentity, cursor: RemoteCursor) -> Self {
         Self {
@@ -224,7 +318,42 @@ impl TrackedExecution {
             state: RemoteOutcomeState::Requested,
             cursor,
             late_receipt: None,
+            writer: ResponsibilityWriter::Unresolved,
+            dispatch: DispatchState::undispatched(),
         }
+    }
+
+    /// The same execution, attributed to the endpoint that may invoke it.
+    ///
+    /// A caller that admits work names the endpoint it admitted the work for; a
+    /// record restored without that fact stays
+    /// [`ResponsibilityWriter::Unresolved`] and is never invoked on a guess.
+    #[must_use]
+    pub fn with_writer(mut self, writer: ResponsibilityWriter) -> Self {
+        self.writer = writer;
+        self
+    }
+
+    /// Which local endpoints may invoke this effect, and which one issued it.
+    #[must_use]
+    pub const fn writer(&self) -> &ResponsibilityWriter {
+        &self.writer
+    }
+
+    /// Whether an effect was ever issued for this execution.
+    #[must_use]
+    pub const fn dispatch(&self) -> DispatchState {
+        self.dispatch
+    }
+
+    /// Moves this execution's attribution without touching anything else.
+    pub(super) fn set_writer(&mut self, writer: ResponsibilityWriter) {
+        self.writer = writer;
+    }
+
+    /// Records one issue or settlement of this execution's effect.
+    pub(super) fn set_dispatch(&mut self, dispatch: DispatchState) {
+        self.dispatch = dispatch;
     }
 
     #[must_use]
@@ -367,6 +496,7 @@ pub struct SettlementRecord {
     schema: String,
     local_identity: LocalIdentity,
     tracked: Vec<TrackedExecution>,
+    responsibility: Option<ResponsibilityBinding>,
 }
 
 impl SettlementRecord {
@@ -391,6 +521,7 @@ impl SettlementRecord {
 pub struct RemoteSettlement {
     local_identity: LocalIdentity,
     tracked: BTreeMap<ExecutionIdentity, TrackedExecution>,
+    responsibility: Option<ResponsibilityBinding>,
 }
 
 impl RemoteSettlement {
@@ -399,6 +530,7 @@ impl RemoteSettlement {
         Self {
             local_identity,
             tracked: BTreeMap::new(),
+            responsibility: None,
         }
     }
 
@@ -416,6 +548,7 @@ impl RemoteSettlement {
                 .into_iter()
                 .map(|execution| (execution.identity.clone(), execution))
                 .collect(),
+            responsibility: record.responsibility,
         })
     }
 
@@ -426,7 +559,44 @@ impl RemoteSettlement {
             schema: REMOTE_SETTLEMENT_RECORD_SCHEMA.to_owned(),
             local_identity: self.local_identity.clone(),
             tracked: self.tracked.values().cloned().collect(),
+            responsibility: self.responsibility.clone(),
         }
+    }
+
+    /// The replacement this host's responsibility was last transferred by, if any.
+    ///
+    /// A record written before responsibility carried dispatch ownership has no
+    /// binding and is not adopted, so the format stays single.
+    #[must_use]
+    pub const fn responsibility(&self) -> Option<&ResponsibilityBinding> {
+        self.responsibility.as_ref()
+    }
+
+    /// How many executions this host tracks.
+    #[must_use]
+    pub fn tracked_len(&self) -> usize {
+        self.tracked.len()
+    }
+
+    /// Every tracked execution, ordered by identity.
+    #[must_use]
+    pub fn tracked(&self) -> Vec<&TrackedExecution> {
+        self.tracked.values().collect()
+    }
+
+    /// The tracked executions, for the operations that move their attribution.
+    pub(super) fn tracked_mut(&mut self) -> &mut BTreeMap<ExecutionIdentity, TrackedExecution> {
+        &mut self.tracked
+    }
+
+    /// Replaces the local identity after an authorized transfer.
+    pub(super) fn set_local_identity(&mut self, identity: LocalIdentity) {
+        self.local_identity = identity;
+    }
+
+    /// The slot an authorized transfer records its binding in.
+    pub(super) fn responsibility_slot(&mut self) -> &mut Option<ResponsibilityBinding> {
+        &mut self.responsibility
     }
 
     #[must_use]
@@ -965,17 +1135,20 @@ mod tests {
             ))
             .expect("tracked");
         let mut record = settlement.durable_record();
-        record.schema = "licoup.endpoint-remote-settlement.v0".to_owned();
+        record.schema = "licoup.endpoint-remote-settlement.v1".to_owned();
 
+        // A record that predates dispatch ownership is not adopted either: it
+        // cannot say which local endpoint issued an effect, and guessing would be
+        // exactly the second dispatch the ownership record exists to prevent.
         assert_eq!(
             RemoteSettlement::restored(record),
             Err(SettlementRefusal::RecordSchemaMismatch {
-                schema: "licoup.endpoint-remote-settlement.v0".to_owned()
+                schema: "licoup.endpoint-remote-settlement.v1".to_owned()
             })
         );
         assert_eq!(
             REMOTE_SETTLEMENT_RECORD_SCHEMA,
-            "licoup.endpoint-remote-settlement.v1"
+            "licoup.endpoint-remote-settlement.v2"
         );
     }
 

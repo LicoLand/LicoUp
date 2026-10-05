@@ -27,6 +27,7 @@ pub mod authority;
 pub mod intent;
 pub mod ledger;
 pub mod owner;
+pub mod replacement;
 pub mod settlement;
 #[cfg(test)]
 mod tests;
@@ -40,6 +41,16 @@ use owner::{LocalWorkOwner, OwnerDisposition, OwnerReport, WorkObservation};
 
 pub use authority::EndpointIdentity;
 pub use ledger::{AdmittedControl, LedgerRefusal, RemoteControlRecord};
+pub use replacement::{
+    DispatchClaim, ReconciliationRecord, ResponsibilityBinding, ResponsibilityRefusal,
+    ResponsibilityTransfer, ResponsibilityWriter,
+};
+pub use settlement::{
+    AuthenticatedReceipt, DispatchState, ExecutionIdentity, ExecutionOwner, LocalAdmission,
+    LocalIdentity, LocalObservation, ObservationRecord, REMOTE_SETTLEMENT_RECORD_SCHEMA,
+    RemoteCursor, RemoteOutcomeState, RemoteSettlement, SettlementRecord, SettlementRefusal,
+    TrackedExecution,
+};
 
 /// The largest selection one stop may resolve before it is refused.
 ///
