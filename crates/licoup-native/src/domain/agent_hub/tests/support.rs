@@ -107,6 +107,7 @@ pub(super) fn fixture_artifact_channel(
             redirect_hosts: Vec::new(),
             integrity,
         }),
+        install: None,
         install_argv: vec![
             "tar".to_string(),
             "-xzf".to_string(),

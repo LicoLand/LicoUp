@@ -171,6 +171,39 @@ fn os_matches(oses: &[String], os: &str) -> bool {
     oses.is_empty() || oses.iter().any(|value| value == os)
 }
 
+/// The root tokens a path template may begin with, in this manifest's own
+/// vocabulary. A template that starts with none of them has no host root, so it
+/// names nothing this owner can expand or admit.
+pub const PATH_TEMPLATE_ROOTS: &[&str] = &[
+    "home",
+    "appdata",
+    "local_appdata",
+    "xdg_config",
+    "xdg_data",
+    "program_data",
+    "program_files",
+    "program_files_x86",
+    "portable",
+];
+
+/// Expands one path template against the host roots, in this manifest's own
+/// vocabulary. A caller that needs the same roots the scanner uses — an install
+/// destination that must be a location discovery looks in — expands it here
+/// rather than inventing a second path vocabulary.
+pub fn expand_path_template(template: &str, roots: &HostRoots) -> Option<PathBuf> {
+    expand_template(template, roots)
+}
+
+/// Whether discovery admits `path` on `os`: a location whose own scan prefixes
+/// cover it and that the deny list does not exclude.
+///
+/// An install destination the Hub cannot state here is a destination discovery
+/// may never look in, which would make the install invisible to the Agent that
+/// scans for it.
+pub fn install_destination_admitted(path: &Path, os: &str, roots: &HostRoots) -> bool {
+    admitted_scan_path_for_os_with(path, os, roots)
+}
+
 fn expand_template(template: &str, roots: &HostRoots) -> Option<PathBuf> {
     let mut remaining = template;
     let mut path = PathBuf::new();

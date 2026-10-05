@@ -36,6 +36,7 @@ fn cask_channel() -> InstallChannel {
         official_source: "https://example.invalid".to_string(),
         version_policy: "latest-stable".to_string(),
         artifact: None,
+        install: None,
         install_argv: vec![],
         windows_install_argv: vec![],
         update_argv: vec![],

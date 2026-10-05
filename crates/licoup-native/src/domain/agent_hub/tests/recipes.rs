@@ -373,6 +373,7 @@ fn synthetic_channel(
         official_source: "https://example.invalid/agent".to_string(),
         version_policy: "latest-stable".to_string(),
         artifact: None,
+        install: None,
         install_argv: Vec::new(),
         windows_install_argv: Vec::new(),
         update_argv: Vec::new(),
@@ -719,4 +720,184 @@ fn artifact_declarations_carry_only_verified_vendor_publication() {
             "{agent_id} must stay refused until its vendor publishes a digest for the staged artifact"
         );
     }
+}
+
+/// A declared install destination is where the Hub writes and what it removes,
+/// so an inexact one must never load: a destination without a root the discovery
+/// owner knows would install an Agent somewhere no scan looks.
+#[test]
+fn an_install_destination_declaration_is_validated() {
+    use super::support::fixture_artifact_channel;
+    use crate::domain::agent_hub::contract::InstallPlacement;
+    use crate::domain::agent_hub::recipes::validate_agent;
+
+    let placement =
+        |dir: &[(&str, &str)], binary: &[(&str, &str)], argv: &[&str]| InstallPlacement {
+            binary: binary
+                .iter()
+                .map(|(os, name)| (os.to_string(), name.to_string()))
+                .collect(),
+            dir: dir
+                .iter()
+                .map(|(os, template)| (os.to_string(), template.to_string()))
+                .collect(),
+            argv: argv.iter().map(|arg| arg.to_string()).collect(),
+        };
+    let recipe_with = |install: InstallPlacement, verify: &str| {
+        let mut channel = fixture_artifact_channel("https://vendor.invalid", None);
+        channel.install = Some(install);
+        channel.verify_argv = vec![verify.to_string(), "--version".to_string()];
+        synthetic_recipe("synthetic-artifact", vec![channel])
+    };
+    let valid = || {
+        placement(
+            &[("macos", "{home}/.local/bin")],
+            &[("macos", "synthetic-agent")],
+            &["install", "-m", "0755", "{staging}/agent", "{install}"],
+        )
+    };
+
+    validate_agent(&recipe_with(valid(), "{install}")).unwrap();
+    // A vendor installer that places the result needs no placement step.
+    validate_agent(&recipe_with(
+        placement(
+            &[("macos", "{home}/.local/bin")],
+            &[("macos", "synthetic-agent")],
+            &[],
+        ),
+        "{install}",
+    ))
+    .unwrap();
+
+    for (label, install, verify) in [
+        (
+            "a directory without its binary name",
+            placement(
+                &[("macos", "{home}/.local/bin")],
+                &[],
+                &["install", "{staging}/a", "{install}"],
+            ),
+            "{install}",
+        ),
+        (
+            "a binary without its directory",
+            placement(
+                &[],
+                &[("macos", "synthetic-agent")],
+                &["install", "{staging}/a", "{install}"],
+            ),
+            "{install}",
+        ),
+        (
+            "a destination on another OS than the channel lists",
+            placement(
+                &[("windows", "{home}/.local/bin")],
+                &[("windows", "a.exe")],
+                &["install", "{staging}/a", "{install}"],
+            ),
+            "{install}",
+        ),
+        (
+            "a template with no host root",
+            placement(
+                &[("macos", "/usr/local/bin")],
+                &[("macos", "synthetic-agent")],
+                &["install", "{staging}/a", "{install}"],
+            ),
+            "{install}",
+        ),
+        (
+            "a template with no root token",
+            placement(
+                &[("macos", "~/.local/bin")],
+                &[("macos", "synthetic-agent")],
+                &["install", "{staging}/a", "{install}"],
+            ),
+            "{install}",
+        ),
+        (
+            "a template that climbs out of its root",
+            placement(
+                &[("macos", "{home}/../etc")],
+                &[("macos", "synthetic-agent")],
+                &["install", "{staging}/a", "{install}"],
+            ),
+            "{install}",
+        ),
+        (
+            "a binary that is a path",
+            placement(
+                &[("macos", "{home}/.local/bin")],
+                &[("macos", "bin/agent")],
+                &["install", "{staging}/a", "{install}"],
+            ),
+            "{install}",
+        ),
+        (
+            "a placement step with no declared target",
+            placement(
+                &[("macos", "{home}/.local/bin")],
+                &[("macos", "synthetic-agent")],
+                &["install", "-m", "0755", "{staging}/agent"],
+            ),
+            "{install}",
+        ),
+        (
+            "a verification that names a PATH binary instead of the destination",
+            placement(
+                &[("macos", "{home}/.local/bin")],
+                &[("macos", "synthetic-agent")],
+                &["install", "-m", "0755", "{staging}/agent", "{install}"],
+            ),
+            "synthetic-agent",
+        ),
+    ] {
+        assert!(
+            validate_agent(&recipe_with(install, verify)).is_err(),
+            "an install declaration with {label} must not load"
+        );
+    }
+}
+
+/// Every destination the bundled recipes declare is one the discovery owner
+/// already admits, so what the Hub installs is what the next Agent scan finds.
+#[test]
+fn declared_install_destinations_are_locations_discovery_admits() {
+    use licoup_agent_targets::domain::targets::scan_paths;
+
+    let registry = registry().unwrap();
+    let roots = scan_paths::HostRoots::from_environment();
+    let mut declared = 0;
+    for agent in &registry.agents {
+        for channel in &agent.channels {
+            let Some(install) = channel.install.as_ref() else {
+                continue;
+            };
+            assert_eq!(
+                channel.verify_argv.first().map(String::as_str),
+                Some("{install}"),
+                "{}/{} verifies its declared destination",
+                agent.id,
+                channel.id
+            );
+            for (os, template) in &install.dir {
+                let binary = install
+                    .binary
+                    .get(os)
+                    .unwrap_or_else(|| panic!("{}/{} names {os}", agent.id, channel.id));
+                let directory = scan_paths::expand_path_template(template, &roots)
+                    .unwrap_or_else(|| panic!("{}/{} template {template}", agent.id, channel.id));
+                let path = directory.join(binary);
+                assert!(
+                    scan_paths::install_destination_admitted(&path, os, &roots),
+                    "{}/{} must install where discovery looks: {}",
+                    agent.id,
+                    channel.id,
+                    path.display()
+                );
+                declared += 1;
+            }
+        }
+    }
+    assert_eq!(declared, 10, "five channels declare two OSes each");
 }

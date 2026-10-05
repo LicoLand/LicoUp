@@ -4,10 +4,19 @@
 //! from before it runs that channel's install argv; [`super::acquisition`] owns
 //! the fetch and the published-digest check, and writes only into the Hub's
 //! private staging root.
+//!
+//! A channel that declares an install destination adds one more visible argv
+//! step, which places the staged result at that destination. `{install}` is
+//! derived from the declaration, so uninstall and verify name a path the recipe
+//! stated instead of a path the caller had to supply or a name PATH happened to
+//! answer; a caller-supplied `installRef` still wins for an install the caller
+//! owns. The destination is expanded with the discovery owner's own roots and
+//! must be a location that owner admits, so what the Hub installs is what the
+//! next Agent scan finds.
 
 use super::acquisition::{
     self, AcquisitionFailure, AcquisitionRequest, ArtifactFetcher, ArtifactRole,
-    VendorArtifactFetcher,
+    INSTALL_DESTINATION_UNADMITTED, INSTALL_DESTINATION_UNDECLARED, VendorArtifactFetcher,
 };
 use super::argv::{ArgvKind, ArgvRunner, ProcessArgvRunner, validate_program_args};
 use super::capabilities::capabilities_from_params;
@@ -23,7 +32,9 @@ use super::recipes::{self, agent_recipe};
 use super::selector;
 use crate::platform::client_state::ClientStateStore;
 use anyhow::{Result, anyhow, ensure};
+use licoup_agent_targets::domain::targets::scan_paths;
 use serde_json::{Value, json};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 /// Status of a plan admission refuses because its channel cannot be staged.
@@ -156,7 +167,11 @@ pub fn plan_with(ctx: &HubContext, params: &Value) -> Result<Value> {
     };
     let argv = argv_for(&operation, &ctx.capabilities.os, selected);
     argv_guard(&argv, selected)?;
-    let needs = StagedNeeds::of(&argv);
+    let placement = placement_argv(&operation, selected);
+    if !placement.is_empty() {
+        argv_guard(&placement, selected)?;
+    }
+    let needs = operation_needs(&operation, &ctx.capabilities.os, selected);
     let acquisition = match plan_acquisition(ctx, params, &agent_id, selected, &needs)? {
         PlanAdmission::Ready(descriptor) => descriptor,
         PlanAdmission::Refused(failure) => {
@@ -187,7 +202,8 @@ pub fn plan_with(ctx: &HubContext, params: &Value) -> Result<Value> {
             "packageCoordinate": selected.package_coordinate,
             "officialSource": selected.official_source,
             "versionPolicy": selected.version_policy,
-            "argv": argv
+            "argv": argv,
+            "placementArgv": placement
         }
     }))
 }
@@ -210,7 +226,7 @@ fn plan_acquisition(
     channel: &InstallChannel,
     needs: &StagedNeeds,
 ) -> Result<PlanAdmission> {
-    if let Err(failure) = verify_staged_requirements(params, channel, needs) {
+    if let Err(failure) = verify_staged_requirements(params, channel, needs, &ctx.capabilities) {
         return Ok(PlanAdmission::Refused(failure));
     }
     if !needs.artifact && !needs.script && !needs.staging {
@@ -263,13 +279,10 @@ fn resolve_staged_values(
     channel: &InstallChannel,
     needs: &StagedNeeds,
 ) -> Result<(StagedValues, Option<Value>), AcquisitionFailure> {
-    verify_staged_requirements(params, channel, needs)?;
+    verify_staged_requirements(params, channel, needs, &ctx.capabilities)?;
     let mut values = StagedValues::default();
     if needs.install {
-        values.install = params
-            .get("installRef")
-            .and_then(Value::as_str)
-            .map(str::to_string);
+        values.install = install_reference(params, channel, &ctx.capabilities)?;
     }
     if !needs.artifact && !needs.script && !needs.staging {
         values.version = requested_version(params);
@@ -385,15 +398,9 @@ fn verify_staged_requirements(
     params: &Value,
     channel: &InstallChannel,
     needs: &StagedNeeds,
+    capabilities: &PlatformInstallCapabilities,
 ) -> Result<(), AcquisitionFailure> {
-    if needs.install
-        && params
-            .get("installRef")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .is_none()
-    {
+    if needs.install && install_reference(params, channel, capabilities)?.is_none() {
         return Err(AcquisitionFailure::new(
             acquisition::INSTALL_REFERENCE_UNRESOLVED,
         ));
@@ -482,7 +489,14 @@ pub fn apply_with(ctx: &HubContext, params: &Value) -> Result<Value> {
         .into_iter()
         .filter_map(|value| value.as_str().map(str::to_string))
         .collect::<Vec<_>>();
-    let needs = StagedNeeds::of(&argv_template);
+    let placement_template = planned["selectedChannel"]["placementArgv"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|value| value.as_str().map(str::to_string))
+        .collect::<Vec<_>>();
+    let needs = operation_needs(&operation, &ctx.capabilities.os, channel);
     // Acquisition writes only into the Hub's private staging root; the install
     // argv below is what may touch the machine's own software locations.
     let (values, staged_receipt) = match resolve_staged_values(ctx, params, agent, channel, &needs)
@@ -492,15 +506,12 @@ pub fn apply_with(ctx: &HubContext, params: &Value) -> Result<Value> {
             return Ok(apply_failure_json(&operation, &agent_id, &failure, channel));
         }
     };
-    let mut argv = Vec::with_capacity(argv_template.len());
-    for arg in &argv_template {
-        match values.substitute(arg) {
-            Ok(resolved) => argv.push(resolved),
-            Err(failure) => {
-                return Ok(apply_failure_json(&operation, &agent_id, &failure, channel));
-            }
+    let argv = match resolved_step(&values, &argv_template) {
+        Ok(argv) => argv,
+        Err(failure) => {
+            return Ok(apply_failure_json(&operation, &agent_id, &failure, channel));
         }
-    }
+    };
     ensure!(!argv.is_empty(), "argv_forbidden");
     let program = argv[0].clone();
     let args = argv[1..].to_vec();
@@ -517,6 +528,28 @@ pub fn apply_with(ctx: &HubContext, params: &Value) -> Result<Value> {
             "events": events(&lifecycle),
             "runner": super::argv::outcome_json(&outcome)
         }));
+    }
+    // The placement step is part of the confirmed plan, and its only write
+    // target is the destination `{install}` already names.
+    if !placement_template.is_empty() {
+        let placement = match resolved_step(&values, &placement_template) {
+            Ok(placement) => placement,
+            Err(failure) => {
+                return Ok(apply_failure_json(&operation, &agent_id, &failure, channel));
+            }
+        };
+        let outcome = ctx.runner.run(&placement[0], &placement[1..])?;
+        if outcome.status != 0 {
+            lifecycle.push(LIFECYCLE_FAILED);
+            return Ok(json!({
+                "ok": false,
+                "status": LIFECYCLE_FAILED,
+                "operation": operation,
+                "agentId": agent_id,
+                "events": events(&lifecycle),
+                "runner": super::argv::outcome_json(&outcome)
+            }));
+        }
     }
     lifecycle.push(LIFECYCLE_VERIFYING);
     if !channel.verify_argv.is_empty() {
@@ -592,6 +625,105 @@ fn argv_for(operation: &str, os: &str, channel: &InstallChannel) -> Vec<String> 
     }
 }
 
+/// Every argv step one operation runs, in order.
+///
+/// An install or an update of a channel that declares where its executable
+/// belongs runs the placement step after the operation's own argv, so the copy
+/// into the declared destination is part of what the caller confirms. Uninstall
+/// removes the declared destination and places nothing.
+fn operation_steps(operation: &str, os: &str, channel: &InstallChannel) -> Vec<Vec<String>> {
+    let mut steps = vec![argv_for(operation, os, channel)];
+    if operation != "uninstall"
+        && let Some(install) = channel.install.as_ref()
+        && !install.argv.is_empty()
+    {
+        steps.push(install.argv.clone());
+    }
+    steps
+}
+
+/// The placement step one operation runs, which is empty when it places nothing.
+fn placement_argv(operation: &str, channel: &InstallChannel) -> Vec<String> {
+    if operation == "uninstall" {
+        return Vec::new();
+    }
+    channel
+        .install
+        .as_ref()
+        .map(|install| install.argv.clone())
+        .unwrap_or_default()
+}
+
+/// The placeholders every step of one operation needs.
+fn operation_needs(operation: &str, os: &str, channel: &InstallChannel) -> StagedNeeds {
+    let steps = operation_steps(operation, os, channel);
+    let mut combined = Vec::new();
+    for step in steps {
+        combined.extend(step);
+    }
+    StagedNeeds::of(&combined)
+}
+
+/// The install destination a channel declares for this host, resolved.
+///
+/// The directory template is expanded by the discovery owner, in that owner's
+/// own root vocabulary, and the resolved path must be one that owner admits:
+/// the Hub installs only where the next Agent scan looks, so an install cannot
+/// land somewhere discovery will never find it. `Ok(None)` means the channel
+/// declares no destination at all; an OS the declaration does not cover is a
+/// typed refusal rather than an empty path.
+fn declared_install_path(
+    channel: &InstallChannel,
+    capabilities: &PlatformInstallCapabilities,
+) -> Result<Option<PathBuf>, AcquisitionFailure> {
+    let Some(install) = channel.install.as_ref() else {
+        return Ok(None);
+    };
+    let binary = install
+        .binary
+        .get(&capabilities.os)
+        .ok_or_else(|| AcquisitionFailure::with_detail(INSTALL_DESTINATION_UNDECLARED, "binary"))?;
+    let template = install.dir.get(&capabilities.os).ok_or_else(|| {
+        AcquisitionFailure::with_detail(INSTALL_DESTINATION_UNDECLARED, "directory")
+    })?;
+    let roots = scan_paths::HostRoots::from_environment();
+    let directory = scan_paths::expand_path_template(template, &roots)
+        .ok_or_else(|| AcquisitionFailure::with_detail(INSTALL_DESTINATION_UNDECLARED, "root"))?;
+    let path = directory.join(binary);
+    if !scan_paths::install_destination_admitted(&path, &capabilities.os, &roots) {
+        return Err(AcquisitionFailure::with_detail(
+            INSTALL_DESTINATION_UNADMITTED,
+            template,
+        ));
+    }
+    Ok(Some(path))
+}
+
+/// The install reference one operation resolves, caller-supplied first.
+///
+/// A caller that owns an install states its own reference. A channel that
+/// declares where its executable belongs derives the reference from that
+/// declaration, so an install the Hub performed can be removed without the
+/// caller having to know where it landed.
+fn install_reference(
+    params: &Value,
+    channel: &InstallChannel,
+    capabilities: &PlatformInstallCapabilities,
+) -> Result<Option<String>, AcquisitionFailure> {
+    if let Some(supplied) = params
+        .get("installRef")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(Some(supplied.to_string()));
+    }
+    Ok(
+        declared_install_path(channel, capabilities)?
+            .map(|path| path.to_string_lossy().to_string()),
+    )
+}
+
 fn argv_guard(argv: &[String], channel: &InstallChannel) -> Result<()> {
     if argv.is_empty() {
         return Err(anyhow!("argv_forbidden"));
@@ -605,6 +737,18 @@ fn substitute_argv(argv: &[String], values: &StagedValues) -> Result<Vec<String>
         substituted.push(values.substitute(arg)?);
     }
     Ok(substituted)
+}
+
+/// One argv step with every placeholder of the plan resolved.
+fn resolved_step(
+    values: &StagedValues,
+    template: &[String],
+) -> Result<Vec<String>, AcquisitionFailure> {
+    let mut step = Vec::with_capacity(template.len());
+    for arg in template {
+        step.push(values.substitute(arg)?);
+    }
+    Ok(step)
 }
 
 /// The lifecycle result of a confirmed apply whose staging phase refused.

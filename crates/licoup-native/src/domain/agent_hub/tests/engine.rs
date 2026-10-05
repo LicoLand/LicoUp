@@ -395,3 +395,191 @@ fn plan_honors_requested_install_channel_instead_of_auto_select() {
         json!(["npm", "install", "-g", "@openai/codex"])
     );
 }
+
+/// The body the recording port stages, with the digest that pins it.
+fn staged_body() -> Vec<u8> {
+    b"synthetic vendor archive".to_vec()
+}
+
+fn pinned_integrity() -> ArtifactIntegrity {
+    ArtifactIntegrity {
+        algorithm: "sha256".to_string(),
+        digest: Some(sha256_hex(&staged_body())),
+        digest_url_template: None,
+    }
+}
+
+/// A fixture channel that declares where its executable belongs and places the
+/// staged result there itself.
+fn placed_channel() -> (InstallChannel, RecordingArtifactFetcher) {
+    let mut channel = fixture_artifact_channel("https://vendor.invalid", Some(pinned_integrity()));
+    channel.install = Some(InstallPlacement {
+        binary: [("macos".to_string(), "synthetic-agent".to_string())]
+            .into_iter()
+            .collect(),
+        dir: [("macos".to_string(), "{home}/.local/bin".to_string())]
+            .into_iter()
+            .collect(),
+        argv: vec![
+            "install".to_string(),
+            "-m".to_string(),
+            "0755".to_string(),
+            format!("{{staging}}/{ARCHIVE_NAME}"),
+            "{install}".to_string(),
+        ],
+    });
+    channel.verify_argv = vec!["{install}".to_string(), "--version".to_string()];
+    let fetcher = RecordingArtifactFetcher::new();
+    fetcher.serve(ARCHIVE_NAME, staged_body());
+    (channel, fetcher)
+}
+
+/// The destination the discovery owner's own roots derive for the fixture.
+fn fixture_destination() -> std::path::PathBuf {
+    licoup_agent_targets::domain::targets::scan_paths::HostRoots::from_environment()
+        .home
+        .expect("host home")
+        .join(".local")
+        .join("bin")
+        .join("synthetic-agent")
+}
+
+#[test]
+fn a_declared_destination_derives_the_install_reference_and_places_the_result() {
+    let state_root = temp_dir("placement");
+    let (channel, fetcher) = placed_channel();
+    let registry = synthetic_registry(vec![synthetic_agent("synthetic", vec![channel])]);
+    let params = bare_params(&state_root);
+    let runner = RecordingArgvRunner::new();
+    let ctx = HubContext::with_ports(
+        &params,
+        Arc::new(runner.clone()),
+        Arc::new(fetcher),
+        Arc::new(registry),
+    )
+    .unwrap();
+
+    // No caller-supplied reference: the declaration is what resolves {install}.
+    let planned = plan_with(&ctx, &params).unwrap();
+    assert_eq!(planned["status"], "planned", "{planned}");
+    assert_eq!(
+        planned["selectedChannel"]["placementArgv"],
+        json!([
+            "install",
+            "-m",
+            "0755",
+            format!("{{staging}}/{ARCHIVE_NAME}"),
+            "{install}"
+        ])
+    );
+
+    let mut confirmed = params;
+    confirmed["confirmation"] = planned["confirmation"].clone();
+    let applied = apply_with(&ctx, &confirmed).unwrap();
+    assert_eq!(applied["ok"], true, "{applied}");
+
+    let recorded = runner.recorded();
+    assert_eq!(recorded.len(), 3, "{recorded:?}");
+    assert_eq!(recorded[0].0, "tar");
+    assert_eq!(recorded[1].0, "install");
+    let destination = fixture_destination();
+    assert_eq!(
+        recorded[1].1.last().cloned(),
+        Some(destination.to_string_lossy().to_string())
+    );
+    // The placement copies the file the first step staged, from the Hub's own
+    // staging root, to that one declared destination.
+    let staged_archive = recorded[0].1[1].clone();
+    let staging_dir = recorded[0].1[3].clone();
+    assert!(staged_archive.ends_with(ARCHIVE_NAME), "{staged_archive}");
+    assert!(staged_archive.contains("agent-hub"), "{staged_archive}");
+    assert_eq!(recorded[1].1[2], staged_archive);
+    assert!(staged_archive.starts_with(&staging_dir), "{recorded:?}");
+    // Verification runs the executable at the declared destination, so an
+    // unrelated binary that happens to answer to the same name cannot pass it.
+    assert_eq!(
+        recorded[2].0,
+        destination.to_string_lossy().to_string(),
+        "{recorded:?}"
+    );
+    assert_eq!(recorded[2].1, vec!["--version".to_string()]);
+}
+
+#[test]
+fn a_caller_supplied_install_reference_still_wins_over_the_declaration() {
+    let state_root = temp_dir("placement-supplied");
+    let (channel, fetcher) = placed_channel();
+    let registry = synthetic_registry(vec![synthetic_agent("synthetic", vec![channel])]);
+    let mut params = bare_params(&state_root);
+    params["installRef"] = json!("/tmp/caller-owned-agent");
+    let runner = RecordingArgvRunner::new();
+    let ctx = HubContext::with_ports(
+        &params,
+        Arc::new(runner.clone()),
+        Arc::new(fetcher),
+        Arc::new(registry),
+    )
+    .unwrap();
+
+    let planned = plan_with(&ctx, &params).unwrap();
+    let mut confirmed = params;
+    confirmed["confirmation"] = planned["confirmation"].clone();
+    apply_with(&ctx, &confirmed).unwrap();
+
+    let recorded = runner.recorded();
+    assert_eq!(
+        recorded[1].1.last().cloned(),
+        Some("/tmp/caller-owned-agent".to_string()),
+        "{recorded:?}"
+    );
+}
+
+#[test]
+fn an_install_destination_discovery_never_looks_in_is_refused() {
+    let state_root = temp_dir("placement-unadmitted");
+    let (mut channel, fetcher) = placed_channel();
+    channel.install.as_mut().unwrap().dir =
+        [("macos".to_string(), "{home}/Desktop/tools".to_string())]
+            .into_iter()
+            .collect();
+    let registry = synthetic_registry(vec![synthetic_agent("synthetic", vec![channel])]);
+    let params = bare_params(&state_root);
+    let ctx = HubContext::with_ports(
+        &params,
+        Arc::new(RecordingArgvRunner::new()),
+        Arc::new(fetcher),
+        Arc::new(registry),
+    )
+    .unwrap();
+
+    let planned = plan_with(&ctx, &params).unwrap();
+    assert_eq!(planned["ok"], false, "{planned}");
+    assert_eq!(planned["code"], "install_destination_unadmitted");
+}
+
+#[test]
+fn a_destination_the_declaration_does_not_cover_for_this_host_is_refused() {
+    let state_root = temp_dir("placement-other-os");
+    let (mut channel, fetcher) = placed_channel();
+    channel.install.as_mut().unwrap().dir =
+        [("linux".to_string(), "{home}/.local/bin".to_string())]
+            .into_iter()
+            .collect();
+    channel.install.as_mut().unwrap().binary =
+        [("linux".to_string(), "synthetic-agent".to_string())]
+            .into_iter()
+            .collect();
+    let registry = synthetic_registry(vec![synthetic_agent("synthetic", vec![channel])]);
+    let params = bare_params(&state_root);
+    let ctx = HubContext::with_ports(
+        &params,
+        Arc::new(RecordingArgvRunner::new()),
+        Arc::new(fetcher),
+        Arc::new(registry),
+    )
+    .unwrap();
+
+    let planned = plan_with(&ctx, &params).unwrap();
+    assert_eq!(planned["ok"], false, "{planned}");
+    assert_eq!(planned["code"], "install_destination_undeclared");
+}

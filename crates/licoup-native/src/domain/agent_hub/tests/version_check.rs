@@ -110,3 +110,59 @@ fn installed_version_executes_only_the_exact_bound_target_binary() {
     );
     fs::remove_dir_all(root).unwrap();
 }
+
+/// A channel that verifies `{install}` verifies the executable at its declared
+/// destination. A channel that names a destination it never declared stays
+/// blank instead of probing a path the recipe never stated.
+#[cfg(unix)]
+#[test]
+fn an_install_verification_needs_a_declared_destination() {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
+    let root =
+        std::env::temp_dir().join(format!("licoup-install-version-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let executable = root.join("codex");
+    fs::write(&executable, "#!/bin/sh\nprintf 'codex-cli 0.147.0\\n'\n").unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+
+    let registry = registry().unwrap();
+    let agent = agent_recipe(registry, "codex").unwrap();
+    let channel = agent
+        .channels
+        .iter()
+        .find(|channel| channel.id == "official-artifact")
+        .unwrap();
+    assert_eq!(
+        channel.verify_argv.first().map(String::as_str),
+        Some("{install}")
+    );
+    assert!(channel.install.is_some());
+    assert_eq!(
+        installed_version(
+            agent,
+            Some(channel),
+            true,
+            true,
+            &serde_json::json!({}),
+            Some(&executable),
+        ),
+        "0.147.0"
+    );
+
+    let mut undeclared = channel.clone();
+    undeclared.install = None;
+    assert_eq!(
+        installed_version(
+            agent,
+            Some(&undeclared),
+            true,
+            true,
+            &serde_json::json!({}),
+            Some(&executable),
+        ),
+        ""
+    );
+    fs::remove_dir_all(root).unwrap();
+}

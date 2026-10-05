@@ -77,7 +77,7 @@ version_policy = "vendor-latest"
 install_argv = ["tar", "-xzf", "{artifact}", "-C", "{staging}"]
 update_argv = ["tar", "-xzf", "{artifact}", "-C", "{staging}"]
 uninstall_argv = ["rm", "{install}"]
-verify_argv = ["codex", "--version"]
+verify_argv = ["{install}", "--version"]
 
 [channels.artifact]
 origin_host = "github.com"
@@ -96,3 +96,15 @@ windows = "pc-windows-msvc"
 [channels.artifact.vendor_arch]
 aarch64 = "aarch64"
 x86_64 = "x86_64"
+
+# Where this channel installs its executable, and how. The placement step
+# below is the only thing that writes there, uninstall removes that path, and
+# verify runs it, so none of them depend on a name PATH happens to answer.
+[channels.install]
+argv = ["install", "-m", "0755", "{staging}/bin/codex", "{install}"]
+[channels.install.binary]
+macos = "codex"
+linux = "codex"
+[channels.install.dir]
+macos = "{home}/.local/bin"
+linux = "{home}/.local/bin"

@@ -3,8 +3,8 @@
 use super::argv::{self, ArgvKind};
 use super::contract::{
     ADAPTATION_DEEP, ADAPTATION_PARTIAL, ADAPTATION_PENDING, AgentHubManifest, AgentRecipe,
-    AgentTomlDocument, HOST_SCOPE, ManifestAgent, PARTIAL_ADAPTATION_ID, PENDING_ADAPTATION_ID,
-    PLUGIN_MANAGEMENT_BOUNDARY, RecipeRegistryDocument, SCHEMA_VERSION,
+    AgentTomlDocument, HOST_SCOPE, InstallChannel, ManifestAgent, PARTIAL_ADAPTATION_ID,
+    PENDING_ADAPTATION_ID, PLUGIN_MANAGEMENT_BOUNDARY, RecipeRegistryDocument, SCHEMA_VERSION,
 };
 use anyhow::{Result, anyhow, ensure};
 use std::sync::OnceLock;
@@ -194,6 +194,7 @@ pub(crate) fn validate_agent(agent: &AgentRecipe) -> Result<()> {
             "channel kinds must be unique per agent"
         );
         validate_https(&channel.official_source)?;
+        validate_install_placement(channel)?;
         if channel.selectable {
             ensure!(
                 !channel.install_argv.is_empty() || !channel.windows_install_argv.is_empty(),
@@ -255,6 +256,94 @@ pub(crate) fn validate_agent(agent: &AgentRecipe) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// A declared install destination is where the Hub writes and what it removes.
+///
+/// It is held to the discovery owner's own root vocabulary, so a destination
+/// always resolves under a root that owner knows and discovery can therefore
+/// find it; to one binary file name per OS; and to a placement step that names
+/// `{install}` as the path it writes, so the copy has one declared target. A
+/// channel that states where its executable lands also verifies that path, never
+/// a name PATH happens to answer.
+fn validate_install_placement(channel: &InstallChannel) -> Result<()> {
+    let Some(install) = channel.install.as_ref() else {
+        return Ok(());
+    };
+    ensure!(
+        !install.dir.is_empty(),
+        "a declared install destination needs a directory"
+    );
+    for (os, template) in &install.dir {
+        ensure!(
+            channel.oses.iter().any(|declared| declared == os),
+            "an install destination must name an OS the channel lists"
+        );
+        ensure!(
+            install_dir_template_is_rooted(template),
+            "an install destination must resolve under a declared host root"
+        );
+        ensure!(
+            install.binary.contains_key(os),
+            "every declared install directory needs its binary name"
+        );
+    }
+    for (os, binary) in &install.binary {
+        ensure!(
+            channel.oses.iter().any(|declared| declared == os),
+            "an installed binary must name an OS the channel lists"
+        );
+        ensure!(
+            install.dir.contains_key(os),
+            "every installed binary needs its declared directory"
+        );
+        ensure!(
+            install_file_name_is_safe(binary),
+            "an installed binary must be one file name"
+        );
+    }
+    argv::validate(&install.argv, ArgvKind::for_channel(&channel.kind))?;
+    if !install.argv.is_empty() {
+        ensure!(
+            install.argv.iter().any(|arg| arg.contains("{install}")),
+            "a placement step must name {{install}} as the path it writes"
+        );
+    }
+    ensure!(
+        channel.verify_argv.first().map(String::as_str)
+            == Some(super::version_check::INSTALL_VERIFY_PROGRAM),
+        "a channel that declares an install destination must verify {{install}}"
+    );
+    Ok(())
+}
+
+/// Whether an install directory template is one root token plus a plain
+/// relative path, in the vocabulary the discovery owner expands.
+fn install_dir_template_is_rooted(template: &str) -> bool {
+    let Some(rest) = licoup_agent_targets::domain::targets::scan_paths::PATH_TEMPLATE_ROOTS
+        .iter()
+        .find_map(|root| template.strip_prefix(&format!("{{{root}}}")))
+    else {
+        return false;
+    };
+    let rest = rest.strip_prefix('/').unwrap_or(rest);
+    !rest.is_empty()
+        && !rest.contains('{')
+        && !rest.contains('\\')
+        && !rest.contains("..")
+        && !rest.starts_with('/')
+        && !rest.ends_with('/')
+}
+
+/// Whether a declared binary is one safe file name rather than a path.
+fn install_file_name_is_safe(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 128
+        && name != "."
+        && name != ".."
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "._+-".contains(character))
 }
 
 /// A declared redirect host is one exact, fully qualified hostname.
