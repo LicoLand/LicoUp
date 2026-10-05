@@ -445,7 +445,7 @@ export const REGRESSION_MODULES = Object.freeze([
         "crates/licoup-native/src/bin/licoup/stdio_rpc/server.rs",
         "crates/licoup-native/src/domain/client_conversation/**",
         "crates/licoup-workflow-runtime/src/**",
-        "crates/licoup-native/src/platform/cursor_driver/control.rs",
+        "crates/licoup-agent-cursor/src/driver/control.rs",
         "crates/licoup-agent-cursor/src/parser.rs",
         "crates/licoup-agent-cursor/src/registration.rs",
         "crates/licoup-native/src/platform/antigravity_driver/control.rs",

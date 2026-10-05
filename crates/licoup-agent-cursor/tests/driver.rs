@@ -1,18 +1,25 @@
-use super::super::cursor_driver::{self, ControlDisposition, DRIVER_ID, RUNTIME_PROTOCOL};
-use super::io::{TransportEvent, read_protocol_messages};
+//! The claims this package makes about one running Cursor turn.
+//!
+//! They drive the package's own entry points against a fake Cursor the test
+//! compiles from source, on the pty transport the package launches its child on,
+//! with the turn-event port answered by the client's own emitters, so every
+//! event claim is read through the same seam the client reads it through.
+
+use licoup_agent_cursor::driver as cursor_driver;
+use licoup_agent_cursor::driver::{ControlDisposition, DRIVER_ID, RUNTIME_PROTOCOL};
 use serde_json::json;
 use std::fs;
-use std::io::Cursor;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// The fake agent reads process-global env vars, so the tests that steer it
 /// must not run concurrently: one test's env mutation would leak into another
 /// test's spawned process and change its behavior.
 static ENV_LOCK: Mutex<()> = Mutex::new(());
+
 static FAKE_BUILD_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
@@ -35,65 +42,46 @@ fn wait_for_captured_event(
     }
 }
 
-#[test]
-fn complete_json_tail_without_newline_is_delivered_before_close() {
-    let input = br#"{"type":"result","subtype":"success","result":"ok"}"#;
-    let (sender, receiver) = mpsc::channel();
-    read_protocol_messages(Cursor::new(input), sender);
-    let TransportEvent::Line(line) = receiver.recv().unwrap() else {
-        panic!("complete JSON tail must be delivered as a protocol line");
-    };
-    assert!(serde_json::from_slice::<serde_json::Value>(&line).is_ok());
-    assert!(matches!(
-        receiver.recv().unwrap(),
-        TransportEvent::StdoutClosed
-    ));
-}
+/// Answer this package's turn-event port with the host's own emitters.
+///
+/// The port is fail-closed before a host answers it, so a turn run here emits
+/// nothing until this installation. The client answers with these same
+/// emitters, which write to the thread-local stream sink each capturing test
+/// installs; the first test to run owns the answer for the whole binary, and
+/// every later installation is refused as a duplicate rather than replacing it.
+fn install_host_turn_event_port() {
+    use licoup_agent_cursor::port::turn_event::{TurnEventPort, install};
+    use licoup_foundation::platform::turn_event_emit as host_emitters;
 
-#[test]
-fn partial_json_tail_remains_an_unterminated_protocol_failure() {
-    let (sender, receiver) = mpsc::channel();
-    read_protocol_messages(Cursor::new(br#"{"type":"result""#), sender);
-    assert!(matches!(
-        receiver.recv().unwrap(),
-        TransportEvent::UnterminatedLine
-    ));
-    assert!(matches!(
-        receiver.recv().unwrap(),
-        TransportEvent::StdoutClosed
-    ));
-}
-
-#[test]
-fn raw_execution_pipe_capture_precedes_pty_isolation_and_failed_tail() {
-    use crate::platform::raw_execution::{
-        RawExecutionBinding, RawExecutionDirection, RawExecutionObserver, RawExecutionReader,
-    };
-    let records = Arc::new(Mutex::new(Vec::new()));
-    let captured = Arc::clone(&records);
-    let observer = RawExecutionObserver::new(move |_, _, text| {
-        captured.lock().unwrap().push(text.to_owned());
-        Ok(())
+    let _ = install(TurnEventPort {
+        emit_turn_event: host_emitters::emit_turn_event,
+        emit_agent_message_chunk: host_emitters::emit_agent_message_chunk,
+        emit_agent_message_completed: host_emitters::emit_agent_message_completed,
+        emit_agent_processing: host_emitters::emit_agent_processing,
+        emit_agent_tool_error: host_emitters::emit_agent_tool_error,
     });
-    let binding = RawExecutionBinding::default();
-    let _guard = binding.bind(Some(observer));
-    let raw = b"\x1b[31m{\"future\":\"raw arguments\"}\x1b[0m\r\n{invalid";
-    let (sender, receiver) = mpsc::channel();
-    let reader = RawExecutionReader::new(
-        Cursor::new(raw),
-        binding,
-        "cursor",
-        RawExecutionDirection::Received,
-    );
-    read_protocol_messages(std::io::BufReader::new(reader), sender);
-    assert!(
-        matches!(receiver.recv().unwrap(), TransportEvent::Line(line) if line == b"{\"future\":\"raw arguments\"}\r\n")
-    );
-    assert!(matches!(
-        receiver.recv().unwrap(),
-        TransportEvent::UnterminatedLine
-    ));
-    assert_eq!(records.lock().unwrap().concat().as_bytes(), raw);
+}
+
+/// Builds a fake cursor-agent executable in a fresh temp dir.
+///
+/// The fake vendor CLI is one source the package ships, read at compile time so
+/// a fixture that moves fails this suite's build rather than its run.
+fn compile_fake_cursor(stamp: u128) -> (PathBuf, PathBuf) {
+    let sequence = FAKE_BUILD_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("lico-cursor-cli-fake-{stamp}-{sequence}"));
+    fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("fake_cursor_agent.rs");
+    let executable = dir.join(format!("fake-cursor-agent{}", std::env::consts::EXE_SUFFIX));
+    fs::write(&source, include_str!("fixtures/fake_cursor_agent.rs")).unwrap();
+    let status = Command::new("rustc")
+        .args(["--edition", "2021"])
+        .arg(&source)
+        .arg("-o")
+        .arg(&executable)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    (dir, executable)
 }
 
 #[test]
@@ -102,6 +90,7 @@ fn cli_exact_resume_places_session_and_prompt_in_argv() {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
+    install_host_turn_event_port();
     let (dir, executable) = compile_fake_cursor(stamp);
     // The fake reads process-global env vars; serialize with the other fake
     // tests so no concurrent test's vars leak into this spawned process.
@@ -109,10 +98,10 @@ fn cli_exact_resume_places_session_and_prompt_in_argv() {
 
     let captured = Arc::new(Mutex::new(Vec::new()));
     let sink_target = Arc::clone(&captured);
-    super::super::turn_event_emit::install_stream_sink(Box::new(move |event| {
+    licoup_foundation::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
         sink_target.lock().unwrap().push(event);
     }));
-    let _guard = super::super::turn_event_emit::StreamSinkGuard;
+    let _guard = licoup_foundation::platform::turn_event_emit::StreamSinkGuard;
 
     let first = cursor_driver::execute(
         executable.to_string_lossy().as_ref(),
@@ -129,8 +118,8 @@ fn cli_exact_resume_places_session_and_prompt_in_argv() {
     assert_eq!(first.output, "first response");
     assert!(matches!(
         first.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
-            crate::platform::native_agent_parser::LifecycleStage::Completed
+        Some(licoup_agent_adapter_sdk::Transition::Lifecycle(
+            licoup_agent_adapter_sdk::LifecycleStage::Completed
         ))
     ));
 
@@ -221,17 +210,12 @@ fn cli_exact_resume_places_session_and_prompt_in_argv() {
 }
 
 #[test]
-fn canonical_protocol_is_cli_only() {
-    assert_eq!(cursor_driver::RUNTIME_PROTOCOL, "cursor-agent-cli-v1");
-    assert_eq!(cursor_driver::DRIVER_ID, "cursor-cli");
-}
-
-#[test]
 fn create_chat_receives_the_same_scoped_caller_context_as_the_turn() {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
+    install_host_turn_event_port();
     let (dir, executable) = compile_fake_cursor(stamp);
     let _guard = env_lock();
     unsafe {
@@ -239,7 +223,7 @@ fn create_chat_receives_the_same_scoped_caller_context_as_the_turn() {
     }
     // The launch environment is the user shell snapshot; pin the fixture
     // steering channel into it explicitly for this thread.
-    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+    let _pin = licoup_agent_targets::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let result = cursor_driver::execute(
         executable.to_string_lossy().as_ref(),
         &json!({
@@ -263,107 +247,26 @@ fn create_chat_receives_the_same_scoped_caller_context_as_the_turn() {
 }
 
 #[test]
-fn capability_probe_requires_noninteractive_mcp_approval() {
-    use super::model::CapabilityProbe;
-
-    let base = "create-chat --print --resume --output-format stream-json";
-    assert!(!CapabilityProbe::official(true, true, base).supported);
-    assert!(CapabilityProbe::official(true, true, &format!("{base} --approve-mcps")).supported);
-}
-
-#[test]
-fn pty_controls_are_isolated_before_strict_ndjson_decoding() {
-    use super::io::isolate_pty_protocol_line;
-    use crate::platform::cursor_driver::model::EffectiveSettings;
-    use crate::platform::native_agent_parser::adapters::cursor::{
-        CursorParseFailure, CursorParser,
-    };
-
-    let isolated = isolate_pty_protocol_line(
-        b"\x1b[?25l{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"ok\"}\x1b[0m\r\n",
-    );
-    let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
-    let acknowledged = isolate_pty_protocol_line(
-        br#"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}"#,
-    );
-    assert!(parser.parse_line(&acknowledged).is_ok());
-    assert!(parser.parse_line(&isolated).is_ok());
-
-    let prose = isolate_pty_protocol_line(b"diagnostic prose\r\n");
-    assert!(matches!(
-        parser.parse_line(&prose),
-        Err(CursorParseFailure::InvalidJson)
-    ));
-    assert!(
-        isolate_pty_protocol_line(b"\x1b[?25l\x1b[0m\r\n")
-            .iter()
-            .all(|byte| byte.is_ascii_whitespace())
-    );
-}
-
-#[test]
-fn stream_identity_must_equal_the_bound_session_before_any_effect() {
-    use crate::platform::cursor_driver::model::EffectiveSettings;
-    use crate::platform::native_agent_parser::adapters::cursor::{
-        CursorEffect, CursorParseFailure, CursorParser,
-    };
-
-    // Frames without an explicit identity stay bound to the launched session.
-    let mut parser = CursorParser::new(
-        "bound-session",
-        "exact prompt",
-        EffectiveSettings::default(),
-    );
-    let initialized = parser
-        .parse_line(br#"{"type":"system","subtype":"init","cwd":"/tmp","model":"fake-model"}"#)
-        .unwrap();
-    assert!(initialized.is_empty());
-    let accepted = parser
-        .parse_line(br#"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"exact prompt"}]}}"#)
-        .unwrap();
-    assert!(accepted.iter().any(|effect| matches!(
-        effect,
-        CursorEffect::Accepted { session_id, .. } if session_id == "bound-session"
-    )));
-
-    // A repeated exact identity stays stable across every frame.
-    let exact = parser
-        .parse_line(br#"{"type":"assistant","session_id":"bound-session","message":{"role":"assistant","content":[{"type":"text","text":"ok"}]}}"#)
-        .unwrap();
-    assert!(exact.iter().any(|effect| matches!(
-        effect,
-        CursorEffect::Text { session_id, text, .. }
-            if session_id == "bound-session" && text == "ok"
-    )));
-
-    // A changed identity is rejected before the frame exposes any accepted,
-    // chunk, or terminal effect.
-    let drifted = parser.parse_line(
-        br#"{"type":"assistant","session_id":"drifted-session","message":{"role":"assistant","content":[{"type":"text","text":"wrong"}]}}"#,
-    );
-    assert!(matches!(drifted, Err(CursorParseFailure::IdentityMismatch)));
-}
-
-#[test]
 fn mismatched_stream_identity_fails_and_never_completes_a_turn() {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
+    install_host_turn_event_port();
     let (dir, executable) = compile_fake_cursor(stamp);
     let _guard = env_lock();
     unsafe {
         std::env::set_var("LICO_FAKE_CURSOR_AGENT_DRIFT_SESSION_ID", "1");
     }
     // Pin the fixture steering channel into the launch snapshot explicitly.
-    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+    let _pin = licoup_agent_targets::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
 
     let captured = Arc::new(Mutex::new(Vec::new()));
     let sink_target = Arc::clone(&captured);
-    super::super::turn_event_emit::install_stream_sink(Box::new(move |event| {
+    licoup_foundation::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
         sink_target.lock().unwrap().push(event);
     }));
-    let _guard = super::super::turn_event_emit::StreamSinkGuard;
+    let _guard = licoup_foundation::platform::turn_event_emit::StreamSinkGuard;
 
     let result = cursor_driver::execute(
         executable.to_string_lossy().as_ref(),
@@ -397,47 +300,6 @@ fn mismatched_stream_identity_fails_and_never_completes_a_turn() {
     }));
 }
 
-#[test]
-fn private_instructions_fail_before_process_launch() {
-    let result = cursor_driver::execute(
-        "definitely-not-a-real-cursor-agent",
-        &json!({"privateInstructions": "synthetic private instruction"}),
-        "exact user prompt",
-        "",
-        Some(std::env::temp_dir().as_path()),
-        0,
-        None,
-        1024,
-    );
-    assert_eq!(
-        result.error.as_ref().map(|failure| failure.code),
-        Some("cursor_cli_private_instructions_unsupported")
-    );
-}
-
-/// Builds a fake cursor-agent executable in a fresh temp dir (shared helper).
-fn compile_fake_cursor(stamp: u128) -> (PathBuf, PathBuf) {
-    let sequence = FAKE_BUILD_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lico-cursor-cli-fake-{stamp}-{sequence}"));
-    fs::create_dir_all(&dir).unwrap();
-    let source = dir.join("fake_cursor_agent.rs");
-    let executable = dir.join(format!("fake-cursor-agent{}", std::env::consts::EXE_SUFFIX));
-    fs::write(
-        &source,
-        include_str!("../../../tests/fixtures/fake_cursor_agent.rs"),
-    )
-    .unwrap();
-    let status = Command::new("rustc")
-        .args(["--edition", "2021"])
-        .arg(&source)
-        .arg("-o")
-        .arg(&executable)
-        .status()
-        .unwrap();
-    assert!(status.success());
-    (dir, executable)
-}
-
 #[cfg(unix)]
 #[test]
 fn auto_update_lock_and_staging_are_surfaced_as_runtime_events() {
@@ -445,6 +307,7 @@ fn auto_update_lock_and_staging_are_surfaced_as_runtime_events() {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
+    install_host_turn_event_port();
     let (dir, executable) = compile_fake_cursor(stamp);
     // The fake reads process-global env vars; serialize with the other fake
     // tests so no concurrent test's vars leak into this spawned process.
@@ -460,14 +323,14 @@ fn auto_update_lock_and_staging_are_surfaced_as_runtime_events() {
         std::env::set_var("LICO_FAKE_CURSOR_AGENT_UPDATE_RELEASE_PATH", &release_path);
     }
     // Pin the fixture steering channel into the launch snapshot explicitly.
-    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+    let _pin = licoup_agent_targets::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
 
     let captured = Arc::new(Mutex::new(Vec::new()));
     let sink_target = Arc::clone(&captured);
-    super::super::turn_event_emit::install_stream_sink(Box::new(move |event| {
+    licoup_foundation::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
         sink_target.lock().unwrap().push(event);
     }));
-    let _guard = super::super::turn_event_emit::StreamSinkGuard;
+    let _guard = licoup_foundation::platform::turn_event_emit::StreamSinkGuard;
 
     // The stream sink is thread-local: `execute` must run on this thread.
     // Drive the lock/staging timeline from a helper thread instead.
@@ -567,6 +430,7 @@ fn create_chat_time_is_charged_against_the_turn_deadline() {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
+    install_host_turn_event_port();
     let (dir, executable) = compile_fake_cursor(stamp);
     let _guard = env_lock();
     unsafe {
@@ -574,7 +438,7 @@ fn create_chat_time_is_charged_against_the_turn_deadline() {
         std::env::set_var("LICO_FAKE_CURSOR_AGENT_TURN_DELAY_MS", "5000");
     }
     // Pin the fixture steering channel into the launch snapshot explicitly.
-    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+    let _pin = licoup_agent_targets::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let started = std::time::Instant::now();
     let result = cursor_driver::execute(
         executable.to_string_lossy().as_ref(),
@@ -617,6 +481,7 @@ fn timeout_zero_keeps_the_turn_deadline_free() {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
+    install_host_turn_event_port();
     let (dir, executable) = compile_fake_cursor(stamp);
     let _guard = env_lock();
     unsafe {
@@ -624,7 +489,7 @@ fn timeout_zero_keeps_the_turn_deadline_free() {
         std::env::set_var("LICO_FAKE_CURSOR_AGENT_TURN_DELAY_MS", "300");
     }
     // Pin the fixture steering channel into the launch snapshot explicitly.
-    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+    let _pin = licoup_agent_targets::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let result = cursor_driver::execute(
         executable.to_string_lossy().as_ref(),
         &json!({}),
@@ -657,13 +522,14 @@ fn crashed_cli_after_partial_output_is_reported_as_failed() {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
+    install_host_turn_event_port();
     let (dir, executable) = compile_fake_cursor(stamp);
     let _guard = env_lock();
     unsafe {
         std::env::set_var("LICO_FAKE_CURSOR_AGENT_CRASH_AFTER_CHUNK", "1");
     }
     // Pin the fixture steering channel into the launch snapshot explicitly.
-    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+    let _pin = licoup_agent_targets::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let result = cursor_driver::execute(
         executable.to_string_lossy().as_ref(),
         &json!({}),
@@ -699,6 +565,7 @@ fn stdout_eof_waits_for_the_live_child_before_classifying_the_turn() {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
+    install_host_turn_event_port();
     let (dir, executable) = compile_fake_cursor(stamp);
     let _guard = env_lock();
     let ready_path = dir.join("stdout-eof-ready");
@@ -711,7 +578,7 @@ fn stdout_eof_waits_for_the_live_child_before_classifying_the_turn() {
     let turn_dir = dir.clone();
     let handle = std::thread::spawn(move || {
         let _pin =
-            crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+            licoup_agent_targets::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
         cursor_driver::execute(
             &executable,
             &json!({}),
@@ -759,6 +626,7 @@ fn non_error_terminal_subtype_keeps_the_completed_reply() {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
+    install_host_turn_event_port();
     let (dir, executable) = compile_fake_cursor(stamp);
     let _guard = env_lock();
     let result = cursor_driver::execute(
@@ -783,6 +651,7 @@ fn stderr_failure_is_classified_without_exposing_vendor_prose() {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
+    install_host_turn_event_port();
     let (dir, executable) = compile_fake_cursor(stamp);
     let _guard = env_lock();
     let result = cursor_driver::execute(
@@ -809,39 +678,6 @@ fn stderr_failure_is_classified_without_exposing_vendor_prose() {
     assert!(!encoded.contains("private fixture account context"));
 }
 
-#[test]
-fn stderr_classifier_uses_only_the_closed_cursor_failure_vocabulary() {
-    use super::errors::CursorFailureKind;
-
-    let cases = [
-        (
-            "Please log in before continuing: private account detail",
-            CursorFailureKind::AuthenticationRequired,
-        ),
-        (
-            "Quota exceeded for private account detail",
-            CursorFailureKind::UsageLimitExceeded,
-        ),
-        (
-            "Too many requests for private account detail",
-            CursorFailureKind::RateLimited,
-        ),
-        (
-            "Selected model is not available: private model detail",
-            CursorFailureKind::ModelUnavailable,
-        ),
-    ];
-    for (stderr, expected) in cases {
-        assert_eq!(CursorFailureKind::from_stderr(stderr), Some(expected));
-        let failure = expected.failure(Some("synthetic-session"));
-        assert!(!format!("{failure:?}").contains("private"));
-    }
-    assert_eq!(
-        CursorFailureKind::from_stderr("arbitrary private vendor prose"),
-        None
-    );
-}
-
 /// M11: a user-cancelled turn must be reported as cancelled, never as
 /// completed with truncated output.
 #[cfg(unix)]
@@ -851,6 +687,7 @@ fn cancelled_turn_is_reported_as_cancelled_not_completed() {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
+    install_host_turn_event_port();
     let (dir, executable) = compile_fake_cursor(stamp);
     let _guard = env_lock();
     // A per-test session tag keeps this turn's session id unique: the
@@ -868,7 +705,7 @@ fn cancelled_turn_is_reported_as_cancelled_not_completed() {
         // The launch snapshot override is thread-local: pin the fixture
         // steering channel on the executing thread itself.
         let _pin =
-            crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+            licoup_agent_targets::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
         cursor_driver::execute(
             &executable,
             &json!({}),

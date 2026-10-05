@@ -2132,9 +2132,15 @@ dependencies = [
 name = "licoup-agent-cursor"
 version = "0.14.0"
 dependencies = [
+ "libc",
  "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
+ "licoup-agent-targets",
  "licoup-extension-contracts",
+ "licoup-foundation",
+ "nix",
  "serde_json",
+ "trash",
 ]
 
 [[package]]

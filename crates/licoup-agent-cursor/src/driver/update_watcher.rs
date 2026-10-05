@@ -21,6 +21,7 @@
 //! indeterminate bar. Cleanup is limited to removing a stale lock file when
 //! no update is running; `versions/` contents are never touched.
 
+use licoup_foundation::platform::process_supervisor::run_bounded_command_output;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -378,9 +379,7 @@ fn observe_phase(observation: &Observation) -> (Option<String>, UpdatePhase) {
 fn default_ps_scan() -> Vec<ProcessLine> {
     let mut command = std::process::Command::new("ps");
     command.args(["-axo", "pid=,ppid=,command="]);
-    let Ok(result) =
-        crate::platform::run_bounded_command_output(&mut command, PS_TIMEOUT, PS_MAX_BYTES)
-    else {
+    let Ok(result) = run_bounded_command_output(&mut command, PS_TIMEOUT, PS_MAX_BYTES) else {
         return Vec::new();
     };
     if result.timed_out || result.truncated || !result.status.is_some_and(|status| status.success())

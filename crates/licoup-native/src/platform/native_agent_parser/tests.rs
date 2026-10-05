@@ -119,7 +119,7 @@ fn native_agent_parser_composes_a_replay_arm_for_every_registration() {
 
 #[test]
 fn cursor_parser_streams_only_assistant_frames_and_completes_with_cumulative_result() {
-    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use licoup_agent_cursor::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
 
     let mut parser = CursorParser::new(
@@ -179,7 +179,7 @@ fn cursor_parser_streams_only_assistant_frames_and_completes_with_cumulative_res
 
 #[test]
 fn cursor_parser_terminal_result_appends_missing_suffix() {
-    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use licoup_agent_cursor::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
 
     let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
@@ -208,7 +208,7 @@ fn cursor_parser_terminal_result_appends_missing_suffix() {
 
 #[test]
 fn cursor_parser_terminal_result_keeps_streamed_text_when_result_diverges() {
-    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use licoup_agent_cursor::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
 
     let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
@@ -236,7 +236,7 @@ fn cursor_parser_terminal_result_keeps_streamed_text_when_result_diverges() {
 
 #[test]
 fn cursor_parser_ignores_a_rewritten_snapshot_and_still_completes() {
-    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use licoup_agent_cursor::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
 
     let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
@@ -267,7 +267,7 @@ fn cursor_parser_ignores_a_rewritten_snapshot_and_still_completes() {
 
 #[test]
 fn cursor_parser_accepts_an_explicit_empty_success_result() {
-    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use licoup_agent_cursor::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
 
     let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
@@ -290,7 +290,7 @@ fn cursor_parser_keeps_a_valid_reply_when_is_error_is_explicitly_false() {
     let mut parser = CursorParser::new(
         "synthetic-session",
         "prompt",
-        crate::platform::cursor_driver::model::EffectiveSettings::default(),
+        licoup_agent_cursor::model::EffectiveSettings::default(),
     );
     parser
         .parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}"#)
@@ -306,7 +306,7 @@ fn cursor_parser_keeps_a_valid_reply_when_is_error_is_explicitly_false() {
 
 #[test]
 fn cursor_parser_classifies_an_explicit_terminal_execution_failure() {
-    use crate::platform::cursor_driver::errors::CursorFailureKind;
+    use licoup_agent_cursor::errors::CursorFailureKind;
     use crate::platform::native_agent_parser::adapters::cursor::{
         CursorParseFailure, CursorParser,
     };
@@ -314,7 +314,7 @@ fn cursor_parser_classifies_an_explicit_terminal_execution_failure() {
     let mut parser = CursorParser::new(
         "synthetic-session",
         "prompt",
-        crate::platform::cursor_driver::model::EffectiveSettings::default(),
+        licoup_agent_cursor::model::EffectiveSettings::default(),
     );
     parser
         .parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}"#)
@@ -329,7 +329,7 @@ fn cursor_parser_classifies_an_explicit_terminal_execution_failure() {
 
 #[test]
 fn cursor_parser_rejects_missing_or_different_prompt_acknowledgement() {
-    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use licoup_agent_cursor::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{
         CursorParseFailure, CursorParser,
     };
@@ -357,7 +357,7 @@ fn cursor_parser_rejects_missing_or_different_prompt_acknowledgement() {
 
 #[test]
 fn cursor_parser_preserves_an_explicit_model_selector_over_the_init_label() {
-    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use licoup_agent_cursor::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
 
     let mut parser = CursorParser::new(
@@ -386,7 +386,7 @@ fn cursor_parser_preserves_an_explicit_model_selector_over_the_init_label() {
 
 #[test]
 fn cursor_parser_projects_each_structured_tool_call_once() {
-    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use licoup_agent_cursor::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
 
     let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
@@ -409,7 +409,7 @@ fn cursor_parser_projects_each_structured_tool_call_once() {
 
 #[test]
 fn cursor_parser_projects_current_mcp_tool_call_frames_once() {
-    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use licoup_agent_cursor::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
 
     let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
@@ -434,7 +434,7 @@ fn cursor_parser_projects_current_mcp_tool_call_frames_once() {
 
 #[test]
 fn cursor_parser_projects_only_allowlisted_mcp_application_error_codes() {
-    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use licoup_agent_cursor::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
 
     let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
@@ -460,7 +460,7 @@ fn cursor_parser_projects_only_allowlisted_mcp_application_error_codes() {
 
 #[test]
 fn cursor_parser_projects_membership_authorization_mcp_error_codes() {
-    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use licoup_agent_cursor::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
 
     let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
@@ -480,7 +480,7 @@ fn cursor_parser_projects_membership_authorization_mcp_error_codes() {
 
 #[test]
 fn cursor_parser_ignores_internal_mcp_catalog_calls() {
-    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use licoup_agent_cursor::model::EffectiveSettings;
     use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
 
     let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());

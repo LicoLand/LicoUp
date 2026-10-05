@@ -1,15 +1,22 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const read = (path) => readFileSync(path, "utf8");
+const exists = (path) => existsSync(path);
 const common = read("crates/licoup-native/src/platform/provider_mcp_registration.rs");
 const manager = read("crates/licoup-native/src/platform/cursor_subagent_mcp_manager.rs");
-const driver = read("crates/licoup-native/src/platform/cursor_driver/execution.rs");
+// Cursor's turn — the launch, the stream it reads and the active turn it
+// cancels — is the Cursor adapter package's own driver; the client composes it
+// and keeps no copy of it.
+const driver = read("crates/licoup-agent-cursor/src/driver/execution.rs");
+// The client's composition of that driver, and the host module tree that
+// declares no Cursor module of its own.
+const composition = read("crates/licoup-native/src/platform/runtime_adapters/drivers.rs");
+const platform = read("crates/licoup-native/src/platform/mod.rs");
 // Cursor's fixed launch arguments and capability surface are the package's own
-// vocabulary; the host's driver reads them through the former path.
+// vocabulary, read where the package declares them.
 const model = read("crates/licoup-agent-cursor/src/model.rs");
-const hostVocabulary = read("crates/licoup-native/src/platform/cursor_driver/model.rs");
 // Cursor's wire dialect — including the application error codes an installed
 // Cursor client returns for a delegated MCP turn — is the Cursor adapter
 // package's own, parsed once below the port (ADR-0008).
@@ -42,7 +49,6 @@ test("Cursor target keeps exact create/resume, workspace, PTY, acknowledgement a
   assert.match(driver, /\.arg\("--resume"\)/u);
   assert.match(driver, /\.arg\("--workspace"\)/u);
   assert.match(model, /--approve-mcps/u);
-  assert.match(hostVocabulary, /licoup_agent_cursor::model/u);
   assert.match(driver, /spawn_turn_transport/u);
   assert.match(driver, /PromptAcknowledgementMissing/u);
   assert.match(driver, /register_active_turn/u);
@@ -57,6 +63,38 @@ test("Cursor target keeps exact create/resume, workspace, PTY, acknowledgement a
   assert.match(registration, /parser::safe_session_id/u);
   assert.match(runtime, /active_cancel: true/u);
   assert.match(parser, /fn safe_session_id/u);
+});
+
+test("the client declares no Cursor driver module and re-states no Cursor protocol", () => {
+  // The host has no Cursor driver module or tree: the launch, the stream
+  // classification and the turn are the package's, and the path the move
+  // retired must not come back as a second owner.
+  assert.equal(exists("crates/licoup-native/src/platform/cursor_driver.rs"), false,
+    "the host still declares a Cursor driver module");
+  assert.equal(exists("crates/licoup-native/src/platform/cursor_driver"), false,
+    "the host still declares a Cursor driver tree");
+  assert.doesNotMatch(platform, /mod cursor_driver;/u,
+    "the host module tree still declares a Cursor driver module");
+
+  // The composition names the package's driver the way the Codex arm names its
+  // package, and keeps no Cursor protocol decision of its own.
+  assert.match(composition, /use licoup_agent_cursor::driver as cursor_driver;/u);
+  for (const forbidden of [
+    "create-chat",
+    "--output-format",
+    "--stream-partial-output",
+    "--approve-mcps",
+    "cursor_cli_",
+    "safe_session_id",
+  ]) {
+    assert.equal(composition.includes(forbidden), false,
+      `the client composition keeps a copy of the package's protocol: ${forbidden}`);
+  }
+
+  // The turn launches on the shared pty primitive rather than on a second
+  // terminal of its own, so a Cursor turn runs on the same terminal every other
+  // CLI lane does, and no half keeps a private copy of that mechanism.
+  assert.match(driver, /licoup_foundation::platform::pty_transport::spawn/u);
 });
 
 test("Cursor generated guidance is one ordinary unmarked wire prefix", () => {

@@ -779,34 +779,28 @@ test("Cursor leaves and the Cursor adapter package retain exact regression owner
     module.inputs.some((input) => input.endsWith("/**")
       ? relativePath.startsWith(input.slice(0, -2))
       : input === relativePath));
-  // The process half is still composed by the client, under the platform
-  // fallback that owns the driver it launches; the wire half moved into the
-  // Cursor adapter package, and the Subagent MCP caller contract reaches the
-  // package's own parser and registration. A source that moved selects the
-  // package's own module, and the contract that names it selects the verifier.
-  // The kernel sources the process half still owns are measured roots, so they
-  // select the client-boundary architecture module as well.
-  const hostSelections = new Map([
-    ["crates/licoup-native/src/platform/cursor_driver.rs",
-      ["rust.platform"]],
-    ["crates/licoup-native/src/platform/cursor_driver/model.rs",
-      ["rust.platform"]],
-    ["crates/licoup-native/src/platform/cursor_driver/errors.rs",
-      ["rust.platform"]],
-    ["crates/licoup-native/src/platform/cursor_driver/probe.rs",
-      ["rust.platform"]],
-    ["crates/licoup-native/src/platform/cursor_driver/update_watcher.rs",
-      ["rust.platform"]],
-  ]);
-  for (const [source, moduleIds] of hostSelections) {
-    assert.deepEqual(ids(selectModulesForChangedPaths([
-      source,
-    ])), ["architecture.client-boundaries", ...moduleIds]);
-  }
-  // The package's own sources select the package's module, and the two the
-  // Subagent MCP caller contract reads select that contract's verifier too. The
-  // manifest is also the client compatibility declaration the client version
-  // check reads, so it selects that check as well.
+  // The client keeps no Cursor driver module: the process half and the wire
+  // half are the Cursor adapter package's, and the path the move retired must
+  // not come back as a second owner. The Subagent MCP caller contract reaches
+  // the package's own parser, its registration and its control entry, and a
+  // source that moved selects the package's own module, which is a measured
+  // root of the client-boundary architecture module as well.
+  assert.equal(
+    await exists("crates/licoup-native/src/platform/cursor_driver.rs"),
+    false,
+    "the host still declares a Cursor driver module",
+  );
+  assert.equal(
+    await exists("crates/licoup-native/src/platform/cursor_driver"),
+    false,
+    "the host still declares a Cursor driver tree",
+  );
+  const platform = await fs.readFile(
+    path.join(repoRoot, "crates/licoup-native/src/platform/mod.rs"),
+    "utf8",
+  );
+  assert.doesNotMatch(platform, /mod cursor_driver;/u,
+    "the host module tree still declares a Cursor driver module");
   const packageSelections = new Map([
     ["crates/licoup-agent-cursor/package/manifest.json",
       ["regression.client-version", packageModuleId]],
@@ -816,6 +810,8 @@ test("Cursor leaves and the Cursor adapter package retain exact regression owner
     ["crates/licoup-agent-cursor/src/parser.rs",
       [subagentMcpId, "architecture.client-boundaries", packageModuleId]],
     ["crates/licoup-agent-cursor/src/registration.rs",
+      [subagentMcpId, "architecture.client-boundaries", packageModuleId]],
+    ["crates/licoup-agent-cursor/src/driver/control.rs",
       [subagentMcpId, "architecture.client-boundaries", packageModuleId]],
   ]);
   for (const [source, moduleIds] of packageSelections) {
@@ -836,20 +832,14 @@ test("Cursor leaves and the Cursor adapter package retain exact regression owner
     "crates/licoup-agent-cursor/Cargo.toml",
   ]);
 
-  // Every source the package ships has a regression owner, and the kernel
-  // sources it left behind keep one too.
+  // Every source the package ships — the protocol, the registration, the
+  // process half and its suites — has a regression owner, and the kernel keeps
+  // no Cursor source that would need one.
   const packageSources2 = await sourceFiles("crates/licoup-agent-cursor", ".rs");
   assert.ok(packageSources2.length > 0);
   for (const relativePath of packageSources2) {
     assert.equal(owns(relativePath), true,
       `Cursor package source must have a regression owner: ${relativePath}`);
-  }
-  for (const relativePath of [
-    "crates/licoup-native/src/platform/cursor_driver.rs",
-    ...await sourceFiles("crates/licoup-native/src/platform/cursor_driver", ".rs"),
-  ]) {
-    assert.equal(owns(relativePath), true,
-      `Cursor process-half source must keep a regression owner: ${relativePath}`);
   }
 });
 

@@ -2,7 +2,7 @@ use super::super::model::{NormalizedEffectiveSettings, NormalizedExecution};
 use super::super::normalization::{execution_response, normalize_codex, normalize_cursor};
 use super::super::{RUNTIME_SCHEMA_VERSION, RuntimeAdapter};
 use super::super::drivers::{codex_driven, cursor_driven};
-use crate::platform::{cursor_driver, opencode_driver};
+use crate::platform::opencode_driver;
 use licoup_agent_codex::app_server::contract::RUNTIME_PROTOCOL as CODEX_RUNTIME_PROTOCOL;
 use licoup_agent_codex::app_server::model::{
     EffectiveSettings as CodexEffectiveSettings, ProtocolFailure as CodexProtocolFailure,
@@ -173,11 +173,11 @@ fn unmatched_failure_response_carries_unknown_root_cause_with_review_hint() {
 
 #[test]
 fn cursor_usage_limit_response_preserves_safe_resolution_contract() {
-    let failure = cursor_driver::errors::CursorFailureKind::UsageLimitExceeded
+    let failure = licoup_agent_cursor::errors::CursorFailureKind::UsageLimitExceeded
         .failure(Some("synthetic-session"));
     let response = execution_response(
         RuntimeAdapter::Cursor,
-        normalize_cursor(cursor_driven(cursor_driver::RunResult {
+        normalize_cursor(cursor_driven(licoup_agent_cursor::driver::RunResult {
             ok: false,
             output: String::new(),
             transitions: Vec::new(),
@@ -186,7 +186,7 @@ fn cursor_usage_limit_response_preserves_safe_resolution_contract() {
             thread_id: "synthetic-session".to_owned(),
             turn_id: String::new(),
             turn_status: "usage_limit_exceeded".to_owned(),
-            effective: cursor_driver::model::EffectiveSettings::default(),
+            effective: licoup_agent_cursor::model::EffectiveSettings::default(),
             status_code: Some(1),
             stdout_truncated: false,
             stderr_truncated: false,
