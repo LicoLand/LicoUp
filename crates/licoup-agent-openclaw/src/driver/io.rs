@@ -1,6 +1,6 @@
-use super::super::process_supervisor::BoundedStdinWriter;
-use super::codec;
-use crate::platform::raw_execution::{RawExecutionDirection, RawExecutionObserver};
+use crate::parser::codec;
+use licoup_foundation::platform::process_supervisor::BoundedStdinWriter;
+use licoup_foundation::platform::raw_execution::{RawExecutionDirection, RawExecutionObserver};
 use serde_json::Value;
 use std::io::{self, BufRead, Read};
 use std::sync::atomic::{AtomicBool, Ordering};

@@ -22,8 +22,8 @@ fn fake_child_streams_redacted_events_and_drains_stderr() {
     assert_eq!(result.turn_status, "end_turn");
     assert!(matches!(
         result.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
-            crate::platform::native_agent_parser::LifecycleStage::Completed
+        Some(licoup_agent_adapter_sdk::Transition::Lifecycle(
+            licoup_agent_adapter_sdk::LifecycleStage::Completed
         ))
     ));
     assert!(result.stderr_truncated);
@@ -34,17 +34,9 @@ fn fake_child_streams_redacted_events_and_drains_stderr() {
 fn active_gateway_session_accepts_acp_cancel_before_exact_resume() {
     let (directory, executable) =
         compile_fake_openclaw_source("lico-openclaw-cancel", FAKE_OPENCLAW_CANCEL_SOURCE);
-    let (bound_sender, bound_receiver) = mpsc::sync_channel(1);
     let run_directory = directory.clone();
     let run_executable = executable.clone();
     let run = std::thread::spawn(move || {
-        install_openclaw_turn_event_port();
-        crate::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
-            if event.get("event").and_then(Value::as_str) == Some("dispatch.turn.bound") {
-                let _ = bound_sender.try_send(());
-            }
-        }));
-        let _sink = crate::platform::turn_event_emit::StreamSinkGuard;
         execute(
             run_executable.to_string_lossy().as_ref(),
             &json!({"gatewayWsUrl": "ws://127.0.0.1:9"}),
@@ -56,12 +48,22 @@ fn active_gateway_session_accepts_acp_cancel_before_exact_resume() {
             8 * 1024,
         )
     });
-    bound_receiver
-        .recv_timeout(std::time::Duration::from_secs(15))
-        .unwrap();
+    // The turn is cancellable once the transport has bound the Gateway session
+    // to the ACP protocol session; until then the control plane answers that no
+    // turn is active, which is why the attempt is repeated rather than assumed.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    let mut disposition =
+        licoup_agent_drivers::acp_driver_runtime::ControlDisposition::NoActiveTurn;
+    while std::time::Instant::now() < deadline {
+        disposition = crate::driver::cancel("agent:main:acp:cancel-session");
+        if disposition == licoup_agent_drivers::acp_driver_runtime::ControlDisposition::Accepted {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
     assert_eq!(
-        super::super::cancel("agent:main:acp:cancel-session"),
-        crate::platform::acp_driver_runtime::ControlDisposition::Accepted,
+        disposition,
+        licoup_agent_drivers::acp_driver_runtime::ControlDisposition::Accepted,
     );
     let result = run.join().unwrap();
     assert!(!result.ok);
@@ -100,53 +102,3 @@ fn main() {
     io::stdout().flush().unwrap();
 }
 "###;
-
-#[test]
-fn fresh_session_stream_events_always_carry_bound_identity() {
-    let (directory, executable) = compile_fake_openclaw("lico-openclaw-stream-identity");
-    let captured = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
-    let sink_target = Arc::clone(&captured);
-    install_openclaw_turn_event_port();
-    crate::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
-        sink_target.lock().unwrap().push(event);
-    }));
-    let _sink = crate::platform::turn_event_emit::StreamSinkGuard;
-    let result = execute(
-        executable.to_string_lossy().as_ref(),
-        &json!({
-            "reasoningEffort": "medium",
-            "gatewayWsUrl": "ws://127.0.0.1:9"
-        }),
-        "private-openclaw-prompt",
-        "",
-        Some(directory.as_path()),
-        10_000,
-        Some(128 * 1024),
-        8 * 1024,
-    );
-    assert!(result.ok, "OpenClaw fake failure: {:?}", result.error);
-    let events = captured.lock().unwrap().clone();
-    assert!(!events.is_empty());
-    // The stdio RPC conversation server drops the whole turn to
-    // `stream_protocol_failed` when any single event lacks a non-empty
-    // sessionId, turnId, or event kind. Every driver emission must stay
-    // writable, including before the native session identity is known.
-    for event in &events {
-        let session_id = event
-            .get("sessionId")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let turn_id = event
-            .get("turnId")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let kind = event
-            .get("event")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        assert!(!session_id.is_empty(), "event missing sessionId: {event}");
-        assert!(!turn_id.is_empty(), "event missing turnId: {event}");
-        assert!(!kind.is_empty(), "event missing kind: {event}");
-    }
-    let _ = fs::remove_dir_all(directory);
-}

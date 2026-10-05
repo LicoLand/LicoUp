@@ -26,7 +26,7 @@ fn stderr_is_fully_drained_without_retaining_bytes() {
 
 #[test]
 fn raw_execution_keeps_protocol_bytes_before_trimming_and_rejection() {
-    use crate::platform::raw_execution::{
+    use licoup_foundation::platform::raw_execution::{
         RawExecutionBinding, RawExecutionDirection, RawExecutionObserver, RawExecutionReader,
     };
     let records = Arc::new(std::sync::Mutex::new(Vec::new()));

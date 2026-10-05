@@ -659,7 +659,7 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
                 super::local_service::turn_control::ControlDisposition::SessionUnavailable => 2,
                 super::local_service::turn_control::ControlDisposition::TransportUnavailable => 3,
             },
-            RuntimeAdapter::OpenClaw => match super::openclaw_driver::cancel(&session_id) {
+            RuntimeAdapter::OpenClaw => match licoup_agent_openclaw::driver::cancel(&session_id) {
                 super::acp_driver_runtime::ControlDisposition::Accepted => 0,
                 super::acp_driver_runtime::ControlDisposition::NoActiveTurn => 1,
                 super::acp_driver_runtime::ControlDisposition::SessionUnavailable => 2,

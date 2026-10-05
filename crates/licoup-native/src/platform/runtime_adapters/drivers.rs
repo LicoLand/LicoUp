@@ -28,8 +28,8 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use crate::platform::{
-    acp_driver_runtime, antigravity_driver, claude_code_driver, cursor_driver, kilo_code_driver,
-    lico_agent_driver, openclaw_driver, opencode_driver, pi_driver,
+    acp_driver_runtime, antigravity_driver, claude_code_driver, cursor_driver,
+    kilo_code_driver, lico_agent_driver, opencode_driver, pi_driver,
 };
 // The DeepSeek Harness driver — the `--profile sdk` transport, the turn it
 // carries and the cleanup of one session — is the DeepSeek Harness package's.
@@ -45,6 +45,14 @@ use licoup_agent_deepseek::driver as deepseek_harness_driver;
 // a host transport this composition picks where the runtime connection is in
 // view.
 use licoup_agent_hermes::driver as hermes_driver;
+// The OpenClaw driver — the Gateway attach it names, the ACP bridge it spawns,
+// the framed lines it reads and the turn it supervises — is the OpenClaw
+// package's. The composition names the package and keeps the host's own
+// projection of its result; it holds no attach endpoint, no frame rule and no
+// turn phase of its own. The one fact the host still answers at the call site is
+// which MCP servers an OpenClaw turn registers, because that is read from the
+// user's collaboration-plugin configuration and the package may not reach it.
+use licoup_agent_openclaw::driver as openclaw_driver;
 // The Copilot driver — the `--acp --stdio` launch, the probe and the turn it
 // runs — is the Copilot package's. The composition names the package and keeps
 // the host's own projection of its result; it holds no launch declaration and
@@ -870,6 +878,15 @@ fn run_openclaw(run: &AgentRun<'_>) -> NormalizedExecution {
     let result = openclaw_driver::execute_with_connection(
         run.executable,
         run.runtime_connection,
+        || {
+            crate::domain::collaboration_plugin::acp_servers_for_runtime("openclaw").map_err(|_| {
+                openclaw_driver::ProtocolFailure::new(
+                    "openclaw_acp_mcp_registration_invalid",
+                    "The optional MCP registration could not be validated safely.",
+                    "session/mcp",
+                )
+            })
+        },
         run.params,
         run.prompt,
         run.session_id,

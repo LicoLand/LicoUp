@@ -13,5 +13,5 @@ fn facade_exports_the_stable_runtime_contract() {
         Option<usize>,
         usize,
     ) -> RunResult = execute;
-    let _probe: fn(&str, u64, usize) -> super::super::CapabilityProbe = probe;
+    let _probe: fn(&str, u64, usize) -> crate::driver::CapabilityProbe = probe;
 }

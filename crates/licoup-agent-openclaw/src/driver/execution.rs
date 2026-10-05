@@ -1,15 +1,17 @@
-use super::super::acp_driver_runtime::ActiveAcpControl;
-use super::super::process_supervisor::{
+use super::io::{TransportEvent, drain_stderr, read_protocol_messages, write_message};
+use super::supervision::{LaunchSpec, resolve_gateway_endpoint};
+use crate::gateway_acp::errors::ProtocolFailure;
+use crate::gateway_acp::model::{PROCESS_POLL_INTERVAL, RunResult};
+use crate::gateway_acp::params::ProtocolConfig;
+use crate::parser::protocol::{OpenClawProtocol, ProtocolEffect, ProtocolOutcome, ProtocolPhase};
+use crate::policy::attach_mode;
+use crate::port::turn_event;
+use licoup_agent_drivers::acp_driver_runtime::ActiveAcpControl;
+use licoup_agent_targets::platform::virtual_machine::SshRuntimeConnection;
+use licoup_foundation::platform::process_supervisor::{
     BoundedStdinWriter, SupervisedChild, TransportFinishFailure, finish_protocol_transport,
 };
-use super::super::virtual_machine::SshRuntimeConnection;
-use super::errors::ProtocolFailure;
-use super::io::{TransportEvent, drain_stderr, read_protocol_messages, write_message};
-use super::model::{PROCESS_POLL_INTERVAL, RunResult};
-use super::params::ProtocolConfig;
-use super::protocol::{OpenClawProtocol, ProtocolEffect, ProtocolOutcome};
-use super::supervision::{LaunchSpec, attach_mode, resolve_gateway_endpoint};
-use crate::platform::raw_execution::{
+use licoup_foundation::platform::raw_execution::{
     RawExecutionBinding, RawExecutionDirection, RawExecutionObserver, RawExecutionReader,
     RawExecutionScope,
 };
@@ -22,8 +24,15 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+/// Run one OpenClaw turn without a runtime connection and with no local MCP
+/// registration.
+///
+/// It is this package's own suite entry: the protocol fixtures below exercise
+/// framing rather than installation-backed registration, so the host's one
+/// question is answered with an empty list at the call site instead of through a
+/// second composition.
 #[cfg(test)]
-pub(in crate::platform) fn execute(
+pub(super) fn execute(
     executable: &str,
     params: &Value,
     prompt: &str,
@@ -34,13 +43,32 @@ pub(in crate::platform) fn execute(
     max_stderr: usize,
 ) -> RunResult {
     execute_with_connection(
-        executable, None, params, prompt, session_id, cwd, timeout_ms, max_stdout, max_stderr,
+        executable,
+        None,
+        || Ok(Vec::new()),
+        params,
+        prompt,
+        session_id,
+        cwd,
+        timeout_ms,
+        max_stdout,
+        max_stderr,
     )
 }
 
-pub(in crate::platform) fn execute_with_connection(
+/// Run one OpenClaw turn against the Gateway.
+///
+/// `local_mcp` is the caller's answer to the one question this package may not
+/// decide: *which* MCP servers the turn registers. It is a lazy argument rather
+/// than a port so both halves stay visible at the one call site that needs it,
+/// and it runs only after every request field has been accepted — a malformed
+/// request still reports its own typed failure. A turn that attaches through a
+/// runtime connection carries its own registration, so the argument is not
+/// consulted at all on that branch.
+pub fn execute_with_connection(
     executable: &str,
     runtime_connection: Option<&SshRuntimeConnection>,
+    local_mcp: impl FnOnce() -> Result<Vec<Value>, ProtocolFailure>,
     params: &Value,
     prompt: &str,
     session_id: &str,
@@ -53,10 +81,10 @@ pub(in crate::platform) fn execute_with_connection(
     let config = match if runtime_connection.is_some() {
         ProtocolConfig::from_params_without_local_mcp(params, prompt, session_id, cwd)
     } else {
-        // The client answers the package's MCP question from its own plugin
+        // The caller answers this package's MCP question from its own plugin
         // configuration; the package calls it only after the request itself has
         // been accepted.
-        super::params::from_params(params, prompt, session_id, cwd)
+        ProtocolConfig::from_params(params, prompt, session_id, cwd, local_mcp)
     } {
         Ok(config) => config,
         Err(failure) => return RunResult::failed(failure, started_at, None, false, false),
@@ -67,7 +95,7 @@ pub(in crate::platform) fn execute_with_connection(
         // emitted only when one is already bound (resume or explicit key);
         // fresh sends are correlated by the later `dispatch.turn.bound`.
         if let Some(session_key) = config.native_session_key.as_deref() {
-            super::super::turn_event_emit::emit_turn_event(
+            turn_event::emit_turn_event(
                 "dispatch.gateway.attached",
                 session_key,
                 &config.turn_id,
@@ -84,7 +112,7 @@ pub(in crate::platform) fn execute_with_connection(
             Err(failure) => return RunResult::failed(failure, started_at, None, false, false),
         };
         if let Some(session_key) = config.native_session_key.as_deref() {
-            super::super::turn_event_emit::emit_turn_event(
+            turn_event::emit_turn_event(
                 "dispatch.gateway.attached",
                 session_key,
                 &config.turn_id,
@@ -359,8 +387,8 @@ pub(super) fn run_protocol_loop(
                         }
                     }
                 }
-                if phase_before != super::protocol::ProtocolPhase::AwaitPrompt
-                    && protocol.phase == super::protocol::ProtocolPhase::AwaitPrompt
+                if phase_before != ProtocolPhase::AwaitPrompt
+                    && protocol.phase == ProtocolPhase::AwaitPrompt
                     && let (Some(external_session_id), Some(protocol_session_id)) =
                         (protocol.binding.native_id(), protocol.binding.protocol_id())
                 {
@@ -380,7 +408,7 @@ pub(super) fn run_protocol_loop(
                             false,
                         );
                     }
-                    super::super::turn_event_emit::emit_turn_event(
+                    turn_event::emit_turn_event(
                         "dispatch.turn.bound",
                         external_session_id,
                         &protocol.config.turn_id,
