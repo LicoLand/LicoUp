@@ -154,7 +154,15 @@ impl RecoveryProgress {
 /// the target persists recoverable progress before the caller advances; and the
 /// single commit boundary at the end selects the verified destination and the
 /// prepared identity. An interruption is resumed from the recorded owner, and a
-/// destination that cannot continue is *discarded*, never rolled back as a whole.
+/// destination that cannot continue discards exactly the staging that record does
+/// not cover, never the verified work behind it and never rolled back as a whole.
+///
+/// The staging a recorded owner covers is therefore durable state, not scratch
+/// space: the resume path skips verified owners instead of staging them again, so
+/// a later owner's failure must not destroy what an earlier one already staged,
+/// verified and recorded. A target that discarded all of it would leave the
+/// record naming content that no longer exists, and the commit boundary would
+/// publish a destination the record claims is complete.
 ///
 /// Preparing identity must not publish live state, and it must derive fresh
 /// replacement-Endpoint keys: an imported source identity is never the new
@@ -203,7 +211,13 @@ pub trait StagedRecoveryTarget {
         fresh_sessions: FreshSessionRequirement,
     ) -> Result<(), RecoveryError>;
 
-    /// Discards only the staged destination. The source is never part of it.
+    /// Discards the staged destination that the recorded progress does not
+    /// cover: the in-flight owner's pages, and any staging left by an attempt
+    /// whose progress was never persisted. The staged parts of owners
+    /// [`Self::recorded_progress`] marks verified survive, because a resume
+    /// continues from that record and [`Self::commit_verified`] publishes them.
+    ///
+    /// The source is never part of it.
     fn discard_staged(&mut self) -> Result<(), RecoveryError>;
 }
 
@@ -292,10 +306,12 @@ where
 ///
 /// Each destination owner is staged and verified on its own, and the recorded
 /// progress is persisted before the next owner runs, so a run interrupted
-/// between owners resumes at the recorded one. A run that cannot continue
-/// discards only the staged destination: the source, the provider inventory and
-/// the recovery package are untouched, so a later run or a separately authorized
-/// lost-activation remains possible.
+/// between owners resumes at the recorded one and needs no verified owner staged
+/// again. A run that cannot continue discards the staging that record does not
+/// cover — the verified owners' staged content stays, because the record names
+/// it — and the source, the provider inventory and the recovery package are
+/// untouched, so a later run or a separately authorized lost-activation remains
+/// possible.
 pub fn recover_replacement_endpoint<S, D, T>(
     store: &S,
     package: &RecoveryPackage,

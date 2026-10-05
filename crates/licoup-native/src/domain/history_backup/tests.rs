@@ -174,10 +174,20 @@ struct TestTarget {
 }
 
 impl TestTarget {
-    /// A destination resuming from the progress an earlier run persisted.
-    fn resuming(recorded: RecoveryProgress) -> Self {
+    /// A destination resuming from the progress an earlier run persisted, and
+    /// from the staging that record covers.
+    ///
+    /// Both travel together because they are one durable fact: the staging of a
+    /// verified owner is what makes the recorded owner resumable, so a resumed
+    /// destination is the same destination with the same staging area rather
+    /// than a fresh one that merely claims the progress.
+    fn resuming(
+        recorded: RecoveryProgress,
+        staged: BTreeMap<RecoveryOwner, BTreeMap<ObjectId, RecoveredHistoryObject>>,
+    ) -> Self {
         Self {
             recorded,
+            staged,
             ..Self::default()
         }
     }
@@ -277,7 +287,12 @@ impl StagedRecoveryTarget for TestTarget {
 
     fn discard_staged(&mut self) -> Result<(), RecoveryError> {
         self.discarded += 1;
-        self.staged.clear();
+        // Only what the record does not cover is discarded: an owner whose
+        // staging was verified and recorded outlives the attempt that failed
+        // after it, because the next run continues from that record instead of
+        // staging it again.
+        let recorded = self.recorded.clone();
+        self.staged.retain(|owner, _| recorded.is_verified(*owner));
         Ok(())
     }
 }
@@ -932,8 +947,9 @@ fn an_interruption_between_owners_resumes_at_the_recorded_owner() {
     assert_eq!(still_readable.len(), 1);
     assert!(still_readable.contains_key(&entry.object_id));
 
-    // A later run resumes at the recorded owner instead of starting over.
-    let mut resumed = TestTarget::resuming(interrupted.recorded.clone());
+    // A later run resumes at the recorded owner instead of starting over, over
+    // the staging that owner's verification left behind.
+    let mut resumed = TestTarget::resuming(interrupted.recorded.clone(), interrupted.staged.clone());
     let outcome = recover_replacement_endpoint(
         &store,
         &package,
@@ -987,7 +1003,7 @@ fn a_progress_record_that_cannot_be_resumed_from_is_refused_before_staging() {
     let mut gapped = RecoveryProgress::new();
     gapped.record(RecoveryOwner::DatabaseStores);
     assert!(!gapped.is_resumable());
-    let mut target = TestTarget::resuming(gapped);
+    let mut target = TestTarget::resuming(gapped, BTreeMap::new());
     assert_eq!(
         recover_replacement_endpoint(
             &store,
