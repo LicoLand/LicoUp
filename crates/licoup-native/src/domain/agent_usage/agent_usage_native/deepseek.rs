@@ -62,13 +62,17 @@ impl Reader {
     }
 }
 
-/// One sample of the shape the package's own reader reports, kept here so this
-/// module's tests can describe a fold without the vendor's file format.
+/// One reader output of the shape the package's own reader reported: a document
+/// carrying the session's samples, kept here so this module's tests can describe
+/// a fold without the vendor's file format.
 #[cfg(test)]
 fn parse_samples(bytes: &[u8], size: u64, calendar: &UsageWindow) -> Result<ParseResult> {
-    let samples: Vec<licoup_agent_deepseek::session_store::UsageSample> =
-        serde_json::from_slice(bytes)?;
-    summarize_samples(samples, size, calendar)
+    let document: Value = serde_json::from_slice(bytes)?;
+    let samples = document
+        .get("samples")
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("deepseek_usage_samples_missing"))?;
+    summarize_samples(serde_json::from_value(samples)?, size, calendar)
 }
 
 /// Fold the package's own samples into this pipeline's accounting.
@@ -240,14 +244,14 @@ mod tests {
             &json!({"now":"2026-07-15T12:00:00Z", "historyDays":1, "timezoneOffsetMinutes":480}),
         );
         let initial = json!({"samples":[
-            {"time":1784109600000_u64,"model":"deepseek-native","provider":"deepseek-official","effort":"high","usage":{"inputTokens":70,"cacheReadTokens":30,"outputTokens":20,"reasoningTokens":15}},
-            {"time":1784109600001_u64,"model":"deepseek-native","provider":"deepseek-official","usage":null}
+            {"seq":1,"time":1784109600000_u64,"model":"deepseek-native","provider":"deepseek-official","effort":"high","usage":{"inputTokens":70,"cacheReadTokens":30,"outputTokens":20,"reasoningTokens":15}},
+            {"seq":2,"time":1784109600001_u64,"model":"deepseek-native","provider":"deepseek-official","usage":null}
         ]});
         let parsed = parse_samples(&serde_json::to_vec(&initial).unwrap(), 100, &calendar).unwrap();
         assert_eq!(parsed.summary.total_tokens(), 120);
         assert_eq!(parsed.summary.token_unavailable_records, 1);
         let mut changed = initial.clone();
-        changed["samples"].as_array_mut().unwrap().push(json!({"time":1784109600002_u64,"model":"deepseek-native","provider":"deepseek-official","effort":"low","usage":{"inputTokens":4,"outputTokens":2,"totalTokens":6}}));
+        changed["samples"].as_array_mut().unwrap().push(json!({"seq":3,"time":1784109600002_u64,"model":"deepseek-native","provider":"deepseek-official","effort":"low","usage":{"inputTokens":4,"outputTokens":2,"totalTokens":6}}));
         let changed =
             parse_samples(&serde_json::to_vec(&changed).unwrap(), 200, &calendar).unwrap();
         let mut connection = open_cache_database(&path).unwrap();
