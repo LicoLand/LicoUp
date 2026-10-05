@@ -415,12 +415,17 @@ fn check_entry_point(root: &Path, manifest: &PackageManifest) -> Result<(), Appl
     }
 }
 
-/// The program a manifest declares the host starts, when it declares one.
+/// The entry a manifest declares the host resolves, when it declares one.
 ///
-/// A data package is carried by its resources and has no program; a service
-/// package brings its own registration. Both answer `None` rather than naming an
-/// entry point there is nothing to resolve for.
-fn declared_entry(manifest: &PackageManifest) -> Option<&str> {
+/// A data package is carried by its resources and has no entry; a service package
+/// brings its own registration. Both answer `None` rather than naming an entry
+/// point there is nothing to resolve for.
+///
+/// One fact, two readers: this module resolves the entry to check the payload
+/// holds it and to publish its mode, and [`super::surface::PackageSurface`]
+/// releases it, so a package cannot hold an entry in one owner's account and
+/// nothing in the other's. A declarative package declares its descriptor.
+pub(super) fn declared_entry(manifest: &PackageManifest) -> Option<&str> {
     match &manifest.runtime {
         Runtime::Process { entry, .. } => Some(entry.as_str()),
         Runtime::Declarative { descriptor } => Some(descriptor.as_str()),

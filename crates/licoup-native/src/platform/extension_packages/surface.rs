@@ -8,8 +8,10 @@
 //!
 //! - [`PackageSurface::register`] reads the manifest the store actually
 //!   installed and turns it into the resources that package holds: one entry per
-//!   declared interface contribution, and its process runtime when it declares
-//!   one.
+//!   declared interface contribution, and the entry it declares — a process
+//!   runtime the host starts, or a declarative descriptor the host maps onto an
+//!   existing route. Both are the `declared_entry` the installer already resolves
+//!   the payload by, so the two owners cannot disagree about what a package holds.
 //! - [`PackageSurface::release`] releases a resource **only** when that manifest
 //!   declared it. An identity the package did not declare is refused
 //!   (`package_surface_resource_not_owned`), and one it declared but already
@@ -37,7 +39,7 @@ use crate::platform::extension_packages::uninstall::{
 };
 use licoup_application::ApplicationFailure;
 use licoup_extension_contracts::deployment::LocalCatalogue;
-use licoup_extension_contracts::manifest::{PackageManifest, Runtime};
+use licoup_extension_contracts::manifest::PackageManifest;
 use licoup_extension_contracts::ui::ContributionKind;
 
 const SURFACE_STAGE: &str = "extension/package-surface";
@@ -52,7 +54,8 @@ const SURFACE_STAGE: &str = "extension/package-surface";
 pub enum SurfaceResource {
     /// One declarative interface contribution, by namespaced identity.
     Contribution { id: String, kind: ContributionKind },
-    /// The process runtime the host starts for this package.
+    /// The entry this package declares: the program the host starts for it, or
+    /// the descriptor it maps onto an existing route.
     Runtime { entry: String },
 }
 
@@ -116,9 +119,9 @@ impl PackageSurface {
                 kind: contribution.kind,
             });
         }
-        if let Runtime::Process { entry, .. } = &manifest.runtime {
+        if let Some(entry) = super::artifact::declared_entry(manifest) {
             declared.push(SurfaceResource::Runtime {
-                entry: entry.clone(),
+                entry: entry.to_owned(),
             });
         }
         if declared.is_empty() {
@@ -412,13 +415,52 @@ mod tests {
     }
 
     #[test]
+    fn a_declarative_package_declares_the_descriptor_it_holds() {
+        // A declarative package holds its descriptor: it is the entry the
+        // installer resolves the payload by, so the surface releases it rather
+        // than reporting that this package declared nothing.
+        let (root, store) = store("declarative");
+        let installed = install_manifest(
+            &store,
+            "example.optional.surface",
+            manifest_with(
+                serde_json::json!({
+                    "mode": "declarative",
+                    "descriptor": "contributions/control-surface.json"
+                }),
+                serde_json::json!([]),
+            ),
+        );
+        let mut surface = PackageSurface::register(&store, &installed).expect("registered");
+        assert_eq!(
+            surface
+                .declared()
+                .iter()
+                .map(SurfaceResource::identity)
+                .collect::<Vec<_>>(),
+            ["contributions/control-surface.json"]
+        );
+        assert_eq!(surface.declared()[0].kind(), "runtime");
+        assert_eq!(surface.held(), surface.declared());
+
+        surface
+            .release("contributions/control-surface.json")
+            .expect("the descriptor is this package's own");
+        assert!(surface.held().is_empty());
+        crate::platform::extension_packages::remove_managed_tree(&root).expect("cleanup");
+    }
+
+    #[test]
     fn a_package_that_declares_nothing_has_no_surface_to_remove() {
+        // A service package is bridged rather than carried: it names an endpoint
+        // the user configured and resolves no entry the host holds, so a manifest
+        // with no contribution beside it declares nothing at all.
         let (root, store) = store("empty");
         let installed = install_manifest(
             &store,
             "example.optional.surface",
             manifest_with(
-                serde_json::json!({ "mode": "declarative", "descriptor": "surface.json" }),
+                serde_json::json!({ "mode": "service", "endpointRef": "unix:///tmp/surface.sock" }),
                 serde_json::json!([]),
             ),
         );
