@@ -627,12 +627,12 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
                 licoup_agent_claude_code::driver::ControlDisposition::SessionUnavailable => 2,
                 licoup_agent_claude_code::driver::ControlDisposition::TransportUnavailable => 3,
             },
-            RuntimeAdapter::Cursor => match super::cursor_driver::cancel(&session_id) {
-                super::cursor_driver::ControlDisposition::Accepted => 0,
-                super::cursor_driver::ControlDisposition::NoActiveTurn => 1,
-                super::cursor_driver::ControlDisposition::NotPersisted
-                | super::cursor_driver::ControlDisposition::SessionUnavailable => 2,
-                super::cursor_driver::ControlDisposition::TransportUnavailable => 3,
+            RuntimeAdapter::Cursor => match licoup_agent_cursor::driver::cancel(&session_id) {
+                licoup_agent_cursor::driver::ControlDisposition::Accepted => 0,
+                licoup_agent_cursor::driver::ControlDisposition::NoActiveTurn => 1,
+                licoup_agent_cursor::driver::ControlDisposition::NotPersisted
+                | licoup_agent_cursor::driver::ControlDisposition::SessionUnavailable => 2,
+                licoup_agent_cursor::driver::ControlDisposition::TransportUnavailable => 3,
             },
             RuntimeAdapter::Antigravity => match super::antigravity_driver::cancel(&session_id) {
                 super::antigravity_driver::ControlDisposition::Accepted => 0,
@@ -810,10 +810,10 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
                 _ => 2,
             }
         }
-        RuntimeAdapter::Cursor => match super::cursor_driver::cleanup_session(&session_id) {
-            super::cursor_driver::ControlDisposition::Accepted => 0,
-            super::cursor_driver::ControlDisposition::NotPersisted => 3,
-            super::cursor_driver::ControlDisposition::SessionUnavailable => 1,
+        RuntimeAdapter::Cursor => match licoup_agent_cursor::driver::cleanup_session(&session_id) {
+            licoup_agent_cursor::driver::ControlDisposition::Accepted => 0,
+            licoup_agent_cursor::driver::ControlDisposition::NotPersisted => 3,
+            licoup_agent_cursor::driver::ControlDisposition::SessionUnavailable => 1,
             _ => 2,
         },
         RuntimeAdapter::Antigravity => {

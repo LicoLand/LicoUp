@@ -28,7 +28,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use crate::platform::{
-    acp_driver_runtime, antigravity_driver, cursor_driver, lico_agent_driver, opencode_driver,
+    acp_driver_runtime, antigravity_driver, lico_agent_driver, opencode_driver,
 };
 // The DeepSeek Harness driver — the `--profile sdk` transport, the turn it
 // carries and the cleanup of one session — is the DeepSeek Harness package's.
@@ -68,6 +68,12 @@ use licoup_agent_copilot::driver as copilot_driver;
 // keeps the host's own projection of its result; it holds no launch declaration,
 // no endpoint policy and no turn phase of its own.
 use licoup_agent_kilo::driver as kilo_code_driver;
+// The Cursor driver — the `cursor-agent` launch on the host's pty, the
+// strict-NDJSON stream it classifies, the chat storage it retires and the
+// outcome it reports — is the Cursor package's. The composition names the
+// package and keeps the host's own projection of its result; it holds no launch
+// argument, no session rule and no turn phase of its own.
+use licoup_agent_cursor::driver as cursor_driver;
 // The Kimi Code driver — the `kimi acp` launch, the frames it classifies and
 // the outcome it reports — is the Kimi Code package's. The composition names the
 // package and keeps the host's own projection of its result; it holds no launch

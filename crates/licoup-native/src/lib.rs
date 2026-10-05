@@ -71,10 +71,11 @@ pub(crate) mod host_lane;
 /// ports the domain asks, the gateway runtime's ports, the stop control's
 /// Subagent-claim dispatcher, which the domain answers, and the ports the Agent
 /// adapter packages ask for — the progressive turn-event sinks Codex,
-/// Antigravity and Pi emit through, the execution admission the Antigravity,
-/// Kimi Code and OpenCode packages ask for, and the launch environment the
-/// DeepSeek Harness package asks for. A process that never calls it keeps
-/// every port fail-closed.
+/// Antigravity, Pi, OpenClaw and Cursor emit through, the execution admission
+/// the Antigravity, Kimi Code and OpenCode packages ask for, the serve engine
+/// and consumer the Kilo Code package reaches through, and the launch
+/// environment the DeepSeek Harness package asks for. A process that never
+/// calls it keeps every port fail-closed.
 pub fn install_environment_ports() -> Result<(), &'static str> {
     install_workflow_host_ports();
     domain::conversation::history::install_open_codex_rollouts(
@@ -162,7 +163,13 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
         licoup_agent_opencode::port::execution::ExecutionPort {
             admits_execution: admits_agent_execution,
         },
-    )
+    )?;
+    // The Cursor adapter package owns one Cursor turn — the launch on the shared
+    // pty, the strict-NDJSON stream, the update signals and the outcome — and
+    // this host owns the reader its events reach. Its agent-execution port stays
+    // declared and fail-closed: the extension host that starts the package's own
+    // binary is what answers it.
+    licoup_agent_cursor::port::turn_event::install(platform::cursor_turn_event_port())
 }
 
 /// The composition's answer for the Antigravity adapter package's caller-context

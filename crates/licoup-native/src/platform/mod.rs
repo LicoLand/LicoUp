@@ -16,7 +16,6 @@ pub(crate) mod antigravity_driver;
 pub mod authorized_secure_record;
 pub(crate) mod badtower_station;
 pub(crate) mod conversation_lane;
-mod cursor_driver;
 pub mod diagnostics;
 pub mod extension_host;
 pub mod extension_packages;
@@ -117,6 +116,28 @@ pub(crate) fn pi_turn_event_port() -> licoup_agent_pi::port::turn_event::TurnEve
         emit_agent_message_chunk,
         emit_agent_message_completed,
         emit_agent_processing,
+    }
+}
+
+/// This host's answer for the Cursor adapter package's turn-event port.
+///
+/// The package owns *what* one Cursor turn emits — the accepted turn, the
+/// streamed chunks, the tool observations and the auto-update phases; this host
+/// owns *where* they go, because the host owns the consumer. The answer is this
+/// host's own emitters rather than a second sink, so a Cursor event and a Pi
+/// event reach one reader through one path. The pty the Cursor turn is launched
+/// on is not answered here: it is the shared primitive both halves link.
+pub(crate) fn cursor_turn_event_port() -> licoup_agent_cursor::port::turn_event::TurnEventPort {
+    // Cursor is the one package that also reports a tool failure, and this
+    // host's re-export list above carries the four emitters it shares with the
+    // other arms; the fifth is named at its own module so the shared list stays
+    // the shape the other arms read.
+    licoup_agent_cursor::port::turn_event::TurnEventPort {
+        emit_turn_event,
+        emit_agent_message_chunk,
+        emit_agent_message_completed,
+        emit_agent_processing,
+        emit_agent_tool_error: turn_event_emit::emit_agent_tool_error,
     }
 }
 

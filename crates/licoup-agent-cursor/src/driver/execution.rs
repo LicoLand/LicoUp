@@ -1,17 +1,23 @@
 use super::control::{clear_active_turn, register_active_turn};
-use super::errors::CursorFailureKind;
-use super::errors::ProtocolFailure;
 use super::io::{TransportEvent, read_protocol_messages};
-use super::model::{CREATE_CHAT_ARGS, PROCESS_POLL_INTERVAL, RunResult, TURN_ARGS};
 use super::update_watcher::{
     AgentUpdateWatcher, UPDATE_WATCH_INTERVAL, UpdateChange, UpdatePhase, cursor_agent_install_dir,
 };
-use crate::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded};
-use crate::platform::raw_execution::{
-    RawExecutionDirection, RawExecutionObserver, RawExecutionScope,
+use crate::errors::{CursorFailureKind, ProtocolFailure};
+use crate::model::{CREATE_CHAT_ARGS, PROCESS_POLL_INTERVAL, RunResult, TURN_ARGS};
+use crate::port::turn_event::{
+    emit_agent_message_chunk, emit_agent_message_completed, emit_agent_processing,
+    emit_agent_tool_error, emit_turn_event,
 };
-use crate::platform::turn_event_emit::{
-    emit_agent_processing, emit_agent_tool_error, emit_turn_event,
+use licoup_agent_drivers::runtime_adapters::subagent_mesh::{
+    apply_mcp_runtime_root, apply_subagent_caller_context,
+};
+use licoup_agent_targets::platform::user_shell_environment::apply_to_command;
+use licoup_foundation::platform::process_supervisor::{
+    IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded,
+};
+use licoup_foundation::platform::raw_execution::{
+    RawExecutionDirection, RawExecutionObserver, RawExecutionScope,
 };
 use serde_json::Value;
 use std::io::{BufReader, Read};
@@ -21,7 +27,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-pub(in crate::platform) fn execute(
+pub fn execute(
     executable: &str,
     params: &Value,
     prompt: &str,
@@ -174,8 +180,11 @@ fn resolve_workspace(params: &Value, cwd: Option<&Path>) -> Option<PathBuf> {
             .filter(|value| !value.trim().is_empty())
             .map(PathBuf::from)
     });
-    crate::platform::agent_workspace::resolve_local_agent_workspace("cursor", requested.as_deref())
-        .filter(|workspace| workspace.is_absolute())
+    licoup_foundation::platform::agent_workspace::resolve_local_agent_workspace(
+        "cursor",
+        requested.as_deref(),
+    )
+    .filter(|workspace| workspace.is_absolute())
 }
 
 fn create_chat_session(
@@ -186,7 +195,7 @@ fn create_chat_session(
     max_output: Option<usize>,
 ) -> Result<String, ProtocolFailure> {
     let mut command = Command::new(executable);
-    crate::platform::user_shell_environment::apply_to_command(&mut command);
+    apply_to_command(&mut command);
     command
         .args(CREATE_CHAT_ARGS)
         .current_dir(workspace)
@@ -196,8 +205,8 @@ fn create_chat_session(
     // Cursor may initialize and retain its MCP subprocess while creating the
     // native chat. Bind the same scoped caller context here as on the resumed
     // turn so the connector never starts without its canonical Membership.
-    crate::platform::runtime_adapters::apply_subagent_caller_context(&mut command, params);
-    crate::platform::runtime_adapters::apply_mcp_runtime_root(&mut command);
+    apply_subagent_caller_context(&mut command, params);
+    apply_mcp_runtime_root(&mut command);
     observe_command(&command);
     let mut child = SupervisedChild::spawn(&mut command).map_err(|_| {
         ProtocolFailure::new(
@@ -275,23 +284,21 @@ fn create_chat_session(
             "session/new",
         ));
     }
-    let session_id =
-        crate::platform::native_agent_parser::adapters::cursor::parse_created_session(&stdout.text)
-            .map_err(|kind| {
-                use crate::platform::native_agent_parser::adapters::cursor::CreatedSessionFailure;
-                match kind {
-                    CreatedSessionFailure::Missing => ProtocolFailure::new(
-                        "cursor_cli_create_chat_failed",
-                        "Cursor Agent CLI did not return a chat session identifier.",
-                        "session/new",
-                    ),
-                    CreatedSessionFailure::Invalid => ProtocolFailure::new(
-                        "cursor_cli_create_chat_invalid",
-                        "Cursor Agent CLI returned an invalid chat session identifier.",
-                        "session/new",
-                    ),
-                }
-            })?;
+    let session_id = crate::parser::parse_created_session(&stdout.text).map_err(|kind| {
+        use crate::parser::CreatedSessionFailure;
+        match kind {
+            CreatedSessionFailure::Missing => ProtocolFailure::new(
+                "cursor_cli_create_chat_failed",
+                "Cursor Agent CLI did not return a chat session identifier.",
+                "session/new",
+            ),
+            CreatedSessionFailure::Invalid => ProtocolFailure::new(
+                "cursor_cli_create_chat_invalid",
+                "Cursor Agent CLI returned an invalid chat session identifier.",
+                "session/new",
+            ),
+        }
+    })?;
     Ok(session_id)
 }
 
@@ -307,7 +314,7 @@ fn run_turn(
     started_at: String,
 ) -> RunResult {
     let mut command = Command::new(executable);
-    crate::platform::user_shell_environment::apply_to_command(&mut command);
+    apply_to_command(&mut command);
     command
         .args(TURN_ARGS)
         .arg("--workspace")
@@ -318,8 +325,8 @@ fn run_turn(
         .current_dir(workspace)
         .stderr(Stdio::piped());
     apply_optional_turn_flags(&mut command, params);
-    crate::platform::runtime_adapters::apply_subagent_caller_context(&mut command, params);
-    crate::platform::runtime_adapters::apply_mcp_runtime_root(&mut command);
+    apply_subagent_caller_context(&mut command, params);
+    apply_mcp_runtime_root(&mut command);
     observe_command(&command);
     let (mut child, stdout) = match spawn_turn_transport(command) {
         Ok(transport) => transport,
@@ -360,11 +367,11 @@ fn run_turn(
     let stdout_observer = RawExecutionObserver::current();
     let stdout_handle = thread::spawn(move || {
         #[cfg(not(unix))]
-        let binding = crate::platform::raw_execution::RawExecutionBinding::default();
+        let binding = licoup_foundation::platform::raw_execution::RawExecutionBinding::default();
         #[cfg(not(unix))]
         let _guard = binding.bind(stdout_observer);
         #[cfg(not(unix))]
-        let stdout = crate::platform::raw_execution::RawExecutionReader::new(
+        let stdout = licoup_foundation::platform::raw_execution::RawExecutionReader::new(
             stdout,
             binding,
             "cursor",
@@ -433,10 +440,7 @@ fn run_turn(
         .as_ref()
         .and_then(|report| CursorFailureKind::from_stderr(&report.text));
     if let Some(outcome) = outcome {
-        let transitions =
-            crate::platform::native_agent_parser::adapters::cursor::completed_transitions(
-                &outcome.output,
-            );
+        let transitions = crate::parser::completed_transitions(&outcome.output);
         return RunResult {
             ok: true,
             output: outcome.output,
@@ -544,8 +548,11 @@ fn run_turn(
 #[cfg(unix)]
 fn spawn_turn_transport(
     command: Command,
-) -> std::io::Result<(SupervisedChild, crate::platform::pty_transport::Master)> {
-    crate::platform::pty_transport::spawn(command)
+) -> std::io::Result<(
+    SupervisedChild,
+    licoup_foundation::platform::pty_transport::Master,
+)> {
+    licoup_foundation::platform::pty_transport::spawn(command)
 }
 
 #[cfg(not(unix))]
@@ -566,11 +573,11 @@ struct ProtocolFinishReport {
     session_id: String,
     turn_id: String,
     turn_status: String,
-    effective: super::model::EffectiveSettings,
+    effective: crate::model::EffectiveSettings,
 }
 
-fn initial_effective_settings(params: &Value, workspace: &Path) -> super::model::EffectiveSettings {
-    let mut effective = super::model::EffectiveSettings {
+fn initial_effective_settings(params: &Value, workspace: &Path) -> crate::model::EffectiveSettings {
+    let mut effective = crate::model::EffectiveSettings {
         cwd: Some(workspace.to_string_lossy().into_owned()),
         ..Default::default()
     };
@@ -602,9 +609,7 @@ fn consume_turn_stream(
     max_stdout: Option<usize>,
     root_pid: u32,
 ) -> (Option<ProtocolFinishReport>, Option<ProtocolFailure>, bool) {
-    use crate::platform::native_agent_parser::adapters::cursor::{
-        CursorEffect, CursorParseFailure, CursorParser,
-    };
+    use crate::parser::{CursorEffect, CursorParseFailure, CursorParser};
 
     let mut parser = CursorParser::new(
         requested_session,
@@ -714,11 +719,7 @@ fn consume_turn_stream(
                             turn_id,
                             text,
                         } => {
-                            super::super::turn_event_emit::emit_agent_message_chunk(
-                                &session_id,
-                                &turn_id,
-                                &text,
-                            );
+                            emit_agent_message_chunk(&session_id, &turn_id, &text);
                         }
                         CursorEffect::Tool {
                             session_id,
@@ -736,7 +737,7 @@ fn consume_turn_stream(
                             emit_agent_tool_error(&session_id, &turn_id, &tool_name, error_code);
                         }
                         CursorEffect::Complete(outcome) => {
-                            super::super::turn_event_emit::emit_agent_message_completed(
+                            emit_agent_message_completed(
                                 &outcome.session_id,
                                 &outcome.turn_id,
                                 &outcome.output,
@@ -953,7 +954,7 @@ fn emit_update_change(change: &UpdateChange, session_id: &str, turn_id: &str) {
     };
     match change {
         UpdateChange::Started { version, phase } | UpdateChange::Phase { version, phase } => {
-            super::super::turn_event_emit::emit_turn_event(
+            emit_turn_event(
                 "agent.runtime.updating",
                 session_id,
                 turn_id,
@@ -961,7 +962,7 @@ fn emit_update_change(change: &UpdateChange, session_id: &str, turn_id: &str) {
             );
         }
         UpdateChange::Completed { version } => {
-            super::super::turn_event_emit::emit_turn_event(
+            emit_turn_event(
                 "agent.runtime.update.completed",
                 session_id,
                 turn_id,
@@ -969,7 +970,7 @@ fn emit_update_change(change: &UpdateChange, session_id: &str, turn_id: &str) {
             );
         }
         UpdateChange::Interrupted { version } => {
-            super::super::turn_event_emit::emit_turn_event(
+            emit_turn_event(
                 "agent.runtime.update.interrupted",
                 session_id,
                 turn_id,

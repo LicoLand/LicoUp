@@ -362,11 +362,12 @@ test('serve HTTP and SSE frames decode only in target parser components', () => 
 
 test('Cursor PTY isolation precedes its strict NDJSON parser', () => {
   const transport = readFileSync(
-    'crates/licoup-native/src/platform/cursor_driver/io.rs',
+    'crates/licoup-agent-cursor/src/driver/io.rs',
     'utf8',
   );
-  // The PTY isolation stays in the host's process half; the parser it hands a
-  // clean line to is the package's own, and it reads no PTY control at all.
+  // The PTY isolation stays in the process half — the Cursor package's driver
+  // now — while the parser it hands a clean line to is that package's own, and
+  // it reads no PTY control at all.
   const parser = readFileSync(
     'crates/licoup-agent-cursor/src/parser.rs',
     'utf8',

@@ -1,11 +1,11 @@
-use crate::platform::native_agent_parser::adapters::cursor::safe_session_id;
+use crate::parser::safe_session_id;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum ControlDisposition {
+pub enum ControlDisposition {
     Accepted,
     NotPersisted,
     NoActiveTurn,
@@ -19,7 +19,7 @@ fn active_turns() -> &'static Mutex<HashMap<String, u32>> {
     ACTIVE_TURNS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-pub(in crate::platform) fn register_active_turn(session_id: &str, pid: u32) {
+pub(super) fn register_active_turn(session_id: &str, pid: u32) {
     if !safe_session_id(session_id) {
         return;
     }
@@ -28,13 +28,13 @@ pub(in crate::platform) fn register_active_turn(session_id: &str, pid: u32) {
     }
 }
 
-pub(in crate::platform) fn clear_active_turn(session_id: &str) {
+pub(super) fn clear_active_turn(session_id: &str) {
     if let Ok(mut registry) = active_turns().lock() {
         registry.remove(session_id);
     }
 }
 
-pub(in crate::platform) fn cancel(session_id: &str) -> ControlDisposition {
+pub fn cancel(session_id: &str) -> ControlDisposition {
     if !safe_session_id(session_id) {
         return ControlDisposition::SessionUnavailable;
     }
@@ -79,7 +79,7 @@ fn cancel_registered(
     }
 }
 
-pub(in crate::platform) fn cleanup_session(session_id: &str) -> ControlDisposition {
+pub fn cleanup_session(session_id: &str) -> ControlDisposition {
     if !safe_session_id(session_id) {
         return ControlDisposition::SessionUnavailable;
     }

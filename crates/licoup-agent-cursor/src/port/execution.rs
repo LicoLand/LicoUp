@@ -19,10 +19,12 @@
 //! and the package's own protocol, parser and replay remain fully exercised
 //! without a host at all.
 //!
-//! What the client still composes today is the process half of a Cursor turn —
-//! launching the CLI, driving its PTY, its update watcher and the local
-//! Subagent MCP caller registration. That half moves onto this seam later; the
-//! package declares it now so the move is one installation rather than a new
+//! What this seam is *not* is the turn's own machinery: the process half lives
+//! in [`crate::driver`], and it launches on the shared pty primitive in
+//! `licoup-foundation` rather than on a seam of its own. This seam carries the
+//! dispatch facts — whether the host admits an execution at all and which
+//! Subagent caller context a delegated turn carries — and it is declared now so
+//! the extension host's binary route is one installation rather than a new
 //! contract.
 
 use std::path::PathBuf;
