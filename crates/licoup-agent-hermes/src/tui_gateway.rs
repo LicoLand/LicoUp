@@ -3,12 +3,23 @@
 //! The executable and argv are fixed by `SshRuntimeConnection`; caller data is
 //! carried only inside framed JSON-RPC messages. Raw guest stderr and protocol
 //! error messages never cross this boundary.
+//!
+//! This is Hermes' own transport, so it is the package's: VENDOR-CODE-REMOVAL
+//! moved it out of `licoup-native`'s platform tree together with the turn it
+//! drives ([`crate::tui_gateway_driver`]) and the conversation-history
+//! projection over it ([`crate::remote_gateway_history`]). The composition above
+//! still picks the lane — it is the one place the runtime connection is in view
+//! — and names this module's [`RUNTIME_PROTOCOL`]; nothing here reaches back
+//! into the client.
 
-use super::acp_session_transport::{TransportEvent, read_protocol_messages, write_message};
-use super::process_supervisor::{
+use licoup_agent_drivers::acp_session_transport::{
+    TransportEvent, read_protocol_messages, write_message,
+};
+use licoup_agent_targets::platform::user_shell_environment;
+use licoup_agent_targets::platform::virtual_machine::SshRuntimeConnection;
+use licoup_foundation::platform::process_supervisor::{
     BoundedStdinWriter, SupervisedChild, TransportFinishFailure, finish_protocol_transport,
 };
-use super::virtual_machine::SshRuntimeConnection;
 use serde_json::{Value, json};
 use std::io::BufReader;
 use std::sync::Arc;
@@ -20,8 +31,10 @@ use std::{process::Command, process::Stdio};
 
 // The protocol name is vocabulary shared with the Agent inventory's
 // virtual-machine projection, which reports it before any driver is launched,
-// so it lives below both and keeps its former path here.
-pub(crate) use licoup_foundation::core::acp::HERMES_TUI_GATEWAY_PROTOCOL as RUNTIME_PROTOCOL;
+// so the constant lives in the foundation below both. It is re-exported here at
+// the boundary that owns the transport that speaks it: the client composition
+// reads the lane's identity from this package rather than keeping a copy.
+pub use licoup_foundation::core::acp::HERMES_TUI_GATEWAY_PROTOCOL as RUNTIME_PROTOCOL;
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -83,7 +96,7 @@ impl GatewayClient {
             .map_err(|_| GatewayFailure::Start)?;
         // The local ssh client observes the user shell environment (proxy,
         // agent socket, PATH); `SendEnv=-*` keeps it from crossing the wire.
-        super::user_shell_environment::apply_to_command(&mut command);
+        user_shell_environment::apply_to_command(&mut command);
         Self::connect_command(command, max_stdout_bytes, max_stderr_bytes)
     }
 
@@ -107,7 +120,7 @@ impl GatewayClient {
         let stderr_truncated = Arc::new(AtomicBool::new(false));
         let stderr_flag = Arc::clone(&stderr_truncated);
         let stderr_handle = thread::spawn(move || {
-            super::acp_session_transport::drain_stderr(
+            licoup_agent_drivers::acp_session_transport::drain_stderr(
                 stderr,
                 max_stderr_bytes,
                 stderr_flag.as_ref(),

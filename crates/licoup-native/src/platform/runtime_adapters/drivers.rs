@@ -10,6 +10,7 @@
 //! `licoup-agent-drivers`; the composition calls it because it is the one place
 //! that holds both an Agent's execution and the host's normalization in view.
 
+use licoup_agent_adapter_sdk::port::ParserRegistration;
 use licoup_agent_drivers::AcpParserRegistration;
 use licoup_agent_drivers::runtime_adapters::adapter::RuntimeAdapter;
 use licoup_agent_drivers::runtime_adapters::model::NormalizedExecution;
@@ -23,7 +24,6 @@ use licoup_agent_drivers::runtime_adapters::port::{
     DriverFailureFacts,
 };
 use serde_json::{Value, json};
-use licoup_agent_adapter_sdk::port::ParserRegistration;
 use std::path::Path;
 use std::sync::OnceLock;
 
@@ -38,10 +38,12 @@ use licoup_agent_deepseek::driver as deepseek_harness_driver;
 // one bounded turn over the shared persistent ACP transport — is the Hermes
 // package's. The composition names the package and keeps the host's own
 // projection of its result; it holds no launch argument, no probe command and no
-// transport of its own. The one Hermes lane that stays here is the TUI gateway,
-// a host transport this composition picks where the runtime connection is in
-// view.
+// transport of its own. Hermes reaches its target through two protocols, and
+// both are the package's: the Gateway lane the composition picks where the
+// runtime connection is in view is `tui_gateway_driver`, and the history page
+// over the same connection is named by the host's history lane.
 use licoup_agent_hermes::driver as hermes_driver;
+use licoup_agent_hermes::tui_gateway_driver as hermes_tui_gateway_driver;
 // The OpenClaw driver — the Gateway attach it names, the ACP bridge it spawns,
 // the framed lines it reads and the turn it supervises — is the OpenClaw
 // package's. The composition names the package and keeps the host's own
@@ -217,7 +219,6 @@ pub(super) fn parser_for_agent(agent_id: &str) -> ParserRegistration {
 /// packages publish, so the frame policy the transport reads is the one the
 /// package ships. No parser path is imported for any of the three.
 pub(super) fn acp_dialects() -> &'static [AcpParserRegistration] {
-
     static DIALECTS: OnceLock<Vec<AcpParserRegistration>> = OnceLock::new();
     DIALECTS.get_or_init(|| {
         vec![
@@ -842,18 +843,18 @@ fn run_hermes(run: &AgentRun<'_>) -> NormalizedExecution {
     // TUI gateway speaks the gateway's protocol, and a local turn speaks the
     // package's ACP transport. The host picks it here, where the runtime
     // connection is in view, and hands it to the Agent's parser and the host's
-    // normalization. The gateway transport stays in this host, so the choice is
-    // this composition's and the package is asked only for the lane it owns.
+    // normalization. Both protocols are the package's, so the choice is this
+    // composition's and the package is asked for the lane it owns.
     let gateway_connection = run
         .runtime_connection
         .filter(|connection| connection.is_hermes_tui_gateway());
     let runtime_protocol = if gateway_connection.is_some() {
-        crate::platform::hermes_tui_gateway::RUNTIME_PROTOCOL
+        licoup_agent_hermes::tui_gateway::RUNTIME_PROTOCOL
     } else {
         hermes_driver::RUNTIME_PROTOCOL
     };
     let result = match gateway_connection {
-        Some(connection) => crate::platform::hermes_tui_gateway_driver::execute(
+        Some(connection) => hermes_tui_gateway_driver::execute(
             connection,
             run.params,
             run.prompt,

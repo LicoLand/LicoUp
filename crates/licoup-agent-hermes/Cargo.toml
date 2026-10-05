@@ -45,6 +45,17 @@ licoup-foundation = { path = "../licoup-foundation" }
 # directly for the same reason: a seam nothing answers would describe a route
 # that does not exist.
 licoup-agent-targets = { path = "../licoup-agent-targets" }
+# The canonical turn vocabulary the Gateway turn reduces its observation to.
+# It is the conversation authority's own published state machine, below every
+# client crate, so the package reads the same `TurnState`/`TurnEvent` pair the
+# host's lane does rather than declaring a second one.
+licoup-conversation = { path = "../licoup-conversation" }
+# The Gateway's JSON-RPC turn names each request it sends, and the history page
+# timestamps the gateway reports. Both are ordinary value types the package
+# owns at its own boundary.
+uuid.workspace = true
+anyhow.workspace = true
+time.workspace = true
 serde_json.workspace = true
 
 [[bin]]
@@ -62,5 +73,3 @@ licoup-agent-drivers = { path = "../licoup-agent-drivers", features = ["test-sup
 # enables the feature that compiles it. It is a self-dependency because
 # `dev-dependencies` features apply to the test targets and nothing else.
 licoup-agent-hermes = { path = ".", features = ["test-support"] }
-# The driver's fake harnesses are written under a unique temporary directory.
-uuid.workspace = true

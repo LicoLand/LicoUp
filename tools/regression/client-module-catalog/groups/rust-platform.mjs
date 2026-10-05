@@ -1825,12 +1825,16 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.hermes-driver.tui-gateway",
       kind: "rust-platform",
-      summary: "Bounded Hermes TUI Gateway JSON-RPC client, turn binding, and deadline failures",
+      summary: "Bounded Hermes TUI Gateway JSON-RPC client, turn binding, deadline failures, and the history page over the same connection",
       inputs: [
-        "crates/licoup-native/src/platform/hermes_tui_gateway.rs",
-        "crates/licoup-native/src/platform/hermes_tui_gateway_driver.rs",
+        "crates/licoup-agent-hermes/src/remote_gateway_history.rs",
+        "crates/licoup-agent-hermes/src/tui_gateway.rs",
+        "crates/licoup-agent-hermes/src/tui_gateway_driver.rs",
       ],
-      command: rustLayer("platform::hermes_tui_gateway"),
+      // The Gateway lane is the package's, so it runs against the package's own
+      // manifest like every other Hermes leaf. The filter names the three
+      // modules at once: the client, the turn and the history projection.
+      command: hermesAgentPackageLayer("tui_gateway"),
     }),
   defineModule({
       id: "rust.platform.badtower-station",
@@ -2097,7 +2101,6 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-foundation/src/platform/pty_transport.rs",
         "crates/licoup-foundation/src/platform/raw_execution.rs",
         "crates/licoup-native/src/platform/remote_acp_history.rs",
-        "crates/licoup-native/src/platform/remote_hermes_gateway_history.rs",
         "crates/licoup-native/src/platform/secure_mesh_capability_probe.rs",
         "crates/licoup-foundation/src/platform/turn_event_emit.rs",
         "crates/licoup-native/src/platform/claude_code_subagent_mcp_manager.rs",

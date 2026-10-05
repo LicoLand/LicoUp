@@ -11,6 +11,18 @@ const C = "crates/licoup-agent-codex/src/";
 // runs; VENDOR-CODE-REMOVAL moved that site out of the host, so its record is
 // keyed here rather than under N. Its leaf is the package's `driver` root.
 const DS = "crates/licoup-agent-deepseek/src/";
+// The seven adapter packages below own the driver leaves VENDOR-CODE-REMOVAL
+// moved out of the host's `platform/<target>_driver` trees. Every reviewed site
+// whose file moved is keyed at its package root, because the path is part of
+// both the source digest and the site's own identity: a move deletes one
+// tracked member and creates another.
+const AG = "crates/licoup-agent-antigravity/src/";
+const CC = "crates/licoup-agent-claude-code/src/";
+const CU = "crates/licoup-agent-cursor/src/";
+const HE = "crates/licoup-agent-hermes/src/";
+const LA = "crates/licoup-agent-lico-agent/src/";
+const OC = "crates/licoup-agent-openclaw/src/";
+const PI = "crates/licoup-agent-pi/src/";
 const DR = "crates/licoup-agent-drivers/src/";
 const F = "crates/licoup-foundation/src/";
 const T = "crates/licoup-agent-targets/src/";
@@ -30,7 +42,7 @@ const SOURCES = Object.freeze({
   [D + "native_one_shot_command_executor.dart"]: "a9aceae0873a4603bae360eb9a08f81449078074a80602c2672f3ddd76b41045",
   "crates/licoup-mcp/src/application.rs": "bbc38e974fdc0a087a4d5e89350530bbe531e680bea8aac56562d109604832cc",
   [N + "domain/agent_hub/argv.rs"]: "4f942a0f7df3f2e2e8396a40906381811ae6dcd656c2a7bcf9d7ceb5c214d911",
-  [N + "domain/agent_hub/version_check.rs"]: "fd0b8afba2b39f844a4a232af074954e452e8eae60ca49ba979ffe7b6e23970b",
+  [N + "domain/agent_hub/version_check.rs"]: "31b09b2189abae030fa32436cb3b02a0be885105a2cbd41ea40b5c7fb7c0ee65",
   [N + "domain/agent_usage/agent_usage_native/openclaw.rs"]: "b1f9a6a2b74b7477e24d0fea2b1a3c9d658a2a66542af5676b2537cfb6b49a52",
   [APPLY]: "07491d6d0ff170596be9ed55f3b6ca558422f7e141cd9f2445fc7211346f0071",
   [PLAN]: "473f8f8716db2a35b7af98ac649cf82093f61a857ddceb1870e0c5a842b6e635",
@@ -50,28 +62,28 @@ const SOURCES = Object.freeze({
   [DR + "acp_driver_runtime/supervision.rs"]: "7300984d196c6a73ba67e82b6a96c8c90e41b8540f7b03e7e6a7a7968c31705b",
   [DR + "acp_session_transport/command.rs"]: "b16fc8b4383c2b27693417d311200d15fefd047c8929be51d9bf98dc6305da9d",
   [DR + "local_service/process.rs"]: "40c1858f9ddf63679d771bb3f38ec4401ce7e75aa957ff29488ab3154117b9d9",
-  [N + "platform/antigravity_driver/auth.rs"]: "cf7f6d1607aef2f200b2cb075d5f05a99ff482555ef57d7d77ce6a8c54621bfa",
-  [N + "platform/antigravity_driver/execution.rs"]: "f1c00ca0af5f89b35593f7fa98865c57f5333f232027f2e5df7588464c615deb",
-  [N + "platform/antigravity_driver/probe.rs"]: "75c62a13bccda44854d39b98ba41eaf2a146f2e0f64fed7b98edfc7e8b9972ae",
-  [N + "platform/claude_code_driver/launch.rs"]: "a67ab51fb21b65a26226a9140eb40bb3891fff3e51cc333482d122facfdb7730",
-  [N + "platform/claude_code_driver/probe.rs"]: "5f199b762add6be8f28ac7b4f557590b899a71e3d4f727f7b98fb4f3ce529195",
+  [AG + "driver/auth.rs"]: "2edad01ad0e4fcd9053a898ae289d7a9d509445522ff667e9a6aa9306b8b3a0c",
+  [AG + "driver/execution.rs"]: "62b01f3fdf637be6dad6f64d0d3b99fbf4a7cbfb696bc15f1ef0386d6d2b2d38",
+  [AG + "driver/probe.rs"]: "8dd261105d35c2df1c884ccc60b52a475b309a36753df72777cb16185122cb8a",
+  [CC + "driver/launch.rs"]: "8153fb7e04bf948c8d7101443eb34d21e1a7248ce2a61007c7bd0d4c4e5fd7cb",
+  [CC + "driver/probe.rs"]: "73331f65b4f41f2553adb16105f3978fb9fc5f66e8ff4395d3fc924ff86b068f",
   [C + "app_server/driver/launch.rs"]: "de5dfbad8261b94a1bb37d1bf9ae4620af35e1856434b16c74b5ad7cc9f8b862",
-  [N + "platform/cursor_driver/execution.rs"]: "e50f484719e8828fb7842711337d8886d6b220986fced0d2757fedbe6038576f",
-  [N + "platform/cursor_driver/probe.rs"]: "e5fb151d35ada8ac16770cfa444a46edc9b07dfbfd02b36f165c0947b3f69c77",
+  [CU + "driver/execution.rs"]: "2f48be9f5539175f728dbd5bbda0bac747b25b6c39d139c223662fcd6237a759",
+  [CU + "driver/probe.rs"]: "f551efaa5692c8a85281e6fc3f5cb462e42485d48e0dfd4a5e1dc4974cedcbda",
   [DS + "driver.rs"]: "6ff0622a273dcc0c0f4ab829e5dd5803aac38df24937667c71412c980f2d5503",
   [N + "platform/extension_host/isolation/confinement.rs"]: "2cc72396a086eea81f47ce7fabe818dd4b5f2c054d3280e06c45cd8ac8046956",
   [N + "platform/generic_cli_driver.rs"]: "6970fd309539bbfa2d5b4fbd7191cb292b86b5b1a3f1ebdde8b184c7747c6341",
-  [N + "platform/hermes_driver/probe.rs"]: "973dddadc2653371f6c19a21a3987a19fa62aae3edb2694994bd7abf4e242d23",
-  [N + "platform/lico_agent_driver/execution.rs"]: "061e3f118a7eb9944e328ea3cf2e61ab2845541f3dc88d5b850dc12c7063de55",
-  [N + "platform/lico_agent_driver/probe.rs"]: "b968dbfd55ec7e1ca7c83aa5d5fedfc244c6b554d8fe96a441923fa22e0d3179",
+  [HE + "driver/probe.rs"]: "a08f7c633acf3aeb9c40fc8f9340850fa0f25d4fc08262727d339c3ca5c3b5f8",
+  [LA + "driver/execution.rs"]: "8ff3049d7a88725d8c1e54cdc4176a2a3d1fe0a433161f1aaa99d5568333faf2",
+  [LA + "driver/probe.rs"]: "c7dde852a23e43b3bd49671f0239d68ae6213e904338a51e5003361c62409baa",
   [MIGRATE_CONVERTER]: "1a468623ec8a3a0d23371c0dad7fdfdcb145f5cd6886cb306776c6f3acc59277",
   [N + "platform/mcp_service_process.rs"]: "745cd52c988672ebdfee6a52d020c02f0d56f62a6c9acd3247ee38109d5a6976",
-  [N + "platform/openclaw_driver/probe.rs"]: "49a1e80055550a28d5de652f4236dfbf3c99ba53ea53c86692b44810f0d23862",
-  [N + "platform/openclaw_driver/supervision.rs"]: "c41128bbbaf81904d6c263ea97988ea1265dd74fa30d8867be73cdce134079bd",
+  [OC + "driver/probe.rs"]: "99b23abd8c5205d362bf941ad730223a5d45ab7a74bbdf980a845b35078c4350",
+  [OC + "driver/supervision.rs"]: "600999fb05c0f81f0ad99c0e7644a2e604dd91b779e88dc2c3d8147c97654376",
   [N + "platform/openclaw_gateway/command.rs"]: "5b747fa62fa6cd21074aa05990cf195377eeafed75907262598c40a1ac842601",
-  [N + "platform/pi_driver/probe.rs"]: "da5671f51a42b93020a87497945d7d0521957d8c4dbae7f68a2d99f2d0630939",
-  [N + "platform/pi_driver/supervision.rs"]: "eb35a662553bb9a7292d38c1bd6537eb11cbccc77205325cb8029219da58aafe",
-  [N + "platform/process_sandbox/seatbelt.rs"]: "33208cec6c4bd28e1b60ebb4e74c43921bf3df114fe438d05893144868686367",
+  [PI + "driver/probe.rs"]: "a65e50c269a358721ba391602937e4b7528da11f67f6c74f9587b40e98ce1b46",
+  [PI + "driver/supervision.rs"]: "4998ffa3c372839e50867423369816c34893956eebd9794c2989600d1628c762",
+  [N + "platform/process_sandbox/seatbelt.rs"]: "9d021bd1cc6158422c003f003742e15e6b861f3481100f21b8493bab2bb6fd4b",
   [N + "platform/process_sandbox/strategy.rs"]: "a8832eb3055c1dd7fde3e99c413aa92ec8c6e98a51a89345d4b377b8440d66f4",
   [SUPERVISOR]: "cc54d42dbc06636b95f686587c05bea047396d0652d1561a1abe6c99d7fff700",
   [N + "platform/strategy_runtime/mod.rs"]: "2aec0783434e79e87923b91eef2710e19a77d85dea84a1e1807898bf5d58cfd0",
@@ -173,33 +185,33 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
   ...entries(DR + "acp_session_transport/command.rs", field("Command::new(&self.executable)"), [
     ["8badc004c930", "Launch the local executable branch of ACP session transport when no external runtime connection supplies the command; keep the configured executable boundary explicit."],
   ]),
-  ...entries(N + "platform/antigravity_driver/auth.rs", parameter("executable: Option<&str>"), [
-    ["439bc3ba329a", "Construct the Antigravity OAuth-start command using an optional selected executable and vendor default; this source review does not grant or verify consent for that external authorization effect."],
+  ...entries(AG + "driver/auth.rs", parameter("executable: Option<&str>"), [
+    ["1f43c2254fdf", "Construct the Antigravity OAuth-start command using an optional selected executable and vendor default; this source review does not grant or verify consent for that external authorization effect."],
   ]),
-  ...entries(N + "platform/antigravity_driver/auth.rs", parameter("fn probe_authorization(executable: &str)"), [
-    ["439bc3ba329a#2", "Construct the selected Antigravity models-based authorization probe before a turn, keeping the separate consent boundary for actually starting OAuth."],
+  ...entries(AG + "driver/auth.rs", parameter("fn probe_authorization(executable: &str)"), [
+    ["1f43c2254fdf#2", "Construct the selected Antigravity models-based authorization probe before a turn, keeping the separate consent boundary for actually starting OAuth."],
   ]),
-  ...entries(N + "platform/antigravity_driver/execution.rs", parameter("executable: &str"), [
-    ["f0312bc5c0c1", "Launch an Antigravity turn through the caller-selected executable with admitted configuration and scoped Membership/MCP context; runtime selection remains unconstrained by the metric."],
+  ...entries(AG + "driver/execution.rs", parameter("executable: &str"), [
+    ["4d6b7c2ac975", "Launch an Antigravity turn through the caller-selected executable with admitted configuration and scoped Membership/MCP context; runtime selection remains unconstrained by the metric."],
   ]),
-  ...entries(N + "platform/antigravity_driver/probe.rs", parameter("executable: &str"), [
-    ["de42112b0028", "Construct the bounded Antigravity version/help capability probe around the executable supplied by its driver, with untrusted-Agent environment preparation."],
+  ...entries(AG + "driver/probe.rs", parameter("executable: &str"), [
+    ["af3c6f7a09e0", "Construct the bounded Antigravity version/help capability probe around the executable supplied by its driver, with untrusted-Agent environment preparation."],
   ]),
-  ...entries(N + "platform/claude_code_driver/launch.rs", field("Command::new(&identity.executable)"), [
-    ["952372b549c7", "Launch the configured Claude Code process with source-owned arguments and workspace, retaining the executable-directory PATH head needed by sibling vendor tools."],
+  ...entries(CC + "driver/launch.rs", field("Command::new(&identity.executable)"), [
+    ["aad8f9c47807", "Launch the configured Claude Code process with source-owned arguments and workspace, retaining the executable-directory PATH head needed by sibling vendor tools."],
   ]),
-  ...entries(N + "platform/claude_code_driver/probe.rs", parameter("executable: &str"), [
-    ["c6034ed13778", "Construct Claude Code's bounded capability probe from its caller-selected executable; the source supervisor and untrusted environment remain separate runtime guarantees."],
+  ...entries(CC + "driver/probe.rs", parameter("executable: &str"), [
+    ["a8508623e986", "Construct Claude Code's bounded capability probe from its caller-selected executable; the source supervisor and untrusted environment remain separate runtime guarantees."],
   ]),
   ...entries(C + "app_server/driver/launch.rs", field("Command::new(&self.executable)"), [
     ["0727a31cdeef", "Launch the installed Codex client's app-server for one turn with stdio and the scoped launch environment: the portable LicoUp root and the Membership caller context are bound explicitly, and neither is inferred from a fixed executable spelling. The site is the Codex adapter package's, so it is the same launch whether the client composes the package or an extension host starts the package's own program; the executable is always a caller-selected path and never a literal tool name."],
   ]),
-  ...entries(N + "platform/cursor_driver/execution.rs", parameter("executable: &str"), [
-    ["526a5bc1f041", "Create a Cursor chat session using the selected Agent executable and bounded workspace, with the same scoped caller context as the resumed turn."],
-    ["526a5bc1f041#2", "Execute the resumed Cursor turn using the selected executable, explicit workspace/session arguments and supervised transport; it is not the chat-creation invocation."],
+  ...entries(CU + "driver/execution.rs", parameter("executable: &str"), [
+    ["4af69fdcbd65", "Create a Cursor chat session using the selected Agent executable and bounded workspace, with the same scoped caller context as the resumed turn."],
+    ["4af69fdcbd65#2", "Execute the resumed Cursor turn using the selected executable, explicit workspace/session arguments and supervised transport; it is not the chat-creation invocation."],
   ]),
-  ...entries(N + "platform/cursor_driver/probe.rs", parameter("executable: &str"), [
-    ["aea70b7b1ea4", "Construct the bounded Cursor capability probe from the driver-supplied executable, preserving its environment isolation and output handling."],
+  ...entries(CU + "driver/probe.rs", parameter("executable: &str"), [
+    ["240c5b139c44", "Construct the bounded Cursor capability probe from the driver-supplied executable, preserving its environment isolation and output handling."],
   ]),
   ...entries(DS + "driver.rs", field("Command::new(&config.executable)"), [
     ["b0f6bd00169d", "Start the configured DeepSeek Harness SDK-profile JSON-RPC carrier under its workspace and supervised stdio; this is an Agent runtime binding, not a fixed native artifact."],
@@ -213,15 +225,15 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
   ...entries(N + "platform/generic_cli_driver.rs", parameter("executable: &str"), [
     ["9ebc382eb9d5", "Execute a registered argv-only Agent through the caller-selected executable, argument substitution and chosen PTY/stdio mode; arbitrary legitimate Agent paths are not constrained to manufacture a baseline."],
   ]),
-  ...entries(N + "platform/hermes_driver/probe.rs", parameter("executable: &str"), [
-    ["afeccfaac7ad", "Construct the bounded Hermes capability probe from its runtime executable binding; external Agent interpreter requirements remain visible rather than native client requirements."],
+  ...entries(HE + "driver/probe.rs", parameter("executable: &str"), [
+    ["1763805bb64e", "Construct the bounded Hermes capability probe from its runtime executable binding; external Agent interpreter requirements remain visible rather than native client requirements."],
   ]),
-  ...entries(N + "platform/lico_agent_driver/execution.rs", parameter("executable: &str"), [
-    ["5d0555e57fe2", "Construct the ordinary Lico Agent process branch from the selected executable; Plan mode uses its separate required sandbox path, not a measurement-driven fallback."],
+  ...entries(LA + "driver/execution.rs", parameter("executable: &str"), [
+    ["331cdcc47e87", "Construct the ordinary Lico Agent process branch from the selected executable; Plan mode uses its separate required sandbox path, not a measurement-driven fallback."],
   ]),
-  ...entries(N + "platform/lico_agent_driver/probe.rs", parameter("executable: &Path"), [
-    ["e60bf875c7e5", "Construct the selected Lico Agent help probe to derive capability information; classification is not live readiness or an assertion about timeout behavior."],
-    ["702f845b22dd", "Run the prepared Lico Agent help command through its output interface; this separate sink stays visible and does not authorize a live Agent probe."],
+  ...entries(LA + "driver/probe.rs", parameter("executable: &Path"), [
+    ["dfaf4adc46fe", "Construct the selected Lico Agent help probe to derive capability information; classification is not live readiness or an assertion about timeout behavior."],
+    ["1ad3bfd9d1b8", "Run the prepared Lico Agent help command through its output interface; this separate sink stays visible and does not authorize a live Agent probe."],
   ]),
   ...entries(DR + "local_service/process.rs", parameter("executable: &str"), [
     ["de96119a14bc", "Construct a local service process using the caller's executable and explicit command configurator before the service owner detaches it."],
@@ -232,24 +244,24 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
   ...entries(N + "platform/mcp_service_process.rs", parameter("binary: Option<&Path>"), [
     ["25b8c55d297b", "Run the MCP service generation the installed package store selects, supplying the owning CLI and selected home without linking the service into the kernel: start, stop, reload and reconcile all go through that generation's own program, which owns the service's writer lease, while this module keeps the lease naming the generation, its measured payload digest and its callers. The install record's content digest is the approval, and the payload digest measured at selection is handed to that program, so bytes that no longer measure the same are refused rather than started; a caller-supplied binary must canonicalize to that generation entry."],
   ]),
-  ...entries(N + "platform/openclaw_driver/probe.rs", parameter("executable: &str"), [
-    ["298e735358b7", "Construct OpenClaw's bounded capability probe from the selected local executable with the source-owned untrusted-Agent preparation."],
+  ...entries(OC + "driver/probe.rs", parameter("executable: &str"), [
+    ["19464e17c91d", "Construct OpenClaw's bounded capability probe from the selected local executable with the source-owned untrusted-Agent preparation."],
   ]),
-  ...entries(N + "platform/openclaw_driver/supervision.rs", field("Command::new(&self.executable)"), [
-    ["b394558a3eed", "Launch the local OpenClaw ACP branch using its configured executable when no runtime connection supplies the command; optional credentials remain in the existing environment boundary, not this review data."],
+  ...entries(OC + "driver/supervision.rs", field("Command::new(&self.executable)"), [
+    ["32f10a589886", "Launch the local OpenClaw ACP branch using its configured executable when no runtime connection supplies the command; optional credentials remain in the existing environment boundary, not this review data."],
   ]),
   ...entries(N + "platform/openclaw_gateway/command.rs", parameter("executable: &str"), [
     ["67db765625fd", "Construct the selected OpenClaw local loopback gateway process with its owned state/config paths and explicit token removal; this record does not start or expose the service."],
   ]),
-  ...entries(N + "platform/pi_driver/probe.rs", parameter("executable: &str"), [
-    ["a1d56bc81241", "Construct the selected Pi capability probe with its existing supervisor deadline and scrubbed Agent environment, retaining the runtime executable interface."],
+  ...entries(PI + "driver/probe.rs", parameter("executable: &str"), [
+    ["1e811859d365", "Construct the selected Pi capability probe with its existing supervisor deadline and scrubbed Agent environment, retaining the runtime executable interface."],
   ]),
-  ...entries(N + "platform/pi_driver/supervision.rs", field("Command::new(&self.executable)"), [
-    ["d78a9c014fe5", "Launch the configured Pi process with its source-owned launch arguments, caller workspace and supervised stdio."],
+  ...entries(PI + "driver/supervision.rs", field("Command::new(&self.executable)"), [
+    ["e029234d24d5", "Launch the configured Pi process with its source-owned launch arguments, caller workspace and supervised stdio."],
   ]),
   ...entries(N + "platform/process_sandbox/seatbelt.rs", parameter("runner: &Path"), [
-    ["9c8d310fd7f2", "Construct the verified macOS sandbox boundary for a selected collaboration runner and owned manifest/snapshot paths; the guest executable is a caller input, not sandbox-exec itself."],
-    ["9c8d310fd7f2#2", "Construct the required Lico Agent Plan sandbox around the selected runner, one plan file and bounded workspace; no runtime selection restriction or fallback is introduced for measurement."],
+    ["cc760a308639", "Construct the verified macOS sandbox boundary for a selected collaboration runner and owned manifest/snapshot paths; the guest executable is a caller input, not sandbox-exec itself."],
+    ["cc760a308639#2", "Construct the required Lico Agent Plan sandbox around the selected runner, one plan file and bounded workspace; no runtime selection restriction or fallback is introduced for measurement."],
   ]),
   ...entries(N + "platform/process_sandbox/strategy.rs", parameter("executable: &Path"), [
     ["783b7b87c003", "Construct the strategy sandbox around the verified chosen script runtime, revision and scratch roots; Node/Python dependencies remain explicit runtime interfaces rather than zero debt."],

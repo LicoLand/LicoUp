@@ -511,7 +511,7 @@ export const RUST_CORE_MODULES = Object.freeze([
   defineModule({
       id: "rust.core.protocol-bindings",
       kind: "rust-core",
-      summary: "Fixed-input admission, frozen Line version, and verified peer ingress",
+      summary: "Fixed-input admission, frozen Line version, verified peer ingress, and the pinned SDK's replacement authority",
       inputs: [
         "crates/licoup-protocol-bindings/Cargo.toml",
         "crates/licoup-protocol-bindings/src/admission.rs",
@@ -521,6 +521,7 @@ export const RUST_CORE_MODULES = Object.freeze([
         "crates/licoup-protocol-bindings/src/licoarc_relay.rs",
         "crates/licoup-protocol-bindings/src/licoarc_relay/**",
         "crates/licoup-protocol-bindings/src/padding.rs",
+        "crates/licoup-protocol-bindings/src/replacement.rs",
         "crates/licoup-protocol-bindings/src/tests.rs",
         "crates/licoup-protocol-bindings/src/version.rs",
         "crates/licoup-protocol-bindings/tests/dependency_direction.rs",

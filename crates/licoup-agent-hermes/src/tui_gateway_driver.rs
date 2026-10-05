@@ -1,10 +1,24 @@
-use super::acp_session_transport::{EffectiveSettings, ProtocolFailure, RunResult};
-use super::hermes_tui_gateway::{
+//! The bounded turn one Hermes TUI Gateway connection runs.
+//!
+//! VENDOR-CODE-REMOVAL moved this module, its client ([`crate::tui_gateway`])
+//! and the conversation-history projection over the same connection
+//! ([`crate::remote_gateway_history`]) out of `licoup-native`'s platform tree:
+//! the Gateway is one Agent's vendor transport, so it belongs to that Agent's
+//! package. The composition above still owns the lane choice — a turn bound to
+//! the Gateway speaks this protocol and a local turn speaks [`crate::driver`]'s
+//! ACP transport — and hands the connection here; nothing below reaches back
+//! into the client.
+
+use crate::tui_gateway::{
     GatewayClient, GatewayFailure, event_payload, event_session_id, event_type,
 };
-use super::virtual_machine::{SshRuntimeConnection, is_valid_guest_working_directory};
-use crate::domain::client_conversation::{
-    TurnEvent as CanonicalTurnEvent, TurnState as CanonicalTurnState,
+use licoup_agent_drivers::acp_session_transport::{EffectiveSettings, ProtocolFailure, RunResult};
+use licoup_agent_targets::platform::virtual_machine::{
+    SshRuntimeConnection, is_valid_guest_working_directory,
+};
+use licoup_conversation::{TurnEvent as CanonicalTurnEvent, TurnState as CanonicalTurnState};
+use licoup_foundation::platform::turn_event_emit::{
+    emit_agent_message_chunk, emit_agent_message_completed, emit_turn_event,
 };
 use serde_json::{Map, Value, json};
 use std::path::Path;
@@ -13,7 +27,7 @@ use uuid::Uuid;
 
 const MAX_IDENTIFIER_BYTES: usize = 512;
 
-pub(in crate::platform) fn execute(
+pub fn execute(
     connection: &SshRuntimeConnection,
     params: &Value,
     prompt: &str,
@@ -174,7 +188,7 @@ fn run_turn(
         opened.model,
         max_output_bytes,
     );
-    super::turn_event_emit::emit_turn_event(
+    emit_turn_event(
         "dispatch.turn.bound",
         &turn.durable_session_id,
         &turn.turn_id,
@@ -240,11 +254,7 @@ fn run_turn(
             "session/close",
         ));
     }
-    super::turn_event_emit::emit_agent_message_completed(
-        &turn.durable_session_id,
-        &turn.turn_id,
-        &turn.output,
-    );
+    emit_agent_message_completed(&turn.durable_session_id, &turn.turn_id, &turn.output);
     Ok(GatewayOutcome {
         output: turn.output,
         events: turn.events,
@@ -396,11 +406,7 @@ impl TurnObservation {
                     .and_then(Value::as_str)
                     .unwrap_or_default();
                 self.append_output(text)?;
-                super::turn_event_emit::emit_agent_message_chunk(
-                    &self.durable_session_id,
-                    &self.turn_id,
-                    text,
-                );
+                emit_agent_message_chunk(&self.durable_session_id, &self.turn_id, text);
             }
             "message.complete" => {
                 self.ensure_started()?;
