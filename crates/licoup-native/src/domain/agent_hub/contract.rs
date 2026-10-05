@@ -255,6 +255,26 @@ pub struct ArtifactSpec {
     pub vendor_arch: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     pub installer: std::collections::BTreeMap<String, String>,
+    /// The digest the vendor publishes for this artifact. Its absence is a
+    /// refusal, not a silent unverified install: acquisition stages nothing
+    /// until the recipe names the published digest or its document.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub integrity: Option<ArtifactIntegrity>,
+}
+
+/// Where the published digest of one vendor artifact comes from.
+///
+/// Exactly one of [`ArtifactIntegrity::digest`] (a digest the recipe pins, only
+/// usable for an immutable URL) and [`ArtifactIntegrity::digest_url_template`]
+/// (a digest document the vendor publishes beside the artifact) is declared.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ArtifactIntegrity {
+    pub algorithm: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest_url_template: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

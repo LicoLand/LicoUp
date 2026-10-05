@@ -32,7 +32,7 @@ use crate::ownership::TransferOwnership;
 pub enum ManagedDomain {
     /// The client-state collection store and its preferences.
     ClientState,
-    /// Canonical conversation stores and their projections.
+    /// Conversation stores, canonical and group, and their projections.
     Conversation,
     /// The selected workspace manifest and its projections.
     Workspace,

@@ -48,6 +48,10 @@ fn manifest(coverage: &str, limitations: serde_json::Value, entries: Vec<serde_j
 
 /// Every declared area of the data root is attributed, and every declared
 /// limitation is classified: the inventory is complete as a description.
+///
+/// The areas match the ones the archive owner's own synthetic data root writes,
+/// including the owner files that live at the data-root root rather than under
+/// the client-state directory.
 fn complete_manifest() -> ArchiveManifest {
     manifest(
         "limited",
@@ -64,9 +68,16 @@ fn complete_manifest() -> ArchiveManifest {
         vec![
             directory("client-state"),
             file("client-state/preferences.json", 512),
+            file("client-state/appearance-preferences.json", 128),
             directory("client-state/conversations"),
             file("client-state/conversations/conversations.sqlite3", 8192),
+            file("client-state/conversations/migration-v5.complete", 0),
             file("client-state/migrations/ledger.json", 256),
+            // The areas the migration owner records at the data-root root.
+            file(".licoup-workspace.json", 192),
+            file("adaptive-flywheel.toml", 320),
+            directory("group-conversations"),
+            file("group-conversations/group-1.json", 640),
             file("activity/activity.jsonl", 1024),
             file("snapshots/snapshot-1.json", 2048),
             file("archives/backup.zip", 4096),
@@ -146,6 +157,25 @@ fn a_complete_inventory_separates_managed_external_and_credential_domains() {
     assert_eq!(domain_of("temp/scratch.tmp"), ManagedDomain::Temp);
     assert_eq!(domain_of("logs/client.log"), ManagedDomain::Logs);
 
+    // The areas a real capture records at the data-root root are attributed too,
+    // including the non-secret credential-inventory document.
+    assert_eq!(
+        domain_of(".licoup-workspace.json"),
+        ManagedDomain::Workspace
+    );
+    assert_eq!(
+        domain_of("adaptive-flywheel.toml"),
+        ManagedDomain::ClientState
+    );
+    assert_eq!(
+        domain_of("group-conversations/group-1.json"),
+        ManagedDomain::Conversation
+    );
+    assert_eq!(
+        domain_of("llm-api-key-inventory.json"),
+        ManagedDomain::ClientState
+    );
+
     // Provider-retained history is an external reference, not a managed payload.
     assert_eq!(inventory.external().len(), 1);
     assert_eq!(inventory.external()[0].domain, "provider-retained-history");
@@ -157,7 +187,20 @@ fn a_complete_inventory_separates_managed_external_and_credential_domains() {
         CredentialCustody::ProviderKeyReentry
     );
 
-    assert_eq!(inventory.retained_bytes(), 512 + 8192 + 256 + 1024 + 2048 + 4096);
+    // Caches, temporaries and logs travel in the archive but are not retained
+    // content: their owners rebuild them, so they are not bytes a person must get
+    // back for the transfer to be complete.
+    for path in [
+        "cache/target-discovery.json",
+        "temp/scratch.tmp",
+        "logs/client.log",
+    ] {
+        assert!(!domain_of(path).is_retained_content());
+    }
+    assert_eq!(
+        inventory.retained_bytes(),
+        512 + 128 + 8192 + 256 + 192 + 320 + 640 + 1024 + 2048 + 4096 + 96
+    );
 }
 
 #[test]

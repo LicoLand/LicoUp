@@ -20,7 +20,10 @@ mod capture;
 mod inventory;
 mod restore;
 
-pub use capture::{ExportOutcome, ExportRequest, archive_path_inside_data_root, export_data_root};
+pub use capture::{
+    CREDENTIAL_DOMAIN, CREDENTIAL_INVENTORY_PATH, ExportOutcome, ExportRequest,
+    archive_path_inside_data_root, export_data_root,
+};
 pub use inventory::{
     ARCHIVE_LAYOUT, ArchiveManifest, InventoryEntry, InventoryKind, RecoveryCoverage,
     RecoveryLimitation,
