@@ -2,7 +2,10 @@ use super::errors::ProtocolFailure;
 use crate::platform::native_agent_parser::Transition;
 use serde_json::Value;
 
-pub(in crate::platform) const RUNTIME_PROTOCOL: &str = "lico-agent-rpc-stdio-jsonl";
+// The runtime protocol id this Agent's turns run under is the adapter package's
+// fact, named once there and read here, so the id the execution surface reports
+// and the protocol that package parses cannot describe two different wires.
+pub(in crate::platform) use licoup_agent_lico_agent::parser::RUNTIME_PROTOCOL;
 
 #[derive(Clone, Debug, Default)]
 pub(in crate::platform) struct EffectiveSettings {
@@ -33,12 +36,11 @@ pub(in crate::platform) struct RunResult {
 
 impl RunResult {
     pub(super) fn failed(failure: ProtocolFailure, started_at: String) -> Self {
-        let transitions =
-            crate::platform::native_agent_parser::adapters::lico_agent::failure_transitions(
-                failure.code,
-                failure.stage,
-                failure.message,
-            );
+        let transitions = licoup_agent_lico_agent::parser::failure_transitions(
+            failure.code,
+            failure.stage,
+            failure.message,
+        );
         Self {
             ok: false,
             output: String::new(),

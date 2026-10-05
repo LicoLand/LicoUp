@@ -1,0 +1,48 @@
+[package]
+name = "licoup-agent-openclaw"
+version = "0.14.0"
+edition = "2024"
+rust-version = "1.95.0"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/LicoLand/LicoUp.git"
+description = "OpenClaw adapter package: the Gateway ACP driver vocabulary and its vendor protocol"
+
+# The crate is one package's program. `parser` is this Agent's vendor protocol
+# below the adapter port: the Gateway ACP state machine, the byte-line codec that
+# classifies one frame exactly once per ADR-0008, and the allowlisted update
+# projection. `gateway_acp` is the driver half the kernel reads — the run
+# vocabulary, the failure constructors, the request validation and the session
+# continuity binding. `gateway` is the endpoint vocabulary the ACP attach names.
+# `port` is the seam the host answers, `registration` is what composition injects
+# into `licoup-agent-adapter-sdk`, and `replay` is the arm that drives the same
+# state machine from a recorded transcript.
+#
+# The kernel links no part of this crate's protocol. Composition names the crate
+# for its registration while the extension host's binary route is completed by
+# the agent-execution port; nothing here reaches back into a client crate.
+[features]
+default = []
+
+[dependencies]
+licoup-agent-adapter-sdk = { path = "../licoup-agent-adapter-sdk" }
+# The shared ACP wire vocabulary a Gateway ACP frame is validated against, and
+# the one predicate that decides whether an ACP working directory is absolute.
+# Both are protocol facts this package and the client's ACP transport read from
+# the same owner rather than client facts this package asks for, so they are
+# dependencies rather than ports — exactly as `licoup-agent-drivers` reads them.
+licoup-agent-targets = { path = "../licoup-agent-targets" }
+licoup-foundation = { path = "../licoup-foundation" }
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+
+[[bin]]
+name = "lico-agent-openclaw"
+path = "src/bin/lico-agent-openclaw.rs"
+
+# Test-only. The committed package artifact is validated with the host's own
+# manifest, permission and client-compatibility contract instead of a second
+# reading of it. Nothing here enters the package binary, which links no kernel
+# crate and reads its own package documents as data.
+[dev-dependencies]
+licoup-extension-contracts = { path = "../licoup-extension-contracts" }

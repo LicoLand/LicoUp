@@ -1,36 +1,19 @@
-use super::*;
+//! The client's composition of this Agent's capability probe.
+
+use super::super::capability_probe;
+use std::path::Path;
 
 #[test]
 fn probe_rejects_relative_workspace_before_process_or_http_work() {
-    let failure = capability_probe("unused", Path::new("relative"), 10, Some(16), 16).unwrap_err();
-    assert_eq!(failure.code, "kilo_code_serve_working_directory_invalid");
+    let failure =
+        capability_probe("unused", Path::new("relative"), 10, Some(16), 16).unwrap_err();
+    assert_eq!(failure.code, "acp_working_directory_invalid");
+    assert_eq!(failure.stage, "initialize");
 }
 
 #[test]
-fn endpoint_failures_preserve_the_local_service_diagnostic() {
-    for (source, expected) in [
-        ("kilo_executable_missing", "kilo_executable_missing"),
-        (
-            "kilo_code_serve_port_exhausted",
-            "kilo_code_serve_port_exhausted",
-        ),
-        (
-            "kilo_code_serve_start_failed",
-            "kilo_code_serve_start_failed",
-        ),
-        (
-            "kilo_code_serve_health_failed",
-            "kilo_code_serve_health_failed",
-        ),
-        (
-            "kilo_code_serve_attach_probe_failed",
-            "kilo_code_serve_attach_probe_failed",
-        ),
-        (
-            "kilo_code_serve_state_invalid",
-            "kilo_code_serve_state_invalid",
-        ),
-    ] {
-        assert_eq!(endpoint_failure(source).code, expected);
-    }
+fn probe_rejects_an_empty_executable_with_the_process_start_failure() {
+    let failure = capability_probe("   ", Path::new("/workspace"), 10, Some(16), 16).unwrap_err();
+    assert_eq!(failure.code, "kilo_code_serve_process_start_failed");
+    assert_eq!(failure.stage, "serve/ensure");
 }

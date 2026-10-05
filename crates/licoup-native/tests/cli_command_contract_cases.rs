@@ -21,9 +21,12 @@ const ADMISSION_STAGE: &str = "cli/admission";
 const ADMISSION_COMPONENT: &str = "native_cli";
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
-// The merged authority is the union of both branches: 183 routes plus the
-// fourteen package-lifecycle routes this branch adds.
-const AUTHORITATIVE_ROUTE_COUNT: usize = 197;
+// The whole published registry, not a remembered number: every route the
+// command table registers must appear here exactly once, so the count is
+// re-derived from `build_command_table` whenever a route lands. The
+// cross-device entry's five routes and the project family's routes are part of
+// the registry and were missing from this authority before them.
+const AUTHORITATIVE_ROUTE_COUNT: usize = 206;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -1443,7 +1446,6 @@ fn native_cli_starts_and_reuses_its_durable_host_without_flutter() {
             .args(["--stdin-json", "true"])
             .env("LICOUP_HOME", &root)
             .env("LICOUP_CLIENT_PID", std::process::id().to_string())
-            .env("LICOUP_MCP_AUTOSTART", "0")
             .env_remove("RUST_LOG")
             .env_remove("RUST_BACKTRACE")
             .stdin(Stdio::piped())
@@ -2327,6 +2329,7 @@ fn route_authorities() -> Vec<RouteAuthority> {
             "mobile relay commands result-secure",
             "mobile relay commands result-replay-proof",
             "mobile relay e2ee secret-store-cleanup",
+            "mobile relay e2ee secret-store-cleanup-inventory",
             "mobile relay e2ee secret-store-self-test",
         ],
         Options,
@@ -2814,10 +2817,83 @@ fn route_authorities() -> Vec<RouteAuthority> {
         &["project list"],
         Exact,
     );
+    add_authority_routes(
+        &mut routes,
+        "project.rs",
+        "handle_project_import_preview",
+        &["project import-preview"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "project.rs",
+        "handle_project_import_apply",
+        &["project import-apply"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "project.rs",
+        "handle_project_dependency_declare",
+        &["project dependency declare"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "project.rs",
+        "handle_project_dependency_list",
+        &["project dependency list"],
+        Exact,
+    );
+    add_authority_routes(
+        &mut routes,
+        "project.rs",
+        "handle_project_dependency_unresolved",
+        &["project dependency unresolved"],
+        Exact,
+    );
+    add_authority_routes(
+        &mut routes,
+        "project.rs",
+        "handle_project_dependency_blocked",
+        &["project dependency blocked"],
+        Exact,
+    );
+    // The cross-device entry's own routes are part of the published registry, so
+    // the authority is incomplete without them: the projection comparison below
+    // is between this list and the live table, not a subset of it.
+    add_authority_routes(
+        &mut routes,
+        "mobile_peer.rs",
+        "handle_mobile_peer",
+        &["mobile relay peer status"],
+        Exact,
+    );
+    add_authority_routes(
+        &mut routes,
+        "mobile_peer.rs",
+        "handle_mobile_peer",
+        &["mobile relay peer protocol-line"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "mobile_peer.rs",
+        "handle_mobile_peer",
+        &[
+            "mobile relay peer record",
+            "mobile relay peer bind",
+            "mobile relay peer revoke",
+        ],
+        Options,
+    );
     for route in &mut routes {
         route.required = match route.path {
             "skill get" | "skill visibility set" => &[("skill-id", Text)],
-            "project read" => &[("project-id", Text)],
+            "project read" | "project dependency list" | "project dependency unresolved" => {
+                &[("project-id", Text)]
+            }
+            "project dependency blocked" => &[("project-id", Text), ("work-item-id", Text)],
             "rpc call" => &[("method", Text)],
             _ => route.required,
         };
@@ -2877,9 +2953,21 @@ const fn boolean_option(name: &'static str) -> OptionAuthority {
 fn options_for_route(path: &str) -> Vec<OptionAuthority> {
     use RequiredArgumentKind::{Json, Text};
     let options: &[OptionAuthority] = match path {
-        "rpc call" | "subagents execute" | "project register" => {
+        "rpc call"
+        | "subagents execute"
+        | "project register"
+        | "project import-preview"
+        | "project dependency declare"
+        | "mobile relay peer record"
+        | "mobile relay peer bind"
+        | "mobile relay peer revoke" => {
             &[value_option("stdin-json", Json, true)]
         }
+        "mobile relay peer protocol-line" => &[value_option("authority-file", Text, true)],
+        "project import-apply" => &[
+            value_option("stdin-json", Json, true),
+            value_option("expected-revision", Text, true),
+        ],
         "mcp start" | "mcp reload" => &[value_option("binary", Text, false)],
         "gateway client-token" => &[value_option("agent", Text, true)],
         "gateway service status"
@@ -3305,7 +3393,7 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("type", Text, false),
             value_option("stdin-json", Json, false),
         ],
-        "mobile relay e2ee secret-store-cleanup" => &[value_option("disposable-proof", Text, true)],
+        "mobile relay e2ee secret-store-cleanup" => &[value_option("cleanup-confirmation", Json, true)],
         "secure-mesh status"
         | "secure-mesh envelope validate"
         | "secure-mesh command policy"
@@ -4026,7 +4114,6 @@ impl SyntheticCliHome {
             .env("LOCALAPPDATA", self.home.join("local-appdata"))
             .env("LICOUP_HOME", &self.root)
             .env_remove("LICOUP_CLIENT_PID")
-            .env("LICOUP_MCP_AUTOSTART", "0")
             .env("LICO_MOBILE_RELAY_NATIVE_SECRET_STORE", "disabled")
             .env_remove("RUST_LOG")
             .env_remove("RUST_BACKTRACE");

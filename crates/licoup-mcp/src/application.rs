@@ -51,7 +51,6 @@ impl CliClient {
             .ok_or_else(|| anyhow!("mcp_cli_binary_required"))?;
         let mut child = Command::new(binary)
             .args(["rpc", "stdio"])
-            .env("LICOUP_MCP_AUTOSTART", "0")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())

@@ -26,6 +26,9 @@ pub const MAX_MODEL_BYTES: usize = 256;
 pub const MAX_REASONING_EFFORT_BYTES: usize = 32;
 /// Largest project display name accepted.
 pub const MAX_DISPLAY_NAME_BYTES: usize = 256;
+/// Largest declared artifact location accepted. The owner applies the same
+/// bound, so a location this crate admits is one the owner can consider.
+pub const MAX_ARTIFACT_PATH_BYTES: usize = 4096;
 
 /// Which family a command belongs to. Ownership follows this, not the caller.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -57,6 +60,12 @@ pub enum Operation {
     ProjectRegister,
     ProjectRead,
     ProjectList,
+    ProjectImportPreview,
+    ProjectImportApply,
+    ProjectDeclareDependency,
+    ProjectDependencies,
+    ProjectUnresolvedArtifacts,
+    ProjectBlockedConsumers,
 }
 
 impl Operation {
@@ -79,6 +88,12 @@ impl Operation {
             Self::ProjectRegister => "project.register",
             Self::ProjectRead => "project.read",
             Self::ProjectList => "project.list",
+            Self::ProjectImportPreview => "project.import.preview",
+            Self::ProjectImportApply => "project.import.apply",
+            Self::ProjectDeclareDependency => "project.declare-dependency",
+            Self::ProjectDependencies => "project.dependencies",
+            Self::ProjectUnresolvedArtifacts => "project.unresolved-artifacts",
+            Self::ProjectBlockedConsumers => "project.blocked-consumers",
         }
     }
 
@@ -462,19 +477,57 @@ impl ImportRequest {
     }
 }
 
-/// The authorized-project family: registration, one read, and the listing.
+/// The authorized-project family: registration, one read, the listing, the
+/// explicit plan import, and the declared artifact inputs a project's work
+/// items take from other work items.
 ///
 /// The registration carries every identity the caller declares — project,
 /// workspace, plan, authorized root, and the authority reference it registers
 /// under. None of it is derived here: this crate bounds the request so a
 /// malformed one never reaches the owner, and the owner decides identity,
 /// authority and durability.
+///
+/// The import carries one canonical plan document as an opaque JSON value. This
+/// crate is protocol-neutral and does not own the document's schema: the project
+/// owner parses it once, resolves its own references and returns every
+/// diagnostic before any effect, and this layer only bounds the request's shape.
+///
+/// The dependency commands carry a declaration, never a resolution: a caller
+/// names the consumer work item and the result it takes, and the owner answers
+/// with the explicit state of that reference. The three read commands are the
+/// queries the declaration model exists for — the declared inputs, the ones
+/// whose result is not materialized, and the consumers a blocked producer
+/// actually blocks.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "command", rename_all = "kebab-case")]
 pub enum ProjectCommand {
     Register(ProjectRegistrationRequest),
-    Read { project_id: String },
+    Read {
+        project_id: String,
+    },
     List,
+    /// What one canonical plan document would change, before it changes it.
+    ImportPreview {
+        document: Value,
+    },
+    /// Apply one canonical plan document, expecting the revision it previewed.
+    ImportApply {
+        document: Value,
+        /// The source revision the caller last saw. The owner refuses a value
+        /// that is not current, so a concurrent import is never overwritten.
+        expected_revision: u64,
+    },
+    DeclareDependency(DependencyDeclarationRequest),
+    Dependencies {
+        project_id: String,
+    },
+    UnresolvedArtifacts {
+        project_id: String,
+    },
+    BlockedConsumers {
+        project_id: String,
+        work_item_id: String,
+    },
 }
 
 impl ProjectCommand {
@@ -487,6 +540,12 @@ impl ProjectCommand {
             Self::Register(_) => Operation::ProjectRegister,
             Self::Read { .. } => Operation::ProjectRead,
             Self::List => Operation::ProjectList,
+            Self::ImportPreview { .. } => Operation::ProjectImportPreview,
+            Self::ImportApply { .. } => Operation::ProjectImportApply,
+            Self::DeclareDependency(_) => Operation::ProjectDeclareDependency,
+            Self::Dependencies { .. } => Operation::ProjectDependencies,
+            Self::UnresolvedArtifacts { .. } => Operation::ProjectUnresolvedArtifacts,
+            Self::BlockedConsumers { .. } => Operation::ProjectBlockedConsumers,
         }
     }
 
@@ -495,7 +554,35 @@ impl ProjectCommand {
             Self::Register(request) => request.validate(),
             Self::Read { project_id } => stable_id("project_id", project_id),
             Self::List => Ok(()),
+            Self::ImportPreview { document } | Self::ImportApply { document, .. } => {
+                plan_document(document)
+            }
+            Self::DeclareDependency(request) => request.validate(),
+            Self::Dependencies { project_id } | Self::UnresolvedArtifacts { project_id } => {
+                stable_id("project_id", project_id)
+            }
+            Self::BlockedConsumers {
+                project_id,
+                work_item_id,
+            } => {
+                stable_id("project_id", project_id)?;
+                stable_id("work_item_id", work_item_id)
+            }
         }
+    }
+}
+
+/// Bound one carried plan document to the shape this layer can judge.
+///
+/// Whether the document is canonical is the project owner's decision, and it
+/// answers with every diagnostic before any effect. What this layer refuses is a
+/// request that carries something other than the one document, so a malformed
+/// envelope never reaches the owner.
+fn plan_document(document: &Value) -> Result<(), ApplicationFailure> {
+    if document.is_object() {
+        Ok(())
+    } else {
+        Err(ApplicationFailure::invalid_request("document"))
     }
 }
 
@@ -521,6 +608,88 @@ pub struct ProjectRegistrationRequest {
 
 /// The authority kinds the owner admits.
 pub const AUTHORITY_KINDS: &[&str] = &["membership", "role", "grant"];
+
+/// One declared artifact input, in the shape both interfaces send.
+///
+/// The declaration names the consumer work item and the result it takes. The
+/// artifact has exactly two declared shapes and no third that discovers one: a
+/// location inside the declaring project's own authorized root, or a work item
+/// of another registered project. Nesting the producer inside the artifact is
+/// deliberate — an edge cannot name one producer and take the result of another.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DependencyDeclarationRequest {
+    /// The project that owns the consumer work item.
+    pub project_id: String,
+    /// The consumer work item: the one that waits for the result.
+    pub work_item_id: String,
+    /// The declared result the consumer takes.
+    pub artifact: ArtifactInputRequest,
+}
+
+impl DependencyDeclarationRequest {
+    pub fn validate(&self) -> Result<(), ApplicationFailure> {
+        stable_id("project_id", &self.project_id)?;
+        stable_id("work_item_id", &self.work_item_id)?;
+        self.artifact.validate()
+    }
+}
+
+/// The two declared shapes of one artifact reference, bounded at the surface.
+///
+/// Unknown fields are refused rather than dropped: a payload that carries a
+/// credential or a permission set beside the declaration is not a dependency
+/// this owner can honour, and silently ignoring the extra field would record a
+/// request the caller never made.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum ArtifactInputRequest {
+    /// A declared location inside the declaring project's authorized root,
+    /// produced by another work item of the same project.
+    Local {
+        producer_work_item_id: String,
+        path: String,
+    },
+    /// A result declared by one work item of another registered project.
+    ///
+    /// The naming project may be the declaring project itself; whether the
+    /// reference is authorized then depends only on that project's
+    /// registration, exactly as it does for any other project identity.
+    CrossProject {
+        project_id: String,
+        work_item_id: String,
+    },
+}
+
+impl ArtifactInputRequest {
+    pub fn validate(&self) -> Result<(), ApplicationFailure> {
+        match self {
+            Self::Local {
+                producer_work_item_id,
+                path,
+            } => {
+                stable_id("producer_work_item_id", producer_work_item_id)?;
+                // Whether the location stays inside the authorized root is the
+                // owner's decision, because only the owner holds the declared
+                // root; this crate bounds the location's own shape so an
+                // oversized or unusable one never reaches that decision.
+                bounded_non_empty("path", path, MAX_ARTIFACT_PATH_BYTES)
+            }
+            Self::CrossProject {
+                project_id,
+                work_item_id,
+            } => {
+                stable_id("project_id", project_id)?;
+                stable_id("work_item_id", work_item_id)
+            }
+        }
+    }
+}
 
 impl ProjectRegistrationRequest {
     pub fn validate(&self) -> Result<(), ApplicationFailure> {

@@ -3464,14 +3464,25 @@ fn build_command_table() -> CommandTable {
         path: &["mobile", "relay", "e2ee", "secret-store-cleanup"],
         required_positionals: &[],
         options: &[OptionSpec {
-            name: "disposable-proof",
+            name: "cleanup-confirmation",
             arity: OptionArity::Value,
             repeatable: false,
-            value_kind: RequiredArgumentKind::Text,
+            value_kind: RequiredArgumentKind::Json,
             required: true,
         }],
         constraints: &[],
         cardinality: CommandCardinality::Options,
+        handler: mobile::handle_mobile_relay,
+        help: "",
+    });
+    table.register_command(CommandSpec {
+        source_module: "mobile.rs",
+        handler_name: "handle_mobile_relay",
+        path: &["mobile", "relay", "e2ee", "secret-store-cleanup-inventory"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
         handler: mobile::handle_mobile_relay,
         help: "",
     });
@@ -6091,6 +6102,114 @@ fn build_command_table() -> CommandTable {
         cardinality: CommandCardinality::Exact,
         handler: project::handle_project_list,
         help: "List the registered authorized project identities",
+    });
+    table.register_command(CommandSpec {
+        source_module: "project.rs",
+        handler_name: "handle_project_import_preview",
+        path: &["project", "import-preview"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "stdin-json",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Json,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: project::handle_project_import_preview,
+        help: "Report what one canonical plan document would change, before it changes anything",
+    });
+    table.register_command(CommandSpec {
+        source_module: "project.rs",
+        handler_name: "handle_project_import_apply",
+        path: &["project", "import-apply"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "stdin-json",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Json,
+                required: true,
+            },
+            OptionSpec {
+                name: "expected-revision",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: project::handle_project_import_apply,
+        help: "Apply one canonical plan document over the source revision the caller previewed",
+    });
+    table.register_command(CommandSpec {
+        source_module: "project.rs",
+        handler_name: "handle_project_dependency_declare",
+        path: &["project", "dependency", "declare"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "stdin-json",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Json,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: project::handle_project_dependency_declare,
+        help: "Declare the artifact input one authorized project's work item takes from a producer",
+    });
+    table.register_command(CommandSpec {
+        source_module: "project.rs",
+        handler_name: "handle_project_dependency_list",
+        path: &["project", "dependency", "list"],
+        required_positionals: &[RequiredArgumentSpec {
+            name: "project-id",
+            kind: RequiredArgumentKind::Text,
+        }],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: project::handle_project_dependency_list,
+        help: "List the artifact inputs one registered project declares, with their explicit state",
+    });
+    table.register_command(CommandSpec {
+        source_module: "project.rs",
+        handler_name: "handle_project_dependency_unresolved",
+        path: &["project", "dependency", "unresolved"],
+        required_positionals: &[RequiredArgumentSpec {
+            name: "project-id",
+            kind: RequiredArgumentKind::Text,
+        }],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: project::handle_project_dependency_unresolved,
+        help: "Report the declared artifact inputs of one project whose result is not materialized",
+    });
+    table.register_command(CommandSpec {
+        source_module: "project.rs",
+        handler_name: "handle_project_dependency_blocked",
+        path: &["project", "dependency", "blocked"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "project-id",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "work-item-id",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: project::handle_project_dependency_blocked,
+        help: "List the work items one blocked producer blocks, transitively and across projects",
     });
     table
 }

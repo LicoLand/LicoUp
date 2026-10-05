@@ -42,7 +42,7 @@ use licoup_conversation::continuity::{
     record_qualification_invalidation, record_settlement_applied, record_settlement_pending,
     release_collection_operation, replay_effect, resolve_completion_notice,
     resolve_stored_owner_authority, schedule_goal_due, settlement_applied,
-    update_wake_host_generation,
+    update_wake_host_generation, wake_repeats_recorded_sources,
 };
 use licoup_conversation::{
     Conversation, ConversationStore, DispatchState, EventPartKind, MembershipStatus, PrincipalKind,
@@ -57,9 +57,7 @@ use crate::domain::agent_intelligence_catalog::qualification::{
 use crate::platform::runtime_adapters::{
     RuntimeAdapter, RuntimeAdapterError, adapter_for_agent_public,
 };
-use crate::platform::work_context_ports::{
-    AdapterTransport, bind_adapter_work_context, bind_host_work_context,
-};
+use licoup_agent_drivers::AdapterTransport;
 
 use super::adoption::{AdoptionPolicy, stage_from_coverage};
 use super::cognition::{
@@ -414,7 +412,7 @@ impl ContinuityHost {
 
     pub fn bind_hermetic(&self, protocol: HermeticProtocol, config: WorkContextConfig) {
         let key = work_runtime_key_from_binding(config.child.clone(), 0);
-        let runtime = Arc::new(bind_host_work_context(protocol, config));
+        let runtime = Arc::new(crate::agent_port::bind_hermetic_work_context(protocol, config));
         lock(&self.work_runtimes).insert(key, runtime);
     }
 
@@ -446,7 +444,7 @@ impl ContinuityHost {
         let binding = self.child_binding(parent_conversation_id, goal_id)?;
         let key = work_runtime_key_from_binding(binding.clone(), generation);
         let config = WorkContextConfig::child(binding);
-        let runtime = Arc::new(bind_adapter_work_context(
+        let runtime = Arc::new(crate::agent_port::bind_work_context(
             family,
             config,
             transport,
@@ -482,7 +480,7 @@ impl ContinuityHost {
             parent_conversation_id,
             goal_id,
             family,
-            Arc::new(crate::platform::work_context_ports::host_driver_transport(family)),
+            crate::agent_port::work_context_transport(family),
             generation,
         )
     }
@@ -784,7 +782,7 @@ impl ContinuityHost {
                 drain.preserved.push(wake.logical_wake_id);
                 continue;
             }
-            let Some(progress) = read_goal(&self.store, &wake.goal_id)? else {
+            let Some((contract, progress)) = read_goal_bundle(&self.store, &wake.goal_id)? else {
                 drain.preserved.push(wake.logical_wake_id);
                 continue;
             };
@@ -803,6 +801,21 @@ impl ContinuityHost {
                 || progress.control == ContinuityGoalControl::CancelRequested
             {
                 drain.preserved.push(wake.logical_wake_id);
+                continue;
+            }
+            // A Goal that is already waiting re-reads the same sources on every
+            // reminder. Settling that reminder deterministically keeps duplicate
+            // notifications from buying a model call, and leaves the Goal, its
+            // revision and its pause/resume/cancel controls intact.
+            if progress.lifecycle == ContinuityGoalLifecycle::Waiting
+                && wake_repeats_recorded_sources(&wake, &contract, &progress)
+            {
+                if consume_logical_wake(&self.store, &wake.logical_wake_id)? {
+                    drain.consumed.push(wake.logical_wake_id.clone());
+                    drain
+                        .no_ops
+                        .push((wake.logical_wake_id, "dependency-wait".into()));
+                }
                 continue;
             }
             if !self.effects_runtime_ready() {

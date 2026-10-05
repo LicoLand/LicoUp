@@ -56,7 +56,7 @@ impl SecureCommandLocalExecutor for SecureCommandRuntimeExecutor {
                 })?;
                 params["binaryPath"] = json!(executable.to_string_lossy());
                 dispatch_ready_agent_message(&params, |operation, params| {
-                    crate::platform::dispatch_lane_operation(operation, params)
+                    crate::agent_port::dispatch(operation, params)
                         .map_err(anyhow::Error::new)
                 })
             }

@@ -112,11 +112,23 @@ final class PresentationMetric {
 List<T> immutablePresentationList<T>(Iterable<T> values) =>
     List<T>.unmodifiable(values);
 
+Map<String, T> immutablePresentationMap<T>(Map<String, T> values) =>
+    Map<String, T>.unmodifiable(Map<String, T>.of(values));
+
 bool samePresentationList<T>(List<T> left, List<T> right) {
   if (identical(left, right)) return true;
   if (left.length != right.length) return false;
   for (var index = 0; index < left.length; index += 1) {
     if (left[index] != right[index]) return false;
+  }
+  return true;
+}
+
+bool samePresentationMap<T>(Map<String, T> left, Map<String, T> right) {
+  if (identical(left, right)) return true;
+  if (left.length != right.length) return false;
+  for (final entry in left.entries) {
+    if (right[entry.key] != entry.value) return false;
   }
   return true;
 }

@@ -216,6 +216,37 @@ widget checks distinct from real-engine performance runs. Do not replace these
 measurements with a backend trace project or add arbitrary scorecards and
 approval gates. Focused state and lifecycle tests support this model.
 
+## Extension development
+
+An extension package is a program the client starts and speaks one line-delimited
+JSON-RPC 2.0 protocol to. Write it in any language, implement the handshake and
+the methods of the profile it serves, and package it as a ZIP archive whose root
+carries `manifest.json`. The
+[extension platform guide](docs/architecture/EXTENSION-PLATFORM.md#12-build-package-and-import-an-extension)
+is the walkthrough; the rules it points at live in
+[`crates/licoup-extension-contracts/`](crates/licoup-extension-contracts) and the
+running host lives in
+[`crates/licoup-native/src/platform/extension_packages/`](crates/licoup-native/src/platform/extension_packages).
+
+Two checked samples are the fastest start: `samples/echo-agent/` is the smallest
+complete Agent, and `samples/converter-package/` is the smallest complete format
+converter. Both are read by the crate's own tests, so they cannot drift from the
+contract they demonstrate.
+
+```bash
+cargo test -p licoup-extension-contracts
+cd crates/licoup-extension-contracts && python3 -B -m unittest discover -s tests -p 'test_*.py'
+npm run repo:docs
+```
+
+Keep the boundaries the platform publishes: a package carries the program and the
+protocol it needs; the kernel keeps the generic PTY/CLI adapter and the extension
+host and no vendor implementation; converters are native executables inside the
+package payload; local import is offline and bind trust to the exact bytes; a
+`user:` runtime reference names something the user installed and is never removed
+by the client. Diagnostics stay local and bounded, and a package's cancel answer
+is reported as the package gave it.
+
 ## Local client verification
 
 Implementation ends at engineering handoff. Build, installation and launch run

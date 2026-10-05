@@ -4,17 +4,39 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.adaptive-flywheel",
       kind: "rust-domain",
-      summary: "Immutable strategy packages, compiled Graphs, durable reducer/outbox, and authorized effects",
+      summary: "Immutable strategy packages, compiled Graphs, durable reducer/outbox, authorized effects, and the candidate routing owner a dispatch entry asks",
       inputs: [
-        "crates/licoup-native/src/domain/workflow_runtime/**",
-        "crates/licoup-native/src/domain/workflow_store/**",
+        "crates/licoup-workflow-runtime/**",
         "crates/licoup-workflow/**",
+        "crates/licoup-native/src/domain/workflow_runtime/**",
+        "crates/licoup-native/src/domain/candidate_routing.rs",
+        "crates/licoup-model-catalog/src/candidate_routing.rs",
+        "crates/licoup-native/src/domain/workflow_store/**",
+        "crates/licoup-native/src/workflow_host.rs",
         "crates/licoup-foundation/src/core/safe_archive.rs",
         "crates/licoup-foundation/src/core/safe_archive/**",
         "crates/licoup-native/src/platform/process_sandbox/strategy.rs",
         "crates/licoup-native/src/platform/strategy_runtime/**",
       ],
-      command: rustLayer("domain::workflow_"),
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-workflow-runtime/Cargo.toml", "--lib"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "rust.domain.adaptive-flywheel.store",
+      kind: "rust-domain",
+      summary: "Durable strategy state, command queue, subscriptions and admission over one SQLite authority",
+      inputs: [
+        "crates/licoup-workflow-store/**",
+        "crates/licoup-workflow/**",
+      ],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-workflow-store/Cargo.toml", "--lib"],
+        10 * 60_000,
+      ),
     }),
   defineModule({
       id: "rust.domain.project-identity",
@@ -43,6 +65,19 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-project/**",
       ],
       command: rustLayer("domain::project"),
+    }),
+  defineModule({
+      id: "rust.domain.project-dependency-inputs",
+      kind: "rust-domain",
+      summary:
+        "Declared project artifact inputs through the published CLI routes: blocked consumers, unresolved artifacts, and the cycle, authorization and escape refusals",
+      inputs: [
+        "crates/licoup-native/tests/project_dependency_commands.rs",
+        "crates/licoup-native/src/domain/project/**",
+        "crates/licoup-native/src/ffi/commands/project.rs",
+        "crates/licoup-application/src/command.rs",
+      ],
+      command: rustIntegrationTest("project_dependency_commands"),
     }),
   defineModule({
       id: "rust.domain.subagents",
@@ -1492,6 +1527,16 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::mobile_relay::endpoint_ports::tests::"),
     }),
   defineModule({
+      id: "rust.domain.mobile-relay.endpoint-collaboration",
+      kind: "rust-domain",
+      summary: "Endpoint collaboration gate composing the optional package boundary with local custody",
+      inputs: [
+        "crates/licoup-native/src/domain/mobile_relay.rs",
+        "crates/licoup-native/src/domain/mobile_relay/endpoint_collaboration_gate.rs",
+      ],
+      command: rustLayer("domain::mobile_relay::endpoint_collaboration_gate::"),
+    }),
+  defineModule({
       id: "rust.domain.mobile-relay.pairing",
       kind: "rust-domain",
       summary: "Directly approved endpoint pairing and invitation policy",
@@ -2130,12 +2175,23 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.mobile-relay.secret-custody.cleanup",
       kind: "rust-domain",
-      summary: "Explicit disposable-proof secret-store cleanup",
+      summary: "Authorized custody cleanup execution over the bounded inventory",
       inputs: [
         "crates/licoup-native/src/domain/mobile_relay/secret_custody/cleanup.rs",
       ],
       command: rustLayer(
         "domain::mobile_relay::secret_custody::cleanup::tests::",
+      ),
+    }),
+  defineModule({
+      id: "rust.domain.mobile-relay.secret-custody.cleanup-authority",
+      kind: "rust-domain",
+      summary: "Authenticated replacement endpoint, bounded custody inventory, and informed confirmation authority",
+      inputs: [
+        "crates/licoup-native/src/domain/mobile_relay/secret_custody/cleanup_authority.rs",
+      ],
+      command: rustLayer(
+        "domain::mobile_relay::secret_custody::cleanup_authority::tests::",
       ),
     }),
   defineModule({
@@ -2271,14 +2327,14 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       ),
     }),
   defineModule({
-      id: "rust.domain.mobile-relay.secret-custody.scenario.disposable-cleanup",
+      id: "rust.domain.mobile-relay.secret-custody.scenario.cleanup-authority",
       kind: "rust-domain",
-      summary: "Exact-confirmation disposable cleanup, bounded deletion, and failure propagation",
+      summary: "Authenticated-replacement cleanup admission, out-of-scope refusal, bounded deletion, and failure propagation",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody/disposable_cleanup.rs",
+        "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody/cleanup_authority.rs",
       ],
       command: rustLayer(
-        "domain::mobile_relay::tests::secret_custody::disposable_cleanup::",
+        "domain::mobile_relay::tests::secret_custody::cleanup_authority::",
       ),
     }),
   defineModule({

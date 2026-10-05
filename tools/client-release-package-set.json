@@ -12,14 +12,29 @@
       "payloadRole": "antigravity-adapter-package-payload"
     },
     {
+      "packageId": "org.licoland.adapter.kilo",
+      "source": "crates/licoup-agent-kilo/package",
+      "payloadRole": "kilo-adapter-package-payload"
+    },
+    {
       "packageId": "org.licoland.adapter.codex",
       "source": "crates/licoup-agent-codex/package",
       "payloadRole": "codex-adapter-package-payload"
     },
     {
+      "packageId": "org.licoland.adapter.openclaw",
+      "source": "crates/licoup-agent-openclaw/package",
+      "payloadRole": "openclaw-adapter-package-payload"
+    },
+    {
       "packageId": "org.licoland.adapter.copilot",
       "source": "crates/licoup-agent-copilot/package",
       "payloadRole": "copilot-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.pi",
+      "source": "crates/licoup-agent-pi/package",
+      "payloadRole": "pi-adapter-package-payload"
     },
     {
       "packageId": "org.licoland.converter.appearance",
@@ -50,6 +65,21 @@
       "packageId": "org.licoland.adapter.kimi",
       "source": "crates/licoup-agent-kimi/package",
       "payloadRole": "kimi-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.hermes",
+      "source": "crates/licoup-agent-hermes/package",
+      "payloadRole": "hermes-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.lico-agent",
+      "source": "crates/licoup-agent-lico-agent/package",
+      "payloadRole": "lico-agent-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.opencode",
+      "source": "crates/licoup-agent-opencode/package",
+      "payloadRole": "opencode-adapter-package-payload"
     },
     {
       "packageId": "org.licoland.feature.mcp",

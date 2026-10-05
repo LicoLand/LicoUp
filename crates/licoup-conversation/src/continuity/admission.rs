@@ -6,17 +6,21 @@
 
 use super::generated::{
     CONTINUITY_MAX_PAGE_SIZE, ContinuityClosureAuthorityKind, ContinuityCommitBasis,
-    ContinuityContextCompositionRequest, ContinuityDecisionLayer, ContinuityEffectClass,
-    ContinuityEvidenceRef, ContinuityEvidenceResult, ContinuityFailure, ContinuityFailureCode,
-    ContinuityFailureStage, ContinuityFollowThroughKind, ContinuityGoalCompletionTransition,
-    ContinuityGoalContract, ContinuityGoalControl, ContinuityGoalLifecycle, ContinuityGoalProgress,
-    ContinuityParentCardAnchor, ContinuityParentContextGrant, ContinuityParentGrantBasis,
-    ContinuityParentGrantStatus, ContinuityRecoveryClass, ContinuitySourceOwnerKind,
-    ContinuitySourceRef, ContinuitySourceValidity, ContinuitySpeechAct,
-    ContinuityTaskChildAdmission, ContinuityTaskConversationRelation, ContinuityTaskListingKind,
-    ContinuityUtf8ByteSpan, ContinuityVisibilityScope, ContinuityWake, ContinuityWriteEnvelope,
+    ContinuityCommitmentProposal, ContinuityContextCompositionRequest, ContinuityCriterion,
+    ContinuityDecisionLayer, ContinuityEffectClass, ContinuityEvidenceRef,
+    ContinuityEvidenceResult, ContinuityFailure, ContinuityFailureCode, ContinuityFailureStage,
+    ContinuityFollowThroughKind, ContinuityGoalCompletionTransition, ContinuityGoalContract,
+    ContinuityGoalControl, ContinuityGoalLifecycle, ContinuityGoalProgress, ContinuityParentCardAnchor,
+    ContinuityParentContextGrant, ContinuityParentGrantBasis, ContinuityParentGrantStatus,
+    ContinuityRecoveryClass, ContinuitySourceOwnerKind, ContinuitySourceRef,
+    ContinuitySourceValidity, ContinuitySpeechAct, ContinuityTaskChildAdmission,
+    ContinuityTaskConversationRelation, ContinuityTaskListingKind, ContinuityUtf8ByteSpan,
+    ContinuityVisibilityScope, ContinuityWake, ContinuityWriteEnvelope,
 };
 use serde_json::Value;
+use std::collections::BTreeSet;
+
+use super::lifecycle::suppresses_new_work;
 
 fn failure(code: ContinuityFailureCode, stage: ContinuityFailureStage) -> ContinuityFailure {
     let recovery = match code {
@@ -203,6 +207,98 @@ fn is_terminal(lifecycle: ContinuityGoalLifecycle) -> bool {
             | ContinuityGoalLifecycle::Cancelled
             | ContinuityGoalLifecycle::Superseded
     )
+}
+
+/// How an admitted commitment proposal relates to the Goal already stored for
+/// the same matter-derived identity.
+///
+/// Ordinary conversation stays ordinary: a chat reply, a question, hypothetical
+/// or quoted material never creates durable work, even when a proposal marks a
+/// commitment as goal-creating. An explicit ongoing commitment admits exactly
+/// one Goal; repeating it is idempotent and re-states no notification; changed
+/// content amends the stored Goal in place instead of inventing a second one.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ContinuityCommitmentAdmission {
+    /// Ordinary conversation: no Goal is created or amended.
+    Chat,
+    /// No Goal is stored for this identity: admit one.
+    Create,
+    /// The stored Goal already expresses this commitment: reuse it unchanged.
+    Reuse,
+    /// The stored Goal expresses this identity with different content: amend it
+    /// under a monotonic revision.
+    Amend,
+}
+
+fn criterion_definitions_match(
+    left: &[ContinuityCriterion],
+    right: &[ContinuityCriterion],
+) -> bool {
+    let mut left = left.to_vec();
+    let mut right = right.to_vec();
+    left.sort_by(|a, b| a.id.cmp(&b.id));
+    right.sort_by(|a, b| a.id.cmp(&b.id));
+    left == right
+}
+
+/// Decide what an admitted commitment does to durable work. Identity comes from
+/// the matter-derived Goal, so a repeated commitment cannot duplicate a Goal and
+/// a corrected commitment cannot reset or invent one. A stored terminal or
+/// suppressed Goal keeps refusing new work.
+pub fn admit_commitment_admission(
+    speech_act: ContinuitySpeechAct,
+    commitment: &ContinuityCommitmentProposal,
+    stored: Option<(&ContinuityGoalContract, &ContinuityGoalProgress)>,
+) -> Result<ContinuityCommitmentAdmission, ContinuityFailure> {
+    if !commitment.create_goal {
+        return Ok(ContinuityCommitmentAdmission::Chat);
+    }
+    if matches!(
+        speech_act,
+        ContinuitySpeechAct::Question
+            | ContinuitySpeechAct::Hypothetical
+            | ContinuitySpeechAct::Quotation
+            | ContinuitySpeechAct::Reference
+    ) {
+        return Ok(ContinuityCommitmentAdmission::Chat);
+    }
+    let Some((contract, progress)) = stored else {
+        return Ok(ContinuityCommitmentAdmission::Create);
+    };
+    if is_terminal(progress.lifecycle) || suppresses_new_work(progress.control) {
+        return Err(failure(
+            ContinuityFailureCode::InvalidRequest,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    }
+    if contract.expected_result == commitment.expected_result
+        && criterion_definitions_match(&contract.criteria, &commitment.criteria)
+    {
+        return Ok(ContinuityCommitmentAdmission::Reuse);
+    }
+    Ok(ContinuityCommitmentAdmission::Amend)
+}
+
+/// Evidence survives a contract change only for criteria whose definition is
+/// unchanged. A corrected or replaced criterion cannot keep its previous
+/// sign-off, and a removed criterion keeps nothing.
+pub fn retain_current_criterion_evidence(
+    previous: &[ContinuityCriterion],
+    next: &[ContinuityCriterion],
+    evidence: &[ContinuityEvidenceRef],
+) -> Vec<ContinuityEvidenceRef> {
+    evidence
+        .iter()
+        .filter(|item| {
+            let Some(previous_criterion) = previous.iter().find(|c| c.id == item.criterion_id) else {
+                return false;
+            };
+            next.iter()
+                .find(|c| c.id == item.criterion_id)
+                .is_some_and(|next_criterion| next_criterion == previous_criterion)
+        })
+        .cloned()
+        .collect()
 }
 
 fn granted_span_covers(
@@ -629,4 +725,342 @@ pub fn admit_wake(wake: &ContinuityWake) -> Result<(), ContinuityFailure> {
         }
     }
     Ok(())
+}
+
+/// Whether a pending wake re-reads only sources the Goal already recorded.
+///
+/// A reminder exists so the Assistant looks again; it is not by itself new
+/// information. When no settlement arrived and every source the wake names is
+/// already recorded by the Goal — at the same revision, or the wake names none
+/// — reviewing it can only restate the status the Goal already holds. Such a
+/// wake is settled deterministically instead of paying for a model call, and a
+/// Goal that is still waiting keeps its responsibility, its revision and its
+/// reachable pause, resume and cancel controls.
+pub fn wake_repeats_recorded_sources(
+    wake: &ContinuityWake,
+    contract: &ContinuityGoalContract,
+    progress: &ContinuityGoalProgress,
+) -> bool {
+    if wake.settlement.is_some() {
+        return false;
+    }
+    let mut recorded: BTreeSet<(&str, i64)> = BTreeSet::new();
+    for source in contract
+        .source_intent_refs
+        .iter()
+        .chain(contract.criteria.iter().map(|item| &item.description_ref))
+        .chain(
+            progress
+                .criterion_evidence_refs
+                .iter()
+                .map(|item| &item.source),
+        )
+    {
+        recorded.insert((source.opaque_id.as_str(), source.source_revision));
+    }
+    wake.cause_refs.iter().all(|source| {
+        // The Goal naming itself, at or before its current revision, restates
+        // its own identity rather than reporting anything new.
+        (source.owner_kind == ContinuitySourceOwnerKind::Goal
+            && source.opaque_id == progress.goal_id
+            && source.source_revision <= progress.revision)
+            || recorded.contains(&(source.opaque_id.as_str(), source.source_revision))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn criterion(id: &str, required: bool, rule: &str) -> ContinuityCriterion {
+        ContinuityCriterion {
+            id: id.into(),
+            description_ref: ContinuitySourceRef {
+                owner_kind: ContinuitySourceOwnerKind::Event,
+                opaque_id: format!("event:{id}"),
+                part_id: None,
+                span: None,
+                source_revision: 1,
+                digest: format!("sha256:{}", "a".repeat(64)),
+                visibility_scope: ContinuityVisibilityScope::Conversation,
+                validity: ContinuitySourceValidity::Current,
+            },
+            required,
+            oracle_kind: super::super::generated::ContinuityOracleKind::Machine,
+            artifact_version_rule: rule.into(),
+            freshness_rule: "current".into(),
+            evaluator_policy: "goal-evaluation".into(),
+        }
+    }
+
+    fn commitment(expected: &str, criteria: Vec<ContinuityCriterion>) -> ContinuityCommitmentProposal {
+        ContinuityCommitmentProposal {
+            matter_id: Some("matter:notes".into()),
+            subject: super::super::generated::ContinuityMatterSubject::New,
+            expected_result: expected.into(),
+            criteria,
+            create_goal: true,
+        }
+    }
+
+    fn stored(expected: &str, criteria: Vec<ContinuityCriterion>) -> (ContinuityGoalContract, ContinuityGoalProgress) {
+        let contract = ContinuityGoalContract {
+            id: "goal:notes".into(),
+            matter_id: "matter:notes".into(),
+            source_intent_refs: Vec::new(),
+            contract_revision: 3,
+            expected_result: expected.into(),
+            criteria,
+            scope_refs: Vec::new(),
+            responsible_role_ref: "role:assistant".into(),
+            resource_envelope_ref: "envelope:goal:notes".into(),
+            acceptance_method: "goal-evaluation".into(),
+            created_event: criterion("c1", true, "exact-source").description_ref,
+        };
+        let progress = ContinuityGoalProgress {
+            goal_id: "goal:notes".into(),
+            revision: 4,
+            lifecycle: ContinuityGoalLifecycle::Active,
+            control: ContinuityGoalControl::Enabled,
+            criterion_evidence_refs: Vec::new(),
+            active_execution_refs: Vec::new(),
+            blockers: Vec::new(),
+            next_attention: Some(super::super::generated::ContinuityNextAttention::DispatchableStep {
+                step_ref: "step:goal:notes:0".into(),
+            }),
+            closure_ref: None,
+        };
+        (contract, progress)
+    }
+
+    #[test]
+    fn ordinary_chat_and_nonassertive_material_never_create_work() {
+        let mut chat = commitment("reply", Vec::new());
+        chat.create_goal = false;
+        assert_eq!(
+            admit_commitment_admission(ContinuitySpeechAct::Exploration, &chat, None).unwrap(),
+            ContinuityCommitmentAdmission::Chat
+        );
+        for act in [
+            ContinuitySpeechAct::Question,
+            ContinuitySpeechAct::Hypothetical,
+            ContinuitySpeechAct::Quotation,
+            ContinuitySpeechAct::Reference,
+        ] {
+            assert_eq!(
+                admit_commitment_admission(act, &commitment("draft", Vec::new()), None).unwrap(),
+                ContinuityCommitmentAdmission::Chat,
+                "{act:?} must stay ordinary conversation"
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_commitment_creates_once_and_restating_it_reuses() {
+        let proposal = commitment("Draft the notes", Vec::new());
+        assert_eq!(
+            admit_commitment_admission(ContinuitySpeechAct::Delegation, &proposal, None).unwrap(),
+            ContinuityCommitmentAdmission::Create
+        );
+        let (contract, progress) = stored("Draft the notes", Vec::new());
+        assert_eq!(
+            admit_commitment_admission(
+                ContinuitySpeechAct::Delegation,
+                &proposal,
+                Some((&contract, &progress))
+            )
+            .unwrap(),
+            ContinuityCommitmentAdmission::Reuse
+        );
+        // Criteria order is not identity.
+        let ordered = commitment("Draft the notes", vec![criterion("b", true, "x"), criterion("a", false, "y")]);
+        let (contract, progress) = stored(
+            "Draft the notes",
+            vec![criterion("a", false, "y"), criterion("b", true, "x")],
+        );
+        assert_eq!(
+            admit_commitment_admission(
+                ContinuitySpeechAct::Delegation,
+                &ordered,
+                Some((&contract, &progress))
+            )
+            .unwrap(),
+            ContinuityCommitmentAdmission::Reuse
+        );
+    }
+
+    #[test]
+    fn corrected_commitment_amends_instead_of_duplicating() {
+        let (contract, progress) = stored("Draft the notes", Vec::new());
+        let corrected = commitment("Draft and send the notes", Vec::new());
+        assert_eq!(
+            admit_commitment_admission(
+                ContinuitySpeechAct::Correction,
+                &corrected,
+                Some((&contract, &progress))
+            )
+            .unwrap(),
+            ContinuityCommitmentAdmission::Amend
+        );
+        // Same identity, different criteria: an amendment, never a reset.
+        let narrowed = commitment("Draft the notes", vec![criterion("c1", true, "exact-source")]);
+        assert_eq!(
+            admit_commitment_admission(
+                ContinuitySpeechAct::Delegation,
+                &narrowed,
+                Some((&contract, &progress))
+            )
+            .unwrap(),
+            ContinuityCommitmentAdmission::Amend
+        );
+    }
+
+    #[test]
+    fn terminal_or_suppressed_goals_still_refuse_new_work() {
+        let proposal = commitment("Draft the notes", Vec::new());
+        let (contract, mut progress) = stored("Draft the notes", Vec::new());
+        progress.lifecycle = ContinuityGoalLifecycle::Achieved;
+        progress.next_attention = None;
+        assert_eq!(
+            admit_commitment_admission(
+                ContinuitySpeechAct::Delegation,
+                &proposal,
+                Some((&contract, &progress))
+            )
+            .unwrap_err()
+            .code,
+            ContinuityFailureCode::InvalidRequest
+        );
+        let (contract, mut progress) = stored("Draft the notes", Vec::new());
+        progress.control = ContinuityGoalControl::Paused;
+        assert_eq!(
+            admit_commitment_admission(
+                ContinuitySpeechAct::Delegation,
+                &proposal,
+                Some((&contract, &progress))
+            )
+            .unwrap_err()
+            .code,
+            ContinuityFailureCode::InvalidRequest
+        );
+    }
+
+    #[test]
+    fn contract_changes_drop_only_evidence_for_changed_criteria() {
+        let previous = vec![
+            criterion("kept", true, "exact-source"),
+            criterion("changed", true, "exact-source"),
+            criterion("removed", false, "exact-source"),
+        ];
+        let next = vec![
+            criterion("kept", true, "exact-source"),
+            criterion("changed", true, "latest-source"),
+            criterion("added", true, "exact-source"),
+        ];
+        let evidence = |id: &str| ContinuityEvidenceRef {
+            source: criterion(id, true, "exact-source").description_ref,
+            issuer: "member:worker".into(),
+            subject_version: 1,
+            criterion_id: id.into(),
+            observed_at: 10,
+            result: ContinuityEvidenceResult::Pass,
+            verification_kind: super::super::generated::ContinuityVerificationKind::Deterministic,
+            scope: ContinuityVisibilityScope::Goal,
+            validity: ContinuitySourceValidity::Current,
+        };
+        let retained = retain_current_criterion_evidence(
+            &previous,
+            &next,
+            &[
+                evidence("kept"),
+                evidence("changed"),
+                evidence("removed"),
+                evidence("added"),
+            ],
+        );
+        let ids: Vec<&str> = retained
+            .iter()
+            .map(|item| item.criterion_id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["kept"]);
+    }
+
+    fn reminder(settlement: Option<&str>, causes: Vec<ContinuitySourceRef>) -> ContinuityWake {
+        ContinuityWake {
+            logical_wake_id: "wake:goal:notes:4:review-due".into(),
+            goal_id: "goal:notes".into(),
+            cause_refs: causes,
+            due_at: Some(10),
+            review_policy: "review-due".into(),
+            goal_revision: 4,
+            epoch: 0,
+            host_generation: 1,
+            claim: None,
+            settlement: settlement.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn a_reminder_that_repeats_recorded_sources_decides_nothing() {
+        let (contract, progress) = stored(
+            "Draft the notes",
+            vec![criterion("criterion:notes-done", true, "exact-source")],
+        );
+        let recorded = criterion("criterion:notes-done", true, "exact-source").description_ref;
+        assert!(
+            wake_repeats_recorded_sources(
+                &reminder(None, vec![recorded.clone()]),
+                &contract,
+                &progress
+            ),
+            "a reminder re-reading a recorded source is pure status aggregation"
+        );
+        assert!(
+            wake_repeats_recorded_sources(&reminder(None, Vec::new()), &contract, &progress),
+            "a timer reminder names no new source"
+        );
+        let goal_self = ContinuitySourceRef {
+            owner_kind: ContinuitySourceOwnerKind::Goal,
+            opaque_id: progress.goal_id.clone(),
+            part_id: None,
+            span: None,
+            source_revision: progress.revision,
+            digest: format!("goal:{}:{}", progress.goal_id, progress.revision),
+            visibility_scope: ContinuityVisibilityScope::Goal,
+            validity: ContinuitySourceValidity::Current,
+        };
+        assert!(
+            wake_repeats_recorded_sources(&reminder(None, vec![goal_self]), &contract, &progress),
+            "the Goal naming itself is not new information"
+        );
+    }
+
+    #[test]
+    fn new_sources_and_settlements_always_earn_a_review() {
+        let (contract, progress) = stored(
+            "Draft the notes",
+            vec![criterion("criterion:notes-done", true, "exact-source")],
+        );
+        let mut unseen = criterion("criterion:notes-done", true, "exact-source").description_ref;
+        unseen.opaque_id = "event:user-correction".into();
+        assert!(
+            !wake_repeats_recorded_sources(&reminder(None, vec![unseen]), &contract, &progress),
+            "a wake naming an unrecorded source changes what the Assistant knows"
+        );
+        let mut newer = criterion("criterion:notes-done", true, "exact-source").description_ref;
+        newer.source_revision += 1;
+        assert!(
+            !wake_repeats_recorded_sources(&reminder(None, vec![newer]), &contract, &progress),
+            "a newer revision of a recorded source is new information"
+        );
+        let recorded = criterion("criterion:notes-done", true, "exact-source").description_ref;
+        assert!(
+            !wake_repeats_recorded_sources(
+                &reminder(Some("settlement:child"), vec![recorded]),
+                &contract,
+                &progress
+            ),
+            "a settled child result is a decision, not a reminder"
+        );
+    }
 }

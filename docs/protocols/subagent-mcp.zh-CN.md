@@ -50,14 +50,25 @@ Assistant Profiles、Assistant 工作流、完整 Conversation 及其他原生�
 
 ## 独立生命周期与开发
 
-发布可执行文件名为 `lico-subagent-mcp`。本地原生门面提供
-`licoup mcp start`、`stop`、`status`、`reload`；`start` 和 `reload` 支持
-`--binary` 选择独立构建的模块。命令确保原生宿主可用，无需 Flutter。
-正常桌面宿主启动也会启动可选模块；失败只降低 MCP 可用性，不停止原生宿主。
+可执行文件 `lico-subagent-mcp` 是可选包 `org.licoland.feature.mcp` 的负载，
+不是客户端捆绑的一部分。客户端既不分发副本，也不自行启动该服务：包声明
+`on-demand` 激活，因此由调用方启动；包缺失或关闭时不启动任何进程，也不发布
+任何端点。`licoup mcp start`、`stop`、`status`、`reload` 仍是该进程的本地原生
+门面；`start` 和 `reload` 支持 `--binary` 选择独立构建的模块。命令确保原生宿主
+可用，无需 Flutter。
 
 ```sh
 node tools/scripts/cargo-client.mjs build -p licoup-mcp
 licoup mcp reload --binary <built-lico-subagent-mcp>
+```
+
+发布时会在打包该目录前填充包声明的原生入口，因此仓库中提交的入口是暂存占位符，
+而不是程序：
+
+```sh
+node tools/distribution/client-release-package-stage.mjs stage
+node tools/distribution/client-release-package-stage.mjs verify
+npm run client:release:package-index:build
 ```
 
 模块也可直接执行 `service start|stop|status|reload`，通过 `LICOUP_CLI_BINARY`

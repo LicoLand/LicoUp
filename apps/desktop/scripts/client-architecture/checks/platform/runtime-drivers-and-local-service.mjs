@@ -197,25 +197,46 @@ export async function checkRuntimeDriversAndLocalService(context, {
     "crates/licoup-native/src/platform/openclaw_driver.rs",
     ...openClawDriverFiles
   ]);
-  const openClawFoundationSource = await readJoinedText([
+  // The protocol vocabulary moved to the OpenClaw adapter package, which is its
+  // own crate and program. The check reads the owning package for it, exactly as
+  // the Codex section reads `licoup-agent-codex`, and the kernel path is only the
+  // re-export that keeps the driver leaves on one name.
+  const openClawPackageSource = await readJoinedText([
+    "crates/licoup-agent-openclaw/src/parser.rs",
+    "crates/licoup-agent-openclaw/src/parser/protocol.rs",
+    "crates/licoup-agent-openclaw/src/gateway_acp/model.rs",
+    "crates/licoup-agent-openclaw/src/gateway_acp/errors.rs",
+    "crates/licoup-agent-openclaw/src/gateway_acp/params.rs",
+    "crates/licoup-agent-openclaw/src/gateway_acp/continuity.rs"
+  ]);
+  const openClawDriverShimSource = await readJoinedText([
+    "crates/licoup-native/src/platform/openclaw_driver/codec.rs",
+    "crates/licoup-native/src/platform/openclaw_driver/continuity.rs",
     "crates/licoup-native/src/platform/openclaw_driver/errors.rs",
+    "crates/licoup-native/src/platform/openclaw_driver/events.rs",
     "crates/licoup-native/src/platform/openclaw_driver/model.rs",
-    "crates/licoup-native/src/platform/openclaw_driver/params.rs"
+    "crates/licoup-native/src/platform/openclaw_driver/params.rs",
+    "crates/licoup-native/src/platform/openclaw_driver/protocol.rs"
+  ]);
+  const openClawFoundationSource = await readJoinedText([
+    "crates/licoup-agent-openclaw/src/gateway_acp/errors.rs",
+    "crates/licoup-agent-openclaw/src/gateway_acp/model.rs",
+    "crates/licoup-agent-openclaw/src/gateway_acp/params.rs"
   ]);
   const openClawContinuitySource = await readText(
-    "crates/licoup-native/src/platform/openclaw_driver/continuity.rs"
+    "crates/licoup-agent-openclaw/src/gateway_acp/continuity.rs"
   );
   const openClawParserSource = await readJoinedText([
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw.rs",
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/codec.rs",
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/events.rs",
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/protocol.rs"
+    "crates/licoup-agent-openclaw/src/parser.rs",
+    "crates/licoup-agent-openclaw/src/parser/codec.rs",
+    "crates/licoup-agent-openclaw/src/parser/events.rs",
+    "crates/licoup-agent-openclaw/src/parser/protocol.rs"
   ]);
   const openClawEventsSource = await readText(
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/events.rs"
+    "crates/licoup-agent-openclaw/src/parser/events.rs"
   );
   const openClawProtocolSource = await readText(
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/protocol.rs"
+    "crates/licoup-agent-openclaw/src/parser/protocol.rs"
   );
   const openClawSupervisionSource = await readText(
     "crates/licoup-native/src/platform/openclaw_driver/supervision.rs"
@@ -227,17 +248,17 @@ export async function checkRuntimeDriversAndLocalService(context, {
     !openClawDriverFacadeSource.includes("Command::new") &&
       !openClawDriverFacadeSource.includes("struct OpenClawProtocol") &&
       !openClawDriverFacadeSource.includes("include!(") &&
-      (openClawDriverFacadeSource.match(/#\[path/g) ?? []).length === 3 &&
-      openClawDriverFacadeSource.includes(
-        '#[path = "native_agent_parser/adapters/openclaw/codec.rs"]'
-      ) &&
-      openClawDriverFacadeSource.includes(
-        '#[path = "native_agent_parser/adapters/openclaw/events.rs"]'
-      ) &&
-      openClawDriverFacadeSource.includes(
-        '#[path = "native_agent_parser/adapters/openclaw/protocol.rs"]'
-      ),
-    "OpenClaw driver root must bind exactly its three parser-owned leaves and expose stable re-exports"
+      !openClawDriverFacadeSource.includes("#[path") &&
+      openClawDriverFacadeSource.includes("mod protocol;") &&
+      openClawDriverFacadeSource.includes("mod continuity;"),
+    "OpenClaw driver root must bind its own process leaves and re-export the package protocol without a second file copy"
+  );
+  assert(
+    openClawDriverShimSource.split("licoup_agent_openclaw").length - 1 === 7 &&
+      !openClawDriverShimSource.includes("struct OpenClawProtocol") &&
+      !openClawDriverShimSource.includes("impl ProtocolConfig") &&
+      !openClawDriverShimSource.includes("Command::new"),
+    "each moved OpenClaw leaf must be one re-export of the package that owns it, never a second implementation"
   );
   assert(
     openClawSupervisionSource.includes(
@@ -262,7 +283,7 @@ export async function checkRuntimeDriversAndLocalService(context, {
   );
   for (const dependency of [
     "continuity::",
-    "events::",
+    "codec::",
     "execution::",
     "io::",
     "probe::",
@@ -298,6 +319,15 @@ export async function checkRuntimeDriversAndLocalService(context, {
       `OpenClaw parser protocol must not depend on ${dependency}`
     );
   }
+  // The package may not reach into the client it is composed by: its own
+  // protocol vocabulary names the adapter SDK, the shared ACP vocabulary and its
+  // own ports, and no client crate.
+  assert(
+    !openClawPackageSource.includes("licoup_native") &&
+      !openClawPackageSource.includes("crate::platform") &&
+      !openClawPackageSource.includes("crate::domain"),
+    "the OpenClaw adapter package must reach no client crate for its protocol facts"
+  );
   assert(
     !openClawDriverSource.includes("unsafe {") &&
       !reviewedRustUnsafeFiles.has(
@@ -315,15 +345,21 @@ export async function checkRuntimeDriversAndLocalService(context, {
   );
   const piDriverSource = await readJoinedText([
     "crates/licoup-native/src/platform/pi_driver.rs",
-    ...piDriverFiles
+    ...piDriverFiles,
+    // The wire half moved into the Pi adapter package: the parser, its protocol
+    // state machine and the driver vocabulary the kernel facade names.
+    "crates/licoup-agent-pi/src/parser.rs",
+    ...(await collectSourceFiles("crates/licoup-agent-pi/src/parser", ".rs")),
+    "crates/licoup-agent-pi/src/driver.rs",
+    ...(await collectSourceFiles("crates/licoup-agent-pi/src/driver", ".rs"))
   ]);
   const piDriverFoundationSource = await readJoinedText([
-    "crates/licoup-native/src/platform/pi_driver/errors.rs",
-    "crates/licoup-native/src/platform/pi_driver/model.rs",
-    "crates/licoup-native/src/platform/pi_driver/params.rs"
+    "crates/licoup-agent-pi/src/driver/errors.rs",
+    "crates/licoup-agent-pi/src/driver/model.rs",
+    "crates/licoup-agent-pi/src/driver/params.rs"
   ]);
   const piDriverSessionSource = await readText(
-    "crates/licoup-native/src/platform/pi_driver/sessions.rs"
+    "crates/licoup-agent-pi/src/driver/sessions.rs"
   );
   const piDriverSupervisionSource = await readText(
     "crates/licoup-native/src/platform/pi_driver/supervision.rs"
