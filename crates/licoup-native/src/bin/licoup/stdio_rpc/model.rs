@@ -26,6 +26,12 @@ pub(crate) enum StdioRpcMethod {
         params: Value,
         portable_data_dir: Option<PathBuf>,
     },
+    /// One validated `selection.*` request: the projection of the selection
+    /// facts and the transitions over the durable selection policy.
+    Selection {
+        request: SelectionRequest,
+        portable_data_dir: Option<PathBuf>,
+    },
     Catalog {
         operation: String,
         params: Value,

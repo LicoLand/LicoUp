@@ -11,7 +11,7 @@ pub const CONVERSATION_PROTOCOL_MAX_CLIENT_ARGS: usize = 256;
 pub const CONVERSATION_PROTOCOL_MAX_ERROR_CODE_BYTES: usize = 64;
 pub const CONVERSATION_PROTOCOL_MAX_STDERR_BYTES: usize = 524288;
 
-pub const CONVERSATION_PROTOCOL_METHODS: [&str; 38] = [
+pub const CONVERSATION_PROTOCOL_METHODS: [&str; 43] = [
     "execute",
     "shutdown",
     "catalog.status",
@@ -50,6 +50,11 @@ pub const CONVERSATION_PROTOCOL_METHODS: [&str; 38] = [
     "data.home.status",
     "data.home.recover",
     "data.home.cleanup",
+    "selection.matrix",
+    "selection.policy.get",
+    "selection.policy.adopt",
+    "selection.policy.supersede",
+    "selection.policy.revoke",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -92,6 +97,11 @@ pub enum ConversationProtocolMethod {
     DataHomeStatus,
     DataHomeRecover,
     DataHomeCleanup,
+    SelectionMatrix,
+    SelectionPolicyGet,
+    SelectionPolicyAdopt,
+    SelectionPolicySupersede,
+    SelectionPolicyRevoke,
 }
 
 impl ConversationProtocolMethod {
@@ -135,6 +145,11 @@ impl ConversationProtocolMethod {
             Self::DataHomeStatus => "data.home.status",
             Self::DataHomeRecover => "data.home.recover",
             Self::DataHomeCleanup => "data.home.cleanup",
+            Self::SelectionMatrix => "selection.matrix",
+            Self::SelectionPolicyGet => "selection.policy.get",
+            Self::SelectionPolicyAdopt => "selection.policy.adopt",
+            Self::SelectionPolicySupersede => "selection.policy.supersede",
+            Self::SelectionPolicyRevoke => "selection.policy.revoke",
         }
     }
 
@@ -178,6 +193,11 @@ impl ConversationProtocolMethod {
             "data.home.status" => Some(Self::DataHomeStatus),
             "data.home.recover" => Some(Self::DataHomeRecover),
             "data.home.cleanup" => Some(Self::DataHomeCleanup),
+            "selection.matrix" => Some(Self::SelectionMatrix),
+            "selection.policy.get" => Some(Self::SelectionPolicyGet),
+            "selection.policy.adopt" => Some(Self::SelectionPolicyAdopt),
+            "selection.policy.supersede" => Some(Self::SelectionPolicySupersede),
+            "selection.policy.revoke" => Some(Self::SelectionPolicyRevoke),
             _ => None,
         }
     }

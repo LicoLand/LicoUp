@@ -665,6 +665,38 @@ where
                         )?,
                     }
                 }
+                StdioRpcMethod::Selection {
+                    request: selection_request,
+                    portable_data_dir,
+                } => {
+                    // The selection facts and the durable policy both live in the
+                    // data home this frame names, and the transitions write through
+                    // the one store their owner opens. Nothing is composed here.
+                    let execution = catch_unwind(AssertUnwindSafe(|| {
+                        let _guard = PortableDataDirOverrideGuard::set(portable_data_dir);
+                        selection_request.dispatch()
+                    }));
+                    match execution {
+                        Ok(Ok(value)) => write_stdio_rpc_success_shared(
+                            &writer,
+                            &request.id,
+                            &request.workflow_id,
+                            value,
+                        )?,
+                        Ok(Err(error)) => write_stdio_rpc_client_error_shared(
+                            &writer,
+                            Some(&request.id),
+                            Some(&request.workflow_id),
+                            &error,
+                        )?,
+                        Err(_) => write_stdio_rpc_error_shared(
+                            &writer,
+                            Some(&request.id),
+                            Some(&request.workflow_id),
+                            "command_panicked",
+                        )?,
+                    }
+                }
                 StdioRpcMethod::Catalog {
                     operation,
                     params,
