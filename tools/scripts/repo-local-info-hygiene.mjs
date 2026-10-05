@@ -178,9 +178,9 @@ function validateAuditorFinding(finding, scanRoot) {
   );
 }
 
-function isAuditorDelegationEnabled(environment = process.env) {
+function isGeneralAuditorDelegationEnabled(environment = process.env) {
   return (
-    environment.LICO_AUDITOR_GATE_DELEGATED === "1" &&
+    environment.GENERAL_AUDITOR_GATE_DELEGATED === "1" &&
     environment.GITHUB_ACTIONS === "true" &&
     environment.GITHUB_WORKFLOW === "Client CI" &&
     environment.GITHUB_JOB === "engineering"
@@ -190,7 +190,7 @@ function isAuditorDelegationEnabled(environment = process.env) {
 async function runCanonicalScan(scanRoot, command = "lico-auditor", options = {}) {
   if (
     options.allowAuditorDelegation === true &&
-    isAuditorDelegationEnabled()
+    isGeneralAuditorDelegationEnabled()
   ) {
     return {
       ok: true,
@@ -427,8 +427,8 @@ async function runSelfTest() {
       "SELF_TEST_MISSING_TOOL_NOT_FAIL_CLOSED"
     );
     requireSelfTest(
-      isAuditorDelegationEnabled({
-        LICO_AUDITOR_GATE_DELEGATED: "1",
+      isGeneralAuditorDelegationEnabled({
+        GENERAL_AUDITOR_GATE_DELEGATED: "1",
         GITHUB_ACTIONS: "true",
         GITHUB_WORKFLOW: "Client CI",
         GITHUB_JOB: "engineering"
@@ -442,25 +442,25 @@ async function runSelfTest() {
         GITHUB_JOB: "engineering"
       },
       {
-        LICO_AUDITOR_GATE_DELEGATED: "1",
+        GENERAL_AUDITOR_GATE_DELEGATED: "1",
         GITHUB_WORKFLOW: "Client CI",
         GITHUB_JOB: "engineering"
       },
       {
-        LICO_AUDITOR_GATE_DELEGATED: "1",
+        GENERAL_AUDITOR_GATE_DELEGATED: "1",
         GITHUB_ACTIONS: "true",
         GITHUB_WORKFLOW: "Another workflow",
         GITHUB_JOB: "engineering"
       },
       {
-        LICO_AUDITOR_GATE_DELEGATED: "1",
+        GENERAL_AUDITOR_GATE_DELEGATED: "1",
         GITHUB_ACTIONS: "true",
         GITHUB_WORKFLOW: "Client CI",
         GITHUB_JOB: "source"
       }
     ]) {
       requireSelfTest(
-        !isAuditorDelegationEnabled(incompleteEnvironment),
+        !isGeneralAuditorDelegationEnabled(incompleteEnvironment),
         "SELF_TEST_AUDITOR_DELEGATION_SCOPE_TOO_BROAD"
       );
     }
@@ -496,7 +496,7 @@ if (selfTestOnly) {
     process.exit(1);
   }
 } else {
-  const delegatedToAuditor = isAuditorDelegationEnabled();
+  const delegatedToGeneralAuditor = isGeneralAuditorDelegationEnabled();
   let candidateRoot = "";
   let canonical;
   let local;
@@ -521,7 +521,7 @@ if (selfTestOnly) {
   const report = buildReport(
     canonical,
     local,
-    delegatedToAuditor ? "lico-auditor-gate" : "lico-auditor"
+    delegatedToGeneralAuditor ? "general-auditor" : "lico-auditor"
   );
   await mkdir(path.dirname(reportPath), { recursive: true });
   await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");

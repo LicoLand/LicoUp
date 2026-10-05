@@ -635,7 +635,7 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
         ".github/workflows/client-stable.yml",
         ".github/workflows/client-release-ready.yml",
         ".github/workflows/branch-flow.yml",
-        ".github/workflows/lico-auditor-gate.yml",
+        ".github/workflows/general-auditor.yml",
         "package.json",
         "tests/contract/client/client-gate-policy.test.mjs",
         "tests/contract/client/client-promotion.test.mjs",

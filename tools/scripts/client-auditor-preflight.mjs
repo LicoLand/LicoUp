@@ -13,7 +13,7 @@ const expectedChecks = Object.freeze([
   [".github/workflows/client-ci.yml", null, "Client required"],
   [".github/workflows/client-stable.yml", "Stable client", "Stable client"],
   [".github/workflows/client-release-ready.yml", "Release ready", "Release ready"],
-  [".github/workflows/lico-auditor-gate.yml", "Auditor", "Auditor"],
+  [".github/workflows/general-auditor.yml", "General-Auditor", "Auditor"],
 ]);
 
 function requireValue(value, code) { if (!value) throw new Error(code); }
