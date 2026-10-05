@@ -599,7 +599,10 @@ const LEGACY_LANE_EQUIVALENT_MODULES = Object.freeze({
   "client:analyze": ["flutter.composition.dependencies"],
   "client:test": ["@tracked-flutter-test-partitions"],
   "client:native:clippy": ["regression.rust-clippy"],
-  "client:native:test:helpers": ["rust.core.mcp-server"],
+  "client:native:test:helpers": [
+    "rust.core.mcp-server",
+    "rust.core.agent-antigravity-package",
+  ],
   "client:native:test": ["@catalog-rust-test-partitions"],
   "client:promotion:self-test": ["regression.release-workflow-contracts"],
   "client:pricing:check": ["release.model-pricing"],

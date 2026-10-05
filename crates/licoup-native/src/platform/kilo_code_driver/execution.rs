@@ -235,9 +235,12 @@ mod tests {
             1024,
         );
         assert!(!result.ok);
+        // The package reports the shared ACP spelling below the seam; crossing it
+        // restates that code in this Agent's own vocabulary, exactly as the
+        // process-start failure beside it is already spelled.
         assert_eq!(
             result.error.as_ref().map(|failure| failure.code.as_str()),
-            Some("acp_working_directory_invalid")
+            Some("kilo_code_serve_working_directory_invalid")
         );
     }
 

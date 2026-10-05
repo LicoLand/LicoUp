@@ -99,7 +99,10 @@ mod tests {
     #[test]
     fn a_relative_workspace_is_refused_before_any_process_or_http_work() {
         let failure = capability_probe("unused", Path::new("relative"), 10, None, 16).unwrap_err();
-        assert_eq!(failure.code, "acp_working_directory_invalid");
+        // The package reports the shared ACP spelling below the seam; crossing it
+        // restates that code in this Agent's own vocabulary, exactly as the
+        // process-start failure beside it is already spelled.
+        assert_eq!(failure.code, "kilo_code_serve_working_directory_invalid");
         assert_eq!(failure.stage, "initialize");
     }
 
