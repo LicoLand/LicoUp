@@ -1,3 +1,4 @@
+mod acquisition;
 mod catalog;
 mod engine;
 mod ownership;

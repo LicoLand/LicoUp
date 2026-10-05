@@ -1,10 +1,14 @@
 //! Single confirmation token bound to one planned Agent Hub action.
+//!
+//! The token binds the requested version as well as the action and channel: for
+//! a vendor-binary channel the version selects which artifact is fetched, so a
+//! confirmed plan must not apply a different one.
 
 use super::contract::InstallChannel;
 use anyhow::{Result, anyhow, ensure};
 use sha2::{Digest, Sha256};
 
-pub fn token(operation: &str, agent_id: &str, channel: &InstallChannel) -> String {
+pub fn token(operation: &str, agent_id: &str, channel: &InstallChannel, version: &str) -> String {
     let mut digest = Sha256::new();
     digest.update(operation.as_bytes());
     digest.update([0]);
@@ -15,6 +19,8 @@ pub fn token(operation: &str, agent_id: &str, channel: &InstallChannel) -> Strin
     digest.update(channel.kind.as_bytes());
     digest.update([0]);
     digest.update(channel.package_coordinate.as_bytes());
+    digest.update([0]);
+    digest.update(version.as_bytes());
     digest.update([0]);
     for arg in install_argv_for("macos", channel) {
         digest.update(arg.as_bytes());
