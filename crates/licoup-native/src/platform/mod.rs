@@ -18,7 +18,6 @@ pub(crate) mod badtower_station;
 mod claude_code_driver;
 pub(crate) mod conversation_lane;
 mod cursor_driver;
-mod deepseek_harness_driver;
 pub mod diagnostics;
 pub mod extension_host;
 pub mod extension_packages;

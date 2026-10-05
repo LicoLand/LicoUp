@@ -71,8 +71,9 @@ pub(crate) mod host_lane;
 /// ports the domain asks, the gateway runtime's ports, the stop control's
 /// Subagent-claim dispatcher, which the domain answers, and the ports the Agent
 /// adapter packages ask for — the progressive turn-event sinks Codex,
-/// Antigravity and Pi emit through and the execution admission the Antigravity,
-/// Kimi Code and OpenCode packages ask for. A process that never calls it keeps
+/// Antigravity and Pi emit through, the execution admission the Antigravity,
+/// Kimi Code and OpenCode packages ask for, and the launch environment the
+/// DeepSeek Harness package asks for. A process that never calls it keeps
 /// every port fail-closed.
 pub fn install_environment_ports() -> Result<(), &'static str> {
     install_workflow_host_ports();
@@ -138,6 +139,17 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     // still performs the turn, and removing that is the named remainder on
     // VENDOR-CODE-REMOVAL.
     licoup_agent_kilo::host::install(platform::kilo_code_host::host_ports())?;
+    // The DeepSeek Harness adapter package runs its own turn through the
+    // foundation's supervisor, the raw-execution record and the turn-event
+    // emitters, and the one fact it may not derive is the environment a launch
+    // observes: the user's login-shell snapshot belongs to this host, which reads
+    // it once per process. Installing the host's own answer is what lets a
+    // Harness started from the desktop see the environment its user's terminal
+    // would give it; a host that never installs the port leaves the launch with
+    // the environment the process inherited rather than inventing a snapshot.
+    licoup_agent_deepseek::port::launch_environment::install(
+        platform::user_shell_environment::apply_to_command,
+    )?;
     // The OpenCode adapter package owns the `serve` protocol; the client's own
     // `opencode_driver` still performs one turn, and the one fact it may not
     // decide for itself is whether this host admits a new execution. Installing

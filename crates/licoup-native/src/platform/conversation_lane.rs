@@ -824,10 +824,10 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
             }
         }
         RuntimeAdapter::DeepSeekHarness => {
-            match super::deepseek_harness_driver::cleanup_session(&session_id) {
-                super::deepseek_harness_driver::CleanupDisposition::Accepted => 0,
-                super::deepseek_harness_driver::CleanupDisposition::SessionUnavailable => 1,
-                super::deepseek_harness_driver::CleanupDisposition::Unavailable => 2,
+            match licoup_agent_deepseek::driver::cleanup_session(&session_id) {
+                licoup_agent_deepseek::driver::CleanupDisposition::Accepted => 0,
+                licoup_agent_deepseek::driver::CleanupDisposition::SessionUnavailable => 1,
+                licoup_agent_deepseek::driver::CleanupDisposition::Unavailable => 2,
             }
         }
         _ => match super::hermes_driver::cleanup_session(&session_id) {

@@ -2,6 +2,7 @@ import {
   NATIVE_MANIFEST,
   claudeCodeAgentPackageLayer,
   codexAgentPackageLayer,
+  deepseekAgentPackageLayer,
   kiloAgentPackageLayer,
   RUST_COMPOSITION_INPUTS,
   command,
@@ -1991,12 +1992,14 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.deepseek-harness-driver",
       kind: "rust-platform",
-      summary: "Client-composed DeepSeek Harness process half: the SDK JSON-RPC transport and its bounded protocol projection",
+      summary: "DeepSeek Harness package process half: the SDK JSON-RPC transport, its bounded protocol projection and the launch port it asks the host for",
       inputs: [
-        "crates/licoup-native/src/platform/deepseek_harness_driver.rs",
+        "crates/licoup-agent-deepseek/src/driver.rs",
+        "crates/licoup-agent-deepseek/src/driver/tests.rs",
+        "crates/licoup-agent-deepseek/src/port/launch_environment.rs",
         "packages/contracts/client/fixtures/agent-conversation-adapter/manifests/deepseek-harness.json",
       ],
-      command: rustLayer("platform::deepseek_harness_driver::tests::"),
+      command: deepseekAgentPackageLayer("driver::tests::"),
     }),
   defineModule({
       id: "rust.platform.deepseek-harness-package-protocol",

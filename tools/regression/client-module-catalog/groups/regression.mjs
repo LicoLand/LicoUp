@@ -792,11 +792,11 @@ export const REGRESSION_MODULES = Object.freeze([
   }),
   agentSourceBundleModule({
     id: "regression.deepseek-harness-source-bundle",
-    summary: "DeepSeek Harness split ownership, native session-log reader, declared external dependency, and no-Node-runtime contract",
+    summary: "DeepSeek Harness package ownership, native session-log reader, declared external dependency, and no-Node-runtime contract",
     inputs: [
-      "crates/licoup-native/src/platform/deepseek_harness_driver.rs",
       "crates/licoup-agent-deepseek/src/**",
       "crates/licoup-agent-deepseek/package/**",
+      "crates/licoup-native/src/platform/runtime_adapters/drivers.rs",
     ],
     test: "tests/contract/client/deepseek-harness-source-bundle.test.mjs",
   }),

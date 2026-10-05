@@ -28,10 +28,15 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use crate::platform::{
-    acp_driver_runtime, antigravity_driver, claude_code_driver, cursor_driver,
-    deepseek_harness_driver, hermes_driver, kilo_code_driver, lico_agent_driver,
-    openclaw_driver, opencode_driver, pi_driver,
+    acp_driver_runtime, antigravity_driver, claude_code_driver, cursor_driver, hermes_driver,
+    kilo_code_driver, lico_agent_driver, openclaw_driver, opencode_driver, pi_driver,
 };
+// The DeepSeek Harness driver — the `--profile sdk` transport, the turn it
+// carries and the cleanup of one session — is the DeepSeek Harness package's.
+// The composition names the package and keeps the host's own projection of its
+// result; it holds no protocol frame, no request builder and no transport of its
+// own.
+use licoup_agent_deepseek::driver as deepseek_harness_driver;
 // The Copilot driver — the `--acp --stdio` launch, the probe and the turn it
 // runs — is the Copilot package's. The composition names the package and keeps
 // the host's own projection of its result; it holds no launch declaration and
