@@ -429,13 +429,26 @@ pub fn newest_generation(
 }
 
 /// The generation one artifact file name declares, when it declares one.
+///
+/// The vendor writes the version unpadded, so a name that pads it (`v03`) is
+/// not a generation this reader selects: it duplicates the generation it
+/// spells, and reading the padded spelling as the newer one would make a
+/// representation outrank the artifact it repeats. The remaining acceptance
+/// bounds are the ones the format's numbers already carry — digits only, and
+/// no larger than a JavaScript reader can order, because this arithmetic came
+/// from the Node reader the store replaced.
 fn generation(path: &Path) -> Option<u64> {
+    const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
     let name = path.file_name()?.to_str()?;
     let name = name.strip_suffix(COMPRESSED_SUFFIX).unwrap_or(name);
     let name = name.strip_suffix(".jsonl")?;
     match name.strip_prefix("session.v") {
         // An unversioned artifact is the generation the format started at.
         None => name.eq("session").then_some(0),
-        Some(version) => version.parse().ok(),
+        Some(version) => (!version.starts_with('0')
+            && version.bytes().all(|byte| byte.is_ascii_digit()))
+        .then(|| version.parse().ok())
+        .flatten()
+        .filter(|version| *version <= MAX_SAFE_INTEGER),
     }
 }
