@@ -229,8 +229,11 @@ test("OpenClaw continuity keeps protocol and resumable Gateway identities exact"
   assert.ok(params.includes("local_mcp"));
   assert.equal(params.includes("crate::domain"), false);
   assert.equal(params.includes("acp_servers_for_runtime"), false);
+  // The client answers it at its own boundary: the driver composition asks the
+  // registered port, and the host's composition installs the answer over its own
+  // client state, so the composition names the port entry and no domain owner.
   assert.ok(
-    (await read(compositionPath)).includes('acp_servers_for_runtime("openclaw")'),
+    (await read(compositionPath)).includes('collaboration_acp_servers("openclaw")'),
     "the client answers the MCP registration at its own boundary",
   );
 });
