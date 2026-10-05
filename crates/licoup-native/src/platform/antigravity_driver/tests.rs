@@ -1119,13 +1119,22 @@ impl ReceiptStyle {
     /// receipt writers under test stand in for the vendor client, and a fixture
     /// that needed an interpreter would test a machine this product no longer
     /// requires.
+    ///
+    /// The wrapped receipt carries its payload as a JSON *string*, so the
+    /// document itself contains backslash escapes. A quoted here-document
+    /// writes those bytes verbatim; a `printf` format string would have the
+    /// shell consume the escapes and emit a document that is not JSON at all,
+    /// which is not the input this compatibility case is about.
     fn writer_body(self, receipt_id: &str) -> String {
         match self {
             ReceiptStyle::Direct => format!(
                 r#"printf '{{"conversationId":"%s"}}\n' '{receipt_id}' > "$1""#
             ),
             ReceiptStyle::Wrapped => format!(
-                r#"printf '{{"hookPayload":"{{\"conversationId\":\"%s\"}}","environmentConversationId":""}}\n' '{receipt_id}' > "$1""#
+                r#"cat > "$1" <<'RECEIPT'
+{{"hookPayload":"{{\"conversationId\":\"{receipt_id}\"}}","environmentConversationId":""}}
+RECEIPT
+"#
             ),
         }
     }
