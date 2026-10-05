@@ -2124,7 +2124,6 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-agent-opencode/src/parser.rs",
         "crates/licoup-native/src/platform/native_agent_parser/mod.rs",
         "crates/licoup-native/src/platform/native_agent_parser/tests.rs",
-        "crates/licoup-native/src/platform/copilot_driver.rs",
         "crates/licoup-native/src/platform/cursor_driver.rs",
         "crates/licoup-native/src/platform/cursor_driver/errors.rs",
         "crates/licoup-native/src/platform/cursor_driver/execution.rs",

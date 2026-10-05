@@ -19,7 +19,10 @@ use crate::registration;
 /// The declaration this package reports is the one its composition injects.
 #[test]
 fn the_package_declares_one_adapter_and_reports_it_through_the_sdk() {
-    assert_eq!(registration::CONTRACT, AdapterContract::new("kimi-code", "lf-ndjson-acp"));
+    assert_eq!(
+        registration::CONTRACT,
+        AdapterContract::new("kimi-code", "lf-ndjson-acp")
+    );
     assert_eq!(registration::ADAPTER_ID, "kimi-code");
     assert_eq!(registration::FRAMING, "lf-ndjson-acp");
     assert_eq!(parser::CONTRACT.id, registration::ADAPTER_ID);
@@ -127,7 +130,9 @@ fn this_dialect_never_invents_a_permission_request() {
 /// the outcome the envelope rejects.
 #[test]
 fn the_error_test_is_the_shared_envelope_rule() {
-    assert!(dialect::response_is_error(&json!({"id": 1, "error": {"code": -32601}})));
+    assert!(dialect::response_is_error(
+        &json!({"id": 1, "error": {"code": -32601}})
+    ));
     assert!(!dialect::response_is_error(&json!({"id": 1, "result": {}})));
 }
 
@@ -157,13 +162,20 @@ fn a_completed_turn_reduces_to_the_shared_transition_vocabulary() {
 /// and the failure reports the protocol's own code, stage and redacted message.
 #[test]
 fn a_failed_turn_reduces_to_acceptance_and_the_shared_failure() {
-    let transitions = parser::failed_transitions("kimi_code_acp_working_directory_invalid", "params", "redacted");
+    let transitions = parser::failed_transitions(
+        "kimi_code_acp_working_directory_invalid",
+        "params",
+        "redacted",
+    );
     assert_eq!(
         transitions.len(),
         3,
         "an unaccepted turn reports the open stages and one failure: {transitions:?}"
     );
-    assert_eq!(transitions[0], Transition::Lifecycle(LifecycleStage::Submitted));
+    assert_eq!(
+        transitions[0],
+        Transition::Lifecycle(LifecycleStage::Submitted)
+    );
     match transitions.last().expect("a reported failure") {
         Transition::Failed {
             code,
@@ -191,7 +203,8 @@ fn a_malformed_session_update_is_refused() {
 /// request, and only when the envelope is the one the profile publishes.
 #[test]
 fn an_initialize_response_is_read_from_its_own_line() {
-    let other = br#"{"jsonrpc":"2.0","id":2,"result":{"protocolVersion":1,"agentCapabilities":{}}}"#;
+    let other =
+        br#"{"jsonrpc":"2.0","id":2,"result":{"protocolVersion":1,"agentCapabilities":{}}}"#;
     assert_eq!(
         parser::initialize_response(other, 1).expect("decodes"),
         None,
@@ -241,14 +254,20 @@ fn the_execution_port_is_fail_closed_before_its_host_answers() {
     assert_eq!(failure.code, "kimi_code_acp_execution_not_admitted");
 
     // A second installation is refused rather than replacing the first answer.
-    assert!(execution::install(execution::ExecutionPort {
-        admits_execution: || true,
-    }).is_ok());
+    assert!(
+        execution::install(execution::ExecutionPort {
+            admits_execution: || true,
+        })
+        .is_ok()
+    );
     assert!(execution::installed());
     assert!(execution::admits_execution());
-    assert!(execution::install(execution::ExecutionPort {
-        admits_execution: || false,
-    }).is_err());
+    assert!(
+        execution::install(execution::ExecutionPort {
+            admits_execution: || false,
+        })
+        .is_err()
+    );
     assert!(execution::admits_execution(), "the first answer stands");
 }
 

@@ -665,7 +665,7 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
                 super::acp_driver_runtime::ControlDisposition::SessionUnavailable => 2,
                 super::acp_driver_runtime::ControlDisposition::TransportUnavailable => 3,
             },
-            RuntimeAdapter::Copilot => match super::copilot_driver::cancel(&session_id) {
+            RuntimeAdapter::Copilot => match licoup_agent_copilot::driver::cancel(&session_id) {
                 super::acp_driver_runtime::ControlDisposition::Accepted => 0,
                 super::acp_driver_runtime::ControlDisposition::NoActiveTurn => 1,
                 super::acp_driver_runtime::ControlDisposition::SessionUnavailable => 2,

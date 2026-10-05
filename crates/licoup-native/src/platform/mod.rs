@@ -17,7 +17,6 @@ pub mod authorized_secure_record;
 pub(crate) mod badtower_station;
 mod claude_code_driver;
 pub(crate) mod conversation_lane;
-mod copilot_driver;
 mod cursor_driver;
 mod deepseek_harness_driver;
 pub mod diagnostics;
