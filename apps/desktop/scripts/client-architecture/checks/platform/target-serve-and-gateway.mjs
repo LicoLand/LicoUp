@@ -73,11 +73,12 @@ export async function checkTargetServeAndGateway(context, { localServiceSource }
       `${target} serve root must retain bounded transport and its parser-owned event ingress`
     );
     // Every serve-family target names the parser that classifies its stream and
-    // the client holds no second copy of it.
+    // the client holds no second copy of it. Both owners are the packages': the
+    // host tree keeps no serve frame interpretation for either Agent.
     const parserOwner = await readText(
       target === "Kilo Code"
         ? "crates/licoup-agent-kilo/src/parser/mod.rs"
-        : "crates/licoup-native/src/platform/native_agent_parser/adapters/opencode.rs"
+        : "crates/licoup-agent-opencode/src/parser.rs"
     );
     assert(
       parserOwner.includes("ServeEventParser") &&

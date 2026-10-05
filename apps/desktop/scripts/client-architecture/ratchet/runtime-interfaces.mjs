@@ -71,7 +71,7 @@ const SOURCES = Object.freeze({
   [N + "platform/process_sandbox/seatbelt.rs"]: "33208cec6c4bd28e1b60ebb4e74c43921bf3df114fe438d05893144868686367",
   [N + "platform/process_sandbox/strategy.rs"]: "a8832eb3055c1dd7fde3e99c413aa92ec8c6e98a51a89345d4b377b8440d66f4",
   [SUPERVISOR]: "cc54d42dbc06636b95f686587c05bea047396d0652d1561a1abe6c99d7fff700",
-  [N + "platform/strategy_runtime/mod.rs"]: "45551821627cd476374c37ead3bde26b0f2ca4df217496aa96dccbdeebf67443",
+  [N + "platform/strategy_runtime/mod.rs"]: "2aec0783434e79e87923b91eef2710e19a77d85dea84a1e1807898bf5d58cfd0",
   [SHELL]: "e2a192a409575acf91555b56912d83d62f8b004904f56014b21024e8585a23a7",
 });
 
