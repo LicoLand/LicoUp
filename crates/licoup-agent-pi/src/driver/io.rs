@@ -1,5 +1,5 @@
-use super::super::process_supervisor::BoundedStdinWriter;
-use crate::platform::raw_execution::{
+use licoup_foundation::platform::process_supervisor::BoundedStdinWriter;
+use licoup_foundation::platform::raw_execution::{
     RawExecutionBinding, RawExecutionDirection, RawExecutionObserver, RawExecutionReader,
 };
 use serde_json::Value;

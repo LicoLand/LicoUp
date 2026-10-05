@@ -28,8 +28,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use crate::platform::{
-    acp_driver_runtime, antigravity_driver, cursor_driver, lico_agent_driver,
-    opencode_driver, pi_driver,
+    acp_driver_runtime, antigravity_driver, cursor_driver, lico_agent_driver, opencode_driver,
 };
 // The DeepSeek Harness driver — the `--profile sdk` transport, the turn it
 // carries and the cleanup of one session — is the DeepSeek Harness package's.
@@ -81,6 +80,11 @@ use licoup_agent_kimi::driver as kimi_code_driver;
 use licoup_agent_codex::app_server::contract::RUNTIME_PROTOCOL as CODEX_RUNTIME_PROTOCOL;
 use licoup_agent_codex::app_server::driver as codex_driver;
 use licoup_agent_codex::app_server::model::RunResult as CodexRunResult;
+// The Pi driver — the `pi --mode rpc --offline` launch, the JSONL frames it
+// classifies and the turn it runs — is the Pi package's. The composition names
+// the package and keeps the host's own projection of its result; it holds no
+// launch argument, no RPC frame rule and no turn phase of its own.
+use licoup_agent_pi::driver as pi_driver;
 
 /// Project one Agent's own driver failure onto the host's protocol-agnostic
 /// failure facts.

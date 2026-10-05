@@ -42,13 +42,13 @@ pub(in crate::platform) use licoup_agent_cursor::parser as cursor;
 // reports as an unused import, and each package answers its own registration
 // below. Hermes' dialect reaches the shared ACP transport through the package's
 // own registration in `runtime_adapters::drivers` rather than through this tree.
-// OpenCode and Pi are the two parsers this tree still re-exports: the host's
+// OpenCode is the one parser this tree still re-exports: the host's
 // `opencode_serve` facade and its `opencode_driver` leaves read `serve` frames
-// through the `opencode` name, and its `pi_driver` leaves read Pi's frames
-// through the `pi` name, so the composition names each package's parser for them
-// rather than rewriting every reader to the crate path.
+// through the `opencode` name, so the composition names the package's parser for
+// them rather than rewriting every reader to the crate path. Pi is not: the
+// whole Pi driver, its parser included, is `licoup-agent-pi`'s, and the host
+// declares no Pi reader of its own to name it for.
 pub(in crate::platform) use licoup_agent_opencode::parser as opencode;
-pub(in crate::platform) use licoup_agent_pi::parser as pi;
 
 use licoup_agent_adapter_sdk::port::{
     AdapterParserSet, DurableIdentityRequest, ExecutionOutcome, ParserRegistration,

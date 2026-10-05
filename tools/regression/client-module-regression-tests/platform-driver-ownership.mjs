@@ -1514,33 +1514,35 @@ test("OpenClaw package leaves retain exact tests and complete source ownership",
 test("Pi driver leaves retain exact tests and complete source ownership", async () => {
   const filters = new Map([
     ["rust.platform.pi-driver.composition",
-      "platform::pi_driver::tests::composition::"],
+      "driver::tests::composition::"],
     ["rust.platform.pi-driver.test-support",
-      "platform::pi_driver::tests::"],
+      "driver::tests::"],
     ["rust.platform.pi-driver.model",
-      "platform::pi_driver::tests::model::"],
+      "driver::tests::model::"],
     ["rust.platform.pi-driver.errors",
-      "platform::pi_driver::tests::errors::"],
+      "driver::tests::errors::"],
     ["rust.platform.pi-driver.params",
-      "platform::pi_driver::tests::params::"],
+      "driver::tests::params::"],
     ["rust.platform.pi-driver.settings",
-      "platform::pi_driver::tests::settings::"],
+      "driver::tests::settings::"],
     ["rust.platform.pi-driver.protocol",
-      "platform::pi_driver::tests::parser_protocol::"],
+      "driver::tests::parser_protocol::"],
     ["rust.platform.pi-driver.interaction",
-      "platform::pi_driver::tests::interaction::"],
+      "driver::tests::interaction::"],
     ["rust.platform.pi-driver.events",
-      "platform::pi_driver::tests::parser_events::"],
+      "driver::tests::parser_events::"],
     ["rust.platform.pi-driver.sessions",
-      "platform::pi_driver::tests::sessions::"],
+      "driver::tests::sessions::"],
     ["rust.platform.pi-driver.io",
-      "platform::pi_driver::tests::io::"],
+      "driver::tests::io::"],
     ["rust.platform.pi-driver.supervision",
-      "platform::pi_driver::tests::supervision::"],
+      "driver::tests::supervision::"],
     ["rust.platform.pi-driver.probe",
-      "platform::pi_driver::tests::probe::"],
+      "driver::tests::probe::"],
     ["rust.platform.pi-driver.execution",
-      "platform::pi_driver::tests::execution::"],
+      "driver::tests::execution::"],
+    ["rust.platform.pi-driver.native-events",
+      "platform::runtime_adapters::tests::pi_turn_events::"],
   ]);
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
     candidate.id.startsWith("rust.platform.pi-driver."));
@@ -1548,10 +1550,20 @@ test("Pi driver leaves retain exact tests and complete source ownership", async 
   for (const [id, filter] of filters) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
-    if (!id.endsWith(".composition")) {
-      assert.equal(module.inputs.includes(
-        "crates/licoup-native/src/platform/pi_driver.rs"), false);
-    }
+    assert.equal(module.inputs.includes(
+      "crates/licoup-native/src/platform/pi_driver.rs"), false,
+      "a retired Pi driver path is still owned");
+  }
+  // The driver half is the package's, so every leaf runs against the package's
+  // own manifest. The one host-side leaf runs against the host that owns the
+  // turn-event consumer, because no package process can observe it.
+  for (const module of modules) {
+    const manifestIndex = module.command.args.indexOf("--manifest-path") + 1;
+    assert.equal(module.command.args[manifestIndex],
+      module.id.endsWith(".native-events")
+        ? "crates/licoup-native/Cargo.toml"
+        : "crates/licoup-agent-pi/Cargo.toml",
+      module.id);
   }
 
   const sourceCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
@@ -1559,25 +1571,18 @@ test("Pi driver leaves retain exact tests and complete source ownership", async 
   assert.deepEqual(sourceCheck.command.args,
     ["--test", "tests/contract/client/pi-driver-source-bundle.test.mjs"]);
 
-  const ownedInputs = new Set([
-    ...modules.flatMap((module) => module.inputs),
-    ...sourceCheck.inputs,
-  ]);
-  const splitSources = await sourceFiles(
-    "crates/licoup-native/src/platform/pi_driver",
-    ".rs",
-  );
-  for (const relativePath of [
+  // The kernel keeps no Pi driver source at all: the module and its tree are
+  // retired, and no regression group may own a path that no longer exists.
+  for (const retired of [
     "crates/licoup-native/src/platform/pi_driver.rs",
-    ...splitSources,
+    "crates/licoup-native/src/platform/pi_driver",
   ]) {
-    assert.equal(ownedInputs.has(relativePath), true,
-      `Pi driver process source must have a precise regression owner: ${relativePath}`);
+    assert.equal(await exists(retired), false,
+      `the host still declares a retired Pi driver path: ${retired}`);
   }
 
-  // The protocol vocabulary moved into the Pi adapter package, where a source
-  // is owned by a precise narrow group or by the package's own module. The
-  // kernel keeps only the process half and names the package from its facade.
+  // The whole driver — the facade, the process half and the claims that drive
+  // it — is owned by the package's own narrow groups.
   const packageModuleId = "rust.core.agent-pi-package";
   const narrowInputs = new Set([
     ...modules.flatMap((module) => module.inputs),
@@ -1586,10 +1591,11 @@ test("Pi driver leaves retain exact tests and complete source ownership", async 
   for (const relativePath of [
     "crates/licoup-agent-pi/src/parser.rs",
     ...await sourceFiles("crates/licoup-agent-pi/src/parser", ".rs"),
+    "crates/licoup-agent-pi/src/driver.rs",
     ...await sourceFiles("crates/licoup-agent-pi/src/driver", ".rs"),
   ]) {
     assert.equal(narrowInputs.has(relativePath), true,
-      `Pi protocol source must have a precise regression owner: ${relativePath}`);
+      `Pi driver source must have a precise regression owner: ${relativePath}`);
   }
   const owns = (relativePath) => CLIENT_MODULE_CATALOG.some((module) =>
     module.inputs.some((input) => input.endsWith("/**")

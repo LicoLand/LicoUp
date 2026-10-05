@@ -1,4 +1,5 @@
-use super::super::process_supervisor::SupervisedChild;
+use licoup_agent_targets::platform::user_shell_environment::apply_to_command;
+use licoup_foundation::platform::process_supervisor::SupervisedChild;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -23,7 +24,7 @@ impl LaunchSpec {
 
     pub(super) fn spawn(&self) -> io::Result<SupervisedChild> {
         let mut command = Command::new(&self.executable);
-        super::super::user_shell_environment::apply_to_command(&mut command);
+        apply_to_command(&mut command);
         command
             .args(self.args.clone())
             .current_dir(&self.cwd)

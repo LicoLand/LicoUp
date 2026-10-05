@@ -259,7 +259,7 @@ fn failed_outcome_does_not_echo_requested_identity_or_unverified_settings() {
             stdout_truncated: false,
             stderr_truncated: false,
             started_at: "1".to_string(),
-            runtime_protocol: crate::platform::pi_driver::RUNTIME_PROTOCOL,
+            runtime_protocol: licoup_agent_pi::driver::RUNTIME_PROTOCOL,
             driver_id: "pi-rpc",
         },
     );

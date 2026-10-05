@@ -1,5 +1,5 @@
 use super::*;
-use crate::platform::native_agent_parser::adapters::pi::processing_evidence_kind;
+use crate::parser::processing_evidence_kind;
 
 #[test]
 fn event_projection_drops_raw_delta_arguments_and_extension_details() {
