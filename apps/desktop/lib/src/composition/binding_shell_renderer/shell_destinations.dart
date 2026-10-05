@@ -8,6 +8,7 @@ import 'package:licoup/src/composition/client_feature_mounts.dart';
 import 'package:licoup/src/contracts/client_update_models.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
+import 'package:licoup/src/frontend/projects/project_plan_submission.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
@@ -15,6 +16,7 @@ import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
 import 'package:licoup/src/presentation/models/models_binding.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_binding.dart';
+import 'package:licoup/src/presentation/projects/projects_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/shell/shell_intent.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
@@ -51,6 +53,8 @@ final class ShellDestinations {
     ModelsBinding? models,
     SettingsBinding? settings,
     AgentHubBinding? agentHub,
+    ProjectsBinding? projects,
+    ProjectPlanSubmission projectPlanSubmission = const UnconvertedProjectPlan(),
   }) {
     final bindings = ClientFeatureSurface(
       layout: layout,
@@ -68,6 +72,8 @@ final class ShellDestinations {
       openExternalUri: openExternalUri,
       workspaceHomeDirectory: workspaceHomeDirectory,
       clientUpdateAdmission: clientUpdateAdmission,
+      projects: projects,
+      projectPlanSubmission: projectPlanSubmission,
     );
     return ShellDestinations._(
       catalogue: ClientFeatureCatalogue.of(

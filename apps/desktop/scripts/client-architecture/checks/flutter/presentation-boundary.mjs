@@ -46,6 +46,7 @@ export const PRESENTATION_BINDING_NAMES = Object.freeze([
   "AgentHubBinding",
   "ConversationBinding",
   "TargetsBinding",
+  "ProjectsBinding",
   "SearchBinding",
   "ChromeBinding",
 ]);

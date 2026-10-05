@@ -26,6 +26,7 @@ import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_gr
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/package_recommendation_sheet_host.dart';
+import 'package:licoup/src/frontend/projects/project_plan_submission.dart';
 import 'package:licoup/src/contracts/presentation/work_control_models.dart';
 import 'package:licoup/src/composition/work_control_presentation.dart';
 import 'package:licoup/src/composition/force_stop_flow.dart';
@@ -48,6 +49,7 @@ import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
 import 'package:licoup/src/presentation/models/models_binding.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_binding.dart';
+import 'package:licoup/src/presentation/projects/projects_binding.dart';
 import 'package:licoup/src/presentation/search/search_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/shell/shell_intent.dart';
@@ -86,6 +88,8 @@ final class BindingShellRenderer implements ShellRendererPort {
     required String workspaceHomeDirectory,
     this.clientUpdateAdmission = clientUpdateAdmissionUnavailable,
     this.workControl,
+    this.projects,
+    this.projectPlanSubmission = const UnconvertedProjectPlan(),
   }) : _layout = layout,
        _agents = agents,
        _chromeBinding = chrome,
@@ -107,6 +111,8 @@ final class BindingShellRenderer implements ShellRendererPort {
          openExternalUri: openExternalUri,
          workspaceHomeDirectory: workspaceHomeDirectory,
          clientUpdateAdmission: clientUpdateAdmission,
+         projects: projects,
+         projectPlanSubmission: projectPlanSubmission,
        ),
        _chrome = _BindingLayoutChrome(
          status: status,
@@ -130,6 +136,13 @@ final class BindingShellRenderer implements ShellRendererPort {
   /// Manual stop and explicit force-stop projection. Null keeps the previous
   /// composer: no stop stage, no force-stop route.
   final WorkControlPresentation? workControl;
+
+  /// The project canvas binding, present exactly while the projects mount is
+  /// enabled. Null means the client owns no project surface.
+  final ProjectsBinding? projects;
+
+  /// The caller-converted plan document the project surface may submit.
+  final ProjectPlanSubmission projectPlanSubmission;
   final _BindingLayoutChrome _chrome;
   bool _disposed = false;
 

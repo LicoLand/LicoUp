@@ -104,6 +104,13 @@ final class ClientCompositionSet {
   /// The skill hub composition.
   bool get skillHub => mounts.isEnabled(ClientFeatureMounts.skillHub.id);
 
+  /// The project canvas composition.
+  ///
+  /// Optional: the minimum client owns no project owner, no project resource
+  /// and no project surface, and an enabled declaration still reaches the
+  /// durable owner only through the gateway the composition root injected.
+  bool get projects => mounts.isEnabled(ClientFeatureMounts.projects.id);
+
   /// The phase the declaration gives [id]; an identity no entry names is
   /// [FeatureMountPhase.unmounted].
   FeatureMountPhase phaseOf(FeatureMountId id) => mounts.phaseOf(id);
