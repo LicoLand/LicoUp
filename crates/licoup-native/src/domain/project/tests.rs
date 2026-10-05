@@ -6,8 +6,9 @@
 
 use super::*;
 use licoup_application::{
-    ActorClaim, CommandOutcome, CommandResolution, Operation, OperationState, ProjectCommand,
-    ProjectPort, ProjectRegistrationRequest,
+    ActorClaim, ArtifactInputRequest, CommandOutcome, CommandResolution,
+    DependencyDeclarationRequest, Operation, OperationState, ProjectCommand, ProjectPort,
+    ProjectRegistrationRequest,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -354,4 +355,298 @@ fn no_registration_reads_the_authorized_root_it_declares() {
         "the durable record lives in the existing client-state root, not a second location"
     );
     assert_eq!(Operation::ProjectRegister.as_str(), "project.register");
+}
+
+/// One canonical plan document a case submits through the real port.
+fn plan_document(
+    project_id: &str,
+    plan_id: &str,
+    work_items: serde_json::Value,
+) -> serde_json::Value {
+    serde_json::json!({
+        "schema": licoup_project::PLAN_DOCUMENT_SCHEMA,
+        "projectId": project_id,
+        "planId": plan_id,
+        "source": {
+            "sourceId": "source:roadmap",
+            "sourceKind": "markdown",
+            "locator": "docs/roadmap.md",
+        },
+        "workItems": work_items,
+    })
+}
+
+/// One declared work item that admits cleanly.
+fn plan_work_item(id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "workItemId": id,
+        "outcome": format!("Deliver {id}."),
+        "acceptance": ["The declared outcome holds."],
+        "inputs": [],
+        "roles": [{"roleId": "role:maintainer", "scope": "work-item"}],
+        "sourceAnchor": format!("heading:{id}"),
+    })
+}
+
+/// A user entry and an Agent caller reach one import owner with one answer.
+#[test]
+fn an_import_previews_and_applies_through_the_port_the_client_composes() {
+    let root = TempRoot::new("import");
+    let application = NativeProjectApplication::at(&root.path);
+    let claim = ActorClaim::local_admin("membership:owner");
+    outcome(execute(
+        &application,
+        &claim,
+        ProjectCommand::Register(request(
+            "alpha-project",
+            "workspace:shared",
+            "plan:alpha",
+            &root.declared_root("alpha"),
+            "membership:owner",
+        )),
+    ));
+
+    let document = plan_document(
+        "alpha-project",
+        "plan:alpha",
+        serde_json::json!([plan_work_item("work:read"), plan_work_item("work:write")]),
+    );
+    let preview = outcome(execute(
+        &application,
+        &claim,
+        ProjectCommand::ImportPreview {
+            document: document.clone(),
+        },
+    ));
+    assert_eq!(preview.reference.operation, "project.import.preview");
+    assert_eq!(preview.payload["revision"], 0);
+    assert_eq!(preview.payload["added"].as_array().map(Vec::len), Some(2));
+    assert_eq!(preview.payload["applied"], serde_json::Value::Null);
+
+    let applied = outcome(execute(
+        &application,
+        &claim,
+        ProjectCommand::ImportApply {
+            document: document.clone(),
+            expected_revision: 0,
+        },
+    ));
+    assert_eq!(applied.reference.operation, "project.import.apply");
+    assert_eq!(applied.reference.id, "plan:alpha");
+    assert_eq!(applied.reference.state, OperationState::Completed);
+    assert_eq!(applied.payload["applied"], true);
+    assert_eq!(applied.payload["change"]["revision"], 1);
+    assert_eq!(
+        applied.payload["change"]["mapping"][1]["sourceAnchor"],
+        "heading:work:write"
+    );
+
+    // A replay is one effect: the same document does not apply twice.
+    let replay = outcome(execute(
+        &application,
+        &claim,
+        ProjectCommand::ImportApply {
+            document,
+            expected_revision: 1,
+        },
+    ));
+    assert_eq!(replay.payload["applied"], false);
+    assert_eq!(replay.payload["change"]["revision"], 1);
+
+    // An Agent caller gets the same refusal a user gets, with the owner's code.
+    let stale = failed(execute(
+        &application,
+        &claim,
+        ProjectCommand::ImportApply {
+            document: plan_document(
+                "alpha-project",
+                "plan:alpha",
+                serde_json::json!([plan_work_item("work:read")]),
+            ),
+            expected_revision: 0,
+        },
+    ));
+    assert_eq!(stale.code, "project_plan_import_stale_apply");
+    assert_eq!(stale.stage, "project/import");
+    assert!(!stale.retryable);
+
+    // A document the owner cannot admit is refused with its own code and path.
+    let mut progress = plan_work_item("work:read");
+    progress["status"] = serde_json::json!("done");
+    let ambiguous = failed(execute(
+        &application,
+        &claim,
+        ProjectCommand::ImportPreview {
+            document: plan_document("alpha-project", "plan:alpha", serde_json::json!([progress])),
+        },
+    ));
+    assert_eq!(ambiguous.code, "project_plan_progress_not_admitted");
+    assert_eq!(ambiguous.field.as_deref(), Some("workItems[0].status"));
+}
+
+fn dependency(
+    project_id: &str,
+    consumer: &str,
+    producer: &str,
+    path: &str,
+) -> DependencyDeclarationRequest {
+    DependencyDeclarationRequest {
+        project_id: project_id.to_owned(),
+        work_item_id: consumer.to_owned(),
+        artifact: ArtifactInputRequest::Local {
+            producer_work_item_id: producer.to_owned(),
+            path: path.to_owned(),
+        },
+    }
+}
+
+/// A dependency is stored in the declaring project's index, so declaring one
+/// needs that project's own authority. A caller that holds a different
+/// membership cannot write into another project's declarations, and a caller
+/// that names no registered project is refused before the store is reached.
+#[test]
+fn declaring_inputs_for_a_project_needs_that_projects_authority() {
+    let root = TempRoot::new("dependency-authority");
+    let application = NativeProjectApplication::at(&root.path);
+    let foreign = ActorClaim::membership("codex", "conversation:one", "membership:codex");
+    outcome(execute(
+        &application,
+        &foreign,
+        ProjectCommand::Register(request(
+            "alpha-project",
+            "workspace:shared",
+            "plan:alpha",
+            &root.declared_root("alpha"),
+            "membership:codex",
+        )),
+    ));
+
+    let owner = ActorClaim::local_admin("membership:owner");
+    let refusal = failed(execute(
+        &application,
+        &owner,
+        ProjectCommand::DeclareDependency(dependency(
+            "alpha-project",
+            "test",
+            "build",
+            "dist/out.bin",
+        )),
+    ));
+    assert_eq!(refusal.code, "project_dependency_authority_unauthorized");
+    assert_eq!(refusal.stage, "project/dependency");
+    assert!(!refusal.retryable);
+
+    let listed = outcome(execute(
+        &application,
+        &owner,
+        ProjectCommand::Dependencies {
+            project_id: "alpha-project".to_owned(),
+        },
+    ));
+    assert_eq!(
+        listed.payload["dependencies"],
+        serde_json::json!([]),
+        "an unauthorized declaration leaves no row behind"
+    );
+
+    // The authority that registered the project declares its inputs.
+    let declared = outcome(execute(
+        &application,
+        &foreign,
+        ProjectCommand::DeclareDependency(dependency(
+            "alpha-project",
+            "test",
+            "build",
+            "dist/out.bin",
+        )),
+    ));
+    assert_eq!(declared.reference.operation, "project.declare-dependency");
+    assert_eq!(declared.reference.id, "alpha-project/test");
+    assert_eq!(declared.reference.state, OperationState::Completed);
+    assert_eq!(declared.payload["artifactState"], "missing");
+
+    let refusal = failed(execute(
+        &application,
+        &foreign,
+        ProjectCommand::DeclareDependency(dependency(
+            "ghost-project",
+            "test",
+            "build",
+            "dist/out.bin",
+        )),
+    ));
+    assert_eq!(refusal.code, "project_dependency_project_unauthorized");
+}
+
+/// The actionable path of a refused cycle is published; a filesystem location
+/// is not. The refusal's own code carries the reason, and only what a caller may
+/// be shown travels beside it.
+#[test]
+fn a_refused_cycle_publishes_its_path_and_an_escaping_location_publishes_none() {
+    let root = TempRoot::new("failure-projection");
+    let application = NativeProjectApplication::at(&root.path);
+    let claim = ActorClaim::local_admin("membership:owner");
+    outcome(execute(
+        &application,
+        &claim,
+        ProjectCommand::Register(request(
+            "alpha-project",
+            "workspace:shared",
+            "plan:alpha",
+            &root.declared_root("alpha"),
+            "membership:owner",
+        )),
+    ));
+    for (consumer, producer, path) in [
+        ("lint", "build", "build/lint.log"),
+        ("package", "lint", "dist/package.tar"),
+    ] {
+        outcome(execute(
+            &application,
+            &claim,
+            ProjectCommand::DeclareDependency(dependency(
+                "alpha-project",
+                consumer,
+                producer,
+                path,
+            )),
+        ));
+    }
+
+    let cycle = failed(execute(
+        &application,
+        &claim,
+        ProjectCommand::DeclareDependency(dependency(
+            "alpha-project",
+            "build",
+            "package",
+            "dist/rebuilt.tar",
+        )),
+    ));
+    assert_eq!(cycle.code, "project_dependency_cycle");
+    assert_eq!(
+        cycle.presentation_args.get("dependencyPath"),
+        Some(
+            "alpha-project/build -> alpha-project/package -> alpha-project/lint -> alpha-project/build"
+        )
+    );
+
+    let escape = failed(execute(
+        &application,
+        &claim,
+        ProjectCommand::DeclareDependency(dependency(
+            "alpha-project",
+            "test",
+            "build",
+            "../outside/alpha-secret/leak.txt",
+        )),
+    ));
+    assert_eq!(
+        escape.code,
+        "project_artifact_reference_escapes_authorized_root"
+    );
+    assert!(
+        escape.presentation_args.is_empty(),
+        "a location the caller declared is a diagnostic, not a public failure argument"
+    );
 }
