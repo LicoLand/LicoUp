@@ -1,6 +1,15 @@
-use super::hermes_tui_gateway::{GatewayClient, GatewayFailure, RUNTIME_PROTOCOL};
-use super::virtual_machine::SshRuntimeConnection;
+//! Hermes conversation history over its TUI Gateway connection.
+//!
+//! One read-only projection: the gateway's own `session.list` /
+//! `session.resume` answers, mapped onto the client's history page shape. It
+//! travels with the transport that speaks it ([`crate::tui_gateway`]) and the
+//! turn that drives it ([`crate::tui_gateway_driver`]); the client's own
+//! history lane reads the package for the page rather than keeping a copy of
+//! the projection.
+
+use crate::tui_gateway::{GatewayClient, GatewayFailure, RUNTIME_PROTOCOL};
 use anyhow::{Result, anyhow};
+use licoup_agent_targets::platform::virtual_machine::SshRuntimeConnection;
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 use time::OffsetDateTime;
@@ -10,7 +19,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_STDERR_BYTES: usize = 512 * 1024;
 const MAX_PAGE_LIMIT: usize = 500;
 
-pub(crate) fn conversation_list_with_connection(
+pub fn conversation_list_with_connection(
     params: &Value,
     connection: &SshRuntimeConnection,
 ) -> Result<Value> {

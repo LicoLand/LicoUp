@@ -12,7 +12,7 @@ use licoup_agent_drivers::runtime_adapters::{RuntimeAdapter, RuntimeAdapterError
 
 // The host's own composition of the adapter registry now lives beside this
 // module rather than under the moved tree.
-use super::runtime_adapters as runtime_adapters;
+use super::runtime_adapters;
 
 #[path = "../domain/client_conversation/settlement.rs"]
 mod settlement;
@@ -450,7 +450,7 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
         lane_family(adapter)
     };
     let effective_runtime_protocol = if uses_hermes_gateway {
-        super::hermes_tui_gateway::RUNTIME_PROTOCOL
+        licoup_agent_hermes::tui_gateway::RUNTIME_PROTOCOL
     } else {
         adapter.runtime_protocol()
     };
@@ -1121,7 +1121,10 @@ fn send_and_settle(params: &Value) -> std::result::Result<Value, RuntimeAdapterE
     let mut projected_deltas = arbiter.drain_deltas();
     emit_settlement_deltas(&projected_deltas, "", "");
 
-    match runtime_adapters::send_message(&crate::target_port::agent_target_port(), &effective_params) {
+    match runtime_adapters::send_message(
+        &crate::target_port::agent_target_port(),
+        &effective_params,
+    ) {
         Ok(mut response) => {
             let signal = settlement_signal(&response, explicit_deadline);
             let outcome = arbiter

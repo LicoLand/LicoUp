@@ -41,6 +41,16 @@ const retiredDriverPaths = Object.freeze([
   "crates/licoup-native/src/platform/hermes_driver.rs",
   "crates/licoup-native/src/platform/hermes_driver",
 ]);
+// The Gateway lane the host composed until VENDOR-CODE-REMOVAL completed the
+// retirement: Hermes' TUI Gateway transport, the turn it drives and the history
+// page over it all belong to this package now. The host keeps no copy of any of
+// them, and declares no module for them.
+const retiredGatewayPaths = Object.freeze([
+  "crates/licoup-native/src/platform/hermes_tui_gateway.rs",
+  "crates/licoup-native/src/platform/hermes_tui_gateway",
+  "crates/licoup-native/src/platform/hermes_tui_gateway_driver.rs",
+  "crates/licoup-native/src/platform/remote_hermes_gateway_history.rs",
+]);
 
 function read(relativePath) {
   return readFileSync(path.join(repoRoot, relativePath), "utf8");
@@ -50,7 +60,8 @@ test("one package carries the Hermes dialect, its parser and its program", () =>
   const library = read(`${sourceRoot}/lib.rs`);
   assert.deepEqual(
     [...library.matchAll(/^pub mod ([a-z_]+);$/gmu)].map((match) => match[1]).sort(),
-    ["dialect", "driver", "parser", "registration", "replay"],
+    ["dialect", "driver", "parser", "registration", "remote_gateway_history",
+      "replay", "tui_gateway", "tui_gateway_driver"],
   );
   // The replay arm is a test surface, so it is a feature rather than a
   // production module — and the feature is what the host's test build enables.
@@ -130,10 +141,11 @@ test("one package carries the Hermes dialect, its parser and its program", () =>
   const execution = read(`${sourceRoot}/driver/execution.rs`);
   assert.match(execution, /licoup_agent_drivers::acp_session_transport/u);
   assert.match(execution, /licoup_agent_targets::platform::virtual_machine::SshRuntimeConnection/u);
-  // The host's own Hermes TUI gateway transport is not this package's: the lane
-  // choice belongs to the composition that can see the runtime connection.
+  // The ACP driver leaf is ACP only: the Gateway lane is the package's own too
+  // ([`tui_gateway`], [`tui_gateway_driver`]), and the composed choice between
+  // the two belongs to the composition that can see the runtime connection.
   assert.equal(execution.includes("hermes_tui_gateway"), false,
-    "the package reaches for the host's Hermes TUI gateway transport");
+    "the ACP driver leaf reaches for the Gateway lane the composition picks");
   const probe = read(`${sourceRoot}/driver/probe.rs`);
   assert.match(probe, /licoup_agent_targets::platform::user_shell_environment::apply_to_command/u);
   assert.match(probe, /licoup_foundation::platform::process_supervisor::configure_untrusted_agent_command/u);
@@ -141,6 +153,7 @@ test("one package carries the Hermes dialect, its parser and its program", () =>
   // Nothing in the package reaches a client crate.
   for (const file of ["lib.rs", "dialect.rs", "driver.rs", "driver/execution.rs",
     "driver/probe.rs", "parser.rs", "registration.rs", "replay.rs",
+    "remote_gateway_history.rs", "tui_gateway.rs", "tui_gateway_driver.rs",
     "bin/lico-agent-hermes.rs"]) {
     const source = read(`${sourceRoot}/${file}`);
     assert.equal(source.includes("licoup_native"), false,
@@ -191,16 +204,31 @@ test("the moved Hermes parser leaves no copy in the host and the inventory keeps
     assert.equal(existsSync(path.join(repoRoot, relativePath)), false,
       `the host still carries the retired Hermes driver: ${relativePath}`);
   }
+  // The Gateway lane was the last Hermes half the host still composed. It
+  // travelled into the package with the driver, so the host carries neither the
+  // transport, its turn, its history page, nor a module declaration for any of
+  // them — a kernel copy reappearing fails here.
+  for (const relativePath of retiredGatewayPaths) {
+    assert.equal(existsSync(path.join(repoRoot, relativePath)), false,
+      `the host still carries the retired Hermes Gateway lane: ${relativePath}`);
+  }
   const platform = read("crates/licoup-native/src/platform/mod.rs");
   assert.doesNotMatch(platform, /mod hermes_driver;/u,
     "the host module tree still declares a Hermes driver module");
+  for (const retiredModule of ["hermes_tui_gateway", "hermes_tui_gateway_driver",
+    "remote_hermes_gateway_history"]) {
+    assert.doesNotMatch(platform, new RegExp(`mod ${retiredModule};`, "u"),
+      `the host module tree still declares ${retiredModule}`);
+  }
   const drivers = read(driversPath);
   assert.match(drivers, /use licoup_agent_hermes::driver as hermes_driver;/u,
     "the composition does not read the package's driver");
   // The composition keeps no second copy of the vendor fact: the launch
-  // argument, the runtime identity and the probe commands are the package's.
+  // argument, the runtime identity and the probe commands are the package's,
+  // and so is the Gateway lane's protocol identity.
   for (const forbidden of [
     '"hermes-acp-stdio-jsonrpc"',
+    '"hermes-tui-gateway-stdio-jsonrpc"',
     '"acp", "--check"',
     '"acp", "--version"',
     "hermes_acp_probe_failed",
@@ -209,11 +237,14 @@ test("the moved Hermes parser leaves no copy in the host and the inventory keeps
     assert.equal(drivers.includes(forbidden), false,
       `the client composition keeps a copy of the package's protocol: ${forbidden}`);
   }
-  // The one Hermes lane that stays in the host is the TUI gateway, and the
-  // composition both names it and picks it where the runtime connection is in
-  // view.
-  assert.match(drivers, /crate::platform::hermes_tui_gateway::RUNTIME_PROTOCOL/u);
-  assert.match(drivers, /crate::platform::hermes_tui_gateway_driver::execute\(/u);
+  // The one Hermes lane the composition still chooses is the TUI gateway, and
+  // the choice is the host's because the runtime connection is in view here.
+  // Both halves of it are read from the package: the lane's identity and its
+  // turn entry, named through the package's own modules.
+  assert.match(drivers, /licoup_agent_hermes::tui_gateway::RUNTIME_PROTOCOL/u);
+  assert.match(drivers,
+    /use licoup_agent_hermes::tui_gateway_driver as hermes_tui_gateway_driver;/u);
+  assert.match(drivers, /hermes_tui_gateway_driver::execute\(/u);
 
   const composition = read(compositionPath);
   // The composition dispatches the package's own registration and declares no

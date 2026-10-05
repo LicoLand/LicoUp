@@ -36,19 +36,26 @@
 //!
 //! # Who executes Hermes
 //!
-//! The package runs Hermes' local ACP turn: `licoup-native`'s composition names
+//! The package runs every Hermes turn. `licoup-native`'s composition names
 //! [`driver`] and keeps no Hermes ACP module of its own, so one Hermes turn is
-//! described in exactly one place. Two halves stay the host's and are named here
-//! so neither is claimed: the conversation lane that decides whether a turn may
-//! run, and the Hermes TUI gateway transport — a host lane the composition picks
-//! where the runtime connection is in view. The package declares no host-answered
-//! port, because the shared transport, the launch environment and the target
-//! contracts it reads are lower crates and it asks its host for nothing.
+//! described in exactly one place. Hermes reaches one target through two
+//! protocols, and both are this package's: a local turn speaks the ACP frame
+//! dialect ([`driver`]), while a turn bound to the Agent's own TUI Gateway
+//! speaks [`tui_gateway`] and is driven by [`tui_gateway_driver`], with the
+//! conversation-history page read from the same connection by
+//! [`remote_gateway_history`]. The composition picks the lane where the runtime
+//! connection is in view, because that choice is the host's; it owns neither
+//! protocol. The package declares no host-answered port, because the shared
+//! transport, the login-shell launch environment and the target contracts it
+//! reads are lower crates and it asks its host for nothing.
 
 pub mod dialect;
 pub mod driver;
 pub mod parser;
 pub mod registration;
+pub mod remote_gateway_history;
+pub mod tui_gateway;
+pub mod tui_gateway_driver;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod replay;

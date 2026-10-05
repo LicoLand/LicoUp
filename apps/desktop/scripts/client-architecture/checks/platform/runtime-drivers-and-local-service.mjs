@@ -86,6 +86,18 @@ export async function checkRuntimeDriversAndLocalService(context, {
   const claudeCodeSupervisionSource = await readText(
     "crates/licoup-agent-claude-code/src/driver/supervision.rs"
   );
+  // The protocol, the process half and the driver root are one package's since
+  // VENDOR-CODE-REMOVAL. The host reads the owning package for the driver's
+  // facts and this host for the opposite fact: neither the retired driver tree
+  // nor the facade that re-exported the package is left behind. The retired
+  // paths are named, so a kernel copy reappearing fails this check instead of
+  // quietly becoming a second owner of one Agent's wire.
+  const hostKeepsNoClaudeCodeDriver = (await Promise.all([
+    "crates/licoup-native/src/platform/claude_code_driver.rs",
+    "crates/licoup-native/src/platform/claude_code_driver",
+  ].map((relativePath) => exists(relativePath)))).every((present) => !present) &&
+    !(await readText("crates/licoup-native/src/platform/mod.rs"))
+      .includes("mod claude_code_driver;");
   assert(
     !claudeCodeDriverFacadeSource.includes("Command::new") &&
       !claudeCodeDriverFacadeSource.includes("struct TurnState") &&
@@ -105,7 +117,14 @@ export async function checkRuntimeDriversAndLocalService(context, {
       !claudeCodePackageCode.includes("crate::platform") &&
       !claudeCodePackageCode.includes("licoup_native") &&
       !claudeCodePackageCode.includes("licoup-native") &&
-      claudeCodeDriverSource.includes("licoup_agent_claude_code::protocol") &&
+      // The driver reads the protocol beside it — `crate::protocol`, in the
+      // package that owns it — rather than the host facade's deleted
+      // `licoup_agent_claude_code::protocol` re-export, and the host keeps no
+      // driver copy at all. One copy, below the port.
+      claudeCodeDriverSource.includes("use crate::protocol") &&
+      !claudeCodeDriverSource.includes("licoup_agent_claude_code::protocol") &&
+      !claudeCodeDriverSource.includes("super::protocol::") &&
+      hostKeepsNoClaudeCodeDriver &&
       claudeCodeDriverSource.includes("MAX_POOLED_TRANSPORTS") &&
       claudeCodeDriverSource.includes("MAX_TRACKED_SESSIONS") &&
       claudeCodeDriverSource.includes("MAX_PROTOCOL_LINE_BYTES") &&
@@ -166,12 +185,25 @@ export async function checkRuntimeDriversAndLocalService(context, {
       `Claude Code turn state must not depend on ${dependency}`
     );
   }
-  for (const dependency of ["events::", "execution::", "protocol::", "supervision::"]) {
+  // The transport lifecycle reads the launch identity the package's own
+  // protocol owns: `crate::protocol::LaunchIdentity`, not the kernel leaf's
+  // deleted `super::launch::LaunchIdentity`. Reading the package's protocol is
+  // the invariant the move establishes, so it is required below rather than
+  // forbidden; only the sibling process leaves stay out of the transport, and a
+  // host re-export reappearing fails here.
+  for (const dependency of ["events::", "execution::", "supervision::"]) {
     assert(
       !new RegExp(`\\b${dependency}`, "u").test(claudeCodeTransportSource),
       `Claude Code transport lifecycle must not depend on ${dependency}`
     );
   }
+  assert(
+    claudeCodeTransportSource.includes("use crate::protocol::LaunchIdentity;") &&
+      !claudeCodeTransportSource.includes("super::protocol::") &&
+      !claudeCodeTransportSource.includes("super::launch::LaunchIdentity") &&
+      !claudeCodeTransportSource.includes("licoup_agent_claude_code::"),
+    "Claude Code transport lifecycle must read the launch identity its own package owns, never a host re-export"
+  );
   assert(
     claudeCodeSupervisionSource.includes("Arc::downgrade") &&
       !claudeCodeSupervisionSource.includes("ClaudeCodeParser") &&
@@ -209,7 +241,13 @@ export async function checkRuntimeDriversAndLocalService(context, {
     "crates/licoup-agent-openclaw/src/gateway_acp/params.rs",
     "crates/licoup-agent-openclaw/src/gateway_acp/continuity.rs"
   ]);
-  const openClawDriverShimSource = await readJoinedText([
+  // The seven leaves VENDOR-CODE-REMOVAL moved into this package. They are the
+  // package's own implementations at their own paths now, not the host's
+  // re-export shims, and the host's `platform/openclaw_driver` tree — module
+  // declaration, facade file and leaf directory — is gone. Both facts are read
+  // below, so either a shim or a kernel copy reappearing fails the check
+  // instead of becoming a second owner of the Gateway protocol.
+  const openClawPackageLeafSource = await readJoinedText([
     "crates/licoup-agent-openclaw/src/parser/codec.rs",
     "crates/licoup-agent-openclaw/src/gateway_acp/continuity.rs",
     "crates/licoup-agent-openclaw/src/gateway_acp/errors.rs",
@@ -218,6 +256,12 @@ export async function checkRuntimeDriversAndLocalService(context, {
     "crates/licoup-agent-openclaw/src/gateway_acp/params.rs",
     "crates/licoup-agent-openclaw/src/parser/protocol.rs"
   ]);
+  const hostKeepsNoOpenClawDriver = (await Promise.all([
+    "crates/licoup-native/src/platform/openclaw_driver.rs",
+    "crates/licoup-native/src/platform/openclaw_driver",
+  ].map((relativePath) => exists(relativePath)))).every((present) => !present) &&
+    !(await readText("crates/licoup-native/src/platform/mod.rs"))
+      .includes("mod openclaw_driver;");
   const openClawFoundationSource = await readJoinedText([
     "crates/licoup-agent-openclaw/src/gateway_acp/errors.rs",
     "crates/licoup-agent-openclaw/src/gateway_acp/model.rs",
@@ -249,16 +293,37 @@ export async function checkRuntimeDriversAndLocalService(context, {
       !openClawDriverFacadeSource.includes("struct OpenClawProtocol") &&
       !openClawDriverFacadeSource.includes("include!(") &&
       !openClawDriverFacadeSource.includes("#[path") &&
-      openClawDriverFacadeSource.includes("mod protocol;") &&
-      openClawDriverFacadeSource.includes("mod continuity;"),
-    "OpenClaw driver root must bind its own process leaves and re-export the package protocol without a second file copy"
+      // The package's driver root binds its own process leaves and reads the
+      // protocol beside it at its own path. The host facade's `mod protocol;`
+      // and `mod continuity;` re-export shims are the shape the move deleted,
+      // so either one reappearing fails, and so does the host keeping any
+      // OpenClaw driver module at all.
+      openClawDriverFacadeSource.includes("mod execution;") &&
+      openClawDriverFacadeSource.includes("mod supervision;") &&
+      openClawDriverFacadeSource.includes("pub use crate::gateway_acp::model::") &&
+      !openClawDriverFacadeSource.includes("mod protocol;") &&
+      !openClawDriverFacadeSource.includes("mod continuity;") &&
+      hostKeepsNoOpenClawDriver,
+    "OpenClaw driver root must bind its own process leaves and read the package protocol at its own path, never a second file copy"
   );
   assert(
-    openClawDriverShimSource.split("licoup_agent_openclaw").length - 1 === 7 &&
-      !openClawDriverShimSource.includes("struct OpenClawProtocol") &&
-      !openClawDriverShimSource.includes("impl ProtocolConfig") &&
-      !openClawDriverShimSource.includes("Command::new"),
-    "each moved OpenClaw leaf must be one re-export of the package that owns it, never a second implementation"
+    // Each of the seven leaves owns the vocabulary it names — the protocol
+    // state machine, the codec, the continuity binding, the update projection,
+    // the run/failure model and the request validation — and none of them is a
+    // re-export of something else. A shim (`pub use licoup_agent_openclaw::…`)
+    // or a thin second file fails here.
+    openClawPackageLeafSource.includes("pub struct OpenClawProtocol") &&
+      openClawPackageLeafSource.includes("impl ProtocolConfig") &&
+      openClawPackageLeafSource.includes("pub struct SessionBinding") &&
+      openClawPackageLeafSource.includes("pub enum DecodeFailure") &&
+      openClawPackageLeafSource.includes("pub fn projected_event") &&
+      openClawPackageLeafSource.includes("pub const RUNTIME_PROTOCOL") &&
+      openClawPackageLeafSource.includes("pub struct ProtocolFailure") &&
+      !openClawPackageLeafSource.includes("licoup_agent_openclaw") &&
+      !openClawPackageLeafSource.includes("Command::new") &&
+      !openClawPackageLeafSource.includes("include!(") &&
+      !openClawPackageLeafSource.includes("#[path"),
+    "each moved OpenClaw leaf must be the package's own implementation at its own path, never a re-export shim or a second file copy"
   );
   assert(
     openClawSupervisionSource.includes(

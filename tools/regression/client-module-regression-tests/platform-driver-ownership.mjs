@@ -1692,10 +1692,11 @@ test("Hermes package driver leaves retain exact tests and complete source owners
       "driver::tests::probe::"],
     ["rust.platform.hermes-driver.error-normalization",
       "driver::tests::errors::"],
-    // The one Hermes lane the host keeps is its own TUI gateway transport, so it
-    // is the only leaf here that still runs against the host's manifest.
+    // The Gateway lane — the bounded JSON-RPC client, the turn it drives and
+    // the history page over it — is the package's too, so it is one more leaf
+    // that runs against the package's own manifest.
     ["rust.platform.hermes-driver.tui-gateway",
-      "platform::hermes_tui_gateway"],
+      "tui_gateway"],
   ]);
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
     candidate.id.startsWith("rust.platform.hermes-driver."));
@@ -1703,13 +1704,8 @@ test("Hermes package driver leaves retain exact tests and complete source owners
   for (const [id, filter] of filters) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
-    if (id.endsWith(".tui-gateway")) {
-      assert.equal(module.command.args.includes("crates/licoup-native/Cargo.toml"), true,
-        `${id} must run against the host's own manifest`);
-    } else {
-      assert.equal(module.command.args.includes("crates/licoup-agent-hermes/Cargo.toml"), true,
-        `${id} must run against the package's own manifest`);
-    }
+    assert.equal(module.command.args.includes("crates/licoup-agent-hermes/Cargo.toml"), true,
+      `${id} must run against the package's own manifest`);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
         "crates/licoup-agent-hermes/src/driver.rs"), false);

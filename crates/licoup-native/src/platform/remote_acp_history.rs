@@ -39,7 +39,9 @@ pub(crate) fn conversation_list(params: &Value) -> Result<Value> {
         .map_err(|error| anyhow!(error.code()))?
         .ok_or_else(|| anyhow!("virtual_machine_connection_required"))?;
     if target == "hermes" && connection.is_hermes_tui_gateway() {
-        return super::remote_hermes_gateway_history::conversation_list_with_connection(
+        // The Gateway page is the Hermes package's projection over its own
+        // transport; this host lane only routes the connection to it.
+        return licoup_agent_hermes::remote_gateway_history::conversation_list_with_connection(
             params,
             &connection,
         );

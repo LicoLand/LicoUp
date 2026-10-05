@@ -2190,13 +2190,16 @@ dependencies = [
 name = "licoup-agent-hermes"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "licoup-agent-adapter-sdk",
  "licoup-agent-drivers",
  "licoup-agent-hermes",
  "licoup-agent-targets",
+ "licoup-conversation",
  "licoup-extension-contracts",
  "licoup-foundation",
  "serde_json",
+ "time",
  "uuid",
 ]
 

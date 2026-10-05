@@ -1519,10 +1519,11 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.mobile-relay.endpoint-ports",
       kind: "rust-domain",
-      summary: "Caller-owned port spine composed with the fixed SDK's endpoint traits",
+      summary: "Caller-owned port spine composed with the fixed SDK's endpoint traits, and the replacement admission over both",
       inputs: [
         "crates/licoup-native/src/domain/mobile_relay.rs",
         "crates/licoup-native/src/domain/mobile_relay/endpoint_ports.rs",
+        "crates/licoup-native/src/domain/mobile_relay/endpoint_ports/replacement.rs",
         "crates/licoup-native/src/domain/mobile_relay/endpoint_ports/tests.rs",
       ],
       command: rustLayer("domain::mobile_relay::endpoint_ports::tests::"),
@@ -2935,7 +2936,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-conversation/src/store/native_sessions.rs",
         "crates/licoup-foundation/src/core/sqlite_contract.rs",
         "crates/licoup-native/src/domain/workflow_store/**",
-        "crates/licoup-native/src/platform/hermes_tui_gateway_driver.rs",
         "crates/licoup-native/build.rs",
       ],
       command: rustLayer("domain::client_state_migration::tests::"),
