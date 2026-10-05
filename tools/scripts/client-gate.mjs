@@ -238,7 +238,7 @@ function validateCiTopology() {
     "npm run client:gate:verify",
     "--execution direct --host linux",
     "ref: ${{ github.event.pull_request.head.sha || github.sha }}",
-    "LICO_AUDITOR_GATE_DELEGATED",
+    "GENERAL_AUDITOR_GATE_DELEGATED",
     "cargo install cargo-audit --version 0.22.2 --locked",
     "node tools/scripts/client-android-sdk-bootstrap.mjs",
   ]) {
@@ -442,16 +442,16 @@ function validateReadmeFastPathTopology() {
     assertExcludes(workflow, "readme-fast-path.mjs verify",
       `${relativePath} must leave the privacy scan to Auditor`);
   }
-  const auditor = readText(".github/workflows/lico-auditor-gate.yml");
-  assertIncludes(auditor, "readme-fast-path.mjs classify",
-    "Auditor must classify the author README path");
-  assertExcludes(auditor, "readme-fast-path.mjs verify",
-    "Auditor must not use a repository-owned README privacy scanner");
-  if ((auditor.match(/lico-auditor\/bin\/lico-auditor gate/gmu) || []).length !== 1) {
-    fail("Auditor must run the canonical Lico-Auditor gate exactly once");
+  const auditor = readText(".github/workflows/general-auditor.yml");
+  assertExcludes(auditor, "readme-fast-path.mjs",
+    "Auditor must read candidate data without executing repository classifiers");
+  if ((auditor.match(/uses: Unka-Malloc\/General-Auditor@only/gmu) || []).length !== 1) {
+    fail("Auditor must invoke the canonical General-Auditor action exactly once");
   }
-  assertIncludes(auditor, "--no-contribution",
-    "Auditor must reduce README fast-path scanning to content privacy");
+  assertIncludes(auditor, "scope: history",
+    "Auditor must retain full reachable-history coverage");
+  assertIncludes(auditor, "persist-credentials: false",
+    "Auditor target checkout must not retain credentials");
 }
 
 function workflowJobIds(workflow) {

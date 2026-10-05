@@ -124,58 +124,28 @@ function parseCanonicalResult(stdout, exitCode, scanRoot) {
       failures: [redactedFailure("LICOMESH_DEV_PROTOCOL_ERROR", ".", `${exitCode}\0${sha256(stdout)}`)]
     };
   }
-  if (!Array.isArray(result)) {
-    return {
-      ok: false,
-      scannedFiles: 0,
-      failures: [redactedFailure("LICOMESH_DEV_PROTOCOL_ERROR", ".", `${exitCode}\0${sha256(stdout)}`)]
-    };
+  if (!result || !Array.isArray(result.findings) ||
+      !["completed", "completed_with_warnings", "policy_failure", "incomplete"].includes(result.status)) {
+    return { ok: false, failures: [redactedFailure("LICOMESH_DEV_PROTOCOL_ERROR", ".")] };
   }
-  const failures = [];
-  for (const finding of result) {
-    const validated = validateAuditorFinding(finding, scanRoot);
-    if (!validated) {
-      return {
-        ok: false,
-        scannedFiles: 0,
-        failures: [redactedFailure("LICOMESH_DEV_UNSAFE_OUTPUT", ".", sha256(stdout))]
-      };
-    }
-    if (["high-risk", "error"].includes(finding.severity)) failures.push(validated);
-  }
-  const expectedExitCode = failures.length === 0 ? 0 : 1;
+  const expectedExitCode = result.status === "policy_failure" ? 2 : result.status === "incomplete" ? 1 : 0;
   if (exitCode !== expectedExitCode) {
-    return {
-      ok: false,
-      scannedFiles: 0,
-      failures: [redactedFailure("LICOMESH_DEV_PROTOCOL_ERROR", ".", `${exitCode}\0${sha256(stdout)}`)]
-    };
+    return { ok: false, failures: [redactedFailure("LICOMESH_DEV_PROTOCOL_ERROR", ".")] };
+  }
+  const signals = [];
+  for (const finding of result.findings) {
+    if (!finding || typeof finding.file !== "string" ||
+        safeRelativePath(scanRoot, finding.file) === null || typeof finding.rule !== "string") {
+      return { ok: false, failures: [redactedFailure("LICOMESH_DEV_UNSAFE_OUTPUT", ".")] };
+    }
+    signals.push(redactedFailure(canonicalFailureReason(finding.rule), finding.file));
   }
   return {
-    ok: failures.length === 0,
+    ok: exitCode === 0,
     scope: "tracked-and-untracked-nonignored-working-tree",
-    failures
+    signals,
+    failures: exitCode === 0 ? [] : [redactedFailure("LICOMESH_DEV_AUDIT_INCOMPLETE_OR_POLICY_FAILURE", ".")]
   };
-}
-
-function validateAuditorFinding(finding, scanRoot) {
-  if (!finding || typeof finding !== "object" || Array.isArray(finding)) return null;
-  const relativePath = safeRelativePath(scanRoot, finding.path);
-  if (
-    relativePath === null ||
-    typeof finding.rule !== "string" ||
-    !/^[a-z0-9-]+$/u.test(finding.rule) ||
-    !Number.isInteger(finding.line) ||
-    finding.line < 0 ||
-    !["warning", "high-risk", "error"].includes(finding.severity) ||
-    typeof finding.fingerprint !== "string" ||
-    !/^(?:[a-f0-9]{16,64})?$/u.test(finding.fingerprint)
-  ) return null;
-  return redactedFailure(
-    canonicalFailureReason(finding.rule),
-    relativePath || ".",
-    finding.fingerprint,
-  );
 }
 
 function isGeneralAuditorDelegationEnabled(environment = process.env) {
@@ -187,7 +157,7 @@ function isGeneralAuditorDelegationEnabled(environment = process.env) {
   );
 }
 
-async function runCanonicalScan(scanRoot, command = "lico-auditor", options = {}) {
+async function runCanonicalScan(scanRoot, command = "general-auditor", options = {}) {
   if (
     options.allowAuditorDelegation === true &&
     isGeneralAuditorDelegationEnabled()
@@ -200,9 +170,11 @@ async function runCanonicalScan(scanRoot, command = "lico-auditor", options = {}
   }
   let stdout = "";
   let exitCode = 0;
+  const outputDirectory = await mkdtemp(path.join(tmpdir(), "general-auditor-result-"));
+  const output = path.join(outputDirectory, "result.json");
   try {
     const result = await execFileAsync(command, [
-      "gate", "--repo", scanRoot, "--profile", "licoup", "--no-contribution", "--format", "json",
+      "scan", "--repository", "LicoLand/LicoUp", "--directory", scanRoot, "--scope", "worktree", "--output", output,
     ], {
       cwd: repoRoot,
       encoding: "utf8",
@@ -211,6 +183,7 @@ async function runCanonicalScan(scanRoot, command = "lico-auditor", options = {}
     stdout = result.stdout;
   } catch (error) {
     if (error?.code === "ENOENT") {
+      await rm(outputDirectory, { recursive: true, force: true });
       return {
         ok: false,
         scannedFiles: 0,
@@ -220,6 +193,8 @@ async function runCanonicalScan(scanRoot, command = "lico-auditor", options = {}
     stdout = typeof error?.stdout === "string" ? error.stdout : "";
     exitCode = Number.isInteger(error?.code) ? error.code : -1;
   }
+  try { stdout = await readFile(output, "utf8"); } catch { stdout = ""; }
+  await rm(outputDirectory, { recursive: true, force: true });
   return parseCanonicalResult(stdout, exitCode, scanRoot);
 }
 
@@ -323,7 +298,7 @@ async function scanEvidenceFiles(root) {
   return { scannedFiles, failures: unique };
 }
 
-function buildReport(canonical, local, authoritativeScanner = "lico-auditor") {
+function buildReport(canonical, local, authoritativeScanner = "general-auditor") {
   const failures = [...canonical.failures, ...local.failures];
   return {
     schemaVersion,
@@ -331,6 +306,7 @@ function buildReport(canonical, local, authoritativeScanner = "lico-auditor") {
     authoritativeScanner,
     authoritativeScope: canonical.scope || "execution-error",
     localEvidenceScannedFiles: local.scannedFiles,
+    advisorySignals: canonical.signals || [],
     findingCount: failures.length,
     failures
   };
@@ -348,7 +324,7 @@ async function runSelfTest() {
   const temporary = await mkdtemp(path.join(tmpdir(), "lico-up-hygiene-"));
   try {
     const cleanProtocolResult = parseCanonicalResult(
-      "[]",
+      '{"status":"completed","findings":[]}',
       0,
       temporary
     );
@@ -375,33 +351,21 @@ async function runSelfTest() {
     );
 
     const canonical = parseCanonicalResult(
-      JSON.stringify([
-          {
-            path: "build/reports/local-info-fixture.json",
-            rule: "system-or-deployment-path",
-            severity: "high-risk",
-            line: 2,
-            fingerprint: sha256("self-test-machine-path").slice(0, 16)
-          },
-          {
-            path: "build/reports/local-info-fixture.json",
-            rule: "secret-assignment",
-            severity: "high-risk",
-            line: 3,
-            fingerprint: sha256("self-test-inline-secret").slice(0, 16)
-          }
-      ]),
-      1,
+      JSON.stringify({ status: "completed_with_warnings", findings: [
+        { file: "build/reports/local-info-fixture.json", rule: "system-or-deployment-path" },
+        { file: "build/reports/local-info-fixture.json", rule: "secret-assignment" }
+      ] }),
+      0,
       temporary
     );
     const local = await scanEvidenceFiles(temporary);
     const report = buildReport(canonical, local);
     const reasonCodes = new Set(report.failures.map((failure) => failure.reasonCode));
     requireSelfTest(report.ok === false, "SELF_TEST_DID_NOT_REJECT_FIXTURE");
-    requireSelfTest(reasonCodes.has("LICOMESH_DEV_SYSTEM_OR_DEPLOYMENT_PATH"), "SELF_TEST_HOME_PATH_NOT_REJECTED");
+    requireSelfTest(report.advisorySignals.length === 2, "SELF_TEST_SIGNALS_NOT_RETAINED");
     requireSelfTest(
-      reasonCodes.has("LICOMESH_DEV_SECRET_ASSIGNMENT"),
-      "SELF_TEST_SECRET_NOT_REJECTED"
+      canonical.ok === true,
+      "SELF_TEST_ADVISORY_SIGNAL_BLOCKED"
     );
     requireSelfTest(reasonCodes.has("LOCAL_IDENTITY_FIELD"), "SELF_TEST_IDENTITY_NOT_REJECTED");
     requireSelfTest(
@@ -496,13 +460,12 @@ if (selfTestOnly) {
     process.exit(1);
   }
 } else {
-  const delegatedToGeneralAuditor = isGeneralAuditorDelegationEnabled();
   let candidateRoot = "";
   let canonical;
   let local;
   try {
     candidateRoot = await materializePublicationCandidateRoot();
-    canonical = await runCanonicalScan(candidateRoot, "lico-auditor", {
+    canonical = await runCanonicalScan(repoRoot, "general-auditor", {
       allowAuditorDelegation: true
     });
     local = await scanEvidenceFiles(candidateRoot);
@@ -521,7 +484,7 @@ if (selfTestOnly) {
   const report = buildReport(
     canonical,
     local,
-    delegatedToGeneralAuditor ? "general-auditor" : "lico-auditor"
+    "general-auditor"
   );
   await mkdir(path.dirname(reportPath), { recursive: true });
   await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
