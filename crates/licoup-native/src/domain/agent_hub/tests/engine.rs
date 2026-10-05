@@ -1,12 +1,34 @@
 use super::super::*;
-use super::support::{portable_params, test_store};
+use super::support::{
+    FixtureReply, FixtureRoute, digest_document, fixture_artifact_channel, portable_params, serve,
+    sha256_hex, synthetic_agent, synthetic_registry, temp_dir, test_store,
+};
+use crate::domain::agent_hub::acquisition::{RecordingArtifactFetcher, VendorArtifactFetcher};
 use crate::domain::agent_hub::argv::RecordingArgvRunner;
+use crate::domain::agent_hub::contract::ArtifactIntegrity;
 use crate::domain::agent_hub::engine::{HubContext, apply_with, plan_with};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+const ARCHIVE_NAME: &str = "agent-darwin-arm64.tar.gz";
+
 fn macos_params(name: &str) -> Value {
     portable_params(name).1
+}
+
+/// Parameters for a macOS host with no package manager and no toolchain.
+fn bare_params(state_root: &std::path::Path) -> Value {
+    json!({
+        "agentId": "synthetic",
+        "stateRoot": state_root.to_string_lossy(),
+        "platformCapabilities": {
+            "os": "macos",
+            "architecture": "aarch64",
+            "managers": [],
+            "scanGeneration": 5
+        },
+        "discoveryCandidates": []
+    })
 }
 
 #[test]
@@ -104,16 +126,7 @@ fn cancel_before_runner_does_not_record_ownership() {
     let store = test_store("cancel");
     params["stateRoot"] = json!(store.root().to_string_lossy());
     let runner = RecordingArgvRunner::new();
-    let ctx = HubContext {
-        store,
-        capabilities: crate::domain::agent_hub::contract::PlatformInstallCapabilities {
-            os: "macos".to_string(),
-            architecture: "aarch64".to_string(),
-            managers: vec!["homebrew".to_string()],
-            scan_generation: 1,
-        },
-        runner: Arc::new(runner.clone()),
-    };
+    let ctx = HubContext::with_runner(&params, Arc::new(runner.clone())).unwrap();
     let planned = plan_with(&ctx, &params).unwrap();
     let mut cancelled = params;
     cancelled["confirmation"] = planned["confirmation"].clone();
@@ -124,7 +137,10 @@ fn cancel_before_runner_does_not_record_ownership() {
 }
 
 #[test]
-fn public_plan_entry_selects_cursor_official_artifact_without_shell_pipe() {
+fn an_artifact_channel_without_a_published_digest_is_refused_before_confirmation() {
+    // Cursor on a host without any package manager has exactly one offered
+    // channel: the vendor artifact. Its recipe declares no published digest, so
+    // no staged file can be verified and the plan must not issue a token.
     let mut params = macos_params("cursor-artifact");
     params["agentId"] = json!("cursor");
     params["platformCapabilities"] = json!({
@@ -134,15 +150,234 @@ fn public_plan_entry_selects_cursor_official_artifact_without_shell_pipe() {
         "scanGeneration": 3
     });
     let planned = plan(&params).unwrap();
+    assert_eq!(planned["ok"], false);
+    assert_eq!(planned["status"], "unavailable");
+    assert_eq!(planned["code"], "artifact_integrity_undeclared");
+    assert_eq!(planned["operation"], "install");
+    assert_eq!(planned["channelId"], "official-artifact");
+    assert_eq!(planned["channelKind"], "official-artifact");
+    assert!(
+        planned.get("confirmation").is_none(),
+        "an unsatisfiable plan must not issue a confirmation token: {planned}"
+    );
+    // The failure names the missing producer instead of leaking a literal
+    // placeholder into an install path.
+    assert!(!planned.to_string().contains("{artifact}"));
+
+    let mut confirmed = params;
+    confirmed["confirmation"] = json!("agent-hub:install:cursor:official-artifact:whatever");
+    let applied = apply(&confirmed).unwrap();
+    assert_eq!(applied["ok"], false);
+    assert_eq!(applied["code"], "artifact_integrity_undeclared");
+}
+
+#[test]
+fn a_confirmed_binary_install_stages_verified_bytes_before_installing() {
+    let body = b"synthetic vendor archive".to_vec();
+    let server = serve(vec![
+        FixtureRoute {
+            path: format!("/{ARCHIVE_NAME}.sha256"),
+            reply: FixtureReply::Body(digest_document(ARCHIVE_NAME, &body)),
+        },
+        FixtureRoute {
+            path: format!("/{ARCHIVE_NAME}"),
+            reply: FixtureReply::Body(String::from_utf8(body.clone()).unwrap()),
+        },
+    ]);
+    let base = server.base();
+    let state_root = temp_dir("binary-install");
+    let channel = fixture_artifact_channel(
+        &base,
+        Some(ArtifactIntegrity {
+            algorithm: "sha256".to_string(),
+            digest: None,
+            digest_url_template: Some(format!("{base}/{ARCHIVE_NAME}.sha256")),
+        }),
+    );
+    let registry = synthetic_registry(vec![synthetic_agent("synthetic", vec![channel])]);
+    let params = bare_params(&state_root);
+    let runner = RecordingArgvRunner::new();
+    let ctx = HubContext::with_ports(
+        &params,
+        Arc::new(runner.clone()),
+        Arc::new(VendorArtifactFetcher),
+        Arc::new(registry),
+    )
+    .unwrap();
+
+    let planned = plan_with(&ctx, &params).unwrap();
+    assert_eq!(planned["status"], "planned");
     assert_eq!(planned["selectedChannel"]["kind"], "official-artifact");
-    let argv = planned["selectedChannel"]["argv"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(Value::as_str)
-        .collect::<Vec<_>>();
-    assert_eq!(argv[0], "tar");
-    assert!(!argv.join(" ").contains('|'));
+    assert_eq!(
+        planned["acquisition"]["sourceUrl"],
+        format!("{base}/{ARCHIVE_NAME}")
+    );
+    assert_eq!(planned["acquisition"]["integrity"], "published-digest");
+    assert_eq!(planned["acquisition"]["role"], "archive");
+
+    let mut confirmed = params;
+    confirmed["confirmation"] = planned["confirmation"].clone();
+    let applied = apply_with(&ctx, &confirmed).unwrap();
+    assert_eq!(applied["ok"], true, "{applied}");
+    assert_eq!(applied["status"], "available");
+    assert_eq!(applied["ownership"], "owned");
+    assert_eq!(applied["stagedArtifact"]["role"], "archive");
+    assert_eq!(applied["stagedArtifact"]["sha256"], sha256_hex(&body));
+    assert_eq!(applied["stagedArtifact"]["bytes"], body.len());
+    assert_eq!(applied["stagedArtifact"]["resumed"], false);
+
+    // The install argv runs with the staged paths, then the channel's own
+    // verification argv runs.
+    let recorded = runner.recorded();
+    assert_eq!(recorded.len(), 2, "{recorded:?}");
+    assert_eq!(recorded[0].0, "tar");
+    assert_eq!(recorded[0].1[0], "-xzf");
+    assert_eq!(recorded[1].0, "synthetic-agent");
+    assert_eq!(recorded[1].1, vec!["--version".to_string()]);
+    let staged_path = std::path::PathBuf::from(&recorded[0].1[1]);
+    assert!(
+        staged_path.ends_with(ARCHIVE_NAME),
+        "{staged_path:?} is not the staged vendor artifact"
+    );
+    assert_eq!(std::fs::read(&staged_path).unwrap(), body);
+    assert!(
+        staged_path.starts_with(state_root.join("agent-hub/staging")),
+        "acquisition staged outside its own root: {staged_path:?}"
+    );
+    assert_eq!(recorded[0].1[2], "-C");
+    assert!(std::path::Path::new(&recorded[0].1[3]).is_dir());
+    assert!(
+        recorded
+            .iter()
+            .all(|(program, args)| !program.contains('{')
+                && args.iter().all(|arg| !arg.contains('{'))),
+        "no placeholder may reach the install argv: {recorded:?}"
+    );
+    server.finish();
+}
+
+#[test]
+fn a_confirmed_vendor_script_install_runs_the_staged_script() {
+    let body = b"synthetic vendor installer".to_vec();
+    let script_name = "install.sh";
+    let server = serve(vec![
+        FixtureRoute {
+            path: format!("/{script_name}.sha256"),
+            reply: FixtureReply::Body(digest_document(script_name, &body)),
+        },
+        FixtureRoute {
+            path: format!("/{script_name}"),
+            reply: FixtureReply::Body(String::from_utf8(body.clone()).unwrap()),
+        },
+    ]);
+    let base = server.base();
+    let state_root = temp_dir("script-install");
+    let mut channel = fixture_artifact_channel(
+        &base,
+        Some(ArtifactIntegrity {
+            algorithm: "sha256".to_string(),
+            digest: None,
+            digest_url_template: Some(format!("{base}/{script_name}.sha256")),
+        }),
+    );
+    let artifact = channel.artifact.as_mut().unwrap();
+    artifact.url_template = format!("{base}/{{installer}}");
+    artifact.installer = [("macos".to_string(), script_name.to_string())]
+        .into_iter()
+        .collect();
+    channel.install_argv = vec!["bash".to_string(), "{script}".to_string()];
+    channel.update_argv = Vec::new();
+    channel.uninstall_argv = Vec::new();
+    channel.verify_argv = Vec::new();
+    let registry = synthetic_registry(vec![synthetic_agent("synthetic", vec![channel])]);
+    let params = bare_params(&state_root);
+    let runner = RecordingArgvRunner::new();
+    let ctx = HubContext::with_ports(
+        &params,
+        Arc::new(runner.clone()),
+        Arc::new(VendorArtifactFetcher),
+        Arc::new(registry),
+    )
+    .unwrap();
+
+    let planned = plan_with(&ctx, &params).unwrap();
+    assert_eq!(planned["status"], "planned", "{planned}");
+    assert_eq!(planned["acquisition"]["role"], "script");
+    assert_eq!(
+        planned["acquisition"]["sourceUrl"],
+        format!("{base}/{script_name}")
+    );
+
+    let mut confirmed = params;
+    confirmed["confirmation"] = planned["confirmation"].clone();
+    let applied = apply_with(&ctx, &confirmed).unwrap();
+    assert_eq!(applied["ok"], true, "{applied}");
+
+    let recorded = runner.recorded();
+    assert_eq!(recorded.len(), 1, "{recorded:?}");
+    assert_eq!(recorded[0].0, "bash");
+    let staged_path = std::path::PathBuf::from(&recorded[0].1[0]);
+    assert!(staged_path.ends_with(script_name), "{staged_path:?}");
+    assert_eq!(std::fs::read(&staged_path).unwrap(), body);
+    server.finish();
+}
+
+#[test]
+fn an_unresolved_install_reference_is_refused_instead_of_running_a_literal_path() {
+    // A channel that installs by reference has no declared destination, so the
+    // reference is the caller's to supply and never a defaulted placeholder.
+    let state_root = temp_dir("install-ref");
+    let mut channel = fixture_artifact_channel("https://vendor.invalid", None);
+    channel.install_argv = vec!["rm".to_string(), "{install}".to_string()];
+    let registry = synthetic_registry(vec![synthetic_agent("synthetic", vec![channel])]);
+    let params = bare_params(&state_root);
+    let runner = RecordingArgvRunner::new();
+    let ctx = HubContext::with_ports(
+        &params,
+        Arc::new(runner.clone()),
+        Arc::new(RecordingArtifactFetcher::new()),
+        Arc::new(registry),
+    )
+    .unwrap();
+
+    let planned = plan_with(&ctx, &params).unwrap();
+    assert_eq!(planned["ok"], false);
+    assert_eq!(planned["code"], "install_reference_unresolved");
+    assert!(runner.recorded().is_empty());
+
+    let mut supplied = params;
+    supplied["installRef"] = json!("/tmp/synthetic-agent-reference");
+    let planned = plan_with(&ctx, &supplied).unwrap();
+    assert_eq!(planned["status"], "planned");
+    let mut confirmed = supplied;
+    confirmed["confirmation"] = planned["confirmation"].clone();
+    let applied = apply_with(&ctx, &confirmed).unwrap();
+    assert_eq!(applied["ok"], true);
+    assert_eq!(
+        runner.recorded().first().cloned(),
+        Some((
+            "rm".to_string(),
+            vec!["/tmp/synthetic-agent-reference".to_string()]
+        ))
+    );
+}
+
+#[test]
+fn a_confirmation_token_does_not_authorize_a_different_requested_version() {
+    // A vendor-binary channel fetches the artifact its requested version names,
+    // so a token confirmed for one version must not apply another.
+    let mut params = macos_params("token-version");
+    params["agentId"] = json!("codex");
+    params["channelId"] = json!("npm");
+    let ctx = HubContext::with_runner(&params, Arc::new(RecordingArgvRunner::new())).unwrap();
+    let planned = plan_with(&ctx, &params).unwrap();
+    assert_eq!(planned["status"], "planned");
+
+    let mut changed = params;
+    changed["version"] = json!("9.9.9");
+    changed["confirmation"] = planned["confirmation"].clone();
+    let error = apply_with(&ctx, &changed).unwrap_err().to_string();
+    assert!(error.contains("confirmation_mismatch"), "{error}");
 }
 
 #[test]
