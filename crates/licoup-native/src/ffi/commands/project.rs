@@ -105,10 +105,11 @@ pub(super) fn handle_project_import_apply(command: AdmittedCommand) -> Result<Cl
 /// conversion of a source this owner never reads; whether it is canonical is the
 /// project owner's answer, reported with its own codes and paths.
 fn import_document(command: &AdmittedCommand) -> Result<Value> {
-    command
+    let document = command
         .option_json("stdin-json")
         .cloned()
-        .ok_or_else(|| handler_error("cli_json_invalid", "provide_valid_json"))
+        .ok_or_else(|| handler_error("cli_json_invalid", "provide_valid_json"))?;
+    Ok(document)
 }
 
 /// Declare one artifact input: the consumer work item and the result it takes.
