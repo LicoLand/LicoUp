@@ -1,5 +1,14 @@
-pub(super) const VENDOR_DEFAULT_PORT: u16 = 18789;
-pub(super) const DEFAULT_PORT: u16 = 24189;
+/// The endpoint policy OpenClaw owns.
+///
+/// The vendor-default port, the port this client prefers and the attach-mode
+/// vocabulary are facts about OpenClaw rather than about this client, so they
+/// live in the adapter package that carries the Agent
+/// ([`licoup_agent_openclaw::policy`]) and are read here rather than restated.
+/// What stays in this module is the engine's own operational configuration: the
+/// state directory and schema, the preferred-port scan span, the reserved ports
+/// and the stable failure codes.
+pub(super) use licoup_agent_openclaw::policy::{DEFAULT_PORT, VENDOR_DEFAULT_PORT};
+
 pub(super) const PORT_RANGE_SPAN: u16 = 16;
 pub(super) const DEFAULT_HOST: &str = "127.0.0.1";
 pub(super) const STATE_DIR: &str = "openclaw-gateway";

@@ -1,18 +1,5 @@
 use super::*;
 
-/// Install the OpenClaw package's turn-event port for this test process.
-///
-/// The package owns what one OpenClaw turn emits; this host owns where it goes.
-/// A driver test that captures events must install the host's answer, or the
-/// events the package's own state machine produces would be silently dropped
-/// and the capture would only ever see the kernel transport's own emissions.
-/// Installation is process-wide and first-wins, so a later call is a no-op.
-pub(super) fn install_openclaw_turn_event_port() {
-    let _ = licoup_agent_openclaw::port::turn_event::install(
-        crate::platform::openclaw_turn_event_port(),
-    );
-}
-
 pub(super) fn absolute_test_cwd() -> PathBuf {
     std::env::current_dir().expect("test working directory")
 }

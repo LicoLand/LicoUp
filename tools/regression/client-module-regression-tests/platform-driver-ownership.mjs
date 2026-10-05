@@ -1323,36 +1323,36 @@ test("Claude Code driver leaves retain exact tests and complete source ownership
   assert.deepEqual(packageModule.inputs, ["crates/licoup-agent-claude-code/**"]);
 });
 
-test("OpenClaw driver leaves retain exact tests and complete source ownership", async () => {
+test("OpenClaw package leaves retain exact tests and complete source ownership", async () => {
   const filters = new Map([
     ["rust.platform.openclaw-driver.composition",
-      "platform::openclaw_driver::tests::composition::"],
+      "driver::tests::composition::"],
     ["rust.platform.openclaw-driver.test-support",
-      "platform::openclaw_driver::tests::"],
+      "driver::tests::"],
     ["rust.platform.openclaw-driver.model",
-      "platform::openclaw_driver::tests::model::"],
+      "driver::tests::model::"],
     ["rust.platform.openclaw-driver.errors",
-      "platform::openclaw_driver::tests::errors::"],
+      "driver::tests::errors::"],
     ["rust.platform.openclaw-driver.params",
-      "platform::openclaw_driver::tests::params::"],
+      "driver::tests::params::"],
     ["rust.platform.openclaw-driver.codec",
-      "platform::openclaw_driver::tests::codec::"],
+      "driver::tests::codec::"],
     ["rust.platform.openclaw-driver.continuity",
-      "platform::openclaw_driver::tests::continuity::"],
+      "driver::tests::continuity::"],
     ["rust.platform.openclaw-driver.events",
-      "platform::openclaw_driver::tests::events::"],
+      "driver::tests::events::"],
     ["rust.platform.openclaw-driver.protocol",
-      "platform::openclaw_driver::tests::protocol::"],
+      "driver::tests::protocol::"],
     ["rust.platform.openclaw-driver.interaction",
-      "platform::openclaw_driver::tests::interaction::"],
+      "driver::tests::interaction::"],
     ["rust.platform.openclaw-driver.io",
-      "platform::openclaw_driver::tests::io::"],
+      "driver::tests::io::"],
     ["rust.platform.openclaw-driver.supervision",
-      "platform::openclaw_driver::tests::supervision::"],
+      "driver::tests::supervision::"],
     ["rust.platform.openclaw-driver.probe",
-      "platform::openclaw_driver::tests::probe::"],
+      "driver::tests::probe::"],
     ["rust.platform.openclaw-driver.execution",
-      "platform::openclaw_driver::tests::execution::"],
+      "driver::tests::execution::"],
     ["rust.platform.openclaw-driver.replay",
       "replay::"],
   ]);
@@ -1367,48 +1367,98 @@ test("OpenClaw driver leaves retain exact tests and complete source ownership", 
         "crates/licoup-native/src/platform/openclaw_driver.rs"), false);
     }
   }
-  assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/openclaw_driver/params.rs",
-  ])), [
-    "architecture.client-boundaries",
-    "regression.openclaw-driver-source-bundle",
-    "rust.platform.openclaw-driver.params",
+
+  // Both halves of the driver are the package's: no kernel path may come back as
+  // a second owner of the protocol, the reviewed process sites or their tests.
+  for (const retiredPath of [
+    "crates/licoup-native/src/platform/openclaw_driver.rs",
+    "crates/licoup-native/src/platform/openclaw_driver",
+  ]) {
+    assert.equal(await exists(retiredPath), false,
+      `${retiredPath} is retired: the OpenClaw package owns its driver`);
+  }
+  const platform = await fs.readFile(
+    path.join(repoRoot, "crates/licoup-native/src/platform/mod.rs"), "utf8");
+  assert.doesNotMatch(platform, /mod openclaw_driver;/u,
+    "the host module tree still declares an OpenClaw driver module");
+  // The composition names the package, exactly as the Codex arm names its own.
+  const composition = await fs.readFile(
+    path.join(repoRoot,
+      "crates/licoup-native/src/platform/runtime_adapters/drivers.rs"), "utf8");
+  assert.ok(
+    composition.includes("use licoup_agent_openclaw::driver as openclaw_driver;"),
+    "the composition must read the package's driver",
+  );
+
+  // A source the package owns selects the package's own module as well as the
+  // leaf that owns the concern.
+  const ownership = new Map([
+    ["crates/licoup-agent-openclaw/src/driver/execution.rs",
+      ["rust.core.agent-openclaw-package",
+        "rust.platform.openclaw-driver.execution"]],
+    ["crates/licoup-agent-openclaw/src/gateway_acp/params.rs",
+      ["rust.core.agent-openclaw-package",
+        "rust.platform.openclaw-driver.params"]],
+    ["crates/licoup-native/src/platform/openclaw_host.rs",
+      ["rust.platform.openclaw-host-ports"]],
+    ["crates/licoup-native/tests/fixtures/fake_openclaw_acp.rs",
+      ["rust.platform.openclaw-host-ports"]],
   ]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/openclaw_driver/continuity.rs",
-  ])), [
-    "architecture.client-boundaries",
-    "regression.openclaw-driver-source-bundle",
-    "rust.platform.openclaw-driver.continuity",
-  ]);
+  for (const [source, expected] of ownership) {
+    const selected = ids(selectModulesForChangedPaths([source]));
+    for (const id of expected) {
+      assert.equal(selected.includes(id), true,
+        `${source} must select ${id}, selected ${selected.join(", ")}`);
+    }
+  }
 
   const sourceCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
     candidate.id === "regression.openclaw-driver-source-bundle");
   assert.deepEqual(sourceCheck.command.args,
     ["--test", "tests/contract/client/openclaw-driver-source-bundle.test.mjs"]);
+  const hostPorts = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "rust.platform.openclaw-host-ports");
+  assert.deepEqual(hostPorts.command.args.at(-1), "platform::openclaw_host::tests::");
 
   const ownedInputs = new Set([
     ...modules.flatMap((module) => module.inputs),
     ...sourceCheck.inputs,
+    ...hostPorts.inputs,
   ]);
-  const splitSources = await sourceFiles(
-    "crates/licoup-native/src/platform/openclaw_driver",
-    ".rs",
-  );
   for (const relativePath of [
-    "crates/licoup-native/src/platform/openclaw_driver.rs",
-    ...splitSources,
-    // The Gateway ACP protocol moved to the OpenClaw adapter package, whose own
-    // module owns it; the client keeps only the re-export leaves above.
+    "crates/licoup-agent-openclaw/src/driver.rs",
+    "crates/licoup-agent-openclaw/src/policy.rs",
+    "crates/licoup-agent-openclaw/src/port/gateway.rs",
+    ...await sourceFiles("crates/licoup-agent-openclaw/src/driver", ".rs"),
     "crates/licoup-agent-openclaw/src/parser.rs",
     ...await sourceFiles("crates/licoup-agent-openclaw/src/parser", ".rs"),
     ...await sourceFiles("crates/licoup-agent-openclaw/src/gateway_acp", ".rs"),
     "crates/licoup-agent-openclaw/src/gateway.rs",
     "crates/licoup-agent-openclaw/src/replay.rs",
+    // The host answers this package's ports from its own modules, and those
+    // answers keep their own precise owner.
+    "crates/licoup-native/src/platform/openclaw_host.rs",
+    "crates/licoup-native/src/platform/openclaw_host/tests.rs",
+    "crates/licoup-native/tests/fixtures/fake_openclaw_acp.rs",
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
-      `OpenClaw driver source must have a precise regression owner: ${relativePath}`);
+      `OpenClaw source must have a precise regression owner: ${relativePath}`);
   }
+
+  // The package's own crate keeps one fallback owner for every source it ships.
+  const owns = (relativePath) => CLIENT_MODULE_CATALOG.some((module) =>
+    module.inputs.some((input) => input.endsWith("/**")
+      ? relativePath.startsWith(input.slice(0, -2))
+      : input === relativePath));
+  const packageSources = await sourceFiles("crates/licoup-agent-openclaw/src", ".rs");
+  assert.ok(packageSources.length > 0);
+  for (const relativePath of packageSources) {
+    assert.equal(owns(relativePath), true,
+      `OpenClaw package source must have a regression owner: ${relativePath}`);
+  }
+  const packageModule = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "rust.core.agent-openclaw-package");
+  assert.deepEqual(packageModule.inputs, ["crates/licoup-agent-openclaw/**"]);
 });
 
 test("Pi driver leaves retain exact tests and complete source ownership", async () => {

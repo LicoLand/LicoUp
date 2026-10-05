@@ -16,7 +16,7 @@ use crate::gateway_acp::errors::ProtocolFailure;
 use crate::gateway_acp::params::ProtocolConfig;
 use crate::parser::codec::{INITIALIZE_REQUEST_ID, PROMPT_REQUEST_ID, SESSION_REQUEST_ID};
 use crate::parser::protocol::{OpenClawProtocol, ProtocolEffect, ProtocolPhase};
-use crate::port::{execution, turn_event};
+use crate::port::{execution, gateway, turn_event};
 use crate::registration::{self, ADAPTER_ID, CONTRACT, FRAMING};
 
 /// The five recorded transcripts, in the order the harness checks them.
@@ -268,18 +268,27 @@ fn the_gateway_endpoint_pair_is_one_spelling_of_one_service() {
 }
 
 #[test]
-fn both_ports_are_fail_closed_before_the_host_installs_them() {
+fn every_port_is_fail_closed_before_the_host_installs_it() {
     // These ports are process-wide and a host installs them once, so this test
     // states the uninstalled answer rather than racing an installation: the
-    // package must never invent an emission or an admission.
+    // package must never invent an emission, an admission or an endpoint.
     assert!(!turn_event::installed());
     assert!(!execution::installed());
+    assert!(!gateway::installed());
     assert!(
         !execution::admits_execution(),
         "a package that cannot ask the host's admission never claims it was admitted"
     );
+    // The Gateway answer is the engine's own "unavailable" code rather than a
+    // new package code: a package that cannot ask reports the same refusal the
+    // transport has always reported for a Gateway nobody could ensure.
+    assert_eq!(
+        gateway::ensure_attach_endpoint("openclaw").unwrap_err(),
+        "openclaw_gateway_unavailable"
+    );
     // An emission with no installed port is a no-op rather than a panic or a
     // second sink.
+    turn_event::emit_turn_event("dispatch.turn.bound", "session", "turn", json!({}));
     turn_event::emit_agent_message_chunk("session", "turn", "text");
     turn_event::emit_agent_processing("session", "turn", "reasoning", None);
 }

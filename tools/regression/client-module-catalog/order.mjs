@@ -738,6 +738,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.platform.openclaw-gateway.lifecycle",
   "rust.platform.openclaw-gateway.model",
   "rust.platform.openclaw-gateway.policy",
+  "rust.platform.openclaw-host-ports",
   "regression.claude-code-driver-source-bundle",
   "rust.platform.claude-code-package.artifact",
   "rust.platform.claude-code-package.protocol",

@@ -2221,6 +2221,7 @@ name = "licoup-agent-openclaw"
 version = "0.14.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
  "licoup-agent-targets",
  "licoup-extension-contracts",
  "licoup-foundation",

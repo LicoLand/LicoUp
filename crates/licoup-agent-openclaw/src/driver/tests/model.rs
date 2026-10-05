@@ -11,7 +11,7 @@ fn failed_result_projects_only_static_error_and_bound_ids() {
     assert!(result.stdout_truncated);
     assert!(matches!(
         result.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Failed { .. })
+        Some(licoup_agent_adapter_sdk::Transition::Failed { .. })
     ));
     assert_eq!(result.effective.cwd, EffectiveSettings::default().cwd);
 }

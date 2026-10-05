@@ -1,8 +1,11 @@
-use super::super::openclaw_gateway::{self, DEFAULT_PORT, GatewayEndpoint, VENDOR_DEFAULT_PORT};
-use super::super::process_supervisor::SupervisedChild;
-use super::super::virtual_machine::SshRuntimeConnection;
-use super::errors::ProtocolFailure;
-use super::params::text_param;
+use crate::gateway::GatewayEndpoint;
+use crate::gateway_acp::errors::ProtocolFailure;
+use crate::gateway_acp::params::text_param;
+use crate::policy::DEFAULT_PORT;
+use crate::port::gateway;
+use licoup_agent_targets::platform::user_shell_environment;
+use licoup_agent_targets::platform::virtual_machine::SshRuntimeConnection;
+use licoup_foundation::platform::process_supervisor::SupervisedChild;
 use serde_json::Value;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -51,7 +54,7 @@ impl LaunchSpec {
                 .map_err(io::Error::other)?,
             None => {
                 let mut command = Command::new(&self.executable);
-                super::super::user_shell_environment::apply_to_command(&mut command);
+                user_shell_environment::apply_to_command(&mut command);
                 command.args(&self.args).current_dir(&self.cwd);
                 // Keep the optional token out of argv and all projected diagnostics.
                 if let Ok(token) = std::env::var("OPENCLAW_GATEWAY_TOKEN")
@@ -70,6 +73,13 @@ impl LaunchSpec {
     }
 }
 
+/// Resolve the endpoint one attach names.
+///
+/// An explicit request parameter is the caller's own endpoint and is read here;
+/// otherwise the client's Gateway lifecycle is asked to ensure one. That engine
+/// is reached through [`gateway`], so this module states which parameters name
+/// an endpoint and what each engine failure means, and owns no socket, no state
+/// document and no process of its own.
 pub(super) fn resolve_gateway_endpoint(
     executable: &str,
     params: &Value,
@@ -77,7 +87,7 @@ pub(super) fn resolve_gateway_endpoint(
     if let Some(ws_url) = text_param(params, &["gatewayWsUrl", "gatewayUrl", "wsUrl"]) {
         return Ok(explicit_gateway_endpoint(&ws_url));
     }
-    openclaw_gateway::ensure_attach_endpoint(executable).map_err(|error| {
+    gateway::ensure_attach_endpoint(executable).map_err(|error| {
         let code = error.to_string();
         let failure_code = if code.contains("openclaw_executable_missing") {
             "openclaw_executable_missing"
@@ -119,13 +129,5 @@ fn explicit_gateway_endpoint(ws_url: &str) -> GatewayEndpoint {
         } else {
             format!("ws://{}", trimmed.trim_start_matches("http://"))
         },
-    }
-}
-
-pub(super) fn attach_mode(port: u16) -> &'static str {
-    if port == VENDOR_DEFAULT_PORT {
-        "vendor-default"
-    } else {
-        "managed-or-reused"
     }
 }

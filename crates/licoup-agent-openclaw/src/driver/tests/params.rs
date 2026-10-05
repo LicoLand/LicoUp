@@ -21,11 +21,12 @@ fn request_validation_normalizes_agent_and_keeps_private_values_off_command_conf
 
 #[test]
 fn conflicting_native_session_identity_fails_closed() {
-    let failure = client_params(
+    let failure = ProtocolConfig::from_params(
         &json!({"sessionKey": "different"}),
         "prompt",
         "requested",
         Some(absolute_test_cwd().as_path()),
+        || Ok(Vec::new()),
     )
     .unwrap_err();
     assert_eq!(failure.code, "openclaw_acp_conflicting_session_id");
@@ -33,11 +34,12 @@ fn conflicting_native_session_identity_fails_closed() {
 
 #[test]
 fn private_instructions_fail_as_a_typed_capability_without_prompt_rewrite() {
-    let failure = client_params(
+    let failure = ProtocolConfig::from_params(
         &json!({"privateInstructions": "private-system-canary"}),
         "exact-user-prompt",
         "",
         Some(absolute_test_cwd().as_path()),
+        || Ok(Vec::new()),
     )
     .unwrap_err();
     assert_eq!(
