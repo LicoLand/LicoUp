@@ -7,6 +7,10 @@ const N = "crates/licoup-native/src/";
 // The Codex adapter package owns the one Agent whose process an extension host
 // starts; its reviewed launch sites are keyed here rather than under N.
 const C = "crates/licoup-agent-codex/src/";
+// The DeepSeek Harness adapter package owns the process its reviewed launch
+// runs; VENDOR-CODE-REMOVAL moved that site out of the host, so its record is
+// keyed here rather than under N. Its leaf is the package's `driver` root.
+const DS = "crates/licoup-agent-deepseek/src/";
 const DR = "crates/licoup-agent-drivers/src/";
 const F = "crates/licoup-foundation/src/";
 const T = "crates/licoup-agent-targets/src/";
@@ -54,7 +58,7 @@ const SOURCES = Object.freeze({
   [C + "app_server/driver/launch.rs"]: "de5dfbad8261b94a1bb37d1bf9ae4620af35e1856434b16c74b5ad7cc9f8b862",
   [N + "platform/cursor_driver/execution.rs"]: "e50f484719e8828fb7842711337d8886d6b220986fced0d2757fedbe6038576f",
   [N + "platform/cursor_driver/probe.rs"]: "e5fb151d35ada8ac16770cfa444a46edc9b07dfbfd02b36f165c0947b3f69c77",
-  [N + "platform/deepseek_harness_driver.rs"]: "10aae4193ca615fdc77460d798172cd369c856babf4a6d773880ad3a1b7490d5",
+  [DS + "driver.rs"]: "6ff0622a273dcc0c0f4ab829e5dd5803aac38df24937667c71412c980f2d5503",
   [N + "platform/extension_host/isolation/confinement.rs"]: "2cc72396a086eea81f47ce7fabe818dd4b5f2c054d3280e06c45cd8ac8046956",
   [N + "platform/generic_cli_driver.rs"]: "6970fd309539bbfa2d5b4fbd7191cb292b86b5b1a3f1ebdde8b184c7747c6341",
   [N + "platform/hermes_driver/probe.rs"]: "973dddadc2653371f6c19a21a3987a19fa62aae3edb2694994bd7abf4e242d23",
@@ -197,8 +201,8 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
   ...entries(N + "platform/cursor_driver/probe.rs", parameter("executable: &str"), [
     ["aea70b7b1ea4", "Construct the bounded Cursor capability probe from the driver-supplied executable, preserving its environment isolation and output handling."],
   ]),
-  ...entries(N + "platform/deepseek_harness_driver.rs", field("Command::new(&config.executable)"), [
-    ["0988ff707b77", "Start the configured DeepSeek Harness SDK-profile JSON-RPC carrier under its workspace and supervised stdio; this is an Agent runtime binding, not a fixed native artifact."],
+  ...entries(DS + "driver.rs", field("Command::new(&config.executable)"), [
+    ["b0f6bd00169d", "Start the configured DeepSeek Harness SDK-profile JSON-RPC carrier under its workspace and supervised stdio; this is an Agent runtime binding, not a fixed native artifact."],
   ]),
   ...entries(N + "platform/extension_host/isolation/confinement.rs", field("Command::new(&program.executable)"), [
     ["f01e7857fd11", "Start one extension instance's validated program in trusted local mode through the executable and arguments the confinement plan admitted before any process exists; the plan canonicalizes that path, so the executable stays intentional runtime state rather than a fixed native artifact, and this record grants no confinement."],
