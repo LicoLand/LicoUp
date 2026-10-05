@@ -664,8 +664,6 @@ fn initialize_schema(connection: &mut Connection) -> Result<()> {
         "CREATE TABLE IF NOT EXISTS project_meta(
            key TEXT PRIMARY KEY, value TEXT NOT NULL
          );
-         INSERT INTO project_meta(key, value) VALUES ('version', '2')
-           ON CONFLICT(key) DO NOTHING;
          CREATE TABLE IF NOT EXISTS project_identities(
            registration_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
            project_id TEXT NOT NULL UNIQUE,
@@ -716,6 +714,14 @@ fn initialize_schema(connection: &mut Connection) -> Result<()> {
            digest TEXT NOT NULL,
            PRIMARY KEY(project_id, source_id)
          );",
+    )?;
+    // The recorded version is written from the constant itself, so the shape a
+    // fresh database declares and the shape this owner validates can never drift
+    // apart the way a duplicated literal can.
+    connection.execute(
+        "INSERT INTO project_meta(key, value) VALUES ('version', ?1)
+           ON CONFLICT(key) DO NOTHING",
+        params![PROJECT_STORE_SCHEMA_VERSION],
     )?;
     Ok(())
 }

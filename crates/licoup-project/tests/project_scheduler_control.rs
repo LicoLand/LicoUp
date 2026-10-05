@@ -116,7 +116,7 @@ fn import(store: &ProjectIdentityStore, project_id: &str, work_items: Vec<Value>
     let document = json!({
         "schema": PLAN_DOCUMENT_SCHEMA,
         "projectId": project_id,
-        "planId": format!("plan:{project_id}"),
+        "planId": format!("plan:{}", project_id.trim_start_matches("project:")),
         "source": {
             "sourceId": "source:roadmap",
             "sourceKind": "markdown",
