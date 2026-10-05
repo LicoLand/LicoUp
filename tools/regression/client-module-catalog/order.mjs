@@ -185,6 +185,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "flutter.feature.skill-hub.usage",
   "flutter.feature.targets",
   "flutter.feature.selection-policy",
+  "flutter.feature.project-canvas",
   "flutter.layer.contracts",
   "flutter.layer.layout",
   "flutter.feature.continuous-assistant.pane",
