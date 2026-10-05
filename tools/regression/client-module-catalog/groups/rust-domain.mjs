@@ -347,6 +347,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/agent_usage/contract.rs",
         "crates/licoup-native/src/domain/agent_usage/incremental.rs",
         "crates/licoup-native/src/domain/agent_usage/model_identity.rs",
+        "crates/licoup-native/src/domain/agent_usage/outcome_producer.rs",
         "crates/licoup-native/src/domain/agent_usage/persistence.rs",
         "crates/licoup-native/src/domain/agent_usage/tests.rs",
         "crates/licoup-native/src/domain/agent_usage/usage_journal.rs",
