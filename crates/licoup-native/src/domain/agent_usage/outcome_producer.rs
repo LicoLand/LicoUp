@@ -131,6 +131,15 @@ pub enum OutcomePromotionSubject {
 }
 
 impl OutcomeSampleKind {
+    /// The stable token this kind contributes to a scope identity.
+    fn token(self) -> &'static str {
+        match self {
+            Self::Routing => "routing",
+            Self::Context => "context",
+            Self::Collaboration => "collaboration",
+        }
+    }
+
     fn promotion_subject(self) -> OutcomePromotionSubject {
         match self {
             Self::Routing => OutcomePromotionSubject::RoutingOnly,
@@ -172,10 +181,14 @@ pub struct OutcomeScope {
 
 impl OutcomeScope {
     /// The stable key of this scope inside the register.
+    ///
+    /// Every member of the scope is part of its identity, the sample kind
+    /// included: a routing sample and a context sample measured different
+    /// things, so they are two records and never one averaged record.
     pub fn key(&self) -> String {
         let baseline = self.baseline.as_ref().map(CandidateProvenance::identity);
         format!(
-            "{}|{}|{}|{}|{}|{}|{}|{:?}",
+            "{}|{}|{}|{}|{}|{}|{}|{}|{}",
             self.project_id,
             self.task_family,
             self.candidate.identity(),
@@ -184,6 +197,7 @@ impl OutcomeScope {
             self.policy_revision,
             self.orchestration_revision.as_deref().unwrap_or("-"),
             self.context_policy_id.as_deref().unwrap_or("-"),
+            self.sample_kind.token(),
         )
     }
 
@@ -419,6 +433,13 @@ impl ComparableTaskOutcome {
     /// Pair this outcome with its baseline as the existing comparable-outcome
     /// type, or `None` when the two are not comparable.
     ///
+    /// Every part of the scope is identity, so a pairing is refused unless the
+    /// two samples share the project, the task family, the configuration
+    /// revision, the selection-policy revision, the orchestration revision, the
+    /// context-policy identity and the sample kind. A sample produced under a
+    /// different policy or a different context policy is not evidence about
+    /// this one, and a routing sample is never paired against a context sample.
+    ///
     /// `policy_pass` is left false: the qualification owner sets it after its
     /// own policy runs, and this producer never qualifies.
     pub fn comparable_outcome(
@@ -428,6 +449,10 @@ impl ComparableTaskOutcome {
         if self.scope.project_id != baseline.scope.project_id
             || self.scope.task_family != baseline.scope.task_family
             || self.scope.configuration_revision != baseline.scope.configuration_revision
+            || self.scope.policy_revision != baseline.scope.policy_revision
+            || self.scope.orchestration_revision != baseline.scope.orchestration_revision
+            || self.scope.context_policy_id != baseline.scope.context_policy_id
+            || self.scope.sample_kind != baseline.scope.sample_kind
             || self.scope.candidate == baseline.scope.candidate
         {
             return None;
@@ -1164,8 +1189,10 @@ mod tests {
         let unrelated = scope("project-b", "gpt-5", "policy-1");
         register.register_suggestion(suggestion("suggestion-a1", &affected));
         register.register_suggestion(suggestion("suggestion-a2", &affected));
-        register.register_suggestion(suggestion("suggestion-b1", &unrelated));
-        register
+        // The unrelated project's own event invalidates its own suggestion. It
+        // is recorded first and its suggestion registered afterwards, so the
+        // only event that could touch `suggestion-b1` below is project A's.
+        let own_event = register
             .record(event(
                 "run-b",
                 unrelated.clone(),
@@ -1173,6 +1200,8 @@ mod tests {
                 Some(0.5),
             ))
             .unwrap();
+        assert!(own_event.invalidated_suggestions.is_empty());
+        register.register_suggestion(suggestion("suggestion-b1", &unrelated));
 
         let update = register
             .record(event(
@@ -1190,7 +1219,8 @@ mod tests {
         assert!(
             register
                 .suggestion("suggestion-b1")
-                .is_some_and(|suggestion| !suggestion.invalidated)
+                .is_some_and(|suggestion| !suggestion.invalidated),
+            "another project's suggestion must stay valid"
         );
         // The unrelated project's outcome is unchanged by project A's event.
         let untouched = register.outcome(&unrelated.key()).unwrap();
@@ -1383,6 +1413,11 @@ mod tests {
                 },
             )
             .unwrap();
+        // Different sample kinds are different scopes, never one averaged
+        // record: a routing sample and a context sample measured different
+        // things.
+        assert_ne!(routing.key(), context.key());
+        assert_eq!(register.retained(), 2);
         assert_eq!(
             routing_proposal.promotion_subject,
             OutcomePromotionSubject::RoutingOnly
