@@ -7,6 +7,7 @@ mod command;
 mod contract;
 mod incremental;
 mod model_identity;
+pub mod outcome_producer;
 mod persistence;
 pub mod usage_journal;
 mod variant;

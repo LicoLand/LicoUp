@@ -92,6 +92,7 @@ pub fn preflight_assistant_graph(
     snapshots: &[MembershipProfileSnapshot],
     filters: &CandidateFilters,
     model_facts: &dyn ModelFactsPort,
+    selection_policy_revision: &str,
 ) -> Result<AssistantPreflight, PreflightFailure> {
     let validation = validate_workflow_value(workflow);
     let mut checks = validation.diagnostics;
@@ -335,7 +336,16 @@ pub fn preflight_assistant_graph(
             .then_with(|| left.ordinal.cmp(&right.ordinal))
             .then_with(|| left.value_id.cmp(&right.value_id))
     });
-    let route_receipt = route_receipt(conversation_id, &ranked, model_facts);
+    // The receipt states the selection-policy revision the admitting caller
+    // captured for this decision. Nothing is read and nothing is synthesized
+    // here: a durable admission keeps the revision it was admitted under, so a
+    // later adoption governs only the next task.
+    let route_receipt = route_receipt(
+        conversation_id,
+        &ranked,
+        model_facts,
+        selection_policy_revision,
+    );
     let digest_payload = json!({
         "workflow": definition,
         "bindings": canonical_bindings,
@@ -504,6 +514,11 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The selection-policy revision a test admits its fixture graph under.
+    /// It is stated explicitly: the receipt must never carry a synthesized
+    /// or current-reading revision.
+    const FIXTURE_SELECTION_POLICY_REVISION: &str = "selection-policy-fixture-1";
     use licoup_workflow::{MAX_ACTIVE_EFFECTS, MAX_WORKSET_ITEMS};
 
     fn workflow() -> Value {
@@ -587,6 +602,7 @@ mod tests {
             &snapshots,
             &CandidateFilters::default(),
             crate::ports::host_ports().model.as_ref(),
+            FIXTURE_SELECTION_POLICY_REVISION,
         )
         .unwrap();
         assert_eq!(admitted.bindings[0].value_id, "membership:actor");
@@ -614,6 +630,7 @@ mod tests {
             &[assistant],
             &CandidateFilters::default(),
             crate::ports::host_ports().model.as_ref(),
+            FIXTURE_SELECTION_POLICY_REVISION,
         )
         .unwrap_err();
         assert!(
@@ -644,6 +661,7 @@ mod tests {
             &[],
             &CandidateFilters::default(),
             crate::ports::host_ports().model.as_ref(),
+            FIXTURE_SELECTION_POLICY_REVISION,
         )
         .unwrap_err();
         assert_eq!(failure.code, "graph_preflight_rejected");
@@ -686,6 +704,7 @@ mod tests {
             &snapshots,
             &CandidateFilters::default(),
             crate::ports::host_ports().model.as_ref(),
+            FIXTURE_SELECTION_POLICY_REVISION,
         )
         .unwrap_err();
         assert!(failure.diagnostics.iter().any(|diagnostic| {
