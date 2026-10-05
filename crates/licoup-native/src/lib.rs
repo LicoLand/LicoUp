@@ -171,11 +171,14 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     licoup_agent_opencode::host::install(platform::opencode_host::host_ports())?;
     // The Lico Agent adapter package owns the whole of one Lico Agent turn — the
     // RPC launch, the stdio JSONL exchange, the session and plan layout and the
-    // sealed profile a Plan turn runs under — and this host owns the two facts it
-    // may not decide for itself: whether a new execution is admitted, and how the
-    // platform's sandbox primitive turns a profile into a running command. Both
-    // are installed from this client's own primitives, so Plan mode cannot run
-    // unsandboxed and a turn cannot start under the close-admission barrier.
+    // sealed profile a Plan turn runs under — and this host owns the platform
+    // fact it may not decide for itself: how the platform's sandbox primitive
+    // turns a profile into a running command. It is answered from this client's
+    // own primitive, so Plan mode cannot run unsandboxed. The package's
+    // agent-execution seam stays declared and fail-closed for the same reason
+    // Cursor's does: the extension host that starts the package's own binary is
+    // what answers it, and until then the package refuses rather than claiming
+    // an admission this composition never gave it.
     licoup_agent_lico_agent::port::sandbox::install(platform::lico_agent_host::sandbox_port())?;
     // The Cursor adapter package owns one Cursor turn — the launch on the shared
     // pty, the strict-NDJSON stream, the update signals and the outcome — and
