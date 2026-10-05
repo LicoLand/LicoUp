@@ -10,7 +10,9 @@ use licoup_workflow_store::{
 };
 
 use crate::assistant::sha256_hex;
-use crate::ports::{ActorTurnError, HostPorts, SharedSnapshotAuthority, StrategyEffectPermit, host_ports};
+use crate::ports::{
+    ActorTurnError, EffectPort, HostPorts, SharedSnapshotAuthority, StrategyEffectPermit, host_ports,
+};
 use crate::{
     ASSISTANT_TEMPORARY_DEFINITION_PREFIX, AssistantPreflight, BindingCandidate, BindingValue,
     PreflightFailure, StrategyDefinition, StrategyPackageImporter, preflight_assistant_graph,
