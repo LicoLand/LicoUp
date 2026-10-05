@@ -81,7 +81,14 @@ verify_argv = ["codex", "--version"]
 
 [channels.artifact]
 origin_host = "github.com"
-url_template = "https://github.com/openai/codex/releases/latest/download/codex-{vendorArch}-{vendorOs}"
+url_template = "https://github.com/openai/codex/releases/latest/download/codex-package-{vendorArch}-{vendorOs}.tar.gz"
+# The vendor answers a release-asset request with a redirect to the host that
+# serves the bytes, so this recipe names that host instead of widening its
+# origin. The first request still has to reach github.com itself.
+redirect_hosts = ["release-assets.githubusercontent.com"]
+[channels.artifact.integrity]
+algorithm = "sha256"
+digest_url_template = "https://github.com/openai/codex/releases/latest/download/codex-package_SHA256SUMS"
 [channels.artifact.vendor_os]
 macos = "apple-darwin"
 linux = "unknown-linux-musl"

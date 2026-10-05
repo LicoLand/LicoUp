@@ -255,6 +255,17 @@ pub struct ArtifactSpec {
     pub vendor_arch: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     pub installer: std::collections::BTreeMap<String, String>,
+    /// The hosts this recipe explicitly permits as redirect targets.
+    ///
+    /// [`origin_host`](Self::origin_host) alone pins the first request: the URL
+    /// the recipe builds must resolve there. Vendors that hand their own
+    /// downloads to a content network redirect that request to a host they name
+    /// in `Location`, and a recipe may name exactly those hosts here. The
+    /// declaration widens redirect hops only — it can never satisfy the first
+    /// request — it is validated at registry load, and it is per recipe, so no
+    /// host becomes reachable for a channel that did not declare it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub redirect_hosts: Vec<String>,
     /// The digest the vendor publishes for this artifact. Its absence is a
     /// refusal, not a silent unverified install: acquisition stages nothing
     /// until the recipe names the published digest or its document.

@@ -79,7 +79,17 @@ verify_argv = ["opencode", "--version"]
 
 [channels.artifact]
 origin_host = "github.com"
-url_template = "https://github.com/anomalyco/opencode/releases/latest/download/opencode-{vendorOs}-{vendorArch}.tar.gz"
+url_template = "https://github.com/anomalyco/opencode/releases/latest/download/opencode-{vendorOs}-{vendorArch}{installer}"
+# The vendor answers a release-asset request with a redirect to the host that
+# serves the bytes, so this recipe names that host instead of widening its
+# origin. The first request still has to reach github.com itself.
+redirect_hosts = ["release-assets.githubusercontent.com"]
+# The vendor publishes a zip for macOS and Windows and a tarball for Linux, so
+# this template's per-OS fragment is the archive suffix rather than a script name.
+[channels.artifact.installer]
+macos = ".zip"
+linux = ".tar.gz"
+windows = ".zip"
 [channels.artifact.vendor_os]
 macos = "darwin"
 linux = "linux"
