@@ -1,4 +1,4 @@
-//! The client's composition of one Kilo turn.
+//! This Agent's composition of one Kilo turn.
 
 use super::super::{RUNTIME_PROTOCOL, execute};
 use serde_json::json;
@@ -25,7 +25,7 @@ fn empty_executable_fails_closed_without_session_fallback() {
     );
     assert!(matches!(
         result.transitions.last(),
-        Some(licoup_agent_kilo::driver::Transition::Failed { code, .. })
+        Some(super::super::Transition::Failed { code, .. })
             if code == "kilo_code_serve_process_start_failed"
     ));
     // No native session is invented for a turn that never ran.
@@ -48,6 +48,6 @@ fn a_relative_workspace_is_refused_before_the_endpoint_is_attached() {
     assert!(!result.ok);
     assert_eq!(
         result.error.as_ref().map(|failure| failure.code.as_str()),
-        Some("acp_working_directory_invalid")
+        Some("kilo_code_serve_working_directory_invalid")
     );
 }

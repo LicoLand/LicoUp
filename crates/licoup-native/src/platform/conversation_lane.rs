@@ -653,7 +653,7 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
                 super::local_service::turn_control::ControlDisposition::SessionUnavailable => 2,
                 super::local_service::turn_control::ControlDisposition::TransportUnavailable => 3,
             },
-            RuntimeAdapter::KiloCode => match super::kilo_code_driver::cancel(&session_id) {
+            RuntimeAdapter::KiloCode => match super::kilo_code_host::cancel(&session_id) {
                 super::local_service::turn_control::ControlDisposition::Accepted => 0,
                 super::local_service::turn_control::ControlDisposition::NoActiveTurn => 1,
                 super::local_service::turn_control::ControlDisposition::SessionUnavailable => 2,

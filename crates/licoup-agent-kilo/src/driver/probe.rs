@@ -11,12 +11,24 @@
 //! would report a healthy endpoint as missing. The sockets, however, are the
 //! engine's — every read arrives through [`crate::port::serve`], so the package
 //! never opens one.
+//!
+//! What the host composes is the same probe in the host's own result vocabulary
+//! ([`capability_probe`]), and that crossing is one way: the failure keeps this
+//! Agent's message and stage exactly, and its code is re-stated from the closed
+//! set this package's policy declares, because the host's failure type carries a
+//! static code. A code outside that set is reported as a protocol failure rather
+//! than spliced in as an arbitrary string.
 
+use super::DRIVER;
+use super::projection::serve_capabilities;
 use super::{ProtocolFailure, RUNTIME_PROTOCOL};
 use crate::parser;
 use crate::policy;
 use crate::port::serve;
 use licoup_agent_adapter_sdk::serve::ServeReadiness;
+use licoup_agent_drivers::acp_driver_runtime::{
+    CapabilityProbe as DriverCapabilityProbe, ProtocolFailure as DriverProtocolFailure,
+};
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -61,7 +73,7 @@ fn sessions_url(attach_url: &str) -> String {
 ///
 /// `executable` names the program the engine attaches to; `cwd` is the directory
 /// this Agent requires to be absolute; `timeout_ms` bounds the wait for health.
-pub fn capability_probe(
+pub fn probe_endpoint(
     executable: &str,
     cwd: &Path,
     timeout_ms: u64,
@@ -77,8 +89,8 @@ pub fn capability_probe(
     if executable.trim().is_empty() {
         return Err(unavailable_failure());
     }
-    let attachment = serve::ensure_attachment(executable)
-        .map_err(|error_code| endpoint_failure(&error_code))?;
+    let attachment =
+        serve::ensure_attachment(executable).map_err(|error_code| endpoint_failure(&error_code))?;
     let attach_url = &attachment.endpoint.attach_url;
     let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1_000));
     loop {
@@ -101,11 +113,9 @@ pub fn capability_probe(
                 // The configuration and provider documents decide the model
                 // catalogue. A service that answers health but not these is not
                 // ready: a turn started against it could not resolve its model.
-                let config = (probe.get_json)(&policy::endpoint_url(
-                    attach_url,
-                    policy::SPEC.config_path,
-                ))
-                .map_err(|_| readiness_unavailable("serve/config"))?;
+                let config =
+                    (probe.get_json)(&policy::endpoint_url(attach_url, policy::SPEC.config_path))
+                        .map_err(|_| readiness_unavailable("serve/config"))?;
                 let providers = (probe.get_json)(&policy::endpoint_url(
                     attach_url,
                     policy::SPEC.provider_path,
@@ -132,6 +142,85 @@ fn readiness_unavailable(stage: &'static str) -> ProtocolFailure {
         "The Kilo serve endpoint did not report the documents a turn needs.",
         stage,
     )
+}
+
+/// Probe one endpoint in the host's shared driver vocabulary.
+///
+/// It is the same probe as [`probe_endpoint`], which owns both the readiness
+/// read and the capability declaration: the host runs no second probe and
+/// declares no capability of its own, and what crosses here is the outcome and
+/// the failure, not a vendor decision.
+pub fn capability_probe(
+    executable: &str,
+    cwd: &Path,
+    timeout_ms: u64,
+    max_stdout: Option<usize>,
+    max_stderr: usize,
+) -> Result<DriverCapabilityProbe, DriverProtocolFailure> {
+    let _ = (max_stdout, max_stderr);
+    probe_endpoint(executable, cwd, timeout_ms, EndpointProbe::installed())
+        .map(|_readiness| probe_to_driver(serve_capabilities()))
+        .map_err(failure_to_driver)
+        .map_err(|failure| failure.namespaced(DRIVER))
+}
+
+/// This Agent's failure, in the host's shared driver vocabulary.
+///
+/// The code is re-stated from this Agent's own closed set rather than carried
+/// across as a string, because the host's failure type holds a static spelling.
+pub(super) fn failure_to_driver(failure: ProtocolFailure) -> DriverProtocolFailure {
+    DriverProtocolFailure::new(static_code(&failure.code), failure.message, failure.stage)
+        .with_session(failure.session_id.as_deref())
+}
+
+/// This Agent's static spelling of one of its own closed failure codes.
+///
+/// A code outside the set is reported as a protocol failure rather than spliced
+/// in as an arbitrary string.
+fn static_code(code: &str) -> &'static str {
+    let errors = &policy::SPEC.errors;
+    for known in [
+        errors.executable_missing,
+        errors.port_exhausted,
+        errors.start_failed,
+        errors.health_failed,
+        errors.attach_probe_failed,
+        errors.not_found,
+        errors.request_failed,
+        errors.invalid_json,
+        errors.invalid_state,
+        errors.stop_failed,
+        "acp_working_directory_invalid",
+        "acp_initialize_invalid",
+        "acp_protocol_timeout",
+        "acp_process_start_failed",
+        "kilo_code_serve_session_invalid",
+        "kilo_code_serve_readiness_unavailable",
+    ] {
+        if code == known {
+            return known;
+        }
+    }
+    "kilo_code_serve_protocol_failed"
+}
+
+/// This Agent's capability answer, in the host's shared probe vocabulary.
+///
+/// It is a field copy: the package already decided every capability, and this
+/// function decides none of them.
+fn probe_to_driver(probe: super::projection::CapabilityProbe) -> DriverCapabilityProbe {
+    DriverCapabilityProbe {
+        protocol_version: probe.protocol_version,
+        load_session: probe.load_session,
+        resume_session: probe.resume_session,
+        close_session: probe.close_session,
+        list_sessions: probe.list_sessions,
+        delete_session: probe.delete_session,
+        additional_directories: probe.additional_directories,
+        image_prompts: probe.image_prompts,
+        audio_prompts: probe.audio_prompts,
+        embedded_context: probe.embedded_context,
+    }
 }
 
 /// The failure one missing executable reports.
@@ -224,14 +313,14 @@ mod tests {
     #[test]
     fn a_relative_directory_is_refused_before_the_endpoint_is_touched() {
         let probe = silent_probe();
-        let failure = capability_probe("kilo", Path::new("relative"), 10, probe).unwrap_err();
+        let failure = probe_endpoint("kilo", Path::new("relative"), 10, probe).unwrap_err();
         assert_eq!(failure.code, "acp_working_directory_invalid");
     }
 
     #[test]
     fn an_empty_executable_reports_the_unavailable_failure() {
         let probe = silent_probe();
-        let failure = capability_probe("  ", Path::new("/workspace"), 10, probe).unwrap_err();
+        let failure = probe_endpoint("  ", Path::new("/workspace"), 10, probe).unwrap_err();
         assert_eq!(failure.code, "acp_process_start_failed");
         assert_eq!(failure.stage, "serve/ensure");
     }
@@ -279,5 +368,85 @@ mod tests {
         );
         assert!(require_absolute(Path::new("workspace")).is_err());
         assert_eq!(runtime_protocol(), "kilo-code-serve-http-v1");
+    }
+
+    #[test]
+    fn a_relative_workspace_is_refused_before_any_process_or_http_work() {
+        let failure = capability_probe("unused", Path::new("relative"), 10, None, 16).unwrap_err();
+        // The refusal keeps the closed set's spelling and then carries this
+        // Agent's own error prefix, which is what the host's failure taxonomy
+        // reads it by.
+        assert_eq!(failure.code, "kilo_code_serve_working_directory_invalid");
+        assert_eq!(failure.stage, "initialize");
+    }
+
+    #[test]
+    fn an_empty_executable_reports_the_process_start_failure() {
+        let failure = capability_probe("  ", Path::new("/workspace"), 10, None, 16).unwrap_err();
+        assert_eq!(failure.code, "kilo_code_serve_process_start_failed");
+        assert_eq!(failure.stage, "serve/ensure");
+    }
+
+    #[test]
+    fn every_package_code_keeps_its_own_spelling_across_the_seam() {
+        let errors = &policy::SPEC.errors;
+        for code in [
+            errors.executable_missing,
+            errors.port_exhausted,
+            errors.start_failed,
+            errors.health_failed,
+            errors.attach_probe_failed,
+            errors.invalid_state,
+        ] {
+            assert_eq!(static_code(code), code);
+        }
+        // A code outside the closed set is reported as a protocol failure rather
+        // than spliced in as an arbitrary string.
+        assert_eq!(
+            static_code("something_unexpected"),
+            "kilo_code_serve_protocol_failed"
+        );
+    }
+
+    #[test]
+    fn the_package_failure_crosses_with_its_message_stage_and_session_intact() {
+        let failure = failure_to_driver(
+            ProtocolFailure::new(
+                "kilo_code_serve_session_invalid",
+                "The Kilo session endpoint returned an invalid response.",
+                "serve/session",
+            )
+            .with_session(Some("kilo-1")),
+        );
+        assert_eq!(failure.code, "kilo_code_serve_session_invalid");
+        assert_eq!(failure.stage, "serve/session");
+        assert_eq!(
+            failure.message,
+            "The Kilo session endpoint returned an invalid response."
+        );
+        assert_eq!(failure.session_id.as_deref(), Some("kilo-1"));
+        assert_eq!(failure.thread_id.as_deref(), Some("kilo-1"));
+    }
+
+    #[test]
+    fn the_capability_answer_crosses_as_a_field_copy() {
+        let declared = serve_capabilities();
+        let probe = probe_to_driver(declared);
+        assert_eq!(probe.protocol_version, declared.protocol_version);
+        assert_eq!(probe.load_session, declared.load_session);
+        assert_eq!(probe.resume_session, declared.resume_session);
+        assert_eq!(probe.close_session, declared.close_session);
+        assert_eq!(probe.list_sessions, declared.list_sessions);
+        assert_eq!(probe.delete_session, declared.delete_session);
+        assert_eq!(
+            probe.additional_directories,
+            declared.additional_directories
+        );
+        assert_eq!(probe.image_prompts, declared.image_prompts);
+        assert_eq!(probe.audio_prompts, declared.audio_prompts);
+        assert_eq!(probe.embedded_context, declared.embedded_context);
+        assert_eq!(probe.protocol_version, Some(1));
+        assert!(probe.load_session && probe.resume_session && probe.list_sessions);
+        assert!(!probe.delete_session && !probe.image_prompts && !probe.audio_prompts);
     }
 }

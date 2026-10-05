@@ -1,13 +1,12 @@
-//! The client's composition of this Agent's capability probe.
+//! This Agent's capability probe, in the host's shared driver vocabulary.
 
 use super::super::capability_probe;
 use std::path::Path;
 
 #[test]
 fn probe_rejects_relative_workspace_before_process_or_http_work() {
-    let failure =
-        capability_probe("unused", Path::new("relative"), 10, Some(16), 16).unwrap_err();
-    assert_eq!(failure.code, "acp_working_directory_invalid");
+    let failure = capability_probe("unused", Path::new("relative"), 10, Some(16), 16).unwrap_err();
+    assert_eq!(failure.code, "kilo_code_serve_working_directory_invalid");
     assert_eq!(failure.stage, "initialize");
 }
 
