@@ -3,6 +3,7 @@ use super::*;
 #[cfg(unix)]
 #[test]
 fn fake_child_e2e_streams_final_and_drains_stderr() {
+    install_package_dialect();
     let root = unique_temp_dir("hermes-acp-e2e");
     let _portable_data = PortableDataDirGuard::isolate_under(&root);
     let executable = root.join("fake-hermes");
@@ -78,6 +79,7 @@ wait
 #[cfg(unix)]
 #[test]
 fn hermes_zero_timeout_and_default_event_projection_are_unbounded() {
+    install_package_dialect();
     let root = unique_temp_dir("hermes-acp-zero-timeout");
     let _portable_data = PortableDataDirGuard::isolate_under(&root);
     let executable = root.join("fake-hermes-unbounded");
@@ -148,6 +150,7 @@ sleep 30
 #[cfg(unix)]
 #[test]
 fn bounded_timeout_keeps_the_named_failure() {
+    install_package_dialect();
     let root = unique_temp_dir("hermes-acp-bounded-timeout");
     let _portable_data = PortableDataDirGuard::isolate_under(&root);
     let executable = root.join("fake-hermes-slow");
@@ -190,6 +193,7 @@ sleep 30
 #[cfg(unix)]
 #[test]
 fn explicit_output_bound_keeps_the_named_failure() {
+    install_package_dialect();
     let root = unique_temp_dir("hermes-acp-output-bound");
     let _portable_data = PortableDataDirGuard::isolate_under(&root);
     let executable = root.join("fake-hermes-noisy");

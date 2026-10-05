@@ -28,8 +28,8 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use crate::platform::{
-    acp_driver_runtime, antigravity_driver, claude_code_driver, cursor_driver, hermes_driver,
-    kilo_code_driver, lico_agent_driver, openclaw_driver, opencode_driver, pi_driver,
+    acp_driver_runtime, antigravity_driver, claude_code_driver, cursor_driver, kilo_code_driver,
+    lico_agent_driver, openclaw_driver, opencode_driver, pi_driver,
 };
 // The DeepSeek Harness driver — the `--profile sdk` transport, the turn it
 // carries and the cleanup of one session — is the DeepSeek Harness package's.
@@ -37,6 +37,14 @@ use crate::platform::{
 // result; it holds no protocol frame, no request builder and no transport of its
 // own.
 use licoup_agent_deepseek::driver as deepseek_harness_driver;
+// The Hermes driver — the `hermes acp` launch, the fixed capability probes and
+// one bounded turn over the shared persistent ACP transport — is the Hermes
+// package's. The composition names the package and keeps the host's own
+// projection of its result; it holds no launch argument, no probe command and no
+// transport of its own. The one Hermes lane that stays here is the TUI gateway,
+// a host transport this composition picks where the runtime connection is in
+// view.
+use licoup_agent_hermes::driver as hermes_driver;
 // The Copilot driver — the `--acp --stdio` launch, the probe and the turn it
 // runs — is the Copilot package's. The composition names the package and keeps
 // the host's own projection of its result; it holds no launch declaration and
@@ -788,27 +796,43 @@ fn run_cursor(run: &AgentRun<'_>) -> NormalizedExecution {
 fn run_hermes(run: &AgentRun<'_>) -> NormalizedExecution {
     // The lane is the host's fact, not the Agent's: a turn bound to a Hermes
     // TUI gateway speaks the gateway's protocol, and a local turn speaks the
-    // driver's. The host picks it here, where the runtime connection is in
-    // view, and hands it to the Agent's parser and the host's normalization.
-    let runtime_protocol = if run
+    // package's ACP transport. The host picks it here, where the runtime
+    // connection is in view, and hands it to the Agent's parser and the host's
+    // normalization. The gateway transport stays in this host, so the choice is
+    // this composition's and the package is asked only for the lane it owns.
+    let gateway_connection = run
         .runtime_connection
-        .is_some_and(licoup_agent_targets::platform::virtual_machine::SshRuntimeConnection::is_hermes_tui_gateway)
-    {
+        .filter(|connection| connection.is_hermes_tui_gateway());
+    let runtime_protocol = if gateway_connection.is_some() {
         crate::platform::hermes_tui_gateway::RUNTIME_PROTOCOL
     } else {
         hermes_driver::RUNTIME_PROTOCOL
     };
-    let result = hermes_driver::execute_with_connection(
-        run.executable,
-        run.runtime_connection,
-        run.params,
-        run.prompt,
-        run.session_id,
-        run.cwd,
-        run.timeout_ms,
-        run.max_stdout,
-        run.max_stderr,
-    );
+    let result = match gateway_connection {
+        Some(connection) => crate::platform::hermes_tui_gateway_driver::execute(
+            connection,
+            run.params,
+            run.prompt,
+            run.session_id,
+            run.cwd,
+            run.timeout_ms,
+            run.max_stdout,
+            run.max_stderr,
+        ),
+        // A connection that is not this gateway — including none at all — is
+        // the shared ACP transport's, read through the package's own entry.
+        None => hermes_driver::execute_with_connection(
+            run.executable,
+            run.runtime_connection,
+            run.params,
+            run.prompt,
+            run.session_id,
+            run.cwd,
+            run.timeout_ms,
+            run.max_stdout,
+            run.max_stderr,
+        ),
+    };
     let parser = super::registrations_parser("hermes");
     normalize_hermes(
         DrivenRun {

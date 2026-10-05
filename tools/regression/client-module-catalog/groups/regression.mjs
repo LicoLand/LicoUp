@@ -826,11 +826,10 @@ export const REGRESSION_MODULES = Object.freeze([
   }),
   agentSourceBundleModule({
     id: "regression.hermes-acp-source-bundle",
-    summary: "Hermes package ownership: one persistent ACP dialect, one parser, the package's own normalized transitions, and no parser copy in the host",
+    summary: "Hermes package ownership: one persistent ACP dialect, one parser, the package's own process half and normalized transitions, and no parser copy in the host",
     inputs: [
       "crates/licoup-agent-hermes/src/**",
       "crates/licoup-agent-hermes/package/**",
-      "crates/licoup-native/src/platform/hermes_driver.rs",
       "crates/licoup-native/src/platform/native_agent_parser/adapters/mod.rs",
       "crates/licoup-native/src/platform/native_agent_parser/replay/adapters/mod.rs",
       "crates/licoup-native/src/platform/runtime_adapters/drivers.rs",

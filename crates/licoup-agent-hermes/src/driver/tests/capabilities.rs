@@ -1,4 +1,4 @@
-use crate::platform::acp_session_transport::{
+use licoup_agent_drivers::acp_session_transport::{
     APPROVAL_POLL_INTERVAL, CONTROL_QUEUE_CAPACITY, MAX_POOLED_TRANSPORTS, MAX_TRACKED_SESSIONS,
     PROCESS_POLL_INTERVAL,
 };

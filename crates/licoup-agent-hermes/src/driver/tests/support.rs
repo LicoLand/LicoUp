@@ -5,6 +5,28 @@ use uuid::Uuid;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
+/// Install this package's own ACP dialect before any reducer is built.
+///
+/// The shared transport reads one Agent's frame dialect through the port the
+/// composition above it answers, and a unit-test binary is not that composition:
+/// `licoup-agent-drivers` installs a neutral dialect for a build that installed
+/// nothing, so a suite that reaches a reducer first asserts against a stub. These
+/// suites are the package's own, so they install the package's registration
+/// first and the permission summary, the transition vocabulary and the
+/// client-request answer they read are the ones a running Hermes produces.
+///
+/// It is idempotent, and it is called before every construction: the port's own
+/// installation is first-wins, so a test that built a protocol before asking for
+/// the package's dialect would leave the whole binary on the neutral one.
+pub(super) fn install_package_dialect() {
+    static INSTALLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    INSTALLED.get_or_init(|| {
+        licoup_agent_drivers::acp_driver_runtime::parser_port::install(vec![
+            crate::dialect::registration(),
+        ])
+    });
+}
+
 pub(super) fn absolute_test_cwd() -> PathBuf {
     #[cfg(target_os = "windows")]
     let root = PathBuf::from(format!("C:{}", std::path::MAIN_SEPARATOR));
@@ -14,6 +36,7 @@ pub(super) fn absolute_test_cwd() -> PathBuf {
 }
 
 pub(super) fn config(params: Value, prompt: &str, session_id: &str) -> ProtocolConfig {
+    install_package_dialect();
     let cwd = absolute_test_cwd();
     ProtocolConfig::from_params(&params, prompt, session_id, Some(cwd.as_path())).unwrap()
 }

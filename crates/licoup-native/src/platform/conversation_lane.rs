@@ -641,7 +641,7 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
                 | super::antigravity_driver::ControlDisposition::SessionUnavailable => 2,
                 super::antigravity_driver::ControlDisposition::TransportUnavailable => 3,
             },
-            RuntimeAdapter::Hermes => match super::hermes_driver::cancel(&session_id) {
+            RuntimeAdapter::Hermes => match licoup_agent_hermes::driver::cancel(&session_id) {
                 super::acp_session_transport::ControlDisposition::Accepted => 0,
                 super::acp_session_transport::ControlDisposition::NoActiveTurn => 1,
                 super::acp_session_transport::ControlDisposition::SessionUnavailable => 2,
@@ -830,7 +830,7 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
                 licoup_agent_deepseek::driver::CleanupDisposition::Unavailable => 2,
             }
         }
-        _ => match super::hermes_driver::cleanup_session(&session_id) {
+        _ => match licoup_agent_hermes::driver::cleanup_session(&session_id) {
             super::acp_session_transport::ControlDisposition::Accepted => 0,
             super::acp_session_transport::ControlDisposition::SessionUnavailable => 1,
             _ => 2,

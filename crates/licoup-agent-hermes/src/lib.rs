@@ -1,11 +1,13 @@
 //! The Hermes adapter package.
 //!
 //! One Agent, one package, one program. This crate owns everything LicoUp knows
-//! about Hermes' own protocol: the persistent ACP frame dialect Hermes answers
-//! with ([`dialect`]), the byte-line parser that classifies those frames exactly
-//! once below the adapter port and words Hermes' normalized transitions
-//! ([`parser`]), the registration composition injects into the adapter SDK
-//! ([`registration`]), and the recorded-transcript replay arm ([`replay`]).
+//! about Hermes' own protocol and the process half that speaks it: the persistent
+//! ACP frame dialect Hermes answers with ([`dialect`]), the byte-line parser that
+//! classifies those frames exactly once below the adapter port and words Hermes'
+//! normalized transitions ([`parser`]), the launch and probe contract the shared
+//! session transport runs and one bounded turn over it ([`driver`]), the
+//! registration composition injects into the adapter SDK ([`registration`]), and
+//! the recorded-transcript replay arm ([`replay`]).
 //!
 //! # The boundaries this crate keeps
 //!
@@ -22,7 +24,8 @@
 //!   session pool and the control plane — stay in `licoup-agent-drivers`, because
 //!   the persistent ACP profile is a published contract and not one Agent's
 //!   protocol. What is Hermes' is the frame dialect, the permission question it
-//!   asks, and the transition vocabulary its turns reduce to.
+//!   asks, the launch and probe commands, and the transition vocabulary its turns
+//!   reduce to.
 //! - **The normalized transitions are Hermes' answer.** Hermes reports no
 //!   transition list with its execution result, so it is the one Agent whose
 //!   transitions the host reads through the SDK's protocol-agnostic query:
@@ -31,18 +34,19 @@
 //!   durable-identity query stays fail-closed because the Subagent mesh never
 //!   dispatches Hermes.
 //!
-//! # What this package does not own yet
+//! # Who executes Hermes
 //!
-//! Hermes' *process* half — launching the Hermes CLI, its PTY and gateway
-//! transports, the approval wait and the conversation lane — is still composed by
-//! the client (`licoup-native`'s `platform::hermes_driver` and
-//! `platform::hermes_tui_gateway`), on the shared transport this package's
-//! dialect is installed into. This is a protocol package: it ships its declared
-//! native entry, its registration, its dialect and its recorded-transcript
-//! parity, and it claims no end-to-end execution. It declares no host-answered
-//! port, because the half that would need one is not this package's yet.
+//! The package runs Hermes' local ACP turn: `licoup-native`'s composition names
+//! [`driver`] and keeps no Hermes ACP module of its own, so one Hermes turn is
+//! described in exactly one place. Two halves stay the host's and are named here
+//! so neither is claimed: the conversation lane that decides whether a turn may
+//! run, and the Hermes TUI gateway transport — a host lane the composition picks
+//! where the runtime connection is in view. The package declares no host-answered
+//! port, because the shared transport, the launch environment and the target
+//! contracts it reads are lower crates and it asks its host for nothing.
 
 pub mod dialect;
+pub mod driver;
 pub mod parser;
 pub mod registration;
 

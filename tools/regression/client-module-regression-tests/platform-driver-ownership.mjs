@@ -1568,32 +1568,34 @@ test("OpenCode driver leaves retain exact tests and complete source ownership", 
   ]);
 });
 
-test("Hermes driver leaves retain exact tests and complete source ownership", async () => {
+test("Hermes package driver leaves retain exact tests and complete source ownership", async () => {
   const filters = new Map([
     ["rust.platform.hermes-driver.composition",
-      "platform::hermes_driver::tests::composition::"],
+      "driver::tests::composition::"],
     ["rust.platform.hermes-driver.test-support",
-      "platform::hermes_driver::tests::"],
+      "driver::tests::"],
     ["rust.platform.hermes-driver.capabilities",
-      "platform::hermes_driver::tests::capabilities::"],
+      "driver::tests::capabilities::"],
     ["rust.platform.hermes-driver.command",
-      "platform::hermes_driver::tests::command::"],
+      "driver::tests::command::"],
     ["rust.platform.hermes-driver.protocol",
-      "platform::hermes_driver::tests::protocol::"],
+      "driver::tests::protocol::"],
     ["rust.platform.hermes-driver.events",
-      "platform::hermes_driver::tests::events::"],
+      "driver::tests::events::"],
     ["rust.platform.hermes-driver.approval",
-      "platform::hermes_driver::tests::approval::"],
+      "driver::tests::approval::"],
     ["rust.platform.hermes-driver.process-io",
-      "platform::hermes_driver::tests::process_io::"],
+      "driver::tests::process_io::"],
     ["rust.platform.hermes-driver.execution",
-      "platform::hermes_driver::tests::execution::"],
+      "driver::tests::execution::"],
     ["rust.platform.hermes-driver.continuity",
-      "platform::hermes_driver::tests::continuity::"],
+      "driver::tests::continuity::"],
     ["rust.platform.hermes-driver.probe",
-      "platform::hermes_driver::tests::probe::"],
+      "driver::tests::probe::"],
     ["rust.platform.hermes-driver.error-normalization",
-      "platform::hermes_driver::tests::errors::"],
+      "driver::tests::errors::"],
+    // The one Hermes lane the host keeps is its own TUI gateway transport, so it
+    // is the only leaf here that still runs against the host's manifest.
     ["rust.platform.hermes-driver.tui-gateway",
       "platform::hermes_tui_gateway"],
   ]);
@@ -1603,23 +1605,40 @@ test("Hermes driver leaves retain exact tests and complete source ownership", as
   for (const [id, filter] of filters) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
+    if (id.endsWith(".tui-gateway")) {
+      assert.equal(module.command.args.includes("crates/licoup-native/Cargo.toml"), true,
+        `${id} must run against the host's own manifest`);
+    } else {
+      assert.equal(module.command.args.includes("crates/licoup-agent-hermes/Cargo.toml"), true,
+        `${id} must run against the package's own manifest`);
+    }
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/licoup-native/src/platform/hermes_driver.rs"), false);
+        "crates/licoup-agent-hermes/src/driver.rs"), false);
     }
+  }
+
+  // The host carries no Hermes driver source at all, so no retired path keeps a
+  // regression owner.
+  for (const retiredPath of [
+    "crates/licoup-native/src/platform/hermes_driver.rs",
+    "crates/licoup-native/src/platform/hermes_driver",
+  ]) {
+    assert.equal(await exists(retiredPath), false,
+      `the host still carries the retired Hermes driver: ${retiredPath}`);
   }
 
   const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
   const splitSources = await sourceFiles(
-    "crates/licoup-native/src/platform/hermes_driver",
+    "crates/licoup-agent-hermes/src/driver",
     ".rs",
   );
   for (const relativePath of [
-    "crates/licoup-native/src/platform/hermes_driver.rs",
+    "crates/licoup-agent-hermes/src/driver.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
-      `Hermes driver source must have a precise regression owner: ${relativePath}`);
+      `Hermes package driver source must have a precise regression owner: ${relativePath}`);
   }
 });
 
