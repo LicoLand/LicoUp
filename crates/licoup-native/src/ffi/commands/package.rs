@@ -27,6 +27,12 @@
 //!    process-wide outbound gate, and disabling or uninstalling it retires that
 //!    answer, so the capability is cut by the package's own refusal rather than
 //!    by a hidden control. A route about any other package changes nothing there.
+//! 6. **The Gateway package's own login item follows its lifecycle too.**
+//!    Installing or enabling it registers the login item the package's payload
+//!    starts at login, and disabling or uninstalling it removes that item before
+//!    the bytes go and reads the store once more afterwards, so removing one of
+//!    several installed versions leaves the remaining one owning the item. A
+//!    route about any other package changes nothing there either.
 //!
 //! Mutating *replacement* and *activation* route through the
 //! maintenance-admission seam, which asks the native idle guard
@@ -58,6 +64,9 @@ use crate::platform::extension_packages::{
     PackageMaintenanceAdmission, PackageStore, RemainingWork, TrustRecord, UninstallTransaction,
     apply_endpoint_collaboration_lifecycle, endpoint_collaboration_gate, read_drained_record,
     read_manifest, running_client_version, write_drained_record,
+};
+use crate::platform::llm_gateway_autostart::{
+    GatewayPackageLifecycle, apply_gateway_package_lifecycle,
 };
 use crate::platform::package_registration_release::{
     CodexPluginRelease, PackageRegistrationOwners, ProviderMcpRelease, ReleaseInputs,
@@ -314,6 +323,22 @@ pub(super) fn handle_uninstall_collect(mut command: AdmittedCommand) -> Result<C
         EndpointCollaborationLifecycle::Retired,
         endpoint_collaboration_gate(),
     );
+    // The Gateway's login item goes the same way and for the same reason: the
+    // removal withdraws it before the bytes it starts are gone. The withdrawal
+    // reports the port it removed, so a version that remains installed can be
+    // restored on the port this client configured.
+    let withdrawn_login_item = apply_gateway_package_lifecycle(
+        store.root(),
+        &package_id,
+        GatewayPackageLifecycle::Retired,
+        None,
+    );
+    let withdrawn_login_item_port = withdrawn_login_item
+        .as_ref()
+        .and_then(|outcome| outcome.as_ref().ok())
+        .and_then(|status| status.get("withdrawnPort"))
+        .and_then(Value::as_u64)
+        .and_then(|port| u16::try_from(port).ok());
     match drained.collect(&store, &registry, &owners) {
         Ok(outcome) => {
             crate::platform::extension_packages::clear_drained_record(
@@ -332,6 +357,17 @@ pub(super) fn handle_uninstall_collect(mut command: AdmittedCommand) -> Result<C
                 &package_id,
                 EndpointCollaborationLifecycle::Activated,
                 endpoint_collaboration_gate(),
+            );
+            // The removal is done and the store is read once more: several
+            // versions of one package may be installed, so removing one of them
+            // leaves whichever version remains the one whose payload the login
+            // item starts. An empty store leaves the item retired, which is the
+            // state the withdrawal above installed.
+            let login_item = apply_gateway_package_lifecycle(
+                store.root(),
+                &package_id,
+                GatewayPackageLifecycle::Activated,
+                withdrawn_login_item_port,
             );
             Ok(report(json!({
                 "operation": "uninstall-collect",
@@ -359,6 +395,7 @@ pub(super) fn handle_uninstall_collect(mut command: AdmittedCommand) -> Result<C
                     "credentials": outcome.preserved.credentials,
                     "protocolState": outcome.preserved.protocol_state,
                 },
+                "gatewayLoginItem": gateway_login_item_report(login_item),
             })))
         }
         Err(failure) => Ok(failure_report("uninstall-collect", &failure)),
@@ -699,6 +736,15 @@ fn install_candidate(
         EndpointCollaborationLifecycle::Activated,
         endpoint_collaboration_gate(),
     );
+    // The Gateway package's own lifecycle owns its login item the same way: the
+    // route that put these bytes in place is the route that registers the item
+    // they start at login. It is withdrawn again by the route that removes them.
+    let login_item = apply_gateway_package_lifecycle(
+        store.root(),
+        &candidate.package_id,
+        GatewayPackageLifecycle::Activated,
+        None,
+    );
     Ok(report(json!({
         "operation": operation,
         "packageId": outcome.installed.package_id,
@@ -712,6 +758,7 @@ fn install_candidate(
         "installScripts": outcome.install_scripts,
         "processesSpawned": outcome.processes_spawned,
         "enabled": false,
+        "gatewayLoginItem": gateway_login_item_report(login_item),
     })))
 }
 
@@ -737,6 +784,19 @@ fn set_enabled(command: AdmittedCommand, enabled: bool) -> Result<CliExecution> 
         },
         endpoint_collaboration_gate(),
     );
+    // The same switch is the answer for the Gateway package's login item: on
+    // registers it, off withdraws it, and a switch about any other package does
+    // not reach the login item at all.
+    let login_item = apply_gateway_package_lifecycle(
+        store.root(),
+        &package_id,
+        if enabled {
+            GatewayPackageLifecycle::Activated
+        } else {
+            GatewayPackageLifecycle::Retired
+        },
+        None,
+    );
     Ok(report(json!({
         "operation": if enabled { "enable" } else { "disable" },
         "packageId": package_id,
@@ -745,7 +805,31 @@ fn set_enabled(command: AdmittedCommand, enabled: bool) -> Result<CliExecution> 
         "updatedAtUnixMs": preference.updated_at_unix_ms,
         "activated": false,
         "processesSpawned": 0,
+        "gatewayLoginItem": gateway_login_item_report(login_item),
     })))
+}
+
+/// The login item's own answer for the route that just changed the store.
+///
+/// A route about another package publishes nothing here. A login item the
+/// platform refused is reported rather than raised: the package's bytes and its
+/// stored preference are already in place by the time the transition runs, so
+/// failing the whole operation would report a change that did happen as one that
+/// did not.
+fn gateway_login_item_report(outcome: Option<Result<Value>>) -> Value {
+    match outcome {
+        None => Value::Null,
+        Some(Ok(status)) => json!({
+            "ok": true,
+            "enabled": status.get("enabled").cloned().unwrap_or(json!(false)),
+            "installed": status.get("installed").cloned().unwrap_or(json!(false)),
+            "port": status.get("port").cloned().unwrap_or(Value::Null),
+        }),
+        Some(Err(error)) => json!({
+            "ok": false,
+            "reasonCode": error.to_string(),
+        }),
+    }
 }
 
 /// Build the uninstall plan and the registry the drain will act on.
@@ -1490,5 +1574,235 @@ mod tests {
             Err("endpoint_collaboration_capability_undeclared"),
             "an activation does not launder the package's own refusal into a permit"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // The Gateway package's lifecycle and its own login item
+    // -----------------------------------------------------------------------
+
+    use crate::platform::llm_gateway_autostart::{
+        LoginItemHost, set_gateway_package_host_override,
+    };
+
+    /// The version the Gateway fixture installs first.
+    const GATEWAY_VERSION: &str = "0.3.0";
+
+    /// One absolute synthetic data home for the Gateway routes.
+    fn gateway_data_home(label: &str) -> PathBuf {
+        let home = std::env::temp_dir().join(format!(
+            "licoup-package-command-gateway-{label}-{}",
+            crate::platform::extension_packages::unique_suffix()
+        ));
+        std::fs::create_dir_all(&home).expect("data home");
+        home
+    }
+
+    /// One archive of the Gateway package whose own manifest declares `entry`,
+    /// with that entry in the payload: activation measures the entry, so a
+    /// payload without it is a refusal rather than a registration.
+    fn gateway_archive(version: &str, entry: &str) -> Vec<u8> {
+        use std::io::Write;
+        let client = running_client_version().expect("a product version");
+        let next_major = client
+            .split('.')
+            .next()
+            .and_then(|major| major.parse::<u64>().ok())
+            .map(|major| major + 1)
+            .expect("a semantic major version");
+        let manifest = json!({
+            "schema": licoup_extension_contracts::wire::MANIFEST,
+            "id": crate::platform::llm_gateway_autostart::GATEWAY_PACKAGE_ID,
+            "version": version,
+            "displayName": "Synthetic gateway",
+            "hostProtocol": { "major": 1, "minimumMinor": 0 },
+            "compatibility": { "clientVersions": [format!(">={client}, <{next_major}")] },
+            "profiles": [{
+                "id": "model-gateway",
+                "major": 1,
+                "capabilities": ["model-gateway.v1"],
+            }],
+            "runtime": { "mode": "process", "entry": entry },
+            "activation": "on-demand",
+            "requires": [],
+            "optionalRequires": [],
+            "permissions": [{
+                "capability": "org.licoland.feature.gateway/local-endpoint",
+                "scope": "127.0.0.1",
+            }],
+            "contributions": [],
+        });
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        for (name, body) in [
+            ("manifest.json", manifest.to_string()),
+            (entry, "#!/bin/sh\nexit 1\n".to_owned()),
+        ] {
+            writer.start_file(name, options).expect("start file");
+            writer.write_all(body.as_bytes()).expect("write");
+        }
+        writer.finish().expect("finish").into_inner()
+    }
+
+    /// The login item a case drives, over a disposable root instead of the
+    /// running user's own.
+    ///
+    /// The transition writes a real per-user login item and, on a production
+    /// host, asks `launchctl`/`systemctl` to load it. A case points the
+    /// lifecycle at [`LoginItemHost::synthetic`], which writes the definition and
+    /// registers nothing, so the routes below are the production ones and the
+    /// login item is the only disposable part.
+    struct SyntheticLoginItem {
+        host: LoginItemHost,
+    }
+
+    impl SyntheticLoginItem {
+        fn install(home: &Path) -> Self {
+            let host = LoginItemHost::synthetic(
+                home.join("login-home"),
+                home.join("llm-gateway"),
+                home.join("licoup-cli"),
+            );
+            set_gateway_package_host_override(Some(host.clone()));
+            Self { host }
+        }
+
+        fn definition(&self) -> PathBuf {
+            self.host.definition_path().expect("definition path")
+        }
+    }
+
+    impl Drop for SyntheticLoginItem {
+        fn drop(&mut self) {
+            set_gateway_package_host_override(None);
+        }
+    }
+
+    /// The Gateway package's own login item follows its lifecycle, and only its
+    /// own: every transition below is driven through the routes a client calls.
+    ///
+    /// The item is withdrawn before the bytes go and the store is read once more
+    /// afterwards, which is the case this states in one place: removing one of
+    /// two installed versions leaves the remaining one owning the login item.
+    #[test]
+    fn the_gateway_package_routes_register_and_withdraw_its_own_login_item() {
+        let home = gateway_data_home("lifecycle");
+        let login_item = SyntheticLoginItem::install(&home);
+        let definition = login_item.definition();
+        let data_home = home.display().to_string();
+        assert!(!definition.exists());
+
+        // A route about another package touches nothing: it publishes no answer
+        // about a login item it was not about, and writes none.
+        let other = home.join("other-1.0.0.zip");
+        std::fs::write(&other, fixture_archive()).expect("archive");
+        let imported = run_package_route(&[
+            "package",
+            "import",
+            &data_home,
+            "--archive",
+            &other.display().to_string(),
+        ]);
+        assert_eq!(imported["isError"], false, "{imported}");
+        assert_eq!(imported["packageId"], "example.fixture.echo");
+        assert_eq!(imported["gatewayLoginItem"], Value::Null);
+        assert!(
+            !definition.exists(),
+            "a route about another package registered the Gateway login item"
+        );
+
+        // An install decides it: the route that put the payload in place is the
+        // route that registers the item it starts at login.
+        let archive = home.join("gateway-0.3.0.zip");
+        std::fs::write(
+            &archive,
+            gateway_archive(GATEWAY_VERSION, "bin/lico-gateway"),
+        )
+        .expect("archive");
+        let installed = run_package_route(&[
+            "package",
+            "import",
+            &data_home,
+            "--archive",
+            &archive.display().to_string(),
+        ]);
+        assert_eq!(installed["isError"], false, "{installed}");
+        assert_eq!(installed["gatewayLoginItem"]["ok"], true, "{installed}");
+        assert_eq!(installed["gatewayLoginItem"]["enabled"], true);
+        assert!(definition.is_file(), "the installed package owns the item");
+        let written = std::fs::read_to_string(&definition).expect("definition");
+        assert!(
+            written.contains("--port") && written.contains("15722"),
+            "the item names the port this client starts the Gateway on: {written}"
+        );
+
+        // The user's own switch is the same answer: off withdraws the item, on
+        // registers it again.
+        let disabled = run_package_route(&[
+            "package",
+            "disable",
+            &data_home,
+            crate::platform::llm_gateway_autostart::GATEWAY_PACKAGE_ID,
+            GATEWAY_VERSION,
+        ]);
+        assert_eq!(disabled["isError"], false, "{disabled}");
+        assert_eq!(disabled["gatewayLoginItem"]["ok"], true);
+        assert_eq!(disabled["gatewayLoginItem"]["enabled"], false);
+        assert!(!definition.exists(), "a disabled package registers nothing");
+
+        let enabled = run_package_route(&[
+            "package",
+            "enable",
+            &data_home,
+            crate::platform::llm_gateway_autostart::GATEWAY_PACKAGE_ID,
+            GATEWAY_VERSION,
+        ]);
+        assert_eq!(enabled["isError"], false, "{enabled}");
+        assert_eq!(enabled["gatewayLoginItem"]["enabled"], true);
+        assert!(definition.is_file());
+
+        // A second installed version: removing one of the two leaves the other
+        // one owning the login item, because the store is read once more after
+        // the withdrawal.
+        let second = home.join("gateway-0.4.0.zip");
+        std::fs::write(&second, gateway_archive("0.4.0", "bin/lico-gateway")).expect("archive");
+        let second_installed = run_package_route(&[
+            "package",
+            "import",
+            &data_home,
+            "--archive",
+            &second.display().to_string(),
+        ]);
+        assert_eq!(second_installed["isError"], false, "{second_installed}");
+        for version in ["0.4.0", GATEWAY_VERSION] {
+            let drained = run_package_route(&[
+                "package",
+                "uninstall-drain",
+                &data_home,
+                crate::platform::llm_gateway_autostart::GATEWAY_PACKAGE_ID,
+                version,
+            ]);
+            assert_eq!(drained["isError"], false, "{drained}");
+            let collected = run_package_route(&[
+                "package",
+                "uninstall-collect",
+                &data_home,
+                crate::platform::llm_gateway_autostart::GATEWAY_PACKAGE_ID,
+                version,
+            ]);
+            assert_eq!(collected["isError"], false, "{collected}");
+            if version == GATEWAY_VERSION {
+                // The last version is gone, so the item is too.
+                assert_eq!(collected["gatewayLoginItem"]["installed"], false);
+                assert!(!definition.exists());
+            } else {
+                // A version is still installed, so the login item it owns
+                // survives the removal of the other one.
+                assert_eq!(collected["gatewayLoginItem"]["enabled"], true);
+                assert!(
+                    definition.is_file(),
+                    "removing one installed version withdrew the login item of the one that remains"
+                );
+            }
+        }
     }
 }
