@@ -1060,37 +1060,6 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::acp_session_transport::tests::"),
     }),
   defineModule({
-      id: "rust.platform.kilo-code-driver.composition",
-      kind: "rust-platform",
-      summary: "Thin Kilo Code compose-side driver, its parser re-export, and the force-stop descriptor",
-      inputs: [
-        "crates/licoup-native/src/platform/kilo_code_driver.rs",
-        "crates/licoup-native/src/platform/kilo_code_driver/tests/mod.rs",
-        "crates/licoup-native/src/platform/kilo_code_driver/tests/composition.rs",
-      ],
-      command: rustLayer("platform::kilo_code_driver::tests::composition::"),
-    }),
-  defineModule({
-      id: "rust.platform.kilo-code-driver.execution",
-      kind: "rust-platform",
-      summary: "Kilo Code capability-aware serve execution composed over the package",
-      inputs: [
-        "crates/licoup-native/src/platform/kilo_code_driver/execution.rs",
-        "crates/licoup-native/src/platform/kilo_code_driver/tests/execution.rs",
-      ],
-      command: rustLayer("platform::kilo_code_driver::tests::execution::"),
-    }),
-  defineModule({
-      id: "rust.platform.kilo-code-driver.probe",
-      kind: "rust-platform",
-      summary: "Kilo Code serve capability probe composed over the package",
-      inputs: [
-        "crates/licoup-native/src/platform/kilo_code_driver/probe.rs",
-        "crates/licoup-native/src/platform/kilo_code_driver/tests/probe.rs",
-      ],
-      command: rustLayer("platform::kilo_code_driver::tests::probe::"),
-    }),
-  defineModule({
       id: "rust.platform.opencode-serve.composition",
       kind: "rust-platform",
       summary: "OpenCode public lifecycle facade and internal driver transport surface",
@@ -1123,12 +1092,12 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.kilo-code-host",
       kind: "rust-platform",
-      summary: "Client answer for the Kilo Code package ports: serve engine, byte record, admission",
+      summary: "Client answer for the Kilo Code package ports: serve engine, byte record, active-turn registration and force stop",
       inputs: [
         "crates/licoup-native/src/platform/kilo_code_host.rs",
-        "crates/licoup-native/src/platform/kilo_code_driver/tests/host.rs",
+        "crates/licoup-native/src/platform/kilo_code_host/tests.rs",
       ],
-      command: rustLayer("platform::kilo_code_driver::tests::host::"),
+      command: rustLayer("platform::kilo_code_host::tests::"),
     }),
   defineModule({
       id: "rust.platform.kilo-code-package.parser",
@@ -1142,7 +1111,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.kilo-code-package.driver",
       kind: "rust-platform",
-      summary: "Kilo Code turn configuration, request shaping, projection and capability probe",
+      summary: "Kilo Code turn configuration, request shaping, projection, capability probe and the turn the host composes",
       inputs: [
                 "crates/licoup-agent-kilo/src/driver/**",
       ],

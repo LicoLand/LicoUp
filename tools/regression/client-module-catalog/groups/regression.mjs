@@ -2205,13 +2205,11 @@ export const REGRESSION_MODULES = Object.freeze([
   defineModule({
       id: "regression.kilo-code-serve-source-bundle",
       kind: "regression-infrastructure",
-      summary: "Kilo Code package protocol and endpoint policy, the client's host answer, and privacy source proof",
+      summary: "Kilo Code package protocol, endpoint policy and turn, the client's host answer, and privacy source proof",
       inputs: [
-        "crates/licoup-agent-kilo/src/parser/**",
-        "crates/licoup-agent-kilo/src/policy.rs",
+        "crates/licoup-agent-kilo/src/**",
         "crates/licoup-native/src/platform/kilo_code_host.rs",
-        "crates/licoup-native/src/platform/kilo_code_driver.rs",
-        "crates/licoup-native/src/platform/kilo_code_driver/execution.rs",
+        "crates/licoup-native/src/platform/runtime_adapters/drivers.rs",
         "tests/contract/client/kilo-code-serve-source-bundle.test.mjs",
       ],
       command: command(

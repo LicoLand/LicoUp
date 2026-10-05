@@ -7,7 +7,7 @@
 //! - [`serve_port`] is the package's [`ServePort`] answered from
 //!   `licoup-agent-drivers`' serve engine — the same engine that starts and
 //!   supervises the endpoint, reads its documents over HTTP, frames its SSE
-//!   stream, records raw bytes and admits an active turn for force stop.
+//!   stream, records raw bytes and registers an active turn for force stop.
 //! - [`turn_event_port`] is the package's turn-event emission answered from this
 //!   host's own emitters, so a Kilo event and a Cursor event reach the same
 //!   reader through the same path.
@@ -15,6 +15,11 @@
 //!
 //! Nothing here names a vendor field: the engine is protocol-agnostic and the
 //! policy it runs on comes from the package ([`kilo_serve_spec`]).
+//!
+//! The package performs the turn and holds the registration that keeps it
+//! reachable; what it cannot own is the engine underneath, so the attachment,
+//! the reads, the framing, the byte record and the active-turn registry are all
+//! answered here, and force stop reaches a running Kilo turn through [`cancel`].
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -22,7 +27,7 @@ use licoup_agent_kilo::host::HostPorts;
 use licoup_agent_kilo::policy;
 use licoup_agent_kilo::port::serve::{
     ServeAttachment, ServeByteDirection, ServeEndpoint, ServeFramingFailure, ServePort,
-    ServeTurnAdmission,
+    ServeTurnGuard,
 };
 use licoup_agent_kilo::port::turn_event::TurnEventPort;
 use serde_json::Value;
@@ -215,17 +220,29 @@ fn observe_bytes(
     observer.record_bytes(source, direction, bytes.as_bytes());
 }
 
-fn admit_turn(attach_url: &str, session_id: &str) -> ServeTurnAdmission {
-    match local_service::turn_control::register("kilo-code-serve", attach_url, session_id, None) {
-        Ok(guard) => {
-            // The guard is released immediately: the caller registers through
-            // [`super::kilo_code_driver::execute`], which owns the guard for the
-            // whole turn. Admission asked here is a question about capacity.
-            drop(guard);
-            ServeTurnAdmission::Admitted
-        }
-        Err(()) => ServeTurnAdmission::AtCapacity,
-    }
+fn register_turn(attach_url: &str, session_id: &str) -> Option<ServeTurnGuard> {
+    // The guard is handed to the caller, which holds it for the whole turn:
+    // force stop reaches an active turn through this registration, and a turn
+    // that gave the guard up early would be unreachable while it still runs.
+    // The identity is the package's own, because the same identity is what a
+    // resumed turn registers its requested session under.
+    local_service::turn_control::register(
+        licoup_agent_kilo::driver::DRIVER_ID,
+        attach_url,
+        session_id,
+        None,
+    )
+    .ok()
+    .map(ServeTurnGuard::hold)
+}
+
+/// Reach the endpoint's active turn for force stop.
+///
+/// The active-turn registry belongs to the serve engine, not to the package: it
+/// is the same registry every serve-family Agent's stop uses, and the identity a
+/// Kilo turn registers under is the one its own declaration names.
+pub(crate) fn cancel(session_id: &str) -> local_service::turn_control::ControlDisposition {
+    local_service::turn_control::cancel(licoup_agent_kilo::driver::DRIVER_ID, session_id)
 }
 
 /// This host's answer for the package's serve port.
@@ -236,7 +253,7 @@ pub(crate) fn serve_port() -> ServePort {
         post_json,
         watch_frames,
         observe_bytes,
-        admit_turn,
+        register_turn,
     }
 }
 
@@ -256,3 +273,6 @@ pub(crate) fn host_ports() -> HostPorts {
         serve: serve_port(),
     }
 }
+
+#[cfg(test)]
+mod tests;

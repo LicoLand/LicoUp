@@ -1,17 +1,28 @@
-//! The engine functions the package's ports are answered with.
+//! The host's answer for the Kilo Code adapter package's ports.
+//!
+//! These claims belong to the host, not to the package: the serve engine
+//! specification force stop reads, the descriptor it is the same contract as,
+//! the launch shape the engine starts this Agent's endpoint with, and the
+//! readiness crossing that turns the package's documents into the engine's own
+//! record. They drive `licoup_agent_kilo` from the host side, because the serve
+//! engine they are answered with is the host's and nothing else holds it.
 
-use super::super::super::kilo_code_host;
+use super::{CONTROL_SPEC, kilo_serve_spec};
 use licoup_agent_kilo::policy;
+use serde_json::json;
 
 #[test]
 fn the_engine_specification_and_the_force_stop_descriptor_are_one_contract() {
     // Force stop and the serve engine read one specification, so no second
     // descriptor exists that could drift from the one the engine runs.
-    let spec = kilo_code_host::kilo_serve_spec();
-    let control = kilo_code_host::CONTROL_SPEC;
+    let spec = kilo_serve_spec();
+    let control = CONTROL_SPEC;
     assert_eq!(spec.identity, control.identity);
     assert_eq!(spec.state_dir, control.state_dir);
-    assert_eq!(spec.errors.executable_missing, control.errors.executable_missing);
+    assert_eq!(
+        spec.errors.executable_missing,
+        control.errors.executable_missing
+    );
     assert_eq!(spec.errors.stop_failed, control.errors.stop_failed);
     // And it is the package's policy, not a second copy of it: every field the
     // engine reads is read from the package's own declaration.
@@ -41,13 +52,25 @@ fn the_engine_specification_and_the_force_stop_descriptor_are_one_contract() {
 }
 
 #[test]
+fn the_force_stop_descriptor_reads_the_packages_own_endpoint_policy() {
+    assert_eq!(CONTROL_SPEC.identity, policy::SPEC.identity);
+    assert_eq!(CONTROL_SPEC.state_dir, policy::SPEC.state_dir);
+    assert_eq!(
+        CONTROL_SPEC.state_schema_version,
+        policy::SPEC.state_schema_version
+    );
+    assert_eq!(CONTROL_SPEC.default_port, policy::SPEC.default_port);
+    assert_eq!(CONTROL_SPEC.reserved_ports, policy::SPEC.reserved_ports);
+    assert_eq!(
+        CONTROL_SPEC.executable_environment,
+        policy::SPEC.executable_environment
+    );
+}
+
+#[test]
 fn the_engine_launch_shape_is_this_agents_own() {
     let mut command = std::process::Command::new("kilo");
-    (kilo_code_host::kilo_serve_spec().configure_command)(
-        &mut command,
-        "127.0.0.1",
-        4097,
-    );
+    (kilo_serve_spec().configure_command)(&mut command, "127.0.0.1", 4097);
     let args: Vec<_> = command
         .get_args()
         .map(|argument| argument.to_string_lossy().into_owned())
@@ -57,12 +80,12 @@ fn the_engine_launch_shape_is_this_agents_own() {
 
 #[test]
 fn readiness_reads_the_packages_documents_and_crosses_with_its_models() {
-    let spec = kilo_code_host::kilo_serve_spec();
+    let spec = kilo_serve_spec();
     let ready = (spec.parse_readiness)(
-        &serde_json::json!({"healthy": true, "version": "1.2.3"}),
-        &serde_json::json!([]),
-        &serde_json::json!({"model": "kilo-auto/free"}),
-        &serde_json::json!({
+        &json!({"healthy": true, "version": "1.2.3"}),
+        &json!([]),
+        &json!({"model": "kilo-auto/free"}),
+        &json!({
             "all": [{"id": "kilo", "models": {"kilo-auto/free": {}}}],
             "default": {"kilo": "kilo-auto/free"}
         }),
@@ -76,10 +99,10 @@ fn readiness_reads_the_packages_documents_and_crosses_with_its_models() {
     // package's own decision rather than the engine's.
     assert!(
         (spec.parse_readiness)(
-            &serde_json::json!({"healthy": true, "version": "1.2.3"}),
-            &serde_json::json!([]),
-            &serde_json::json!({}),
-            &serde_json::json!({"all": []}),
+            &json!({"healthy": true, "version": "1.2.3"}),
+            &json!([]),
+            &json!({}),
+            &json!({"all": []}),
         )
         .is_none()
     );

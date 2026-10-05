@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 // The thirteen per-Agent parsers and the composition that names them stay in the
@@ -331,10 +331,11 @@ test('serve HTTP and SSE frames decode only in target parser components', () => 
     'crates/licoup-native/src/platform/opencode_driver/serve_transport.rs',
     'utf8',
   );
-  // The client's Kilo turn is the composition that asks the package to perform
-  // it, not a transport that classifies frames of its own.
+  // The Kilo turn is the package's own composition: it asks the installed serve
+  // engine for the effect and reads the package's parser, not a transport that
+  // classifies frames of its own.
   const kiloTransport = readFileSync(
-    'crates/licoup-native/src/platform/kilo_code_driver/execution.rs',
+    'crates/licoup-agent-kilo/src/driver/turn.rs',
     'utf8',
   );
   // The host's transport reads the package's parser through the composition's
@@ -347,9 +348,16 @@ test('serve HTTP and SSE frames decode only in target parser components', () => 
     composition,
     new RegExp(`use ${packaged.opencode.crate}::parser as opencode;`),
   );
-  // The client's Kilo turn reads the package's own parser rather than a local
-  // copy, which is what makes the corpus a statement about the shipped ingress.
-  assert.match(kiloTransport, /driver::execute_via_serve|licoup_agent_kilo/);
+  // The Kilo turn reads the package's own parser rather than a local copy, which
+  // is what makes the corpus a statement about the shipped ingress, and the
+  // client keeps no Kilo transport for it to be read from.
+  assert.match(kiloTransport, /execute_via_serve/);
+  assert.match(kiloTransport, /crate::parser/);
+  assert.equal(
+    existsSync('crates/licoup-native/src/platform/kilo_code_driver/execution.rs'),
+    false,
+    'the host still keeps a Kilo Code transport',
+  );
 });
 
 test('Cursor PTY isolation precedes its strict NDJSON parser', () => {

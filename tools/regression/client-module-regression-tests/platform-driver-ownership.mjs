@@ -601,42 +601,43 @@ test("neutral ACP runtime and session transport retain bounded ownership", async
 });
 
 test("Kilo Code adapter leaves retain exact tests and complete source ownership", async () => {
-  const filters = new Map([
-    ["rust.platform.kilo-code-driver.composition",
-      "platform::kilo_code_driver::tests::composition::"],
-    ["rust.platform.kilo-code-driver.execution",
-      "platform::kilo_code_driver::tests::execution::"],
-    ["rust.platform.kilo-code-driver.probe",
-      "platform::kilo_code_driver::tests::probe::"],
-    ["rust.platform.kilo-code-host",
-      "platform::kilo_code_driver::tests::host::"],
-  ]);
+  // The Agent's driver moved into the package that owns it, so the client keeps
+  // one Kilo Code source: the host answer for the package's ports, with its own
+  // test tree. The module and tree the move retired must not come back as a
+  // second owner, and no narrow driver module may outlive the code it named.
+  assert.equal(
+    await exists("crates/licoup-native/src/platform/kilo_code_driver.rs"),
+    false,
+    "the host still declares a Kilo Code driver module",
+  );
+  assert.equal(
+    await exists("crates/licoup-native/src/platform/kilo_code_driver"),
+    false,
+    "the host still declares a Kilo Code driver tree",
+  );
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
-    candidate.id.startsWith("rust.platform.kilo-code-driver.") ||
-    candidate.id === "rust.platform.kilo-code-host");
-  assert.equal(modules.length, filters.size);
-  for (const [id, filter] of filters) {
-    assert.equal(CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id)
-      .command.args.at(-1), filter);
-  }
-  const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
-  // Every source the client still holds for this Agent has a precise narrow
-  // owner: the compose-side driver tree and the host answer for its ports.
+    candidate.id === "rust.platform.kilo-code-host" ||
+    candidate.id.startsWith("rust.platform.kilo-code-driver."));
+  assert.equal(modules.length, 1);
+  const host = modules[0];
+  // The host's own suite is what states what the host still owns: the engine
+  // specification, the descriptor force stop reads and the readiness crossing.
+  assert.equal(host.command.args.at(-1), "platform::kilo_code_host::tests::");
+  const ownedInputs = new Set(host.inputs);
   for (const relativePath of [
-    "crates/licoup-native/src/platform/kilo_code_driver.rs",
-    ...await sourceFiles(
-      "crates/licoup-native/src/platform/kilo_code_driver", ".rs"),
     "crates/licoup-native/src/platform/kilo_code_host.rs",
+    ...await sourceFiles("crates/licoup-native/src/platform/kilo_code_host", ".rs"),
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
-      `Kilo Code adapter source must have a precise regression owner: ${relativePath}`);
+      `Kilo Code host source must have a precise regression owner: ${relativePath}`);
   }
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/kilo_code_driver/execution.rs",
-  ])), ["architecture.client-boundaries", "rust.platform.kilo-code-driver.execution"]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/platform/kilo_code_host.rs",
-  ])), ["architecture.client-boundaries", "rust.platform.kilo-code-host"]);
+  ])), [
+    "architecture.client-boundaries",
+    "regression.kilo-code-serve-source-bundle",
+    "rust.platform.kilo-code-host",
+  ]);
   // The Agent's own half carries its own narrow owners, and every source the
   // package ships is owned by the package's whole-tree module.
   const packageModuleId = "rust.core.agent-kilo-package";
@@ -1167,17 +1168,27 @@ test("Kilo Code protocol leaves retain exact tests in the package that owns them
       `${id} must run against the package's own manifest`);
   }
   const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
+  // Every source one of the package's narrow owners covers is owned by one of
+  // them rather than by another Agent's module or by nothing at all. The narrow
+  // inputs are directory globs, so each real file is matched the way the catalog
+  // matches it.
+  const narrow = (relativePath) => modules.some((module) =>
+    module.inputs.some((input) => input.endsWith("/**")
+      ? relativePath.startsWith(input.slice(0, -2))
+      : input === relativePath));
   for (const relativePath of [
-    "crates/licoup-agent-kilo/src/parser.rs",
     ...await sourceFiles("crates/licoup-agent-kilo/src/parser", ".rs"),
     "crates/licoup-agent-kilo/src/policy.rs",
-    "crates/licoup-agent-kilo/src/driver.rs",
+    // The turn the host composes, the probe it offers and the claims that drive
+    // them moved here with the driver module the host retired.
     ...await sourceFiles("crates/licoup-agent-kilo/src/driver", ".rs"),
     "crates/licoup-agent-kilo/src/registration.rs",
   ]) {
-    assert.equal(ownedInputs.has(relativePath), true,
+    assert.equal(narrow(relativePath), true,
       `Kilo Code package source must have a precise regression owner: ${relativePath}`);
   }
+  assert.equal(ownedInputs.has("crates/licoup-agent-kilo/src/driver/**"), true,
+    "the moved driver leaves must stay owned by the package's driver module");
 });
 
 test("OpenClaw Gateway leaves retain exact tests and complete source ownership", async () => {

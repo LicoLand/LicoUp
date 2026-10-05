@@ -2188,6 +2188,7 @@ name = "licoup-agent-kilo"
 version = "0.14.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
  "licoup-extension-contracts",
  "serde_json",
  "uuid",

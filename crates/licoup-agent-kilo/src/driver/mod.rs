@@ -15,21 +15,32 @@
 //! Nothing here reaches a socket or starts a process: every engine operation
 //! arrives through [`crate::port::serve`], so a package running without its host
 //! reports that it could not ask rather than performing the effect itself.
+//!
+//! The two bounded entry points the host composes are here as well
+//! ([`execute`] and [`capability_probe`]), because what one Kilo turn *is* and
+//! how its endpoint is offered are this Agent's contract; what the host owns is
+//! the engine underneath them and its own result vocabulary, which these
+//! translate onto.
+
+use licoup_agent_drivers::acp_driver_runtime::AcpDriverSpec;
 
 pub mod config;
 pub mod probe;
 pub mod projection;
 pub mod turn;
 
+#[cfg(test)]
+mod tests;
+
 pub use config::{ServeTurnConfig, timestamp};
-pub use probe::{EndpointProbe, capability_probe};
+pub use probe::{EndpointProbe, capability_probe, probe_endpoint};
 // The Agent's own material, re-exported at the names its client used to read it
 // by, so a composition that moves in slices names one path throughout. A moved
 // spelling is not a second copy: these are the same functions.
 pub use licoup_agent_adapter_sdk::{LifecycleStage, Transition};
 pub use probe as protocol;
 pub use projection::{CapabilityProbe, EffectiveSettings, ProtocolOutcome, serve_capabilities};
-pub use turn::{build_message_body, execute_via_serve};
+pub use turn::{build_message_body, execute, execute_via_serve};
 
 /// This Agent's failure type: a closed code, a fixed message and the stage it
 /// was observed at.
@@ -75,3 +86,12 @@ pub const DRIVER_ID: &str = "kilo-code-serve";
 
 /// The error prefix this Agent's shared ACP-shaped codes carry.
 pub const ERROR_PREFIX: &str = "kilo_code_serve";
+
+/// This Agent's immutable launch declaration, as the shared engine reads it.
+///
+/// The declaration is metadata only: a Kilo turn is performed over this
+/// package's own `serve` HTTP/SSE documents rather than over a shared ACP
+/// stdio transport, so the launch names the subcommand that starts the
+/// endpoint and nothing about a turn.
+pub const DRIVER: AcpDriverSpec =
+    AcpDriverSpec::new(RUNTIME_PROTOCOL, &["serve"]).with_identity(DRIVER_ID, ERROR_PREFIX);

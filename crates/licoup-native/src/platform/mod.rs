@@ -27,7 +27,6 @@ pub(crate) mod generic_cli_driver;
 mod hermes_driver;
 pub(crate) mod hermes_tui_gateway;
 mod hermes_tui_gateway_driver;
-pub(crate) mod kilo_code_driver;
 pub(crate) mod kilo_code_host;
 mod lico_agent_driver;
 pub(crate) use licoup_agent_drivers::local_service;

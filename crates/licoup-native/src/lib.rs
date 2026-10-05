@@ -130,13 +130,12 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     // for a binary route that is not completed yet.
     licoup_agent_openclaw::port::turn_event::install(platform::openclaw_turn_event_port())?;
     // The Kilo Code adapter package owns what one Kilo turn is — the request
-    // shape, the session protocol, the stream classification and the projection —
-    // and this host owns the serve engine it runs on and the consumer its events
-    // reach. Both ports are installed together because a package with an engine
-    // and no consumer, or a consumer and no engine, is half-wired. The package's
-    // binary route is completed by the agent-execution port; until then the client
-    // still performs the turn, and removing that is the named remainder on
-    // VENDOR-CODE-REMOVAL.
+    // shape, the session protocol, the stream classification, the projection and
+    // the turn itself — and this host owns the serve engine it runs on and the
+    // consumer its events reach. Both ports are installed together because a
+    // package with an engine and no consumer, or a consumer and no engine, is
+    // half-wired. The package reaches the engine only through these ports, so no
+    // Kilo module and no second description of the endpoint stays in the kernel.
     licoup_agent_kilo::host::install(platform::kilo_code_host::host_ports())?;
     // The OpenCode adapter package owns the `serve` protocol; the client's own
     // `opencode_driver` still performs one turn, and the one fact it may not
