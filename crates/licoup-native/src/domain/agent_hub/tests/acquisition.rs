@@ -9,7 +9,7 @@ use super::support::{
     FixtureReply, FixtureRoute, bare_host_capabilities, digest_document, fixture_artifact_channel,
     fixture_params, serve, serve_with, sha256_hex, synthetic_agent, temp_dir,
 };
-use crate::platform::client_state::ClientStateStore;
+use licoup_client_state::ClientStateStore;
 
 const ARCHIVE_NAME: &str = "agent-darwin-arm64.tar.gz";
 

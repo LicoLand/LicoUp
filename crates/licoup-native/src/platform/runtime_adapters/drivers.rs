@@ -21,7 +21,7 @@ use licoup_agent_drivers::runtime_adapters::normalization::{
 };
 use licoup_agent_drivers::runtime_adapters::port::{
     AcpCapabilityFacts, AgentDriverRegistration, AgentRun, DrivenRun, DriverEffectiveSettings,
-    DriverFailureFacts,
+    DriverFailureFacts, collaboration_acp_servers,
 };
 use serde_json::{Value, json};
 use std::path::Path;
@@ -916,7 +916,11 @@ fn run_openclaw(run: &AgentRun<'_>) -> NormalizedExecution {
         run.executable,
         run.runtime_connection,
         || {
-            crate::domain::collaboration_plugin::acp_servers_for_runtime("openclaw").map_err(|_| {
+            // The optional MCP registration is stored in this host's own client
+            // state and canonicalised against this host's own inventory, so the
+            // answer arrives through the composition's port rather than by
+            // naming the domain owner from below it.
+            collaboration_acp_servers("openclaw").map_err(|_| {
                 openclaw_driver::ProtocolFailure::new(
                     "openclaw_acp_mcp_registration_invalid",
                     "The optional MCP registration could not be validated safely.",

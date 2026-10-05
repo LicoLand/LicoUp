@@ -14,6 +14,11 @@ mod support;
 pub use command_sync::commands_sync;
 pub use config::{config_get, config_set};
 pub(crate) use config::{migrate_config_document, validate_current_config_document};
+/// The port the outbound send entries ask whether this client may emit endpoint
+/// traffic at all. The composition above installs the installed package's own
+/// answer into it; a process that composes none keeps the kernel's pre-package
+/// path.
+pub(crate) use endpoint_collaboration_gate::install_endpoint_outbound_authority;
 /// The caller-owned port spine the fixed SDK endpoint is composed from: the
 /// custody, durable-state, clock, and carrier adapters, the admitted-only
 /// composition point, the SDK's own verified-fact consumer, and the device

@@ -70,11 +70,11 @@
 //! preference instead of inventing one, which is the fail-closed direction
 //! because a policy that was never recorded can never be restored.
 
+use licoup_client_state::ClientStateStore;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 use super::CandidateFilters;
-use crate::platform::client_state::ClientStateStore;
 
 /// The `settings` entry this owner reads and writes.
 pub const SELECTION_POLICY_SETTINGS_KEY: &str = "selectionPolicyAdoption";

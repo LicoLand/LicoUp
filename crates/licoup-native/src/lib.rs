@@ -75,7 +75,8 @@ pub(crate) mod host_lane;
 /// the Antigravity, Kimi Code and OpenCode packages ask for, the serve engine
 /// and consumer the Kilo Code package reaches through, and the launch
 /// environment the DeepSeek Harness package asks for. A process that never
-/// calls it keeps every port fail-closed.
+/// calls it keeps every port at the default its own owner declared: fail-closed,
+/// except where the owner's default is the path the build already runs.
 pub fn install_environment_ports() -> Result<(), &'static str> {
     install_workflow_host_ports();
     domain::conversation::history::install_open_codex_rollouts(
@@ -95,6 +96,12 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     // one owner; a process that never installs it refuses every admission
     // instead of inventing an entry with no bindings.
     domain::cross_device_entry::install()?;
+    // The outbound endpoint collaboration authority the mobile relay's send
+    // entries ask. The gate belongs to the installed optional package, so the
+    // domain reads it through its own port; a process that never installs this
+    // answer keeps the kernel's pre-package path, which is what the gate itself
+    // reports before any package owns the path.
+    domain::mobile_relay::install_endpoint_outbound_authority(endpoint_outbound_authority)?;
     // An adapter package owns what one of its turns emits; this host owns where
     // it goes, because the host owns the consumer. Each package is linked here
     // for its registration while its binary route is completed by the
@@ -217,6 +224,23 @@ fn admits_agent_execution() -> bool {
     domain::work_admission::WorkAdmission::open(data_root)
         .barrier()
         .is_ok_and(|barrier| barrier.is_none())
+}
+
+/// The composition's answer for the mobile relay's outbound-authority port: the
+/// installed endpoint collaboration package's own gate, resolved when the
+/// question is asked.
+///
+/// The gate is the package lifecycle's own record, so the port is answered from
+/// it rather than from a second copy of the package store. An installed package
+/// that is switched off, missing or unreadable refuses with the owner's own
+/// stable reason, which is what the send entries publish verbatim; with nothing
+/// installed the gate reports the kernel's own pre-package path, and this
+/// composition reports the same thing.
+fn endpoint_outbound_authority() -> Result<(), &'static str> {
+    platform::extension_packages::endpoint_collaboration_gate()
+        .authority()
+        .map(|_| ())
+        .map_err(platform::extension_packages::EndpointOutboundRefusal::reason)
 }
 
 /// The workflow composition: this host's answers for the ports

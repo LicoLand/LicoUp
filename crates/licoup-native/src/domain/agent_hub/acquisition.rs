@@ -31,8 +31,8 @@
 use super::contract::{
     AgentRecipe, ArtifactIntegrity, ArtifactSpec, InstallChannel, PlatformInstallCapabilities,
 };
-use crate::platform::client_state::ClientStateStore;
 use anyhow::{Result, ensure};
+use licoup_client_state::ClientStateStore;
 use licoup_foundation::platform::file_security::AtomicPrivateFile;
 use sha2::{Digest, Sha256};
 use std::fmt::{self, Write as _};
