@@ -11,10 +11,10 @@
 //! (`licoup-agent-<agent>`), so no parser subtree stays here any more: the
 //! composition names the package that holds each one, and no copy stays.
 
+pub(in crate::platform) use licoup_agent_adapter_sdk::Transition;
 pub(in crate::platform) use licoup_agent_adapter_sdk::adapters::{
     AdapterContract, NativeLineParser,
 };
-pub(in crate::platform) use licoup_agent_adapter_sdk::Transition;
 
 // Antigravity's Agent Hooks receipt, PTY parser and terminal classification live
 // in `licoup-agent-antigravity`, beside the driver that reads them: the package

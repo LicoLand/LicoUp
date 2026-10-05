@@ -2,12 +2,12 @@ use super::super::model::{NormalizedEffectiveSettings, NormalizedExecution};
 use super::super::normalization::{execution_response, normalize_codex, normalize_cursor};
 use super::super::{RUNTIME_SCHEMA_VERSION, RuntimeAdapter};
 use super::super::drivers::{codex_driven, cursor_driven};
-use licoup_agent_opencode::driver as opencode_driver;
 use licoup_agent_codex::app_server::contract::RUNTIME_PROTOCOL as CODEX_RUNTIME_PROTOCOL;
 use licoup_agent_codex::app_server::model::{
     EffectiveSettings as CodexEffectiveSettings, ProtocolFailure as CodexProtocolFailure,
     RunResult as CodexRunResult,
 };
+use licoup_agent_opencode::driver as opencode_driver;
 use serde_json::json;
 
 /// The transitions one composed Agent's parser reports for one outcome, read

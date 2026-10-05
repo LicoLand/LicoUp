@@ -27,9 +27,7 @@ use licoup_agent_adapter_sdk::port::ParserRegistration;
 use std::path::Path;
 use std::sync::OnceLock;
 
-use crate::platform::{
-    acp_driver_runtime,
-};
+use crate::platform::acp_driver_runtime;
 // The DeepSeek Harness driver — the `--profile sdk` transport, the turn it
 // carries and the cleanup of one session — is the DeepSeek Harness package's.
 // The composition names the package and keeps the host's own projection of its
