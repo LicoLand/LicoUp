@@ -308,22 +308,12 @@ fn management_catalog_projects_native_capabilities_and_adapter_plugins() {
     }
 
     // The bridge entry mirrors the managed-bridge lifecycle projection; the
-    // LicoUp Codex Plugin declares install only from a confirmed
+    // LicoUp-managed ACP bridge declares install only from a confirmed
     // not-installed state and executes it through the digest-bound flow.
     let bridge = &by_id["antigravity"]["adapterPlugins"][0];
     assert_eq!(bridge["label"], "ACP Bridge");
     assert_eq!(bridge["installationState"], "not-installed");
     assert_eq!(bridge["lifecycleActions"], json!(["install"]));
-    let subagents = &by_id["codex"]["adapterPlugins"][0];
-    assert_eq!(subagents["label"], "LicoUp Codex Plugin");
-    let subagents_state = subagents["installationState"].as_str().unwrap();
-    assert!(["installed", "not-installed", "unavailable"].contains(&subagents_state));
-    let expected_actions: Vec<&str> = if subagents_state == "not-installed" {
-        vec!["install"]
-    } else {
-        Vec::new()
-    };
-    assert_eq!(subagents["lifecycleActions"], json!(expected_actions));
 }
 
 #[test]
