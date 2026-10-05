@@ -652,3 +652,154 @@ fn the_state_adapter_forwards_the_old_or_new_decision_and_the_item_itself() {
     assert_eq!(observed.commits, 1);
     assert_eq!(observed.settle_calls, 1);
 }
+
+/// The replacement composition's own contracts.
+///
+/// The artifact-accepting branch needs the authorized bundle and the real
+/// ed25519/ml-dsa-65 keys; `licoup_protocol_bindings`' gated cases exercise it.
+/// What is proved here is the part that must hold *without* an artifact: an
+/// unauthorized request is refused in the composition's own terms, before the
+/// SDK, a store, a transport or an effect is reached.
+mod replacement_composition {
+    use licoup_endpoint_core::{
+        AuthoritySource, ReplacementAuthorityRefusal, ReplacementBinding, ReplacementOperation,
+    };
+    use licoup_protocol_bindings::{
+        ReplacementAdmission, ReplacementSession, SdkReplacementAuthority,
+    };
+    use serde_json::json;
+
+    use super::super::{ReplacementRequest, admit_replacement};
+
+    fn binding() -> ReplacementBinding {
+        ReplacementBinding::new(
+            "subject-a",
+            "source-device",
+            "new-device",
+            ReplacementOperation::Activate,
+        )
+    }
+
+    fn admission(state_digest: [u8; 32]) -> ReplacementAdmission {
+        ReplacementAdmission {
+            predecessor: None,
+            session: ReplacementSession {
+                authenticated: true,
+                authority_state_digest: state_digest,
+                endpoint_identity_ref: [1; 32],
+                identity_state_digest: [2; 32],
+            },
+            endpoints: Vec::new(),
+        }
+    }
+
+    fn request(source: AuthoritySource) -> ReplacementRequest {
+        ReplacementRequest::new(source, binding(), admission([0; 32]))
+    }
+
+    /// An adapter for a build that admitted nothing.
+    fn refusing_adapter() -> SdkReplacementAuthority {
+        SdkReplacementAuthority::without_admitted_line()
+    }
+
+    #[test]
+    fn an_ordinary_source_is_refused_in_the_compositions_own_terms() {
+        // A relay mailbox, a provider backup and an untrusted remote all reach
+        // the composition as `None`. The refusal must name the missing
+        // credential and not the absent artifact, because the credential is
+        // decided first: an unauthorized request never becomes an SDK call.
+        for source in [AuthoritySource::None] {
+            let refusal = admit_replacement(
+                &refusing_adapter(),
+                &json!({"not": "a record"}),
+                &request(source),
+            );
+            assert!(!refusal.is_authorized());
+            assert_eq!(
+                refusal.refusal(),
+                Some(ReplacementAuthorityRefusal::NoTrustedAuthority),
+                "an ordinary source must be refused as unauthorized, not as unverified"
+            );
+            assert!(refusal.accepted().is_none());
+        }
+    }
+
+    #[test]
+    fn a_real_source_but_no_admitted_line_reports_the_missing_artifact() {
+        // The other half of the same split: the caller really holds a trusted
+        // device, so the composition proceeds to the fixed boundary, which has
+        // no admitted line to spend.
+        let refusal = admit_replacement(
+            &refusing_adapter(),
+            &json!({"not": "a record"}),
+            &request(AuthoritySource::TrustedDevice),
+        );
+        assert_eq!(
+            refusal.refusal(),
+            Some(ReplacementAuthorityRefusal::NoTrustedAuthority)
+        );
+        // Both paths refuse; what differs is that the second one reached the
+        // boundary at all, which the stable code alone cannot show. The
+        // distinction is proved by the bindings' own `NoAdmittedLine` case.
+        assert_eq!(
+            licoup_protocol_bindings::ReplacementAdmissionRefusal::NoAdmittedLine.code(),
+            "no_admitted_line"
+        );
+    }
+
+    #[test]
+    fn a_replayed_epoch_is_refused_before_the_sdk_is_reached() {
+        let request = ReplacementRequest::new(
+            AuthoritySource::SavedRecoveryCredential,
+            binding(),
+            ReplacementAdmission {
+                predecessor: Some(licoup_protocol_bindings::ReplacementPredecessor::new(
+                    licoarc::identity::AcceptedUserAuthority {
+                        state: json!({}),
+                        user_identity_ref: [0; 32],
+                        authority_epoch: 4,
+                        state_digest: [0; 32],
+                    },
+                )),
+                session: ReplacementSession {
+                    authenticated: true,
+                    authority_state_digest: [0; 32],
+                    endpoint_identity_ref: [1; 32],
+                    identity_state_digest: [2; 32],
+                },
+                endpoints: Vec::new(),
+            },
+        );
+
+        // The presented record is at the epoch already accepted.
+        let refusal =
+            admit_replacement(&refusing_adapter(), &json!({"authorityEpoch": 4}), &request);
+        assert_eq!(
+            refusal.refusal(),
+            Some(ReplacementAuthorityRefusal::ReplayedAuthority {
+                accepted_epoch: 4,
+                presented_epoch: 4,
+            }),
+            "a superseded roster is refused from the caller's own epoch, not re-verified"
+        );
+
+        // An older epoch is the same class of refusal.
+        let refusal =
+            admit_replacement(&refusing_adapter(), &json!({"authorityEpoch": 3}), &request);
+        assert_eq!(
+            refusal.refusal(),
+            Some(ReplacementAuthorityRefusal::ReplayedAuthority {
+                accepted_epoch: 4,
+                presented_epoch: 3,
+            })
+        );
+
+        // A record with no readable epoch at all is unreadable, never treated
+        // as epoch zero (which would silently accept a superseded record).
+        let refusal = admit_replacement(&refusing_adapter(), &json!({}), &request);
+        assert_eq!(
+            refusal.refusal(),
+            Some(ReplacementAuthorityRefusal::UnreadableAuthority)
+        );
+    }
+}
