@@ -7,9 +7,18 @@
 //!
 //! Two rules are deliberate:
 //!
-//! * Every fetch is bounded and origin-pinned. The URL is built from the
-//!   recipe's own `url_template`, the scheme is HTTPS and each redirect hop
-//!   must still belong to the declared `origin_host`. A loopback origin is
+//! * Every fetch is bounded, and its origin is pinned per request. The URL is
+//!   built from the recipe's own `url_template`, the scheme is HTTPS and the
+//!   first request must belong to the declared `origin_host`. A later redirect
+//!   hop must belong to that origin too, or to a host the same recipe names in
+//!   `redirect_hosts`; a hop anywhere else is refused. The redirect declaration
+//!   exists because a vendor that hands its own downloads to a content network
+//!   answers the first request with a `Location` on that network — GitHub
+//!   release assets move to `release-assets.githubusercontent.com` — so a
+//!   single origin can never describe the vendor's own publication. It widens
+//!   redirect hops only: it cannot serve the first request, it is validated when
+//!   the registry loads, and it is explicit per recipe, so no host becomes
+//!   reachable for a channel that did not declare it. A loopback origin is
 //!   accepted so the real fetch path can be exercised against a local fixture
 //!   server; a bundled recipe never declares one.
 //! * Integrity fails closed. A channel whose artifact declaration carries no
@@ -137,15 +146,49 @@ impl fmt::Display for AcquisitionFailure {
 
 impl std::error::Error for AcquisitionFailure {}
 
+/// The hosts one artifact fetch may reach, in the order acquisition pins them.
+///
+/// The first request of a fetch must belong to the declared origin: that is the
+/// vendor's own publication, and it is the only host a recipe's URL template can
+/// name. A redirect hop is admitted on the same origin or on a host the recipe
+/// declares in [`ArtifactSpec::redirect_hosts`], because a vendor may serve its
+/// bytes through a content network of its own choosing. The declaration is
+/// explicit per recipe, so a channel that does not name a host never reaches it,
+/// and it is validated at registry load.
+#[derive(Clone, Copy)]
+pub(crate) struct ArtifactOrigin<'a> {
+    origin_host: &'a str,
+    redirect_hosts: &'a [String],
+}
+
+impl<'a> ArtifactOrigin<'a> {
+    pub(crate) fn of(spec: &'a ArtifactSpec) -> Self {
+        Self {
+            origin_host: &spec.origin_host,
+            redirect_hosts: &spec.redirect_hosts,
+        }
+    }
+
+    /// Admits one request of a fetch. `hop` 0 is the URL the recipe built.
+    fn admit(self, hop: usize, url: &str) -> Result<Url> {
+        if hop == 0 {
+            ensure_origin(url, self.origin_host, &[])
+        } else {
+            ensure_origin(url, self.origin_host, self.redirect_hosts)
+        }
+    }
+}
+
 /// Bounded, origin-pinned byte source. The production implementation is
 /// [`VendorArtifactFetcher`]; tests substitute a deterministic port.
 pub(crate) trait ArtifactFetcher: Send + Sync {
     /// Streams at most `max_bytes` of `url` into `output` and reports how many
-    /// bytes were written. Every redirect hop must belong to `origin_host`.
+    /// bytes were written. The first request is pinned to the declared origin
+    /// and every redirect hop to that origin or to a declared redirect host.
     fn fetch(
         &self,
         url: &str,
-        origin_host: &str,
+        origin: ArtifactOrigin<'_>,
         max_bytes: u64,
         output: &mut dyn Write,
     ) -> Result<u64>;
@@ -158,7 +201,7 @@ impl ArtifactFetcher for VendorArtifactFetcher {
     fn fetch(
         &self,
         url: &str,
-        origin_host: &str,
+        origin: ArtifactOrigin<'_>,
         max_bytes: u64,
         output: &mut dyn Write,
     ) -> Result<u64> {
@@ -169,8 +212,8 @@ impl ArtifactFetcher for VendorArtifactFetcher {
             .user_agent(FETCH_USER_AGENT)
             .build();
         let mut current = url.to_string();
-        for _ in 0..=MAX_REDIRECTS {
-            ensure_origin(&current, origin_host)?;
+        for hop in 0..=MAX_REDIRECTS {
+            origin.admit(hop, &current)?;
             let response = agent
                 .get(&current)
                 .set("User-Agent", FETCH_USER_AGENT)
@@ -262,7 +305,12 @@ pub(crate) fn stage(
         AcquisitionFailure::with_detail(ARTIFACT_STAGING_UNAVAILABLE, error.error().to_string())
     })?;
     let mut digesting = DigestingWriter::new(writer.file_mut());
-    let fetched = match fetcher.fetch(&url, &spec.origin_host, MAX_ARTIFACT_BYTES, &mut digesting) {
+    let fetched = match fetcher.fetch(
+        &url,
+        ArtifactOrigin::of(spec),
+        MAX_ARTIFACT_BYTES,
+        &mut digesting,
+    ) {
         Ok(fetched) => fetched,
         Err(error) => {
             let _ = writer.discard();
@@ -323,7 +371,9 @@ pub(crate) fn artifact_url(
     version: &str,
 ) -> Result<String> {
     let resolved = resolve_template(&spec.url_template, spec, capabilities, version)?;
-    ensure_origin(&resolved, &spec.origin_host)?;
+    // A URL template names the vendor's own publication, so it is admitted
+    // against the declared origin alone: redirect hosts are for later hops.
+    ArtifactOrigin::of(spec).admit(0, &resolved)?;
     Ok(resolved)
 }
 
@@ -390,7 +440,9 @@ pub(crate) fn digest_document_url(
         .as_deref()
         .ok_or_else(|| AcquisitionFailure::new(ARTIFACT_INTEGRITY_UNDECLARED))?;
     let url = resolve_template(template, spec, capabilities, version)?;
-    ensure_origin(&url, &spec.origin_host)?;
+    // The digest document is addressed by the recipe, so it is pinned like the
+    // artifact itself: the declared origin first, declared redirect hosts later.
+    ArtifactOrigin::of(spec).admit(0, &url)?;
     Ok(Some(url))
 }
 
@@ -414,7 +466,7 @@ pub(crate) fn published_digest(
     fetcher
         .fetch(
             &url,
-            &spec.origin_host,
+            ArtifactOrigin::of(spec),
             MAX_DIGEST_DOCUMENT_BYTES,
             &mut document,
         )
@@ -466,14 +518,23 @@ fn resolve_template(
     Ok(resolved)
 }
 
-/// Pins one URL — the initial request or a redirect hop — to the declared origin.
-fn ensure_origin(url_text: &str, origin_host: &str) -> Result<Url> {
+/// Pins one request to the hosts it may reach.
+///
+/// The declared origin always qualifies, with its own subdomains. A redirect hop
+/// may additionally reach a host the recipe declared for that purpose; the first
+/// request of a fetch passes no such list, so a declared redirect host can never
+/// serve as the origin a recipe builds its URL on.
+fn ensure_origin(url_text: &str, origin_host: &str, redirect_hosts: &[String]) -> Result<Url> {
     let url =
         Url::parse(url_text).map_err(|_| AcquisitionFailure::new(ARTIFACT_ORIGIN_MISMATCH))?;
     let origin = origin_host.trim().to_ascii_lowercase();
     let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
+    let on_origin = !origin.is_empty() && (host == origin || host.ends_with(&format!(".{origin}")));
+    let declared = redirect_hosts
+        .iter()
+        .any(|allowed| allowed.trim().eq_ignore_ascii_case(&host));
     ensure!(
-        !origin.is_empty() && (host == origin || host.ends_with(&format!(".{origin}"))),
+        on_origin || declared,
         AcquisitionFailure::new(ARTIFACT_ORIGIN_MISMATCH)
     );
     if origin_is_loopback(&origin) {
@@ -725,15 +786,15 @@ impl ArtifactFetcher for RecordingArtifactFetcher {
     fn fetch(
         &self,
         url: &str,
-        origin_host: &str,
+        origin: ArtifactOrigin<'_>,
         max_bytes: u64,
         output: &mut dyn Write,
     ) -> Result<u64> {
-        ensure_origin(url, origin_host)?;
+        origin.admit(0, url)?;
         self.requests
             .lock()
             .expect("recording fetcher")
-            .push((url.to_string(), origin_host.to_string()));
+            .push((url.to_string(), origin.origin_host.to_string()));
         let name = artifact_file_name(url)?;
         let body = self
             .bodies

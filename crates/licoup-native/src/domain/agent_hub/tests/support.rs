@@ -104,6 +104,7 @@ pub(super) fn fixture_artifact_channel(
                 .into_iter()
                 .collect(),
             installer: Default::default(),
+            redirect_hosts: Vec::new(),
             integrity,
         }),
         install_argv: vec![
@@ -184,8 +185,18 @@ pub(super) struct FixtureServer {
 /// The thread exits after the last route, so a request the acquirer should not
 /// make is refused by the closed listener instead of hanging the test.
 pub(super) fn serve(routes: Vec<FixtureRoute>) -> FixtureServer {
+    serve_with(move |_| routes)
+}
+
+/// [`serve`] for a reply that has to name the fixture's own address, such as a
+/// redirect to the same listener reached under a second hostname.
+pub(super) fn serve_with<F>(routes: F) -> FixtureServer
+where
+    F: FnOnce(&str) -> Vec<FixtureRoute>,
+{
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback fixture");
     let base = format!("http://{}", listener.local_addr().expect("fixture address"));
+    let routes = routes(&base);
     let handle = thread::spawn(move || {
         let mut seen = Vec::new();
         for route in routes {

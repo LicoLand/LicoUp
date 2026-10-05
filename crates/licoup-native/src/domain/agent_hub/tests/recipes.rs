@@ -585,3 +585,138 @@ fn a_published_digest_declaration_is_validated() {
     }));
     assert!(validate_agent(&unsupported).is_err());
 }
+
+/// A redirect declaration is the one thing that reaches past the artifact's own
+/// origin, so an inexact or over-broad one must never load: acquisition can only
+/// pin what it can compare exactly, and a host the origin rule already admits
+/// would be a widened origin wearing a redirect's name.
+#[test]
+fn a_redirect_host_declaration_is_validated() {
+    use super::support::fixture_artifact_channel;
+    use crate::domain::agent_hub::recipes::validate_agent;
+
+    let recipe_with = |hosts: Vec<&str>| {
+        let mut channel = fixture_artifact_channel("https://vendor.invalid", None);
+        channel.artifact.as_mut().unwrap().redirect_hosts =
+            hosts.into_iter().map(str::to_string).collect();
+        synthetic_recipe("synthetic-artifact", vec![channel])
+    };
+
+    validate_agent(&recipe_with(Vec::new())).unwrap();
+    validate_agent(&recipe_with(vec!["release-assets.githubusercontent.com"])).unwrap();
+
+    for (label, hosts) in [
+        ("an empty host", vec![""]),
+        ("a padded host", vec![" assets.vendor.invalid"]),
+        ("a scheme", vec!["https://assets.vendor.invalid"]),
+        ("a path", vec!["assets.vendor.invalid/agent.tar.gz"]),
+        ("a port", vec!["assets.vendor.invalid:443"]),
+        ("uppercase", vec!["Assets.Vendor.Invalid"]),
+        ("a bare label", vec!["assets"]),
+        ("a leading dot", vec![".vendor.invalid"]),
+        ("a trailing dot", vec!["assets.vendor.invalid."]),
+        ("an empty label", vec!["assets..vendor.invalid"]),
+        ("a hyphen-edged label", vec!["-assets.vendor.invalid"]),
+        ("the declared origin itself", vec!["vendor.invalid"]),
+        (
+            "a subdomain of the declared origin",
+            vec!["assets.vendor.invalid"],
+        ),
+        (
+            "a duplicate",
+            vec!["assets.vendor.invalid", "assets.vendor.invalid"],
+        ),
+    ] {
+        assert!(
+            validate_agent(&recipe_with(hosts)).is_err(),
+            "a redirect declaration with {label} must not load"
+        );
+    }
+}
+
+/// The bundled artifact declarations carry the vendor publications that were
+/// verified against the vendors' own endpoints, and nothing else.
+///
+/// A channel stays refused while its vendor publishes no digest for the artifact
+/// the recipe stages: acquisition fails closed, so an undeclared digest is a
+/// refusal, never an unverified install.
+#[test]
+fn artifact_declarations_carry_only_verified_vendor_publication() {
+    use super::support::bare_host_capabilities;
+    use crate::domain::agent_hub::acquisition;
+
+    let registry = registry().unwrap();
+    let artifact = |agent_id: &str| {
+        let agent = registry
+            .agents
+            .iter()
+            .find(|agent| agent.id == agent_id)
+            .unwrap();
+        let channel = agent
+            .channels
+            .iter()
+            .find(|channel| channel.kind == "official-artifact")
+            .unwrap();
+        channel.artifact.as_ref().unwrap()
+    };
+
+    let codex = artifact("codex");
+    assert_eq!(codex.origin_host, "github.com");
+    assert_eq!(
+        codex.url_template,
+        "https://github.com/openai/codex/releases/latest/download/codex-package-{vendorArch}-{vendorOs}.tar.gz"
+    );
+    assert_eq!(
+        codex.redirect_hosts,
+        vec!["release-assets.githubusercontent.com"]
+    );
+    let integrity = codex.integrity.as_ref().expect("codex publishes a digest");
+    assert_eq!(integrity.algorithm, "sha256");
+    assert!(integrity.digest.is_none());
+    assert_eq!(
+        integrity.digest_url_template.as_deref(),
+        Some("https://github.com/openai/codex/releases/latest/download/codex-package_SHA256SUMS")
+    );
+    let macos = bare_host_capabilities("macos", "aarch64");
+    assert_eq!(
+        acquisition::artifact_url(codex, &macos, "latest").unwrap(),
+        "https://github.com/openai/codex/releases/latest/download/codex-package-aarch64-apple-darwin.tar.gz"
+    );
+    assert_eq!(
+        acquisition::digest_document_url(codex, &macos, "latest")
+            .unwrap()
+            .as_deref(),
+        Some("https://github.com/openai/codex/releases/latest/download/codex-package_SHA256SUMS")
+    );
+
+    // opencode names the vendor's own asset extensions, and stays refused: the
+    // release publishes no digest for any of them.
+    let opencode = artifact("opencode");
+    assert_eq!(
+        opencode.redirect_hosts,
+        vec!["release-assets.githubusercontent.com"]
+    );
+    assert!(opencode.integrity.is_none());
+    assert_eq!(
+        acquisition::artifact_url(opencode, &macos, "latest").unwrap(),
+        "https://github.com/anomalyco/opencode/releases/latest/download/opencode-darwin-arm64.zip"
+    );
+    assert_eq!(
+        acquisition::artifact_url(
+            opencode,
+            &bare_host_capabilities("linux", "x86_64"),
+            "latest"
+        )
+        .unwrap(),
+        "https://github.com/anomalyco/opencode/releases/latest/download/opencode-linux-x64.tar.gz"
+    );
+
+    // No digest was observed for these vendors' staged artifact, so no channel
+    // declares one and each stays refused with `artifact_integrity_undeclared`.
+    for agent_id in ["cursor", "claude-code", "antigravity", "hermes", "openclaw"] {
+        assert!(
+            artifact(agent_id).integrity.is_none(),
+            "{agent_id} must stay refused until its vendor publishes a digest for the staged artifact"
+        );
+    }
+}

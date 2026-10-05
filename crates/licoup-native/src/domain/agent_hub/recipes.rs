@@ -222,6 +222,7 @@ pub(crate) fn validate_agent(agent: &AgentRecipe) -> Result<()> {
                 "official artifact origin host is required"
             );
             validate_https_template(&artifact.url_template)?;
+            validate_redirect_hosts(artifact)?;
             let host = Url::parse(
                 &artifact
                     .url_template
@@ -252,6 +253,50 @@ pub(crate) fn validate_agent(agent: &AgentRecipe) -> Result<()> {
                 "windows official-artifact channels cannot use bash argv"
             );
         }
+    }
+    Ok(())
+}
+
+/// A declared redirect host is one exact, fully qualified hostname.
+///
+/// The declaration widens redirect hops beyond the artifact's own origin, so it
+/// is held to what acquisition can pin exactly: a bare lowercase hostname, one
+/// entry per host, and never a host that the origin rule already admits — a
+/// redirect host that could serve the first request would be a widened origin
+/// wearing a redirect's name.
+fn validate_redirect_hosts(artifact: &super::contract::ArtifactSpec) -> Result<()> {
+    let origin = artifact.origin_host.trim().to_ascii_lowercase();
+    let mut seen = std::collections::BTreeSet::new();
+    for host in &artifact.redirect_hosts {
+        ensure!(
+            host.as_str() == host.trim() && !host.is_empty(),
+            "artifact redirect hosts must be non-empty and unpadded"
+        );
+        ensure!(
+            host.len() <= 253
+                && host.chars().all(|character| character.is_ascii_lowercase()
+                    || character.is_ascii_digit()
+                    || character == '.'
+                    || character == '-'),
+            "artifact redirect host must be a bare lowercase hostname"
+        );
+        ensure!(
+            host.contains('.') && !host.starts_with('.') && !host.ends_with('.'),
+            "artifact redirect host must be fully qualified"
+        );
+        ensure!(
+            host.split('.')
+                .all(|label| !label.is_empty() && !label.starts_with('-') && !label.ends_with('-')),
+            "artifact redirect host must not carry an empty or hyphen-edged label"
+        );
+        ensure!(
+            !origin.is_empty() && host != &origin && !host.ends_with(&format!(".{origin}")),
+            "a redirect host must not be reachable as the declared origin"
+        );
+        ensure!(
+            seen.insert(host.as_str()),
+            "artifact redirect hosts must be unique"
+        );
     }
     Ok(())
 }

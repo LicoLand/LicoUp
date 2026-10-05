@@ -7,7 +7,7 @@ use super::super::contract::{
 };
 use super::support::{
     FixtureReply, FixtureRoute, bare_host_capabilities, digest_document, fixture_artifact_channel,
-    fixture_params, serve, sha256_hex, synthetic_agent, temp_dir,
+    fixture_params, serve, serve_with, sha256_hex, synthetic_agent, temp_dir,
 };
 use crate::platform::client_state::ClientStateStore;
 
@@ -295,7 +295,10 @@ fn a_redirect_that_leaves_the_declared_origin_is_refused() {
     let state_root = temp_dir("redirect");
     let store = ClientStateStore::new(state_root.clone()).unwrap();
     // A pinned digest keeps this test on the artifact fetch alone.
-    let channel = fixture_artifact_channel(&base, Some(pinned_integrity(&"b".repeat(64))));
+    let mut channel = fixture_artifact_channel(&base, Some(pinned_integrity(&"b".repeat(64))));
+    // A declared redirect host admits that host alone, not whichever host a
+    // vendor answer happens to name.
+    channel.artifact.as_mut().unwrap().redirect_hosts = vec!["assets.vendor.invalid".to_string()];
     let agent = synthetic_agent("synthetic", vec![channel.clone()]);
     let capabilities = bare_host_capabilities("macos", "aarch64");
     let params = fixture_params(&state_root);
@@ -313,6 +316,74 @@ fn a_redirect_that_leaves_the_declared_origin_is_refused() {
         acquisition::ARTIFACT_ORIGIN_MISMATCH
     );
     server.finish();
+}
+
+#[test]
+fn a_redirect_to_a_host_the_recipe_declares_is_followed() {
+    let body = "synthetic vendor archive";
+    // One fixture listener answers under two names: the declared origin and the
+    // second hostname the recipe declares, which is what a vendor's own content
+    // network is. Only the declaration makes the second one reachable.
+    let server = serve_with(|base| {
+        let redirected = base.replace("127.0.0.1", "localhost");
+        vec![
+            FixtureRoute {
+                path: format!("/{ARCHIVE_NAME}"),
+                reply: FixtureReply::Redirect(format!("{redirected}/{ARCHIVE_NAME}")),
+            },
+            FixtureRoute {
+                path: format!("/{ARCHIVE_NAME}"),
+                reply: FixtureReply::Body(body.to_string()),
+            },
+        ]
+    });
+    let base = server.base();
+    let state_root = temp_dir("redirect-declared");
+    let store = ClientStateStore::new(state_root.clone()).unwrap();
+    // A pinned digest keeps this test on the artifact fetch alone.
+    let mut channel =
+        fixture_artifact_channel(&base, Some(pinned_integrity(&sha256_hex(body.as_bytes()))));
+    channel.artifact.as_mut().unwrap().redirect_hosts = vec!["localhost".to_string()];
+    let agent = synthetic_agent("synthetic", vec![channel.clone()]);
+    let capabilities = bare_host_capabilities("macos", "aarch64");
+    let params = fixture_params(&state_root);
+
+    let staged = acquisition::stage(
+        &store,
+        &params,
+        &stage_request(&agent, &channel, &capabilities),
+        ArtifactRole::Archive,
+        &VendorArtifactFetcher,
+    )
+    .unwrap();
+    assert_eq!(staged.sha256, sha256_hex(body.as_bytes()));
+    assert_eq!(staged.bytes, body.len() as u64);
+    assert_eq!(std::fs::read(&staged.file_path).unwrap(), body.as_bytes());
+    assert_eq!(
+        server.finish(),
+        vec![format!("/{ARCHIVE_NAME}"), format!("/{ARCHIVE_NAME}")]
+    );
+}
+
+#[test]
+fn a_first_request_to_a_declared_redirect_host_is_refused() {
+    // Declaring a redirect host widens hops, never the origin: a URL template
+    // that names the declared host instead of the origin is refused before any
+    // request is made.
+    let mut channel = fixture_artifact_channel("http://127.0.0.1:9", None);
+    let artifact = channel.artifact.as_mut().unwrap();
+    artifact.origin_host = "127.0.0.1".to_string();
+    artifact.url_template = "http://localhost:9/agent-{vendorOs}-{vendorArch}.tar.gz".to_string();
+    artifact.redirect_hosts = vec!["localhost".to_string()];
+    let capabilities = bare_host_capabilities("macos", "aarch64");
+
+    let error =
+        acquisition::artifact_url(channel.artifact.as_ref().unwrap(), &capabilities, "latest")
+            .unwrap_err();
+    assert_eq!(
+        failure_of(error).code,
+        acquisition::ARTIFACT_ORIGIN_MISMATCH
+    );
 }
 
 #[test]
