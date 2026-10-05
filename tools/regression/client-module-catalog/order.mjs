@@ -924,6 +924,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "release.workflows",
   "rust.component.endpoint-collaboration",
   "rust.component.endpoint-collaboration-cleanup",
+  "rust.component.endpoint-collaboration-control",
   "rust.domain.mobile-relay.endpoint-collaboration",
   "rust.platform.endpoint-collaboration-admission",
 ]);
