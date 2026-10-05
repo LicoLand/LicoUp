@@ -30,9 +30,16 @@ use super::inventory::{
 use super::{ADMISSION_LOCK_PATH, ArchiveContainer, DATA_PREFIX, MANIFEST_MEMBER};
 
 /// Credential custody domain whose key material never travels in a plaintext archive.
-const CREDENTIAL_DOMAIN: &str = "gateway-credential-custody";
+///
+/// Published so an inventory owner classifies the limitation by the domain this
+/// owner declares rather than by a copy of its spelling.
+pub const CREDENTIAL_DOMAIN: &str = "gateway-credential-custody";
 /// Non-secret inventory document at the data-root-relative path its owner reads.
-const CREDENTIAL_INVENTORY_PATH: &str = "llm-api-key-inventory.json";
+///
+/// The document travels as metadata; the key material it describes does not.
+/// Published for the same reason as [`CREDENTIAL_DOMAIN`]: a consumer attributes
+/// the path its owner actually writes.
+pub const CREDENTIAL_INVENTORY_PATH: &str = "llm-api-key-inventory.json";
 #[derive(Clone, Debug)]
 pub struct ExportRequest {
     /// Absolute data root to capture.
