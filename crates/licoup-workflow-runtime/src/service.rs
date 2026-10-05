@@ -709,12 +709,19 @@ impl StrategyService {
                     );
                 }
                 ensure!(decision.is_none(), "invalid_request");
+                // The admitting caller states the selection-policy revision it
+                // captured for this decision. It is required, never defaulted:
+                // a receipt that cannot name its policy revision would let
+                // provenance degrade silently.
+                let selection_policy_revision =
+                    required_string(object, "selectionPolicyRevision")?.to_owned();
                 let admitted = match self.preflight_assistant_workflow(
                     conversation_id,
                     membership_id,
                     &workflow,
                     &bindings,
                     &filters,
+                    &selection_policy_revision,
                 ) {
                     Ok(admitted) => admitted,
                     Err(failure) => {
@@ -779,6 +786,7 @@ impl StrategyService {
         workflow: &Value,
         bindings: &[BindingValue],
         filters: &crate::CandidateFilters,
+        selection_policy_revision: &str,
     ) -> std::result::Result<AssistantPreflight, PreflightFailure> {
         let store =
             licoup_conversation::ConversationStore::open(&self.portable_root)
@@ -824,6 +832,7 @@ impl StrategyService {
             &snapshots,
             filters,
             self.ports.model.as_ref(),
+            selection_policy_revision,
         )
     }
 
@@ -2691,6 +2700,7 @@ fn ensure_allowed_fields(action: &str, object: &Map<String, Value>) -> Result<()
             "decision",
             "callbackStateId",
             "callbackStateVisit",
+            "selectionPolicyRevision",
         ],
         "strategy.assistant.workflow.inspect" => &["action", "runId"],
         "strategy.assistant.workflow.cancel" => &["action", "runId", "correlationId"],
@@ -3255,6 +3265,10 @@ fn now_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The selection-policy revision a test admits its fixture graph under.
+    /// Every admission states it explicitly; nothing here defaults it.
+    const FIXTURE_SELECTION_POLICY_REVISION: &str = "selection-policy-fixture-1";
 
     fn root() -> PathBuf {
         let path = std::env::temp_dir().join(format!(
@@ -4174,6 +4188,7 @@ mod tests {
         let request = || {
             json!({
                 "action": "strategy.assistant.workflow.execute",
+                "selectionPolicyRevision": FIXTURE_SELECTION_POLICY_REVISION,
                 "conversationId": conversation_id,
                 "membershipId": membership_id,
                 "workflow": workflow,
@@ -4250,6 +4265,7 @@ mod tests {
         let request = || {
             json!({
                 "action": "strategy.assistant.workflow.execute",
+                "selectionPolicyRevision": FIXTURE_SELECTION_POLICY_REVISION,
                 "conversationId": conversation_id,
                 "membershipId": membership_id,
                 "workflow": assistant_workflow_json(),
@@ -4327,6 +4343,7 @@ mod tests {
         let request = || {
             json!({
                 "action": "strategy.assistant.workflow.execute",
+                "selectionPolicyRevision": FIXTURE_SELECTION_POLICY_REVISION,
                 "conversationId": conversation_id,
                 "membershipId": membership_id,
                 "workflow": assistant_workflow_json(),
@@ -4390,6 +4407,7 @@ mod tests {
         let response = service
             .execute(json!({
                 "action": "strategy.assistant.workflow.execute",
+                "selectionPolicyRevision": FIXTURE_SELECTION_POLICY_REVISION,
                 "conversationId": conversation_id,
                 "membershipId": membership_id,
                 "workflow": assistant_workflow_json(),
@@ -4458,6 +4476,7 @@ mod tests {
         let request = || {
             json!({
                 "action": "strategy.assistant.workflow.execute",
+                "selectionPolicyRevision": FIXTURE_SELECTION_POLICY_REVISION,
                 "conversationId": conversation_id,
                 "membershipId": membership_id,
                 "workflow": workflow,
@@ -4566,6 +4585,7 @@ mod tests {
         let response = service
             .execute(json!({
                 "action": "strategy.assistant.workflow.execute",
+                "selectionPolicyRevision": FIXTURE_SELECTION_POLICY_REVISION,
                 "conversationId": conversation_id,
                 "membershipId": membership_id,
                 "workflow": assistant_workflow_json(),
@@ -5580,6 +5600,7 @@ mod tests {
         let request = || {
             json!({
                 "action": "strategy.assistant.workflow.execute",
+                "selectionPolicyRevision": FIXTURE_SELECTION_POLICY_REVISION,
                 "conversationId": conversation_id,
                 "membershipId": membership_id,
                 "workflow": workflow,
@@ -5675,6 +5696,7 @@ mod tests {
         workflow["transitions"][0]["mode"] = json!("callback");
         let mut request = json!({
             "action": "strategy.assistant.workflow.execute",
+            "selectionPolicyRevision": FIXTURE_SELECTION_POLICY_REVISION,
             "conversationId": conversation_id,
             "membershipId": membership_id,
             "workflow": workflow,

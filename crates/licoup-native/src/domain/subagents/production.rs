@@ -139,6 +139,16 @@ impl ConversationHostPort for NativeConversationHost {
                     .and_then(Value::as_str)
                     .ok_or_else(|| permanent("invalid_request", "schema/validate"))?;
                 self.verified_assistant(caller, conversation_id, Some(membership_id))?;
+                // Capture the selection-policy revision here, at admission, the
+                // same way `route_receipt`/`route_receipt_under` in
+                // `domain::client_conversation::service` capture the binding the
+                // decision is admitted under. The runtime states it in the
+                // receipt it stores, so a later adoption governs only the next
+                // task and never rewrites this one.
+                request["selectionPolicyRevision"] = json!(
+                    crate::domain::client_conversation::selection_policy::current_binding()
+                        .revision_name()
+                );
                 crate::platform::conversation_host_client::execute_existing(
                     "strategy.execute",
                     &request,
