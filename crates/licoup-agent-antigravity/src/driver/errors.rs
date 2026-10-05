@@ -1,17 +1,17 @@
 #[derive(Clone, Debug)]
-pub(in crate::platform) struct ProtocolFailure(Box<ProtocolFailurePayload>);
+pub struct ProtocolFailure(Box<ProtocolFailurePayload>);
 
 #[derive(Clone, Debug)]
-pub(in crate::platform) struct ProtocolFailurePayload {
-    pub(in crate::platform) code: &'static str,
-    pub(in crate::platform) message: &'static str,
-    pub(in crate::platform) stage: &'static str,
-    pub(in crate::platform) user_interaction_required: bool,
-    pub(in crate::platform) request_method: Option<String>,
-    pub(in crate::platform) session_id: Option<String>,
-    pub(in crate::platform) thread_id: Option<String>,
-    pub(in crate::platform) turn_id: Option<String>,
-    pub(in crate::platform) turn_status: Option<String>,
+pub struct ProtocolFailurePayload {
+    pub code: &'static str,
+    pub message: &'static str,
+    pub stage: &'static str,
+    pub user_interaction_required: bool,
+    pub request_method: Option<String>,
+    pub session_id: Option<String>,
+    pub thread_id: Option<String>,
+    pub turn_id: Option<String>,
+    pub turn_status: Option<String>,
 }
 
 impl std::ops::Deref for ProtocolFailure {
@@ -29,7 +29,7 @@ impl std::ops::DerefMut for ProtocolFailure {
 }
 
 impl ProtocolFailure {
-    pub(in crate::platform) fn into_payload(self) -> ProtocolFailurePayload {
+    pub fn into_payload(self) -> ProtocolFailurePayload {
         *self.0
     }
 

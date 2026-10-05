@@ -1,11 +1,11 @@
-use crate::platform::native_agent_parser::adapters::antigravity::valid_session_id;
+use crate::parser::valid_session_id;
 use licoup_agent_adapter_sdk::adapters::driver_registry::{
     registry_get, registry_insert, registry_remove,
 };
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum ControlDisposition {
+pub enum ControlDisposition {
     Accepted,
     NotPersisted,
     NoActiveTurn,
@@ -27,7 +27,7 @@ enum TurnClaim {
 const REGISTRY_NAMESPACE: &str = "antigravity-active-turn";
 const MAX_ACTIVE_TURNS: usize = 128;
 
-pub(in crate::platform) fn register_active_turn(session_id: &str, pid: u32) {
+pub(super) fn register_active_turn(session_id: &str, pid: u32) {
     if !valid_session_id(session_id) {
         return;
     }
@@ -46,7 +46,7 @@ pub(in crate::platform) fn register_active_turn(session_id: &str, pid: u32) {
     }
 }
 
-pub(in crate::platform) fn clear_active_turn(session_id: &str) {
+pub(super) fn clear_active_turn(session_id: &str) {
     match registry_get::<TurnClaim>(REGISTRY_NAMESPACE, session_id) {
         Some(TurnClaim::Active { .. }) => {
             let _ = registry_insert(
@@ -60,7 +60,7 @@ pub(in crate::platform) fn clear_active_turn(session_id: &str) {
     }
 }
 
-pub(in crate::platform) fn cancel(session_id: &str) -> ControlDisposition {
+pub fn cancel(session_id: &str) -> ControlDisposition {
     if !valid_session_id(session_id) {
         return ControlDisposition::SessionUnavailable;
     }
@@ -81,7 +81,7 @@ pub(in crate::platform) fn cancel(session_id: &str) -> ControlDisposition {
 
 /// Peek whether cancel was accepted or is pending. Does not consume the claim,
 /// so the PTY loop can stop projecting new assistant text after interrupt.
-pub(in crate::platform) fn cancel_claimed(session_id: &str) -> bool {
+pub(super) fn cancel_claimed(session_id: &str) -> bool {
     if session_id.is_empty() {
         return false;
     }
@@ -93,7 +93,7 @@ pub(in crate::platform) fn cancel_claimed(session_id: &str) -> bool {
 
 /// True when cancel was accepted and native interrupt was delivered, or when a
 /// pending cancel survived until the turn finished. Consumes the claim.
-pub(in crate::platform) fn take_cancelled(session_id: &str) -> bool {
+pub(super) fn take_cancelled(session_id: &str) -> bool {
     if session_id.is_empty() {
         return false;
     }
@@ -103,7 +103,7 @@ pub(in crate::platform) fn take_cancelled(session_id: &str) -> bool {
     )
 }
 
-pub(in crate::platform) fn cleanup_session(session_id: &str) -> ControlDisposition {
+pub fn cleanup_session(session_id: &str) -> ControlDisposition {
     if !valid_session_id(session_id) {
         return ControlDisposition::SessionUnavailable;
     }

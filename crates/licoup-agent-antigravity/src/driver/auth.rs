@@ -10,7 +10,10 @@
 
 use super::errors::ProtocolFailure;
 use super::model::{DRIVER_ID, PROCESS_POLL_INTERVAL};
-use crate::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded};
+use licoup_agent_targets::platform::user_shell_environment::apply_to_command;
+use licoup_foundation::platform::process_supervisor::{
+    IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded,
+};
 use serde_json::{Value, json};
 use std::io::Read;
 use std::process::{Command, Stdio};
@@ -43,7 +46,7 @@ pub(super) fn ensure_authorized(executable: &str) -> Result<(), ProtocolFailure>
 /// allowed to open the browser: the vendor CLI runs one bounded print turn,
 /// which starts its interactive OAuth flow when logged out. The follow-up
 /// probe reports whether authorization completed.
-pub(crate) fn authorize(executable: Option<&str>) -> Result<Value, &'static str> {
+pub fn authorize(executable: Option<&str>) -> Result<Value, &'static str> {
     let executable = executable
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -55,7 +58,7 @@ pub(crate) fn authorize(executable: Option<&str>) -> Result<Value, &'static str>
     // The explicit vendor OAuth flow is a CLI invocation of this adapter: it
     // observes the same user shell environment as a terminal launch (proxy,
     // login state), per the environment-equivalence invariant.
-    super::super::user_shell_environment::apply_to_command(&mut command);
+    apply_to_command(&mut command);
     command
         .arg(format!("--print={AUTHORIZE_PROMPT}"))
         .arg("--dangerously-skip-permissions")
@@ -92,7 +95,7 @@ fn probe_authorization(executable: &str) -> AuthProbe {
     // The authorization probe is a CLI invocation of this adapter: it observes
     // the same user shell environment as a terminal launch (proxy, login
     // state), per the environment-equivalence invariant.
-    super::super::user_shell_environment::apply_to_command(&mut command);
+    apply_to_command(&mut command);
     command
         .arg("models")
         .stdin(Stdio::null())

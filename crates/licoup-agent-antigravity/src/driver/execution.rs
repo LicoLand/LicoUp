@@ -2,15 +2,22 @@ use super::control::{cancel_claimed, clear_active_turn, register_active_turn, ta
 use super::errors::ProtocolFailure;
 use super::hooks::{ensure_hook_bridge, read_conversation_id, receipt_path_for_turn};
 use super::model::{EffectiveSettings, PROCESS_POLL_INTERVAL, RECEIPT_ENV, RunResult};
-use crate::platform::native_agent_parser::adapters::antigravity::{
-    PtyOutputParser, TerminalFacts, classify_terminal, valid_session_id,
-};
-#[cfg(not(unix))]
-use crate::platform::process_supervisor::SupervisedChild;
-use crate::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, join_bounded};
+use crate::parser::{PtyOutputParser, TerminalFacts, classify_terminal, valid_session_id};
 #[cfg(unix)]
-use crate::platform::pty_transport::PtyEvent;
-use crate::platform::raw_execution::{
+use crate::port::turn_event::{
+    emit_agent_message_chunk, emit_agent_message_completed, emit_agent_processing, emit_turn_event,
+};
+use licoup_agent_drivers::runtime_adapters::{
+    apply_mcp_runtime_root, apply_subagent_caller_context,
+};
+use licoup_agent_targets::platform::user_shell_environment::apply_to_command;
+use licoup_foundation::platform::agent_workspace::resolve_local_agent_workspace;
+#[cfg(not(unix))]
+use licoup_foundation::platform::process_supervisor::SupervisedChild;
+use licoup_foundation::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, join_bounded};
+#[cfg(unix)]
+use licoup_foundation::platform::pty_transport::PtyEvent;
+use licoup_foundation::platform::raw_execution::{
     RawExecutionDirection, RawExecutionObserver, RawExecutionScope,
 };
 use serde_json::{Value, json};
@@ -28,9 +35,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 /// accepted only when it names the same execution, and every other permission
 /// or approval policy is rejected before any process is started, so the
 /// effective report can never disagree with the executed command.
-pub(in crate::platform) const DANGEROUS_SKIP_MODE: &str = "dangerously-skip-permissions";
+pub(super) const DANGEROUS_SKIP_MODE: &str = "dangerously-skip-permissions";
 
-pub(in crate::platform) fn execute(
+pub fn execute(
     executable: &str,
     params: &Value,
     prompt: &str,
@@ -51,7 +58,7 @@ pub(in crate::platform) fn execute(
     // would run a vendor CLI the switch may be replacing, so the refusal is
     // reported before any process starts. A host that installed no port on the
     // package answers fail-closed and this turn never claims it was admitted.
-    if !licoup_agent_antigravity::port::execution::admits_execution() {
+    if !crate::port::execution::admits_execution() {
         return RunResult::failed(
             ProtocolFailure::new(
                 "antigravity_execution_admission_closed",
@@ -95,10 +102,10 @@ pub(in crate::platform) fn execute(
         }
     };
     let mut command = Command::new(executable);
-    crate::platform::user_shell_environment::apply_to_command(&mut command);
+    apply_to_command(&mut command);
     config.apply_to(&mut command, &receipt);
-    crate::platform::runtime_adapters::apply_subagent_caller_context(&mut command, params);
-    crate::platform::runtime_adapters::apply_mcp_runtime_root(&mut command);
+    apply_subagent_caller_context(&mut command, params);
+    apply_mcp_runtime_root(&mut command);
 
     let turn_id = format!(
         "agy-{}",
@@ -208,16 +215,16 @@ pub(in crate::platform) fn execute(
     #[cfg(unix)]
     {
         if event_session_id.is_empty() {
-            crate::platform::emit_turn_event(
+            emit_turn_event(
                 "agent.turn.accepted",
                 &native_session,
                 &turn_id,
                 json!({ "evidenceKind": "native-event" }),
             );
-            crate::platform::emit_agent_processing(&native_session, &turn_id, "activity", None);
-            crate::platform::emit_agent_message_chunk(&native_session, &turn_id, &output);
+            emit_agent_processing(&native_session, &turn_id, "activity", None);
+            emit_agent_message_chunk(&native_session, &turn_id, &output);
         }
-        crate::platform::emit_agent_message_completed(&native_session, &turn_id, &output);
+        emit_agent_message_completed(&native_session, &turn_id, &output);
     }
     RunResult {
         ok: true,
@@ -258,13 +265,14 @@ fn run_turn_process(
     event_session_id: &str,
     turn_id: &str,
 ) -> Result<ProcessOutcome, ProtocolFailure> {
-    let (mut child, master) = crate::platform::pty_transport::spawn(command).map_err(|_| {
-        ProtocolFailure::new(
-            "antigravity_cli_start_failed",
-            "Antigravity CLI could not be started.",
-            "process/start",
-        )
-    })?;
+    let (mut child, master) =
+        licoup_foundation::platform::pty_transport::spawn(command).map_err(|_| {
+            ProtocolFailure::new(
+                "antigravity_cli_start_failed",
+                "Antigravity CLI could not be started.",
+                "process/start",
+            )
+        })?;
     let registered = !control_session_id.is_empty();
     if registered {
         register_active_turn(control_session_id, child.pid());
@@ -281,7 +289,7 @@ fn run_turn_process(
         ));
     };
     if !event_session_id.is_empty() {
-        crate::platform::emit_turn_event(
+        emit_turn_event(
             "agent.turn.accepted",
             event_session_id,
             turn_id,
@@ -295,7 +303,7 @@ fn run_turn_process(
     });
     let (sender, receiver) = mpsc::channel();
     let reader_handle = thread::spawn(move || {
-        crate::platform::pty_transport::read_master(master, sender, max_stdout)
+        licoup_foundation::platform::pty_transport::read_master(master, sender, max_stdout)
     });
     let deadline = if timeout_ms == 0 {
         None
@@ -364,7 +372,7 @@ fn emit_resume_chunk(event_session_id: &str, control_session_id: &str, turn_id: 
     if event_session_id.is_empty() || cancel_claimed(control_session_id) {
         return;
     }
-    crate::platform::emit_agent_message_chunk(event_session_id, turn_id, text);
+    emit_agent_message_chunk(event_session_id, turn_id, text);
 }
 
 /// Counts stderr bytes up to `max_stderr` and reports whether the cap was hit.
@@ -486,10 +494,7 @@ fn resolve_workspace(params: &Value, cwd: Option<&Path>) -> Option<PathBuf> {
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .or_else(|| cwd.map(Path::to_path_buf));
-    crate::platform::agent_workspace::resolve_local_agent_workspace(
-        "antigravity",
-        requested.as_deref(),
-    )
+    resolve_local_agent_workspace("antigravity", requested.as_deref())
 }
 
 /// One validated launch configuration. argv and effective settings are both

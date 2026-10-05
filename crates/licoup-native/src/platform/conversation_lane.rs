@@ -634,12 +634,12 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
                 | super::cursor_driver::ControlDisposition::SessionUnavailable => 2,
                 super::cursor_driver::ControlDisposition::TransportUnavailable => 3,
             },
-            RuntimeAdapter::Antigravity => match super::antigravity_driver::cancel(&session_id) {
-                super::antigravity_driver::ControlDisposition::Accepted => 0,
-                super::antigravity_driver::ControlDisposition::NoActiveTurn => 1,
-                super::antigravity_driver::ControlDisposition::NotPersisted
-                | super::antigravity_driver::ControlDisposition::SessionUnavailable => 2,
-                super::antigravity_driver::ControlDisposition::TransportUnavailable => 3,
+            RuntimeAdapter::Antigravity => match licoup_agent_antigravity::driver::cancel(&session_id) {
+                licoup_agent_antigravity::driver::ControlDisposition::Accepted => 0,
+                licoup_agent_antigravity::driver::ControlDisposition::NoActiveTurn => 1,
+                licoup_agent_antigravity::driver::ControlDisposition::NotPersisted
+                | licoup_agent_antigravity::driver::ControlDisposition::SessionUnavailable => 2,
+                licoup_agent_antigravity::driver::ControlDisposition::TransportUnavailable => 3,
             },
             RuntimeAdapter::Hermes => match super::hermes_driver::cancel(&session_id) {
                 super::acp_session_transport::ControlDisposition::Accepted => 0,
@@ -816,10 +816,10 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
             _ => 2,
         },
         RuntimeAdapter::Antigravity => {
-            match super::antigravity_driver::cleanup_session(&session_id) {
-                super::antigravity_driver::ControlDisposition::Accepted => 0,
-                super::antigravity_driver::ControlDisposition::NotPersisted => 3,
-                super::antigravity_driver::ControlDisposition::SessionUnavailable => 1,
+            match licoup_agent_antigravity::driver::cleanup_session(&session_id) {
+                licoup_agent_antigravity::driver::ControlDisposition::Accepted => 0,
+                licoup_agent_antigravity::driver::ControlDisposition::NotPersisted => 3,
+                licoup_agent_antigravity::driver::ControlDisposition::SessionUnavailable => 1,
                 _ => 2,
             }
         }

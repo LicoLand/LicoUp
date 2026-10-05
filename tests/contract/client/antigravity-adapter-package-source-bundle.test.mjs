@@ -5,18 +5,23 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-// The process half of the Antigravity driver, still composed by the client.
-const driverPath = "crates/licoup-native/src/platform/antigravity_driver.rs";
-const driverRoot = "crates/licoup-native/src/platform/antigravity_driver";
-// The wire half, owned by the Antigravity adapter package since ANTIGRAVITY-PACKAGE
-// moved it out of the kernel. One package carries one Agent's protocol; the client
-// names the package for its vocabulary instead of keeping a second copy.
+// The kernel's composition, which names this package's driver directly. The host
+// keeps no Antigravity driver module and no Antigravity driver tree of its own.
+const compositionPath = "crates/licoup-native/src/platform/runtime_adapters/drivers.rs";
+// The wire half and the process half, both owned by the Antigravity adapter
+// package: the protocol moved there first and the driver followed it. One
+// package carries one Agent's program; the client names the package for it
+// instead of keeping a second copy.
 const packageRoot = "crates/licoup-agent-antigravity/src";
+const driverLeaf = `${packageRoot}/driver.rs`;
+const driverRoot = `${packageRoot}/driver`;
 const parserPath = `${packageRoot}/parser.rs`;
 const hookPath = `${packageRoot}/hook.rs`;
 const registrationPath = `${packageRoot}/registration.rs`;
 const replayPath = `${packageRoot}/replay.rs`;
 const parserLeafFacade = `${packageRoot}/parser`;
+const portLifecycleTest = "crates/licoup-agent-antigravity/tests/port_lifecycle.rs";
+const closedAdmissionTest = "crates/licoup-agent-antigravity/tests/closed_admission.rs";
 const packageManifest = "crates/licoup-agent-antigravity/Cargo.toml";
 const packageRelease = "crates/licoup-agent-antigravity/package";
 const retiredGeneratedScript = "session-receipt-hook.sh";
@@ -45,20 +50,25 @@ test("the kernel carries no second copy of the Antigravity protocol", async () =
   const composition = await read(
     "crates/licoup-native/src/platform/native_agent_parser/adapters/mod.rs",
   );
-  assert.ok(composition.includes("licoup_agent_antigravity::parser"));
   assert.ok(composition.includes("licoup_agent_antigravity::registration::REGISTRATION"));
   assert.equal(composition.includes("mod antigravity;"), false);
+  // No parser alias stays here either: the driver that used to read the protocol
+  // through this tree is the package's now and reaches the package's own
+  // `parser`, so an alias nothing reads would be a forwarding shell over a
+  // protocol the host does not own.
+  assert.equal(composition.includes("licoup_agent_antigravity::parser"), false);
+  assert.equal(composition.includes("as antigravity;"), false);
   const replay = await read(
     "crates/licoup-native/src/platform/native_agent_parser/replay/adapters/mod.rs",
   );
   assert.ok(replay.includes("licoup_agent_antigravity::replay::replay_arm"));
   assert.equal(replay.includes("mod antigravity;"), false);
 
-  // The vendor protocol names live in the package, not in the host.
+  // The vendor protocol names live in the package, not in the host, and the
+  // driver the host used to keep beside them is the package's now.
   const driverLeaves = await Promise.all(
-    ["mod", "model", "control", "errors", "probe", "auth", "hooks"].map(
-      async (leaf) => read(`${driverRoot}/${leaf}.rs`),
-    ),
+    [driverLeaf, ...["model", "control", "errors", "probe", "auth", "hooks", "execution", "tests"]
+      .map((leaf) => `${driverRoot}/${leaf}.rs`)].map((source) => read(source)),
   );
   const implementation = driverLeaves.join("\n");
   for (const duplicatedProtocol of [
@@ -71,15 +81,73 @@ test("the kernel carries no second copy of the Antigravity protocol", async () =
     assert.equal(
       implementation.includes(duplicatedProtocol),
       false,
-      `the host must not declare ${duplicatedProtocol}`,
+      `the package's driver must not declare ${duplicatedProtocol}`,
     );
   }
 });
 
+test("the host declares no Antigravity driver and reads the package's", async () => {
+  // A kernel module or tree for this Agent would be a second owner of its
+  // program; both are gone, and the module tree declares neither.
+  assert.equal(
+    await exists("crates/licoup-native/src/platform/antigravity_driver.rs"),
+    false,
+    "the host still declares an Antigravity driver module",
+  );
+  assert.equal(
+    await exists("crates/licoup-native/src/platform/antigravity_driver"),
+    false,
+    "the host still declares an Antigravity driver tree",
+  );
+  const platform = await read("crates/licoup-native/src/platform/mod.rs");
+  assert.doesNotMatch(platform, /mod antigravity_driver;/u,
+    "the host module tree still declares an Antigravity driver module");
+
+  // The composition names the package's driver, so the launch metadata, the
+  // runtime protocol, the receipt rule and the terminal classification are the
+  // package's.
+  const composition = await read(compositionPath);
+  assert.match(composition, /use licoup_agent_antigravity::driver as antigravity_driver;/u,
+    "the composition does not read the package's driver");
+  assert.ok(composition.includes("antigravity_driver::execute("),
+    "the composition does not run the package's own turn");
+  assert.ok(composition.includes("antigravity_driver::probe("),
+    "the composition does not run the package's own probe");
+  // The composition keeps no second copy of the vendor fact: every Antigravity
+  // protocol decision is the package's.
+  for (const forbidden of [
+    "PtyOutputParser",
+    "classify_terminal",
+    "parse_hook_receipt",
+    "DANGEROUS_SKIP_MODE",
+    "antigravity-cli-argv-hook-v1",
+    "antigravity-cli",
+    "--print=",
+    "--conversation=",
+    "--dangerously-skip-permissions",
+    "RECEIPT_ENV",
+    "hook_bridge",
+  ]) {
+    assert.equal(composition.includes(forbidden), false,
+      `the client composition keeps a copy of the package's protocol: ${forbidden}`);
+  }
+  // The cancel and cleanup arms reach the package's own control entries, so the
+  // host holds no Antigravity control plane either.
+  const lane = await read("crates/licoup-native/src/platform/conversation_lane.rs");
+  assert.ok(lane.includes("licoup_agent_antigravity::driver::cancel(&session_id)"));
+  assert.ok(lane.includes("licoup_agent_antigravity::driver::cleanup_session(&session_id)"));
+  assert.ok(
+    lane.includes("licoup_agent_antigravity::driver::ControlDisposition::Accepted"),
+  );
+});
+
 test("the package owns the protocol and no part of the client", async () => {
+  const driverRust = ["driver.rs", "driver/model.rs", "driver/control.rs", "driver/errors.rs",
+    "driver/probe.rs", "driver/auth.rs", "driver/hooks.rs", "driver/execution.rs"];
   const sources = (
     await Promise.all(
-      [parserPath, hookPath, registrationPath, replayPath].map((source) => read(source)),
+      [parserPath, hookPath, registrationPath, replayPath,
+        ...driverRust.map((source) => `${packageRoot}/${source}`)].map((source) => read(source)),
     )
   ).join("\n");
   // A client path in the package's sources would be the kernel reaching back in
@@ -88,11 +156,15 @@ test("the package owns the protocol and no part of the client", async () => {
     assert.equal(sources.includes(clientPath), false, clientPath);
   }
   // The package is a program of its own: its manifest names the shared adapter
-  // contract and the foundation primitives it reuses, and no composition crate.
+  // contract, the shared engine and inventory crates below every Agent, and the
+  // foundation primitives it reuses — and no client crate. The driver reads the
+  // Subagent-mesh bindings and the login-shell snapshot from those shared crates
+  // rather than keeping a second copy of either rule.
   const manifest = await read(packageManifest);
   assert.ok(manifest.includes("licoup-agent-adapter-sdk"));
-  for (const forbiddenDependency of ["licoup-native", "licoup-agent-drivers"]) {
-    assert.equal(manifest.includes(forbiddenDependency), false, forbiddenDependency);
+  assert.equal(manifest.includes("licoup-native"), false, "licoup-native");
+  for (const sharedCrate of ["licoup-agent-drivers", "licoup-agent-targets"]) {
+    assert.ok(manifest.includes(sharedCrate), sharedCrate);
   }
   assert.equal(manifest.includes("trait FrameReplay"), false);
 });
@@ -154,7 +226,7 @@ test("the receipt hook is a native package subcommand, not a generated script", 
   assert.ok(bridge.includes(retiredGeneratedScript));
   assert.equal(withoutComments(bridge).includes("python3"), false);
   assert.equal(bridge.includes("write_hook_script"), false);
-  const failure = await read("crates/licoup-native/src/platform/antigravity_driver/tests.rs");
+  const failure = await read(`${driverRoot}/tests.rs`);
   assert.equal(
     withoutComments(failure).includes("python3"),
     false,
@@ -194,6 +266,22 @@ test("the package declares the ports its host answers", async () => {
   assert.ok(execution.includes("HostEffect::Uninstalled"));
   assert.ok(execution.includes(".ok_or(HostEffect::Uninstalled)"));
   assert.ok(turnEvent.includes("if let Some(port) = PORT.get()"));
+  // That claim is about the *uninstalled* process state, so it is asserted in a
+  // process that installs nothing: the crate's lib suite installs the ports to
+  // drive a real turn, and an assertion there would be an assertion about test
+  // order rather than about the port.
+  const lifecycle = await read(portLifecycleTest);
+  assert.ok(lifecycle.includes("assert!(!execution::installed())"));
+  assert.ok(lifecycle.includes("Err(execution::HostEffect::Uninstalled)"));
+  assert.ok(lifecycle.includes('Err("the agent-execution port is already installed")'));
+  assert.ok(lifecycle.includes("assert!(!turn_event::installed())"));
+  assert.ok(lifecycle.includes("an uninstalled port has no sink to reach"));
+  // What a *closed* answer does to a turn is a different process's claim, so the
+  // gate is exercised in both directions rather than only open.
+  const refused = await read(closedAdmissionTest);
+  assert.ok(refused.includes('Some("antigravity_execution_admission_closed")'));
+  assert.ok(refused.includes('Some("turn/execute")'));
+  assert.ok(refused.includes("admits_execution: || false"));
 
   // The host answers both ports from its own facts. The turn-event answer is the
   // platform layer's; the execution admission answer is the crate root's,

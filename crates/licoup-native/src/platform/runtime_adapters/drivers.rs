@@ -28,10 +28,15 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use crate::platform::{
-    acp_driver_runtime, antigravity_driver, claude_code_driver, cursor_driver,
-    deepseek_harness_driver, hermes_driver, kilo_code_driver, lico_agent_driver,
-    openclaw_driver, opencode_driver, pi_driver,
+    acp_driver_runtime, claude_code_driver, cursor_driver, deepseek_harness_driver, hermes_driver,
+    kilo_code_driver, lico_agent_driver, openclaw_driver, opencode_driver, pi_driver,
 };
+// The Antigravity driver — the `agy --print` launch, the PTY turn it
+// supervises, the Stop-hook receipt it harvests and the terminal classification
+// it reports — is the Antigravity package's. The composition names the package
+// and keeps the host's own projection of its result; it holds no launch
+// metadata, no argv field, no receipt rule and no turn phase of its own.
+use licoup_agent_antigravity::driver as antigravity_driver;
 // The Copilot driver — the `--acp --stdio` launch, the probe and the turn it
 // runs — is the Copilot package's. The composition names the package and keeps
 // the host's own projection of its result; it holds no launch declaration and

@@ -19,10 +19,10 @@ pub(in crate::platform) use licoup_agent_adapter_sdk::{
 };
 
 // Antigravity's Agent Hooks receipt, PTY parser and terminal classification live
-// in `licoup-agent-antigravity`. The driver that still supervises the vendor CLI
-// reads them through this path, and the composition names the package for the
-// registration and the replay arm that belong to the same parser.
-pub(in crate::platform) use licoup_agent_antigravity::parser as antigravity;
+// in `licoup-agent-antigravity`, beside the driver that reads them: the package
+// reaches its own protocol through its own `parser` module, and the composition
+// names the package for the registration and the replay arm that belong to the
+// same parser. This tree keeps no alias, because nothing here reads one.
 // Cursor's vendor protocol has moved the same way, into `licoup-agent-cursor`: its
 // strict-NDJSON turn dialect and the wire vocabulary it reads are the package's,
 // and this composition reads them through the package's own module.
