@@ -3464,14 +3464,25 @@ fn build_command_table() -> CommandTable {
         path: &["mobile", "relay", "e2ee", "secret-store-cleanup"],
         required_positionals: &[],
         options: &[OptionSpec {
-            name: "disposable-proof",
+            name: "cleanup-confirmation",
             arity: OptionArity::Value,
             repeatable: false,
-            value_kind: RequiredArgumentKind::Text,
+            value_kind: RequiredArgumentKind::Json,
             required: true,
         }],
         constraints: &[],
         cardinality: CommandCardinality::Options,
+        handler: mobile::handle_mobile_relay,
+        help: "",
+    });
+    table.register_command(CommandSpec {
+        source_module: "mobile.rs",
+        handler_name: "handle_mobile_relay",
+        path: &["mobile", "relay", "e2ee", "secret-store-cleanup-inventory"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
         handler: mobile::handle_mobile_relay,
         help: "",
     });

@@ -11,6 +11,10 @@ use std::time::Duration;
 
 use licoup_workflow::{CommandKind, RunCommand, RuntimeKind};
 
+// The effect permit is the runtime's own contract: the runtime issues it, the
+// host consumes it, and there is exactly one type with that name.
+pub(crate) use licoup_workflow_runtime::ports::StrategyEffectPermit;
+
 mod effect_dispatch;
 
 pub(crate) use effect_dispatch::{LaneEffectDispatch, RuntimeRegistryAgentProfiles};
@@ -114,52 +118,6 @@ impl RuntimeCatalog {
                 .ok()
                 .map(|_| id.to_owned())
         })
-    }
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct StrategyEffectPermit {
-    command_id: String,
-    authorization_digest: String,
-    effect_fingerprint: String,
-    consumed: bool,
-}
-
-impl StrategyEffectPermit {
-    pub(crate) fn issue(
-        command_id: &str,
-        authorization_digest: &str,
-        effect_fingerprint: &str,
-    ) -> Result<Self> {
-        ensure!(
-            !command_id.is_empty()
-                && authorization_digest.len() == 64
-                && effect_fingerprint.len() == 64,
-            "strategy_permit_invalid"
-        );
-        Ok(Self {
-            command_id: command_id.to_owned(),
-            authorization_digest: authorization_digest.to_owned(),
-            effect_fingerprint: effect_fingerprint.to_owned(),
-            consumed: false,
-        })
-    }
-
-    pub(crate) fn consume(
-        &mut self,
-        command: &RunCommand,
-        authorization_digest: &str,
-        effect_fingerprint: &str,
-    ) -> Result<()> {
-        ensure!(!self.consumed, "strategy_permit_consumed");
-        ensure!(
-            self.command_id == command.id
-                && self.authorization_digest == authorization_digest
-                && self.effect_fingerprint == effect_fingerprint,
-            "strategy_permit_stale"
-        );
-        self.consumed = true;
-        Ok(())
     }
 }
 
@@ -306,7 +264,7 @@ pub(crate) fn execute_actor(
             object.insert("workingDirectory".into(), Value::String(cwd.to_owned()));
         }
     }
-    let response = match crate::platform::dispatch_lane_operation("send", &request) {
+    let response = match crate::agent_port::send(&request) {
         Ok(value) => value,
         Err(error) => return Err(anyhow!("strategy_actor_dispatch_failed:{error}")),
     };

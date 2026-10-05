@@ -1,0 +1,47 @@
+[package]
+name = "licoup-agent-opencode"
+version = "0.14.0"
+edition = "2024"
+rust-version = "1.95.0"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/LicoLand/LicoUp.git"
+description = "OpenCode adapter package: the serve HTTP/SSE protocol and its frame interpretation"
+
+# The crate is one package's program. `parser` is this Agent's vendor protocol
+# below the adapter port: the `opencode serve` HTTP documents and the SSE event
+# frames that classify one OpenCode line exactly once, per ADR-0008.
+# `registration` is what composition injects into `licoup-agent-adapter-sdk`,
+# `replay` is the arm that drives the same parser from a recorded transcript,
+# and `port` names the seam the host answers.
+#
+# The kernel links no part of this crate's protocol. Composition names the crate
+# for its parser registration and its replay arm while the extension host's
+# binary route is completed by the agent-execution port; nothing here reaches
+# back into a client crate. The `serve` process supervision, the HTTP and SSE
+# reader and the active-turn control registry stay the client's shared
+# local-service engine, so this package reads the shared vocabulary of that
+# engine rather than reimplementing it.
+[features]
+default = []
+
+[dependencies]
+licoup-agent-adapter-sdk = { path = "../licoup-agent-adapter-sdk" }
+# The shared local-service vocabulary: the attach catalogue and readiness one
+# serve endpoint reports. They are the engine's types, shared by every
+# serve-family Agent, and the client's serve policy reads this package's
+# `readiness` through exactly this shape. The engine itself — starting the
+# process, reading HTTP, framing SSE, admitting an active turn — stays in
+# `licoup-agent-drivers` and is not reached from here.
+licoup-agent-drivers = { path = "../licoup-agent-drivers" }
+serde_json.workspace = true
+
+[[bin]]
+name = "lico-agent-opencode"
+path = "src/bin/lico-agent-opencode.rs"
+
+# Test-only. The committed package artifact is validated with the host's own
+# manifest, permission and client-compatibility contract instead of a second
+# reading of it. Nothing here enters the package binary, which links no kernel
+# crate and reads its own package documents as data.
+[dev-dependencies]
+licoup-extension-contracts = { path = "../licoup-extension-contracts" }

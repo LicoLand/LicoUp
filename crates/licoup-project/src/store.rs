@@ -251,18 +251,7 @@ impl ProjectIdentityStore {
     /// Every registered project, in registration order.
     pub fn list(&self) -> Result<Vec<RegisteredProject>, ProjectFailure> {
         let connection = self.connect()?;
-        let mut statement = connection
-            .prepare(&format!(
-                "SELECT {} FROM project_identities ORDER BY registration_sequence",
-                column_list()
-            ))
-            .map_err(store_error)?;
-        let rows = statement
-            .query_map([], decode_row)
-            .map_err(store_error)?
-            .collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(store_error)?;
-        rows.into_iter().collect()
+        registered_projects(&connection)
     }
 
     /// Admit one declared dependency edge.
@@ -609,7 +598,11 @@ impl ProjectIdentityStore {
         })
     }
 
-    fn connect(&self) -> Result<Connection, ProjectFailure> {
+    /// Open one configured connection to this owner's database.
+    ///
+    /// Every read and every write goes through here, so the connection rules
+    /// above hold for a preview exactly as they hold for an admission.
+    pub(crate) fn connect(&self) -> Result<Connection, ProjectFailure> {
         let connection = Connection::open(&self.db_path).map_err(|error| {
             ProjectFailure::store("project_identity_store_unavailable")
                 .with_detail(error.to_string())
@@ -627,6 +620,29 @@ impl ProjectIdentityStore {
         configure_connection(&connection)?;
         operation(&mut connection)
     }
+}
+
+/// Every registered project, in registration order.
+///
+/// The query is separate from [`ProjectIdentityStore::list`] so a preview reads
+/// the identities and the declarations it compares them against on one
+/// connection, rather than from two moments that a concurrent registration
+/// could separate.
+pub(crate) fn registered_projects(
+    connection: &Connection,
+) -> Result<Vec<RegisteredProject>, ProjectFailure> {
+    let mut statement = connection
+        .prepare(&format!(
+            "SELECT {} FROM project_identities ORDER BY registration_sequence",
+            column_list()
+        ))
+        .map_err(store_error)?;
+    let rows = statement
+        .query_map([], decode_row)
+        .map_err(store_error)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(store_error)?;
+    rows.into_iter().collect()
 }
 
 fn column_list() -> String {
@@ -742,7 +758,11 @@ fn validate_current_schema(connection: &mut Connection) -> Result<()> {
     Ok(())
 }
 
-fn project_exists(connection: &Connection, project_id: &str) -> Result<bool, ProjectFailure> {
+/// Whether one project identity is registered, as the preview asks it.
+pub(crate) fn project_exists(
+    connection: &Connection,
+    project_id: &str,
+) -> Result<bool, ProjectFailure> {
     connection
         .query_row(
             "SELECT 1 FROM project_identities WHERE project_id = ?1",
@@ -988,7 +1008,8 @@ fn import_change(
     })
 }
 
-fn read_project_row(
+/// Read one registered project row, or `None` when it is not registered.
+pub(crate) fn read_project_row(
     connection: &Connection,
     project_id: &str,
 ) -> Result<Option<RegisteredProject>, ProjectFailure> {
@@ -1165,15 +1186,31 @@ fn closing_cycle(
     consumer: &WorkRef,
     producer: &WorkRef,
 ) -> Result<Option<Vec<WorkRef>>, ProjectFailure> {
+    Ok(cycle_path(&declared_edges(connection)?, consumer, producer))
+}
+
+/// The path that would close a cycle in one edge set if `consumer` were admitted
+/// against `producer`, or `None` when the edge is acyclic.
+///
+/// The search follows the declared dependency direction, so the rendered path
+/// reads as the edges a caller would have to remove: the refused consumer, the
+/// producer it named, and every work item between that producer and the
+/// consumer again. The edge set is a parameter because a preview must ask the
+/// same question about a declaration that is not stored yet.
+pub(crate) fn cycle_path(
+    edges: &[(WorkRef, WorkRef)],
+    consumer: &WorkRef,
+    producer: &WorkRef,
+) -> Option<Vec<WorkRef>> {
     if consumer == producer {
-        return Ok(Some(vec![consumer.clone(), producer.clone()]));
+        return Some(vec![consumer.clone(), producer.clone()]);
     }
     let mut dependencies_of: BTreeMap<WorkRef, Vec<WorkRef>> = BTreeMap::new();
-    for (edge_consumer, edge_producer) in declared_edges(connection)? {
+    for (edge_consumer, edge_producer) in edges {
         dependencies_of
-            .entry(edge_consumer)
+            .entry(edge_consumer.clone())
             .or_default()
-            .push(edge_producer);
+            .push(edge_producer.clone());
     }
     let mut parents: BTreeMap<WorkRef, Option<WorkRef>> =
         BTreeMap::from([(producer.clone(), None)]);
@@ -1189,7 +1226,7 @@ fn closing_cycle(
             path.reverse();
             let mut cycle = vec![consumer.clone()];
             cycle.extend(path);
-            return Ok(Some(cycle));
+            return Some(cycle);
         }
         for next in dependencies_of.get(&work).into_iter().flatten() {
             if !parents.contains_key(next) {
@@ -1198,26 +1235,18 @@ fn closing_cycle(
             }
         }
     }
-    Ok(None)
+    None
 }
 
 /// The explicit state of one declared reference, read from what it names.
-fn dependency_state(
+pub(crate) fn dependency_state(
     connection: &Connection,
     declaring_project_id: &ProjectId,
     artifact: &ArtifactReference,
 ) -> Result<ArtifactState, ProjectFailure> {
     match artifact {
         ArtifactReference::Local { path, .. } => {
-            let root: Option<String> = connection
-                .query_row(
-                    "SELECT authorized_root FROM project_identities WHERE project_id = ?1",
-                    params![declaring_project_id.as_str()],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(dependency_error)?;
-            match root.and_then(|root| AuthorizedRoot::declare(root).ok()) {
+            match declared_root(connection, declaring_project_id)? {
                 Some(root) => Ok(read_local_artifact(&root, path)),
                 None => Ok(ArtifactState::Unavailable),
             }
@@ -1244,6 +1273,63 @@ fn dependency_state(
             })
         }
     }
+}
+
+/// The declared authorized root of one registered project, when it is
+/// registered and its stored root still parses.
+pub(crate) fn declared_root(
+    connection: &Connection,
+    project_id: &ProjectId,
+) -> Result<Option<AuthorizedRoot>, ProjectFailure> {
+    let root: Option<String> = connection
+        .query_row(
+            "SELECT authorized_root FROM project_identities WHERE project_id = ?1",
+            params![project_id.as_str()],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(dependency_error)?;
+    Ok(root.and_then(|root| AuthorizedRoot::declare(root).ok()))
+}
+
+/// One declared edge as a preview reads it.
+///
+/// The consumer, the producer it takes a result from, and the declared
+/// reference between them: the same three facts the admission rule decides on,
+/// in the order the store admits them.
+#[derive(Clone, Debug)]
+pub(crate) struct EdgeSnapshot {
+    pub consumer: WorkRef,
+    pub producer: WorkRef,
+    pub artifact: ArtifactReference,
+}
+
+/// Every declared edge, in admission order, as a preview reads it.
+pub(crate) fn edge_snapshot(connection: &Connection) -> Result<Vec<EdgeSnapshot>, ProjectFailure> {
+    let mut statement = connection
+        .prepare(
+            "SELECT dependency_sequence, project_id, work_item_id, artifact_kind,
+                    producer_project_id, producer_work_item_id, local_path
+               FROM project_dependencies
+              ORDER BY dependency_sequence",
+        )
+        .map_err(dependency_error)?;
+    let rows = statement
+        .query_map([], decode_dependency_row)
+        .map_err(dependency_error)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(dependency_error)?;
+    rows.into_iter()
+        .map(|row| row.map(|(_, dependency)| dependency))
+        .map(|dependency| {
+            let dependency = dependency?;
+            Ok(EdgeSnapshot {
+                consumer: dependency.consumer(),
+                producer: dependency.producer(),
+                artifact: dependency.artifact,
+            })
+        })
+        .collect()
 }
 
 fn decode_dependency_row(

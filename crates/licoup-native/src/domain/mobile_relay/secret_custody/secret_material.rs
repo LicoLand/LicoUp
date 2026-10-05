@@ -548,7 +548,7 @@ pub(in crate::domain::mobile_relay) fn cleanup_native_secret_store_fields_for_st
         store.supported(),
         "mobile relay native secret store backend is unsupported"
     );
-    let handles = disposable_cleanup_root_secret_handles(config, namespace)?;
+    let handles = custody_cleanup_root_secret_handles(config, namespace)?;
     let session = store.begin_authorized_session(&SecretStoreAuthorizationRequest::new(
         "Mobile Relay E2EE secret store cleanup authorization batch",
         handles.len().max(1),
@@ -562,7 +562,7 @@ pub(in crate::domain::mobile_relay) fn cleanup_native_secret_store_fields_for_st
     session: &SecretStoreAuthorizationSession,
     namespace: &str,
 ) -> Result<()> {
-    for handle in disposable_cleanup_root_secret_handles(config, namespace)? {
+    for handle in custody_cleanup_root_secret_handles(config, namespace)? {
         store.delete_secret_with_session(session, &handle)?;
     }
     Ok(())

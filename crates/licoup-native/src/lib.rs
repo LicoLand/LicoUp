@@ -9,6 +9,26 @@ pub mod domain;
 pub mod ffi;
 pub mod platform;
 
+/// The agent-execution port every caller above the platform layer reaches.
+///
+/// One port owns execution, cancellation, steering, session resume and history
+/// for every Agent. `licoup-agent-drivers` declares it; the platform layer
+/// answers it with this host's own conversation lane; this module is the entry
+/// a caller names, so no caller reaches the lane, the registry or an Agent's
+/// own module directly.
+///
+/// It stays at the crate root, above both layers, for the same reason
+/// [`target_port`] does, and the binaries and suites below reach it through the
+/// facade functions re-exported here rather than through a new public module.
+pub(crate) mod agent_port;
+
+// The agent-execution port's public entries. A binary or an integration suite
+// names these; every caller inside this crate names `crate::agent_port`.
+pub use agent_port::{
+    cancel as cancel_agent_turn, dispatch as dispatch_agent_operation, send as send_agent_turn,
+    steer as steer_agent_turn,
+};
+
 /// Every declarative state machine this host compiles from
 /// `resources/state-machines`. The JSON configuration is the transition
 /// authority; an owner that reads a machine names it through this module.
@@ -49,17 +69,22 @@ pub(crate) mod host_lane;
 /// the other: a layer declares the port it needs, the other owns the fact, and
 /// this function joins them once per process. That covers the environment
 /// ports the domain asks, the gateway runtime's ports, the stop control's
-/// Subagent-claim dispatcher, which the domain answers, and the ports the two
-/// Agent adapter packages ask for — the progressive turn-event sink Codex emits
-/// through and the execution admission Kimi Code asks for. A process that never
-/// calls it keeps every port fail-closed.
+/// Subagent-claim dispatcher, which the domain answers, and the ports the Agent
+/// adapter packages ask for — the progressive turn-event sinks Codex,
+/// Antigravity and Pi emit through and the execution admission the Antigravity,
+/// Kimi Code and OpenCode packages ask for. A process that never calls it keeps
+/// every port fail-closed.
 pub fn install_environment_ports() -> Result<(), &'static str> {
+    install_workflow_host_ports();
     domain::conversation::history::install_open_codex_rollouts(
         licoup_agent_codex::observation::open_rollout_paths,
     )?;
     platform::gateway_composition::install_readiness()?;
     platform::stop_control::install_subagent_claim_stop(stop_subagent_claim)?;
     licoup_model_catalog::install_model_catalog_port(model_catalog_port::model_catalog_port())?;
+    // The routing policy owner is composed after the catalogue port it reads,
+    // so one dispatch entry asks the policy instead of choosing ad hoc.
+    model_catalog_port::install_routing_policy_owner();
     platform::extension_packages::install_maintenance_admission(std::sync::Arc::new(
         PackageGenerationAdmission,
     ))?;
@@ -74,6 +99,9 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     // agent-execution port, and a host that never installs these ports leaves the
     // packages' emitters silent rather than inventing a consumer.
     licoup_agent_codex::port::turn_event::install(platform::codex_turn_event_port())?;
+    // The Pi adapter package answers the same way, for the same reason: one
+    // consumer per process, installed once, and the package silent until then.
+    licoup_agent_pi::port::turn_event::install(platform::pi_turn_event_port())?;
     licoup_agent_antigravity::port::turn_event::install(
         platform::antigravity_turn_event_port(),
     )?;
@@ -109,7 +137,17 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     // binary route is completed by the agent-execution port; until then the client
     // still performs the turn, and removing that is the named remainder on
     // VENDOR-CODE-REMOVAL.
-    licoup_agent_kilo::host::install(platform::kilo_code_host::host_ports())
+    licoup_agent_kilo::host::install(platform::kilo_code_host::host_ports())?;
+    // The OpenCode adapter package owns the `serve` protocol; the client's own
+    // `opencode_driver` still performs one turn, and the one fact it may not
+    // decide for itself is whether this host admits a new execution. Installing
+    // the answer is what lets an OpenCode turn start at all, and a host that
+    // never installs it refuses rather than running.
+    licoup_agent_opencode::port::execution::install(
+        licoup_agent_opencode::port::execution::ExecutionPort {
+            admits_execution: admits_agent_execution,
+        },
+    )
 }
 
 /// The composition's answer for the Antigravity adapter package's caller-context
@@ -141,6 +179,24 @@ fn admits_agent_execution() -> bool {
     domain::work_admission::WorkAdmission::open(data_root)
         .barrier()
         .is_ok_and(|barrier| barrier.is_none())
+}
+
+/// The workflow composition: this host's answers for the ports
+/// `licoup-workflow-runtime` declares.
+///
+/// It lives at the crate root for the same reason [`target_port`] and
+/// [`host_lane`] do: the extracted runtime declares the port, this host owns
+/// the fact, and neither layer has to know the other. Construction of the
+/// workflow service installs it, so the composition is reached from every
+/// entry point and never from inside a platform module.
+pub(crate) mod workflow_host;
+
+/// Install this host's answers for the workflow runtime's ports.
+///
+/// Idempotent: the first installation wins, and a process that never calls it
+/// keeps every workflow port fail-closed.
+pub fn install_workflow_host_ports() {
+    workflow_host::install_workflow_host_ports();
 }
 
 /// The composition's answer for the package-generation admission port: the

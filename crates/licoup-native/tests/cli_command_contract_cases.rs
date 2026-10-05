@@ -21,11 +21,12 @@ const ADMISSION_STAGE: &str = "cli/admission";
 const ADMISSION_COMPONENT: &str = "native_cli";
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
-// The merged authority is the whole published registry: 183 routes of the
-// integration base, the fourteen package-lifecycle routes the integration head
-// adds, the five cross-device entry routes, the two project import routes, and
-// the four project dependency routes this branch joins.
-const AUTHORITATIVE_ROUTE_COUNT: usize = 205;
+// The whole published registry, not a remembered number: every route the
+// command table registers must appear here exactly once, so the count is
+// re-derived from `build_command_table` whenever a route lands. The
+// cross-device entry's five routes and the project family's routes are part of
+// the registry and were missing from this authority before them.
+const AUTHORITATIVE_ROUTE_COUNT: usize = 206;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -2328,6 +2329,7 @@ fn route_authorities() -> Vec<RouteAuthority> {
             "mobile relay commands result-secure",
             "mobile relay commands result-replay-proof",
             "mobile relay e2ee secret-store-cleanup",
+            "mobile relay e2ee secret-store-cleanup-inventory",
             "mobile relay e2ee secret-store-self-test",
         ],
         Options,
@@ -3391,7 +3393,7 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("type", Text, false),
             value_option("stdin-json", Json, false),
         ],
-        "mobile relay e2ee secret-store-cleanup" => &[value_option("disposable-proof", Text, true)],
+        "mobile relay e2ee secret-store-cleanup" => &[value_option("cleanup-confirmation", Json, true)],
         "secure-mesh status"
         | "secure-mesh envelope validate"
         | "secure-mesh command policy"

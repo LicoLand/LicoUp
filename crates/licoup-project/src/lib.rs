@@ -1,5 +1,7 @@
-//! Authorized project and plan identity, the canonical plan document an explicit
-//! import carries, and the dependency inputs a project declares.
+//! Authorized project and plan identity, the dependency inputs a project
+//! declares, the canonical plan document an explicit import carries, the
+//! scheduling answer that work is read against, and the preview of a declared
+//! change over them.
 //!
 //! This crate owns one thing: the explicit record that says a project exists,
 //! who authorized it, where its authorized root is, which workspace and plan
@@ -10,7 +12,7 @@
 //! the owner to name a project by reading its root is refused with a code
 //! instead of being answered with a guess.
 //!
-//! Four rules make the record trustworthy rather than descriptive:
+//! Five rules make the record trustworthy rather than descriptive:
 //!
 //! - **Identity is declared.** A [`ProjectId`], [`WorkspaceId`], [`PlanId`] and
 //!   [`WorkItemId`] are caller-supplied bounded identifiers, not derived from a
@@ -26,6 +28,14 @@
 //!   authorized root or as an [`ArtifactReference::CrossProject`] reference to a
 //!   work item of another registered project. A shared result is referenced, not
 //!   produced twice.
+//! - **A change is previewed, never applied.**
+//!   [`ProjectIdentityStore::preview_change`] answers what a [`ChangeRequest`]
+//!   would touch by following the declared edges, and asks the existing work
+//!   owner ([`WorkActivityDirectory`]) what sits behind the declaration it
+//!   replaces. It writes nothing, cancels nothing and rewrites no acceptance: a
+//!   run in flight or an accepted result is reported as requiring an explicit
+//!   handoff through the existing authority, and an owner that does not answer
+//!   leaves the work item unresolved rather than fresh.
 //! - **Refusal is typed, and so is absence.** A duplicate identity, a duplicate
 //!   plan identity, an absent or unauthorized reference, an identity that would
 //!   need a directory scan, a dependency cycle, an unauthorized cross-project
@@ -50,8 +60,12 @@
 //! database inside the client-state root, by the same location rule the
 //! workflow store follows, with the same private-directory, schema-version and
 //! connection rules. Identities and dependency inputs share that one database.
+//! A preview adds no table and no row: everything it answers is derived from
+//! declarations that are already durable.
 
+mod activity;
 mod authority;
+mod change;
 mod dependency;
 mod failure;
 mod identity;
@@ -59,13 +73,18 @@ mod import;
 mod schedule;
 mod store;
 
+pub use activity::{NoWorkActivityDirectory, WorkActivity, WorkActivityDirectory};
 pub use authority::{NoAuthorityDirectory, ProjectAuthorityDirectory};
+pub use change::{
+    AffectedWorkItem, ChangeHandoff, ChangeImpact, ChangePreview, ChangeRequest,
+    DeclaredInputState, MAX_CHANGE_INPUTS, MAX_CHANGE_WORK_ITEMS, WorkItemChange,
+};
 pub use dependency::{
     ArtifactReference, ArtifactState, DeclaredDependency, MAX_ARTIFACT_PATH_BYTES, WorkDependency,
     WorkRef, read_local_artifact, render_dependency_path, stays_inside_authorized_root,
 };
 pub use failure::{
-    DEPENDENCY_STAGE, IDENTITY_STAGE, IMPORT_STAGE, ProjectFailure, REGISTRATION_STAGE,
+    CHANGE_STAGE, DEPENDENCY_STAGE, IDENTITY_STAGE, IMPORT_STAGE, ProjectFailure, REGISTRATION_STAGE,
     SCHEDULE_STAGE, STORE_STAGE,
 };
 pub use identity::{

@@ -32,6 +32,11 @@
       "payloadRole": "copilot-adapter-package-payload"
     },
     {
+      "packageId": "org.licoland.adapter.pi",
+      "source": "crates/licoup-agent-pi/package",
+      "payloadRole": "pi-adapter-package-payload"
+    },
+    {
       "packageId": "org.licoland.converter.appearance",
       "source": "components/appearance/package",
       "payloadRole": "appearance-converter-package-payload"
@@ -70,6 +75,11 @@
       "packageId": "org.licoland.adapter.lico-agent",
       "source": "crates/licoup-agent-lico-agent/package",
       "payloadRole": "lico-agent-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.opencode",
+      "source": "crates/licoup-agent-opencode/package",
+      "payloadRole": "opencode-adapter-package-payload"
     },
     {
       "packageId": "org.licoland.feature.mcp",
