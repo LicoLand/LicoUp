@@ -2634,6 +2634,7 @@ dependencies = [
  "fs2",
  "licoup-conversation",
  "licoup-foundation",
+ "licoup-model-catalog",
  "licoup-workflow",
  "licoup-workflow-store",
  "serde",
