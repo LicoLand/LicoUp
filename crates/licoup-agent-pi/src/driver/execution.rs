@@ -1,15 +1,16 @@
-use super::super::process_supervisor::{
-    BoundedStdinWriter, SupervisedChild, TransportFinishFailure, finish_protocol_transport,
-};
 use super::active_control::{ActiveTurnGuard, SteerRequest, bind};
 use super::errors::ProtocolFailure;
 use super::io::{TransportEvent, drain_stderr, read_protocol_messages, write_message};
 use super::model::{PROCESS_POLL_INTERVAL, RunResult};
 use super::params::ProtocolConfig;
 use super::supervision::LaunchSpec;
-use crate::platform::native_agent_parser::adapters::pi::{
+use crate::parser::{
     PendingInteraction, PiProtocol, ProtocolEffect, ProtocolOutcome, classify_steer_response,
     completed_transitions, decode_jsonl_line, encode_steer,
+};
+use crate::port::turn_event::emit_turn_event;
+use licoup_foundation::platform::process_supervisor::{
+    BoundedStdinWriter, SupervisedChild, TransportFinishFailure, finish_protocol_transport,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -21,7 +22,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-pub(in crate::platform) fn execute(
+pub fn execute(
     executable: &str,
     params: &Value,
     prompt: &str,
@@ -68,16 +69,20 @@ pub(in crate::platform) fn execute(
     let mut stdin = BoundedStdinWriter::new(stdin);
 
     let (sender, receiver) = mpsc::channel();
-    let stdout_observer = crate::platform::raw_execution::RawExecutionObserver::current();
+    let stdout_observer =
+        licoup_foundation::platform::raw_execution::RawExecutionObserver::current();
     let stdout_handle = thread::spawn(move || {
-        let _raw_scope = crate::platform::raw_execution::RawExecutionScope::enter(stdout_observer);
+        let _raw_scope =
+            licoup_foundation::platform::raw_execution::RawExecutionScope::enter(stdout_observer);
         read_protocol_messages(stdout, max_stdout, sender)
     });
     let stderr_truncated = Arc::new(AtomicBool::new(false));
     let stderr_flag = Arc::clone(&stderr_truncated);
-    let stderr_observer = crate::platform::raw_execution::RawExecutionObserver::current();
+    let stderr_observer =
+        licoup_foundation::platform::raw_execution::RawExecutionObserver::current();
     let stderr_handle = thread::spawn(move || {
-        let _raw_scope = crate::platform::raw_execution::RawExecutionScope::enter(stderr_observer);
+        let _raw_scope =
+            licoup_foundation::platform::raw_execution::RawExecutionScope::enter(stderr_observer);
         drain_stderr(stderr, max_stderr, &stderr_flag)
     });
 
@@ -210,7 +215,7 @@ pub(super) fn run_protocol_loop(
             if active_guard.is_none() {
                 active_guard = bind(session_id, turn_id, control_sender.clone());
                 if active_guard.is_some() {
-                    super::super::turn_event_emit::emit_turn_event(
+                    emit_turn_event(
                         "dispatch.turn.bound",
                         session_id,
                         turn_id,

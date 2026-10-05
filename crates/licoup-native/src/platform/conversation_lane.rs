@@ -998,11 +998,13 @@ pub fn steer_turn(params: &Value) -> Result<Value> {
             let turn_id = runtime_adapters::text_param_public(params, &["turnId"])
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| anyhow!("Pi steer requires the active native turn identifier"))?;
-            match super::pi_driver::steer(&session_id, &turn_id, &text) {
-                super::pi_driver::ControlDisposition::Accepted => "accepted",
-                super::pi_driver::ControlDisposition::NoActiveTurn => "no_active_turn",
-                super::pi_driver::ControlDisposition::SessionUnavailable => "session_unavailable",
-                super::pi_driver::ControlDisposition::TransportUnavailable => "unavailable",
+            match licoup_agent_pi::driver::steer(&session_id, &turn_id, &text) {
+                licoup_agent_pi::driver::ControlDisposition::Accepted => "accepted",
+                licoup_agent_pi::driver::ControlDisposition::NoActiveTurn => "no_active_turn",
+                licoup_agent_pi::driver::ControlDisposition::SessionUnavailable => {
+                    "session_unavailable"
+                }
+                licoup_agent_pi::driver::ControlDisposition::TransportUnavailable => "unavailable",
             }
         }
         _ => "unavailable",

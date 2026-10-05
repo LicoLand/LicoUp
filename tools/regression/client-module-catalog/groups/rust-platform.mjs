@@ -9,6 +9,7 @@ import {
   node,
   rustLayer,
   rustAgentPackageLayer,
+  piAgentPackageLayer,
   openClawAgentPackageLayer,
   gatewayCoreLayer,
   gatewayIntegrationTest,
@@ -1560,23 +1561,23 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
       id: "rust.platform.pi-driver.composition",
       kind: "rust-platform",
-      summary: "Pi stable facade and split module composition",
+      summary: "Pi driver facade and split module composition, process half included",
       inputs: [
-        "crates/licoup-native/src/platform/pi_driver.rs",
-        "crates/licoup-native/src/platform/pi_driver/tests/mod.rs",
-        "crates/licoup-native/src/platform/pi_driver/tests/composition.rs",
+        "crates/licoup-agent-pi/src/driver.rs",
+        "crates/licoup-agent-pi/src/driver/tests/mod.rs",
+        "crates/licoup-agent-pi/src/driver/tests/composition.rs",
       ],
-      command: rustLayer("platform::pi_driver::tests::composition::"),
+      command: piAgentPackageLayer("driver::tests::composition::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.test-support",
       kind: "rust-platform",
       summary: "Pi cross-platform fake RPC executable and deterministic test fixtures",
       inputs: [
-        "crates/licoup-native/src/platform/pi_driver/tests/support.rs",
+        "crates/licoup-agent-pi/src/driver/tests/support.rs",
         "crates/licoup-native/tests/fixtures/fake_pi_rpc.rs",
       ],
-      command: rustLayer("platform::pi_driver::tests::"),
+      command: piAgentPackageLayer("driver::tests::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.model",
@@ -1584,9 +1585,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "Pi result, error binding, effective setting, and capability projections",
       inputs: [
         "crates/licoup-agent-pi/src/driver/model.rs",
-        "crates/licoup-native/src/platform/pi_driver/tests/model.rs",
+        "crates/licoup-agent-pi/src/driver/tests/model.rs",
       ],
-      command: rustLayer("platform::pi_driver::tests::model::"),
+      command: piAgentPackageLayer("driver::tests::model::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.errors",
@@ -1594,9 +1595,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "Pi static redacted failures and exact native identifier binding",
       inputs: [
         "crates/licoup-agent-pi/src/driver/errors.rs",
-        "crates/licoup-native/src/platform/pi_driver/tests/errors.rs",
+        "crates/licoup-agent-pi/src/driver/tests/errors.rs",
       ],
-      command: rustLayer("platform::pi_driver::tests::errors::"),
+      command: piAgentPackageLayer("driver::tests::errors::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.params",
@@ -1604,9 +1605,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "Pi request, working-directory, override, and thinking validation",
       inputs: [
         "crates/licoup-agent-pi/src/driver/params.rs",
-        "crates/licoup-native/src/platform/pi_driver/tests/params.rs",
+        "crates/licoup-agent-pi/src/driver/tests/params.rs",
       ],
-      command: rustLayer("platform::pi_driver::tests::params::"),
+      command: piAgentPackageLayer("driver::tests::params::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.settings",
@@ -1615,9 +1616,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-agent-pi/src/driver/params.rs",
         "crates/licoup-agent-pi/src/parser/protocol.rs",
-        "crates/licoup-native/src/platform/pi_driver/tests/settings.rs",
+        "crates/licoup-agent-pi/src/driver/tests/settings.rs",
       ],
-      command: rustLayer("platform::pi_driver::tests::settings::"),
+      command: piAgentPackageLayer("driver::tests::settings::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.protocol",
@@ -1626,9 +1627,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-agent-pi/src/parser.rs",
         "crates/licoup-agent-pi/src/parser/protocol.rs",
-        "crates/licoup-native/src/platform/pi_driver/tests/parser_protocol.rs",
+        "crates/licoup-agent-pi/src/driver/tests/parser_protocol.rs",
       ],
-      command: rustLayer("platform::pi_driver::tests::parser_protocol::"),
+      command: piAgentPackageLayer("driver::tests::parser_protocol::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.interaction",
@@ -1637,9 +1638,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-agent-pi/src/parser.rs",
         "crates/licoup-agent-pi/src/parser/protocol.rs",
-        "crates/licoup-native/src/platform/pi_driver/tests/interaction.rs",
+        "crates/licoup-agent-pi/src/driver/tests/interaction.rs",
       ],
-      command: rustLayer("platform::pi_driver::tests::interaction::"),
+      command: piAgentPackageLayer("driver::tests::interaction::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.events",
@@ -1647,9 +1648,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "Pi parser allowlisted event metadata without raw message or tool argument projection",
       inputs: [
         "crates/licoup-agent-pi/src/parser/events.rs",
-        "crates/licoup-native/src/platform/pi_driver/tests/parser_events.rs",
+        "crates/licoup-agent-pi/src/driver/tests/parser_events.rs",
       ],
-      command: rustLayer("platform::pi_driver::tests::parser_events::"),
+      command: piAgentPackageLayer("driver::tests::parser_events::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.sessions",
@@ -1658,9 +1659,9 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-agent-pi/src/parser.rs",
         "crates/licoup-agent-pi/src/driver/sessions.rs",
-        "crates/licoup-native/src/platform/pi_driver/tests/sessions.rs",
+        "crates/licoup-agent-pi/src/driver/tests/sessions.rs",
       ],
-      command: rustLayer("platform::pi_driver::tests::sessions::"),
+      command: piAgentPackageLayer("driver::tests::sessions::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.io",
@@ -1668,41 +1669,53 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       summary: "Pi bounded stdout lines and fully drained non-projecting stderr",
       inputs: [
         "crates/licoup-agent-pi/src/parser.rs",
-        "crates/licoup-native/src/platform/pi_driver/io.rs",
-        "crates/licoup-native/src/platform/pi_driver/tests/io.rs",
+        "crates/licoup-agent-pi/src/driver/io.rs",
+        "crates/licoup-agent-pi/src/driver/tests/io.rs",
       ],
-      command: rustLayer("platform::pi_driver::tests::io::"),
+      command: piAgentPackageLayer("driver::tests::io::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.supervision",
       kind: "rust-platform",
       summary: "Pi fixed offline RPC arguments and supervised process launch without shell fallback",
       inputs: [
-        "crates/licoup-native/src/platform/pi_driver/supervision.rs",
-        "crates/licoup-native/src/platform/pi_driver/tests/supervision.rs",
+        "crates/licoup-agent-pi/src/driver/supervision.rs",
+        "crates/licoup-agent-pi/src/driver/tests/supervision.rs",
       ],
-      command: rustLayer("platform::pi_driver::tests::supervision::"),
+      command: piAgentPackageLayer("driver::tests::supervision::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.probe",
       kind: "rust-platform",
       summary: "Pi finite version and help probes with discarded output and tree cleanup",
       inputs: [
-        "crates/licoup-native/src/platform/pi_driver/probe.rs",
-        "crates/licoup-native/src/platform/pi_driver/tests/probe.rs",
+        "crates/licoup-agent-pi/src/driver/probe.rs",
+        "crates/licoup-agent-pi/src/driver/tests/probe.rs",
       ],
-      command: rustLayer("platform::pi_driver::tests::probe::"),
+      command: piAgentPackageLayer("driver::tests::probe::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.execution",
       kind: "rust-platform",
-      summary: "Pi bounded RPC orchestration, streaming, timeout, stderr, and child-tree cleanup",
+      summary: "Pi bounded RPC orchestration, timeout, stderr, and child-tree cleanup",
       inputs: [
-        "crates/licoup-native/src/platform/pi_driver/execution.rs",
-        "crates/licoup-native/src/platform/pi_driver/active_control.rs",
-        "crates/licoup-native/src/platform/pi_driver/tests/execution.rs",
+        "crates/licoup-agent-pi/src/driver/execution.rs",
+        "crates/licoup-agent-pi/src/driver/active_control.rs",
+        "crates/licoup-agent-pi/src/driver/tests/execution.rs",
       ],
-      command: rustLayer("platform::pi_driver::tests::execution::"),
+      command: piAgentPackageLayer("driver::tests::execution::"),
+    }),
+  defineModule({
+      id: "rust.platform.pi-driver.native-events",
+      kind: "rust-platform",
+      summary: "Pi progressive events reaching the host's own turn-event consumer, which the host owns",
+      inputs: [
+        "crates/licoup-native/src/platform/runtime_adapters/tests/pi_turn_events.rs",
+        "crates/licoup-agent-pi/src/driver.rs",
+        "crates/licoup-agent-pi/src/port/turn_event.rs",
+        "crates/licoup-native/src/platform/mod.rs",
+      ],
+      command: rustLayer("platform::runtime_adapters::tests::pi_turn_events::"),
     }),
   defineModule({
       id: "rust.platform.opencode-driver.composition",

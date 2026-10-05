@@ -785,6 +785,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.platform.pi-driver.supervision",
   "rust.platform.pi-driver.probe",
   "rust.platform.pi-driver.execution",
+  "rust.platform.pi-driver.native-events",
   "rust.platform.opencode-driver.composition",
   "rust.platform.opencode-driver.test-support",
   "rust.platform.opencode-driver.probe",

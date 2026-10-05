@@ -36,7 +36,6 @@ pub(crate) mod mcp_streamable_http;
 mod native_agent_parser;
 mod openclaw_driver;
 mod opencode_driver;
-mod pi_driver;
 pub mod process_sandbox;
 pub(crate) mod provider_mcp_registration;
 #[cfg(unix)]

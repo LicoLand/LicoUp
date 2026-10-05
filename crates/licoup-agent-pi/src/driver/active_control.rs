@@ -72,18 +72,14 @@ pub(super) fn bind(
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum ControlDisposition {
+pub enum ControlDisposition {
     Accepted,
     NoActiveTurn,
     SessionUnavailable,
     TransportUnavailable,
 }
 
-pub(in crate::platform) fn steer(
-    session_id: &str,
-    expected_turn_id: &str,
-    text: &str,
-) -> ControlDisposition {
+pub fn steer(session_id: &str, expected_turn_id: &str, text: &str) -> ControlDisposition {
     if text.trim().is_empty() || text.len() > 1024 * 1024 {
         return ControlDisposition::TransportUnavailable;
     }
@@ -140,8 +136,7 @@ mod tests {
         let worker = std::thread::spawn(move || {
             let request = receiver.recv().unwrap();
             let (text, acknowledged) = request.into_parts();
-            let (request_id, message) =
-                crate::platform::native_agent_parser::adapters::pi::encode_steer(text);
+            let (request_id, message) = crate::parser::encode_steer(text);
             assert_eq!(message["id"], request_id);
             assert_eq!(message["type"], "steer");
             acknowledged.send(true).unwrap();

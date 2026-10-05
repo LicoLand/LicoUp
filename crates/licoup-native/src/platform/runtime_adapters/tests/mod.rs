@@ -5,6 +5,7 @@ mod artifact;
 mod conversation_integrity;
 mod generic_cli;
 mod normalization;
+mod pi_turn_events;
 mod probe;
 mod protocol_selector;
 mod registry;

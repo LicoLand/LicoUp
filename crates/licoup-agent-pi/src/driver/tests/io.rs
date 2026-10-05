@@ -1,4 +1,5 @@
 use super::*;
+use licoup_foundation::platform::raw_execution::{RawExecutionObserver, RawExecutionScope};
 use std::io::{Cursor, Read};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -82,7 +83,6 @@ fn parser_accepts_lf_or_crlf_without_splitting_unicode_separators() {
 
 #[test]
 fn raw_stdout_retains_whole_over_limit_frame_and_invalid_utf8() {
-    use crate::platform::raw_execution::{RawExecutionObserver, RawExecutionScope};
     use std::sync::Mutex;
     let records = Arc::new(Mutex::new(Vec::new()));
     let sink = Arc::clone(&records);

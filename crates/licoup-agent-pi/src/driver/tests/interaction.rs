@@ -1,62 +1,6 @@
 use super::*;
 
 #[test]
-fn response_requiring_extension_ui_request_parks_for_the_matching_callback() {
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
-    let target = std::sync::Arc::clone(&captured);
-    crate::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
-        target.lock().unwrap().push(event);
-    }));
-    let _guard = crate::platform::turn_event_emit::StreamSinkGuard;
-    let config = ProtocolConfig::from_params(
-        &json!({}),
-        "hello",
-        "",
-        Some(Path::new("/workspace/project")),
-    )
-    .unwrap();
-    let mut protocol = PiProtocol::new(config);
-    protocol.session_id = Some("synthetic-session".to_string());
-    let effects = protocol.handle_message(json!({
-        "type": "extension_ui_request",
-        "id": "ui-1",
-        "method": "confirm",
-        "title": "Synthetic confirmation"
-    }));
-    let ProtocolEffect::Interact(interaction) = effects.into_iter().next().unwrap() else {
-        panic!("dialog request must park");
-    };
-    assert_eq!(interaction.exact_request()["id"], "ui-1");
-    assert_eq!(interaction.exact_request()["method"], "confirm");
-    let events = captured.lock().unwrap();
-    assert_eq!(events.len(), 1);
-    assert_eq!(events[0]["event"], "agent.interaction.needed");
-    assert_eq!(events[0]["sessionId"], "synthetic-session");
-    assert_eq!(events[0]["turnId"], protocol.config.turn_id);
-    assert_eq!(events[0]["payload"]["agentId"], "pi");
-    assert_eq!(
-        events[0]["payload"]["adapterCallbackTokenRef"],
-        interaction.callback_token()
-    );
-    drop(events);
-    crate::platform::native_agent_interaction::resolve_scoped(
-        interaction.callback_token(),
-        Some("synthetic-session"),
-        Some(&protocol.config.turn_id),
-        json!({"confirmed": true}),
-    )
-    .unwrap();
-    assert_eq!(
-        interaction.response(&protocol).unwrap(),
-        json!({
-            "type": "extension_ui_response",
-            "id": "ui-1",
-            "confirmed": true,
-        })
-    );
-}
-
-#[test]
 fn fire_and_forget_extension_ui_events_never_park_or_fail() {
     let config = ProtocolConfig::from_params(
         &json!({}),
@@ -129,7 +73,7 @@ fn value_dialogs_emit_one_matching_native_response_shape() {
         else {
             panic!("{method} must park");
         };
-        crate::platform::native_agent_interaction::resolve_scoped(
+        licoup_foundation::platform::native_agent_interaction::resolve_scoped(
             interaction.callback_token(),
             Some("synthetic-session"),
             Some(&protocol.config.turn_id),

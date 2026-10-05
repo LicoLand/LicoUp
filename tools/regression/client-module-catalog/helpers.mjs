@@ -302,6 +302,11 @@ export function openClawAgentPackageLayer(filter, harnessArgs = []) {
   return rustAgentPackageLayer(filter, harnessArgs, agentPackageManifest("openclaw"));
 }
 
+/// One module of the Pi adapter package's library.
+export function piAgentPackageLayer(filter, harnessArgs = []) {
+  return rustAgentPackageLayer(filter, harnessArgs, agentPackageManifest("pi"));
+}
+
 export function gatewayCoreLayer(filter, harnessArgs = []) {
   return command(
     "cargo",
