@@ -2,6 +2,7 @@ use super::*;
 
 #[test]
 fn response_requiring_extension_ui_request_parks_for_the_matching_callback() {
+    install_host_turn_event_port();
     let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
     let target = std::sync::Arc::clone(&captured);
     crate::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {

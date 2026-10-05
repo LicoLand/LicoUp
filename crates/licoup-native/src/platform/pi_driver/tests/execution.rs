@@ -30,6 +30,7 @@ fn fake_child_completes_rpc_with_bounded_stderr_and_native_session() {
 #[test]
 fn fake_child_emits_incremental_text_with_bound_session_identity() {
     let (directory, executable) = compile_fake_pi("lico-pi-rpc-stream");
+    install_host_turn_event_port();
     let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
     let target = std::sync::Arc::clone(&captured);
     super::super::super::turn_event_emit::install_stream_sink(Box::new(move |event| {
