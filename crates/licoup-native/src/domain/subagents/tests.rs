@@ -721,6 +721,21 @@ impl ConversationHostPort for StrategyFixtureHost {
     ) -> Result<Value, SubagentError> {
         let mut request = arguments.clone();
         request.insert("action".into(), json!(action));
+        // Admitting an execution captures the selection-policy revision the
+        // decision is admitted under, exactly as `production::assistant_workflow`
+        // captures it for this action alone: the runtime requires it and never
+        // defaults it, because a receipt that cannot name its policy revision
+        // would let provenance degrade silently. An inspection carries no
+        // decision and admits no such field.
+        if action == "strategy.assistant.workflow.execute" {
+            request.insert(
+                "selectionPolicyRevision".into(),
+                json!(
+                    crate::domain::client_conversation::selection_policy::current_binding()
+                        .revision_name()
+                ),
+            );
+        }
         self.strategy
             .execute(Value::Object(request))
             .map_err(|_| permanent("assistant_workflow_unavailable", "workflow/execute"))

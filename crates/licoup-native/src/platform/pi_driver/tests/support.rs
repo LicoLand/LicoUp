@@ -1,5 +1,22 @@
 use super::*;
 
+/// Compose the host's progressive turn-event answers for the Pi package.
+///
+/// The package owns what one Pi turn emits and this host owns where it goes, so
+/// its chunks, receipts and interaction announcements reach a consumer through a
+/// port the host installs. A host that has not composed its answers leaves them
+/// silent, and a unit test process runs no composition entry —
+/// `install_environment_ports` is reached from the `licoup` binary — so the
+/// tests that read those events install the same answers it installs, once per
+/// process.
+pub(super) fn install_host_turn_event_port() {
+    static ONCE: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    ONCE.get_or_init(|| {
+        licoup_agent_pi::port::turn_event::install(crate::platform::pi_turn_event_port())
+            .expect("the Pi turn-event port is installed once per test process");
+    });
+}
+
 pub(super) fn absolute_test_cwd() -> PathBuf {
     std::env::current_dir().expect("test working directory")
 }
