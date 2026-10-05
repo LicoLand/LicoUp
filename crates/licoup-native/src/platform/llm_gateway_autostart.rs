@@ -7,7 +7,8 @@
 //!
 //! This module is the only owner of that login item. Two callers reach it: the
 //! user's own enable/disable commands, and the Gateway package lifecycle, which
-//! registers the item when the package activates and removes it when the package
+//! reaches it through [`apply_gateway_package_lifecycle`] — the package routes
+//! register the item when the package activates and remove it when the package
 //! is disabled or uninstalled. Both go through [`LoginItemHost`], so the
 //! lifecycle adds no second registration path.
 
@@ -17,6 +18,7 @@ use licoup_foundation::platform::file_security::{
 };
 use licoup_foundation::platform::paths;
 use serde_json::{Value, json};
+use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -415,6 +417,123 @@ impl GatewayPackageBinding {
     }
 }
 
+// ---------------------------------------------------------------------------
+// The transition one package route performs
+// ---------------------------------------------------------------------------
+
+/// The lifecycle transition one package route performs on the Gateway login item.
+///
+/// An install and an enable both make the installed package the thing the login
+/// item starts; a disable and an uninstall both withdraw it. The pair mirrors
+/// the endpoint-collaboration package's own gate, so one package's lifecycle
+/// never speaks for a neighbour's.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GatewayPackageLifecycle {
+    /// An install or an enable: the installed package's own login item.
+    Activated,
+    /// A disable or an uninstall: no login item at all.
+    Retired,
+}
+
+thread_local! {
+    /// The login-item host this thread's package routes write through, when a
+    /// test installed one.
+    static PACKAGE_LIFECYCLE_HOST: RefCell<Option<LoginItemHost>> = const { RefCell::new(None) };
+}
+
+/// Point this thread's Gateway package lifecycle at an explicit login-item host.
+///
+/// Production never calls this: a package route reaches the running user's own
+/// login item. A test installs a [`LoginItemHost::synthetic`] host over a
+/// disposable root, because the endpoint-collaboration gate this shape follows
+/// is one in-memory answer a test can read directly, while this transition
+/// writes a real per-user login item and asks the platform supervisor to load
+/// it. The previous host is returned and restored by the caller, exactly as
+/// `paths::set_portable_data_dir_override` is.
+#[doc(hidden)]
+pub fn set_gateway_package_host_override(host: Option<LoginItemHost>) -> Option<LoginItemHost> {
+    PACKAGE_LIFECYCLE_HOST.with(|slot| slot.replace(host))
+}
+
+fn gateway_package_host() -> Result<LoginItemHost> {
+    match PACKAGE_LIFECYCLE_HOST.with(|slot| slot.borrow().clone()) {
+        Some(host) => Ok(host),
+        None => LoginItemHost::for_current_user(),
+    }
+}
+
+/// Apply one package lifecycle transition over the Gateway's own login item.
+///
+/// `store_root` is the managed root the route just changed and `package_id` is
+/// the package that operation was about. A route about another package changes
+/// nothing here and returns `None`: one package's lifecycle never speaks for a
+/// neighbour's login item, and the current user's host is not even resolved for
+/// it.
+///
+/// `port` is the port the item names. `None` keeps the port this client already
+/// configured, and answers the Gateway Runtime's own default when there is none,
+/// so an activation that follows the user's own switch never silently moves the
+/// endpoint that switch configured.
+///
+/// Unlike the endpoint-collaboration gate, a transition here can refuse: the
+/// item is a login item the platform has to accept, not an in-memory answer.
+pub fn apply_gateway_package_lifecycle(
+    store_root: &Path,
+    package_id: &str,
+    transition: GatewayPackageLifecycle,
+    port: Option<u16>,
+) -> Option<Result<Value>> {
+    if package_id != GATEWAY_PACKAGE_ID {
+        return None;
+    }
+    Some(transition_over(store_root, transition, port))
+}
+
+fn transition_over(
+    store_root: &Path,
+    transition: GatewayPackageLifecycle,
+    port: Option<u16>,
+) -> Result<Value> {
+    let binding = GatewayPackageBinding::over(gateway_package_host()?, store_root);
+    match transition {
+        GatewayPackageLifecycle::Activated => {
+            // An activation over a store that holds nothing registers nothing.
+            // The item's absence is the truthful answer for a version that is
+            // gone, and it is what a route that removed the last installed
+            // version has to leave behind.
+            if binding.installed()?.is_none() {
+                return binding.retire();
+            }
+            let port = port.unwrap_or_else(|| configured_activation_port(binding.host()));
+            binding.activate(port)
+        }
+        GatewayPackageLifecycle::Retired => {
+            // The port is read before the withdrawal removes the definition that
+            // carries it, and reported with the withdrawal, so a version that
+            // remains installed is restored on the port this client configured
+            // rather than moved to the default.
+            let withdrawn = binding.host().configured_port().ok().flatten();
+            binding.retire().map(|mut status| {
+                if let Some(object) = status.as_object_mut() {
+                    object.insert("withdrawnPort".to_owned(), json!(withdrawn));
+                }
+                status
+            })
+        }
+    }
+}
+
+/// The port a package-driven activation names when the route supplies none: the
+/// one this client's login item already carries, or the port the client starts
+/// the Gateway Runtime on. The package's own manifest declares no port, so the
+/// Runtime's default is the only value the package's bytes could answer with.
+fn configured_activation_port(host: &LoginItemHost) -> u16 {
+    host.configured_port()
+        .ok()
+        .flatten()
+        .unwrap_or(crate::platform::llm_gateway_service::DEFAULT_PORT)
+}
+
 /// The managed root of installed optional packages inside one data home.
 ///
 /// SEAM(PIPELINE-COMMANDS): that node places the package store root inside the
@@ -741,6 +860,220 @@ mod tests {
             panic!("an absent Gateway login item must remain disabled")
         })
         .unwrap();
+    }
+
+    // -----------------------------------------------------------------------
+    // The Gateway package's lifecycle and its own login item
+    // -----------------------------------------------------------------------
+
+    /// The login-item host every case below writes through, restored when the
+    /// case ends so a later case never inherits it.
+    struct SyntheticHost;
+
+    impl SyntheticHost {
+        fn install(host: LoginItemHost) -> Self {
+            set_gateway_package_host_override(Some(host));
+            Self
+        }
+    }
+
+    impl Drop for SyntheticHost {
+        fn drop(&mut self) {
+            set_gateway_package_host_override(None);
+        }
+    }
+
+    /// One synthetic login-item host over disposable paths inside `root`.
+    fn synthetic_host(root: &Path) -> LoginItemHost {
+        LoginItemHost::synthetic(
+            root.join("login-home"),
+            root.join("llm-gateway"),
+            root.join("licoup-cli"),
+        )
+    }
+
+    /// A store root holding one installed version of the Gateway package whose
+    /// own manifest declares `entry`, with that entry in the payload.
+    fn installed_gateway_store_root(label: &str, version: &str, entry: &str) -> PathBuf {
+        use crate::platform::extension_packages::{
+            PackageStore, TrustRecord, content_digest, running_client_version,
+        };
+        use licoup_extension_contracts::wire;
+        use std::io::Write;
+
+        let root = std::env::temp_dir().join(format!(
+            "licoup-gateway-package-lifecycle-{label}-{}",
+            crate::platform::extension_packages::unique_suffix()
+        ));
+        std::fs::create_dir_all(&root).expect("store root");
+        let client = running_client_version().expect("a product version");
+        let next_major = client
+            .split('.')
+            .next()
+            .and_then(|major| major.parse::<u64>().ok())
+            .map(|major| major + 1)
+            .expect("a semantic major version");
+        let manifest = json!({
+            "schema": wire::MANIFEST,
+            "id": GATEWAY_PACKAGE_ID,
+            "version": version,
+            "displayName": "Synthetic gateway",
+            "hostProtocol": { "major": 1, "minimumMinor": 0 },
+            "compatibility": { "clientVersions": [format!(">={client}, <{next_major}")] },
+            "profiles": [{ "id": "model-gateway", "major": 1, "capabilities": ["model-gateway.v1"] }],
+            "runtime": { "mode": "process", "entry": entry },
+            "activation": "on-demand",
+            "requires": [],
+            "optionalRequires": [],
+            "permissions": [],
+            "contributions": [],
+        });
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        for (name, body) in [
+            ("manifest.json", manifest.to_string()),
+            (entry, "#!/bin/sh\nexit 1\n".to_owned()),
+        ] {
+            writer.start_file(name, options).expect("start file");
+            writer.write_all(body.as_bytes()).expect("write");
+        }
+        let bytes = writer.finish().expect("finish").into_inner();
+        let store = PackageStore::open(&root).expect("store");
+        store
+            .install_local_import(
+                GATEWAY_PACKAGE_ID,
+                version,
+                TrustRecord::local_approved(content_digest(&bytes), []).expect("trust"),
+                &bytes,
+            )
+            .expect("install the synthetic gateway package");
+        root
+    }
+
+    #[test]
+    fn a_lifecycle_transition_speaks_only_for_the_package_it_was_about() {
+        let store_root = installed_gateway_store_root("lifecycle", "0.3.0", "bin/lico-gateway");
+        let host = synthetic_host(&store_root);
+        let definition = host.definition_path().expect("definition path");
+        let _override = SyntheticHost::install(host.clone());
+
+        // A route about another package changes nothing: the login item is not
+        // this package's to touch, and no host is resolved for it either.
+        assert_eq!(
+            apply_gateway_package_lifecycle(
+                &store_root,
+                "example.other.package",
+                GatewayPackageLifecycle::Activated,
+                None,
+            )
+            .map(|outcome| outcome.is_ok()),
+            None
+        );
+        assert!(!definition.exists());
+
+        // An install or an enable registers the item the installed payload
+        // starts, on the port this client starts the Gateway on.
+        let activated = apply_gateway_package_lifecycle(
+            &store_root,
+            GATEWAY_PACKAGE_ID,
+            GatewayPackageLifecycle::Activated,
+            None,
+        )
+        .expect("the transition is about this package")
+        .expect("the login item is registered");
+        assert_eq!(activated["enabled"], json!(true));
+        assert_eq!(activated["installed"], json!(true));
+        assert_eq!(
+            activated["port"],
+            json!(crate::platform::llm_gateway_service::DEFAULT_PORT)
+        );
+        assert!(definition.is_file());
+
+        // A disable or an uninstall withdraws it, and reports the port that went
+        // with the definition so a version that remains can be restored on it.
+        let retired = apply_gateway_package_lifecycle(
+            &store_root,
+            GATEWAY_PACKAGE_ID,
+            GatewayPackageLifecycle::Retired,
+            None,
+        )
+        .expect("the transition is about this package")
+        .expect("the withdrawal is truthful without a definition to remove");
+        assert_eq!(retired["enabled"], json!(false));
+        assert_eq!(
+            retired["withdrawnPort"],
+            json!(crate::platform::llm_gateway_service::DEFAULT_PORT)
+        );
+        assert!(!definition.exists(), "the definition itself is gone");
+
+        // An activation keeps the port this client already configured rather
+        // than moving the endpoint the user's own switch chose.
+        apply_gateway_package_lifecycle(
+            &store_root,
+            GATEWAY_PACKAGE_ID,
+            GatewayPackageLifecycle::Activated,
+            Some(16_400),
+        )
+        .expect("about this package")
+        .expect("registered");
+        assert!(
+            fs::read_to_string(&definition)
+                .expect("definition")
+                .contains("16400")
+        );
+        let retired = apply_gateway_package_lifecycle(
+            &store_root,
+            GATEWAY_PACKAGE_ID,
+            GatewayPackageLifecycle::Retired,
+            None,
+        )
+        .expect("about this package")
+        .expect("withdrawn");
+        assert_eq!(retired["withdrawnPort"], json!(16_400));
+        // The route hands that port to the activation that follows the removal,
+        // which is how a version that remains installed is restored on the port
+        // this client configured rather than moved to the default.
+        let restored = apply_gateway_package_lifecycle(
+            &store_root,
+            GATEWAY_PACKAGE_ID,
+            GatewayPackageLifecycle::Activated,
+            retired["withdrawnPort"]
+                .as_u64()
+                .and_then(|port| u16::try_from(port).ok()),
+        )
+        .expect("about this package")
+        .expect("registered");
+        assert_eq!(restored["port"], json!(16_400));
+    }
+
+    #[test]
+    fn an_activation_over_a_store_that_holds_nothing_registers_nothing() {
+        let empty = std::env::temp_dir().join(format!(
+            "licoup-gateway-package-empty-{}",
+            crate::platform::extension_packages::unique_suffix()
+        ));
+        std::fs::create_dir_all(&empty).expect("store root");
+        let host = synthetic_host(&empty);
+        let definition = host.definition_path().expect("definition path");
+        let _override = SyntheticHost::install(host);
+
+        // The answer a route that removed the last installed version has to
+        // leave behind: no login item, and no error that would turn an empty
+        // store into a failed removal.
+        let status = apply_gateway_package_lifecycle(
+            &empty,
+            GATEWAY_PACKAGE_ID,
+            GatewayPackageLifecycle::Activated,
+            None,
+        )
+        .expect("about this package")
+        .expect("an empty store is not a failed route");
+        assert_eq!(status["installed"], json!(false));
+        assert_eq!(status["enabled"], json!(false));
+        assert!(
+            !definition.exists(),
+            "nothing installed registers no login item"
+        );
     }
 }
 

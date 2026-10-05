@@ -50,8 +50,41 @@ pub(super) fn handle_mcp_stop(_: AdmittedCommand) -> Result<CliExecution> {
 pub(super) fn handle_mcp_reload(command: AdmittedCommand) -> Result<CliExecution> {
     lifecycle("reload", command.option_text("binary"))
 }
+
+/// `mcp status` — the state of the service this client would serve.
+///
+/// A status describes a service, so it needs a generation the package lifecycle
+/// selected to describe. With none there is nothing to describe — the package is
+/// absent, or everything installed is switched off — and `stopped` would report
+/// a process that never ran for a capability this client does not serve. The
+/// refusal is the unavailable-service fact the selection names, which is the
+/// same one `mcp start` answers over the same store, so a caller learns what
+/// would change it rather than reading a healthy-looking state.
 pub(super) fn handle_mcp_status(_: AdmittedCommand) -> Result<CliExecution> {
+    let binding = crate::platform::mcp_service_process::McpServiceBinding::from_environment()?;
+    let selection = binding.selection()?;
+    if let Some(code) = unavailable_service_code(&selection) {
+        return Err(anyhow!(code));
+    }
     lifecycle("status", None)
+}
+
+/// The unavailable-service fact for a client that holds no startable generation
+/// of the MCP package.
+///
+/// The binding's own selection names the two: there is nothing installed to
+/// serve the capability, or everything installed is switched off. A selected
+/// generation has no such fact, and its own state — running, or stopped behind a
+/// crashed process — is what the verb reports.
+fn unavailable_service_code(
+    selection: &crate::platform::extension_packages::GenerationSelection,
+) -> Option<&'static str> {
+    use crate::platform::extension_packages::GenerationSelection;
+    match selection {
+        GenerationSelection::Absent => Some("mcp_package_absent"),
+        GenerationSelection::Disabled { .. } => Some("mcp_package_disabled"),
+        GenerationSelection::Selected(_) => None,
+    }
 }
 
 /// One admitted tool invocation, in the envelope both interfaces send.
@@ -549,5 +582,22 @@ mod tests {
             "caller": caller,
         }))
         .expect("this surface's own envelope decodes")
+    }
+
+    /// A status for a capability this client does not serve names the fact a
+    /// caller can act on, and it is the same fact `mcp start` answers with.
+    #[test]
+    fn an_unavailable_selection_names_the_fact_a_caller_can_act_on() {
+        use crate::platform::extension_packages::GenerationSelection;
+        assert_eq!(
+            super::unavailable_service_code(&GenerationSelection::Absent),
+            Some("mcp_package_absent")
+        );
+        assert_eq!(
+            super::unavailable_service_code(&GenerationSelection::Disabled {
+                installed_versions: vec!["0.14.0".to_owned()],
+            }),
+            Some("mcp_package_disabled")
+        );
     }
 }
