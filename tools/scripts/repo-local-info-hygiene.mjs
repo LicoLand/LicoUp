@@ -157,7 +157,7 @@ function isGeneralAuditorDelegationEnabled(environment = process.env) {
   );
 }
 
-async function runCanonicalScan(scanRoot, command = "general-auditor", options = {}) {
+async function runCanonicalScan(scanRoot, options = {}) {
   if (
     options.allowAuditorDelegation === true &&
     isGeneralAuditorDelegationEnabled()
@@ -168,13 +168,24 @@ async function runCanonicalScan(scanRoot, command = "general-auditor", options =
       failures: []
     };
   }
+  const configuredRoot = (options.environment || process.env).GENERAL_AUDITOR_ROOT;
+  const unavailable = () => ({
+    ok: false, scannedFiles: 0,
+    failures: [redactedFailure("LICOMESH_DEV_UNAVAILABLE", ".")]
+  });
+  if (!configuredRoot || !path.isAbsolute(configuredRoot)) return unavailable();
+  const auditorRoot = path.resolve(configuredRoot);
+  for (const relative of ["action_entry.py", "profiles/LicoLand/LicoUp.json"]) {
+    const metadata = await lstat(path.join(auditorRoot, relative)).catch(() => null);
+    if (!metadata?.isFile()) return unavailable();
+  }
   let stdout = "";
   let exitCode = 0;
   const outputDirectory = await mkdtemp(path.join(tmpdir(), "general-auditor-result-"));
   const output = path.join(outputDirectory, "result.json");
   try {
-    const result = await execFileAsync(command, [
-      "scan", "--repository", "LicoLand/LicoUp", "--directory", scanRoot, "--scope", "worktree", "--output", output,
+    const result = await execFileAsync("python3", [
+      "-I", path.join(auditorRoot, "action_entry.py"), "scan", "--repository", "LicoLand/LicoUp", "--directory", scanRoot, "--scope", "worktree", "--policy-root", auditorRoot, "--output", output,
     ], {
       cwd: repoRoot,
       encoding: "utf8",
@@ -187,7 +198,7 @@ async function runCanonicalScan(scanRoot, command = "general-auditor", options =
       return {
         ok: false,
         scannedFiles: 0,
-        failures: [redactedFailure("LICOMESH_DEV_UNAVAILABLE", ".", command)]
+        failures: [redactedFailure("LICOMESH_DEV_UNAVAILABLE", ".")]
       };
     }
     stdout = typeof error?.stdout === "string" ? error.stdout : "";
@@ -382,14 +393,38 @@ async function runSelfTest() {
       requireSelfTest(!serialized.includes(privateValue), "SELF_TEST_REPORT_REDISCLOSED_VALUE");
     }
 
-    const unavailableCommand = ["lico", "dev", "unavailable", "self", "test"].join("-");
-    const unavailable = await runCanonicalScan(temporary, unavailableCommand);
+    const unavailable = await runCanonicalScan(temporary, { environment: {} });
     requireSelfTest(
       unavailable.ok === false &&
       unavailable.failures.length === 1 &&
       unavailable.failures[0].reasonCode === "LICOMESH_DEV_UNAVAILABLE",
       "SELF_TEST_MISSING_TOOL_NOT_FAIL_CLOSED"
     );
+    const trustedRoot = path.join(temporary, "trusted-auditor");
+    await mkdir(path.join(trustedRoot, "profiles", "LicoLand"), { recursive: true });
+    await writeFile(path.join(trustedRoot, "profiles", "LicoLand", "LicoUp.json"), "{}");
+    await writeFile(path.join(trustedRoot, "action_entry.py"), [
+      "import json, pathlib, sys",
+      "assert sys.flags.isolated == 1",
+      "args = sys.argv[1:]",
+      "assert args[0] == 'scan'",
+      "assert args[args.index('--repository') + 1] == 'LicoLand/LicoUp'",
+      "assert args[args.index('--scope') + 1] == 'worktree'",
+      "root = pathlib.Path(__file__).resolve().parent",
+      "assert pathlib.Path(args[args.index('--policy-root') + 1]).resolve() == root",
+      "assert pathlib.Path(args[args.index('--directory') + 1]).resolve() == root.parent",
+      "pathlib.Path(args[args.index('--output') + 1]).write_text(json.dumps({'status': 'completed', 'findings': []}))",
+    ].join("\n"));
+    const trusted = await runCanonicalScan(temporary, {
+      environment: { GENERAL_AUDITOR_ROOT: trustedRoot }
+    });
+    requireSelfTest(trusted.ok === true, "SELF_TEST_TRUSTED_ROOT_INVOCATION_INVALID");
+    await rm(path.join(trustedRoot, "profiles", "LicoLand", "LicoUp.json"));
+    const missingProfile = await runCanonicalScan(temporary, {
+      environment: { GENERAL_AUDITOR_ROOT: trustedRoot }
+    });
+    requireSelfTest(missingProfile.failures[0]?.reasonCode === "LICOMESH_DEV_UNAVAILABLE",
+      "SELF_TEST_MISSING_PROFILE_NOT_REJECTED");
     requireSelfTest(
       isGeneralAuditorDelegationEnabled({
         GENERAL_AUDITOR_GATE_DELEGATED: "1",
@@ -438,6 +473,7 @@ async function runSelfTest() {
         localScannerRejectedDeviceAndRuntimeIdentity: true,
         reportDidNotRediscloseMatches: true,
         missingCanonicalScannerFailedClosed: true,
+        trustedRootAndRepositoryProfileRequired: true,
         auditorDelegationRestrictedToClientGitHubJob: true,
         exactAuditorProtocolAccepted: true
       }
@@ -465,7 +501,7 @@ if (selfTestOnly) {
   let local;
   try {
     candidateRoot = await materializePublicationCandidateRoot();
-    canonical = await runCanonicalScan(repoRoot, "general-auditor", {
+    canonical = await runCanonicalScan(repoRoot, {
       allowAuditorDelegation: true
     });
     local = await scanEvidenceFiles(candidateRoot);

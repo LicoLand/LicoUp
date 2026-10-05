@@ -670,7 +670,11 @@ workspace. Reports are English, are not shipped with the client, run no checks
 or Agents, and are not an execution authority; see
 [workflow and report sources](../tools/development/workflows/README.md).
 
-Before handoff, run:
+Before handoff, set `GENERAL_AUDITOR_ROOT` to the absolute path of the maintained
+General-Auditor checkout on `only`, including its `profiles/` directory. The privacy
+wrapper invokes its `action_entry.py` with isolated Python and that explicit policy
+root; missing source or the LicoUp profile is an unavailable audit, never a generic
+policy fallback. Then run:
 
 ```bash
 npm run repo:docs
