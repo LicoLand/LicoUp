@@ -62,6 +62,22 @@ export const FLUTTER_MODULES = Object.freeze([
       command: flutterTests(["test/client_state_contract_test.dart"]),
     }),
   defineModule({
+      id: "flutter.contract.selection-command",
+      kind: "flutter-contract",
+      summary: "Typed selection caller over the structured native gateway, the policy documents it carries, and the composed selection surfaces",
+      inputs: [
+        "apps/desktop/lib/src/contracts/selection_policy.dart",
+        "apps/desktop/lib/src/platform/native_client/native_selection_actions.dart",
+        "apps/desktop/lib/src/composition/features/models/native_selection_composition.dart",
+        "apps/desktop/test/native_selection_actions_test.dart",
+        "apps/desktop/test/native_selection_composition_test.dart",
+      ],
+      command: flutterTests([
+        "test/native_selection_actions_test.dart",
+        "test/native_selection_composition_test.dart",
+      ]),
+    }),
+  defineModule({
       id: "flutter.contract.secure-mesh",
       kind: "flutter-contract",
       summary: "Generated bounded Secure Mesh bridge DTOs and typed MethodChannel boundary",
@@ -1792,6 +1808,22 @@ export const FLUTTER_MODULES = Object.freeze([
       ]),
     }),
   defineModule({
+      id: "flutter.feature.selection-policy",
+      kind: "flutter-feature",
+      summary: "Route-selection policy surface: the adopted revision, the recorded suggestions and the explicit refusals",
+      inputs: [
+        "apps/desktop/lib/src/frontend/features/models/selection/**",
+        "apps/desktop/test/selection_facts_section_test.dart",
+        "apps/desktop/test/selection_policy_composition_test.dart",
+        "apps/desktop/test/selection_policy_section_test.dart",
+      ],
+      command: flutterTests([
+        "test/selection_facts_section_test.dart",
+        "test/selection_policy_composition_test.dart",
+        "test/selection_policy_section_test.dart",
+      ]),
+    }),
+  defineModule({
       id: "flutter.layer.contracts",
       kind: "flutter-layer",
       summary: "Generated and cross-platform Secure Mesh contract projections, including the separated model-selection document",
@@ -2412,6 +2444,32 @@ export const FLUTTER_MODULES = Object.freeze([
       ],
       command: flutterTests([
         "test/continuous_assistant/completion_notice_delivery_test.dart",
+      ]),
+    }),
+  defineModule({
+      id: "flutter.feature.project-canvas",
+      kind: "flutter-feature",
+      summary: "Authorized project canvas and list over the declared plan: one fact model for both views, local-only layout, and scoped import controls",
+      inputs: [
+        "apps/desktop/lib/src/application/features/projects/**",
+        "apps/desktop/lib/src/composition/features/projects/**",
+        "apps/desktop/lib/src/contracts/project_management.dart",
+        "apps/desktop/lib/src/contracts/project_plan_document.dart",
+        "apps/desktop/lib/src/frontend/projects/**",
+        "apps/desktop/test/composition/projects_feature_mount_test.dart",
+        "apps/desktop/test/fixtures/project_gateway_fixture.dart",
+        "apps/desktop/test/fixtures/project_surface_fixture.dart",
+        "apps/desktop/test/frontend/projects_canvas_panel_test.dart",
+        "apps/desktop/test/project_controller_test.dart",
+        "apps/desktop/test/projects_feature_composition_test.dart",
+        "apps/desktop/test/projects_view_projection_test.dart",
+      ],
+      command: flutterTests([
+        "test/composition/projects_feature_mount_test.dart",
+        "test/frontend/projects_canvas_panel_test.dart",
+        "test/project_controller_test.dart",
+        "test/projects_feature_composition_test.dart",
+        "test/projects_view_projection_test.dart",
       ]),
     }),
   defineModule({

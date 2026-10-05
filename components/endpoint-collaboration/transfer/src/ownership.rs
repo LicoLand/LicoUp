@@ -53,6 +53,9 @@ impl TransferOwnership {
     /// describe them instead of claiming they travel safely.
     pub fn declared() -> Self {
         use licoup_client_state::policy::{ACTIVITY_DIR, CLIENT_STATE_DIR, SNAPSHOT_DIR};
+        use licoup_foundation::core::full_data_root_archive::{
+            CREDENTIAL_DOMAIN, CREDENTIAL_INVENTORY_PATH,
+        };
 
         let managed = vec![
             // The optional-package data home and the install receipts beside it.
@@ -61,6 +64,30 @@ impl TransferOwnership {
             // registry catalog and the Agent resource directories.
             ("model-registry".to_string(), ManagedDomain::Resource),
             ("lico-subagent-mcp".to_string(), ManagedDomain::Resource),
+            // The areas the migration owner records at the data-root root rather
+            // than under the client-state directory: the workspace manifest
+            // (`workspace-manifest`), the group conversation records and the
+            // Adaptive Flywheel strategy configuration.
+            (
+                ".licoup-workspace.json".to_string(),
+                ManagedDomain::Workspace,
+            ),
+            (
+                "group-conversations".to_string(),
+                ManagedDomain::Conversation,
+            ),
+            (
+                "adaptive-flywheel.toml".to_string(),
+                ManagedDomain::ClientState,
+            ),
+            // The provider-key inventory document the archive owner captures as
+            // non-secret metadata. Its own constant names the path, so the
+            // classification cannot drift from the file the owner reads; the key
+            // material it describes stays in the credential domain below.
+            (
+                CREDENTIAL_INVENTORY_PATH.to_string(),
+                ManagedDomain::ClientState,
+            ),
             // Client state, most specific first.
             (
                 format!("{CLIENT_STATE_DIR}/conversations"),
@@ -98,8 +125,9 @@ impl TransferOwnership {
         ];
         let credentials = vec![
             // The provider-key custody domain the archive owner already reports.
+            // Its constant is the owner's own spelling of the domain.
             (
-                "gateway-credential-custody".to_string(),
+                CREDENTIAL_DOMAIN.to_string(),
                 CredentialCustody::ProviderKeyReentry,
             ),
             // The endpoint's own non-exportable protocol custody.

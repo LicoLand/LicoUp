@@ -182,7 +182,7 @@ fn validate_manifest(document: &AgentHubManifest) -> Result<()> {
     Ok(())
 }
 
-fn validate_agent(agent: &AgentRecipe) -> Result<()> {
+pub(crate) fn validate_agent(agent: &AgentRecipe) -> Result<()> {
     ensure!(
         agent.official_docs.starts_with("https://"),
         "official docs must be HTTPS"
@@ -239,6 +239,9 @@ fn validate_agent(agent: &AgentRecipe) -> Result<()> {
                     "artifact URL host must match originHost"
                 );
             }
+            if let Some(integrity) = &artifact.integrity {
+                validate_artifact_integrity(integrity, artifact)?;
+            }
         }
         if channel.oses.contains(&"windows".to_string())
             && channel.selectable
@@ -248,6 +251,61 @@ fn validate_agent(agent: &AgentRecipe) -> Result<()> {
                 !channel.windows_install_argv.is_empty(),
                 "windows official-artifact channels cannot use bash argv"
             );
+        }
+    }
+    Ok(())
+}
+
+/// One artifact declaration names exactly one published digest, and a digest
+/// document must live on the artifact's own origin: a digest fetched from a
+/// different host would prove nothing about the vendor's bytes.
+fn validate_artifact_integrity(
+    integrity: &super::contract::ArtifactIntegrity,
+    artifact: &super::contract::ArtifactSpec,
+) -> Result<()> {
+    ensure!(
+        integrity
+            .algorithm
+            .eq_ignore_ascii_case(super::acquisition::INTEGRITY_ALGORITHM_SHA256),
+        "artifact integrity algorithm must be sha256"
+    );
+    match (
+        integrity.digest.as_deref(),
+        integrity.digest_url_template.as_deref(),
+    ) {
+        (Some(digest), None) => {
+            let digest = digest.trim().to_ascii_lowercase();
+            ensure!(
+                digest.len() == 64
+                    && digest
+                        .chars()
+                        .all(|character| character.is_ascii_hexdigit()),
+                "artifact integrity digest must be 64 hexadecimal characters"
+            );
+        }
+        (None, Some(template)) => {
+            validate_https_template(template)?;
+            let host = Url::parse(
+                &template
+                    .replace("{version}", "latest")
+                    .replace("{vendorOs}", "darwin")
+                    .replace("{vendorArch}", "arm64")
+                    .replace("{installer}", "install.sh"),
+            )
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_string));
+            if let Some(host) = host {
+                ensure!(
+                    host == artifact.origin_host
+                        || host.ends_with(&format!(".{}", artifact.origin_host)),
+                    "artifact digest URL host must match originHost"
+                );
+            }
+        }
+        _ => {
+            return Err(anyhow!(
+                "artifact integrity must declare exactly one published digest"
+            ));
         }
     }
     Ok(())

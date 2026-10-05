@@ -321,6 +321,19 @@ export const REGRESSION_MODULES = Object.freeze([
     ],
   ),
   nodeTestModule(
+    "regression.selection-command-contracts",
+    "Selection command surface, client caller, and the composed selection surfaces",
+    [
+      "tests/contract/client/selection-policy-client-join.test.mjs",
+    ],
+    [
+      "apps/desktop/lib/src/composition/features/models/native_selection_composition.dart",
+      "apps/desktop/lib/src/contracts/selection_policy.dart",
+      "apps/desktop/lib/src/platform/native_client/native_selection_actions.dart",
+      "apps/desktop/lib/src/frontend/features/models/selection/**",
+    ],
+  ),
+  nodeTestModule(
     "regression.endpoint-collaboration-contracts",
     "Endpoint collaboration package, cleanup slice and device-entry exact-source contracts",
     [

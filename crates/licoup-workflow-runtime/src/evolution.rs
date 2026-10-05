@@ -1083,7 +1083,7 @@ mod tests {
         ];
         // The fallback is the routing policy's answer, so this port is given
         // the owner the composed host installs instead of one with no facts.
-        let port = DefaultEvolutionStrategyPort::new().with_routing(routing_owner(&candidates));
+        let port = DefaultEvolutionStrategyPort::new().with_routing(routing_owner(&candidates.iter().collect::<Vec<_>>()));
 
         let suggestion = port.suggest_strategy(&scope, &candidates, None).unwrap();
         assert_eq!(suggestion.candidate.agent_id, "agent-1");
@@ -1154,7 +1154,7 @@ mod tests {
         ];
         // After revocation the routing policy decides, so this port is given
         // the owner the composed host installs instead of one with no facts.
-        let port = DefaultEvolutionStrategyPort::new().with_routing(routing_owner(&candidates));
+        let port = DefaultEvolutionStrategyPort::new().with_routing(routing_owner(&candidates.iter().collect::<Vec<_>>()));
 
         // Adopt reviewer-2
         port.adopt_default(AdoptedPlanningDefaultSeam {
@@ -1454,7 +1454,7 @@ mod tests {
             option("reviewer-2", "deep", "high"),
         ];
         let strategy = Arc::new(
-            DefaultEvolutionStrategyPort::new().with_routing(routing_owner(&candidates)),
+            DefaultEvolutionStrategyPort::new().with_routing(routing_owner(&candidates.iter().collect::<Vec<_>>())),
         );
         strategy.adopt_default(AdoptedPlanningDefaultSeam {
             // The enricher scopes suggestions by the parked state.
@@ -1534,7 +1534,7 @@ mod tests {
     #[test]
     fn routing_keeps_direct_and_workflow_outcomes_apart() {
         let candidates = vec![option("reviewer-1", "fast", "low")];
-        let owner = routing_owner(&candidates);
+        let owner = routing_owner(&candidates.iter().collect::<Vec<_>>());
         let workflow = owner.route(&candidate_routing_request(&candidates));
         assert_eq!(
             workflow.selected().map(|selected| selected.model_id.as_str()),

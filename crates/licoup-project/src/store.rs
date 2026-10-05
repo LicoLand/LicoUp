@@ -715,9 +715,10 @@ fn initialize_schema(connection: &mut Connection) -> Result<()> {
            PRIMARY KEY(project_id, source_id)
          );",
     )?;
-    // The recorded version is written from the constant itself, so the shape a
-    // fresh database declares and the shape this owner validates can never drift
-    // apart the way a duplicated literal can.
+    // The recorded version comes from the constant the reader validates, so a
+    // store this process creates is a store the next process opens. The row is
+    // written once: an existing value is kept, so a database of an earlier
+    // unpublished shape is still refused by name rather than relabelled.
     connection.execute(
         "INSERT INTO project_meta(key, value) VALUES ('version', ?1)
            ON CONFLICT(key) DO NOTHING",

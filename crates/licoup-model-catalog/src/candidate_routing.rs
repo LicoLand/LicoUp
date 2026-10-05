@@ -615,14 +615,25 @@ mod tests {
         let outcome = route_with(
             &request(&[admitted.clone(), blocked.clone()], SelectionScope::Workflow),
             Some(arc(&facts)),
-            &admission(workflow_only),
+            // The refusal belongs to the scope this decision is asked for, so
+            // the fresher observation on the second alternative cannot rank it.
+            &admission(|agent, _scope, _params| {
+                if agent == "agent-b" {
+                    ScopeAdmissionFacts::new(
+                        ScopeOutcomeState::Blocked,
+                        "workflow_scope_disallows_agent_b",
+                    )
+                } else {
+                    ScopeAdmissionFacts::new(ScopeOutcomeState::Allowed, "admitted")
+                }
+            }),
         );
         assert_eq!(outcome.allowed, BTreeSet::from([admitted.clone()]));
         assert_eq!(outcome.selected(), Some(&admitted));
         assert!(matches!(
             outcome.gaps.as_slice(),
             [CandidateRoutingGap::ScopeNotAllowed { candidate, reason, .. }]
-                if *candidate == blocked && reason == "direct_scope_blocked"
+                if *candidate == blocked && reason == "workflow_scope_disallows_agent_b"
         ));
     }
 

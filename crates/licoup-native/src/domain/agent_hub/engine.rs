@@ -1,13 +1,22 @@
 //! Plan/apply/update/uninstall lifecycle. Argv-only after one confirmation.
+//!
+//! Apply stages the vendor artifact an `official-artifact` channel installs
+//! from before it runs that channel's install argv; [`super::acquisition`] owns
+//! the fetch and the published-digest check, and writes only into the Hub's
+//! private staging root.
 
+use super::acquisition::{
+    self, AcquisitionFailure, AcquisitionRequest, ArtifactFetcher, ArtifactRole,
+    VendorArtifactFetcher,
+};
 use super::argv::{ArgvKind, ArgvRunner, ProcessArgvRunner, validate_program_args};
 use super::capabilities::capabilities_from_params;
 use super::confirmation::{self, install_argv_for};
 use super::contract::{
-    HubEvent, InstallChannel, InstallOwnership, LIFECYCLE_APPLYING, LIFECYCLE_AVAILABLE,
-    LIFECYCLE_CONFIRMED, LIFECYCLE_FAILED, LIFECYCLE_NEEDS_LOGIN, LIFECYCLE_PLANNED,
-    LIFECYCLE_RESCANNING, LIFECYCLE_VERIFYING, OWNERSHIP_EXTERNAL, OWNERSHIP_OWNED,
-    PlatformInstallCapabilities,
+    AgentRecipe, HubEvent, InstallChannel, InstallOwnership, LIFECYCLE_APPLYING,
+    LIFECYCLE_AVAILABLE, LIFECYCLE_CONFIRMED, LIFECYCLE_FAILED, LIFECYCLE_NEEDS_LOGIN,
+    LIFECYCLE_PLANNED, LIFECYCLE_RESCANNING, LIFECYCLE_VERIFYING, OWNERSHIP_EXTERNAL,
+    OWNERSHIP_OWNED, PlatformInstallCapabilities, RecipeRegistryDocument,
 };
 use super::ownership::{self, store_from_params};
 use super::recipes::{self, agent_recipe};
@@ -17,27 +26,66 @@ use anyhow::{Result, anyhow, ensure};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+/// Status of a plan admission refuses because its channel cannot be staged.
+const STATUS_UNAVAILABLE: &str = "unavailable";
+
 pub struct HubContext {
     pub store: ClientStateStore,
     pub capabilities: PlatformInstallCapabilities,
     pub runner: Arc<dyn ArgvRunner>,
+    /// The bounded byte source acquisition stages from.
+    fetcher: Arc<dyn ArtifactFetcher>,
+    /// The recipe registry this lifecycle resolves against. The bundled
+    /// warehouse by default; a test substitutes a synthetic document.
+    registry: Arc<RecipeRegistryDocument>,
 }
 
 impl HubContext {
     pub fn from_params(params: &Value) -> Result<Self> {
-        Ok(Self {
-            store: store_from_params(params)?,
-            capabilities: capabilities_from_params(params)?,
-            runner: Arc::new(ProcessArgvRunner),
-        })
+        Self::build(
+            params,
+            Arc::new(ProcessArgvRunner),
+            Arc::new(VendorArtifactFetcher),
+        )
     }
 
     pub fn with_runner(params: &Value, runner: Arc<dyn ArgvRunner>) -> Result<Self> {
+        Self::build(params, runner, Arc::new(VendorArtifactFetcher))
+    }
+
+    /// Explicit ports for a deterministic lifecycle test.
+    #[cfg(test)]
+    pub(crate) fn with_ports(
+        params: &Value,
+        runner: Arc<dyn ArgvRunner>,
+        fetcher: Arc<dyn ArtifactFetcher>,
+        registry: Arc<RecipeRegistryDocument>,
+    ) -> Result<Self> {
         Ok(Self {
             store: store_from_params(params)?,
             capabilities: capabilities_from_params(params)?,
             runner,
+            fetcher,
+            registry,
         })
+    }
+
+    fn build(
+        params: &Value,
+        runner: Arc<dyn ArgvRunner>,
+        fetcher: Arc<dyn ArtifactFetcher>,
+    ) -> Result<Self> {
+        Ok(Self {
+            store: store_from_params(params)?,
+            capabilities: capabilities_from_params(params)?,
+            runner,
+            fetcher,
+            registry: Arc::new(recipes::registry()?.clone()),
+        })
+    }
+
+    fn agent(&self, agent_id: &str) -> Result<&AgentRecipe> {
+        agent_recipe(&self.registry, agent_id)
     }
 }
 
@@ -52,8 +100,7 @@ pub fn apply(params: &Value) -> Result<Value> {
 pub fn plan_with(ctx: &HubContext, params: &Value) -> Result<Value> {
     let operation = operation_of(params, "install");
     let agent_id = agent_id(params)?;
-    let registry = recipes::registry()?;
-    let agent = agent_recipe(registry, &agent_id)?;
+    let agent = ctx.agent(&agent_id)?;
     let present = discovery_present(params, &agent_id);
     let owned = ownership::get(&ctx.store, &agent_id)?;
     let ownership = ownership::resolve_ownership(owned.as_ref(), present);
@@ -109,7 +156,21 @@ pub fn plan_with(ctx: &HubContext, params: &Value) -> Result<Value> {
     };
     let argv = argv_for(&operation, &ctx.capabilities.os, selected);
     argv_guard(&argv, selected)?;
-    let confirmation = confirmation::token(&operation, &agent_id, selected);
+    let needs = StagedNeeds::of(&argv);
+    let acquisition = match plan_acquisition(ctx, params, &agent_id, selected, &needs)? {
+        PlanAdmission::Ready(descriptor) => descriptor,
+        PlanAdmission::Refused(failure) => {
+            return Ok(failure_json(
+                STATUS_UNAVAILABLE,
+                &failure,
+                &operation,
+                &agent_id,
+                selected,
+            ));
+        }
+    };
+    let confirmation =
+        confirmation::token(&operation, &agent_id, selected, &requested_version(params));
     Ok(json!({
         "ok": true,
         "status": LIFECYCLE_PLANNED,
@@ -119,6 +180,7 @@ pub fn plan_with(ctx: &HubContext, params: &Value) -> Result<Value> {
         "ownership": ownership,
         "requiresConfirmation": true,
         "confirmation": confirmation,
+        "acquisition": acquisition,
         "selectedChannel": {
             "id": selected.id,
             "kind": selected.kind,
@@ -128,6 +190,251 @@ pub fn plan_with(ctx: &HubContext, params: &Value) -> Result<Value> {
             "argv": argv
         }
     }))
+}
+
+/// Whether a plan can be staged, and what the caller is about to fetch.
+///
+/// This runs before any confirmation is issued and never touches the network:
+/// a channel whose artifact declaration cannot produce a verified staged file
+/// is refused here, so the user is not asked to confirm an install that must
+/// fail.
+enum PlanAdmission {
+    Ready(Value),
+    Refused(AcquisitionFailure),
+}
+
+fn plan_acquisition(
+    ctx: &HubContext,
+    params: &Value,
+    agent_id: &str,
+    channel: &InstallChannel,
+    needs: &StagedNeeds,
+) -> Result<PlanAdmission> {
+    if let Err(failure) = verify_staged_requirements(params, channel, needs) {
+        return Ok(PlanAdmission::Refused(failure));
+    }
+    if !needs.artifact && !needs.script && !needs.staging {
+        return Ok(PlanAdmission::Ready(Value::Null));
+    }
+    let spec = match acquisition::artifact_spec(channel) {
+        Ok(spec) => spec,
+        Err(failure) => return Ok(PlanAdmission::Refused(failure)),
+    };
+    if let Err(failure) = acquisition::declared_integrity(spec) {
+        return Ok(PlanAdmission::Refused(failure));
+    }
+    let version = match acquisition::requested_version(params) {
+        Ok(version) => version,
+        Err(failure) => return Ok(PlanAdmission::Refused(failure)),
+    };
+    let source_url = match acquisition::artifact_url(spec, &ctx.capabilities, &version) {
+        Ok(url) => url,
+        Err(error) => return Ok(PlanAdmission::Refused(failure_of(error))),
+    };
+    // Everything an acquisition can reject without the network is rejected
+    // here, while the caller has not yet confirmed anything.
+    if let Err(error) = acquisition::artifact_file_name(&source_url) {
+        return Ok(PlanAdmission::Refused(failure_of(error)));
+    }
+    if let Err(error) = acquisition::digest_document_url(spec, &ctx.capabilities, &version) {
+        return Ok(PlanAdmission::Refused(failure_of(error)));
+    }
+    Ok(PlanAdmission::Ready(json!({
+        "sourceUrl": source_url,
+        "integrity": "published-digest",
+        "role": match needs.role() {
+            Ok(role) => role.as_str(),
+            Err(failure) => return Ok(PlanAdmission::Refused(failure)),
+        },
+        "staging": "hub-private-state",
+        "officialSource": channel.official_source,
+        "agentId": agent_id
+    })))
+}
+
+/// The staged values one confirmed apply must resolve before it runs argv.
+///
+/// The receipt names the verified bytes without naming a local path, so a caller
+/// can report what was staged.
+fn resolve_staged_values(
+    ctx: &HubContext,
+    params: &Value,
+    agent: &AgentRecipe,
+    channel: &InstallChannel,
+    needs: &StagedNeeds,
+) -> Result<(StagedValues, Option<Value>), AcquisitionFailure> {
+    verify_staged_requirements(params, channel, needs)?;
+    let mut values = StagedValues::default();
+    if needs.install {
+        values.install = params
+            .get("installRef")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+    }
+    if !needs.artifact && !needs.script && !needs.staging {
+        values.version = requested_version(params);
+        return Ok((values, None));
+    }
+    values.version = acquisition::requested_version(params)?;
+    let request = AcquisitionRequest {
+        agent,
+        channel,
+        capabilities: &ctx.capabilities,
+    };
+    if needs.artifact || needs.script {
+        let staged = acquisition::stage(
+            &ctx.store,
+            params,
+            &request,
+            needs.role()?,
+            ctx.fetcher.as_ref(),
+        )
+        .map_err(failure_of)?;
+        values.staging = Some(staged.staging_dir.to_string_lossy().to_string());
+        match staged.role {
+            ArtifactRole::Archive => {
+                values.artifact = Some(staged.file_path.to_string_lossy().to_string())
+            }
+            ArtifactRole::Script => {
+                values.script = Some(staged.file_path.to_string_lossy().to_string())
+            }
+        }
+        let receipt = json!({
+            "role": staged.role.as_str(),
+            "sha256": staged.sha256,
+            "bytes": staged.bytes,
+            "resumed": staged.resumed
+        });
+        return Ok((values, Some(receipt)));
+    }
+    let directory =
+        acquisition::prepare_staging_dir(&ctx.store, params, &request).map_err(failure_of)?;
+    values.staging = Some(directory.to_string_lossy().to_string());
+    Ok((values, None))
+}
+
+/// The values one operation's argv substitutes. Nothing defaults: a placeholder
+/// without a value is a refusal, because the literal placeholder name would
+/// otherwise reach the install argv as a path that does not exist.
+#[derive(Clone, Debug, Default)]
+struct StagedValues {
+    staging: Option<String>,
+    artifact: Option<String>,
+    script: Option<String>,
+    install: Option<String>,
+    version: String,
+}
+
+impl StagedValues {
+    fn substitute(&self, arg: &str) -> Result<String, AcquisitionFailure> {
+        let mut output = arg.to_string();
+        for (placeholder, value) in [
+            ("{staging}", self.staging.as_deref()),
+            ("{artifact}", self.artifact.as_deref()),
+            ("{script}", self.script.as_deref()),
+            ("{install}", self.install.as_deref()),
+        ] {
+            if !output.contains(placeholder) {
+                continue;
+            }
+            let value = value.ok_or_else(|| {
+                AcquisitionFailure::with_detail(
+                    acquisition::ARTIFACT_PLACEHOLDER_UNRESOLVED,
+                    placeholder,
+                )
+            })?;
+            output = output.replace(placeholder, value);
+        }
+        Ok(output.replace("{version}", &self.version))
+    }
+}
+
+/// The placeholders one argv uses, and whether a plan can satisfy them.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct StagedNeeds {
+    staging: bool,
+    artifact: bool,
+    script: bool,
+    install: bool,
+}
+
+impl StagedNeeds {
+    fn of(argv: &[String]) -> Self {
+        let contains = |placeholder: &str| argv.iter().any(|arg| arg.contains(placeholder));
+        Self {
+            staging: contains("{staging}"),
+            artifact: contains("{artifact}"),
+            script: contains("{script}"),
+            install: contains("{install}"),
+        }
+    }
+
+    fn role(&self) -> Result<ArtifactRole, AcquisitionFailure> {
+        match (self.artifact, self.script) {
+            (true, false) => Ok(ArtifactRole::Archive),
+            (false, true) => Ok(ArtifactRole::Script),
+            _ => Err(AcquisitionFailure::new(
+                acquisition::ARTIFACT_ROLE_AMBIGUOUS,
+            )),
+        }
+    }
+}
+
+/// Every staged requirement of one argv must be satisfiable as declared.
+fn verify_staged_requirements(
+    params: &Value,
+    channel: &InstallChannel,
+    needs: &StagedNeeds,
+) -> Result<(), AcquisitionFailure> {
+    if needs.install
+        && params
+            .get("installRef")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_none()
+    {
+        return Err(AcquisitionFailure::new(
+            acquisition::INSTALL_REFERENCE_UNRESOLVED,
+        ));
+    }
+    if needs.artifact || needs.script || needs.staging {
+        acquisition::artifact_spec(channel)?;
+    }
+    Ok(())
+}
+
+fn failure_json(
+    status: &str,
+    failure: &AcquisitionFailure,
+    operation: &str,
+    agent_id: &str,
+    channel: &InstallChannel,
+) -> Value {
+    let mut payload = json!({
+        "ok": false,
+        "status": status,
+        "code": failure.code,
+        "operation": operation,
+        "agentId": agent_id,
+        "channelId": channel.id,
+        "channelKind": channel.kind
+    });
+    if !failure.detail.is_empty() {
+        payload["detail"] = Value::from(failure.detail.clone());
+    }
+    payload
+}
+
+/// Recovers the typed acquisition failure an `artifact_spec` refusal carries.
+fn failure_of(error: anyhow::Error) -> AcquisitionFailure {
+    match error.downcast::<AcquisitionFailure>() {
+        Ok(failure) => failure,
+        Err(error) => AcquisitionFailure::with_detail(
+            acquisition::ARTIFACT_SOURCE_UNDECLARED,
+            error.to_string(),
+        ),
+    }
 }
 
 pub fn apply_with(ctx: &HubContext, params: &Value) -> Result<Value> {
@@ -162,14 +469,38 @@ pub fn apply_with(ctx: &HubContext, params: &Value) -> Result<Value> {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
-    let argv = planned["selectedChannel"]["argv"]
+    let agent = ctx.agent(&agent_id)?;
+    let channel_id = planned["selectedChannel"]["id"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let channel = selector::channel_by_id(agent, &channel_id)?;
+    let argv_template = planned["selectedChannel"]["argv"]
         .as_array()
         .cloned()
         .unwrap_or_default()
         .into_iter()
         .filter_map(|value| value.as_str().map(str::to_string))
-        .map(|arg| substitute_placeholders(&arg, params))
         .collect::<Vec<_>>();
+    let needs = StagedNeeds::of(&argv_template);
+    // Acquisition writes only into the Hub's private staging root; the install
+    // argv below is what may touch the machine's own software locations.
+    let (values, staged_receipt) = match resolve_staged_values(ctx, params, agent, channel, &needs)
+    {
+        Ok(resolved) => resolved,
+        Err(failure) => {
+            return Ok(apply_failure_json(&operation, &agent_id, &failure, channel));
+        }
+    };
+    let mut argv = Vec::with_capacity(argv_template.len());
+    for arg in &argv_template {
+        match values.substitute(arg) {
+            Ok(resolved) => argv.push(resolved),
+            Err(failure) => {
+                return Ok(apply_failure_json(&operation, &agent_id, &failure, channel));
+            }
+        }
+    }
     ensure!(!argv.is_empty(), "argv_forbidden");
     let program = argv[0].clone();
     let args = argv[1..].to_vec();
@@ -188,14 +519,18 @@ pub fn apply_with(ctx: &HubContext, params: &Value) -> Result<Value> {
         }));
     }
     lifecycle.push(LIFECYCLE_VERIFYING);
-    let registry = recipes::registry()?;
-    let agent = agent_recipe(registry, &agent_id)?;
-    let channel_id = planned["selectedChannel"]["id"]
-        .as_str()
-        .unwrap_or_default();
-    let channel = selector::channel_by_id(agent, channel_id)?;
     if !channel.verify_argv.is_empty() {
-        let verify = substitute_argv(&channel.verify_argv, params);
+        let verify = match substitute_argv(&channel.verify_argv, &values) {
+            Ok(verify) => verify,
+            Err(error) => {
+                return Ok(apply_failure_json(
+                    &operation,
+                    &agent_id,
+                    &failure_of(error),
+                    channel,
+                ));
+            }
+        };
         let _ = ctx.runner.run(&verify[0], &verify[1..])?;
     }
     lifecycle.push(LIFECYCLE_RESCANNING);
@@ -233,7 +568,7 @@ pub fn apply_with(ctx: &HubContext, params: &Value) -> Result<Value> {
         LIFECYCLE_AVAILABLE
     };
     lifecycle.push(status);
-    Ok(json!({
+    let mut result = json!({
         "ok": true,
         "status": status,
         "operation": operation,
@@ -242,7 +577,11 @@ pub fn apply_with(ctx: &HubContext, params: &Value) -> Result<Value> {
         "channelId": channel.id,
         "channelKind": channel.kind,
         "events": events(&lifecycle)
-    }))
+    });
+    if let Some(receipt) = staged_receipt {
+        result["stagedArtifact"] = receipt;
+    }
+    Ok(result)
 }
 
 fn argv_for(operation: &str, os: &str, channel: &InstallChannel) -> Vec<String> {
@@ -260,35 +599,29 @@ fn argv_guard(argv: &[String], channel: &InstallChannel) -> Result<()> {
     validate_program_args(&argv[0], &argv[1..], ArgvKind::for_channel(&channel.kind))
 }
 
-fn substitute_argv(argv: &[String], params: &Value) -> Vec<String> {
-    argv.iter()
-        .map(|arg| substitute_placeholders(arg, params))
-        .collect()
+fn substitute_argv(argv: &[String], values: &StagedValues) -> Result<Vec<String>> {
+    let mut substituted = Vec::with_capacity(argv.len());
+    for arg in argv {
+        substituted.push(values.substitute(arg)?);
+    }
+    Ok(substituted)
 }
 
-fn substitute_placeholders(arg: &str, params: &Value) -> String {
-    let staging = params
-        .get("stagingDir")
-        .and_then(Value::as_str)
-        .unwrap_or("staging");
-    let artifact = params
-        .get("artifactPath")
-        .and_then(Value::as_str)
-        .unwrap_or("artifact");
-    let script = params
-        .get("scriptPath")
-        .and_then(Value::as_str)
-        .unwrap_or("script");
-    let install = params
-        .get("installRef")
-        .and_then(Value::as_str)
-        .unwrap_or("install");
-    let version = requested_version(params);
-    arg.replace("{staging}", staging)
-        .replace("{artifact}", artifact)
-        .replace("{script}", script)
-        .replace("{install}", install)
-        .replace("{version}", &version)
+/// The lifecycle result of a confirmed apply whose staging phase refused.
+fn apply_failure_json(
+    operation: &str,
+    agent_id: &str,
+    failure: &AcquisitionFailure,
+    channel: &InstallChannel,
+) -> Value {
+    let mut payload = failure_json(LIFECYCLE_FAILED, failure, operation, agent_id, channel);
+    payload["events"] = json!(events(&[
+        LIFECYCLE_PLANNED,
+        LIFECYCLE_CONFIRMED,
+        LIFECYCLE_APPLYING,
+        LIFECYCLE_FAILED,
+    ]));
+    payload
 }
 
 fn requested_version(params: &Value) -> String {

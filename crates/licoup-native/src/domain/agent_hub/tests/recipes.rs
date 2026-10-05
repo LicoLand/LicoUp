@@ -522,3 +522,66 @@ fn the_contract_surface_declares_the_channel_classes() {
         serde_json::json!(["binary", "package-manager", "vendor-script"])
     );
 }
+
+/// One artifact declaration names exactly one published digest, on the
+/// artifact's own origin. Acquisition fails closed without that declaration, so
+/// a malformed one must never load.
+#[test]
+fn a_published_digest_declaration_is_validated() {
+    use super::support::fixture_artifact_channel;
+    use crate::domain::agent_hub::contract::ArtifactIntegrity;
+    use crate::domain::agent_hub::recipes::validate_agent;
+
+    let recipe_with = |integrity: Option<ArtifactIntegrity>| {
+        synthetic_recipe(
+            "synthetic-artifact",
+            vec![fixture_artifact_channel(
+                "https://vendor.invalid",
+                integrity,
+            )],
+        )
+    };
+    let published = |digest: Option<String>, template: Option<&str>| ArtifactIntegrity {
+        algorithm: "sha256".to_string(),
+        digest,
+        digest_url_template: template.map(str::to_string),
+    };
+
+    validate_agent(&recipe_with(Some(published(Some("a".repeat(64)), None)))).unwrap();
+    validate_agent(&recipe_with(Some(published(
+        None,
+        Some("https://vendor.invalid/agent.tar.gz.sha256"),
+    ))))
+    .unwrap();
+
+    for (label, integrity) in [
+        ("no published digest at all", published(None, None)),
+        (
+            "two digest sources",
+            published(
+                Some("a".repeat(64)),
+                Some("https://vendor.invalid/a.sha256"),
+            ),
+        ),
+        (
+            "a digest that is not sha256",
+            published(Some("a".repeat(63)), None),
+        ),
+        (
+            "a digest document on another origin",
+            published(None, Some("https://downloads.other.invalid/a.sha256")),
+        ),
+    ] {
+        assert!(
+            validate_agent(&recipe_with(Some(integrity))).is_err(),
+            "an artifact declaration with {label} must not load"
+        );
+    }
+
+    let unsupported = recipe_with(Some(ArtifactIntegrity {
+        algorithm: "md5".to_string(),
+        digest: Some("b".repeat(32)),
+        digest_url_template: None,
+    }));
+    assert!(validate_agent(&unsupported).is_err());
+}
