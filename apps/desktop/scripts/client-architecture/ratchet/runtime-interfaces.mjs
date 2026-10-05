@@ -60,7 +60,6 @@ const SOURCES = Object.freeze({
   [N + "platform/hermes_driver/probe.rs"]: "973dddadc2653371f6c19a21a3987a19fa62aae3edb2694994bd7abf4e242d23",
   [N + "platform/lico_agent_driver/execution.rs"]: "061e3f118a7eb9944e328ea3cf2e61ab2845541f3dc88d5b850dc12c7063de55",
   [N + "platform/lico_agent_driver/probe.rs"]: "b968dbfd55ec7e1ca7c83aa5d5fedfc244c6b554d8fe96a441923fa22e0d3179",
-  [N + "platform/local_service/process.rs"]: "ab1a749eeffbdca47267a6c888882e033eb2c647da48a0beef7fa79399e38adc",
   [MIGRATE_CONVERTER]: "1a468623ec8a3a0d23371c0dad7fdfdcb145f5cd6886cb306776c6f3acc59277",
   [N + "platform/mcp_service_process.rs"]: "745cd52c988672ebdfee6a52d020c02f0d56f62a6c9acd3247ee38109d5a6976",
   [N + "platform/openclaw_driver/probe.rs"]: "49a1e80055550a28d5de652f4236dfbf3c99ba53ea53c86692b44810f0d23862",
