@@ -78,7 +78,7 @@ install_argv = ["bash", "{script}"]
 windows_install_argv = ["powershell", "-NoProfile", "-File", "{script}"]
 update_argv = ["claude", "update"]
 uninstall_argv = ["rm", "{install}"]
-verify_argv = ["claude", "--version"]
+verify_argv = ["{install}", "--version"]
 
 [channels.artifact]
 origin_host = "claude.ai"
@@ -87,3 +87,14 @@ url_template = "https://claude.ai/{installer}"
 macos = "install.sh"
 linux = "install.sh"
 windows = "install.ps1"
+
+# Where this channel's installer lands its executable. The vendor's own
+# installer performs the placement. Uninstall removes the declared path and
+# verify runs it, so neither depends on a name PATH happens to answer.
+[channels.install]
+[channels.install.binary]
+macos = "claude"
+linux = "claude"
+[channels.install.dir]
+macos = "{home}/.local/bin"
+linux = "{home}/.local/bin"

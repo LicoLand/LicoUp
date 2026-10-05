@@ -220,6 +220,15 @@ pub struct InstallChannel {
     pub version_policy: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact: Option<ArtifactSpec>,
+    /// Where this channel installs its executable, when the recipe names it.
+    ///
+    /// A declared destination is what `{install}` resolves to, so uninstall
+    /// names a path the recipe declared rather than one the caller had to
+    /// supply. Its directory is a per-OS template written in the discovery
+    /// owner's own root vocabulary, so the Hub installs only where the Agent
+    /// scanner already looks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install: Option<InstallPlacement>,
     #[serde(default)]
     pub install_argv: Vec<String>,
     #[serde(default)]
@@ -230,6 +239,34 @@ pub struct InstallChannel {
     pub uninstall_argv: Vec<String>,
     #[serde(default)]
     pub verify_argv: Vec<String>,
+}
+
+/// The declared install destination of one channel.
+///
+/// Two placements exist and the declaration says which one a channel uses. A
+/// channel whose [`argv`](Self::argv) is empty hands placement to the vendor's
+/// own installer, which the operation runs and which lands the executable at
+/// the declared destination. A channel that declares an
+/// [`argv`](Self::argv) places the staged result itself, in one visible step
+/// whose only write target is `{install}`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct InstallPlacement {
+    /// The installed executable's file name, per OS.
+    #[serde(default)]
+    pub binary: std::collections::BTreeMap<String, String>,
+    /// The destination directory, per OS, in the discovery root vocabulary
+    /// (`{home}`, `{local_appdata}`, ...). An OS the channel lists but does not
+    /// declare here cannot resolve `{install}` and is refused.
+    #[serde(default)]
+    pub dir: std::collections::BTreeMap<String, String>,
+    /// The argv step that places the staged result at the destination.
+    ///
+    /// Empty when the vendor's own installer performs placement. When present
+    /// it runs after the operation's argv, it must name `{install}` as its
+    /// target, and it may only read from the Hub's private staging root.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub argv: Vec<String>,
 }
 
 fn none_elevation() -> String {

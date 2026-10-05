@@ -26,6 +26,27 @@ pub fn token(operation: &str, agent_id: &str, channel: &InstallChannel, version:
         digest.update(arg.as_bytes());
         digest.update([0]);
     }
+    // A channel that places its own result states where that result lands, so
+    // the declared destination and the placement step bind the token too: a
+    // confirmed plan must not write to a destination the caller never saw.
+    if let Some(install) = channel.install.as_ref() {
+        for (os, dir) in &install.dir {
+            digest.update(os.as_bytes());
+            digest.update([0]);
+            digest.update(dir.as_bytes());
+            digest.update([0]);
+        }
+        for (os, binary) in &install.binary {
+            digest.update(os.as_bytes());
+            digest.update([0]);
+            digest.update(binary.as_bytes());
+            digest.update([0]);
+        }
+        for arg in &install.argv {
+            digest.update(arg.as_bytes());
+            digest.update([0]);
+        }
+    }
     let encoded = digest
         .finalize()
         .iter()

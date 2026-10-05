@@ -36,10 +36,7 @@ pub fn installed_version(
     }
     let recipe_program = &channel.verify_argv[0];
     let args = &channel.verify_argv[1..];
-    if !agent
-        .binary_names
-        .iter()
-        .any(|name| name.eq_ignore_ascii_case(recipe_program))
+    if !verify_names_the_agent(recipe_program, channel, agent, executable_binding)
         || !binding_belongs_to_agent(executable_binding, agent)
         || argv::validate_program_args(recipe_program, args, ArgvKind::Lifecycle).is_err()
     {
@@ -209,6 +206,40 @@ pub(crate) fn injected_probe(params: &Value, agent_id: &str) -> Option<String> {
 struct ProbeOutput {
     stdout: String,
     stderr: String,
+}
+
+/// The verify program a channel names for the executable it installs.
+pub(crate) const INSTALL_VERIFY_PROGRAM: &str = "{install}";
+
+/// Whether one verify step's program names this Agent's own executable.
+///
+/// A recipe that names the executable directly matches that name, exactly as
+/// before. A recipe that verifies `{install}` names the file at the channel's
+/// declared install destination: the name to match is then the declared binary,
+/// and a channel that declares no destination stays blank instead of probing a
+/// path it never stated.
+fn verify_names_the_agent(
+    program: &str,
+    channel: &InstallChannel,
+    agent: &AgentRecipe,
+    binding: &Path,
+) -> bool {
+    if program != INSTALL_VERIFY_PROGRAM {
+        return agent
+            .binary_names
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(program));
+    }
+    let Some(install) = channel.install.as_ref() else {
+        return false;
+    };
+    let Some(file_name) = binding.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    install
+        .binary
+        .values()
+        .any(|binary| binary.eq_ignore_ascii_case(file_name))
 }
 
 fn binding_belongs_to_agent(binding: &Path, agent: &AgentRecipe) -> bool {

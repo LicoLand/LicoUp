@@ -73,6 +73,8 @@ pub(crate) const ARTIFACT_SIZE_EXCEEDED: &str = "artifact_size_exceeded";
 pub(crate) const ARTIFACT_STAGING_UNAVAILABLE: &str = "artifact_staging_unavailable";
 pub(crate) const ARTIFACT_PLACEHOLDER_UNRESOLVED: &str = "artifact_placeholder_unresolved";
 pub(crate) const INSTALL_REFERENCE_UNRESOLVED: &str = "install_reference_unresolved";
+pub(crate) const INSTALL_DESTINATION_UNDECLARED: &str = "install_destination_undeclared";
+pub(crate) const INSTALL_DESTINATION_UNADMITTED: &str = "install_destination_unadmitted";
 
 /// Which argv placeholder a staged file fills.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
