@@ -2,9 +2,10 @@
 
 English (normative) · [简体中文](lico-agent.zh-CN.md)
 
-Authority: `domain/lico_agent/`, `platform/lico_agent_driver/`,
-`platform/process_sandbox/`, and the `lico-agent` sibling binary. Update this
-projection when those implementations or their verification change.
+Authority: `licoup-agent-targets`' `domain/lico_agent/`,
+`licoup-agent-lico-agent`'s `driver/`, the shared `platform/process_sandbox/`
+primitive, and the `lico-agent` sibling binary. Update this projection when
+those implementations or their verification change.
 
 Lico Agent is a **first-party** LicoUp-owned runtime. It appears in the agent
 list as one ordinary option (`lico-agent`), peer to third-party adapters such as

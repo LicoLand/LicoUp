@@ -96,8 +96,9 @@ export const OPTIONAL_CAPABILITY_CRATES = Object.freeze({
       "crates/licoup-gateway implements the gateway runtime and the managed client links it only through the off-by-default `gateway` feature; the kernel keeps no mandatory dependency.",
   }),
   "org.licoland.feature.collaboration": Object.freeze({
-    crates: Object.freeze([]),
-    evidence: "No separate first-party crate implements this package at this baseline.",
+    crates: Object.freeze(["licoup-collaboration"]),
+    evidence:
+      "crates/licoup-collaboration is the functional owner of the current collaboration graph (crates/licoup-collaboration/src/lib.rs), which is the capability the endpoint-collaboration.v1 pack declares as org.licoland.feature.collaboration (crates/licoup-extension-contracts/src/deployment.rs). The crate is a workspace member no other crate reaches, so declaring it adds no mandatory kernel edge.",
   }),
   "org.licoland.feature.channels": Object.freeze({
     crates: Object.freeze([]),

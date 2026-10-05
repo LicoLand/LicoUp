@@ -21,11 +21,14 @@
 //!
 //! # What this port does not yet carry
 //!
-//! The kernel still executes OpenClaw through its own transport — the reviewed
-//! bounded probe, the supervised attach and the Gateway lifecycle all live in
-//! the client — so this answer is not on that path yet. Completing the binary
-//! route and moving that transport behind this port is the VENDOR-CODE-REMOVAL
-//! remainder; this package claims no execution it does not perform.
+//! The client drives this package in-process, so the turn itself is
+//! [`crate::driver`]'s and the Gateway lifecycle, the event emission and the MCP
+//! registration are answered at that call site; the port is not the entry to
+//! that path yet. What completes it is the package's binary route: the extension
+//! host that starts this package's program, admits one execution through this
+//! answer, and reaches the same [`crate::driver`] entry points. Until then this
+//! answer stays fail-closed, and the package claims no execution it does not
+//! perform.
 
 use std::sync::OnceLock;
 

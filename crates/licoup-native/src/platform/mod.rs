@@ -11,38 +11,27 @@ pub use licoup_foundation::platform::agent_workspace;
 pub use licoup_foundation::platform::native_agent_interaction;
 pub use licoup_foundation::platform::raw_execution;
 pub use licoup_foundation::platform::turn_event_emit;
-pub(crate) mod antigravity_driver;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 pub mod authorized_secure_record;
 pub(crate) mod badtower_station;
-mod claude_code_driver;
 pub(crate) mod conversation_lane;
-mod copilot_driver;
-mod cursor_driver;
-mod deepseek_harness_driver;
 pub mod diagnostics;
 pub mod extension_host;
 pub mod extension_packages;
 pub mod package_registration_release;
 pub(crate) mod generic_cli_driver;
-mod hermes_driver;
 pub(crate) mod hermes_tui_gateway;
 mod hermes_tui_gateway_driver;
-pub(crate) mod kilo_code_driver;
 pub(crate) mod kilo_code_host;
-mod kimi_code_driver;
-mod lico_agent_driver;
+pub(crate) mod lico_agent_host;
 pub(crate) use licoup_agent_drivers::local_service;
 pub(crate) mod mcp_approval_plan_store;
 pub(crate) mod mcp_streamable_http;
 mod native_agent_parser;
-mod openclaw_driver;
-mod opencode_driver;
-mod pi_driver;
+pub(crate) mod openclaw_host;
+pub(crate) mod opencode_host;
 pub mod process_sandbox;
 pub(crate) mod provider_mcp_registration;
-#[cfg(unix)]
-mod pty_transport;
 pub(crate) mod remote_acp_history;
 pub(crate) mod remote_hermes_gateway_history;
 pub(crate) mod secure_mesh_mls_store;
@@ -127,6 +116,28 @@ pub(crate) fn pi_turn_event_port() -> licoup_agent_pi::port::turn_event::TurnEve
     }
 }
 
+/// This host's answer for the Cursor adapter package's turn-event port.
+///
+/// The package owns *what* one Cursor turn emits — the accepted turn, the
+/// streamed chunks, the tool observations and the auto-update phases; this host
+/// owns *where* they go, because the host owns the consumer. The answer is this
+/// host's own emitters rather than a second sink, so a Cursor event and a Pi
+/// event reach one reader through one path. The pty the Cursor turn is launched
+/// on is not answered here: it is the shared primitive both halves link.
+pub(crate) fn cursor_turn_event_port() -> licoup_agent_cursor::port::turn_event::TurnEventPort {
+    // Cursor is the one package that also reports a tool failure, and this
+    // host's re-export list above carries the four emitters it shares with the
+    // other arms; the fifth is named at its own module so the shared list stays
+    // the shape the other arms read.
+    licoup_agent_cursor::port::turn_event::TurnEventPort {
+        emit_turn_event,
+        emit_agent_message_chunk,
+        emit_agent_message_completed,
+        emit_agent_processing,
+        emit_agent_tool_error: turn_event_emit::emit_agent_tool_error,
+    }
+}
+
 /// The environment one Codex app-server child is launched with.
 ///
 /// The user's own login shell is the default command authority (ADR 0007), so
@@ -140,27 +151,18 @@ pub(crate) fn codex_app_server_environment() -> Vec<(String, String)> {
         .collect()
 }
 
-
-/// This host's answer for the OpenClaw adapter package's turn-event port.
-///
-/// The package owns *what* one OpenClaw turn emits as its Gateway frames arrive;
-/// this host owns *where* they go, because the host owns the consumer. The
-/// answer is the same emitters the host's own drivers and the Codex package
-/// reach, so an OpenClaw message chunk and a Codex one arrive at one reader
-/// through one path rather than two sinks that can drift.
-pub(crate) fn openclaw_turn_event_port() -> licoup_agent_openclaw::port::turn_event::TurnEventPort {
-    licoup_agent_openclaw::port::turn_event::TurnEventPort {
-        emit_agent_message_chunk,
-        emit_agent_processing,
-    }
-}
-
 // The bounded process owner moved to `licoup-foundation`. It is re-exported at
 // its former path and former visibility, because the driver engines, the
 // sandboxed execution helpers and the Agent inventory all supervise the same
 // child processes and one implementation serves them all.
 pub(crate) use licoup_foundation::platform::process_supervisor;
 pub(crate) use licoup_foundation::platform::process_supervisor::{
-    configure_untrusted_agent_command, run_bounded_command_input, run_bounded_command_output,
-    run_bounded_untrusted_agent_output,
+    run_bounded_command_input, run_bounded_command_output, run_bounded_untrusted_agent_output,
 };
+// The pseudo-terminal transport moved to `licoup-foundation` with it, for the
+// same reason: attaching a child to a pty is a primitive every Agent's CLI lane
+// reuses, not any one Agent's protocol. This path stays reachable, at the
+// visibility the host exposed before it moved, for the Cursor lane and the
+// generic CLI lane that still open one from here.
+#[cfg(unix)]
+pub(crate) use licoup_foundation::platform::pty_transport;

@@ -297,9 +297,24 @@ export function kiloAgentPackageLayer(filter, harnessArgs = []) {
   return rustAgentPackageLayer(filter, harnessArgs, agentPackageManifest("kilo"));
 }
 
+/// One module of the DeepSeek Harness adapter package's library.
+export function deepseekAgentPackageLayer(filter, harnessArgs = []) {
+  return rustAgentPackageLayer(filter, harnessArgs, agentPackageManifest("deepseek"));
+}
+
+/// One module of the Hermes adapter package's library.
+export function hermesAgentPackageLayer(filter, harnessArgs = []) {
+  return rustAgentPackageLayer(filter, harnessArgs, agentPackageManifest("hermes"));
+}
+
 /// One module of the OpenClaw adapter package's library.
 export function openClawAgentPackageLayer(filter, harnessArgs = []) {
   return rustAgentPackageLayer(filter, harnessArgs, agentPackageManifest("openclaw"));
+}
+
+/// One module of the Pi adapter package's library.
+export function piAgentPackageLayer(filter, harnessArgs = []) {
+  return rustAgentPackageLayer(filter, harnessArgs, agentPackageManifest("pi"));
 }
 
 export function gatewayCoreLayer(filter, harnessArgs = []) {

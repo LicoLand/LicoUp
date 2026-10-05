@@ -26,14 +26,14 @@ export async function checkRuntimeDriversAndLocalService(context, {
     "runtime-driver checks require reviewedRustUnsafeFiles from crate-core stage",
   );
   const claudeCodeDriverFacadeSource = await readText(
-    "crates/licoup-native/src/platform/claude_code_driver.rs"
+    "crates/licoup-agent-claude-code/src/driver.rs"
   );
   const claudeCodeDriverFiles = await collectSourceFiles(
-    "crates/licoup-native/src/platform/claude_code_driver",
+    "crates/licoup-agent-claude-code/src/driver",
     ".rs"
   );
   const claudeCodeDriverSource = await readJoinedText([
-    "crates/licoup-native/src/platform/claude_code_driver.rs",
+    "crates/licoup-agent-claude-code/src/driver.rs",
     ...claudeCodeDriverFiles
   ]);
   // The vendor protocol, its parser and the launch vocabulary moved into the
@@ -41,13 +41,13 @@ export async function checkRuntimeDriversAndLocalService(context, {
   // the package rather than holding a second copy.
   const claudeCodePackageRoot = "crates/licoup-agent-claude-code/src";
   const claudeCodeFoundationSource = await readJoinedText([
-    "crates/licoup-native/src/platform/claude_code_driver/failure.rs",
-    "crates/licoup-native/src/platform/claude_code_driver/reset.rs"
+    "crates/licoup-agent-claude-code/src/driver/failure.rs",
+    "crates/licoup-agent-claude-code/src/driver/reset.rs"
   ]);
   const claudeCodeCommandSource = await readJoinedText([
     `${claudeCodePackageRoot}/protocol/launch.rs`,
     `${claudeCodePackageRoot}/protocol/params.rs`,
-    "crates/licoup-native/src/platform/claude_code_driver/launch.rs"
+    "crates/licoup-agent-claude-code/src/driver/launch.rs"
   ]);
   const claudeCodeParserSource = await readJoinedText([
     `${claudeCodePackageRoot}/protocol/parser.rs`,
@@ -81,10 +81,10 @@ export async function checkRuntimeDriversAndLocalService(context, {
     .filter((line) => !/^\s*(?:\/\/|\*|\/\*)/u.test(line))
     .join("\n");
   const claudeCodeTransportSource = await readText(
-    "crates/licoup-native/src/platform/claude_code_driver/transport.rs"
+    "crates/licoup-agent-claude-code/src/driver/transport.rs"
   );
   const claudeCodeSupervisionSource = await readText(
-    "crates/licoup-native/src/platform/claude_code_driver/supervision.rs"
+    "crates/licoup-agent-claude-code/src/driver/supervision.rs"
   );
   assert(
     !claudeCodeDriverFacadeSource.includes("Command::new") &&
@@ -181,20 +181,20 @@ export async function checkRuntimeDriversAndLocalService(context, {
   assert(
     !claudeCodeDriverSource.includes("unsafe {") &&
       !reviewedRustUnsafeFiles.has(
-        "crates/licoup-native/src/platform/claude_code_driver.rs"
+        "crates/licoup-agent-claude-code/src/driver.rs"
       ),
     "Claude Code driver must not retain unsafe or a stale unsafe ownership exemption"
   );
 
   const openClawDriverFacadeSource = await readText(
-    "crates/licoup-native/src/platform/openclaw_driver.rs"
+    "crates/licoup-agent-openclaw/src/driver.rs"
   );
   const openClawDriverFiles = await collectSourceFiles(
-    "crates/licoup-native/src/platform/openclaw_driver",
+    "crates/licoup-agent-openclaw/src/driver",
     ".rs"
   );
   const openClawDriverSource = await readJoinedText([
-    "crates/licoup-native/src/platform/openclaw_driver.rs",
+    "crates/licoup-agent-openclaw/src/driver.rs",
     ...openClawDriverFiles
   ]);
   // The protocol vocabulary moved to the OpenClaw adapter package, which is its
@@ -210,13 +210,13 @@ export async function checkRuntimeDriversAndLocalService(context, {
     "crates/licoup-agent-openclaw/src/gateway_acp/continuity.rs"
   ]);
   const openClawDriverShimSource = await readJoinedText([
-    "crates/licoup-native/src/platform/openclaw_driver/codec.rs",
-    "crates/licoup-native/src/platform/openclaw_driver/continuity.rs",
-    "crates/licoup-native/src/platform/openclaw_driver/errors.rs",
-    "crates/licoup-native/src/platform/openclaw_driver/events.rs",
-    "crates/licoup-native/src/platform/openclaw_driver/model.rs",
-    "crates/licoup-native/src/platform/openclaw_driver/params.rs",
-    "crates/licoup-native/src/platform/openclaw_driver/protocol.rs"
+    "crates/licoup-agent-openclaw/src/parser/codec.rs",
+    "crates/licoup-agent-openclaw/src/gateway_acp/continuity.rs",
+    "crates/licoup-agent-openclaw/src/gateway_acp/errors.rs",
+    "crates/licoup-agent-openclaw/src/parser/events.rs",
+    "crates/licoup-agent-openclaw/src/gateway_acp/model.rs",
+    "crates/licoup-agent-openclaw/src/gateway_acp/params.rs",
+    "crates/licoup-agent-openclaw/src/parser/protocol.rs"
   ]);
   const openClawFoundationSource = await readJoinedText([
     "crates/licoup-agent-openclaw/src/gateway_acp/errors.rs",
@@ -239,10 +239,10 @@ export async function checkRuntimeDriversAndLocalService(context, {
     "crates/licoup-agent-openclaw/src/parser/protocol.rs"
   );
   const openClawSupervisionSource = await readText(
-    "crates/licoup-native/src/platform/openclaw_driver/supervision.rs"
+    "crates/licoup-agent-openclaw/src/driver/supervision.rs"
   );
   const openClawProbeSource = await readText(
-    "crates/licoup-native/src/platform/openclaw_driver/probe.rs"
+    "crates/licoup-agent-openclaw/src/driver/probe.rs"
   );
   assert(
     !openClawDriverFacadeSource.includes("Command::new") &&
@@ -331,21 +331,17 @@ export async function checkRuntimeDriversAndLocalService(context, {
   assert(
     !openClawDriverSource.includes("unsafe {") &&
       !reviewedRustUnsafeFiles.has(
-        "crates/licoup-native/src/platform/openclaw_driver.rs"
+        "crates/licoup-agent-openclaw/src/driver.rs"
       ),
     "OpenClaw driver must not retain unsafe or a stale unsafe ownership exemption"
   );
 
+  // The facade the host used to hold is the package's own driver root now: it
+  // names its leaves and re-exports the entries the composition reads.
   const piDriverFacadeSource = await readText(
-    "crates/licoup-native/src/platform/pi_driver.rs"
-  );
-  const piDriverFiles = await collectSourceFiles(
-    "crates/licoup-native/src/platform/pi_driver",
-    ".rs"
+    "crates/licoup-agent-pi/src/driver.rs"
   );
   const piDriverSource = await readJoinedText([
-    "crates/licoup-native/src/platform/pi_driver.rs",
-    ...piDriverFiles,
     // The wire half moved into the Pi adapter package: the parser, its protocol
     // state machine and the driver vocabulary the kernel facade names.
     "crates/licoup-agent-pi/src/parser.rs",
@@ -362,7 +358,7 @@ export async function checkRuntimeDriversAndLocalService(context, {
     "crates/licoup-agent-pi/src/driver/sessions.rs"
   );
   const piDriverSupervisionSource = await readText(
-    "crates/licoup-native/src/platform/pi_driver/supervision.rs"
+    "crates/licoup-agent-pi/src/driver/supervision.rs"
   );
   assert(
     !piDriverFacadeSource.includes("Command::new") &&
@@ -406,22 +402,22 @@ export async function checkRuntimeDriversAndLocalService(context, {
   assert(
     !piDriverSource.includes("unsafe {") &&
       !reviewedRustUnsafeFiles.has(
-        "crates/licoup-native/src/platform/pi_driver.rs"
+        "crates/licoup-agent-pi/src/driver.rs"
       ),
     "Pi driver must not retain unsafe environment mutation or a stale unsafe ownership exemption"
   );
 
   const openCodeDriverFacadeSource = await readText(
-    "crates/licoup-native/src/platform/opencode_driver.rs"
+    "crates/licoup-agent-opencode/src/driver.rs"
   );
   const openCodeServeTransportSource = await readText(
-    "crates/licoup-native/src/platform/opencode_driver/serve_transport.rs"
+    "crates/licoup-agent-opencode/src/driver/serve_transport.rs"
   );
   const openCodeContinuitySource = await readText(
-    "crates/licoup-native/src/platform/opencode_driver/continuity.rs"
+    "crates/licoup-agent-opencode/src/driver/continuity.rs"
   );
   const openCodeProbeSource = await readText(
-    "crates/licoup-native/src/platform/opencode_driver/probe.rs"
+    "crates/licoup-agent-opencode/src/driver/probe.rs"
   );
   assert(
     !openCodeDriverFacadeSource.includes("Command::new") &&

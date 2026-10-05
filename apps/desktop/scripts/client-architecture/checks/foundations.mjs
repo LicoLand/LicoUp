@@ -178,26 +178,92 @@ export async function checkPackagingAndTargetProjection(context) {
   assert(sameSet([...nativeRuntimeAdapterIds].sort(), [...packagedTargets].sort()),
     "native runtime dispatch projection must exactly match target-adapters.targetAdapters");
   const platformModuleSource = await readText("crates/licoup-native/src/platform/mod.rs");
-  // Twelve of the thirteen packaged targets keep their canonical driver module
-  // in this host. Codex's driver is the Codex adapter package's, so the kernel
-  // must declare no Codex driver module at all and the package must declare the
-  // one it owns; a kernel copy reappearing here fails this check rather than
-  // silently becoming a second owner.
-  const codexDriverPackageSource = await readText("crates/licoup-agent-codex/src/app_server.rs");
+  // The host's own composition of the packaged targets: the one place that names
+  // every Agent's driver. `runtimeAdaptersSource` above is the driver core's
+  // protocol-agnostic projection, so the reach itself is read here.
+  const hostDriverCompositionSource = await readText(
+    "crates/licoup-native/src/platform/runtime_adapters/drivers.rs"
+  );
+  // Every packaged target's driver is the adapter package's. The host reaches it
+  // through that package's own driver module and owns no driver module for the
+  // target itself: neither a declaration in its module tree nor an artefact on
+  // disk. A kernel copy reappearing for any target fails this check rather than
+  // silently becoming a second owner of one Agent's protocol.
+  //
+  // This table is the reviewed declaration of who carries each target's driver.
+  // `module` is the path inside the crate, so the rule can prove both halves: the
+  // composition names that exact path, and the crate really carries it. A new
+  // packaged target must be declared here, which is what keeps the projection
+  // from drifting into a host-owned driver again.
+  const packagedTargetDrivers = new Map([
+    ["antigravity", { crate: "licoup-agent-antigravity", module: "driver",
+      source: "crates/licoup-agent-antigravity/src/driver.rs" }],
+    ["claude-code", { crate: "licoup-agent-claude-code", module: "driver",
+      source: "crates/licoup-agent-claude-code/src/driver.rs" }],
+    ["codex", { crate: "licoup-agent-codex", module: "app_server::driver",
+      source: "crates/licoup-agent-codex/src/app_server/driver.rs" }],
+    ["copilot", { crate: "licoup-agent-copilot", module: "driver",
+      source: "crates/licoup-agent-copilot/src/driver.rs" }],
+    ["cursor", { crate: "licoup-agent-cursor", module: "driver",
+      source: "crates/licoup-agent-cursor/src/driver.rs" }],
+    ["deepseek-harness", { crate: "licoup-agent-deepseek", module: "driver",
+      source: "crates/licoup-agent-deepseek/src/driver.rs" }],
+    ["hermes", { crate: "licoup-agent-hermes", module: "driver",
+      source: "crates/licoup-agent-hermes/src/driver.rs" }],
+    ["kilo-code", { crate: "licoup-agent-kilo", module: "driver",
+      source: "crates/licoup-agent-kilo/src/driver/mod.rs" }],
+    ["kimi-code", { crate: "licoup-agent-kimi", module: "driver",
+      source: "crates/licoup-agent-kimi/src/driver.rs" }],
+    ["lico-agent", { crate: "licoup-agent-lico-agent", module: "driver",
+      source: "crates/licoup-agent-lico-agent/src/driver.rs" }],
+    ["openclaw", { crate: "licoup-agent-openclaw", module: "driver",
+      source: "crates/licoup-agent-openclaw/src/driver.rs" }],
+    ["opencode", { crate: "licoup-agent-opencode", module: "driver",
+      source: "crates/licoup-agent-opencode/src/driver.rs" }],
+    ["pi", { crate: "licoup-agent-pi", module: "driver",
+      source: "crates/licoup-agent-pi/src/driver.rs" }],
+  ]);
+  assert(
+    sameSet([...packagedTargetDrivers.keys()].sort(), [...packagedTargets].sort()),
+    "every packaged target must declare the crate that carries its driver, and no other target may be declared"
+  );
+  const kernelPlatformRoot = "crates/licoup-native/src/platform";
+  // The modules the host's own tree declares, parsed rather than substring
+  // matched, so a driver cannot hide behind a different declaration spelling.
+  const declaredPlatformModules = new Set(
+    [...platformModuleSource.matchAll(/^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+([a-z0-9_]+)\s*;/gmu)]
+      .map((match) => match[1])
+  );
   for (const target of packagedTargets) {
-    if (target === "codex") {
-      assert(
-        !platformModuleSource.includes("mod codex_app_server;") &&
-          !platformModuleSource.includes("mod codex_driver;"),
-        "the Codex driver is the adapter package's, so the host must declare no Codex driver module"
-      );
-      assert(codexDriverPackageSource.includes("pub mod driver;"),
-        "the Codex adapter package must declare the packaged target's canonical driver module");
-      continue;
+    const driver = packagedTargetDrivers.get(target);
+    const prefix = `${target.replaceAll("-", "_")}_`;
+    // The host owns no driver module for the target: not a declaration, not a
+    // file, not a tree. The pattern covers the target's own driver module and
+    // every lane beside it — Hermes reaches one target through two protocols, so
+    // `hermes_driver` and `hermes_tui_gateway_driver` are both the target's and
+    // both the package's.
+    const moduleName = `${prefix}driver`;
+    const hostedDrivers = [...declaredPlatformModules]
+      .filter((name) => name.endsWith("_driver") &&
+        (name === moduleName || name.startsWith(prefix)))
+      .sort();
+    assert(hostedDrivers.length === 0,
+      `the host must declare no ${prefix}*_driver module, found ${hostedDrivers.join(", ")}: packaged target ${target}'s driver is ${driver.crate}'s`);
+    for (const name of new Set([moduleName, ...hostedDrivers])) {
+      for (const retired of [`${kernelPlatformRoot}/${name}.rs`,
+        `${kernelPlatformRoot}/${name}`]) {
+        assert(!(await exists(retired)),
+          `the host still carries ${retired}: packaged target ${target}'s driver is ${driver.crate}'s`);
+      }
     }
-    const moduleName = `${target.replaceAll("-", "_")}_driver`;
-    assert(platformModuleSource.includes(`mod ${moduleName};`),
-      `packaged target ${target} must have canonical native driver module ${moduleName}`);
+    // The host reaches the target through exactly one path: the crate's own
+    // driver module, named by the composition that composes every target.
+    const driverPath = `${driver.crate.replaceAll("-", "_")}::${driver.module}`;
+    assert(hostDriverCompositionSource.includes(driverPath),
+      `the host composition must reach packaged target ${target} through ${driverPath}`);
+    // And the crate really carries what the composition named.
+    assert(await exists(driver.source),
+      `${driver.crate} must carry the driver module the composition names: ${driver.source}`);
   }
   return { futureModules, modules, packagedTargets };
 }

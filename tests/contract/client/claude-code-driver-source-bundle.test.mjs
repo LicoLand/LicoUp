@@ -8,12 +8,23 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
 );
-// The client keeps the process half; the vendor protocol, its parser and the
-// replay arm moved into the Claude Code adapter package, so this contract reads
-// the client's own leaves here and the package's leaves from its own crate.
-const driverRoot = "crates/licoup-native/src/platform/claude_code_driver";
+// The whole Claude Code driver is the adapter package's: the vendor protocol,
+// its parser, the replay arm and the process that speaks them. The host keeps
+// no Claude Code driver module of its own, so this contract reads the package's
+// leaves from its own crate and the host's composition from the kernel.
+const kernelRoot = "crates/licoup-native/src/platform";
+const driverRoot = "crates/licoup-agent-claude-code/src/driver";
 const packageRoot = "crates/licoup-agent-claude-code";
 const parserRoot = `${packageRoot}/src/protocol/parser`;
+const compositionPath = `${kernelRoot}/runtime_adapters/drivers.rs`;
+// The fake streaming CLI the driver's own suite and the host's process-local
+// history suite both compile. The package cannot share a file with the host's
+// test tree without a path dependency its own contract forbids, so the two
+// copies are one fixture: they must stay byte-identical rather than drift.
+const fixtureMirrors = Object.freeze([
+  "fake_claude_code.rs",
+  "claude_process_local_test_lock.rs",
+]);
 
 const productionLeaves = Object.freeze([
   "approval.rs",
@@ -43,13 +54,22 @@ async function read(relativePath) {
   return fs.readFile(path.join(repoRoot, relativePath), "utf8");
 }
 
+async function exists(relativePath) {
+  try {
+    await fs.access(path.join(repoRoot, relativePath));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function sources() {
-  const client = Object.fromEntries(await Promise.all(
+  const driver = Object.fromEntries(await Promise.all(
     productionLeaves.map(async (leaf) => [leaf, await read(`${driverRoot}/${leaf}`)]),
   ));
-  // The package's protocol lives under its own `protocol/` root, so a leaf that
-  // did not move keeps its client name and a leaf that moved is read from its
-  // package path.
+  // The package's protocol lives under its own `protocol/` root, so a leaf the
+  // driver re-exports keeps its package name and a leaf the parser owns is read
+  // from the parser root.
   const packageLeaves = Object.fromEntries(await Promise.all(
     parserLeaves.map(async (leaf) => {
       const relative = leaf.startsWith("../")
@@ -58,30 +78,80 @@ async function sources() {
       return [leaf.startsWith("../") ? leaf.slice(3) : leaf, await read(relative)];
     }),
   ));
-  return { ...client, ...packageLeaves };
+  return { ...driver, ...packageLeaves };
 }
 
-test("Claude Code driver facade is thin and owns every production leaf", async () => {
+test("the host declares no Claude Code driver and the composition reads the package", async () => {
+  // The kernel has no Claude Code driver module or tree at all: the host reads
+  // the Agent's protocol and process through the package and cannot hold a
+  // second owner of either.
+  assert.equal(
+    await exists("crates/licoup-native/src/platform/claude_code_driver.rs"),
+    false,
+    "the host still declares a Claude Code driver module",
+  );
+  assert.equal(
+    await exists("crates/licoup-native/src/platform/claude_code_driver"),
+    false,
+    "the host still declares a Claude Code driver tree",
+  );
+  const platform = await read(`${kernelRoot}/mod.rs`);
+  assert.doesNotMatch(platform, /mod claude_code_driver;/u,
+    "the host module tree still declares a Claude Code driver module");
+
+  const composition = await read(compositionPath);
+  assert.match(composition, /use licoup_agent_claude_code::driver as claude_code_driver;/u,
+    "the composition does not read the package's driver");
+  // The composition keeps no copy of the vendor fact: the launch declaration,
+  // the framing, the argv and the turn phases are all the package's.
+  for (const forbidden of [
+    "FIXED_STREAM_ARGS",
+    '"--input-format"',
+    '"stream-json"',
+    "MAX_PROTOCOL_LINE_BYTES",
+    "struct PersistentTransport",
+    "struct TurnState",
+  ]) {
+    assert.equal(composition.includes(forbidden), false,
+      `the host composition keeps a copy of the package's protocol: ${forbidden}`);
+  }
+
+  // The package's driver root is the composition of the leaves below it, and
+  // holds no implementation and no hidden include of its own.
   const facade = await read(`${driverRoot}.rs`);
   assert.deepEqual(
-    [...facade.matchAll(/^(?:pub\(in crate::platform\) )?mod ([a-z_]+);$/gmu)]
+    [...facade.matchAll(/^mod ([a-z_]+);$/gmu)]
       .map((match) => match[1])
       .filter((moduleName) => moduleName !== "tests")
       .map((moduleName) => `${moduleName}.rs`)
       .sort(),
     [...productionLeaves].sort(),
   );
+  assert.match(facade, /^pub use execution::execute;$/mu);
+  assert.match(facade, /^pub use probe::probe;$/mu);
+  assert.match(facade, /^pub use supervision::\{cancel, cleanup_session, history, steer\};$/mu);
+  assert.match(facade, /^pub use model::\{RUNTIME_PROTOCOL, RunResult\};$/mu);
   for (const implementationToken of ["include!(", "#[path"]) {
     assert.equal(facade.includes(implementationToken), false);
+  }
+
+  // One fixture, two crates that cannot share a test file: the copies are the
+  // same bytes, so the driver and the host's fold cannot drift apart.
+  for (const fixture of fixtureMirrors) {
+    assert.equal(
+      await read(`crates/licoup-native/tests/fixtures/${fixture}`),
+      await read(`${packageRoot}/tests/fixtures/${fixture}`),
+      `the mirrored Claude Code fixture drifted: ${fixture}`,
+    );
   }
 });
 
 test("Claude Code keeps the fixed streaming-input lane with native resume and no shell fallback", async () => {
   const source = await sources();
   const joined = Object.values(source).join("\n");
-  // The runtime protocol is the package's declaration, re-exported where the
-  // client's own model reads it.
-  assert.ok(source["model.rs"].includes("licoup_agent_claude_code::protocol::RUNTIME_PROTOCOL"));
+  // The runtime protocol is the protocol leaf's declaration, read by the
+  // driver at its own package path rather than through a second name.
+  assert.ok(source["model.rs"].includes("crate::protocol::RUNTIME_PROTOCOL"));
   assert.ok(source["parser.rs"].includes('"claude-code.stream-json.v1"') === false);
   assert.ok(
     (await read(`${packageRoot}/src/protocol/mod.rs`)).includes(

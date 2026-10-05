@@ -2087,10 +2087,14 @@ name = "licoup-agent-antigravity"
 version = "0.14.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
+ "licoup-agent-targets",
  "licoup-extension-contracts",
  "licoup-foundation",
+ "nix",
  "serde",
  "serde_json",
+ "trash",
 ]
 
 [[package]]
@@ -2098,6 +2102,8 @@ name = "licoup-agent-claude-code"
 version = "0.3.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
+ "licoup-agent-targets",
  "licoup-extension-contracts",
  "licoup-foundation",
  "serde",
@@ -2132,9 +2138,15 @@ dependencies = [
 name = "licoup-agent-cursor"
 version = "0.14.0"
 dependencies = [
+ "libc",
  "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
+ "licoup-agent-targets",
  "licoup-extension-contracts",
+ "licoup-foundation",
+ "nix",
  "serde_json",
+ "trash",
 ]
 
 [[package]]
@@ -2143,8 +2155,11 @@ version = "0.14.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
  "licoup-extension-contracts",
+ "licoup-foundation",
  "serde",
  "serde_json",
+ "time",
+ "uuid",
  "zstd",
 ]
 
@@ -2178,9 +2193,11 @@ dependencies = [
  "licoup-agent-adapter-sdk",
  "licoup-agent-drivers",
  "licoup-agent-hermes",
+ "licoup-agent-targets",
  "licoup-extension-contracts",
  "licoup-foundation",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -2188,6 +2205,7 @@ name = "licoup-agent-kilo"
 version = "0.14.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
  "licoup-extension-contracts",
  "serde_json",
  "uuid",
@@ -2210,6 +2228,7 @@ name = "licoup-agent-lico-agent"
 version = "0.14.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
+ "licoup-agent-targets",
  "licoup-extension-contracts",
  "licoup-foundation",
  "serde_json",
@@ -2221,6 +2240,7 @@ name = "licoup-agent-openclaw"
 version = "0.14.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
  "licoup-agent-targets",
  "licoup-extension-contracts",
  "licoup-foundation",
@@ -2236,7 +2256,10 @@ dependencies = [
  "licoup-agent-adapter-sdk",
  "licoup-agent-drivers",
  "licoup-extension-contracts",
+ "licoup-foundation",
  "serde_json",
+ "url",
+ "uuid",
 ]
 
 [[package]]
@@ -2244,6 +2267,7 @@ name = "licoup-agent-pi"
 version = "0.14.0"
 dependencies = [
  "licoup-agent-adapter-sdk",
+ "licoup-agent-targets",
  "licoup-extension-contracts",
  "licoup-foundation",
  "serde_json",

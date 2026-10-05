@@ -7,6 +7,10 @@ const N = "crates/licoup-native/src/";
 // The Codex adapter package owns the one Agent whose process an extension host
 // starts; its reviewed launch sites are keyed here rather than under N.
 const C = "crates/licoup-agent-codex/src/";
+// The DeepSeek Harness adapter package owns the process its reviewed launch
+// runs; VENDOR-CODE-REMOVAL moved that site out of the host, so its record is
+// keyed here rather than under N. Its leaf is the package's `driver` root.
+const DS = "crates/licoup-agent-deepseek/src/";
 const DR = "crates/licoup-agent-drivers/src/";
 const F = "crates/licoup-foundation/src/";
 const T = "crates/licoup-agent-targets/src/";
@@ -54,13 +58,12 @@ const SOURCES = Object.freeze({
   [C + "app_server/driver/launch.rs"]: "de5dfbad8261b94a1bb37d1bf9ae4620af35e1856434b16c74b5ad7cc9f8b862",
   [N + "platform/cursor_driver/execution.rs"]: "e50f484719e8828fb7842711337d8886d6b220986fced0d2757fedbe6038576f",
   [N + "platform/cursor_driver/probe.rs"]: "e5fb151d35ada8ac16770cfa444a46edc9b07dfbfd02b36f165c0947b3f69c77",
-  [N + "platform/deepseek_harness_driver.rs"]: "10aae4193ca615fdc77460d798172cd369c856babf4a6d773880ad3a1b7490d5",
+  [DS + "driver.rs"]: "6ff0622a273dcc0c0f4ab829e5dd5803aac38df24937667c71412c980f2d5503",
   [N + "platform/extension_host/isolation/confinement.rs"]: "2cc72396a086eea81f47ce7fabe818dd4b5f2c054d3280e06c45cd8ac8046956",
   [N + "platform/generic_cli_driver.rs"]: "6970fd309539bbfa2d5b4fbd7191cb292b86b5b1a3f1ebdde8b184c7747c6341",
   [N + "platform/hermes_driver/probe.rs"]: "973dddadc2653371f6c19a21a3987a19fa62aae3edb2694994bd7abf4e242d23",
   [N + "platform/lico_agent_driver/execution.rs"]: "061e3f118a7eb9944e328ea3cf2e61ab2845541f3dc88d5b850dc12c7063de55",
   [N + "platform/lico_agent_driver/probe.rs"]: "b968dbfd55ec7e1ca7c83aa5d5fedfc244c6b554d8fe96a441923fa22e0d3179",
-  [N + "platform/local_service/process.rs"]: "ab1a749eeffbdca47267a6c888882e033eb2c647da48a0beef7fa79399e38adc",
   [MIGRATE_CONVERTER]: "1a468623ec8a3a0d23371c0dad7fdfdcb145f5cd6886cb306776c6f3acc59277",
   [N + "platform/mcp_service_process.rs"]: "745cd52c988672ebdfee6a52d020c02f0d56f62a6c9acd3247ee38109d5a6976",
   [N + "platform/openclaw_driver/probe.rs"]: "49a1e80055550a28d5de652f4236dfbf3c99ba53ea53c86692b44810f0d23862",
@@ -71,7 +74,7 @@ const SOURCES = Object.freeze({
   [N + "platform/process_sandbox/seatbelt.rs"]: "33208cec6c4bd28e1b60ebb4e74c43921bf3df114fe438d05893144868686367",
   [N + "platform/process_sandbox/strategy.rs"]: "a8832eb3055c1dd7fde3e99c413aa92ec8c6e98a51a89345d4b377b8440d66f4",
   [SUPERVISOR]: "cc54d42dbc06636b95f686587c05bea047396d0652d1561a1abe6c99d7fff700",
-  [N + "platform/strategy_runtime/mod.rs"]: "45551821627cd476374c37ead3bde26b0f2ca4df217496aa96dccbdeebf67443",
+  [N + "platform/strategy_runtime/mod.rs"]: "2aec0783434e79e87923b91eef2710e19a77d85dea84a1e1807898bf5d58cfd0",
   [SHELL]: "e2a192a409575acf91555b56912d83d62f8b004904f56014b21024e8585a23a7",
 });
 
@@ -198,8 +201,8 @@ export const RUNTIME_INTERFACE_REVIEWS = Object.freeze([
   ...entries(N + "platform/cursor_driver/probe.rs", parameter("executable: &str"), [
     ["aea70b7b1ea4", "Construct the bounded Cursor capability probe from the driver-supplied executable, preserving its environment isolation and output handling."],
   ]),
-  ...entries(N + "platform/deepseek_harness_driver.rs", field("Command::new(&config.executable)"), [
-    ["0988ff707b77", "Start the configured DeepSeek Harness SDK-profile JSON-RPC carrier under its workspace and supervised stdio; this is an Agent runtime binding, not a fixed native artifact."],
+  ...entries(DS + "driver.rs", field("Command::new(&config.executable)"), [
+    ["b0f6bd00169d", "Start the configured DeepSeek Harness SDK-profile JSON-RPC carrier under its workspace and supervised stdio; this is an Agent runtime binding, not a fixed native artifact."],
   ]),
   ...entries(N + "platform/extension_host/isolation/confinement.rs", field("Command::new(&program.executable)"), [
     ["f01e7857fd11", "Start one extension instance's validated program in trusted local mode through the executable and arguments the confinement plan admitted before any process exists; the plan canonicalizes that path, so the executable stays intentional runtime state rather than a fixed native artifact, and this record grants no confinement."],

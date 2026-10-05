@@ -1,43 +1,57 @@
+//! The serve specification this host runs for the OpenCode endpoint.
+//!
+//! The endpoint's own facts — its identity, the port it prefers, the paths it
+//! exposes, the state record it writes and the failure codes it reports — are
+//! the adapter package's (`licoup_agent_opencode::policy`). What is left here is
+//! the engine half the package cannot state: how this Agent's program is
+//! launched, and which of the package's readers turns its documents into the
+//! engine's readiness record. Both are read by `local_service::serve`, so this is
+//! the one specification the engine runs and force-stop control reads.
+
 use std::process::Command;
 
 use super::super::local_service::{ServeErrorCodes, ServeSpec};
-
-pub(super) const DEFAULT_PORT: u16 = 24173;
-const RESERVED_PORTS: &[u16] = &[
-    3000, 4096, 5173, 5494, 7228, 8080, 8443, 17328, 17329, 18765, 18789, 19001, 24189, 58627,
-];
+use licoup_agent_opencode::policy as vendor;
 
 pub(super) const SPEC: ServeSpec = ServeSpec {
-    identity: "opencode_serve",
-    default_port: DEFAULT_PORT,
-    port_range_span: 16,
-    default_host: "127.0.0.1",
-    health_path: "/global/health",
-    session_probe_path: "/session",
-    config_path: "/config",
-    provider_path: "/provider",
-    state_dir: "opencode-serve",
-    state_schema_version: "v0.0.1:opencode-serve-2",
-    default_health_timeout_ms: 45_000,
-    reserved_ports: RESERVED_PORTS,
-    executable_environment: &["OPENCODE_BIN"],
-    default_executable: "opencode",
+    identity: vendor::SPEC.identity,
+    default_port: vendor::SPEC.default_port,
+    port_range_span: vendor::SPEC.port_range_span,
+    default_host: vendor::SPEC.default_host,
+    health_path: vendor::SPEC.health_path,
+    session_probe_path: vendor::SPEC.session_probe_path,
+    config_path: vendor::SPEC.config_path,
+    provider_path: vendor::SPEC.provider_path,
+    state_dir: vendor::SPEC.state_dir,
+    state_schema_version: vendor::SPEC.state_schema_version,
+    default_health_timeout_ms: vendor::SPEC.default_health_timeout_ms,
+    reserved_ports: vendor::SPEC.reserved_ports,
+    executable_environment: vendor::SPEC.executable_environment,
+    default_executable: vendor::SPEC.default_executable,
     configure_command,
-    parse_readiness: crate::platform::native_agent_parser::adapters::opencode::readiness,
+    // The readiness reader is the package's own, reached through the name this
+    // composition gives that parser: the engine's readiness record and the
+    // package's are one shared shape, so the package classifies its documents
+    // and the engine keeps the record.
+    parse_readiness: super::super::native_agent_parser::adapters::opencode::readiness,
+    // The failure vocabulary is the package's closed set; the engine's is its own
+    // shape, so the crossing is a field copy rather than an assignment that would
+    // silently carry the package's type where the engine expects its own.
     errors: ServeErrorCodes {
-        executable_missing: "opencode_executable_missing",
-        port_exhausted: "opencode_serve_port_exhausted",
-        start_failed: "opencode_serve_start_failed",
-        health_failed: "opencode_serve_health_failed",
-        attach_probe_failed: "opencode_serve_attach_probe_failed",
-        not_found: "opencode_serve_not_found",
-        request_failed: "opencode_serve_request_failed",
-        invalid_json: "opencode_serve_invalid_json",
-        invalid_state: "opencode_serve_state_invalid",
-        stop_failed: "opencode_serve_stop_failed",
+        executable_missing: vendor::SPEC.errors.executable_missing,
+        port_exhausted: vendor::SPEC.errors.port_exhausted,
+        start_failed: vendor::SPEC.errors.start_failed,
+        health_failed: vendor::SPEC.errors.health_failed,
+        attach_probe_failed: vendor::SPEC.errors.attach_probe_failed,
+        not_found: vendor::SPEC.errors.not_found,
+        request_failed: vendor::SPEC.errors.request_failed,
+        invalid_json: vendor::SPEC.errors.invalid_json,
+        invalid_state: vendor::SPEC.errors.invalid_state,
+        stop_failed: vendor::SPEC.errors.stop_failed,
     },
 };
 
+/// How the engine launches this Agent's endpoint.
 fn configure_command(command: &mut Command, host: &str, port: u16) {
     command.args(["serve", "--hostname", host, "--port", &port.to_string()]);
 }

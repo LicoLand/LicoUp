@@ -20,11 +20,11 @@
 //! package's own protocol, session layout and replay corpus remain fully
 //! exercised without a host at all.
 //!
-//! What the client still composes today is the process half of a Lico Agent
-//! turn — spawning the packaged program, supervising it, the raw-execution
-//! observation, the workspace bound and the macOS seatbelt plan-isolation
-//! command. That half moves onto this seam later; the package declares it now
-//! so the move is one installation rather than a new contract.
+//! The process half of a Lico Agent turn is this package's [`crate::driver`]
+//! now, and it reaches the platform through [`crate::port::sandbox`]. What
+//! remains for this seam is the extension host that answers it when it starts
+//! the package's binary; the package declares it now so that route is one
+//! installation rather than a new contract.
 
 use std::sync::OnceLock;
 

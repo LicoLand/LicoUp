@@ -578,7 +578,7 @@ fn execute_codex(invocation: &DriverInvocation<'_>) -> DriverExecution {
 }
 
 fn execute_pi(invocation: &DriverInvocation<'_>) -> DriverExecution {
-    let result = crate::platform::pi_driver::execute(
+    let result = licoup_agent_pi::driver::execute(
         invocation.executable,
         invocation.params,
         invocation.prompt,

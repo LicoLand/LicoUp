@@ -78,16 +78,16 @@ licoup-agent-hermes = { path = "../licoup-agent-hermes", features = ["test-suppo
 # host's binary route is completed by the agent-execution port.
 licoup-agent-kilo = { path = "../licoup-agent-kilo" }
 # The Lico Agent adapter package. Composition names it for its parser
-# registration and its replay arm, and this host's own RPC driver reads the
-# package's frame parser, request envelopes, transitions, session layout and
-# runtime protocol id, while the extension host's binary route is completed by
-# the agent-execution port.
+# registration, its replay arm and its RPC driver — the launch, the supervised
+# stdio exchange and the sealed Plan profile — while this host answers the two
+# ports that driver asks: whether a new execution is admitted, and the platform
+# sandbox primitive its Plan turns run under.
 licoup-agent-lico-agent = { path = "../licoup-agent-lico-agent" }
 licoup-agent-openclaw = { path = "../licoup-agent-openclaw" }
-# The OpenCode adapter package. Composition names it for its serve-protocol
-# parser registration, its replay arm and the execution-admission port the
-# client's own `opencode_driver` asks before it starts a turn, while the
-# extension host's binary route is completed by that same port.
+# The OpenCode adapter package. Composition names it for its serve driver — the
+# declaration, the session protocol, the turn and its endpoint policy — and this
+# host answers the ports that driver asks: the serve engine, the consumer its
+# events reach and the admission decision its turn may not make for itself.
 licoup-agent-opencode = { path = "../licoup-agent-opencode" }
 licoup-agent-runtime = { path = "../licoup-agent-runtime" }
 licoup-application = { path = "../licoup-application" }

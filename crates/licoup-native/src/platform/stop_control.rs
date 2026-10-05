@@ -558,7 +558,7 @@ struct OwnedProcessScope {
 fn owned_serve_specs() -> Vec<local_service::ServeSpec> {
     vec![
         super::opencode_serve::CONTROL_SPEC,
-        super::kilo_code_driver::CONTROL_SPEC,
+        super::kilo_code_host::CONTROL_SPEC,
     ]
 }
 

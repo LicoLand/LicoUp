@@ -621,57 +621,57 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
                     licoup_agent_codex::app_server::driver::active_control::ControlDisposition::TransportUnavailable => 3,
                 }
             }
-            RuntimeAdapter::ClaudeCode => match super::claude_code_driver::cancel(&session_id) {
-                super::claude_code_driver::ControlDisposition::Accepted => 0,
-                super::claude_code_driver::ControlDisposition::NoActiveTurn => 1,
-                super::claude_code_driver::ControlDisposition::SessionUnavailable => 2,
-                super::claude_code_driver::ControlDisposition::TransportUnavailable => 3,
+            RuntimeAdapter::ClaudeCode => match licoup_agent_claude_code::driver::cancel(&session_id) {
+                licoup_agent_claude_code::driver::ControlDisposition::Accepted => 0,
+                licoup_agent_claude_code::driver::ControlDisposition::NoActiveTurn => 1,
+                licoup_agent_claude_code::driver::ControlDisposition::SessionUnavailable => 2,
+                licoup_agent_claude_code::driver::ControlDisposition::TransportUnavailable => 3,
             },
-            RuntimeAdapter::Cursor => match super::cursor_driver::cancel(&session_id) {
-                super::cursor_driver::ControlDisposition::Accepted => 0,
-                super::cursor_driver::ControlDisposition::NoActiveTurn => 1,
-                super::cursor_driver::ControlDisposition::NotPersisted
-                | super::cursor_driver::ControlDisposition::SessionUnavailable => 2,
-                super::cursor_driver::ControlDisposition::TransportUnavailable => 3,
+            RuntimeAdapter::Cursor => match licoup_agent_cursor::driver::cancel(&session_id) {
+                licoup_agent_cursor::driver::ControlDisposition::Accepted => 0,
+                licoup_agent_cursor::driver::ControlDisposition::NoActiveTurn => 1,
+                licoup_agent_cursor::driver::ControlDisposition::NotPersisted
+                | licoup_agent_cursor::driver::ControlDisposition::SessionUnavailable => 2,
+                licoup_agent_cursor::driver::ControlDisposition::TransportUnavailable => 3,
             },
-            RuntimeAdapter::Antigravity => match super::antigravity_driver::cancel(&session_id) {
-                super::antigravity_driver::ControlDisposition::Accepted => 0,
-                super::antigravity_driver::ControlDisposition::NoActiveTurn => 1,
-                super::antigravity_driver::ControlDisposition::NotPersisted
-                | super::antigravity_driver::ControlDisposition::SessionUnavailable => 2,
-                super::antigravity_driver::ControlDisposition::TransportUnavailable => 3,
+            RuntimeAdapter::Antigravity => match licoup_agent_antigravity::driver::cancel(&session_id) {
+                licoup_agent_antigravity::driver::ControlDisposition::Accepted => 0,
+                licoup_agent_antigravity::driver::ControlDisposition::NoActiveTurn => 1,
+                licoup_agent_antigravity::driver::ControlDisposition::NotPersisted
+                | licoup_agent_antigravity::driver::ControlDisposition::SessionUnavailable => 2,
+                licoup_agent_antigravity::driver::ControlDisposition::TransportUnavailable => 3,
             },
-            RuntimeAdapter::Hermes => match super::hermes_driver::cancel(&session_id) {
+            RuntimeAdapter::Hermes => match licoup_agent_hermes::driver::cancel(&session_id) {
                 super::acp_session_transport::ControlDisposition::Accepted => 0,
                 super::acp_session_transport::ControlDisposition::NoActiveTurn => 1,
                 super::acp_session_transport::ControlDisposition::SessionUnavailable => 2,
                 super::acp_session_transport::ControlDisposition::TransportUnavailable => 3,
             },
-            RuntimeAdapter::OpenCode => match super::opencode_driver::cancel(&session_id) {
+            RuntimeAdapter::OpenCode => match licoup_agent_opencode::driver::cancel(&session_id) {
                 super::local_service::turn_control::ControlDisposition::Accepted => 0,
                 super::local_service::turn_control::ControlDisposition::NoActiveTurn => 1,
                 super::local_service::turn_control::ControlDisposition::SessionUnavailable => 2,
                 super::local_service::turn_control::ControlDisposition::TransportUnavailable => 3,
             },
-            RuntimeAdapter::KiloCode => match super::kilo_code_driver::cancel(&session_id) {
+            RuntimeAdapter::KiloCode => match super::kilo_code_host::cancel(&session_id) {
                 super::local_service::turn_control::ControlDisposition::Accepted => 0,
                 super::local_service::turn_control::ControlDisposition::NoActiveTurn => 1,
                 super::local_service::turn_control::ControlDisposition::SessionUnavailable => 2,
                 super::local_service::turn_control::ControlDisposition::TransportUnavailable => 3,
             },
-            RuntimeAdapter::OpenClaw => match super::openclaw_driver::cancel(&session_id) {
+            RuntimeAdapter::OpenClaw => match licoup_agent_openclaw::driver::cancel(&session_id) {
                 super::acp_driver_runtime::ControlDisposition::Accepted => 0,
                 super::acp_driver_runtime::ControlDisposition::NoActiveTurn => 1,
                 super::acp_driver_runtime::ControlDisposition::SessionUnavailable => 2,
                 super::acp_driver_runtime::ControlDisposition::TransportUnavailable => 3,
             },
-            RuntimeAdapter::Copilot => match super::copilot_driver::cancel(&session_id) {
+            RuntimeAdapter::Copilot => match licoup_agent_copilot::driver::cancel(&session_id) {
                 super::acp_driver_runtime::ControlDisposition::Accepted => 0,
                 super::acp_driver_runtime::ControlDisposition::NoActiveTurn => 1,
                 super::acp_driver_runtime::ControlDisposition::SessionUnavailable => 2,
                 super::acp_driver_runtime::ControlDisposition::TransportUnavailable => 3,
             },
-            RuntimeAdapter::KimiCode => match super::kimi_code_driver::cancel(&session_id) {
+            RuntimeAdapter::KimiCode => match licoup_agent_kimi::driver::cancel(&session_id) {
                 super::acp_driver_runtime::ControlDisposition::Accepted => 0,
                 super::acp_driver_runtime::ControlDisposition::NoActiveTurn => 1,
                 super::acp_driver_runtime::ControlDisposition::SessionUnavailable => 2,
@@ -803,34 +803,35 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
         .filter(|value| !value.is_empty())
         .ok_or_else(|| anyhow!("cleanup requires an exact native session identifier"))?;
     let disposition = match adapter {
-        RuntimeAdapter::ClaudeCode => match super::claude_code_driver::cleanup_session(&session_id)
-        {
-            super::claude_code_driver::ControlDisposition::Accepted => 0,
-            super::claude_code_driver::ControlDisposition::SessionUnavailable => 1,
-            _ => 2,
-        },
-        RuntimeAdapter::Cursor => match super::cursor_driver::cleanup_session(&session_id) {
-            super::cursor_driver::ControlDisposition::Accepted => 0,
-            super::cursor_driver::ControlDisposition::NotPersisted => 3,
-            super::cursor_driver::ControlDisposition::SessionUnavailable => 1,
+        RuntimeAdapter::ClaudeCode => {
+            match licoup_agent_claude_code::driver::cleanup_session(&session_id) {
+                licoup_agent_claude_code::driver::ControlDisposition::Accepted => 0,
+                licoup_agent_claude_code::driver::ControlDisposition::SessionUnavailable => 1,
+                _ => 2,
+            }
+        }
+        RuntimeAdapter::Cursor => match licoup_agent_cursor::driver::cleanup_session(&session_id) {
+            licoup_agent_cursor::driver::ControlDisposition::Accepted => 0,
+            licoup_agent_cursor::driver::ControlDisposition::NotPersisted => 3,
+            licoup_agent_cursor::driver::ControlDisposition::SessionUnavailable => 1,
             _ => 2,
         },
         RuntimeAdapter::Antigravity => {
-            match super::antigravity_driver::cleanup_session(&session_id) {
-                super::antigravity_driver::ControlDisposition::Accepted => 0,
-                super::antigravity_driver::ControlDisposition::NotPersisted => 3,
-                super::antigravity_driver::ControlDisposition::SessionUnavailable => 1,
+            match licoup_agent_antigravity::driver::cleanup_session(&session_id) {
+                licoup_agent_antigravity::driver::ControlDisposition::Accepted => 0,
+                licoup_agent_antigravity::driver::ControlDisposition::NotPersisted => 3,
+                licoup_agent_antigravity::driver::ControlDisposition::SessionUnavailable => 1,
                 _ => 2,
             }
         }
         RuntimeAdapter::DeepSeekHarness => {
-            match super::deepseek_harness_driver::cleanup_session(&session_id) {
-                super::deepseek_harness_driver::CleanupDisposition::Accepted => 0,
-                super::deepseek_harness_driver::CleanupDisposition::SessionUnavailable => 1,
-                super::deepseek_harness_driver::CleanupDisposition::Unavailable => 2,
+            match licoup_agent_deepseek::driver::cleanup_session(&session_id) {
+                licoup_agent_deepseek::driver::CleanupDisposition::Accepted => 0,
+                licoup_agent_deepseek::driver::CleanupDisposition::SessionUnavailable => 1,
+                licoup_agent_deepseek::driver::CleanupDisposition::Unavailable => 2,
             }
         }
-        _ => match super::hermes_driver::cleanup_session(&session_id) {
+        _ => match licoup_agent_hermes::driver::cleanup_session(&session_id) {
             super::acp_session_transport::ControlDisposition::Accepted => 0,
             super::acp_session_transport::ControlDisposition::SessionUnavailable => 1,
             _ => 2,
@@ -912,7 +913,8 @@ pub fn process_local_history(params: &Value) -> Result<Value> {
         })
         .transpose()?
         .unwrap_or(50);
-    let Some(mut history) = super::claude_code_driver::history(&session_id, before, limit) else {
+    let Some(mut history) = licoup_agent_claude_code::driver::history(&session_id, before, limit)
+    else {
         return Ok(json!({
             "ok": false,
             "error": {
@@ -973,14 +975,20 @@ pub fn steer_turn(params: &Value) -> Result<Value> {
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| anyhow!("steer requires non-empty guidance"))?;
     let disposition = match adapter {
-        RuntimeAdapter::ClaudeCode => match super::claude_code_driver::steer(&session_id, &text) {
-            super::claude_code_driver::ControlDisposition::Accepted => "accepted",
-            super::claude_code_driver::ControlDisposition::NoActiveTurn => "no_active_turn",
-            super::claude_code_driver::ControlDisposition::SessionUnavailable => {
-                "session_unavailable"
+        RuntimeAdapter::ClaudeCode => {
+            match licoup_agent_claude_code::driver::steer(&session_id, &text) {
+                licoup_agent_claude_code::driver::ControlDisposition::Accepted => "accepted",
+                licoup_agent_claude_code::driver::ControlDisposition::NoActiveTurn => {
+                    "no_active_turn"
+                }
+                licoup_agent_claude_code::driver::ControlDisposition::SessionUnavailable => {
+                    "session_unavailable"
+                }
+                licoup_agent_claude_code::driver::ControlDisposition::TransportUnavailable => {
+                    "unavailable"
+                }
             }
-            super::claude_code_driver::ControlDisposition::TransportUnavailable => "unavailable",
-        },
+        }
         RuntimeAdapter::Codex => {
             let turn_id = runtime_adapters::text_param_public(params, &["turnId"])
                 .filter(|value| !value.is_empty())
@@ -998,11 +1006,13 @@ pub fn steer_turn(params: &Value) -> Result<Value> {
             let turn_id = runtime_adapters::text_param_public(params, &["turnId"])
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| anyhow!("Pi steer requires the active native turn identifier"))?;
-            match super::pi_driver::steer(&session_id, &turn_id, &text) {
-                super::pi_driver::ControlDisposition::Accepted => "accepted",
-                super::pi_driver::ControlDisposition::NoActiveTurn => "no_active_turn",
-                super::pi_driver::ControlDisposition::SessionUnavailable => "session_unavailable",
-                super::pi_driver::ControlDisposition::TransportUnavailable => "unavailable",
+            match licoup_agent_pi::driver::steer(&session_id, &turn_id, &text) {
+                licoup_agent_pi::driver::ControlDisposition::Accepted => "accepted",
+                licoup_agent_pi::driver::ControlDisposition::NoActiveTurn => "no_active_turn",
+                licoup_agent_pi::driver::ControlDisposition::SessionUnavailable => {
+                    "session_unavailable"
+                }
+                licoup_agent_pi::driver::ControlDisposition::TransportUnavailable => "unavailable",
             }
         }
         _ => "unavailable",

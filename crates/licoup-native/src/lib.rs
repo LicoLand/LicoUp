@@ -71,9 +71,11 @@ pub(crate) mod host_lane;
 /// ports the domain asks, the gateway runtime's ports, the stop control's
 /// Subagent-claim dispatcher, which the domain answers, and the ports the Agent
 /// adapter packages ask for — the progressive turn-event sinks Codex,
-/// Antigravity and Pi emit through and the execution admission the Antigravity,
-/// Kimi Code and OpenCode packages ask for. A process that never calls it keeps
-/// every port fail-closed.
+/// Antigravity, Pi, OpenClaw and Cursor emit through, the execution admission
+/// the Antigravity, Kimi Code and OpenCode packages ask for, the serve engine
+/// and consumer the Kilo Code package reaches through, and the launch
+/// environment the DeepSeek Harness package asks for. A process that never
+/// calls it keeps every port fail-closed.
 pub fn install_environment_ports() -> Result<(), &'static str> {
     install_workflow_host_ports();
     domain::conversation::history::install_open_codex_rollouts(
@@ -123,31 +125,67 @@ pub fn install_environment_ports() -> Result<(), &'static str> {
     licoup_agent_kimi::port::execution::install(licoup_agent_kimi::port::execution::ExecutionPort {
         admits_execution: admits_agent_execution,
     })?;
-    // The OpenClaw adapter package asks the same question about its own turns,
-    // and this host answers it with the same emitters. Its agent-execution port
-    // stays declared and fail-closed for the same reason: the kernel still
-    // executes OpenClaw through its own transport, so no admission is claimed
-    // for a binary route that is not completed yet.
-    licoup_agent_openclaw::port::turn_event::install(platform::openclaw_turn_event_port())?;
+    // The OpenClaw adapter package owns what one OpenClaw turn is — the Gateway
+    // ACP frames, the attach it names and the events that attach produces — and
+    // this host owns where its effects go: the Gateway lifecycle it starts,
+    // reuses and stops, and the consumer its events reach. Both ports are
+    // installed together because a package with an engine and no consumer, or a
+    // consumer and no engine, is half-wired. Its agent-execution port stays
+    // declared and fail-closed: the client drives this package in-process, so no
+    // admission is claimed for a binary route that is not completed yet.
+    licoup_agent_openclaw::port::gateway::install(platform::openclaw_host::gateway_port())?;
+    licoup_agent_openclaw::port::turn_event::install(platform::openclaw_host::turn_event_port())?;
     // The Kilo Code adapter package owns what one Kilo turn is — the request
-    // shape, the session protocol, the stream classification and the projection —
-    // and this host owns the serve engine it runs on and the consumer its events
-    // reach. Both ports are installed together because a package with an engine
-    // and no consumer, or a consumer and no engine, is half-wired. The package's
-    // binary route is completed by the agent-execution port; until then the client
-    // still performs the turn, and removing that is the named remainder on
-    // VENDOR-CODE-REMOVAL.
+    // shape, the session protocol, the stream classification, the projection and
+    // the turn itself — and this host owns the serve engine it runs on and the
+    // consumer its events reach. Both ports are installed together because a
+    // package with an engine and no consumer, or a consumer and no engine, is
+    // half-wired. The package reaches the engine only through these ports, so no
+    // Kilo module and no second description of the endpoint stays in the kernel.
     licoup_agent_kilo::host::install(platform::kilo_code_host::host_ports())?;
-    // The OpenCode adapter package owns the `serve` protocol; the client's own
-    // `opencode_driver` still performs one turn, and the one fact it may not
-    // decide for itself is whether this host admits a new execution. Installing
-    // the answer is what lets an OpenCode turn start at all, and a host that
-    // never installs it refuses rather than running.
+    // The DeepSeek Harness adapter package runs its own turn through the
+    // foundation's supervisor, the raw-execution record and the turn-event
+    // emitters, and the one fact it may not derive is the environment a launch
+    // observes: the user's login-shell snapshot belongs to this host, which reads
+    // it once per process. Installing the host's own answer is what lets a
+    // Harness started from the desktop see the environment its user's terminal
+    // would give it; a host that never installs the port leaves the launch with
+    // the environment the process inherited rather than inventing a snapshot.
+    licoup_agent_deepseek::port::launch_environment::install(
+        platform::user_shell_environment::apply_to_command,
+    )?;
+    // The OpenCode adapter package owns what one OpenCode turn is — the request
+    // shape, the session protocol, the stream classification, the projection and
+    // the endpoint contract — and this host owns the serve engine it runs on and
+    // the consumer its events reach. Both ports are installed together because a
+    // package with an engine and no consumer, or a consumer and no engine, is
+    // half-wired. The admission answer is installed beside them: it is the one
+    // fact a turn may not decide for itself, because a turn started under the
+    // close-admission barrier would run an Agent a maintenance switch may be
+    // replacing.
     licoup_agent_opencode::port::execution::install(
         licoup_agent_opencode::port::execution::ExecutionPort {
             admits_execution: admits_agent_execution,
         },
-    )
+    )?;
+    licoup_agent_opencode::host::install(platform::opencode_host::host_ports())?;
+    // The Lico Agent adapter package owns the whole of one Lico Agent turn — the
+    // RPC launch, the stdio JSONL exchange, the session and plan layout and the
+    // sealed profile a Plan turn runs under — and this host owns the platform
+    // fact it may not decide for itself: how the platform's sandbox primitive
+    // turns a profile into a running command. It is answered from this client's
+    // own primitive, so Plan mode cannot run unsandboxed. The package's
+    // agent-execution seam stays declared and fail-closed for the same reason
+    // Cursor's does: the extension host that starts the package's own binary is
+    // what answers it, and until then the package refuses rather than claiming
+    // an admission this composition never gave it.
+    licoup_agent_lico_agent::port::sandbox::install(platform::lico_agent_host::sandbox_port())?;
+    // The Cursor adapter package owns one Cursor turn — the launch on the shared
+    // pty, the strict-NDJSON stream, the update signals and the outcome — and
+    // this host owns the reader its events reach. Its agent-execution port stays
+    // declared and fail-closed: the extension host that starts the package's own
+    // binary is what answers it.
+    licoup_agent_cursor::port::turn_event::install(platform::cursor_turn_event_port())
 }
 
 /// The composition's answer for the Antigravity adapter package's caller-context

@@ -18,9 +18,9 @@
 //!   rather than resumed into the wrong conversation.
 //!
 //! What is *not* here is the process half — spawning the bridge, reading its
-//! framed lines, supervising the turn and bounding its output. That stays in the
-//! client's `platform::openclaw_driver` until the package's binary route
-//! replaces it, and the reviewed process sites in that half are unchanged.
+//! framed lines, supervising the turn and bounding its output. That is
+//! [`crate::driver`], which reads this vocabulary at its own paths rather than
+//! through a second name; the client holds no copy of either half.
 
 pub mod continuity;
 pub mod contract;

@@ -11,18 +11,16 @@
 //! (`licoup-agent-<agent>`), so no parser subtree stays here any more: the
 //! composition names the package that holds each one, and no copy stays.
 
+pub(in crate::platform) use licoup_agent_adapter_sdk::Transition;
 pub(in crate::platform) use licoup_agent_adapter_sdk::adapters::{
     AdapterContract, NativeLineParser,
 };
-pub(in crate::platform) use licoup_agent_adapter_sdk::{
-    LifecycleStage, Transition, TransitionReducer,
-};
 
 // Antigravity's Agent Hooks receipt, PTY parser and terminal classification live
-// in `licoup-agent-antigravity`. The driver that still supervises the vendor CLI
-// reads them through this path, and the composition names the package for the
-// registration and the replay arm that belong to the same parser.
-pub(in crate::platform) use licoup_agent_antigravity::parser as antigravity;
+// in `licoup-agent-antigravity`, beside the driver that reads them: the package
+// reaches its own protocol through its own `parser` module, and the composition
+// names the package for the registration and the replay arm that belong to the
+// same parser. This tree keeps no alias, because nothing here reads one.
 // Cursor's vendor protocol has moved the same way, into `licoup-agent-cursor`: its
 // strict-NDJSON turn dialect and the wire vocabulary it reads are the package's,
 // and this composition reads them through the package's own module.
@@ -42,13 +40,15 @@ pub(in crate::platform) use licoup_agent_cursor::parser as cursor;
 // reports as an unused import, and each package answers its own registration
 // below. Hermes' dialect reaches the shared ACP transport through the package's
 // own registration in `runtime_adapters::drivers` rather than through this tree.
-// OpenCode and Pi are the two parsers this tree still re-exports: the host's
-// `opencode_serve` facade and its `opencode_driver` leaves read `serve` frames
-// through the `opencode` name, and its `pi_driver` leaves read Pi's frames
-// through the `pi` name, so the composition names each package's parser for them
-// rather than rewriting every reader to the crate path.
+// OpenCode is the one parser this tree still re-exports: the host's
+// `opencode_serve` facade reads this Agent's readiness through the `opencode`
+// name, so the composition names the package's parser for it rather than
+// rewriting every reader to the crate path. The OpenCode driver's own readers
+// moved with it into the package, where the parser is simply `crate::parser`.
+// Pi is not re-exported: the whole Pi driver, its parser included, is
+// `licoup-agent-pi`'s, and the host declares no Pi reader of its own to name it
+// for.
 pub(in crate::platform) use licoup_agent_opencode::parser as opencode;
-pub(in crate::platform) use licoup_agent_pi::parser as pi;
 
 use licoup_agent_adapter_sdk::port::{
     AdapterParserSet, DurableIdentityRequest, ExecutionOutcome, ParserRegistration,

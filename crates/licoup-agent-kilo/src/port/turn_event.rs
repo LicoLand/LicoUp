@@ -55,6 +55,11 @@ pub fn installed() -> bool {
     PORT.get().is_some()
 }
 
+/// The emission this process installed, or `None` before composition.
+pub fn port() -> Option<TurnEventPort> {
+    PORT.get().copied()
+}
+
 pub(crate) fn emit_turn_event(kind: &str, session_id: &str, turn_id: &str, payload: Value) {
     if let Some(port) = PORT.get() {
         (port.emit_turn_event)(kind, session_id, turn_id, payload);

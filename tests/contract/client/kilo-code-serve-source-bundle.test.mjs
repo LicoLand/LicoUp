@@ -6,14 +6,27 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 // The Agent's own half moved into its package: the protocol reader, the event
-// parser and the endpoint policy belong to Kilo Code, not to the client.
+// parser, the endpoint policy and the turn belong to Kilo Code, not to the
+// client.
 const packageRoot = "crates/licoup-agent-kilo/src";
 // What the client still owns is the engine the package's ports are answered
-// with, plus the composition that runs one turn and the force-stop lane.
+// with, plus the force-stop entry that reads the same endpoint policy.
 const facadePath = "crates/licoup-native/src/platform/kilo_code_host.rs";
+// The kernel's composition, which names this package's driver directly. The
+// host keeps no Kilo Code module of its own.
+const compositionPath = "crates/licoup-native/src/platform/runtime_adapters/drivers.rs";
 
 async function read(relativePath) {
   return fs.readFile(path.join(repoRoot, relativePath), "utf8");
+}
+
+async function exists(relativePath) {
+  try {
+    await fs.access(path.join(repoRoot, relativePath));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 test("Kilo Code serve is a thin facade plus one target policy leaf", async () => {
@@ -59,24 +72,54 @@ test("Kilo Code facade never projects raw state or local executable paths", asyn
   assert.equal(sources.includes("unsafe {"), false);
 });
 
-test("the client carries no second copy of the Kilo Code protocol", async () => {
-  // The kernel keeps the engine and the composition; the Agent's protocol is
-  // exactly one package away from it, and the client's own tree holds none of it.
-  const composition = await read(
-    "crates/licoup-native/src/platform/kilo_code_driver.rs",
-  );
-  assert.match(composition, /pub\(in crate::platform\) use licoup_agent_kilo::parser as parser;/u);
-  const clientDriver = await read(
-    "crates/licoup-native/src/platform/kilo_code_driver/execution.rs",
-  );
-  assert.match(clientDriver, /driver::execute_via_serve/u);
+test("the client names the package for the protocol and keeps no Kilo Code driver module", async () => {
+  // The kernel has no Kilo Code driver module at all: the host reaches the
+  // Agent through the package and cannot hold a second owner of its protocol.
   assert.equal(
-    clientDriver.includes("message.part.updated"),
+    await exists("crates/licoup-native/src/platform/kilo_code_driver.rs"),
+    false,
+    "the host still declares a Kilo Code driver module",
+  );
+  assert.equal(
+    await exists("crates/licoup-native/src/platform/kilo_code_driver"),
+    false,
+    "the host still declares a Kilo Code driver tree",
+  );
+  const platform = await read("crates/licoup-native/src/platform/mod.rs");
+  assert.doesNotMatch(platform, /mod kilo_code_driver;/u,
+    "the host module tree still declares a Kilo Code driver module");
+
+  const composition = await read(compositionPath);
+  // The composition reads the package's driver, so the launch declaration, the
+  // runtime protocol and the turn are the package's.
+  assert.match(composition, /use licoup_agent_kilo::driver as kilo_code_driver;/u,
+    "the composition does not read the package's driver");
+  // The composition keeps no second copy of the vendor fact: every Kilo Code
+  // protocol decision is the package's.
+  for (const forbidden of [
+    "AcpDriverSpec::new",
+    "with_identity",
+    "execute_via_serve",
+    "message.part.updated",
+    "struct ServeEventParser",
+    "kilo_code_serve",
+  ]) {
+    assert.equal(composition.includes(forbidden), false,
+      `the client composition keeps a copy of the package's protocol: ${forbidden}`);
+  }
+
+  // The turn is performed by the package that owns it, and the host's port
+  // answer states where its effects go rather than classifying its frames.
+  const turn = await read(`${packageRoot}/driver/turn.rs`);
+  assert.match(turn, /execute_via_serve/u);
+  const facade = await read(facadePath);
+  assert.equal(
+    facade.includes("message.part.updated"),
     false,
     "the client must not classify a vendor stream frame of its own",
   );
   assert.equal(
-    clientDriver.includes("struct ServeEventParser"),
+    facade.includes("struct ServeEventParser"),
     false,
     "the client must not keep a second copy of this Agent's parser",
   );

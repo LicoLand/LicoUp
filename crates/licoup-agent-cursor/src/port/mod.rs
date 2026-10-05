@@ -18,8 +18,12 @@
 //!   a delegated turn binds the caller a Cursor client was registered with — so
 //!   the package names that seam and the host answers it.
 //!
-//! Neither port names a vendor fact about the client: a host that composes no
-//! Cursor package installs nothing and links nothing of this crate.
+//! The turn's own machinery is not a seam: the pty it is launched on is the
+//! shared primitive in `licoup-foundation`, and the launch, the stream and the
+//! outcome are [`crate::driver`]'s.
+//!
+//! No port names a vendor fact about the client: a host that composes no Cursor
+//! package installs nothing and links nothing of this crate.
 
 pub mod execution;
 pub mod turn_event;

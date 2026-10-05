@@ -3,8 +3,10 @@
 //! A claim that names Antigravity belongs here, where the parser, the ports and
 //! the registration behind them are all in view: what one Stop-hook payload
 //! resolves to, what one terminal outcome classifies as, what the native receipt
-//! writer does with the payload it is handed, and what each port answers before
-//! a host installs it.
+//! writer does with the payload it is handed, and what a port answers before a
+//! host installs it. The execution port's own lifecycle claim is about the
+//! *uninstalled* process state, so it is asserted in
+//! `tests/execution_port_lifecycle.rs`, whose process installs nothing.
 
 use std::path::PathBuf;
 
@@ -15,7 +17,7 @@ use crate::parser::{
     PtyOutputParser, TerminalFacts, classify_terminal, completed_transitions, parse_hook_receipt,
     valid_session_id,
 };
-use crate::port::{execution, turn_event};
+use crate::port::turn_event;
 use crate::registration::{ADAPTER_ID, FRAMING, REGISTRATION, parser_set};
 
 const RECEIPT_ID: &str = "11111111-2222-3333-4444-555555555555";
@@ -324,43 +326,6 @@ fn the_receipt_hook_never_erases_a_receipt_a_previous_writer_bound() {
         HookOutcome::NoIdentity
     );
     assert!(!absent.exists(), "no identity means no receipt file");
-}
-
-#[test]
-fn the_execution_port_is_fail_closed_and_answers_once() {
-    // Every port is declared fail-closed: a package running outside the client
-    // reports that it could not ask rather than inventing an answer.
-    assert!(!execution::installed());
-    assert_eq!(
-        execution::subagent_caller_context(),
-        Err(execution::HostEffect::Uninstalled)
-    );
-    assert!(
-        !execution::admits_execution(),
-        "a package that cannot ask the host's admission never claims it was admitted"
-    );
-    assert!(
-        execution::install(execution::ExecutionPort {
-            subagent_caller_context: || Some("caller".to_owned()),
-            admits_execution: || true,
-        })
-        .is_ok()
-    );
-    assert!(execution::installed());
-    assert_eq!(
-        execution::subagent_caller_context(),
-        Ok(Some("caller".to_owned()))
-    );
-    assert!(execution::admits_execution());
-    // One answer per port per process: a second installation is refused rather
-    // than silently replacing the first.
-    assert_eq!(
-        execution::install(execution::ExecutionPort {
-            subagent_caller_context: || None,
-            admits_execution: || false,
-        }),
-        Err("the agent-execution port is already installed")
-    );
 }
 
 #[test]

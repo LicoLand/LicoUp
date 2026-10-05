@@ -2,9 +2,9 @@
 
 [English](lico-agent.md) · 简体中文
 
-权威实现：`domain/lico_agent/`、`platform/lico_agent_driver/`、
-`platform/process_sandbox/`，以及同级二进制 `lico-agent`。实现或验证变更时
-同步更新本文。
+权威实现：`licoup-agent-targets` 的 `domain/lico_agent/`、
+`licoup-agent-lico-agent` 的 `driver/`、共享的 `platform/process_sandbox/`，
+以及同级二进制 `lico-agent`。实现或验证变更时同步更新本文。
 
 Lico Agent 是 LicoUp **自研**运行时，在智能体列表中作为普通一项
 （`lico-agent`），与 Pi、Codex 等第三方适配器同级。它不是特殊 Conversation、

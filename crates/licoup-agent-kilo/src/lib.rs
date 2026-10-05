@@ -24,16 +24,22 @@
 //!   admits nothing rather than guessing, so the protocol and the replay corpus
 //!   are fully exercised with no host at all.
 //!
-//! # What this package does not yet do
+//! # Who executes Kilo Code
 //!
-//! The package owns the Agent's half of a turn; the client still *performs*
-//! one, because the serve engine it starts, the HTTP and SSE reader and the
-//! turn-control registry belong to the shared local-service engine and to the
-//! extension host. This crate publishes the agent-execution port that completes
-//! that route ([`port::execution`]); until the host drives this package's
-//! binary, Kilo Code still runs inside the client process. Removing the last
-//! client-side Kilo Code execution is the named remainder on
-//! `VENDOR-CODE-REMOVAL`, and this crate does not claim otherwise.
+//! The package owns the Agent's half of a turn and performs it: [`driver`]
+//! carries the launch declaration, the capability probe and the turn the host
+//! composes, and every engine operation they need arrives through [`port`]. The
+//! host keeps what is the host's — the serve engine that starts and supervises
+//! the endpoint, the HTTP and SSE reads, the active-turn registry force stop
+//! reaches, and the consumer a turn's events go to — and it answers all of them
+//! in its own port module rather than in a second Kilo module of its own.
+//!
+//! The agent-execution port ([`port::execution`]) is what completes the separate
+//! route where an extension host starts this package's own binary, so the engine
+//! and the consumer travel with the program instead of with the client. Until
+//! that route is driven, the client composes this package in-process: the
+//! endpoint contract, the protocol and the turn are this package's either way,
+//! and the client describes none of them itself.
 
 pub mod driver;
 pub mod host;

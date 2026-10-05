@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 // The thirteen per-Agent parsers and the composition that names them stay in the
@@ -328,37 +328,61 @@ test('serve HTTP and SSE frames decode only in target parser components', () => 
   assert.match(openCodeParser, /fn message/);
   assert.match(openCodeParser, /message\.part\.updated/);
   const openCodeTransport = readFileSync(
-    'crates/licoup-native/src/platform/opencode_driver/serve_transport.rs',
+    'crates/licoup-agent-opencode/src/driver/serve_transport.rs',
     'utf8',
   );
-  // The client's Kilo turn is the composition that asks the package to perform
-  // it, not a transport that classifies frames of its own.
+  // The Kilo turn is the package's own composition: it asks the installed serve
+  // engine for the effect and reads the package's parser, not a transport that
+  // classifies frames of its own.
   const kiloTransport = readFileSync(
-    'crates/licoup-native/src/platform/kilo_code_driver/execution.rs',
+    'crates/licoup-agent-kilo/src/driver/turn.rs',
     'utf8',
   );
-  // The host's transport reads the package's parser through the composition's
-  // own name for it, so the frames are classified once and below this port.
-  const composition = readFileSync(`${compositionRoot}/mod.rs`, 'utf8');
-  assert.match(openCodeTransport, /adapters::opencode as serve_parser/);
+  // OpenCode's own driver reads its package's parser directly, so the frames are
+  // classified once and below the port the client answers, and the kernel keeps
+  // no driver tree of its own to read them through.
+  assert.match(openCodeTransport, /use crate::parser as serve_parser;/);
+  assert.match(readFileSync(
+    'crates/licoup-agent-opencode/src/driver/probe.rs',
+    'utf8',
+  ), /use crate::parser as serve_parser;/);
+  assert.equal(existsSync(
+    'crates/licoup-native/src/platform/opencode_driver.rs',
+  ), false);
   // The composition names the package's parser as `opencode`, which is the name
-  // the host's own transport reads the frames by.
+  // the client's endpoint specification reads this Agent's readiness by.
+  const composition = readFileSync(`${compositionRoot}/mod.rs`, 'utf8');
   assert.match(
     composition,
     new RegExp(`use ${packaged.opencode.crate}::parser as opencode;`),
   );
-  // The client's Kilo turn reads the package's own parser rather than a local
-  // copy, which is what makes the corpus a statement about the shipped ingress.
-  assert.match(kiloTransport, /driver::execute_via_serve|licoup_agent_kilo/);
+  // The kernel keeps no driver tree of its own to read OpenCode's frames
+  // through: the readiness the endpoint specification asks for is the parser the
+  // composition names above.
+  assert.match(readFileSync(
+    'crates/licoup-native/src/platform/opencode_serve/policy.rs',
+    'utf8',
+  ), /adapters::opencode::readiness/);
+  // The Kilo turn reads the package's own parser rather than a local copy, which
+  // is what makes the corpus a statement about the shipped ingress, and the
+  // client keeps no Kilo transport for it to be read from.
+  assert.match(kiloTransport, /execute_via_serve/);
+  assert.match(kiloTransport, /crate::parser/);
+  assert.equal(
+    existsSync('crates/licoup-native/src/platform/kilo_code_driver/execution.rs'),
+    false,
+    'the host still keeps a Kilo Code transport',
+  );
 });
 
 test('Cursor PTY isolation precedes its strict NDJSON parser', () => {
   const transport = readFileSync(
-    'crates/licoup-native/src/platform/cursor_driver/io.rs',
+    'crates/licoup-agent-cursor/src/driver/io.rs',
     'utf8',
   );
-  // The PTY isolation stays in the host's process half; the parser it hands a
-  // clean line to is the package's own, and it reads no PTY control at all.
+  // The PTY isolation stays in the process half — the Cursor package's driver
+  // now — while the parser it hands a clean line to is that package's own, and
+  // it reads no PTY control at all.
   const parser = readFileSync(
     'crates/licoup-agent-cursor/src/parser.rs',
     'utf8',
