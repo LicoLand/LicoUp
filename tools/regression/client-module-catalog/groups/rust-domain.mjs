@@ -3046,7 +3046,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/resources/state-machines/update-handoff.json",
         "crates/licoup-native/src/domain/work_admission/**",
-        "crates/licoup-native/src/domain/workflow_store/admission.rs",
+        "crates/licoup-workflow-store/src/admission.rs",
         "crates/licoup-conversation/src/store/admission.rs",
       ],
       command: rustLayer("domain::work_admission::tests::"),

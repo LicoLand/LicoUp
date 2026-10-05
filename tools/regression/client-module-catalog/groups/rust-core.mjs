@@ -515,6 +515,7 @@ export const RUST_CORE_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-protocol-bindings/Cargo.toml",
         "crates/licoup-protocol-bindings/src/admission.rs",
+        "crates/licoup-protocol-bindings/src/durable_obligation.rs",
         "crates/licoup-protocol-bindings/src/inbound.rs",
         "crates/licoup-protocol-bindings/src/lib.rs",
         "crates/licoup-protocol-bindings/src/licoarc_relay.rs",

@@ -1377,6 +1377,25 @@ export const FLUTTER_MODULES = Object.freeze([
       ]),
     }),
   defineModule({
+      id: "flutter.feature.mobile-relay.device-entry",
+      kind: "flutter-feature",
+      summary: "Device replacement facts, the app-only erase review, and the optional endpoint package entry",
+      inputs: [
+        "apps/desktop/lib/src/application/features/mobile_relay/policy/device_replacement_policy.dart",
+        "apps/desktop/lib/src/composition/features/mobile_relay/device_entry_join.dart",
+        "apps/desktop/lib/src/composition/features/mobile_relay/mobile_relay_feature_composition.dart",
+        "apps/desktop/lib/src/presentation/mobile_relay/device_replacement_projection.dart",
+        "apps/desktop/lib/src/projections/mobile_relay/device_replacement_projection_source.dart",
+        "apps/desktop/test/device_entry_join_test.dart",
+        "apps/desktop/test/device_replacement_projection_test.dart",
+        "apps/desktop/test/fixtures/device_replacement/**",
+      ],
+      command: flutterTests([
+        "test/device_entry_join_test.dart",
+        "test/device_replacement_projection_test.dart",
+      ]),
+    }),
+  defineModule({
       id: "flutter.feature.mobile-relay.scenario.configuration",
       kind: "flutter-feature",
       summary: "Local mobile layout persistence and station configuration",
