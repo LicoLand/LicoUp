@@ -9,12 +9,35 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// The process-global driver environment, for one test at a time.
+///
+/// The guard serializes the tests that point the driver at a synthetic data
+/// root and gemini config directory, and the first holder also composes the
+/// host answers an execution asks for: `execute` refuses a turn while the
+/// adapter package's agent-execution port is uninstalled, because a host that
+/// never composed its answers must not claim an execution was admitted. A unit
+/// test process runs no composition entry — `install_environment_ports` is
+/// reached from the `licoup` binary — so the tests install the same answers it
+/// installs. The gate stays real: it reads this host's own close-admission
+/// barrier from the data root the test selected, not a stubbed answer.
 #[cfg(unix)]
 fn environment_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
+    let guard = LOCK
+        .get_or_init(|| Mutex::new(()))
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    static PORT: OnceLock<()> = OnceLock::new();
+    PORT.get_or_init(|| {
+        licoup_agent_antigravity::port::execution::install(
+            licoup_agent_antigravity::port::execution::ExecutionPort {
+                subagent_caller_context: crate::subagent_caller_context,
+                admits_execution: crate::admits_agent_execution,
+            },
+        )
+        .expect("the agent-execution port is installed once per test process");
+    });
+    guard
 }
 
 #[test]
