@@ -11,7 +11,6 @@ pub use licoup_foundation::platform::agent_workspace;
 pub use licoup_foundation::platform::native_agent_interaction;
 pub use licoup_foundation::platform::raw_execution;
 pub use licoup_foundation::platform::turn_event_emit;
-pub(crate) mod antigravity_driver;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 pub mod authorized_secure_record;
 pub(crate) mod badtower_station;
@@ -33,8 +32,6 @@ pub(crate) mod openclaw_host;
 mod opencode_driver;
 pub mod process_sandbox;
 pub(crate) mod provider_mcp_registration;
-#[cfg(unix)]
-mod pty_transport;
 pub(crate) mod remote_acp_history;
 pub(crate) mod remote_hermes_gateway_history;
 pub(crate) mod secure_mesh_mls_store;
@@ -163,3 +160,10 @@ pub(crate) use licoup_foundation::platform::process_supervisor::{
     configure_untrusted_agent_command, run_bounded_command_input, run_bounded_command_output,
     run_bounded_untrusted_agent_output,
 };
+// The pseudo-terminal transport moved to `licoup-foundation` with it, for the
+// same reason: attaching a child to a pty is a primitive every Agent's CLI lane
+// reuses, not any one Agent's protocol. This path stays reachable, at the
+// visibility the host exposed before it moved, for the Cursor lane and the
+// generic CLI lane that still open one from here.
+#[cfg(unix)]
+pub(crate) use licoup_foundation::platform::pty_transport;

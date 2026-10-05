@@ -9,35 +9,47 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// The process-global driver environment, for one test at a time.
-///
-/// The guard serializes the tests that point the driver at a synthetic data
-/// root and gemini config directory, and the first holder also composes the
-/// host answers an execution asks for: `execute` refuses a turn while the
-/// adapter package's agent-execution port is uninstalled, because a host that
-/// never composed its answers must not claim an execution was admitted. A unit
-/// test process runs no composition entry — `install_environment_ports` is
-/// reached from the `licoup` binary — so the tests install the same answers it
-/// installs. The gate stays real: it reads this host's own close-admission
-/// barrier from the data root the test selected, not a stubbed answer.
 #[cfg(unix)]
 fn environment_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    let guard = LOCK
-        .get_or_init(|| Mutex::new(()))
+    LOCK.get_or_init(|| Mutex::new(()))
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    static PORT: OnceLock<()> = OnceLock::new();
-    PORT.get_or_init(|| {
-        licoup_agent_antigravity::port::execution::install(
-            licoup_agent_antigravity::port::execution::ExecutionPort {
-                subagent_caller_context: crate::subagent_caller_context,
-                admits_execution: crate::admits_agent_execution,
-            },
-        )
-        .expect("the agent-execution port is installed once per test process");
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Install the two ports this package's turn asks its host for, the way the host
+/// installs them.
+///
+/// One Antigravity turn emits through [`crate::port::turn_event`] and reads its
+/// admission answer from [`crate::port::execution`]; both are fail-closed before
+/// a host answers, which is the honest state for a package running with no
+/// composition above it. This suite drives the turn, so it answers both ports
+/// with the host's own answers: the foundation turn-event emitters the host
+/// composes (`platform::antigravity_turn_event_port`) and an open admission,
+/// because a unit-test process has no close-admission barrier to hold. What a
+/// *closed* answer does to a turn is asserted in `tests/closed_admission.rs`,
+/// whose own process installs that answer. One installation per process, exactly
+/// as the host installs once.
+#[cfg(unix)]
+fn install_driver_ports() {
+    static PORTS: OnceLock<()> = OnceLock::new();
+    PORTS.get_or_init(|| {
+        crate::port::turn_event::install(crate::port::turn_event::TurnEventPort {
+            emit_turn_event: licoup_foundation::platform::turn_event_emit::emit_turn_event,
+            emit_agent_message_chunk:
+                licoup_foundation::platform::turn_event_emit::emit_agent_message_chunk,
+            emit_agent_message_completed:
+                licoup_foundation::platform::turn_event_emit::emit_agent_message_completed,
+            emit_agent_processing:
+                licoup_foundation::platform::turn_event_emit::emit_agent_processing,
+        })
+        .expect("the driver suite installs its own turn-event port once");
+        crate::port::execution::install(crate::port::execution::ExecutionPort {
+            subagent_caller_context: || None,
+            admits_execution: || true,
+        })
+        .expect("the driver suite installs its own execution port once");
     });
-    guard
 }
 
 #[test]
@@ -53,6 +65,7 @@ fn missing_executable_is_unavailable_and_never_supported() {
 
 #[test]
 fn private_instructions_fail_before_process_launch() {
+    install_driver_ports();
     let result = execute(
         "definitely-not-a-real-antigravity",
         &json!({"privateInstructions":"private sentinel"}),
@@ -100,6 +113,7 @@ fn uninstall_removes_only_lico_hook_namespace() {
     let fixture = FakeExecutable::new("uninstall", true);
     let workspace = fixture.root.join("workspace");
     fs::create_dir_all(&workspace).unwrap();
+    install_driver_ports();
     let _ = execute(
         fixture.executable.to_string_lossy().as_ref(),
         &json!({}),
@@ -141,6 +155,7 @@ fn empty_prompt_fails_closed_without_echoing_secrets() {
     let prompt = "";
     let cwd = "/workspace/path-secret-sentinel";
     let session_id = "session-secret-sentinel";
+    install_driver_ports();
     let result = execute(
         "agy",
         &json!({}),
@@ -201,6 +216,7 @@ fn execute_reads_hook_receipt_and_returns_session_output() {
     let fixture = FakeExecutable::new("execute", true);
     let workspace = fixture.root.join("workspace");
     fs::create_dir_all(&workspace).unwrap();
+    install_driver_ports();
     let result = execute(
         fixture.executable.to_string_lossy().as_ref(),
         &json!({"model": "gemini-test"}),
@@ -258,14 +274,15 @@ fn execute_streams_pty_chunks_before_completion() {
 
     let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let sink_target = std::sync::Arc::clone(&captured);
-    crate::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
+    licoup_foundation::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
         sink_target.lock().unwrap().push(event);
     }));
-    let _guard = crate::platform::turn_event_emit::StreamSinkGuard;
+    let _guard = licoup_foundation::platform::turn_event_emit::StreamSinkGuard;
 
     let fixture = FakeExecutable::new_streaming("streaming");
     let workspace = fixture.root.join("workspace");
     fs::create_dir_all(&workspace).unwrap();
+    install_driver_ports();
     let result = execute(
         fixture.executable.to_string_lossy().as_ref(),
         &json!({}),
@@ -426,10 +443,11 @@ fn execute_and_cancel(
     let handle = std::thread::spawn(move || {
         let captured = Arc::new(Mutex::new(Vec::new()));
         let sink_target = Arc::clone(&captured);
-        crate::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
+        licoup_foundation::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
             sink_target.lock().unwrap().push(event);
         }));
-        let _guard = crate::platform::turn_event_emit::StreamSinkGuard;
+        let _guard = licoup_foundation::platform::turn_event_emit::StreamSinkGuard;
+        install_driver_ports();
         let result = execute(
             &executable,
             &params_for_turn,
@@ -534,6 +552,7 @@ fn execute_with_zero_timeout_runs_to_completion() {
     let fixture = FakeExecutable::new("zero-timeout", true);
     let workspace = fixture.root.join("workspace");
     fs::create_dir_all(&workspace).unwrap();
+    install_driver_ports();
     let result = execute(
         fixture.executable.to_string_lossy().as_ref(),
         &json!({}),
@@ -592,6 +611,7 @@ fn execute_resume_binds_exact_requested_conversation() {
         FakeExecutable::with_receipt_style("resume", true, ReceiptStyle::Direct, requested);
     let workspace = fixture.root.join("workspace");
     fs::create_dir_all(&workspace).unwrap();
+    install_driver_ports();
     let result = execute(
         fixture.executable.to_string_lossy().as_ref(),
         &json!({}),
@@ -650,6 +670,7 @@ fn execute_resume_rejects_receipt_drift() {
         FakeExecutable::with_receipt_style("drift", true, ReceiptStyle::Direct, DEFAULT_RECEIPT_ID);
     let workspace = fixture.root.join("workspace");
     fs::create_dir_all(&workspace).unwrap();
+    install_driver_ports();
     let result = execute(
         fixture.executable.to_string_lossy().as_ref(),
         &json!({}),
@@ -711,6 +732,7 @@ fn execute_reads_legacy_wrapped_receipt_for_compatibility() {
     );
     let workspace = fixture.root.join("workspace");
     fs::create_dir_all(&workspace).unwrap();
+    install_driver_ports();
     let result = execute(
         fixture.executable.to_string_lossy().as_ref(),
         &json!({}),
@@ -779,7 +801,8 @@ fn antigravity_effective_settings_match_executed_command() {
             // Pin the row's argv-capture channel into the launch snapshot;
             // the production shell snapshot would drop it.
             let _pin =
-                crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+                licoup_agent_targets::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+            install_driver_ports();
             execute(
                 fixture.executable_str(),
                 params,
@@ -1560,6 +1583,7 @@ fn logged_out_send_returns_auth_required_without_spawning_a_turn() {
     let workspace = fixture.root.join("workspace");
     fs::create_dir_all(&workspace).unwrap();
 
+    install_driver_ports();
     let result = execute(
         fixture.executable_str(),
         &json!({}),
@@ -1611,6 +1635,7 @@ fn authorized_send_proceeds_past_the_probe() {
     let workspace = fixture.root.join("workspace");
     fs::create_dir_all(&workspace).unwrap();
 
+    install_driver_ports();
     let result = execute(
         fixture.executable_str(),
         &json!({}),
@@ -1728,7 +1753,7 @@ exit 0
 
     // The auth spawns observe the pinned user shell snapshot, not the raw
     // process environment.
-    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[(
+    let _pin = licoup_agent_targets::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[(
         "LICO_TEST_SHELL_SNAPSHOT_MARKER",
         "shell-snapshot-env",
     )]);

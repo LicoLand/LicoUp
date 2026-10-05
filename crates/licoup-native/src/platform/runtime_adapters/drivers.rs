@@ -28,7 +28,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use crate::platform::{
-    acp_driver_runtime, antigravity_driver, lico_agent_driver, opencode_driver,
+    acp_driver_runtime, lico_agent_driver, opencode_driver,
 };
 // The DeepSeek Harness driver — the `--profile sdk` transport, the turn it
 // carries and the cleanup of one session — is the DeepSeek Harness package's.
@@ -58,6 +58,12 @@ use licoup_agent_openclaw::driver as openclaw_driver;
 // result; it holds no launch field, no frame dialect and no turn phase of its
 // own.
 use licoup_agent_claude_code::driver as claude_code_driver;
+// The Antigravity driver — the `agy --print` launch, the PTY turn it
+// supervises, the Stop-hook receipt it harvests and the terminal classification
+// it reports — is the Antigravity package's. The composition names the package
+// and keeps the host's own projection of its result; it holds no launch
+// metadata, no argv field, no receipt rule and no turn phase of its own.
+use licoup_agent_antigravity::driver as antigravity_driver;
 // The Copilot driver — the `--acp --stdio` launch, the probe and the turn it
 // runs — is the Copilot package's. The composition names the package and keeps
 // the host's own projection of its result; it holds no launch declaration and

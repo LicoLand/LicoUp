@@ -8,7 +8,7 @@ use anyhow::Result;
 use std::path::Path;
 
 pub(super) fn handle_catalog(_command: AdmittedCommand) -> Result<CliExecution> {
-    let bridge = crate::platform::antigravity_driver::hook_bridge_status();
+    let bridge = licoup_agent_antigravity::driver::hook_bridge_status();
     let installed = bridge
         .get("installed")
         .and_then(serde_json::Value::as_bool)
@@ -20,7 +20,7 @@ pub(super) fn handle_catalog(_command: AdmittedCommand) -> Result<CliExecution> 
 
 pub(super) fn handle_antigravity_status(_command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(
-        crate::platform::antigravity_driver::hook_bridge_status(),
+        licoup_agent_antigravity::driver::hook_bridge_status(),
     ))
 }
 
@@ -28,7 +28,7 @@ pub(super) fn handle_antigravity_install(_command: AdmittedCommand) -> Result<Cl
     Ok(CliExecution::Json(adapter_lifecycle_result(
         "antigravity",
         "install",
-        crate::platform::antigravity_driver::install_hook_bridge(),
+        licoup_agent_antigravity::driver::install_hook_bridge(),
     )))
 }
 
@@ -36,7 +36,7 @@ pub(super) fn handle_antigravity_uninstall(_command: AdmittedCommand) -> Result<
     Ok(CliExecution::Json(adapter_lifecycle_result(
         "antigravity",
         "uninstall",
-        crate::platform::antigravity_driver::uninstall_hook_bridge_report(),
+        licoup_agent_antigravity::driver::uninstall_hook_bridge_report(),
     )))
 }
 
@@ -45,7 +45,7 @@ pub(super) fn handle_antigravity_authorize(command: AdmittedCommand) -> Result<C
     Ok(CliExecution::Json(adapter_lifecycle_result(
         "antigravity",
         "authorize",
-        crate::platform::antigravity_driver::authorize(binary_path.as_deref()),
+        licoup_agent_antigravity::driver::authorize(binary_path.as_deref()),
     )))
 }
 

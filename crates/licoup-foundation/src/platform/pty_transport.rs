@@ -38,7 +38,7 @@ const DEFAULT_ROWS: u16 = 30;
 /// drops, and a parent-held slave fd would keep the master from reaching
 /// EOF/EIO when the child exits — every turn would stall until timeout.
 /// Callers set `.stderr(...)` themselves before passing the command.
-pub(super) fn spawn(command: Command) -> io::Result<(SupervisedChild, Master)> {
+pub fn spawn(command: Command) -> io::Result<(SupervisedChild, Master)> {
     let (master, slave) = open_pty()?;
     make_slave_raw(slave.as_raw_fd())?;
     set_winsize(master.as_raw_fd(), DEFAULT_COLS, DEFAULT_ROWS)?;
@@ -64,7 +64,7 @@ pub(super) fn spawn(command: Command) -> io::Result<(SupervisedChild, Master)> {
 /// `Read` translates Linux's EIO (all slave fds closed) into a clean EOF so
 /// natural child exits close the stream instead of surfacing as read errors,
 /// and retries EINTR (child exit can deliver SIGCHLD).
-pub(super) struct Master {
+pub struct Master {
     fd: OwnedFd,
     raw_observer: Option<RawExecutionObserver>,
 }
@@ -143,7 +143,7 @@ impl Master {
     // `--print` lanes need neither, so they are kept available rather than
     // wired into callers that would never exercise them.
     #[allow(dead_code)]
-    pub(super) fn try_clone(&self) -> io::Result<Self> {
+    pub fn try_clone(&self) -> io::Result<Self> {
         let fd = unsafe { libc::dup(self.fd.as_raw_fd()) };
         if fd < 0 {
             return Err(io::Error::last_os_error());
@@ -155,7 +155,7 @@ impl Master {
     }
 
     #[allow(dead_code)]
-    pub(super) fn resize(&self, cols: u16, rows: u16) -> io::Result<()> {
+    pub fn resize(&self, cols: u16, rows: u16) -> io::Result<()> {
         set_winsize(self.fd.as_raw_fd(), cols, rows)
     }
 }
@@ -163,7 +163,7 @@ impl Master {
 /// Reader-thread protocol. Ordering guarantee: at most one `Truncated`, it
 /// always follows the final delivered `Data`, and no `Data` arrives after it.
 #[derive(Debug)]
-pub(super) enum PtyEvent {
+pub enum PtyEvent {
     Data(Vec<u8>),
     Truncated,
     Closed,
@@ -175,7 +175,7 @@ pub(super) enum PtyEvent {
 /// allowed prefix is delivered as `Data`, then `Truncated`, and reads continue
 /// DISCARDING until EOF so a chatty child can never block on the pty buffer —
 /// this is what makes truncate-and-succeed reliable. Always ends with `Closed`.
-pub(super) fn read_master(mut master: Master, sender: Sender<PtyEvent>, max_bytes: Option<usize>) {
+pub fn read_master(mut master: Master, sender: Sender<PtyEvent>, max_bytes: Option<usize>) {
     let mut buffer = [0u8; 8192];
     let mut remaining = max_bytes;
     loop {

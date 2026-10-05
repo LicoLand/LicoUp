@@ -1,12 +1,12 @@
 //! The Antigravity adapter package.
 //!
 //! One Agent, one package, one program. This crate owns everything LicoUp knows
-//! about Antigravity's own protocol and program: the official Agent Hooks
-//! receipt and the PTY lane's terminal classification ([`parser`]), the native
-//! receipt writer the Agent Hooks configuration starts ([`hook`]), the
-//! registration composition injects into the adapter SDK ([`registration`]),
-//! the recorded-transcript replay arm ([`replay`]), and the ports the host
-//! answers ([`port`]).
+//! about Antigravity's own protocol and program: the vendor CLI launch and the
+//! turn it runs ([`driver`]), the official Agent Hooks receipt and the PTY lane's
+//! terminal classification ([`parser`]), the native receipt writer the Agent
+//! Hooks configuration starts ([`hook`]), the registration composition injects
+//! into the adapter SDK ([`registration`]), the recorded-transcript replay arm
+//! ([`replay`]), and the ports the host answers ([`port`]).
 //!
 //! # The boundaries this crate keeps
 //!
@@ -33,19 +33,22 @@
 //! host, and one Antigravity execution belongs here. Until that side is
 //! installed the execution port is fail-closed.
 //!
-//! # What is not here yet
+//! # Who executes Antigravity
 //!
-//! The *process* half of the Antigravity driver — launching the vendor CLI under
-//! a PTY, supervising it, harvesting the Stop-hook receipt file and answering
-//! cancellation — is still composed by the client in
-//! `licoup-native::platform::antigravity_driver`. It reads this crate's protocol
-//! through the paths it always read, so the client carries one copy of the
-//! vendor vocabulary rather than two. Moving that half here is the remaining
-//! `VENDOR-CODE-REMOVAL` work; until it lands, this package is linked for its
-//! parser and its ports and no claim is made that the client executes
-//! Antigravity from this package's binary.
+//! The package ships the whole driver: [`driver`] launches the vendor CLI under
+//! a PTY, supervises it, harvests the Stop-hook receipt, classifies the turn and
+//! answers cancellation. `licoup-native`'s composition names [`driver`] directly
+//! and keeps no Antigravity module of its own, so the launch, the probe and the
+//! turn are described in exactly one place.
+//!
+//! What the driver still asks its host for arrives through the two ports above:
+//! the events a turn emits and the admission answer that decides whether a turn
+//! may start at all. The extension host's binary route is what will move the
+//! process behind that second port; until it lands, the client reaches this
+//! crate's [`driver`] in process rather than by starting this package's binary.
 
 pub mod contract;
+pub mod driver;
 pub mod hook;
 pub mod parser;
 pub mod port;

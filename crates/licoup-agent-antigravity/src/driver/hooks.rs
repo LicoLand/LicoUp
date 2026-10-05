@@ -20,7 +20,7 @@
 
 use super::errors::ProtocolFailure;
 use super::model::HOOK_NAMESPACE;
-use licoup_agent_antigravity::parser::parse_hook_receipt;
+use crate::parser::parse_hook_receipt;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -38,12 +38,12 @@ const RECEIPT_SUBCOMMAND: &str = "receipt";
 /// The package program's file name, without the platform's executable suffix.
 const PACKAGE_PROGRAM: &str = "lico-agent-antigravity";
 
-pub(in crate::platform) fn ensure_hook_bridge() -> Result<(), ProtocolFailure> {
+pub(crate) fn ensure_hook_bridge() -> Result<(), ProtocolFailure> {
     let command = hook_command()?;
     install_global_hook(&command)
 }
 
-pub(crate) fn hook_bridge_status() -> Value {
+pub fn hook_bridge_status() -> Value {
     let config_dir = gemini_config_dir().ok();
     let hooks_path = config_dir.as_ref().map(|path| path.join("hooks.json"));
     let hook_registered = hooks_path
@@ -73,7 +73,7 @@ pub(crate) fn hook_bridge_status() -> Value {
     })
 }
 
-pub(crate) fn install_hook_bridge() -> Result<Value, &'static str> {
+pub fn install_hook_bridge() -> Result<Value, &'static str> {
     ensure_hook_bridge().map_err(|failure| failure.code)?;
     let mut status = hook_bridge_status();
     if let Some(object) = status.as_object_mut() {
@@ -82,7 +82,7 @@ pub(crate) fn install_hook_bridge() -> Result<Value, &'static str> {
     Ok(status)
 }
 
-pub(crate) fn uninstall_hook_bridge_report() -> Result<Value, &'static str> {
+pub fn uninstall_hook_bridge_report() -> Result<Value, &'static str> {
     uninstall_hook_bridge().map_err(|failure| failure.code)?;
     let mut status = hook_bridge_status();
     if let Some(object) = status.as_object_mut() {
@@ -95,7 +95,7 @@ pub(crate) fn uninstall_hook_bridge_report() -> Result<Value, &'static str> {
 ///
 /// Leaves unrelated user hooks untouched. Safe to call when detaching or
 /// updating this adapter module.
-pub(in crate::platform) fn uninstall_hook_bridge() -> Result<(), ProtocolFailure> {
+pub(crate) fn uninstall_hook_bridge() -> Result<(), ProtocolFailure> {
     let config_dir = gemini_config_dir()?;
     let hooks_path = config_dir.join("hooks.json");
     if hooks_path.exists() {
@@ -368,9 +368,6 @@ mod tests {
 
     #[test]
     fn the_receipt_environment_name_is_the_packages_own() {
-        assert_eq!(
-            licoup_agent_antigravity::hook::RECEIPT_ENV,
-            "LICO_ANTIGRAVITY_SESSION_RECEIPT"
-        );
+        assert_eq!(crate::hook::RECEIPT_ENV, "LICO_ANTIGRAVITY_SESSION_RECEIPT");
     }
 }

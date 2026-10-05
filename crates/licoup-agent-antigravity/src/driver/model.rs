@@ -1,5 +1,5 @@
 use super::errors::ProtocolFailure;
-use crate::platform::native_agent_parser::Transition;
+use licoup_agent_adapter_sdk::Transition;
 use serde_json::Value;
 use std::time::Duration;
 
@@ -9,42 +9,42 @@ use std::time::Duration;
 /// (`--print=<prompt>`, `--conversation=<id>`), matching Cursor's argv privacy
 /// exception. Session identity is recovered from the official Agent Hooks
 /// contract (`conversationId` on stdin / `ANTIGRAVITY_CONVERSATION_ID`).
-pub(in crate::platform) const RUNTIME_PROTOCOL: &str = "antigravity-cli-argv-hook-v1";
-pub(in crate::platform) const DRIVER_ID: &str = "antigravity-cli";
+pub const RUNTIME_PROTOCOL: &str = "antigravity-cli-argv-hook-v1";
+pub const DRIVER_ID: &str = "antigravity-cli";
 pub(super) const HOOK_NAMESPACE: &str = "lico-up-antigravity-session";
 /// The receipt path variable the launching driver exports for one turn.
 ///
-/// The name belongs to the package that writes the receipt, so this host reads
+/// The name belongs to the module that writes the receipt, so the launcher reads
 /// it from there rather than retyping it: the writer and the launcher cannot
 /// disagree about which variable names the file.
-pub(super) use licoup_agent_antigravity::hook::RECEIPT_ENV;
+pub(super) use crate::hook::RECEIPT_ENV;
 pub(super) const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 #[derive(Clone, Debug, Default)]
-pub(in crate::platform) struct EffectiveSettings {
-    pub(in crate::platform) cwd: Option<String>,
-    pub(in crate::platform) model: Option<String>,
-    pub(in crate::platform) reasoning_effort: Option<String>,
-    pub(in crate::platform) permission_mode: Option<String>,
-    pub(in crate::platform) sandbox: Option<Value>,
-    pub(in crate::platform) approval_policy: Option<Value>,
+pub struct EffectiveSettings {
+    pub cwd: Option<String>,
+    pub model: Option<String>,
+    pub reasoning_effort: Option<String>,
+    pub permission_mode: Option<String>,
+    pub sandbox: Option<Value>,
+    pub approval_policy: Option<Value>,
 }
 
 #[derive(Debug)]
-pub(in crate::platform) struct RunResult {
-    pub(in crate::platform) ok: bool,
-    pub(in crate::platform) output: String,
-    pub(in crate::platform) transitions: Vec<Transition>,
-    pub(in crate::platform) error: Option<ProtocolFailure>,
-    pub(in crate::platform) session_id: String,
-    pub(in crate::platform) thread_id: String,
-    pub(in crate::platform) turn_id: String,
-    pub(in crate::platform) turn_status: String,
-    pub(in crate::platform) effective: EffectiveSettings,
-    pub(in crate::platform) status_code: Option<i32>,
-    pub(in crate::platform) stdout_truncated: bool,
-    pub(in crate::platform) stderr_truncated: bool,
-    pub(in crate::platform) started_at: String,
+pub struct RunResult {
+    pub ok: bool,
+    pub output: String,
+    pub transitions: Vec<Transition>,
+    pub error: Option<ProtocolFailure>,
+    pub session_id: String,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub turn_status: String,
+    pub effective: EffectiveSettings,
+    pub status_code: Option<i32>,
+    pub stdout_truncated: bool,
+    pub stderr_truncated: bool,
+    pub started_at: String,
 }
 
 impl RunResult {
@@ -56,11 +56,7 @@ impl RunResult {
     ) -> Self {
         let session_id = failure.session_id.clone().unwrap_or_default();
         let transitions =
-            crate::platform::native_agent_parser::adapters::antigravity::failure_transitions(
-                failure.code,
-                failure.stage,
-                failure.message,
-            );
+            crate::parser::failure_transitions(failure.code, failure.stage, failure.message);
         Self {
             ok: false,
             output: String::new(),
@@ -80,20 +76,20 @@ impl RunResult {
 }
 
 #[derive(Clone, Debug, Default)]
-pub(in crate::platform) struct CapabilityProbe {
-    pub(in crate::platform) available: bool,
-    pub(in crate::platform) supported: bool,
-    pub(in crate::platform) version_command_ok: bool,
-    pub(in crate::platform) help_command_ok: bool,
-    pub(in crate::platform) stdin_prompt: bool,
-    pub(in crate::platform) structured_stream: bool,
-    pub(in crate::platform) new_session: bool,
-    pub(in crate::platform) resume_session: bool,
-    pub(in crate::platform) model: bool,
-    pub(in crate::platform) reasoning_effort: bool,
-    pub(in crate::platform) permission_mode: bool,
-    pub(in crate::platform) interactive_approval_events: bool,
-    pub(in crate::platform) error_code: Option<&'static str>,
+pub struct CapabilityProbe {
+    pub available: bool,
+    pub supported: bool,
+    pub version_command_ok: bool,
+    pub help_command_ok: bool,
+    pub stdin_prompt: bool,
+    pub structured_stream: bool,
+    pub new_session: bool,
+    pub resume_session: bool,
+    pub model: bool,
+    pub reasoning_effort: bool,
+    pub permission_mode: bool,
+    pub interactive_approval_events: bool,
+    pub error_code: Option<&'static str>,
 }
 
 impl CapabilityProbe {
