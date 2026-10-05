@@ -857,14 +857,18 @@ test("DeepSeek Harness leaves retain exact narrow regression ownership", async (
   const sourceBundleId = "regression.deepseek-harness-source-bundle";
   const packageModuleId = "rust.core.agent-deepseek-package";
   const protocolModuleId = "rust.platform.deepseek-harness-package-protocol";
-  // The process half is still composed by the client; the wire half and the
-  // session-log reader moved into the DeepSeek adapter package. Both keep a
-  // precise owner, and a source that moved selects the package's own module as
-  // well.
+  const driverModuleId = "rust.platform.deepseek-harness-driver";
+  // The whole driver is the DeepSeek adapter package's: the wire half, the
+  // session-log reader and the process half all moved out of the kernel. Each
+  // keeps a precise owner, and a source that moved selects the package's own
+  // module as well.
   const selections = new Map([
-    ["crates/licoup-native/src/platform/deepseek_harness_driver.rs",
-      ["regression.deepseek-harness-source-bundle",
-        "rust.platform.deepseek-harness-driver"]],
+    ["crates/licoup-agent-deepseek/src/driver.rs",
+      [sourceBundleId, packageModuleId, driverModuleId]],
+    ["crates/licoup-agent-deepseek/src/port/launch_environment.rs",
+      [sourceBundleId, packageModuleId, driverModuleId]],
+    ["crates/licoup-native/src/platform/runtime_adapters/drivers.rs",
+      [sourceBundleId, "rust.platform.runtime-adapters"]],
     ["crates/licoup-agent-deepseek/src/parser.rs",
       [packageModuleId, protocolModuleId]],
     ["crates/licoup-agent-deepseek/src/session_store.rs",
@@ -882,6 +886,16 @@ test("DeepSeek Harness leaves retain exact narrow regression ownership", async (
       assert.ok(selected.includes(moduleId),
         `${source} must select ${moduleId}: ${selected.join(", ")}`);
     }
+  }
+
+  // The host keeps no DeepSeek Harness driver source at all, so no retired path
+  // can keep a regression owner.
+  for (const retiredPath of [
+    "crates/licoup-native/src/platform/deepseek_harness_driver.rs",
+    "crates/licoup-native/src/platform/deepseek_harness_driver",
+  ]) {
+    assert.equal(await exists(retiredPath), false,
+      `the host still carries the retired DeepSeek Harness driver: ${retiredPath}`);
   }
 
   // The package's own module runs its own crate tests, so a change anywhere in

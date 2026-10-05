@@ -5,13 +5,13 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-// The process half of the DeepSeek Harness driver, still composed by the client
-// and named as that client-execution remainder.
-const driverPath = "crates/licoup-native/src/platform/deepseek_harness_driver.rs";
-// The wire half and the session-log reader, owned by the DeepSeek adapter
-// package since DEEPSEEK-PACKAGE moved them out of the kernel. One package
-// carries one Agent's protocol; the client names the package for its vocabulary
-// instead of keeping a second copy.
+// The kernel's composition, which names this package's driver directly. The
+// host keeps no DeepSeek Harness module of its own.
+const compositionPath = "crates/licoup-native/src/platform/runtime_adapters/drivers.rs";
+// The wire half, the process half and the session-log reader, all owned by the
+// DeepSeek adapter package since DEEPSEEK-PACKAGE and VENDOR-CODE-REMOVAL moved
+// them out of the kernel. One package carries one Agent's protocol; the client
+// names the package for its vocabulary instead of keeping a second copy.
 const packageRoot = "crates/licoup-agent-deepseek/src";
 const packageLeaves = Object.freeze([
   "lib.rs",
@@ -22,9 +22,24 @@ const packageLeaves = Object.freeze([
   "port/mod.rs",
   "port/usage.rs",
 ]);
+// The process half, which does start the vendor's own executable: it is read
+// separately because "spawns no process" is a wire-half claim and not this one's.
+const processLeaves = Object.freeze([
+  "driver.rs",
+  "port/launch_environment.rs",
+]);
 
 async function read(relativePath) {
   return fs.readFile(path.join(repoRoot, relativePath), "utf8");
+}
+
+async function exists(relativePath) {
+  try {
+    await fs.access(path.join(repoRoot, relativePath));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function packageSources() {
@@ -33,26 +48,77 @@ async function packageSources() {
   ));
 }
 
-test("the client keeps a thin Harness process half and names the package for the protocol", async () => {
-  const driver = await read(driverPath);
-  // The protocol vocabulary is read from the package rather than declared here:
-  // one Agent, one copy.
-  assert.ok(driver.includes("licoup_agent_deepseek::parser"));
-  for (const implementationToken of [
+test("the client names the package for the protocol and keeps no Harness driver module", async () => {
+  // The kernel has no DeepSeek Harness driver module at all: the host reaches
+  // the Agent through the package and cannot hold a second owner of its
+  // protocol.
+  assert.equal(
+    await exists("crates/licoup-native/src/platform/deepseek_harness_driver.rs"),
+    false,
+    "the host still declares a DeepSeek Harness driver module",
+  );
+  assert.equal(
+    await exists("crates/licoup-native/src/platform/deepseek_harness_driver"),
+    false,
+    "the host still declares a DeepSeek Harness driver tree",
+  );
+  const platform = await read("crates/licoup-native/src/platform/mod.rs");
+  assert.doesNotMatch(platform, /mod deepseek_harness_driver;/u,
+    "the host module tree still declares a DeepSeek Harness driver module");
+
+  const composition = await read(compositionPath);
+  // The composition reads the package's driver, so the SDK transport, the
+  // bounded frame reading and the turn's projection are the package's.
+  assert.match(composition, /use licoup_agent_deepseek::driver as deepseek_harness_driver;/u,
+    "the composition does not read the package's driver");
+  // The composition keeps no second copy of the vendor fact: every Harness
+  // protocol decision is the package's.
+  for (const forbidden of [
     "struct FrameParser",
     "struct TurnParser",
     "fn initialize_request",
     "fn prompt_request",
     "fn shutdown_request",
     "fn assistant_response",
-    // The protocol and the reader may not be re-declared beside the package
-    // that owns them: either would be a second copy.
     "mod deepseek_harness",
     "deepseek_reader.mjs",
     "include_str!",
   ]) {
-    assert.equal(driver.includes(implementationToken), false, implementationToken);
+    assert.equal(composition.includes(forbidden), false,
+      `the client composition keeps a copy of the package's protocol: ${forbidden}`);
   }
+});
+
+test("the process half runs the vendor's own executable and still declares no frame", async () => {
+  const sources = Object.fromEntries(await Promise.all(
+    processLeaves.map(async (leaf) => [leaf, await read(`${packageRoot}/${leaf}`)]),
+  ));
+  const driver = sources["driver.rs"];
+  // The process half reads the one protocol owner rather than restating it, so
+  // a request builder or a frame rule cannot be re-declared beside it.
+  assert.ok(driver.includes("crate::parser"));
+  for (const forbidden of [
+    "struct FrameParser",
+    "struct TurnParser",
+    "fn initialize_request",
+    "fn prompt_request",
+    "fn shutdown_request",
+    "fn assistant_response",
+    "mod deepseek_harness",
+    "deepseek_reader.mjs",
+    "include_str!",
+  ]) {
+    assert.equal(driver.includes(forbidden), false,
+      `the package's process half re-declares the protocol: ${forbidden}`);
+  }
+  // Nothing in either leaf reaches a client crate, and the one host fact the
+  // launch needs crosses the package's own port rather than a client path.
+  const joined = Object.values(sources).join("\n");
+  for (const clientPath of ["crate::platform", "licoup_native", "licoup_native::"]) {
+    assert.equal(joined.includes(clientPath), false, clientPath);
+  }
+  assert.ok(driver.includes("crate::port::launch_environment::apply_to_command"),
+    "the launch environment is read through the package's own port");
 });
 
 test("the Harness protocol, its session-log reader, and its registration have single owners", async () => {
