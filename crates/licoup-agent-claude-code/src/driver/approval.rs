@@ -9,8 +9,8 @@
 
 use super::io::write_message;
 use super::transport::PersistentTransport;
-use licoup_agent_claude_code::protocol::parser::permission_response;
-use licoup_agent_claude_code::protocol::{PermissionRequest, ProtocolFailure};
+use crate::protocol::parser::permission_response;
+use crate::protocol::{PermissionRequest, ProtocolFailure};
 use serde_json::json;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use uuid::Uuid;
@@ -57,7 +57,7 @@ impl PendingApproval {
 
 impl Drop for PendingApproval {
     fn drop(&mut self) {
-        crate::platform::native_agent_interaction::abandon(&self.token);
+        licoup_foundation::platform::native_agent_interaction::abandon(&self.token);
     }
 }
 
@@ -72,7 +72,7 @@ pub(super) fn park_external_approval(
     let (decision_tx, decision_rx) = mpsc::sync_channel(1);
     let token = Uuid::new_v4().to_string();
     let tools = request.tool_name.clone().into_iter().collect::<Vec<_>>();
-    if let Err(failure) = crate::platform::acp_session_transport::register_park_and_inbox(
+    if let Err(failure) = licoup_agent_drivers::acp_session_transport::register_park_and_inbox(
         &token,
         session_id,
         turn_id,

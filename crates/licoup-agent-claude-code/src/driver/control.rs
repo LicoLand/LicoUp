@@ -17,7 +17,7 @@ pub(super) enum ControlRequest {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum ControlDisposition {
+pub enum ControlDisposition {
     Accepted,
     NoActiveTurn,
     SessionUnavailable,

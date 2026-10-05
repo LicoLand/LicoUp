@@ -1,19 +1,19 @@
 use super::approval::{PendingApproval, park_external_approval};
 use super::control::ControlRequest;
 use super::failure::{ProtocolFailure, supervisor_failure};
-use super::reset::requires_transport_reset;
 use super::io::{TransportEvent, write_message};
 use super::model::{PROCESS_POLL_INTERVAL, RunResult};
-use super::launch::DriverConfig;
+use super::reset::requires_transport_reset;
 use super::supervision::{
     ManagedTransport, bind_session, lookup_session_transport, record_success, remove_transport,
     set_active_session, spawn_transport,
 };
 use super::transport::PersistentTransport;
-use crate::platform::native_agent_parser::adapters::NativeLineParser;
-use licoup_agent_claude_code::protocol::parser::{
+use crate::protocol::DriverConfig;
+use crate::protocol::parser::{
     ClaudeCodeParser, ClaudeEffect, ProtocolFinishReport, interrupt_request, steer_message,
 };
+use licoup_agent_adapter_sdk::adapters::NativeLineParser;
 use serde_json::Value;
 use std::path::Path;
 use std::sync::Arc;
@@ -21,7 +21,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-pub(in crate::platform) fn execute(
+pub fn execute(
     executable: &str,
     params: &Value,
     prompt: &str,
@@ -174,10 +174,7 @@ pub(in crate::platform) fn execute(
             outcome.events,
             &outcome.output,
         );
-        let transitions =
-            licoup_agent_claude_code::protocol::parser::completed_transitions(
-                &outcome.output,
-            );
+        let transitions = crate::protocol::parser::completed_transitions(&outcome.output);
         return RunResult {
             ok: true,
             output: outcome.output,
@@ -335,7 +332,7 @@ fn run_turn_loop(
                                 return (None, Some(failure.with_turn(&config.turn_id)), false);
                             }
                             set_active_session(managed, Some(session_id.to_string()));
-                            super::super::turn_event_emit::emit_turn_event(
+                            licoup_foundation::platform::turn_event_emit::emit_turn_event(
                                 "dispatch.turn.bound",
                                 session_id,
                                 &config.turn_id,

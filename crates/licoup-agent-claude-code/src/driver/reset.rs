@@ -1,14 +1,15 @@
 //! Which reported failures invalidate the supervised transport.
 //!
-//! The failure shape is the package's; the decision that a failure means the
-//! live CLI process can no longer be trusted belongs to the process half, which
-//! owns that process. A failure this predicate answers `true` for releases the
-//! transport and lets the next turn launch a fresh one.
+//! The failure shape is [`crate::protocol`]'s; the decision that a failure
+//! means the live CLI process can no longer be trusted belongs here, because
+//! this module's siblings own that process. A failure this predicate answers
+//! `true` for releases the transport and lets the next turn launch a fresh
+//! one.
 
-use licoup_agent_claude_code::protocol::ProtocolFailure;
+use crate::protocol::ProtocolFailure;
 
 /// Whether one reported failure leaves the live transport unusable.
-pub(in crate::platform) fn requires_transport_reset(failure: &ProtocolFailure) -> bool {
+pub(crate) fn requires_transport_reset(failure: &ProtocolFailure) -> bool {
     matches!(
         failure.code,
         "claude_code_write_failed"

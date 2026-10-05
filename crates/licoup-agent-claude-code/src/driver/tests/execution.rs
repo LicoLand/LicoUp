@@ -25,8 +25,8 @@ fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
     assert_eq!(first.output, "fake Claude final answer 1");
     assert!(matches!(
         first.transitions.last(),
-        Some(crate::platform::native_agent_parser::Transition::Lifecycle(
-            crate::platform::native_agent_parser::LifecycleStage::Completed
+        Some(licoup_agent_adapter_sdk::Transition::Lifecycle(
+            licoup_agent_adapter_sdk::LifecycleStage::Completed
         ))
     ));
     assert_eq!(first.session_id, "fake-claude-session");
@@ -44,18 +44,20 @@ fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
     assert!(second.ok, "second turn failed: {:?}", second.error);
     assert_eq!(second.output, "fake Claude final answer 2");
     assert_eq!(second.session_id, first.session_id);
-    let history = super::super::conversation_lane::process_local_history(&json!({
-        "agent": "claude-code",
-        "sessionId": second.session_id
-    }))
-    .unwrap();
-    assert_eq!(history["ok"], true);
-    assert_eq!(history["continuityScope"], "process-local");
-    assert_eq!(history["nativeSessionId"], second.session_id);
-    assert_eq!(history["turnCount"], 2);
-    assert_eq!(history["turns"].as_array().unwrap().len(), 2);
+    // The process-local transcript projection is Claude Code's own: the
+    // package's `history` reads the complete transcript of the live transport
+    // this turn bound, pages it backward and reports the scope, the exact
+    // native session and its byte count. The host's lane adds its own `ok`
+    // envelope and its own parameter parsing around this answer, and asserts
+    // that side of the fold in the host's suite.
+    let transcript = history(&second.session_id, None, 50)
+        .expect("the live transport projects its own transcript");
+    assert_eq!(transcript["continuityScope"], "process-local");
+    assert_eq!(transcript["nativeSessionId"], second.session_id);
+    assert_eq!(transcript["turnCount"], 2);
+    assert_eq!(transcript["turns"].as_array().unwrap().len(), 2);
     assert_eq!(
-        history
+        transcript
             .as_object()
             .unwrap()
             .keys()
@@ -67,7 +69,6 @@ fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
             "hasMore",
             "nativeSessionId",
             "nextBefore",
-            "ok",
             "turnCount",
             "turns"
         ]
@@ -75,7 +76,7 @@ fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
         .map(str::to_string)
         .collect()
     );
-    for turn in history["turns"].as_array().unwrap() {
+    for turn in transcript["turns"].as_array().unwrap() {
         assert_eq!(
             turn.as_object()
                 .unwrap()
@@ -88,45 +89,44 @@ fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
                 .collect()
         );
     }
-    assert_eq!(history["turns"][0]["turnId"], first.turn_id);
-    assert_eq!(history["turns"][1]["turnId"], second.turn_id);
-    assert_eq!(history["turns"][0]["output"], "fake Claude final answer 1");
-    assert_eq!(history["turns"][1]["output"], "fake Claude final answer 2");
+    assert_eq!(transcript["turns"][0]["turnId"], first.turn_id);
+    assert_eq!(transcript["turns"][1]["turnId"], second.turn_id);
     assert_eq!(
-        history["turns"][0]["prompt"],
+        transcript["turns"][0]["output"],
+        "fake Claude final answer 1"
+    );
+    assert_eq!(
+        transcript["turns"][1]["output"],
+        "fake Claude final answer 2"
+    );
+    assert_eq!(
+        transcript["turns"][0]["prompt"],
         "fake-claude-private-prompt-1"
     );
     assert_eq!(
-        history["turns"][1]["prompt"],
+        transcript["turns"][1]["prompt"],
         "fake-claude-private-prompt-2"
     );
-    assert_eq!(history["hasMore"], false);
-    assert!(history["nextBefore"].is_null());
-    let projected_bytes = history["turns"]
+    assert_eq!(transcript["hasMore"], false);
+    assert!(transcript["nextBefore"].is_null());
+    let projected_bytes = transcript["turns"]
         .as_array()
         .unwrap()
         .iter()
         .map(|turn| turn["output"].as_str().unwrap().len())
         .sum::<usize>();
-    assert_eq!(history["byteCount"], json!(projected_bytes));
-    let forged = super::super::conversation_lane::process_local_history(&json!({
-        "agent": "claude-code",
-        "sessionId": "fake-claude-session-forged"
-    }))
-    .unwrap();
-    assert_eq!(forged["ok"], false);
-    assert_eq!(forged["error"]["code"], "claude_code_session_unavailable");
+    assert_eq!(transcript["byteCount"], json!(projected_bytes));
+    // A conversation no live process owns has no process-local transcript. The
+    // host's lane turns this `None` into its own
+    // `claude_code_session_unavailable` refusal, which the host asserts.
+    assert!(history("fake-claude-session-forged", None, 50).is_none());
     assert_eq!(
         cleanup_session(&second.session_id),
         ControlDisposition::Accepted
     );
-    let cleared = super::super::conversation_lane::process_local_history(&json!({
-        "agent": "claude-code",
-        "sessionId": second.session_id
-    }))
-    .unwrap();
-    assert_eq!(cleared["ok"], false);
-    assert_eq!(cleared["error"]["code"], "claude_code_session_unavailable");
+    // Cleanup released the transport and cleared its transcript, so the exact
+    // conversation is no longer projected.
+    assert!(history(&second.session_id, None, 50).is_none());
     // After cleanup no process-local transport owns the conversation: a fresh
     // Claude Code process resumes the persisted transcript via --resume.
     let resumed = execute(
@@ -207,13 +207,11 @@ fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
     assert_eq!(failure.code, "claude_code_turn_cancelled");
     assert_eq!(failure.stage, "turn/cancelled");
     assert_eq!(cancelled.turn_status, "cancelled");
-    let failed_history = super::super::conversation_lane::process_local_history(&json!({
-        "agent": "claude-code",
-        "sessionId": "fake-claude-session"
-    }))
-    .unwrap();
-    assert_eq!(failed_history["ok"], true);
-    assert_eq!(failed_history["turnCount"], 0);
+    // A cancelled turn records no transcript turn while its transport is still
+    // live.
+    let cancelled_transcript = history("fake-claude-session", None, 50)
+        .expect("a cancelled turn leaves its live transport in place");
+    assert_eq!(cancelled_transcript["turnCount"], 0);
     assert_eq!(
         cleanup_session("fake-claude-session"),
         ControlDisposition::Accepted
@@ -228,7 +226,7 @@ fn permission_denials_render_honestly_without_failing_the_turn() {
     let executable_text = executable.to_string_lossy().to_string();
     let captured: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
     let events: Arc<Mutex<Vec<Value>>> = Arc::clone(&captured);
-    crate::platform::install_stream_sink(Box::new(move |event| {
+    licoup_foundation::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
         events.lock().unwrap().push(event);
     }));
     let params = json!({
@@ -246,7 +244,7 @@ fn permission_denials_render_honestly_without_failing_the_turn() {
         Some(1024 * 1024),
         1024,
     );
-    crate::platform::clear_stream_sink();
+    licoup_foundation::platform::turn_event_emit::clear_stream_sink();
     // The denied turn completes honestly instead of failing the client.
     assert!(turn.ok, "denied turn failed: {:?}", turn.error);
     let denied = captured
@@ -369,7 +367,7 @@ fn whole_assistant_messages_stream_progress_chunks() {
     let executable_text = executable.to_string_lossy().to_string();
     let captured: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
     let events: Arc<Mutex<Vec<Value>>> = Arc::clone(&captured);
-    crate::platform::install_stream_sink(Box::new(move |event| {
+    licoup_foundation::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
         events.lock().unwrap().push(event);
     }));
     let params = json!({
@@ -387,7 +385,7 @@ fn whole_assistant_messages_stream_progress_chunks() {
         Some(1024 * 1024),
         1024,
     );
-    crate::platform::clear_stream_sink();
+    licoup_foundation::platform::turn_event_emit::clear_stream_sink();
     assert!(turn.ok, "whole-assistant turn failed: {:?}", turn.error);
     let chunks = captured
         .lock()
@@ -425,7 +423,7 @@ fn whole_assistant_messages_keep_distinct_units_without_replayed_text() {
     let executable_text = executable.to_string_lossy().to_string();
     let captured: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
     let events: Arc<Mutex<Vec<Value>>> = Arc::clone(&captured);
-    crate::platform::install_stream_sink(Box::new(move |event| {
+    licoup_foundation::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
         events.lock().unwrap().push(event);
     }));
     let params = json!({
@@ -443,7 +441,7 @@ fn whole_assistant_messages_keep_distinct_units_without_replayed_text() {
         Some(1024 * 1024),
         1024,
     );
-    crate::platform::clear_stream_sink();
+    licoup_foundation::platform::turn_event_emit::clear_stream_sink();
     assert!(turn.ok, "segmented assistant turn failed: {:?}", turn.error);
     let events = captured.lock().unwrap();
     let chunks = events
@@ -491,7 +489,7 @@ fn terminal_only_final_message_gets_its_own_unit() {
     let executable_text = executable.to_string_lossy().to_string();
     let captured: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
     let events: Arc<Mutex<Vec<Value>>> = Arc::clone(&captured);
-    crate::platform::install_stream_sink(Box::new(move |event| {
+    licoup_foundation::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
         events.lock().unwrap().push(event);
     }));
     let turn = execute(
@@ -504,7 +502,7 @@ fn terminal_only_final_message_gets_its_own_unit() {
         Some(1024 * 1024),
         1024,
     );
-    crate::platform::clear_stream_sink();
+    licoup_foundation::platform::turn_event_emit::clear_stream_sink();
     assert!(turn.ok, "terminal segment turn failed: {:?}", turn.error);
     let events = captured.lock().unwrap();
     let chunk = events
@@ -523,137 +521,6 @@ fn terminal_only_final_message_gets_its_own_unit() {
     assert_eq!(
         cleanup_session(&turn.session_id),
         ControlDisposition::Accepted
-    );
-    let _ = fs::remove_dir_all(directory);
-}
-
-#[test]
-fn permission_request_suspends_the_turn_until_external_approval() {
-    let _serial = process_local_test_guard();
-    let (directory, executable) = compile_fake_claude("lico-claude-approval");
-    // A freshly compiled unsigned binary pays a one-time cold-launch policy
-    // scan that can exceed the first turn's deliberate 500ms deadline; warm
-    // the binary once so that deadline measures the turn, never the OS scan.
-    let warm_up = Command::new(&executable).arg("--version").output().unwrap();
-    assert!(warm_up.status.success());
-    let executable_text = executable.to_string_lossy().to_string();
-    let params = json!({
-        "model": "fake-model",
-        "reasoningEffort": "high",
-        "permissionMode": "plan"
-    });
-    let working_dir = directory.clone();
-    let executable_for_run = executable_text.clone();
-    let run_params = params.clone();
-    let run = thread::spawn(move || {
-        execute(
-            &executable_for_run,
-            &run_params,
-            "fake-claude-permission-prompt-1",
-            "",
-            Some(&working_dir),
-            500,
-            Some(1024 * 1024),
-            1024,
-        )
-    });
-    // The turn suspends on the permission request instead of failing; resolve
-    // the parked approval to allow and let the turn continue.
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let token = loop {
-        let token =
-            super::super::super::native_agent_interaction::pending_token("claude-code", "Bash");
-        if let Some(token) = token {
-            break token;
-        }
-        if Instant::now() >= deadline {
-            panic!("permission request never parked");
-        }
-        thread::sleep(Duration::from_millis(10));
-    };
-    // Deliberately exceed the ordinary turn deadline while the native
-    // permission route is parked. User decision time is not execution time.
-    thread::sleep(Duration::from_millis(550));
-    let resolved =
-        super::super::super::acp_session_transport::resolve_interaction_approval(&token, true)
-            .unwrap();
-    assert_eq!(resolved["adapterId"], "claude-code");
-    let allowed = run.join().unwrap();
-    assert!(allowed.ok, "allowed turn failed: {:?}", allowed.error);
-    assert_eq!(allowed.output, "fake Claude allowed answer");
-    // Release the transport so the second fixture turn binds the shared
-    // fixture session to its own fresh process.
-    assert_eq!(
-        cleanup_session(&allowed.session_id),
-        ControlDisposition::Accepted
-    );
-
-    // Denying a later permission request resumes the same native turn. The
-    // CLI's valid reply and denial metadata remain authoritative.
-    let working_dir = directory.clone();
-    let executable_for_deny = executable_text.clone();
-    let deny_params = params.clone();
-    let run = thread::spawn(move || {
-        execute(
-            &executable_for_deny,
-            &deny_params,
-            "fake-claude-permission-prompt-1",
-            "",
-            Some(&working_dir),
-            10_000,
-            Some(1024 * 1024),
-            1024,
-        )
-    });
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let token = loop {
-        let token =
-            super::super::super::native_agent_interaction::pending_token("claude-code", "Bash");
-        if let Some(token) = token {
-            break token;
-        }
-        if Instant::now() >= deadline {
-            panic!("second permission request never parked");
-        }
-        thread::sleep(Duration::from_millis(10));
-    };
-    let denied =
-        super::super::super::acp_session_transport::resolve_interaction_approval(&token, false)
-            .unwrap();
-    assert_eq!(denied["adapterId"], "claude-code");
-    let turn = run.join().unwrap();
-    assert!(turn.ok, "denied turn failed: {:?}", turn.error);
-    assert_eq!(turn.output, "fake Claude denied answer");
-    assert_eq!(
-        cleanup_session(&turn.session_id),
-        ControlDisposition::Accepted
-    );
-    let _ = fs::remove_dir_all(directory);
-}
-
-#[test]
-fn permission_park_reports_transport_loss_and_releases_its_route() {
-    let _serial = process_local_test_guard();
-    let (directory, executable) = compile_fake_claude("lico-claude-approval-exit");
-    let result = execute(
-        executable.to_string_lossy().as_ref(),
-        &json!({
-            "model": "fake-model",
-            "reasoningEffort": "high",
-            "permissionMode": "plan"
-        }),
-        "fake-claude-permission-exit-prompt",
-        "",
-        Some(&directory),
-        0,
-        Some(1024 * 1024),
-        1024,
-    );
-    assert!(!result.ok);
-    assert_eq!(result.error.unwrap().code, "claude_code_exited");
-    assert!(
-        super::super::super::native_agent_interaction::pending_token("claude-code", "Bash")
-            .is_none()
     );
     let _ = fs::remove_dir_all(directory);
 }
@@ -721,12 +588,9 @@ fn output_overflow_fails_closed_without_recording_a_successful_turn() {
     assert!(result.stdout_truncated);
     assert_eq!(result.error.unwrap().code, "claude_code_output_limit");
     assert!(!has_live_session("fake-claude-session"));
-    let history = super::super::conversation_lane::process_local_history(&json!({
-        "agent": "claude-code",
-        "sessionId": "fake-claude-session"
-    }))
-    .unwrap();
-    assert_eq!(history["ok"], false);
+    // The overflow released the transport, so no process-local transcript is
+    // projected for it.
+    assert!(history("fake-claude-session", None, 50).is_none());
     let _ = fs::remove_dir_all(directory);
 }
 
@@ -753,16 +617,12 @@ fn successful_utf8_output_history_reports_exact_encoded_byte_count() {
     assert_eq!(result.output, expected);
     assert_ne!(expected.as_bytes().len(), expected.chars().count());
 
-    let history = super::super::conversation_lane::process_local_history(&json!({
-        "agent": "claude-code",
-        "sessionId": result.session_id,
-    }))
-    .unwrap();
-    assert_eq!(history["ok"], true);
-    assert_eq!(history["turnCount"], 1);
-    assert_eq!(history["turns"][0]["turnId"], result.turn_id);
-    assert_eq!(history["turns"][0]["output"], expected);
-    assert_eq!(history["byteCount"], json!(expected.as_bytes().len()));
+    let transcript = history(&result.session_id, None, 50)
+        .expect("the live transport projects its own transcript");
+    assert_eq!(transcript["turnCount"], 1);
+    assert_eq!(transcript["turns"][0]["turnId"], result.turn_id);
+    assert_eq!(transcript["turns"][0]["output"], expected);
+    assert_eq!(transcript["byteCount"], json!(expected.as_bytes().len()));
     assert_eq!(
         cleanup_session(result.session_id.as_str()),
         ControlDisposition::Accepted

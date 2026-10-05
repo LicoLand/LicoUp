@@ -754,6 +754,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.platform.claude-code-driver.supervision",
   "rust.platform.claude-code-driver.probe",
   "rust.platform.claude-code-driver.execution",
+  "rust.platform.claude-code-driver.host-integration",
   "regression.openclaw-driver-source-bundle",
   "rust.platform.openclaw-driver.composition",
   "rust.platform.openclaw-driver.test-support",

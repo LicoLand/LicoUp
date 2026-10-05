@@ -2,6 +2,7 @@ mod adapter_dispatch;
 mod agent_execution_port;
 mod approval_authority;
 mod artifact;
+mod claude_code_package;
 mod conversation_integrity;
 mod generic_cli;
 mod normalization;

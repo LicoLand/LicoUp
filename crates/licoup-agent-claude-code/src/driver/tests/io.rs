@@ -21,14 +21,14 @@ fn stderr_is_drained_without_retaining_or_projecting_bytes() {
         Cursor::new(vec![b'x'; 2048]),
         128,
         &truncated,
-        &crate::platform::raw_execution::RawExecutionBinding::default(),
+        &licoup_foundation::platform::raw_execution::RawExecutionBinding::default(),
     );
     assert!(truncated.load(Ordering::Relaxed));
 }
 
 #[test]
 fn raw_execution_keeps_prefetched_frames_with_receiving_turn() {
-    use crate::platform::raw_execution::{
+    use licoup_foundation::platform::raw_execution::{
         RawExecutionBinding, RawExecutionDirection, RawExecutionObserver, RawExecutionReader,
     };
     use std::io::BufRead;

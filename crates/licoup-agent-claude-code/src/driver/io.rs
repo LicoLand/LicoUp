@@ -1,5 +1,5 @@
-use super::super::process_supervisor::BoundedStdinWriter;
-use crate::platform::raw_execution::{
+use licoup_foundation::platform::process_supervisor::BoundedStdinWriter;
+use licoup_foundation::platform::raw_execution::{
     RawExecutionBinding, RawExecutionDirection, RawExecutionObserver,
 };
 use serde_json::Value;
@@ -18,8 +18,7 @@ pub(super) enum TransportEvent {
 }
 
 pub(super) fn write_message(stdin: &mut BoundedStdinWriter, message: &Value) -> io::Result<()> {
-    let bytes =
-        licoup_agent_claude_code::protocol::parser::encode_message(message)?;
+    let bytes = crate::protocol::parser::encode_message(message)?;
     if let Some(observer) = RawExecutionObserver::current() {
         observer.record_bytes("claude-code", RawExecutionDirection::Sent, &bytes);
     }

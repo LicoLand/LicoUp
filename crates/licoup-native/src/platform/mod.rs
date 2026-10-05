@@ -15,7 +15,6 @@ pub(crate) mod antigravity_driver;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 pub mod authorized_secure_record;
 pub(crate) mod badtower_station;
-mod claude_code_driver;
 pub(crate) mod conversation_lane;
 mod cursor_driver;
 mod deepseek_harness_driver;

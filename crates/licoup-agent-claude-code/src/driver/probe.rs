@@ -1,16 +1,14 @@
-use super::super::process_supervisor::{IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded};
 use super::io::read_bounded;
 use super::model::PROCESS_POLL_INTERVAL;
-use licoup_agent_claude_code::protocol::CapabilityProbe;
+use crate::protocol::CapabilityProbe;
+use licoup_foundation::platform::process_supervisor::{
+    IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded,
+};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub(in crate::platform) fn probe(
-    executable: &str,
-    timeout_ms: u64,
-    max_output: usize,
-) -> CapabilityProbe {
+pub fn probe(executable: &str, timeout_ms: u64, max_output: usize) -> CapabilityProbe {
     let version = run_probe_command(executable, "--version", timeout_ms, max_output);
     let help = run_probe_command(executable, "--help", timeout_ms, max_output);
     if version.is_none() && help.is_none() {
@@ -32,8 +30,10 @@ fn run_probe_command(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    crate::platform::user_shell_environment::apply_to_command(&mut command);
-    crate::platform::configure_untrusted_agent_command(&mut command);
+    licoup_agent_targets::platform::user_shell_environment::apply_to_command(&mut command);
+    licoup_foundation::platform::process_supervisor::configure_untrusted_agent_command(
+        &mut command,
+    );
     let mut child = SupervisedChild::spawn(&mut command).ok()?;
     let stdout = child.stdout()?;
     let stderr = child.stderr()?;
