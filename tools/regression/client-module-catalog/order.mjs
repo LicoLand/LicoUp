@@ -19,6 +19,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "regression.agent-boundary-contracts",
   "regression.release-workflow-contracts",
   "regression.client-state-contracts",
+  "regression.endpoint-collaboration-contracts",
   "regression.native-performance-contract",
   "regression.extension-ui-schema",
   "regression.cargo-test-filter-runner",
@@ -161,6 +162,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "flutter.feature.optional-collaboration.local-server-assembly",
   "flutter.feature.optional-collaboration.mcp-install",
   "flutter.feature.mobile-relay",
+  "flutter.feature.mobile-relay.device-entry",
   "flutter.feature.mobile-relay.scenario.configuration",
   "flutter.feature.mobile-relay.scenario.pairing",
   "flutter.feature.mobile-relay.scenario.android-bridge",
@@ -924,6 +926,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "release.workflows",
   "rust.component.endpoint-collaboration",
   "rust.component.endpoint-collaboration-cleanup",
+  "rust.component.endpoint-collaboration-control",
   "rust.domain.mobile-relay.endpoint-collaboration",
   "rust.platform.endpoint-collaboration-admission",
 ]);

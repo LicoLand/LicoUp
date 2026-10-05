@@ -451,6 +451,51 @@
       "stream": false,
       "inFlightControl": false,
       "cli": null
+    },
+    {
+      "name": "selection.matrix",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
+    },
+    {
+      "name": "selection.policy.get",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
+    },
+    {
+      "name": "selection.policy.adopt",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
+    },
+    {
+      "name": "selection.policy.supersede",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
+    },
+    {
+      "name": "selection.policy.revoke",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
     }
   ]
 }

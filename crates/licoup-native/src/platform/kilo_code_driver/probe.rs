@@ -17,7 +17,7 @@ use super::KILO_CODE_DRIVER;
 use licoup_agent_kilo::driver::{self, EndpointProbe};
 use std::path::Path;
 
-pub(super) fn capability_probe(
+pub(in crate::platform) fn capability_probe(
     executable: &str,
     cwd: &Path,
     timeout_ms: u64,
@@ -25,14 +25,18 @@ pub(super) fn capability_probe(
     max_stderr: usize,
 ) -> Result<CapabilityProbe, ProtocolFailure> {
     let _ = (max_stdout, max_stderr);
+    // The package owns both the readiness read and the capability declaration, so
+    // the probe confirms the endpoint is up through its own documents and reports
+    // the declaration that same package states: the host runs no second probe and
+    // declares no capability of its own.
     driver::capability_probe(executable, cwd, timeout_ms, EndpointProbe::installed())
-        .map(probe_to_client)
+        .map(|_readiness| probe_to_client(driver::serve_capabilities()))
         .map_err(failure_to_client)
         .map_err(|failure| failure.namespaced(KILO_CODE_DRIVER))
 }
 
 /// The package's failure, in the client's shared driver vocabulary.
-fn failure_to_client(failure: driver::ProtocolFailure) -> ProtocolFailure {
+pub(super) fn failure_to_client(failure: driver::ProtocolFailure) -> ProtocolFailure {
     ProtocolFailure::new(
         static_code(&failure.code),
         failure.message,
@@ -146,8 +150,18 @@ mod tests {
 
     #[test]
     fn the_capability_answer_crosses_as_a_field_copy() {
-        let probe = driver::serve_capabilities();
-        assert_eq!(probe_to_client(probe), probe);
+        let declared = driver::serve_capabilities();
+        let probe = probe_to_client(declared);
+        assert_eq!(probe.protocol_version, declared.protocol_version);
+        assert_eq!(probe.load_session, declared.load_session);
+        assert_eq!(probe.resume_session, declared.resume_session);
+        assert_eq!(probe.close_session, declared.close_session);
+        assert_eq!(probe.list_sessions, declared.list_sessions);
+        assert_eq!(probe.delete_session, declared.delete_session);
+        assert_eq!(probe.additional_directories, declared.additional_directories);
+        assert_eq!(probe.image_prompts, declared.image_prompts);
+        assert_eq!(probe.audio_prompts, declared.audio_prompts);
+        assert_eq!(probe.embedded_context, declared.embedded_context);
         assert_eq!(probe.protocol_version, Some(1));
         assert!(probe.load_session && probe.resume_session && probe.list_sessions);
         assert!(!probe.delete_session && !probe.image_prompts && !probe.audio_prompts);

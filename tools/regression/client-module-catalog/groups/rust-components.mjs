@@ -148,6 +148,24 @@ export const RUST_COMPONENT_MODULES = Object.freeze([
     ),
   }),
   defineModule({
+    id: "rust.component.endpoint-collaboration-control",
+    kind: "rust-crate",
+    summary:
+      "Endpoint collaboration control slice: the bounded remote work-control surface of the optional package",
+    inputs: [
+      "components/endpoint-collaboration/control/**",
+    ],
+    command: command(
+      "cargo",
+      [
+        "test",
+        "--manifest-path",
+        "components/endpoint-collaboration/control/Cargo.toml",
+      ],
+      20 * 60_000,
+    ),
+  }),
+  defineModule({
     id: "rust.component.endpoint-collaboration-cleanup",
     kind: "rust-crate",
     summary:

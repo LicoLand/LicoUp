@@ -1,9 +1,9 @@
 use super::admission::{
-    ContinuityCommitmentAdmission, admit_achieved_required_current_evidence,
-    admit_commitment_admission, admit_completion_against_current, admit_completion_transition,
-    admit_goal_progress, admit_idempotency, admit_source_ref, admit_task_child_admission,
-    admit_utf8_span, admit_versions, admit_wake, current_required_evidence,
-    retain_current_criterion_evidence,
+    ContinuityCommitmentAdmission, OWNER_HANDOFF_REVIEW_POLICY,
+    admit_achieved_required_current_evidence, admit_commitment_admission,
+    admit_completion_against_current, admit_completion_transition, admit_goal_progress,
+    admit_idempotency, admit_source_ref, admit_task_child_admission, admit_utf8_span,
+    admit_versions, admit_wake, current_required_evidence, retain_current_criterion_evidence,
 };
 use super::error::{continuity_failure, sql_failure, store_to_continuity};
 use super::generated::{
@@ -509,7 +509,14 @@ fn amend_stored_goal(
     let basis = unit
         .read_commit_basis(conversation_id)
         .map_err(store_to_continuity)?;
-    let wake = goal_wake(unit, proposal, &basis, &goal_id, &progress, "correction-priority")?;
+    let wake = goal_wake(
+        unit,
+        proposal,
+        &basis,
+        &goal_id,
+        &progress,
+        "correction-priority",
+    )?;
     enqueue_wake(unit, &wake, conversation_id)?;
     Ok(())
 }
@@ -1246,6 +1253,101 @@ pub fn apply_goal_control(
         unit.request_commit();
         Ok(progress)
     })
+}
+
+/// Move an unfinished Goal to the owner that now holds the work.
+///
+/// A handoff changes who is responsible, not what was agreed: the expected
+/// result, the criteria, the recorded evidence and the in-flight executions
+/// survive unchanged, so an executor replacement never loses or rewrites
+/// admitted work. The revision advances, which makes every proposal observed
+/// before the handoff stale, so the previous owner cannot overwrite the current
+/// work; the new owner is then announced the Goal exactly once.
+///
+/// A closed Goal and a Goal already owned by the named owner are left
+/// untouched, which makes a repeated handoff idempotent.
+pub fn hand_off_goal_owner(
+    store: &ConversationStore,
+    conversation_id: &str,
+    goal_id: &str,
+    responsible_role_ref: &str,
+) -> Result<Option<ContinuityGoalProgress>, ContinuityFailure> {
+    if responsible_role_ref.trim().is_empty() {
+        return Err(invalid_request());
+    }
+    run_unit(store, |unit| {
+        migrate_or_fail(unit)?;
+        let basis = unit
+            .read_commit_basis(conversation_id)
+            .map_err(store_to_continuity)?;
+        let Some((contract, progress)) = load_goal(unit, goal_id)? else {
+            return Err(continuity_failure(
+                ContinuityFailureCode::SourceUnavailable,
+                ContinuityFailureStage::ContinuityAdmission,
+            ));
+        };
+        if goal_conversation_id(unit, goal_id)?.as_deref() != Some(conversation_id) {
+            return Err(invalid_request());
+        }
+        if is_terminal(progress.lifecycle) || contract.responsible_role_ref == responsible_role_ref
+        {
+            return Ok(None);
+        }
+        let mut contract = contract;
+        contract.responsible_role_ref = responsible_role_ref.to_owned();
+        contract.contract_revision += 1;
+        let mut progress = progress;
+        progress.revision += 1;
+        admit_goal_progress(&progress)?;
+        upsert_goal(unit, conversation_id, &contract, &progress)?;
+        let wake = ContinuityWake {
+            logical_wake_id: format!("wake:{goal_id}:{}:owner-handoff", progress.revision),
+            goal_id: goal_id.to_owned(),
+            cause_refs: vec![contract.created_event.clone()],
+            due_at: due_from_attention(&progress.next_attention),
+            review_policy: OWNER_HANDOFF_REVIEW_POLICY.to_owned(),
+            goal_revision: progress.revision,
+            epoch: 0,
+            host_generation: read_host_generation(unit)?,
+            claim: None,
+            settlement: None,
+        };
+        enqueue_wake(unit, &wake, conversation_id)?;
+        // The revision advances, so a proposal observed before the handoff is
+        // stale and cannot overwrite the work the successor now holds.
+        unit.bump_revision_cas(conversation_id, basis.revision)
+            .map_err(store_to_continuity)?;
+        unit.request_commit();
+        Ok(Some(progress))
+    })
+}
+
+/// Hand every unfinished Goal of a conversation to the owner that now holds it.
+///
+/// Returns how many Goals actually changed owner.
+pub fn hand_off_conversation_goals(
+    store: &ConversationStore,
+    conversation_id: &str,
+    responsible_role_ref: &str,
+) -> Result<usize, ContinuityFailure> {
+    if responsible_role_ref.trim().is_empty() {
+        return Err(invalid_request());
+    }
+    let relations = read_child_relations(store, conversation_id, None, CONTINUITY_MAX_PAGE_SIZE)?;
+    let mut handed = 0;
+    for relation in relations {
+        if hand_off_goal_owner(
+            store,
+            conversation_id,
+            &relation.goal_id,
+            responsible_role_ref,
+        )?
+        .is_some()
+        {
+            handed += 1;
+        }
+    }
+    Ok(handed)
 }
 
 pub fn accept_completion(
@@ -2832,7 +2934,7 @@ mod tests {
     use crate::client_conversation::{EventKind, EventPartKind, Principal, PrincipalKind};
     use crate::continuity::generated::{
         ContinuityCriterion, ContinuityEvidenceResult, ContinuityMatterAssociation,
-        ContinuityMatterSubject, ContinuityMatterStatus, ContinuityOracleKind,
+        ContinuityMatterStatus, ContinuityMatterSubject, ContinuityOracleKind,
         ContinuityVerificationKind, ContinuityWriteEnvelope,
     };
     use crate::continuity::ports::{ContinuityCommitPort, ContinuityReadPort};
@@ -2880,7 +2982,10 @@ mod tests {
         }
     }
 
-    fn evidence(event: &crate::client_conversation::ConversationEvent, criterion_id: &str) -> ContinuityEvidenceRef {
+    fn evidence(
+        event: &crate::client_conversation::ConversationEvent,
+        criterion_id: &str,
+    ) -> ContinuityEvidenceRef {
         ContinuityEvidenceRef {
             source: source_ref(&event.id, event.sequence, 'c'),
             issuer: "member:worker".into(),
@@ -2991,7 +3096,9 @@ mod tests {
         }
 
         fn matters(&self) -> Vec<ContinuityMatter> {
-            self.store.list_matters(&self.conversation_id, None, 8).unwrap()
+            self.store
+                .list_matters(&self.conversation_id, None, 8)
+                .unwrap()
         }
     }
 
@@ -3187,5 +3294,125 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.code, ContinuityFailureCode::InvalidRequest);
         assert_eq!(dialogue.goal().unwrap().1.revision, revision);
+    }
+
+    #[test]
+    fn a_handoff_moves_the_work_without_losing_it_or_letting_the_old_owner_rewrite_it() {
+        let dialogue = Dialogue::new("intent-handoff");
+        dialogue.says(&dialogue.turn(
+            "request:handoff-1",
+            ContinuitySpeechAct::Delegation,
+            "Draft the notes",
+            true,
+            vec![criterion("criterion:notes-done", true, "exact-source")],
+        ));
+        let (before_contract, before_progress) = dialogue.goal().expect("admitted goal");
+        let notifications = dialogue.pending_notifications();
+        let observed_before_handoff = dialogue
+            .store
+            .continuity_commit_basis(&dialogue.conversation_id)
+            .unwrap()
+            .revision;
+
+        let handed = hand_off_goal_owner(
+            &dialogue.store,
+            &dialogue.conversation_id,
+            GOAL,
+            "membership:successor",
+        )
+        .unwrap()
+        .expect("an unfinished goal changes owner");
+        let (contract, progress) = dialogue.goal().unwrap();
+        assert_eq!(contract.responsible_role_ref, "membership:successor");
+        assert_eq!(
+            contract.contract_revision,
+            before_contract.contract_revision + 1
+        );
+        assert_eq!(progress.revision, before_progress.revision + 1);
+        // The agreement itself is not rewritten: result, criteria and evidence.
+        assert_eq!(contract.expected_result, before_contract.expected_result);
+        assert_eq!(contract.criteria, before_contract.criteria);
+        assert_eq!(
+            progress.criterion_evidence_refs,
+            before_progress.criterion_evidence_refs
+        );
+        assert_eq!(progress.lifecycle, before_progress.lifecycle);
+        assert_eq!(handed.goal_id, GOAL);
+        assert_eq!(
+            dialogue.pending_notifications(),
+            notifications + 1,
+            "the new owner is announced the goal exactly once"
+        );
+
+        // Restating the same handoff is idempotent.
+        assert!(
+            hand_off_goal_owner(
+                &dialogue.store,
+                &dialogue.conversation_id,
+                GOAL,
+                "membership:successor"
+            )
+            .unwrap()
+            .is_none()
+        );
+        assert_eq!(dialogue.pending_notifications(), notifications + 1);
+
+        // A proposal observed before the handoff is stale, so the previous
+        // owner cannot overwrite the work the successor now holds.
+        let mut stale = dialogue.turn(
+            "request:handoff-stale",
+            ContinuitySpeechAct::Delegation,
+            "Draft something else",
+            true,
+            Vec::new(),
+        );
+        stale.envelope.observed_revision = observed_before_handoff;
+        let error = dialogue.store.commit(&stale).unwrap_err();
+        assert_eq!(error.code, ContinuityFailureCode::StaleRevision);
+        assert_eq!(
+            dialogue.goal().unwrap().0.expected_result,
+            "Draft the notes"
+        );
+    }
+
+    #[test]
+    fn a_closed_goal_is_not_handed_over() {
+        let dialogue = Dialogue::new("intent-handoff-closed");
+        dialogue.says(&dialogue.turn(
+            "request:handoff-closed",
+            ContinuitySpeechAct::Delegation,
+            "Draft the notes",
+            true,
+            Vec::new(),
+        ));
+        let (_, progress) = dialogue.goal().unwrap();
+        apply_goal_control(
+            &dialogue.store,
+            &dialogue.conversation_id,
+            GOAL,
+            ContinuityGoalEvent::CancelRequest,
+        )
+        .unwrap();
+        apply_goal_control(
+            &dialogue.store,
+            &dialogue.conversation_id,
+            GOAL,
+            ContinuityGoalEvent::CancelSettled,
+        )
+        .unwrap();
+        let closed = dialogue.goal().unwrap().1;
+        assert_eq!(closed.lifecycle, ContinuityGoalLifecycle::Cancelled);
+        assert!(closed.revision > progress.revision);
+        assert!(
+            hand_off_goal_owner(
+                &dialogue.store,
+                &dialogue.conversation_id,
+                GOAL,
+                "membership:successor"
+            )
+            .unwrap()
+            .is_none()
+        );
+        assert_eq!(dialogue.goal().unwrap().1, closed);
     }
 }

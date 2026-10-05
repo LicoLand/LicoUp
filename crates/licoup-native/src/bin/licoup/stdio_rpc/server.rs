@@ -665,6 +665,38 @@ where
                         )?,
                     }
                 }
+                StdioRpcMethod::Selection {
+                    request: selection_request,
+                    portable_data_dir,
+                } => {
+                    // The selection facts and the durable policy both live in the
+                    // data home this frame names, and the transitions write through
+                    // the one store their owner opens. Nothing is composed here.
+                    let execution = catch_unwind(AssertUnwindSafe(|| {
+                        let _guard = PortableDataDirOverrideGuard::set(portable_data_dir);
+                        selection_request.dispatch()
+                    }));
+                    match execution {
+                        Ok(Ok(value)) => write_stdio_rpc_success_shared(
+                            &writer,
+                            &request.id,
+                            &request.workflow_id,
+                            value,
+                        )?,
+                        Ok(Err(error)) => write_stdio_rpc_client_error_shared(
+                            &writer,
+                            Some(&request.id),
+                            Some(&request.workflow_id),
+                            &error,
+                        )?,
+                        Err(_) => write_stdio_rpc_error_shared(
+                            &writer,
+                            Some(&request.id),
+                            Some(&request.workflow_id),
+                            "command_panicked",
+                        )?,
+                    }
+                }
                 StdioRpcMethod::Catalog {
                     operation,
                     params,
@@ -964,7 +996,21 @@ pub(crate) fn bind_conversation_runtime(
                 let handle = complete_runtime.open_admitted_turn(params)?;
                 complete_runtime.run_open_turn(&handle, params, complete_dir.clone())
             },
-            move |request| {
+            move |mut request| {
+                // This is the host boundary that admits the request, so it is
+                // where the selection-policy revision is captured — the same
+                // binding `route_receipt`/`route_receipt_under` capture. The
+                // runtime states it in the receipt it stores, so a later
+                // adoption governs only the next turn and never rewrites the
+                // revision this one was admitted under.
+                if request.get("action").and_then(Value::as_str)
+                    == Some("strategy.assistant.workflow.execute")
+                {
+                    request["selectionPolicyRevision"] = json!(
+                        licoup_native::domain::client_conversation::selection_policy::current_binding()
+                            .revision_name()
+                    );
+                }
                 let port =
                     conversation::strategy_turn_port(actor_runtime.clone(), actor_dir.clone());
                 licoup_native::domain::workflow_runtime::StrategyService::open(&strategy_root)?

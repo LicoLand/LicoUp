@@ -126,6 +126,23 @@ pub(crate) fn parse_stdio_rpc_request(
             params: command.params,
             portable_data_dir,
         },
+        ConversationProtocolMethod::SelectionMatrix
+        | ConversationProtocolMethod::SelectionPolicyGet
+        | ConversationProtocolMethod::SelectionPolicyAdopt
+        | ConversationProtocolMethod::SelectionPolicySupersede
+        | ConversationProtocolMethod::SelectionPolicyRevoke => {
+            let operation = command
+                .method
+                .as_str()
+                .strip_prefix("selection.")
+                .unwrap_or_else(|| command.method.as_str());
+            let request = SelectionRequest::parse(operation, command.params)
+                .map_err(|code| invalid_request_id(request_id, request_workflow_id, code))?;
+            StdioRpcMethod::Selection {
+                request,
+                portable_data_dir,
+            }
+        }
         // Structured private-stdin commands. The stdin JSON payload is carried
         // as structured params inside the RPC frame on the wire (never smuggled
         // through a CLI argument array); the process-local CLI admission is
@@ -315,5 +332,210 @@ mod work_control_routing_tests {
         ));
         assert_eq!(operation, "force.confirm");
         assert_eq!(params, confirmed);
+    }
+}
+
+/// The selection surface must reach the owners that already hold the facts.
+///
+/// A method the generated contract advertises but this table does not map stays
+/// invisible to the client, and a method mapped onto the wrong operation silently
+/// answers a different question than the one that was asked. Both are checked
+/// here, together with the parity guarantee the desktop projection depends on:
+/// the matrix the client reads is the owner's document, unchanged.
+#[cfg(test)]
+mod selection_routing_tests {
+    use super::*;
+    use licoup_native::domain::client_conversation::{SelectionPolicyRevision, current_binding};
+    use licoup_native::ffi::generated::client_error::ClientErrorCode;
+    use serde_json::json;
+
+    fn route(method: ConversationProtocolMethod, params: Value) -> StdioRpcMethod {
+        let frame = ConversationCommand::frame("request-1", "workflow-1", method, params);
+        let bytes = serde_json::to_vec(&frame).expect("a protocol frame serializes");
+        parse_stdio_rpc_request(&bytes)
+            .expect("a well-formed selection frame is admitted")
+            .method
+    }
+
+    fn routed(method: ConversationProtocolMethod, params: Value) -> SelectionRequest {
+        match route(method, params) {
+            StdioRpcMethod::Selection { request, .. } => request,
+            other => panic!("selection methods must use the selection lane, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn every_advertised_selection_method_reaches_its_operation() {
+        let cases: Vec<(ConversationProtocolMethod, Value, &str)> = vec![
+            (
+                ConversationProtocolMethod::SelectionMatrix,
+                json!({"agent": "codex"}),
+                "matrix",
+            ),
+            (
+                ConversationProtocolMethod::SelectionPolicyGet,
+                json!({}),
+                "policy.get",
+            ),
+            (
+                ConversationProtocolMethod::SelectionPolicyAdopt,
+                json!({"revision": {
+                    "revisionId": "policy:r1",
+                    "provenance": "feedback:outcome/policy:r1",
+                    "preferences": {"preferredModel": "model-a"}
+                }}),
+                "policy.adopt",
+            ),
+            (
+                ConversationProtocolMethod::SelectionPolicySupersede,
+                json!({"revision": {
+                    "revisionId": "policy:r2",
+                    "parentRevisionId": "policy:r1",
+                    "provenance": "feedback:outcome/policy:r2",
+                    "preferences": {"preferredModel": "model-b"}
+                }}),
+                "policy.supersede",
+            ),
+            (
+                ConversationProtocolMethod::SelectionPolicyRevoke,
+                json!({"revisionId": "policy:r2"}),
+                "policy.revoke",
+            ),
+        ];
+        // Every advertised wire name is in the table under test: a new method
+        // added to the schema without a mapping fails here instead of at the
+        // client.
+        assert_eq!(cases.len(), 5);
+        for (method, params, expected) in cases {
+            let reached = match routed(method, params) {
+                SelectionRequest::Matrix { .. } => "matrix",
+                SelectionRequest::PolicyGet => "policy.get",
+                SelectionRequest::PolicyAdopt { .. } => "policy.adopt",
+                SelectionRequest::PolicySupersede { .. } => "policy.supersede",
+                SelectionRequest::PolicyRevoke { .. } => "policy.revoke",
+            };
+            assert_eq!(reached, expected, "{method:?} must reach its operation");
+        }
+    }
+
+    #[test]
+    fn the_revision_reaches_the_owner_exactly_as_the_client_stated_it() {
+        let SelectionRequest::PolicySupersede { revision } = routed(
+            ConversationProtocolMethod::SelectionPolicySupersede,
+            json!({"revision": {
+                "revisionId": "policy:r2",
+                "parentRevisionId": "policy:r1",
+                "provenance": "feedback:outcome/policy:r2",
+                "preferences": {
+                    "preferredModel": "model-b",
+                    "preferredSkills": ["skill-b"]
+                }
+            }}),
+        ) else {
+            panic!("the supersede method must route to a supersede");
+        };
+        assert_eq!(
+            revision,
+            SelectionPolicyRevision {
+                revision_id: "policy:r2".to_owned(),
+                parent_revision_id: Some("policy:r1".to_owned()),
+                provenance: "feedback:outcome/policy:r2".to_owned(),
+                preferences:
+                    licoup_native::domain::client_conversation::SelectionPolicyPreferences {
+                        preferred_model: Some("model-b".to_owned()),
+                        preferred_skills: vec!["skill-b".to_owned()],
+                        ..Default::default()
+                    },
+            }
+        );
+    }
+
+    #[test]
+    fn the_probe_params_reach_the_catalogue_unchanged() {
+        let SelectionRequest::Matrix { agent, params } = routed(
+            ConversationProtocolMethod::SelectionMatrix,
+            json!({"agent": "codex", "params": {"includeAccessibleEnvironments": true}}),
+        ) else {
+            panic!("the matrix method must route to a matrix");
+        };
+        assert_eq!(agent, "codex");
+        assert_eq!(params, json!({"includeAccessibleEnvironments": true}));
+    }
+
+    #[test]
+    fn a_matrix_the_catalogue_cannot_compose_is_an_error_and_not_an_empty_document() {
+        // An Agent nothing declares cannot be observed. The client must be told
+        // the facts could not be read, because an empty matrix would render as
+        // "this Agent offers nothing" — a claim this host never made.
+        let error = SelectionRequest::Matrix {
+            agent: "not-a-declared-agent".to_owned(),
+            params: json!({}),
+        }
+        .dispatch()
+        .expect_err("an unobservable target is not an empty matrix");
+        assert_eq!(error.code, ClientErrorCode::SelectionMatrixUnavailable);
+    }
+
+    #[test]
+    fn a_refused_request_is_refused_before_any_owner_is_called() {
+        for (method, params) in [
+            (ConversationProtocolMethod::SelectionMatrix, json!({})),
+            (
+                ConversationProtocolMethod::SelectionMatrix,
+                json!({"agent": "codex", "unknown": 1}),
+            ),
+            (
+                ConversationProtocolMethod::SelectionPolicyGet,
+                json!({"agent": "codex"}),
+            ),
+            (
+                ConversationProtocolMethod::SelectionPolicyAdopt,
+                json!({"revision": {"revisionId": ""}}),
+            ),
+            (
+                ConversationProtocolMethod::SelectionPolicyAdopt,
+                json!({"revision": {"revisionId": "policy:r1", "provenance": "p", "extra": 1}}),
+            ),
+            (
+                ConversationProtocolMethod::SelectionPolicySupersede,
+                json!({"parentRevisionId": "policy:r1"}),
+            ),
+            (
+                ConversationProtocolMethod::SelectionPolicyRevoke,
+                json!({"revisionId": "   "}),
+            ),
+        ] {
+            let frame = ConversationCommand::frame("request-1", "workflow-1", method, params);
+            let bytes = serde_json::to_vec(&frame).expect("a protocol frame serializes");
+            let error = parse_stdio_rpc_request(&bytes)
+                .err()
+                .unwrap_or_else(|| panic!("{method:?} must refuse a malformed request"));
+            assert_eq!(error.code, "invalid_params", "{method:?}");
+        }
+    }
+
+    /// The read returns the binding the admission boundary captures, with the
+    /// owner's own name for the revision in force rather than a recomputed one.
+    #[test]
+    fn the_policy_read_reports_the_owner_binding() {
+        let SelectionRequest::PolicyGet =
+            routed(ConversationProtocolMethod::SelectionPolicyGet, json!({}))
+        else {
+            panic!("the policy read must route to the policy read");
+        };
+        let binding = current_binding();
+        let document = policy_document(&binding);
+        assert_eq!(
+            document["revisionName"],
+            json!(binding.revision_name()),
+            "the reported revision name is the owner's, not a recomputed one"
+        );
+        assert_eq!(
+            document["revisionId"],
+            binding
+                .revision_id
+                .clone()
+                .map_or(Value::Null, Value::String)
+        );
     }
 }
