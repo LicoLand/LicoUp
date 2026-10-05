@@ -23,7 +23,6 @@ pub mod extension_host;
 pub mod extension_packages;
 pub mod package_registration_release;
 pub(crate) mod generic_cli_driver;
-mod hermes_driver;
 pub(crate) mod hermes_tui_gateway;
 mod hermes_tui_gateway_driver;
 pub(crate) mod kilo_code_driver;

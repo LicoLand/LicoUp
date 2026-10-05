@@ -6,12 +6,15 @@ fn streaming_chunks_emit_progressive_turn_events() {
 
     let captured = Arc::new(Mutex::new(Vec::<Value>::new()));
     let sink_target = Arc::clone(&captured);
-    crate::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
+    licoup_foundation::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
         sink_target.lock().unwrap().push(event);
     }));
-    let _guard = crate::platform::turn_event_emit::StreamSinkGuard;
+    let _guard = licoup_foundation::platform::turn_event_emit::StreamSinkGuard;
 
-    let mut protocol = SessionProtocol::new(config(json!({}), "hello", ""), HERMES_SESSION_DRIVER.driver_id);
+    let mut protocol = SessionProtocol::new(
+        config(json!({}), "hello", ""),
+        HERMES_SESSION_DRIVER.driver_id,
+    );
     initialize(&mut protocol);
     protocol.handle_message(json!({
         "jsonrpc": "2.0",
@@ -61,7 +64,10 @@ fn streaming_chunks_emit_progressive_turn_events() {
 
 #[test]
 fn session_update_for_another_session_fails_closed() {
-    let mut protocol = SessionProtocol::new(config(json!({}), "hello", ""), HERMES_SESSION_DRIVER.driver_id);
+    let mut protocol = SessionProtocol::new(
+        config(json!({}), "hello", ""),
+        HERMES_SESSION_DRIVER.driver_id,
+    );
     initialize(&mut protocol);
     protocol.handle_message(json!({
         "jsonrpc": "2.0",

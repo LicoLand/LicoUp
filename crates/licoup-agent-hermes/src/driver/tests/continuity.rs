@@ -5,6 +5,8 @@ use super::*;
 fn fake_child_exact_resume_keeps_native_session_id() {
     use std::sync::{Arc, Mutex};
 
+    install_package_dialect();
+
     let root = unique_temp_dir("hermes-acp-resume");
     let _portable_data = PortableDataDirGuard::isolate_under(&root);
     let executable = root.join("fake-hermes-resume");
@@ -61,10 +63,10 @@ sleep 30
 
     let captured = Arc::new(Mutex::new(Vec::<Value>::new()));
     let sink_target = Arc::clone(&captured);
-    crate::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
+    licoup_foundation::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
         sink_target.lock().unwrap().push(event);
     }));
-    let _guard = crate::platform::turn_event_emit::StreamSinkGuard;
+    let _guard = licoup_foundation::platform::turn_event_emit::StreamSinkGuard;
 
     let follow_up = execute(
         executable.to_str().unwrap(),
@@ -109,6 +111,7 @@ sleep 30
 #[cfg(unix)]
 #[test]
 fn persistent_turn_can_be_cancelled_without_restarting_the_session() {
+    install_package_dialect();
     let root = unique_temp_dir("hermes-acp-cancel");
     let _portable_data = PortableDataDirGuard::isolate_under(&root);
     let executable = root.join("fake-hermes-cancel");

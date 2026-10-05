@@ -3,7 +3,10 @@ use super::*;
 #[test]
 fn new_session_and_prompt_keep_private_values_in_acp_stdin() {
     let prompt = "private-hermes-prompt";
-    let mut protocol = SessionProtocol::new(config(json!({"model": "provider/model"}), prompt, ""), HERMES_SESSION_DRIVER.driver_id);
+    let mut protocol = SessionProtocol::new(
+        config(json!({"model": "provider/model"}), prompt, ""),
+        HERMES_SESSION_DRIVER.driver_id,
+    );
     let cwd = absolute_test_cwd();
     let launch = LaunchSpec::new(HERMES_SESSION_DRIVER, "hermes", cwd.as_path());
     assert_eq!(launch.driver.launch_args, &["acp"]);
