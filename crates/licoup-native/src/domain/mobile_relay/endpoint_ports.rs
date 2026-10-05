@@ -47,6 +47,10 @@ use licoup_protocol_bindings::state::{
 };
 use licoup_protocol_bindings::{AuthorityInput, VerifiedProtocolLine};
 
+mod replacement;
+
+pub use replacement::{ReplacementRequest, admit_replacement, admit_replacement_with_authority};
+
 /// Resolves a non-secret custody token to the caller's own custody handle.
 ///
 /// The SDK hands its custody adapter a token, never a purpose or a lifecycle,

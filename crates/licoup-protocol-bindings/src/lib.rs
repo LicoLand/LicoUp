@@ -35,14 +35,15 @@ mod durable_obligation;
 mod inbound;
 pub mod licoarc_relay;
 mod padding;
+mod replacement;
 mod version;
 
 pub use admission::{AUTHORIZATION_REQUIRED, AdmissionRefusal, AuthorityInput};
 pub use durable_obligation::{
     AdmittedObligation, DEFAULT_PRE_ADMISSION_BUDGET_BYTES,
     DEFAULT_PRE_ADMISSION_RETENTION_SECONDS, DURABLE_OBLIGATION_SCHEMA, DeliveryOutcome,
-    DurableObligationRecord, ObligationId, ObligationLedger, ObligationLimits,
-    PreAdmissionRefusal, Settled, SettlementRefusal, SweepOutcome,
+    DurableObligationRecord, ObligationId, ObligationLedger, ObligationLimits, PreAdmissionRefusal,
+    Settled, SettlementRefusal, SweepOutcome,
 };
 pub use inbound::{
     AuthorFact, DeviceFact, EndpointConsumer, InboundRefusal, InboundSession, PermissionFact,
@@ -58,6 +59,11 @@ pub use padding::{
     AuthenticatedPaddingBucketError, LARGE_PADDING_BUCKET_STEP_BYTES, MAX_PADDING_BUCKET_BYTES,
     MIN_PADDING_BUCKET_BYTES, POWER_OF_TWO_PADDING_LIMIT_BYTES,
     validate_authenticated_padding_bucket,
+};
+pub use replacement::{
+    ReplacementAdmission, ReplacementAdmissionRefusal, ReplacementEndpointKeys,
+    ReplacementPredecessor, ReplacementSession, SdkReplacementAuthority,
+    VerifiedReplacementAuthority,
 };
 pub use version::{
     ACCEPTED_GENERATION, ACCEPTED_PROTECTION_PROFILE_ID, ACCEPTED_PROTOCOL_LINE_ID,
