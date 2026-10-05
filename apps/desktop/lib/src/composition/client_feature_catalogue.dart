@@ -16,6 +16,8 @@ import 'package:licoup/src/frontend/features/models/ui/models_panel.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_panel.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
+import 'package:licoup/src/frontend/projects/project_plan_submission.dart';
+import 'package:licoup/src/frontend/projects/projects_canvas_panel.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
@@ -27,6 +29,7 @@ import 'package:licoup/src/presentation/models/models_binding.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_binding.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/presentation/projects/projects_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/shell/shell_intent.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
@@ -59,6 +62,8 @@ final class ClientFeatureSurface {
     required this.openExternalUri,
     required this.workspaceHomeDirectory,
     required this.clientUpdateAdmission,
+    this.projects,
+    this.projectPlanSubmission = const UnconvertedProjectPlan(),
   });
 
   final BuiltInLayoutComposition layout;
@@ -75,6 +80,22 @@ final class ClientFeatureSurface {
   final AgentHubBinding? agentHub;
   final ExternalUriOpener openExternalUri;
   final String workspaceHomeDirectory;
+
+  /// The project canvas binding, present exactly while the projects mount is
+  /// enabled.
+  ///
+  /// The canvas is a region rather than a destination: it presents the durable
+  /// project facts and the local arrangement this client read, and the surface
+  /// that hosts it reads the binding from here.
+  final ProjectsBinding? projects;
+
+  /// The caller-converted plan document the canvas may submit, or none.
+  ///
+  /// A plan arrives only as a caller-converted canonical document: this field
+  /// carries that document and never a source, a directory or a conversion.
+  /// The composition root supplies it; a client without an importer keeps the
+  /// explicit [UnconvertedProjectPlan] and the canvas states the rule.
+  final ProjectPlanSubmission projectPlanSubmission;
 
   /// Live read of the host maintenance answer the settings surface renders its
   /// upgrade actions from. The composition supplies the application controller
@@ -233,6 +254,23 @@ final class ClientFeatureCatalogue {
                 );
         },
       ),
+      ClientFeatureMount(
+        id: ClientFeatureMounts.projects.id,
+        // The canvas compiles its surface here. The mount contributes a
+        // capability and no destination, so the entry is reached by the shell
+        // surface that hosts the region: no shell destination exists for a
+        // canvas, and the client's destination set is asserted, so this
+        // composition does not invent one.
+        surface: (context, surface, agentsHomeKey) {
+          final projects = surface.projects;
+          return projects == null
+              ? null
+              : ProjectsCanvasPanel(
+                  binding: projects,
+                  submission: surface.projectPlanSubmission,
+                );
+        },
+      ),
     ];
     return ClientFeatureCatalogue._(
       composition: composition,
@@ -343,6 +381,7 @@ final class ClientFeatureCatalogue {
     );
     _assertAgrees(ClientFeatureMounts.settings.id, surface.settings);
     _assertAgrees(ClientFeatureMounts.skillHub.id, surface.skillHub);
+    _assertAgrees(ClientFeatureMounts.projects.id, surface.projects);
   }
 
   void _assertAgrees(FeatureMountId id, Object? binding) {

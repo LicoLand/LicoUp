@@ -34,6 +34,9 @@ abstract final class ClientCapabilities {
   static const MountCapabilityId targetCatalog = MountCapabilityId(
     'target-catalog',
   );
+  static const MountCapabilityId projectCanvas = MountCapabilityId(
+    'project-canvas',
+  );
   static const MountCapabilityId rendererChrome = MountCapabilityId(
     'renderer-chrome',
   );
@@ -281,6 +284,24 @@ abstract final class ClientFeatureMounts {
         ),
       );
 
+  /// The project canvas composition.
+  ///
+  /// The canvas is a region, not a destination: it presents the durable project
+  /// facts this client read and the local arrangement a person made, and the
+  /// shell surfaces that read it render it in place. The mount is optional, so
+  /// the minimum client owns no project owner and no project surface at all.
+  static final ClientFeatureMountDeclaration projects =
+      ClientFeatureMountDeclaration(
+        shellOwned: false,
+        request: FeatureMountRequest(
+          id: const FeatureMountId('projects'),
+          phase: FeatureMountPhase.enabled,
+          capabilities: const <MountCapabilityId>[
+            ClientCapabilities.projectCanvas,
+          ],
+        ),
+      );
+
   /// Every feature mount this client can own, in directory order.
   static final List<ClientFeatureMountDeclaration> all =
       List<ClientFeatureMountDeclaration>.unmodifiable(
@@ -297,6 +318,7 @@ abstract final class ClientFeatureMounts {
           search,
           settings,
           skillHub,
+          projects,
         ],
       );
 
