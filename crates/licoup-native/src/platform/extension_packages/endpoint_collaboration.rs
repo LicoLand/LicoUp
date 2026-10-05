@@ -421,9 +421,9 @@ fn version_key(version: &str) -> (u8, semver::Version) {
 mod tests {
     use super::{
         ENDPOINT_COLLABORATION_CAPABILITY_ID, ENDPOINT_COLLABORATION_MANIFEST_PATH,
-        ENDPOINT_COLLABORATION_PACKAGE_ID, EndpointCollaborationAvailability,
-        EndpointCollaborationBinding, EndpointCollaborationGate, EndpointOutboundAuthority,
-        EndpointOutboundRefusal, resolve_availability,
+        ENDPOINT_COLLABORATION_PACKAGE_ID, ENDPOINT_COLLABORATION_PROFILE_ID,
+        EndpointCollaborationAvailability, EndpointCollaborationBinding, EndpointCollaborationGate,
+        EndpointOutboundAuthority, EndpointOutboundRefusal, resolve_availability,
     };
     use licoup_extension_contracts::manifest::{PackageManifest, Runtime};
     use serde_json::json;
@@ -445,6 +445,91 @@ mod tests {
         ));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(root.join("records")).expect("synthetic store root is writable");
+        root
+    }
+
+    /// The declared version the permitted fixture installs.
+    const INSTALLED_VERSION: &str = "0.3.0";
+
+    /// The client versions a fixture package declares when its own list covers
+    /// the client running this test.
+    ///
+    /// A development binary is a prerelease, and a semantic range admits a
+    /// prerelease only when the range names one, so the range starts at this
+    /// client rather than at its major line.
+    fn covering_client_versions() -> Vec<String> {
+        let client = crate::platform::extension_packages::running_client_version()
+            .expect("the binary declares a product version");
+        let next_major = client
+            .split('.')
+            .next()
+            .and_then(|major| major.parse::<u64>().ok())
+            .map(|major| major + 1)
+            .expect("a semantic major version");
+        vec![format!(">={client}, <{next_major}")]
+    }
+
+    /// A store root holding one installed, switched-on version of this package
+    /// that declares the outbound capability.
+    ///
+    /// This is the permitted package a disable or an uninstall withdraws: the
+    /// store itself answers `Active`, so a retirement has a grant to cut rather
+    /// than a store that already reads absent.
+    fn permitted_store_root(label: &str) -> PathBuf {
+        use super::super::artifact::content_digest;
+        use super::super::install::InstallRequest;
+        use super::super::state::TrustRecord;
+        use super::super::PackageStore;
+        use licoup_extension_contracts::deployment::PackageSource;
+        use licoup_extension_contracts::wire;
+        use std::io::Write;
+
+        let root = synthetic_store_root(label);
+        let manifest = json!({
+            "schema": wire::MANIFEST,
+            "id": ENDPOINT_COLLABORATION_PACKAGE_ID,
+            "version": INSTALLED_VERSION,
+            "displayName": "Synthetic endpoint collaboration",
+            "hostProtocol": {"major": 1, "minimumMinor": 0},
+            "compatibility": {"clientVersions": covering_client_versions()},
+            "profiles": [{
+                "id": ENDPOINT_COLLABORATION_PROFILE_ID,
+                "major": 1,
+                "capabilities": [ENDPOINT_COLLABORATION_CAPABILITY_ID],
+            }],
+            "runtime": {
+                "mode": "declarative",
+                "descriptor": "contributions/control-surface.json",
+            },
+            "activation": "on-demand",
+            "requires": [],
+            "optionalRequires": [],
+            "permissions": [],
+            "contributions": [],
+        });
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let plain = zip::write::SimpleFileOptions::default();
+        for (name, body) in [
+            ("manifest.json", manifest.to_string()),
+            ("contributions/control-surface.json", "{}".to_owned()),
+        ] {
+            writer.start_file(name, plain).expect("entry");
+            writer.write_all(body.as_bytes()).expect("content");
+        }
+        let bytes = writer.finish().expect("finish").into_inner();
+        let trust = TrustRecord::local_approved(content_digest(&bytes), Vec::new()).expect("trust");
+        PackageStore::open(&root)
+            .expect("store")
+            .install(
+                &InstallRequest::new(
+                    ENDPOINT_COLLABORATION_PACKAGE_ID,
+                    INSTALLED_VERSION,
+                    PackageSource::LocalImport,
+                    trust,
+                ),
+                &bytes,
+            )
+            .expect("the store installs the fixture package");
         root
     }
 
@@ -542,10 +627,17 @@ mod tests {
 
     #[test]
     fn retiring_a_permitted_package_installs_the_refusal_before_the_bytes_go_away() {
-        let binding = EndpointCollaborationBinding::over(synthetic_store_root("retire"));
+        let binding = EndpointCollaborationBinding::over(permitted_store_root("retire"));
+        assert_eq!(
+            binding.availability(),
+            EndpointCollaborationAvailability::Active {
+                version: INSTALLED_VERSION.to_owned()
+            },
+            "the fixture is the permitted package this case retires"
+        );
         let gate = EndpointCollaborationGate::new();
         gate.install(EndpointCollaborationAvailability::Active {
-            version: "0.3.0".to_owned(),
+            version: INSTALLED_VERSION.to_owned(),
         });
         assert!(gate.authority().is_ok());
 
