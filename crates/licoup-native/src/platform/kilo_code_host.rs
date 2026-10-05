@@ -34,7 +34,10 @@ use super::raw_execution::{RawExecutionDirection, RawExecutionObserver};
 ///
 /// Control reads the state and pid records this specification's owner writes, so
 /// force stop finds a Kilo endpoint through the same record the engine created
-/// rather than through a second registry.
+/// rather than through a second registry. It is the same specification
+/// [`kilo_serve_spec`] answers with: the engine's contract and force stop's
+/// descriptor are one contract, so neither can drift from the other or from the
+/// package's own policy.
 pub(crate) const CONTROL_SPEC: local_service::ServeSpec = local_service::ServeSpec {
     identity: policy::SPEC.identity,
     default_port: policy::SPEC.default_port,
@@ -52,7 +55,21 @@ pub(crate) const CONTROL_SPEC: local_service::ServeSpec = local_service::ServeSp
     default_executable: policy::SPEC.default_executable,
     configure_command,
     parse_readiness,
-    errors: policy::SPEC.errors,
+    // The engine's failure vocabulary is its own shape, so the package's closed
+    // set crosses as a field copy rather than by assignment: an assignment would
+    // silently carry the package's type where the engine expects its own.
+    errors: local_service::ServeErrorCodes {
+        executable_missing: policy::SPEC.errors.executable_missing,
+        port_exhausted: policy::SPEC.errors.port_exhausted,
+        start_failed: policy::SPEC.errors.start_failed,
+        health_failed: policy::SPEC.errors.health_failed,
+        attach_probe_failed: policy::SPEC.errors.attach_probe_failed,
+        not_found: policy::SPEC.errors.not_found,
+        request_failed: policy::SPEC.errors.request_failed,
+        invalid_json: policy::SPEC.errors.invalid_json,
+        invalid_state: policy::SPEC.errors.invalid_state,
+        stop_failed: policy::SPEC.errors.stop_failed,
+    },
 };
 
 /// The serve engine specification this Agent's policy describes.
@@ -62,39 +79,10 @@ pub(crate) const CONTROL_SPEC: local_service::ServeSpec = local_service::ServeSp
 /// documents into the shared readiness record. Everything else — the identity,
 /// the port, the paths, the reserved ports, the executable names and the failure
 /// codes — is read from the package's own policy, so the client carries no
-/// second copy of Kilo Code's endpoint contract.
+/// second copy of Kilo Code's endpoint contract. This is the one specification
+/// the engine runs and force stop reads.
 pub(crate) fn kilo_serve_spec() -> local_service::ServeSpec {
-    let policy = &policy::SPEC;
-    local_service::ServeSpec {
-        identity: policy.identity,
-        default_port: policy.default_port,
-        port_range_span: policy.port_range_span,
-        default_host: policy.default_host,
-        health_path: policy.health_path,
-        session_probe_path: policy.session_probe_path,
-        config_path: policy.config_path,
-        provider_path: policy.provider_path,
-        state_dir: policy.state_dir,
-        state_schema_version: policy.state_schema_version,
-        default_health_timeout_ms: policy.default_health_timeout_ms,
-        reserved_ports: policy.reserved_ports,
-        executable_environment: policy.executable_environment,
-        default_executable: policy.default_executable,
-        configure_command,
-        parse_readiness,
-        errors: local_service::ServeErrorCodes {
-            executable_missing: policy.errors.executable_missing,
-            port_exhausted: policy.errors.port_exhausted,
-            start_failed: policy.errors.start_failed,
-            health_failed: policy.errors.health_failed,
-            attach_probe_failed: policy.errors.attach_probe_failed,
-            not_found: policy.errors.not_found,
-            request_failed: policy.errors.request_failed,
-            invalid_json: policy.errors.invalid_json,
-            invalid_state: policy.errors.invalid_state,
-            stop_failed: policy.errors.stop_failed,
-        },
-    }
+    CONTROL_SPEC
 }
 
 /// How the engine launches this Agent's endpoint.

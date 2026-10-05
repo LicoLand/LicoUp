@@ -1,5 +1,6 @@
 //! Desktop Agent Hub: warehouse Manifest plus one TOML recipe per agent.
 
+pub(crate) mod acquisition;
 pub(crate) mod argv;
 pub(crate) mod capabilities;
 pub(crate) mod catalog;
@@ -17,8 +18,8 @@ use anyhow::Result;
 use serde_json::Value;
 
 pub use contract::{
-    AgentRecipe, InstallChannel, PlatformInstallCapabilities, RecipeRegistryDocument,
-    SCHEMA_VERSION, contract_surface,
+    AgentRecipe, ArtifactIntegrity, ArtifactSpec, InstallChannel, PlatformInstallCapabilities,
+    RecipeRegistryDocument, SCHEMA_VERSION, contract_surface,
 };
 pub use engine::{HubContext, apply, apply_with, plan, plan_with};
 pub use recipes::{manifest, registry};

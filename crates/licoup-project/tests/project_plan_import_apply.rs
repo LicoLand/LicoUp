@@ -552,3 +552,46 @@ fn the_import_rows_hold_no_field_that_could_carry_a_run_or_an_acceptance() {
         );
     }
 }
+
+#[test]
+fn a_store_this_owner_wrote_reopens_in_the_next_process() {
+    let root = TempRoot::new("reopen");
+    let admitted = {
+        let store = ProjectIdentityStore::open(root.path()).expect("the store opens");
+        register(
+            &store,
+            "project:alpha",
+            "plan:alpha",
+            &root.authorized_root("alpha"),
+        );
+        let admitted = admit(document(
+            "project:alpha",
+            "plan:alpha",
+            "source:roadmap",
+            vec![work_item("work:read")],
+        ));
+        store
+            .apply_import(&admitted, 0)
+            .expect("the import applies");
+        admitted
+    };
+
+    // The next process validates the recorded shape before it reads anything, so
+    // a recorded version that drifted from the owner's own constant — the defect
+    // this case exists for — would be refused here rather than half-opened.
+    let reopened = ProjectIdentityStore::open(root.path()).expect("a written store reopens");
+    let slice = reopened
+        .import_slice(&project("project:alpha"), &source("source:roadmap"))
+        .expect("the slice reads")
+        .expect("the slice exists");
+    assert_eq!(slice.revision, 1);
+    assert_eq!(slice.work_item_ids, vec![item("work:read")]);
+    assert_eq!(slice.digest, admitted.document.digest());
+    assert!(
+        reopened
+            .read(&project("project:alpha"))
+            .expect("the registration reads")
+            .is_some(),
+        "the registration the first process wrote survives the reopen"
+    );
+}

@@ -16,6 +16,8 @@ mod process_local;
 mod request;
 #[path = "rpc/response.rs"]
 mod response;
+#[path = "rpc/selection.rs"]
+mod selection;
 #[path = "rpc/server.rs"]
 mod server;
 #[path = "rpc/state.rs"]

@@ -101,9 +101,11 @@ mod tests {
     fn an_unprovisioned_process_reports_the_pre_package_path_as_such() {
         // The production gate is read, never installed into: which package the
         // running client has is the composition's answer, not this suite's.
-        assert_eq!(
+        // `outbound_authority` answers with an error type that carries no
+        // equality, so the variant is matched rather than compared.
+        assert!(matches!(
             outbound_authority(),
             Ok(EndpointOutboundAuthority::LegacyInKernel)
-        );
+        ));
     }
 }

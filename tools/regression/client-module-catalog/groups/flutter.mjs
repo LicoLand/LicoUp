@@ -62,6 +62,22 @@ export const FLUTTER_MODULES = Object.freeze([
       command: flutterTests(["test/client_state_contract_test.dart"]),
     }),
   defineModule({
+      id: "flutter.contract.selection-command",
+      kind: "flutter-contract",
+      summary: "Typed selection caller over the structured native gateway, the policy documents it carries, and the composed selection surfaces",
+      inputs: [
+        "apps/desktop/lib/src/contracts/selection_policy.dart",
+        "apps/desktop/lib/src/platform/native_client/native_selection_actions.dart",
+        "apps/desktop/lib/src/composition/features/models/native_selection_composition.dart",
+        "apps/desktop/test/native_selection_actions_test.dart",
+        "apps/desktop/test/native_selection_composition_test.dart",
+      ],
+      command: flutterTests([
+        "test/native_selection_actions_test.dart",
+        "test/native_selection_composition_test.dart",
+      ]),
+    }),
+  defineModule({
       id: "flutter.contract.secure-mesh",
       kind: "flutter-contract",
       summary: "Generated bounded Secure Mesh bridge DTOs and typed MethodChannel boundary",
@@ -1377,6 +1393,25 @@ export const FLUTTER_MODULES = Object.freeze([
       ]),
     }),
   defineModule({
+      id: "flutter.feature.mobile-relay.device-entry",
+      kind: "flutter-feature",
+      summary: "Device replacement facts, the app-only erase review, and the optional endpoint package entry",
+      inputs: [
+        "apps/desktop/lib/src/application/features/mobile_relay/policy/device_replacement_policy.dart",
+        "apps/desktop/lib/src/composition/features/mobile_relay/device_entry_join.dart",
+        "apps/desktop/lib/src/composition/features/mobile_relay/mobile_relay_feature_composition.dart",
+        "apps/desktop/lib/src/presentation/mobile_relay/device_replacement_projection.dart",
+        "apps/desktop/lib/src/projections/mobile_relay/device_replacement_projection_source.dart",
+        "apps/desktop/test/device_entry_join_test.dart",
+        "apps/desktop/test/device_replacement_projection_test.dart",
+        "apps/desktop/test/fixtures/device_replacement/**",
+      ],
+      command: flutterTests([
+        "test/device_entry_join_test.dart",
+        "test/device_replacement_projection_test.dart",
+      ]),
+    }),
+  defineModule({
       id: "flutter.feature.mobile-relay.scenario.configuration",
       kind: "flutter-feature",
       summary: "Local mobile layout persistence and station configuration",
@@ -1770,6 +1805,22 @@ export const FLUTTER_MODULES = Object.freeze([
         "test/target_candidate_conversation_test.dart",
         "test/target_card_test.dart",
         "test/target_scan_coordination_test.dart",
+      ]),
+    }),
+  defineModule({
+      id: "flutter.feature.selection-policy",
+      kind: "flutter-feature",
+      summary: "Route-selection policy surface: the adopted revision, the recorded suggestions and the explicit refusals",
+      inputs: [
+        "apps/desktop/lib/src/frontend/features/models/selection/**",
+        "apps/desktop/test/selection_facts_section_test.dart",
+        "apps/desktop/test/selection_policy_composition_test.dart",
+        "apps/desktop/test/selection_policy_section_test.dart",
+      ],
+      command: flutterTests([
+        "test/selection_facts_section_test.dart",
+        "test/selection_policy_composition_test.dart",
+        "test/selection_policy_section_test.dart",
       ]),
     }),
   defineModule({

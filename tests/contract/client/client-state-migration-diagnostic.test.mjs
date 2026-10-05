@@ -39,7 +39,7 @@ const CLIENT_STATE_MIGRATION =
   "crates/licoup-client-state/src/migration.rs";
 const CONVERSATION_STORE = "crates/licoup-conversation/src/store/mod.rs";
 const CONVERSATION_SCHEMA = "crates/licoup-conversation/src/store/schema.rs";
-const WORKFLOW_STORE_MODULE = "crates/licoup-native/src/domain/workflow_store/store.rs";
+const WORKFLOW_STORE_MODULE = "crates/licoup-workflow-store/src/store.rs";
 const FRONTIER_CONSUMER = "tools/scripts/client-state-migration/frontier.mjs";
 const REPORT_CONSUMER = "tools/scripts/client-state-migration/report.mjs";
 const RELEASED_FIXTURE = "tests/fixtures/client_state_migration/released_source.rs";

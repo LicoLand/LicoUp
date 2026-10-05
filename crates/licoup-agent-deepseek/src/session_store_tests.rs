@@ -194,11 +194,14 @@ fn a_generation_the_package_does_not_read_fails_the_session_read() {
 #[test]
 fn the_newest_generation_is_the_one_session_source() {
     // Several generations of one session are representations of it, so only the
-    // newest is read — the same rule the removed Node reader resolved.
+    // newest is read — the same rule the removed Node reader resolved. A padded
+    // spelling of the same generation is not another generation: it is refused,
+    // so `session.v03` cannot outrank the `session.v3` artifact it repeats.
     let sources = [
         "session.jsonl.zstd",
         "session.v1.jsonl.zstd",
         "session.v3.jsonl.zstd",
+        "session.v03.jsonl.zstd",
     ]
     .into_iter()
     .map(|name| {

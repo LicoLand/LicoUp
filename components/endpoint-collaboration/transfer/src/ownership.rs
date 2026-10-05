@@ -68,8 +68,14 @@ impl TransferOwnership {
             // than under the client-state directory: the workspace manifest
             // (`workspace-manifest`), the group conversation records and the
             // Adaptive Flywheel strategy configuration.
-            (".licoup-workspace.json".to_string(), ManagedDomain::Workspace),
-            ("group-conversations".to_string(), ManagedDomain::Conversation),
+            (
+                ".licoup-workspace.json".to_string(),
+                ManagedDomain::Workspace,
+            ),
+            (
+                "group-conversations".to_string(),
+                ManagedDomain::Conversation,
+            ),
             (
                 "adaptive-flywheel.toml".to_string(),
                 ManagedDomain::ClientState,

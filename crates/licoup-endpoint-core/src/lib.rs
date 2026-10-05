@@ -3,14 +3,16 @@
 //! Session and runtime-facing types live here so later nodes can fill reducers
 //! and policy without changing crate identity. [`ports`] freezes the
 //! caller-owned capabilities the client adapter must supply to the pinned
-//! LicoArc SDK, and [`recovery`] classifies what a disconnect, a lost
-//! transport, or a verified revocation means for an established result. This
-//! crate deliberately has no dependencies: a port is consumer-owned precisely
-//! so the protocol SDK stays on the other side of it.
+//! LicoArc SDK, [`recovery`] classifies what a disconnect, a lost transport, or
+//! a verified revocation means for an established result, and [`replacement`]
+//! binds a device replacement to its subject, source device, new identity and
+//! operation. This crate deliberately has no dependencies: a port is
+//! consumer-owned precisely so the protocol SDK stays on the other side of it.
 
 pub mod authority;
 pub mod ports;
 pub mod recovery;
+pub mod replacement;
 
 pub use authority::{
     AuthenticationRequirement, ClientSession, ClientSessionState, ConfirmationRequirement,
@@ -22,6 +24,10 @@ pub use ports::{
     Transport, TransportOutcome, Versioned,
 };
 pub use recovery::{RecoveryEvent, SessionRecovery};
+pub use replacement::{
+    AcceptedReplacement, AuthoritySource, ReplacementAuthority, ReplacementAuthorityRefusal,
+    ReplacementBinding, ReplacementCredentials, ReplacementOperation, ReplacementPossession,
+};
 
 #[cfg(test)]
 mod tests {

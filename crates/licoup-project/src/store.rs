@@ -664,8 +664,6 @@ fn initialize_schema(connection: &mut Connection) -> Result<()> {
         "CREATE TABLE IF NOT EXISTS project_meta(
            key TEXT PRIMARY KEY, value TEXT NOT NULL
          );
-         INSERT INTO project_meta(key, value) VALUES ('version', '2')
-           ON CONFLICT(key) DO NOTHING;
          CREATE TABLE IF NOT EXISTS project_identities(
            registration_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
            project_id TEXT NOT NULL UNIQUE,
@@ -716,6 +714,15 @@ fn initialize_schema(connection: &mut Connection) -> Result<()> {
            digest TEXT NOT NULL,
            PRIMARY KEY(project_id, source_id)
          );",
+    )?;
+    // The recorded version comes from the constant the reader validates, so a
+    // store this process creates is a store the next process opens. The row is
+    // written once: an existing value is kept, so a database of an earlier
+    // unpublished shape is still refused by name rather than relabelled.
+    connection.execute(
+        "INSERT INTO project_meta(key, value) VALUES ('version', ?1)
+           ON CONFLICT(key) DO NOTHING",
+        params![PROJECT_STORE_SCHEMA_VERSION],
     )?;
     Ok(())
 }

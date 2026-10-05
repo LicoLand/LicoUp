@@ -267,12 +267,12 @@ export function inspectConversationContract(database, currentVersion) {
 export function inspectStrategyContract(database) {
   const reference = memoryDatabase();
   try {
-    const root = "crates/licoup-native/src/domain/workflow_store/";
+    const root = "crates/licoup-workflow-store/src/";
     const text = source(`${root}store.rs`);
     reference.exec(literal(text, "CREATE TABLE IF NOT EXISTS strategy_meta"));
     reference.exec(literal(text, "CREATE INDEX IF NOT EXISTS strategy_runs_active_conversation_idx"));
     const required = tableNames(reference);
-    for (const [file, anchor] of [["queue", "workflow_store_meta"], ["subscriptions", "workflow_subscriptions"], ["commit", "workflow_transition_intents"], ["control", "workflow_graph_state"]]) {
+    for (const [file, anchor] of [["queue", "workflow_store_meta"], ["subscriptions", "workflow_subscriptions"], ["commit", "workflow_transition_intents"], ["controlled", "workflow_graph_state"]]) {
       reference.exec(literal(source(`${root}${file}.rs`), `CREATE TABLE IF NOT EXISTS ${anchor}`));
     }
     const existing = tableNames(database);

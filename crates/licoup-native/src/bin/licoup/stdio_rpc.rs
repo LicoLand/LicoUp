@@ -18,6 +18,8 @@ mod model;
 mod request;
 #[path = "stdio_rpc/response.rs"]
 mod response;
+#[path = "stdio_rpc/selection.rs"]
+mod selection;
 #[path = "stdio_rpc/server.rs"]
 mod server;
 
@@ -27,4 +29,5 @@ pub(super) use line::*;
 pub(super) use model::*;
 pub(super) use request::*;
 pub(super) use response::*;
+pub(super) use selection::*;
 pub(super) use server::*;

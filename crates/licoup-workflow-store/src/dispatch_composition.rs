@@ -79,23 +79,53 @@ fn workflow() -> WorkflowDefinition {
                 workset: None,
                 retry: RetryPolicy::default(),
             },
+            GraphState {
+                id: "failed".into(),
+                kind: GraphStateKind::Fail,
+                label: "Failed".into(),
+                instruction: String::new(),
+                binding: None,
+                runtime: None,
+                entry: None,
+                workset: None,
+                retry: RetryPolicy::default(),
+            },
         ],
-        transitions: vec![Transition {
-            id: "done".into(),
-            from: "work".into(),
-            to: "done".into(),
-            event: TransitionEvent::Success,
-            mode: TransitionMode::Flow,
-            guard: None,
-        }],
+        // An effect state routes both of its outcomes: an actor effect that
+        // fails terminally has to have somewhere to go, which is why the
+        // validator requires the failure edge and why
+        // `normalize_legacy_workflow` repairs stored definitions that lack it.
+        transitions: vec![
+            Transition {
+                id: "done".into(),
+                from: "work".into(),
+                to: "done".into(),
+                event: TransitionEvent::Success,
+                mode: TransitionMode::Flow,
+                guard: None,
+            },
+            Transition {
+                id: "failed".into(),
+                from: "work".into(),
+                to: "failed".into(),
+                event: TransitionEvent::Failure,
+                mode: TransitionMode::Flow,
+                guard: None,
+            },
+        ],
     }
 }
 
 /// One authorized definition with one started run, through the real store.
 struct Fixture {
     store: StrategyStore,
-    revision: &'static str,
     run_id: String,
+    /// The authorization the store committed for this revision.
+    ///
+    /// The granted authorization is the authority a dispatch carries. A preview
+    /// taken afterwards projects the *next* authorization revision, so it names
+    /// a grant the store never recorded and can never fence an effect.
+    authorization_digest: String,
 }
 
 impl Fixture {
@@ -110,7 +140,7 @@ impl Fixture {
         let preview = store
             .authorization_preview(revision)
             .expect("an authorization preview");
-        store
+        let authorization = store
             .grant_authorization(revision, &preview.authorization_digest)
             .expect("the revision is authorized");
         let run = store
@@ -118,8 +148,8 @@ impl Fixture {
             .expect("the run starts");
         Self {
             store,
-            revision,
             run_id: run.run_id,
+            authorization_digest: authorization.authorization_digest,
         }
     }
 
@@ -180,11 +210,10 @@ impl Fixture {
     }
 
     /// The dispatch intent a host would build for this run's actor effect.
+    ///
+    /// It carries the authority the store committed, which is what this host's
+    /// own dispatch path reads back from the definition it authorized under.
     fn actor_intent(&self, command: &licoup_workflow::RunCommand) -> DispatchIntent {
-        let authorization = self
-            .store
-            .authorization_preview(self.revision)
-            .expect("the committed authorization reads back");
         DispatchIntent {
             run_id: self.run_id.clone(),
             command_id: command.id.clone(),
@@ -200,7 +229,7 @@ impl Fixture {
             state_id: command.state_id.clone(),
             state_visit: command.state_visit,
             input_digest: command.input_digest.clone(),
-            grant_digest: Some(authorization.authorization_digest),
+            grant_digest: Some(self.authorization_digest.clone()),
         }
     }
 }

@@ -17,6 +17,7 @@ import 'package:licoup/src/application/features/runtime_control/controller/work_
 import 'package:licoup/src/composition/dispose_all.dart';
 import 'package:licoup/src/composition/work_control_presentation.dart';
 import 'package:licoup/src/contracts/work_control_gateway.dart';
+import 'package:licoup/src/contracts/project_management.dart';
 import 'package:licoup/src/composition/features/agent_hub/agent_hub_feature_composition.dart';
 import 'package:licoup/src/composition/features/agents/agents_feature_composition.dart';
 import 'package:licoup/src/composition/features/chrome/chrome_feature_composition.dart';
@@ -25,6 +26,7 @@ import 'package:licoup/src/composition/features/mobile_relay/mobile_relay_featur
 import 'package:licoup/src/composition/features/models/models_feature_composition.dart';
 import 'package:licoup/src/composition/features/monitoring/monitoring_feature_composition.dart';
 import 'package:licoup/src/composition/features/plugin_management/plugin_management_feature_composition.dart';
+import 'package:licoup/src/composition/features/projects/projects_feature_composition.dart';
 import 'package:licoup/src/composition/features/search/search_feature_composition.dart';
 import 'package:licoup/src/composition/features/settings/settings_feature_composition.dart';
 import 'package:licoup/src/composition/features/skill_hub/skill_hub_feature_composition.dart';
@@ -42,6 +44,7 @@ import 'package:licoup/src/frontend/binding/presentation_observation.dart';
 import 'package:licoup/src/frontend/binding/causal_projection_source_registry.dart';
 import 'package:licoup/src/frontend/binding/shell_renderer_port.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/frontend/projects/project_plan_submission.dart';
 import 'package:licoup/src/frontend/shared/client_platform_ports.dart';
 import 'package:licoup/src/composition/client_platform_port_adapters.dart';
 import 'package:licoup/src/platform/agent_render_adapter/agent_render_adapter_service.dart';
@@ -55,6 +58,7 @@ import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
 import 'package:licoup/src/presentation/models/models_binding.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_binding.dart';
+import 'package:licoup/src/presentation/projects/projects_binding.dart';
 import 'package:licoup/src/presentation/search/search_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/shell/shell_binding.dart';
@@ -81,6 +85,8 @@ final class ClientAppComposition {
     Stream<bool>? systemReduceMotionChanges,
     ClientCompositionSet? compositionSet,
     WorkControlGateway? workControlGateway,
+    ProjectManagementGateway? projectGateway,
+    ProjectPlanSubmission? projectPlanSubmission,
   }) {
     final resolvedCompositionSet = compositionSet ?? ClientCompositionSet.full;
     final resolvedTelemetry = telemetry ?? createOptInCausalFrameTelemetry();
@@ -121,6 +127,12 @@ final class ClientAppComposition {
           (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS
               ? const MacosReduceMotionChannel().changes
               : const Stream<bool>.empty()),
+      // The project owner lane. The production gateway lives in the platform
+      // layer and is injected here once it exists; until then the mount keeps
+      // the fail-closed lane, which refuses every read and every submission
+      // instead of presenting an empty project list as a read fact.
+      projectGateway ?? const UnboundProjectManagementGateway(),
+      projectPlanSubmission ?? const UnconvertedProjectPlan(),
     );
   }
 
@@ -181,7 +193,10 @@ final class ClientAppComposition {
     this.compositionSet,
     WorkControlGateway workControlGateway,
     Stream<bool> systemReduceMotionChanges,
+    ProjectManagementGateway projectGateway,
+    ProjectPlanSubmission projectPlanSubmission,
   ) : _projectionTracing = CausalProjectionSourceRegistry(telemetry),
+      _projectPlanSubmission = projectPlanSubmission,
       _workControl = WorkControlController(gateway: workControlGateway) {
     _workControlPresentation = WorkControlPresentation(_workControl);
     final beginRendererIntent = telemetry?.beginRendererIntent;
@@ -271,6 +286,10 @@ final class ClientAppComposition {
     );
     _targets = TargetsFeatureComposition(
       _controller,
+      beginRendererIntent: beginRendererIntent,
+    );
+    _projects = ProjectsFeatureComposition(
+      projectGateway,
       beginRendererIntent: beginRendererIntent,
     );
     _search = SearchFeatureComposition(
@@ -374,6 +393,17 @@ final class ClientAppComposition {
       intents: rawTargets.intents,
       effects: rawTargets.effects,
     );
+    final rawProjects = _projects.binding;
+    projects = mounted(
+      compositionSet.projects,
+      () => ProjectsBinding(
+        projection: _projectionTracing.wrap(rawProjects.projection),
+        layout: _projectionTracing.wrap(rawProjects.layout),
+        intents: rawProjects.intents,
+        layoutMutations: rawProjects.layoutMutations,
+        effects: rawProjects.effects,
+      ),
+    );
     final rawSearch = _search.binding;
     search = mounted(
       compositionSet.search,
@@ -420,6 +450,8 @@ final class ClientAppComposition {
       workspaceHomeDirectory: userHomeDirectory(),
       clientUpdateAdmission: () => _controller.clientUpdateStatus.admission,
       workControl: _workControlPresentation,
+      projects: projects,
+      projectPlanSubmission: _projectPlanSubmission,
     );
     renderer = _renderer;
   }
@@ -438,6 +470,10 @@ final class ClientAppComposition {
   final PresentationObservation? telemetry;
   final CausalProjectionSourceRegistry _projectionTracing;
 
+  /// The caller-converted plan document the project surface may submit, or the
+  /// explicit absence of one.
+  final ProjectPlanSubmission _projectPlanSubmission;
+
   /// The declaration naming every feature composition this client owns.
   final ClientCompositionSet compositionSet;
   late final ShellProjectionProducer _shellProjection;
@@ -454,6 +490,7 @@ final class ClientAppComposition {
   late final PluginManagementFeatureComposition _pluginManagement;
   late final AgentHubFeatureComposition _agentHub;
   late final TargetsFeatureComposition _targets;
+  late final ProjectsFeatureComposition _projects;
   late final SearchFeatureComposition _search;
   late final ChromeFeatureComposition _chrome;
   late final SettingsFeatureComposition _settings;
@@ -469,6 +506,10 @@ final class ClientAppComposition {
   late final PluginManagementBinding? pluginManagement;
   late final AgentHubBinding? agentHub;
   late final TargetsBinding targets;
+
+  /// The project canvas binding, present exactly while the projects mount is
+  /// declared enabled.
+  late final ProjectsBinding? projects;
   late final SearchBinding? search;
   late final ChromeBinding chrome;
 
@@ -594,6 +635,7 @@ final class ClientAppComposition {
       _settings.dispose,
       _chrome.close,
       _search.close,
+      _projects.dispose,
       _targets.dispose,
       _agentHub.dispose,
       _pluginManagement.dispose,

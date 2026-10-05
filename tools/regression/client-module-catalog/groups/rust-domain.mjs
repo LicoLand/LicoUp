@@ -347,6 +347,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/agent_usage/contract.rs",
         "crates/licoup-native/src/domain/agent_usage/incremental.rs",
         "crates/licoup-native/src/domain/agent_usage/model_identity.rs",
+        "crates/licoup-native/src/domain/agent_usage/outcome_producer.rs",
         "crates/licoup-native/src/domain/agent_usage/persistence.rs",
         "crates/licoup-native/src/domain/agent_usage/tests.rs",
         "crates/licoup-native/src/domain/agent_usage/usage_journal.rs",
@@ -3046,7 +3047,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/resources/state-machines/update-handoff.json",
         "crates/licoup-native/src/domain/work_admission/**",
-        "crates/licoup-native/src/domain/workflow_store/admission.rs",
+        "crates/licoup-workflow-store/src/admission.rs",
         "crates/licoup-conversation/src/store/admission.rs",
       ],
       command: rustLayer("domain::work_admission::tests::"),
