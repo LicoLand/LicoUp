@@ -13,13 +13,13 @@
 
 use super::super::acp_driver_runtime::{CapabilityProbe, RunResult};
 use super::super::local_service;
-use super::{KILO_CODE_DRIVER, RUNTIME_PROTOCOL, policy};
+use super::{KILO_CODE_DRIVER, RUNTIME_PROTOCOL};
 use licoup_agent_kilo::driver::{self, ServeTurnConfig};
 use serde_json::Value;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-pub(super) fn execute(
+pub(in crate::platform) fn execute(
     executable: &str,
     params: &Value,
     prompt: &str,
@@ -39,8 +39,10 @@ pub(super) fn execute(
         return failed(driver::protocol::unavailable_failure(), started_at);
     }
 
-    let attachment = match local_service::serve::ensure_attachment(policy::serve_spec(), executable)
-    {
+    let attachment = match local_service::serve::ensure_attachment(
+        super::super::kilo_code_host::kilo_serve_spec(),
+        executable,
+    ) {
         Ok(attachment) => attachment,
         Err(error) => {
             return failed(
@@ -132,7 +134,7 @@ fn turn_registration_key(config: &ServeTurnConfig) -> &str {
 /// The code, the message and the stage are the package's own; only the type
 /// changes, because the client's driver table reads its own shape.
 fn failed(failure: driver::ProtocolFailure, started_at: String) -> RunResult {
-    let failure = failure.namespaced(KILO_CODE_DRIVER);
+    let failure = super::probe::failure_to_client(failure).namespaced(KILO_CODE_DRIVER);
     let transitions = licoup_agent_kilo::parser::failure_transitions(
         &failure.code,
         failure.stage,

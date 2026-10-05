@@ -39,8 +39,13 @@ pub(super) const RUNTIME_PROTOCOL: &str = licoup_agent_kilo::driver::RUNTIME_PRO
 pub(crate) const CONTROL_SPEC: super::local_service::ServeSpec =
     super::kilo_code_host::CONTROL_SPEC;
 
-pub(crate) use execution::execute;
-pub(crate) use probe::capability_probe;
+/// The two engine entries the driver table reads.
+///
+/// The re-export is at the width of its readers — the driver table and force
+/// stop, both inside this layer — and no wider, so the visibility it carries is
+/// the visibility the definitions carry.
+pub(in crate::platform) use execution::execute;
+pub(in crate::platform) use probe::capability_probe;
 
 /// Reach the endpoint's active turn for force stop.
 ///
