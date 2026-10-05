@@ -5,10 +5,11 @@ import test from 'node:test';
 // The thirteen per-Agent parsers and the composition that names them stay in the
 // host until that Agent's own package owns the protocol; the shared adapter
 // contract, the registry lookup, the replay harness and the lifecycle authority
-// moved to `licoup-agent-adapter-sdk`. Seven Agents have moved further: their
+// moved to `licoup-agent-adapter-sdk`. Thirteen Agents have moved further: their
 // vendor protocol, wire vocabulary, parser declaration and replay arm are their
 // own package's, and the composition names the package instead of keeping a
-// second copy.
+// second copy. Everything below is derived from the two maps, so adding the
+// next Agent's package changes a map and not a count.
 const parserRoot = 'crates/licoup-native/src/platform/native_agent_parser';
 const compositionRoot = `${parserRoot}/adapters`;
 const sdkRoot = 'crates/licoup-agent-adapter-sdk/src';
@@ -24,7 +25,6 @@ const adapters = [
   'kilo_code',
   'kimi_code',
   'openclaw',
-  'opencode',
   'pi',
   'lico_agent',
   'deepseek_harness',
@@ -80,12 +80,66 @@ const packaged = {
     contractId: 'deepseek-harness',
     readsParser: false,
   },
+  hermes: {
+    crate: 'licoup_agent_hermes',
+    module: 'parser',
+    source: 'crates/licoup-agent-hermes/src/parser.rs',
+    contractId: 'hermes',
+    readsParser: false,
+  },
+  kilo_code: {
+    crate: 'licoup_agent_kilo',
+    module: 'parser',
+    source: 'crates/licoup-agent-kilo/src/parser/mod.rs',
+    contractId: 'kilo-code',
+    readsParser: false,
+  },
   kimi_code: {
     crate: 'licoup_agent_kimi',
     module: 'parser',
     source: 'crates/licoup-agent-kimi/src/parser.rs',
     contractId: 'kimi-code',
     readsParser: false,
+  },
+  lico_agent: {
+    crate: 'licoup_agent_lico_agent',
+    module: 'parser',
+    source: 'crates/licoup-agent-lico-agent/src/parser.rs',
+    contractId: 'lico-agent',
+    readsParser: false,
+  },
+  openclaw: {
+    crate: 'licoup_agent_openclaw',
+    module: 'parser',
+    source: 'crates/licoup-agent-openclaw/src/parser.rs',
+    contractId: 'openclaw',
+    readsParser: false,
+  },
+  opencode: {
+    crate: 'licoup_agent_opencode',
+    module: 'parser',
+    source: 'crates/licoup-agent-opencode/src/parser.rs',
+    contractId: 'opencode',
+    readsParser: true,
+  },
+  pi: {
+    crate: 'licoup_agent_pi',
+    module: 'parser',
+    source: 'crates/licoup-agent-pi/src/parser.rs',
+    contractId: 'pi',
+    readsParser: true,
+  },
+};
+
+// The one Agent whose normalized transitions the host reads through the SDK's
+// query rather than from its own execution result: Hermes reports no transition
+// list with a turn, so the package that owns its parser owns that answer, and a
+// fail-closed identity stays beside it. The fact is asserted on the package the
+// composition names, because that is where the answer now lives.
+const packagedAnswers = {
+  hermes: {
+    registration: 'crates/licoup-agent-hermes/src/registration.rs',
+    answers: ['execution_transitions', 'no_identity'],
   },
 };
 
@@ -114,16 +168,17 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
     (registrations.match(/licoup_agent_\w+::registration::REGISTRATION/g) ?? []).length;
   assert.equal(hostedEntries + packageEntries, 13);
   assert.equal(packageEntries, Object.keys(packaged).length);
-  // The queries a reader reaches are answered by the Agent that owns the fact:
-  // Hermes' normalized transitions, and the exact-resume identity of the Agents
-  // the Subagent mesh dispatches. Every other entry stays declared and
-  // unanswered rather than inheriting a neighbouring Agent's answer, and a
-  // package entry answers from the package's own evidence.
-  const answered = {
-    hermes: ['hermes_transitions', 'no_identity'],
-  };
+  // No entry this composition still holds answers a protocol-agnostic query:
+  // Hermes' normalized transitions moved with its parser into the package that
+  // owns them (asserted below), the Agents the Subagent mesh dispatches answer
+  // their identity from their own packages, and every remaining host-held entry
+  // reports its transitions with its own execution result and stays fail-closed
+  // on identity rather than inheriting a neighbouring Agent's answer.
+  const answered = {};
   // One entry per Agent, so a per-Agent answer is read from its own entry
   // rather than from a neighbouring one that happens to name the same helper.
+  // A moved Agent's entry is its package's registration constant, which the
+  // package's own suite proves answers both queries.
   const entries = new Map();
   for (const chunk of registrations.split('    ParserRegistration::').slice(1)) {
     const contract = chunk.match(/(\w+)::CONTRACT/);
@@ -159,6 +214,17 @@ test('packaged adapter registry is bijective with the thirteen-entry inventory',
       const alias = `use ${moved.crate}::${moved.module} as ${adapter};`;
       assert.equal(composition.includes(alias), readParserAliases.has(adapter),
         `${adapter} composes \`${alias}\` exactly where production reads its parser`);
+      // The answer travels with the parser as well: the package's own
+      // registration is the one that answers, and it answers with its own
+      // functions rather than inheriting the SDK's fail-closed default.
+      const packagedAnswer = packagedAnswers[adapter];
+      if (packagedAnswer) {
+        const registration = readFileSync(packagedAnswer.registration, 'utf8');
+        assert.match(registration, /ParserRegistration::new\(/u);
+        for (const answer of packagedAnswer.answers) {
+          assert.match(registration, new RegExp(`\\b${answer}\\b`, 'u'));
+        }
+      }
       continue;
     }
     assert.match(composition, new RegExp(`mod ${adapter};`));
@@ -243,23 +309,47 @@ test('serve HTTP and SSE frames decode only in target parser components', () => 
   );
   assert.doesNotMatch(neutralServe, /message\.updated|message\.part\.updated|serde_json::from_str/);
 
-  for (const adapter of ['opencode', 'kilo_code']) {
-    const parser = readFileSync(`${parserRoot}/adapters/${adapter}.rs`, 'utf8');
-    assert.match(parser, /struct ServeEventParser/);
-    assert.match(parser, /fn session_id/);
-    assert.match(parser, /fn message/);
-    assert.match(parser, /message\.part\.updated/);
-  }
+  // Kilo Code's parser moved into its own package, so its protocol text is read
+  // from the package root; OpenCode's moved the same way, so its protocol text is
+  // read from the file the package table records rather than from a host copy
+  // that the composition check above would fail.
+  const kiloParser = readFileSync(
+    'crates/licoup-agent-kilo/src/parser/serve.rs',
+    'utf8',
+  );
+  assert.match(kiloParser, /struct ServeEventParser/);
+  assert.match(kiloParser, /message\.part\.updated/);
+  const kiloProtocol = readFileSync('crates/licoup-agent-kilo/src/parser/mod.rs', 'utf8');
+  assert.match(kiloProtocol, /fn session_id/);
+  assert.match(kiloProtocol, /fn message/);
+  const openCodeParser = readFileSync(packaged.opencode.source, 'utf8');
+  assert.match(openCodeParser, /struct ServeEventParser/);
+  assert.match(openCodeParser, /fn session_id/);
+  assert.match(openCodeParser, /fn message/);
+  assert.match(openCodeParser, /message\.part\.updated/);
   const openCodeTransport = readFileSync(
     'crates/licoup-native/src/platform/opencode_driver/serve_transport.rs',
     'utf8',
   );
+  // The client's Kilo turn is the composition that asks the package to perform
+  // it, not a transport that classifies frames of its own.
   const kiloTransport = readFileSync(
-    'crates/licoup-native/src/platform/kilo_code_driver/transport.rs',
+    'crates/licoup-native/src/platform/kilo_code_driver/execution.rs',
     'utf8',
   );
+  // The host's transport reads the package's parser through the composition's
+  // own name for it, so the frames are classified once and below this port.
+  const composition = readFileSync(`${compositionRoot}/mod.rs`, 'utf8');
   assert.match(openCodeTransport, /adapters::opencode as serve_parser/);
-  assert.match(kiloTransport, /adapters::kilo_code as serve_parser/);
+  // The composition names the package's parser as `opencode`, which is the name
+  // the host's own transport reads the frames by.
+  assert.match(
+    composition,
+    new RegExp(`use ${packaged.opencode.crate}::parser as opencode;`),
+  );
+  // The client's Kilo turn reads the package's own parser rather than a local
+  // copy, which is what makes the corpus a statement about the shipped ingress.
+  assert.match(kiloTransport, /driver::execute_via_serve|licoup_agent_kilo/);
 });
 
 test('Cursor PTY isolation precedes its strict NDJSON parser', () => {

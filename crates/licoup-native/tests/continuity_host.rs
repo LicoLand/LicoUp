@@ -7341,3 +7341,95 @@ fn after_state_write_keeps_pending_and_recover_completes_once() {
         "recovery must apply the interrupted agreement once"
     );
 }
+
+/// WAKE-RECOVERY: a Goal that is waiting on a dependency has no decision to
+/// make when a reminder comes due. The reminder is filtered deterministically
+/// instead of buying a model call, the responsibility and its revision survive,
+/// and pause, resume and cancel stay reachable.
+#[test]
+fn waiting_goal_reminder_is_filtered_without_a_model_call_and_keeps_its_controls() {
+    let root = std::env::temp_dir().join(format!("lico-ca-wait-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    let service = ConversationService::open(&root).unwrap();
+    service.claim_continuity_owner().unwrap();
+    let host = service.continuity().cloned().unwrap();
+    let (conversation_id, owner, _) = create_group(&service);
+    host.install_script(durable_script("", "matter:wait"));
+    let posted = post(&service, &conversation_id, &owner, "prepare notes");
+    after_post(&service, &conversation_id, &posted);
+    let relation = first_relation(&host, &conversation_id);
+    let goal_id = relation.goal_id.clone();
+    apply_goal_control(
+        host.store(),
+        &conversation_id,
+        &goal_id,
+        ContinuityGoalEvent::NamedWait,
+    )
+    .unwrap();
+    let waiting = read_goal(host.store(), &goal_id)
+        .unwrap()
+        .expect("admitted goal");
+    assert_eq!(waiting.lifecycle, ContinuityGoalLifecycle::Waiting);
+
+    set_continuity_clock(Some(1_000));
+    // The first drain settles the admission reminder for a waiting Goal.
+    let admission = service.attend_due().unwrap();
+    assert_eq!(
+        admission["noOps"][0]["reason"].as_str(),
+        Some("dependency-wait"),
+        "a waiting Goal's reminder is filtered, not reviewed: {admission}"
+    );
+    // A due reminder for the same revision must be filtered as well.
+    host.schedule_review(&conversation_id, &goal_id, 1).unwrap();
+    let before = host.cognition_invocation_count();
+    let drain = service.attend_due().unwrap();
+    assert_eq!(
+        host.cognition_invocation_count(),
+        before,
+        "a reminder that repeats recorded sources must not call a model: {drain}"
+    );
+    assert!(
+        drain["noOps"]
+            .as_array()
+            .is_some_and(|items| items
+                .iter()
+                .any(|item| item["reason"].as_str() == Some("dependency-wait"))),
+        "the reminder must be reported as a deterministic no-op: {drain}"
+    );
+    set_continuity_clock(None);
+
+    let retained = read_goal(host.store(), &goal_id)
+        .unwrap()
+        .expect("the responsibility survives its reminder");
+    assert_eq!(retained.lifecycle, ContinuityGoalLifecycle::Waiting);
+    assert_eq!(retained.revision, waiting.revision);
+    assert_eq!(retained.control, ContinuityGoalControl::Enabled);
+    assert!(
+        retained.next_attention.is_some(),
+        "the Goal keeps the attention it is waiting on"
+    );
+
+    // A stop stays reachable after the filtered reminder.
+    host.pause_goal(&conversation_id, &goal_id).unwrap();
+    assert_eq!(
+        read_goal(host.store(), &goal_id).unwrap().unwrap().control,
+        ContinuityGoalControl::Paused
+    );
+    host.resume_goal(&conversation_id, &goal_id).unwrap();
+    host.request_cancel(&conversation_id, &goal_id).unwrap();
+    assert_eq!(
+        read_goal(host.store(), &goal_id).unwrap().unwrap().control,
+        ContinuityGoalControl::CancelRequested
+    );
+
+    // A reopened host retains the same unfinished responsibility.
+    drop(service);
+    let reopened = ConversationService::open(&root).unwrap();
+    let reopened_host = reopened.continuity().cloned().unwrap();
+    let after_restart = read_goal(reopened_host.store(), &goal_id)
+        .unwrap()
+        .expect("restart retains the unfinished responsibility");
+    assert_eq!(after_restart.lifecycle, ContinuityGoalLifecycle::Waiting);
+    assert_eq!(after_restart.control, ContinuityGoalControl::CancelRequested);
+    let _ = std::fs::remove_dir_all(&root);
+}

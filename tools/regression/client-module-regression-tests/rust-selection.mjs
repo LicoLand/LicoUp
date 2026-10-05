@@ -8,7 +8,7 @@ import {
   sourceFiles,
 } from "./support.mjs";
 
-test("workflow changes select the pure crate and its native integration", async () => {
+test("workflow changes select the pure crate and both extracted owners", async () => {
   const sources = await sourceFiles("crates/licoup-workflow/src", ".rs");
   assert.ok(sources.length > 0);
   for (const source of sources) {
@@ -16,7 +16,22 @@ test("workflow changes select the pure crate and its native integration", async 
       "architecture.client-boundaries",
       "rust.core.workflow",
       "rust.domain.adaptive-flywheel",
+      "rust.domain.adaptive-flywheel.store",
     ]);
+  }
+});
+
+test("the extracted workflow owners select their own modules", async () => {
+  for (const [directory, owner] of [
+    ["crates/licoup-workflow-runtime/src", "rust.domain.adaptive-flywheel"],
+    ["crates/licoup-workflow-store/src", "rust.domain.adaptive-flywheel.store"],
+  ]) {
+    const sources = await sourceFiles(directory, ".rs");
+    assert.ok(sources.length > 0, directory);
+    for (const source of sources) {
+      const selected = ids(selectModulesForChangedPaths([source]));
+      assert.ok(selected.includes(owner), `${source} must select ${owner}`);
+    }
   }
 });
 
@@ -224,6 +239,8 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "--",
     "tests::rpc::",
     "stdio_rpc::server::conversation::",
+    "stdio_rpc::server::work_control_routing_tests::",
+    "stdio_rpc::request::work_control_routing_tests::",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/mcp_adapter/plan.rs",

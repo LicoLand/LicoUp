@@ -205,6 +205,7 @@ final class ClientAppComposition {
     _shellProjection = ShellProjectionProducer(
       appearance: _controller.appearancePreferenceOwner,
       locale: _controller.localePreferenceOwner,
+      localeResources: _controller.localeResourceOwner,
       status: _controller.functionalStatusRuntime,
       navigation: _controller.navigationController,
       layoutManager: _controller.layoutManager,

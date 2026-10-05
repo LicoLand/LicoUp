@@ -1,3 +1,17 @@
+// The OpenClaw adapter's source split, across the client and its package.
+//
+// OpenClaw's protocol vocabulary moved into `crates/licoup-agent-openclaw`: the
+// Gateway ACP state machine, the byte-line codec, the allowlisted update
+// projection, the run and failure vocabulary, the session continuity binding and
+// the request validation. The client keeps the process half — the reviewed
+// bounded capability probe, the Gateway attach, the bounded transport and the
+// cleanup — and re-exports each moved leaf at its former path.
+//
+// This contract states that split: the client facade binds its own process
+// leaves and no copy of the protocol, every moved leaf is one re-export of the
+// package that owns it, the package reaches no client crate, and the process
+// half still carries the fixed Gateway ACP lane, exact continuity, bounded IO,
+// cleanup and privacy the client has always required.
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -9,20 +23,46 @@ const repoRoot = path.resolve(
   "../../..",
 );
 const driverRoot = "crates/licoup-native/src/platform/openclaw_driver";
-const parserRoot =
-  "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw";
+const packageRoot = "crates/licoup-agent-openclaw/src";
 
+/// The leaves the client still composes: the process half plus the re-export
+/// shims that keep the driver on one name.
 const driverLeaves = Object.freeze([
+  "codec.rs",
   "continuity.rs",
   "errors.rs",
+  "events.rs",
   "execution.rs",
   "io.rs",
   "model.rs",
   "params.rs",
   "probe.rs",
+  "protocol.rs",
   "supervision.rs",
 ]);
+
+/// The leaves the package now owns.
 const parserLeaves = Object.freeze(["codec.rs", "events.rs", "protocol.rs"]);
+const vocabularyLeaves = Object.freeze([
+  "continuity.rs",
+  "errors.rs",
+  "model.rs",
+  "params.rs",
+]);
+
+/// The client leaves that re-export a package module rather than implement it.
+const shimLeaves = Object.freeze([
+  "codec.rs",
+  "continuity.rs",
+  "errors.rs",
+  "events.rs",
+  "model.rs",
+  "params.rs",
+  "protocol.rs",
+]);
+
+/// The client leaves that are still the reviewed process implementation.
+const processLeaves = Object.freeze(["execution.rs", "io.rs", "probe.rs", "supervision.rs"]);
 
 async function read(relativePath) {
   return fs.readFile(path.join(repoRoot, relativePath), "utf8");
@@ -36,20 +76,23 @@ async function sources() {
     ]),
     ...parserLeaves.map(async (leaf) => [
       `parser/${leaf}`,
-      await read(`${parserRoot}/${leaf}`),
+      await read(`${packageRoot}/parser/${leaf}`),
     ]),
+    ["parser/root.rs", await read(`${packageRoot}/parser.rs`)],
+    ...vocabularyLeaves.map(async (leaf) => [
+      `vocabulary/${leaf}`,
+      await read(`${packageRoot}/gateway_acp/${leaf}`),
+    ]),
+    ["gateway_acp.rs", await read(`${packageRoot}/gateway_acp.rs`)],
+    ["gateway_acp/contract.rs", await read(`${packageRoot}/gateway_acp/contract.rs`)],
+    ["gateway.rs", await read(`${packageRoot}/gateway.rs`)],
   ]));
 }
 
-test("OpenClaw facade routes decoding leaves to the parser boundary", async () => {
+test("OpenClaw facade binds its process leaves and re-exports the package protocol", async () => {
   const facade = await read(`${driverRoot}.rs`);
   for (const leaf of driverLeaves) {
     assert.ok(facade.includes(`mod ${leaf.replace(".rs", "")};`));
-  }
-  for (const leaf of parserLeaves) {
-    const moduleName = leaf.replace(".rs", "");
-    assert.ok(facade.includes(`native_agent_parser/adapters/openclaw/${leaf}`));
-    assert.ok(facade.includes(`mod ${moduleName};`));
   }
   for (const implementationToken of [
     "struct OpenClawProtocol",
@@ -57,16 +100,51 @@ test("OpenClaw facade routes decoding leaves to the parser boundary", async () =
     "Command::new",
     "fn run_protocol_loop",
     "include!(",
+    "#[path",
   ]) {
     assert.equal(facade.includes(implementationToken), false);
+  }
+  for (const leaf of shimLeaves) {
+    const shim = await read(`${driverRoot}/${leaf}`);
+    assert.ok(
+      shim.includes("licoup_agent_openclaw"),
+      `${leaf} must re-export the package that owns it`,
+    );
+    for (const owned of [
+      "struct OpenClawProtocol",
+      "impl ProtocolConfig",
+      "struct SessionBinding",
+      "Command::new",
+      "include!(",
+      "#[path",
+    ]) {
+      assert.equal(
+        shim.includes(owned),
+        false,
+        `${leaf} must not keep a second implementation`,
+      );
+    }
+  }
+  for (const leaf of processLeaves) {
+    const source = await read(`${driverRoot}/${leaf}`);
+    assert.equal(
+      source.includes("licoup_agent_openclaw"),
+      false,
+      `${leaf} is client process code and must not become a package re-export`,
+    );
   }
 });
 
 test("OpenClaw retains one fixed Gateway ACP lane without shell fallback", async () => {
   const source = await sources();
   const joined = Object.values(source).join("\n");
-  assert.ok(source["driver/model.rs"].includes(
+  assert.ok(source["vocabulary/model.rs"].includes(
     'RUNTIME_PROTOCOL: &str = "openclaw-acp-stdio-jsonrpc"',
+  ));
+  // The published format identity the release declaration names is declared
+  // once, in the package, beside the protocol it describes.
+  assert.ok(source["gateway_acp/contract.rs"].includes(
+    'PROTOCOL_FORMAT: &str = "openclaw.gateway-acp.v1"',
   ));
   assert.ok(source["driver/supervision.rs"].includes(
     'ATTACH_ARGS_PREFIX: &[&str] = &["acp", "--url"]',
@@ -89,8 +167,8 @@ test("OpenClaw retains one fixed Gateway ACP lane without shell fallback", async
 
 test("OpenClaw continuity keeps protocol and resumable Gateway identities exact", async () => {
   const source = await sources();
-  const continuity = source["driver/continuity.rs"];
-  const params = source["driver/params.rs"];
+  const continuity = source["vocabulary/continuity.rs"];
+  const params = source["vocabulary/params.rs"];
   for (const token of [
     "SessionBinding",
     "capture_opening_update",
@@ -103,6 +181,15 @@ test("OpenClaw continuity keeps protocol and resumable Gateway identities exact"
   }
   assert.ok(params.includes('meta.insert("sessionKey"'));
   assert.ok(params.includes('meta.insert("requireExisting"'));
+  // The one client fact the package may not reach arrives as an explicit lazy
+  // argument, so the package names no client crate for it.
+  assert.ok(params.includes("local_mcp"));
+  assert.equal(params.includes("crate::domain"), false);
+  assert.equal(params.includes("acp_servers_for_runtime"), false);
+  assert.ok(
+    source["driver/params.rs"].includes('acp_servers_for_runtime("openclaw")'),
+    "the client answers the MCP registration at its own boundary",
+  );
 });
 
 test("OpenClaw IO, cleanup, events, and errors stay bounded and non-projecting", async () => {
@@ -120,7 +207,7 @@ test("OpenClaw IO, cleanup, events, and errors stay bounded and non-projecting",
   ]) {
     assert.ok(joined.includes(token), `missing OpenClaw lifecycle token: ${token}`);
   }
-  assert.ok(source["driver/errors.rs"].includes("message: &'static str"));
+  assert.ok(source["vocabulary/errors.rs"].includes("message: &'static str"));
   assert.ok(source["parser/events.rs"].includes("projected_event"));
   assert.ok(source["parser/protocol.rs"].includes("handle_frame"));
   assert.equal(source["driver/io.rs"].includes("decode_message"), false);
@@ -137,10 +224,21 @@ test("OpenClaw IO, cleanup, events, and errors stay bounded and non-projecting",
   }
 });
 
-test("OpenClaw split contains no production unsafe or hidden compatibility include", async () => {
+test("OpenClaw split contains no production unsafe or client reach from the package", async () => {
   const source = await sources();
   const joined = Object.values(source).join("\n");
   assert.equal(joined.includes("unsafe {"), false);
   assert.equal(joined.includes("include!("), false);
   assert.equal(joined.includes("#[path"), false);
+  const packageOnly = Object.entries(source)
+    .filter(([key]) => !key.startsWith("driver/"))
+    .map(([, value]) => value)
+    .join("\n");
+  for (const clientReach of ["licoup_native", "crate::platform", "crate::domain"]) {
+    assert.equal(
+      packageOnly.includes(clientReach),
+      false,
+      `the OpenClaw adapter package must not reach the client: ${clientReach}`,
+    );
+  }
 });

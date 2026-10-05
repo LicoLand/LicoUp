@@ -1,7 +1,7 @@
 //! Production effect delivery and the live runtime Agent profile.
 //!
 //! Nothing here is a second executor. [`LaneEffectDispatch`] calls the same
-//! `dispatch_lane_operation` entry the strategy actor effect already calls, and
+//! agent-execution port entry the strategy actor effect already calls, and
 //! [`RuntimeRegistryAgentProfiles`] reads the hot-reloadable driver registry
 //! instead of a compiled-in vendor table: an effect consumes whatever dynamic
 //! instance the profile describes for the agent id it was given.
@@ -100,7 +100,7 @@ impl EffectDispatch for LaneEffectDispatch {
                 }
             }
         }
-        let response = match crate::platform::dispatch_lane_operation("send", &params) {
+        let response = match crate::agent_port::send(&params) {
             Ok(value) => value,
             Err(_) => {
                 return EffectDelivery::unconfirmed(
@@ -137,7 +137,7 @@ impl EffectDispatch for LaneEffectDispatch {
         if let Some(instruction) = instruction {
             params["text"] = Value::String(instruction.to_owned());
         }
-        let response = match crate::platform::dispatch_lane_operation(operation, &params) {
+        let response = match crate::agent_port::dispatch(operation, &params) {
             Ok(value) => value,
             Err(_) => {
                 // The lane call failed. That alone cannot establish whether the

@@ -117,12 +117,10 @@
       ]
     },
     "optional_capabilities_in_packaging": {
-      "bundled_bindings": 4,
+      "bundled_bindings": 2,
       "bindings": [
         "org.licoland.feature.channels -> gateway-sidecar",
-        "org.licoland.feature.gateway -> gateway-sidecar",
-        "org.licoland.feature.mcp -> codex-plugin",
-        "org.licoland.feature.mcp -> subagents-mcp"
+        "org.licoland.feature.gateway -> gateway-sidecar"
       ],
       "unknown_optional_packages": [],
       "undeclared_bindings": []
@@ -160,7 +158,7 @@
         "crates/licoup-agent-targets/src/platform/user_shell_environment.rs::3fd93d50e8fa::7512f45c563c7622d78b",
         "crates/licoup-agent-targets/src/platform/user_shell_environment.rs::cb586647e84a::a4f3c11f76511fc11348",
         "crates/licoup-foundation/src/platform/process_supervisor.rs::0ed976fe744e::39d495e3a5bcbf5e1be2",
-        "crates/licoup-mcp/src/application.rs::df6167de50f6::23dd96d259caf77d2166",
+        "crates/licoup-mcp/src/application.rs::c87e251bea3b::bf0af9c0f6fbd1cf7ba4",
         "crates/licoup-migrate/src/converter_process.rs::b9b764e7cf4a::4a3ed4ba44991de74d56",
         "crates/licoup-native/src/domain/agent_hub/argv.rs::db471ee64ae2::104bf6e9e333863b26bb",
         "crates/licoup-native/src/domain/agent_hub/version_check.rs::599a57a1fc1d::188d88740e20deb3200d",
@@ -230,7 +228,7 @@
         "crates/licoup-agent-targets/src/platform/user_shell_environment.rs::3fd93d50e8fa::7512f45c563c7622d78b",
         "crates/licoup-agent-targets/src/platform/user_shell_environment.rs::cb586647e84a::a4f3c11f76511fc11348",
         "crates/licoup-foundation/src/platform/process_supervisor.rs::0ed976fe744e::39d495e3a5bcbf5e1be2",
-        "crates/licoup-mcp/src/application.rs::df6167de50f6::23dd96d259caf77d2166",
+        "crates/licoup-mcp/src/application.rs::c87e251bea3b::bf0af9c0f6fbd1cf7ba4",
         "crates/licoup-migrate/src/converter_process.rs::b9b764e7cf4a::4a3ed4ba44991de74d56",
         "crates/licoup-native/src/domain/agent_hub/argv.rs::db471ee64ae2::104bf6e9e333863b26bb",
         "crates/licoup-native/src/domain/agent_hub/version_check.rs::599a57a1fc1d::188d88740e20deb3200d",

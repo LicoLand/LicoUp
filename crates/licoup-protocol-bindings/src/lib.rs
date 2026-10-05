@@ -31,12 +31,19 @@
 //! geometry, the version contract, and caller-owned ports stay unblocked.
 
 mod admission;
+mod durable_obligation;
 mod inbound;
 pub mod licoarc_relay;
 mod padding;
 mod version;
 
 pub use admission::{AUTHORIZATION_REQUIRED, AdmissionRefusal, AuthorityInput};
+pub use durable_obligation::{
+    AdmittedObligation, DEFAULT_PRE_ADMISSION_BUDGET_BYTES,
+    DEFAULT_PRE_ADMISSION_RETENTION_SECONDS, DURABLE_OBLIGATION_SCHEMA, DeliveryOutcome,
+    DurableObligationRecord, ObligationId, ObligationLedger, ObligationLimits,
+    PreAdmissionRefusal, Settled, SettlementRefusal, SweepOutcome,
+};
 pub use inbound::{
     AuthorFact, DeviceFact, EndpointConsumer, InboundRefusal, InboundSession, PermissionFact,
     ReplayIdentity, TrustFacts, UserRead,

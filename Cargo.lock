@@ -2172,6 +2172,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-agent-hermes"
+version = "0.1.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
+ "licoup-agent-hermes",
+ "licoup-extension-contracts",
+ "licoup-foundation",
+ "serde_json",
+]
+
+[[package]]
+name = "licoup-agent-kilo"
+version = "0.14.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-extension-contracts",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "licoup-agent-kimi"
 version = "0.1.0"
 dependencies = [
@@ -2181,6 +2203,51 @@ dependencies = [
  "licoup-extension-contracts",
  "licoup-foundation",
  "serde_json",
+]
+
+[[package]]
+name = "licoup-agent-lico-agent"
+version = "0.14.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-extension-contracts",
+ "licoup-foundation",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "licoup-agent-openclaw"
+version = "0.14.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-agent-targets",
+ "licoup-extension-contracts",
+ "licoup-foundation",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "licoup-agent-opencode"
+version = "0.14.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-agent-drivers",
+ "licoup-extension-contracts",
+ "serde_json",
+]
+
+[[package]]
+name = "licoup-agent-pi"
+version = "0.14.0"
+dependencies = [
+ "licoup-agent-adapter-sdk",
+ "licoup-extension-contracts",
+ "licoup-foundation",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -2225,6 +2292,16 @@ dependencies = [
  "licoup-foundation",
  "nix",
  "regex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "licoup-collaboration"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2352,6 +2429,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-mobile-core"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "licoup-client-state",
+ "licoup-conversation",
+ "licoup-endpoint-core",
+ "licoup-foundation",
+ "licoup-platform-bridges",
+ "licoup-protocol-bindings",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
 name = "licoup-model-catalog"
 version = "0.3.0"
 dependencies = [
@@ -2405,7 +2498,13 @@ dependencies = [
  "licoup-agent-cursor",
  "licoup-agent-deepseek",
  "licoup-agent-drivers",
+ "licoup-agent-hermes",
+ "licoup-agent-kilo",
  "licoup-agent-kimi",
+ "licoup-agent-lico-agent",
+ "licoup-agent-openclaw",
+ "licoup-agent-opencode",
+ "licoup-agent-pi",
  "licoup-agent-runtime",
  "licoup-agent-targets",
  "licoup-application",
@@ -2423,6 +2522,8 @@ dependencies = [
  "licoup-state-machine-codegen",
  "licoup-usage-source-sdk",
  "licoup-workflow",
+ "licoup-workflow-runtime",
+ "licoup-workflow-store",
  "log",
  "mime_guess",
  "nix",
@@ -2523,6 +2624,38 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "licoup-workflow-runtime"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "fs2",
+ "licoup-conversation",
+ "licoup-foundation",
+ "licoup-workflow",
+ "licoup-workflow-store",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "uuid",
+ "zip",
+]
+
+[[package]]
+name = "licoup-workflow-store"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "licoup-foundation",
+ "licoup-workflow",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]

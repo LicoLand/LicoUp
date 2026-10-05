@@ -1,35 +1,13 @@
+//! The client's half of the Kilo Code driver seam.
+//!
+//! This suite states what the client still owns: the driver identity the shared
+//! result vocabulary is stamped with, the launch shape, the engine functions the
+//! package's ports are answered with, and the translation of a package failure
+//! onto the client's failure type. The Agent's own half — the request shape, the
+//! stream classification, the projection, the probe decisions and the parser —
+//! is stated by the package's own suite, because it is the package that owns it.
+
 mod composition;
-mod config;
 mod execution;
+mod host;
 mod probe;
-mod projection;
-mod transport;
-
-use super::super::kilo_code_serve;
-use super::config::ServeTurnConfig;
-use super::execution::execute;
-use super::probe::{capability_probe, endpoint_failure};
-use super::projection::{project_turn, serve_capabilities};
-use super::transport::{build_message_body, execute_via_serve, wait_post_json};
-use super::{KILO_CODE_DRIVER, RUNTIME_PROTOCOL};
-use serde_json::{Value, json};
-use std::path::Path;
-use std::thread;
-use std::time::{Duration, Instant};
-
-fn test_config(prompt: &str, session_id: &str) -> ServeTurnConfig {
-    ServeTurnConfig {
-        prompt: prompt.to_string(),
-        private_instructions: None,
-        requested_session_id: session_id.to_string(),
-        cwd: std::env::current_dir()
-            .unwrap()
-            .to_string_lossy()
-            .into_owned(),
-        model: None,
-        runtime_agent: None,
-        reasoning_effort: None,
-        mode: None,
-        allow_all: None,
-    }
-}

@@ -25,17 +25,24 @@ export async function checkTargetServeAndGateway(context, { localServiceSource }
   const openCodeServePolicySource = await readText(
     "crates/licoup-native/src/platform/opencode_serve/policy.rs"
   );
+  // The serve frame interpretation lives in the package that owns the protocol,
+  // not in the host tree: the facade above reads it through the composition's
+  // own name for it, and the host keeps no copy.
   const openCodeParserSource = await readText(
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/opencode.rs"
+    "crates/licoup-agent-opencode/src/parser.rs"
   );
+  // Kilo Code's protocol, event parser and endpoint policy moved into the
+  // adapter package that carries the Agent; the client keeps the serve engine
+  // that answers the package's ports, so the same properties are read from the
+  // package for the Agent-owned half and from the client for the engine half.
   const kiloCodeServeFacadeSource = await readText(
-    "crates/licoup-native/src/platform/kilo_code_serve.rs"
+    "crates/licoup-native/src/platform/kilo_code_host.rs"
   );
   const kiloCodeServePolicySource = await readText(
-    "crates/licoup-native/src/platform/kilo_code_serve/policy.rs"
+    "crates/licoup-agent-kilo/src/policy.rs"
   );
   const kiloCodeParserSource = await readText(
-    "crates/licoup-native/src/platform/native_agent_parser/adapters/kilo_code.rs"
+    "crates/licoup-agent-kilo/src/parser/serve.rs"
   );
   for (const [target, facade, policy, parser, foreignPolicy] of [
     [
@@ -53,16 +60,30 @@ export async function checkTargetServeAndGateway(context, { localServiceSource }
       "opencode"
     ]
   ]) {
+    // A serve root owns the engine calls and never a socket, a process or a
+    // state record of its own. The event ingress belongs to the parser that
+    // classifies the stream, which for a packaged Agent is the package's.
     assert(
       facade.includes("local_service::serve::ensure") &&
         facade.includes("local_service::sse::watch_frames") &&
-        facade.includes("ServeEventParser") &&
-        facade.includes("EventStreamFailure") &&
         !facade.includes("ureq::") &&
         !facade.includes("TcpListener") &&
         !facade.includes("Command::new") &&
         !facade.includes("read_state"),
       `${target} serve root must retain bounded transport and its parser-owned event ingress`
+    );
+    // Every serve-family target names the parser that classifies its stream and
+    // the client holds no second copy of it.
+    const parserOwner = await readText(
+      target === "Kilo Code"
+        ? "crates/licoup-agent-kilo/src/parser/mod.rs"
+        : "crates/licoup-native/src/platform/native_agent_parser/adapters/opencode.rs"
+    );
+    assert(
+      parserOwner.includes("ServeEventParser") &&
+        !kiloCodeServeFacadeSource.includes("struct ServeEventParser") &&
+        !openCodeServeFacadeSource.includes("struct ServeEventParser"),
+      `${target} must name the parser that owns its event ingress`
     );
     assert(
       parser.includes("struct ServeEventParser") &&

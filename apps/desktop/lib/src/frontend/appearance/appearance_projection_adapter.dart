@@ -1,5 +1,28 @@
+import 'package:flutter/material.dart';
+
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/appearance/appearance_projection.dart';
+
+/// Builds the application theme for one appearance projection.
+///
+/// This is the production path: the projection's own font preference reaches
+/// the type scale, so changing the preference changes what the interface
+/// renders. A theme built from the projection's preset alone would ignore the
+/// user's preference.
+ThemeData buildAppearanceTheme(
+  AppearanceProjection projection, {
+  required Brightness platformBrightness,
+  TargetPlatform? platform,
+}) {
+  return buildLicoTheme(
+    presetId: projection.presetId,
+    presets: appearancePresetConfigsFromProjection(projection),
+    platformBrightness: platformBrightness,
+    fontPreference: projection.fontPreference,
+    platform: platform,
+  );
+}
 
 /// Adapts renderer-independent appearance values to the existing Flutter
 /// theme model without exposing Application-owned configuration objects.

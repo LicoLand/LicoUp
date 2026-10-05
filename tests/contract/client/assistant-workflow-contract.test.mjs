@@ -15,8 +15,11 @@ const conversationDomain = read("crates/licoup-conversation/src/client_conversat
 const store = read("crates/licoup-conversation/src/store/mod.rs");
 const schema = read("crates/licoup-conversation/src/store/schema.rs");
 const profile = read("crates/licoup-native/src/domain/client_conversation/profile_snapshot.rs");
-const assistant = read("crates/licoup-native/src/domain/workflow_runtime/assistant.rs");
-const flywheelService = read("crates/licoup-native/src/domain/workflow_runtime/service.rs");
+const assistant = read("crates/licoup-workflow-runtime/src/assistant.rs");
+const flywheelService = read("crates/licoup-workflow-runtime/src/service.rs");
+// The route receipt and the source revisions it names are the port surface's
+// own contract, so they are read where the runtime declares them.
+const portContracts = read("crates/licoup-workflow-runtime/src/ports.rs");
 const usage = read("crates/licoup-native/src/domain/agent_usage/workflow_ledger.rs");
 const policy = read("crates/licoup-client-state/src/policy.rs");
 const subagents = read("crates/licoup-native/src/domain/subagents/mod.rs");
@@ -63,23 +66,27 @@ test("conversation migration v8 cuts over to intent-only Assistant Profiles idem
 });
 
 test("Profile snapshots derive only from named existing authorities", () => {
-  assert.match(profile, /trait ProfileSnapshotAuthority/u);
-  assert.match(profile, /fn target_facts/u);
-  assert.match(profile, /fn model_price_usd_per_million_tokens/u);
-  assert.match(profile, /fn coding_score/u);
-  assert.match(profile, /agent_model_max_intelligence/u);
-  assert.match(profile, /fn skill_names/u);
-  assert.match(profile, /RequestScopedAuthority/u);
-  assert.match(profile, /reads each owner at most once/u);
-  assert.match(profile, /targets::inspect_target_read_only/u);
-  assert.match(profile, /provider_model_pricing::model_price/u);
+  // The projection and its request-scoped authority live with the workflow
+  // runtime's port surface; the host module keeps the owner-backed
+  // implementation of the same contract.
+  const projection = profile + portContracts;
+  assert.match(projection, /trait ProfileSnapshotAuthority/u);
+  assert.match(projection, /fn target_facts/u);
+  assert.match(projection, /fn model_price_usd_per_million_tokens/u);
+  assert.match(projection, /fn coding_score/u);
+  assert.match(projection, /agent_model_max_intelligence/u);
+  assert.match(projection, /fn skill_names/u);
+  assert.match(projection, /RequestScopedAuthority/u);
+  assert.match(projection, /reads each owner at most once/u);
+  assert.match(projection, /targets::inspect_target_read_only/u);
+  assert.match(projection, /provider_model_pricing::model_price/u);
   assert.match(
-    profile,
+    projection,
     /agent_intelligence_catalog::agent_model_max_intelligence/u,
   );
-  assert.match(profile, /skill_hub::skill_list/u);
+  assert.match(projection, /skill_hub::skill_list/u);
   // The Assistant Profile references one concise, product-owned coordinator Skill.
-  assert.match(profile, /LICOUP_GUIDE_SKILL_ID/u);
+  assert.match(projection, /LICOUP_GUIDE_SKILL_ID/u);
   const prompt = bundledSkill.split("\n---\n").at(-1).trim();
   assert.ok(prompt.length > 0);
   assert.match(bundledSkill, /^name: licoup-guide$/mu);
@@ -94,13 +101,13 @@ test("Profile snapshots derive only from named existing authorities", () => {
 });
 
 test("candidate ranking is deterministic and keeps unknown optional facts visible", () => {
-  assert.match(profile, /pub fn rank_candidates/u);
-  assert.match(profile, /optional_desc\(left\.intelligence_score, right\.intelligence_score\)/u);
-  assert.match(profile, /optional_price\(left\)\.cmp\(&optional_price\(right\)\)/u);
-  assert.match(profile, /optional_asc\(left\.latency_class, right\.latency_class\)/u);
-  assert.match(profile, /left\.membership_id\.cmp\(&right\.membership_id\)/u);
-  assert.match(profile, /profile_candidate_rejected/u);
-  assert.match(profile, /Hard constraints/u);
+  assert.match(portContracts, /pub fn rank_candidates/u);
+  assert.match(portContracts, /optional_desc\(left\.intelligence_score, right\.intelligence_score\)/u);
+  assert.match(portContracts, /optional_price\(left\)\.cmp\(&optional_price\(right\)\)/u);
+  assert.match(portContracts, /optional_asc\(left\.latency_class, right\.latency_class\)/u);
+  assert.match(portContracts, /left\.membership_id\.cmp\(&right\.membership_id\)/u);
+  assert.match(portContracts, /profile_candidate_rejected/u);
+  assert.match(portContracts, /Hard constraints/u);
 });
 
 test("preflight diagnostic stages match the public bridge contract", () => {
@@ -135,7 +142,7 @@ test("receipts freeze exact bindings and allowlisted sources without private dat
     "skillHub",
     "assistantWorkflowAuthoringBundle",
   ]) {
-    assert.match(flywheelService + read("crates/licoup-native/src/domain/client_conversation/service.rs"), new RegExp(`"${owner}"`, "u"));
+    assert.match(portContracts + read("crates/licoup-native/src/domain/client_conversation/service.rs"), new RegExp(`"${owner}"`, "u"));
   }
   for (const pattern of FORBIDDEN_PRIVATE) {
     assert.doesNotMatch(assistant, pattern, pattern);

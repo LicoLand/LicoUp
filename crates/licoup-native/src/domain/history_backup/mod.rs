@@ -16,8 +16,9 @@ pub use policy::{
     open_history_object, seal_history_object,
 };
 pub use recovery::{
-    AtomicRecoveryTarget, FreshSessionRequirement, RecoveredHistoryObject, RecoveryError,
-    RetainedContentDecoder, read_authorized_history, recover_replacement_endpoint,
+    FreshSessionRequirement, RecoveredHistoryObject, RecoveryError, RecoveryOutcome, RecoveryOwner,
+    RecoveryProgress, RetainedContentDecoder, StagedRecoveryTarget, recover_replacement_endpoint,
+    visit_authorized_history,
 };
 pub use recovery_material::{
     RecoveryMaterial, RecoveryMaterialError, RecoveryPackage, RecoverySecret,

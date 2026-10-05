@@ -20,6 +20,7 @@ pub(crate) mod conversation_lane;
 mod copilot_driver;
 mod cursor_driver;
 mod deepseek_harness_driver;
+pub mod diagnostics;
 pub mod extension_host;
 pub mod extension_packages;
 pub mod package_registration_release;
@@ -27,8 +28,8 @@ pub(crate) mod generic_cli_driver;
 mod hermes_driver;
 pub(crate) mod hermes_tui_gateway;
 mod hermes_tui_gateway_driver;
-mod kilo_code_driver;
-mod kilo_code_serve;
+pub(crate) mod kilo_code_driver;
+pub(crate) mod kilo_code_host;
 mod kimi_code_driver;
 mod lico_agent_driver;
 pub(crate) use licoup_agent_drivers::local_service;
@@ -75,9 +76,6 @@ pub mod secure_mesh_secret_store;
 pub mod subagent_mcp_ensure;
 
 pub use acp_session_transport::resolve_interaction_approval as resolve_native_agent_interaction_approval;
-pub use conversation_lane::{
-    cancel_turn, cleanup_conversation, dispatch_lane_operation, lane_capabilities, open_or_resume,
-};
 pub use native_agent_interaction::resolve as resolve_native_agent_interaction;
 pub use native_agent_interaction::resolve_scoped as resolve_scoped_native_agent_interaction;
 pub use turn_event_emit::{
@@ -114,6 +112,21 @@ pub(crate) fn codex_turn_event_port() -> licoup_agent_codex::port::turn_event::T
     }
 }
 
+/// This host's answer for the Pi adapter package's turn-event port.
+///
+/// The package owns *what* one Pi turn emits; this host owns *where* it goes,
+/// because the host owns the consumer. The answer is this host's own emitters
+/// rather than a second sink, so a Pi event and a Cursor event reach the same
+/// reader through the same path.
+pub(crate) fn pi_turn_event_port() -> licoup_agent_pi::port::turn_event::TurnEventPort {
+    licoup_agent_pi::port::turn_event::TurnEventPort {
+        emit_turn_event,
+        emit_agent_message_chunk,
+        emit_agent_message_completed,
+        emit_agent_processing,
+    }
+}
+
 /// The environment one Codex app-server child is launched with.
 ///
 /// The user's own login shell is the default command authority (ADR 0007), so
@@ -125,6 +138,21 @@ pub(crate) fn codex_app_server_environment() -> Vec<(String, String)> {
         .iter()
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect()
+}
+
+
+/// This host's answer for the OpenClaw adapter package's turn-event port.
+///
+/// The package owns *what* one OpenClaw turn emits as its Gateway frames arrive;
+/// this host owns *where* they go, because the host owns the consumer. The
+/// answer is the same emitters the host's own drivers and the Codex package
+/// reach, so an OpenClaw message chunk and a Codex one arrive at one reader
+/// through one path rather than two sinks that can drift.
+pub(crate) fn openclaw_turn_event_port() -> licoup_agent_openclaw::port::turn_event::TurnEventPort {
+    licoup_agent_openclaw::port::turn_event::TurnEventPort {
+        emit_agent_message_chunk,
+        emit_agent_processing,
+    }
 }
 
 // The bounded process owner moved to `licoup-foundation`. It is re-exported at

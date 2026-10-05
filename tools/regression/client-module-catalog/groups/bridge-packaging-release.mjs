@@ -662,6 +662,7 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
         "tools/client-release-package-set.json",
         "tools/client-release-targets.json",
         "tools/client-release-template.json",
+        "tools/distribution/client-release-package-stage.mjs",
         "tools/scripts/client-release-package-index.mjs",
         "tools/scripts/lib/client-release-package-payload.mjs",
         "tools/scripts/lib/client-release-targets.mjs",

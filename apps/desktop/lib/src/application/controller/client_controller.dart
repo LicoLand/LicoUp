@@ -18,6 +18,7 @@ import 'package:licoup/src/application/controller/client_routing_facade.dart';
 import 'package:licoup/src/application/features/settings/controller/appearance_preference_owner.dart';
 import 'package:licoup/src/application/controller/functional_status_runtime.dart';
 import 'package:licoup/src/application/controller/locale_preference_owner.dart';
+import 'package:licoup/src/application/controller/locale_resource_owner.dart';
 import 'package:licoup/src/application/controller/client_skill_hub_facade.dart';
 import 'package:licoup/src/application/controller/client_target_facade.dart';
 import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
@@ -83,6 +84,7 @@ import 'package:licoup/src/platform/agents/agent_tool_allowlist_store.dart';
 import 'package:licoup/src/platform/agents/scanned_targets_cache_store.dart';
 import 'package:licoup/src/platform/appearance/appearance_preset_catalog_service.dart';
 import 'package:licoup/src/platform/presentation/presentation_mount_plan_service.dart';
+import 'package:licoup/src/platform/locale/locale_resource_catalog_service.dart';
 import 'package:licoup/src/platform/client_clipboard_service.dart';
 import 'package:licoup/src/platform/conversation/conversation_image_byte_reader.dart';
 import 'package:licoup/src/platform/documents/plan_document_reader.dart';
@@ -152,6 +154,7 @@ class ClientController extends AgentConversationController
     AgentToolAllowlistRepository? agentToolAllowlistRepository,
     AppearancePresetCatalogService? appearancePresetCatalogService,
     PresentationMountPlanService? presentationMountPlanService,
+    LocaleResourceCatalogService? localeResourceCatalogService,
     LayoutCatalog? layoutCatalog,
     LayoutManager? layoutManager,
     PresentationPreferencesRepository? presentationPreferencesRepository,
@@ -202,6 +205,8 @@ class ClientController extends AgentConversationController
            const AppearancePresetCatalogService(),
        presentationMountPlanService =
            presentationMountPlanService ?? const PresentationMountPlanService(),
+       localeResourceCatalogService =
+           localeResourceCatalogService ?? const LocaleResourceCatalogService(),
        clientLogExportService =
            clientLogExportService ?? const ClientLogExportService(),
        clientClipboardService =
@@ -398,6 +403,7 @@ class ClientController extends AgentConversationController
   final AppearancePresetCatalogService appearancePresetCatalogService;
   @override
   final PresentationMountPlanService presentationMountPlanService;
+  final LocaleResourceCatalogService localeResourceCatalogService;
   final ClientLogExportService clientLogExportService;
   final ClientClipboardService clientClipboardService;
   @override
@@ -503,6 +509,9 @@ class ClientController extends AgentConversationController
   @override
   LocalePreferenceOwner get localePreferenceOwner =>
       _components.localePreferenceOwner;
+  @override
+  LocaleResourceOwner get localeResourceOwner =>
+      _components.localeResourceOwner;
   @override
   FunctionalStatusRuntime get functionalStatusRuntime =>
       _components.functionalStatusRuntime;

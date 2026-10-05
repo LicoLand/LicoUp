@@ -18,7 +18,6 @@ import 'src/frontend/l10n/lico_strings.dart';
 import 'src/frontend/appearance/appearance_preset_config.dart';
 import 'src/frontend/appearance/appearance_projection_adapter.dart';
 import 'src/frontend/shared/ui/glass_lens.dart';
-import 'src/frontend/shared/ui/theme.dart';
 import 'src/frontend/shared/ui/lico_motion_scope.dart';
 import 'src/frontend/shell/client_shell.dart';
 import 'src/frontend/binding/shell_renderer_port.dart';
@@ -320,77 +319,82 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
         return ProjectionBuilder<LocaleProjection, LocaleProjection>(
           source: _composition.binding.locale,
           select: _localeProjection,
-          builder: (context, locale) => MaterialApp(
-            onGenerateTitle: (context) => LicoStrings.of(context).appTitle,
-            debugShowCheckedModeBanner: false,
-            supportedLocales: LicoStrings.supportedLocales,
-            locale: localeFromProjection(locale),
-            localeListResolutionCallback: (locales, supportedLocales) {
-              return LicoStrings.resolvePreferred(locales);
-            },
-            localizationsDelegates: const [
-              GlobalMaterialLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-            ],
-            builder: (context, child) => Column(
-              children: [
-                if (_dataHomeFailure != null)
-                  MaterialBanner(
-                    content: Text(
-                      LicoStrings.of(context).dataHomeOperationFailed(
-                        _dataHomeOperation,
-                        _dataHomeFailure!,
-                      ),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () =>
-                            setState(() => _dataHomeFailure = null),
-                        child: Text(LicoStrings.of(context).dismiss),
-                      ),
-                    ],
-                  ),
-                Expanded(
-                  child: ProjectionBuilder<EnvironmentProjection, bool>(
-                    source: _composition.binding.environment,
-                    select: _systemReduceMotion,
-                    builder: (context, systemReduceMotion) => LicoMotionScope(
-                      reduceMotion: appearance.reduceMotion,
-                      systemReduceMotion: systemReduceMotion,
-                      child: LicoLoadingEffectScope(
-                        effect: loadingEffectForId(appearance.loadingEffectId),
-                        child: child ?? const SizedBox.shrink(),
-                      ),
-                    ),
-                  ),
-                ),
+          builder: (context, locale) => LicoLocaleResourceScope(
+            // The installed resources are what the rendered strings resolve
+            // from; the compiled baseline renders when none is installed.
+            resources: LicoStringResources(locale.resources),
+            child: MaterialApp(
+              onGenerateTitle: (context) => LicoStrings.of(context).appTitle,
+              debugShowCheckedModeBanner: false,
+              supportedLocales: LicoStrings.supportedLocales,
+              locale: localeFromProjection(locale),
+              localeListResolutionCallback: (locales, supportedLocales) {
+                return LicoStrings.resolvePreferred(locales);
+              },
+              localizationsDelegates: const [
+                GlobalMaterialLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
               ],
+              builder: (context, child) => Column(
+                children: [
+                  if (_dataHomeFailure != null)
+                    MaterialBanner(
+                      content: Text(
+                        LicoStrings.of(context).dataHomeOperationFailed(
+                          _dataHomeOperation,
+                          _dataHomeFailure!,
+                        ),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () =>
+                              setState(() => _dataHomeFailure = null),
+                          child: Text(LicoStrings.of(context).dismiss),
+                        ),
+                      ],
+                    ),
+                  Expanded(
+                    child: ProjectionBuilder<EnvironmentProjection, bool>(
+                      source: _composition.binding.environment,
+                      select: _systemReduceMotion,
+                      builder: (context, systemReduceMotion) => LicoMotionScope(
+                        reduceMotion: appearance.reduceMotion,
+                        systemReduceMotion: systemReduceMotion,
+                        child: LicoLoadingEffectScope(
+                          effect: loadingEffectForId(
+                            appearance.loadingEffectId,
+                          ),
+                          child: child ?? const SizedBox.shrink(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              // Theme changes are atomic visual updates; this also prevents the
+              // MaterialApp-owned AnimatedTheme from outrunning the motion scope.
+              themeAnimationDuration: Duration.zero,
+              themeMode: themeModeForAppearance(presetId, presets),
+              theme: buildAppearanceTheme(
+                appearance,
+                platformBrightness: Brightness.light,
+              ),
+              darkTheme: buildAppearanceTheme(
+                appearance,
+                platformBrightness: Brightness.dark,
+              ),
+              home:
+                  widget.homeBuilder?.call(
+                    context,
+                    _composition.binding,
+                    _composition.renderer,
+                  ) ??
+                  ClientShell(
+                    binding: _composition.binding,
+                    renderer: _composition.renderer,
+                  ),
             ),
-            // Theme changes are atomic visual updates; this also prevents the
-            // MaterialApp-owned AnimatedTheme from outrunning the motion scope.
-            themeAnimationDuration: Duration.zero,
-            themeMode: themeModeForAppearance(presetId, presets),
-            theme: buildLicoTheme(
-              presetId: presetId,
-              presets: presets,
-              platformBrightness: Brightness.light,
-            ),
-            darkTheme: buildLicoTheme(
-              presetId: presetId,
-              presets: presets,
-              platformBrightness: Brightness.dark,
-            ),
-            home:
-                widget.homeBuilder?.call(
-                  context,
-                  _composition.binding,
-                  _composition.renderer,
-                ) ??
-                ClientShell(
-                  binding: _composition.binding,
-                  renderer: _composition.renderer,
-                ),
           ),
         );
       },

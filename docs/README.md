@@ -41,6 +41,10 @@ authority.
 - [Extension platform and SDK contract](architecture/EXTENSION-PLATFORM.md)
 - [Deployment profiles, package closure and capability ownership](architecture/DEPLOYMENT-PROFILES.md)
 
+## Modules
+
+- [Endpoint collaboration](modules/endpoint-collaboration.md)
+
 ## Functionality
 
 - [Functionality index](functionality/README.md)

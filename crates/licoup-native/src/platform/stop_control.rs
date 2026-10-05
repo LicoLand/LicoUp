@@ -524,7 +524,7 @@ fn stop_lane_session(session_id: &str, agent_id: Option<&str>) -> OwnerStopDispo
         "agentId": agent_id,
         "sessionId": session_id,
     });
-    match super::dispatch_lane_operation("cancel", &params) {
+    match crate::agent_port::cancel(&params) {
         Ok(response) => match response.get("ok").and_then(Value::as_bool) {
             Some(true) => OwnerStopDisposition::Acknowledged,
             _ => match response.get("status").and_then(Value::as_str) {
@@ -555,10 +555,10 @@ struct OwnedProcessScope {
 /// `local_service`, so no second service registry exists; the list itself
 /// stays with the force-stop owner, which is the only caller, so the
 /// target-neutral local service foundation never names a target policy.
-fn owned_serve_specs() -> &'static [local_service::ServeSpec] {
-    &[
+fn owned_serve_specs() -> Vec<local_service::ServeSpec> {
+    vec![
         super::opencode_serve::CONTROL_SPEC,
-        super::kilo_code_serve::CONTROL_SPEC,
+        super::kilo_code_driver::CONTROL_SPEC,
     ]
 }
 
@@ -573,8 +573,8 @@ fn owned_process_scopes() -> Vec<OwnedProcessScope> {
         return scopes;
     }
     owned_serve_specs()
-        .iter()
-        .filter_map(owned_local_service_scope)
+        .into_iter()
+        .filter_map(|spec| owned_local_service_scope(&spec))
         .collect()
 }
 

@@ -7,8 +7,10 @@
 pub mod analysis;
 pub mod compile;
 pub mod diagnostic;
+pub mod dispatch;
 pub mod ir;
 pub mod machine;
+pub mod strategy;
 pub mod syntax;
 
 pub use analysis::{
@@ -20,9 +22,20 @@ pub use diagnostic::{
     PreflightDiagnostic, WorkflowDiagnosticActualKind, WorkflowDiagnosticCode,
     WorkflowDiagnosticExpected, WorkflowDiagnosticRecovery, WorkflowDiagnosticStage,
 };
+pub use dispatch::{
+    ClaimLease, ClaimVerdict, CompletionVerdict, DispatchDecision, DispatchGate, DispatchIntent,
+    DispatchRecipient, DispatchRefusal, EffectCompletion, EffectProgress, RecoveryVerdict,
+    SuccessorAdmission, SuccessorEdge, SuccessorGate, SuccessorRefusal, claim_effect,
+    recover_claim, settle_effect,
+};
 pub use ir::*;
 pub use machine::{
     CommandKind, CommandStatus, ReducerEvent, ReducerOutput, RunCommand, RunSnapshot, reduce,
+};
+pub use strategy::{
+    ASSISTANT_TEMPORARY_DEFINITION_PREFIX, BindingCandidate, BindingValue, StrategyAuthorization,
+    StrategyDefinition, StrategyDefinitionSummary, StrategyDiagnostic, StrategyError,
+    StrategyErrorCode, StrategyProjection,
 };
 pub use syntax::{ParsedWorkflow, parse};
 

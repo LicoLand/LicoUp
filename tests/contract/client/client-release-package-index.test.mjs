@@ -93,12 +93,24 @@ const declaredPackages = Object.freeze([
     payloadRole: "antigravity-adapter-package-payload",
   }),
   declaredRelease({
+    source: "crates/licoup-agent-kilo/package",
+    payloadRole: "kilo-adapter-package-payload",
+  }),
+  declaredRelease({
     source: "crates/licoup-agent-codex/package",
     payloadRole: "codex-adapter-package-payload",
   }),
   declaredRelease({
+    source: "crates/licoup-agent-openclaw/package",
+    payloadRole: "openclaw-adapter-package-payload",
+  }),
+  declaredRelease({
     source: "crates/licoup-agent-copilot/package",
     payloadRole: "copilot-adapter-package-payload",
+  }),
+  declaredRelease({
+    source: "crates/licoup-agent-pi/package",
+    payloadRole: "pi-adapter-package-payload",
   }),
   declaredRelease({
     source: "components/appearance/package",
@@ -123,6 +135,18 @@ const declaredPackages = Object.freeze([
   declaredRelease({
     source: "crates/licoup-agent-kimi/package",
     payloadRole: "kimi-adapter-package-payload",
+  }),
+  declaredRelease({
+    source: "crates/licoup-agent-hermes/package",
+    payloadRole: "hermes-adapter-package-payload",
+  }),
+  declaredRelease({
+    source: "crates/licoup-agent-lico-agent/package",
+    payloadRole: "lico-agent-adapter-package-payload",
+  }),
+  declaredRelease({
+    source: "crates/licoup-agent-opencode/package",
+    payloadRole: "opencode-adapter-package-payload",
   }),
   declaredRelease({
     source: "crates/licoup-mcp/package",

@@ -1,86 +1,123 @@
 use super::*;
 use crate::core::secure_mesh_secret_store::SecretBytes;
 
+/// Execute a bounded custody cleanup that already passed the authority checks
+/// in [`cleanup_authority`].
+///
+/// The loop below only ever walks the authorized inventory: the subject and the
+/// scope come from [`authorize_custody_cleanup`], never from the parameters.
+///
+/// Settlement is observed, never assumed. Each authorized credential deletion
+/// and each authorized durable-store file is recorded as settled or pending, and
+/// `complete` is reported only when nothing is left pending. A refusal — a
+/// locked platform store, an unavailable backend, a denied file removal — stays
+/// `partial` with the exact pending entries, so an incomplete erase is never
+/// converted into a finished one.
+///
+/// After the last observation this function writes nothing: no data root, log,
+/// temporary payload or credential is recreated on the cleaned side. The
+/// returned document is the caller's; the replacement endpoint learns the
+/// outcome only by receiving it, which is why the receipt block reports
+/// `replacementEndpointConfirmed: false` until that endpoint says otherwise.
 pub(in crate::domain::mobile_relay) fn e2ee_secret_store_cleanup_in(
     params: &Value,
 ) -> Result<Value> {
+    let config = load_config_for_custody_cleanup()?;
+    let authorized = authorize_custody_cleanup(&config, params)?;
+    let inventory = authorized.inventory;
+
+    let (store, namespace) = custody_cleanup_secret_store()?;
     ensure!(
-        params
-            .get("disposableProof")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            == Some("true"),
-        "mobile relay secret-store cleanup requires explicit --disposable-proof true"
+        namespace == inventory.subject.custody_namespace,
+        "mobile relay custody cleanup secret store namespace does not match the authorized subject"
     );
-
-    let config = load_config_for_disposable_cleanup()?;
-    if let Some(origin) = recorded_custody_namespace(&config)? {
-        ensure!(
-            origin == current_custody_namespace()?,
-            "relocated custody requires its owning cleanup authority"
-        );
-    }
-    let pairwise_path = mobile_relay_pairwise_store_path()?;
-    let pairwise_database_present_before = pairwise_path.exists();
-    let pairwise_handles = if pairwise_database_present_before {
-        let store = mobile_relay_pairwise_store()?;
-        let handles = store.referenced_secret_snapshot_handles()?;
-        drop(store);
-        handles
-    } else {
-        Vec::new()
-    };
-    let pairwise_snapshot_handle_count = pairwise_handles.len();
-
-    let (store, namespace) = disposable_cleanup_secret_store()?;
     ensure!(
         store.supported(),
         "mobile relay native secret store backend is unsupported"
     );
-    let mut handles = disposable_cleanup_root_secret_handles(&config, &namespace)?;
-    let root_secret_handle_count = handles.len();
-    handles.extend(pairwise_handles);
-    handles.sort_by(|left, right| {
-        left.namespace()
-            .cmp(right.namespace())
-            .then_with(|| left.key().cmp(right.key()))
-    });
-    handles.dedup();
-    let operation_count = handles.len();
-    ensure!(
-        operation_count > 0,
-        "mobile relay disposable cleanup has no bounded secret-store operations"
-    );
 
+    let operation_count = inventory.secret_handles.len();
     let session =
         store.begin_authorized_session(&SecretStoreAuthorizationRequest::noninteractive(
-            "Mobile Relay disposable proof secret cleanup",
+            "Mobile Relay authenticated replacement custody cleanup",
             operation_count,
         ))?;
-    for handle in &handles {
-        store
-            .delete_secret_with_session(&session, handle)
-            .context("mobile relay disposable secret cleanup failed")?;
+    let mut pending_secret_handles: Vec<Value> = Vec::new();
+    for handle in &inventory.secret_handles {
+        if let Err(error) = store.delete_secret_with_session(&session, handle) {
+            pending_secret_handles.push(json!({
+                "handleKey": handle.key(),
+                "reason": custody_cleanup_reason_code(&error.to_string()),
+            }));
+        }
     }
-    ensure!(
-        session.consumed_operation_count() == operation_count
-            && session.authorization_batch_within_budget()
-            && session.remaining_operation_count() == 0,
-        "mobile relay disposable cleanup operation budget mismatch"
-    );
+    let deleted_secret_handle_count = operation_count.saturating_sub(pending_secret_handles.len());
+    if pending_secret_handles.is_empty() {
+        // No extra key use: the session performed exactly the deletions the
+        // authorized inventory declared and nothing else consumed an operation.
+        ensure!(
+            session.consumed_operation_count() == operation_count
+                && session.authorization_batch_within_budget()
+                && session.remaining_operation_count() == 0,
+            "mobile relay custody cleanup operation budget mismatch"
+        );
+    }
 
-    let removed_pairwise_database_file_count =
-        remove_mobile_relay_pairwise_store_files(&pairwise_path)?;
+    let removal = remove_authorized_pairwise_store_files(&inventory.pairwise_store_files)?;
+    let pairwise_path = mobile_relay_pairwise_store_path()?;
+    // Observation, not assumption: the durable-store files are reported settled
+    // only when every authorized path is absent now.
+    let pending_pairwise_store_files: Vec<String> = inventory
+        .pairwise_store_files
+        .iter()
+        .filter(|path| path.exists())
+        .map(|path| custody_cleanup_file_name(path))
+        .collect();
+    let complete = pending_secret_handles.is_empty() && pending_pairwise_store_files.is_empty();
     Ok(json!({
         "ok": true,
-        "status": "cleaned",
-        "disposableProof": true,
-        "deletedSecretHandleCount": operation_count,
-        "rootSecretHandleCount": root_secret_handle_count,
-        "pairwiseSnapshotHandleCount": pairwise_snapshot_handle_count,
-        "pairwiseDatabasePresentBefore": pairwise_database_present_before,
+        "status": if complete { "cleaned" } else { "partial" },
+        "complete": complete,
+        "authority": {
+            "model": "authenticatedReplacementEndpointWithInformedConfirmation",
+            "subjectEndpointId": inventory.subject.endpoint_id.clone(),
+            "subjectIdentityFingerprint": inventory.subject.identity_fingerprint.clone(),
+            "custodyNamespace": inventory.subject.custody_namespace.clone(),
+            "replacementEndpointId": authorized.replacement.endpoint_id.clone(),
+            "replacementDeviceTrustFingerprint":
+                authorized.replacement.device_trust_fingerprint.clone(),
+            "replacementVerificationMethod": authorized.replacement.verification_method.clone(),
+            "inventoryDigest": inventory.digest.clone(),
+            "scopeEntryCount": inventory.scope.len(),
+            "confirmationScopeEntryCount": authorized.confirmation_scope_entry_count,
+        },
+        "settlement": {
+            "complete": complete,
+            "authorizedSecretHandleCount": operation_count,
+            "deletedSecretHandleCount": deleted_secret_handle_count,
+            "pendingSecretHandles": pending_secret_handles,
+            "authorizedPairwiseStoreFileCount": inventory.pairwise_store_files.len(),
+            "removedPairwiseStoreFileCount": removal.removed,
+            "pendingPairwiseStoreFiles": pending_pairwise_store_files,
+        },
+        "receipt": {
+            "kind": CUSTODY_CLEANUP_RECEIPT_KIND,
+            "issued": true,
+            "complete": complete,
+            // Only the replacement endpoint can observe arrival, and a lost
+            // receipt is never silently converted into success here.
+            "replacementEndpointConfirmed": false,
+            "confirmation": "pendingReceiptDelivery",
+            "subjectEndpointId": inventory.subject.endpoint_id.clone(),
+            "replacementEndpointId": authorized.replacement.endpoint_id.clone(),
+            "inventoryDigest": inventory.digest.clone(),
+        },
+        "deletedSecretHandleCount": deleted_secret_handle_count,
+        "rootSecretHandleCount": inventory.root_secret_handle_count,
+        "pairwiseSnapshotHandleCount": inventory.pairwise_snapshot_handle_count,
+        "pairwiseDatabasePresentBefore": inventory.pairwise_database_present,
         "pairwiseDatabaseRemoved": !pairwise_path.exists(),
-        "removedPairwiseDatabaseFileCount": removed_pairwise_database_file_count,
+        "removedPairwiseDatabaseFileCount": removal.removed,
         "secretStoreAuthorization": {
             "backend": session.backend(),
             "allowInteraction": session.allow_interaction(),
@@ -92,20 +129,39 @@ pub(in crate::domain::mobile_relay) fn e2ee_secret_store_cleanup_in(
     }))
 }
 
-fn load_config_for_disposable_cleanup() -> Result<Value> {
+/// The restricted receipt document this cleanup issues to the replacement
+/// endpoint. The endpoint consumes it over its own authenticated control path.
+pub(in crate::domain::mobile_relay) const CUSTODY_CLEANUP_RECEIPT_KIND: &str =
+    "licoup.custody-cleanup-receipt.v1";
+
+fn custody_cleanup_file_name(path: &Path) -> String {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("custody-cleanup-file")
+        .to_string()
+}
+
+fn custody_cleanup_reason_code(error: &str) -> String {
+    match error.split(':').next() {
+        Some(code) if !code.trim().is_empty() => code.trim().to_string(),
+        _ => "mobile_relay_custody_cleanup_failed".to_string(),
+    }
+}
+
+pub(in crate::domain::mobile_relay) fn load_config_for_custody_cleanup() -> Result<Value> {
     let path = config_path()?;
     if !path.exists() {
         return Ok(normalize_config(json!({})));
     }
     let raw =
-        fs::read_to_string(&path).context("mobile relay disposable cleanup config read failed")?;
+        fs::read_to_string(&path).context("mobile relay custody cleanup config read failed")?;
     let parsed = serde_json::from_str::<Value>(&raw)
-        .context("mobile relay disposable cleanup config is invalid")?;
+        .context("mobile relay custody cleanup config is invalid")?;
     crate::domain::mobile_relay::validate_current_config_document(&parsed)?;
     Ok(normalize_config(parsed))
 }
 
-fn disposable_cleanup_secret_store() -> Result<(Arc<dyn SecureMeshSecretStore>, String)> {
+fn custody_cleanup_secret_store() -> Result<(Arc<dyn SecureMeshSecretStore>, String)> {
     if let Some(store) = mobile_relay_secret_store_override() {
         return Ok((
             store,
@@ -114,7 +170,7 @@ fn disposable_cleanup_secret_store() -> Result<(Arc<dyn SecureMeshSecretStore>, 
     }
     ensure!(
         native_secret_store_enabled(),
-        "mobile relay native secret store is required for disposable cleanup"
+        "mobile relay native secret store is required for custody cleanup"
     );
     Ok((
         Arc::new(native_secret_store()),
@@ -122,7 +178,7 @@ fn disposable_cleanup_secret_store() -> Result<(Arc<dyn SecureMeshSecretStore>, 
     ))
 }
 
-pub(in crate::domain::mobile_relay) fn disposable_cleanup_root_secret_handles(
+pub(in crate::domain::mobile_relay) fn custody_cleanup_root_secret_handles(
     config: &Value,
     namespace: &str,
 ) -> Result<Vec<SecretStoreHandle>> {
@@ -149,25 +205,28 @@ pub(in crate::domain::mobile_relay) fn disposable_cleanup_root_secret_handles(
     Ok(handles)
 }
 
-fn remove_mobile_relay_pairwise_store_files(path: &Path) -> Result<usize> {
+/// What removing the authorized pairwise durable-store files observed.
+struct PairwiseStoreFileRemoval {
+    removed: usize,
+}
+
+/// Remove exactly the authorized pairwise durable-store files. A file that is
+/// already absent is not an error; a removal the platform denies is not an
+/// error either, because it is reported as pending by the caller's own
+/// observation of the authorized paths and never as a completed erase.
+fn remove_authorized_pairwise_store_files(paths: &[PathBuf]) -> Result<PairwiseStoreFileRemoval> {
     let mut removed = 0usize;
-    let mut candidates = vec![path.to_path_buf()];
-    for suffix in ["-wal", "-shm", "-journal"] {
-        let mut candidate = path.as_os_str().to_os_string();
-        candidate.push(suffix);
-        candidates.push(PathBuf::from(candidate));
-    }
-    for candidate in candidates {
-        match fs::remove_file(&candidate) {
+    for path in paths {
+        match fs::remove_file(path) {
             Ok(()) => removed = removed.saturating_add(1),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {}
             Err(error) => {
-                return Err(error)
-                    .context("mobile relay disposable pairwise database cleanup failed");
+                return Err(error).context("mobile relay custody pairwise database cleanup failed");
             }
         }
     }
-    Ok(removed)
+    Ok(PairwiseStoreFileRemoval { removed })
 }
 
 pub(in crate::domain::mobile_relay) fn native_secret_store() -> PlatformSecretStore {
@@ -267,14 +326,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn disposable_cleanup_handle_set_is_deduplicated_and_bounded() {
+    fn custody_cleanup_handle_set_is_deduplicated_and_bounded() {
         let config = json!({
             "pairedDevices": [
                 {"id": "device-a", "pairingId": "pairing-a"},
                 {"id": "device-b", "pairingId": "pairing-a"}
             ]
         });
-        let handles = disposable_cleanup_root_secret_handles(&config, "fixture").unwrap();
+        let handles = custody_cleanup_root_secret_handles(&config, "fixture").unwrap();
         let expected = 1
             + MOBILE_RELAY_NATIVE_TOKEN_SECRET_FIELDS.len()
             + MOBILE_RELAY_E2EE_NATIVE_SECRET_FIELDS.len()
@@ -282,5 +341,26 @@ mod tests {
 
         assert_eq!(handles.len(), expected);
         assert!(handles.windows(2).all(|pair| pair[0] != pair[1]));
+    }
+
+    #[test]
+    fn custody_cleanup_authorized_file_removal_ignores_absent_files_and_reports_removed() {
+        let root = std::env::temp_dir().join(format!(
+            "licoup-custody-cleanup-scope-files-{}",
+            Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let present = root.join("pairwise-pqxdh.sqlite3");
+        fs::write(&present, b"synthetic-cleanup-scope-fixture").unwrap();
+        let absent = root.join("pairwise-pqxdh.sqlite3-wal");
+        assert_eq!(
+            remove_authorized_pairwise_store_files(&[present.clone(), absent.clone()])
+                .unwrap()
+                .removed,
+            1
+        );
+        assert!(!present.exists());
+        assert!(!absent.exists());
+        fs::remove_dir_all(&root).unwrap();
     }
 }

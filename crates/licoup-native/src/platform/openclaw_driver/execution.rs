@@ -53,7 +53,10 @@ pub(in crate::platform) fn execute_with_connection(
     let config = match if runtime_connection.is_some() {
         ProtocolConfig::from_params_without_local_mcp(params, prompt, session_id, cwd)
     } else {
-        ProtocolConfig::from_params(params, prompt, session_id, cwd)
+        // The client answers the package's MCP question from its own plugin
+        // configuration; the package calls it only after the request itself has
+        // been accepted.
+        super::params::from_params(params, prompt, session_id, cwd)
     } {
         Ok(config) => config,
         Err(failure) => return RunResult::failed(failure, started_at, None, false, false),

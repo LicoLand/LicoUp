@@ -940,18 +940,6 @@ pub fn stop_for_data_home_transition() -> Result<Value> {
     Ok(McpServiceBinding::from_environment()?.stop_for_transition()?)
 }
 
-/// Start the optional service during host startup, when a package governs it.
-///
-/// `Ok(None)` is the whole answer for an absent or switched-off package: no
-/// process is started and none is claimed.
-pub fn start_on_host_startup() -> Result<Option<Value>> {
-    let binding = McpServiceBinding::from_environment()?;
-    match binding.selection()? {
-        GenerationSelection::Selected(_) => Ok(Some(binding.start()?)),
-        GenerationSelection::Absent | GenerationSelection::Disabled { .. } => Ok(None),
-    }
-}
-
 /// A caller-supplied executable must be the generation the store selected.
 ///
 /// An arbitrary path would be a process this client cannot attribute to any
