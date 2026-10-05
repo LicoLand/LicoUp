@@ -2,6 +2,7 @@ use anyhow::{Context, ensure};
 use serde_json::{Value, json};
 
 use super::{
+    DeviceTrustLifecycle, apply_device_trust_lifecycle,
     protected_operation::secure_mesh_action_requires_protected_operation_gate,
     redacted_error::unsupported_action_response, request_validation::validate_ffi_json_structure,
 };
@@ -91,13 +92,13 @@ fn dispatch_value(
             crate::core::secure_mesh_trust::evaluate_device_trust_verification_json(params, "sas")
         }
         "secure_mesh.deviceTrust.rotate" => {
-            crate::core::secure_mesh_trust::evaluate_device_trust_lifecycle_json(params, "rotate")
+            dispatch_device_trust_lifecycle(params, super::DeviceTrustLifecycle::Rotate)
         }
         "secure_mesh.deviceTrust.revoke" => {
-            crate::core::secure_mesh_trust::evaluate_device_trust_lifecycle_json(params, "revoke")
+            dispatch_device_trust_lifecycle(params, super::DeviceTrustLifecycle::Revoke)
         }
         "secure_mesh.deviceTrust.recover" => {
-            crate::core::secure_mesh_trust::evaluate_device_trust_lifecycle_json(params, "recover")
+            dispatch_device_trust_lifecycle(params, super::DeviceTrustLifecycle::Recover)
         }
         "secure_mesh.lifecycle.serviceAction" => {
             crate::core::secure_mesh_lifecycle::evaluate_service_action_json(params)
@@ -127,6 +128,31 @@ fn dispatch_value(
         }
         _ => Ok(unsupported_action_response(action, unsupported_code)),
     }
+}
+
+/// Answers one lifecycle action, writing its durable half when it carries one.
+///
+/// The policy result is computed first, exactly as it always was, so a call with
+/// no durable evidence keeps the response it always had. Durable evidence is then
+/// written through the ledger, and the caller sees both: the policy decision it
+/// asked for and what was really persisted. A refused write is reported under
+/// `durableActivation` with `persisted: false`, so a refusal can never be read as
+/// a completed lifecycle action.
+fn dispatch_device_trust_lifecycle(
+    params: &Value,
+    lifecycle: DeviceTrustLifecycle,
+) -> anyhow::Result<Value> {
+    let mut response = crate::core::secure_mesh_trust::evaluate_device_trust_lifecycle_json(
+        params,
+        lifecycle.as_str(),
+    )?;
+    let Some(outcome) = apply_device_trust_lifecycle(params, lifecycle)? else {
+        return Ok(response);
+    };
+    if let Some(object) = response.as_object_mut() {
+        object.insert("durableActivation".to_owned(), outcome);
+    }
+    Ok(response)
 }
 
 fn execute_secure_command(params: &Value) -> anyhow::Result<Value> {

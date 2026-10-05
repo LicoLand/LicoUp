@@ -1,4 +1,5 @@
 mod action_catalog;
+mod activation;
 mod dispatch_context;
 mod dispatch_router;
 mod feature_status;
@@ -12,6 +13,7 @@ mod redacted_error;
 mod request_validation;
 
 pub use action_catalog::MOBILE_RELAY_NATIVE_ACTIONS;
+pub use activation::{DeviceTrustLifecycle, apply_device_trust_lifecycle};
 pub use dispatch_context::{
     dispatch_json_with_files_dir, dispatch_json_with_files_dir_and_pairwise_secret_store,
 };

@@ -1,3 +1,4 @@
+mod activation;
 mod authorization;
 mod codec;
 mod decision;
@@ -22,6 +23,14 @@ const SAFETY_NUMBER_CHUNK_COUNT: usize = 12;
 const SAFETY_NUMBER_DIGITS_PER_CHUNK: usize = 5;
 const SAFETY_NUMBER_CHUNK_MODULUS: u32 = 100_000;
 
+pub use activation::{
+    AuthorityPosition, DeviceActivationLookup, DeviceActivationRefusal, DeviceActivationRequest,
+    DeviceActivationState, DeviceCleanupIntent, DurableDeviceActivation,
+    MAX_SECURE_MESH_AUTHORITY_STATE_BYTES, MAX_SECURE_MESH_DEVICE_ACTIVATIONS,
+    SECURE_MESH_DEVICE_ACTIVATION_RECORD, SECURE_MESH_DEVICE_ACTIVATION_SCHEMA_VERSION,
+    SecureMeshDeviceActivationStore, activation_authority_digest, device_activation_ledger_path,
+    device_activation_request_from_json,
+};
 pub use authorization::{
     ProtectedSendAuthorization, ProtectedSendPayloadKind, authorize_protected_send,
     authorize_protected_send_from_trust_record,
