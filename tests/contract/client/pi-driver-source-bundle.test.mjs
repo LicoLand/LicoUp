@@ -92,10 +92,27 @@ test("the host declares no Pi driver module or tree and reads the package instea
   const composition = read(compositionPath);
   assert.match(composition, /^use licoup_agent_pi::driver as pi_driver;$/mu,
     "the composition does not read the package's driver");
-  const platformImport = composition.match(/use crate::platform::\{[\s\S]*?\};/u)?.[0] ?? "";
-  assert.notEqual(platformImport, "", "the composition declares no platform import");
-  assert.equal(platformImport.includes("pi_driver"), false,
-    "the composition still reaches a Pi driver through the host's platform tree");
+
+  // The host's platform tree is the one route a Pi driver could still take into
+  // this composition, so every import that reaches it is read as written: a
+  // grouped `use crate::platform::{...};` and a single `use crate::platform::x;`
+  // say the same thing, and neither shape may hide the name. The premise is
+  // checked first, because a composition that no longer names the host's tree at
+  // all would make the check below pass without inspecting anything.
+  assert.match(composition, /crate\s*::[^;]*\bplatform\b/u,
+    "the composition does not name the host's platform tree");
+  const hostPlatformImports = [...composition.matchAll(/^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?use [^;]*;/gmu)]
+    .map((match) => match[0])
+    .filter((declaration) => /crate\s*::[^;]*\bplatform\b/u.test(declaration));
+  for (const declaration of hostPlatformImports) {
+    assert.doesNotMatch(declaration, /\bpi_driver\b/u,
+      `the composition still reaches a Pi driver through the host's platform tree: ${declaration.trim()}`);
+  }
+  // A platform path used outside an import names the same retired owner, so the
+  // whole composition is checked for it rather than only its import statements.
+  assert.doesNotMatch(composition,
+    /crate\s*::\s*platform\s*::\s*(?:\{[^}]*)?\bpi_driver\b/u,
+    "the composition still names a Pi driver inside the host's platform tree");
 
   // The parser tree re-exports no Pi alias either: with the driver in the
   // package, no host leaf reads Pi's frames through the kernel's former name.

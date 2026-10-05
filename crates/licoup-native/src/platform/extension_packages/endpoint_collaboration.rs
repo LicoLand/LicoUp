@@ -408,6 +408,49 @@ impl EndpointCollaborationBinding {
     }
 }
 
+/// The lifecycle transition one package route performs on the outbound gate.
+///
+/// An install and an enable both make the package's own answer the one the
+/// outbound transport entries read; a disable and an uninstall both withdraw it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EndpointCollaborationLifecycle {
+    /// An install or an enable: the store's own answer takes the outbound path.
+    Activated,
+    /// A disable or an uninstall: the refusal that cuts outbound traffic.
+    Retired,
+}
+
+/// Apply one package lifecycle transition over the package's own gate.
+///
+/// `store_root` is the managed root the route just changed, `package_id` is the
+/// package that operation was about, and `gate` is the process-wide gate the
+/// outbound transport entries consult. A route about another package changes
+/// nothing here and returns `None`: one package's lifecycle never speaks for a
+/// neighbour's gate.
+///
+/// The binding is resolved from the store the route changed, so an install, an
+/// enable, a disable and an uninstall all flip the answer the port gives without
+/// a second registration path.
+pub fn apply_endpoint_collaboration_lifecycle(
+    store_root: &Path,
+    package_id: &str,
+    transition: EndpointCollaborationLifecycle,
+    gate: &EndpointCollaborationGate,
+) -> Option<EndpointCollaborationAvailability> {
+    if package_id != ENDPOINT_COLLABORATION_PACKAGE_ID {
+        return None;
+    }
+    let binding = EndpointCollaborationBinding::over(store_root);
+    Some(match transition {
+        EndpointCollaborationLifecycle::Activated => binding.activate(gate),
+        EndpointCollaborationLifecycle::Retired => {
+            binding.retire(gate);
+            gate.installed()
+                .unwrap_or(EndpointCollaborationAvailability::Missing)
+        }
+    })
+}
+
 /// Order two version strings by semantic versioning, with unparsable ones below
 /// every parsable version.
 fn version_key(version: &str) -> (u8, semver::Version) {
@@ -423,7 +466,8 @@ mod tests {
         ENDPOINT_COLLABORATION_CAPABILITY_ID, ENDPOINT_COLLABORATION_MANIFEST_PATH,
         ENDPOINT_COLLABORATION_PACKAGE_ID, ENDPOINT_COLLABORATION_PROFILE_ID,
         EndpointCollaborationAvailability, EndpointCollaborationBinding, EndpointCollaborationGate,
-        EndpointOutboundAuthority, EndpointOutboundRefusal, resolve_availability,
+        EndpointCollaborationLifecycle, EndpointOutboundAuthority, EndpointOutboundRefusal,
+        apply_endpoint_collaboration_lifecycle, resolve_availability,
     };
     use licoup_extension_contracts::manifest::{PackageManifest, Runtime};
     use serde_json::json;
@@ -476,10 +520,20 @@ mod tests {
     /// store itself answers `Active`, so a retirement has a grant to cut rather
     /// than a store that already reads absent.
     fn permitted_store_root(label: &str) -> PathBuf {
+        installed_store_root(label, &[ENDPOINT_COLLABORATION_CAPABILITY_ID])
+    }
+
+    /// A store root holding one installed, switched-on version of this package
+    /// whose own profile declares exactly `capabilities`.
+    ///
+    /// A version that declares a different capability is installed and switched
+    /// on and still does not own the outbound path, which is the answer this
+    /// fixture exists to produce.
+    fn installed_store_root(label: &str, capabilities: &[&str]) -> PathBuf {
+        use super::super::PackageStore;
         use super::super::artifact::content_digest;
         use super::super::install::InstallRequest;
         use super::super::state::TrustRecord;
-        use super::super::PackageStore;
         use licoup_extension_contracts::deployment::PackageSource;
         use licoup_extension_contracts::wire;
         use std::io::Write;
@@ -495,7 +549,7 @@ mod tests {
             "profiles": [{
                 "id": ENDPOINT_COLLABORATION_PROFILE_ID,
                 "major": 1,
-                "capabilities": [ENDPOINT_COLLABORATION_CAPABILITY_ID],
+                "capabilities": capabilities,
             }],
             "runtime": {
                 "mode": "declarative",
@@ -648,6 +702,95 @@ mod tests {
         assert_eq!(
             gate.authority(),
             Err(EndpointOutboundRefusal::PackageDisabled)
+        );
+    }
+
+    #[test]
+    fn a_lifecycle_transition_speaks_only_for_the_package_it_was_about() {
+        let root = permitted_store_root("lifecycle-other-package");
+        let gate = EndpointCollaborationGate::new();
+
+        assert_eq!(
+            apply_endpoint_collaboration_lifecycle(
+                &root,
+                "example.other.package",
+                EndpointCollaborationLifecycle::Activated,
+                &gate,
+            ),
+            None
+        );
+        assert_eq!(gate.installed(), None);
+        assert_eq!(
+            gate.authority(),
+            Ok(EndpointOutboundAuthority::LegacyInKernel)
+        );
+
+        assert_eq!(
+            apply_endpoint_collaboration_lifecycle(
+                &root,
+                ENDPOINT_COLLABORATION_PACKAGE_ID,
+                EndpointCollaborationLifecycle::Activated,
+                &gate,
+            ),
+            Some(EndpointCollaborationAvailability::Active {
+                version: INSTALLED_VERSION.to_owned()
+            })
+        );
+        assert_eq!(
+            gate.authority(),
+            Ok(EndpointOutboundAuthority::Package {
+                version: INSTALLED_VERSION.to_owned()
+            })
+        );
+
+        // A retirement withdraws the grant: the gate holds the refusal that cuts
+        // outbound traffic and does not fall back to the pre-package path the
+        // process answered with before any package owned it.
+        assert_eq!(
+            apply_endpoint_collaboration_lifecycle(
+                &root,
+                ENDPOINT_COLLABORATION_PACKAGE_ID,
+                EndpointCollaborationLifecycle::Retired,
+                &gate,
+            ),
+            Some(EndpointCollaborationAvailability::Disabled {
+                version: INSTALLED_VERSION.to_owned()
+            })
+        );
+        assert_eq!(
+            gate.authority(),
+            Err(EndpointOutboundRefusal::PackageDisabled)
+        );
+        assert_ne!(
+            gate.authority(),
+            Ok(EndpointOutboundAuthority::LegacyInKernel),
+            "a withdrawn capability is a refusal, not the pre-package path"
+        );
+    }
+
+    #[test]
+    fn activating_a_version_that_declares_no_outbound_capability_keeps_its_own_refusal() {
+        let binding = EndpointCollaborationBinding::over(installed_store_root(
+            "activate-undeclared",
+            &["example.other.capability.v1"],
+        ));
+        let gate = EndpointCollaborationGate::new();
+
+        assert_eq!(
+            binding.activate(&gate),
+            EndpointCollaborationAvailability::CapabilityUndeclared {
+                version: INSTALLED_VERSION.to_owned()
+            },
+            "installed and switched on is not the same as declaring the capability"
+        );
+        assert_eq!(
+            gate.authority(),
+            Err(EndpointOutboundRefusal::CapabilityUndeclared)
+        );
+        assert_eq!(
+            gate.authority().expect_err("the package refuses").reason(),
+            "endpoint_collaboration_capability_undeclared",
+            "an activation publishes the owner's own reason rather than laundering it"
         );
     }
 

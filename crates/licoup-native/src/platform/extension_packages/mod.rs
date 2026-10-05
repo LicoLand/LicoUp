@@ -101,8 +101,8 @@ pub use endpoint_collaboration::{
     ENDPOINT_COLLABORATION_CAPABILITY_ID, ENDPOINT_COLLABORATION_MANIFEST_PATH,
     ENDPOINT_COLLABORATION_PACKAGE_ID, ENDPOINT_COLLABORATION_PROFILE_ID,
     EndpointCollaborationAvailability, EndpointCollaborationBinding, EndpointCollaborationGate,
-    EndpointOutboundAuthority, EndpointOutboundRefusal, endpoint_collaboration_gate,
-    resolve_availability,
+    EndpointCollaborationLifecycle, EndpointOutboundAuthority, EndpointOutboundRefusal,
+    apply_endpoint_collaboration_lifecycle, endpoint_collaboration_gate, resolve_availability,
 };
 pub use install::{
     ActivationAdmission, FaultPlan, InstallOutcome, InstallPhase, InstallRequest, InstalledPackage,

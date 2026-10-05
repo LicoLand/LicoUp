@@ -22,6 +22,11 @@
 //! 4. **Nothing here runs a package, and nothing here reaches the network.** The
 //!    bytes are a local file the operator holds; no probe is executed and no
 //!    socket is opened.
+//! 5. **The endpoint collaboration package's own gate follows its lifecycle.**
+//!    Installing or enabling that package installs its answer into the
+//!    process-wide outbound gate, and disabling or uninstalling it retires that
+//!    answer, so the capability is cut by the package's own refusal rather than
+//!    by a hidden control. A route about any other package changes nothing there.
 //!
 //! Mutating *replacement* and *activation* route through the
 //! maintenance-admission seam, which asks the native idle guard
@@ -48,9 +53,10 @@ use licoup_foundation::platform::paths;
 use sha2::{Digest, Sha256};
 
 use crate::platform::extension_packages::{
-    ArtifactLimits, DependentsDecision, Drained, IdleVerdict, InstanceIdentity, InstanceMachine,
-    InstanceRegistry, MaintenanceOperation, MaintenanceRequest, PackageMaintenanceAdmission,
-    PackageStore, RemainingWork, TrustRecord, UninstallTransaction, read_drained_record,
+    ArtifactLimits, DependentsDecision, Drained, EndpointCollaborationLifecycle, IdleVerdict,
+    InstanceIdentity, InstanceMachine, InstanceRegistry, MaintenanceOperation, MaintenanceRequest,
+    PackageMaintenanceAdmission, PackageStore, RemainingWork, TrustRecord, UninstallTransaction,
+    apply_endpoint_collaboration_lifecycle, endpoint_collaboration_gate, read_drained_record,
     read_manifest, running_client_version, write_drained_record,
 };
 use crate::platform::package_registration_release::{
@@ -300,6 +306,14 @@ pub(super) fn handle_uninstall_collect(mut command: AdmittedCommand) -> Result<C
     };
     let owners = PackageRegistrationOwners::new(inputs);
     let registry = InstanceRegistry::new();
+    // The refusal is installed before the bytes go away, so no outbound send
+    // sees the grant while the removal is in progress.
+    apply_endpoint_collaboration_lifecycle(
+        store.root(),
+        &package_id,
+        EndpointCollaborationLifecycle::Retired,
+        endpoint_collaboration_gate(),
+    );
     match drained.collect(&store, &registry, &owners) {
         Ok(outcome) => {
             crate::platform::extension_packages::clear_drained_record(
@@ -307,6 +321,18 @@ pub(super) fn handle_uninstall_collect(mut command: AdmittedCommand) -> Result<C
                 &package_id,
                 &version,
             )?;
+            // The removal is done and the store is read once more: several
+            // versions of one package may be installed, so removing one of them
+            // leaves whichever version remains the selected one, and the gate
+            // reports what is actually installed rather than the withdrawal
+            // that covered the removal. An empty store answers `Missing`, which
+            // is still a refusal.
+            apply_endpoint_collaboration_lifecycle(
+                store.root(),
+                &package_id,
+                EndpointCollaborationLifecycle::Activated,
+                endpoint_collaboration_gate(),
+            );
             Ok(report(json!({
                 "operation": "uninstall-collect",
                 "packageId": outcome.package_id,
@@ -662,6 +688,17 @@ fn install_candidate(
     let outcome = store
         .install_local_import(&candidate.package_id, &candidate.version, trust, &bytes)
         .map_err(as_handler_error)?;
+    // An install decides availability, so the route that put these bytes in
+    // place is the route that answers the outbound gate from them. For this
+    // package the store is the owner of the answer, and a version that declares
+    // no outbound capability takes the path with its own refusal rather than
+    // with the kernel's pre-package one.
+    apply_endpoint_collaboration_lifecycle(
+        store.root(),
+        &candidate.package_id,
+        EndpointCollaborationLifecycle::Activated,
+        endpoint_collaboration_gate(),
+    );
     Ok(report(json!({
         "operation": operation,
         "packageId": outcome.installed.package_id,
@@ -687,6 +724,19 @@ fn set_enabled(command: AdmittedCommand, enabled: bool) -> Result<CliExecution> 
     let preference = store
         .set_enabled(&package_id, &version, enabled)
         .map_err(as_handler_error)?;
+    // The user's own switch is the actionable answer for this package: switching
+    // it on installs the store's answer into the outbound gate, and switching it
+    // off retires that answer into the refusal that cuts outbound traffic.
+    apply_endpoint_collaboration_lifecycle(
+        store.root(),
+        &package_id,
+        if enabled {
+            EndpointCollaborationLifecycle::Activated
+        } else {
+            EndpointCollaborationLifecycle::Retired
+        },
+        endpoint_collaboration_gate(),
+    );
     Ok(report(json!({
         "operation": if enabled { "enable" } else { "disable" },
         "packageId": package_id,
@@ -1231,6 +1281,214 @@ mod tests {
         assert_eq!(
             released.code,
             crate::platform::package_registration_release::RELEASE_FAILED
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // The endpoint collaboration package's lifecycle and the outbound gate
+    // -----------------------------------------------------------------------
+
+    /// The version the capable fixture installs.
+    const ENDPOINT_VERSION: &str = "0.3.0";
+
+    /// One absolute synthetic data home for the endpoint collaboration routes.
+    fn endpoint_data_home(label: &str) -> PathBuf {
+        let home = std::env::temp_dir().join(format!(
+            "licoup-package-command-endpoint-{label}-{}",
+            crate::platform::extension_packages::unique_suffix()
+        ));
+        std::fs::create_dir_all(&home).expect("data home");
+        home
+    }
+
+    /// One archive of the endpoint collaboration package whose own profile
+    /// declares exactly `capabilities`.
+    fn endpoint_archive(version: &str, capabilities: &[&str]) -> Vec<u8> {
+        use std::io::Write;
+        let client = running_client_version().expect("a product version");
+        let next_major = client
+            .split('.')
+            .next()
+            .and_then(|major| major.parse::<u64>().ok())
+            .map(|major| major + 1)
+            .expect("a semantic major version");
+        let manifest = json!({
+            "schema": licoup_extension_contracts::wire::MANIFEST,
+            "id": crate::platform::extension_packages::ENDPOINT_COLLABORATION_PACKAGE_ID,
+            "version": version,
+            "displayName": "Synthetic endpoint collaboration",
+            "hostProtocol": { "major": 1, "minimumMinor": 0 },
+            "compatibility": { "clientVersions": [format!(">={client}, <{next_major}")] },
+            "profiles": [{
+                "id": crate::platform::extension_packages::ENDPOINT_COLLABORATION_PROFILE_ID,
+                "major": 1,
+                "capabilities": capabilities,
+            }],
+            "runtime": {
+                "mode": "declarative",
+                "descriptor": "contributions/control-surface.json",
+            },
+            "activation": "on-demand",
+            "requires": [],
+            "optionalRequires": [],
+            "permissions": [],
+            "contributions": [],
+        });
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        for (name, body) in [
+            ("manifest.json", manifest.to_string()),
+            ("contributions/control-surface.json", "{}".to_owned()),
+        ] {
+            writer.start_file(name, options).expect("start file");
+            writer.write_all(body.as_bytes()).expect("write");
+        }
+        writer.finish().expect("finish").into_inner()
+    }
+
+    /// Run one package route through the real command registry and return the
+    /// report it published.
+    fn run_package_route(args: &[&str]) -> Value {
+        let args = args.iter().map(|arg| (*arg).to_owned()).collect();
+        let CliExecution::Json(report) =
+            crate::ffi::commands::execute_cli(args).expect("the route is admitted and shaped")
+        else {
+            panic!("a package route publishes a JSON report");
+        };
+        report
+    }
+
+    /// Install one archive through the route a local import takes.
+    fn install_endpoint_package(home: &Path, archive: &Path) -> Value {
+        let data_home = home.display().to_string();
+        let archive = archive.display().to_string();
+        run_package_route(&["package", "import", &data_home, "--archive", &archive])
+    }
+
+    /// The endpoint collaboration package's own lifecycle is what flips the
+    /// process-wide outbound gate, and this drives every transition through the
+    /// routes a client actually calls.
+    ///
+    /// The gate is one value per process, so a single case owns every transition
+    /// and asserts them in order. No other case in this binary drives a route for
+    /// this package, so the gate this case reads at its start is the one the
+    /// binary began with; a second such case would have to take that ownership
+    /// over rather than assert around it. Every assertion about a state the
+    /// kernel's pre-package path does not answer is made through
+    /// [`crate::endpoint_outbound_authority`], which is the answer the
+    /// composition installs into the domain's outbound port.
+    #[test]
+    fn the_endpoint_package_routes_flip_the_process_wide_outbound_gate() {
+        // No lifecycle route has run in this process yet, so no package has
+        // taken the outbound path over: this is the pre-package answer.
+        assert_eq!(endpoint_collaboration_gate().installed(), None);
+        assert_eq!(
+            endpoint_collaboration_gate().authority(),
+            Ok(crate::platform::extension_packages::EndpointOutboundAuthority::LegacyInKernel)
+        );
+        assert_eq!(crate::endpoint_outbound_authority(), Ok(()));
+
+        // An install decides availability, so the route that put the bytes in
+        // place is the route whose answer the gate now reports.
+        let home = endpoint_data_home("lifecycle");
+        let archive = home.join("endpoint-0.3.0.zip");
+        std::fs::write(
+            &archive,
+            endpoint_archive(
+                ENDPOINT_VERSION,
+                &[crate::platform::extension_packages::ENDPOINT_COLLABORATION_CAPABILITY_ID],
+            ),
+        )
+        .expect("archive");
+        let installed = install_endpoint_package(&home, &archive);
+        assert_eq!(installed["isError"], false, "{installed}");
+        assert_eq!(installed["operation"], "import");
+        assert_eq!(
+            endpoint_collaboration_gate().authority(),
+            Ok(
+                crate::platform::extension_packages::EndpointOutboundAuthority::Package {
+                    version: ENDPOINT_VERSION.to_owned(),
+                }
+            ),
+            "the installed package owns the outbound path"
+        );
+        assert_eq!(crate::endpoint_outbound_authority(), Ok(()));
+
+        // The user's switch is the answer: switching the package off retires the
+        // grant, and the port publishes the owner's own refusal verbatim.
+        let data_home = home.display().to_string();
+        let disabled = run_package_route(&[
+            "package",
+            "disable",
+            &data_home,
+            crate::platform::extension_packages::ENDPOINT_COLLABORATION_PACKAGE_ID,
+            ENDPOINT_VERSION,
+        ]);
+        assert_eq!(disabled["isError"], false, "{disabled}");
+        assert_eq!(
+            crate::endpoint_outbound_authority(),
+            Err("endpoint_collaboration_package_disabled"),
+            "a disabled package cuts the send with its own stable reason"
+        );
+
+        // Switching it back on installs the store's answer again, which is the
+        // package's own permission rather than the pre-package path.
+        let enabled = run_package_route(&[
+            "package",
+            "enable",
+            &data_home,
+            crate::platform::extension_packages::ENDPOINT_COLLABORATION_PACKAGE_ID,
+            ENDPOINT_VERSION,
+        ]);
+        assert_eq!(enabled["isError"], false, "{enabled}");
+        assert_eq!(crate::endpoint_outbound_authority(), Ok(()));
+        assert_eq!(
+            endpoint_collaboration_gate().authority(),
+            Ok(
+                crate::platform::extension_packages::EndpointOutboundAuthority::Package {
+                    version: ENDPOINT_VERSION.to_owned(),
+                }
+            )
+        );
+
+        // An uninstall retires the answer before the bytes go and reads the store
+        // once more afterwards: with nothing left installed the answer names the
+        // absent package, which is still a refusal and never the pre-package one.
+        let drained = run_package_route(&[
+            "package",
+            "uninstall-drain",
+            &data_home,
+            crate::platform::extension_packages::ENDPOINT_COLLABORATION_PACKAGE_ID,
+            ENDPOINT_VERSION,
+        ]);
+        assert_eq!(drained["isError"], false, "{drained}");
+        let collected = run_package_route(&[
+            "package",
+            "uninstall-collect",
+            &data_home,
+            crate::platform::extension_packages::ENDPOINT_COLLABORATION_PACKAGE_ID,
+            ENDPOINT_VERSION,
+        ]);
+        assert_eq!(collected["isError"], false, "{collected}");
+        assert_eq!(
+            crate::endpoint_outbound_authority(),
+            Err("endpoint_collaboration_package_absent"),
+            "an uninstalled capability package refuses instead of running the pre-package path"
+        );
+
+        // A version that is installed and switched on but declares no outbound
+        // capability is the other answer an activation can publish: the store's
+        // own refusal, in the owner's own words.
+        let undeclared = endpoint_data_home("undeclared");
+        let archive = undeclared.join("endpoint-0.4.0.zip");
+        std::fs::write(&archive, endpoint_archive("0.4.0", &["example.other.v1"]))
+            .expect("archive");
+        let installed = install_endpoint_package(&undeclared, &archive);
+        assert_eq!(installed["isError"], false, "{installed}");
+        assert_eq!(
+            crate::endpoint_outbound_authority(),
+            Err("endpoint_collaboration_capability_undeclared"),
+            "an activation does not launder the package's own refusal into a permit"
         );
     }
 }
