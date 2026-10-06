@@ -13,7 +13,7 @@ test('candidate creation and resume require exact release SHA and tree', () => {
   for (const baseRef of LONG_LIVED_BRANCHES) assert.equal(evaluateBranchFlow({ eventName: 'pull_request', baseRef, headRef: 'macos-release-candidate', payload }).ok, false);
 });
 test('four unchanged checks admit only the fixed candidate, preserving trusted PR handling', () => {
-  for (const [file, name] of [['branch-flow','Branch flow'], ['commit-identity','Commit identity'], ['lico-auditor-gate','Auditor'], ['client-release-ready','Release ready']]) {
+  for (const [file, name] of [['branch-flow','Branch flow'], ['commit-identity','Commit identity'], ['general-auditor','Auditor'], ['client-release-ready','Release ready']]) {
     const value = readFileSync(`.github/workflows/${file}.yml`, 'utf8');
     assert.match(value, /macos-release-candidate/u); assert.ok(value.includes(`name: ${name}`));
     assert.match(value, /github.event.deleted != true/u);
@@ -50,7 +50,7 @@ test('the nightly track publishes from its own fixed candidate branch', () => {
       headRef: 'macos-nightly-release-candidate', payload }).ok, false);
   }
   for (const [file, name] of [['branch-flow', 'Branch flow'], ['commit-identity', 'Commit identity'],
-    ['lico-auditor-gate', 'Auditor'], ['client-ci', 'Client required']]) {
+    ['general-auditor', 'Auditor'], ['client-ci', 'Client required']]) {
     const value = readFileSync(`.github/workflows/${file}.yml`, 'utf8');
     assert.match(value, /macos-nightly-release-candidate/u);
     assert.ok(value.includes(`name: ${name}`));

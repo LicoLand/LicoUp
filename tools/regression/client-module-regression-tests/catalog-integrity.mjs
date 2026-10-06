@@ -811,9 +811,7 @@ test("development report sources select the existing report suite", () => {
     assert.ok(selected.includes("regression.development-reports"), `${relativePath} must select the report suite`);
     assert.ok(selected.includes("regression.infrastructure"), `${relativePath} keeps its dependency owner`);
   }
-  // The maintained policy is a report input too, and keeps any other owner.
-  const policySelection = ids(selectModulesForChangedPaths([".lico-auditor/policy.json"]));
-  assert.ok(policySelection.includes("regression.development-reports"), "the policy file must select the report suite");
+
 });
 
 test("agent-usage routing sources select the dedicated evidence verifier", () => {

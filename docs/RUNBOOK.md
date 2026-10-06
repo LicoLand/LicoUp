@@ -670,7 +670,14 @@ workspace. Reports are English, are not shipped with the client, run no checks
 or Agents, and are not an execution authority; see
 [workflow and report sources](../tools/development/workflows/README.md).
 
-Before handoff, run:
+Before handoff, set `GENERAL_AUDITOR_ROOT` to the absolute path of the maintained
+General-Auditor checkout on `only`, including its `profiles/` directory. The privacy
+wrapper invokes its `action_entry.py` with isolated Python and that explicit policy
+root; missing source or the LicoUp profile is an unavailable audit, never a generic
+policy fallback. Local scanning stores exact source evidence and the HTML report
+under the Git-ignored `.general-auditor/local/` directory. Keep that directory on
+the local machine; never attach it to CI artifacts or contribution discussions.
+CI uses report-free checks and does not write these local reports. Then run:
 
 ```bash
 npm run repo:docs

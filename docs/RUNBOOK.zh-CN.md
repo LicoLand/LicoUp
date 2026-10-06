@@ -498,7 +498,11 @@ node tools/development/reports.mjs --better-plan <local-source>
 只读 Better Plan 投影。报告是英文，不随客户端分发，不运行检查或 Agent，也不是执行
 权威；详见[工作流与报告来源](../tools/development/workflows/README.md)。
 
-交付前运行：
+交付前，将 `GENERAL_AUDITOR_ROOT` 设为 General-Auditor 的 `only` 分支检出目录绝对路径，
+并保留完整 `profiles/`。隐私包装器通过隔离 Python 调用该目录的 `action_entry.py`，显式指定
+策略根目录；源码或 LicoUp 策略缺失时报告审计不可用，不降级为通用策略。
+本地扫描将真实命中内容与 HTML 报告保存到 Git 忽略的 `.general-auditor/local/`；
+该目录仅留在本机，不得上传到 CI 产物或贡献讨论。CI 仅执行检查，不生成这些本地报告。然后运行：
 
 ```bash
 npm run repo:docs
