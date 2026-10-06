@@ -19,8 +19,6 @@ import { fileURLToPath } from "node:url";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const reportRef = ".general-auditor/local/repo-local-info-hygiene.json";
-const reportPath = path.join(repoRoot, reportRef);
 const schemaVersion = "licomesh.repo-local-info-hygiene.v1";
 const evidenceDirectoryNames = new Set(["evidence", "reports", "receipts"]);
 const inspectedEvidenceExtensions = new Set([".json", ".jsonl", ".log", ".md", ".txt", ".yaml", ".yml"]);
@@ -194,6 +192,7 @@ async function runCanonicalScan(scanRoot, options = {}) {
       "-I", path.join(auditorRoot, "action_entry.py"), ci ? "check" : "scan", "--repository", "LicoLand/LicoUp", "--directory", scanRoot, "--scope", "worktree", "--policy-root", auditorRoot,
     ], {
       cwd: repoRoot,
+      env: { ...process.env, ...environment },
       encoding: "utf8",
       maxBuffer: 16 * 1024 * 1024
     });
@@ -420,10 +419,11 @@ async function runSelfTest() {
     await mkdir(path.join(trustedRoot, "profiles", "LicoLand"), { recursive: true });
     await writeFile(path.join(trustedRoot, "profiles", "LicoLand", "LicoUp.json"), "{}");
     await writeFile(path.join(trustedRoot, "action_entry.py"), [
-      "import json, pathlib, sys",
+      "import json, os, pathlib, sys",
       "assert sys.flags.isolated == 1",
       "args = sys.argv[1:]",
       "assert args[0] in ('scan', 'check')",
+      "assert (args[0] == 'check') == (os.environ.get('CI') == 'true')",
       "assert '--output' not in args and '--html' not in args",
       "assert args[args.index('--repository') + 1] == 'LicoLand/LicoUp'",
       "assert args[args.index('--scope') + 1] == 'worktree'",
@@ -550,10 +550,6 @@ if (selfTestOnly) {
     local,
     "general-auditor"
   );
-  if (!isCI()) {
-    await mkdir(path.dirname(reportPath), { recursive: true });
-    await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  }
   console.log(JSON.stringify({ ok: report.ok, findings: report.findingCount, advisorySignals: report.advisorySignals.length }));
   if (!report.ok) {
     process.exit(1);

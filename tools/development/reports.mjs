@@ -34,7 +34,6 @@ export function generateReports({ root = repository, output = path.join(root, "b
     ["State machine review", "state-machines.json"],
     ["Upstream observations", "upstream-observations.json"],
     ["Module regression", "client-module-regression.json"],
-    ["Privacy check summary", "../../.general-auditor/local/repo-local-info-hygiene.json"],
     ["Local contextual audit report", "../../.general-auditor/local/index.html"],
     ["Release acceptance", "client-release-acceptance.json"],
   ];

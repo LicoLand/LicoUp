@@ -51,7 +51,6 @@ test("report generation reflects sources without executing workflows or reading 
     write(".general-auditor/local/index.html", "PRIVATE_PAYLOAD_MUST_NOT_BE_COPIED");
     // Receipt existence is useful even if its payload is unreadable; rendering
     // must not interpret arbitrary evidence as executable source or success.
-    write(".general-auditor/local/repo-local-info-hygiene.json", "PRIVATE_PAYLOAD_MUST_NOT_BE_COPIED");
     const first = generateReports({ root, now: "synthetic timestamp" });
     assert.equal(first.pages.length, 4);
     assert.equal(first.configuredMachines, 1);
