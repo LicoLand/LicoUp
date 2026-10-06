@@ -34,7 +34,8 @@ export function generateReports({ root = repository, output = path.join(root, "b
     ["State machine review", "state-machines.json"],
     ["Upstream observations", "upstream-observations.json"],
     ["Module regression", "client-module-regression.json"],
-    ["Privacy review summary", "repo-local-info-hygiene.json"],
+    ["Privacy check summary", "../../.general-auditor/local/repo-local-info-hygiene.json"],
+    ["Local contextual audit report", "../../.general-auditor/local/index.html"],
     ["Release acceptance", "client-release-acceptance.json"],
   ];
   const receipts = sources.map(([title, file]) => {
@@ -43,7 +44,7 @@ export function generateReports({ root = repository, output = path.join(root, "b
   });
   // Link only local final privacy reports; raw matches must never be copied into
   // the navigation page or another generated report.
-  for (const [directory, suffix, title] of [["privacy-audit", ".reviewed.html", "Completed privacy review"], ["closure", ".json", "Engineering closure receipt"]]) {
+  for (const [directory, suffix, title] of [["closure", ".json", "Engineering closure receipt"]]) {
     const folder = path.join(output, directory);
     const names = existsSync(folder) ? readdirSync(folder).filter((name) => name.endsWith(suffix)).sort() : [];
     const latest = names.at(-1);

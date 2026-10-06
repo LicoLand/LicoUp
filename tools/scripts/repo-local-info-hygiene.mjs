@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const reportRef = "build/reports/repo-local-info-hygiene.json";
+const reportRef = ".general-auditor/local/repo-local-info-hygiene.json";
 const reportPath = path.join(repoRoot, reportRef);
 const schemaVersion = "licomesh.repo-local-info-hygiene.v1";
 const evidenceDirectoryNames = new Set(["evidence", "reports", "receipts"]);
@@ -157,6 +157,11 @@ function isGeneralAuditorDelegationEnabled(environment = process.env) {
   );
 }
 
+function isCI(environment = process.env) {
+  return [environment.CI, environment.GITHUB_ACTIONS].some((value) =>
+    value && !["false", "0"].includes(String(value).toLowerCase()));
+}
+
 async function runCanonicalScan(scanRoot, options = {}) {
   if (
     options.allowAuditorDelegation === true &&
@@ -168,7 +173,9 @@ async function runCanonicalScan(scanRoot, options = {}) {
       failures: []
     };
   }
-  const configuredRoot = (options.environment || process.env).GENERAL_AUDITOR_ROOT;
+  const environment = options.environment || process.env;
+  const ci = isCI(environment);
+  const configuredRoot = environment.GENERAL_AUDITOR_ROOT;
   const unavailable = () => ({
     ok: false, scannedFiles: 0,
     failures: [redactedFailure("LICOMESH_DEV_UNAVAILABLE", ".")]
@@ -181,11 +188,10 @@ async function runCanonicalScan(scanRoot, options = {}) {
   }
   let stdout = "";
   let exitCode = 0;
-  const outputDirectory = await mkdtemp(path.join(tmpdir(), "general-auditor-result-"));
-  const output = path.join(outputDirectory, "result.json");
+  const output = path.join(scanRoot, ".general-auditor", "local", "scan.json");
   try {
     const result = await execFileAsync("python3", [
-      "-I", path.join(auditorRoot, "action_entry.py"), "scan", "--repository", "LicoLand/LicoUp", "--directory", scanRoot, "--scope", "worktree", "--policy-root", auditorRoot, "--output", output,
+      "-I", path.join(auditorRoot, "action_entry.py"), ci ? "check" : "scan", "--repository", "LicoLand/LicoUp", "--directory", scanRoot, "--scope", "worktree", "--policy-root", auditorRoot,
     ], {
       cwd: repoRoot,
       encoding: "utf8",
@@ -194,7 +200,6 @@ async function runCanonicalScan(scanRoot, options = {}) {
     stdout = result.stdout;
   } catch (error) {
     if (error?.code === "ENOENT") {
-      await rm(outputDirectory, { recursive: true, force: true });
       return {
         ok: false,
         scannedFiles: 0,
@@ -204,8 +209,19 @@ async function runCanonicalScan(scanRoot, options = {}) {
     stdout = typeof error?.stdout === "string" ? error.stdout : "";
     exitCode = Number.isInteger(error?.code) ? error.code : -1;
   }
+  // Only the fixed private file contains local findings. CI emits status/counts.
+  let summary;
+  try { summary = JSON.parse(stdout); } catch { summary = null; }
+  if (!summary || typeof summary.status !== "string") {
+    return { ok: false, failures: [redactedFailure("LICOMESH_DEV_PROTOCOL_ERROR", ".")] };
+  }
+  if (ci) return parseCanonicalResult(JSON.stringify({ status: summary.status, findings: [] }), exitCode, scanRoot);
   try { stdout = await readFile(output, "utf8"); } catch { stdout = ""; }
-  await rm(outputDirectory, { recursive: true, force: true });
+  let result;
+  try { result = JSON.parse(stdout); } catch { result = null; }
+  if (!result || result.status !== summary.status) {
+    return { ok: false, failures: [redactedFailure("LICOMESH_DEV_PROTOCOL_ERROR", ".")] };
+  }
   return parseCanonicalResult(stdout, exitCode, scanRoot);
 }
 
@@ -407,18 +423,29 @@ async function runSelfTest() {
       "import json, pathlib, sys",
       "assert sys.flags.isolated == 1",
       "args = sys.argv[1:]",
-      "assert args[0] == 'scan'",
+      "assert args[0] in ('scan', 'check')",
+      "assert '--output' not in args and '--html' not in args",
       "assert args[args.index('--repository') + 1] == 'LicoLand/LicoUp'",
       "assert args[args.index('--scope') + 1] == 'worktree'",
       "root = pathlib.Path(__file__).resolve().parent",
       "assert pathlib.Path(args[args.index('--policy-root') + 1]).resolve() == root",
       "assert pathlib.Path(args[args.index('--directory') + 1]).resolve() == root.parent",
-      "pathlib.Path(args[args.index('--output') + 1]).write_text(json.dumps({'status': 'completed', 'findings': []}))",
+      "output = root.parent / '.general-auditor' / 'local' / 'scan.json'",
+      "if args[0] == 'scan':",
+      "    output.parent.mkdir(parents=True, exist_ok=True)",
+      "    output.write_text(json.dumps({'status': 'completed', 'findings': []}))",
+      "else: assert not output.exists()",
+      "print(json.dumps({'status': 'completed', 'findings': 0, 'agent_review': 'not_performed'}))",
     ].join("\n"));
     const trusted = await runCanonicalScan(temporary, {
       environment: { GENERAL_AUDITOR_ROOT: trustedRoot }
     });
     requireSelfTest(trusted.ok === true, "SELF_TEST_TRUSTED_ROOT_INVOCATION_INVALID");
+    await rm(path.join(temporary, ".general-auditor"), { recursive: true, force: true });
+    const ciChecked = await runCanonicalScan(temporary, {
+      environment: { GENERAL_AUDITOR_ROOT: trustedRoot, CI: "true" }
+    });
+    requireSelfTest(ciChecked.ok === true, "SELF_TEST_CI_CHECK_CREATED_REPORT");
     await rm(path.join(trustedRoot, "profiles", "LicoLand", "LicoUp.json"));
     const missingProfile = await runCanonicalScan(temporary, {
       environment: { GENERAL_AUDITOR_ROOT: trustedRoot }
@@ -474,6 +501,7 @@ async function runSelfTest() {
         reportDidNotRediscloseMatches: true,
         missingCanonicalScannerFailedClosed: true,
         trustedRootAndRepositoryProfileRequired: true,
+        localReportsFixedAndCICheckOnly: true,
         auditorDelegationRestrictedToClientGitHubJob: true,
         exactAuditorProtocolAccepted: true
       }
@@ -522,9 +550,11 @@ if (selfTestOnly) {
     local,
     "general-auditor"
   );
-  await mkdir(path.dirname(reportPath), { recursive: true });
-  await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-  console.log(JSON.stringify(report, null, 2));
+  if (!isCI()) {
+    await mkdir(path.dirname(reportPath), { recursive: true });
+    await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  }
+  console.log(JSON.stringify({ ok: report.ok, findings: report.findingCount, advisorySignals: report.advisorySignals.length }));
   if (!report.ok) {
     process.exit(1);
   }
