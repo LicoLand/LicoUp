@@ -35,6 +35,54 @@ void main() {
     expect(caught.toString(), isNot(contains('runtime-detail')));
     expect(caught.toString(), isNot(contains('private-sidecar')));
   });
+
+  test('one-shot executor surfaces a stable stderr failure code', () async {
+    final executor = NativeOneShotCommandExecutor(
+      processContext: _FakeProcessContext(),
+      runCliExecutable: (executable, arguments, environment) async {
+        return ProcessResult(0, 1, '', 'Error: state_newer_than_binary\n');
+      },
+    );
+
+    Object? caught;
+    try {
+      await executor.execute(const ['state', 'admit', '/tmp/x']);
+    } on Object catch (error) {
+      caught = error;
+    }
+
+    expect(caught.toString(), contains('licoup command failed'));
+    expect(caught.toString(), contains('state_newer_than_binary'));
+    expect(caught.toString(), contains('exit code 1'));
+  });
+
+  test('one-shot executor keeps free-form stderr out of failures', () async {
+    const fakeHome =
+        '/Users/'
+        'alice';
+    final executor = NativeOneShotCommandExecutor(
+      processContext: _FakeProcessContext(),
+      runCliExecutable: (executable, arguments, environment) async {
+        return ProcessResult(
+          0,
+          1,
+          '',
+          'thread panicked at $fakeHome/private/main.rs:9',
+        );
+      },
+    );
+
+    Object? caught;
+    try {
+      await executor.execute(const ['status']);
+    } on Object catch (error) {
+      caught = error;
+    }
+
+    expect(caught.toString(), contains('licoup command failed'));
+    expect(caught.toString(), isNot(contains(fakeHome)));
+    expect(caught.toString(), isNot(contains('panicked')));
+  });
 }
 
 class _FakeProcessContext implements NativeCliProcessContext {

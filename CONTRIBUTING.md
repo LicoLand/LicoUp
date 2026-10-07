@@ -155,6 +155,14 @@ npm run client:build -- --platform macos
 npm run client:install:macos -- --launch-installed --verify-stable
 ```
 
+`--verify-stable` is the launch acceptance gate, not just a liveness probe:
+after the stable-survival window it records a best-effort screen capture under
+`build/reports/` and fails with `macos_install_initialize_failed` when the
+launched client recorded a bootstrap failure in its local lifecycle diagnostic
+log (`diagnostics/client-lifecycle.jsonl` under the client state root), naming
+the failed bootstrap step in the `detail` field. A visible "initialization
+failed" banner therefore fails the install instead of passing silently.
+
 Do not substitute `client:run:macos`; it rebuilds. Ordinary documentation and
 tests without product binary impact do not require a client build or launch.
 Honor an explicit request to skip installation and report the remaining

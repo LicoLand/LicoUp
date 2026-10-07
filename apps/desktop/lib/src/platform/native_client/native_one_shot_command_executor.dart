@@ -40,7 +40,7 @@ class NativeOneShotCommandExecutor implements NativeCommandExecutor {
         throw Exception('licoup command could not be completed.');
       }
       if (result.exitCode != 0) {
-        throw Exception('licoup command failed.');
+        throw Exception(_failureMessage(result));
       }
       return _decodeResponse(result.stdout);
     }
@@ -52,12 +52,24 @@ class NativeOneShotCommandExecutor implements NativeCommandExecutor {
       throw Exception('licoup command could not be completed.');
     }
     if (result.exitCode != 0) {
-      throw Exception(
-        'licoup command failed '
-        '(exit code ${result.exitCode}, stderr bytes ${utf8.encode(result.stderr.toString()).length}).',
-      );
+      throw Exception(_failureMessage(result));
     }
     return _decodeResponse(result.stdout);
+  }
+
+  /// Failure text stays bounded: only a stable snake_case failure code from
+  /// the first stderr line is surfaced. Free-form native output, paths, and
+  /// runtime detail never enter the exception.
+  static final RegExp _stableFailureCode = RegExp(
+    r'^(?:Error: )?([a-z][a-z0-9_]{0,63})\s*$',
+  );
+
+  static String _failureMessage(ProcessResult result) {
+    final firstLine = result.stderr.toString().split('\n').first.trim();
+    final match = _stableFailureCode.firstMatch(firstLine);
+    final code = match == null ? '' : ': ${match.group(1)}';
+    return 'licoup command failed$code '
+        '(exit code ${result.exitCode}, stderr bytes ${utf8.encode(result.stderr.toString()).length}).';
   }
 
   Map<String, dynamic> _decodeResponse(Object? stdout) {

@@ -135,12 +135,11 @@ mixin ClientLifecycleFacade
     portableDataPath = dataDir.path;
   }
 
+  /// The admission error itself is the diagnostic evidence: the coordinator
+  /// bounds the user-facing report to the stable step id, while the original
+  /// error reaches only the sanitized local diagnostic channel.
   Future<void> _admitClientStateMigration() async {
-    try {
-      await agentService.admitClientStateMigration(portableDataPath);
-    } on Object {
-      throw StateError('client_state_migration');
-    }
+    await agentService.admitClientStateMigration(portableDataPath);
   }
 
   Future<void> _initializeClientStorage() async {
@@ -162,13 +161,13 @@ mixin ClientLifecycleFacade
   Future<void> _initializeClientPreferences() async {
     final presentation = layoutManager.preferences;
     final requestedAppearancePresetId =
-        presentation?.appearancePresetId ?? AppearancePresetIds.licoSoda;
+        presentation?.appearancePresetId ?? AppearancePresetIds.licoMist;
     final resolvedAppearancePresetId = requestedAppearancePresetId;
     if (!hasAppearancePresetConfig(
       resolvedAppearancePresetId,
       appearancePresetConfigs,
     )) {
-      appearancePresetId = AppearancePresetIds.licoSoda;
+      appearancePresetId = AppearancePresetIds.licoMist;
       await layoutManager.setAppearancePreset(appearancePresetId);
     } else {
       appearancePresetId = resolvedAppearancePresetId;

@@ -184,7 +184,7 @@ void registerClientBootstrapScenarios() {
     addTearDown(controller.dispose);
 
     await controller.initialize();
-    expect(controller.appearancePresetId, AppearancePresetIds.licoSoda);
+    expect(controller.appearancePresetId, AppearancePresetIds.licoMist);
   });
 
   test(
@@ -210,7 +210,7 @@ void registerClientBootstrapScenarios() {
       addTearDown(controller.dispose);
 
       await controller.initialize();
-      expect(controller.appearancePresetId, AppearancePresetIds.licoSoda);
+      expect(controller.appearancePresetId, AppearancePresetIds.licoMist);
     },
   );
 
@@ -448,7 +448,10 @@ void registerClientBootstrapScenarios() {
       await controller.initialize();
 
       expect(controller.initialized, isFalse);
-      expect(controller.lastError, 'client_initialize_failed');
+      expect(
+        controller.lastError,
+        'client_initialize_failed:client_storage_root',
+      );
       expect(controller.statusMessage, '初始化失败。');
       expect(controller.statusCaption, 'Error');
     },

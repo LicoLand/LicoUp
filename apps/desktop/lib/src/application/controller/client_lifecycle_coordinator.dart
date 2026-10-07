@@ -29,15 +29,29 @@ final class ClientLifecycleReport {
 
 typedef ClientLifecycleReportSink = void Function(ClientLifecycleReport report);
 
+/// Receives the caught error and stack when a bootstrap step fails. The
+/// report itself stays bounded to stable codes and step ids; this sink is the
+/// local diagnostics channel.
+typedef ClientLifecycleFailureSink =
+    void Function(
+      ClientLifecycleReport report,
+      Object error,
+      StackTrace stackTrace,
+    );
+
 /// Runs the client bootstrap once, guards stale completion after disposal, and
 /// keeps failure evidence to stable step IDs and codes.
 final class ClientLifecycleCoordinator extends ApplicationStateOwner {
-  ClientLifecycleCoordinator({required ClientLifecycleReportSink onReport})
-    : _onReport = onReport;
+  ClientLifecycleCoordinator({
+    required ClientLifecycleReportSink onReport,
+    ClientLifecycleFailureSink? onFailureDetail,
+  }) : _onReport = onReport,
+       _onFailureDetail = onFailureDetail;
 
   static final RegExp _stableId = RegExp(r'^[a-z][a-z0-9._-]{0,63}$');
 
   final ClientLifecycleReportSink _onReport;
+  final ClientLifecycleFailureSink? _onFailureDetail;
   ClientLifecyclePhase _phase = ClientLifecyclePhase.idle;
   ClientLifecycleProjection _projection = const ClientLifecycleProjection._(
     ClientLifecyclePhase.idle,
@@ -118,16 +132,16 @@ final class ClientLifecycleCoordinator extends ApplicationStateOwner {
         if (!_isCurrent(generation)) return;
       }
       _transition(ClientLifecyclePhase.ready, stepId: 'initialize_complete');
-    } catch (_) {
+    } catch (error, stackTrace) {
       if (!_isCurrent(generation)) return;
       _lastFailureStepId = _safeStepId(activeStepId);
       _transition(ClientLifecyclePhase.failed, stepId: _lastFailureStepId);
-      _report(
-        ClientLifecycleReport(
-          code: 'client_initialize_failed',
-          stepId: _lastFailureStepId,
-        ),
+      final report = ClientLifecycleReport(
+        code: 'client_initialize_failed',
+        stepId: _lastFailureStepId,
       );
+      _report(report);
+      _emitFailureDetail(report, error, stackTrace);
     }
   }
 
@@ -137,15 +151,26 @@ final class ClientLifecycleCoordinator extends ApplicationStateOwner {
   ) async {
     try {
       await step.action();
-    } catch (_) {
+    } catch (error, stackTrace) {
       if (!_isCurrent(generation)) return;
-      _report(
-        ClientLifecycleReport(
-          code: 'client_background_step_failed',
-          stepId: _safeStepId(step.id),
-        ),
+      final report = ClientLifecycleReport(
+        code: 'client_background_step_failed',
+        stepId: _safeStepId(step.id),
       );
+      _report(report);
+      _emitFailureDetail(report, error, stackTrace);
     }
+  }
+
+  /// Diagnostics must never break the lifecycle they observe.
+  void _emitFailureDetail(
+    ClientLifecycleReport report,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    try {
+      _onFailureDetail?.call(report, error, stackTrace);
+    } catch (_) {}
   }
 
   bool _isCurrent(int generation) =>

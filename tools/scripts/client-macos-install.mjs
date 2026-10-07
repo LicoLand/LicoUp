@@ -11,8 +11,9 @@
 // commands, user identity, or raw tool output.  It returns stable booleans
 // and named stages only.
 
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -56,9 +57,13 @@ const LAUNCH_ATTEMPTS = 3;
 const LAUNCH_RETRY_DELAY_MS = 500;
 const SOURCE_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 const STAGE_PATTERN = /^macos-(?:install|uninstall)-[a-z-]+$/u;
+const STABLE_DETAIL_PATTERN = /^[a-z][a-z0-9._-]{0,63}$/u;
+const INITIALIZE_FAILURE_CODE = "client_initialize_failed";
 
-function fail(code, stage = "") {
-  throw new MacosInstallError(code, stage);
+function fail(code, stage = "", detail = "") {
+  const error = new MacosInstallError(code, stage);
+  error.detail = STABLE_DETAIL_PATTERN.test(detail) ? detail : "";
+  throw error;
 }
 
 function parseArgs(argv) {
@@ -104,10 +109,15 @@ export function publicMacosInstallFailure(error) {
     STAGE_PATTERN.test(error.stage || "")
     ? error.stage
     : "";
+  const detail = error instanceof MacosInstallError &&
+    STABLE_DETAIL_PATTERN.test(error.detail || "")
+    ? error.detail
+    : "";
   return {
     ok: false,
     code,
     ...(stage ? { stage } : {}),
+    ...(detail ? { detail } : {}),
     privatePathsIncluded: false,
   };
 }
@@ -178,14 +188,18 @@ export function runMacosInstaller(
     launchRequested: launchInstalled,
     launchVerified: false,
     stableVerified: false,
+    initializationVerified: false,
+    visualCaptureRecorded: false,
     installedAppPath,
     removedApplications: lifecycle.removedApplications,
     unregisteredApplications: lifecycle.unregisteredApplications,
   };
 
+  let launchedAtMs = 0;
   if (launchInstalled) {
     stages.push("macos-install-launch-installed");
     let launched = false;
+    launchedAtMs = Date.now();
     for (let attempt = 1; attempt <= LAUNCH_ATTEMPTS; attempt += 1) {
       if (ports.launchInstalled(installedAppPath)) {
         launched = true;
@@ -205,6 +219,34 @@ export function runMacosInstaller(
     if (!result.stableVerified) {
       fail("macos_install_unstable", "macos-install-verify-stable");
     }
+
+    // Visual evidence rides on the stable window: capture the settled screen
+    // before the initialization verdict so a failed bootstrap is photographed.
+    // Capture is best-effort evidence, never a gate.
+    stages.push("macos-install-capture-visual");
+    result.visualCaptureRecorded = ports.captureVisual(
+      visualReportPath(Date.now()),
+    );
+
+    // A launched process is not a working client: the bootstrap records any
+    // initialization failure in the local lifecycle diagnostic log. Admitting
+    // only fresh records keeps previous runs' evidence from failing this one.
+    stages.push("macos-install-verify-initialization");
+    const initializeFailure = ports
+      .readLifecycleDiagnostics()
+      .find(
+        (record) =>
+          record.code === INITIALIZE_FAILURE_CODE &&
+          record.createdAtMs >= launchedAtMs,
+      );
+    if (initializeFailure) {
+      fail(
+        "macos_install_initialize_failed",
+        "macos-install-verify-initialization",
+        initializeFailure.stepId,
+      );
+    }
+    result.initializationVerified = true;
   }
 
   return result;
@@ -247,6 +289,67 @@ function launchInstalledApp(appPath) {
   return result.status === 0;
 }
 
+// The installed bundled client keeps its state root in the home dot folder;
+// the lifecycle diagnostic log is the bounded local evidence written by the
+// client itself. Only stable codes, step ids, and timestamps leave this reader.
+function readLifecycleDiagnosticRecords() {
+  const logPath = path.join(
+    os.homedir(),
+    ".lico-up",
+    "client-state",
+    "diagnostics",
+    "client-lifecycle.jsonl",
+  );
+  let text;
+  try {
+    text = readFileSync(logPath, "utf8");
+  } catch {
+    return [];
+  }
+  const records = [];
+  for (const line of text.split(/\r?\n/u)) {
+    if (!line.trim()) continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const createdAtMs = Date.parse(String(parsed.createdAt || ""));
+    const code = String(parsed.code || "");
+    const stepId = String(parsed.stepId || "");
+    if (!Number.isFinite(createdAtMs)) continue;
+    if (!STABLE_DETAIL_PATTERN.test(code)) continue;
+    if (!STABLE_DETAIL_PATTERN.test(stepId)) continue;
+    records.push({ code, stepId, createdAtMs });
+  }
+  return records;
+}
+
+function visualReportPath(timestampMs) {
+  return path.join(
+    workspaceRoot,
+    "build",
+    "reports",
+    `client-macos-install-${timestampMs}.png`,
+  );
+}
+
+// Screen capture permission is a host privacy grant: when it is missing the
+// capture simply records false and the install keeps its verdict.
+function captureVisualReport(targetPath) {
+  try {
+    mkdirSync(path.dirname(targetPath), { recursive: true });
+    const result = spawnSync("screencapture", ["-x", targetPath], {
+      stdio: ["ignore", "ignore", "ignore"],
+      timeout: 15_000,
+    });
+    return result.status === 0 && existsSync(targetPath);
+  } catch {
+    return false;
+  }
+}
+
 function realPorts() {
   return {
     ...createMacosAppPorts(),
@@ -257,6 +360,8 @@ function realPorts() {
     waitForLaunchRetry: () => sleep(LAUNCH_RETRY_DELAY_MS),
     observeStable: (appPath, windowMs) =>
       observeStableInstalledClient(appPath, windowMs),
+    readLifecycleDiagnostics: () => readLifecycleDiagnosticRecords(),
+    captureVisual: (targetPath) => captureVisualReport(targetPath),
   };
 }
 
@@ -267,6 +372,8 @@ export function publicMacosInstallSuccess(result) {
     launchRequested: result.launchRequested,
     launchVerified: result.launchVerified,
     stableVerified: result.stableVerified,
+    initializationVerified: result.initializationVerified === true,
+    visualCaptureRecorded: result.visualCaptureRecorded === true,
   };
 }
 

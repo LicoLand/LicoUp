@@ -5,6 +5,7 @@ import 'package:licoup/src/application/controller/assembly/client_agent_hub_comp
 import 'package:licoup/src/application/controller/assembly/client_catalog_convergence_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_conversation_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_lifecycle_component_assembly.dart';
+import 'package:licoup/src/application/controller/client_lifecycle_diagnostic_journal.dart';
 import 'package:licoup/src/application/controller/assembly/client_mobile_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_navigation_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_presentation_component_assembly.dart';
@@ -60,6 +61,7 @@ import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:licoup/src/platform/runtime_platform_bridge.dart';
 import 'package:licoup/src/platform/secure_mesh/secure_mesh_capability_service.dart';
+import 'package:licoup/src/platform/storage/client_lifecycle_diagnostic_log.dart';
 import 'package:licoup/src/platform/storage/client_log_export_service.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
@@ -116,7 +118,12 @@ final class ClientComponentAssembly {
       layoutCatalog: layoutCatalog,
       layoutManager: layoutManager,
     );
-    lifecycle = ClientLifecycleComponentAssembly(reportStatus: _reportStatus);
+    lifecycle = ClientLifecycleComponentAssembly(
+      reportStatus: _reportStatus,
+      onFailureDetail: ClientLifecycleDiagnosticJournal(
+        sink: ClientLifecycleDiagnosticLog(portableData: portableData),
+      ).recordFailure,
+    );
     catalogConvergence = ClientCatalogConvergenceComponentAssembly(
       agentService: agentService,
       gateway: catalogConvergenceGateway,

@@ -103,6 +103,8 @@ function recordingPorts({
   launchResult = true,
   launchResults = null,
   stableResult = true,
+  lifecycleDiagnostics = [],
+  captureVisualResult = true,
 } = {}) {
   const calls = {
     copy: [],
@@ -113,6 +115,8 @@ function recordingPorts({
     launchWait: 0,
     quit: [],
     mkdir: [],
+    diagnosticsReads: 0,
+    captures: [],
   };
   const ports = {
     canonicalPath: (target) => existsSync(target) ? realpathSync(target) : path.resolve(target),
@@ -173,6 +177,14 @@ function recordingPorts({
     observeStable: (appPath, windowMs) => {
       calls.observe.push({ appPath, windowMs });
       return stableResult;
+    },
+    readLifecycleDiagnostics: () => {
+      calls.diagnosticsReads += 1;
+      return lifecycleDiagnostics;
+    },
+    captureVisual: (targetPath) => {
+      calls.captures.push(targetPath);
+      return captureVisualResult;
     },
   };
   return { calls, ports };
@@ -405,6 +417,100 @@ test("failed launch and bounded stable survival report only safe state", () => {
   assert.equal(noLaunch.calls.copy.length, 0);
 });
 
+test("stable verification also verifies initialization and captures visual evidence", () => {
+  const runnableRoot = makeRunnableTree();
+  const installDir = tempRoot("lico-install-dest-");
+  const { calls, ports } = recordingPorts();
+
+  const result = runMacosInstaller(
+    { installDir, runnableRoot, launchInstalled: true, verifyStable: true },
+    ports,
+  );
+
+  assert.equal(result.initializationVerified, true);
+  assert.equal(result.visualCaptureRecorded, true);
+  assert.deepEqual(result.stages.slice(-3), [
+    "macos-install-verify-stable",
+    "macos-install-capture-visual",
+    "macos-install-verify-initialization",
+  ]);
+  assert.equal(calls.diagnosticsReads, 1);
+  assert.equal(calls.captures.length, 1);
+  assert.match(calls.captures[0], /build.reports.client-macos-install-\d+\.png$/u);
+  assert.equal(path.isAbsolute(calls.captures[0]), true);
+
+  const publicRecord = publicMacosInstallSuccess(result);
+  assert.equal(JSON.stringify(publicRecord).includes(calls.captures[0]), false);
+});
+
+test("a fresh initialization failure record fails the install with its stable step id", () => {
+  const runnableRoot = makeRunnableTree();
+  const installDir = tempRoot("lico-install-dest-");
+  const { calls, ports } = recordingPorts({
+    lifecycleDiagnostics: [
+      {
+        code: "client_background_step_failed",
+        stepId: "client_update_check",
+        createdAtMs: Date.now() + 60_000,
+      },
+      {
+        code: "client_initialize_failed",
+        stepId: "client_state_migration",
+        createdAtMs: Date.now() + 60_000,
+      },
+    ],
+  });
+
+  assert.throws(
+    () => runMacosInstaller(
+      { installDir, runnableRoot, launchInstalled: true, verifyStable: true },
+      ports,
+    ),
+    (error) => error instanceof MacosInstallError &&
+      error.code === "macos_install_initialize_failed" &&
+      error.stage === "macos-install-verify-initialization" &&
+      error.detail === "client_state_migration",
+  );
+  // The failed bootstrap is photographed before the verdict is raised.
+  assert.equal(calls.captures.length, 1);
+
+  const failure = publicMacosInstallFailure(
+    new MacosInstallError(
+      "macos_install_initialize_failed",
+      "macos-install-verify-initialization",
+    ),
+  );
+  assert.equal("detail" in failure, false);
+});
+
+test("stale diagnostics and background-step failures never fail initialization", () => {
+  const runnableRoot = makeRunnableTree();
+  const installDir = tempRoot("lico-install-dest-");
+  const { ports } = recordingPorts({
+    lifecycleDiagnostics: [
+      {
+        code: "client_initialize_failed",
+        stepId: "client_catalog",
+        createdAtMs: 1,
+      },
+      {
+        code: "client_background_step_failed",
+        stepId: "opencode_serve",
+        createdAtMs: Date.now() + 60_000,
+      },
+    ],
+    captureVisualResult: false,
+  });
+
+  const result = runMacosInstaller(
+    { installDir, runnableRoot, launchInstalled: true, verifyStable: true },
+    ports,
+  );
+
+  assert.equal(result.initializationVerified, true);
+  assert.equal(result.visualCaptureRecorded, false);
+});
+
 test("public records are stable, named, and free of private paths", () => {
   const result = {
     ok: true,
@@ -412,6 +518,8 @@ test("public records are stable, named, and free of private paths", () => {
     launchRequested: true,
     launchVerified: true,
     stableVerified: true,
+    initializationVerified: true,
+    visualCaptureRecorded: true,
     installedAppPath: "/Applications/LicoUp.app",
   };
   assert.deepEqual(publicMacosInstallSuccess(result), {
@@ -420,6 +528,8 @@ test("public records are stable, named, and free of private paths", () => {
     launchRequested: true,
     launchVerified: true,
     stableVerified: true,
+    initializationVerified: true,
+    visualCaptureRecorded: true,
   });
 
   const privateMarker = "/Applications/fixture/LicoUp.app";
@@ -502,7 +612,11 @@ test("upgrade replaces all installed copies and unregisters build and deleted en
     assert.equal(readFileSync(data, "utf8"), "keep");
     assert.deepEqual(readdirSync(installDir).sort(), [APP_NAME, "package-metadata"]);
   }
-  for (const app of [target, duplicate, renamed, buildApp, missing]) assert.ok(unregistered.includes(app));
+  for (const app of [target, duplicate, buildApp]) assert.ok(unregistered.includes(app));
+  // Non-.app backups and stale registrations without a bundle on disk are
+  // deliberately excluded from the lsregister batch (ba173f907).
+  assert.equal(unregistered.includes(renamed), false);
+  assert.equal(unregistered.includes(missing), false);
   assert.equal(unregistered.includes(foreign), false);
 });
 

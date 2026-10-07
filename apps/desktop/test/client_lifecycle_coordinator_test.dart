@@ -177,6 +177,86 @@ void main() {
     },
   );
 
+  test(
+    'failure detail sink receives the caught error and stack trace',
+    () async {
+      final details = <(ClientLifecycleReport, Object, StackTrace)>[];
+      final controller = ClientLifecycleCoordinator(
+        onReport: (_) {},
+        onFailureDetail: (report, error, stackTrace) =>
+            details.add((report, error, stackTrace)),
+      );
+      addTearDown(controller.dispose);
+      final failure = StateError('synthetic step failure');
+
+      await controller.initialize(
+        sequentialSteps: [
+          ClientBootstrapStep(
+            id: 'client_storage_root',
+            action: () async => throw failure,
+          ),
+        ],
+      );
+
+      expect(details, hasLength(1));
+      final (report, error, stackTrace) = details.single;
+      expect(report.code, 'client_initialize_failed');
+      expect(report.stepId, 'client_storage_root');
+      expect(error, same(failure));
+      expect(stackTrace.toString(), isNotEmpty);
+    },
+  );
+
+  test('background step failures reach the failure detail sink', () async {
+    final details = <(ClientLifecycleReport, Object, StackTrace)>[];
+    final controller = ClientLifecycleCoordinator(
+      onReport: (_) {},
+      onFailureDetail: (report, error, stackTrace) =>
+          details.add((report, error, stackTrace)),
+    );
+    addTearDown(controller.dispose);
+    final failure = StateError('synthetic background failure');
+
+    await controller.initialize(
+      sequentialSteps: const [],
+      backgroundSteps: [
+        ClientBootstrapStep(
+          id: 'client_update_check',
+          action: () async => throw failure,
+        ),
+      ],
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.projection.initialized, isTrue);
+    expect(details, hasLength(1));
+    expect(details.single.$1.code, 'client_background_step_failed');
+    expect(details.single.$1.stepId, 'client_update_check');
+    expect(details.single.$2, same(failure));
+  });
+
+  test('a throwing failure detail sink never breaks the lifecycle', () async {
+    final reports = <ClientLifecycleReport>[];
+    final controller = ClientLifecycleCoordinator(
+      onReport: reports.add,
+      onFailureDetail: (_, _, _) => throw StateError('sink exploded'),
+    );
+    addTearDown(controller.dispose);
+
+    await controller.initialize(
+      sequentialSteps: [
+        ClientBootstrapStep(
+          id: 'client_storage',
+          action: () async => throw StateError('real failure'),
+        ),
+      ],
+    );
+
+    expect(controller.projection.phase, ClientLifecyclePhase.failed);
+    expect(reports.single.code, 'client_initialize_failed');
+    expect(reports.single.stepId, 'client_storage');
+  });
+
   test('finalization and readiness do not wait for background work', () async {
     final calls = <String>[];
     final background = Completer<void>();
