@@ -13,7 +13,7 @@ import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 export 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 
 ThemeData buildLicoTheme({
-  String presetId = AppearancePresetIds.licoSoda,
+  String presetId = AppearancePresetIds.licoMist,
   List<AppearancePresetConfig> presets = builtInAppearancePresetConfigs,
   Brightness platformBrightness = Brightness.dark,
 }) {

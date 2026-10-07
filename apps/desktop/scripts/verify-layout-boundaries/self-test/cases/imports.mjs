@@ -73,5 +73,30 @@ export async function runImportCases(fixtureRoot, profiles, surfaces) {
   );
   checks += 1;
 
+  await writeCatalogFixture(fixtureRoot, profiles, surfaces);
+  await writeRelative(
+    fixtureRoot,
+    `${DEFAULT_LAYOUT_BOUNDARY_CONFIG.testSupportRoot}/bundled_font_loader.dart`,
+    "Future<void> loadBundledFonts() async {}\n",
+  );
+  await appendRelative(
+    fixtureRoot,
+    `${DEFAULT_LAYOUT_BOUNDARY_CONFIG.profileTestRoot}/alpha/desktop/alpha_desktop_bundle_test.dart`,
+    `import '../../../../support/bundled_font_loader.dart';\n`,
+  );
+  await verifyLayoutBoundaries({ repositoryRoot: fixtureRoot });
+  checks += 1;
+
+  await writeCatalogFixture(fixtureRoot, profiles, surfaces);
+  await appendRelative(
+    fixtureRoot,
+    bundlePath("alpha", "desktop"),
+    `import '../../../../../../test/support/bundled_font_loader.dart';\n`,
+  );
+  await expectViolation("layout_dependency_outside_contract", () =>
+    verifyLayoutBoundaries({ repositoryRoot: fixtureRoot }),
+  );
+  checks += 1;
+
   return checks;
 }

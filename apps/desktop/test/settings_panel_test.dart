@@ -416,7 +416,7 @@ void main() {
           .whereType<SetAppearancePreference>()
           .single
           .presetId,
-      AppearancePresetIds.licoSodaLight,
+      AppearancePresetIds.licoMistLight,
     );
     expect(fixture.intents.values.whereType<SetLayoutPreference>(), isEmpty);
   });

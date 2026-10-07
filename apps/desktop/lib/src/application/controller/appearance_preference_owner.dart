@@ -5,7 +5,7 @@ import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 /// functional status.
 final class AppearancePreferenceOwner extends ApplicationStateOwner {
   AppearancePreferenceOwner({
-    String presetId = AppearancePresetIds.licoSoda,
+    String presetId = AppearancePresetIds.licoMist,
     bool reduceMotion = false,
     List<AppearancePresetConfig> presets = builtInAppearancePresetConfigs,
   }) : _presetId = presetId,
@@ -38,7 +38,7 @@ final class AppearancePreferenceOwner extends ApplicationStateOwner {
   bool replacePreset(String value, {ApplicationCause? cause}) {
     final normalized = hasAppearancePresetConfig(value, _presets)
         ? value
-        : AppearancePresetIds.licoSoda;
+        : AppearancePresetIds.licoMist;
     if (_presetId == normalized) return false;
     _presetId = normalized;
     publishChange(cause);
@@ -78,7 +78,7 @@ final class AppearancePreferenceOwner extends ApplicationStateOwner {
       errorCodes.map(_safeCode).where((code) => code.isNotEmpty),
     );
     final fellBack = !hasAppearancePresetConfig(_presetId, _presets);
-    if (fellBack) _presetId = AppearancePresetIds.licoSoda;
+    if (fellBack) _presetId = AppearancePresetIds.licoMist;
     publishChange();
     return fellBack;
   }

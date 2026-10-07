@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Lico avatar">
+  <defs><radialGradient id="a-orbit-bg" cx="50%" cy="12%" r="100%"><stop offset="0" stop-color="#34479e"/><stop offset=".6" stop-color="#16205a"/><stop offset="1" stop-color="#0b1030"/></radialGradient><radialGradient id="a-orbit-glow"><stop offset="0.1" stop-color="#b9a3ff" stop-opacity="0.42"/><stop offset="1" stop-color="#b9a3ff" stop-opacity="0"/></radialGradient></defs>
+  <rect width="200" height="200" fill="url(#a-orbit-bg)"/>
+  <g fill="#fff"><circle cx="24" cy="28" r="1.4" opacity="0.9"/><circle cx="52" cy="16" r="0.9" opacity="0.6"/><circle cx="170" cy="22" r="1.2" opacity="0.8"/><circle cx="186" cy="58" r="0.8" opacity="0.5"/><circle cx="14" cy="104" r="1" opacity="0.5"/><circle cx="188" cy="118" r="1.3" opacity="0.7"/><circle cx="150" cy="40" r="0.7" opacity="0.5"/><circle cx="30" cy="160" r="0.9" opacity="0.45"/><circle cx="176" cy="170" r="0.9" opacity="0.5"/><circle cx="64" cy="44" r="0.6" opacity="0.4"/></g>
+  <path d="M30 26Q30 30 34 30Q30 30 30 34Q30 30 26 30Q30 30 30 26ZM172 146.8Q172 150 175.2 150Q172 150 172 153.2Q172 150 168.8 150Q172 150 172 146.8Z" fill="#f2d38b" opacity=".85"/>
+  <ellipse cx="100" cy="100" rx="96" ry="90" fill="url(#a-orbit-glow)"/>
+  <g transform="translate(-12 1) scale(1.12)">
+  <defs>
+    <radialGradient id="a-orbit-head" cx="38%" cy="30%" r="80%"><stop offset="0" stop-color="#f6f8ff"/><stop offset="0.55" stop-color="#e1e7ff"/><stop offset="1" stop-color="#bcc8f4"/></radialGradient>
+    <radialGradient id="a-orbit-arm" cx="40%" cy="28%" r="85%"><stop offset="0" stop-color="#f6f8ff"/><stop offset="0.6" stop-color="#e1e7ff"/><stop offset="1" stop-color="#bcc8f4"/></radialGradient>
+    <radialGradient id="a-orbit-occlusion"><stop offset="0.15" stop-color="#8a99d0" stop-opacity="0.5"/><stop offset="1" stop-color="#8a99d0" stop-opacity="0"/></radialGradient>
+    <radialGradient id="a-orbit-highlight"><stop offset="0.3" stop-color="#ffffff" stop-opacity="0.95"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="a-orbit-blush"><stop offset="0.25" stop-color="#ffadb5" stop-opacity="0.95"/><stop offset="1" stop-color="#ffadb5" stop-opacity="0"/></radialGradient>
+    <radialGradient id="a-orbit-armshadow"><stop offset="0.2" stop-color="#6d4a2a" stop-opacity="0.3"/><stop offset="1" stop-color="#6d4a2a" stop-opacity="0"/></radialGradient>
+    <radialGradient id="a-orbit-rimshadow"><stop offset="0.2" stop-color="#8a5a33" stop-opacity="0.32"/><stop offset="1" stop-color="#8a5a33" stop-opacity="0"/></radialGradient>
+    <linearGradient id="a-orbit-rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3dcb8"/><stop offset="0.55" stop-color="#e6c595"/><stop offset="1" stop-color="#d3a877"/></linearGradient>
+    <linearGradient id="a-orbit-cup" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e2bb8b"/><stop offset="1" stop-color="#cf9f6c"/></linearGradient>
+    <linearGradient id="a-orbit-cupside" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8a5a33" stop-opacity="0.28"/><stop offset="0.22" stop-color="#8a5a33" stop-opacity="0"/><stop offset="0.75" stop-color="#8a5a33" stop-opacity="0"/><stop offset="1" stop-color="#8a5a33" stop-opacity="0.32"/></linearGradient>
+    <radialGradient id="a-orbit-eye" cx="42%" cy="34%" r="75%"><stop offset="0" stop-color="#3b4580"/><stop offset="0.7" stop-color="#1a1f3f"/><stop offset="1" stop-color="#11142b"/></radialGradient>
+    <linearGradient id="a-orbit-rimlight" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c9b8ff" stop-opacity="0"/><stop offset="0.55" stop-color="#c9b8ff" stop-opacity="0"/><stop offset="1" stop-color="#b8a2ff" stop-opacity="0.75"/></linearGradient>
+    <clipPath id="a-orbit-cupclip"><path d="M40 142H160L148 201Q146 209 138 209H62Q54 209 52 201Z"/></clipPath>
+    <clipPath id="a-orbit-headclip"><circle cx="100" cy="90" r="66"/></clipPath>
+    <radialGradient id="a-orbit-planet" cx="36%" cy="30%" r="80%"><stop offset="0" stop-color="#e2d6ff"/><stop offset="0.55" stop-color="#9f84f7"/><stop offset="1" stop-color="#6a4ce0"/></radialGradient>
+  </defs>
+  <g>
+    <g>
+      <circle cx="100" cy="90" r="66" fill="url(#a-orbit-head)"/>
+      <ellipse cx="100" cy="150" rx="78" ry="34" fill="url(#a-orbit-occlusion)" clip-path="url(#a-orbit-headclip)"/>
+      <circle cx="100" cy="90" r="64.8" fill="none" stroke="url(#a-orbit-rimlight)" stroke-width="2.6" opacity="0.55"/>
+      <ellipse cx="76" cy="50" rx="24" ry="14" fill="url(#a-orbit-highlight)" transform="rotate(-28 76 50)"/>
+      <g>
+        <g>
+          <g><ellipse cx="78" cy="98" rx="8.2" ry="10" fill="url(#a-orbit-eye)"/>
+            <ellipse cx="122" cy="98" rx="8.2" ry="10" fill="url(#a-orbit-eye)"/>
+            <circle cx="81.2" cy="93.2" r="3.1" fill="#fff"/><circle cx="125.2" cy="93.2" r="3.1" fill="#fff"/>
+            <circle cx="75.4" cy="103" r="1.4" fill="#fff" opacity=".8"/><circle cx="119.4" cy="103" r="1.4" fill="#fff" opacity=".8"/></g>
+        </g>
+        <g><ellipse cx="62" cy="113" rx="14" ry="9" fill="url(#a-orbit-blush)"/><ellipse cx="138" cy="113" rx="14" ry="9" fill="url(#a-orbit-blush)"/></g>
+        <g><path d="M94 111.5q6 5.5 12 0" fill="none" stroke="#7a4636" stroke-width="2.6" stroke-linecap="round"/></g>
+      </g>
+      <g>
+        <rect x="128" y="38.5" width="30" height="6" rx="3" fill="#8f78e0" transform="rotate(26 143 41.5)"/>
+        <rect x="129" y="38.5" width="26" height="2" rx="1" fill="#d8ccff" opacity=".8" transform="rotate(26 143 41.5)"/>
+        <g transform="rotate(-18 138 29)">
+          <ellipse cx="138" cy="29" rx="17.5" ry="5.6" fill="none" stroke="#d6a43c" stroke-width="2.6"/>
+          <circle cx="138" cy="29" r="9.5" fill="url(#a-orbit-planet)"/>
+          <path d="M120.5 29A17.5 5.6 0 0 0 155.5 29" fill="none" stroke="#f2d38b" stroke-width="2.6" stroke-linecap="round"/>
+        </g>
+        <ellipse cx="134.5" cy="24.5" rx="2.8" ry="1.6" fill="#fff" opacity=".75" transform="rotate(-30 134.5 24.5)"/>
+      </g>
+    </g>
+    <g>
+      <path d="M40 142H160L148 201Q146 209 138 209H62Q54 209 52 201Z" fill="url(#a-orbit-cup)"/>
+      <g clip-path="url(#a-orbit-cupclip)" fill="none" stroke-linecap="round">
+        <path d="M-60 140 l70 72 M10 140 l-70 72 M-37 140 l70 72 M33 140 l-70 72 M-14 140 l70 72 M56 140 l-70 72 M9 140 l70 72 M79 140 l-70 72 M32 140 l70 72 M102 140 l-70 72 M55 140 l70 72 M125 140 l-70 72 M78 140 l70 72 M148 140 l-70 72 M101 140 l70 72 M171 140 l-70 72 M124 140 l70 72 M194 140 l-70 72 M147 140 l70 72 M217 140 l-70 72 M170 140 l70 72 M240 140 l-70 72 M193 140 l70 72 M263 140 l-70 72 M216 140 l70 72 M286 140 l-70 72 " stroke="#b9854f" stroke-width="3.2" opacity=".35" transform="translate(0 1.4)"/>
+        <path d="M-60 140 l70 72 M10 140 l-70 72 M-37 140 l70 72 M33 140 l-70 72 M-14 140 l70 72 M56 140 l-70 72 M9 140 l70 72 M79 140 l-70 72 M32 140 l70 72 M102 140 l-70 72 M55 140 l70 72 M125 140 l-70 72 M78 140 l70 72 M148 140 l-70 72 M101 140 l70 72 M171 140 l-70 72 M124 140 l70 72 M194 140 l-70 72 M147 140 l70 72 M217 140 l-70 72 M170 140 l70 72 M240 140 l-70 72 M193 140 l70 72 M263 140 l-70 72 M216 140 l70 72 M286 140 l-70 72 " stroke="#f0d0a2" stroke-width="2.8" opacity=".9"/>
+      </g>
+      <path d="M40 142H160L148 201Q146 209 138 209H62Q54 209 52 201Z" fill="url(#a-orbit-cupside)"/>
+      <rect x="30" y="121" width="140" height="27" rx="13.5" fill="url(#a-orbit-rim)"/>
+      <path d="M44 126.5h112" stroke="#fbead0" stroke-width="3" stroke-linecap="round" opacity=".9"/>
+      <ellipse cx="100" cy="150" rx="66" ry="7" fill="url(#a-orbit-rimshadow)" clip-path="url(#a-orbit-cupclip)"/>
+    </g>
+    <g>
+      <ellipse cx="72" cy="139" rx="20" ry="7.5" fill="url(#a-orbit-armshadow)"/>
+      <ellipse cx="69" cy="131" rx="20" ry="12.5" fill="url(#a-orbit-arm)" transform="rotate(-8 69 131)"/>
+    </g>
+    <g>
+      <ellipse cx="128" cy="139" rx="20" ry="7.5" fill="url(#a-orbit-armshadow)"/>
+      <ellipse cx="131" cy="131" rx="20" ry="12.5" fill="url(#a-orbit-arm)" transform="rotate(8 131 131)"/>
+    </g>
+  </g>
+  </g>
+</svg>

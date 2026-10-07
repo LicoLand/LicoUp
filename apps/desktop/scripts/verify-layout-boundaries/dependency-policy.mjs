@@ -231,7 +231,8 @@ export function validateOwnedDartSource(catalog, relativePath, source) {
     if (
       isDirectNeutralDependency(resolved) ||
       (testOwner != null &&
-        resolved.startsWith(`${catalog.config.profileTestFixtureRoot}/`))
+        (resolved.startsWith(`${catalog.config.profileTestFixtureRoot}/`) ||
+          resolved.startsWith(`${catalog.config.testSupportRoot}/`)))
     ) {
       continue;
     }

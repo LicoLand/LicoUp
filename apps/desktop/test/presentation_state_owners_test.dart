@@ -19,7 +19,7 @@ void main() {
     );
 
     expect(fellBack, isTrue);
-    expect(owner.presetId, AppearancePresetIds.licoSoda);
+    expect(owner.presetId, AppearancePresetIds.licoMist);
     expect(owner.loadErrors, ['external_preset_invalid:1']);
     expect(changes, 1);
   });
@@ -31,9 +31,15 @@ void main() {
     final pickerIds = owner.selectablePresets
         .map((config) => config.id)
         .toList();
-    // A light theme the user cannot choose is not a light theme. Both fixed
-    // presets share one brand identity, so each is a legitimate direct choice.
+    // A light theme the user cannot choose is not a light theme. Every fixed
+    // preset is a legitimate direct choice, in catalog order.
     expect(pickerIds, [
+      AppearancePresetIds.licoMist,
+      AppearancePresetIds.licoMistLight,
+      AppearancePresetIds.licoCream,
+      AppearancePresetIds.licoCreamLight,
+      AppearancePresetIds.licoRoyale,
+      AppearancePresetIds.licoRoyaleLight,
       AppearancePresetIds.licoSoda,
       AppearancePresetIds.licoSodaLight,
     ]);
@@ -43,11 +49,11 @@ void main() {
       owner.presets.map((config) => config.id),
       containsAll([
         AppearancePresetIds.defaultSystem,
-        AppearancePresetIds.licoSoda,
-        AppearancePresetIds.licoSodaLight,
+        AppearancePresetIds.licoMist,
+        AppearancePresetIds.licoMistLight,
       ]),
     );
-    expect(owner.presetId, AppearancePresetIds.licoSoda);
+    expect(owner.presetId, AppearancePresetIds.licoMist);
     expect(
       owner.applyCatalog(
         configs: const [],

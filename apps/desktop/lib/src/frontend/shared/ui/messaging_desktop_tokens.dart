@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
+
 /// Shared renderer measurements for the Messaging presentation.
 abstract final class MessagingDesktopMetrics {
   /// Far-left destination column on the unified clear-veil shell.
@@ -287,6 +289,13 @@ abstract final class MessagingDesktopMetrics {
   static Color bubbleRestingBorder(Color line, {required bool isDark}) =>
       line.withAlpha(isDark ? 90 : 100);
 
+  /// Bubble corner radius away from the author anchor.
+  static const double bubbleCornerRadius = 16;
+
+  /// Tighter corner at the author anchor: top-left for agent bubbles (toward
+  /// the avatar), bottom-right for the user's own (toward the screen edge).
+  static const double bubbleAnchorCornerRadius = 6;
+
   /// Black readability veil on floating conversation overlays (dark).
   /// Layered with [conversationOverlayGlassFill] and blur so menus and
   /// popovers remain distinct from live content without becoming opaque.
@@ -402,12 +411,11 @@ abstract final class MessagingDesktopMetrics {
   /// with the window: [windowCornerRadius] − [mainCardMargin] = 24 − 4 = 20.
   static const double mainCardCornerRadius = 20;
 
-  /// Solid window ground shared by shell regions — opaque grouped backgrounds:
-  /// black content canvas in dark, the ice-cream cream in light. No wallpaper
-  /// bleed and no blur on this layer; translucency stays on the control layer
-  /// (capsules, composer, menus).
-  static Color surfaceGlassTint({required bool isDark}) =>
-      isDark ? const Color(0xFF000000) : const Color(0xFFF4E3DC);
+  /// Solid window ground shared by shell regions — the preset's own sunken
+  /// surface (bg-inset), opaque by contract. No wallpaper bleed and no blur
+  /// on this layer; translucency stays on the control layer (capsules,
+  /// composer, menus).
+  static Color surfaceGlassTint(LicoThemeColors colors) => colors.surfaceSunken;
 
   /// Translucent overlay on shell glass — same alpha in both presets; overlay
   /// color flips with mode (light wash in dark, dark wash in light).

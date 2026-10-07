@@ -34,8 +34,8 @@ bool isResolvedAppearanceDark(
 /// Maps an explicit day/night choice to the built-in fixed preset id.
 String appearancePresetIdForBrightness(bool dark) {
   return dark
-      ? AppearancePresetIds.licoSoda
-      : AppearancePresetIds.licoSodaLight;
+      ? AppearancePresetIds.licoMist
+      : AppearancePresetIds.licoMistLight;
 }
 
 /// Maps a brightness-mode choice to the preset id that should be persisted.
@@ -54,14 +54,14 @@ String appearancePresetIdForBrightnessSelection(
       if (current.mode == AppearancePresetMode.light) {
         return currentId;
       }
-      return AppearancePresetIds.licoSodaLight;
+      return AppearancePresetIds.licoMistLight;
     }(),
     AppearanceBrightnessSelection.dark => () {
       final current = findAppearancePresetConfig(currentId, configs);
       if (current.mode == AppearancePresetMode.dark) {
         return currentId;
       }
-      return AppearancePresetIds.licoSoda;
+      return AppearancePresetIds.licoMist;
     }(),
   };
 }
@@ -103,8 +103,8 @@ ResolvedAppearancePreset resolveAppearancePresetConfig(
     final resolved = resolveAppearancePresetConfig(
       resolvedId ??
           (platformBrightness == Brightness.dark
-              ? AppearancePresetIds.licoSoda
-              : AppearancePresetIds.licoSodaLight),
+              ? AppearancePresetIds.licoMist
+              : AppearancePresetIds.licoMistLight),
       configs,
       platformBrightness,
     );
@@ -112,8 +112,8 @@ ResolvedAppearancePreset resolveAppearancePresetConfig(
   }
 
   final baseId = selected.mode == AppearancePresetMode.dark
-      ? AppearancePresetIds.licoSoda
-      : AppearancePresetIds.licoSodaLight;
+      ? AppearancePresetIds.licoMist
+      : AppearancePresetIds.licoMistLight;
   final base = selected.id == baseId
       ? null
       : findAppearancePresetConfig(baseId, builtInAppearancePresetConfigs);

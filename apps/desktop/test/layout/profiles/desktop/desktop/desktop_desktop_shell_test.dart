@@ -7,7 +7,6 @@ import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_app_catalog.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_model.dart';
-import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 
 import 'desktop_desktop_test_harness.dart';
@@ -45,7 +44,12 @@ void main() {
     final veil = tester.widget<ColoredBox>(
       find.byKey(const Key('desktop-window-veil')),
     );
-    expect(veil.color, MessagingDesktopMetrics.surfaceGlassTint(isDark: true));
+    expect(
+      veil.color,
+      Theme.of(
+        tester.element(find.byKey(const Key('desktop-window-veil'))),
+      ).colorScheme.surfaceContainerLowest,
+    );
     expect(find.byKey(const Key('desktop-dock-bar')), findsOneWidget);
     expect(find.byKey(const Key('desktop-dock-input')), findsOneWidget);
     expect(

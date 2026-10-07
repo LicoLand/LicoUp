@@ -17,6 +17,7 @@ export const DEFAULT_LAYOUT_BOUNDARY_CONFIG = Object.freeze({
     "apps/desktop/lib/src/frontend/layout/profiles",
   profileTestRoot: "apps/desktop/test/layout/profiles",
   profileTestFixtureRoot: "apps/desktop/test/layout/fixtures",
+  testSupportRoot: "apps/desktop/test/support",
   assetRoot: "apps/desktop/assets/layout-profiles",
   goldenRoot: "apps/desktop/test/goldens/layout",
   libraryRoot: "apps/desktop/lib",

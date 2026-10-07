@@ -402,6 +402,8 @@ extension LicoStringsLabels on LicoStrings {
   String get retry => isChinese ? '重试' : 'Retry';
   String get recentConversations => isChinese ? '最近对话' : 'Recent conversations';
   String get noConversationsYet => isChinese ? '还没有对话' : 'No conversations yet';
+  String get conversationEmptyGreeting =>
+      isChinese ? '打个招呼，开始吧' : 'Say hi to get started';
   String get noTrashedConversations =>
       isChinese ? '回收站为空' : 'Recycle bin is empty';
   String get delete => isChinese ? '删除' : 'Delete';

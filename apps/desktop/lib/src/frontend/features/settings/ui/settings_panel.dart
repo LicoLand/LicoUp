@@ -1171,11 +1171,11 @@ String _appearancePresetIdForBrightnessSelection(
   AppearanceBrightnessSelection.light =>
     _appearancePreset(currentId, presets)?.mode == SettingsAppearanceMode.light
         ? currentId
-        : AppearancePresetIds.licoSodaLight,
+        : AppearancePresetIds.licoMistLight,
   AppearanceBrightnessSelection.dark =>
     _appearancePreset(currentId, presets)?.mode == SettingsAppearanceMode.dark
         ? currentId
-        : AppearancePresetIds.licoSoda,
+        : AppearancePresetIds.licoMist,
 };
 
 List<SettingsAppearancePresetProjection>

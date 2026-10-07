@@ -21,6 +21,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
+import 'package:licoup/src/frontend/shared/ui/conversation_material_scope.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
@@ -498,10 +499,16 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
           )
         : AgentConversationMessageContent(
             data: widget.message.text,
-            foreground: agentConversationMessageForeground(
-              colors,
-              widget.message.role,
-            ),
+            // On the Plain profile's brand-filled own bubble, ink switches
+            // to the on-brand role so text clears AA on violet/gold.
+            foreground:
+                widget.authorIsUser &&
+                    ConversationMaterialScope.opaqueBubblesOf(context)
+                ? colors.textOnPrimary
+                : agentConversationMessageForeground(
+                    colors,
+                    widget.message.role,
+                  ),
             accent: colors.accent,
             codeBackground: agentConversationToneColor(
               colors,
@@ -516,7 +523,35 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
             images: widget.message.images,
             isStreaming: widget.isStreaming,
           );
-    final bubbleRadius = BorderRadius.circular(LicoRadius.composerField);
+    final bubbleRadius = widget.authorIsUser
+        ? const BorderRadius.only(
+            topLeft: Radius.circular(
+              MessagingDesktopMetrics.bubbleCornerRadius,
+            ),
+            topRight: Radius.circular(
+              MessagingDesktopMetrics.bubbleCornerRadius,
+            ),
+            bottomLeft: Radius.circular(
+              MessagingDesktopMetrics.bubbleCornerRadius,
+            ),
+            bottomRight: Radius.circular(
+              MessagingDesktopMetrics.bubbleAnchorCornerRadius,
+            ),
+          )
+        : const BorderRadius.only(
+            topLeft: Radius.circular(
+              MessagingDesktopMetrics.bubbleAnchorCornerRadius,
+            ),
+            topRight: Radius.circular(
+              MessagingDesktopMetrics.bubbleCornerRadius,
+            ),
+            bottomLeft: Radius.circular(
+              MessagingDesktopMetrics.bubbleCornerRadius,
+            ),
+            bottomRight: Radius.circular(
+              MessagingDesktopMetrics.bubbleCornerRadius,
+            ),
+          );
     final bubblePadding = const EdgeInsets.symmetric(
       horizontal: 14,
       vertical: 11,
@@ -637,17 +672,18 @@ class _MessagingUserAvatar extends StatelessWidget {
         width: MessagingDesktopMetrics.conversationAvatarExtent,
         height: MessagingDesktopMetrics.conversationAvatarExtent,
         alignment: Alignment.center,
-        decoration: continuousHairlineDecoration(
-          color: colors.surfaceLow,
+        // The self mark is the ink disc from the site roster: solid ink fill,
+        // surface glyph, no hairline.
+        decoration: BoxDecoration(
+          color: colors.text,
           borderRadius: BorderRadius.circular(
             MessagingDesktopMetrics.conversationAvatarExtent / 2,
           ),
-          stroke: colors.line.withAlpha(90),
         ),
         child: Icon(
           Icons.person_outline_rounded,
           size: MessagingDesktopMetrics.conversationAvatarMarkExtent,
-          color: colors.textMuted,
+          color: colors.background,
         ),
       ),
     );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_bubble_edge_glow.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion_surface.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
@@ -34,6 +35,22 @@ class MessagingAgentAvatar extends StatelessWidget {
   /// When false, the circular surface fill and hairline rim are omitted so
   /// the brand mark sits bare (e.g. inside the group-roster capsule).
   final bool showWell;
+
+  Color _wellFill(LicoThemeColors colors) {
+    final hue = messagingAgentBrandHue(target);
+    if (hue == null) {
+      return ConversationVisualTokens.circularIdentityWellFill(colors);
+    }
+    return hue.withValues(alpha: colors.isDark ? 0.26 : 0.15);
+  }
+
+  Color _wellStroke(LicoThemeColors colors) {
+    final hue = messagingAgentBrandHue(target);
+    if (hue == null) {
+      return colors.line.withAlpha(90);
+    }
+    return hue.withAlpha(colors.isDark ? 120 : 80);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -83,11 +100,12 @@ class MessagingAgentAvatar extends StatelessWidget {
                 ? DecoratedBox(
                     key: const Key('messaging-agent-avatar-well'),
                     decoration: continuousHairlineDecoration(
-                      color: ConversationVisualTokens.circularIdentityWellFill(
-                        colors,
-                      ),
+                      // A well tinted with the agent's own brand hue — the
+                      // pastel member discs from the site roster — falling
+                      // back to the neutral well for unlisted marks.
+                      color: _wellFill(colors),
                       borderRadius: BorderRadius.circular(size / 2),
-                      stroke: colors.line.withAlpha(90),
+                      stroke: _wellStroke(colors),
                     ),
                     child: mark,
                   )

@@ -9,10 +9,15 @@ import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
-/// User message surface: profile-owned opaque material when requested, or
-/// frosted transparent glass with a thin neutral hairline at rest. On hover the **edge light** fades in — a thin
-/// bright rim in the shared white light, nothing more.
-/// Never brand/primary: lemon rims read as olive 泛黄 on the dark chat canvas.
+/// User message surface: profile-owned material when requested, or frosted
+/// transparent glass with a thin neutral hairline at rest.
+///
+/// Plain profile (opaque): the user's own bubble carries the brand as a
+/// diagonal fill — violet in light presets, gold in dark presets — bordered
+/// by the mandatory brand hairline. Card profile (glass): the interior stays
+/// clear glass and never takes a brand tint, which would frost yellow into
+/// the pill. On hover the **edge light** fades in — a thin bright rim in the
+/// shared white light, nothing more.
 class MessagingUserBubbleGlass extends StatelessWidget {
   const MessagingUserBubbleGlass({
     super.key,
@@ -33,18 +38,29 @@ class MessagingUserBubbleGlass extends StatelessWidget {
     final isDark = colors.isDark;
     final sigma = MessagingDesktopMetrics.userBubbleGlassBlurSigma;
     final opaque = ConversationMaterialScope.opaqueBubblesOf(context);
-    var fill = MessagingDesktopMetrics.userBubbleGlassFill(isDark: isDark);
-    if (opaque) fill = colors.surface.withValues(alpha: 1);
-    final restingBorder = MessagingDesktopMetrics.bubbleRestingBorder(
-      colors.line,
-      isDark: isDark,
-    );
+    final gradient = opaque
+        ? LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [colors.primary, colors.primaryStrong],
+          )
+        : null;
+    final fill = opaque
+        ? null
+        : MessagingDesktopMetrics.userBubbleGlassFill(isDark: isDark);
+    final restingBorder = opaque
+        ? colors.brandBorder.withAlpha(isDark ? 150 : 110)
+        : MessagingDesktopMetrics.bubbleRestingBorder(
+            colors.line,
+            isDark: isDark,
+          );
     final content = AnimatedContainer(
       duration: context.motion(LicoMotion.micro),
       curve: LicoMotion.standard,
       padding: padding,
       decoration: continuousHairlineDecoration(
         color: fill,
+        gradient: gradient,
         borderRadius: borderRadius,
         stroke: hovered ? restingBorder.withAlpha(0) : restingBorder,
       ),

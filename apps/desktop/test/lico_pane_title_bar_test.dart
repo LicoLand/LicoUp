@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:licoup/src/frontend/appearance/appearance_visuals.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_title_bar.dart';
@@ -59,7 +60,10 @@ void main() {
     final button = tester.widget<LicoIconButton>(find.byType(LicoIconButton));
     expect(button.shape, LicoIconButtonShape.circle);
     expect(button.tone, LicoIconButtonTone.ghost);
-    expect(find.byIcon(Icons.refresh), findsOneWidget);
+    final visuals = Theme.of(
+      tester.element(find.byType(LicoPaneTitleBar)),
+    ).extension<AppearanceVisuals>()!;
+    expect(find.byIcon(visuals.iconFor(Icons.refresh)), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('pane-refresh')));
     expect(taps, 1);

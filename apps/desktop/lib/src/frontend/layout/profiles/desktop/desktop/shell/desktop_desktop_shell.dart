@@ -27,6 +27,7 @@ import 'package:licoup/src/frontend/shared/messaging/external_conversation_compo
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Desktop shell builders: one huge main area with a floating stretchable
 /// capsule dock below.
@@ -373,9 +374,7 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
         Positioned.fill(
           child: ColoredBox(
             key: const Key('desktop-window-veil'),
-            color: MessagingDesktopMetrics.surfaceGlassTint(
-              isDark: context.layoutPalette.isDark,
-            ),
+            color: MessagingDesktopMetrics.surfaceGlassTint(context.licoColors),
           ),
         ),
         Positioned.fill(child: _buildMainArea(context)),

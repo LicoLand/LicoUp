@@ -35,7 +35,7 @@ mixin ClientAppearanceCommands {
     ApplicationCause? cause,
   }) async {
     if (!hasAppearancePresetConfig(presetId, appearancePresetConfigs)) {
-      presetId = AppearancePresetIds.licoSoda;
+      presetId = AppearancePresetIds.licoMist;
     }
     if (await layoutManager.setAppearancePreset(presetId, cause: cause)) {
       appearancePreferenceOwner.replacePreset(presetId, cause: cause);

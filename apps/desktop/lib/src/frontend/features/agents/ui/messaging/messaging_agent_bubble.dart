@@ -7,11 +7,15 @@ import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
-/// Agent-side message bubble: profile-owned opaque material when requested,
-/// or a readability veil with a thin neutral hairline at rest. On hover the **edge light** fades in, in the speaking
-/// agent's brand hue — light lives on the rim, never in the fill. This
-/// replaces the former solid `accentSurface` tint, which read as a flat 底色
-/// slab on the glass canvas.
+/// Agent-side message bubble: profile-owned material when requested, or a
+/// readability veil with a thin neutral hairline at rest.
+///
+/// Plain profile (opaque): a quiet brand-family tint — the pale violet brand
+/// surface in light presets, the violet accent surface in dark presets — so
+/// the other speaker's words sit on the scheme's own wash. Card profile
+/// (glass): the interior stays a neutral veil; on hover the **edge light**
+/// fades in, in the speaking agent's brand hue — light lives on the rim,
+/// never in the fill.
 class MessagingAgentBubble extends StatelessWidget {
   const MessagingAgentBubble({
     super.key,
@@ -36,8 +40,9 @@ class MessagingAgentBubble extends StatelessWidget {
     final colors = context.licoColors;
     final isDark = colors.isDark;
     final opaque = ConversationMaterialScope.opaqueBubblesOf(context);
-    var fill = MessagingDesktopMetrics.agentBubbleVeilFill(isDark: isDark);
-    if (opaque) fill = colors.surface.withValues(alpha: 1);
+    final fill = opaque
+        ? (isDark ? colors.accentSurface : colors.brandSurface)
+        : MessagingDesktopMetrics.agentBubbleVeilFill(isDark: isDark);
     final restingBorder = MessagingDesktopMetrics.bubbleRestingBorder(
       colors.line,
       isDark: isDark,

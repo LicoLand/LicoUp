@@ -86,10 +86,9 @@ final class DashboardDesktopAgentsPresentation
       child: DecoratedBox(
         key: key,
         decoration: BoxDecoration(
-          // Solid elevated panel on the opaque ground — secondary grouped
-          // background in dark, the theme's cream surface card in light
-          // (Stocks sidebar idiom).
-          color: colors.isDark ? const Color(0xFF1C1C1E) : colors.surface,
+          // Solid elevated panel on the opaque ground — the preset's own
+          // grouped surface in both modes (Stocks sidebar idiom).
+          color: colors.surface,
           borderRadius: BorderRadius.circular(radius),
           boxShadow: MessagingDesktopMetrics.conversationListCardShadows(
             isDark: colors.isDark,

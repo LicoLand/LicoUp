@@ -12,33 +12,33 @@ styles describe appearance. Layout profiles describe geometry. Named feature
 Bindings provide functional state and commands. These three owners remain
 independent when a user changes settings.
 
-## Orbital appearance
+## Theme styles
 
-Orbital uses deep black, silver gray and electric yellow. Large reading surfaces
-stay neutral. Silver identifies interactive text, focus and precise outlines.
-Electric yellow marks the primary action and selected brand controls. Success,
-warning and failure retain distinct semantic colors and visible labels or icons.
+The client identity pairs taro violet with warm gold. Light schemes put the
+violet on the brand and the gold on interaction; dark schemes invert — gold
+carries the brand and violet carries interaction. Large reading surfaces stay
+on the scheme's neutral ramp: warm cream paper in light, violet night in dark.
+Success, warning and failure retain distinct semantic colors and visible
+labels or icons.
 
-| Role | Dark theme | Purpose |
+Three built-in scheme pairs ship with the client, each as a light and a dark
+preset:
+
+| Scheme | Presets | Character |
 | --- | --- | --- |
-| Window | `#0E0F11` | Deep black background |
-| Content | `#1B1C1F` | Primary surface |
-| Inset controls | `#292A2E` | Quiet grouping and selection |
-| Floating surfaces | `#393A3F` | Menus and popovers |
-| Primary text | `#F4F5F7` | Reading and titles |
-| Secondary text | `#CED0D5` | Supporting facts |
-| Metadata | `#ACADB3` | Time, counts and secondary state |
-| Brand | `#E7F22E` | Primary action fill |
-| Interaction | `#CBD0D9` | Links, focus and controls |
+| Taro Mist / 香芋晨雾 | `lico-mist`, `lico-mist-light` | The default. Paper-cream light, violet-night dark, balanced contrast |
+| Butter Cream / 奶油主场 | `lico-cream`, `lico-cream-light` | Warmer custard light, quieter violet dark |
+| Violet Royale / 紫雾浓郁 | `lico-royale`, `lico-royale-light` | Saturated violet surfaces for a denser look |
+| Orbital / 轨道 | `lico-soda`, `lico-soda-light` | The earlier graphite-and-lemon identity, preserved |
 
-The light style uses the same yellow identity with white content and silver
-surfaces. Both styles are selectable. The system option resolves the selected
-brightness from the operating system. Theme selection persists without changing
-layout, navigation, running work, subscriptions, input or scroll ownership.
+The system option (**System Default / 跟随系统**) resolves Taro Mist by
+brightness from the operating system. Theme selection persists without
+changing layout, navigation, running work, subscriptions, input or scroll
+ownership.
 
-Settings labels this control **Theme style / 主题风格**. The existing preset
-identifiers remain storage identifiers; they are not product-facing names.
-Theme files load and reload at runtime through the existing catalog.
+Settings labels this control **Theme style / 主题风格**. The preset identifiers
+are storage identifiers; they are not product-facing names. Theme files load
+and reload at runtime through the existing catalog.
 
 The optional visual tokens are intentionally bounded:
 
@@ -63,6 +63,18 @@ Sidebar transparency affects its background, not the legibility of its text,
 icons or focus state. These Dashboard roles do not change another layout's
 surface treatment. A shared opacity multiplier must not make message bubbles
 translucent.
+
+Conversation chrome follows the scheme. On the Plain profile the user's own
+bubble is the brand as a diagonal fill — violet in light, gold in dark — with
+a tighter corner toward the screen edge; the other speaker's bubble sits on
+the scheme's brand-family wash with the anchor corner toward the avatar.
+Agent avatar wells tint with each agent's brand hue, and the user's own mark
+is the ink disc. Permission moments render as the gold-family card. The Card
+profile keeps its clear-glass bubbles; only the palette changes.
+
+The Lico mascot pack ships embedded under `assets/mascot/` — twelve avatar
+characters and twenty-one expressions, the same asset family the website
+uses. The empty conversation greets with the waving mascot.
 
 ## Typography and content
 

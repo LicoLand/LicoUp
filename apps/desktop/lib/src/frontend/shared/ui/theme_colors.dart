@@ -15,8 +15,9 @@ import 'package:licoup/src/frontend/appearance/appearance_preset_config.dart';
 /// * Neutral depth is `background` → `surface` → `surfaceLow` → `surfaceRaised`,
 ///   with `surfaceSunken` below the window for inset wells. These are the only
 ///   elevation roles; brand tints must never stand in for a neutral step.
-/// * Brand (lemon) is a fill-and-mark role. `primary` is never a text color.
-///   Interactive text is always `accent` or `accentStrong`.
+/// * Brand is a fill-and-mark role — taro violet in light presets, gold in
+///   dark presets. `primary` is never a text color. Interactive text is
+///   always `accent` or `accentStrong`.
 /// * `*Strong` is always the more emphatic variant *for the active mode*, so
 ///   the same component code reads correctly in light and dark.
 /// * State is expressed through `hoverOverlay`, `pressedOverlay`, and
@@ -87,7 +88,8 @@ class LicoThemeColors extends ThemeExtension<LicoThemeColors> {
   /// Non-interactive text. Deliberately below the 4.5:1 body threshold.
   final Color textDisabled;
 
-  /// Brand lemon. Fill and mark only — never apply to text or 1px strokes.
+  /// Brand hue: taro violet in light presets, gold in dark presets. Fill and
+  /// mark only — never apply to text or 1px strokes.
   final Color primary;
 
   /// Mode-appropriate emphatic brand for hover fills and 2px indicators.
@@ -104,8 +106,9 @@ class LicoThemeColors extends ThemeExtension<LicoThemeColors> {
   /// Ink placed on [primary]. At least 4.5:1 against it.
   final Color textOnPrimary;
 
-  /// Silver. The interaction color: focus rings, links, cursor, selection.
-  /// At least 4.5:1 against [surface] so it is safe as text.
+  /// The interaction color — gold in light presets, violet in dark presets.
+  /// Focus rings, links, cursor, selection. At least 4.5:1 against [surface]
+  /// so it is safe as text.
   final Color accent;
 
   /// Mode-appropriate emphatic accent for hover and pressed interactive text.
@@ -133,7 +136,7 @@ class LicoThemeColors extends ThemeExtension<LicoThemeColors> {
   /// Persistent selected-row fill. Distinct from a transient hover.
   final Color selectedSurface;
 
-  /// Translucent lemon for luminous brand moments: the halo behind an active
+  /// Translucent brand for luminous brand moments: the halo behind an active
   /// destination indicator, a send-ready control, a live activity pulse.
   ///
   /// Glow is not decoration. A vivid accent on a clean dark ground reads as
@@ -256,7 +259,7 @@ class LicoThemeColors extends ThemeExtension<LicoThemeColors> {
 extension LicoThemeContext on BuildContext {
   LicoThemeColors get licoColors {
     return Theme.of(this).extension<LicoThemeColors>() ??
-        licoColorsFor(AppearancePresetIds.licoSoda);
+        licoColorsFor(AppearancePresetIds.licoMist);
   }
 }
 

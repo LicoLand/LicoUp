@@ -6,6 +6,6 @@
     "zh-CN": "跟随系统"
   },
   "mode": "system",
-  "lightPresetId": "lico-soda-light",
-  "darkPresetId": "lico-soda"
+  "lightPresetId": "lico-mist-light",
+  "darkPresetId": "lico-mist"
 }

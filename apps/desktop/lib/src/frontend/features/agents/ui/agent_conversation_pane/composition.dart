@@ -18,6 +18,8 @@ import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
+import 'package:licoup/src/frontend/shared/mascot/mascot_catalog.dart';
 import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -292,7 +294,7 @@ class _AgentConversationActivePaneState
         _empty(state) &&
             (state.session?.messages.isEmpty ?? true) &&
             state.liveMessages.isEmpty
-        ? const SizedBox.expand(key: Key('conversation-empty-content'))
+        ? const _ConversationEmptyGreeting()
         : AgentConversationMessageList(
             scrollController: messageScrollController,
             loading: state.loading,
@@ -598,71 +600,99 @@ class _ConversationPermissionRetryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
+    // The permission card carries the gold family: the accent wash in light
+    // presets, the gold brand wash in dark presets — the same surface the
+    // site's approval card uses.
+    final cardFill = colors.isDark ? colors.brandSurface : colors.accentSurface;
+    final cardBorder = colors.isDark ? colors.brandBorder : colors.accentBorder;
     return Padding(
       key: const Key('conversation-permission-retry'),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Icon(Icons.security_rounded, size: 14, color: colors.warning),
-          const SizedBox(width: 7),
-          Expanded(
-            child: Text(
-              strings.conversationPermissionDenied(tool),
-              key: const Key('conversation-permission-retry-reason'),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: colors.textMuted,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                height: 1.25,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: continuousHairlineDecoration(
+          color: cardFill,
+          borderRadius: BorderRadius.circular(14),
+          stroke: cardBorder,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 26,
+              height: 26,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: colors.warning.withValues(
+                  alpha: colors.isDark ? 0.18 : 0.14,
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.lock_outline_rounded,
+                size: 14,
+                color: colors.warning,
               ),
             ),
-          ),
-          TextButton(
-            key: const Key('conversation-permission-retry-action'),
-            onPressed: onAllow,
-            style: TextButton.styleFrom(
-              foregroundColor: colors.accent,
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              textStyle: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                strings.conversationPermissionDenied(tool),
+                key: const Key('conversation-permission-retry-reason'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: colors.text,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  height: 1.25,
+                ),
               ),
             ),
-            child: Text(strings.conversationPermissionAllowAction),
-          ),
-          TextButton(
-            key: const Key('conversation-permission-retry-remember'),
-            onPressed: onAllowAndRemember,
-            style: TextButton.styleFrom(
-              foregroundColor: colors.accent,
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              textStyle: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+            TextButton(
+              key: const Key('conversation-permission-retry-action'),
+              onPressed: onAllow,
+              style: TextButton.styleFrom(
+                foregroundColor: colors.accent,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                textStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
+              child: Text(strings.conversationPermissionAllowAction),
             ),
-            child: Text(strings.conversationPermissionAllowAndRememberAction),
-          ),
-          TextButton(
-            key: const Key('conversation-permission-retry-deny'),
-            onPressed: onDeny,
-            style: TextButton.styleFrom(
-              foregroundColor: colors.textMuted,
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              textStyle: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+            TextButton(
+              key: const Key('conversation-permission-retry-remember'),
+              onPressed: onAllowAndRemember,
+              style: TextButton.styleFrom(
+                foregroundColor: colors.accent,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                textStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
+              child: Text(strings.conversationPermissionAllowAndRememberAction),
             ),
-            child: Text(strings.conversationPermissionDenyAction),
-          ),
-        ],
+            TextButton(
+              key: const Key('conversation-permission-retry-deny'),
+              onPressed: onDeny,
+              style: TextButton.styleFrom(
+                foregroundColor: colors.textMuted,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                textStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              child: Text(strings.conversationPermissionDenyAction),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -716,6 +746,49 @@ class _ConversationSendUnavailableRow extends StatelessWidget {
               child: Text(copy.unblockLabel ?? strings.refreshAgents),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// The empty conversation moment: the bundled Lico mascot waves in, with a
+/// quiet greeting under it. This is the mascot's home in the client — the
+/// same character that greets from the website hero.
+class _ConversationEmptyGreeting extends StatelessWidget {
+  const _ConversationEmptyGreeting();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    return SizedBox.expand(
+      key: const Key('conversation-empty-content'),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            MascotImage.expression(
+              'hi',
+              key: const Key('conversation-empty-mascot'),
+              size: 96,
+              semanticLabel: MascotCatalog.expressionName(
+                'hi',
+                chinese: strings.isChinese,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              strings.conversationEmptyGreeting,
+              key: const Key('conversation-empty-greeting'),
+              style: TextStyle(
+                color: colors.textMuted,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

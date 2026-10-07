@@ -9,12 +9,12 @@ List<AppearancePresetConfig> appearancePresetConfigsFromProjection(
   final lightPresetId = _fixedPresetId(
     projection,
     mode: AppearancePresetMode.light,
-    preferredId: AppearancePresetIds.licoSodaLight,
+    preferredId: AppearancePresetIds.licoMistLight,
   );
   final darkPresetId = _fixedPresetId(
     projection,
     mode: AppearancePresetMode.dark,
-    preferredId: AppearancePresetIds.licoSoda,
+    preferredId: AppearancePresetIds.licoMist,
   );
   return List.unmodifiable(
     projection.presets.map((preset) {

@@ -101,9 +101,12 @@ void main() {
       final region = tester.widget<ColoredBox>(
         find.byKey(const Key('dashboard-content-region')),
       );
+      final regionContext = tester.element(
+        find.byKey(const Key('dashboard-content-region')),
+      );
       expect(
         region.color,
-        MessagingDesktopMetrics.surfaceGlassTint(isDark: true),
+        Theme.of(regionContext).colorScheme.surfaceContainerLowest,
       );
       final card = tester.widget<ClipRRect>(
         find.byKey(const Key('dashboard-desktop-main-card')),
