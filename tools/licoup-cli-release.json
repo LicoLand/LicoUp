@@ -2,7 +2,7 @@
   "repo": "LicoLand/LicoUp-CLI",
   "version": "0.3.1",
   "sha256": {
-    "aarch64-apple-darwin": "7343b2f110c2e31b2be6da411a2786bf079bf1fdc92db6e3973be6af272239ea",
+    "aarch64-apple-darwin": "20f5fe3887315fca8932c5566334c7bd7e24bfab766af1ee8ac51c02a14ab516",
     "aarch64-unknown-linux-gnu": null,
     "x86_64-pc-windows-msvc": null,
     "x86_64-unknown-linux-gnu": null
