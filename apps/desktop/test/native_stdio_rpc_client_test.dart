@@ -265,11 +265,23 @@ done
       final executable = File('${directory.path}/licoup');
       await executable.writeAsString(r'''#!/bin/sh
 while IFS= read -r line; do
-  request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
-  workflow_id=$(printf '%s' "$line" | sed -n 's/.*"workflowId":"\([^"]*\)".*/\1/p')
+  case "$line" in
+    *'"id":"'*)
+      request_id=${line#*\"id\":\"}
+      request_id=${request_id%%\"*}
+      ;;
+    *) request_id= ;;
+  esac
+  case "$line" in
+    *'"workflowId":"'*)
+      workflow_id=${line#*\"workflowId\":\"}
+      workflow_id=${workflow_id%%\"*}
+      ;;
+    *) workflow_id= ;;
+  esac
   case "$line" in
     *'"method":"execute"'*'"llm-gateway","credentials","migrate"'*)
-      sleep 1
+      sleep 2
       migrated=true
       printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"ok":true,"migrationPending":false,"entries":[]}}\n' "$request_id" "$workflow_id"
       ;;
@@ -286,7 +298,7 @@ done
       expect((await Process.run('chmod', ['+x', executable.path])).exitCode, 0);
       final context = _LiveProcessContext(
         executable,
-        requestTimeout: const Duration(milliseconds: 100),
+        requestTimeout: const Duration(seconds: 1),
       );
       final client = NativeStdioRpcClient(processContext: context);
       addTearDown(client.dispose);
