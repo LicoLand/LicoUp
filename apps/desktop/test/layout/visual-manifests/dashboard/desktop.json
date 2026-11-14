@@ -134,7 +134,7 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_desktop_bundle_test.dart",
-      "digest": "sha256:bec76c65f6058f1d9616d8b15e183693aa4f586eb8f2c1138bcaec660b0dffa1"
+      "digest": "sha256:90f2dc1ce4ab411278ec2596341bcdaef4ceadea9cdae53cd79157ff7681b3e6"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_desktop_shell_test.dart",
@@ -173,5 +173,5 @@
       "digest": "sha256:8f94941aa7ba7b5b186ccbc21cb7672c8ab95687c585d66962127eb8c97bb612"
     }
   ],
-  "manifestDigest": "sha256:1c45c3422239ae3f0629c79efcc6cf84c84fcabbb350cd4d3a4390840398a9b6"
+  "manifestDigest": "sha256:202383cea2ad9b77913f004e76ae491300fc4ea0f2bb9fb63e9835eca3bb0a10"
 }

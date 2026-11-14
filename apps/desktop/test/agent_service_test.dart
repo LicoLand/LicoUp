@@ -11,10 +11,10 @@ import 'package:licoup/src/contracts/conversation_native_port.dart';
 var _synthSeq = 0;
 String _synth(String label) => '$label-${_synthSeq++}';
 
-final sv_private_path_canary = _synth('private-path-canary');
-final sv_private_request_canary = _synth('private-request-canary');
-final sv_private_setup_canary = _synth('private-setup-canary');
-final sv_private_process_detail_c = _synth('private-process-detail-canary');
+final svPrivatePathCanary = _synth('private-path-canary');
+final svPrivateRequestCanary = _synth('private-request-canary');
+final svPrivateSetupCanary = _synth('private-setup-canary');
+final svPrivateProcessDetailCanary = _synth('private-process-detail-canary');
 
 void main() {
   test('target candidate parses target adapter scan shape', () {
@@ -98,7 +98,7 @@ void main() {
   });
 
   test('sends private runtime request over stdin instead of argv', () async {
-  final sv_stdin_canary = _synth('stdin-canary');
+    final svStdinCanary = _synth('stdin-canary');
     if (Platform.isWindows) {
       return;
     }
@@ -107,7 +107,7 @@ void main() {
     final cliPath = File('${tempDir.path}/licoup');
     await cliPath.writeAsString('''#!/bin/sh
 body=\$(cat)
-if [ "\$body" = '{"text":"${sv_stdin_canary}"}' ]; then
+if [ "\$body" = '{"text":"$svStdinCanary"}' ]; then
   printf '{"ok":true,"sawStdin":true}'
 else
   printf '{"ok":false,"sawStdin":false}'
@@ -123,7 +123,7 @@ fi
       'send',
       '--stdin-json',
       'true',
-    ], '{"text":"${sv_stdin_canary}"}');
+    ], '{"text":"$svStdinCanary"}');
 
     expect(result, {'ok': true, 'sawStdin': true});
   });
@@ -157,13 +157,9 @@ fi
 
   test('redacts process start details from private runtime errors', () async {
     final agentService = AgentService(
-      resolveCliBinary: () async => File('/${sv_private_path_canary}/licoup'),
+      resolveCliBinary: () async => File('/$svPrivatePathCanary/licoup'),
       startCliExecutable: (executable, args, env) async {
-        throw ProcessException(
-          executable,
-          args,
-          sv_private_process_detail_c,
-        );
+        throw ProcessException(executable, args, svPrivateProcessDetailCanary);
       },
     );
 
@@ -174,14 +170,14 @@ fi
         'send',
         '--stdin-json',
         'true',
-      ], '{"text":"${sv_private_request_canary}"}');
+      ], '{"text":"$svPrivateRequestCanary"}');
       fail('expected the private runtime request to fail');
     } catch (error) {
       final message = error.toString();
       expect(message, contains('licoup executable could not be started'));
-      expect(message, isNot(contains(sv_private_path_canary)));
-      expect(message, isNot(contains(sv_private_process_detail_c)));
-      expect(message, isNot(contains(sv_private_request_canary)));
+      expect(message, isNot(contains(svPrivatePathCanary)));
+      expect(message, isNot(contains(svPrivateProcessDetailCanary)));
+      expect(message, isNot(contains(svPrivateRequestCanary)));
     }
   });
 
@@ -448,14 +444,16 @@ done
   test(
     'macOS stdio RPC preserves authorization_required classification',
     () async {
-  final sv_private_error_canary = _synth('private-error-canary');
+      final svPrivateErrorCanary = _synth('private-error-canary');
       if (!Platform.isMacOS) {
         return;
       }
       final tempDir = await Directory.systemTemp.createTemp('lico-rpc-auth-');
       addTearDown(() => tempDir.delete(recursive: true));
       final cli = File('${tempDir.path}/licoup');
-      await _writeExecutable(cli, r'''#!/bin/sh
+      await _writeExecutable(
+        cli,
+        r'''#!/bin/sh
 while IFS= read -r line; do
   id=$(printf '%s\n' "$line" | sed -E 's/.*"id":"([^"]+)".*/\1/')
   workflow=$(printf '%s\n' "$line" | sed -E 's/.*"workflowId":"([^"]+)".*/\1/')
@@ -465,9 +463,11 @@ while IFS= read -r line; do
       exit 0
       ;;
   esac
-  printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":false,"error":{"code":"authorization_required","message":"${sv_private_error_canary}"}}\n' "$id" "$workflow"
+  printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":false,"error":{"code":"authorization_required","message":"__PRIVATE_ERROR_CANARY__"}}\n' "$id" "$workflow"
 done
-''');
+'''
+            .replaceAll('__PRIVATE_ERROR_CANARY__', svPrivateErrorCanary),
+      );
       final service = AgentService(resolveCliBinary: () async => cli);
       addTearDown(service.dispose);
 
@@ -482,7 +482,7 @@ done
       final rpcError = caught! as LicoClientRpcException;
       expect(rpcError.code, 'authorization_required');
       expect(rpcError.authorizationRequired, isTrue);
-      expect(rpcError.toString(), isNot(contains(sv_private_error_canary)));
+      expect(rpcError.toString(), isNot(contains(svPrivateErrorCanary)));
     },
   );
 
@@ -788,15 +788,15 @@ fi
   );
 
   test('macOS stdio RPC redacts setup failures', () async {
-  final sv_private_binary_canary = _synth('private-binary-canary');
+    final svPrivateBinaryCanary = _synth('private-binary-canary');
     if (!Platform.isMacOS) {
       return;
     }
     final service = AgentService(
       dataDirectory: () async {
-        throw StateError(sv_private_setup_canary);
+        throw StateError(svPrivateSetupCanary);
       },
-      resolveCliBinary: () async => File('/${sv_private_binary_canary}/licoup'),
+      resolveCliBinary: () async => File('/$svPrivateBinaryCanary/licoup'),
     );
     addTearDown(service.dispose);
 
@@ -810,8 +810,8 @@ fi
     expect(caught, isA<LicoClientRpcException>());
     final rpcError = caught! as LicoClientRpcException;
     expect(rpcError.code, 'setup_failed');
-    expect(rpcError.toString(), isNot(contains(sv_private_setup_canary)));
-    expect(rpcError.toString(), isNot(contains(sv_private_binary_canary)));
+    expect(rpcError.toString(), isNot(contains(svPrivateSetupCanary)));
+    expect(rpcError.toString(), isNot(contains(svPrivateBinaryCanary)));
   });
 
   test('macOS stdio RPC never retries a request after writing it', () async {

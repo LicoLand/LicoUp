@@ -19,7 +19,6 @@ String _synth(String label) => '$label-${_fixtureSeq++}';
 
 final _wiringConfirmationToken = _synth('token-1');
 
-
 /// The composed client must hand the work-control surface a lane that reaches
 /// the native owner, and must keep the fail-closed answer when no lane exists.
 ///

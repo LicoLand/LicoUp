@@ -83,7 +83,7 @@ void main() {
   test(
     'LLM credential writes reuse the persistent authorized process',
     () async {
-      final sv_synthetic = _synth('synthetic');
+      final svSynthetic = _synth('synthetic');
       final transport = _FakeStdioTransport();
       final context = _FakeProcessContext();
       final processIo = BoundedNativeProcessIo(
@@ -94,7 +94,7 @@ void main() {
       );
 
       final createBody =
-          '{"provider":"kimi","label":"Primary","apiKey":"${sv_synthetic}",'
+          '{"provider":"kimi","label":"Primary","apiKey":"$svSynthetic",'
           '"leaseDays":30}';
       await processIo.runCliWithStdin(const [
         'llm-gateway',
@@ -123,7 +123,7 @@ void main() {
       expect(transport.structuredCalls[0].params, {
         'provider': 'kimi',
         'label': 'Primary',
-        'apiKey': sv_synthetic,
+        'apiKey': svSynthetic,
         'leaseDays': 30,
       });
       expect(transport.structuredCalls[1].params, {

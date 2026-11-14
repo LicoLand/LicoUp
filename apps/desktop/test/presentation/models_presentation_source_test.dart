@@ -137,7 +137,7 @@ void main() {
 
   group('ModelsCatalogActions', () {
     test('dispatch typed intents with the pinned models origin', () async {
-  final sv_synthetic = _synth('synthetic');
+      final svSynthetic = _synth('synthetic');
       final intents = _RecordingModelsIntents();
       final actions = ModelsCatalogActions.fromIntents(intents);
 
@@ -147,7 +147,9 @@ void main() {
       await actions.refreshModels();
       await actions.refreshGateway();
       await actions.setGatewayEnabled(true);
-      await actions.saveGatewayEndpoint('http://127.0.0.1:gatewayRuntimeDefaultPort');
+      await actions.saveGatewayEndpoint(
+        'http://127.0.0.1:$gatewayRuntimeDefaultPort',
+      );
       await actions.selectGatewayModel('openai', 'gpt-5');
       await actions.authorizeModelProvider('openai');
       await actions.recoverGateway();
@@ -156,7 +158,7 @@ void main() {
       await actions.createGatewayCredential(
         provider: 'openai',
         label: 'work',
-        apiKey: sv_synthetic,
+        apiKey: svSynthetic,
         leaseDays: 7,
       );
       await actions.updateGatewayCredential(
@@ -168,7 +170,7 @@ void main() {
       await actions.setGatewayCredentialAuthorized('credential-1', false);
       await actions.authorizeAllGatewayCredentials();
       await actions.refreshTelegramChannel();
-      await actions.saveTelegramToken(sv_synthetic);
+      await actions.saveTelegramToken(svSynthetic);
       await actions.clearTelegramToken();
       await actions.approveTelegramPairing('abcd1234');
       await actions.revokeTelegramChat(42);
@@ -179,7 +181,7 @@ void main() {
       expect((intents.values[2] as SetGatewayEnabled).enabled, isTrue);
       expect(
         (intents.values[3] as SaveGatewayEndpoint).endpoint,
-        'http://127.0.0.1:gatewayRuntimeDefaultPort',
+        'http://127.0.0.1:$gatewayRuntimeDefaultPort',
       );
       final select = intents.values[4] as SelectGatewayModel;
       expect(select.providerId, 'openai');
@@ -194,7 +196,7 @@ void main() {
       final create = intents.values[9] as CreateGatewayCredential;
       expect(create.provider, 'openai');
       expect(create.label, 'work');
-      expect(create.apiKey, sv_synthetic);
+      expect(create.apiKey, svSynthetic);
       expect(create.leaseDays, 7);
       final update = intents.values[10] as UpdateGatewayCredential;
       expect(update.credentialId, 'credential-1');
@@ -209,7 +211,7 @@ void main() {
       expect(authorized.authorized, isFalse);
       expect(intents.values[13], isA<AuthorizeAllGatewayCredentials>());
       expect(intents.values[14], isA<RefreshTelegramChannel>());
-      expect((intents.values[15] as SaveTelegramToken).token, sv_synthetic);
+      expect((intents.values[15] as SaveTelegramToken).token, svSynthetic);
       expect(intents.values[16], isA<ClearTelegramToken>());
       expect((intents.values[17] as ApproveTelegramPairing).code, 'abcd1234');
       expect((intents.values[18] as RevokeTelegramChat).chatId, 42);

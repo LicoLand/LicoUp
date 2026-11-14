@@ -8,7 +8,6 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/models/models_intent.dart';
 import 'package:licoup/src/presentation/models/models_projection.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
-import 'package:licoup/src/contracts/gateway_runtime_defaults.g.dart';
 
 final class LlmGatewayCard extends StatefulWidget {
   const LlmGatewayCard({
@@ -126,7 +125,7 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
               key: const ValueKey('gateway-url'),
               controller: _endpoint,
               enabled: !_busy,
-              hintText: 'http://127.0.0.1:gatewayRuntimeDefaultPort',
+              hintText: GatewayProjection.defaultEndpoint,
               saveTooltip: chinese ? '保存 Gateway URL' : 'Save Gateway URL',
               onSave: () =>
                   widget.intents.send(SaveGatewayEndpoint(_endpoint.text)),

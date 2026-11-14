@@ -571,6 +571,22 @@ emit_burst() {
     cursor=$((cursor + 1))
   done
 }
+emit_ahead_burst() {
+  burst_end=$1
+  parts_dir="${LICO_FIXTURE_AHEAD_WRITTEN}.parts"
+  mkdir -p "$parts_dir"
+  printf '"}}}\n' > "$parts_dir/tail"
+  set --
+  cursor=1
+  while [ "$cursor" -le "$burst_end" ]; do
+    sequence=$((sequence + 1))
+    head="$parts_dir/head.$cursor"
+    printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"event","sequence":%s,"event":{"event":"agent.message.chunk","turnHandle":"turn-1","conversationId":"conversation-1","cursor":%s,"payload":{"text":"%s:' "$bulk_id" "$bulk_workflow" "$sequence" "$cursor" "$cursor" > "$head"
+    set -- "$@" "$head" "$LICO_FIXTURE_PAYLOAD" "$parts_dir/tail"
+    cursor=$((cursor + 1))
+  done
+  cat "$@"
+}
 while IFS= read -r line; do
   request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
   workflow_id=$(printf '%s' "$line" | sed -n 's/.*"workflowId":"\([^"]*\)".*/\1/p')
@@ -578,7 +594,7 @@ while IFS= read -r line; do
     *'"method":"agent.conversation.send"'*)
       bulk_id=$request_id
       bulk_workflow=$workflow_id
-      emit_burst 1 "$LICO_FIXTURE_BULK_AHEAD_FRAMES"
+      emit_ahead_burst "$LICO_FIXTURE_BULK_AHEAD_FRAMES"
       : > "$LICO_FIXTURE_AHEAD_WRITTEN"
       ;;
     *'"method":"agent.conversation.cancel"'*|*'"method":"agent.conversation.steer"'*)

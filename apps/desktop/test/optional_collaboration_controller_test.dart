@@ -5,15 +5,12 @@ import 'package:licoup/src/contracts/optional_collaboration_local_server_models.
 import 'package:licoup/src/contracts/optional_collaboration_workflow_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-var _synthSeq = 0;
-String _synth(String label) => '$label-${_synthSeq++}';
-
 const _digest =
     'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 const _otherDigest =
     'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
 const _commit = '0123456789abcdef0123456789abcdef01234567';
-final _runnerPublicKey = _synth('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+final _runnerPublicKey = 'A' * 43;
 const _runnerFingerprint =
     '66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925';
 const _runnerRepository = 'https://github.com/example/licomesh-runner.git';

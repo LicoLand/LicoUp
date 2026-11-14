@@ -11,7 +11,6 @@ var _fixtureSeq = 0;
 
 String _synth(String label) => '$label-${_fixtureSeq++}';
 
-
 /// The production work-control lane is the only owner that reaches the native
 /// control plane. Every case here states what it sends on the wire and what it
 /// answers for a host that is unreachable or refuses: a stop this client could

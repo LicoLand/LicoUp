@@ -124,17 +124,17 @@ void main() {
   );
 
   test('credential writes preserve pending legacy migration', () async {
-  final sv_synthetic = _synth('<synthetic>');
+    final svSynthetic = _synth('<synthetic>');
     final runner = _FakeCredentialsRunner()..migrationPending = true;
     final feature = ModelsRendererBindingFixture(runner: runner);
     addTearDown(feature.dispose);
     await feature.refreshCredentials();
 
-    for (final intent in  <ModelsIntent>[
+    for (final intent in <ModelsIntent>[
       CreateGatewayCredential(
         provider: 'kimi',
         label: 'New synthetic key',
-        apiKey: sv_synthetic,
+        apiKey: svSynthetic,
         leaseDays: 30,
       ),
       UpdateGatewayCredential(
@@ -867,7 +867,7 @@ void main() {
       'service',
       'status',
       '--port',
-      'gatewayRuntimeDefaultPort',
+      '$gatewayRuntimeDefaultPort',
     ]);
     expect(find.byKey(const Key('gateway-service-status')), findsOneWidget);
     expect(find.text('运行中'), findsOneWidget);
@@ -923,7 +923,15 @@ void main() {
     expect(runner.calls, isNot(contains(equals(['llm-gateway', 'authorize']))));
     expect(
       runner.calls,
-      contains(equals(['gateway', 'service', 'start', '--port', 'gatewayRuntimeDefaultPort'])),
+      contains(
+        equals([
+          'gateway',
+          'service',
+          'start',
+          '--port',
+          '$gatewayRuntimeDefaultPort',
+        ]),
+      ),
     );
     expect(find.text('Gateway 已启动。'), findsOneWidget);
   });
@@ -965,7 +973,15 @@ void main() {
 
     expect(
       runner.calls,
-      contains(equals(['gateway', 'service', 'start', '--port', 'gatewayRuntimeDefaultPort'])),
+      contains(
+        equals([
+          'gateway',
+          'service',
+          'start',
+          '--port',
+          '$gatewayRuntimeDefaultPort',
+        ]),
+      ),
     );
     expect(find.text('Running'), findsOneWidget);
     expect(find.text('Gateway started.'), findsOneWidget);
@@ -983,7 +999,15 @@ void main() {
 
     expect(
       runner.calls,
-      contains(equals(['gateway', 'service', 'stop', '--port', 'gatewayRuntimeDefaultPort'])),
+      contains(
+        equals([
+          'gateway',
+          'service',
+          'stop',
+          '--port',
+          '$gatewayRuntimeDefaultPort',
+        ]),
+      ),
     );
     expect(find.text('未运行'), findsOneWidget);
     expect(find.text('Gateway 已停止。'), findsOneWidget);

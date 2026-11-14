@@ -1407,6 +1407,7 @@ export const FLUTTER_MODULES = Object.freeze([
         "apps/desktop/lib/src/contracts/agent_resource_usage_models.dart",
         "apps/desktop/lib/src/contracts/client_update_gateway.dart",
         "apps/desktop/lib/src/contracts/directory_opener.dart",
+        "apps/desktop/lib/src/contracts/gateway_runtime_defaults.g.dart",
         "apps/desktop/lib/src/contracts/llm_gateway_diagnostics.dart",
         "apps/desktop/lib/src/contracts/llm_vault_authorization.dart",
         "apps/desktop/lib/src/contracts/terminal_command.dart",
@@ -1623,6 +1624,7 @@ export const FLUTTER_MODULES = Object.freeze([
       inputs: [
         "apps/desktop/lib/src/contracts/model_selection.dart",
         "apps/desktop/lib/src/contracts/selection_policy.dart",
+        "apps/desktop/lib/src/contracts/gateway_runtime_defaults.g.dart",
         "apps/desktop/lib/src/contracts/generated/**",
         "apps/desktop/lib/src/contracts/target_candidate.dart",
         "apps/desktop/test/target_candidate_conversation_test.dart",

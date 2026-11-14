@@ -22,7 +22,6 @@ String _synth(String label) => '$label-${_fixtureSeq++}';
 
 final _approvalTokenRef = _synth('token-1');
 
-
 final _event = AgentDispatchEvent(
   kind: 'agent.approval.needed',
   sessionId: 'session-1',

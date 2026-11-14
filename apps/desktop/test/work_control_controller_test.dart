@@ -10,7 +10,6 @@ String _synth(String label) => '$label-${_fixtureSeq++}';
 
 final _previewConfirmationToken = _synth('token-1');
 
-
 void main() {
   test(
     'an accepted stop keeps stopping while the work is still observed',

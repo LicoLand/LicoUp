@@ -28,6 +28,9 @@ final class ModelProviderProjection {
 }
 
 final class GatewayProjection {
+  static const String defaultEndpoint =
+      'http://127.0.0.1:$gatewayRuntimeDefaultPort';
+
   const GatewayProjection({
     this.initialized = false,
     required this.endpoint,
@@ -246,7 +249,7 @@ final class ModelsProjection {
            gateway ??
            const GatewayProjection(
              initialized: false,
-             endpoint: 'http://127.0.0.1:gatewayRuntimeDefaultPort',
+             endpoint: GatewayProjection.defaultEndpoint,
              port: gatewayRuntimeDefaultPort,
              stateLabel: 'unknown',
              running: false,

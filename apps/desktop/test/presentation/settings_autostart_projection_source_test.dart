@@ -58,7 +58,7 @@ void main() {
       '--enabled',
       'true',
       '--port',
-      'gatewayRuntimeDefaultPort',
+      '$gatewayRuntimeDefaultPort',
     ]);
     expect(source.current.gatewayEnabled, isTrue);
     expect(source.current.result, SettingsAutostartResult.saved);
