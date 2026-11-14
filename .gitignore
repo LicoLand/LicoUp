@@ -28,8 +28,12 @@ apps/desktop/test/layout/production_baseline/failures/
 # the layout visual-manifest verifier rejects them as generated residue.
 apps/desktop/test/**/failures/
 
-# Node / Flutter
+# Node / Rust / Flutter
 node_modules/
+target/
+.gradle/
+.kotlin/
+crates/licoup-native/target/
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
@@ -42,6 +46,37 @@ apps/desktop/build/
 apps/desktop/coverage/
 
 # Platform generated outputs
+apps/desktop/android/.gradle/
+apps/desktop/android/build/
+apps/desktop/android/captures/
+apps/desktop/android/.cxx/
+apps/desktop/android/local.properties
+apps/desktop/android/key.properties
+**/key.properties
+**/local.properties
+**/GeneratedPluginRegistrant.java
+**/GeneratedPluginRegistrant.*
+apps/desktop/ios/build/
+apps/desktop/ios/Pods/
+apps/desktop/ios/.symlinks/
+apps/desktop/ios/Flutter/App.framework
+apps/desktop/ios/Flutter/Flutter.framework
+apps/desktop/ios/Flutter/Flutter.podspec
+apps/desktop/ios/Flutter/Generated.xcconfig
+apps/desktop/ios/Flutter/ephemeral/
+apps/desktop/ios/Flutter/app.flx
+apps/desktop/ios/Flutter/app.zip
+apps/desktop/ios/Flutter/flutter_assets/
+apps/desktop/ios/Flutter/flutter_export_environment.sh
+apps/desktop/ios/ServiceDefinitions.json
+apps/desktop/ios/Runner/GeneratedPluginRegistrant.*
+**/DerivedData/
+**/xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.moved-aside
 apps/desktop/linux/flutter/ephemeral/
 apps/desktop/macos/Flutter/ephemeral/
 apps/desktop/macos/Pods/
