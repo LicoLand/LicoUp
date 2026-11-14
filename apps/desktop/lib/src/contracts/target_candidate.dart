@@ -64,6 +64,27 @@ class TargetCandidate {
 
   bool get visibleInClient => status != 'not-detected';
 
+  /// Catalog sources that exist only after the user opens that Agent's
+  /// conversation interface: native CLI lookup or another app's named store.
+  bool get hasSelectedAgentModelCatalog {
+    final sources = modelCatalog['sources'];
+    if (sources is! List) {
+      return false;
+    }
+    const selected = {
+      'cursor-cli',
+      'antigravity-cli',
+      'antigravity-local',
+      'kilo-cli',
+      'claude-settings',
+      'codex-app-server',
+      'deepseek-harness-installed-adapter',
+      'opencode-cli:models',
+      'pi-cli:list-models',
+    };
+    return sources.any((source) => selected.contains(source.toString()));
+  }
+
   /// Host-local presence used by Agent Hub: a detected/configured/available
   /// scan status, or a bound executable. Automatic virtual-machine discovery
   /// is not a host install.
@@ -183,6 +204,21 @@ class TargetCandidate {
           adapterCapabilities['conversationCapabilityMatrix'] as Map,
         )
       : const {};
+
+  /// Permission modes the runtime adapter can actually execute, declared in
+  /// the driver capability matrix. An empty list means the agent exposes no
+  /// client-selectable permission control.
+  List<String> get conversationPermissionModes {
+    final raw = conversationCapabilityMatrix['permissionModes'];
+    if (raw is! List) {
+      return const [];
+    }
+    return raw
+        .map((entry) => entry.toString().trim())
+        .where((entry) => entry.isNotEmpty)
+        .toList(growable: false);
+  }
+
   List<String> get conversationSummaryCodes {
     final raw = adapterCapabilities['conversationSummaryCodes'];
     if (raw is! List) {

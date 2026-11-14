@@ -65,7 +65,7 @@ final class OptionalCollaborationWorkflowPresentationActions {
   );
 
   final IntentSink<PluginManagementIntent> _intents;
-  final CollaborationProjection _projection;
+  final OptionalCollaborationProjection _projection;
 
   OptionalCollaborationWorkflowPlan? get localDeploymentPlan =>
       _projection.localDeploymentPlan;

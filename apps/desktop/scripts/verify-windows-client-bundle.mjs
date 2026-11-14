@@ -37,7 +37,7 @@ async function main() {
   const missing = [];
   for (const root of roots) {
     const kind = root.includes(`${path.sep}runnable${path.sep}`) ? "runnable" : "bundle";
-    for (const relativePath of ["licoup.exe", "licoup.exe"]) {
+    for (const relativePath of ["licoup.exe", path.join("helpers", "licoup.exe")]) {
       const size = await fileSize(path.join(root, relativePath));
       if (size <= 0) {
         missing.push(`${kind} missing non-empty ${relativePath}`);
@@ -76,12 +76,12 @@ async function main() {
       if (manifest.executables?.flutterClient !== "licoup.exe") {
         missing.push(`${kind} Windows client manifest has wrong flutterClient`);
       }
-      if (manifest.executables?.licoClient !== "licoup.exe") {
+      if (manifest.executables?.licoClient !== path.join("helpers", "licoup.exe")) {
         missing.push(`${kind} Windows client manifest has wrong licoClient`);
       }
       for (const [key, relativePath] of [
         ["flutterClient", "licoup.exe"],
-        ["licoClient", "licoup.exe"],
+        ["licoClient", path.join("helpers", "licoup.exe")],
       ]) {
         const artifactPath = path.join(root, relativePath);
         const declared = manifest.artifacts?.[key] || {};

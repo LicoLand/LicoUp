@@ -47,15 +47,15 @@ Mac App Store 兼容。
 7. 只有前序检查逐项通过后，才能推进摘要绑定的 Apple 会话；完成公开下载、安装与
    稳定启动验证后，才写入公开收据。
 
-远程工作流不得发布 macOS 直发产物。本机 Apple Release 引擎只能执行单次不可变发布
+远程工作流不得发布 macOS 直发产物。本机 the release plane 引擎只能执行单次不可变发布
 授权中逐项列明的上传与公开变更。
 
 ## 本机密钥托管验证
 
-唯一的密钥托管二进制 `licoup-cli` 位于
+唯一的密钥托管二进制 `licoup` 位于
 `Contents/Helpers/LicoUpCustody.app/Contents/MacOS`，bundle ID 为
 `land.lico.licoup.custody`；主应用仍为 `land.lico.licoup`。
-`Contents/MacOS/licoup-cli` 是永久的相对符号链接，指向 helper 内的唯一执行体，
+应用不再提供 `Contents/MacOS/licoup` 别名；唯一签名二进制驻留在 helper 内，
 保留已有自动启动和厂商 token helper 配置，无需重写私人配置。Flutter 直接启动
 helper，不回退到外部或旧同级二进制。布局及公开入口由桌面脚本中的
 `package-client/macos/metadata.mjs` 与 `package-client/resource-assembly.mjs` 维护。
@@ -82,7 +82,7 @@ Apple 说明了[命令行程序的 app-like provisioning 要求](https://develop
 
 ## 本机授权
 
-先在独立的 `apple-release` 检出目录中执行 `npm install --global .` 安装私有 CLI，
+先在独立的 `release-plane` 检出目录中执行 `npm install --global .` 安装私有 CLI，
 再在发布工作站上配置一次发布授权：
 
 ```sh

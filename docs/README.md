@@ -1,5 +1,7 @@
 # LicoUp Documentation
 
+Updated: 2026-10-01
+
 [Project](../README.md) · [简体中文项目入口](../README.zh-CN.md)
 
 English is the normative language for shared technical facts. Files marked
@@ -36,6 +38,12 @@ authority.
 - [Agent adapters and runtime architecture](architecture/AGENT-ADAPTERS-ARCHITECTURE.md) · [智能体适配器架构规范](architecture/AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md)
 - [Rust infrastructure and boundary layer](architecture/RUST-INFRASTRUCTURE-LAYER.md) · [Rust 基础设施与对外交互层规范](architecture/RUST-INFRASTRUCTURE-LAYER.zh-CN.md)
 - [Security and data boundaries](architecture/SECURITY-AND-DATA-BOUNDARY.md) · [安全架构与数据边界](architecture/SECURITY-AND-DATA-BOUNDARY.zh-CN.md)
+- [Extension platform and SDK contract](architecture/EXTENSION-PLATFORM.md)
+- [Deployment profiles, package closure and capability ownership](architecture/DEPLOYMENT-PROFILES.md)
+
+## Modules
+
+- [Endpoint collaboration](modules/endpoint-collaboration.md)
 
 ## Functionality
 
@@ -43,12 +51,19 @@ authority.
 - [Client capability boundary](functionality/CLIENT-DESKTOP.md)
 - [User guide](functionality/USER-GUIDE.md) ·
   [用户指南](functionality/USER-GUIDE.zh-CN.md)
-- [Adaptive Flywheel strategies](functionality/ADAPTIVE-FLYWHEEL.md) ·
-  [Adaptive Flywheel 策略](functionality/ADAPTIVE-FLYWHEEL.zh-CN.md)
+- [Acativa strategies](functionality/ACATIVA.md) ·
+  [Acativa 策略](functionality/ACATIVA.zh-CN.md)
 - [Design system](functionality/DESIGN-SYSTEM.md)
 - [UI interaction state machine](functionality/UI-INTERACTIONS.md) ·
   [用户界面交互状态机](functionality/UI-INTERACTIONS.zh-CN.md)
-- [Current retiring endpoint-protection Preview file handoff](functionality/ENDPOINT-PROTECTION-PREVIEW-FILE-HANDOFF.md)
+- [Messaging unread navigation](functionality/MESSAGING-UNREAD-NAVIGATION.md) ·
+  [消息未读导航](functionality/MESSAGING-UNREAD-NAVIGATION.zh-CN.md)
+- [Conversation send gate](functionality/CONVERSATION-SEND-GATE.md) ·
+  [会话发送门禁](functionality/CONVERSATION-SEND-GATE.zh-CN.md)
+- [Messaging loading presentation](functionality/MESSAGING-LOADING-PRESENTATION.md) ·
+  [消息列表加载呈现](functionality/MESSAGING-LOADING-PRESENTATION.zh-CN.md)
+- [Conversation profiles](functionality/CONVERSATION-PROFILES.md) ·
+  [会话 Profile](functionality/CONVERSATION-PROFILES.zh-CN.md)
 
 ## Protocols and artifact formats
 
@@ -73,7 +88,9 @@ authority.
 
 ## Operations and configuration
 
-- [Runbook](RUNBOOK.md)
+- [Runbook](RUNBOOK.md) · [开发者指南](RUNBOOK.zh-CN.md)
+- [Change closure](CLOSURE.md)
+- [Workflow and report sources](../tools/development/workflows/README.md)
 - [Parallel development map](parallel/PARALLEL-DEVELOPMENT-MAP.md) ·
   [并行开发地图](parallel/PARALLEL-DEVELOPMENT-MAP.zh-CN.md)
 - [Compatibility](COMPATIBILITY.md) ·

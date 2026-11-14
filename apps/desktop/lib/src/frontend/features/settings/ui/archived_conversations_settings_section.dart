@@ -138,6 +138,7 @@ class _ArchivedConversationsSettingsSectionState
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             LicoSectionHeader(
+              key: const Key('settings-section-header-archived'),
               title: strings.archivedConversationsTitle,
               leading: Icon(
                 Icons.archive_outlined,

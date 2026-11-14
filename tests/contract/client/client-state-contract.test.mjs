@@ -9,12 +9,9 @@ test("client state bridge has one generated typed path and no raw Dart CLI twin"
   const manifest = JSON.parse(read("schemas/client_bridge/manifest.json"));
   const family = manifest.families.find(({ id }) => id === "state");
   assert.equal(family.status, "active");
-  assert.deepEqual(schema.operations, ["get", "set"]);
+  assert.deepEqual(schema.operations, ["get", "set", "admit"]);
   assert.equal(new Set(schema.collections).size, 15);
 
-  const rust = read(
-    "crates/licoup-native/src/ffi/generated/client_state.rs",
-  );
   const dart = read(
     "apps/desktop/lib/src/contracts/generated/client_state.g.dart",
   );
@@ -28,15 +25,14 @@ test("client state bridge has one generated typed path and no raw Dart CLI twin"
     "ClientStateActivity",
     "ClientStateFailure",
   ]) {
-    assert.match(rust, new RegExp(`\\b${symbol}\\b`));
     assert.match(dart, new RegExp(`\\b${symbol}\\b`));
   }
 
   const actions = read(
     "apps/desktop/lib/src/platform/native_client/native_state_actions.dart",
   );
-  assert.match(actions, /executeStructured\(['"]state\.get['"]/);
-  assert.match(actions, /executeStructured\(['"]state\.set['"]/);
+  assert.match(actions, /executeStructured\(\s*['"]state\.get['"]/u);
+  assert.match(actions, /executeStructured\(\s*['"]state\.set['"]/u);
   assert.doesNotMatch(actions, /runCli|runCliWithStdin|\[['"]state['"]/);
   assert.doesNotMatch(actions, /Map<String,\s*dynamic>\s+get|Map<String,\s*dynamic>\s+set/);
 });

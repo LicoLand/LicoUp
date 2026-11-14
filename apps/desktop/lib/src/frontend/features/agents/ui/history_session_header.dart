@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -82,7 +83,9 @@ final class HistorySessionHeader extends StatelessWidget {
                               icon: const Icon(Icons.close, size: 16),
                             ),
                       filled: true,
-                      fillColor: colors.surfaceLow,
+                      fillColor: (colors.isDark
+                          ? LicoPaneGlass.contentInnerCardFill
+                          : colors.surfaceLow),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 10,
                         vertical: 10,

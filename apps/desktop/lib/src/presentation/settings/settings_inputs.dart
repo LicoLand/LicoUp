@@ -1,3 +1,6 @@
+import 'package:presentation_contract/presentation_contract.dart';
+
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/presentation/settings/settings_projection.dart';
 
@@ -29,14 +32,20 @@ final class SettingsAppearanceInputs {
     required this.appearancePresetLoadErrorCount,
     required this.reduceMotion,
     required this.loadingEffectId,
-  }) : appearancePresets = immutablePresentationList(appearancePresets);
+    Iterable<MountedContribution> planContributions = const [],
+  }) : appearancePresets = immutablePresentationList(appearancePresets),
+       planContributions = immutablePresentationList(planContributions);
 
   final String appearancePresetId;
   final List<SettingsAppearancePresetProjection> appearancePresets;
   final String appearancePresetDirectoryPath;
   final int appearancePresetLoadErrorCount;
-  final bool reduceMotion;
+  final ReduceMotionPreference reduceMotion;
   final String loadingEffectId;
+
+  /// The contributions the published native mount plan mounted into this
+  /// client's interface, in plan order.
+  final List<MountedContribution> planContributions;
 
   @override
   bool operator ==(Object other) =>
@@ -49,7 +58,8 @@ final class SettingsAppearanceInputs {
           other.appearancePresetLoadErrorCount ==
               appearancePresetLoadErrorCount &&
           other.reduceMotion == reduceMotion &&
-          other.loadingEffectId == loadingEffectId;
+          other.loadingEffectId == loadingEffectId &&
+          samePresentationList(other.planContributions, planContributions);
 
   @override
   int get hashCode => Object.hash(
@@ -59,6 +69,7 @@ final class SettingsAppearanceInputs {
     appearancePresetLoadErrorCount,
     reduceMotion,
     loadingEffectId,
+    Object.hashAll(planContributions),
   );
 }
 
@@ -66,11 +77,17 @@ final class SettingsAppearanceInputs {
 final class SettingsLayoutInputs {
   SettingsLayoutInputs({
     required Iterable<PresentationChoice> layoutChoices,
+    Iterable<PresentationChoice> layoutStyleChoices = const [],
     required this.layoutPhase,
     required this.layoutFailureReasonCode,
-  }) : layoutChoices = immutablePresentationList(layoutChoices);
+  }) : layoutChoices = immutablePresentationList(layoutChoices),
+       layoutStyleChoices = immutablePresentationList(layoutStyleChoices);
 
   final List<PresentationChoice> layoutChoices;
+
+  /// Column-arrangement choices of the committed profile. Empty when that
+  /// profile declares no styles; the selector hides its style control then.
+  final List<PresentationChoice> layoutStyleChoices;
   final PresentationPhase layoutPhase;
   final String layoutFailureReasonCode;
 
@@ -79,12 +96,14 @@ final class SettingsLayoutInputs {
       identical(this, other) ||
       other is SettingsLayoutInputs &&
           samePresentationList(other.layoutChoices, layoutChoices) &&
+          samePresentationList(other.layoutStyleChoices, layoutStyleChoices) &&
           other.layoutPhase == layoutPhase &&
           other.layoutFailureReasonCode == layoutFailureReasonCode;
 
   @override
   int get hashCode => Object.hash(
     Object.hashAll(layoutChoices),
+    Object.hashAll(layoutStyleChoices),
     layoutPhase,
     layoutFailureReasonCode,
   );
@@ -94,11 +113,17 @@ final class SettingsLayoutInputs {
 final class SettingsStorageInputs {
   const SettingsStorageInputs({
     required this.portableDataPath,
+    this.portableDataSource = '',
+    this.previousDataHomePath = '',
+    this.previousDataHomeAvailable = false,
     required this.snapshotRootPath,
     required this.savingSnapshotRoot,
   });
 
   final String portableDataPath;
+  final String portableDataSource;
+  final String previousDataHomePath;
+  final bool previousDataHomeAvailable;
   final String snapshotRootPath;
   final bool savingSnapshotRoot;
 
@@ -107,12 +132,21 @@ final class SettingsStorageInputs {
       identical(this, other) ||
       other is SettingsStorageInputs &&
           other.portableDataPath == portableDataPath &&
+          other.portableDataSource == portableDataSource &&
+          other.previousDataHomePath == previousDataHomePath &&
+          other.previousDataHomeAvailable == previousDataHomeAvailable &&
           other.snapshotRootPath == snapshotRootPath &&
           other.savingSnapshotRoot == savingSnapshotRoot;
 
   @override
-  int get hashCode =>
-      Object.hash(portableDataPath, snapshotRootPath, savingSnapshotRoot);
+  int get hashCode => Object.hash(
+    portableDataPath,
+    portableDataSource,
+    previousDataHomePath,
+    previousDataHomeAvailable,
+    snapshotRootPath,
+    savingSnapshotRoot,
+  );
 }
 
 /// Values consumed by the client update card.

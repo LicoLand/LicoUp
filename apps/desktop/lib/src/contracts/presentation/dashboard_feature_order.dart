@@ -8,7 +8,7 @@ final class DashboardFeatureOrder {
   static const defaultOrder = <String>[
     'agentHub',
     'modelGateway',
-    'mobilePairing',
+    'devices',
     'statsPanel',
   ];
 }

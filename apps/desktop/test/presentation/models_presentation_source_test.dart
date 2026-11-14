@@ -137,8 +137,7 @@ void main() {
 
   group('ModelsCatalogActions', () {
     test('dispatch typed intents with the pinned models origin', () async {
-  final sv_test_provider_ref = _synth('test-provider-ref');
-  final sv_test_telegram_synthetic = _synth('test-telegram-synthetic');
+  final sv_synthetic = _synth('synthetic');
       final intents = _RecordingModelsIntents();
       final actions = ModelsCatalogActions.fromIntents(intents);
 
@@ -157,7 +156,7 @@ void main() {
       await actions.createGatewayCredential(
         provider: 'openai',
         label: 'work',
-        apiKey: sv_test_provider_ref,
+        apiKey: sv_synthetic,
         leaseDays: 7,
       );
       await actions.updateGatewayCredential(
@@ -169,7 +168,7 @@ void main() {
       await actions.setGatewayCredentialAuthorized('credential-1', false);
       await actions.authorizeAllGatewayCredentials();
       await actions.refreshTelegramChannel();
-      await actions.saveTelegramToken(sv_test_telegram_synthetic);
+      await actions.saveTelegramToken(sv_synthetic);
       await actions.clearTelegramToken();
       await actions.approveTelegramPairing('abcd1234');
       await actions.revokeTelegramChat(42);
@@ -195,7 +194,7 @@ void main() {
       final create = intents.values[9] as CreateGatewayCredential;
       expect(create.provider, 'openai');
       expect(create.label, 'work');
-      expect(create.apiKey, sv_test_provider_ref);
+      expect(create.apiKey, sv_synthetic);
       expect(create.leaseDays, 7);
       final update = intents.values[10] as UpdateGatewayCredential;
       expect(update.credentialId, 'credential-1');
@@ -210,10 +209,7 @@ void main() {
       expect(authorized.authorized, isFalse);
       expect(intents.values[13], isA<AuthorizeAllGatewayCredentials>());
       expect(intents.values[14], isA<RefreshTelegramChannel>());
-      expect(
-        (intents.values[15] as SaveTelegramToken).token,
-        sv_test_telegram_synthetic,
-      );
+      expect((intents.values[15] as SaveTelegramToken).token, sv_synthetic);
       expect(intents.values[16], isA<ClearTelegramToken>());
       expect((intents.values[17] as ApproveTelegramPairing).code, 'abcd1234');
       expect((intents.values[18] as RevokeTelegramChat).chatId, 42);

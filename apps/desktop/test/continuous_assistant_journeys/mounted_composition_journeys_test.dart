@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant.dart';
 
 import 'support/journey_bridge.dart';
@@ -218,8 +219,8 @@ void main() {
       await tester.tap(composer);
       await tester.enterText(composer, draftInB);
       await tester.pump();
-      expect(tester.widget<TextField>(composer).controller?.text, draftInB);
-      expect(tester.widget<TextField>(composer).focusNode?.hasFocus, isTrue);
+      expect(tester.widget<InputField>(composer).value?.text, draftInB);
+      expect(tester.widget<InputField>(composer).focusNode?.hasFocus, isTrue);
 
       final scrollable = messageScrollable();
       expect(scrollable, findsOneWidget);
@@ -237,8 +238,8 @@ void main() {
       await session.deliverPendingNotices(tester);
 
       expect(paneOf(tester).canonical.conversationId, childBId);
-      expect(tester.widget<TextField>(composer).controller?.text, draftInB);
-      expect(tester.widget<TextField>(composer).focusNode?.hasFocus, isTrue);
+      expect(tester.widget<InputField>(composer).value?.text, draftInB);
+      expect(tester.widget<InputField>(composer).focusNode?.hasFocus, isTrue);
       expect(
         tester.state<ScrollableState>(scrollable).position.pixels,
         beforeOffset,
@@ -306,7 +307,7 @@ void main() {
       final composer = composerField();
       await tester.tap(composer);
       await tester.pump();
-      expect(tester.widget<TextField>(composer).focusNode?.hasFocus, isTrue);
+      expect(tester.widget<InputField>(composer).focusNode?.hasFocus, isTrue);
       await traverseToCommand(tester, ContinuousAssistantKeys.pause(goalAId));
       expect(
         commandButtonFocused(tester, ContinuousAssistantKeys.pause(goalAId)),

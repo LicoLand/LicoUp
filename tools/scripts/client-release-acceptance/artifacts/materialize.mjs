@@ -120,12 +120,7 @@ export function materializeArtifactReceipts(
       Array.isArray(entry?.dependencies) && entry.dependencies.length <= 16 &&
       entry.dependencies.every((dependency) =>
         text(dependency?.id) && text(dependency?.ref).startsWith("build/") &&
-        SHA256.test(text(dependency?.digest)))) &&
-      receipts.every((entry) => entry.targetId !== "macos-direct-arm64" ||
-        (entry.dependencies.length === 1 &&
-          entry.dependencies[0].id === "macos-user-presence-proof" &&
-          entry.dependencies[0].ref ===
-            "build/reports/secure-mesh-macos-keychain-user-presence-proof.json"));
+        SHA256.test(text(dependency?.digest))));
     const privacyReady = payload.privacy?.redacted === true &&
       payload.privacy?.absolutePathsIncluded === false &&
       payload.privacy?.runtimeIdentityIncluded === false &&

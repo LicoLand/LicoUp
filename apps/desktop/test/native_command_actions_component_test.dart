@@ -115,6 +115,8 @@ void main() {
         'scan',
         '--include-accessible-environments',
         'true',
+        '--enable-agent-cli-model-lookup',
+        'true',
         '--stdin-json',
         'true',
       ]);

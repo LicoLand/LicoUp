@@ -1,6 +1,7 @@
 import 'layout_environment.dart';
 import 'layout_profile.dart';
 import 'layout_selection_status.dart';
+import 'layout_style.dart';
 import 'layout_variant.dart';
 
 final class LayoutSelectionState {
@@ -12,6 +13,7 @@ final class LayoutSelectionState {
     required LayoutViewportClass viewport,
     required int operationEpoch,
     LayoutSelectionErrorCode? errorCode,
+    LayoutStyleId? effectiveStyleId,
   }) {
     if (operationEpoch < 0) {
       throw const FormatException('layout_selection_epoch_invalid');
@@ -36,6 +38,7 @@ final class LayoutSelectionState {
       viewport: viewport,
       operationEpoch: operationEpoch,
       errorCode: errorCode,
+      effectiveStyleId: effectiveStyleId,
     );
   }
 
@@ -47,6 +50,7 @@ final class LayoutSelectionState {
     required this.viewport,
     required this.operationEpoch,
     required this.errorCode,
+    required this.effectiveStyleId,
   });
 
   final LayoutProfileId committedId;
@@ -56,6 +60,10 @@ final class LayoutSelectionState {
   final LayoutViewportClass viewport;
   final int operationEpoch;
   final LayoutSelectionErrorCode? errorCode;
+
+  /// The column arrangement [effectiveId] renders with, null for profiles
+  /// that declare no styles.
+  final LayoutStyleId? effectiveStyleId;
 
   LayoutVariantKey get effectiveVariantKey => LayoutVariantKey(
     profileId: effectiveId,
@@ -73,7 +81,8 @@ final class LayoutSelectionState {
           other.surface == surface &&
           other.viewport == viewport &&
           other.operationEpoch == operationEpoch &&
-          other.errorCode == errorCode;
+          other.errorCode == errorCode &&
+          other.effectiveStyleId == effectiveStyleId;
 
   @override
   int get hashCode => Object.hash(
@@ -84,5 +93,6 @@ final class LayoutSelectionState {
     viewport,
     operationEpoch,
     errorCode,
+    effectiveStyleId,
   );
 }

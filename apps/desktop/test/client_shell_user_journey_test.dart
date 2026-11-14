@@ -3,8 +3,11 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/generated/client_state.g.dart';
+import 'package:licoup/src/contracts/presentation/built_in_layout_spec.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
@@ -46,6 +49,10 @@ void main() {
           theme: buildLicoTheme(
             platformBrightness: Brightness.dark,
           ).copyWith(platform: TargetPlatform.macOS),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          ),
           home: composedClientShell(controller),
         ),
       );
@@ -96,7 +103,7 @@ void main() {
       );
       for (final (feature, destination) in const [
         ('modelGateway', ClientSection.models),
-        ('mobilePairing', ClientSection.mobileRelay),
+        ('devices', ClientSection.devices),
       ]) {
         await tester.tap(find.byKey(Key('messaging-sidebar-list-$feature')));
         await tester.pump(const Duration(milliseconds: 250));
@@ -191,6 +198,10 @@ void main() {
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child!,
+        ),
         home: composedClientShell(controller),
       ),
     );
@@ -258,6 +269,10 @@ void main() {
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.android),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child!,
+        ),
         home: composedClientShell(controller),
       ),
     );
@@ -298,19 +313,39 @@ final class _UiAgentService extends AgentService {
   );
 
   @override
-  Future<Map<String, dynamic>> runCli(List<String> args) async => const {
-    'ok': true,
-    'schemaVersion': 'lico.adapter-plugin-catalog.v1',
-    'adapters': <Map<String, dynamic>>[],
-  };
+  Future<Map<String, dynamic>> runCli(List<String> args) async {
+    if (args.length >= 2 && args[0] == 'devices' && args[1] == 'status') {
+      return const {
+        'ok': true,
+        'enrolled': false,
+        'legacyPairingsDetected': false,
+        'station': '',
+        'mailboxId': '',
+        'peers': <Map<String, dynamic>>[],
+        'pairings': <Map<String, dynamic>>[],
+      };
+    }
+    return const {
+      'ok': true,
+      'schemaVersion': 'lico.adapter-plugin-catalog.v1',
+      'adapters': <Map<String, dynamic>>[],
+    };
+  }
 }
 
 final class _JourneyPreferencesRepository
     implements PresentationPreferencesRepository {
+  // The journeys exercise the classic card chrome (the embedded
+  // bottom nav and the shared sidebar); pin the preserved style rather
+  // than the plain default.
   var _preferences = PresentationPreferences(
     layoutProfileId: LayoutProfileId.parse('dashboard'),
     appearancePresetId: 'default-system',
     localePreference: 'system',
+    layoutStyleIds: {
+      LayoutProfileId.parse('dashboard'):
+          BuiltInLayoutSpec.dashboardCardStyleId,
+    },
   );
 
   @override
@@ -318,8 +353,9 @@ final class _JourneyPreferencesRepository
       PresentationPreferencesLoadResult(preferences: _preferences);
 
   @override
-  Future<PresentationPreferences> setReduceMotion(bool enabled) async =>
-      _preferences = _preferences.copyWith(reduceMotion: enabled);
+  Future<PresentationPreferences> setReduceMotion(
+    ReduceMotionPreference preference,
+  ) async => _preferences = _preferences.copyWith(reduceMotion: preference);
 
   @override
   Future<PresentationPreferences> setLoadingEffect(String id) async =>
@@ -334,7 +370,21 @@ final class _JourneyPreferencesRepository
       _preferences = _preferences.copyWith(layoutProfileId: id);
 
   @override
+  Future<PresentationPreferences> setLayoutStyle(
+    LayoutProfileId profile,
+    LayoutStyleId style,
+  ) async => _preferences = _preferences.copyWith(
+    layoutStyleIds: {..._preferences.layoutStyleIds, profile: style},
+  );
+
+  @override
   Future<PresentationPreferences> setLocalePreference(
     String preference,
   ) async => _preferences = _preferences.copyWith(localePreference: preference);
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) async => _preferences = _preferences.withResourceSelection(kind, selection);
 }

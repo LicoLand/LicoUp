@@ -86,7 +86,7 @@ final class SettingsProjectionProducer
     final layout = controller.layoutManager;
     final layoutState = layout.state;
     final conversations = controller.clientConversationController;
-    final update = controller.clientUpdateStatus;
+    final update = controller.clientUpdateController.status;
     final catalog = controller.catalogConvergenceController;
     final catalogStatus = catalog.status;
     final conversationFailure = conversations.failureCode.trim();
@@ -142,6 +142,17 @@ final class SettingsProjectionProducer
                 profile.selectable,
           ),
       ],
+      layoutStyleChoices: [
+        for (final style
+            in layout.catalog.profile(layoutState.committedId)?.styles ??
+                const [])
+          PresentationChoice(
+            id: style.id.value,
+            label: style.label.english,
+            selected: style.id == layoutState.effectiveStyleId,
+            enabled: layoutState.status != LayoutSelectionStatus.committing,
+          ),
+      ],
       archivedConversationsLoading: conversations.loading,
       archivedConversations: [
         for (final conversation in conversations.archivedConversations)
@@ -164,6 +175,7 @@ final class SettingsProjectionProducer
       appearancePresetLoadErrorCount:
           controller.appearancePresetLoadErrors.length,
       portableDataPath: controller.portableDataPath,
+      portableDataSource: controller.portableDataSource,
       snapshotRootPath: controller.snapshotRootDraft,
       savingSnapshotRoot: controller.isSavingSnapshotRoot,
       clientLogExportPath: controller.clientLogExportPath,
@@ -223,6 +235,7 @@ final class SettingsProjectionProducer
       samePresentationList(left.appearancePresets, right.appearancePresets) &&
       samePresentationList(left.localeChoices, right.localeChoices) &&
       samePresentationList(left.layoutChoices, right.layoutChoices) &&
+      samePresentationList(left.layoutStyleChoices, right.layoutStyleChoices) &&
       left.archivedConversationsLoading == right.archivedConversationsLoading &&
       samePresentationList(
         left.archivedConversations,
@@ -235,6 +248,7 @@ final class SettingsProjectionProducer
       left.appearancePresetLoadErrorCount ==
           right.appearancePresetLoadErrorCount &&
       left.portableDataPath == right.portableDataPath &&
+      left.portableDataSource == right.portableDataSource &&
       left.snapshotRootPath == right.snapshotRootPath &&
       left.savingSnapshotRoot == right.savingSnapshotRoot &&
       left.clientLogExportPath == right.clientLogExportPath &&

@@ -178,8 +178,8 @@ function reconcileAndMerge(plan, pullRequest, expectedHead) {
   let rollup;
   try { rollup = JSON.parse(output || "{}").statusCheckRollup; } catch { reject("promotion_check_response_invalid"); }
   const required = plan.base === "stable"
-    ? ["Branch flow", "Commit identity", "Auditor", "Stable client", "Monthly candidate ready", "Apple Release ready"]
-    : ["Branch flow", "Commit identity", "Auditor", plan.aggregate];
+    ? ["Branch flow", "Commit identity", "Stable client", "Monthly candidate ready", "the release plane ready"]
+    : ["Branch flow", "Commit identity", plan.aggregate];
   const state = reconcileRequiredChecks(rollup, required);
   if (state.status !== "complete") return { number, ...state };
   run("gh", ["pr", "merge", number, "--repo", repository, "--merge", "--match-head-commit", expectedHead]);
@@ -212,8 +212,8 @@ export function validateCandidateRemote(plan, values) {
   } catch { reject("candidate_evidence_invalid"); }
   verifyRelease(release, { tag, revision, assets: REQUIRED_PLATFORM_ASSETS });
   if (Date.now() < Date.parse(candidateMaturity(release.published_at))) reject("candidate_immature");
-  verifyAppCheck(checks, { name: "Apple Release ready", revision,
-    appId: Number(values["apple-app-id"] || process.env.LICOUP_APPLE_RELEASE_APP_ID) });
+  verifyAppCheck(checks, { name: "the release plane ready", revision,
+    appId: Number(values["apple-app-id"] || process.env.LICOUP_RELEASE_PLANE_APP_ID) });
   return revision;
 }
 

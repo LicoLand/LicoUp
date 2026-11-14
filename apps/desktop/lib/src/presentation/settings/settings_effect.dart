@@ -10,6 +10,21 @@ final class ClientRestartRequired extends SettingsEffect {
   const ClientRestartRequired({super.trace});
 }
 
+final class DataHomeRelocationRequested extends SettingsEffect {
+  const DataHomeRelocationRequested(this.destinationParent, {super.trace});
+
+  final String destinationParent;
+}
+
+final class PreviousDataHomeCleanupRequested extends SettingsEffect {
+  const PreviousDataHomeCleanupRequested(
+    this.expectedPreviousRootPath, {
+    super.trace,
+  });
+
+  final String expectedPreviousRootPath;
+}
+
 final class SettingsActionRejected extends SettingsEffect {
   const SettingsActionRejected(this.reasonCode, {super.trace});
 

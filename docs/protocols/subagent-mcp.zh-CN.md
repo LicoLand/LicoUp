@@ -1,18 +1,26 @@
 # LicoUp Subagent MCP
 
+Updated: 2026-11-14
+
 | 参考 | 文档 |
 | --- | --- |
 | 规范版本 | [English](subagent-mcp.md) |
 | 原生门面 | [原生 CLI](../architecture/NATIVE-CLI.zh-CN.md) |
 | Provider 执行与注册 | [Agent 适配器](../architecture/AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md) |
-| 公共模式 | [Subagent MCP Schema](../../schemas/subagent_mcp/subagent_mcp.schema.json) |
+| 公共模式 | `schemas/subagent_mcp/subagent_mcp.schema.json`（LicoUp-CLI） |
 
 ## 模块边界
 
-`crates/licoup-mcp` 独立拥有可选公共 MCP 服务和 stdio 连接器。它只依赖公开
-Rust 依赖，可以独立构建，不依赖 native、Flutter、领域 crate 或项目源码路径。
-它仅通过已安装原生 CLI 的公开 `licoup.stdio.v1` 进程契约调用 LicoUp。
+`crates/licoup-public-gateway` 独立拥有可选公共 MCP 服务和 stdio 连接器。它使用公开
+Rust 依赖及中立的 `licoup-foundation` crate 独立构建，后者负责共享数据根目录
+解析和进程访问租约。它不依赖 native、Flutter 或领域 crate；运行时操作
+通过已安装原生 CLI 的公开 `licoup.stdio.v1` 进程契约调用 LicoUp。
 原生出站 MCP 客户端适配器仍是独立能力。
+
+MCP 传输凭据继续由独立的 `private_state` 模块负责，不是 Foundation 通用
+私有文件工具的门面。尤其是 Windows 凭据文件，必须属于当前用户，具有仅含
+当前用户授权的受保护 DACL，并拒绝重解析点。共享数据根目录协调能力不替代
+或放宽这些凭据保护。
 
 原生 `domain/subagents` 拥有调用方 Membership 检查、Provider 执行准入、
 持久化分派声明、继续、取消与回执。Canonical Conversation 与 PersistentTurn
@@ -42,18 +50,35 @@ Assistant Profiles、Assistant 工作流、完整 Conversation 及其他原生�
 
 ## 独立生命周期与开发
 
-发布可执行文件名为 `lico-subagent-mcp`。本地原生门面提供
-`licoup mcp start`、`stop`、`status`、`reload`；`start` 和 `reload` 支持
-`--binary` 选择独立构建的模块。命令确保原生宿主可用，无需 Flutter。
-正常桌面宿主启动也会启动可选模块；失败只降低 MCP 可用性，不停止原生宿主。
+Codex 与其他外部 MCP 调用方通过通用本地 MCP 入口连接，不再使用供应商专用插件仓库
+（`LicoUp-Plugins` 与 `lico-up-codex` 已退役）：
+
+1. **通用本地 stdio 入口（`licoup mcp stdio`）**：通过已安装的 `licoup` 二进制
+   直接经本地 stdio 提供封闭五工具 Subagent MCP 服务，无需单独的插件包或后台监听。
+2. **可选 `org.licoland.feature.mcp` 服务（`lico-subagent-mcp`）**：可执行文件
+   `lico-subagent-mcp` 是可选包 `org.licoland.feature.mcp` 的负载，不是客户端捆绑
+   的一部分。客户端既不分发副本，也不自行启动该服务：包声明 `on-demand` 激活，因此
+   由调用方启动；包缺失或关闭时不启动任何进程，也不发布任何端点。`licoup mcp start`、
+   `stop`、`status`、`reload` 仍是该进程的本地原生门面；`start` 和 `reload` 支持
+   `--binary` 选择独立构建的模块。命令确保原生宿主可用，无需 Flutter。
+
+独立模块开发（Rust 工作区位于 LicoUp-CLI 仓库）：
 
 ```sh
-node tools/scripts/cargo-client.mjs build -p licoup-mcp
+node tools/scripts/cargo-client.mjs build -p licoup-public-gateway
 licoup mcp reload --binary <built-lico-subagent-mcp>
 ```
 
+发布时由 LicoUp-CLI 仓库的打包通道在交付的 `.licopkg` 负载中填充包声明的原生入口。
+本仓库通过 `tools/client-release-package-set.json` 选择已交付负载，并用以下命令构建索引：
+
+```sh
+npm run client:release:package-index:build
+```
+
 模块也可直接执行 `service start|stop|status|reload`，通过 `LICOUP_CLI_BINARY`
-明确指定原生 CLI，通过 `LICOUP_PORTABLE_DIR` 限定状态目录。可复用、有界的
+明确指定原生 CLI，通过 `LICOUP_HOME` 限定状态目录。已发布安装仍可使用优先级更低的
+`LICOUP_PORTABLE_DIR` 别名。可复用、有界的
 公开 CLI 会话池承载准入请求；取消具有独立保留通道，不被缓慢清单或准入请求占用。
 
 停止操作先认证私有控制请求，停止接受新帧，并在释放服务租约前排空已准入请求。
@@ -94,7 +119,7 @@ Provider 注册继续要求既有摘要绑定、一次性批准。命名空间�
 
 | 范围 | 维护入口 |
 | --- | --- |
-| 公共传输与工具契约 | [互操作清单](../../tests/product-e2e/cli/subagent-mcp/interop-manifest.yaml) |
-| 调用方协议验收 | [上游互操作](../../tests/product-e2e/cli/subagent-mcp/upstream.mjs) |
-| 原生目标执行与控制 | [下游互操作](../../tests/product-e2e/cli/subagent-mcp/downstream.mjs) |
-| 独立进程生命周期、恢复及取消隔离 | [模块生命周期测试](../../crates/licoup-mcp/tests/lifecycle.rs) |
+| 公共传输与工具契约 | `tests/product-e2e/cli/subagent-mcp/interop-manifest.yaml`（LicoUp-CLI） |
+| 调用方协议验收 | `tests/product-e2e/cli/subagent-mcp/upstream.mjs`（LicoUp-CLI） |
+| 原生目标执行与控制 | `tests/product-e2e/cli/subagent-mcp/downstream.mjs`（LicoUp-CLI） |
+| 独立进程生命周期、恢复及取消隔离 | `crates/licoup-public-gateway/tests/lifecycle.rs`（LicoUp-CLI） |

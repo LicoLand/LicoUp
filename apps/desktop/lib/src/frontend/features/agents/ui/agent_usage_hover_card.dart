@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'agent_usage_formatters.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 
 /// Shared usage detail card. Chart and source hover presentations supply only
 /// their header and rows; material, typography and numeric alignment stay one.
@@ -27,7 +29,7 @@ abstract class AgentUsageHoverCard extends StatelessWidget {
     final colors = context.licoColors;
     final rows = buildRows(context);
     final footer = footerLabel(context);
-    final borderRadius = BorderRadius.circular(12);
+    final borderRadius = BorderRadius.circular(LicoRadius.card);
     final headerStyle = TextStyle(
       color: colors.text,
       fontSize: 12,
@@ -65,9 +67,11 @@ abstract class AgentUsageHoverCard extends StatelessWidget {
           borderAlpha: colors.isDark ? 54 : 84,
           child: ColoredBox(
             key: ValueKey('$tooltipKeyPrefix-glass-fill'),
-            color: colors.surfaceRaised.withValues(
-              alpha: colors.isDark ? 0.72 : 0.84,
-            ),
+            color:
+                (colors.isDark
+                        ? LicoPaneGlass.contentInnerCardFill
+                        : colors.surfaceRaised)
+                    .withValues(alpha: colors.isDark ? 0.72 : 0.84),
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Column(

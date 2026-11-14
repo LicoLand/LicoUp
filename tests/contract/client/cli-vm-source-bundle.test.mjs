@@ -36,9 +36,6 @@ const leaves = Object.freeze([
   "ssh/session.mjs",
   "sync/artifacts.mjs",
   "sync/repo.mjs",
-  "verify/bootstrap.mjs",
-  "verify/command.mjs",
-  "verify/distro.mjs",
   "vm/lifecycle.mjs",
   "vm/prepare.mjs",
 ]);
@@ -136,7 +133,7 @@ test("client CLI VM facade is a thin serial CLI entry", async () => {
   assert.equal(typeof module.main, "function");
 });
 
-test("client CLI VM owns exactly twenty-nine bounded ordinary modules", async () => {
+test("client CLI VM owns exactly twenty-six bounded ordinary modules", async () => {
   assert.deepEqual(await collectModules(moduleRoot), [...leaves]);
   const source = await sources();
   for (const leaf of Object.keys(source)) {
@@ -145,16 +142,10 @@ test("client CLI VM owns exactly twenty-nine bounded ordinary modules", async ()
   assert.equal(findImportCycle(source), null);
 });
 
-test("cli, verify, linux-product, and self-test each have one authority", async () => {
+test("cli, linux-product, and self-test each have one authority", async () => {
   const source = await sources();
   assert.deepEqual(declarationOwners(source, "parseArgs"), ["cli.mjs"]);
   assert.deepEqual(declarationOwners(source, "main"), ["run.mjs"]);
-  assert.deepEqual(declarationOwners(source, "verifyCommand"), [
-    "verify/command.mjs",
-  ]);
-  assert.deepEqual(declarationOwners(source, "verifyDistro"), [
-    "verify/distro.mjs",
-  ]);
   assert.deepEqual(declarationOwners(source, "linuxProductCommand"), [
     "linux-product/command.mjs",
   ]);

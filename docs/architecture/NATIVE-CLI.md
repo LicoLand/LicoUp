@@ -84,22 +84,27 @@ refresh and canonical identity. Its commands are not remote MCP operations.
 `subagents catalog` exposes the native caller and operation schemas;
 `subagents execute` admits a local invocation with `name`, `arguments`, and
 `caller`. Caller scope is checked by the native Subagents domain.
-`mcp start`, `stop`, `reload`, and `status` manage the independent MCP process.
+`licoup mcp stdio` provides the generic local MCP stdio entrypoint for Codex and
+other external callers, while `mcp start`, `stop`, `reload`, and `status` manage
+the optional `org.licoland.feature.mcp` service process.
 Development `start` and `reload` accept `--binary` for an explicit MCP
 executable. The MCP adapter's narrower remote exposure is owned by its
 [protocol document](../protocols/subagent-mcp.md).
 
 ## Implementation owners
 
+The `crates/` sources below live in the LicoUp-CLI repository, which owns the
+Rust workspace.
+
 | Concern | Source |
 | --- | --- |
-| Admission, help, and command catalog | `crates/licoup-native/src/ffi/commands/mod.rs` |
+| Admission, help, and command catalog | `crates/licoup/src/ffi/commands/mod.rs` (LicoUp-CLI) |
 | Generated RPC method authority | `schemas/conversation_protocol/conversation_protocol.schema.json` |
-| CLI request projection | `crates/licoup-native/src/ffi/commands/native_rpc.rs` |
-| Native host frames and stream output | `crates/licoup-native/src/platform/conversation_host_client.rs` |
-| Native executable and host startup | `crates/licoup-native/src/bin/licoup.rs` and `bin/licoup/conversation_host.rs` |
-| Local Subagents and MCP lifecycle commands | `crates/licoup-native/src/ffi/commands/subagents.rs` |
-| Local Subagents invocation and caller admission | `crates/licoup-native/src/domain/subagents/local.rs` |
+| CLI request projection | `crates/licoup/src/ffi/commands/native_rpc.rs` (LicoUp-CLI) |
+| Native host frames and stream output | `crates/licoup/src/platform/conversation_host_client.rs` (LicoUp-CLI) |
+| Native executable and host startup | `crates/licoup/src/bin/licoup.rs` and `bin/licoup/conversation_host.rs` (both LicoUp-CLI) |
+| Local Subagents and MCP lifecycle commands | `crates/licoup/src/ffi/commands/subagents.rs` (LicoUp-CLI) |
+| Local Subagents invocation and caller admission | `crates/licoup/src/domain/subagents/mod.rs` (LicoUp-CLI) |
 
 ## Custom operation properties
 

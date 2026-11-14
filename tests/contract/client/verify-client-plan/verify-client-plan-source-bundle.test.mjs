@@ -9,13 +9,6 @@ const scriptRoot = "apps/desktop/scripts/verify-client-plan";
 const leaves = Object.freeze([
   ["package-and-runner.mjs", "checkPackageAndRunner"],
   ["client-boundary.mjs", "checkClientBoundary"],
-  ["evidence-routing.mjs", "checkEvidenceRouting"],
-  ["crypto-redaction-handoff.mjs", "checkCryptoRedactionHandoff"],
-  ["secret-store.mjs", "checkSecretStore"],
-  ["physical-evidence.mjs", "checkPhysicalEvidence"],
-  ["android-ios.mjs", "checkAndroidIos"],
-  ["linux-windows.mjs", "checkLinuxWindows"],
-  ["trust-release.mjs", "checkTrustRelease"],
   ["docs-readiness.mjs", "checkDocsReadiness"],
 ]);
 
@@ -60,6 +53,6 @@ test("shared registries and reducer-owned summary are declared once", async () =
   const source = [...sharedSources, ...checkSources].join("\n");
   assert.equal((source.match(/export const requiredClientScripts\s*=\s*\[/gu) || []).length, 1);
   assert.equal((source.match(/function formatAdapterReadinessSummary\(/gu) || []).length, 1);
-  assert.equal((source.match(/import \{ loadSecureClientContract \}/gu) || []).length, 1);
+  assert.equal((source.match(/import \{ loadSecureClientContract \}/gu) || []).length, 0);
   assert.equal((source.match(/SECURE_CLIENT_MESH_PRODUCTION_BLOCKERS\s*=\s*\[/gu) || []).length, 0);
 });

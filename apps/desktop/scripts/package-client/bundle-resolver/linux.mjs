@@ -30,6 +30,7 @@ export function linuxBundleLayout(root) {
   return Object.freeze({
     root,
     executableDir: root,
+    sidecarDir: path.join(root, "helpers"),
     portableDataDir: path.join(root, "portable-data"),
     moduleResourceDir: path.join(root, "modules"),
     pluginResourceDir: path.join(root, "resources"),

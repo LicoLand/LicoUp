@@ -65,13 +65,13 @@ void main() {
         );
 
         final relayItem = find.byKey(
-          const ValueKey('desktop-mobile-compact-navigation-mobileRelay'),
+          const ValueKey('desktop-mobile-compact-navigation-devices'),
         );
         expect(tester.getSize(relayItem).height, greaterThanOrEqualTo(56));
         await tester.tap(relayItem);
         await tester.pumpAndSettle();
 
-        expect(selections, [ClientSection.mobileRelay]);
+        expect(selections, [ClientSection.devices]);
         expect(tester.takeException(), isNull);
       },
     );
@@ -128,12 +128,10 @@ void main() {
       expect(focusableInk.focusColor, isNotNull);
 
       await tester.tap(
-        find.byKey(
-          const ValueKey('desktop-mobile-medium-navigation-mobileRelay'),
-        ),
+        find.byKey(const ValueKey('desktop-mobile-medium-navigation-devices')),
       );
       await tester.pump();
-      expect(selections, [ClientSection.mobileRelay]);
+      expect(selections, [ClientSection.devices]);
       expect(
         find.byKey(const ValueKey('fake-desktop-mobile-content-settings')),
         findsOneWidget,
@@ -224,7 +222,7 @@ void main() {
       await _pumpDesktopShell(
         tester,
         size: const Size(320, 560),
-        activeDestination: ClientSection.mobileRelay,
+        activeDestination: ClientSection.devices,
         content: FakeDesktopDestinationContent(),
         onSelectDestination: (_) {},
         destinationLabel: longLabel,
@@ -246,7 +244,7 @@ void main() {
       await _pumpDesktopShell(
         tester,
         size: const Size(600, 560),
-        activeDestination: ClientSection.mobileRelay,
+        activeDestination: ClientSection.devices,
         content: FakeDesktopDestinationContent(),
         onSelectDestination: (_) {},
         destinationLabel: longLabel,
@@ -317,12 +315,14 @@ Future<void> _pumpDesktopShell(
               activeDestination: activeDestination,
               availableDestinations: desktopMobileTestDestinations,
               destination: destination,
+              content: content,
               onSelectDestination: onSelectDestination,
               destinationLabel: destinationLabel ?? desktopMobileTestLabel,
               components: desktopMobileBundle.components,
               tokens: desktopMobileBundle.tokens,
               initialFocusTarget: 'conversation-composer',
               chrome: const FixtureLayoutChromePort(),
+              style: null,
             ),
           );
         },

@@ -13,7 +13,6 @@ const forbiddenAnySegment = new Set([
   "target",
   "node_modules",
   ".dart_tool",
-  ".gradle",
   ".pub-cache",
   ".pub",
   "Pods",

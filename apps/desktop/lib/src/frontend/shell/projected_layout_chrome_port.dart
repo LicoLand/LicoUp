@@ -39,9 +39,6 @@ final class ProjectedLayoutChromePort implements LayoutChromePort {
   void removeListener(VoidCallback listener) =>
       _notifier.removeListener(listener);
   @override
-  Future<void> openPairing(BuildContext context) =>
-      _actions.openPairing(context);
-  @override
   Future<void> openGlobalSearch(BuildContext context) =>
       _actions.openGlobalSearch(context);
 

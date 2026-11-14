@@ -4,9 +4,9 @@ Map<String, dynamic> _map(Object? value) {
       : const {};
 }
 
-/// Current numeric-only Adaptive Flywheel Graph usage projection. A missing
+/// Current numeric-only Acativa Graph usage projection. A missing
 /// projection is valid; any present projection must match this exact schema.
-const String agentUsageWorkflowReportSchema = 'licoup.graph-usage-report.v2';
+const String agentUsageWorkflowReportSchema = 'acativa.graph-usage-report.v2';
 const int agentUsageWorkflowLedgerSchemaVersion = 2;
 const String agentUsageWorkflowResultKind = 'graph-run-usage';
 

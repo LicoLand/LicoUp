@@ -8,7 +8,7 @@ export async function writeUpdateManifest({ argv = process.argv.slice(2), run = 
   const document = JSON.parse(await readFile(path.join(cwd, 'tools/client-version.json'), 'utf8'));
   if (version !== document.productVersion || tag !== `v${version}` || repository !== 'LicoLand/LicoUp' ||
       !env.LICO_UPDATE_OFFLINE_ROOT_KEY || !env.LICO_UPDATE_ONLINE_SIGNING_KEY) throw new Error('adapter_contract_invalid');
-  await run(process.execPath, ['tools/scripts/client-update-manifest.mjs', '--assets', 'build/apple-release',
+  await run(process.execPath, ['tools/scripts/client-update-manifest.mjs', '--assets', 'build/release-plane',
     '--tag', tag, '--repo', repository, '--targets', 'macos-direct-arm64', '--release-track', 'stable',
     '--minimum-supported-version', '0.0.0'], { cwd, env });
 }

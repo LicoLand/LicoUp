@@ -21,10 +21,6 @@ import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
-import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
-import 'package:licoup/src/presentation/mobile_relay/mobile_relay_effect.dart';
-import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
-import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/presentation/search/search_binding.dart';
 import 'package:licoup/src/presentation/search/search_effect.dart';
@@ -289,31 +285,15 @@ final class _RendererBindings {
       intents: conversationIntents,
       effects: const _EmptyEffects<ConversationEffect>(),
     );
-    relay = MobileRelayBinding(
-      projection: _FixedProjection(
-        MobileRelayProjection(
-          peers: const [],
-          approvals: const [],
-          transfers: const [],
-          pairingCode: '',
-          stationLabel: '',
-          phase: PresentationPhase.ready,
-        ),
-      ),
-      intents: _RecordingIntentSink<MobileRelayIntent>(),
-      effects: const _EmptyEffects<MobileRelayEffect>(),
-    );
   }
 
   late final AgentsBinding agents;
   final agentsIntents = _RecordingIntentSink<AgentsIntent>();
   late final ConversationBinding conversation;
-  late final MobileRelayBinding relay;
 
   Widget get workspace => AgentConversationWorkspace(
     agents: agents,
     conversation: conversation,
-    relay: relay,
     onAddTarget: () {},
   );
 }

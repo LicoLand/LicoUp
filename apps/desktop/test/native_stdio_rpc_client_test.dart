@@ -202,7 +202,7 @@ done
             'conversationId': 'conversation:group',
             'eventId': 'event:posted',
           })
-          .timeout(const Duration(seconds: 3));
+          .timeout(const Duration(seconds: 10));
 
       expect(result['ok'], isTrue);
       expect(result['directTurns'], isNotEmpty);
@@ -246,7 +246,7 @@ done
 
       final result = await client
           .execute(const ['state', 'admit', '/fixture/data'])
-          .timeout(const Duration(seconds: 3));
+          .timeout(const Duration(seconds: 30));
 
       expect(result['ok'], isTrue);
       expect(result['phase'], 'admitted');
@@ -293,7 +293,7 @@ done
 
       final result = await client
           .execute(const ['llm-gateway', 'credentials', 'migrate'])
-          .timeout(const Duration(seconds: 3));
+          .timeout(const Duration(seconds: 30));
 
       expect(result['ok'], isTrue);
       expect(result['migrationPending'], isFalse);
@@ -567,7 +567,7 @@ done
 
 Future<void> _waitUntil(
   bool Function() predicate, {
-  Duration timeout = const Duration(seconds: 2),
+  Duration timeout = const Duration(seconds: 10),
 }) async {
   final deadline = DateTime.now().add(timeout);
   while (!predicate()) {

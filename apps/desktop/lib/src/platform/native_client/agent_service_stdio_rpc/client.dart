@@ -8,6 +8,7 @@ import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/read_p
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/read_pool.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/shutdown.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/stream_observation.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:licoup/src/platform/native_client/native_conversation_command_policy.dart';
 import 'package:licoup/src/platform/native_client/native_rpc_priority.dart';
@@ -15,15 +16,27 @@ import 'package:licoup/src/platform/native_client/native_rpc_priority.dart';
 Future<Map<String, dynamic>> _rpcFailure(String code) =>
     Future<Map<String, dynamic>>.error(LicoClientRpcException(code));
 
+/// Multiplexes native stdio sessions for commands, reads and conversation
+/// observations. The port is optional: without one, or without an installed
+/// backend on it, no transport phase record is created at all.
 class NativeStdioRpcClient implements NativeStdioRpcTransport {
-  NativeStdioRpcClient({required NativeCliProcessContext processContext})
-    : _processContext = processContext,
-      _sessionManager = StdioRpcSessionManager(processContext: processContext),
-      _reads = StdioRpcReadPool(processContext: processContext),
-      _chat = StdioRpcSessionManager(
-        processContext: processContext,
-        arguments: const ['rpc', 'conversation'],
-      );
+  NativeStdioRpcClient({
+    required NativeCliProcessContext processContext,
+    StreamObservationPort? observation,
+  }) : _processContext = processContext,
+       _sessionManager = StdioRpcSessionManager(
+         processContext: processContext,
+         observation: observation,
+       ),
+       _reads = StdioRpcReadPool(
+         processContext: processContext,
+         observation: observation,
+       ),
+       _chat = StdioRpcSessionManager(
+         processContext: processContext,
+         arguments: const ['rpc', 'conversation'],
+         observation: observation,
+       );
 
   final NativeCliProcessContext _processContext;
   final StdioRpcSessionManager _sessionManager;

@@ -66,6 +66,9 @@ final class _AgentsPresentation implements LayoutAgentsPresentation {
   Color canvasColor(LayoutPalette palette) => palette.background;
 
   @override
+  bool get canvasGroundsWorkspace => true;
+
+  @override
   EdgeInsetsGeometry get collapsedSidebarControlPadding => EdgeInsets.zero;
 
   @override
@@ -82,6 +85,24 @@ final class _AgentsPresentation implements LayoutAgentsPresentation {
 
   @override
   bool get showSidebarBottomNav => true;
+
+  @override
+  LayoutAgentsSidebarHeader get sidebarHeader =>
+      LayoutAgentsSidebarHeader.trafficLights;
+
+  @override
+  bool get showConversationFilters => false;
+
+  @override
+  LayoutConversationHeaderStyle get conversationHeaderStyle =>
+      LayoutConversationHeaderStyle.capsules;
+
+  @override
+  double get conversationHeaderBarExtent => 60;
+
+  @override
+  LayoutGroupMembersPlacement get groupMembersPlacement =>
+      LayoutGroupMembersPlacement.avatarStrip;
 
   @override
   bool get showExpandedSidebarControl => false;

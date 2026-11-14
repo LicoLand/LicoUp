@@ -1,8 +1,10 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import 'package:licoup/src/contracts/presentation/reduce_motion_preference.dart';
+
 /// Gives layout and animated widgets one effective accessibility preference.
-/// macOS follows the system; other platforms can additionally reduce motion.
+/// The tri-state choice follows the system by default and can force motion
+/// reduction on or off.
 class LicoMotionScope extends StatelessWidget {
   const LicoMotionScope({
     super.key,
@@ -11,17 +13,19 @@ class LicoMotionScope extends StatelessWidget {
     required this.child,
   });
 
-  final bool reduceMotion;
+  final ReduceMotionPreference reduceMotion;
   final bool systemReduceMotion;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final effective =
-        media.disableAnimations ||
-        systemReduceMotion ||
-        (defaultTargetPlatform != TargetPlatform.macOS && reduceMotion);
+    final effective = switch (reduceMotion) {
+      ReduceMotionPreference.on => true,
+      ReduceMotionPreference.off => false,
+      ReduceMotionPreference.system =>
+        media.disableAnimations || systemReduceMotion,
+    };
     return MediaQuery(
       data: media.copyWith(disableAnimations: effective),
       child: child,

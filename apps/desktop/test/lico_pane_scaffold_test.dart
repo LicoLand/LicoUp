@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_title_bar.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
@@ -51,5 +52,47 @@ void main() {
     expect(titleBar.left, closeTo(content.left, 1));
     expect(refresh.right, closeTo(card.right, 1));
     expect(refresh.left, greaterThan(title.right));
+  });
+
+  testWidgets('hosted scaffold hides its title bar and posts actions', (
+    tester,
+  ) async {
+    // Desktop hosts the destination title row: the pane publishes its
+    // action row (refresh button) into the scope instead of repeating the
+    // body title.
+    final actions = ValueNotifier<Widget?>(null);
+    addTearDown(actions.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: SizedBox(
+            width: 800,
+            height: 600,
+            child: LicoPaneActionsHostScope(
+              actions: actions,
+              child: const LicoPaneScaffold(
+                title: 'Hosted Pane',
+                refreshTooltip: 'Refresh',
+                onRefresh: null,
+                refreshButtonKey: Key('pane-refresh'),
+                body: SizedBox.expand(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(LicoPaneTitleBar), findsNothing);
+    expect(find.text('Hosted Pane'), findsNothing);
+    final posted = actions.value;
+    expect(posted, isA<Row>());
+    expect(
+      (posted as Row).children.whereType<LicoPaneRefreshButton>(),
+      hasLength(1),
+    );
   });
 }

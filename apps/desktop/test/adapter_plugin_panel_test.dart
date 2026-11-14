@@ -5,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/features/plugin_management/plugin_management_feature_composition.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/plugin_surface.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -66,9 +68,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('adapter cards render in the wide two-column layout', (
-    tester,
-  ) async {
+  testWidgets('adapter cards render in the wide card layout', (tester) async {
     tester.view.physicalSize = const Size(1280, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -178,11 +178,11 @@ void main() {
     // An installed plugin exposes a disabled update action and a warning
     // uninstall action below the in-card divider.
     final updateButton = tester.widget<FilledButton>(
-      find.byKey(const Key('adapter-update-claude-code-lico-up-codex')),
+      find.byKey(const Key('adapter-update-claude-code-subagent-mcp')),
     );
     expect(updateButton.onPressed, isNull);
     expect(
-      find.byKey(const Key('adapter-uninstall-claude-code-lico-up-codex')),
+      find.byKey(const Key('adapter-uninstall-claude-code-subagent-mcp')),
       findsOneWidget,
     );
     expect(find.text('更新'), findsOneWidget);
@@ -213,7 +213,7 @@ void main() {
 
     presentation.publishCollaboration(
       PluginCollaborationInputs(
-        collaboration: CollaborationProjection(
+        collaboration: OptionalCollaborationProjection(
           statusLoaded: true,
           enabled: false,
           installed: false,
@@ -247,6 +247,84 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(identical(tester.widget<PluginSurface>(cards), installed), isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the package center shows the four facts of a native package', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final service = _PackageCatalogAgentService(
+      packages: [
+        _nativePackage(
+          packageId: 'acp-bridge',
+          available: true,
+          enabled: true,
+          active: true,
+        ),
+      ],
+    );
+    final controller = ClientController(
+      agentService: service,
+      presentationPreferencesRepository: _PanelPreferencesRepository(),
+    );
+    addTearDown(controller.dispose);
+    await controller.adapterPluginController.refresh();
+    controller.packageCenterController.useDataRoot('/tmp/synthetic-data-home');
+    await controller.packageCenterController.refresh();
+    final feature = PluginManagementFeatureComposition(controller);
+    addTearDown(feature.dispose);
+    await _pumpProviderBinding(tester, feature, const Locale('en'));
+
+    // All four facts come from the native package report, and none of them is
+    // derived here.
+    expect(find.byKey(const Key('package-fact-available')), findsWidgets);
+    expect(find.text('Available: yes'), findsWidgets);
+    expect(find.text('Installed: yes'), findsWidgets);
+    expect(find.text('Enabled: yes'), findsWidgets);
+    expect(find.text('Active: yes'), findsWidgets);
+    expect(find.text('This package is managed by LicoUp.'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an absent capability shows the not-installed state', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final service = _PackageCatalogAgentService(packages: const []);
+    final controller = ClientController(
+      agentService: service,
+      presentationPreferencesRepository: _PanelPreferencesRepository(),
+    );
+    addTearDown(controller.dispose);
+    await controller.adapterPluginController.refresh();
+    controller.packageCenterController.useDataRoot('/tmp/synthetic-data-home');
+    await controller.packageCenterController.refresh();
+    final feature = PluginManagementFeatureComposition(controller);
+    addTearDown(feature.dispose);
+    await _pumpProviderBinding(tester, feature, const Locale('en'));
+
+    expect(find.byKey(const Key('package-fact-available')), findsWidgets);
+    expect(find.text('Available: no'), findsWidgets);
+    expect(find.text('Installed: no'), findsWidgets);
+    expect(
+      find.byKey(const Key('package-not-installed-antigravity')),
+      findsOneWidget,
+    );
+    expect(find.text('This capability is not installed.'), findsWidgets);
+    // The third-party Agent install stays with Agent Hub, which the copy names.
+    expect(
+      find.text(
+        'Installing the third-party Agent itself stays with Agent Hub.',
+      ),
+      findsWidgets,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -299,9 +377,14 @@ void main() {
     await _pumpBinding(tester, feature, const Locale('en'));
     service.calls.clear();
 
-    await tester.tap(
-      find.byKey(const Key('adapter-install-antigravity-acp-bridge')),
+    // The package center card carries the four package facts above the install
+    // action, so the action is scrolled into view before it is tapped.
+    final installAction = find.byKey(
+      const Key('adapter-install-antigravity-acp-bridge'),
     );
+    await tester.ensureVisible(installAction);
+    await tester.pumpAndSettle();
+    await tester.tap(installAction);
     await tester.pumpAndSettle();
 
     expect(service.calls, isEmpty);
@@ -342,9 +425,12 @@ void main() {
         withToastHost: true,
       );
 
-      await tester.tap(
-        find.byKey(const Key('adapter-install-antigravity-acp-bridge')),
+      final installAction = find.byKey(
+        const Key('adapter-install-antigravity-acp-bridge'),
       );
+      await tester.ensureVisible(installAction);
+      await tester.pumpAndSettle();
+      await tester.tap(installAction);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('confirm-adapter-install')));
       await tester.pumpAndSettle();
@@ -357,93 +443,42 @@ void main() {
   );
 
   testWidgets(
-    'Codex plugin preserves status-plan-confirm-install order and hides permit',
+    'local MCP entries across Codex, Cursor, and Claude Code render uniformly and honor catalog actions',
     (tester) async {
-      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.physicalSize = const Size(1280, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final service = _CodexPluginAgentService();
+      final service = _UniformLocalMcpAgentService();
       final controller = ClientController(
         agentService: service,
         presentationPreferencesRepository: _PanelPreferencesRepository(),
       );
       addTearDown(controller.dispose);
-      controller.scannedTargets = [
-        TargetCandidate(
-          target: 'codex',
-          label: 'Codex',
-          kind: 'cli',
-          status: TargetCandidateStatus.detected,
-          configured: true,
-          confidence: 1,
-          binaryPath: _CodexPluginAgentService.syntheticBinary,
-          adapterStatus: 'ready',
-        ),
-      ];
       await controller.adapterPluginController.refresh();
       final feature = PluginManagementFeatureComposition(controller);
       addTearDown(feature.dispose);
       await _pumpBinding(tester, feature, const Locale('en'));
       service.calls.clear();
 
+      for (final agentId in const ['codex', 'cursor', 'claude-code']) {
+        expect(find.byKey(Key('adapter-plugin-$agentId')), findsOneWidget);
+        expect(
+          find.byKey(Key('adapter-plugin-entry-$agentId-subagent-mcp')),
+          findsOneWidget,
+        );
+      }
+      expect(find.text('Subagent MCP'), findsNWidgets(3));
+
       await tester.tap(
-        find.byKey(const Key('adapter-install-codex-lico-up-codex')),
+        find.byKey(const Key('adapter-install-codex-subagent-mcp')),
       );
       await tester.pumpAndSettle();
 
-      expect(service.calls, [
-        [
-          'adapter',
-          'codex',
-          'plugin',
-          'status',
-          '--binary-path',
-          _CodexPluginAgentService.syntheticBinary,
-        ],
-        [
-          'adapter',
-          'codex',
-          'plugin',
-          'plan',
-          '--binary-path',
-          _CodexPluginAgentService.syntheticBinary,
-        ],
-      ]);
-      expect(find.byKey(const Key('plugin-lifecycle-plan')), findsOneWidget);
-      expect(find.text('Install LicoUp Codex Plugin?'), findsOneWidget);
-      expect(find.textContaining('LicoLand/LicoUp-Plugins'), findsOneWidget);
-      expect(find.textContaining('v1.2.3'), findsOneWidget);
-      expect(
-        find.textContaining(_CodexPluginAgentService.syntheticConfirmation),
-        findsNothing,
-      );
-      expect(
-        find.textContaining(_CodexPluginAgentService.syntheticBinary),
-        findsNothing,
-      );
-
-      await tester.tap(find.byKey(const Key('confirm-adapter-install')));
-      await tester.pumpAndSettle();
-
-      expect(service.calls.skip(2), [
-        [
-          'adapter',
-          'codex',
-          'plugin',
-          'install',
-          '--binary-path',
-          _CodexPluginAgentService.syntheticBinary,
-          '--confirmation',
-          _CodexPluginAgentService.syntheticConfirmation,
-          '--confirmed',
-        ],
-        ['adapter', 'catalog'],
-      ]);
-      expect(
-        find.textContaining('LicoUp Codex Plugin is installed'),
-        findsOneWidget,
-      );
+      // Built-in adapters without an adapter-level lifecycle action reject
+      // undeclared installs instead of issuing any special-case plugin command.
+      expect(service.calls, isEmpty);
+      expect(find.byKey(const Key('plugin-lifecycle-plan')), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -488,6 +523,22 @@ Widget _panelApp(
     ).copyWith(platform: TargetPlatform.macOS),
     home: withToastHost ? LicoToastHost(child: panel) : panel,
   );
+}
+
+/// Pumps the panel over the composition's own live presentation sources, so a
+/// synthetic native reply drives the projection end to end.
+Future<void> _pumpProviderBinding(
+  WidgetTester tester,
+  PluginManagementFeatureComposition feature,
+  Locale locale,
+) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: feature.providerOverrides,
+      child: _panelApp(feature, locale),
+    ),
+  );
+  await tester.pumpAndSettle();
 }
 
 Future<PluginManagementPresentationFixture> _pumpBinding(
@@ -577,8 +628,8 @@ final class _CatalogAgentService extends AgentService {
           ],
           'adapterPlugins': [
             {
-              'id': 'lico-up-codex',
-              'label': 'LicoUp Codex Plugin',
+              'id': 'subagent-mcp',
+              'label': 'Subagent MCP',
               'detail': 'lico-subagent-mcp',
               'installationState': 'installed',
               'lifecycleActions': ['uninstall'],
@@ -620,36 +671,14 @@ final class _CatalogAgentService extends AgentService {
   }
 }
 
-final class _CodexPluginAgentService extends AgentService {
-  _CodexPluginAgentService() : super(persistentStdioRpcEnabled: false);
-
-  static const syntheticBinary = 'synthetic/bin/codex';
-  static const syntheticConfirmation = 'synthetic-confirmation-digest';
+final class _UniformLocalMcpAgentService extends AgentService {
+  _UniformLocalMcpAgentService() : super(persistentStdioRpcEnabled: false);
 
   final List<List<String>> calls = [];
-  var _installed = false;
 
   @override
   Future<Map<String, dynamic>> runCli(List<String> args) async {
     calls.add(List.unmodifiable(args));
-    if (args.length >= 4 &&
-        args[0] == 'adapter' &&
-        args[1] == 'codex' &&
-        args[2] == 'plugin') {
-      return switch (args[3]) {
-        'status' => {'ok': true, 'ready': false},
-        'plan' => {
-          'ok': true,
-          'requiresConfirmation': true,
-          'digest': syntheticConfirmation,
-          'marketplaceSource': 'LicoLand/LicoUp-Plugins',
-          'marketplaceRelease': 'v1.2.3',
-          'pluginVersion': '1.2.3',
-        },
-        'install' => _install(),
-        _ => {'ok': false},
-      };
-    }
     return {
       'ok': true,
       'schemaVersion': 'lico.adapter-plugin-catalog.v1',
@@ -669,21 +698,62 @@ final class _CodexPluginAgentService extends AgentService {
           ],
           'adapterPlugins': [
             {
-              'id': 'lico-up-codex',
-              'label': 'LicoUp Codex Plugin',
+              'id': 'subagent-mcp',
+              'label': 'Subagent MCP',
               'detail': 'lico-subagent-mcp',
-              'installationState': _installed ? 'installed' : 'not-installed',
-              'lifecycleActions': _installed ? <String>[] : ['install'],
+              'installationState': 'not-installed',
+              'lifecycleActions': ['install'],
+            },
+          ],
+        },
+        {
+          'agentId': 'cursor',
+          'label': 'Cursor - CLI',
+          'driverId': 'cursor',
+          'runtimeProtocol': 'cursor-agent-acp',
+          'laneFamily': 'acp',
+          'managementKind': 'native',
+          'installationState': 'not-required',
+          'readiness': 'ready',
+          'lifecycleActions': <String>[],
+          'nativeCapabilities': [
+            {'kind': 'cli', 'detected': true, 'running': false},
+          ],
+          'adapterPlugins': [
+            {
+              'id': 'subagent-mcp',
+              'label': 'Subagent MCP',
+              'detail': 'lico-subagent-mcp',
+              'installationState': 'installed',
+              'lifecycleActions': <String>[],
+            },
+          ],
+        },
+        {
+          'agentId': 'claude-code',
+          'label': 'Claude Code - CLI',
+          'driverId': 'claude-code',
+          'runtimeProtocol': 'claude-code-cli-stream-json',
+          'laneFamily': 'official-native',
+          'managementKind': 'native',
+          'installationState': 'not-required',
+          'readiness': 'ready',
+          'lifecycleActions': <String>[],
+          'nativeCapabilities': [
+            {'kind': 'cli', 'detected': true, 'running': false},
+          ],
+          'adapterPlugins': [
+            {
+              'id': 'subagent-mcp',
+              'label': 'Subagent MCP',
+              'detail': 'lico-subagent-mcp',
+              'installationState': 'installed',
+              'lifecycleActions': <String>[],
             },
           ],
         },
       ],
     };
-  }
-
-  Map<String, dynamic> _install() {
-    _installed = true;
-    return {'ok': true, 'installed': true};
   }
 }
 
@@ -700,8 +770,9 @@ final class _PanelPreferencesRepository
       PresentationPreferencesLoadResult(preferences: _preferences);
 
   @override
-  Future<PresentationPreferences> setReduceMotion(bool enabled) async =>
-      _preferences = _preferences.copyWith(reduceMotion: enabled);
+  Future<PresentationPreferences> setReduceMotion(
+    ReduceMotionPreference preference,
+  ) async => _preferences = _preferences.copyWith(reduceMotion: preference);
 
   @override
   Future<PresentationPreferences> setLoadingEffect(String id) async =>
@@ -716,7 +787,61 @@ final class _PanelPreferencesRepository
       _preferences = _preferences.copyWith(layoutProfileId: id);
 
   @override
+  Future<PresentationPreferences> setLayoutStyle(
+    LayoutProfileId profile,
+    LayoutStyleId style,
+  ) async => _preferences = _preferences.copyWith(
+    layoutStyleIds: {..._preferences.layoutStyleIds, profile: style},
+  );
+
+  @override
   Future<PresentationPreferences> setLocalePreference(
     String preference,
   ) async => _preferences = _preferences.copyWith(localePreference: preference);
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) async => _preferences = _preferences.withResourceSelection(kind, selection);
 }
+
+/// The synthetic adapter catalogue plus one native package catalogue, so the
+/// four package facts are projected from a report rather than injected.
+final class _PackageCatalogAgentService extends _CatalogAgentService {
+  _PackageCatalogAgentService({required this.packages});
+
+  final List<Map<String, Object?>> packages;
+
+  @override
+  Future<Map<String, dynamic>> runCli(List<String> args) async {
+    if (args.length >= 2 && args[0] == 'package' && args[1] == 'catalog') {
+      calls.add(List.unmodifiable(args));
+      return {
+        'schemaVersion': 'licoup.package-lifecycle.v1',
+        'isError': false,
+        'operation': 'catalog',
+        'packages': packages,
+      };
+    }
+    return super.runCli(args);
+  }
+}
+
+Map<String, Object?> _nativePackage({
+  required String packageId,
+  bool available = false,
+  bool enabled = false,
+  bool active = false,
+}) => {
+  'packageId': packageId,
+  'version': '1.0.0',
+  'label': packageId,
+  'capabilityKind': 'licoup-capability',
+  'lifecycle': 'installed',
+  'source': 'official-directory',
+  'available': available,
+  'enabled': enabled,
+  'active': active,
+  'agentId': 'antigravity',
+};

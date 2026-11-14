@@ -5,7 +5,6 @@ import {
 import { ROOT } from "./constants.mjs";
 
 const FLUTTER_TEST_OUTPUT = "apps/desktop/build";
-const ANDROID_NATIVE_TEST_OUTPUT = "build/crates/licoup-native/android-target";
 
 function workspaceRelative(cwd) {
   return path.relative(ROOT, path.resolve(cwd)).split(path.sep).join("/");
@@ -22,20 +21,8 @@ function isFlutterTest(command, args, cwd) {
     args[0] === "test";
 }
 
-function isAndroidBuildTest(command, args, cwd) {
-  return ["gradlew", "gradlew.bat", "gradlew.cmd"]
-    .includes(commandName(command)) &&
-    workspaceRelative(cwd) === "apps/desktop/android" &&
-    args.some((argument) =>
-      /(?:^|:)(?:test|compile.*(?:kotlin|test)|connected.*test)/iu.test(argument)
-    );
-}
-
 export function toolchainTestArtifactTargets({ command, args, cwd }) {
   if (isFlutterTest(command, args, cwd)) return Object.freeze([FLUTTER_TEST_OUTPUT]);
-  if (isAndroidBuildTest(command, args, cwd)) {
-    return Object.freeze([FLUTTER_TEST_OUTPUT, ANDROID_NATIVE_TEST_OUTPUT]);
-  }
   return Object.freeze([]);
 }
 

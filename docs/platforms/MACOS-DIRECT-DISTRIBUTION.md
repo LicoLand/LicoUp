@@ -58,16 +58,16 @@ following in a single local release run:
    the public receipt is written only after public download, install, and
    stable-launch verification.
 
-No remote workflow may publish a macOS direct artifact. The local Apple Release
+No remote workflow may publish a macOS direct artifact. The local the release plane
 engine may upload and publish only the exact mutations in its one immutable
 per-release authorization.
 
 ## Local custody validation
 
-The sole custody binary is `licoup-cli` inside
+The sole custody binary is `licoup` inside
 `Contents/Helpers/LicoUpCustody.app/Contents/MacOS`, with bundle ID
 `land.lico.licoup.custody`. The main app retains `land.lico.licoup`.
-`Contents/MacOS/licoup-cli` is a permanent relative symlink to the helper's
+The app ships no `Contents/MacOS/licoup` alias; the single signed binary lives in the helper's
 executable, preserving existing launch agents and provider token helpers
 without rewriting private configuration. Flutter invokes the helper directly
 and does not fall back to an external or old sibling binary. The layout and
@@ -100,7 +100,7 @@ for shared Data Protection keychain access.
 
 ## Local authority
 
-Install the private `apple-release` CLI from its standalone checkout first
+Install the private `release-plane` CLI from its standalone checkout first
 (`npm install --global .` there), then configure the release authority once on
 a release workstation:
 

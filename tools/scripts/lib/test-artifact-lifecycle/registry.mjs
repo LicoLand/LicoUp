@@ -5,12 +5,12 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
 import {
   DEAD_LEASE_GRACE_MS,
-  LOCK_TIMEOUT_MS,
   LOCK_WAIT_MS,
   REGISTRY_PATH,
 } from "./constants.mjs";
@@ -55,7 +55,7 @@ export function processIsAlive(pid) {
   }
 }
 
-function staleLock(paths, { deadLeaseGraceMs, isAlive, now }) {
+function staleLock(paths, { deadLeaseGraceMs, isAlive, now, initialMtime }) {
   const ownerPath = path.join(paths.lock, "owner.json");
   try {
     const owner = readJson(ownerPath);
@@ -63,8 +63,51 @@ function staleLock(paths, { deadLeaseGraceMs, isAlive, now }) {
     return Number.isFinite(acquiredAt) &&
       now() - acquiredAt >= deadLeaseGraceMs &&
       !isAlive(owner.pid);
+  } catch (error) {
+    if (error?.code !== "ENOENT") return false;
+    try {
+      return now() - (initialMtime ?? statSync(paths.lock).mtimeMs) >= deadLeaseGraceMs;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function reclaimStaleLock(paths, options) {
+  let initialMtime;
+  try {
+    initialMtime = statSync(paths.lock).mtimeMs;
   } catch {
     return false;
+  }
+  // The claim must live outside the lock: a marker inside the lock directory
+  // refreshes the lock's mtime on every attempt, so an ownerless lock could
+  // never age past deadLeaseGraceMs and every contender would spin forever.
+  const claim = `${paths.lock}.recovery`;
+  try {
+    mkdirSync(claim);
+  } catch (error) {
+    if (error?.code === "EEXIST" || error?.code === "ENOENT") return false;
+    throw error;
+  }
+
+  try {
+    if (!staleLock(paths, { ...options, initialMtime })) return false;
+    const recovery = `${paths.lock}.stale-${randomUUID()}`;
+    try {
+      renameSync(paths.lock, recovery);
+    } catch (error) {
+      if (error?.code === "ENOENT" || error?.code === "EEXIST") return false;
+      throw error;
+    }
+    rmSync(recovery, { force: true, recursive: true });
+    return true;
+  } finally {
+    try {
+      rmSync(claim, { force: true, recursive: true });
+    } catch {
+      // Another reclaimer may already have removed the claim.
+    }
   }
 }
 
@@ -72,26 +115,26 @@ export function withArtifactLock(paths, operation, options = {}) {
   const deadLeaseGraceMs = options.deadLeaseGraceMs ?? DEAD_LEASE_GRACE_MS;
   const isAlive = options.isAlive ?? processIsAlive;
   const now = options.now ?? Date.now;
-  const deadline = now() + (options.lockTimeoutMs ?? LOCK_TIMEOUT_MS);
   const token = randomUUID();
   mkdirSync(paths.record, { recursive: true });
 
   while (true) {
     try {
       mkdirSync(paths.lock);
-      writeJson(path.join(paths.lock, "owner.json"), {
-        acquiredAt: new Date(now()).toISOString(),
-        pid: process.pid,
-        token,
-      });
+      try {
+        writeJson(path.join(paths.lock, "owner.json"), {
+          acquiredAt: new Date(now()).toISOString(),
+          pid: process.pid,
+          token,
+        });
+      } catch (error) {
+        rmSync(paths.lock, { force: true, recursive: true });
+        throw error;
+      }
       break;
     } catch (error) {
       if (error?.code !== "EEXIST") throw error;
-      if (staleLock(paths, { deadLeaseGraceMs, isAlive, now })) {
-        rmSync(paths.lock, { force: true, recursive: true });
-        continue;
-      }
-      if (now() >= deadline) throw new Error("test artifact lock timed out");
+      if (reclaimStaleLock(paths, { deadLeaseGraceMs, isAlive, now })) continue;
       Atomics.wait(waitBuffer, 0, 0, LOCK_WAIT_MS);
     }
   }

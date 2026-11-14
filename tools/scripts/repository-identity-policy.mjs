@@ -21,17 +21,14 @@ const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 // its bundled shell. Every other platform keeps the mandatory assertion.
 const posixExecutableBitRequired = process.platform !== "win32";
 const zeroObjectId = /^0+$/u;
-const githubLoginPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u;
 export const managedPolicyPaths = Object.freeze([
   ".githooks/pre-commit",
   ".githooks/commit-msg",
   ".githooks/pre-push",
   "package.json",
   "tools/client-release-template.json",
-  "tools/scripts/client-auditor-preflight.mjs",
   "tools/scripts/client-gate-policy.mjs",
   "tools/scripts/client-gate.mjs",
-  "tools/scripts/repository-rulesets.mjs",
   "tools/scripts/repository-identity-policy.mjs",
   "tools/scripts/lib/repository-sensitive-file-policy.mjs",
 ]);
@@ -109,52 +106,68 @@ export function shouldRejectEmptyStagedCandidate(hasStagedPaths, mergeInProgress
   return hasStagedPaths === false && mergeInProgress !== true;
 }
 
-export function canonicalGitHubEmail(identity) {
-  return `${identity.id}+${identity.login}@users.noreply.github.com`;
-}
-
-export function parseGitHubIdentity(raw) {
-  const [login, id, ...extra] = raw.trim().split("\t");
-  if (
-    extra.length > 0 ||
-    !githubLoginPattern.test(login || "") ||
-    !/^[1-9][0-9]*$/u.test(id || "")
-  ) {
-    reject("GH_IDENTITY_INVALID", "GitHub returned an unusable account identity.");
+// The repository never decides *which* developer a checkout belongs to. Routing
+// an account to a repository is machine-level authority (GitVault's identity
+// table); a repository that asserted one person's address would refuse every
+// other contributor. What the gate enforces here is only that a commit carries
+// a real developer identity at all: configured, and not Agent-shaped - the same
+// class the remote commit-identity ruleset applies to every pushed commit.
+function assertAttributionConfigured() {
+  const name = effectiveGitConfig("user.name");
+  const email = effectiveGitConfig("user.email");
+  if (!name || !email) {
+    reject(
+      "GIT_IDENTITY_UNCONFIGURED",
+      "Git identity is incomplete: user.name and user.email must both be configured - "
+      + "Git otherwise falls back to a machine-derived identity the commit never asked for.",
+    );
   }
-  return Object.freeze({ login, id });
-}
-
-export function boundedIdentityRead(operation, attempts = 3) {
-  if (typeof operation !== "function" || !Number.isSafeInteger(attempts) || attempts < 1) {
-    reject("READ_RETRY_INVALID", "The bounded identity read policy is invalid.");
+  if (isAgentIdentity(name, email)) {
+    reject(
+      "AGENT_IDENTITY_FORBIDDEN",
+      "The configured Git identity is Agent-shaped; the commit must carry a developer identity.",
+    );
   }
-  let failure;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      return operation();
-    } catch (error) {
-      failure = error;
-      if (attempt < attempts) {
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, attempt * 250);
-      }
-    }
-  }
-  throw failure;
-}
-
-function currentGitHubIdentity() {
-  return parseGitHubIdentity(
-    boundedIdentityRead(() =>
-      run("gh", ["api", "user", "--jq", '[.login, (.id | tostring)] | @tsv'], {
-        code: "GH_IDENTITY_UNAVAILABLE",
-        message: "The authenticated GitHub account could not be resolved.",
-      })),
-  );
 }
 
 function localGitConfig(key) {
   return runOptional("git", ["config", "--local", "--get", key]);
+}
+
+function globalGitConfig(key) {
+  return runOptional("git", ["config", "--global", "--get", key]);
+}
+
+// A process-level success check: the verifier's exit status is the answer,
+// never its output - a silent success must still count as supported.
+export function commandSucceeds(command, args) {
+  try {
+    execFileSync(command, args, { cwd: repoRoot, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// A global hooksPath stands in for this repository's gates only when its
+// owner says so: GitVault verifies its installed dispatcher byte-for-byte
+// against the scripts it generates, so a look-alike or inert directory can
+// never be mistaken for the chain - the repository reads no hook content
+// itself, it asks the contract's owner.
+export function isSupportedDispatcherChain(hooksPath) {
+  return commandSucceeds("gitvault", ["hooks", "verify", hooksPath]);
+}
+
+// The identity a commit is actually attributed to.
+//
+// `--local` answers a different question: whether this checkout carries its own
+// override. Conflating the two made the gate fail on a correctly configured checkout
+// whose identity arrives by path (`includeIf` on the workspace directory) rather than
+// from a per-repository value, and the failure named a mismatch that did not exist.
+// The check below is about what the commit will carry, so it reads what the commit
+// will carry.
+function effectiveGitConfig(key) {
+  return runOptional("git", ["config", "--get", key]);
 }
 
 export function assertCommitMessage(message) {
@@ -190,19 +203,6 @@ export function assertCommitRecord(record) {
     );
   }
   assertCommitMessage(record.message);
-}
-
-function assertConfiguredIdentity(identity) {
-  const expectedEmail = canonicalGitHubEmail(identity);
-  if (
-    localGitConfig("user.name") !== identity.login ||
-    localGitConfig("user.email") !== expectedEmail
-  ) {
-    reject(
-      "LOCAL_IDENTITY_MISMATCH",
-      "Repository Git identity does not match the authenticated GitHub CLI account. Run npm run repo:identity:install.",
-    );
-  }
 }
 
 function gitPrivatePath(name) {
@@ -256,7 +256,10 @@ export function managedPolicyDrift(rootDirectory = repoRoot) {
 }
 
 function reportPolicyNotices() {
-  if (localGitConfig("core.hooksPath") !== ".githooks") {
+  const effectiveHooksPath = effectiveGitConfig("core.hooksPath");
+  const hooksEnabled = effectiveHooksPath === ".githooks"
+    || (effectiveHooksPath !== "" && isSupportedDispatcherChain(effectiveHooksPath));
+  if (!hooksEnabled) {
     report(
       "HOOKS_PATH_NOT_ENABLED",
       "Repository-controlled Git hooks are not enabled, so this gate is not protecting ordinary "
@@ -592,23 +595,35 @@ export function outgoingCommits(input, remoteName, execute = run) {
 }
 
 function verifyLocalIdentityAndPolicy() {
-  const identity = currentGitHubIdentity();
-  assertConfiguredIdentity(identity);
+  assertAttributionConfigured();
   reportPolicyNotices();
-  return identity;
 }
 
 function install() {
-  const identity = currentGitHubIdentity();
-  run("git", ["config", "--local", "user.name", identity.login]);
-  run("git", ["config", "--local", "user.email", canonicalGitHubEmail(identity)]);
-  run("git", ["config", "--local", "core.hooksPath", ".githooks"]);
+  assertAttributionConfigured();
+  const globalHooksPath = globalGitConfig("core.hooksPath");
+  if (globalHooksPath !== "" && isSupportedDispatcherChain(globalHooksPath)) {
+    // A recognized dispatcher reaches .githooks itself; a repo-local
+    // override would silently sever the chain it belongs to.
+    if (localGitConfig("core.hooksPath")) {
+      run("git", ["config", "--local", "--unset-all", "core.hooksPath"]);
+    }
+  } else {
+    run("git", ["config", "--local", "core.hooksPath", ".githooks"]);
+    if (globalHooksPath !== "") {
+      report(
+        "GLOBAL_HOOKS_PATH_SHADOWED",
+        "A global core.hooksPath is configured but is not a recognized dispatcher chain, so this "
+        + "repository's .githooks take precedence here and the global chain will not run for this "
+        + "repository. To keep both, have the global chain dispatch into .githooks.",
+      );
+    }
+  }
   for (const relativePath of managedPolicyPaths) {
     if (relativePath.startsWith(".githooks/")) {
       chmodSync(path.join(repoRoot, relativePath), 0o755);
     }
   }
-  assertConfiguredIdentity(identity);
   // Nothing is recorded for later comparison: the policy is read from the committed
   // revision on every run, so there is no per-checkout state to refresh.
   reportPolicyNotices();

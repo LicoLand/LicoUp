@@ -13,7 +13,7 @@ const nativeCli = path.join(
   repoRoot,
   "build",
   "crates",
-  "licoup-native",
+  "licoup",
   "target",
   "debug",
   "licoup-cli"

@@ -2,13 +2,15 @@
 
 [Documentation](../README.md) · [Canonical schema](../../packages/contracts/client/semantic-conversation.schema.json)
 
-Canonical read-only model for native agent history in LicoUp.
+Canonical read-only model for native agent history in LicoUp. The native-side
+`crates/` source lives in the LicoUp-CLI repository, which owns the Rust
+workspace.
 
 ## Authority
 
 - Schema: `packages/contracts/client/semantic-conversation.schema.json`
 - Fixtures: `packages/contracts/client/fixtures/semantic-conversation/`
-- Native assembler/validator: `crates/licoup-native/src/domain/conversation_semantic.rs`
+- Native assembler/validator: `crates/licoup/src/domain/conversation_semantic.rs` (LicoUp-CLI)
 - Desktop models: `apps/desktop/lib/src/contracts/agent_conversation_models.dart`
 
 Native source histories remain read-only. This contract does **not** introduce a parallel client-owned conversation store and must not write back into provider history databases.

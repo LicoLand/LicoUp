@@ -261,7 +261,7 @@ class _SearchResults extends StatelessWidget {
           ClientSection.monitoring => Icons.query_stats_outlined,
           ClientSection.skillHub => Icons.library_books_outlined,
           ClientSection.pluginManagement => Icons.extension_outlined,
-          ClientSection.mobileRelay => Icons.phonelink_outlined,
+          ClientSection.devices => Icons.phonelink_outlined,
           ClientSection.models => Icons.key_outlined,
           ClientSection.settings => Icons.settings_outlined,
           ClientSection.agentHub => Icons.auto_awesome_outlined,

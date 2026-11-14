@@ -12,6 +12,7 @@ import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/plugin_surface.dart';
@@ -125,27 +126,10 @@ final class AdapterPluginPanel extends StatelessWidget {
   ) async {
     final strings = LicoStrings.of(context);
     final installing = effect.action == PluginLifecyclePlanAction.install;
-    final special = effect.kind == PluginInstallPlanKind.codexPinnedRelease;
-    final title = special
-        ? (strings.isChinese
-              ? '安装 LicoUp Codex Plugin？'
-              : 'Install LicoUp Codex Plugin?')
-        : strings.isChinese
+    final title = strings.isChinese
         ? '${installing ? '安装' : '卸载'} ${effect.pluginLabel}？'
         : '${installing ? 'Install' : 'Uninstall'} ${effect.pluginLabel}?';
-    final message = special
-        ? strings.isChinese
-              ? 'Codex 将从 GitHub ${effect.marketplaceSource} 的 '
-                    '${effect.marketplaceRelease} 安装插件 '
-                    '${effect.pluginVersion}。LicoUp 只提供本机运行时；'
-                    '插件只传递本机对话文件位置。安装后，请新建 Codex 对话。'
-              : 'Codex will install plugin ${effect.pluginVersion} from '
-                    'GitHub ${effect.marketplaceSource} at '
-                    '${effect.marketplaceRelease}. LicoUp provides only the '
-                    'local runtime, and the plugin shares only local '
-                    'conversation file locations. Start a new Codex '
-                    'conversation after installation.'
-        : strings.isChinese
+    final message = strings.isChinese
         ? '此操作只会调用目录为该适配器声明的管理动作。'
         : 'This runs only the management action declared for this adapter '
               'by the catalog.';
@@ -214,11 +198,6 @@ final class AdapterPluginPanel extends StatelessWidget {
   String _completedMessage(BuildContext context, PluginActionCompleted effect) {
     final chinese = LicoStrings.of(context).isChinese;
     return switch (effect.reasonCode) {
-      'codex_plugin_installed' =>
-        chinese
-            ? 'LicoUp Codex Plugin 已安装，新对话将由 Codex 主线程调度。'
-            : 'LicoUp Codex Plugin is installed; new conversations are '
-                  'orchestrated by the Codex main thread.',
       'adapter_plugin_installed' => chinese ? '适配器已安装。' : 'Adapter installed.',
       'adapter_plugin_uninstalled' =>
         chinese ? '适配器已卸载。' : 'Adapter uninstalled.',
@@ -229,16 +208,6 @@ final class AdapterPluginPanel extends StatelessWidget {
   String _rejectionMessage(BuildContext context, PluginActionRejected effect) {
     final chinese = LicoStrings.of(context).isChinese;
     return switch (effect.reasonCode) {
-      'codex_executable_missing' =>
-        chinese ? '未找到 Codex 可执行文件。' : 'The Codex executable was not found.',
-      'codex_plugin_plan_failed' =>
-        chinese
-            ? '无法准备 LicoUp Codex Plugin 安装。'
-            : 'The LicoUp Codex Plugin installation could not be prepared.',
-      'codex_plugin_install_failed' =>
-        chinese
-            ? 'LicoUp Codex Plugin 安装失败。'
-            : 'LicoUp Codex Plugin installation failed.',
       'adapter_plugin_plan_expired' =>
         chinese
             ? '插件操作确认已失效，请重试。'
@@ -337,7 +306,11 @@ final class _PluginCard extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: colors.surfaceLow,
+                    color: colors.isDark
+                        ? LicoPaneGlass.contentInnerCardFill
+                        : (colors.isDark
+                              ? LicoPaneGlass.contentInnerCardFill
+                              : colors.surfaceLow),
                     borderRadius: BorderRadius.circular(LicoRadius.floating),
                   ),
                   child: Center(
@@ -373,6 +346,8 @@ final class _PluginCard extends StatelessWidget {
                 _ReadinessPill(readiness: plugin.runtimeStateLabel),
               ],
             ),
+            const SizedBox(height: 12),
+            _PackageFactsRow(plugin: plugin, busy: busy, binding: binding),
             if (plugin.capabilities.isNotEmpty) ...[
               const SizedBox(height: 14),
               _SectionHeader(
@@ -412,6 +387,195 @@ final class _PluginCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The four package facts of one entry, exactly as the native package store
+/// reported them.
+///
+/// All four are always shown, including when the capability is absent: an entry
+/// with no native package names the not-installed state instead of hiding the
+/// row, and it carries no locally invented package identity.
+final class _PackageFactsRow extends StatelessWidget {
+  const _PackageFactsRow({
+    required this.plugin,
+    required this.busy,
+    required this.binding,
+  });
+
+  final PluginProjectionItem plugin;
+  final bool busy;
+  final PluginManagementBinding binding;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final chinese = LicoStrings.of(context).isChinese;
+    final facts = plugin.facts;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(title: chinese ? '软件包状态' : 'PACKAGE STATE'),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _PackageFact(
+              id: 'available',
+              label: chinese ? '可用' : 'Available',
+              value: facts.available,
+              colors: colors,
+            ),
+            _PackageFact(
+              id: 'installed',
+              label: chinese ? '已安装' : 'Installed',
+              value: facts.installed,
+              colors: colors,
+            ),
+            _PackageFact(
+              id: 'enabled',
+              label: chinese ? '已启用' : 'Enabled',
+              value: facts.enabled,
+              colors: colors,
+            ),
+            _PackageFact(
+              id: 'active',
+              label: chinese ? '运行中' : 'Active',
+              value: facts.active,
+              colors: colors,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          facts.notInstalled
+              ? (chinese ? '此能力尚未安装。' : 'This capability is not installed.')
+              : (chinese
+                    ? '软件包由 LicoUp 管理。'
+                    : 'This package is managed by LicoUp.'),
+          key: Key('package-not-installed-${plugin.id}'),
+          style: TextStyle(
+            fontSize: 11,
+            color: facts.notInstalled ? colors.warning : colors.textMuted,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          plugin.agentInstallation
+              ? (chinese
+                    ? '第三方 Agent 自身的安装由 Agent Hub 负责。'
+                    : 'Installing the third-party Agent itself stays with Agent Hub.')
+              : (chinese
+                    ? 'LicoUp 软件包安装：启用、停用与卸载都在此处完成。'
+                    : 'LicoUp package installation: enable, disable and uninstall happen here.'),
+          key: Key('package-installation-owner-${plugin.id}'),
+          style: TextStyle(fontSize: 11, color: colors.textMuted),
+        ),
+        if (plugin.packageId.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (facts.installed)
+                FilledButton.tonalIcon(
+                  key: Key('package-toggle-${plugin.id}'),
+                  onPressed: busy
+                      ? null
+                      : () => binding.intents.send(
+                          SetPackageEnabled(
+                            packageId: plugin.packageId,
+                            version: plugin.packageVersion,
+                            enabled: !facts.enabled,
+                          ),
+                        ),
+                  icon: Icon(
+                    facts.enabled
+                        ? Icons.pause_circle_outline
+                        : Icons.play_circle_outline,
+                    size: 17,
+                  ),
+                  label: Text(
+                    facts.enabled
+                        ? (chinese ? '停用' : 'Disable')
+                        : (chinese ? '启用' : 'Enable'),
+                  ),
+                ),
+              if (facts.installed)
+                OutlinedButton.icon(
+                  key: Key('package-uninstall-${plugin.id}'),
+                  onPressed: busy
+                      ? null
+                      : () => binding.intents.send(
+                          UninstallPackage(
+                            packageId: plugin.packageId,
+                            version: plugin.packageVersion,
+                          ),
+                        ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: colors.error,
+                    side: BorderSide(color: colors.error.withAlpha(120)),
+                    shape: ContinuousRoundedBorder(
+                      borderRadius: BorderRadius.circular(
+                        AppleControlMetrics.controlCornerRadius,
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(Icons.delete_outline, size: 17),
+                  label: Text(chinese ? '卸载' : 'Uninstall'),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// One on/off fact of the four-fact row.
+final class _PackageFact extends StatelessWidget {
+  const _PackageFact({
+    required this.id,
+    required this.label,
+    required this.value,
+    required this.colors,
+  });
+
+  final String id;
+  final String label;
+  final bool value;
+  final LicoThemeColors colors;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: Key('package-fact-$id'),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: value
+          ? colors.success.withAlpha(20)
+          : colors.textMuted.withAlpha(16),
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          value ? Icons.check_circle_outline : Icons.remove_circle_outline,
+          size: 13,
+          color: value ? colors.success : colors.textMuted,
+        ),
+        const SizedBox(width: 5),
+        Text(
+          '$label: ${value ? (LicoStrings.of(context).isChinese ? '是' : 'yes') : (LicoStrings.of(context).isChinese ? '否' : 'no')}',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: value ? colors.success : colors.textMuted,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 final class _SectionHeader extends StatelessWidget {
@@ -456,7 +620,11 @@ final class _CapabilityTile extends StatelessWidget {
       key: Key('adapter-capability-$agentId-${capability.id}'),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: colors.surfaceLow,
+        color: colors.isDark
+            ? LicoPaneGlass.contentInnerCardFill
+            : (colors.isDark
+                  ? LicoPaneGlass.contentInnerCardFill
+                  : colors.surfaceLow),
         borderRadius: BorderRadius.circular(LicoRadius.floating),
       ),
       child: Row(
@@ -545,7 +713,11 @@ final class _PluginEntryTile extends StatelessWidget {
       key: Key('adapter-plugin-entry-$agentId-${entry.id}'),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: colors.surfaceLow,
+        color: colors.isDark
+            ? LicoPaneGlass.contentInnerCardFill
+            : (colors.isDark
+                  ? LicoPaneGlass.contentInnerCardFill
+                  : colors.surfaceLow),
         borderRadius: BorderRadius.circular(LicoRadius.floating),
       ),
       child: Column(
@@ -757,7 +929,8 @@ String? _liveText(PluginCapabilityProjection capability, bool chinese) {
 
 IconData _pluginIcon(String pluginId) => switch (pluginId) {
   'acp-bridge' => Icons.cable_outlined,
-  'lico-up-codex' => Icons.account_tree_outlined,
+  'subagent-mcp' || 'lico-subagent-mcp' => Icons.account_tree_outlined,
+  _ when pluginId.endsWith('-mcp') => Icons.account_tree_outlined,
   _ => Icons.extension_outlined,
 };
 

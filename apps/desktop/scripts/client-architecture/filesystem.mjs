@@ -86,38 +86,8 @@ export function createArchitectureFilesystem({ repoRoot, fail }) {
     return (await Promise.all(basenames.map((basename) => readDartSourceByBasename(basename)))).join("\n");
   }
 
-  async function collectRustUnsafeFiles(relativeRoot) {
-    const absoluteRoot = path.join(repoRoot, relativeRoot);
-    const unsafeFiles = [];
-
-    async function walk(relativeDir = "") {
-      const items = await fs.readdir(path.join(absoluteRoot, relativeDir), { withFileTypes: true });
-      for (const item of items) {
-        if (item.name === "target") {
-          continue;
-        }
-        const child = relativeDir ? `${relativeDir}/${item.name}` : item.name;
-        if (item.isDirectory()) {
-          await walk(child);
-        } else if (item.isFile() && child.endsWith(".rs")) {
-          const content = await fs.readFile(path.join(absoluteRoot, child), "utf8");
-          const scannedContent = child === "android_ffi.rs"
-            ? content.replace(/#\s*\[\s*unsafe\s*\(\s*no_mangle\s*\)\s*\]/g, "")
-            : content;
-          if (/(^|[^A-Za-z0-9_])unsafe([^A-Za-z0-9_]|$)/.test(scannedContent)) {
-            unsafeFiles.push(`${relativeRoot}/${child}`);
-          }
-        }
-      }
-    }
-
-    await walk();
-    return unsafeFiles.sort();
-  }
-
   return {
     collectDartSourceFiles,
-    collectRustUnsafeFiles,
     collectSourceFiles,
     exists,
     readDartSourceByBasename,

@@ -202,7 +202,7 @@ void main() {
             ],
             onCopyText: (_) async {},
             framed: false,
-            onOpenAgentConversations: opened.add,
+            onOpenMemberHistory: opened.add,
           ),
         ),
       );
@@ -231,34 +231,39 @@ void main() {
       expect(controller.draft, '@Reviewer ');
       await tester.enterText(find.byType(TextField), '');
       await tester.pump(const Duration(milliseconds: 200));
+      await tester.enterText(find.byType(TextField), 'keep me');
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(controller.draft, 'keep me');
       await tester.tap(find.byKey(const Key('canonical-group-menu-button')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('canonical-group-roster-toggle')));
       await tester.pumpAndSettle();
+      // A single tap opens the member's in-group history; the composer draft
+      // is untouched because mention moved to the secondary-click menu.
       await tester.tap(
         find.byKey(const Key('canonical-group-roster-agent-kimi-code')),
       );
       await tester.pump(const Duration(milliseconds: 350));
-      expect(controller.draft, '@Reviewer ');
+      expect(controller.draft, 'keep me');
+      expect(opened, ['kimi-code']);
       final membership = controller.selectedConversation!.activeAgentMemberships
           .firstWhere((item) => item.principal.agentId == 'kimi-code');
-      expect(controller.draft.trim(), '@${membership.principal.displayName}');
       expect(
         runner.requests.where(
           (request) => request['action'] == 'conversation.membership.add',
         ),
         isEmpty,
       );
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pump(const Duration(milliseconds: 200));
       await tester.tap(
         find.byKey(const Key('canonical-group-roster-agent-kimi-code')),
+        buttons: kSecondaryButton,
       );
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.tap(
-        find.byKey(const Key('canonical-group-roster-agent-kimi-code')),
-      );
-      await tester.pump();
-      expect(opened, ['kimi-code']);
-      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Mention'));
+      await tester.pumpAndSettle();
+      expect(controller.draft.trim(), '@${membership.principal.displayName}');
       controller.dispose();
     },
   );
@@ -406,7 +411,7 @@ void main() {
       find.byKey(const Key('canonical-group-strategy-picker-panel')),
       findsNothing,
     );
-    expect(find.text('Adaptive Flywheel'), findsWidgets);
+    expect(find.text('Acativa'), findsWidgets);
     expect(
       find.descendant(
         of: find.byKey(const Key('canonical-group-assistant-control')),
@@ -437,7 +442,7 @@ void main() {
             controller: controller,
             targets: [_target('codex', 'Codex')],
             onCopyText: (_) async {},
-            onOpenAdaptiveFlywheel: (_) async {
+            onOpenAcativa: (_) async {
               runner.configureAssistantProfile(
                 preferredModel: 'backend-selected-model',
                 preferredReasoningEffort: 'medium',
@@ -852,33 +857,43 @@ void main() {
         expect(menuRect.bottom, closeTo(buttonRect.top - 8, 0.5));
         expect(menuRect.left, closeTo(buttonRect.left, 0.5));
 
-        final attachments = find.byKey(
-          const Key('canonical-group-action-attachments'),
+        // Attachments live on the composer toolbar now, not in this menu.
+        expect(
+          find.byKey(const Key('canonical-group-action-attachments')),
+          findsNothing,
         );
+        final attach = find.byKey(
+          const Key('agent-conversation-composer-attach'),
+        );
+        expect(attach, findsOneWidget);
+        // Toolbar order: + trigger, attach, sticker.
+        final attachLeft = tester.getRect(attach).left;
+        expect(attachLeft, greaterThan(buttonRect.left));
+        final sticker = find.byKey(
+          const Key('agent-conversation-composer-sticker'),
+        );
+        if (sticker.evaluate().isNotEmpty) {
+          expect(attachLeft, lessThan(tester.getRect(sticker).left));
+        }
+
         final archive = find.byKey(const Key('canonical-group-action-archive'));
-        expect(attachments, findsOneWidget);
         expect(archive, findsOneWidget);
         expect(
           find.byKey(const Key('canonical-group-action-discard-images')),
           findsNothing,
         );
-        // Attachments is nearest the button; archive is above it.
-        expect(
-          tester.getRect(attachments).bottom,
-          greaterThan(tester.getRect(archive).bottom),
-        );
-        expect(find.text('Attachments'), findsNothing);
+        expect(find.text('Archive'), findsNothing);
 
-        final collapsedWidth = tester.getSize(attachments).width;
+        final collapsedWidth = tester.getSize(archive).width;
         expect(collapsedWidth, closeTo(40, 0.5));
-        final collapsedLeft = tester.getRect(attachments).left;
+        final collapsedLeft = tester.getRect(archive).left;
 
-        await mouse.moveTo(tester.getCenter(attachments));
+        await mouse.moveTo(tester.getCenter(archive));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 220));
 
-        expect(find.text('Attachments'), findsOneWidget);
-        final expandedRect = tester.getRect(attachments);
+        expect(find.text('Archive'), findsOneWidget);
+        final expandedRect = tester.getRect(archive);
         expect(expandedRect.width, greaterThan(collapsedWidth + 20));
         // The icon slot stays pinned left: the circle expands rightward only.
         expect(expandedRect.left, closeTo(collapsedLeft, 0.5));
@@ -886,7 +901,7 @@ void main() {
         await mouse.moveTo(Offset.zero);
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 220));
-        expect(find.text('Attachments'), findsNothing);
+        expect(find.text('Archive'), findsNothing);
 
         await tester.tapAt(const Offset(600, 200));
         await tester.pump();
@@ -986,6 +1001,66 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('New conversation started'), findsOneWidget);
+    controller.dispose();
+  });
+
+  testWidgets('archiving the reserved default group resets it in place', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final runner = _AssistantSurfaceRunner();
+    final controller = ClientConversationController(native: runner);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.selectConversation('lico-group-default');
+
+    await tester.pumpWidget(
+      _groupApp(
+        CanonicalGroupConversationPaneFixture(
+          controller: controller,
+          targets: [_target('codex', 'Codex')],
+          onCopyText: (_) async {},
+          framed: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('canonical-group-assistant-actions-trigger')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('canonical-group-action-archive')));
+    await tester.pumpAndSettle();
+    expect(find.text('Archive this group conversation?'), findsOneWidget);
+    // The reserved default group resets in place, so the confirmation copy
+    // says the history clears rather than a new conversation opens.
+    expect(
+      find.textContaining('resets to a fresh conversation'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('canonical-group-archive-confirm')));
+    await tester.pumpAndSettle();
+
+    final archived = runner.requests.singleWhere(
+      (request) => request['action'] == 'conversation.archive',
+    );
+    expect(archived['conversationId'], 'lico-group-default');
+    expect(archived['archived'], isTrue);
+    expect(archived['reopen'], isTrue);
+    expect(runner.successorId, isEmpty);
+    // The same group stays selected and on screen; nothing duplicates it.
+    expect(controller.selectedConversationId, 'lico-group-default');
+    expect(controller.failureCode, isEmpty);
+    expect(
+      find.byKey(const Key('canonical-group-conversation-pane')),
+      findsOneWidget,
+    );
     controller.dispose();
   });
 
@@ -1174,11 +1249,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(
-        find.byKey(const Key('canonical-group-assistant-actions-trigger')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('canonical-group-action-attachments')),
+        find.byKey(const Key('agent-conversation-composer-attach')),
       );
       await tester.pumpAndSettle();
 
@@ -1264,11 +1335,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(
-        find.byKey(const Key('canonical-group-assistant-actions-trigger')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('canonical-group-action-attachments')),
+        find.byKey(const Key('agent-conversation-composer-attach')),
       );
       await tester.pumpAndSettle();
       expect(staged, hasLength(1));
@@ -1639,12 +1706,26 @@ final class _AssistantSurfaceRunner implements ClientConversationNativePort {
         };
       case 'conversation.archive':
         revision += 1;
+        final archiveTarget = (request['conversationId'] ?? '').toString();
+        // The native store resets the reserved default local group in place
+        // instead of archiving it; this double mirrors that contract.
+        if (archiveTarget == 'lico-group-default') {
+          return {
+            'ok': true,
+            'result': <String, dynamic>{
+              'conversationId': archiveTarget,
+              'archivedChildIds': <String>[],
+              'archivedNativeSessions': <Map<String, dynamic>>[],
+              'resetInPlace': true,
+            },
+          };
+        }
         if (request['reopen'] == true) {
           successorId = 'conversation:successor';
           return {
             'ok': true,
             'result': <String, dynamic>{
-              'conversationId': 'conversation:group',
+              'conversationId': archiveTarget,
               'archivedChildIds': <String>[],
               'archivedNativeSessions': <Map<String, dynamic>>[],
               'successor': _successorConversation(),
@@ -1654,7 +1735,7 @@ final class _AssistantSurfaceRunner implements ClientConversationNativePort {
         return {
           'ok': true,
           'result': <String, dynamic>{
-            'conversationId': 'conversation:group',
+            'conversationId': archiveTarget,
             'archivedChildIds': <String>[],
           },
         };
@@ -1711,7 +1792,10 @@ final class _AssistantSurfaceRunner implements ClientConversationNativePort {
           (request['conversationId'] ?? '') == successorId
               ? _successorConversation()
               : {
-                  'id': 'conversation:group',
+                  'id':
+                      (request['conversationId'] ?? '') == 'lico-group-default'
+                      ? 'lico-group-default'
+                      : 'conversation:group',
                   'title': 'Lico',
                   'archived': false,
                   'pinned': true,

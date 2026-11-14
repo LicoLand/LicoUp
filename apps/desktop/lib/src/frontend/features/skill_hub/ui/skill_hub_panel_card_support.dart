@@ -1,4 +1,5 @@
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:flutter/material.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
@@ -131,7 +132,11 @@ class SkillCardFooter extends StatelessWidget {
       child: Container(
         height: 38,
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(color: colors.surfaceLow),
+        decoration: BoxDecoration(
+          color: (colors.isDark
+              ? LicoPaneGlass.contentInnerCardFill
+              : colors.surfaceLow),
+        ),
         child: Row(
           children: [
             Expanded(

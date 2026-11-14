@@ -2,7 +2,7 @@
 
 - `context` — ADR 0004 made the long-lived Assistant the group-chat
   owner, but the default label still describes a strategy choice, workflow
-  failures are too coarse to repair in one pass, opening Adaptive Flywheel
+  failures are too coarse to repair in one pass, opening Acativa
   repeats target scans, and DeepSeek Harness is visible without a native
   conversation adapter.
 - `decision` —
@@ -13,7 +13,7 @@
     contains a stable code and stage, plus an allowlisted JSON Pointer,
     Membership id, and numeric actual/limit facts when applicable. All locally
     knowable checks complete before durable admission or an effect.
-  - Adaptive Flywheel and Assistant configuration hydrate model catalogs with
+  - Acativa and Assistant configuration hydrate model catalogs with
     one selected-target batch. Rust reuses the existing bounded worker pool and
     one shared discovery snapshot/cache commit. A Tokio runtime is not created
     per editor open because it would duplicate scheduling and cold-start work.

@@ -1,5 +1,9 @@
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/client_update_models.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
+
+export 'package:licoup/src/contracts/terminal_command.dart'
+    show terminalCommandLinkPath;
 
 enum SettingsAppearanceMode { system, light, dark }
 
@@ -218,6 +222,59 @@ final class SettingsResourceUsageProjection {
 
 enum SettingsAutostartPhase { loading, ready, applying, unsupported, failed }
 
+/// The macOS "install terminal command" entry (/usr/local/bin/licoup).
+enum TerminalCommandPhase { loading, ready, applying, unsupported }
+
+enum TerminalCommandLinkStatus { notInstalled, installed, stale, occupied }
+
+enum TerminalCommandResult {
+  none,
+  installed,
+  uninstalled,
+  occupied,
+  cancelled,
+  failed,
+  notInstalled,
+}
+
+final class SettingsTerminalCommandProjection {
+  const SettingsTerminalCommandProjection({
+    required this.phase,
+    required this.supported,
+    this.status = TerminalCommandLinkStatus.notInstalled,
+    this.occupiedPath,
+    this.result = TerminalCommandResult.none,
+  });
+
+  const SettingsTerminalCommandProjection.loading()
+    : phase = TerminalCommandPhase.loading,
+      supported = false,
+      status = TerminalCommandLinkStatus.notInstalled,
+      occupiedPath = null,
+      result = TerminalCommandResult.none;
+
+  final TerminalCommandPhase phase;
+  final bool supported;
+  final TerminalCommandLinkStatus status;
+  final String? occupiedPath;
+  final TerminalCommandResult result;
+
+  SettingsTerminalCommandProjection copyWith({
+    TerminalCommandPhase? phase,
+    bool? supported,
+    TerminalCommandLinkStatus? status,
+    String? occupiedPath,
+    bool clearOccupiedPath = false,
+    TerminalCommandResult? result,
+  }) => SettingsTerminalCommandProjection(
+    phase: phase ?? this.phase,
+    supported: supported ?? this.supported,
+    status: status ?? this.status,
+    occupiedPath: clearOccupiedPath ? null : occupiedPath ?? this.occupiedPath,
+    result: result ?? this.result,
+  );
+}
+
 enum SettingsAutostartResult { none, saved, loadFailed, saveFailed }
 
 final class SettingsAutostartProjection {
@@ -293,11 +350,12 @@ final class SettingsAutostartProjection {
 final class SettingsProjection {
   SettingsProjection({
     required this.appearancePresetId,
-    this.reduceMotion = false,
+    this.reduceMotion = ReduceMotionPreference.system,
     this.loadingEffectId = 'spinner',
     required Iterable<SettingsAppearancePresetProjection> appearancePresets,
     required Iterable<PresentationChoice> localeChoices,
     required Iterable<PresentationChoice> layoutChoices,
+    Iterable<PresentationChoice> layoutStyleChoices = const [],
     required Iterable<ArchivedConversationProjection> archivedConversations,
     this.archivedConversationsLoading = false,
     required this.layoutPhase,
@@ -305,6 +363,7 @@ final class SettingsProjection {
     required this.appearancePresetDirectoryPath,
     required this.appearancePresetLoadErrorCount,
     required this.portableDataPath,
+    this.portableDataSource = '',
     required this.snapshotRootPath,
     required this.savingSnapshotRoot,
     required this.clientLogExportPath,
@@ -317,14 +376,19 @@ final class SettingsProjection {
   }) : appearancePresets = immutablePresentationList(appearancePresets),
        localeChoices = immutablePresentationList(localeChoices),
        layoutChoices = immutablePresentationList(layoutChoices),
+       layoutStyleChoices = immutablePresentationList(layoutStyleChoices),
        archivedConversations = immutablePresentationList(archivedConversations);
 
   final String appearancePresetId;
-  final bool reduceMotion;
+  final ReduceMotionPreference reduceMotion;
   final String loadingEffectId;
   final List<SettingsAppearancePresetProjection> appearancePresets;
   final List<PresentationChoice> localeChoices;
   final List<PresentationChoice> layoutChoices;
+
+  /// Column-arrangement choices of the committed profile; empty when it
+  /// declares no styles.
+  final List<PresentationChoice> layoutStyleChoices;
   final List<ArchivedConversationProjection> archivedConversations;
   final bool archivedConversationsLoading;
   final PresentationPhase layoutPhase;
@@ -332,6 +396,7 @@ final class SettingsProjection {
   final String appearancePresetDirectoryPath;
   final int appearancePresetLoadErrorCount;
   final String portableDataPath;
+  final String portableDataSource;
   final String snapshotRootPath;
   final bool savingSnapshotRoot;
   final String clientLogExportPath;

@@ -61,8 +61,10 @@ final class AgentHubEntryProjection {
     required this.updateAvailable,
     required this.homepage,
     required this.channelLabel,
+    required Iterable<String> installKinds,
     required Iterable<AgentHubChannelProjection> channels,
-  }) : channels = immutablePresentationList(channels);
+  }) : installKinds = immutablePresentationList(installKinds),
+       channels = immutablePresentationList(channels);
 
   final String id;
   final String name;
@@ -83,6 +85,10 @@ final class AgentHubEntryProjection {
   final bool updateAvailable;
   final String homepage;
   final String channelLabel;
+
+  /// Install forms detected on this host (`desktop`, `cli`, `ide`,
+  /// `plugin`) — the card's type badges. Empty when nothing was found.
+  final List<String> installKinds;
   final List<AgentHubChannelProjection> channels;
 
   String get displayName => name;
@@ -120,6 +126,7 @@ final class AgentHubEntryProjection {
           other.updateAvailable == updateAvailable &&
           other.homepage == homepage &&
           other.channelLabel == channelLabel &&
+          samePresentationList(other.installKinds, installKinds) &&
           samePresentationList(other.channels, channels);
 
   @override
@@ -140,6 +147,7 @@ final class AgentHubEntryProjection {
     updateAvailable,
     homepage,
     channelLabel,
+    Object.hashAll(installKinds),
     Object.hashAll(channels),
   );
 }

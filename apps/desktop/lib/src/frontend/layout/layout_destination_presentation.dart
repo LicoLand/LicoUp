@@ -5,6 +5,40 @@ import 'package:licoup/src/frontend/layout/layout_palette.dart';
 /// Marker shared by profile-owned destination presentation strategies.
 abstract interface class LayoutDestinationPresentation {}
 
+/// What the top row of the conversation list column shows.
+enum LayoutAgentsSidebarHeader {
+  /// The native traffic-light zone, with the column actions on the right.
+  trafficLights,
+
+  /// The column title, with the column actions on the right. The shell hosts
+  /// the traffic lights elsewhere.
+  title,
+
+  /// The centred search row — capsule plus column actions — with no title
+  /// text and no light zone; the shell's rail owns the traffic lights.
+  search,
+}
+
+/// How the conversation header is drawn on desktop.
+enum LayoutConversationHeaderStyle {
+  /// Floating glass capsules over the transcript.
+  capsules,
+
+  /// A flat full-width bar with a bottom hairline.
+  bar,
+}
+
+/// Where a group conversation lists its members on desktop.
+enum LayoutGroupMembersPlacement {
+  /// A slim avatar capsule floating in the transcript band, hidden until the
+  /// header toggle shows it.
+  avatarStrip,
+
+  /// A panel beside the chat with each member's name, role and status, shown
+  /// until the header toggle hides it.
+  sidePanel,
+}
+
 /// Profile-owned visual decisions used by the shared Agents business surface.
 ///
 /// The shared feature remains responsible for business state and interaction
@@ -13,6 +47,13 @@ abstract interface class LayoutDestinationPresentation {}
 abstract interface class LayoutAgentsPresentation
     implements LayoutDestinationPresentation {
   Color canvasColor(LayoutPalette palette);
+
+  /// Whether the workspace wraps sidebar and detail in its own window
+  /// ground (fill plus the ambient layer). Flat shells (the Dashboard
+  /// plain style) return false: the list column sits on the window
+  /// backdrop and the detail's own ground owns the ambient layer inside
+  /// its bounds.
+  bool get canvasGroundsWorkspace;
 
   double get sidebarOuterHorizontalExtent;
   double get detailOuterHorizontalExtent;
@@ -28,6 +69,20 @@ abstract interface class LayoutAgentsPresentation
   /// icons and 对话 button) hides the row so the fullscreen-exclusive
   /// conversation app stays free of duplicate navigation.
   bool get showSidebarBottomNav;
+
+  LayoutAgentsSidebarHeader get sidebarHeader;
+
+  /// Whether the conversation list offers the All, Agents and Groups filter
+  /// chips above its rows.
+  bool get showConversationFilters;
+
+  LayoutConversationHeaderStyle get conversationHeaderStyle;
+
+  /// The flat conversation header bar's extent when [conversationHeaderStyle]
+  /// is `bar`; capsule presentations still declare the default 60.
+  double get conversationHeaderBarExtent;
+
+  LayoutGroupMembersPlacement get groupMembersPlacement;
 
   Widget frameWorkspace(
     BuildContext context, {

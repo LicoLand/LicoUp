@@ -1,5 +1,5 @@
 import 'package:licoup/src/contracts/presentation/dashboard_feature_order.dart';
-import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
+import 'package:licoup/src/platform/storage/client_json_document_store.dart';
 
 /// File-backed store for the Dashboard 功能 list order
 /// (`dashboard-feature-order.json`).
@@ -12,12 +12,12 @@ import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
 /// `DashboardFeatureOrderStore` port.
 final class PlatformDashboardFeatureOrderStore {
   const PlatformDashboardFeatureOrderStore({
-    MobileRelayJsonStore jsonStore = const MobileRelayJsonStore(),
+    ClientJsonDocumentStore jsonStore = const ClientJsonDocumentStore(),
   }) : _jsonStore = jsonStore;
 
   static const _fileName = 'dashboard-feature-order.json';
 
-  final MobileRelayJsonStore _jsonStore;
+  final ClientJsonDocumentStore _jsonStore;
 
   Future<List<String>> load(Object portableData) async {
     final decoded = await _readDocument(portableData);

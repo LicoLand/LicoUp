@@ -1,4 +1,5 @@
-import 'package:flutter/gestures.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,7 @@ import 'package:licoup/src/contracts/agent_conversation_message.dart';
 import 'package:licoup/src/contracts/agent_conversation_session.dart';
 import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
+import 'package:licoup/src/contracts/presentation/built_in_layout_spec.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
@@ -15,7 +17,6 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
-import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
@@ -34,6 +35,9 @@ void main() {
         destination: ClientSection.agents,
         size: const Size(1180, 820),
         brightness: Brightness.dark,
+        // These assertions cover the classic card card chrome; pin the
+        // preserved style rather than the new plain default.
+        layoutStyleId: BuiltInLayoutSpec.dashboardCardStyleId,
       );
       addTearDown(fixture.controller.dispose);
       final controller = fixture.controller;
@@ -70,37 +74,35 @@ void main() {
         ),
         findsNothing,
       );
-      final sidebarCard = tester.widget<DecoratedBox>(
+      final sidebarCard = tester.widget<LicoPaneCard>(
         find.byKey(const Key('messaging-sidebar-column-card')),
       );
-      final sidebarDecoration = sidebarCard.decoration as BoxDecoration;
-      expect(
-        sidebarDecoration.borderRadius,
-        BorderRadius.circular(
-          MessagingDesktopMetrics.conversationListCardCornerRadius,
-        ),
-      );
-      expect(
-        MessagingDesktopMetrics.mainCardCornerRadius,
-        MessagingDesktopMetrics.conversationListCardCornerRadius +
-            MessagingDesktopMetrics.conversationListCardInset,
-      );
+      expect(sidebarCard.borderRadius, BorderRadius.circular(14));
 
-      // A restored concrete conversation starts inside its target list.
+      // The contact list is the only sidebar level: a selected session
+      // keeps the contact rows and there is no list-level back affordance.
       controller.selectConversationSession(session.id);
       await tester.pump();
       expect(controller.selectedConversationSession?.id, session.id);
-
-      // A restored selection starts inside its target list. Return to the
-      // aggregate targets before exercising the target-row drill-down.
+      expect(find.byKey(Key('messaging-contact-$agentId')), findsOneWidget);
       expect(
         find.byKey(const Key('messaging-conversation-list')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('messaging-conversation-list-back')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('messaging-create-conversation')),
         findsOneWidget,
       );
-      await tester.tap(
-        find.byKey(const Key('messaging-conversation-list-back')),
-      );
+
+      // A new conversation clears the session; tapping the contact row
+      // then re-opens the Agent's most recent conversation directly.
+      controller.startNewConversationSession();
       await tester.pump();
+      expect(controller.selectedConversationSession, isNull);
 
       await tester.tap(find.byKey(Key('messaging-contact-$agentId')));
       await tester.pump();
@@ -112,99 +114,24 @@ void main() {
       }
 
       expect(controller.selectedConversationAgentId, agentId);
-      expect(controller.selectedConversationSession, isNull);
-      expect(
-        find.byKey(const Key('messaging-conversation-list')),
-        findsOneWidget,
-      );
-      expect(find.byKey(Key('messaging-contact-$agentId')), findsNothing);
-      expect(
-        find.byKey(const Key('messaging-create-conversation')),
-        findsOneWidget,
-      );
-
-      expect(
-        find.byKey(const Key('conversation-empty-content')),
-        findsOneWidget,
-      );
-
-      await tester.pump();
-      controller.selectConversationSession(session.id);
-      await tester.pump();
-
       expect(controller.selectedConversationSession?.id, session.id);
+      expect(find.byKey(Key('messaging-contact-$agentId')), findsOneWidget);
       expect(
         find.byKey(const Key('messaging-conversation-list')),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(
-        find.byKey(Key('agents-sidebar-conversation-${session.id}')),
-        findsOneWidget,
-      );
-      expect(find.byKey(Key('messaging-contact-$agentId')), findsNothing);
-
-      await tester.tap(
-        find.byKey(const Key('messaging-conversation-list-back')),
-      );
-      await tester.pump();
-      expect(find.byKey(Key('messaging-contact-$agentId')), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
 
-  testWidgets('Welcome header action clears the visible conversation', (
-    tester,
-  ) async {
-    final fixture = await ProductionClientShellFixture.create(
-      profileId: LayoutProfileId.parse('dashboard'),
-      surface: LayoutRuntimeSurface.desktop,
-      destination: ClientSection.agents,
-      size: const Size(1180, 820),
-      brightness: Brightness.dark,
-    );
-    addTearDown(fixture.controller.dispose);
-    final controller = fixture.controller;
-
-    await tester.binding.setSurfaceSize(const Size(1180, 820));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      fixture.buildApp(
-        semanticsKey: const Key('messaging-welcome-action-semantics'),
-        repaintBoundaryKey: const Key('messaging-welcome-action-repaint'),
-      ),
-    );
-    await tester.pump();
-
-    final welcomeAction = find.byKey(const Key('messaging-open-welcome'));
-    expect(welcomeAction, findsOneWidget);
-    expect(
-      find.descendant(
-        of: welcomeAction,
-        matching: find.byIcon(Icons.home_outlined),
-      ),
-      findsOneWidget,
-    );
-
-    await tester.tap(welcomeAction);
-    await tester.pump();
-
-    expect(controller.selectedConversationAgentId, isEmpty);
-    expect(
-      find.byKey(const Key('agent-conversation-welcome-actions')),
-      findsOneWidget,
-    );
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('back from an Agent opened in a group restores the group', (
+  testWidgets('member session inside a group offers Back to group', (
     tester,
   ) async {
     final agentService = _GroupNavigationAgentService();
     addTearDown(agentService.dispose);
-    final controller = ClientController(
+    final controller = _GroupNavigationController(
       agentService: agentService,
       conversationNativePort: agentService,
-      memoryDiagnosticSink: const NoopClientMemoryDiagnosticSink(),
       llmGatewayMonitorInterval: Duration.zero,
     );
     addTearDown(controller.dispose);
@@ -213,9 +140,15 @@ void main() {
       _historicalGroupTarget,
       _unrelatedGroupTarget,
     ];
+    controller.conversationSessionsByAgent = {
+      'codex': [_groupAgentSession(DateTime.now().toUtc().toIso8601String())],
+    };
     await controller.clientConversationController.initialize();
     await controller.clientConversationController.selectConversation(
       'conversation:local',
+    );
+    await controller.hydrateGroupConversationSessions(
+      controller.clientConversationController.selectedConversation!,
     );
 
     tester.view.devicePixelRatio = 1;
@@ -260,34 +193,43 @@ void main() {
     await tester.tap(find.byKey(const Key('canonical-group-roster-toggle')));
     await tester.pumpAndSettle();
 
-    final agentAvatar = find.byKey(
-      const Key('canonical-group-roster-agent-codex'),
-    );
-    await tester.tap(agentAvatar);
-    await tester.pump(kDoubleTapMinTime);
-    await tester.tap(agentAvatar);
-    await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
+    expect(controller.groupNativeSessions.sessionsByAgent['codex'], isNotEmpty);
 
-    expect(controller.selectedConversationAgentId, 'codex');
-    expect(
-      controller.clientConversationController.selectedConversationId,
-      isEmpty,
+    // A single tap on the member opens its in-group conversation history;
+    // selecting a session opens it as the member-session view inside the
+    // group.
+    await tester.tap(
+      find.byKey(const Key('canonical-group-roster-agent-codex')),
     );
+    await tester.pumpAndSettle();
     expect(
-      find.byKey(const Key('messaging-conversation-list-back-label')),
+      find.byKey(const Key('messaging-conversation-history-menu')),
       findsOneWidget,
     );
-
-    final backButton = find.byKey(
-      const Key('messaging-conversation-list-back'),
+    await tester.tap(
+      find.byKey(const Key('messaging-history-session-session:codex')),
     );
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(controller.selectedConversationAgentId, 'codex');
+    expect(controller.selectedConversationSession?.id, 'session:codex');
+    expect(
+      find.byKey(const Key('canonical-group-conversation-pane')),
+      findsNothing,
+    );
+
+    final backToGroup = find.byKey(
+      const Key('messaging-conversation-back-to-group'),
+    );
+    expect(backToGroup, findsOneWidget);
     final backTooltip = tester.widget<Tooltip>(
-      find.ancestor(of: backButton, matching: find.byType(Tooltip)),
+      find.descendant(of: backToGroup, matching: find.byType(Tooltip)),
     );
-    expect(backTooltip.message, '返回上一级');
+    expect(backTooltip.message, '返回群组');
 
-    await tester.tap(backButton);
+    await tester.tap(backToGroup);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
@@ -300,18 +242,14 @@ void main() {
       findsOneWidget,
     );
     expect(
-      tester
-          .widget<Text>(
-            find.byKey(const Key('messaging-conversation-list-back-label')),
-          )
-          .data,
-      '返回上一级',
+      find.byKey(const Key('canonical-group-header-avatar')),
+      findsOneWidget,
     );
     expect(tester.takeException(), isNull);
     await tester.runAsync(controller.close);
   });
 
-  testWidgets('group conversation row changes only the detail pane', (
+  testWidgets('group conversation row opens the group chat directly', (
     tester,
   ) async {
     final agentService = _GroupNavigationAgentService();
@@ -388,58 +326,53 @@ void main() {
     );
     await tester.pump();
 
-    final conversationRow = find.byKey(
-      const Key('agents-sidebar-conversation-session:codex'),
+    // The sidebar holds one row per contact only — group and Agent rows,
+    // never a drilled-in session list.
+    final groupRow = find.byKey(
+      const Key('messaging-group-conversation-conversation:local'),
     );
-    expect(conversationRow, findsOneWidget);
-    expect(find.text('Historical group Agent detail'), findsOneWidget);
-    expect(find.text('其它对话'), findsNothing);
-    expect(find.text('Unrelated Agent detail'), findsNothing);
+    expect(groupRow, findsOneWidget);
+    expect(find.byKey(const Key('messaging-contact-codex')), findsOneWidget);
     expect(
-      tester
-          .widget<Text>(
-            find.byKey(const Key('messaging-conversation-list-back-label')),
-          )
-          .data,
-      '返回上一级',
+      find.byKey(const Key('agents-sidebar-conversation-session:codex')),
+      findsNothing,
     );
+    expect(find.text('Agent detail'), findsNothing);
+    expect(find.byKey(const Key('messaging-conversation-list')), findsNothing);
 
-    await tester.tap(conversationRow);
+    // Open a member session through the roster history; only the detail
+    // pane changes while the contact rows stay.
+    await tester.tap(find.byKey(const Key('canonical-group-menu-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('canonical-group-roster-toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('canonical-group-roster-agent-codex')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('messaging-history-session-session:codex')),
+    );
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
 
-    expect(
-      controller.clientConversationController.selectedConversationId,
-      'conversation:local',
-    );
     expect(controller.selectedConversationAgentId, 'codex');
     expect(controller.selectedConversationSession?.id, 'session:codex');
-    expect(
-      tester
-          .widget<Text>(
-            find.byKey(const Key('messaging-conversation-list-back-label')),
-          )
-          .data,
-      '返回上一级',
-    );
-    expect(conversationRow, findsOneWidget);
     expect(
       find.byKey(const Key('canonical-group-conversation-pane')),
       findsNothing,
     );
-    expect(find.text('Opened Agent detail'), findsOneWidget);
+    expect(groupRow, findsOneWidget);
+    expect(find.byKey(const Key('messaging-contact-codex')), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('messaging-conversation-list-back')));
+    // The group row opens the group chat directly from the member view.
+    await tester.tap(groupRow);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
     expect(
       controller.clientConversationController.selectedConversationId,
       'conversation:local',
-    );
-    expect(
-      find.byKey(const Key('messaging-conversation-list')),
-      findsOneWidget,
     );
     expect(
       find.byKey(const Key('canonical-group-conversation-pane')),
@@ -449,7 +382,10 @@ void main() {
       find.byKey(const Key('canonical-group-header-avatar')),
       findsOneWidget,
     );
-    expect(find.text('Opened Agent detail'), findsNothing);
+    expect(
+      find.byKey(const Key('messaging-conversation-back-to-group')),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
     await tester.runAsync(controller.close);
   });

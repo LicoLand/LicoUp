@@ -162,9 +162,9 @@ export function reconcileCutoffRef(existingRevision, record) {
 export function promotionSource({ ref, revision, maturityAt, now, readinessChecks, appleAppId }) {
   if (!ref?.startsWith(CUTOFF_PREFIX) || weeklySlot(ref.slice(CUTOFF_PREFIX.length)).ref !== ref || !sha(revision)) reject("candidate_ref_invalid");
   if (instant(now) < instant(maturityAt)) reject("candidate_immature");
-  verifyAppCheck(readinessChecks, { name: "Apple Release ready", revision, appId: appleAppId });
+  verifyAppCheck(readinessChecks, { name: "the release plane ready", revision, appId: appleAppId });
   return Object.freeze({ head: ref, base: "stable", revision, aggregate: "Stable client", requiredChecks:
-    Object.freeze(["Branch flow", "Commit identity", "Auditor", "Stable client", "Apple Release ready"]) });
+    Object.freeze(["Branch flow", "Commit identity", "Stable client", "the release plane ready"]) });
 }
 
 export function promotionTreeMatches({ cutoffTree, stableMergeTree, releaseMergeTree }) {
@@ -322,7 +322,7 @@ export async function reconcileCallback({ adapter, payload, senderLogin, appleBo
   const tagRevision = await adapter.tagRevision("nightly");
   if (tagRevision !== revision) reject("weekly_release_source_mismatch");
   const verified = verifyRelease(release, { tag: "nightly", revision });
-  verifyAppCheck(await adapter.checks(revision), { name: "Apple Release published", revision, appId: appleAppId });
+  verifyAppCheck(await adapter.checks(revision), { name: "the release plane published", revision, appId: appleAppId });
   const issue = await adapter.operationIssue(timing.slot);
   if (!issue) reject("weekly_issue_absent");
   const prior = adapter.parseOperation ? adapter.parseOperation(issue) : issue.record;
@@ -365,8 +365,8 @@ export async function runCoordinator({ env = process.env, run = command } = {}) 
   let result;
   if (parsed.type === "weekly") result = await reconcileWeekly({ adapter, slot: parsed.slot, runAt: event.now || new Date().toISOString() });
   else if (parsed.type === "callback") result = await reconcileCallback({ adapter, payload: parsed.payload,
-    senderLogin: parsed.senderLogin, appleBotLogin: env.LICOUP_APPLE_RELEASE_BOT_LOGIN,
-    appleAppId: Number(env.LICOUP_APPLE_RELEASE_APP_ID) });
+    senderLogin: parsed.senderLogin, appleBotLogin: env.LICOUP_RELEASE_PLANE_BOT_LOGIN,
+    appleAppId: Number(env.LICOUP_RELEASE_PLANE_APP_ID) });
   else return coordinatorDryRun({ env, run });
   return Object.freeze({ ok: true, state: "Reconciled", ...result, privateDataIncluded: false });
 }

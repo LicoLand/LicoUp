@@ -15,7 +15,7 @@ void main() {
       expect(root, contains('ClientComponentAssembly('));
       for (final directConstruction in [
         'TargetController(',
-        'SecureMeshController(',
+        'DevicesController(',
         'ClientNavigationController(',
       ]) {
         expect(root, isNot(contains(directConstruction)));

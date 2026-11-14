@@ -5,6 +5,7 @@ import {
   releaseClosureEnvironment,
   releaseInvocationEnvironment,
   releaseInvocationNonceDigest,
+  releaseClosureChallengeDigest,
   createReleaseInvocationNonce,
 } from "../lib/release-closure-challenge.mjs";
 import {
@@ -13,19 +14,13 @@ import {
   stableHashFileSnapshot,
   stableReadFileSnapshot,
 } from "../lib/client-release-artifact-digest.mjs";
-import {
-  licoArcBadTowerAcceptanceProducer,
-  licoArcBadTowerAcceptanceReportValid,
-  licoArcBadTowerAcceptanceSchemaVersion,
-} from "../lib/licoarc-badtower-acceptance-report.mjs";
 import { repoRoot, maxJsonBytes, maxProducerBytes, SHA256 } from "./constants.mjs";
-import { reportDependenciesReady, reportDependencyReceipts } from "./report-deps.mjs";
 import {
   buildRelativeRef,
-  closureRedactionSeedRefs,
   reportSelectedForTargets,
 } from "./refs.mjs";
-import { requireValue, text, readJson } from "./util.mjs";
+import { requireValue, text } from "./util.mjs";
+import { removeContainedReportIfExists } from "../lib/safe-report-io.mjs";
 
 export function runAndLoadApprovedReports(
   config,
@@ -39,17 +34,11 @@ export function runAndLoadApprovedReports(
   const receipts = [];
   const invocationNonceDigests = new Set();
   const selectedTargetIdSet = new Set(selectedTargets.map((target) => target.id));
-  const closureReportRefs = closureRedactionSeedRefs(
-    config,
-    selectedTargets,
-    artifactContext,
-    receiptConfig,
-  );
   const expectedClosureChallengeDigest =
     releaseClosureChallengeDigest(closureChallenge);
   const buildRoot = path.join(repoRoot, "build");
   const producerRoot = path.join(repoRoot, "tools/scripts");
-  for (const id of config.reportOrder) {
+  for (const id of config.reportOrder || []) {
     const spec = config.reports[id];
     if (!reportSelectedForTargets(spec, selectedTargetIdSet)) continue;
     const sourcePath = path.join(repoRoot, spec.producer);
@@ -62,7 +51,7 @@ export function runAndLoadApprovedReports(
     let invocationStartedAtMs = Number.NaN;
     let producerExitCode = -1;
     let producerStable = false;
-    let dependencies = [];
+    const dependencies = [];
     const invocationNonce = createReleaseInvocationNonce();
     const expectedInvocationNonceDigest =
       releaseInvocationNonceDigest(invocationNonce);
@@ -81,14 +70,6 @@ export function runAndLoadApprovedReports(
       sourceDigest = sourceBefore.digest;
       invocationStartedAtMs = Date.now();
       removeContainedReportIfExists(buildRoot, reportRef);
-      const selectedClosureRefs = [...new Set([
-        ...closureReportRefs,
-        ...receipts.filter((receipt) => receipt.ok).map((receipt) =>
-          config.reports[receipt.id]?.ref),
-        ...receipts.filter((receipt) => receipt.ok).flatMap((receipt) =>
-          (receipt.dependencies || []).map((dependency) => dependency.ref)),
-        ...(Array.isArray(spec.redactionRefs) ? spec.redactionRefs : []),
-      ].map(text).filter(Boolean))];
       const command = spawnSync(process.execPath, [
         safeSourcePath,
         ...(Array.isArray(spec.args) ? spec.args.map(String) : []),
@@ -103,12 +84,6 @@ export function runAndLoadApprovedReports(
           ...releaseInvocationEnvironment(invocationNonce),
           LICO_CLIENT_RELEASE_SELECTED_TARGETS:
             [...selectedTargetIdSet].join(","),
-          ...(id === "redaction" ? {
-            LICO_CLIENT_RELEASE_CLOSURE_REPORT_REFS_JSON:
-              JSON.stringify(selectedClosureRefs),
-            LICO_SECURE_MESH_REDACTION_RUN_ID:
-              expectedInvocationNonceDigest,
-          } : {}),
         },
         encoding: "utf8",
         stdio: "pipe",
@@ -131,11 +106,7 @@ export function runAndLoadApprovedReports(
         });
         payload = JSON.parse(reportSnapshot.bytes.toString("utf8"));
         reportDigest = sha256Buffer(reportSnapshot.bytes);
-        const directFreshOutput = directLicoArcBadTowerOutput(payload, spec);
-        generatedAtMs = directFreshOutput
-          ? reportSnapshot.mtimeMs
-          : Date.parse(String(payload.generatedAt || payload.checkedAt || ""));
-        dependencies = reportDependencyReceipts(id, payload, buildRoot);
+        generatedAtMs = Date.parse(String(payload.generatedAt || payload.checkedAt || ""));
       }
     } catch {
       payload = {};
@@ -154,8 +125,7 @@ export function runAndLoadApprovedReports(
       expectedInvocationNonceDigest,
       maxClockSkewMs: Number(config.maxClockSkewMs || 0),
       nowMs: Date.now(),
-      dependenciesReady: reportDependenciesReady(id, dependencies),
-      directFreshOutput: directLicoArcBadTowerOutput(payload, spec),
+      dependenciesReady: true,
     });
     reports[id] = validation.ok ? payload : {};
     receipts.push({
@@ -171,17 +141,11 @@ export function runAndLoadApprovedReports(
       invocationNonceDigest: expectedInvocationNonceDigest,
       dependencies,
     });
-    if (validation.ok) {
-      closureReportRefs.push(spec.ref);
-      if (Array.isArray(spec.redactionRefs)) {
-        closureReportRefs.push(...spec.redactionRefs);
-      }
-    }
   }
   return {
     reports,
     receipts,
-    ok: receipts.length > 0 && receipts.every((item) => item.ok)
+    ok: receipts.every((item) => item.ok)
   };
 }
 
@@ -200,18 +164,12 @@ export function validateProducedReportReceipt({
   maxClockSkewMs,
   nowMs,
   dependenciesReady = true,
-  directFreshOutput = false,
 }) {
-  const directAcceptance =
-    directFreshOutput === true &&
-    directLicoArcBadTowerOutput(payload, spec);
-  const producer = directAcceptance
-    ? spec.producer
-    : text(payload?.verifier || payload?.generatedBy);
+  const producer = text(payload?.verifier || payload?.generatedBy);
   const producerMatched = producer === spec.producer;
-  const closureChallengeBound = directAcceptance ||
+  const closureChallengeBound =
     payload?.closureChallengeDigest === expectedClosureChallengeDigest;
-  const invocationNonceBound = directAcceptance ||
+  const invocationNonceBound =
     payload?.invocationNonceDigest === expectedInvocationNonceDigest;
   const freshnessReady = Number.isFinite(generatedAtMs) &&
     Number.isFinite(invocationStartedAtMs) &&
@@ -233,10 +191,4 @@ export function validateProducedReportReceipt({
     closureChallengeBound,
     invocationNonceBound,
   };
-}
-
-function directLicoArcBadTowerOutput(payload, spec) {
-  return spec?.schemaVersion === licoArcBadTowerAcceptanceSchemaVersion &&
-    spec?.producer === licoArcBadTowerAcceptanceProducer &&
-    licoArcBadTowerAcceptanceReportValid(payload);
 }

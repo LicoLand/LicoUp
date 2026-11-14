@@ -180,7 +180,7 @@ final class _ReplacementShellState extends State<ReplacementShell> {
     }
   }
 
-  Color _replacementColor(String presetId) => presetId == 'lico-soda'
+  Color _replacementColor(String presetId) => presetId == 'lico-starlit-gold'
       ? const Color(0xff102030)
       : const Color(0xfff4f4f4);
 }

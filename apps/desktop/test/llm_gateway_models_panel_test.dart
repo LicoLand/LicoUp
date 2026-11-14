@@ -863,7 +863,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(runner.calls.first, [
-      'llm-gateway',
+      'gateway',
       'service',
       'status',
       '--port',
@@ -871,7 +871,7 @@ void main() {
     ]);
     expect(find.byKey(const Key('gateway-service-status')), findsOneWidget);
     expect(find.text('运行中'), findsOneWidget);
-    expect(find.text('42189  ·  lico-gateway'), findsOneWidget);
+    expect(find.text('42189  ·  licoup'), findsOneWidget);
     expect(find.text('检测中…'), findsNothing);
   });
 
@@ -899,7 +899,7 @@ void main() {
 
     expect(runner.calls.where((args) => args[2] == 'status'), isEmpty);
     expect(find.text('运行中'), findsOneWidget);
-    expect(find.text('42189  ·  lico-gateway'), findsOneWidget);
+    expect(find.text('42189  ·  licoup'), findsOneWidget);
     lifecycle.dispose();
   });
 
@@ -923,7 +923,7 @@ void main() {
     expect(runner.calls, isNot(contains(equals(['llm-gateway', 'authorize']))));
     expect(
       runner.calls,
-      contains(equals(['llm-gateway', 'service', 'start', '--port', 'gatewayRuntimeDefaultPort'])),
+      contains(equals(['gateway', 'service', 'start', '--port', 'gatewayRuntimeDefaultPort'])),
     );
     expect(find.text('Gateway 已启动。'), findsOneWidget);
   });
@@ -935,7 +935,7 @@ void main() {
 
     expect(
       runner.calls,
-      isNot(contains(equals(const ['llm-gateway', 'service', 'usage']))),
+      isNot(contains(equals(const ['gateway', 'service', 'usage']))),
     );
     expect(find.text('API 请求次数'), findsNothing);
     expect(find.text('暂无 Gateway API 请求'), findsNothing);
@@ -965,7 +965,7 @@ void main() {
 
     expect(
       runner.calls,
-      contains(equals(['llm-gateway', 'service', 'start', '--port', 'gatewayRuntimeDefaultPort'])),
+      contains(equals(['gateway', 'service', 'start', '--port', 'gatewayRuntimeDefaultPort'])),
     );
     expect(find.text('Running'), findsOneWidget);
     expect(find.text('Gateway started.'), findsOneWidget);
@@ -983,7 +983,7 @@ void main() {
 
     expect(
       runner.calls,
-      contains(equals(['llm-gateway', 'service', 'stop', '--port', 'gatewayRuntimeDefaultPort'])),
+      contains(equals(['gateway', 'service', 'stop', '--port', 'gatewayRuntimeDefaultPort'])),
     );
     expect(find.text('未运行'), findsOneWidget);
     expect(find.text('Gateway 已停止。'), findsOneWidget);
@@ -1238,7 +1238,7 @@ Map<String, dynamic> _statusPayload({
   'state': state,
   'managed': managed,
   'pid': pid,
-  'processName': pid == null ? null : 'lico-gateway',
+  'processName': pid == null ? null : 'licoup',
   'port': port,
   'credentialsLoaded': credentialsApplied,
   'credentialsApplied': credentialsApplied,

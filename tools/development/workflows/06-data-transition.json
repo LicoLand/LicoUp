@@ -1,0 +1,46 @@
+{
+  "id": "data-transition",
+  "file": "06-data-transition.json",
+  "title": {
+    "en": "Backup, restore and data transition",
+    "zh": "备份、恢复与数据转换"
+  },
+  "purpose": {
+    "en": "Protect data while correcting one target schema.",
+    "zh": "保护数据，同时修正唯一目标结构。"
+  },
+  "owner": {
+    "en": "Storage owner and assigned delivery owner",
+    "zh": "存储负责人及指定交付人"
+  },
+  "entry": {
+    "en": "A scoped format change or authorized data operation",
+    "zh": "结构变化或获授权的数据操作"
+  },
+  "steps": [
+    {
+      "en": "Prove temporary schema",
+      "zh": "验证临时目录结构"
+    },
+    {
+      "en": "Back up and rehearse",
+      "zh": "备份并演练"
+    },
+    {
+      "en": "Apply authorized transition",
+      "zh": "执行获授权的转换"
+    }
+  ],
+  "exit": {
+    "en": "Data is recoverable; the same source-to-target conversion succeeds.",
+    "zh": "数据可恢复，同一个源到目标转换成功。"
+  },
+  "failure": {
+    "en": "Fix the same conversion; retry from unchanged backup or valid resume point.",
+    "zh": "修复同一转换，从保留备份或有效续点重试。"
+  },
+  "boundary": {
+    "en": "Development ZIP and TAR.GZ remain unencrypted; keep recovery backup and remove disposable staging.",
+    "zh": "开发备份支持明文 ZIP 与 TAR.GZ；保留恢复备份，清理临时目录。"
+  }
+}

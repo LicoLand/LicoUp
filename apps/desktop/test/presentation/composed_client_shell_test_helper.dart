@@ -13,6 +13,7 @@ Widget composedClientShell(
   onComposed?.call(composition);
   addTearDown(composition.dispose);
   return ProviderScope(
+    key: ObjectKey(composition),
     overrides: composition.presentationOverrides,
     child: ClientShell(
       binding: composition.binding,

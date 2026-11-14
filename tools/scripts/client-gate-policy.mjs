@@ -1,5 +1,14 @@
 const freezeLane = (scripts) => Object.freeze([...scripts]);
 
+// The Dart/Flutter packages that ship outside the desktop app. Their
+// pubspec files are dependency inputs, and their sources belong to the
+// Flutter/Dart lane even though they are not under apps/desktop.
+export const PRESENTATION_DART_PACKAGES = Object.freeze([
+  "packages/presentation_contract",
+  "packages/presentation_runtime",
+  "packages/presentation_flutter",
+]);
+
 export const CLIENT_GATE_SCHEMA_VERSION = "licomesh.client-gate-policy.v1";
 
 export const CLIENT_GATE_LANES = Object.freeze({
@@ -16,15 +25,8 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:version:check",
     "client:verify:plan",
     "client:verify:architecture",
-    "client:verify:local-data-egress-boundary",
-    "client:verify:agent-conversation-parity",
-    "client:verify:agent-adapter-standard",
-    "client:verify:agent-native-output",
-    "client:verify:agent-conversations:product-e2e:self-test",
-    "client:verify:agent-usage",
     "client:contracts:test",
     "client:verify:update-release",
-    "client:verify:windows-file-security",
     "repo:docs",
   ]),
   flutter: freezeLane([
@@ -32,54 +34,30 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:format:check",
     "client:analyze",
     "client:test",
-  ]),
-  rust: freezeLane([
-    "client:native:fmt:check",
-    "client:native:clippy",
-    "client:native:test",
-    "client:native:smoke",
-  ]),
-  android: freezeLane([
-    "client:get",
-    "client:test:android:native",
+    "client:packages:verify",
   ]),
   dependencies: freezeLane([
-    "client:deps:audit",
+    "client:packages:verify",
   ]),
   "release-policy": freezeLane([
     "client:promotion:self-test",
-    "client:pricing:check",
     "client:verify:release-artifact-io:self-test",
     "client:verify:release-dependency-receipts:self-test",
     "client:verify:source-state-digest:self-test",
     "client:verify:linux-tar-resource-bounds:self-test",
     "client:verify:bounded-child-process:self-test",
-    "client:verify:android-apk-zip-facts:self-test",
     "client:verify:consumer-verification-manifest:self-test",
     "client:verify:update-manifest:self-test",
     "client:release:packages:self-test",
+    "client:verify:package-index:self-test",
     "client:verify:review-signoff:self-test",
-    "client:verify:release-target-evidence:self-test",
     "client:verify:release-report-schema:self-test",
     "client:verify:macos-nested-code-bounds:self-test",
     "client:verify:package-client:self-test",
-    "client:native:smoke:policy:self-test",
     "client:verify:closure-producer-writer:self-test",
-    "client:verify:android-physical-install-launch:self-test",
-    "client:verify:secure-mesh-macos-capabilities:self-test",
-    "client:verify:secure-mesh-linux-node-matrix:self-test",
     "client:cli:vm:self-test",
-    "client:state:migration:self-test",
     "client:verify:artifact-verification-receipts:self-test",
-    "client:verify:secure-mesh-capability-model:self-test",
-    "client:verify:secure-mesh-trust-ux:self-test",
-    "client:verify:secure-mesh-report-redaction:self-test",
-    "client:verify:secure-mesh-e2ee-evidence:contract-binding",
-    "client:verify:secure-mesh-e2ee-evidence:authority-proof-self-test",
-    "client:verify:secure-mesh-e2ee-evidence:readiness-self-test",
-    "client:verify:secure-mesh-e2ee-evidence:leak-scan-self-test",
     "client:verify:client-release-acceptance:self-test",
-    "client:demo:device:self-test",
   ]),
 });
 
@@ -103,21 +81,22 @@ export const CLIENT_RELEASE_TARGETS = Object.freeze({
 
 export const CLIENT_CI_JOBS = Object.freeze([
   "plan",
-  "source",
-  "flutter",
-  "rust",
-  "android",
-  "dependencies",
+  "engineering",
+  "target-linux",
+  "target-darwin",
+  "target-win32",
   "client-required",
 ]);
 
 const DEPENDENCY_PATHS = new Set([
   "package.json",
   "package-lock.json",
-  "Cargo.toml",
-  "Cargo.lock",
   "apps/desktop/pubspec.yaml",
   "apps/desktop/pubspec.lock",
+  ...PRESENTATION_DART_PACKAGES.flatMap((directory) => [
+    `${directory}/pubspec.yaml`,
+    `${directory}/pubspec.lock`,
+  ]),
 ]);
 
 function normalizePath(value) {
@@ -138,6 +117,11 @@ function normalizePath(value) {
 }
 
 function isFlutterPath(file) {
+  if (
+    PRESENTATION_DART_PACKAGES.some((directory) => file.startsWith(`${directory}/`))
+  ) {
+    return true;
+  }
   return (
     file.startsWith("apps/desktop/lib/") ||
     file.startsWith("apps/desktop/test/") ||
@@ -150,21 +134,17 @@ function isFlutterPath(file) {
   );
 }
 
-function isRustPath(file) {
+function isReleasePolicyPath(file) {
   return (
-    file === "Cargo.toml" ||
-    file === "Cargo.lock" ||
-    file === "rust-toolchain.toml" ||
-    file.startsWith("crates/")
-  );
-}
-
-function isAndroidPath(file) {
-  return (
-    file.startsWith("apps/desktop/android/") ||
-    file.startsWith("tools/android-") ||
-    file.includes("/android-") ||
-    file.includes("/android_")
+    file.startsWith("docs/releases/") ||
+    file.startsWith("tools/release-plane/") ||
+    file.startsWith("tools/release/") ||
+    file.startsWith("tools/scripts/macos-release/") ||
+    file.startsWith("apps/desktop/scripts/package-client") ||
+    file.startsWith(".github/workflows/client-release") ||
+    file === ".github/workflows/client-source-release.yml" ||
+    file === ".github/workflows/client-weekly-release.yml" ||
+    /^tools\/scripts\/client-(?:promotion|release|source-release|weekly-release|update-manifest)/u.test(file)
   );
 }
 
@@ -176,16 +156,14 @@ export function classifyClientGatePaths(changedPaths) {
   const lanes = {
     source: true,
     flutter: false,
-    rust: false,
-    android: false,
     dependencies: false,
+    "release-policy": false,
   };
 
   for (const file of normalized) {
     if (isFlutterPath(file)) lanes.flutter = true;
-    if (isRustPath(file)) lanes.rust = true;
-    if (isAndroidPath(file)) lanes.android = true;
     if (DEPENDENCY_PATHS.has(file)) lanes.dependencies = true;
+    if (isReleasePolicyPath(file)) lanes["release-policy"] = true;
   }
 
   return Object.freeze({

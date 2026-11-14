@@ -11,8 +11,13 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 /// Production code must receive these strategies from its active
 /// profile/surface bundle; this fixture deliberately supplies no fallback.
 final class FixtureLayoutPresentationScope extends StatelessWidget {
-  const FixtureLayoutPresentationScope({super.key, required this.child});
+  const FixtureLayoutPresentationScope({
+    super.key,
+    this.agents = const FixtureLayoutAgentsPresentation(),
+    required this.child,
+  });
 
+  final LayoutAgentsPresentation agents;
   final Widget child;
 
   @override
@@ -21,7 +26,7 @@ final class FixtureLayoutPresentationScope extends StatelessWidget {
     return LayoutPaletteScope(
       palette: layoutPaletteFromColors(colors),
       child: LayoutDestinationPresentationScope(
-        agents: const FixtureLayoutAgentsPresentation(),
+        agents: agents,
         settings: const FixtureLayoutSettingsPresentation(),
         child: child,
       ),
@@ -31,13 +36,47 @@ final class FixtureLayoutPresentationScope extends StatelessWidget {
 
 final class FixtureLayoutAgentsPresentation
     implements LayoutAgentsPresentation {
-  const FixtureLayoutAgentsPresentation();
+  const FixtureLayoutAgentsPresentation({
+    this.sidebarHeader = LayoutAgentsSidebarHeader.trafficLights,
+    this.showConversationFilters = false,
+    this.conversationHeaderStyle = LayoutConversationHeaderStyle.capsules,
+    this.groupMembersPlacement = LayoutGroupMembersPlacement.avatarStrip,
+    this.showSidebarBottomNav = true,
+  });
+
+  /// The plain style's docked conversation chrome.
+  const FixtureLayoutAgentsPresentation.docked()
+    : this(
+        sidebarHeader: LayoutAgentsSidebarHeader.title,
+        showConversationFilters: true,
+        conversationHeaderStyle: LayoutConversationHeaderStyle.bar,
+        groupMembersPlacement: LayoutGroupMembersPlacement.sidePanel,
+        showSidebarBottomNav: false,
+      );
+
+  @override
+  final LayoutAgentsSidebarHeader sidebarHeader;
+
+  @override
+  final bool showConversationFilters;
+
+  @override
+  final LayoutConversationHeaderStyle conversationHeaderStyle;
+
+  @override
+  double get conversationHeaderBarExtent => 60;
+
+  @override
+  final LayoutGroupMembersPlacement groupMembersPlacement;
 
   static const double _inset = 12;
   static const double _radius = 16;
 
   @override
   Color canvasColor(LayoutPalette palette) => palette.background;
+
+  @override
+  bool get canvasGroundsWorkspace => true;
 
   @override
   double get sidebarOuterHorizontalExtent => 0;
@@ -61,7 +100,7 @@ final class FixtureLayoutAgentsPresentation
   bool get showConversationSidebarControl => true;
 
   @override
-  bool get showSidebarBottomNav => true;
+  final bool showSidebarBottomNav;
 
   @override
   Widget frameWorkspace(

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,7 +6,9 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
 import 'package:licoup/src/contracts/presentation/dashboard_feature_order.dart';
 import 'package:licoup/src/frontend/shared/dashboard_feature_order_store.dart';
+import 'package:licoup/src/contracts/presentation/built_in_layout_spec.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
@@ -17,9 +18,9 @@ import 'package:licoup/src/frontend/layout/layout_scope.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/dashboard_desktop.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
+import '../../../fixtures/layout_chrome_features_fixture.dart';
 import '../../../fixtures/layout_chrome_fixture.dart';
 import '../../../fixtures/layout_scoped_state_fixture.dart';
 
@@ -29,7 +30,7 @@ const Set<ClientSection> dashboardDesktopExpectedDestinations = <ClientSection>{
   ClientSection.skillHub,
   ClientSection.pluginManagement,
   ClientSection.agentHub,
-  ClientSection.mobileRelay,
+  ClientSection.devices,
   ClientSection.models,
   ClientSection.settings,
 };
@@ -83,15 +84,25 @@ final class DashboardDesktopTestShell extends StatelessWidget {
     this.brightness = Brightness.dark,
     this.locale = const Locale('en'),
     this.chrome = const FixtureLayoutChromePort(),
+    this.chromeFeatures,
+    this.style,
   });
 
   final LayoutEnvironment environment;
   final ClientSection activeDestination;
-  final DashboardDesktopFixtureContent content;
+  final LayoutDestinationContentPort content;
   final DashboardDesktopHarness harness;
   final Brightness brightness;
   final Locale locale;
   final LayoutChromePort chrome;
+
+  /// Feature-chrome stand-in for the shell: collaboration state drives the
+  /// rail badge. Defaults to the plain fixture.
+  final LayoutChromeFeatures? chromeFeatures;
+
+  /// The column arrangement under test. Existing baselines omit it, pinning
+  /// them to `card`; plain coverage passes it explicitly.
+  final LayoutStyleId? style;
 
   @override
   Widget build(BuildContext context) {
@@ -108,8 +119,8 @@ final class DashboardDesktopTestShell extends StatelessWidget {
       ..sort((left, right) => left.index.compareTo(right.index));
     final baseTheme = buildLicoTheme(
       presetId: brightness == Brightness.dark
-          ? 'lico-crystal'
-          : 'geek-light-blue',
+          ? 'lico-starlit-gold'
+          : 'lico-taro-waffle',
       platformBrightness: brightness,
     );
     final scopedState = buildLayoutScopedStateFixture(
@@ -142,7 +153,7 @@ final class DashboardDesktopTestShell extends StatelessWidget {
               builder: (paletteContext) => LayoutPaletteScope(
                 palette: dashboardDesktopTestPalette(paletteContext),
                 child: LayoutChromeFeaturesScope(
-                  features: const _FixtureChromeFeatures(),
+                  features: chromeFeatures ?? FixtureLayoutChromeFeatures(),
                   child: MessagingFeatureOrderScope(
                     orderStore: const _InMemoryFeatureOrderStore(),
                     child: LayoutScope(
@@ -153,6 +164,8 @@ final class DashboardDesktopTestShell extends StatelessWidget {
                       state: scopedState,
                       child: Builder(
                         builder: (profileContext) {
+                          final resolvedStyle =
+                              style ?? BuiltInLayoutSpec.dashboardCardStyleId;
                           final destination = destinationBuilder(
                             profileContext,
                             LayoutDestinationBuildContext(
@@ -160,6 +173,7 @@ final class DashboardDesktopTestShell extends StatelessWidget {
                               destination: activeDestination,
                               content: content,
                               state: scopedState,
+                              style: resolvedStyle,
                             ),
                           );
                           return variant.shellBuilder(
@@ -169,12 +183,14 @@ final class DashboardDesktopTestShell extends StatelessWidget {
                               activeDestination: activeDestination,
                               availableDestinations: destinations,
                               destination: destination,
+                              content: content,
                               onSelectDestination: harness.selectDestination,
                               destinationLabel: (value) => value.name,
                               components: bundle.components,
                               tokens: bundle.tokens,
                               initialFocusTarget: 'primary-content',
                               chrome: chrome,
+                              style: resolvedStyle,
                             ),
                           );
                         },
@@ -209,29 +225,6 @@ void configureDashboardTestView(WidgetTester tester, Size size) {
   tester.view.physicalSize = size;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-}
-
-/// Minimal chrome-features stand-in so shell tests can mount the toast host
-/// and notices listener without pulling feature code across the profile
-/// boundary.
-final class _FixtureChromeFeatures implements LayoutChromeFeatures {
-  const _FixtureChromeFeatures();
-
-  @override
-  void activateOperationNotice(notice) {}
-
-  @override
-  ValueNotifier<bool>? get auxChromePanelOpen => null;
-
-  @override
-  Widget buildDockComposer(BuildContext context) => const SizedBox.shrink();
-
-  @override
-  ValueListenable<LicoToastNoticesSnapshot> get notificationNotices =>
-      _fixtureNotices;
-
-  static final ValueNotifier<LicoToastNoticesSnapshot> _fixtureNotices =
-      ValueNotifier<LicoToastNoticesSnapshot>(const LicoToastNoticesSnapshot());
 }
 
 /// In-memory 功能 order store for shell tests: starts from the frozen

@@ -81,11 +81,10 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
     try {
       final cli = await _processContext.resolveCliBinary();
       final environment = await _processContext.buildEnvironment();
-      process = await _processContext.startProcess(
-        cli?.path ?? 'licoup-cli',
-        args,
-        environment,
-      );
+      if (cli == null) {
+        throw Exception('licoup executable could not be started.');
+      }
+      process = await _processContext.startProcess(cli.path, args, environment);
     } on Object {
       throw Exception('licoup executable could not be started.');
     }
@@ -162,18 +161,14 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
     if (stdinBytes.length > _privateRuntimeMaxInputBytes) {
       throw Exception('licoup private runtime request is too large.');
     }
-    if (_processContext.requestTimeout <= Duration.zero) {
-      throw Exception('licoup private runtime timeout is invalid.');
-    }
     late Process process;
     try {
       final cli = await _processContext.resolveCliBinary();
       final environment = await _processContext.buildEnvironment();
-      process = await _processContext.startProcess(
-        cli?.path ?? 'licoup-cli',
-        args,
-        environment,
-      );
+      if (cli == null) {
+        throw Exception('licoup executable could not be started.');
+      }
+      process = await _processContext.startProcess(cli.path, args, environment);
     } on Object {
       throw Exception('licoup executable could not be started.');
     }
@@ -183,6 +178,7 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
       _privateRuntimeMaxStderrBytes,
     );
     var stdoutBytes = 0;
+    var streamFinished = false;
     try {
       if (stdinBytes.isNotEmpty) {
         process.stdin.add(stdinBytes);
@@ -191,8 +187,7 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
       await for (final line
           in process.stdout
               .transform(utf8.decoder)
-              .transform(const LineSplitter())
-              .timeout(_processContext.requestTimeout)) {
+              .transform(const LineSplitter())) {
         final trimmed = line.trim();
         if (trimmed.isEmpty) {
           continue;
@@ -206,12 +201,14 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
           yield decoded;
         }
       }
-    } on TimeoutException {
-      process.kill();
-      throw Exception('licoup private runtime request timed out.');
+      streamFinished = true;
     } on Object {
       process.kill();
       throw Exception('licoup private runtime stream failed.');
+    } finally {
+      if (!streamFinished) {
+        process.kill();
+      }
     }
 
     final exitCode = await process.exitCode;

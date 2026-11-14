@@ -5,8 +5,6 @@ import 'package:licoup/src/backend/features/agents/services/agent_conversation_s
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
-import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
-import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 final class AgentConversationGatewayAdapter
     implements
@@ -195,6 +193,20 @@ final class AgentConversationGatewayAdapter
     bind: bind,
   );
   @override
+  Future<String> resolveNativeApproval({
+    required String agentId,
+    required String sessionId,
+    required String turnId,
+    required String adapterCallbackTokenRef,
+    required bool allow,
+  }) => service.resolveNativeApproval(
+    agentId: agentId,
+    sessionId: sessionId,
+    turnId: turnId,
+    adapterCallbackTokenRef: adapterCallbackTokenRef,
+    allow: allow,
+  );
+  @override
   Future<AgentDispatchCancelResult> cancel({
     required String agentId,
     required String sessionId,
@@ -277,67 +289,4 @@ final class AgentConversationGatewayAdapter
   @override
   Future<Map<String, dynamic>> setSnapshotRoot({required String path}) =>
       service.setSnapshotRoot(agentService: runner, path: path);
-}
-
-final class MobileAgentConversationGatewayAdapter
-    implements
-        MobileAgentConversationGateway,
-        MobilePagedAgentConversationGateway {
-  const MobileAgentConversationGatewayAdapter({
-    required this.service,
-    required this.agentService,
-  });
-
-  final MobileRelayService service;
-  final AgentService agentService;
-
-  @override
-  Future<Map<String, dynamic>> send({
-    required String agentId,
-    required String text,
-    String sessionId = '',
-    String model = '',
-    String reasoningEffort = '',
-  }) => service.sendSecureAgentMessage(
-    agentService: agentService,
-    agentId: agentId,
-    text: text,
-    sessionId: sessionId,
-    model: model,
-    reasoningEffort: reasoningEffort,
-  );
-  @override
-  Future<Map<String, dynamic>> listSessions({
-    required String agentId,
-    int limit = 20,
-    int offset = 0,
-  }) => service.listSecureAgentSessions(
-    agentService: agentService,
-    agentId: agentId,
-    limit: limit,
-    offset: offset,
-  );
-  @override
-  Future<Map<String, dynamic>> describeSession({
-    required String agentId,
-    required String sessionId,
-  }) => service.describeSecureAgentSession(
-    agentService: agentService,
-    agentId: agentId,
-    sessionId: sessionId,
-  );
-
-  @override
-  Future<Map<String, dynamic>> describeSessionPage({
-    required String agentId,
-    required String sessionId,
-    String messageBefore = '',
-    required int messageLimit,
-  }) => service.describeSecureAgentSessionPage(
-    agentService: agentService,
-    agentId: agentId,
-    sessionId: sessionId,
-    messageBefore: messageBefore,
-    messageLimit: messageLimit,
-  );
 }

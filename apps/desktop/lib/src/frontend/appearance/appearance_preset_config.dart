@@ -34,8 +34,8 @@ bool isResolvedAppearanceDark(
 /// Maps an explicit day/night choice to the built-in fixed preset id.
 String appearancePresetIdForBrightness(bool dark) {
   return dark
-      ? AppearancePresetIds.licoMist
-      : AppearancePresetIds.licoMistLight;
+      ? AppearancePresetIds.starlitGold
+      : AppearancePresetIds.taroWaffle;
 }
 
 /// Maps a brightness-mode choice to the preset id that should be persisted.
@@ -54,14 +54,14 @@ String appearancePresetIdForBrightnessSelection(
       if (current.mode == AppearancePresetMode.light) {
         return currentId;
       }
-      return AppearancePresetIds.licoMistLight;
+      return AppearancePresetIds.taroWaffle;
     }(),
     AppearanceBrightnessSelection.dark => () {
       final current = findAppearancePresetConfig(currentId, configs);
       if (current.mode == AppearancePresetMode.dark) {
         return currentId;
       }
-      return AppearancePresetIds.licoMist;
+      return AppearancePresetIds.starlitGold;
     }(),
   };
 }
@@ -103,8 +103,8 @@ ResolvedAppearancePreset resolveAppearancePresetConfig(
     final resolved = resolveAppearancePresetConfig(
       resolvedId ??
           (platformBrightness == Brightness.dark
-              ? AppearancePresetIds.licoMist
-              : AppearancePresetIds.licoMistLight),
+              ? AppearancePresetIds.starlitGold
+              : AppearancePresetIds.taroWaffle),
       configs,
       platformBrightness,
     );
@@ -112,8 +112,8 @@ ResolvedAppearancePreset resolveAppearancePresetConfig(
   }
 
   final baseId = selected.mode == AppearancePresetMode.dark
-      ? AppearancePresetIds.licoMist
-      : AppearancePresetIds.licoMistLight;
+      ? AppearancePresetIds.starlitGold
+      : AppearancePresetIds.taroWaffle;
   final base = selected.id == baseId
       ? null
       : findAppearancePresetConfig(baseId, builtInAppearancePresetConfigs);
@@ -181,45 +181,53 @@ Map<String, String> _deriveTokens(
   Map<String, String> tokens,
 ) {
   final isDark = mode == AppearancePresetMode.dark;
-  final brand = tokens['brand'] ?? (isDark ? '#e1ec28' : '#d9e320');
-  final accent = tokens['accent'] ?? (isDark ? '#21dcf1' : '#007d8a');
+  final brand = tokens['brand'] ?? (isDark ? '#e9bc4c' : '#7b5cc9');
+  final accent = tokens['accent'] ?? (isDark ? '#a98cf6' : '#9a5f2c');
   final textPrimary =
-      tokens['text-primary'] ?? (isDark ? '#f4f4f7' : '#1a1a20');
-  final bgSubtle = tokens['bg-subtle'] ?? (isDark ? '#2a2a2f' : '#eeeef1');
-  final bgRaised = tokens['bg-raised'] ?? (isDark ? '#3a3a3f' : '#ffffff');
+      tokens['text-primary'] ?? (isDark ? '#f7f2ff' : '#3b2a1f');
+  final bgSubtle = tokens['bg-subtle'] ?? (isDark ? '#201a38' : '#f7efe3');
+  final bgRaised = tokens['bg-raised'] ?? (isDark ? '#271f45' : '#ffffff');
   final borderSubtle =
-      tokens['border-subtle'] ?? (isDark ? '#323337' : '#dbdce0');
+      tokens['border-subtle'] ?? (isDark ? '#30284f' : '#ece0cf');
+  final selectionInk =
+      tokens['selection-ink'] ?? (isDark ? '#b8a4ff' : '#6346b4');
 
   return {
     'color-scheme': mode.id,
 
     // Neutral depth. `bg-raised` is the highest neutral step and must never
     // be substituted by a brand tint.
-    'bg-inset': isDark ? '#040405' : '#e7e7ea',
+    'bg-inset': isDark ? '#07060c' : '#f2e9da',
     'bg-raised': bgRaised,
     'border-subtle': borderSubtle,
-    'border-strong': isDark ? '#56565b' : '#b0b0b6',
+    'border-strong': isDark ? '#504580' : '#c6b093',
 
     // Text ramp.
-    'text-secondary': isDark ? '#cccdd0' : '#4f4f55',
-    'text-disabled': isDark ? '#6c6c70' : '#9d9ea3',
-    'text-on-brand': isDark ? '#171800' : '#1b1d00',
+    'text-secondary': isDark ? '#d2c8ee' : '#654f3f',
+    'text-disabled': isDark ? '#6a6093' : '#bba894',
+    'text-on-brand': isDark ? '#1f1604' : '#ffffff',
 
     // Brand is fill-and-mark. `brand-border` is the mandatory hairline for a
     // brand fill, whose own contrast against the surface can be below 3:1.
-    'brand-border': isDark ? '#878d24' : '#bfc744',
+    'brand-border': isDark ? '#8c6b1f' : '#c4b6e4',
 
     // Accent carries interaction and must stay legible as text.
     'accent': accent,
-    'accent-strong': isDark ? '#87effe' : '#0d5f68',
-    'accent-surface': isDark ? '#1d3339' : '#deeef0',
-    'accent-border': isDark ? '#1e838f' : '#67c8d6',
-    'text-on-accent': isDark ? '#00191e' : '#ffffff',
+    'accent-strong': isDark ? '#c9b6ff' : '#7e4b20',
+    'accent-surface': isDark ? '#261c52' : '#f7e8d4',
+    'accent-border': isDark ? '#5c45ae' : '#e4c79f',
+    'text-on-accent': isDark ? '#140b30' : '#ffffff',
+
+    // Selection is lavender light, never a solid fill: ink for the mark,
+    // its own ink-on fill, and a translucent wash for the row.
+    'selection-ink': selectionInk,
+    'text-on-selection':
+        tokens['text-on-selection'] ?? (isDark ? '#140b30' : '#ffffff'),
 
     // State washes, composited over whatever surface is underneath.
     'hover-overlay': _rgba(textPrimary, isDark ? 0.07 : 0.05),
     'pressed-overlay': _rgba(textPrimary, isDark ? 0.12 : 0.09),
-    'selected-surface': bgSubtle,
+    'selected-surface': isDark ? _rgba(selectionInk, 0.14) : '#ece2fb',
 
     // Luminous brand and interaction moments.
     'brand-glow': _rgba(brand, isDark ? 0.22 : 0.30),
@@ -230,8 +238,8 @@ Map<String, String> _deriveTokens(
     'skeleton-highlight': bgRaised,
 
     // Retained for preset authors that tint marks with the emphatic brand.
-    'brand-muted': tokens['brand-strong'] ?? (isDark ? '#f3fe4f' : '#878e1f'),
-    'brand-subtle': tokens['brand-subtle'] ?? (isDark ? '#2e2f21' : '#f5f8c5'),
+    'brand-muted': tokens['brand-strong'] ?? (isDark ? '#f7d57e' : '#6346b4'),
+    'brand-subtle': tokens['brand-subtle'] ?? (isDark ? '#292212' : '#efe7fc'),
     'brand': brand,
 
     ...tokens,

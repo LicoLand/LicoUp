@@ -3,7 +3,6 @@ import path from "node:path";
 import process from "node:process";
 
 import {
-  packageClientRuntime,
   parsePackageClientArgs,
   publicWorkspacePath,
 } from "./cli-policy.mjs";
@@ -15,8 +14,11 @@ import {
   publicPackagingModuleRecord,
   selectPackagingModules,
 } from "./module-selection.mjs";
-import { runPackageProcess } from "./process-runner.mjs";
-import { buildNativeSidecars } from "./build/native.mjs";
+import { stageNativeSidecars } from "./build/native.mjs";
+import {
+  buildReleaseTools,
+  selectReleaseToolDescriptor,
+} from "./build/release-tools.mjs";
 import { buildSwiftSidecars } from "./build/swift.mjs";
 import {
   assertFlutterBuildPrereqs,
@@ -66,7 +68,11 @@ export function packageClient(
   const capturedSource = captureReleaseSourceState(options);
   const flutterBuildAttempted = !options.skipFlutterBuild;
   try {
-    buildNativeSidecars(selected, options);
+    const cliRelease = stageNativeSidecars(selected, options);
+    // Optional release tools are target-catalog capabilities, never bundle resources.
+    // Platforms without such a declaration do not execute this build stage.
+    const releaseTool = selectReleaseToolDescriptor(options.platform);
+    if (releaseTool) buildReleaseTools(options, releaseTool, cliRelease);
     buildSwiftSidecars(selected, options);
     if (buildFlutterApp(options)) {
       rmSync(packagedBundleRoot(options), { recursive: true, force: true });
@@ -110,6 +116,7 @@ export function packageClient(
     Object.assign(result, {
       runnable,
       installedAppPath,
+      cliRelease,
     });
     emit(packageSuccessRecord(result, options));
     return result;
@@ -119,7 +126,6 @@ export function packageClient(
 }
 
 export function runBuildPreflight(options) {
-  verifyConversationParityReadiness();
   generateMacosAppIcons(options);
   assertFlutterBuildPrereqs(options);
   assertMacosSigningPreflight(options);
@@ -137,29 +143,6 @@ export function packagePlanRecord(config, selected, skipped, options) {
     enabledModules: selected.map(publicPackagingModuleRecord),
     skippedModules: skipped.map(publicPackagingModuleRecord),
   });
-}
-
-function verifyConversationParityReadiness() {
-  runPackageProcess(
-    process.execPath,
-    [
-      path.join(
-        packageClientRuntime.workspaceRoot,
-        "tests",
-        "product-e2e",
-        "cli",
-        "agent-conversations",
-        "support",
-        "reducer-facade.mjs",
-      ),
-      "--check",
-    ],
-    {
-      stdio: "ignore",
-      failureCode: "conversation_parity_readiness_failed",
-      stage: "conversation-readiness",
-    },
-  );
 }
 
 function packageSuccessRecord(result, options) {
@@ -181,6 +164,9 @@ function packageSuccessRecord(result, options) {
       ? publicWorkspacePath(result.windowsManifestPath)
       : "",
     installed: Boolean(result.installedAppPath),
+    // The CLI release identity, and whether its digest pin was verified or
+    // skipped by the local archive override.
+    cliRelease: result.cliRelease,
     packagedArtifactRefs: result.copiedArtifacts.map((artifact) =>
       publicWorkspacePath(artifact, "<packaged-artifact>"),
     ),

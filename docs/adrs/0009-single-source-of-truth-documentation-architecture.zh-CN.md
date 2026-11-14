@@ -37,7 +37,7 @@
 | **产品目标与理念** | `PRODUCT.md` | 产品愿景、设计哲学、顶层安全与隐私承诺、命令身份原则 | 作为顶层纲领，不展开底层代码实现细节 |
 | **顶层系统架构** | `docs/architecture/README.md` | 四层客户端架构体系（外观层、桥接层、核心层、原生层）及 Native 系统适配边界 | 不内嵌具体子系统细节，通过索引表导航至专属文档 |
 | **细分领域架构** | `docs/architecture/*.md` | Conversation 领域模型、安全与数据边界、桥接协议交互边界等 | 拥有该领域的唯一模型图、状态表与实体定义 |
-| **功能特性规范** | `docs/functionality/*.md` | Adaptive Flywheel 策略、桌面客户端能力边界、用户指南、设计系统 | 专注于该功能的独立机制与生命周期 |
+| **功能特性规范** | `docs/functionality/*.md` | Acativa 策略、桌面客户端能力边界、用户指南、设计系统 | 专注于该功能的独立机制与生命周期 |
 | **线协议与接口** | `docs/protocols/*.md` | Subagent MCP、Conversation MCP、Lico Agent、LLM Gateway、Station Adapter | 严格定义线协议字段、信封格式、RPC 交互与 Codec |
 | **平台适配与合规** | `docs/platforms/*.md` | macOS 站外分发合规清单、各 OS 平台专用要求 | 记录非可移植的操作系统特定规范与发布合规事实 |
 | **当前状态与兼容性** | `docs/STATUS.md`, `COMPATIBILITY.md` | 当前真实实现状态、平台/13 智能体支持矩阵（生成投影） | 唯一事实源，不得在其他文档中编造未实现能力 |

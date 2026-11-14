@@ -6,7 +6,7 @@
   delivery generation (`delivery_plan`, `delivery_scheduler`,
   `delivery_state`, `lico_delivery_*`) that sequences Designer/Worker/Reviewer
   roles and private Plan state. That generation is not the product-owned
-  Adaptive Flywheel Graph runtime, duplicates workflow lifecycle concepts, and
+  Acativa Graph runtime, duplicates workflow lifecycle concepts, and
   must be retired so one Assistant Membership can own a user goal through
   direct work or a bounded temporary Graph without a second execution
   authority.
@@ -29,7 +29,7 @@
     An unknown required fact rejects; an unknown optional price or score
     ranks after known values and stays visibly unknown.
   - The designated Assistant references the product-owned `licoup-guide`
-    software-use Skill at `crates/licoup-native/resources/licoup-guide/SKILL.md`.
+    software-use Skill at `crates/licoup/resources/licoup-guide/SKILL.md`.
     It shares guidance with provider registration; registration remains an
     explicitly approved operation. Development processes and third-party
     planning Skills are maintained outside the client.
@@ -41,7 +41,7 @@
     Authority subset is independently revalidated immediately before durable
     run admission so model intent cannot turn stale or ineligible facts into
     permission.
-  - Temporary workflows use the existing Adaptive Flywheel compiler, reducer,
+  - Temporary workflows use the existing Acativa compiler, reducer,
     parallel-frontier limits and effect ports, marked assistant-temporary and
     omitted from the imported strategy catalog. All locally discoverable
     errors (structure, quota, model, Membership, Skill, environment,
@@ -74,8 +74,8 @@
     or stop a workflow through the existing Graph control surface while
     retaining the only user-dialogue ownership.
   - Assistant Agent, model, and reasoning effort are edited through the same
-    target/model/reasoning catalog component used by Adaptive Flywheel actor
-    bindings. The Assistant is the first card in the Adaptive Flywheel editor
+    target/model/reasoning catalog component used by Acativa actor
+    bindings. The Assistant is the first card in the Acativa editor
     and exposes Agent, Model, and Thinking Effort as three adjacent columns;
     it is not configured from a composer popover. Model and reasoning intent
     are stored in the Assistant's revisioned Profile and passed through the
@@ -101,7 +101,7 @@
   - Bounding the Graph to the existing compiler/reducer preserves the tested
     effect gate and makes "no effect before preflight" locally provable.
   - Removing the delivery generation entirely avoids a compatibility tax and
-    a second workflow lifecycle; the Adaptive Flywheel Graph already covers
+    a second workflow lifecycle; the Acativa Graph already covers
     durable execution.
 - `alternatives` —
   - Reuse the delivery scheduler as the temporary-Graph runtime: rejected

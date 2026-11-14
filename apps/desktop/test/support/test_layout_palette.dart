@@ -12,18 +12,18 @@ import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 /// hand-enumerated their own palettes, which is how they drifted out of sync
 /// with the production role set.
 final LayoutPalette testLayoutPalette = layoutPaletteFromColors(
-  licoColorsFor(AppearancePresetIds.licoSodaLight),
+  licoColorsFor(AppearancePresetIds.taroWaffle),
 );
 
 /// The dark counterpart, for tests that assert dark-mode behavior.
 final LayoutPalette testLayoutPaletteDark = layoutPaletteFromColors(
-  licoColorsFor(AppearancePresetIds.licoSoda),
+  licoColorsFor(AppearancePresetIds.starlitGold),
 );
 
 /// A palette with a deliberately distinct background, for tests that need two
 /// palettes to compare unequal.
 final LayoutPalette testLayoutPaletteAlternate = layoutPaletteFromColors(
   licoColorsFor(
-    AppearancePresetIds.licoSodaLight,
+    AppearancePresetIds.taroWaffle,
   ).copyWith(background: const Color(0xFFFFEEDD)),
 );

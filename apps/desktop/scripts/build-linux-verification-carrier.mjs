@@ -35,7 +35,7 @@ function assertArm64Bundle() {
   if (process.platform !== "linux" || !["arm64", "aarch64"].includes(process.arch)) {
     throw new Error("Linux ARM64 verification carriers must be produced on a native Linux ARM64 runner.");
   }
-  for (const fileName of ["licoup", "licoup-cli"]) {
+  for (const fileName of ["licoup", path.join("helpers", "licoup")]) {
     const filePath = path.join(bundleRoot, fileName);
     if (!existsSync(filePath) || !statSync(filePath).isFile()) {
       throw new Error(`Linux ARM64 bundle is missing ${fileName}.`);

@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/binding/effect_listener.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
-import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_multi_capsule_section.dart';
-import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_renderer_models.dart';
+import 'package:licoup/src/frontend/features/agents/ui/acativa_multi_capsule_section.dart';
+import 'package:licoup/src/frontend/features/agents/ui/acativa_renderer_models.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/assistant_sparkles_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:licoup/src/presentation/agents/adaptive_flywheel_projection.dart';
+import 'package:licoup/src/presentation/agents/acativa_projection.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_effect.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 
 Future<void> showAssistantConfigurationDialog(
   BuildContext context, {
@@ -25,35 +27,47 @@ Future<void> showAssistantConfigurationDialog(
 }) {
   return showDialog<void>(
     context: context,
-    builder: (context) => ProjectionBuilder<AgentsProjection, AgentsProjection>(
-      source: agents.projection,
-      select: (projection) => projection,
-      builder: (context, agentsProjection) =>
-          ProjectionBuilder<
-            CanonicalConversationProjection,
-            CanonicalConversationProjection
-          >(
-            source: conversation.canonicalEvents,
-            select: (projection) => projection,
-            builder: (context, canonical) => _AssistantConfigurationDialog(
-              agents: agents,
-              agentsProjection: agentsProjection,
-              groupSelected: canonical.conversation?.group == true,
-            ),
+    builder: (context) =>
+        ProjectionBuilder<AgentsProjection, AgentsDialogSlice>(
+          source: agents.projection,
+          select: (projection) => (
+            acativa: projection.acativa,
+            targetDetails: projection.targetDetails,
           ),
-    ),
+          builder: (context, slice) =>
+              ProjectionBuilder<CanonicalConversationProjection, bool>(
+                source: conversation.canonicalEvents,
+                select: (projection) => projection.conversation?.group == true,
+                builder: (context, groupSelected) =>
+                    _AssistantConfigurationDialog(
+                      agents: agents,
+                      acativa: slice.acativa,
+                      targetDetails: slice.targetDetails,
+                      groupSelected: groupSelected,
+                    ),
+              ),
+        ),
   );
 }
+
+/// The dialog reads only the assistant profile and the target details; every
+/// other field on the projection is free to churn without rebuilding it.
+typedef AgentsDialogSlice = ({
+  AcativaProjection acativa,
+  List<TargetCandidate> targetDetails,
+});
 
 final class _AssistantConfigurationDialog extends StatefulWidget {
   const _AssistantConfigurationDialog({
     required this.agents,
-    required this.agentsProjection,
+    required this.acativa,
+    required this.targetDetails,
     required this.groupSelected,
   });
 
   final AgentsBinding agents;
-  final AgentsProjection agentsProjection;
+  final AcativaProjection acativa;
+  final List<TargetCandidate> targetDetails;
   final bool groupSelected;
 
   @override
@@ -70,11 +84,10 @@ final class _AssistantConfigurationDialogState
   String _validationError = '';
   String _refreshedCatalogKey = '';
 
-  AdaptiveFlywheelProjection get _adaptive =>
-      widget.agentsProjection.adaptiveFlywheel;
+  AcativaProjection get _adaptive => widget.acativa;
 
   List<TargetCandidate> get _targets =>
-      agentOrchestrationCommanderTargets(widget.agentsProjection.targetDetails);
+      agentOrchestrationCommanderTargets(widget.targetDetails);
 
   bool get _zh => Localizations.localeOf(context).languageCode == 'zh';
   String _copy(String zh, String en) => _zh ? zh : en;
@@ -85,14 +98,14 @@ final class _AssistantConfigurationDialogState
     _synchronizeFromProjection(force: true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      widget.agents.intents.send(const ReadAdaptiveFlywheelAssistantProfile());
+      widget.agents.intents.send(const ReadAcativaAssistantProfile());
     });
   }
 
   @override
   void didUpdateWidget(_AssistantConfigurationDialog oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.agentsProjection.adaptiveFlywheel != _adaptive ||
+    if (oldWidget.acativa != _adaptive ||
         oldWidget.groupSelected != widget.groupSelected) {
       _synchronizeFromProjection();
     }
@@ -105,14 +118,21 @@ final class _AssistantConfigurationDialogState
         assistant.agentId,
         preferredModel: assistant.modelId,
         preferredReasoningEffort: assistant.reasoningEffort,
+        preferredPermissionMode: assistant.permissionMode,
       );
     }
     final targetId = _draft.agentId.trim();
     if (targetId.isNotEmpty && targetId != _refreshedCatalogKey) {
       _refreshedCatalogKey = targetId;
-      widget.agents.intents.send(
-        RefreshAdaptiveFlywheelModelCatalogs(agentIds: [targetId]),
-      );
+      // Probe the native model catalog only while it is still undiscovered;
+      // a catalog that already carries native sources is authoritative here
+      // and re-probing it on every open is what made the dialog stall.
+      final target = _targetById(targetId);
+      if (target != null && !target.hasSelectedAgentModelCatalog) {
+        widget.agents.intents.send(
+          RefreshAcativaModelCatalogs(agentIds: [targetId]),
+        );
+      }
     }
   }
 
@@ -127,6 +147,7 @@ final class _AssistantConfigurationDialogState
     String agentId, {
     String preferredModel = '',
     String preferredReasoningEffort = '',
+    String preferredPermissionMode = '',
   }) {
     final target = _targetById(agentId);
     if (target == null) {
@@ -134,6 +155,7 @@ final class _AssistantConfigurationDialogState
         agentId: agentId,
         modelName: preferredModel,
         reasoningEffort: preferredReasoningEffort,
+        permissionMode: preferredPermissionMode,
       );
     }
     final models = agentOrchestrationCommanderModels(target);
@@ -149,7 +171,20 @@ final class _AssistantConfigurationDialogState
       agentId: agentId,
       modelName: model,
       reasoningEffort: effort,
+      permissionMode: _resolvePermissionMode(target, preferredPermissionMode),
     );
+  }
+
+  /// The draft always shows an executable selection: the persisted mode when
+  /// the adapter still supports it, otherwise the first declared mode. Agents
+  /// without a permission control get an empty value and no selector.
+  String _resolvePermissionMode(TargetCandidate target, String persisted) {
+    final modes = target.conversationPermissionModes;
+    if (modes.isEmpty) {
+      return '';
+    }
+    final trimmed = persisted.trim();
+    return modes.contains(trimmed) ? trimmed : modes.first;
   }
 
   bool _isRefreshingModelCatalog(String agentId) =>
@@ -157,7 +192,7 @@ final class _AssistantConfigurationDialogState
 
   void _requestModelCatalog(String agentId) {
     widget.agents.intents.send(
-      RefreshAdaptiveFlywheelModelCatalogs(agentIds: [agentId]),
+      RefreshAcativaModelCatalogs(agentIds: [agentId]),
     );
   }
 
@@ -176,10 +211,97 @@ final class _AssistantConfigurationDialogState
       _validationError = '';
     });
     widget.agents.intents.send(
-      UpdateAdaptiveFlywheelAssistantProfile(
+      UpdateAcativaAssistantProfile(
         agentId: _draft.agentId,
         modelId: _draft.modelName,
         reasoningEffort: _draft.reasoningEffort,
+        permissionMode: _draft.permissionMode.trim().isEmpty
+            ? null
+            : _draft.permissionMode.trim(),
+      ),
+    );
+  }
+
+  /// Capability-gated permission selector: rendered only when the selected
+  /// agent's adapter declares executable permission modes. The draft always
+  /// carries a valid selection so saving never emits an unsupported value.
+  Widget _permissionModeRow(LicoStrings strings, LicoThemeColors colors) {
+    final agentId = _draft.agentId.trim();
+    if (agentId.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final target = _targetById(agentId);
+    final modes = target?.conversationPermissionModes ?? const <String>[];
+    if (modes.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final current = modes.contains(_draft.permissionMode)
+        ? _draft.permissionMode
+        : modes.first;
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Row(
+        children: [
+          Icon(Icons.shield_outlined, size: 15, color: colors.textMuted),
+          const SizedBox(width: 8),
+          Text(
+            strings.permissionMode,
+            style: TextStyle(
+              color: colors.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: DropdownMenu<String>(
+                key: const Key('assistant-configuration-permission-mode'),
+                initialSelection: current,
+                requestFocusOnTap: false,
+                textStyle: TextStyle(color: colors.text, fontSize: 13),
+                inputDecorationTheme: InputDecorationTheme(
+                  isDense: true,
+                  filled: true,
+                  fillColor: (colors.isDark
+                      ? LicoPaneGlass.contentInnerCardFill
+                      : colors.surfaceLow),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(LicoRadius.chip),
+                    borderSide: BorderSide(color: colors.line),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(LicoRadius.chip),
+                    borderSide: BorderSide(color: colors.line),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(LicoRadius.chip),
+                    borderSide: BorderSide(color: colors.accent),
+                  ),
+                ),
+                dropdownMenuEntries: [
+                  for (final mode in modes)
+                    DropdownMenuEntry<String>(
+                      value: mode,
+                      label: strings.permissionModeOptionLabel(mode, mode),
+                    ),
+                ],
+                onSelected: (mode) {
+                  if (mode == null) return;
+                  setState(() {
+                    _dirty = true;
+                    _draft = _draft.copyWith(permissionMode: mode);
+                  });
+                },
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -187,10 +309,10 @@ final class _AssistantConfigurationDialogState
   void _handleEffect(AgentsEffect effect) {
     if (!mounted || !_savePending) return;
     switch (effect) {
-      case AdaptiveFlywheelSaveCompleted():
+      case AcativaSaveCompleted():
         _savePending = false;
         Navigator.of(context).pop();
-      case AdaptiveFlywheelActionRejected(:final reasonCode):
+      case AcativaActionRejected(:final reasonCode):
         setState(() {
           _savePending = false;
           _validationError = reasonCode;
@@ -213,7 +335,9 @@ final class _AssistantConfigurationDialogState
         key: const Key('assistant-configuration-dialog'),
         backgroundColor: colors.surface,
         insetPadding: const EdgeInsets.symmetric(horizontal: 48, vertical: 36),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(LicoRadius.floating),
+        ),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760, maxHeight: 430),
           child: Column(
@@ -284,6 +408,7 @@ final class _AssistantConfigurationDialogState
                         isRefreshingAgentCatalog: _isRefreshingModelCatalog,
                         onAgentCatalogRequested: _requestModelCatalog,
                       ),
+                      _permissionModeRow(strings, colors),
                       if (_validationError.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         Text(

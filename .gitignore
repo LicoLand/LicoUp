@@ -14,6 +14,7 @@ Thumbs.db
 # Local generated and runtime assets
 *.log
 /build/
+packages/*/build/
 /.licoup-subagent-mcp-live.lock/
 /cache/
 coverage/
@@ -27,12 +28,9 @@ apps/desktop/test/layout/production_baseline/failures/
 # the layout visual-manifest verifier rejects them as generated residue.
 apps/desktop/test/**/failures/
 
-# Node / Rust / Flutter
+# Node / Flutter
 node_modules/
-target/
 .dart_tool/
-.gradle/
-.kotlin/
 .flutter-plugins
 .flutter-plugins-dependencies
 .pub-cache/
@@ -42,12 +40,8 @@ apps/desktop/.flutter-plugins
 apps/desktop/.flutter-plugins-dependencies
 apps/desktop/build/
 apps/desktop/coverage/
-crates/licoup-native/target/
 
 # Platform generated outputs
-apps/desktop/android/.gradle/
-apps/desktop/android/build/
-apps/desktop/ios/build/
 apps/desktop/linux/flutter/ephemeral/
 apps/desktop/macos/Flutter/ephemeral/
 apps/desktop/macos/Pods/

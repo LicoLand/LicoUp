@@ -34,7 +34,7 @@ void main() {
     expect(localized, isNot(same(initial)));
     expect(localized.locale, const Locale('zh'));
 
-    controller.appearancePresetId = AppearancePresetIds.licoSodaLight;
+    controller.appearancePresetId = AppearancePresetIds.taroWaffle;
     await tester.pump();
     final themed = tester.widget<MaterialApp>(find.byType(MaterialApp));
     expect(themed, isNot(same(localized)));

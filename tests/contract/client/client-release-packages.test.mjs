@@ -70,7 +70,7 @@ test("release package catalog uses exact native package targets", () => {
   const catalog = loadClientReleaseTargetCatalog();
   assert.equal(document.schemaVersion, "licomesh.client-release-target-catalog.v4");
   assert.equal(document.outputLayout, "build/releases/{version}/{targetId}");
-  assert.equal(document.targets.length, 17);
+  assert.equal(document.targets.length, 14);
 
   const requiredFields = [
     "platform", "distributionFamily", "baseline", "packageFormat", "channel",
@@ -103,10 +103,10 @@ test("release package catalog uses exact native package targets", () => {
     target.updateAuthority === "signed-http-manifest" && target.buildHost === "darwin-arm64" &&
     target.builder.args[0] === builderScript &&
     target.builder.args.slice(1).join(" ") === "--target macos-direct-arm64"));
-  assert.ok(document.targets.some((target) => target.id === "android-play-arm64-v8a" &&
-    target.packageFormat === "aab" && target.updateAuthority === "google-play"));
-  assert.ok(document.targets.some((target) => target.id === "android-direct-arm64-v8a" &&
-    target.packageFormat === "apk" && target.updateAuthority === "manual-download"));
+  assert.ok(document.targets.some((target) => target.id === "macos-app-store-arm64" &&
+    target.packageFormat === "pkg" && target.updateAuthority === "app-store"));
+  assert.ok(document.targets.every((target) =>
+    ["macos", "windows", "linux"].includes(target.platform)));
   assert.ok(document.targets.some((target) => target.id === "linux-deb-arm64" &&
     target.packageFormat === "deb" && target.updateAuthority === "apt-repository"));
   assert.ok(document.targets.some((target) => target.id === "windows-direct-x64" &&
@@ -166,7 +166,7 @@ test("native recipes are explicit and remain separate from publication closure",
   assert.ok(recipeFiles.has("apps/desktop/packaging/linux/alpine/APKBUILD"));
   assert.ok(recipeFiles.has("apps/desktop/packaging/linux/appimage/AppRun"));
   assert.ok(recipeFiles.has("apps/desktop/packaging/windows/msix/AppxManifest.xml"));
-  assert.ok(recipeFiles.has("apps/desktop/packaging/ios/ExportOptions-AppStore.plist"));
+  assert.ok(recipeFiles.has("apps/desktop/packaging/macos/ExportOptions-AppStore.plist"));
   assert.ok(existsSync(path.join(repoRoot, "apps/desktop/packaging/README.md")));
 });
 
@@ -178,9 +178,9 @@ test("target parser accepts one, repeated, and comma-separated targets", () => {
   assert.deepEqual(
     [...parseClientReleaseTargetArgs([
       "--target", "macos-direct-arm64",
-      "--targets", "android-direct-arm64-v8a,linux-deb-arm64",
+      "--targets", "windows-direct-x64,linux-deb-arm64",
     ]).targetIds],
-    ["macos-direct-arm64", "android-direct-arm64-v8a", "linux-deb-arm64"],
+    ["macos-direct-arm64", "windows-direct-x64", "linux-deb-arm64"],
   );
   assert.throws(() => parseClientReleaseTargetArgs([
     "--target", "macos-direct-arm64,macos-direct-arm64",
@@ -188,17 +188,17 @@ test("target parser accepts one, repeated, and comma-separated targets", () => {
   assert.throws(() => parseClientReleaseTargetArgs([
     "--target", "macos-direct-arm64",
   ], {
-    environment: { LICO_CLIENT_RELEASE_TARGETS: "android-direct-arm64-v8a" },
+    environment: { LICO_CLIENT_RELEASE_TARGETS: "windows-direct-x64" },
   }), /multiple authorities/u);
 });
 
 test("selection preserves request order and separates build from release support", () => {
   const catalog = loadClientReleaseTargetCatalog();
   const selected = selectClientReleaseTargets(catalog, [
-    "android-direct-arm64-v8a", "macos-direct-arm64",
+    "linux-deb-arm64", "macos-direct-arm64",
   ], { requireBuildSupported: true, requireReleaseSupported: false });
   assert.deepEqual(selected.map((target) => target.id), [
-    "android-direct-arm64-v8a", "macos-direct-arm64",
+    "linux-deb-arm64", "macos-direct-arm64",
   ]);
   const linux = selectClientReleaseTargets(catalog, ["linux-deb-arm64"], {
     requireBuildSupported: true,
@@ -233,7 +233,7 @@ test("plan emits one or multiple independently staged package directories", () =
     `build/releases/${productVersion}/macos-direct-arm64`);
 
   const multiple = invoke([
-    "plan", "--targets", "macos-direct-arm64,android-direct-arm64-v8a",
+    "plan", "--targets", "macos-direct-arm64,linux-deb-arm64",
   ]);
   assert.equal(multiple.status, 0, multiple.stderr);
   const multiplePlan = JSON.parse(multiple.stdout);
@@ -317,7 +317,7 @@ test("builder describes owning-host recipes while keeping macOS direct local-onl
   const result = JSON.parse(described.stdout);
   assert.equal(result.ok, true);
   assert.equal(result.dryRun, true);
-  assert.equal(result.targetCount, 17);
+  assert.equal(result.targetCount, 14);
   const macosDirect = result.targets.filter((target) =>
     target.targetId === "macos-direct-arm64");
   assert.equal(macosDirect.length, 1);
@@ -333,10 +333,10 @@ test("builder describes owning-host recipes while keeping macOS direct local-onl
     .requiredTools.includes("dpkg-deb"));
   assert.ok(result.targets.find((target) => target.targetId === "windows-direct-x64")
     .requiredTools.includes("makeappx"));
-  assert.ok(result.targets.find((target) => target.targetId === "android-play-arm64-v8a")
-    .commands.some((command) => command.args.includes("appbundle")));
-  assert.ok(result.targets.find((target) => target.targetId === "ios-app-store-arm64")
+  assert.ok(result.targets.find((target) => target.targetId === "macos-app-store-arm64")
     .requiredTools.includes("xcodebuild"));
+  assert.ok(result.targets.find((target) => target.targetId === "linux-appimage-x64")
+    .requiredTools.includes("appimagetool"));
 });
 
 test("build manifests accept an empty execution recipe only for staged macOS direct artifacts", () => {

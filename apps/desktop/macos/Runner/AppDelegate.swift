@@ -4,7 +4,11 @@ import FlutterMacOS
 @main
 class AppDelegate: FlutterAppDelegate {
   override func applicationWillFinishLaunching(_ notification: Notification) {
-    if MacStatusBarPresence.yieldToExistingInstanceIfNeeded() {
+    // A debug design-bench run (tool/design_fixture, isolated LICOUP_HOME)
+    // runs beside the installed client instead of yielding to it.
+    if !MacStatusBarPresencePolicy.runsBesideExistingInstance(
+      environment: ProcessInfo.processInfo.environment
+    ) && MacStatusBarPresence.yieldToExistingInstanceIfNeeded() {
       exit(0)
     }
     super.applicationWillFinishLaunching(notification)

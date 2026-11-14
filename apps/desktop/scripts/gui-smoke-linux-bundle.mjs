@@ -113,7 +113,7 @@ async function main() {
 
   const bundleDir = findLinuxBundle();
   const flutterBinary = path.join(bundleDir, "licoup");
-  const cli = path.join(bundleDir, "licoup-cli");
+  const cli = path.join(bundleDir, "helpers", "licoup");
   const packagingManifest = path.join(
     bundleDir,
     "package-metadata",
@@ -159,7 +159,7 @@ async function main() {
     GDK_GL: "software",
     LIBGL_ALWAYS_SOFTWARE: "1",
     NO_AT_BRIDGE: "1",
-    LICOUP_PORTABLE_DIR: dataDir,
+    LICOUP_HOME: dataDir,
   };
   const xvfb = spawn(
     "Xvfb",

@@ -4,6 +4,36 @@ import 'package:licoup/src/application/controller/client_lifecycle_coordinator.d
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'optional failure is reported and later core initialization still runs',
+    () async {
+      final reports = <ClientLifecycleReport>[];
+      final controller = ClientLifecycleCoordinator(onReport: reports.add);
+      addTearDown(controller.dispose);
+      var completed = false;
+      await controller.initialize(
+        sequentialSteps: [
+          ClientBootstrapStep(
+            id: 'visual_preferences',
+            requiredForStartup: false,
+            action: () async => throw StateError('private synthetic failure'),
+          ),
+          ClientBootstrapStep(
+            id: 'core',
+            action: () async {
+              completed = true;
+            },
+          ),
+        ],
+      );
+      expect(completed, isTrue);
+      expect(controller.projection.initialized, isTrue);
+      expect(controller.lastFailureStepId, isEmpty);
+      expect(reports.single.code, 'client_optional_step_unavailable');
+      expect(reports.single.stepId, 'visual_preferences');
+    },
+  );
+
   test('projection is an immutable snapshot of authoritative state', () async {
     final controller = ClientLifecycleCoordinator(onReport: (_) {});
     addTearDown(controller.dispose);

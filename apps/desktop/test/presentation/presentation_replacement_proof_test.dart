@@ -120,7 +120,7 @@ void main() {
       expect(find.byKey(const Key('replacement-layout-desktop')), findsOne);
       composition.settings.intents.send(const SetLayoutPreference('dashboard'));
       composition.settings.intents.send(
-        const SetAppearancePreference('lico-soda'),
+        const SetAppearancePreference('lico-starlit-gold'),
       );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 20));
@@ -131,7 +131,7 @@ void main() {
       expect(outcome.environment, '590.0:760.0');
       expect(outcome.conversation, '$conversationId:replacement-proof');
       expect(outcome.status, isNotEmpty);
-      expect(outcome.appearance, 'lico-soda');
+      expect(outcome.appearance, 'lico-starlit-gold');
       expect(outcome.locale, LocalePreference.english);
       expect(replacementHandledEffects, emittedEffects);
       expect(emittedEffects, ['ShellDestinationReselected']);
@@ -145,7 +145,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('replacement-appearance-lico-soda')),
+        find.byKey(const Key('replacement-appearance-lico-starlit-gold')),
         findsOneWidget,
       );
     } finally {

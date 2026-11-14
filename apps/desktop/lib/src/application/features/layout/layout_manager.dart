@@ -5,6 +5,8 @@ import 'package:licoup/src/presentation/layout/layout_catalog.dart';
 import 'package:licoup/src/application/features/layout/layout_preference_state.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
+
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 
 /// Owns the single transactional selection state independently of widgets.
@@ -13,29 +15,24 @@ final class LayoutManager {
     required LayoutCatalog catalog,
     required PresentationPreferencesRepository preferencesRepository,
     required PresentationPreferences canonicalFallback,
-    LayoutProfileId? preferredDefaultId,
     this.persistenceTimeout = const Duration(seconds: 5),
   }) : _catalog = catalog,
        _preferencesRepository = preferencesRepository,
-       _preferredDefaultId = preferredDefaultId ?? catalog.defaultProfile.id,
+       _defaultId = catalog.defaultProfile.id,
        _canonicalFallback = canonicalFallback.copyWith(
-         layoutProfileId: preferredDefaultId ?? catalog.defaultProfile.id,
+         layoutProfileId: catalog.defaultProfile.id,
        ),
        _state = LayoutPreferenceState(
-         committedId: preferredDefaultId ?? catalog.defaultProfile.id,
-         effectiveId: preferredDefaultId ?? catalog.defaultProfile.id,
+         committedId: catalog.defaultProfile.id,
+         effectiveId: catalog.defaultProfile.id,
          status: LayoutSelectionStatus.loading,
          operationEpoch: 0,
-       ) {
-    if (!catalog.containsProfile(_preferredDefaultId)) {
-      throw const FormatException('layout_manager_preferred_default_missing');
-    }
-  }
+       );
 
   final LayoutCatalog _catalog;
   final PresentationPreferencesRepository _preferencesRepository;
   final PresentationPreferences _canonicalFallback;
-  final LayoutProfileId _preferredDefaultId;
+  final LayoutProfileId _defaultId;
 
   /// Upper bound for any single repository call the manager performs. A
   /// repository that hangs (file lock held by a rogue process, blocked I/O)
@@ -58,8 +55,8 @@ final class LayoutManager {
 
   LayoutCatalog get catalog => _catalog;
 
-  /// Platform-preferred default used for first run, recovery, and reset.
-  LayoutProfileId get preferredDefaultId => _preferredDefaultId;
+  /// The catalog default used for first run, recovery, and reset.
+  LayoutProfileId get defaultId => _defaultId;
 
   LayoutPreferenceState get state => _state;
 
@@ -70,10 +67,12 @@ final class LayoutManager {
   Stream<ApplicationChange> get changes => _changes.stream;
   Stream<ApplicationChange> get selectionChanges => _selectionChanges.stream;
 
-  Future<void> initialize() =>
-      _initialization ??= _enqueuePreferenceOperation(_initialize);
+  Future<void> initialize({bool loadStoredState = true}) =>
+      _initialization ??= _enqueuePreferenceOperation(
+        () => _initialize(loadStoredState: loadStoredState),
+      );
 
-  Future<void> _initialize() async {
+  Future<void> _initialize({required bool loadStoredState}) async {
     if (_preferences != null || _disposed) {
       return;
     }
@@ -86,6 +85,10 @@ final class LayoutManager {
         operationEpoch: epoch,
       ),
     );
+    if (!loadStoredState) {
+      _useCanonicalFallback(epoch);
+      return;
+    }
     try {
       final loaded = await _preferencesRepository.load().timeout(
         persistenceTimeout,
@@ -96,7 +99,7 @@ final class LayoutManager {
       _preferences = loaded.preferences;
       final selected = loaded.preferences.layoutProfileId;
       final available = _catalog.containsProfile(selected);
-      final committed = available ? selected : _preferredDefaultId;
+      final committed = available ? selected : _defaultId;
       final error = loaded.recovered
           ? LayoutSelectionErrorCode.invalidStoredPreference
           : available
@@ -115,23 +118,45 @@ final class LayoutManager {
               : LayoutSelectionStatus.error,
           operationEpoch: epoch,
           errorCode: error,
+          effectiveStyleId: _effectiveStyleFor(committed),
         ),
       );
     } catch (_) {
-      if (_isCurrent(epoch)) {
-        _preferences = _canonicalFallback;
-        _needsCanonicalPersistence = true;
-        _emit(
-          LayoutPreferenceState(
-            committedId: _preferredDefaultId,
-            effectiveId: _preferredDefaultId,
-            status: LayoutSelectionStatus.error,
-            operationEpoch: epoch,
-            errorCode: LayoutSelectionErrorCode.persistenceFailed,
-          ),
-        );
-      }
+      _useCanonicalFallback(epoch);
     }
+  }
+
+  void _useCanonicalFallback(int epoch) {
+    if (!_isCurrent(epoch)) return;
+    _preferences = _canonicalFallback;
+    _needsCanonicalPersistence = true;
+    _emit(
+      LayoutPreferenceState(
+        committedId: _defaultId,
+        effectiveId: _defaultId,
+        status: LayoutSelectionStatus.error,
+        operationEpoch: epoch,
+        errorCode: LayoutSelectionErrorCode.persistenceFailed,
+        effectiveStyleId: _effectiveStyleFor(_defaultId),
+      ),
+    );
+  }
+
+  /// The style the effective profile renders with: the stored choice when
+  /// the profile declares it, else the profile's declared default. Profiles
+  /// without styles resolve to null.
+  LayoutStyleId? _effectiveStyleFor(LayoutProfileId profileId) {
+    final descriptor = _catalog.profile(profileId);
+    final defaultStyleId = descriptor?.defaultStyleId;
+    if (defaultStyleId == null) {
+      return null;
+    }
+    final stored = _preferences?.layoutStyleIds[profileId];
+    if (stored != null &&
+        descriptor!.styles.any((style) => style.id == stored)) {
+      return stored;
+    }
+    return defaultStyleId;
   }
 
   /// Selects a layout directly: the candidate becomes effective immediately
@@ -166,13 +191,47 @@ final class LayoutManager {
     if (_state.status == LayoutSelectionStatus.committing) {
       return false;
     }
-    final candidate = _preferredDefaultId;
+    final candidate = _defaultId;
     if (_state.committedId == candidate && !_needsCanonicalPersistence) {
       final epoch = _beginOperation();
       _emitStable(epoch: epoch);
       return true;
     }
     return _commit(candidate);
+  }
+
+  /// Persists one profile's column-style choice through the same serialized
+  /// repository and epoch semantics as the profile selection. A style the
+  /// profile does not declare is rejected without a repository write.
+  Future<bool> selectStyle(
+    LayoutProfileId profile,
+    LayoutStyleId style, {
+    ApplicationCause? cause,
+  }) {
+    _requireInitialized();
+    if (_state.status == LayoutSelectionStatus.committing) {
+      return Future<bool>.value(false);
+    }
+    final descriptor = _catalog.profile(profile);
+    final declared =
+        descriptor != null &&
+        descriptor.styles.any((candidate) => candidate.id == style);
+    if (!declared) {
+      final epoch = _beginOperation();
+      _emitError(
+        LayoutSelectionErrorCode.unavailableProfile,
+        epoch: epoch,
+        cause: cause,
+      );
+      return Future<bool>.value(false);
+    }
+    if (_preferences?.layoutStyleIds[profile] == style &&
+        !_needsCanonicalPersistence) {
+      final epoch = _beginOperation();
+      _emitStable(epoch: epoch, cause: cause);
+      return Future<bool>.value(true);
+    }
+    return _commitStyle(profile, style, cause: cause);
   }
 
   /// Persists appearance through the same serialized repository as layout.
@@ -193,11 +252,13 @@ final class LayoutManager {
     cause: cause,
   );
 
-  Future<bool> setReduceMotion(bool enabled, {ApplicationCause? cause}) =>
-      _updatePresentationPreferences(
-        () => _preferencesRepository.setReduceMotion(enabled),
-        cause: cause,
-      );
+  Future<bool> setReduceMotion(
+    ReduceMotionPreference preference, {
+    ApplicationCause? cause,
+  }) => _updatePresentationPreferences(
+    () => _preferencesRepository.setReduceMotion(preference),
+    cause: cause,
+  );
 
   Future<bool> setLoadingEffect(String id, {ApplicationCause? cause}) =>
       _updatePresentationPreferences(
@@ -270,6 +331,7 @@ final class LayoutManager {
         effectiveId: candidate,
         status: LayoutSelectionStatus.committing,
         operationEpoch: epoch,
+        effectiveStyleId: _effectiveStyleFor(candidate),
       ),
       cause: cause,
     );
@@ -290,6 +352,7 @@ final class LayoutManager {
           effectiveId: candidate,
           status: LayoutSelectionStatus.stable,
           operationEpoch: epoch,
+          effectiveStyleId: _effectiveStyleFor(candidate),
         ),
         cause: cause,
       );
@@ -298,6 +361,62 @@ final class LayoutManager {
       // Any repository failure — declared persistence errors, unexpected
       // throws, or a hung write cut off by the timeout — must end the commit
       // so the selector never freezes in the committing state.
+      if (_isCurrent(epoch)) {
+        _emitError(
+          LayoutSelectionErrorCode.persistenceFailed,
+          epoch: epoch,
+          cause: cause,
+        );
+      }
+      return false;
+    }
+  }
+
+  Future<bool> _commitStyle(
+    LayoutProfileId profile,
+    LayoutStyleId style, {
+    ApplicationCause? cause,
+  }) async {
+    final epoch = _beginOperation();
+    _emit(
+      LayoutPreferenceState(
+        committedId: _state.committedId,
+        effectiveId: _state.effectiveId,
+        status: LayoutSelectionStatus.committing,
+        operationEpoch: epoch,
+        // The style applies optimistically while the write commits, the same
+        // way a candidate profile becomes effective before its write lands.
+        effectiveStyleId: profile == _state.effectiveId
+            ? style
+            : _state.effectiveStyleId,
+      ),
+      cause: cause,
+    );
+    try {
+      final saved = await _enqueuePreferenceOperation(
+        () => _preferencesRepository
+            .setLayoutStyle(profile, style)
+            .timeout(persistenceTimeout),
+      );
+      if (!_isCurrent(epoch)) {
+        return false;
+      }
+      _preferences = saved;
+      _needsCanonicalPersistence = false;
+      _emit(
+        LayoutPreferenceState(
+          committedId: _state.committedId,
+          effectiveId: _state.effectiveId,
+          status: LayoutSelectionStatus.stable,
+          operationEpoch: epoch,
+          effectiveStyleId: _effectiveStyleFor(_state.effectiveId),
+        ),
+        cause: cause,
+      );
+      return true;
+    } catch (_) {
+      // Mirror the profile commit: any repository failure ends the commit so
+      // the selector never freezes in the committing state.
       if (_isCurrent(epoch)) {
         _emitError(
           LayoutSelectionErrorCode.persistenceFailed,
@@ -324,6 +443,7 @@ final class LayoutManager {
         effectiveId: _state.committedId,
         status: LayoutSelectionStatus.stable,
         operationEpoch: epoch,
+        effectiveStyleId: _effectiveStyleFor(_state.committedId),
       ),
       cause: cause,
     );
@@ -341,6 +461,7 @@ final class LayoutManager {
         status: LayoutSelectionStatus.error,
         operationEpoch: epoch,
         errorCode: code,
+        effectiveStyleId: _effectiveStyleFor(_state.committedId),
       ),
       cause: cause,
     );
@@ -350,12 +471,13 @@ final class LayoutManager {
     if (_disposed) {
       return;
     }
-    // The selection projection only reads effectiveId and the loading bit, so
-    // subscribers need an event when the id moves or when the state leaves
-    // the initial loading bit — otherwise an unchanged stored preference
-    // would leave the shell on the loading spinner forever.
+    // The selection projection reads effectiveId, effectiveStyleId and the
+    // loading bit, so subscribers need an event when either moves or when
+    // the state leaves the initial loading bit — otherwise an unchanged
+    // stored preference would leave the shell on the loading spinner forever.
     final selectionChanged =
         next.effectiveId != _state.effectiveId ||
+        next.effectiveStyleId != _state.effectiveStyleId ||
         _state.status == LayoutSelectionStatus.loading;
     _state = next;
     _publishing = true;

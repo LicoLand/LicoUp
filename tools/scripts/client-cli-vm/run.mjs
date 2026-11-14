@@ -8,7 +8,6 @@ import { runScriptSelfTest } from "./self-test/runner.mjs";
 import { sshBaseArgs, runSsh } from "./ssh/session.mjs";
 import { fetchArtifacts } from "./sync/artifacts.mjs";
 import { syncRepoToVm } from "./sync/repo.mjs";
-import { verifyDistro } from "./verify/distro.mjs";
 import {
   destroyDistro,
   shutdownDistro,
@@ -51,8 +50,6 @@ export function main() {
       syncRepoToVm(distro);
     } else if (options.action === "fetch") {
       fetchArtifacts(distro);
-    } else if (options.action === "verify") {
-      verifyDistro(distro, options);
     } else if (options.action === "linux-product-bootstrap") {
       verifyLinuxProductToolchainDistro(distro, options);
     } else if (options.action === "linux-product") {

@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/application/features/runtime_control/controller/work_control_controller.dart';
 import 'package:licoup/src/composition/renderer_intent_trace.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
 import 'package:licoup/src/contracts/generated/conversation.g.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_profile_registry.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
@@ -16,6 +18,7 @@ final class ConversationFeatureComposition {
   ConversationFeatureComposition(
     ClientController controller, {
     RendererIntentTraceFactory? beginRendererIntent,
+    WorkControlController? workControl,
   }) : _projection = ConversationProjectionProducer(controller),
        _effects = _ConversationEffects() {
     _intents = _ConversationIntents(
@@ -23,6 +26,7 @@ final class ConversationFeatureComposition {
       _projection,
       _effects,
       beginRendererIntent: beginRendererIntent,
+      workControl: workControl,
     );
     binding = ConversationBinding(
       projection: _projection.projection,
@@ -73,11 +77,16 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
     this._projection,
     this._effects, {
     RendererIntentTraceFactory? beginRendererIntent,
+    this.workControl,
   }) : _beginRendererIntent = beginRendererIntent;
 
   final ClientController _controller;
   final ConversationProjectionProducer _projection;
   final _ConversationEffects _effects;
+
+  /// Projection of the stops this client performs through its existing
+  /// conversation cancel control. Null keeps the surface silent.
+  final WorkControlController? workControl;
   final RendererIntentTraceFactory? _beginRendererIntent;
 
   void close() => _controller.providerQuotaController.releasePollingOwner(this);
@@ -93,6 +102,15 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
         _projection.execution.open(viewId, reference, trace: trace);
       case CloseConversationExecutionView(:final viewId):
         _projection.execution.dismiss(viewId, trace: trace);
+      case ResolveNativeApproval(:final pendingOperationId, :final allow):
+        _run(
+          () => _controller.resolveNativeApproval(
+            pendingOperationId,
+            allow: allow,
+          ),
+          trace,
+          stage: 'native-approval',
+        );
       case RefreshConversationCatalog(:final agentId):
         final requestedAgentId = agentId.trim();
         if (requestedAgentId.isNotEmpty) {
@@ -148,6 +166,34 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
         );
       case ClearCanonicalConversationSelection():
         _controller.clientConversationController.clearSelection();
+      case CreateConversationProfile(:final profile):
+        _runResult(
+          () async {
+            final conversationId = await _controller
+                .clientConversationController
+                .createProfileConversation(
+                  profileId: profile.id,
+                  displayName: profile.name,
+                  agentId: profile.agentId,
+                  profileIntent: profile.intent,
+                );
+            if (conversationId == null) return false;
+            addConversationProfile(
+              profile.copyWith(conversationId: conversationId),
+            );
+            return true;
+          },
+          trace,
+          stage: 'profile-create',
+          onSuccess: () {
+            _effects.add(
+              ConversationProfileCreated(
+                _controller.clientConversationController.selectedConversationId,
+                trace: trace,
+              ),
+            );
+          },
+        );
       case CreateCanonicalConversationGroup(:final title, :final members):
         _runResult(
           () => _controller.clientConversationController.createGroup(
@@ -352,14 +398,24 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
         if (_controller.clientConversationController.selectedConversationId ==
             conversationId) {
           _run(
-            () => _projection.cancelGroupTurn(membershipId),
+            () async {
+              await _projection.cancelGroupTurn(membershipId);
+              workControl?.recordStopOutcome(ok: true);
+            },
             trace,
             stage: 'canonical-cancel',
             conversationId: conversationId,
           );
         } else {
           _run(
-            _controller.cancelActiveConversationTurn,
+            () async {
+              await _controller.cancelActiveConversationTurn();
+              final failure = _controller.lastError.trim();
+              workControl?.recordStopOutcome(
+                ok: failure.isEmpty,
+                failureCode: failure,
+              );
+            },
             trace,
             stage: 'native-cancel',
             conversationId: conversationId,

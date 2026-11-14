@@ -5,11 +5,7 @@ import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 /// Test seam: keeps every interface-entry Hook lane out of hermetic scenarios
 /// that assert exact gateway call counts or status lines.
 final class NoEntryHookClientController extends ClientController {
-  NoEntryHookClientController({
-    super.portableData,
-    super.agentService,
-    super.mobileRelayService,
-  });
+  NoEntryHookClientController({super.portableData, super.agentService});
 
   @override
   Map<ClientSection, ClientInterfaceEntryHookTask>

@@ -9,6 +9,11 @@
   "officialCapabilityAssessment": {
     "completedBeforeImplementation": true,
     "sourceAuthority": "official",
+    "versionSupport": {
+      "kind": "unknown",
+      "source": "unverified",
+      "reason": "no_verified_vendor_bound"
+    },
     "interfaceName": "official Pi RPC stdio interface",
     "assessedVersion": "version reported by fixed Pi probe",
     "versionProbe": "fixed --version probe",

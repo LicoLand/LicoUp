@@ -1,4 +1,4 @@
-import 'package:licoup/src/application/controller/appearance_preference_owner.dart';
+import 'package:licoup/src/application/features/settings/controller/appearance_preference_owner.dart';
 import 'package:licoup/src/application/controller/functional_status_runtime.dart';
 import 'package:licoup/src/application/controller/locale_preference_owner.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('catalog fallback and errors remain bounded presentation state', () {
-    final owner = AppearancePreferenceOwner(presetId: 'removed-external');
+    final owner = AppearancePreferenceOwner(presetId: 'retired-preset');
     addTearDown(owner.dispose);
     var changes = 0;
     owner.changes.listen((_) => changes += 1);
@@ -19,7 +19,7 @@ void main() {
     );
 
     expect(fellBack, isTrue);
-    expect(owner.presetId, AppearancePresetIds.licoMist);
+    expect(owner.presetId, AppearancePresetIds.defaultSystem);
     expect(owner.loadErrors, ['external_preset_invalid:1']);
     expect(changes, 1);
   });
@@ -34,14 +34,8 @@ void main() {
     // A light theme the user cannot choose is not a light theme. Every fixed
     // preset is a legitimate direct choice, in catalog order.
     expect(pickerIds, [
-      AppearancePresetIds.licoMist,
-      AppearancePresetIds.licoMistLight,
-      AppearancePresetIds.licoCream,
-      AppearancePresetIds.licoCreamLight,
-      AppearancePresetIds.licoRoyale,
-      AppearancePresetIds.licoRoyaleLight,
-      AppearancePresetIds.licoSoda,
-      AppearancePresetIds.licoSodaLight,
+      AppearancePresetIds.taroWaffle,
+      AppearancePresetIds.starlitGold,
     ]);
     expect(AppearancePresetIds.resolutionOnly, isEmpty);
     // Resolution sees the same full built-in catalog.
@@ -49,11 +43,11 @@ void main() {
       owner.presets.map((config) => config.id),
       containsAll([
         AppearancePresetIds.defaultSystem,
-        AppearancePresetIds.licoMist,
-        AppearancePresetIds.licoMistLight,
+        AppearancePresetIds.taroWaffle,
+        AppearancePresetIds.starlitGold,
       ]),
     );
-    expect(owner.presetId, AppearancePresetIds.licoMist);
+    expect(owner.presetId, AppearancePresetIds.defaultSystem);
     expect(
       owner.applyCatalog(
         configs: const [],

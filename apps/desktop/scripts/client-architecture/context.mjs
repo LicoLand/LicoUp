@@ -3,7 +3,6 @@ import path from "node:path";
 import process from "node:process";
 import {
   collectEnumValues,
-  collectRustPubMods,
   createFailureCollector,
   lineNumberForToken,
   moduleSupportsPlatform,
@@ -41,7 +40,6 @@ export function createArchitectureContext({ repoRoot, spawn = spawnSync }) {
     ...failureCollector,
     ...filesystem,
     collectEnumValues,
-    collectRustPubMods,
     lineNumberForToken,
     moduleSupportsPlatform,
     repoRoot,
@@ -59,7 +57,10 @@ export function formatArchitectureResult({
   if (failures.length > 0) {
     return {
       ok: false,
-      text: JSON.stringify({ ok: false, failures }, null, 2),
+      text: JSON.stringify({
+        ok: false,
+        failures,
+      }, null, 2),
     };
   }
   return {

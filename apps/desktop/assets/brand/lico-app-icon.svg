@@ -1,165 +1,71 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="2048" viewBox="0 0 1254 1254" role="img" aria-labelledby="title desc">
-  <title id="title">Orbit Ice Cream M2 — simplified vector redraw v5</title>
-  <desc id="desc">The approved M2 composition with its round, inward-tapering dessert cup silhouette.</desc>
-
+<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="2048" viewBox="0 0 200 200" role="img" aria-labelledby="title desc">
+  <title id="title">LicoUp app icon — Lico mascot</title>
+  <desc id="desc">The Lico ice-cream mascot on its starry night backdrop, derived from assets/mascot/avatars/svg/lico.svg.</desc>
+  <defs><radialGradient id="a-lico-bg" cx="50%" cy="12%" r="100%"><stop offset="0" stop-color="#3a2d84"/><stop offset=".6" stop-color="#191a52"/><stop offset="1" stop-color="#0c0e2a"/></radialGradient><radialGradient id="a-lico-glow"><stop offset="0.1" stop-color="#b9a3ff" stop-opacity="0.42"/><stop offset="1" stop-color="#b9a3ff" stop-opacity="0"/></radialGradient></defs>
+  <rect width="200" height="200" fill="url(#a-lico-bg)"/>
+  <g fill="#fff"><circle cx="24" cy="28" r="1.4" opacity="0.9"/><circle cx="52" cy="16" r="0.9" opacity="0.6"/><circle cx="170" cy="22" r="1.2" opacity="0.8"/><circle cx="186" cy="58" r="0.8" opacity="0.5"/><circle cx="14" cy="104" r="1" opacity="0.5"/><circle cx="188" cy="118" r="1.3" opacity="0.7"/><circle cx="150" cy="40" r="0.7" opacity="0.5"/><circle cx="30" cy="160" r="0.9" opacity="0.45"/><circle cx="176" cy="170" r="0.9" opacity="0.5"/><circle cx="64" cy="44" r="0.6" opacity="0.4"/></g>
+  <path d="M30 26Q30 30 34 30Q30 30 30 34Q30 30 26 30Q30 30 30 26ZM172 146.8Q172 150 175.2 150Q172 150 172 153.2Q172 150 168.8 150Q172 150 172 146.8Z" fill="#f2d38b" opacity=".85"/>
+  <ellipse cx="100" cy="100" rx="96" ry="90" fill="url(#a-lico-glow)"/>
+  <g transform="translate(-12 1) scale(1.12)">
   <defs>
-    <radialGradient id="background" cx="51%" cy="39%" r="80%">
-      <stop offset="0" stop-color="#f9ebe4"/>
-      <stop offset="0.68" stop-color="#f2e0d9"/>
-      <stop offset="1" stop-color="#ead8d1"/>
-    </radialGradient>
-
-    <radialGradient id="scoop" cx="47%" cy="36%" r="72%">
-      <stop offset="0" stop-color="#ffeac7"/>
-      <stop offset="0.70" stop-color="#fde5bf"/>
-      <stop offset="1" stop-color="#f5dab4"/>
-    </radialGradient>
-
-    <radialGradient id="cherry" cx="42%" cy="34%" r="72%">
-      <stop offset="0" stop-color="#e46b5b"/>
-      <stop offset="0.76" stop-color="#da5e51"/>
-      <stop offset="1" stop-color="#cc5048"/>
-    </radialGradient>
-
-    <linearGradient id="orbitPaint" gradientUnits="userSpaceOnUse" x1="438" y1="626" x2="936" y2="670">
-      <stop offset="0" stop-color="#6e2b05"/>
-      <stop offset="0.22" stop-color="#3b1400"/>
-      <stop offset="0.48" stop-color="#6d2a04"/>
-      <stop offset="0.72" stop-color="#401500"/>
-      <stop offset="1" stop-color="#6a2904"/>
-    </linearGradient>
-
-    <linearGradient id="glassBack" gradientUnits="userSpaceOnUse" x1="0" y1="620" x2="0" y2="1145">
-      <stop offset="0" stop-color="#d3f1f4" stop-opacity="0.34"/>
-      <stop offset="0.38" stop-color="#b5e5ee" stop-opacity="0.30"/>
-      <stop offset="1" stop-color="#a8d9e7" stop-opacity="0.25"/>
-    </linearGradient>
-
-    <linearGradient id="glassFront" gradientUnits="userSpaceOnUse" x1="0" y1="646" x2="0" y2="1145">
-      <stop offset="0" stop-color="#c9edf2" stop-opacity="0.48"/>
-      <stop offset="0.28" stop-color="#acdfea" stop-opacity="0.56"/>
-      <stop offset="0.72" stop-color="#91cfe4" stop-opacity="0.57"/>
-      <stop offset="1" stop-color="#abdce9" stop-opacity="0.51"/>
-    </linearGradient>
-
-    <linearGradient id="glassBase" gradientUnits="userSpaceOnUse" x1="520" y1="1000" x2="740" y2="1140">
-      <stop offset="0" stop-color="#b8e2eb" stop-opacity="0.54"/>
-      <stop offset="1" stop-color="#9cd2e3" stop-opacity="0.48"/>
-    </linearGradient>
-
-    <radialGradient id="submergedScoop" cx="48%" cy="28%" r="70%">
-      <stop offset="0" stop-color="#fee6bf" stop-opacity="0.68"/>
-      <stop offset="0.62" stop-color="#f9e0bb" stop-opacity="0.48"/>
-      <stop offset="0.88" stop-color="#efd6b4" stop-opacity="0.20"/>
-      <stop offset="1" stop-color="#efd6b4" stop-opacity="0"/>
-    </radialGradient>
-
-    <radialGradient id="submergedCherry" cx="45%" cy="32%" r="70%">
-      <stop offset="0" stop-color="#dc6257" stop-opacity="0.66"/>
-      <stop offset="0.66" stop-color="#d85b54" stop-opacity="0.42"/>
-      <stop offset="1" stop-color="#d85b54" stop-opacity="0"/>
-    </radialGradient>
-
-    <path id="rimBackArc" d="M324 646 A304 39 0 0 1 932 646"/>
-    <path id="rimFrontArc" d="M932 646 A304 39 0 0 1 324 646"/>
-
-    <path id="gobletSilhouette" d="M324 646
-      A304 39 0 0 1 932 646
-      C932 700 932 740 920 780
-      C908 832 889 870 862 900
-      C834 930 795 960 756 977
-      C740 984 722 990 706 994
-      C685 998 674 1011 674 1032
-      C674 1054 695 1068 737 1083
-      C776 1097 793 1115 775 1128
-      C739 1150 516 1150 479 1128
-      C461 1115 478 1097 518 1083
-      C558 1068 578 1054 578 1032
-      C578 1011 568 999 547 994
-      C531 990 518 984 502 977
-      C463 960 424 930 396 900
-      C369 870 350 832 338 780
-      C326 740 324 700 324 646 Z"/>
-
-    <path id="gobletFront" d="M324 646
-      A304 39 0 0 0 932 646
-      C932 700 932 740 920 780
-      C908 832 889 870 862 900
-      C834 930 795 960 756 977
-      C740 984 722 990 706 994
-      C685 998 674 1011 674 1032
-      C674 1054 695 1068 737 1083
-      C776 1097 793 1115 775 1128
-      C739 1150 516 1150 479 1128
-      C461 1115 478 1097 518 1083
-      C558 1068 578 1054 578 1032
-      C578 1011 568 999 547 994
-      C531 990 518 984 502 977
-      C463 960 424 930 396 900
-      C369 870 350 832 338 780
-      C326 740 324 700 324 646 Z"/>
-
-    <clipPath id="bowlInterior">
-      <path d="M324 646 A304 39 0 0 0 932 646
-        C932 700 932 740 920 780
-        C908 832 889 870 862 900
-        C834 930 795 960 756 977
-        C740 984 722 990 700 982
-        C678 986 575 986 552 982
-        C531 990 518 984 502 977
-        C463 960 424 930 396 900
-        C369 870 350 832 338 780
-        C326 740 324 700 324 646 Z"/>
-    </clipPath>
-
-    <clipPath id="orbitFrontWindow">
-      <path d="M365 555 L480 555 L480 665 L365 665 Z"/>
-    </clipPath>
-
-    <path id="orbitContinuous" d="M438 626
-      C426 608 402 590 373 572
-      C304 529 263 480 297 438
-      C327 404 402 393 492 414
-      C598 438 739 461 846 496
-      C912 521 962 553 976 585
-      C991 620 971 646 930 663"/>
+    <radialGradient id="a-lico-head" cx="38%" cy="30%" r="80%"><stop offset="0" stop-color="#fffefb"/><stop offset="0.55" stop-color="#f8f3eb"/><stop offset="1" stop-color="#e2d7ca"/></radialGradient>
+    <radialGradient id="a-lico-arm" cx="40%" cy="28%" r="85%"><stop offset="0" stop-color="#fffefb"/><stop offset="0.6" stop-color="#f8f3eb"/><stop offset="1" stop-color="#e2d7ca"/></radialGradient>
+    <radialGradient id="a-lico-occlusion"><stop offset="0.15" stop-color="#bfae9b" stop-opacity="0.5"/><stop offset="1" stop-color="#bfae9b" stop-opacity="0"/></radialGradient>
+    <radialGradient id="a-lico-highlight"><stop offset="0.3" stop-color="#ffffff" stop-opacity="0.95"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="a-lico-blush"><stop offset="0.25" stop-color="#ffadb5" stop-opacity="0.95"/><stop offset="1" stop-color="#ffadb5" stop-opacity="0"/></radialGradient>
+    <radialGradient id="a-lico-armshadow"><stop offset="0.2" stop-color="#6d4a2a" stop-opacity="0.3"/><stop offset="1" stop-color="#6d4a2a" stop-opacity="0"/></radialGradient>
+    <radialGradient id="a-lico-rimshadow"><stop offset="0.2" stop-color="#8a5a33" stop-opacity="0.32"/><stop offset="1" stop-color="#8a5a33" stop-opacity="0"/></radialGradient>
+    <linearGradient id="a-lico-rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3dcb8"/><stop offset="0.55" stop-color="#e6c595"/><stop offset="1" stop-color="#d3a877"/></linearGradient>
+    <linearGradient id="a-lico-cup" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e2bb8b"/><stop offset="1" stop-color="#cf9f6c"/></linearGradient>
+    <linearGradient id="a-lico-cupside" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8a5a33" stop-opacity="0.28"/><stop offset="0.22" stop-color="#8a5a33" stop-opacity="0"/><stop offset="0.75" stop-color="#8a5a33" stop-opacity="0"/><stop offset="1" stop-color="#8a5a33" stop-opacity="0.32"/></linearGradient>
+    <radialGradient id="a-lico-eye" cx="42%" cy="34%" r="75%"><stop offset="0" stop-color="#3b4580"/><stop offset="0.7" stop-color="#1a1f3f"/><stop offset="1" stop-color="#11142b"/></radialGradient>
+    <linearGradient id="a-lico-rimlight" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c9b8ff" stop-opacity="0"/><stop offset="0.55" stop-color="#c9b8ff" stop-opacity="0"/><stop offset="1" stop-color="#b8a2ff" stop-opacity="0.75"/></linearGradient>
+    <clipPath id="a-lico-cupclip"><path d="M40 142H160L148 201Q146 209 138 209H62Q54 209 52 201Z"/></clipPath>
+    <clipPath id="a-lico-headclip"><circle cx="100" cy="90" r="66"/></clipPath>
+    <linearGradient id="a-lico-star" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e2d6ff"/><stop offset="0.5" stop-color="#bba5fb"/><stop offset="1" stop-color="#9a80ee"/></linearGradient>
   </defs>
-
-  <rect width="1254" height="1254" fill="url(#background)"/>
-
-  <use href="#gobletSilhouette" fill="url(#glassBack)"/>
-  <ellipse cx="628" cy="646" rx="304" ry="39" fill="#d8f1f2" fill-opacity="0.14"/>
-  <use href="#rimBackArc" fill="none" stroke="#c9ebef" stroke-opacity="0.64" stroke-width="8" stroke-linecap="round"/>
-
-  <path d="M1005 350 L869 307 Q852 301 847 316 L791 454 L791 760"
-        fill="none" stroke="#83c9e9" stroke-width="43" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
-
-  <use href="#orbitContinuous" fill="none" stroke="url(#orbitPaint)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
-
-  <circle cx="630" cy="615" r="255" fill="url(#scoop)"/>
-
-  <use href="#orbitContinuous" clip-path="url(#orbitFrontWindow)"
-       fill="none" stroke="url(#orbitPaint)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
-
-  <circle cx="460" cy="670" r="68" fill="url(#cherry)"/>
-
-  <g clip-path="url(#bowlInterior)">
-    <circle cx="630" cy="615" r="255" fill="url(#submergedScoop)"/>
-    <circle cx="460" cy="670" r="74" fill="url(#submergedCherry)"/>
+  <g>
+    <g>
+      <circle cx="100" cy="90" r="66" fill="url(#a-lico-head)"/>
+      <ellipse cx="100" cy="150" rx="78" ry="34" fill="url(#a-lico-occlusion)" clip-path="url(#a-lico-headclip)"/>
+      <circle cx="100" cy="90" r="64.8" fill="none" stroke="url(#a-lico-rimlight)" stroke-width="2.6" opacity="0.55"/>
+      <ellipse cx="76" cy="50" rx="24" ry="14" fill="url(#a-lico-highlight)" transform="rotate(-28 76 50)"/>
+      <g>
+        <g>
+          <g><ellipse cx="78" cy="98" rx="8.2" ry="10" fill="url(#a-lico-eye)"/>
+            <ellipse cx="122" cy="98" rx="8.2" ry="10" fill="url(#a-lico-eye)"/>
+            <circle cx="81.2" cy="93.2" r="3.1" fill="#fff"/><circle cx="125.2" cy="93.2" r="3.1" fill="#fff"/>
+            <circle cx="75.4" cy="103" r="1.4" fill="#fff" opacity=".8"/><circle cx="119.4" cy="103" r="1.4" fill="#fff" opacity=".8"/></g>
+        </g>
+        <g><ellipse cx="62" cy="113" rx="14" ry="9" fill="url(#a-lico-blush)"/><ellipse cx="138" cy="113" rx="14" ry="9" fill="url(#a-lico-blush)"/></g>
+        <g><path d="M94 111.5q6 5.5 12 0" fill="none" stroke="#7a4636" stroke-width="2.6" stroke-linecap="round"/></g>
+      </g>
+      <g>
+        <rect x="128" y="38.5" width="30" height="6" rx="3" fill="#8f78e0" transform="rotate(26 143 41.5)"/>
+        <rect x="129" y="38.5" width="26" height="2" rx="1" fill="#d8ccff" opacity=".8" transform="rotate(26 143 41.5)"/>
+        <path d="M138 16.5l4.3 9.2 10 1.2-7.4 6.9 1.9 9.9-8.8-4.9-8.8 4.9 1.9-9.9-7.4-6.9 10-1.2Z" fill="url(#a-lico-star)" stroke="#8f78e0" stroke-width="1.2" stroke-linejoin="round" transform="rotate(12 138 30)"/>
+        <ellipse cx="134" cy="24.5" rx="3.6" ry="2" fill="#fff" opacity=".75" transform="rotate(-30 134 24.5)"/>
+      </g>
+    </g>
+    <g>
+      <path d="M40 142H160L148 201Q146 209 138 209H62Q54 209 52 201Z" fill="url(#a-lico-cup)"/>
+      <g clip-path="url(#a-lico-cupclip)" fill="none" stroke-linecap="round">
+        <path d="M-60 140 l70 72 M10 140 l-70 72 M-37 140 l70 72 M33 140 l-70 72 M-14 140 l70 72 M56 140 l-70 72 M9 140 l70 72 M79 140 l-70 72 M32 140 l70 72 M102 140 l-70 72 M55 140 l70 72 M125 140 l-70 72 M78 140 l70 72 M148 140 l-70 72 M101 140 l70 72 M171 140 l-70 72 M124 140 l70 72 M194 140 l-70 72 M147 140 l70 72 M217 140 l-70 72 M170 140 l70 72 M240 140 l-70 72 M193 140 l70 72 M263 140 l-70 72 M216 140 l70 72 M286 140 l-70 72 " stroke="#b9854f" stroke-width="3.2" opacity=".35" transform="translate(0 1.4)"/>
+        <path d="M-60 140 l70 72 M10 140 l-70 72 M-37 140 l70 72 M33 140 l-70 72 M-14 140 l70 72 M56 140 l-70 72 M9 140 l70 72 M79 140 l-70 72 M32 140 l70 72 M102 140 l-70 72 M55 140 l70 72 M125 140 l-70 72 M78 140 l70 72 M148 140 l-70 72 M101 140 l70 72 M171 140 l-70 72 M124 140 l70 72 M194 140 l-70 72 M147 140 l70 72 M217 140 l-70 72 M170 140 l70 72 M240 140 l-70 72 M193 140 l70 72 M263 140 l-70 72 M216 140 l70 72 M286 140 l-70 72 " stroke="#f0d0a2" stroke-width="2.8" opacity=".9"/>
+      </g>
+      <path d="M40 142H160L148 201Q146 209 138 209H62Q54 209 52 201Z" fill="url(#a-lico-cupside)"/>
+      <rect x="30" y="121" width="140" height="27" rx="13.5" fill="url(#a-lico-rim)"/>
+      <path d="M44 126.5h112" stroke="#fbead0" stroke-width="3" stroke-linecap="round" opacity=".9"/>
+      <ellipse cx="100" cy="150" rx="66" ry="7" fill="url(#a-lico-rimshadow)" clip-path="url(#a-lico-cupclip)"/>
+    </g>
+    <g>
+      <ellipse cx="72" cy="139" rx="20" ry="7.5" fill="url(#a-lico-armshadow)"/>
+      <ellipse cx="69" cy="131" rx="20" ry="12.5" fill="url(#a-lico-arm)" transform="rotate(-8 69 131)"/>
+    </g>
+    <g>
+      <ellipse cx="128" cy="139" rx="20" ry="7.5" fill="url(#a-lico-armshadow)"/>
+      <ellipse cx="131" cy="131" rx="20" ry="12.5" fill="url(#a-lico-arm)" transform="rotate(8 131 131)"/>
+    </g>
   </g>
-
-  <use href="#gobletFront" fill="url(#glassFront)"/>
-  <path d="M547 994
-      C568 999 578 1011 578 1032
-      C578 1054 558 1068 518 1083
-      C478 1097 461 1115 479 1128
-      C516 1150 739 1150 775 1128
-      C793 1115 776 1097 737 1083
-      C695 1068 674 1054 674 1032
-      C674 1011 685 998 706 994 Z"
-        fill="url(#glassBase)"/>
-
-  <use href="#rimFrontArc" fill="none" stroke="#dcf1f2" stroke-opacity="0.92" stroke-width="9" stroke-linecap="round"/>
-  <use href="#rimFrontArc" fill="none" stroke="#afe0ea" stroke-opacity="0.56" stroke-width="3" stroke-linecap="round"/>
+  </g>
 </svg>

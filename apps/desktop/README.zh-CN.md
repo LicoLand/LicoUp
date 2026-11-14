@@ -2,9 +2,11 @@
 
 [English (normative)](README.md) · 简体中文本地化
 
-LicoUp 是本地优先的开源桌面与移动客户端。产品范围以
+LicoUp 是本地优先的开源桌面客户端。产品范围以
 [`PRODUCT.md`](../../PRODUCT.md) 和
 [`CLIENT-DESKTOP.md`](../../docs/functionality/CLIENT-DESKTOP.md) 为准。
+Android 与 iOS 实现位于兄弟仓库 LicoUp-Android 与 LicoUp-iOS；本仓库只
+承载 macOS、Windows 和 Linux 外壳。
 
 ## 默认产品范围
 
@@ -13,7 +15,7 @@ LicoUp 是本地优先的开源桌面与移动客户端。产品范围以
 - Rust 轻量本机任务队列；
 - 本机智能体执行及加密远程中转所需的 ACP 适配；
 - MCP 请求与返回报文转发适配；
-- macOS、Windows、Ubuntu、Android 和 iOS 平台适配。
+- macOS、Windows 和 Ubuntu 平台适配。
 
 默认界面只承载以下用户场景：
 
@@ -22,17 +24,17 @@ LicoUp 是本地优先的开源桌面与移动客户端。产品范围以
 - `Conversations`：检索、管理并备份全部或关键词命中的原生对话；
 - `Skill Hub`：按智能体发现和展示本机已有技能、统计调用频率，并把选中的技能移入系统废纸篓；
 - `Usage`：按智能体或模型统计 Token，用最近 30 天作为默认窗口；
-- `Mobile Relay`：在桌面与移动端之间传递端到端加密的不透明信封；
+- `Devices`：enroll 与配对桌面端点，并通过客户端自有 `licoarc-client` 线路
+  交换受保护的会话消息；
 - `Settings`：本机设置、平台授权和外部传输审批。
 
 ACP 与 MCP 是内置协议适配基础，不占用独立导航入口。
 
-`Mobile Relay` 当前执行[正在退役的端点保护预览](../../docs/STATUS.zh-CN.md)，
-并通过已实现的候选 `licoarc.relay.v1` 外层 adapter 承载。该预览不是 Lico Arc
-Profile，也不承诺未来兼容。稳定客户端将执行一条固定 Lico Arc Protocol Line
-的线上可观测 Pairwise Protection、Generic Message、Reliable Exchange、协商与
-Transport Profile 语义，同时继续拥有自己的私钥、Provider 配置、明文、历史、
-备份、信任决定、审批和本地效果。
+`Devices` 会话运行在客户端自有 `licoarc-client` 线路上，并由已实现的候选
+`licoarc.relay.v1` 外层 adapter 承载。Lico Arc Protocol 拥有线上可观测的
+Pairwise Protection、Generic Message、Reliable Exchange、协商与 Transport
+Profile 语义；LicoUp 继续拥有自己的私钥、Provider 配置、明文、历史、备份、
+信任决定、审批和本地效果。
 
 当前打包目标包括 Antigravity、Claude Code、Codex、Cursor、DeepSeek Harness、
 Copilot、Hermes、Kilo Code、Kimi Code、Lico Agent、OpenClaw、OpenCode 和 Pi Agent。发现到目标、读取到历史或
@@ -82,15 +84,13 @@ npm run client:test
 npm run client:native:test
 ```
 
-启动桌面端或移动端：
+启动桌面端：
 
 ```bash
 npm run client:run:macos
-npm run client:run:android -- --debug
-npm run client:run:ios -- --debug
 ```
 
-依赖、Gradle 和 Flutter 缓存必须位于源码树之外。需要覆盖缓存位置时使用项目支持的
+依赖与 Flutter 缓存必须位于源码树之外。需要覆盖缓存位置时使用项目支持的
 `LICO_CLIENT_*_CACHE` 环境变量，并用 `<cache-root>` 一类占位路径，不把工作站路径写入
 文档、日志或证据。
 
@@ -111,12 +111,11 @@ npm run client:regression -- --module <module-id>
 npm run client:gate:source
 npm run client:gate:flutter         # 仅 Flutter 改动
 npm run client:gate:rust            # 仅 Rust 改动
-npm run client:gate:android         # 仅 Android 改动
 npm run client:gate:dependencies    # 仅依赖改动
 npm run client:gate:release-policy  # 仅发布策略改动
 ```
 
-源码策略只需要 Node，不安装 Flutter、Rust 或 Android 工具链。各技术通道彼此独立并
+源码策略只需要 Node，不安装 Flutter 或 Rust 工具链。各技术通道彼此独立并
 可并行；不要串联未受影响平台。架构、ACP/MCP、对话、技能、用量、备份、端点保护
 和各平台适配分别使用模块目录登记的专属回归入口。
 
@@ -127,13 +126,12 @@ npm run client:package:plan
 npm run client:build -- --platform macos
 npm run client:build -- --platform windows
 npm run client:build -- --platform linux
-npm run client:build -- --platform android
 ```
 
 `client:build` 是唯一构建入口。它会自动清理空闲的编译产物和临时 Flutter 构建缓存，
 但不会删除安装流程所需的可运行或已打包产物。
 
-macOS、Windows、Ubuntu、Android 和 iOS 的构建、普通验证、GitHub Release 以及各平台
+macOS、Windows 和 Ubuntu 的构建、普通验证、GitHub Release 以及各平台
 商店发布是互相独立的声明。缺少某个商店的发布身份或签名条件，只阻断该渠道，不阻断
 源码开发、普通构建或其它已验证平台。公开制品只包含消费者验证所需的最小摘要、签名
 或证明及公开验证材料，不包含用户或客户端运行信息。每次 GitHub Release 调度只选择

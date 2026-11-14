@@ -23,7 +23,7 @@ final class OptionalCollaborationSettings extends StatelessWidget {
   });
 
   final PluginManagementBinding binding;
-  final CollaborationProjection projection;
+  final OptionalCollaborationProjection projection;
 
   @override
   Widget build(BuildContext context) {

@@ -4,7 +4,11 @@
     "path": "tools/client-version.json"
   },
   "promotion": {
-    "branches": ["nightly", "stable", "release"],
+    "branches": [
+      "nightly",
+      "stable",
+      "release"
+    ],
     "mergeMethod": "merge",
     "rulesetMutation": "forbidden",
     "linearHistory": false,
@@ -27,23 +31,22 @@
     ],
     "commonRequiredChecks": [
       "Branch flow",
-      "Commit identity",
-      "Auditor"
+      "Commit identity"
     ]
   },
   "publication": {
-    "owner": "apple-release-service",
-    "config": "tools/apple-release/macos-direct-arm64.json",
+    "owner": "release-plane-service",
+    "config": "tools/release-plane/macos-direct-arm64.json",
     "profiles": {
       "nightly": {
-        "config": "tools/apple-release/macos-direct-arm64-nightly.json",
+        "config": "tools/release-plane/macos-direct-arm64-nightly.json",
         "sourceBranch": "nightly",
         "releaseTrack": "nightly",
         "tag": "nightly",
         "mutablePrerelease": true
       },
       "stable": {
-        "config": "tools/apple-release/macos-direct-arm64.json",
+        "config": "tools/release-plane/macos-direct-arm64.json",
         "sourceBranch": "release",
         "releaseTrack": "stable",
         "tag": "v{version}",
@@ -59,11 +62,41 @@
       "installer-digest",
       "update-archive",
       "update-digest",
-      "update-manifest"
+      "update-manifest",
+      "independent-tool",
+      "independent-tool-digest"
     ],
     "exactDraftAssetSetRequired": true,
+    "independentPackageAssets": {
+      "payloadRoles": [
+        "claude-code-adapter-package-payload",
+        "antigravity-adapter-package-payload",
+        "kilo-adapter-package-payload",
+        "codex-adapter-package-payload",
+        "openclaw-adapter-package-payload",
+        "copilot-adapter-package-payload",
+        "pi-adapter-package-payload",
+        "appearance-converter-package-payload",
+        "analytics-package-payload",
+        "gateway-package-payload",
+        "cursor-adapter-package-payload",
+        "deepseek-adapter-package-payload",
+        "kimi-adapter-package-payload",
+        "hermes-adapter-package-payload",
+        "lico-agent-adapter-package-payload",
+        "opencode-adapter-package-payload",
+        "mcp-package-payload",
+        "telegram-channel-package-payload",
+        "package-payload"
+      ],
+      "indexRole": "package-index",
+      "producer": "tools/scripts/client-release-package-index.mjs",
+      "clientDraftCarries": false,
+      "signedIndexRequired": true
+    },
     "anonymousPublicInstallerDownloadRequired": true,
     "publicInstallerDigestRequired": true,
+    "independentToolSignatureNotaryAndPublicDigestRequired": true,
     "publicInstallAndStableLaunchRequired": true
   }
 }

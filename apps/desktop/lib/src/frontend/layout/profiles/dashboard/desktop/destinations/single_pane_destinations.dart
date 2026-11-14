@@ -1,60 +1,53 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/destinations/dashboard_destination_frame.dart';
-import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/presentation/dashboard_desktop_destination_presentations.dart';
-import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/tokens/dashboard_desktop_tokens.dart';
 
 Widget buildDashboardMonitoringDestination(
   BuildContext context,
   LayoutDestinationBuildContext data,
-) => _framed(data, ClientSection.monitoring);
+) => _framed(context, data, ClientSection.monitoring);
 
 Widget buildDashboardSkillHubDestination(
   BuildContext context,
   LayoutDestinationBuildContext data,
-) => _framed(data, ClientSection.skillHub);
+) => _framed(context, data, ClientSection.skillHub);
 
 Widget buildDashboardPluginManagementDestination(
   BuildContext context,
   LayoutDestinationBuildContext data,
-) => _framed(data, ClientSection.pluginManagement);
+) => _framed(context, data, ClientSection.pluginManagement);
 
-Widget buildDashboardMobileRelayDestination(
+Widget buildDashboardDevicesDestination(
   BuildContext context,
   LayoutDestinationBuildContext data,
-) => _framed(data, ClientSection.mobileRelay);
+) => _framed(context, data, ClientSection.devices);
 
 Widget buildDashboardModelsDestination(
   BuildContext context,
   LayoutDestinationBuildContext data,
-) => _framed(data, ClientSection.models);
+) => _framed(context, data, ClientSection.models);
 
-Widget buildDashboardSettingsDestination(
-  BuildContext context,
-  LayoutDestinationBuildContext data,
-) => LayoutDestinationPresentationScope(
-  settings: dashboardDesktopSettingsPresentation,
-  child: _framed(
-    data,
-    ClientSection.settings,
-    pagePadding: MessagingDesktopMetrics.mainPanePadding,
-  ),
-);
-
+/// Agent Hub replaces the list column and the chat pane in the plain
+/// style; its own pane scaffold supplies the title and the content inset.
 Widget buildDashboardAgentHubDestination(
   BuildContext context,
   LayoutDestinationBuildContext data,
-) => _framed(data, ClientSection.agentHub);
+) => _framed(context, data, ClientSection.agentHub);
 
+/// The shell's window ground owns the window fill and the ambient layer;
+/// destinations mount only their presentation frame so the clear pane
+/// stays readable through them.
 Widget _framed(
+  BuildContext context,
   LayoutDestinationBuildContext data,
   ClientSection destination, {
   EdgeInsetsGeometry pagePadding = EdgeInsets.zero,
-}) => DashboardDestinationFrame(
-  data: data,
-  expectedDestination: destination,
-  pagePadding: pagePadding,
-);
+}) {
+  return DashboardDestinationFrame(
+    data: data,
+    expectedDestination: destination,
+    pagePadding: pagePadding,
+  );
+}

@@ -38,6 +38,7 @@ String agentConversationTargetCompactDisplayName(TargetCandidate target) {
     'kimi-code' => 'Kimi Code',
     'grok' || 'xai-grok' => 'Grok',
     'command-code' || 'cmdc' => 'Command Code',
+
     'lico' || 'lico-agent' => 'Lico',
     'openclaw' => 'OpenClaw',
     'opencode' => 'OpenCode',

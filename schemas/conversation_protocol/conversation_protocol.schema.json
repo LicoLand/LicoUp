@@ -206,6 +206,33 @@
       }
     },
     {
+      "name": "agent.conversation.stop",
+      "kind": "command",
+      "lane": "conversation",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": true,
+      "cli": null
+    },
+    {
+      "name": "agent.conversation.force.preview",
+      "kind": "command",
+      "lane": "conversation",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": true,
+      "cli": null
+    },
+    {
+      "name": "agent.conversation.force.confirm",
+      "kind": "command",
+      "lane": "conversation",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": true,
+      "cli": null
+    },
+    {
       "name": "agent.conversation.steer",
       "kind": "command",
       "lane": "conversation",
@@ -388,6 +415,87 @@
         "flags": ["--stdin-json", "true"],
         "paramAliases": [{"argvIndex": 3, "param": "credentialId"}]
       }
+    },
+    {
+      "name": "data.home.relocate",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
+    },
+    {
+      "name": "data.home.status",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
+    },
+    {
+      "name": "data.home.recover",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
+    },
+    {
+      "name": "data.home.cleanup",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
+    },
+    {
+      "name": "selection.matrix",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
+    },
+    {
+      "name": "selection.policy.get",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
+    },
+    {
+      "name": "selection.policy.adopt",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
+    },
+    {
+      "name": "selection.policy.supersede",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
+    },
+    {
+      "name": "selection.policy.revoke",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
     }
   ]
 }

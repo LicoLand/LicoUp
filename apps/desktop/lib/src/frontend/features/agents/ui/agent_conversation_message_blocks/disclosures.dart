@@ -114,7 +114,7 @@ Color agentConversationMessageForeground(LicoThemeColors colors, String role) {
 
 Color agentConversationToneColor(LicoThemeColors colors, String tone) {
   return switch (tone) {
-    'raised' => colors.surfaceRaised,
+    'raised' => (colors.surfaceRaised),
     'surface' => colors.surface,
     'muted' => colors.surfaceLow,
     _ => colors.surfaceLow,

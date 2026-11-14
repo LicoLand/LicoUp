@@ -53,12 +53,12 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     // R_window = searchButtonRadius (16) + edgeInset (8) = 24.
     let windowCornerRadius: CGFloat = 24
 
-    // Clear (non-blurred) window backdrop: a plain container behind Flutter
-    // so transparent regions show the desktop sharply. Do not install
-    // NSVisualEffectView — system materials frost the wallpaper into a gray
-    // haze. The see-through black / light veil is painted in Flutter via
-    // MessagingDesktopMetrics.surfaceGlassTint.
-    let windowBackdropView = NSView(frame: flutterViewController.view.frame)
+    // Clear container: the Flutter shell owns the window ground (the
+    // galaxy in dark, the solid palette ground in light); this view only
+    // carries the continuous corner clipping.
+    let windowBackdropView = NSView(
+      frame: flutterViewController.view.frame
+    )
     windowBackdropView.autoresizingMask = [.width, .height]
     applyTransparentLayer(to: windowBackdropView)
     windowBackdropView.layer?.cornerRadius = windowCornerRadius
@@ -146,7 +146,14 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
           self.trafficLightAnchorRect = nil
         }
         self.alignTrafficLightButtonsWithTabBar()
-        result(nil)
+        // Reply with the light cluster's edges in the same logical
+        // coordinates so the layout can size its chrome around the actual
+        // lights; nil when the buttons are unavailable.
+        if let edges = self.trafficLightClusterEdges() {
+          result(["leading": edges.leading, "trailing": edges.trailing])
+        } else {
+          result(nil)
+        }
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -173,6 +180,30 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     _ notification: Notification
   ) {
     alignTrafficLightButtonsWithTabBar()
+  }
+
+  /// Both cluster edges in content-view coordinates (y-down logical
+  /// points): `leading` is the close button's minX, `trailing` the zoom
+  /// button's maxX. The x axis is unaffected by contentView flipping.
+  private func trafficLightClusterEdges() -> (
+    leading: Double, trailing: Double
+  )? {
+    guard
+      let closeButton = self.standardWindowButton(.closeButton),
+      let zoomButton = self.standardWindowButton(.zoomButton),
+      let contentView = self.contentView
+    else {
+      return nil
+    }
+    let closeFrame = closeButton.superview?.convert(
+      closeButton.frame,
+      to: contentView
+    ) ?? closeButton.frame
+    let zoomFrame = zoomButton.superview?.convert(
+      zoomButton.frame,
+      to: contentView
+    ) ?? zoomButton.frame
+    return (Double(closeFrame.minX), Double(zoomFrame.maxX))
   }
 
   private func alignTrafficLightButtonsWithTabBar() {

@@ -190,7 +190,9 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
                 ),
                 FilledButton.tonal(
                   key: const ValueKey('gateway-service-stop'),
-                  style: FilledButton.styleFrom(foregroundColor: colors.error),
+                  style: colors.isDark
+                      ? FilledButton.styleFrom(foregroundColor: colors.error)
+                      : null,
                   onPressed: _canStop
                       ? () =>
                             widget.intents.send(const SetGatewayEnabled(false))

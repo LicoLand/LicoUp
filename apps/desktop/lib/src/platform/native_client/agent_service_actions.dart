@@ -34,6 +34,7 @@ class NativeCommandActions {
     'kimi-code',
     'grok',
     'command-code',
+
     'pi',
     'deepseek-harness',
   ];
@@ -229,11 +230,15 @@ class NativeCommandActions {
       ]);
     }
     final output = await runner.runCliWithStdin(
-      const [
+      [
         'targets',
         'scan',
         '--include-accessible-environments',
         'true',
+        if (enableAgentCliModelLookup) ...[
+          '--enable-agent-cli-model-lookup',
+          'true',
+        ],
         '--stdin-json',
         'true',
       ],

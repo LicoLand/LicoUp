@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:licoup/src/contracts/client_lifecycle_diagnostics.dart';
-import 'package:licoup/src/platform/storage/client_memory_diagnostic_log.dart';
+import 'package:licoup/src/platform/storage/bounded_json_lines.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:path/path.dart' as p;
 
@@ -72,7 +72,7 @@ final class ClientLifecycleDiagnosticLog
       await handle.close();
     }
 
-    final retained = retainMemoryDiagnosticTail(
+    final retained = retainJsonLinesTail(
       await file.readAsBytes(),
       encoded,
       maxBytes,

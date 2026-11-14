@@ -164,7 +164,7 @@ class AgentConversationAssistantBubbleBlock extends StatelessWidget {
         constraints: BoxConstraints(maxWidth: adapter.assistantMaxWidth),
         child: DecoratedBox(
           decoration: continuousHairlineDecoration(
-            color: colors.surfaceLow,
+            color: (colors.surfaceLow),
             borderRadius: BorderRadius.circular(LicoRadius.card),
             stroke: colors.line,
           ),

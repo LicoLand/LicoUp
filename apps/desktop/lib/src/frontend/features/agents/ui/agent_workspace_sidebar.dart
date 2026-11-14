@@ -5,6 +5,8 @@ import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart'
+    show conversationNow;
 import 'package:licoup/src/frontend/features/agents/ui/conversation_session_ordering.dart';
 import 'package:licoup/src/frontend/features/agents/ui/history_session_panel.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -13,6 +15,7 @@ import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_selection_highlight.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
@@ -741,7 +744,7 @@ class _SidebarConversationListViewState
   bool _scrollStateScheduled = false;
 
   List<SidebarListItem> _resolveItems() {
-    final now = DateTime.now();
+    final now = conversationNow();
     final bucketDay = DateTime(now.year, now.month, now.day);
     final runningSignature = _runningSignature(
       widget.entries,
@@ -994,7 +997,9 @@ class _SidebarConversationRow extends StatelessWidget {
               color: activityColor,
             ),
           );
-    final titleColor = colors.text;
+    final titleColor = selected && !LicoSelectionLight.isStarlight(context)
+        ? colors.selectionInk
+        : colors.text;
     final subtitleColor = colors.textMuted;
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
@@ -1003,99 +1008,97 @@ class _SidebarConversationRow extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(LicoRadius.floating),
-          hoverColor: colors.isDark
-              ? Colors.white.withAlpha(8)
-              : Colors.black.withAlpha(8),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              // Neutral gray-white selection tint for this list — solid brand
-              // yellow reads too loud against the dashboard's dark panes.
-              color: selected
-                  ? (colors.isDark
-                        ? Colors.white.withAlpha(26)
-                        : Colors.black.withAlpha(16))
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(LicoRadius.floating),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: titleColor,
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.1,
-                          height: 1.25,
-                        ),
-                      ),
-                    ),
-                    if (running)
-                      Tooltip(
-                        message: strings.working,
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: SizedBox.square(
-                            key: Key('agents-sidebar-running-${session.id}'),
-                            dimension: 13,
-                            child: LicoSpinningRefreshIcon(
-                              size: 13,
-                              color: selected ? colors.text : colors.textMuted,
-                            ),
+          hoverColor: LicoSelectionLight.hoverFill(context),
+          child: LicoSelectionLight(
+            selected: selected,
+            radius: LicoRadius.floating,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(LicoRadius.floating),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: titleColor,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.1,
+                            height: 1.25,
                           ),
                         ),
-                      )
-                    else if (activityDot != null)
-                      Tooltip(
-                        message: activityTooltip,
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child:
-                              entry.activity ==
-                                  AgentConversationTabActivity.workFinished
-                              ? _SidebarPulsingActivityDot(child: activityDot)
-                              : activityDot,
+                      ),
+                      if (running)
+                        Tooltip(
+                          message: strings.working,
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: SizedBox.square(
+                              key: Key('agents-sidebar-running-${session.id}'),
+                              dimension: 13,
+                              child: LicoSpinningRefreshIcon(
+                                size: 13,
+                                color: selected
+                                    ? colors.text
+                                    : colors.textMuted,
+                              ),
+                            ),
+                          ),
+                        )
+                      else if (activityDot != null)
+                        Tooltip(
+                          message: activityTooltip,
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child:
+                                entry.activity ==
+                                    AgentConversationTabActivity.workFinished
+                                ? _SidebarPulsingActivityDot(child: activityDot)
+                                : activityDot,
+                          ),
                         ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    if (showAgentIcon) ...[
-                      AgentBrandIcon(
-                        target: entry.brandTarget,
-                        size: 14,
-                        iconSize: 10,
-                        selected: selected,
-                        detected: entry.brandDetected,
-                      ),
-                      const SizedBox(width: 6),
                     ],
-                    Expanded(
-                      child: Text(
-                        project,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: subtitleColor,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w400,
-                          height: 1.15,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      if (showAgentIcon) ...[
+                        AgentBrandIcon(
+                          target: entry.brandTarget,
+                          size: 14,
+                          iconSize: 10,
+                          selected: selected,
+                          detected: entry.brandDetected,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Expanded(
+                        child: Text(
+                          project,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: subtitleColor,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w400,
+                            height: 1.15,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),

@@ -7,11 +7,11 @@
 
 | Pull Request 路径 | 必需聚合检查 | 证明的事实 |
 | --- | --- | --- |
-| 动作前缀分支 → `nightly` | `Client required` | Source policy 与改动实际涉及的 Flutter、Rust、Android 或依赖通道通过。 |
+| 动作前缀分支 → `nightly` | `Client required` | Source policy 与改动实际涉及的 Flutter、Rust 或依赖通道通过。 |
 | `nightly` → `stable` | `Stable client` | macOS arm64 客户端只构建并安装一次，随后启动同一个已安装 App，并通过有界存活验证。 |
 | `stable` → `release` | `Release ready` | 仅运行 Node 发布策略；不重复构建、安装、发布签名或公开发布客户端。 |
 
-三个目标分支都要求 `Branch flow`、`Commit identity` 和 `Auditor`，并且只额外
+三个目标分支都要求 `Branch flow` 和 `Commit identity`，并且只额外
 要求各自入站路径拥有的聚合检查。三段都使用 merge commit。发布切分期间不得改动
 Rulesets、Required Check 名称或默认分支。
 
@@ -64,7 +64,7 @@ LicoUp 的 bundle identifier，产品名称不同的应用也不会被删除。�
 ## Apple 委托发布
 
 Nightly 与 Stable 是同一 LicoUp 身份的发布轨道。Nightly 从 `nightly` 使用
-`tools/apple-release/macos-direct-arm64-nightly.json` 和固定的 `nightly` 预发布；
+`tools/release-plane/macos-direct-arm64-nightly.json` 和固定的 `nightly` 预发布；
 Stable 从 `release` 使用现有配置和不可变的 `v{version}` 标签。两者清单都绑定轨道
 和准确的内嵌迁移前沿。Stable 必须不是预发布且版本严格更新；相同版本不会提供给
 Nightly。参见[客户端更新与状态迁移](../architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md)。
@@ -72,37 +72,79 @@ Nightly。参见[客户端更新与状态迁移](../architecture/CLIENT-UPDATE-A
 同仓库 `stable` → `release` Pull Request 合并后，`client-source-release.yml`
 只发布精确 merge commit 的源码。它验证第二父提交等于已接受的 stable head，并创建
 `v{version}`、`LicoUp {version}`、`LicoUp-source-v{version}.tar.gz` 及其 `.sha256`。
-Release 正文绑定 `apple-release-source:v1:{revision}`。该流程不构建、签名、公证或
+Release 正文绑定 `release-plane-source:v1:{revision}`。该流程不构建、签名、公证或
 上传二进制；重试保留公开标签与制品，只允许匹配的草稿补齐缺少的源码文件。
 
-Apple Release 在现有干净仓库的 `release` 分支上使用
-`tools/apple-release/macos-direct-arm64.json`，本地源码必须等于 `origin/release`。
+the release plane 在现有干净仓库的 `release` 分支上使用
+`tools/release-plane/macos-direct-arm64.json`，本地源码必须等于 `origin/release`。
 全部产品适配器位于 `tools/scripts/macos-release/`：`gate-source.mjs`、
 `gate-release-policy.mjs`、`build.mjs` 和 `write-update-manifest.mjs`。
 依赖准备 `npm ci` 由引擎选择。构建适配器固定 stable 轨道并输出
 `build/apps/desktop/runnable/macos/release/LicoUp.app`；更新适配器绑定标签、仓库和版本，
-输出 `build/apple-release/LicoUp-update-manifest.json`。
+输出 `build/release-plane/LicoUp-update-manifest.json`。
 
 引擎在精确 release 修订创建 `macos-release-candidate`，不创建提交或 Pull Request。
 完成依赖准备和产品门禁后推送同一个候选，观察绑定精确 SHA、分支、工作流、run 和
-attempt 的 `Branch flow`、`Commit identity`、`Auditor`、`Release ready` 成功作业后，
+attempt 的 `Branch flow`、`Commit identity`、`Release ready` 成功作业后，
 才允许构建或签名。缺少或运行中的检查持续等待同一个候选，没有取消截止时间；失败或
 跳过均阻止发布。候选永不合回，仅在公开验证完成后清理。
 
 强制 Apple 合规技能委托以下只读权威检查：
 
 ```sh
-apple-release compliance check --project . --config tools/apple-release/macos-direct-arm64.json
+release-plane compliance check --project . --config tools/release-plane/macos-direct-arm64.json
 ```
 
 提交前必须为未改变的会话取得 `PASS`。检查验证源码、元数据、工具链、两种 entitlement、
 隐私、描述文件/证书、更新密钥及公证权限/队列，不执行发布。已有 `In Progress` 提交时
 禁止新会话。真实 App/归档上传前仍须执行制品检查；构建与公证等待均无取消截止时间。
 
-Apple Release 保留源码两项资产，只补充五项 macOS 资产：`LicoUp-macos-arm64.dmg`、
-其 `.sha256`、`LicoUp-macos-arm64-update.zip`、其 `.sha256` 和
-`LicoUp-update-manifest.json`。唯一公开 Release 因此包含七项不可变资产；冲突时停止，
-绝不替换公开文件。
+the release plane 保留源码两项资产，补充声明的 macOS 草稿资产：
+`LicoUp-macos-arm64.dmg`、其 `.sha256`、`LicoUp-macos-arm64-update.zip`、
+其 `.sha256`、`LicoUp-update-manifest.json`，以及独立迁移工具
+`LicoUp-migrate-macos-arm64` 及其 `.sha256`。唯一公开 Release 因此包含九项不可变
+资产；冲突时停止，绝不替换公开文件。草稿资产集是封闭的：发布权威只接受其声明的角色。
+
+## 独立包资产
+
+`tools/scripts/client-release-package-index.mjs` 负责为每个已声明的第一方包准备一份载荷，
+以及客户端读取的已签名包索引。这些资产以自身名义发布，不进入上述客户端草稿；客户端构建
+既不签名也不发布它们：
+
+```sh
+npm run client:release:package-index:plan
+npm run client:release:package-index:fixture
+npm run client:release:package-index:build
+node tools/scripts/client-release-package-index.mjs verify --index <index> --payloads <directory>
+```
+
+`tools/client-release-package-set.json` 是声明集：每一项给出该包的来源与自身载荷发布时
+使用的发布载荷角色；发布目标为每个角色各声明一次对应资产。`crates/` 与 `components/`
+包目录位于 LicoUp-CLI 组件仓库，Rust workspace 归其所有，每个真实包的载荷也由该仓库产出：
+凡以 `.licopkg` 结尾的来源，命名的是组件仓库构建并交付的制品，索引构建前先取入原生制品
+目录；其余来源则是本树自行打包的仓库内包目录——目前仅有合成测试包一个。声明集在拆分两侧
+各自保证完整：组件仓库枚举所有带有 `manifest.json` 的 `crates/*/package` 与
+`components/*/package` 目录，本树的发布契约测试枚举
+`tests/fixtures/client_package_release/` 下的仓库内包目录，并要求其余每个已声明来源
+均以 `.licopkg` 结尾，而不是复述一份名单。`plan` 不写任何
+文件，只报告每个已声明包的身份、版本、客户端兼容范围、载荷角色与载荷摘要。`fixture` 用
+本次运行在内存中生成的密钥对打包整个声明集：不读取任何受保护密钥，仅作为流水线证据，
+不是发布。`build` 读取发布权威的两把私钥
+（`LICO_PACKAGE_INDEX_OFFLINE_ROOT_KEY` 与
+`LICO_PACKAGE_INDEX_ONLINE_SIGNING_KEY`），缺少任一把即失败关闭，并为每个已声明包各写
+一份载荷、再写入唯一的已签名索引到 `build/apps/desktop/release-packages/macos`。
+`verify` 重新校验索引、其 Ed25519 角色签名、载荷摘要以及每个包的原生转换入口。
+
+每个包在自身载荷内声明身份、版本、客户端兼容列表与原生转换入口，已签名索引连同载荷
+摘要重新发布该声明；客户端可在无网络服务的情况下导入离线载荷。仓库内的源目录保存清单、
+发布声明、声明贡献所引用的资源以及预留的原生入口；发布阶段先把编译产物放到该入口，再由
+`build` 打包该目录，而打包工具会拒绝任何由脚本承载的入口。交付的 `.licopkg` 制品会以
+同一方式读回校验，签名摘要绑定的是包自身的文档与原生入口，而非调用方的声明。任何发布之前，合成的测试包会被
+同契约下的真实适配器载荷替换。上述四条命令都在面向发布的签名、公证、打
+tag、上传、安装与客户端启动之前停止：这些仍属于上文单独授权的 the release plane 操作。
+
+若要把这些资产并入客户端草稿，必须先由发布负责人让发布权威的制品契约接受这些包
+角色；该契约位于本仓库之外。
 
 配置本机发布授权并检查发布运行：
 
@@ -136,5 +178,5 @@ Stable 版本。
 已上传制品本身都不代表成功；终态还必须完成精确公开制品对账、匿名下载安装包、摘要
 校验、安装与稳定启动。
 
-最后一段晋升合并后自动发布源码。macOS 签名、公证及五项平台资产仍由单独授权的
-Apple Release 操作完成。
+最后一段晋升合并后自动发布源码。macOS 签名、公证与平台资产仍由单独授权的 the release plane
+操作完成；独立包资产在本地准备，并由其自身单独授权的发布步骤发布。

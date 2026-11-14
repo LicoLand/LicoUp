@@ -18,9 +18,11 @@ final class LlmGatewayDiagnosticLog implements LlmGatewayDiagnosticSink {
 
   @override
   Future<void> record(LlmGatewayDiagnosticRecord record) {
-    final write = _pendingWrite.then((_) => _append(record));
-    _pendingWrite = write.catchError((_) {});
-    return write;
+    return _portableData.withAppManagedWriter(() {
+      final write = _pendingWrite.then((_) => _append(record));
+      _pendingWrite = write.catchError((_) {});
+      return write;
+    });
   }
 
   Future<void> _append(LlmGatewayDiagnosticRecord record) async {

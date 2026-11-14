@@ -38,6 +38,32 @@ void main() {
       },
     );
 
+    test(
+      'an orphaned sidecar cannot keep the lock alive after the owner dies',
+      () async {
+        if (!Platform.isMacOS && !Platform.isLinux) {
+          return;
+        }
+        final guard = await SingleInstanceGuard.tryAcquire(lockFile);
+        expect(guard, isNotNull);
+        // Any process spawned while the owner runs must lose the lock
+        // descriptor at exec; otherwise a surviving orphan holds the lock
+        // forever and silently rejects every later launch.
+        final orphan = await Process.start('/bin/sh', ['-c', 'sleep 30']);
+        addTearDown(() => orphan.kill());
+        // Simulates the owner dying: the descriptor is dropped without an
+        // explicit unlock, exactly like a crash or SIGKILL.
+        guard!.debugCloseWithoutUnlock();
+        final next = await SingleInstanceGuard.tryAcquire(lockFile);
+        expect(
+          next,
+          isNotNull,
+          reason: 'an inherited lock descriptor must die with the owner',
+        );
+        await next?.release();
+      },
+    );
+
     test('lock can be reclaimed after release', () async {
       final first = await SingleInstanceGuard.tryAcquire(lockFile);
       await first!.release();
@@ -53,7 +79,7 @@ void main() {
       await guard!.release();
     });
 
-    test('lock path stays inside the canonical client state root', () async {
+    test('test override lock path stays inside its isolated root', () async {
       final dataDir = Directory('${stateDir.path}/portable');
       final first = await SingleInstanceGuard.lockFileFor(
         PortableDataRoot(dataDirectoryOverride: dataDir),
@@ -69,6 +95,32 @@ void main() {
         ),
       );
       expect(other.path, isNot(first.path));
+    });
+
+    test('desktop boot lock stays outside a movable root', () async {
+      final home = await Directory.systemTemp.createTemp('lico-boot-home-');
+      addTearDown(() => home.delete(recursive: true));
+      final first = await SingleInstanceGuard.lockFileFor(
+        PortableDataRoot(
+          environmentOverride: {
+            'HOME': home.path,
+            'LICOUP_HOME': p.join(home.path, 'one'),
+          },
+        ),
+      );
+      final second = await SingleInstanceGuard.lockFileFor(
+        PortableDataRoot(
+          environmentOverride: {
+            'HOME': home.path,
+            'LICOUP_HOME': p.join(home.path, 'two'),
+          },
+        ),
+      );
+
+      expect(first.path, second.path);
+      expect(p.basename(first.path), 'client.instance.lock');
+      expect(await Directory(p.join(home.path, 'one')).exists(), isFalse);
+      expect(await Directory(p.join(home.path, 'two')).exists(), isFalse);
     });
 
     test('lock path normalizes macos data volume homes', () {

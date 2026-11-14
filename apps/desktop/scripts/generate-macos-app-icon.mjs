@@ -17,39 +17,6 @@ const iconSetRoot = path.join(
   "Assets.xcassets",
   "AppIcon.appiconset"
 );
-const iosIconSetRoot = path.join(
-  workspaceRoot,
-  "apps",
-  "desktop",
-  "ios",
-  "Runner",
-  "Assets.xcassets",
-  "AppIcon.appiconset",
-);
-const androidIconRoots = new Map([
-  [48, "mipmap-mdpi"],
-  [72, "mipmap-hdpi"],
-  [96, "mipmap-xhdpi"],
-  [144, "mipmap-xxhdpi"],
-  [192, "mipmap-xxxhdpi"],
-]);
-const iosIcons = new Map([
-  ["Icon-App-20x20-1x.png", 20],
-  ["Icon-App-20x20-2x.png", 40],
-  ["Icon-App-20x20-3x.png", 60],
-  ["Icon-App-29x29-1x.png", 29],
-  ["Icon-App-29x29-2x.png", 58],
-  ["Icon-App-29x29-3x.png", 87],
-  ["Icon-App-40x40-1x.png", 40],
-  ["Icon-App-40x40-2x.png", 80],
-  ["Icon-App-40x40-3x.png", 120],
-  ["Icon-App-60x60-2x.png", 120],
-  ["Icon-App-60x60-3x.png", 180],
-  ["Icon-App-76x76-1x.png", 76],
-  ["Icon-App-76x76-2x.png", 152],
-  ["Icon-App-83.5x83.5-2x.png", 167],
-  ["Icon-App-1024x1024-1x.png", 1024],
-]);
 const windowsIconSizes = [16, 24, 32, 48, 64, 128, 256];
 const windowsIconPath = path.join(
   workspaceRoot,
@@ -99,25 +66,6 @@ function iconPath(size) {
   return path.join(iconSetRoot, `app_icon_${size}.png`);
 }
 
-function androidIconPath(size) {
-  return path.join(
-    workspaceRoot,
-    "apps",
-    "desktop",
-    "android",
-    "app",
-    "src",
-    "main",
-    "res",
-    androidIconRoots.get(size),
-    "ic_launcher.png",
-  );
-}
-
-function iosIconPath(fileName) {
-  return path.join(iosIconSetRoot, fileName);
-}
-
 function readPngSize(filePath) {
   const bytes = readFileSync(filePath);
   const pngSignature = "89504e470d0a1a0a";
@@ -147,16 +95,6 @@ function createManifest(sourcePath) {
         path: path.relative(workspaceRoot, deployedRasterPath).replaceAll(path.sep, "/"),
         digest: sha256(deployedRasterPath),
       },
-      android: [...androidIconRoots.keys()].map((size) => ({
-        size,
-        path: path.relative(workspaceRoot, androidIconPath(size)).replaceAll(path.sep, "/"),
-        digest: sha256(androidIconPath(size)),
-      })),
-      ios: [...iosIcons].map(([fileName, size]) => ({
-        size,
-        path: path.relative(workspaceRoot, iosIconPath(fileName)).replaceAll(path.sep, "/"),
-        digest: sha256(iosIconPath(fileName)),
-      })),
       windows: {
         sizes: windowsIconSizes,
         path: path.relative(workspaceRoot, windowsIconPath).replaceAll(path.sep, "/"),
@@ -202,18 +140,6 @@ function verifyCommittedIcons(sourcePath) {
     const dimensions = readPngSize(iconPath(expectedIcon.size));
     if (dimensions.width !== expectedIcon.size || dimensions.height !== expectedIcon.size) {
       throw new Error(`Committed LicoUp app icon has invalid dimensions: ${expectedIcon.path}`);
-    }
-  }
-  for (const [size] of androidIconRoots) {
-    const dimensions = readPngSize(androidIconPath(size));
-    if (dimensions.width !== size || dimensions.height !== size) {
-      throw new Error(`Committed LicoUp Android icon has invalid dimensions: ${size}`);
-    }
-  }
-  for (const [fileName, size] of iosIcons) {
-    const dimensions = readPngSize(iosIconPath(fileName));
-    if (dimensions.width !== size || dimensions.height !== size) {
-      throw new Error(`Committed LicoUp iOS icon has invalid dimensions: ${fileName}`);
     }
   }
 }
@@ -295,26 +221,6 @@ function main() {
 
   for (const size of iconSizes) {
     run("sips", ["-z", String(size), String(size), renderedPath, "--out", iconPath(size)]);
-  }
-  for (const [size] of androidIconRoots) {
-    run("sips", [
-      "-z",
-      String(size),
-      String(size),
-      renderedPath,
-      "--out",
-      androidIconPath(size),
-    ]);
-  }
-  for (const [fileName, size] of iosIcons) {
-    run("sips", [
-      "-z",
-      String(size),
-      String(size),
-      renderedPath,
-      "--out",
-      iosIconPath(fileName),
-    ]);
   }
   writeWindowsIcon(renderedPath, tempDir);
   writeFileSync(manifestPath, `${JSON.stringify(createManifest(options.sourcePath), null, 2)}\n`);

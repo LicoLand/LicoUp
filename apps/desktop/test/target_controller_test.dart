@@ -34,7 +34,6 @@ void main() {
       portableData: Object(),
       packagedTargetIds: const ['cursor'],
       isMobileRuntime: () => false,
-      scanMobileTargets: () async => const [],
       onTargetsSettled: () {},
       loadSelectedConversation: () async {},
       shouldLoadSelectedConversation: () => false,
@@ -90,7 +89,6 @@ void main() {
         portableData: Object(),
         packagedTargetIds: const ['kimi-code'],
         isMobileRuntime: () => false,
-        scanMobileTargets: () async => const [],
         onTargetsSettled: () {},
         loadSelectedConversation: () async {},
         shouldLoadSelectedConversation: () => false,
@@ -122,7 +120,6 @@ void main() {
       portableData: Object(),
       packagedTargetIds: const ['codex'],
       isMobileRuntime: () => false,
-      scanMobileTargets: () async => const [],
       onTargetsSettled: () {},
       loadSelectedConversation: () async {},
       shouldLoadSelectedConversation: () => false,
@@ -228,14 +225,12 @@ void main() {
       ],
     });
 
-    expect(TargetPolicy.hasSelectedAgentModelCatalog(historyOnly), isFalse);
-    expect(TargetPolicy.hasSelectedAgentModelCatalog(native), isTrue);
+    expect(historyOnly.hasSelectedAgentModelCatalog, isFalse);
+    expect(native.hasSelectedAgentModelCatalog, isTrue);
     expect(
-      TargetPolicy.hasSelectedAgentModelCatalog(
-        _target('opencode').withModelCatalog({
-          'sources': ['opencode-cli:models'],
-        }),
-      ),
+      _target('opencode').withModelCatalog({
+        'sources': ['opencode-cli:models'],
+      }).hasSelectedAgentModelCatalog,
       isTrue,
     );
   });
@@ -248,8 +243,69 @@ void main() {
       ],
     });
 
-    expect(TargetPolicy.hasSelectedAgentModelCatalog(target), isTrue);
+    expect(target.hasSelectedAgentModelCatalog, isTrue);
   });
+
+  test(
+    'DeepSeek installed catalog settles once while explicit refresh still probes',
+    () async {
+      final incomplete = _deepSeek(modelCatalog: const {});
+      final complete = _deepSeek(
+        modelCatalog: {
+          'sources': ['deepseek-harness-installed-adapter'],
+          'models': [
+            {
+              'name': 'deepseek-flash',
+              'providerId': 'deepseek-official',
+              'reasoningEfforts': ['off', 'low', 'high', 'max'],
+            },
+          ],
+        },
+      );
+      final gateway = _Gateway(
+        probes: {'deepseek-harness': incomplete},
+        selectedProbes: {'deepseek-harness': complete},
+      );
+      final controller = TargetController(
+        gateway: gateway,
+        snapshotRepository: _SnapshotRepository(),
+        tabOrderRepository: _TabOrderRepository(),
+        portableData: Object(),
+        packagedTargetIds: const ['deepseek-harness'],
+        isMobileRuntime: () => false,
+        onTargetsSettled: () {},
+        loadSelectedConversation: () async {},
+        shouldLoadSelectedConversation: () => false,
+        onStatus: (_) {},
+      );
+      addTearDown(controller.dispose);
+      controller.replaceTargets([incomplete]);
+
+      expect(
+        await controller.ensureConversationRuntimeBinding('deepseek-harness'),
+        isTrue,
+      );
+      while (controller.isRefreshingNativeModelCatalog('deepseek-harness')) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(gateway.catalogLookups, [true]);
+      expect(controller.targets.single.hasSelectedAgentModelCatalog, isTrue);
+      expect(
+        (controller.targets.single.modelCatalog['models'] as List)
+            .single['name'],
+        'deepseek-flash',
+      );
+
+      expect(
+        await controller.ensureConversationRuntimeBinding('deepseek-harness'),
+        isTrue,
+      );
+      expect(gateway.catalogLookups, [true]);
+
+      await controller.refreshAgentModelCatalogs(const ['deepseek-harness']);
+      expect(gateway.catalogLookups, [true, true]);
+    },
+  );
 
   test(
     'a persisted native catalog is refreshed once in each process',
@@ -281,7 +337,6 @@ void main() {
         portableData: Object(),
         packagedTargetIds: const ['cursor'],
         isMobileRuntime: () => false,
-        scanMobileTargets: () async => const [],
         onTargetsSettled: () {},
         loadSelectedConversation: () async {},
         shouldLoadSelectedConversation: () => false,
@@ -344,7 +399,6 @@ void main() {
         portableData: Object(),
         packagedTargetIds: const ['cursor'],
         isMobileRuntime: () => false,
-        scanMobileTargets: () async => const [],
         onTargetsSettled: () {},
         loadSelectedConversation: () async {},
         shouldLoadSelectedConversation: () => false,
@@ -358,9 +412,7 @@ void main() {
         isTrue,
       );
       final deadline = DateTime.now().add(const Duration(seconds: 1));
-      while (!TargetPolicy.hasSelectedAgentModelCatalog(
-            controller.targets.single,
-          ) &&
+      while (!controller.targets.single.hasSelectedAgentModelCatalog &&
           DateTime.now().isBefore(deadline)) {
         await Future<void>.delayed(Duration.zero);
       }
@@ -442,7 +494,6 @@ void main() {
         portableData: Object(),
         packagedTargetIds: const ['codex', 'claude-code'],
         isMobileRuntime: () => false,
-        scanMobileTargets: () async => const [],
         onTargetsSettled: () {},
         loadSelectedConversation: () async {},
         shouldLoadSelectedConversation: () => false,
@@ -483,7 +534,6 @@ void main() {
         portableData: Object(),
         packagedTargetIds: const [],
         isMobileRuntime: () => false,
-        scanMobileTargets: () async => const [],
         onTargetsSettled: () {},
         loadSelectedConversation: () async {},
         shouldLoadSelectedConversation: () => false,
@@ -508,7 +558,6 @@ void main() {
       portableData: Object(),
       packagedTargetIds: const ['codex'],
       isMobileRuntime: () => false,
-      scanMobileTargets: () async => const [],
       onTargetsSettled: () {},
       loadSelectedConversation: () async =>
           throw StateError('native history read failed'),
@@ -544,7 +593,6 @@ void main() {
       portableData: Object(),
       packagedTargetIds: const ['codex'],
       isMobileRuntime: () => false,
-      scanMobileTargets: () async => const [],
       onTargetsSettled: () {},
       loadSelectedConversation: () {
         loadCalls += 1;
@@ -588,7 +636,6 @@ void main() {
       portableData: Object(),
       packagedTargetIds: const ['codex'],
       isMobileRuntime: () => false,
-      scanMobileTargets: () async => const [],
       onTargetsSettled: () {},
       loadSelectedConversation: () async {},
       shouldLoadSelectedConversation: () => false,
@@ -628,6 +675,20 @@ TargetCandidate _cursor({required Map<String, dynamic> modelCatalog}) =>
       configured: true,
       confidence: 1,
       binaryPath: ['', 'synthetic', 'bin', 'cursor-agent'].join('/'),
+      adapterStatus: 'implemented',
+      adapterCapabilities: const {'conversationDriver': 'implemented'},
+      modelCatalog: modelCatalog,
+    );
+
+TargetCandidate _deepSeek({required Map<String, dynamic> modelCatalog}) =>
+    TargetCandidate(
+      target: 'deepseek-harness',
+      label: 'DeepSeek Harness',
+      kind: 'cli',
+      status: 'detected',
+      configured: true,
+      confidence: 1,
+      binaryPath: ['', 'synthetic', 'bin', 'dsh'].join('/'),
       adapterStatus: 'implemented',
       adapterCapabilities: const {'conversationDriver': 'implemented'},
       modelCatalog: modelCatalog,

@@ -4,7 +4,7 @@ English (normative) · [简体中文](COMPATIBILITY.zh-CN.md) · [Documentation]
 
 Product version: `0.3.0`
 
-Generated sources: `tools/client-support-matrix.json`, `tools/client-release-targets.json`, `tools/client-version.json`, `crates/licoup-native/resources/agent-conversation-drivers.json`, `crates/licoup-native/resources/agent-native-capabilities.json`, and `crates/licoup-native/resources/agent-conversation-readiness.json`.
+Generated sources: `tools/client-support-matrix.json`, `tools/client-release-targets.json`, `tools/client-version.json`, `tools/agent-conversation-drivers.json`, `tools/agent-native-capabilities.json`, `tools/agent-conversation-readiness.json`, and `tools/client-state-migration-frontier.json`.
 
 Update with `npm run client:support-matrix:sync`; verify with `npm run client:support-matrix:check`. Do not edit this projection by hand.
 
@@ -14,18 +14,15 @@ A build target is not a support claim.
 
 LicoUp for macOS supports Apple Silicon (`arm64`) on macOS 11 or later. Intel (`x86_64`) Macs and Rosetta are outside the supported product boundary; no Intel app or update package is produced.
 
-| Runtime target | Build | Physical/device evidence | Client | Peer encryption | Mobile relay |
-| --- | --- | --- | --- | --- | --- |
-| windows-x64 | available | not claimed | preview | preview | preview |
-| windows-arm64 | unavailable | not claimed | unverified | unverified | unverified |
-| macos-arm64 | available | not claimed | supported | preview | preview |
-| linux-glibc-x64 | available | not claimed | preview | preview | preview |
-| linux-glibc-arm64 | available | not claimed | preview | preview | preview |
-| linux-musl-x64 | available | not claimed | preview | preview | preview |
-| linux-musl-arm64 | available | not claimed | preview | preview | preview |
-| android-arm64 | available | not claimed | supported | preview | preview |
-| ios-simulator-arm64 | available | simulator only | supported | preview | preview |
-| ios-arm64 | unavailable | not claimed | unverified | unverified | unverified |
+| Runtime target | Build | Physical/device evidence | Client | Devices |
+| --- | --- | --- | --- | --- |
+| windows-x64 | available | not claimed | preview | preview |
+| windows-arm64 | unavailable | not claimed | unverified | unverified |
+| macos-arm64 | available | not claimed | supported | preview |
+| linux-glibc-x64 | available | not claimed | preview | preview |
+| linux-glibc-arm64 | available | not claimed | preview | preview |
+| linux-musl-x64 | available | not claimed | preview | preview |
+| linux-musl-arm64 | available | not claimed | preview | preview |
 
 ## Release package targets
 
@@ -47,9 +44,15 @@ Runtime targets and release packages are intentionally different authorities. Ea
 | linux-alpine-apk-x64 | linux-musl-x64 | linux | alpine-repository | apk | x64 | available | not eligible | package-repository |
 | linux-appimage-arm64 | linux-glibc-arm64 | linux | direct | appimage | arm64 | available | not eligible | appimage-update-information |
 | linux-appimage-x64 | linux-glibc-x64 | linux | direct | appimage | x64 | available | not eligible | appimage-update-information |
-| android-direct-arm64-v8a | android-arm64 | android | direct | apk | arm64-v8a | available | not eligible | manual-download |
-| android-play-arm64-v8a | android-arm64 | android | google-play | aab | arm64-v8a | available | not eligible | store-managed |
-| ios-app-store-arm64 | ios-arm64 | ios | app-store | ipa | arm64 | available | not eligible | store-managed |
+
+## State migration endpoints
+
+The embedded frontier catalog declares exactly two conversion endpoints: the last published format as the source and this client's own target format as the destination. A root that names any other format is refused as an unsupported source; older published formats are release history, not additional endpoints.
+
+| Endpoint | Format identity |
+| --- | --- |
+| Source (last published) | `licoup-state-0.1.1` |
+| Destination (this client) | `licoup-state-0.3.0` |
 
 ## Meaning
 

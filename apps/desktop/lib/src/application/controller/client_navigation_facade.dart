@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:licoup/src/application/controller/client_agent_usage_facade.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/application/controller/client_conversation_facade.dart';
-import 'package:licoup/src/application/controller/client_mobile_relay_facade.dart';
 import 'package:licoup/src/application/controller/client_skill_hub_facade.dart';
 import 'package:licoup/src/application/controller/client_target_facade.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
@@ -11,12 +10,12 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/conversation/conversation_session_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
+import 'package:licoup/src/application/features/devices/devices_controller.dart';
 import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_interface_entry_hook_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_current_view_tracker.dart';
 import 'package:licoup/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
-import 'package:licoup/src/application/features/targets/policy/target_policy.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/presentation/client_current_view.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
@@ -28,7 +27,6 @@ mixin ClientNavigationFacade
         ConversationRefreshController,
         ClientConversationFacade,
         ClientAgentUsageFacade,
-        ClientMobileRelayFacade,
         ClientSkillHubFacade,
         ClientTargetFacade {
   final Object _navigationUsagePollingOwner = Object();
@@ -40,6 +38,7 @@ mixin ClientNavigationFacade
   LlmGatewayLifecycleController get llmGatewayLifecycleController;
   AdapterPluginController get adapterPluginController;
   AgentHubCatalogController get agentHubCatalogController;
+  DevicesController get devicesController;
   ClientCurrentViewTracker get currentViewTracker;
   ClientCurrentViewStore get currentViewStore;
   bool get mobileClientRuntimePlatform;
@@ -109,14 +108,10 @@ mixin ClientNavigationFacade
       section: ClientSection.models,
       action: llmGatewayLifecycleController.pollNow,
     ),
-    ClientSection.mobileRelay: ClientInterfaceEntryHookTask(
-      section: ClientSection.mobileRelay,
+    ClientSection.devices: ClientInterfaceEntryHookTask(
+      section: ClientSection.devices,
       action: () async {
-        await refreshSecureMeshStatus(authorize: false, showProgress: false);
-        await Future.wait<void>([
-          refreshMobilePairingStatus(),
-          scanTargets(showProgress: false, surfaceErrors: true),
-        ]);
+        await devicesController.refresh();
       },
     ),
     ClientSection.agentHub: ClientInterfaceEntryHookTask(
@@ -158,24 +153,6 @@ mixin ClientNavigationFacade
     ensureConversationInterfaceModelCatalog();
   }
 
-  /// Shows Welcome and makes it the globally tracked current interface.
-  void showConversationWelcomePage() {
-    _currentConversationViewRestoreApplied = true;
-    _applyingCurrentConversationViewRestore = true;
-    try {
-      selectedConversationAgentId = '';
-      clientConversationController.clearSelection();
-    } finally {
-      _applyingCurrentConversationViewRestore = false;
-    }
-    currentViewTracker.record(
-      ClientCurrentView.welcome(section: currentSection),
-    );
-    conversationAttentionContextChanged(immediateActive: false);
-    notifyConversationStructureChanged();
-    notifyClientStateChanged();
-  }
-
   void clientEnterMonitoringSection() {
     if (!mobileClientRuntimePlatform) {
       agentUsageController.acquirePollingOwner(_navigationUsagePollingOwner);
@@ -187,10 +164,6 @@ mixin ClientNavigationFacade
     agentUsageController.releasePollingOwner(_navigationUsagePollingOwner);
   }
 
-  void clientEnterMobileRelaySection() {
-    unawaited(refreshSecureMeshStatus(authorize: false));
-  }
-
   void updateConversationAttention({
     ConversationLifecyclePhase? lifecycleState,
     bool? viewFocused,
@@ -198,17 +171,6 @@ mixin ClientNavigationFacade
     lifecycleState: lifecycleState,
     viewFocused: viewFocused,
   );
-
-  Future<List<TargetCandidate>> discoverMobileRelayTargets({
-    Map<String, dynamic>? pairingStatus,
-  }) async {
-    final status = await mobileRelayController.pairingStatusForTargetDiscovery(
-      pairingStatus: pairingStatus,
-    );
-    return status == null
-        ? const <TargetCandidate>[]
-        : TargetPolicy.mobileRelayTargets(status);
-  }
 
   void selectDefaultConversationAgent({bool preferDirectAgent = false}) {
     // Relaunch restores the global current-view snapshot before any default.
@@ -223,9 +185,9 @@ mixin ClientNavigationFacade
     if (selectedConversationAgentId.isNotEmpty) {
       return;
     }
-    // Desktop starts on the Welcome surface when there is no persisted
-    // conversation. Mobile still needs one target selected for its compact
-    // navigation flow.
+    // Desktop starts on the empty conversation surface (mascot greeting with
+    // a centered composer) when there is no persisted conversation. Mobile
+    // still needs one target selected for its compact navigation flow.
     if (!mobileClientRuntimePlatform) {
       return;
     }

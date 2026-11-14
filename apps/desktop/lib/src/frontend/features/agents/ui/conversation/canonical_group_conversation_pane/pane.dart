@@ -4,26 +4,28 @@ import 'package:licoup/src/frontend/features/agents/ui/conversation_execution_bi
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:licoup/src/frontend/shared/ui/reading_position_scroll_controller.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/header.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/members_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/projection.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/reveal.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/roster.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/strategy.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/support.dart';
-import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_dialog.dart';
-import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_renderer_models.dart';
+import 'package:licoup/src/frontend/features/agents/ui/acativa_dialog.dart';
+import 'package:licoup/src/frontend/features/agents/ui/acativa_renderer_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/assistant_configuration_dialog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
+import 'package:licoup/src/frontend/shared/mascot/self_mascot_identity.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
@@ -33,6 +35,7 @@ import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 
 /// Canonical Conversation renderer. Durable Events and Parts stay distinct
 /// from native catalog sessions; the live Membership turns only contribute
@@ -46,8 +49,9 @@ class CanonicalGroupConversationPane extends StatefulWidget {
     required this.turns,
     required this.composer,
     required this.attachments,
-    this.onOpenAgentConversations,
-    this.onOpenAdaptiveFlywheel,
+    this.onOpenMemberHistory,
+    this.onOpenSettings,
+    this.onOpenAcativa,
     this.onPickComposerImages,
     this.onClearComposerImages,
     this.framed = true,
@@ -59,8 +63,15 @@ class CanonicalGroupConversationPane extends StatefulWidget {
   final PersistentTurnProjection turns;
   final ComposerProjection composer;
   final ConversationAttachmentsProjection attachments;
-  final ValueChanged<String>? onOpenAgentConversations;
-  final Future<void> Function(String? revision)? onOpenAdaptiveFlywheel;
+
+  /// Opens the member's in-group conversation history anchored at the tap
+  /// position; the workspace owns the member-session view it selects into.
+  final void Function(TargetCandidate target, Offset globalPosition)?
+  onOpenMemberHistory;
+
+  /// Opens the settings destination from the member self profile card.
+  final VoidCallback? onOpenSettings;
+  final Future<void> Function(String? revision)? onOpenAcativa;
   final VoidCallback? onPickComposerImages;
   final VoidCallback? onClearComposerImages;
   final bool framed;
@@ -72,7 +83,18 @@ class CanonicalGroupConversationPane extends StatefulWidget {
 
 class _CanonicalGroupConversationPaneState
     extends State<CanonicalGroupConversationPane> {
-  bool _rosterVisible = false;
+  /// The user's last explicit choice; the panel starts collapsed until the
+  /// header toggle or the panel's own collapse affordance changes it.
+  bool? _rosterVisibleChoice;
+
+  /// The self avatar identity is shared session state — see
+  /// [selfMascotIdentity]; the pane only writes the picker's choice back to
+  /// it so every surface stays on the same face.
+
+  /// Members side-panel width, adjusted by dragging its left edge.
+  double _membersPanelWidth = canonicalGroupMembersPanelExtent;
+  static const double _membersPanelMinWidth = 176;
+  static const double _membersPanelMaxWidth = 320;
   double _composerExtent =
       MessagingDesktopMetrics.conversationComposerOverlayExtent;
   final _messageScrollController = ReadingPositionScrollController();
@@ -141,34 +163,12 @@ class _CanonicalGroupConversationPaneState
   String _mentionLabel(
     ClientConversationMembership membership,
     TargetCandidate target,
-  ) {
-    final displayName = membership.principal.displayName.trim();
-    if (displayName.isNotEmpty) return displayName;
-    final known =
-        agentProductDisplayName(target.target) ??
-        agentProductDisplayName(target.id);
-    if (known != null) return known;
-    return agentConversationTargetDisplayName(target);
-  }
+  ) => canonicalGroupMentionLabel(membership, target);
 
-  /// Capsule label for the assistant identity: canonical product names first
-  /// ("Codex", "Kimi Code"), otherwise each word capitalized.
   String _assistantCapsuleLabel(
     ClientConversationMembership membership,
     TargetCandidate target,
-  ) {
-    final raw = _mentionLabel(membership, target);
-    final known = agentProductDisplayName(raw);
-    if (known != null) return known;
-    final words = raw
-        .split(RegExp(r'[\s\-_]+'))
-        .where((word) => word.isNotEmpty)
-        .toList();
-    if (words.isEmpty) return raw;
-    return words
-        .map((word) => word[0].toUpperCase() + word.substring(1))
-        .join(' ');
-  }
+  ) => canonicalGroupAssistantCapsuleLabel(membership, target);
 
   TargetCandidate? _assistantTarget(
     ClientConversation conversation,
@@ -204,6 +204,20 @@ class _CanonicalGroupConversationPaneState
         : strings.reasoningEffortOptionLabel(effort, effort);
   }
 
+  /// Localized permission-mode label for the readout; empty unless the stored
+  /// mode is one the assistant's agent can still execute.
+  String _assistantPermissionLabel(
+    CanonicalConversationProjection canonical,
+    TargetCandidate? assistantTarget,
+    LicoStrings strings,
+  ) {
+    final mode = canonical.assistantPermissionMode.trim();
+    if (mode.isEmpty) return '';
+    final modes = assistantTarget?.conversationPermissionModes ?? const [];
+    if (!modes.contains(mode)) return '';
+    return strings.permissionModeOptionLabel(mode, mode);
+  }
+
   Map<String, AgentParticipantRuntimeProfile> get _runtimeProfiles => {
     for (final profile in widget.canonical.participantRuntimeProfiles)
       profile.agentId: AgentParticipantRuntimeProfile(
@@ -212,32 +226,13 @@ class _CanonicalGroupConversationPaneState
       ),
   };
 
-  GroupAssistantStatusLight _assistantStatus(ClientConversation conversation) {
-    if (conversation.assistantMembership == null) {
-      return GroupAssistantStatusLight.unconfigured;
-    }
-    if (!_assistantActive(conversation)) {
-      return GroupAssistantStatusLight.paused;
-    }
-    if ((widget.canonical.notice?.reasonCode ?? '').isNotEmpty) {
-      return GroupAssistantStatusLight.failure;
-    }
-    if (widget.turns.memberships.any(
-      (turn) => turn.phase == PersistentTurnPhase.waiting,
-    )) {
-      return GroupAssistantStatusLight.waiting;
-    }
-    if (widget.canonical.dispatchPending ||
-        widget.turns.memberships.any(
-          (turn) =>
-              (turn.participantRole.trim() != 'assistant' &&
-                  turn.participantAgentId.trim().isNotEmpty) ||
-              turn.phase == PersistentTurnPhase.running,
-        )) {
-      return GroupAssistantStatusLight.working;
-    }
-    return GroupAssistantStatusLight.ready;
-  }
+  GroupAssistantStatusLight _assistantStatus(ClientConversation conversation) =>
+      canonicalGroupAssistantStatus(
+        conversation: conversation,
+        assistantActive: _assistantActive(conversation),
+        canonical: widget.canonical,
+        turns: widget.turns,
+      );
 
   List<AgentConversationMessage> get _timelineMessages {
     final parts = <List<AgentConversationMessage>>[
@@ -298,12 +293,12 @@ class _CanonicalGroupConversationPaneState
             turn.phase == PersistentTurnPhase.waiting,
       );
 
-  Future<void> _openAdaptiveFlywheel(String? revision) async {
-    final override = widget.onOpenAdaptiveFlywheel;
+  Future<void> _openAcativa(String? revision) async {
+    final override = widget.onOpenAcativa;
     if (override != null) {
       await override(revision);
     } else {
-      await showAdaptiveFlywheelDialog(
+      await showAcativaDialog(
         context,
         conversation: widget.conversation,
         agents: widget.agents,
@@ -347,9 +342,15 @@ class _CanonicalGroupConversationPaneState
       context: context,
       builder: (dialogContext) {
         final dialogStrings = LicoStrings.of(dialogContext);
+        final isReservedDefaultGroup =
+            conversation.id == ClientConversation.defaultLocalAgentGroupId;
         return AlertDialog(
           title: Text(dialogStrings.archiveGroupConversationTitle),
-          content: Text(dialogStrings.archiveGroupConversationMessage(title)),
+          content: Text(
+            isReservedDefaultGroup
+                ? dialogStrings.archiveDefaultGroupConversationMessage(title)
+                : dialogStrings.archiveGroupConversationMessage(title),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
@@ -488,6 +489,14 @@ class _CanonicalGroupConversationPaneState
       canonical.recentParticipantAgentIds,
     );
     final rosterTargets = ordered.isEmpty ? participantTargets : ordered;
+    final membersSidePanel =
+        !isMobileClientPlatform(context) &&
+        maybeLayoutAgentsPresentationOf(context)?.groupMembersPlacement ==
+            LayoutGroupMembersPlacement.sidePanel;
+    final rosterVisible = _rosterVisibleChoice ?? false;
+    final memberCount =
+        (conversation.localOwnerMembership == null ? 0 : 1) +
+        rosterTargets.length;
     final session = _canonicalSession(
       conversation,
       canonical.canonicalEvents,
@@ -563,7 +572,7 @@ class _CanonicalGroupConversationPaneState
         selectedRevision: conversation.strategyRevision.trim().isEmpty
             ? null
             : conversation.strategyRevision.trim(),
-        onOpen: (revision) => unawaited(_openAdaptiveFlywheel(revision)),
+        onOpen: (revision) => unawaited(_openAcativa(revision)),
       ),
       composerAssistantCapsule: AssistantToggleButton(
         active: _assistantActive(conversation),
@@ -590,15 +599,15 @@ class _CanonicalGroupConversationPaneState
             canonical.assistantModel.trim().isNotEmpty,
         modelLabel: _assistantModelLabel(canonical, assistantTarget),
         effortLabel: _assistantEffortLabel(canonical, strings),
+        permissionLabel: _assistantPermissionLabel(
+          canonical,
+          assistantTarget,
+          strings,
+        ),
         tooltip: strings.configureAssistantTooltip,
         onTap: () => unawaited(_openAssistantConfiguration()),
       ),
       composerLeading: CanonicalGroupAssistantActions(
-        onPickAttachments:
-            widget.onPickComposerImages ??
-            () => widget.conversation.intents.send(
-              AddConversationAttachment(widget.composer.conversationId),
-            ),
         onArchive: _archiveAndReopen,
         onDiscardImages:
             widget.onClearComposerImages ??
@@ -621,6 +630,11 @@ class _CanonicalGroupConversationPaneState
               onCopyText: _copyText,
               returnFocusNode: returnFocusNode,
             ),
+          ),
+      onAttach:
+          widget.onPickComposerImages ??
+          () => widget.conversation.intents.send(
+            AddConversationAttachment(widget.composer.conversationId),
           ),
       onModelChanged: (_) {},
       onReasoningEffortChanged: (_) {},
@@ -658,8 +672,25 @@ class _CanonicalGroupConversationPaneState
       actions: actions,
       header: CanonicalGroupConversationHeader(
         conversation: conversation,
-        rosterVisible: _rosterVisible,
-        onToggleRoster: () => setState(() => _rosterVisible = !_rosterVisible),
+        rosterVisible: rosterVisible,
+        memberCount: memberCount,
+        rosterTargets: rosterTargets,
+        selfMascotId: selfMascotIdentity.value,
+        presenceLabel: assistantTarget == null
+            ? null
+            : strings.memberPresenceStatus(
+                assistantTarget.label,
+                switch (assistantStatus) {
+                  GroupAssistantStatusLight.working =>
+                    strings.memberStatusWorking,
+                  GroupAssistantStatusLight.paused ||
+                  GroupAssistantStatusLight.failure =>
+                    strings.memberStatusOffline,
+                  _ => strings.memberStatusOnline,
+                },
+              ),
+        onToggleRoster: () =>
+            setState(() => _rosterVisibleChoice = !rosterVisible),
       ),
       framed: false,
       messageScrollController: _messageScrollController,
@@ -674,7 +705,49 @@ class _CanonicalGroupConversationPaneState
     final rosterFloats =
         !isMobileClientPlatform(context) &&
         strategy.messageStyle == AgentsMessageStyle.participantFlow;
-    final conversationBody = rosterFloats
+    final conversationBody = membersSidePanel
+        ? LayoutBuilder(
+            builder: (context, constraints) {
+              final fits =
+                  constraints.maxWidth - _membersPanelWidth >=
+                  MessagingDesktopMetrics.conversationDetailMinExtent;
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: pane),
+                  if (rosterVisible && fits && memberCount > 0)
+                    PaneEdgeDragHandle(
+                      dragHandleKey: const Key(
+                        'canonical-group-members-resize-handle',
+                      ),
+                      width: 6,
+                      onDragDelta: (delta) => setState(
+                        () => _membersPanelWidth = (_membersPanelWidth - delta)
+                            .clamp(_membersPanelMinWidth, _membersPanelMaxWidth)
+                            .toDouble(),
+                      ),
+                      child: CanonicalGroupMembersPanel(
+                        conversation: conversation,
+                        targets: rosterTargets,
+                        turnPhases: _memberTurnPhases(conversation),
+                        onMentionAgent: (target) =>
+                            _mentionAgent(conversation, target),
+                        onOpenMemberHistory: widget.onOpenMemberHistory,
+                        onOpenSettings: widget.onOpenSettings,
+                        selfMascotId: selfMascotIdentity.value,
+                        onSelfMascotChanged: (id) =>
+                            setState(() => selfMascotIdentity.value = id),
+                        memberSessionCounts: _memberSessionCounts(),
+                        onCollapse: () =>
+                            setState(() => _rosterVisibleChoice = false),
+                        width: _membersPanelWidth,
+                      ),
+                    ),
+                ],
+              );
+            },
+          )
+        : rosterFloats
         ? LayoutBuilder(
             builder: (context, constraints) {
               final topInset =
@@ -702,7 +775,7 @@ class _CanonicalGroupConversationPaneState
                     bottom: bottomInset,
                     width: MessagingDesktopMetrics.groupRosterExtent,
                     child: CanonicalGroupRosterReveal(
-                      visible: _rosterVisible,
+                      visible: rosterVisible,
                       child: ConstrainedBox(
                         constraints: BoxConstraints(
                           maxHeight: math.min(
@@ -717,12 +790,7 @@ class _CanonicalGroupConversationPaneState
                             quotaSnapshots: canonical.quotaSnapshots,
                             onMentionAgent: (target) =>
                                 _mentionAgent(conversation, target),
-                            onOpenAgentConversations:
-                                widget.onOpenAgentConversations == null
-                                ? null
-                                : (target) => widget.onOpenAgentConversations!(
-                                    target.target,
-                                  ),
+                            onOpenMemberHistory: widget.onOpenMemberHistory,
                             onBoundaryOverscroll: _continueConversationScroll,
                           ),
                         ),
@@ -737,18 +805,14 @@ class _CanonicalGroupConversationPaneState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(child: pane),
-              if (_rosterVisible && rosterTargets.isNotEmpty)
+              if (rosterVisible && rosterTargets.isNotEmpty)
                 CanonicalGroupRoster(
                   conversation: conversation,
                   targets: rosterTargets,
                   quotaSnapshots: canonical.quotaSnapshots,
                   onMentionAgent: (target) =>
                       _mentionAgent(conversation, target),
-                  onOpenAgentConversations:
-                      widget.onOpenAgentConversations == null
-                      ? null
-                      : (target) =>
-                            widget.onOpenAgentConversations!(target.target),
+                  onOpenMemberHistory: widget.onOpenMemberHistory,
                   onBoundaryOverscroll: _continueConversationScroll,
                 ),
             ],
@@ -792,6 +856,38 @@ class _CanonicalGroupConversationPaneState
       ],
     );
     return widget.framed ? PanelFrame(child: body) : body;
+  }
+
+  Map<String, PersistentTurnPhase> _memberTurnPhases(
+    ClientConversation conversation,
+  ) {
+    final agentIdByMembership = {
+      for (final membership in conversation.activeAgentMemberships)
+        membership.id: membership.principal.agentId,
+    };
+    final phases = <String, PersistentTurnPhase>{};
+    for (final turn in widget.turns.memberships) {
+      final agentId = turn.participantAgentId.isNotEmpty
+          ? turn.participantAgentId
+          : agentIdByMembership[turn.membershipId] ?? '';
+      if (agentId.isNotEmpty) phases[agentId] = turn.phase;
+    }
+    return phases;
+  }
+
+  /// In-group session counts keyed by agent id for the member profile card's
+  /// facts grid — the same catalog the workspace's history menu reads.
+  Map<String, int> _memberSessionCounts() {
+    return {
+      for (final entry
+          in widget
+              .conversation
+              .nativeCatalog
+              .current
+              .groupSessionsByAgent
+              .entries)
+        entry.key: entry.value.length,
+    };
   }
 
   AgentConversationSession _canonicalSession(

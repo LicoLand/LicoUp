@@ -32,6 +32,51 @@ final class ApplyPluginLifecyclePlan extends PluginManagementIntent {
   final String planId;
 }
 
+/// Install one capability on first use, from the archive the caller holds.
+final class InstallPackage extends PluginManagementIntent {
+  const InstallPackage({
+    required this.packageId,
+    required this.archive,
+    super.trace,
+  });
+
+  final String packageId;
+  final String archive;
+}
+
+/// Remove one installed package version through the store's drain transaction.
+final class UninstallPackage extends PluginManagementIntent {
+  const UninstallPackage({
+    required this.packageId,
+    required this.version,
+    super.trace,
+  });
+
+  final String packageId;
+  final String version;
+}
+
+/// Switch one installed package version on or off without moving its bytes.
+final class SetPackageEnabled extends PluginManagementIntent {
+  const SetPackageEnabled({
+    required this.packageId,
+    required this.version,
+    required this.enabled,
+    super.trace,
+  });
+
+  final String packageId;
+  final String version;
+  final bool enabled;
+}
+
+/// Batch answer to the one first-launch (or first-use) confirmation.
+final class ResolvePackageRecommendation extends PluginManagementIntent {
+  const ResolvePackageRecommendation({required this.accepted, super.trace});
+
+  final bool accepted;
+}
+
 final class LoadCollaborationStatus extends PluginManagementIntent {
   const LoadCollaborationStatus({super.trace});
 }

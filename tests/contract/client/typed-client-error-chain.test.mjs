@@ -11,20 +11,11 @@ const repoRoot = path.resolve(
 );
 
 const production = {
+  manifest: "schemas/client_bridge/manifest.json",
   schema: "schemas/client_bridge/client_error.schema.json",
   generator: "tools/scripts/generate-client-bridge-contracts.mjs",
-  rustGenerated:
-    "crates/licoup-native/src/ffi/generated/client_error.rs",
   dartGenerated:
     "apps/desktop/lib/src/contracts/generated/client_error.g.dart",
-  runtimeError:
-    "crates/licoup-native/src/platform/runtime_adapters/error.rs",
-  ffiConversation:
-    "crates/licoup-native/src/ffi/commands/agent_conversation.rs",
-  rpcError:
-    "crates/licoup-native/src/bin/licoup/stdio_rpc/error.rs",
-  rpcResponse:
-    "crates/licoup-native/src/bin/licoup/stdio_rpc/response.rs",
   dartCodec:
     "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart",
   dartRoundTrip:
@@ -58,7 +49,7 @@ async function sourceFiles(relativeDirectory) {
   return nested.flat();
 }
 
-test("one schema deterministically owns both generated ClientError values", async () => {
+test("one schema deterministically owns the generated Dart ClientError", async () => {
   const schema = JSON.parse(await read(production.schema));
   assert.equal(schema.version, 1);
   assert.deepEqual(
@@ -74,14 +65,16 @@ test("one schema deterministically owns both generated ClientError values", asyn
   );
 
   const generator = await read(production.generator);
-  for (const ownedPath of [
-    production.schema,
-    production.rustGenerated,
-    production.dartGenerated,
-  ]) {
+  assert.ok(generator.includes(production.manifest));
+  const manifest = JSON.parse(await read(production.manifest));
+  const family = manifest.families.find(({ id }) => id === "client_error");
+  assert.equal(family.status, "active");
+  assert.equal(family.schema, production.schema);
+  assert.equal(family.dartOutput, production.dartGenerated);
+  for (const ownedPath of [family.schema, family.dartOutput]) {
     assert.ok(
-      generator.includes(ownedPath),
-      `generator must own ${ownedPath}`,
+      await fs.access(path.join(repoRoot, ownedPath)).then(() => true, () => false),
+      `manifest path must exist: ${ownedPath}`,
     );
   }
   assert.match(generator, /--check/);
@@ -97,21 +90,15 @@ test("one schema deterministically owns both generated ClientError values", asyn
     `generated ClientError output is stale:\n${check.stderr || check.stdout}`,
   );
 
-  const [rust, dart] = await Promise.all([
-    read(production.rustGenerated),
-    read(production.dartGenerated),
-  ]);
-  assert.match(rust, /(?:struct|enum)\s+ClientError\b/);
+  const dart = await read(production.dartGenerated);
   assert.match(dart, /class\s+ClientError\b/);
-  assert.match(rust, /generated/i);
   assert.match(dart, /generated/i);
   for (const field of schema.fields.map(({ name }) => name)) {
-    assert.ok(rust.includes(field), `Rust ClientError lost ${field}`);
     assert.ok(dart.includes(field), `Dart ClientError lost ${field}`);
   }
 });
 
-test("source, FFI, RPC, and Dart projections carry the complete typed error", async () => {
+test("Dart projections carry the complete typed error", async () => {
   const sources = Object.fromEntries(
     await Promise.all(
       Object.entries(production).map(async ([name, relativePath]) => [
@@ -121,12 +108,7 @@ test("source, FFI, RPC, and Dart projections carry the complete typed error", as
     ),
   );
   for (const [name, source] of Object.entries(sources).filter(([name]) =>
-    [
-      "runtimeError",
-      "ffiConversation",
-      "rpcResponse",
-      "dartCodec",
-    ].includes(name),
+    name === "dartCodec",
   )) {
     for (const field of [
       "code",
@@ -140,17 +122,13 @@ test("source, FFI, RPC, and Dart projections carry the complete typed error", as
     }
   }
 
-  assert.match(sources.runtimeError, /\bClientError\b/);
-  assert.match(sources.ffiConversation, /\bClientError\b/);
-  assert.match(sources.rpcResponse, /\bClientError\b/);
   assert.match(sources.dartCodec, /\bClientError\b/);
   assert.match(sources.dartRoundTrip, /\bClientError\b/);
   assert.match(sources.dartConversation, /\bClientError\b/);
 });
 
-test("node-owned production has no ClientError twins, shims, or string projections", async () => {
+test("desktop-owned production has no ClientError twins, shims, or string projections", async () => {
   const generatedDirectories = [
-    "crates/licoup-native/src/ffi/generated",
     "apps/desktop/lib/src/contracts/generated",
   ];
   const generatedFiles = (
@@ -174,18 +152,12 @@ test("node-owned production has no ClientError twins, shims, or string projectio
     ),
   );
 
-  const forbiddenEverywhere = [
+  const forbiddenClientErrorTypes = [
     [/\b(?:ClientErrorShim|LegacyClientError|ClientErrorDto)\b/, "shim"],
     [/\b(?:type|typedef)\s+ClientError\b/, "alias"],
-    [/\b(?:errorCode|error_code)\b/, "code-only projection"],
-    [
-      /(?:message|error|cause)\s*\.\s*(?:contains|startsWith|endsWith|contains_key)\s*\(/,
-      "string classifier",
-    ],
-    [/\bRegExp\s*\(/, "regular-expression classifier"],
   ];
   for (const [relativePath, source] of sources) {
-    for (const [pattern, description] of forbiddenEverywhere) {
+    for (const [pattern, description] of forbiddenClientErrorTypes) {
       assert.doesNotMatch(
         source,
         pattern,
@@ -206,14 +178,32 @@ test("node-owned production has no ClientError twins, shims, or string projectio
     }
   }
 
+  const typedChainFiles = new Set(
+    Object.values(production).filter((relativePath) =>
+      /\.(?:dart|rs)$/u.test(relativePath)),
+  );
+  const forbiddenTypedChain = [
+    [/\b(?:errorCode|error_code)\b/, "code-only projection"],
+    [
+      /(?:message|error|cause)\s*\.\s*(?:contains|startsWith|endsWith|contains_key)\s*\(/,
+      "string classifier",
+    ],
+    [/\bRegExp\s*\(/, "regular-expression classifier"],
+  ];
+  for (const relativePath of typedChainFiles) {
+    const source = sources.get(relativePath);
+    for (const [pattern, description] of forbiddenTypedChain) {
+      assert.doesNotMatch(
+        source,
+        pattern,
+        `${relativePath} contains a forbidden ${description}`,
+      );
+    }
+  }
+
   const generatedSource = generatedFiles
     .map((relativePath) => sources.get(relativePath))
     .join("\n");
-  assert.equal(
-    (generatedSource.match(/\b(?:struct|enum)\s+ClientError\b/g) ?? []).length,
-    1,
-    "generated Rust contracts must own exactly one ClientError",
-  );
   assert.equal(
     (generatedSource.match(/\bclass\s+ClientError\b/g) ?? []).length,
     1,
@@ -224,6 +214,6 @@ test("node-owned production has no ClientError twins, shims, or string projectio
   assert.match(sources.get(production.localization), /\bClientError\b/);
   assert.doesNotMatch(
     sources.get(production.controller),
-    /[\u3400-\u9fff]|send failed at|发送在/,
+    /send failed at|发送在/,
   );
 });

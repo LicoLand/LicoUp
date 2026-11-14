@@ -22,6 +22,12 @@ import 'package:licoup/src/frontend/appearance/appearance_preset_config.dart';
 ///   the same component code reads correctly in light and dark.
 /// * State is expressed through `hoverOverlay`, `pressedOverlay`, and
 ///   `selectedSurface` rather than locally invented white/black alpha values.
+/// Ambient window-ground effect declared by the preset's `ambient-effect`
+/// token. `none` is the default; `starfield` paints a sparse twinkling star
+/// layer and `waffle` a faint pressed-grid texture on the shared window
+/// ground.
+enum LicoAmbientEffect { none, starfield, waffle }
+
 class LicoThemeColors extends ThemeExtension<LicoThemeColors> {
   const LicoThemeColors({
     required this.background,
@@ -51,8 +57,11 @@ class LicoThemeColors extends ThemeExtension<LicoThemeColors> {
     required this.hoverOverlay,
     required this.pressedOverlay,
     required this.selectedSurface,
+    required this.selectionInk,
+    required this.textOnSelection,
     required this.brandGlow,
     required this.accentGlow,
+    this.ambientEffect = LicoAmbientEffect.none,
   });
 
   /// Window and scaffold base. The lowest neutral layer.
@@ -136,6 +145,12 @@ class LicoThemeColors extends ThemeExtension<LicoThemeColors> {
   /// Persistent selected-row fill. Distinct from a transient hover.
   final Color selectedSurface;
 
+  /// Lavender selection ink: icon, label and rim for selected state.
+  final Color selectionInk;
+
+  /// Ink on a [selectionInk] fill.
+  final Color textOnSelection;
+
   /// Translucent brand for luminous brand moments: the halo behind an active
   /// destination indicator, a send-ready control, a live activity pulse.
   ///
@@ -147,6 +162,10 @@ class LicoThemeColors extends ThemeExtension<LicoThemeColors> {
   /// Translucent accent for luminous interaction moments: focus halos and
   /// selection emphasis.
   final Color accentGlow;
+
+  /// Ambient decoration the window ground carries. Not a color role: presets
+  /// declare it through `ambient-effect` and the shared shell paints it.
+  final LicoAmbientEffect ambientEffect;
 
   bool get isDark {
     return ThemeData.estimateBrightnessForColor(background) == Brightness.dark;
@@ -181,8 +200,11 @@ class LicoThemeColors extends ThemeExtension<LicoThemeColors> {
     Color? hoverOverlay,
     Color? pressedOverlay,
     Color? selectedSurface,
+    Color? selectionInk,
+    Color? textOnSelection,
     Color? brandGlow,
     Color? accentGlow,
+    LicoAmbientEffect? ambientEffect,
   }) {
     return LicoThemeColors(
       background: background ?? this.background,
@@ -212,8 +234,11 @@ class LicoThemeColors extends ThemeExtension<LicoThemeColors> {
       hoverOverlay: hoverOverlay ?? this.hoverOverlay,
       pressedOverlay: pressedOverlay ?? this.pressedOverlay,
       selectedSurface: selectedSurface ?? this.selectedSurface,
+      selectionInk: selectionInk ?? this.selectionInk,
+      textOnSelection: textOnSelection ?? this.textOnSelection,
       brandGlow: brandGlow ?? this.brandGlow,
       accentGlow: accentGlow ?? this.accentGlow,
+      ambientEffect: ambientEffect ?? this.ambientEffect,
     );
   }
 
@@ -250,8 +275,11 @@ class LicoThemeColors extends ThemeExtension<LicoThemeColors> {
       hoverOverlay: Color.lerp(hoverOverlay, other.hoverOverlay, t)!,
       pressedOverlay: Color.lerp(pressedOverlay, other.pressedOverlay, t)!,
       selectedSurface: Color.lerp(selectedSurface, other.selectedSurface, t)!,
+      selectionInk: Color.lerp(selectionInk, other.selectionInk, t)!,
+      textOnSelection: Color.lerp(textOnSelection, other.textOnSelection, t)!,
       brandGlow: Color.lerp(brandGlow, other.brandGlow, t)!,
       accentGlow: Color.lerp(accentGlow, other.accentGlow, t)!,
+      ambientEffect: t < 0.5 ? ambientEffect : other.ambientEffect,
     );
   }
 }
@@ -259,7 +287,7 @@ class LicoThemeColors extends ThemeExtension<LicoThemeColors> {
 extension LicoThemeContext on BuildContext {
   LicoThemeColors get licoColors {
     return Theme.of(this).extension<LicoThemeColors>() ??
-        licoColorsFor(AppearancePresetIds.licoMist);
+        licoColorsFor(AppearancePresetIds.starlitGold);
   }
 }
 
@@ -303,6 +331,12 @@ LicoThemeColors licoColorsFor(
       '#deeef0',
     ),
     accentBorder: colorFromAppearanceToken(tokens, 'accent-border', '#67c8d6'),
+    selectionInk: colorFromAppearanceToken(tokens, 'selection-ink', '#b8a4ff'),
+    textOnSelection: colorFromAppearanceToken(
+      tokens,
+      'text-on-selection',
+      '#140b30',
+    ),
     textOnAccent: colorFromAppearanceToken(tokens, 'text-on-accent', '#ffffff'),
     success: colorFromAppearanceToken(tokens, 'success', '#158351'),
     warning: colorFromAppearanceToken(tokens, 'warning', '#9c660c'),
@@ -334,5 +368,10 @@ LicoThemeColors licoColorsFor(
       'accent-glow',
       'rgba(0, 125, 138, 0.22)',
     ),
+    ambientEffect: switch (tokens['ambient-effect']) {
+      'starfield' => LicoAmbientEffect.starfield,
+      'waffle' => LicoAmbientEffect.waffle,
+      _ => LicoAmbientEffect.none,
+    },
   );
 }

@@ -280,7 +280,7 @@ final class LlmGatewayLifecycleController extends ApplicationStateOwner {
 
   Future<Map<String, dynamic>> _runService(String operation) {
     return _agentService.runCli([
-      'llm-gateway',
+      'gateway',
       'service',
       operation,
       '--port',

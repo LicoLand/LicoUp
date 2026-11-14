@@ -6,7 +6,7 @@
 | 本地化 | 本文 | 中文投影 |
 | Conversation | [Conversation 领域](CONVERSATION-DOMAIN.md) | 历史、Membership 与回合身份 |
 | 连续服务 | [Continuous Assistant](CONTINUOUS-ASSISTANT.md) | Assistant 长期责任 |
-| 现有 Graph | [Adaptive Flywheel](../functionality/ADAPTIVE-FLYWHEEL.md) | 当前工作流格式与执行合同 |
+| 现有 Graph | [Acativa](../functionality/ACATIVA.md) | 当前工作流格式与执行合同 |
 | 数据迁移 | [客户端更新与状态迁移](CLIENT-UPDATE-AND-STATE-MIGRATION.md) | 独立 CLI、数据转换与客户端准入 |
 | Agent 后端 | [Agent 适配器](AGENT-ADAPTERS-ARCHITECTURE.md) | 真实原生能力与原始对话 |
 | 当前证据 | [Status](../STATUS.md) | 已实现、已验证的行为 |
@@ -56,7 +56,11 @@ native plan provider 按已有 revision/semantics 身份维护有界、进程内
 
 静态合法不等于运行授权。编译可以证明绑定或操作形状有效，不能证明用户权限仍在、Agent 当前可用或预算仍足够。优化必须保留可见命令、事件来源、join 和效果顺序；不得把推测模型调用、重复效果、丢弃干预或重排取消当作编译优化。
 
-候选修订可独立编译，最终经 Proxy 按预期当前版本准入。活跃 run 固定不可变计划；定义变化通过后继 revision/run 和原 Graph store 中的原子意图交接承接，已开始效果留在原 run。普通 steer 不重编译整图；不同效果的新修订不能继承旧整图授权。
+候选修订可独立编译；准入时经 Proxy 校验预期当前 revision，基于旧版本的提案返回携带当前 head 的类型化冲突，由作者重定基线。run 终生保持同一身份，其计划是一条不可变 revision 的有序链，run 跟随 head。每个 revision 记录父版本、作者 principal、原因和完整 Graph 语义的规范化摘要。Graph store 将 revision 记录为相对父版本的结构增量，节点按稳定标识、边按 `(from, to, event)` 键入；在 revision 1 及之后固定间隔保存完整快照，因此重建任一 revision 只需重放有界数量增量并校验已存摘要。revert 是内容与较早版本相同的新 revision；计划历史从不改写。
+
+应用 revision 按节点身份调和 run。已开始的节点访问仍绑定其启动时的 revision 并在其上结算，其产物对新 head 保持可用。被新 revision 移除的未启动节点在开始前取消，定义变化的未启动节点按新定义启动，新增节点在依赖满足时进入 frontier。会把已开始分支与其 join 拆离的 revision 被拒绝并给出诊断。普通 steer 不产生 revision。
+
+每个 Conversation 决定 Assistant 提交的 revision 如何准入：准入即应用且可 revert，或作为提案保留到用户批准。提案保留期间，它会修改或移除的未启动节点不启动，不受影响节点继续。准入即应用仅限既有权限内的 revision：同一批已绑定 Membership 与已授权效果类别。新增 Membership、脚本或运行期效果、或任何需要新授权效果的 revision 在任一设置下都保留待批准；新 revision 不继承旧整图对不同效果的授权。用户提交的 revision（含 revert）准入即应用。
 
 ## 3. 运行期控制结构
 
@@ -111,6 +115,8 @@ flowchart TB
 | 请求暂停期间收到 resume | 控制版本匹配且原生 pause 尚未接纳时，可撤回本地排空请求；否则报告协商中并保留明确请求的后续 resume，不能在所需原生观察前显示已运行 |
 | 权限撤销或目标 generation 过期 | 效果前拒绝该投递，较早发布不能保留已撤销权限 |
 | 明确 decision gate 或参与者声明实际语义分歧 | 保存有来源的待决事项，交有权参与者解决；不分类 prompt 制造分歧，也不为每个技术冲突请求人类 |
+
+decision gate 遵循 Conversation 的审阅设置。Assistant 审阅下，指定的 Assistant 可结算其有权决定的 gate 并记录决定与原因；无权决定的 gate 连同 Assistant 说明升级给用户。用户审阅下，每个 gate 都等待用户。策略授权与对外披露在任一设置下均由用户决定。
 
 definition revision 表示不可变图语义，control revision 表示相应 run/node/invocation 范围的互斥转换，output sequence 只作读取游标。控制命令不使用每个 token 序号或无关节点进度作前置。权限和预算沿现有属主；`frontend`、`codex` 等标签只选收件者，不授予权限。
 
@@ -171,7 +177,7 @@ Assistant 可以给单节点、所有运行节点、指定 adapter 节点或角�
 
 独立本地宿主在 GUI 退出后继续拥有执行。重连 GUI 读取原事实，不重放业务命令补界面。运行宿主保留匹配的只读代码及资源，更新候选独立暂存；不兼容时等待受控交接，不覆盖活跃资源或争抢所有权。
 
-独立 Node.js 迁移 CLI 依[现有迁移合同](CLIENT-UPDATE-AND-STATE-MIGRATION.md) 纳入本次改造。它需要一致源数据：通过同一控制路径请求维护/排空，等到真实安全所有权释放后取得数据根锁，再转换各 store。没有安装客户端时也可运行，需要的原生 helper 随工具提供且遵守授权。历史双向转换 codec 是永久维护资产；未决命令、订阅、来源游标、未知效果和后继交接进入对应数据合同。
+独立迁移 CLI 依[现有迁移合同](CLIENT-UPDATE-AND-STATE-MIGRATION.md) 纳入本次改造。它需要一致源数据：通过同一控制路径请求维护/排空，等到真实安全所有权释放后取得数据根锁，再转换各 store。没有安装客户端时也可运行，需要的原生 helper 随工具提供且遵守授权。历史双向转换 codec 是永久维护资产；未决命令、订阅、来源游标、未知效果和计划 revision 链进入对应数据合同。
 
 计划中的共同 Rust 基线为 **1.95.0**。编译器、native 宿主、协议 SDK 接入及迁移工具自带的 native helper 都应在该准确版本和实际目标平台解析/编译。本文不修改当前 toolchain，也不声称编译已通过。
 

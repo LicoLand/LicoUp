@@ -4,11 +4,10 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/application/features/targets/policy/target_policy.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/platform/agents/scanned_targets_cache_store.dart';
-import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
+import 'package:licoup/src/platform/storage/client_json_document_store.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
@@ -81,7 +80,7 @@ void main() {
         }
       });
       final portable = PortableDataRoot(dataDirectoryOverride: directory);
-      await const MobileRelayJsonStore().write(
+      await const ClientJsonDocumentStore().write(
         portable,
         'scanned-targets-cache.json',
         {
@@ -420,9 +419,7 @@ void main() {
 
       expect(harness.service.catalogLookups, contains(true));
       expect(
-        TargetPolicy.hasSelectedAgentModelCatalog(
-          harness.controller.scannedTargets.single,
-        ),
+        harness.controller.scannedTargets.single.hasSelectedAgentModelCatalog,
         isTrue,
       );
     },
@@ -439,9 +436,7 @@ void main() {
 
       expect(harness.service.catalogLookups, contains(true));
       expect(
-        TargetPolicy.hasSelectedAgentModelCatalog(
-          harness.controller.scannedTargets.single,
-        ),
+        harness.controller.scannedTargets.single.hasSelectedAgentModelCatalog,
         isTrue,
       );
     },
@@ -458,9 +453,7 @@ void main() {
 
       expect(harness.service.catalogLookups, contains(true));
       expect(
-        TargetPolicy.hasSelectedAgentModelCatalog(
-          harness.controller.scannedTargets.single,
-        ),
+        harness.controller.scannedTargets.single.hasSelectedAgentModelCatalog,
         isTrue,
       );
     },
@@ -483,9 +476,7 @@ void main() {
 
       expect(harness.service.catalogLookups, contains(true));
       expect(
-        TargetPolicy.hasSelectedAgentModelCatalog(
-          harness.controller.scannedTargets.single,
-        ),
+        harness.controller.scannedTargets.single.hasSelectedAgentModelCatalog,
         isTrue,
       );
     },
@@ -653,9 +644,7 @@ Future<void> _waitForSelectedCatalog(ClientController controller) async {
   final deadline = DateTime.now().add(const Duration(seconds: 2));
   while (DateTime.now().isBefore(deadline) &&
       (controller.scannedTargets.isEmpty ||
-          !TargetPolicy.hasSelectedAgentModelCatalog(
-            controller.scannedTargets.single,
-          ))) {
+          !controller.scannedTargets.single.hasSelectedAgentModelCatalog)) {
     await Future<void>.delayed(Duration.zero);
   }
 }

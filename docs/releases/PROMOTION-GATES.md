@@ -7,11 +7,11 @@ selection is independent from the direction in which verified source is promoted
 
 | Pull request edge | Required aggregate | Claim established |
 | --- | --- | --- |
-| action-prefixed branch → `nightly` | `Client required` | Source policy and only the changed Flutter, Rust, Android, or dependency lanes pass. |
+| action-prefixed branch → `nightly` | `Client required` | Source policy and only the changed Flutter, Rust, or dependency lanes pass. |
 | `nightly` → `stable` | `Stable client` | The macOS arm64 client is built and installed once, then the exact installed app is launched and observed through its bounded survival proof. |
 | `stable` → `release` | `Release ready` | Node-only release policy passes without rebuilding, installing, signing for publication, or publishing a client. |
 
-`Branch flow`, `Commit identity`, and `Auditor` are common required checks
+`Branch flow` and `Commit identity` are common required checks
 on every edge. Each destination additionally requires only the aggregate owned
 by its incoming edge. All three edges use merge commits. Rulesets, required
 check names, and the default branch are not changed during a release cut.
@@ -77,7 +77,7 @@ and build outputs in other checkouts are not deleted.
 ## Delegated Apple publication
 
 Nightly and Stable are tracks of one LicoUp identity. Nightly uses
-`tools/apple-release/macos-direct-arm64-nightly.json` from `nightly` and the
+`tools/release-plane/macos-direct-arm64-nightly.json` from `nightly` and the
 fixed `nightly` prerelease. Stable uses the existing profile from `release`
 and immutable `v{version}` tags. Both manifests bind their track and exact
 embedded migration frontier. Stable promotion must be non-prerelease and
@@ -88,23 +88,23 @@ After a same-repository `stable` → `release` pull request merges,
 `client-source-release.yml` publishes only the exact merge commit's source.
 It verifies the second parent against the accepted stable head and creates
 `v{version}`, `LicoUp {version}`, `LicoUp-source-v{version}.tar.gz` and its
-`.sha256` companion. The Release body binds `apple-release-source:v1:{revision}`.
+`.sha256` companion. The Release body binds `release-plane-source:v1:{revision}`.
 It never builds, signs, notarizes, or uploads binaries. Retries preserve public
 tags and assets; only a matching draft can finish missing source files.
 
-Apple Release then uses `tools/apple-release/macos-direct-arm64.json` in the
+the release plane then uses `tools/release-plane/macos-direct-arm64.json` in the
 clean existing repository on `release`, equal to `origin/release`. Its complete
 product adapter surface is `tools/scripts/macos-release/`: `gate-source.mjs`,
 `gate-release-policy.mjs`, `build.mjs`, and `write-update-manifest.mjs`.
 Dependency preparation (`npm ci`) is selected by the engine. The build adapter
 fixes the stable track and produces `build/apps/desktop/runnable/macos/release/LicoUp.app`;
 the update adapter binds tag, repository and version and produces
-`build/apple-release/LicoUp-update-manifest.json`.
+`build/release-plane/LicoUp-update-manifest.json`.
 
 The engine creates `macos-release-candidate` at the exact release revision,
 without a commit or pull request. After preparation and product gates, it pushes
 the unchanged candidate and observes successful `Branch flow`, `Commit identity`,
-`Auditor`, and `Release ready` jobs bound to that SHA, branch, workflow, run and
+and `Release ready` jobs bound to that SHA, branch, workflow, run and
 attempt before building or signing. Missing/running checks wait on the same
 candidate without a cancellation deadline; failures and skipped checks block.
 The candidate never merges back and is removed only after public verification.
@@ -112,7 +112,7 @@ The candidate never merges back and is removed only after public verification.
 The mandatory Apple compliance skill delegates to this read-only authority check:
 
 ```sh
-apple-release compliance check --project . --config tools/apple-release/macos-direct-arm64.json
+release-plane compliance check --project . --config tools/release-plane/macos-direct-arm64.json
 ```
 
 Require `PASS` for the unchanged session before submission. The check validates
@@ -121,10 +121,74 @@ update keys and notary authority/queue without publishing. An existing `In Progr
 submission blocks a new session. Actual app/archive validation remains mandatory
 immediately before upload; build and notary waits have no cancellation deadline.
 
-Apple Release preserves the source pair and appends only the five macOS assets:
-`LicoUp-macos-arm64.dmg`, its `.sha256`, `LicoUp-macos-arm64-update.zip`, its
-`.sha256`, and `LicoUp-update-manifest.json`. The single public Release therefore
-contains seven immutable assets. A conflict stops; public files are never replaced.
+the release plane preserves the source pair and appends the declared macOS draft
+assets: `LicoUp-macos-arm64.dmg`, its `.sha256`, `LicoUp-macos-arm64-update.zip`,
+its `.sha256`, `LicoUp-update-manifest.json`, and the independent migration tool
+`LicoUp-migrate-macos-arm64` with its `.sha256`. The single public Release
+therefore contains nine immutable assets. A conflict stops; public files are
+never replaced. The draft asset set is closed: the publication authority accepts
+its declared roles and nothing else.
+
+## Independent package assets
+
+`tools/scripts/client-release-package-index.mjs` prepares one payload per
+declared first-party package plus the signed package index the client reads.
+These assets are released in their own right and do not enter the client draft
+above. Nothing in the client build signs or publishes them:
+
+```sh
+npm run client:release:package-index:plan
+npm run client:release:package-index:fixture
+npm run client:release:package-index:build
+node tools/scripts/client-release-package-index.mjs verify --index <index> --payloads <directory>
+```
+
+`tools/client-release-package-set.json` is the declared set: each entry names the
+package's source and the release payload role its own asset is published as, and
+the release target declares each of those roles once. The `crates/` and
+`components/` package directories live in the LicoUp-CLI component repository,
+which owns the Rust workspace and produces each real package's payload: a source
+ending in `.licopkg` names the delivered artifact the component repository
+built, fetched into the native artifacts directory before the index is built
+over it, while any other source is a committed package directory this tree
+packages itself — today the synthetic fixture alone. The set is complete by
+construction on each side of the split: the component repository enumerates
+every `crates/*/package` and `components/*/package` directory that carries a
+`manifest.json`, and this tree's release contract test enumerates the committed
+package directories under `tests/fixtures/client_package_release/` while
+requiring every other declared source to end in `.licopkg` instead of restating
+a list. `plan`
+writes nothing and reports every declared package's identity, version, client
+compatibility, payload role and payload digest. `fixture` packages the whole
+declared set under a key pair generated in memory for that run: it reads no
+protected key and is pipeline evidence, not a publication. `build` writes one
+payload per declared package and the one signed index into
+`build/apps/desktop/release-packages/macos`
+from a set that reads the release authority's two private keys
+(`LICO_PACKAGE_INDEX_OFFLINE_ROOT_KEY` and
+`LICO_PACKAGE_INDEX_ONLINE_SIGNING_KEY`) and fails closed without them. `verify`
+re-verifies an index, its Ed25519 role signatures, its payload digests and each
+package's native converter entry.
+
+Each package declares its own identity, version, client compatibility list and
+native converter entry inside its payload, and the signed index republishes that
+declaration with the payload digest; the client imports an offline payload
+without a network service. The committed source directory holds the manifest, the
+release declaration, the resources the declared contributions name and the staged
+native entry; the release stage places the compiled binary at that entry before
+`build` packages the directory, and the packaging tooling refuses an entry a
+script carries. A delivered `.licopkg` artifact is read back and validated the
+same way, so the signed digest binds the package's own documents and native
+entry rather than the caller's claim. The synthetic fixture is replaced by the
+real per-adapter payload
+under the same contract before any publication. All four commands stop before
+signing for publication, notarization, tagging, upload, installation or client
+launch: those remain part of the separately authorized the release plane operation
+above.
+
+Adding these assets to the client draft instead would require the publication
+authority to accept the package roles in its own artifact contract first;
+that contract lives outside this repository and is owned by the release owner.
 
 Configure the local release authority and inspect release runs with:
 
@@ -163,5 +227,6 @@ requires exact public-asset reconciliation, anonymous installer download,
 digest verification, installation, and stable launch.
 
 The final merged promotion publishes source automatically. macOS signing,
-notarization and the five platform assets remain separately authorized Apple
-Release operations.
+notarization and the platform assets remain separately authorized the release plane
+operations; the independent package assets are prepared locally and published by
+a separately authorized release step of their own.

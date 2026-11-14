@@ -4,13 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_interface_entry_hook_controller.dart';
-import 'package:licoup/src/contracts/mobile_relay/mobile_relay_config.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/platform/native_client/native_rpc_priority.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 import 'fixtures/client_controller/support/fake_agent_service.dart';
-import 'fixtures/client_controller/support/fake_mobile_relay_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -43,27 +41,27 @@ void main() {
       await controller.initialize();
       expect(controller.entryEvents, ['agents']);
 
-      // Communication slice: models leads at foreground, mobileRelay is a
+      // Communication slice: models leads at foreground, devices is a
       // background sibling; both run exactly once per group cycle.
       controller.selectSection(ClientSection.models);
       await _until(
-        () => controller.modelsCalls == 1 && controller.mobileRelayCalls == 1,
+        () => controller.modelsCalls == 1 && controller.devicesCalls == 1,
       );
       expect(controller.modelsBackground, [false]);
-      expect(controller.mobileRelayBackground, [true]);
+      expect(controller.devicesBackground, [true]);
       expect(
         controller.entryEvents.where((event) => event == 'models').length,
         1,
       );
       expect(
-        controller.entryEvents.where((event) => event == 'mobileRelay').length,
+        controller.entryEvents.where((event) => event == 'devices').length,
         1,
       );
 
       // Movement inside the active communication slice only promotes.
-      controller.selectSection(ClientSection.mobileRelay);
+      controller.selectSection(ClientSection.devices);
       await Future<void>.delayed(Duration.zero);
-      expect(controller.mobileRelayCalls, 1);
+      expect(controller.devicesCalls, 1);
 
       // Conversation re-entry starts a fresh conversation cycle.
       controller.selectSection(ClientSection.agents);
@@ -122,43 +120,32 @@ void main() {
     expect(controller.entryEvents, isEmpty);
   });
 
-  test(
-    'communication entry uses only non-authorizing local status APIs',
-    () async {
-      final directory = await Directory.systemTemp.createTemp(
-        'lico-entry-communication-',
-      );
-      addTearDown(() async {
-        if (await directory.exists()) {
-          await directory.delete(recursive: true);
-        }
-      });
-      final relayService = FakeMobileRelayService()
-        ..config = MobileRelayConfig.defaults().copyWith(
-          stationBaseUrl: 'https://station.example.test',
-          pairingId: 'pair-1',
-          pcTokenPresent: true,
-          paired: true,
-        );
-      final controller = ClientController(
-        portableData: PortableDataRoot(dataDirectoryOverride: directory),
-        agentService: FakeAgentService(),
-        mobileRelayService: relayService,
-      );
-      addTearDown(controller.currentViewTracker.flush);
-      addTearDown(controller.dispose);
+  test('devices entry reads the CLI devices status', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'lico-entry-devices-',
+    );
+    addTearDown(() async {
+      if (await directory.exists()) {
+        await directory.delete(recursive: true);
+      }
+    });
+    final agentService = FakeAgentService();
+    final controller = ClientController(
+      portableData: PortableDataRoot(dataDirectoryOverride: directory),
+      agentService: agentService,
+    );
+    addTearDown(controller.currentViewTracker.flush);
+    addTearDown(controller.dispose);
 
-      await controller.initialize();
-      controller.selectSection(ClientSection.mobileRelay);
-      await _until(() => relayService.refreshPairingStatusCalls >= 1);
-
-      expect(
-        relayService.secureMeshStatusAuthorizeFlags,
-        everyElement(isFalse),
-      );
-      expect(relayService.refreshPairingStatusCalls, greaterThanOrEqualTo(1));
-    },
-  );
+    await controller.initialize();
+    controller.selectSection(ClientSection.devices);
+    await _until(
+      () => agentService.cliCalls.any(
+        (call) =>
+            call.length == 2 && call[0] == 'devices' && call[1] == 'status',
+      ),
+    );
+  });
 }
 
 Future<void> _until(bool Function() condition) async {
@@ -180,7 +167,6 @@ Future<_InstrumentedEntryContext> _createInstrumentedController({
   final controller = _InstrumentedEntryController(
     portableData: PortableDataRoot(dataDirectoryOverride: directory),
     agentService: FakeAgentService(),
-    mobileRelayService: FakeMobileRelayService(),
     mobileClientRuntimePlatformOverride: mobileClientRuntimePlatformOverride,
   );
   addTearDown(controller.currentViewTracker.flush);
@@ -200,19 +186,18 @@ final class _InstrumentedEntryController extends ClientController {
   _InstrumentedEntryController({
     super.portableData,
     super.agentService,
-    super.mobileRelayService,
     super.mobileClientRuntimePlatformOverride,
   });
 
   final List<String> entryEvents = [];
   int agentsCalls = 0;
   int modelsCalls = 0;
-  int mobileRelayCalls = 0;
+  int devicesCalls = 0;
   int agentHubCalls = 0;
   int skillHubCalls = 0;
   int pluginCalls = 0;
   final List<bool> modelsBackground = [];
-  final List<bool> mobileRelayBackground = [];
+  final List<bool> devicesBackground = [];
   final List<bool> agentHubBackground = [];
   final List<bool> skillHubBackground = [];
   final List<bool> pluginBackground = [];
@@ -226,10 +211,10 @@ final class _InstrumentedEntryController extends ClientController {
       () => modelsCalls += 1,
       backgrounds: modelsBackground,
     ),
-    ClientSection.mobileRelay: _lane(
-      'mobileRelay',
-      () => mobileRelayCalls += 1,
-      backgrounds: mobileRelayBackground,
+    ClientSection.devices: _lane(
+      'devices',
+      () => devicesCalls += 1,
+      backgrounds: devicesBackground,
     ),
     ClientSection.agentHub: _lane(
       'agentHub',

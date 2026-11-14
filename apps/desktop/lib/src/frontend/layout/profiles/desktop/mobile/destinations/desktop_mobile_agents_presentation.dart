@@ -18,6 +18,9 @@ final class DesktopMobileAgentsPresentation
   Color canvasColor(LayoutPalette palette) => palette.background;
 
   @override
+  bool get canvasGroundsWorkspace => true;
+
+  @override
   double get sidebarOuterHorizontalExtent => 0;
 
   @override
@@ -40,6 +43,25 @@ final class DesktopMobileAgentsPresentation
 
   @override
   bool get showSidebarBottomNav => true;
+
+  @override
+  LayoutAgentsSidebarHeader get sidebarHeader =>
+      LayoutAgentsSidebarHeader.trafficLights;
+
+  @override
+  bool get showConversationFilters => false;
+
+  @override
+  @override
+  double get conversationHeaderBarExtent => 60;
+
+  @override
+  LayoutConversationHeaderStyle get conversationHeaderStyle =>
+      LayoutConversationHeaderStyle.capsules;
+
+  @override
+  LayoutGroupMembersPlacement get groupMembersPlacement =>
+      LayoutGroupMembersPlacement.avatarStrip;
 
   @override
   Widget frameWorkspace(

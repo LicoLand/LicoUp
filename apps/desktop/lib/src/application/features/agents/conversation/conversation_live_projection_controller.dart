@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_state_holder.dart';
+import 'package:licoup/src/application/features/agents/conversation/native_approval_request.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
@@ -9,7 +10,6 @@ import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
-import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
 /// Ephemeral message/process projection for an in-flight native turn.
 ///
@@ -178,6 +178,12 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
     };
   }
 
+  /// Records a native permission request the Agent parked in a live turn
+  /// and marks its tab as waiting for approval.
+  ///
+  /// The turn envelope carries the session and turn the request is scoped
+  /// to; the payload carries the parked route's callback token, the pending
+  /// operation and its display summary.
   Future<void> conversationHandleNativeApprovalNeeded({
     required String agentId,
     required AgentDispatchEvent event,
@@ -186,63 +192,98 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
       agentId,
       AgentConversationTabActivity.needsApproval,
     );
-    final summary = (event.payload['displaySummary'] ?? '').toString().trim();
-    final pendingOperationId = (event.payload['pendingOperationId'] ?? '')
+    final payload = event.payload;
+    final summary = (payload['displaySummary'] ?? '').toString().trim();
+    final token = (payload['adapterCallbackTokenRef'] ?? '').toString().trim();
+    final pendingOperationId = (payload['pendingOperationId'] ?? '')
         .toString()
         .trim();
-    final token = (event.payload['adapterCallbackTokenRef'] ?? '')
-        .toString()
-        .trim();
-    final nonce = (event.payload['responseNonce'] ?? '').toString().trim();
-    final expiresAt = (event.payload['expiresAt'] ?? '').toString().trim();
-    final originEndpointId =
-        (event.payload['originEndpointId'] ?? 'local-desktop')
-            .toString()
-            .trim();
-    final tools = <String>[];
-    final rawTools = event.payload['requestedTools'];
-    if (rawTools is List) {
-      for (final tool in rawTools) {
-        final name = tool.toString().trim();
-        if (name.isNotEmpty) {
-          tools.add(name);
-        }
-      }
-    }
-    if (pendingOperationId.isNotEmpty && token.isNotEmpty) {
-      final request = SecureMeshApprovalRequest(
-        pendingOperationId: pendingOperationId,
-        requesterAgentId: (event.payload['agentId'] ?? agentId).toString(),
-        targetClientId: 'local-desktop',
-        originEndpointId: originEndpointId,
-        riskLevel: 'local_effect',
-        displaySummary: summary.isEmpty ? 'Agent permission request' : summary,
-        policyReason: 'ACP session/request_permission',
-        expiresAt: expiresAt,
-        responseNonce: nonce,
+    final tools = payload['requestedTools'];
+    if (token.isNotEmpty && pendingOperationId.isNotEmpty) {
+      final request = NativeApprovalRequest(
+        agentId: (payload['agentId'] ?? agentId).toString().trim(),
+        sessionId: event.sessionId.trim(),
+        turnId: event.turnId.trim(),
         adapterCallbackTokenRef: token,
-        adapterStyle: 'callback',
-        requestedTools: List<String>.unmodifiable(tools),
-        trustedEndpointCount: 1,
-        status: SecureMeshApprovalStatus.pending,
+        pendingOperationId: pendingOperationId,
+        summary: summary,
+        requestedTools: [
+          if (tools is List)
+            for (final tool in tools)
+              if (tool.toString().trim().isNotEmpty) tool.toString().trim(),
+        ],
       );
-      final next = <SecureMeshApprovalRequest>[
-        for (final item in secureMeshApprovalInbox)
-          if (item.pendingOperationId != request.pendingOperationId) item,
+      pendingNativeApprovals = List<NativeApprovalRequest>.unmodifiable([
+        for (final item in pendingNativeApprovals)
+          if (item.pendingOperationId != pendingOperationId) item,
         request,
-      ];
-      secureMeshApprovalInbox = List<SecureMeshApprovalRequest>.unmodifiable(
-        next.length <= 24 ? next : next.sublist(next.length - 24),
-      );
+      ]);
     }
     agentWorkspaceSetLocalizedStatusMessage(
-      summary.isEmpty ? '智能体等待远程审批。' : '智能体等待审批：$summary',
+      summary.isEmpty ? '智能体等待审批。' : '智能体等待审批：$summary',
       summary.isEmpty
-          ? 'The agent is waiting for remote approval.'
+          ? 'The agent is waiting for approval.'
           : 'The agent is waiting for approval: $summary',
     );
-    statusCaption = 'Remote approval';
+    statusCaption = 'Approval';
     agentWorkspaceNotifyStateChanged();
-    await refreshSecureMeshApprovalInbox(includeResolved: false);
+  }
+
+  /// Delivers Allow or Deny for one pending native permission request.
+  ///
+  /// A delivered decision, and a request the Agent already settled, remove
+  /// the request; any other failure keeps it so the user can decide again.
+  Future<void> resolveNativeApproval(
+    String pendingOperationId, {
+    required bool allow,
+  }) async {
+    final request = pendingNativeApprovals
+        .where((item) => item.pendingOperationId == pendingOperationId)
+        .firstOrNull;
+    if (request == null ||
+        resolvingNativeApprovals.contains(pendingOperationId)) {
+      return;
+    }
+    resolvingNativeApprovals = {
+      ...resolvingNativeApprovals,
+      pendingOperationId,
+    };
+    nativeApprovalErrorCode = '';
+    agentWorkspaceNotifyStateChanged();
+    String failure;
+    try {
+      failure = await conversationGateway.resolveNativeApproval(
+        agentId: request.agentId,
+        sessionId: request.sessionId,
+        turnId: request.turnId,
+        adapterCallbackTokenRef: request.adapterCallbackTokenRef,
+        allow: allow,
+      );
+    } on Object {
+      failure = 'native_interaction_resolve_failed';
+    }
+    resolvingNativeApprovals = {
+      for (final id in resolvingNativeApprovals)
+        if (id != pendingOperationId) id,
+    };
+    if (failure.isEmpty) {
+      pendingNativeApprovals = List<NativeApprovalRequest>.unmodifiable([
+        for (final item in pendingNativeApprovals)
+          if (item.pendingOperationId != pendingOperationId) item,
+      ]);
+      if (!pendingNativeApprovals.any(
+            (item) => item.agentId == request.agentId,
+          ) &&
+          conversationTabActivityFor(request.agentId) ==
+              AgentConversationTabActivity.needsApproval) {
+        setConversationTabActivity(
+          request.agentId,
+          AgentConversationTabActivity.none,
+        );
+      }
+    } else {
+      nativeApprovalErrorCode = failure;
+    }
+    agentWorkspaceNotifyStateChanged();
   }
 }

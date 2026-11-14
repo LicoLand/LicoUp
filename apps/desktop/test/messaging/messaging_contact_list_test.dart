@@ -7,8 +7,10 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
+import 'package:licoup/src/contracts/conversation_profile.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
@@ -16,12 +18,19 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/contracts/presentation/dashboard_feature_order.dart';
 import 'package:licoup/src/frontend/shared/dashboard_feature_order_store.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/shared/mascot/mascot_catalog.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_profile_registry.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_unread_cursor_store.dart';
+import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
-import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_selection_highlight.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+
+import '../layout/fixtures/layout_destination_presentation_fixture.dart';
 
 final class _ContactListOrderStore extends DashboardFeatureOrderStore {
   const _ContactListOrderStore();
@@ -32,6 +41,32 @@ final class _ContactListOrderStore extends DashboardFeatureOrderStore {
 
   @override
   Future<void> save(Object portableData, List<String> order) async {}
+}
+
+final class _FakeUnreadCursorStore extends MessagingUnreadCursorStore {
+  _FakeUnreadCursorStore(this.stored, {this.baselineAtUnixMs = 0});
+
+  Map<String, int>? stored;
+  int baselineAtUnixMs;
+  final List<Map<String, int>> saves = <Map<String, int>>[];
+
+  @override
+  Future<MessagingUnreadCursorSnapshot?> load(Object portableData) async {
+    final cursors = stored;
+    if (cursors == null) {
+      return null;
+    }
+    return MessagingUnreadCursorSnapshot(
+      cursors: cursors,
+      baselineAtUnixMs: baselineAtUnixMs,
+    );
+  }
+
+  @override
+  Future<void> save(Object portableData, Map<String, int> cursors) async {
+    stored = Map<String, int>.unmodifiable(cursors);
+    saves.add(stored!);
+  }
 }
 
 void main() {
@@ -86,12 +121,12 @@ void main() {
   });
 
   testWidgets(
-    'in-flight refresh occupies space above the first conversation and then disappears',
+    'in-flight scan occupies space above the first conversation and then disappears',
     (tester) async {
       await _pumpContacts(
         tester,
         sessionsByAgent: const {},
-        loading: true,
+        scanning: true,
         onSearch: () {},
         groupConversations: const [
           ClientConversationSummary(
@@ -139,7 +174,7 @@ void main() {
       await _pumpContacts(
         tester,
         sessionsByAgent: const {},
-        loading: false,
+        scanning: false,
         onSearch: () {},
         groupConversations: const [
           ClientConversationSummary(
@@ -157,6 +192,289 @@ void main() {
         selectedGroupConversationId: 'conversation:group',
       );
       expect(indicator, findsNothing);
+      expect(groupRow, findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a loading agent conversation skeletons its own row, not the list',
+    (tester) async {
+      await _pumpContacts(
+        tester,
+        targets: [
+          _target('codex', 'Codex'),
+          _target('claude-code', 'Claude Code'),
+        ],
+        sessionsByAgent: {
+          'codex': [
+            _session(
+              's1',
+              'codex',
+              'Ship it',
+              updatedAgo: const Duration(minutes: 5),
+              preview: '直接上架',
+            ),
+          ],
+          'claude-code': [
+            _session(
+              's2',
+              'claude-code',
+              'Docs',
+              updatedAgo: const Duration(hours: 1),
+              preview: 'Readme notes',
+            ),
+          ],
+        },
+        loading: true,
+        loadingAgentIds: const {'codex'},
+      );
+
+      final codexRow = find.byKey(const Key('messaging-contact-codex'));
+      expect(
+        find.descendant(
+          of: codexRow,
+          matching: find.byKey(const Key('messaging-row-loading-preview')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: codexRow,
+          matching: find.byKey(const Key('messaging-row-loading-time')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: codexRow, matching: find.textContaining('直接上架')),
+        findsNothing,
+      );
+
+      // A settled row keeps its real preview and timestamp.
+      final claudeRow = find.byKey(const Key('messaging-contact-claude-code'));
+      expect(
+        find.descendant(
+          of: claudeRow,
+          matching: find.byKey(const Key('messaging-row-loading-preview')),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: claudeRow,
+          matching: find.textContaining('Readme notes'),
+        ),
+        findsOneWidget,
+      );
+
+      // Per-conversation loading never raises the list-level indicator.
+      expect(
+        find.byKey(const Key('messaging-list-refresh-indicator')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets('a loading group conversation skeletons its row', (tester) async {
+    const conversation = ClientConversationSummary(
+      id: 'conversation:group',
+      title: 'Local room',
+      archived: false,
+      pinned: false,
+      group: true,
+      revision: 1,
+      updatedAtUnixMs: 20,
+      membershipCount: 3,
+      eventCount: 0,
+    );
+    await _pumpContacts(
+      tester,
+      sessionsByAgent: const {},
+      groupConversations: const [conversation],
+      loadingGroupConversationId: 'conversation:group',
+    );
+
+    final groupRow = find.byKey(
+      const ValueKey<String>('messaging-group-conversation-conversation:group'),
+    );
+    expect(
+      find.descendant(
+        of: groupRow,
+        matching: find.byKey(const Key('messaging-row-loading-preview')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: groupRow,
+        matching: find.byKey(const Key('messaging-row-loading-time')),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a profile conversation renders as a mascot contact row', (
+    tester,
+  ) async {
+    resetConversationProfilesForTests();
+    addTearDown(resetConversationProfilesForTests);
+    addConversationProfile(
+      const ConversationProfile(
+        id: 'nova',
+        name: 'Nova',
+        mascotAvatarId: 'luna',
+        agentId: 'codex',
+        createdAtUnixMs: 1,
+        conversationId: 'conversation:profile-nova',
+      ),
+    );
+    const conversation = ClientConversationSummary(
+      id: 'conversation:profile-nova',
+      title: 'Nova',
+      archived: false,
+      pinned: false,
+      group: false,
+      revision: 1,
+      updatedAtUnixMs: 20,
+      membershipCount: 2,
+      eventCount: 1,
+    );
+    await _pumpContacts(
+      tester,
+      sessionsByAgent: const {},
+      directConversations: const [conversation],
+    );
+
+    final row = find.byKey(
+      const ValueKey<String>(
+        'messaging-profile-conversation-conversation:profile-nova',
+      ),
+    );
+    expect(row, findsOneWidget);
+    expect(
+      find.descendant(
+        of: row,
+        matching: find.byKey(
+          const ValueKey<String>(
+            'messaging-profile-avatar-conversation:profile-nova',
+          ),
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Nova'), findsOneWidget);
+    // The backing agent's product name is the row subtitle.
+    expect(
+      find.descendant(of: row, matching: find.text('Codex')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'a direct conversation with no registered profile renders no row',
+    (tester) async {
+      resetConversationProfilesForTests();
+      addTearDown(resetConversationProfilesForTests);
+      const conversation = ClientConversationSummary(
+        id: 'conversation:legacy-1to1',
+        title: 'codex',
+        archived: false,
+        pinned: false,
+        group: false,
+        revision: 1,
+        updatedAtUnixMs: 20,
+        membershipCount: 2,
+        eventCount: 1,
+      );
+      await _pumpContacts(
+        tester,
+        sessionsByAgent: const {},
+        directConversations: const [conversation],
+      );
+
+      expect(
+        find.byKey(
+          const ValueKey<String>(
+            'messaging-profile-conversation-conversation:legacy-1to1',
+          ),
+        ),
+        findsNothing,
+      );
+      expect(find.text('codex'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'profile conversations list under Agents and never under Groups',
+    (tester) async {
+      resetConversationProfilesForTests();
+      addTearDown(resetConversationProfilesForTests);
+      addConversationProfile(
+        const ConversationProfile(
+          id: 'nova',
+          name: 'Nova',
+          mascotAvatarId: 'luna',
+          agentId: 'codex',
+          createdAtUnixMs: 1,
+          conversationId: 'conversation:profile-nova',
+        ),
+      );
+      const direct = ClientConversationSummary(
+        id: 'conversation:profile-nova',
+        title: 'Nova',
+        archived: false,
+        pinned: false,
+        group: false,
+        revision: 1,
+        updatedAtUnixMs: 20,
+        membershipCount: 2,
+        eventCount: 1,
+      );
+      const group = ClientConversationSummary(
+        id: 'conversation:group',
+        title: 'Local room',
+        archived: false,
+        pinned: false,
+        group: true,
+        revision: 1,
+        updatedAtUnixMs: 19,
+        membershipCount: 3,
+        eventCount: 0,
+      );
+      await _pumpContacts(
+        tester,
+        sessionsByAgent: const {},
+        groupConversations: const [group],
+        directConversations: const [direct],
+        presentation: const FixtureLayoutAgentsPresentation(
+          showConversationFilters: true,
+        ),
+      );
+
+      final profileRow = find.byKey(
+        const ValueKey<String>(
+          'messaging-profile-conversation-conversation:profile-nova',
+        ),
+      );
+      final groupRow = find.byKey(
+        const ValueKey<String>(
+          'messaging-group-conversation-conversation:group',
+        ),
+      );
+      expect(profileRow, findsOneWidget);
+      expect(groupRow, findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const Key('messaging-conversation-filter-agents')),
+      );
+      await tester.pumpAndSettle();
+      expect(profileRow, findsOneWidget);
+      expect(groupRow, findsNothing);
+
+      await tester.tap(
+        find.byKey(const Key('messaging-conversation-filter-groups')),
+      );
+      await tester.pumpAndSettle();
+      expect(profileRow, findsNothing);
       expect(groupRow, findsOneWidget);
     },
   );
@@ -207,9 +525,57 @@ void main() {
     },
   );
 
-  testWidgets('dark circular identity wells use pure black', (tester) async {
+  testWidgets(
+    'agent rows use bare marks and the empty mosaic well stays black',
+    (tester) async {
+      await _pumpContacts(
+        tester,
+        sessionsByAgent: const {},
+        groupConversations: const [
+          ClientConversationSummary(
+            id: 'conversation:group',
+            title: 'Lico',
+            archived: false,
+            group: true,
+            revision: 1,
+            updatedAtUnixMs: 10,
+            membershipCount: 2,
+            eventCount: 0,
+          ),
+        ],
+        selectedGroupConversationId: 'conversation:group',
+      );
+
+      // Agent rows render the bare brand mark — the identity well is gone.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('messaging-contact-codex')),
+          matching: find.byType(AgentBrandIcon),
+        ),
+        findsOneWidget,
+      );
+
+      // No member data in the summary falls back to the generic circular well
+      // inside the mosaic avatar.
+      final groupWell = tester.widget<Container>(
+        find.descendant(
+          of: find.byKey(
+            const Key('messaging-group-avatar-conversation:group'),
+          ),
+          matching: find.byType(Container),
+        ),
+      );
+      expect((groupWell.decoration! as BoxDecoration).color, Colors.black);
+    },
+  );
+
+  testWidgets('group row mosaic paints member cells from the summary', (
+    tester,
+  ) async {
+    final claude = _target('claude-code', 'Claude Code');
     await _pumpContacts(
       tester,
+      targets: [claude],
       sessionsByAgent: const {},
       groupConversations: const [
         ClientConversationSummary(
@@ -219,32 +585,41 @@ void main() {
           group: true,
           revision: 1,
           updatedAtUnixMs: 10,
-          membershipCount: 2,
+          membershipCount: 3,
           eventCount: 0,
+          memberAgentIds: ['claude-code'],
+          hasLocalOwner: true,
         ),
       ],
-      selectedGroupConversationId: 'conversation:group',
     );
 
-    final agentWell = tester.widget<DecoratedBox>(
+    final avatar = find.byKey(
+      const Key('messaging-group-avatar-conversation:group'),
+    );
+    // The local owner's cell paints the session mascot tile and the resolved
+    // agent cell its brand mark; the generic circular mark stays only for
+    // empty rosters.
+    expect(
+      find.descendant(of: avatar, matching: find.byType(AgentBrandIcon)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: avatar, matching: find.byType(MascotImage)),
+      findsOneWidget,
+    );
+    expect(
       find.descendant(
-        of: find.byKey(const Key('messaging-contact-codex')),
-        matching: find.byKey(const Key('messaging-agent-avatar-well')),
+        of: avatar,
+        matching: find.byIcon(Icons.groups_2_rounded),
       ),
+      findsNothing,
     );
-    expect((agentWell.decoration as ShapeDecoration).color, Colors.black);
-
-    final groupWell = tester.widget<Container>(
-      find.byKey(const Key('messaging-group-avatar-conversation:group')),
-    );
-    expect((groupWell.decoration! as BoxDecoration).color, Colors.black);
   });
 
   testWidgets(
-    'target selection shows its reusable conversation list and back row',
+    'contact row previews the latest parent session and a tap opens it',
     (tester) async {
-      final selectedSessions = <String>[];
-      var backCount = 0;
+      final selectedAgents = <String>[];
       final claude = _target('claude-code', 'Claude Code');
       await _pumpContacts(
         tester,
@@ -256,136 +631,101 @@ void main() {
               claude.target,
               'Refactor list',
               updatedAgo: const Duration(minutes: 5),
+              preview: 'Reworked the row',
               workingDirectory: '/workspace/licoup',
+            ),
+            // A newer sub-agent thread never becomes the contact preview.
+            _session(
+              'session-child',
+              claude.target,
+              'Sub-agent thread',
+              updatedAgo: Duration.zero,
+              preview: 'Should never surface',
+              parentSessionId: 'session-claude',
             ),
           ],
         },
-        showConversationList: true,
-        conversationListTargets: [claude],
-        selectedSessionId: 'session-claude',
-        onSelectSession: (agentId, sessionId) {
-          selectedSessions.add('$agentId/$sessionId');
-        },
-        onBack: () => backCount += 1,
+        onSelectAgent: selectedAgents.add,
         onSearch: () {},
-        locale: const Locale('zh'),
       );
 
+      final row = find.byKey(const Key('messaging-contact-claude-code'));
+      expect(row, findsOneWidget);
+      expect(find.text('Reworked the row · licoup'), findsOneWidget);
+      expect(find.text('Should never surface'), findsNothing);
+      // The removed drill-down level leaves no back control anywhere.
       expect(
         find.byKey(const Key('messaging-conversation-list')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
-        find.byKey(const Key('messaging-sidebar-traffic-light-row')),
-        findsOneWidget,
-      );
-      expect(find.text('对话'), findsWidgets);
-      expect(find.text('返回上一级'), findsOneWidget);
-      expect(find.text('Claude'), findsNothing);
-      expect(find.text('Refactor list'), findsOneWidget);
-      expect(find.byType(AgentBrandIcon), findsNothing);
-
-      final lightRowRect = tester.getRect(
-        find.byKey(const Key('messaging-sidebar-traffic-light-row')),
-      );
-      final searchRect = tester.getRect(
-        find.byKey(const Key('messaging-sidebar-search')),
-      );
-      final backRect = tester.getRect(
         find.byKey(const Key('messaging-conversation-list-back')),
+        findsNothing,
       );
-      final todayRect = tester.getRect(find.text('今天'));
-      expect(lightRowRect.bottom, lessThanOrEqualTo(searchRect.top));
-      expect(
-        backRect.top - searchRect.bottom,
-        MessagingDesktopMetrics.sidebarPrimaryControlGap,
-      );
-      expect(
-        todayRect.top - backRect.bottom,
-        MessagingDesktopMetrics.sidebarPrimaryControlGap,
-      );
-      final backLabel = tester.widget<Text>(
-        find.byKey(const Key('messaging-conversation-list-back-label')),
-      );
-      expect(backLabel.style?.fontSize, 13);
-      expect(backLabel.style?.fontWeight, FontWeight.w600);
+      expect(find.text('返回上一级'), findsNothing);
 
-      await tester.tap(
-        find.byKey(const Key('agents-sidebar-conversation-session-claude')),
-      );
+      await tester.tap(row);
       await tester.pump();
-      expect(selectedSessions, ['claude-code/session-claude']);
-
-      await tester.tap(
-        find.byKey(const Key('messaging-conversation-list-back')),
-      );
-      await tester.pump();
-      expect(backCount, 1);
+      expect(selectedAgents, [claude.id]);
     },
   );
 
   testWidgets(
-    'traffic-light row and search stay pinned while contextual back sits below search',
+    'traffic-light row and search stay pinned while contacts scroll',
     (tester) async {
       final claude = _target('claude-code', 'Claude Code');
       await _pumpContacts(
         tester,
-        targets: [claude],
+        targets: [
+          claude,
+          for (var index = 0; index < 16; index++)
+            _target('agent-$index', 'Agent $index'),
+        ],
         sessionsByAgent: {
           claude.id: [
-            for (var index = 0; index < 16; index++)
-              _session(
-                'session-$index',
-                claude.target,
-                'Thread $index',
-                updatedAgo: Duration(minutes: index + 1),
-              ),
+            _session(
+              'session-0',
+              claude.target,
+              'Thread 0',
+              updatedAgo: const Duration(minutes: 1),
+            ),
           ],
         },
-        showConversationList: true,
-        conversationListTargets: [claude],
-        selectedSessionId: 'session-0',
         onSearch: () {},
-        onBack: () {},
-        locale: const Locale('zh'),
       );
 
       final lightRow = find.byKey(
         const Key('messaging-sidebar-traffic-light-row'),
       );
       final search = find.byKey(const Key('messaging-sidebar-search'));
-      final back = find.byKey(const Key('messaging-conversation-list-back'));
       expect(lightRow, findsOneWidget);
       expect(search, findsOneWidget);
-      expect(back, findsOneWidget);
       expect(
         tester.getTopLeft(lightRow).dy,
         lessThan(tester.getTopLeft(search).dy),
       );
-      expect(
-        tester.getTopLeft(search).dy,
-        lessThan(tester.getTopLeft(back).dy),
-      );
 
       final lightRowY = tester.getTopLeft(lightRow).dy;
       final searchY = tester.getTopLeft(search).dy;
-      final backY = tester.getTopLeft(back).dy;
-      final visibleRow = find.text('Thread 3');
+      final visibleRow = find.byKey(const Key('messaging-contact-agent-3'));
       expect(visibleRow, findsOneWidget);
       final visibleRowY = tester.getTopLeft(visibleRow).dy;
-      await tester.drag(find.byType(ListView), const Offset(0, -80));
+      await tester.drag(
+        find.byKey(const Key('messaging-contact-scroll')),
+        const Offset(0, -80),
+      );
       await tester.pump();
 
       expect(tester.getTopLeft(lightRow).dy, lightRowY);
       expect(tester.getTopLeft(search).dy, searchY);
-      expect(tester.getTopLeft(back).dy, backY);
       expect(tester.getTopLeft(visibleRow).dy, lessThan(visibleRowY));
     },
   );
 
-  testWidgets('group conversation list marks every row with its Agent icon', (
-    tester,
-  ) async {
+  testWidgets('each contact keeps one row with its brand icon', (tester) async {
+    final fixtureNow = DateTime(2026, 10, 12, 12);
+    conversationNow = () => fixtureNow;
+    addTearDown(() => conversationNow = DateTime.now);
     final codex = _target('codex', 'Codex');
     final claude = _target('claude-code', 'Claude Code');
     await _pumpContacts(
@@ -398,6 +738,7 @@ void main() {
             codex.target,
             'Codex thread',
             updatedAgo: const Duration(minutes: 3),
+            preview: 'Codex is working',
           ),
         ],
         claude.id: [
@@ -406,19 +747,28 @@ void main() {
             claude.target,
             'Claude thread',
             updatedAgo: const Duration(minutes: 4),
+            preview: 'Claude replied',
           ),
         ],
       },
-      showConversationList: true,
-      conversationListTargets: [codex, claude],
-      showConversationAgentIcons: true,
-      locale: const Locale('zh'),
     );
 
-    expect(find.text('返回上一级'), findsOneWidget);
-    expect(find.text('Local'), findsNothing);
-    expect(find.text('Codex thread'), findsOneWidget);
-    expect(find.text('Claude thread'), findsOneWidget);
+    expect(find.byKey(const Key('messaging-contact-codex')), findsOneWidget);
+    expect(
+      find.byKey(const Key('messaging-contact-claude-code')),
+      findsOneWidget,
+    );
+    expect(find.text('Codex is working'), findsOneWidget);
+    expect(find.text('Claude replied'), findsOneWidget);
+    // Same-day sessions show the demo's HH:mm clock.
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Text &&
+            RegExp(r'^\d{2}:\d{2}$').hasMatch(widget.data ?? ''),
+      ),
+      findsNWidgets(2),
+    );
     expect(find.byType(AgentBrandIcon), findsNWidgets(2));
   });
 
@@ -509,7 +859,10 @@ void main() {
       tester.getTopLeft(group).dy,
       lessThan(tester.getTopLeft(firstAgent).dy),
     );
-    expect(find.text('3 members'), findsOneWidget);
+    expect(
+      find.descendant(of: group, matching: find.text('3')),
+      findsOneWidget,
+    );
     expect(find.textContaining('7 messages'), findsNothing);
 
     await tester.tap(group);
@@ -562,6 +915,9 @@ void main() {
   testWidgets('contacts show brand icon, name, latest preview, and time', (
     tester,
   ) async {
+    final fixtureNow = DateTime(2026, 10, 12, 12);
+    conversationNow = () => fixtureNow;
+    addTearDown(() => conversationNow = DateTime.now);
     await _pumpContacts(
       tester,
       sessionsByAgent: {
@@ -600,7 +956,14 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(of: row, matching: find.text('25m')),
+      find.descendant(
+        of: row,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Text &&
+              RegExp(r'^\d{2}:\d{2}$').hasMatch(widget.data ?? ''),
+        ),
+      ),
       findsOneWidget,
     );
     final icon = tester.widget<AgentBrandIcon>(
@@ -860,12 +1223,61 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('selected contact renders solid accent with dark foreground', (
+  testWidgets(
+    'selected contact renders the violet surface with normal foreground',
+    (tester) async {
+      await _pumpContacts(
+        tester,
+        selectedAgentId: 'codex',
+        sessionsByAgent: {
+          'codex': [
+            _session(
+              'session-codex',
+              'codex',
+              'Codex session',
+              updatedAgo: const Duration(minutes: 5),
+              preview: 'codex preview',
+            ),
+          ],
+        },
+      );
+
+      final colors = tester
+          .element(find.byType(MessagingContactList))
+          .licoColors;
+      final row = find.byKey(const Key('messaging-contact-codex'));
+      final container = tester.widget<AnimatedContainer>(
+        find.descendant(of: row, matching: find.byType(AnimatedContainer)),
+      );
+      // Fluorescent highlight, not a solid fill: the decoration stays
+      // transparent and the accent pill + wash ride on the CustomPaint.
+      expect(
+        (container.decoration! as BoxDecoration).color,
+        Colors.transparent,
+      );
+      final paint = tester.widget<CustomPaint>(
+        find.descendant(of: row, matching: find.byType(CustomPaint)),
+      );
+      expect(paint.painter, isA<LicoSelectionHighlightPainter>());
+      final title = tester.widget<Text>(
+        find.descendant(of: row, matching: find.text('Codex')),
+      );
+      expect(title.style?.color, colors.selectionInk);
+      final preview = tester.widget<Text>(
+        find.descendant(of: row, matching: find.text('codex preview')),
+      );
+      expect(preview.style?.color, colors.textMuted);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('starlight keeps the selected title in the plain text tone', (
     tester,
   ) async {
     await _pumpContacts(
       tester,
       selectedAgentId: 'codex',
+      treatment: LicoSelectionTreatment.starlight,
       sessionsByAgent: {
         'codex': [
           _session(
@@ -881,32 +1293,461 @@ void main() {
 
     final colors = tester.element(find.byType(MessagingContactList)).licoColors;
     final row = find.byKey(const Key('messaging-contact-codex'));
-    final container = tester.widget<AnimatedContainer>(
-      find.descendant(of: row, matching: find.byType(AnimatedContainer)),
+    expect(
+      find.descendant(
+        of: row,
+        matching: find.byWidgetPredicate(
+          (w) => w is CustomPaint && w.painter is LicoStarlightHighlightPainter,
+        ),
+      ),
+      findsOneWidget,
     );
-    expect((container.decoration! as BoxDecoration).color, colors.primary);
+    expect(
+      find.descendant(
+        of: row,
+        matching: find.byWidgetPredicate(
+          (w) => w is CustomPaint && w.painter is LicoSelectionHighlightPainter,
+        ),
+      ),
+      findsNothing,
+    );
     final title = tester.widget<Text>(
       find.descendant(of: row, matching: find.text('Codex')),
     );
-    expect(title.style?.color, colors.textOnPrimary);
-    final preview = tester.widget<Text>(
-      find.descendant(of: row, matching: find.text('codex preview')),
-    );
-    expect(preview.style?.color, colors.textOnPrimary.withAlpha(180));
+    expect(title.style?.color, colors.text);
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('group row shows the unread delta over the stored cursor', (
+    tester,
+  ) async {
+    final store = _FakeUnreadCursorStore(const {'conversation:group': 3});
+    await _pumpContacts(
+      tester,
+      sessionsByAgent: const {},
+      unreadCursorStore: store,
+      groupConversations: const [
+        ClientConversationSummary(
+          id: 'conversation:group',
+          title: 'Local',
+          archived: false,
+          group: true,
+          revision: 1,
+          updatedAtUnixMs: 10,
+          membershipCount: 4,
+          eventCount: 5,
+        ),
+      ],
+    );
+    await tester.pump();
+
+    final badge = find.byKey(
+      const Key('messaging-unread-badge-conversation:group'),
+    );
+    expect(badge, findsOneWidget);
+    expect(
+      find.descendant(of: badge, matching: find.text('2')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('tapping an unread row marks it seen', (tester) async {
+    var selected = '';
+    final store = _FakeUnreadCursorStore(const {'conversation:group': 3});
+    await _pumpContacts(
+      tester,
+      sessionsByAgent: const {},
+      unreadCursorStore: store,
+      onSelectGroupConversation: (id) => selected = id,
+      groupConversations: const [
+        ClientConversationSummary(
+          id: 'conversation:group',
+          title: 'Local',
+          archived: false,
+          group: true,
+          revision: 1,
+          updatedAtUnixMs: 10,
+          membershipCount: 4,
+          eventCount: 5,
+        ),
+      ],
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const Key('messaging-group-conversation-conversation:group')),
+    );
+    await tester.pump();
+
+    expect(selected, 'conversation:group');
+    expect(store.stored?['conversation:group'], 5);
+    expect(
+      find.byKey(const Key('messaging-unread-badge-conversation:group')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('the open conversation can never show unread', (tester) async {
+    final store = _FakeUnreadCursorStore(const {'conversation:group': 3});
+    await _pumpContacts(
+      tester,
+      sessionsByAgent: const {},
+      unreadCursorStore: store,
+      selectedGroupConversationId: 'conversation:group',
+      groupConversations: const [
+        ClientConversationSummary(
+          id: 'conversation:group',
+          title: 'Local',
+          archived: false,
+          group: true,
+          revision: 1,
+          updatedAtUnixMs: 10,
+          membershipCount: 4,
+          eventCount: 7,
+        ),
+      ],
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('messaging-unread-badge-conversation:group')),
+      findsNothing,
+    );
+    expect(store.stored?['conversation:group'], 7);
+  });
+
+  testWidgets('first run seeds known conversations without badging', (
+    tester,
+  ) async {
+    final store = _FakeUnreadCursorStore(null);
+    await _pumpContacts(
+      tester,
+      sessionsByAgent: const {},
+      unreadCursorStore: store,
+      groupConversations: const [
+        ClientConversationSummary(
+          id: 'conversation:group',
+          title: 'Local',
+          archived: false,
+          group: true,
+          revision: 1,
+          updatedAtUnixMs: 10,
+          membershipCount: 4,
+          eventCount: 9,
+        ),
+      ],
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('messaging-unread-badge-conversation:group')),
+      findsNothing,
+    );
+    expect(store.stored?['conversation:group'], 9);
+  });
+
+  testWidgets('an agent row badges its latest session delta', (tester) async {
+    final store = _FakeUnreadCursorStore(const {'session-codex': 1});
+    await _pumpContacts(
+      tester,
+      unreadCursorStore: store,
+      sessionsByAgent: {
+        'codex': [
+          _session(
+            'session-codex',
+            'codex',
+            'Codex session',
+            updatedAgo: const Duration(minutes: 5),
+            preview: 'codex preview',
+            messageCount: 4,
+          ),
+        ],
+      },
+    );
+    await tester.pump();
+
+    final badge = find.byKey(const Key('messaging-unread-badge-session-codex'));
+    expect(badge, findsOneWidget);
+    expect(
+      find.descendant(of: badge, matching: find.text('3')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('agent row badge sums unread across all sessions', (
+    tester,
+  ) async {
+    final store = _FakeUnreadCursorStore(const {
+      'session-new': 2,
+      'session-old': 1,
+    });
+    await _pumpContacts(
+      tester,
+      unreadCursorStore: store,
+      sessionsByAgent: {
+        'codex': [
+          _session(
+            'session-new',
+            'codex',
+            'New',
+            updatedAgo: const Duration(minutes: 1),
+            messageCount: 4,
+          ),
+          _session(
+            'session-old',
+            'codex',
+            'Old',
+            updatedAgo: const Duration(minutes: 30),
+            messageCount: 3,
+          ),
+        ],
+      },
+    );
+    await tester.pump();
+
+    // (4-2) + (3-1) = 4 unread across both sessions.
+    final badge = find.byKey(const Key('messaging-unread-badge-session-new'));
+    expect(badge, findsOneWidget);
+    expect(
+      find.descendant(of: badge, matching: find.text('4')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('agent row shows a status pill instead of the unread badge', (
+    tester,
+  ) async {
+    Future<void> pump({
+      bool Function(AgentConversationSession session)? runningFor,
+      AgentConversationTabActivity activity = AgentConversationTabActivity.none,
+    }) => _pumpContacts(
+      tester,
+      unreadCursorStore: _FakeUnreadCursorStore(const {'session-codex': 1}),
+      targets: [_target('codex', 'Codex')],
+      runningFor: runningFor,
+      activity: activity,
+      sessionsByAgent: {
+        'codex': [
+          _session(
+            'session-codex',
+            'codex',
+            'Codex session',
+            updatedAgo: const Duration(minutes: 5),
+            messageCount: 4,
+          ),
+        ],
+      },
+    );
+
+    await pump(runningFor: (_) => true);
+    await tester.pump();
+    expect(
+      find.byKey(const Key('messaging-row-status-working')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('messaging-unread-badge-session-codex')),
+      findsNothing,
+    );
+
+    await pump(activity: AgentConversationTabActivity.needsApproval);
+    await tester.pump();
+    expect(
+      find.byKey(const Key('messaging-row-status-approval')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('messaging-unread-badge-session-codex')),
+      findsNothing,
+    );
+
+    await pump(activity: AgentConversationTabActivity.workFinished);
+    await tester.pump();
+    expect(
+      find.byKey(const Key('messaging-row-status-finished')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('messaging-unread-badge-session-codex')),
+      findsNothing,
+    );
+
+    await pump();
+    await tester.pump();
+    for (final key in const [
+      'messaging-row-status-working',
+      'messaging-row-status-approval',
+      'messaging-row-status-finished',
+    ]) {
+      expect(find.byKey(Key(key)), findsNothing);
+    }
+    expect(
+      find.byKey(const Key('messaging-unread-badge-session-codex')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('contact taps open the newest unread session, then the next, '
+      'then fall back once all are read', (tester) async {
+    final opened = <(String, String)>[];
+    final fallback = <String>[];
+    final store = _FakeUnreadCursorStore(const {
+      'session-new': 2,
+      'session-old': 1,
+    });
+    await _pumpContacts(
+      tester,
+      unreadCursorStore: store,
+      onSelectAgent: fallback.add,
+      onSelectAgentSession: (agentId, sessionId) =>
+          opened.add((agentId, sessionId)),
+      sessionsByAgent: {
+        'codex': [
+          _session(
+            'session-new',
+            'codex',
+            'New',
+            updatedAgo: const Duration(minutes: 1),
+            messageCount: 4,
+          ),
+          _session(
+            'session-old',
+            'codex',
+            'Old',
+            updatedAgo: const Duration(minutes: 30),
+            messageCount: 3,
+          ),
+        ],
+      },
+    );
+    await tester.pump();
+
+    final row = find.byKey(const Key('messaging-contact-codex'));
+    await tester.tap(row);
+    await tester.pump();
+    // First tap opens the newest session that still has unread and marks
+    // it read.
+    expect(opened, [('codex', 'session-new')]);
+    expect(store.stored?['session-new'], 4);
+
+    await tester.tap(row);
+    await tester.pump();
+    // The next tap finds the next-most-recent unread session.
+    expect(opened.last, ('codex', 'session-old'));
+    expect(store.stored?['session-old'], 3);
+
+    await tester.tap(row);
+    await tester.pump();
+    // All sessions read: the tap falls back to the default open action.
+    expect(opened, hasLength(2));
+    expect(fallback, ['codex']);
+    expect(
+      find.byKey(const Key('messaging-unread-badge-session-new')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('sessions idle since before the coverage baseline are adopted '
+      'read on first sight and persisted', (tester) async {
+    final store = _FakeUnreadCursorStore(
+      const {},
+      baselineAtUnixMs: DateTime.now()
+          .subtract(const Duration(hours: 1))
+          .millisecondsSinceEpoch,
+    );
+    await _pumpContacts(
+      tester,
+      unreadCursorStore: store,
+      sessionsByAgent: {
+        'codex': [
+          _session(
+            'session-recent',
+            'codex',
+            'Recent',
+            updatedAgo: const Duration(hours: 2),
+            messageCount: 4,
+          ),
+          _session(
+            'session-old',
+            'codex',
+            'Old',
+            updatedAgo: const Duration(hours: 3),
+            messageCount: 3,
+          ),
+        ],
+      },
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('messaging-unread-badge-session-recent')),
+      findsNothing,
+    );
+    expect(store.stored?['session-recent'], 4);
+    expect(store.stored?['session-old'], 3);
+  });
+
+  testWidgets('sessions active after the coverage baseline badge in full '
+      'and drive the unread tap', (tester) async {
+    final opened = <(String, String)>[];
+    final store = _FakeUnreadCursorStore(
+      const {},
+      baselineAtUnixMs: DateTime.now()
+          .subtract(const Duration(hours: 1))
+          .millisecondsSinceEpoch,
+    );
+    await _pumpContacts(
+      tester,
+      unreadCursorStore: store,
+      onSelectAgentSession: (agentId, sessionId) =>
+          opened.add((agentId, sessionId)),
+      sessionsByAgent: {
+        'codex': [
+          _session(
+            'session-new',
+            'codex',
+            'New',
+            updatedAgo: const Duration(minutes: 30),
+            messageCount: 4,
+          ),
+          _session(
+            'session-old',
+            'codex',
+            'Old',
+            updatedAgo: const Duration(hours: 3),
+            messageCount: 3,
+          ),
+        ],
+      },
+    );
+    await tester.pump();
+
+    final badge = find.byKey(const Key('messaging-unread-badge-session-new'));
+    expect(badge, findsOneWidget);
+    expect(
+      find.descendant(of: badge, matching: find.text('4')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('messaging-contact-codex')));
+    await tester.pump();
+    expect(opened, [('codex', 'session-new')]);
+    expect(store.stored?['session-new'], 4);
+  });
+
   testWidgets(
-    'plus menu opens to the right and dispatches both create actions',
+    'plus menu opens to the right and dispatches all create actions',
     (tester) async {
       var newConversationCount = 0;
       var newGroupCount = 0;
+      var newProfileCount = 0;
       await _pumpContacts(
         tester,
         sessionsByAgent: const {},
         locale: const Locale('zh'),
         onNewConversation: () => newConversationCount += 1,
         onNewGroupConversation: () => newGroupCount += 1,
+        onNewAgentProfile: () => newProfileCount += 1,
       );
 
       final plus = find.byTooltip('新建');
@@ -932,6 +1773,7 @@ void main() {
       );
       expect(find.text('新对话'), findsOneWidget);
       expect(find.text('新群组'), findsOneWidget);
+      expect(find.text('创建智能体'), findsOneWidget);
 
       await tester.tap(find.text('新对话'));
       await tester.pumpAndSettle();
@@ -944,6 +1786,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(newConversationCount, 1);
       expect(newGroupCount, 1);
+      expect(newProfileCount, 0);
+
+      await tester.tap(plus);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('创建智能体'));
+      await tester.pumpAndSettle();
+      expect(newProfileCount, 1);
       expect(tester.takeException(), isNull);
     },
   );
@@ -1093,64 +1942,67 @@ void main() {
     );
   });
 
-  testWidgets('active bottom-nav item uses primary fill and text on primary', (
-    tester,
-  ) async {
-    await _pumpContacts(tester, sessionsByAgent: const {});
+  testWidgets(
+    'active bottom-nav item uses the shared selection surface and ink',
+    (tester) async {
+      await _pumpContacts(tester, sessionsByAgent: const {});
 
-    final colors = tester.element(find.byType(MessagingContactList)).licoColors;
-    final selected = find.byKey(
-      const Key('messaging-sidebar-nav-conversations'),
-    );
-    final container = tester.widget<AnimatedContainer>(
-      find.descendant(of: selected, matching: find.byType(AnimatedContainer)),
-    );
-    expect((container.decoration! as BoxDecoration).color, colors.primary);
-    final icon = tester.widget<Icon>(
-      find.descendant(of: selected, matching: find.byType(Icon)),
-    );
-    expect(icon.color, colors.textOnPrimary);
-    final label = tester.widget<Text>(
-      find.descendant(of: selected, matching: find.text('Chats')),
-    );
-    expect(label.style?.color, colors.textOnPrimary);
+      final colors = tester
+          .element(find.byType(MessagingContactList))
+          .licoColors;
+      final selected = find.byKey(
+        const Key('messaging-sidebar-nav-conversations'),
+      );
+      // The nav row stays fill-free; selection is the shared fluorescent
+      // highlight painter, with selectionInk icon and text.
+      final container = tester.widget<AnimatedContainer>(
+        find.descendant(of: selected, matching: find.byType(AnimatedContainer)),
+      );
+      expect(
+        (container.decoration! as BoxDecoration).color,
+        Colors.transparent,
+      );
+      final paint = tester.widget<CustomPaint>(
+        find.descendant(of: selected, matching: find.byType(CustomPaint)),
+      );
+      expect(paint.painter, isA<LicoSelectionHighlightPainter>());
+      final icon = tester.widget<Icon>(
+        find.descendant(of: selected, matching: find.byType(Icon)),
+      );
+      expect(icon.color, colors.selectionInk);
+      final label = tester.widget<Text>(
+        find.descendant(of: selected, matching: find.text('Chats')),
+      );
+      expect(label.style?.color, colors.selectionInk);
 
-    final skills = find.byKey(const Key('messaging-sidebar-nav-features'));
-    final skillsContainer = tester.widget<AnimatedContainer>(
-      find.descendant(of: skills, matching: find.byType(AnimatedContainer)),
+      final skills = find.byKey(const Key('messaging-sidebar-nav-features'));
+      final skillsContainer = tester.widget<AnimatedContainer>(
+        find.descendant(of: skills, matching: find.byType(AnimatedContainer)),
+      );
+      expect(
+        (skillsContainer.decoration! as BoxDecoration).color,
+        isNot(colors.primary),
+      );
+    },
+  );
+
+  testWidgets('contact list forwards pull refresh', (tester) async {
+    var refreshes = 0;
+    await _pumpContacts(
+      tester,
+      sessionsByAgent: const {},
+      onRefresh: () => refreshes += 1,
     );
+    final list = find.byType(ListView);
+    await tester.drag(list, const Offset(0, 220));
+    await tester.pumpAndSettle();
+    expect(refreshes, 1);
     expect(
-      (skillsContainer.decoration! as BoxDecoration).color,
-      isNot(colors.primary),
+      tester.state<ScrollableState>(find.byType(Scrollable)).position.pixels,
+      0,
     );
+    expect(tester.takeException(), isNull);
   });
-
-  for (final showConversations in [false, true]) {
-    testWidgets(
-      '${showConversations ? 'conversation' : 'contact'} list forwards pull refresh',
-      (tester) async {
-        var refreshes = 0;
-        await _pumpContacts(
-          tester,
-          sessionsByAgent: const {},
-          showConversationList: showConversations,
-          onRefresh: () => refreshes += 1,
-        );
-        final list = find.byType(ListView);
-        await tester.drag(list, const Offset(0, 220));
-        await tester.pumpAndSettle();
-        expect(refreshes, 1);
-        expect(
-          tester
-              .state<ScrollableState>(find.byType(Scrollable))
-              .position
-              .pixels,
-          0,
-        );
-        expect(tester.takeException(), isNull);
-      },
-    );
-  }
 
   testWidgets('labeled bottom tabs have no hover bubbles and keep semantics', (
     tester,
@@ -1224,6 +2076,112 @@ void main() {
 
     expect(selected, [ClientSection.agentHub]);
   });
+
+  testWidgets('plain presentation shows the title, compose and filter chips '
+      'without the bottom nav', (tester) async {
+    await _pumpContacts(
+      tester,
+      sessionsByAgent: const {},
+      onSearch: () {},
+      presentation: const FixtureLayoutAgentsPresentation.docked(),
+    );
+
+    expect(find.byKey(const Key('messaging-sidebar-title')), findsOneWidget);
+    expect(find.text('Messages'), findsWidgets);
+    expect(
+      find.byKey(const Key('messaging-create-conversation')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('messaging-conversation-filters')),
+      findsOneWidget,
+    );
+    for (final chip in <String>['all', 'agents', 'groups']) {
+      expect(
+        find.byKey(Key('messaging-conversation-filter-$chip')),
+        findsOneWidget,
+      );
+    }
+    // The rail owns navigation: no bottom tabs and no traffic-light row.
+    expect(find.byKey(const Key('messaging-sidebar-bottom-nav')), findsNothing);
+    expect(
+      find.byKey(const Key('messaging-sidebar-traffic-light-row')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('plain filter chips narrow the conversation rows', (
+    tester,
+  ) async {
+    await _pumpContacts(
+      tester,
+      sessionsByAgent: {
+        'codex': [
+          _session('s1', 'codex', 'Fix bug', updatedAgo: Duration.zero),
+        ],
+      },
+      groupConversations: const [
+        ClientConversationSummary(
+          id: 'conversation:group',
+          title: 'Local room',
+          archived: false,
+          pinned: false,
+          group: true,
+          revision: 1,
+          updatedAtUnixMs: 20,
+          membershipCount: 3,
+          eventCount: 0,
+        ),
+      ],
+      presentation: const FixtureLayoutAgentsPresentation.docked(),
+    );
+
+    final agentRow = find.byKey(const Key('messaging-contact-codex'));
+    final groupRow = find.byKey(
+      const ValueKey<String>('messaging-group-conversation-conversation:group'),
+    );
+    expect(agentRow, findsOneWidget);
+    expect(groupRow, findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const Key('messaging-conversation-filter-groups')),
+    );
+    await tester.pump();
+    expect(agentRow, findsNothing);
+    expect(groupRow, findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const Key('messaging-conversation-filter-agents')),
+    );
+    await tester.pump();
+    expect(agentRow, findsOneWidget);
+    expect(groupRow, findsNothing);
+
+    await tester.tap(
+      find.byKey(const Key('messaging-conversation-filter-all')),
+    );
+    await tester.pump();
+    expect(agentRow, findsOneWidget);
+    expect(groupRow, findsOneWidget);
+  });
+
+  testWidgets(
+    'without a presentation scope the contact list keeps the bottom nav '
+    'and hides the filters',
+    (tester) async {
+      await _pumpContacts(tester, sessionsByAgent: const {});
+
+      expect(
+        find.byKey(const Key('messaging-conversation-filters')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('messaging-sidebar-bottom-nav')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('messaging-sidebar-title')), findsNothing);
+    },
+  );
 }
 
 TargetCandidate _target(String target, String label) {
@@ -1245,8 +2203,10 @@ AgentConversationSession _session(
   required Duration updatedAgo,
   String preview = '',
   String workingDirectory = '',
+  String parentSessionId = '',
+  int messageCount = 0,
 }) {
-  final updatedAt = DateTime.now()
+  final updatedAt = conversationNow()
       .subtract(updatedAgo)
       .toUtc()
       .toIso8601String();
@@ -1259,6 +2219,8 @@ AgentConversationSession _session(
     messages: const [],
     workingDirectory: workingDirectory,
     cachedPreview: preview,
+    parentSessionId: parentSessionId,
+    messageCount: messageCount,
   );
 }
 
@@ -1267,11 +2229,15 @@ Future<void> _pumpContacts(
   required Map<String, List<AgentConversationSession>> sessionsByAgent,
   List<TargetCandidate>? targets,
   String selectedAgentId = '',
+  String selectedSessionId = '',
   ValueChanged<String>? onSelectAgent,
+  void Function(String agentId, String sessionId)? onSelectAgentSession,
   AgentConversationTabActivity activity = AgentConversationTabActivity.none,
+  bool Function(AgentConversationSession session)? runningFor,
   bool Function(String targetId)? isPinned,
   ValueChanged<String>? onTogglePinned,
   List<ClientConversationSummary> groupConversations = const [],
+  List<ClientConversationSummary> directConversations = const [],
   String selectedGroupConversationId = '',
   ValueChanged<String>? onSelectGroupConversation,
   void Function(String conversationId, bool pinned)?
@@ -1281,17 +2247,18 @@ Future<void> _pumpContacts(
   VoidCallback? onSearch,
   VoidCallback? onRefresh,
   bool loading = false,
+  bool scanning = false,
+  Set<String> loadingAgentIds = const <String>{},
+  String loadingGroupConversationId = '',
   VoidCallback? onNewGroupConversation,
-  bool showConversationList = false,
-  List<TargetCandidate> conversationListTargets = const [],
-  String selectedSessionId = '',
-  bool showConversationAgentIcons = false,
-  void Function(String agentId, String sessionId)? onSelectSession,
-  VoidCallback? onBack,
+  VoidCallback? onNewAgentProfile,
   ValueChanged<String>? onPrefetchSessions,
   ClientSection activeDestination = ClientSection.agents,
   ValueChanged<ClientSection>? onSelectDestination,
   Locale locale = const Locale('en'),
+  LayoutAgentsPresentation? presentation,
+  MessagingUnreadCursorStore? unreadCursorStore,
+  LicoSelectionTreatment? treatment,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -1312,39 +2279,49 @@ Future<void> _pumpContacts(
               body: SizedBox(
                 width: 320,
                 height: 600,
-                child: MessagingContactList(
-                  targets:
-                      targets ??
-                      [
-                        _target('codex', 'Codex'),
-                        _target('claude-code', 'Claude Code'),
-                        _target('kimi-code', 'Kimi Code'),
-                      ],
-                  sessionsByAgent: sessionsByAgent,
-                  selectedAgentId: selectedAgentId,
-                  activityFor: (_) => activity,
-                  onSelectAgent: onSelectAgent ?? (_) {},
-                  onNewConversation: onNewConversation ?? () {},
-                  onSearch: onSearch,
-                  onRefresh: onRefresh,
-                  loading: loading,
-                  onNewGroupConversation: onNewGroupConversation,
-                  groupConversations: groupConversations,
-                  selectedGroupConversationId: selectedGroupConversationId,
-                  onSelectGroupConversation: onSelectGroupConversation,
-                  onSetGroupConversationPinned: onSetGroupConversationPinned,
-                  onArchiveGroupConversation: onArchiveGroupConversation,
-                  isPinned: isPinned,
-                  onTogglePinned: onTogglePinned,
-                  showConversationList: showConversationList,
-                  conversationListTargets: conversationListTargets,
-                  selectedSessionId: selectedSessionId,
-                  showConversationAgentIcons: showConversationAgentIcons,
-                  onSelectSession: onSelectSession,
-                  onBack: onBack,
-                  onPrefetchSessions: onPrefetchSessions,
-                  activeDestination: activeDestination,
-                  onSelectDestination: onSelectDestination,
+                child: LayoutDestinationPresentationScope(
+                  agents: presentation,
+                  child: LicoSelectionTreatmentScope(
+                    treatment: treatment ?? LicoSelectionTreatment.lamp,
+                    child: MessagingContactList(
+                      targets:
+                          targets ??
+                          [
+                            _target('codex', 'Codex'),
+                            _target('claude-code', 'Claude Code'),
+                            _target('kimi-code', 'Kimi Code'),
+                          ],
+                      sessionsByAgent: sessionsByAgent,
+                      selectedAgentId: selectedAgentId,
+                      selectedSessionId: selectedSessionId,
+                      activityFor: (_) => activity,
+                      runningFor: runningFor,
+                      onSelectAgent: onSelectAgent ?? (_) {},
+                      onSelectAgentSession: onSelectAgentSession,
+                      onNewConversation: onNewConversation ?? () {},
+                      onSearch: onSearch,
+                      onRefresh: onRefresh,
+                      scanning: scanning,
+                      loading: loading,
+                      loadingAgentIds: loadingAgentIds,
+                      loadingGroupConversationId: loadingGroupConversationId,
+                      onNewGroupConversation: onNewGroupConversation,
+                      onNewAgentProfile: onNewAgentProfile,
+                      groupConversations: groupConversations,
+                      directConversations: directConversations,
+                      selectedGroupConversationId: selectedGroupConversationId,
+                      onSelectGroupConversation: onSelectGroupConversation,
+                      onSetGroupConversationPinned:
+                          onSetGroupConversationPinned,
+                      onArchiveGroupConversation: onArchiveGroupConversation,
+                      isPinned: isPinned,
+                      onTogglePinned: onTogglePinned,
+                      onPrefetchSessions: onPrefetchSessions,
+                      activeDestination: activeDestination,
+                      onSelectDestination: onSelectDestination,
+                      unreadCursorStore: unreadCursorStore,
+                    ),
+                  ),
                 ),
               ),
             ),

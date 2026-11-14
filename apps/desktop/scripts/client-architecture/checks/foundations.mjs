@@ -9,27 +9,47 @@ const requiredFutureModules = [
   "local-task-queue",
   "protocol-adapters",
   "skill-hub",
-  "mobile-relay",
   "activity-snapshots",
   "settings",
-  "subagents-mcp",
-  "gateway-sidecar",
-  "lico-agent-sidecar",
-  "codex-plugin"
+  "lico-agent-sidecar"
 ];
-const allFutureModules = [...requiredFutureModules];
+const optionalFutureModules = [
+  "extension-packages",
+  "subagents-mcp",
+  "telegram-channel",
+  // The Gateway Runtime is an optional capability: `org.licoland.feature.gateway`
+  // is released as its own package and appears in `OPTIONAL_CAPABILITY_CRATES`.
+  // The default client still ships the sidecar, so the module stays enabled, but
+  // it is no longer a prerequisite every distribution must contain.
+  "gateway-sidecar"
+];
+// Optional modules whose implementation an independently released package
+// carries. The minimal client must not bundle a second copy: an enabled module
+// here would put the payload back into every distribution and make the
+// package's own install state a lie.
+const packageDeliveredModules = [
+  "subagents-mcp",
+  "telegram-channel"
+];
+const allFutureModules = [...requiredFutureModules, ...optionalFutureModules];
 const packageClientFacadePath = "apps/desktop/scripts/package-client.mjs";
 const packageClientModuleRoot = "apps/desktop/scripts/package-client";
 const packageClientSourceBundleTestPath =
   "tests/contract/client/package-client/package-client-source-bundle.test.mjs";
 const packageClientLeafResponsibilities = new Map([
   ["build/flutter.mjs", "function buildFlutterApp("],
-  ["build/native.mjs", "function buildNativeSidecars("],
+  ["build/native.mjs", "function stageNativeSidecars("],
+  ["build/release-tools.mjs", "function buildReleaseTools("],
   ["build/swift.mjs", "function buildSwiftSidecars("],
   ["bundle-resolver/linux.mjs", "function findLinuxBundleSource("],
   ["bundle-resolver/macos.mjs", "function findMacosBundleSource("],
   ["bundle-resolver/windows.mjs", "function findWindowsBundleSource("],
   ["cli-policy.mjs", "function runtimeDataPolicyRecord("],
+  ["cli-release/conversation-protocol-digest.mjs", "function conversationProtocolDigest("],
+  ["cli-release/invoked-commands.mjs", "function extractInvokedCliCommands("],
+  ["cli-release/release-archive.mjs", "function readArchiveMembers("],
+  ["cli-release/release-pin.mjs", "function loadCliReleasePin("],
+  ["cli-release/stage.mjs", "function stageCliRelease("],
   ["config-codec.mjs", "function validatePackagingConfig("],
   ["macos/install.mjs", "function installRunnableClient("],
   ["macos/metadata.mjs", "function updateMacosAppMetadata("],
@@ -49,8 +69,6 @@ export async function checkPackagingAndTargetProjection(context) {
     assert,
     collectDartSourceFiles,
     collectEnumValues,
-    collectRustPubMods,
-    collectRustUnsafeFiles,
     collectSourceFiles,
     exists,
     fail,
@@ -85,6 +103,30 @@ export async function checkPackagingAndTargetProjection(context) {
   for (const moduleId of requiredFutureModules) {
     assert(modules[moduleId]?.required === true, `future module must be required: ${moduleId}`);
   }
+  // A module whose implementation arrives as an independent package asset is
+  // optional: the release must stay complete and startable without it, and no
+  // required module may depend on it.
+  for (const moduleId of optionalFutureModules) {
+    assert(modules[moduleId]?.required === false,
+      `package-provided module must stay optional: ${moduleId}`);
+    assert(
+      Object.entries(modules).every(([id, module]) =>
+        !requiredFutureModules.includes(id) ||
+        !(module.requires || []).includes(moduleId)),
+      `required module must not depend on optional module: ${moduleId}`
+    );
+  }
+  for (const moduleId of packageDeliveredModules) {
+    assert(optionalFutureModules.includes(moduleId),
+      `package-delivered module must stay optional: ${moduleId}`);
+    assert(modules[moduleId]?.enabled === false,
+      `package-delivered module must not be bundled: ${moduleId}`);
+    assert(
+      modules[moduleId]?.cargoBin === undefined &&
+        modules[moduleId]?.embeddedCargoBin === undefined,
+      `no packaging module may bundle the package's own binary: ${moduleId}`
+    );
+  }
   for (const moduleId of enabledConfigModules) {
     assert(allFutureModules.includes(moduleId), `enabled module must be known: ${moduleId}`);
   }
@@ -98,22 +140,6 @@ export async function checkPackagingAndTargetProjection(context) {
     "target-adapters module must define the canonical packaged target set");
   assert(new Set(packagedTargets).size === packagedTargets.length && packagedTargets.every((target) => typeof target === "string" && target.trim().length > 0),
     "target-adapters module targetAdapters must contain unique non-empty target ids");
-  const runtimeAdaptersSource = await readText("crates/licoup-native/src/platform/runtime_adapters.rs");
-  const runtimeAdapterIdsBlock = runtimeAdaptersSource.match(/PACKAGED_RUNTIME_ADAPTER_IDS\s*:\s*&\[&str\]\s*=\s*&\[([\s\S]*?)\];/);
-  assert(runtimeAdapterIdsBlock,
-    "native runtime dispatch must expose its packaged adapter projection");
-  const nativeRuntimeAdapterIds = [...runtimeAdapterIdsBlock[1].matchAll(/"([^"]+)"/g)]
-    .map((match) => match[1]);
-  assert(sameSet([...nativeRuntimeAdapterIds].sort(), [...packagedTargets].sort()),
-    "native runtime dispatch projection must exactly match target-adapters.targetAdapters");
-  const platformModuleSource = await readText("crates/licoup-native/src/platform/mod.rs");
-  for (const target of packagedTargets) {
-    const moduleName = target === "codex"
-      ? "codex_app_server"
-      : `${target.replaceAll("-", "_")}_driver`;
-    assert(platformModuleSource.includes(`mod ${moduleName};`),
-      `packaged target ${target} must have canonical native driver module ${moduleName}`);
-  }
   return { futureModules, modules, packagedTargets };
 }
 
@@ -122,8 +148,6 @@ export async function checkPackageDryRuns(context, { futureModules, modules }) {
     assert,
     collectDartSourceFiles,
     collectEnumValues,
-    collectRustPubMods,
-    collectRustUnsafeFiles,
     collectSourceFiles,
     exists,
     fail,
@@ -146,7 +170,7 @@ export async function checkPackageDryRuns(context, { futureModules, modules }) {
   );
   assert(
     sameSet(discoveredPackageClientLeaves, packageClientLeafPaths),
-    "package-client must own exactly the architecture-approved nineteen-leaf source bundle",
+    "package-client must own exactly the architecture-approved source bundle",
   );
   const packageClientFacadeSource = await readText(packageClientFacadePath);
   assert(
@@ -218,7 +242,7 @@ export async function checkPackageDryRuns(context, { futureModules, modules }) {
     );
     assert(
       packageClientSourceBundleTest.includes(
-        "package client migration owns exactly nineteen bounded ordinary modules",
+        "package client keeps an exact bounded module inventory",
       ) &&
         packageClientSourceBundleTest.includes(
           "assert.deepEqual(await collectModules(moduleRoot), [...leaves]);",
@@ -246,8 +270,12 @@ export async function checkPackageDryRuns(context, { futureModules, modules }) {
     if (packagePlan) {
       packagePlanCheckedPlatforms.push(platform);
       const enabledPlanModules = packagePlan.enabledModules.map((item) => item.id).sort();
+      // A module the configuration disables is not enabled by any platform; it
+      // is reported as a target-skipped module instead.
       const expectedPlanModules = futureModules
-        .filter((moduleId) => moduleSupportsPlatform(modules[moduleId], platform))
+        .filter((moduleId) =>
+          modules[moduleId]?.enabled !== false &&
+          moduleSupportsPlatform(modules[moduleId], platform))
         .sort();
       assert(packagePlan.platform === platform, `package dry-run must report platform ${platform}`);
       assert(

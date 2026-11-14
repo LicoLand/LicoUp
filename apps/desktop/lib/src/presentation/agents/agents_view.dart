@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/presentation/agents/adaptive_flywheel_projection.dart';
+import 'package:licoup/src/presentation/agents/acativa_projection.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
 import 'package:licoup/src/presentation/agents/agents_resources.dart';
@@ -21,7 +21,7 @@ final class AgentsCatalogInputs {
     required this.mobileRuntime,
     required this.scanning,
     required this.adding,
-    required this.adaptiveFlywheel,
+    required this.acativa,
     this.notice,
   });
 
@@ -36,7 +36,7 @@ final class AgentsCatalogInputs {
         mobileRuntime: projection.mobileRuntime,
         scanning: projection.scanning,
         adding: projection.adding,
-        adaptiveFlywheel: projection.adaptiveFlywheel,
+        acativa: projection.acativa,
         notice: projection.notice,
       );
 
@@ -49,7 +49,7 @@ final class AgentsCatalogInputs {
   final bool mobileRuntime;
   final bool scanning;
   final bool adding;
-  final AdaptiveFlywheelProjection adaptiveFlywheel;
+  final AcativaProjection acativa;
   final PresentationNotice? notice;
 
   @override
@@ -65,7 +65,7 @@ final class AgentsCatalogInputs {
           other.mobileRuntime == mobileRuntime &&
           other.scanning == scanning &&
           other.adding == adding &&
-          other.adaptiveFlywheel == adaptiveFlywheel &&
+          other.acativa == acativa &&
           other.notice == notice;
 
   @override
@@ -79,7 +79,7 @@ final class AgentsCatalogInputs {
     mobileRuntime,
     scanning,
     adding,
-    adaptiveFlywheel,
+    acativa,
     notice,
   );
 }
@@ -91,20 +91,19 @@ final class AgentsCatalogActions {
     required this.origin,
     required this.scanAgents,
     required this.selectAgent,
-    required this.showWelcome,
     required this.selectConversationSession,
     required this.selectGroupConversationSession,
     required this.startConversation,
     required this.addManualAgent,
     required this.togglePinned,
     required this.selectWorkingDirectory,
-    required this.initializeAdaptiveFlywheel,
-    required this.importAdaptiveFlywheelPackage,
-    required this.selectAdaptiveFlywheelDefinition,
-    required this.saveAdaptiveFlywheelActorBindings,
-    required this.refreshAdaptiveFlywheelModelCatalogs,
-    required this.readAdaptiveFlywheelAssistantProfile,
-    required this.updateAdaptiveFlywheelAssistantProfile,
+    required this.initializeAcativa,
+    required this.importAcativaPackage,
+    required this.selectAcativaDefinition,
+    required this.saveAcativaActorBindings,
+    required this.refreshAcativaModelCatalogs,
+    required this.readAcativaAssistantProfile,
+    required this.updateAcativaAssistantProfile,
   });
 
   factory AgentsCatalogActions.fromIntents(IntentSink<AgentsIntent> intents) {
@@ -126,7 +125,6 @@ final class AgentsCatalogActions {
             ),
           ),
       selectAgent: (agentId) => channel.dispatch(SelectAgent(agentId)),
-      showWelcome: () => channel.dispatch(const ShowAgentsWelcome()),
       selectConversationSession:
           (agentId, sessionId, {String nativeSessionId = ''}) =>
               channel.dispatch(
@@ -173,29 +171,25 @@ final class AgentsCatalogActions {
       togglePinned: (agentId) => channel.dispatch(ToggleAgentPinned(agentId)),
       selectWorkingDirectory: (path) =>
           channel.dispatch(SelectAgentWorkingDirectory(path)),
-      initializeAdaptiveFlywheel: ({String initialRevision = ''}) =>
-          channel.dispatch(
-            InitializeAdaptiveFlywheel(initialRevision: initialRevision),
-          ),
-      importAdaptiveFlywheelPackage: (path) =>
-          channel.dispatch(ImportAdaptiveFlywheelPackage(path)),
-      selectAdaptiveFlywheelDefinition: (revision) =>
-          channel.dispatch(SelectAdaptiveFlywheelDefinition(revision)),
-      saveAdaptiveFlywheelActorBindings: (assignments) => channel.dispatch(
-        SaveAdaptiveFlywheelActorBindings(assignments: assignments),
-      ),
-      refreshAdaptiveFlywheelModelCatalogs: (agentIds) => channel.dispatch(
-        RefreshAdaptiveFlywheelModelCatalogs(agentIds: agentIds),
-      ),
-      readAdaptiveFlywheelAssistantProfile: () =>
-          channel.dispatch(const ReadAdaptiveFlywheelAssistantProfile()),
-      updateAdaptiveFlywheelAssistantProfile:
+      initializeAcativa: ({String initialRevision = ''}) =>
+          channel.dispatch(InitializeAcativa(initialRevision: initialRevision)),
+      importAcativaPackage: (path) =>
+          channel.dispatch(ImportAcativaPackage(path)),
+      selectAcativaDefinition: (revision) =>
+          channel.dispatch(SelectAcativaDefinition(revision)),
+      saveAcativaActorBindings: (assignments) =>
+          channel.dispatch(SaveAcativaActorBindings(assignments: assignments)),
+      refreshAcativaModelCatalogs: (agentIds) =>
+          channel.dispatch(RefreshAcativaModelCatalogs(agentIds: agentIds)),
+      readAcativaAssistantProfile: () =>
+          channel.dispatch(const ReadAcativaAssistantProfile()),
+      updateAcativaAssistantProfile:
           ({
             required String agentId,
             required String modelId,
             required String reasoningEffort,
           }) => channel.dispatch(
-            UpdateAdaptiveFlywheelAssistantProfile(
+            UpdateAcativaAssistantProfile(
               agentId: agentId,
               modelId: modelId,
               reasoningEffort: reasoningEffort,
@@ -208,7 +202,6 @@ final class AgentsCatalogActions {
   final FutureOr<void> Function({bool showProgress, bool forceRescanKnown})
   scanAgents;
   final FutureOr<void> Function(String agentId) selectAgent;
-  final FutureOr<void> Function() showWelcome;
   final FutureOr<void> Function(
     String agentId,
     String sessionId, {
@@ -234,22 +227,18 @@ final class AgentsCatalogActions {
   addManualAgent;
   final FutureOr<void> Function(String agentId) togglePinned;
   final FutureOr<void> Function(String path) selectWorkingDirectory;
-  final FutureOr<void> Function({String initialRevision})
-  initializeAdaptiveFlywheel;
-  final FutureOr<void> Function(String path) importAdaptiveFlywheelPackage;
-  final FutureOr<void> Function(String revision)
-  selectAdaptiveFlywheelDefinition;
-  final FutureOr<void> Function(
-    Iterable<AdaptiveFlywheelAssignmentIntent> assignments,
-  )
-  saveAdaptiveFlywheelActorBindings;
+  final FutureOr<void> Function({String initialRevision}) initializeAcativa;
+  final FutureOr<void> Function(String path) importAcativaPackage;
+  final FutureOr<void> Function(String revision) selectAcativaDefinition;
+  final FutureOr<void> Function(Iterable<AcativaAssignmentIntent> assignments)
+  saveAcativaActorBindings;
   final FutureOr<void> Function(Iterable<String> agentIds)
-  refreshAdaptiveFlywheelModelCatalogs;
-  final FutureOr<void> Function() readAdaptiveFlywheelAssistantProfile;
+  refreshAcativaModelCatalogs;
+  final FutureOr<void> Function() readAcativaAssistantProfile;
   final FutureOr<void> Function({
     required String agentId,
     required String modelId,
     required String reasoningEffort,
   })
-  updateAdaptiveFlywheelAssistantProfile;
+  updateAcativaAssistantProfile;
 }

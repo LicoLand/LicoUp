@@ -48,7 +48,8 @@
         "streamingMethod",
         "historyMethod",
         "cleanupMethod",
-        "officialReferences"
+        "officialReferences",
+        "versionSupport"
       ],
       "properties": {
         "completedBeforeImplementation": { "const": true },
@@ -62,6 +63,37 @@
         "streamingMethod": { "$ref": "#/$defs/safeDescription" },
         "historyMethod": { "$ref": "#/$defs/safeDescription" },
         "cleanupMethod": { "$ref": "#/$defs/safeDescription" },
+        "versionSupport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "source"],
+          "properties": {
+            "kind": { "enum": ["unknown", "bounded"] },
+            "source": {
+              "enum": ["unverified", "probe-observed", "vendor-documented"]
+            },
+            "from": { "$ref": "#/$defs/safeVersion" },
+            "before": { "$ref": "#/$defs/safeVersion" },
+            "reason": { "$ref": "#/$defs/safeId" }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": { "kind": { "const": "bounded" } },
+                "required": ["kind"]
+              },
+              "then": { "required": ["from", "before"] },
+              "else": { "required": ["reason"] }
+            },
+            {
+              "if": {
+                "properties": { "source": { "const": "unverified" } },
+                "required": ["source"]
+              },
+              "then": { "properties": { "kind": { "const": "unknown" } } }
+            }
+          ]
+        },
         "officialReferences": {
           "type": "array",
           "items": { "type": "string", "format": "uri", "maxLength": 512 },
@@ -346,6 +378,11 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+){1,7}$",
       "maxLength": 128
+    },
+    "safeVersion": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
     },
     "safeDescription": {
       "type": "string",

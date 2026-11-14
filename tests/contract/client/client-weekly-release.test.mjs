@@ -48,12 +48,12 @@ test("fake GitHub seam reconciles schedule, retry, verified cloud callback, and 
     syncProject: async (_issue, values) => { state.project.push(values); },
     release: async tag => release(tag),
     tagRevision: async () => revision,
-    checks: async headSha => [{ name: "Apple Release published", head_sha: headSha, conclusion: "success", app: { id: 22 } }],
+    checks: async headSha => [{ name: "the release plane published", head_sha: headSha, conclusion: "success", app: { id: 22 } }],
   };
   const first = await reconcileWeekly({ adapter, slot, runAt: "2026-09-05T05:00:00Z" });
   await reconcileWeekly({ adapter, slot, runAt: "2026-09-05T06:00:00Z" });
   assert.equal(state.creates, 1); assert.equal(first.publicationCalls, 0);
-  const appleBot = "lico-apple-release[bot]";
+  const appleBot = "lico-release-plane[bot]";
   const result = await reconcileCallback({ adapter, payload: { kind: "nightly-published", slot },
     senderLogin: appleBot, appleBotLogin: appleBot, appleAppId: 22 });
   assert.equal(result.state, "Observing"); assert.equal(state.updates, 1);
@@ -95,7 +95,7 @@ test("verified release, app readiness, and tree equality gate promotion", () => 
     { revision: s(1), publishedAt: "2026-09-05T04:00:00.000Z" });
   const plan = promotionSource({ ref: "nightly-cutoff/2026-09-05", revision: s(1), maturityAt: "2026-10-05T04:00:00Z",
     now: "2026-10-05T04:00:00Z", appleAppId: 7,
-    readinessChecks: [{ name: "Apple Release ready", head_sha: s(1), conclusion: "success", app: { id: 7 } }] });
+    readinessChecks: [{ name: "the release plane ready", head_sha: s(1), conclusion: "success", app: { id: 7 } }] });
   assert.equal(plan.head, "nightly-cutoff/2026-09-05");
   assert.equal(promotionTreeMatches({ cutoffTree: s(9), stableMergeTree: s(9), releaseMergeTree: s(9) }), true);
   assert.throws(() => promotionTreeMatches({ cutoffTree: s(9), stableMergeTree: s(8), releaseMergeTree: s(9) }));

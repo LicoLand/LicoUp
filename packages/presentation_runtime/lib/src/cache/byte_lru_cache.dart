@@ -117,7 +117,7 @@ typedef VersionedResourceKey = VersionedCacheKey;
 /// [residentBytes] includes referenced entries. A referenced entry may be
 /// moved to the end by [get], but it is never removed by ordinary eviction.
 final class ByteLruCache<Key, Value> {
-  ByteLruCache({required this.capacityBytes})
+  ByteLruCache({required this.capacityBytes, this.onRemoved})
     : assert(capacityBytes >= 0, 'capacityBytes must not be negative') {
     if (capacityBytes < 0) {
       throw ArgumentError.value(
@@ -129,6 +129,13 @@ final class ByteLruCache<Key, Value> {
   }
 
   final int capacityBytes;
+
+  /// Called whenever an entry leaves the cache: byte-bound eviction, explicit
+  /// [remove], [removeWhere], or a forced [clear].
+  ///
+  /// It lets an owner keep exact per-class accounting instead of inferring
+  /// resident bytes from a counter it cannot see inside.
+  final void Function(Key key, Value value)? onRemoved;
   final LinkedHashMap<Key, _ByteCacheEntry<Value>> _entries =
       LinkedHashMap<Key, _ByteCacheEntry<Value>>();
   int _residentBytes = 0;
@@ -238,15 +245,34 @@ final class ByteLruCache<Key, Value> {
     if (entry == null || entry.references > 0) return false;
     _entries.remove(key);
     _residentBytes -= entry.bytes;
+    onRemoved?.call(key, entry.value);
     return true;
+  }
+
+  /// Removes every unreferenced entry matching [predicate].
+  int removeWhere(bool Function(Key key, Value value) predicate) {
+    var removed = 0;
+    for (final key in _entries.keys.toList()) {
+      final entry = _entries[key]!;
+      if (entry.references > 0 || !predicate(key, entry.value)) continue;
+      remove(key);
+      removed++;
+    }
+    return removed;
   }
 
   /// Removes all unreferenced entries. Set [force] only when the owning
   /// runtime is being disposed and no visible consumer can retain a value.
   void clear({bool force = false}) {
     if (force) {
+      final entries = <Key, Value>{
+        for (final key in _entries.keys) key: _entries[key]!.value,
+      };
       _entries.clear();
       _residentBytes = 0;
+      for (final entry in entries.entries) {
+        onRemoved?.call(entry.key, entry.value);
+      }
       return;
     }
     for (final key in _entries.keys.toList()) {
@@ -283,6 +309,7 @@ final class ByteLruCache<Key, Value> {
       final entry = _entries.remove(candidate)!;
       _residentBytes -= entry.bytes;
       _evictions++;
+      onRemoved?.call(candidate, entry.value);
     }
     return candidates.length;
   }

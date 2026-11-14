@@ -19,13 +19,13 @@ Common launch and build commands are:
 
 ```bash
 npm run client:run:macos
-npm run client:run:android
-npm run client:run:ios
 npm run client:build -- --platform macos
 npm run client:build -- --platform linux
 npm run client:build -- --platform windows
-npm run client:build -- --platform android
 ```
+
+The Android and iOS implementations live in the sibling LicoUp-Android and
+LicoUp-iOS repositories.
 
 The single build entry automatically reclaims inactive compiler output and
 temporary Flutter build caches. Runnable and packaged output remains available
@@ -85,10 +85,10 @@ the last IDE assistant return, followed by your message. Later sends on that
 CLI session resume normally without repeating the handoff.
 
 The unified group-Conversation foundation remains separate from the direct
-Agent entry point. Adaptive Flywheel has its own desktop strategy surface: the
+Agent entry point. Acativa has its own desktop strategy surface: the
 catalog stays empty until you import a ZIP package of an immutable JSON Graph
 strategy. See
-[Adaptive Flywheel strategies](ADAPTIVE-FLYWHEEL.md) for strategy import, the
+[Acativa strategies](ACATIVA.md) for strategy import, the
 capsule role editor, background runtime detection, and the workflow diagram.
 
 **Lico Agent** is a separate first-party runtime in the agent list (not the
@@ -96,7 +96,7 @@ group entry itself). When chatting with it, choose Agent or Plan mode; Plan
 mode may only write the bound local plan file under OS sandbox. See
 [Lico Agent](../protocols/lico-agent.md).
 
-Open **Adaptive Flywheel** to choose everyday conversation agents and configure
+Open **Acativa** to choose everyday conversation agents and configure
 the Assistant workflow surface. The flywheel is the only route-selection
 authority: each workflow entry resolves to one agent, model, and reasoning
 effort, and LicoUp freezes that decision in the run receipt.
@@ -115,8 +115,8 @@ bind native sessions, or create hidden participants. Independent workflows can
 run concurrently while each workflow and Membership turn stays ordered.
 
 Assistant still controls the everyday conversation picker. Its model and
-reasoning controls remain separate from Adaptive Flywheel route selection. Save
-Adaptive Flywheel after changing a route so the client reads the new persisted
+reasoning controls remain separate from Acativa route selection. Save
+Acativa after changing a route so the client reads the new persisted
 state; the client does not expose the state file, executable paths, or native
 continuation locations.
 
@@ -213,7 +213,7 @@ catalog entry declares a real lifecycle action. Each bridge action requires
 direct confirmation and changes only LicoUp-owned files or namespaced hooks.
 Discovery and installation do not by themselves prove that an agent is ready
 for conversation. Plugin readiness is reported separately from the native
-Assistant workflow and Adaptive Flywheel authorities.
+Assistant workflow and Acativa authorities.
 
 Optional collaboration remains outside the default client. Installation or
 enablement never grants continuing transfer permission. Assembly does not
@@ -243,7 +243,7 @@ external transfer remains disabled.
   the latest 30 days; choose the Agent, Model, or Workflow dimension and a
   custom window when needed. Workflow shows Graph runs, commands, and exact
   Membership attribution with checked numeric usage and exact coverage.
-  LicoUp owns workflow accounting, Adaptive Flywheel
+  LicoUp owns workflow accounting, Acativa
   owns route selection, and raw native conversation locations remain a private
   adapter binding. The view does not expose prompts, replies, tool payloads, summaries,
   compaction, or cache controls; active work plus the newest twenty terminal

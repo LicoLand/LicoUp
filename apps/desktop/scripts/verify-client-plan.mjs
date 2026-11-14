@@ -10,25 +10,11 @@ import { createPlanFileReader } from "./verify-client-plan/shared/fs.mjs";
 import { sanitizePlanDiagnostic } from "./verify-client-plan/shared/sanitize.mjs";
 import { checkPackageAndRunner } from "./verify-client-plan/checks/package-and-runner.mjs";
 import { checkClientBoundary } from "./verify-client-plan/checks/client-boundary.mjs";
-import { checkEvidenceRouting } from "./verify-client-plan/checks/evidence-routing.mjs";
-import { checkCryptoRedactionHandoff } from "./verify-client-plan/checks/crypto-redaction-handoff.mjs";
-import { checkSecretStore } from "./verify-client-plan/checks/secret-store.mjs";
-import { checkPhysicalEvidence } from "./verify-client-plan/checks/physical-evidence.mjs";
-import { checkAndroidIos } from "./verify-client-plan/checks/android-ios.mjs";
-import { checkLinuxWindows } from "./verify-client-plan/checks/linux-windows.mjs";
-import { checkTrustRelease } from "./verify-client-plan/checks/trust-release.mjs";
 import { checkDocsReadiness } from "./verify-client-plan/checks/docs-readiness.mjs";
 
 const STATIC_PLAN_CHECKS = Object.freeze([
   ["package-and-runner", checkPackageAndRunner],
   ["client-boundary", checkClientBoundary],
-  ["evidence-routing", checkEvidenceRouting],
-  ["crypto-redaction-handoff", checkCryptoRedactionHandoff],
-  ["secret-store", checkSecretStore],
-  ["physical-evidence", checkPhysicalEvidence],
-  ["android-ios", checkAndroidIos],
-  ["linux-windows", checkLinuxWindows],
-  ["trust-release", checkTrustRelease],
   ["docs-readiness", checkDocsReadiness],
 ]);
 

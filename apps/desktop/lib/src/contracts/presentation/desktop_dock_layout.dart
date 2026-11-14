@@ -25,7 +25,8 @@ final class DesktopDockStoredFolderEntry extends DesktopDockStoredEntry {
   final List<String> children;
 }
 
-/// The persisted dock layout: the ordered entry list after the pinned icons.
+/// The persisted dock layout: the built-in group in display order, then the
+/// pinned plugin windows as `plugin:<id>` app entries.
 final class DesktopDockLayoutSnapshot {
   const DesktopDockLayoutSnapshot({required this.entries});
 

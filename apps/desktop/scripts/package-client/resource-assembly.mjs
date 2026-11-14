@@ -17,7 +17,8 @@ import {
   packagedBundleRoot,
   runnableClientRoot,
 } from "./build/flutter.mjs";
-import { binarySuffix, cargoTargetDir } from "./build/native.mjs";
+import { binarySuffix, nativeArtifactsDirectory } from "./build/native.mjs";
+import { swiftSidecarStagingDirectory } from "./build/swift.mjs";
 import {
   findLinuxBundleSource,
   linuxBundleLayout,
@@ -66,7 +67,7 @@ export function stageSelectedModuleArtifacts(selected, bundle, options) {
 function copyEmbeddedCargoBin(moduleConfig, bundle, options) {
   const suffix = binarySuffix(options.platform);
   const source = path.join(
-    cargoTargetDir(options.mode, options),
+    nativeArtifactsDirectory(options),
     `${moduleConfig.embeddedCargoBin}${suffix}`,
   );
   if (!existsSync(source)) packageFailure("embedded_sidecar_binary_missing");
@@ -171,14 +172,21 @@ function stagedBundleExists(root, platform) {
 function copySidecar(binaryName, bundle, options) {
   const suffix = binarySuffix(options.platform);
   const source = path.join(
-    cargoTargetDir(options.mode, options),
+    nativeArtifactsDirectory(options),
     `${binaryName}${suffix}`,
   );
   if (!existsSync(source)) packageFailure("sidecar_binary_missing");
-  if (options.platform === "macos" && binaryName === "licoup-cli") {
+  if (options.platform === "macos" && binaryName === "licoup") {
     return stageMacosCustodyHelper(source, bundle);
   }
-  const target = path.join(bundle.executableDir, `${binaryName}${suffix}`);
+  // Windows and Linux keep the sidecar under `helpers/` beside the GUI
+  // executable — the frontend binary is itself named `licoup`, so the
+  // custody-equivalent helper path is what keeps the two products distinct.
+  const target = path.join(
+    bundle.sidecarDir ?? bundle.executableDir,
+    `${binaryName}${suffix}`,
+  );
+  mkdirSync(path.dirname(target), { recursive: true });
   copyFileSync(source, target);
   if (options.platform !== "windows") chmodSync(target, 0o755);
   return target;
@@ -190,18 +198,13 @@ export function stageMacosCustodyHelper(source, bundle) {
   const helper = stageMacosCustodyMetadata(appDir);
   copyFileSync(source, helper.executablePath);
   chmodSync(helper.executablePath, 0o755);
-  // Permanent public CLI entry for existing launch agents and provider helpers.
-  // This is an alias to the sole custody executable, never a second binary.
-  const publicEntry = path.join(bundle.executableDir, "licoup-cli");
-  rmSync(publicEntry, { force: true });
-  symlinkSync("../Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli", publicEntry);
   return helper.executablePath;
 }
 
 function copySwiftSidecar(moduleConfig, bundle, options) {
   const artifactName = moduleConfig.artifactName || moduleConfig.id;
   const source = path.join(
-    cargoTargetDir(options.mode, options),
+    swiftSidecarStagingDirectory(options),
     artifactName,
   );
   if (!existsSync(source)) packageFailure("swift_sidecar_missing");

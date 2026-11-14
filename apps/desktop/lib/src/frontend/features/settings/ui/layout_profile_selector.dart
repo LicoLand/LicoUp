@@ -1,4 +1,5 @@
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -8,6 +9,8 @@ import 'package:presentation_flutter/presentation_flutter.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
+import 'package:licoup/src/frontend/features/settings/ui/settings_panel_widgets.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_registry.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -116,7 +119,14 @@ final class LayoutProfileSelector extends StatelessWidget {
                             preview: registry
                                 .definition(profiles[index].id)
                                 .bundles[surface]!
-                                .previewBuilder(context),
+                                .previewBuilder(
+                                  context,
+                                  _previewStyleFor(
+                                    profiles[index],
+                                    settings,
+                                    choices,
+                                  ),
+                                ),
                             label: profiles[index].label.resolve(
                               strings.locale.languageCode,
                             ),
@@ -165,6 +175,37 @@ final class LayoutProfileSelector extends StatelessWidget {
                     },
                   ),
                 ),
+              // The column-style control belongs to the committed profile and
+              // only exists on desktop: mobile ignores profile styles, and a
+              // profile without declared styles yields no choices.
+              if (surface == LayoutRuntimeSurface.desktop &&
+                  settings.layoutStyleChoices.isNotEmpty)
+                for (final profile in profiles)
+                  if (choices[profile.id.value]!.selected &&
+                      profile.styles.isNotEmpty)
+                    Padding(
+                      key: const ValueKey<String>('layout-style-selector'),
+                      padding: EdgeInsets.fromLTRB(
+                        presentation.selectorGridPadding
+                            .resolve(Directionality.of(context))
+                            .left,
+                        LicoContentSpacing.item,
+                        presentation.selectorGridPadding
+                            .resolve(Directionality.of(context))
+                            .right,
+                        0,
+                      ),
+                      child: _LayoutStyleSelector(
+                        label: strings.layoutColumns,
+                        profile: profile,
+                        choices: settings.layoutStyleChoices,
+                        languageCode: strings.locale.languageCode,
+                        enabled: !committing,
+                        onChanged: (styleId) => binding.intents.send(
+                          SetLayoutStyle(profile.id.value, styleId.value),
+                        ),
+                      ),
+                    ),
               const SizedBox(height: LicoContentSpacing.item),
               if (committing)
                 _LayoutSelectorStatus(
@@ -176,6 +217,100 @@ final class LayoutProfileSelector extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The arrangement a profile card previews: the effective style for the
+/// selected profile (its committed choice once available, else its declared
+/// default) and the declared default for every other profile. Profiles that
+/// declare no styles preview null.
+LayoutStyleId? _previewStyleFor(
+  LayoutProfileDescriptor profile,
+  SettingsLayoutInputs settings,
+  Map<String, PresentationChoice> choices,
+) {
+  if (profile.styles.isEmpty) {
+    return null;
+  }
+  final isSelected = choices[profile.id.value]?.selected ?? false;
+  if (isSelected) {
+    for (final choice in settings.layoutStyleChoices) {
+      if (choice.selected) {
+        try {
+          return LayoutStyleId.parse(choice.id);
+        } on FormatException {
+          break;
+        }
+      }
+    }
+  }
+  return profile.defaultStyleId;
+}
+
+/// The column arrangement picker below the profile cards, built with the same
+/// segmented control the appearance selector uses. Only rendered when the
+/// committed profile declares styles on the desktop surface.
+final class _LayoutStyleSelector extends StatelessWidget {
+  const _LayoutStyleSelector({
+    required this.label,
+    required this.profile,
+    required this.choices,
+    required this.languageCode,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final String label;
+  final LayoutProfileDescriptor profile;
+  final List<PresentationChoice> choices;
+  final String languageCode;
+  final bool enabled;
+  final ValueChanged<LayoutStyleId> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    LayoutStyleId? selected;
+    for (final choice in choices) {
+      if (choice.selected) {
+        try {
+          selected = LayoutStyleId.parse(choice.id);
+        } on FormatException {
+          selected = null;
+        }
+        break;
+      }
+    }
+    final resolved = selected ?? profile.defaultStyleId;
+    if (resolved == null) {
+      return const SizedBox.shrink();
+    }
+    final disabled = <LayoutStyleId>{};
+    for (final choice in choices) {
+      if (choice.enabled) {
+        continue;
+      }
+      try {
+        disabled.add(LayoutStyleId.parse(choice.id));
+      } on FormatException {
+        continue;
+      }
+    }
+    return Semantics(
+      container: true,
+      explicitChildNodes: true,
+      label: label,
+      child: SettingsSegmentedControl<LayoutStyleId>(
+        key: const ValueKey<String>('layout-style-segments'),
+        segments: [
+          for (final style in profile.styles)
+            (value: style.id, label: style.label.resolve(languageCode)),
+        ],
+        selected: resolved,
+        disabledSegments: disabled,
+        enabled: enabled,
+        onChanged: onChanged,
       ),
     );
   }
@@ -268,7 +403,7 @@ final class _LayoutProfileOption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final borderColor = selected ? colors.primaryStrong : colors.line;
+    final borderColor = selected ? colors.selectionInk : colors.line;
     final activate = enabled ? onPressed : null;
     return Semantics(
       button: true,
@@ -296,7 +431,11 @@ final class _LayoutProfileOption extends StatelessWidget {
                 : const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
             decoration: continuousHairlineDecoration(
-              color: selected ? colors.surface : colors.surfaceLow,
+              color: selected
+                  ? colors.surface
+                  : (colors.isDark
+                        ? LicoPaneGlass.contentInnerCardFill
+                        : colors.surfaceLow),
               stroke: borderColor,
               borderRadius: BorderRadius.circular(LicoRadius.floating),
             ),
@@ -321,7 +460,7 @@ final class _LayoutProfileOption extends StatelessWidget {
                           horizontal: LicoContentSpacing.compact,
                         ),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius: BorderRadius.circular(LicoRadius.well),
                           child: AspectRatio(
                             aspectRatio: 16 / 10,
                             child: FittedBox(

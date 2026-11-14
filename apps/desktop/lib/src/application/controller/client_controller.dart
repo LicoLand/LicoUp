@@ -12,19 +12,20 @@ import 'package:licoup/src/application/controller/client_locale_commands.dart';
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:licoup/src/application/controller/client_lifecycle_facade.dart';
 import 'package:licoup/src/application/controller/client_maintenance_facade.dart';
-import 'package:licoup/src/application/controller/client_mobile_relay_facade.dart';
 import 'package:licoup/src/application/controller/client_navigation_facade.dart';
 import 'package:licoup/src/application/controller/client_routing_facade.dart';
-import 'package:licoup/src/application/controller/appearance_preference_owner.dart';
+import 'package:licoup/src/application/features/settings/controller/appearance_preference_owner.dart';
 import 'package:licoup/src/application/controller/functional_status_runtime.dart';
 import 'package:licoup/src/application/controller/locale_preference_owner.dart';
+import 'package:licoup/src/application/controller/locale_resource_owner.dart';
 import 'package:licoup/src/application/controller/client_skill_hub_facade.dart';
 import 'package:licoup/src/application/controller/client_target_facade.dart';
 import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
 import 'package:licoup/src/application/features/agents/archive/conversation_archive_controller.dart';
 import 'package:licoup/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
+import 'package:licoup/src/application/features/devices/devices_controller.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
-import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
+import 'package:licoup/src/application/features/agents/contracts/acativa_gateway.dart';
 import 'package:licoup/src/application/features/agents/controller/agent_usage_controller.dart';
 import 'package:licoup/src/application/features/agents/controller/provider_quota_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_presentation_signals.dart';
@@ -38,15 +39,14 @@ import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/presentation/layout/built_in_layout_catalog.dart';
 import 'package:licoup/src/presentation/layout/layout_catalog.dart';
-import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
-import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
 import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
 import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
-import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_interface_entry_hook_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_current_view_tracker.dart';
 import 'package:licoup/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_center_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_recommendation_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/client_log_export_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/client_update_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/directory_path_controller.dart';
@@ -57,22 +57,21 @@ import 'package:licoup/src/application/features/skill_hub/controller/skill_usage
 import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_usage_service.dart';
-import 'package:licoup/src/backend/features/mobile_relay/services/mobile_home_layout_service.dart';
 import 'package:licoup/src/backend/features/settings/services/client_update_service.dart';
 import 'package:licoup/src/backend/features/skill_hub/services/skill_hub_preferences_service.dart';
 import 'package:licoup/src/contracts/llm_vault_authorization.dart';
 import 'package:licoup/src/contracts/llm_gateway_diagnostics.dart';
 import 'package:licoup/src/contracts/agent_tool_allowlist_repository.dart';
-import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
 import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
+import 'package:licoup/src/contracts/devices/devices_notice_repository.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/contracts/conversation_attachment_release.dart';
 import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
 import 'package:licoup/src/contracts/optional_collaboration_gateway.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
-import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/client_current_view.dart';
+import 'package:licoup/src/contracts/presentation/composer_drafts.dart';
 import 'package:licoup/src/contracts/skill_delete.dart';
 import 'package:licoup/src/contracts/skill_hub.dart';
 import 'package:licoup/src/contracts/skill_usage.dart';
@@ -80,18 +79,20 @@ import 'package:licoup/src/platform/agents/agent_tab_order_store.dart';
 import 'package:licoup/src/platform/agents/agent_tool_allowlist_store.dart';
 import 'package:licoup/src/platform/agents/scanned_targets_cache_store.dart';
 import 'package:licoup/src/platform/appearance/appearance_preset_catalog_service.dart';
+import 'package:licoup/src/platform/presentation/presentation_mount_plan_service.dart';
+import 'package:licoup/src/platform/locale/locale_resource_catalog_service.dart';
 import 'package:licoup/src/platform/client_clipboard_service.dart';
 import 'package:licoup/src/platform/conversation/conversation_image_byte_reader.dart';
 import 'package:licoup/src/platform/documents/plan_document_reader.dart';
-import 'package:licoup/src/platform/mobile_relay/mobile_home_layout_store.dart';
-import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/stream_observation.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:licoup/src/platform/process/client_process_lifecycle.dart';
 import 'package:licoup/src/platform/presentation/client_current_view_store.dart';
-import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
+import 'package:licoup/src/platform/presentation/composer_draft_store.dart';
+import 'package:licoup/src/platform/presentation/file_presentation_preferences_repository.dart';
 import 'package:licoup/src/platform/runtime_platform_bridge.dart';
-import 'package:licoup/src/platform/secure_mesh/secure_mesh_capability_service.dart';
 import 'package:licoup/src/platform/skill_hub/skill_hub_preferences_store.dart';
 import 'package:licoup/src/platform/storage/client_log_export_service.dart';
 import 'package:licoup/src/platform/storage/client_memory_diagnostic_log.dart';
@@ -115,7 +116,6 @@ class ClientController extends AgentConversationController
         ClientLocaleCommands,
         ClientFunctionalStatusCommands,
         ClientAgentUsageFacade,
-        ClientMobileRelayFacade,
         ClientSkillHubFacade,
         ClientTargetFacade,
         ClientMaintenanceFacade,
@@ -125,14 +125,13 @@ class ClientController extends AgentConversationController
   ClientController({
     PortableDataRoot? portableData,
     AgentService? agentService,
+    NativeCliProcessContext? processContext,
+    StreamObservationBackend? streamObservationBackend,
     AgentConversationService? conversationService,
     AgentUsageService? agentUsageService,
     ClientUpdateService? clientUpdateService,
     OptionalCollaborationGateway? optionalCollaborationGateway,
-    MobileRelayService? mobileRelayService,
-    SecureMeshCapabilityService? secureMeshCapabilityService,
-    MobileHomeLayoutService? mobileHomeLayoutService,
-    MobileHomeLayoutRepository? mobileHomeLayoutRepository,
+    DevicesNoticeRepository? devicesNoticeRepository,
     SkillHubGateway? skillHubGateway,
     SkillDeleteGateway? skillDeleteGateway,
     SkillUsageGateway? skillUsageGateway,
@@ -142,8 +141,11 @@ class ClientController extends AgentConversationController
     ScannedTargetsCacheStore? scannedTargetsCacheStore,
     ClientCurrentViewStore? currentViewStore,
     ClientCurrentViewTracker? currentViewTracker,
+    ComposerDraftStore? composerDraftStore,
     AgentToolAllowlistRepository? agentToolAllowlistRepository,
     AppearancePresetCatalogService? appearancePresetCatalogService,
+    PresentationMountPlanService? presentationMountPlanService,
+    LocaleResourceCatalogService? localeResourceCatalogService,
     LayoutCatalog? layoutCatalog,
     LayoutManager? layoutManager,
     PresentationPreferencesRepository? presentationPreferencesRepository,
@@ -164,23 +166,8 @@ class ClientController extends AgentConversationController
     ClientConversationNativePort? conversationNativePort,
     Duration? pendingNoticePollInterval,
   }) : portableData = portableData ?? PortableDataRoot(),
-       agentService =
-           agentService ??
-           AgentService(
-             dataDirectory: () async => (portableData ?? PortableDataRoot())
-                 .dataDirectory()
-                 .then((directory) => directory.path),
-           ),
        agentUsageService = agentUsageService ?? const AgentUsageService(),
        clientUpdateService = clientUpdateService ?? const ClientUpdateService(),
-       mobileRelayService = mobileRelayService ?? const MobileRelayService(),
-       secureMeshCapabilityService =
-           secureMeshCapabilityService ?? const SecureMeshCapabilityService(),
-       mobileHomeLayoutService =
-           mobileHomeLayoutService ??
-           const MobileHomeLayoutService(
-             store: PlatformMobileHomeLayoutStore(),
-           ),
        skillHubPreferencesService =
            skillHubPreferencesService ??
            const SkillHubPreferencesService(
@@ -194,11 +181,17 @@ class ClientController extends AgentConversationController
            currentViewStore ?? const PlatformClientCurrentViewStore(),
        currentViewTracker =
            currentViewTracker ?? ClientCurrentViewTracker.instance,
+       composerDraftStore =
+           composerDraftStore ?? const PlatformComposerDraftStore(),
        agentToolAllowlistRepository =
            agentToolAllowlistRepository ?? const AgentToolAllowlistStore(),
        appearancePresetCatalogService =
            appearancePresetCatalogService ??
            const AppearancePresetCatalogService(),
+       presentationMountPlanService =
+           presentationMountPlanService ?? const PresentationMountPlanService(),
+       localeResourceCatalogService =
+           localeResourceCatalogService ?? const LocaleResourceCatalogService(),
        clientLogExportService =
            clientLogExportService ?? const ClientLogExportService(),
        clientClipboardService =
@@ -217,23 +210,24 @@ class ClientController extends AgentConversationController
        diagnosticSink = applicationDiagnosticSink ?? _discardDiagnostic,
        _ownsClientClipboardService = clientClipboardService == null,
        _ownsAgentService = agentService == null {
+    this.agentService =
+        agentService ??
+        AgentService(
+          processContext: processContext,
+          dataHomeSelection: () => this.portableData.dataHomeSelection(),
+          streamObservation: streamObservationBackend,
+        );
     this.conversationService =
         conversationService ??
         AgentConversationService(
           native: this.agentService.conversationNativePort,
         );
-    final preferredLayout =
-        this.runtimePlatformBridge.isMacos ||
-            this.runtimePlatformBridge.isWindows ||
-            this.runtimePlatformBridge.isMobileClientRuntime
-        ? LayoutProfileId.parse('dashboard')
-        : LayoutProfileId.parse('desktop');
+    final resolvedCatalog = layoutCatalog ?? createBuiltInLayoutCatalog();
     final fallbackPreferences = PresentationPreferences(
-      layoutProfileId: preferredLayout,
+      layoutProfileId: resolvedCatalog.defaultProfile.id,
       appearancePresetId: AppearancePresetIds.defaultSystem,
       localePreference: LocalePreference.system,
     );
-    final resolvedCatalog = layoutCatalog ?? createBuiltInLayoutCatalog();
     final resolvedLayoutManager =
         layoutManager ??
         LayoutManager(
@@ -245,7 +239,6 @@ class ClientController extends AgentConversationController
                 fallback: fallbackPreferences,
               ),
           canonicalFallback: fallbackPreferences,
-          preferredDefaultId: preferredLayout,
         );
     if (!identical(resolvedLayoutManager.catalog, resolvedCatalog)) {
       throw const FormatException('layout_manager_catalog_identity_mismatch');
@@ -265,9 +258,6 @@ class ClientController extends AgentConversationController
       conversationService: this.conversationService,
       agentUsageService: this.agentUsageService,
       clientUpdateService: this.clientUpdateService,
-      mobileRelayService: this.mobileRelayService,
-      secureMeshCapabilityService: this.secureMeshCapabilityService,
-      mobileHomeLayoutService: this.mobileHomeLayoutService,
       skillHubPreferencesService: this.skillHubPreferencesService,
       agentTabOrderStore: this.agentTabOrderStore,
       scannedTargetsCacheStore: this.scannedTargetsCacheStore,
@@ -277,23 +267,18 @@ class ClientController extends AgentConversationController
       isMobileRuntime: () => mobileClientRuntimePlatform,
       selectedAgentId: () => selectedConversationAgentId,
       scannedTargets: () => scannedTargets,
-      replaceScannedTargets: (value) => scannedTargets = value,
       ensureTargets: scanTargets,
-      ensureTargetsSilently: () =>
-          scanTargets(showProgress: false, surfaceErrors: true),
       loadSelectedConversation: loadConversationSessions,
       shouldLoadSelectedConversation: () =>
           selectedConversationAgentId.isNotEmpty &&
           !mobileClientRuntimePlatform,
-      discoverMobileTargets: discoverMobileRelayTargets,
       onTargetsSettled: _onTargetsSettled,
-      selectDefaultConversationAgent: selectDefaultConversationAgent,
       onEnterMonitoring: clientEnterMonitoringSection,
       onExitMonitoring: clientExitMonitoringSection,
       entryHookTasks: resolveInterfaceEntryHookTasks(),
       layoutCatalog: resolvedCatalog,
       layoutManager: resolvedLayoutManager,
-      mobileHomeLayoutRepository: mobileHomeLayoutRepository,
+      devicesNoticeRepository: devicesNoticeRepository,
       skillHubGateway: skillHubGateway,
       skillDeleteGateway: skillDeleteGateway,
       skillUsageGateway: skillUsageGateway,
@@ -365,25 +350,31 @@ class ClientController extends AgentConversationController
   final ClientCurrentViewStore currentViewStore;
   @override
   final ClientCurrentViewTracker currentViewTracker;
+
+  @override
+  final ComposerDraftStore composerDraftStore;
   @override
   final AgentToolAllowlistRepository agentToolAllowlistRepository;
   @override
   Object get agentWorkspacePortableData => portableData;
   @override
-  final AgentService agentService;
+  String get agentWorkspaceDataRoot => portableDataPath;
+  @override
+  late final AgentService agentService;
   @override
   final LlmVaultAuthorization llmVaultAuthorization = LlmVaultAuthorization();
   late final AgentConversationService conversationService;
   final AgentUsageService agentUsageService;
   final ClientUpdateService clientUpdateService;
-  final MobileRelayService mobileRelayService;
-  final SecureMeshCapabilityService secureMeshCapabilityService;
-  final MobileHomeLayoutService mobileHomeLayoutService;
   final SkillHubPreferencesService skillHubPreferencesService;
   final AgentTabOrderStore agentTabOrderStore;
   final ScannedTargetsCacheStore scannedTargetsCacheStore;
   @override
   final AppearancePresetCatalogService appearancePresetCatalogService;
+  @override
+  final PresentationMountPlanService presentationMountPlanService;
+  @override
+  final LocaleResourceCatalogService localeResourceCatalogService;
   final ClientLogExportService clientLogExportService;
   final ClientClipboardService clientClipboardService;
   @override
@@ -422,11 +413,8 @@ class ClientController extends AgentConversationController
   @override
   AgentConversationGateway get conversationGateway =>
       _components.conversationGateway;
-  AdaptiveFlywheelGateway get adaptiveFlywheelGateway =>
-      _components.adaptiveFlywheelGateway;
+  AcativaGateway get acativaGateway => _components.acativaGateway;
   @override
-  MobileAgentConversationGateway get mobileConversationGateway =>
-      _components.mobileConversationGateway;
   @override
   ConversationPresentationSignals get conversationPresentationSignals =>
       _components.conversationPresentationSignals;
@@ -456,18 +444,15 @@ class ClientController extends AgentConversationController
   @override
   AdapterPluginController get adapterPluginController =>
       _components.adapterPluginController;
+  PackageCenterController get packageCenterController =>
+      _components.packageCenterController;
+  PackageRecommendationController get packageRecommendationController =>
+      _components.packageRecommendationController;
   @override
   DirectoryPathController get directoryPathController =>
       _components.directoryPathController;
   @override
-  MobileHomeLayoutController get mobileHomeLayoutController =>
-      _components.mobileHomeLayoutController;
-  @override
-  MobileRelayController get mobileRelayController =>
-      _components.mobileRelayController;
-  @override
-  SecureMeshController get secureMeshController =>
-      _components.secureMeshController;
+  DevicesController get devicesController => _components.devicesController;
   @override
   ClientLifecycleCoordinator get lifecycleController =>
       _components.lifecycleController;
@@ -483,6 +468,9 @@ class ClientController extends AgentConversationController
   @override
   LocalePreferenceOwner get localePreferenceOwner =>
       _components.localePreferenceOwner;
+  @override
+  LocaleResourceOwner get localeResourceOwner =>
+      _components.localeResourceOwner;
   @override
   FunctionalStatusRuntime get functionalStatusRuntime =>
       _components.functionalStatusRuntime;

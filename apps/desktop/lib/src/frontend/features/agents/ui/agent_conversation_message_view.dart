@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
-import 'package:flutter/rendering.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
@@ -21,7 +20,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
-import 'package:licoup/src/frontend/shared/ui/reading_position_scroll_controller.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 
 class AgentConversationMessageList extends StatefulWidget {
   const AgentConversationMessageList({
@@ -109,9 +108,14 @@ class AgentConversationMessageListState
   String _timelineSessionIdentity = '';
   String _timelineSessionKey = '';
   List<ConversationTimelineItem> _timelineItems = const [];
-  Map<String, int> _timelineIndexByStorageKey = const {};
+
+  /// Panels plus message slots. Rebuilt only when the timeline structure
+  /// changes, so [CollectionView] sees one list identity per content change.
+  List<_TranscriptRow> _transcriptRows = const [];
+  bool _rowsBuilt = false;
+  bool _rowsShowEarlierPage = false;
+  bool _hasDiagnostics = false;
   List<AgentSemanticArtifactRef> _artifacts = const [];
-  int _footerCount = 0;
 
   /// Minimum distance from the top of the loaded history that starts loading
   /// the earlier page. The effective lead-in is one full viewport (see
@@ -119,7 +123,6 @@ class AgentConversationMessageListState
   /// the oldest loaded edge.
   static const double _earlierPageLeadIn = 120;
 
-  int _timelineTotal = 0;
   bool _pageRequestInFlight = false;
   bool _hasMessages = false;
 
@@ -137,25 +140,15 @@ class AgentConversationMessageListState
     super.initState();
     _syncAdapterFuture();
     _syncTimelineCache();
+    _syncTranscriptRows();
   }
 
   @override
   void didUpdateWidget(covariant AgentConversationMessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final readingController = _effectiveScrollController;
-    if (readingController is ReadingPositionScrollController) {
-      final sameConversation =
-          oldWidget.target.target == widget.target.target &&
-          oldWidget.session?.id == widget.session?.id &&
-          oldWidget.session?.nativeSessionId == widget.session?.nativeSessionId;
-      if (sameConversation) {
-        readingController.captureReadingAnchor();
-      } else {
-        readingController.clearReadingAnchor();
-      }
-    }
     _syncAdapterFuture();
     _syncTimelineCache();
+    _syncTranscriptRows();
   }
 
   @override
@@ -216,20 +209,6 @@ class AgentConversationMessageListState
     ).reversed.toList(growable: false);
     final artifacts = session?.artifacts ?? const <AgentSemanticArtifactRef>[];
     final hasDiagnostics = session?.hasDiagnostics ?? false;
-    final footerCount =
-        (artifacts.isNotEmpty ? 1 : 0) + (hasDiagnostics ? 1 : 0);
-    final indexByStorageKey = <String, int>{};
-    var footerIndex = 0;
-    if (hasDiagnostics) {
-      indexByStorageKey['conversation-diagnostics'] = footerIndex;
-      footerIndex += 1;
-    }
-    if (artifacts.isNotEmpty) {
-      indexByStorageKey['conversation-artifacts'] = footerIndex;
-    }
-    for (var index = 0; index < timelineItems.length; index += 1) {
-      indexByStorageKey[timelineItems[index].storageKey] = index + footerCount;
-    }
 
     _timelineSession = session;
     _timelineLiveMessages = widget.liveMessages;
@@ -238,15 +217,42 @@ class AgentConversationMessageListState
         .toUnsigned(32)
         .toRadixString(16);
     _timelineItems = timelineItems;
-    _timelineTotal = timelineItems.length + footerCount;
-    _timelineIndexByStorageKey = Map<String, int>.unmodifiable(
-      indexByStorageKey,
-    );
     _artifacts = artifacts;
-    _footerCount = footerCount;
+    _hasDiagnostics = hasDiagnostics;
+    _rowsBuilt = false;
     _hasMessages = messages.isNotEmpty;
     return true;
   }
+
+  /// Compose the reversed transcript slots: the diagnostics and artifact panels
+  /// at the newest end, then the messages, then the earlier-page slot at the
+  /// oldest end.
+  ///
+  /// Slots carry an index into [_timelineItems] rather than the item itself, so
+  /// a streamed text revision that swaps one item in place never changes this
+  /// list's identity and never re-captures the reading anchor mid-reply.
+  void _syncTranscriptRows() {
+    final showEarlierPage =
+        _hasEarlierMessages ||
+        widget.messagePageLoading ||
+        widget.messagePageError.isNotEmpty;
+    if (_rowsBuilt && showEarlierPage == _rowsShowEarlierPage) return;
+    _rowsBuilt = true;
+    _rowsShowEarlierPage = showEarlierPage;
+    _transcriptRows = List<_TranscriptRow>.unmodifiable(<_TranscriptRow>[
+      if (_hasDiagnostics)
+        const _TranscriptRow.panel(_TranscriptPanel.diagnostics),
+      if (_artifacts.isNotEmpty)
+        const _TranscriptRow.panel(_TranscriptPanel.artifacts),
+      for (var index = 0; index < _timelineItems.length; index += 1)
+        _TranscriptRow.message(index),
+      if (showEarlierPage)
+        const _TranscriptRow.panel(_TranscriptPanel.earlierPage),
+    ]);
+  }
+
+  Object _rowKey(_TranscriptRow row) =>
+      row.panel?.storageKey ?? _timelineItems[row.messageIndex].storageKey;
 
   /// Reuse the built timeline while replies stream in.
   ///
@@ -432,19 +438,22 @@ class AgentConversationMessageListState
             onDeleteMessage: widget.onDeleteMessage,
           );
         }
-        final showPageRow =
-            _hasEarlierMessages ||
-            widget.messagePageLoading ||
-            widget.messagePageError.isNotEmpty;
         return NotificationListener<ScrollNotification>(
           onNotification: _handleScrollNotification,
-          child: ListView.builder(
-            controller: _effectiveScrollController,
+          child: CollectionView<_TranscriptRow>(
+            // Page storage keeps this transcript's offset apart from other
+            // scrollables on the route.
             key: PageStorageKey<String>(
               'agent-conversation-message-list-$_timelineSessionKey',
             ),
+            items: _transcriptRows,
+            itemKey: _rowKey,
+            controller: _effectiveScrollController,
             reverse: true,
-            scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
+            // A streamed reply changes one slot per frame. Without a repaint
+            // boundary per slot the whole visible transcript repaints with it.
+            wrapWithRepaintBoundary: true,
+            scrollCacheExtent: 2.0,
             padding: EdgeInsets.fromLTRB(
               LicoContentSpacing.item,
               LicoContentSpacing.item + widget.topOverlayInset,
@@ -453,28 +462,13 @@ class AgentConversationMessageListState
                   adapter.assistantVerticalPadding +
                   widget.bottomOverlayInset,
             ),
-            findChildIndexCallback: (key) {
-              if (key case ValueKey<String>(:final value)) {
-                return _timelineIndexByStorageKey[value];
-              }
-              return null;
-            },
-            itemCount: _timelineTotal + (showPageRow ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (showPageRow && index == _timelineTotal) {
-                return _ConversationEarlierPageRow(
-                  loading: widget.messagePageLoading,
-                  errorCode: widget.messagePageError,
-                  onRetry: widget.onLoadEarlier,
-                );
-              }
-              return _buildConsoleRow(
-                context,
-                adapter,
-                index,
-                streamingMessageIds,
-              );
-            },
+            itemBuilder: (context, row, index) => _buildTranscriptSlot(
+              context,
+              adapter,
+              row,
+              index,
+              streamingMessageIds,
+            ),
           ),
         );
       },
@@ -518,45 +512,44 @@ class AgentConversationMessageListState
     return false;
   }
 
-  Widget _buildConsoleRow(
+  Widget _buildTranscriptSlot(
     BuildContext context,
     AgentRenderAdapter adapter,
+    _TranscriptRow row,
     int index,
     Set<String> streamingMessageIds,
   ) {
-    if (index < _footerCount) {
-      if (widget.session?.hasDiagnostics ?? false) {
-        if (index == 0) {
-          return Padding(
-            key: const ValueKey<String>('conversation-diagnostics'),
-            padding: EdgeInsets.only(bottom: LicoContentSpacing.item),
-            child: _ConversationDiagnosticsPanel(
-              session: widget.session!,
-              expanded: _showDiagnostics,
-              onToggle: () {
-                setState(() {
-                  _showDiagnostics = !_showDiagnostics;
-                });
-              },
-            ),
-          );
-        }
-        if (_artifacts.isNotEmpty && index == 1) {
-          return Padding(
-            key: const ValueKey<String>('conversation-artifacts'),
-            padding: EdgeInsets.only(bottom: LicoContentSpacing.item),
-            child: _ConversationArtifactsPanel(artifacts: _artifacts),
-          );
-        }
-      } else if (_artifacts.isNotEmpty && index == 0) {
+    switch (row.panel) {
+      case _TranscriptPanel.diagnostics:
+        return Padding(
+          key: const ValueKey<String>('conversation-diagnostics'),
+          padding: EdgeInsets.only(bottom: LicoContentSpacing.item),
+          child: _ConversationDiagnosticsPanel(
+            session: widget.session!,
+            expanded: _showDiagnostics,
+            onToggle: () {
+              setState(() {
+                _showDiagnostics = !_showDiagnostics;
+              });
+            },
+          ),
+        );
+      case _TranscriptPanel.artifacts:
         return Padding(
           key: const ValueKey<String>('conversation-artifacts'),
           padding: EdgeInsets.only(bottom: LicoContentSpacing.item),
           child: _ConversationArtifactsPanel(artifacts: _artifacts),
         );
-      }
+      case _TranscriptPanel.earlierPage:
+        return _ConversationEarlierPageRow(
+          loading: widget.messagePageLoading,
+          errorCode: widget.messagePageError,
+          onRetry: widget.onLoadEarlier,
+        );
+      case null:
+        break;
     }
-    final item = _timelineItems[index - _footerCount];
+    final item = _timelineItems[row.messageIndex];
     final content = switch (item) {
       ConversationMessageTimelineItem(:final message) =>
         message.kind == AgentConversationMessageKind.assistant
@@ -595,23 +588,36 @@ class AgentConversationMessageListState
           messageTreeTruncated: messageTreeTruncated,
         ),
     };
-    // A streamed reply changes one item per frame. Without a repaint
-    // boundary per item the whole visible transcript repaints with it.
-    return ReadingPositionAnchor(
-      key: ValueKey<String>(item.storageKey),
-      controller: _effectiveScrollController,
-      anchorId: item.storageKey,
-      isRow: true,
-      child: Padding(
-        padding: EdgeInsets.only(
-          bottom: index + 1 < _timelineItems.length + _footerCount
-              ? LicoContentSpacing.item
-              : 0,
-        ),
-        child: RepaintBoundary(child: content),
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: index + 1 < _transcriptRows.length
+            ? LicoContentSpacing.item
+            : 0,
       ),
+      child: content,
     );
   }
+}
+
+/// One slot of the reversed transcript.
+@immutable
+final class _TranscriptRow {
+  const _TranscriptRow.panel(this.panel) : messageIndex = -1;
+  const _TranscriptRow.message(this.messageIndex) : panel = null;
+
+  final _TranscriptPanel? panel;
+  final int messageIndex;
+}
+
+enum _TranscriptPanel {
+  diagnostics('conversation-diagnostics'),
+  artifacts('conversation-artifacts'),
+  earlierPage('conversation-earlier-page');
+
+  const _TranscriptPanel(this.storageKey);
+
+  /// Stable identity for the lazy list's key index and the reading anchor.
+  final String storageKey;
 }
 
 final class _ConversationEarlierPageRow extends StatelessWidget {

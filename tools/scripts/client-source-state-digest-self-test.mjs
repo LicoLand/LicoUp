@@ -53,6 +53,8 @@ try {
   runGit(["config", "user.name", "source-digest-self-test"]);
   runGit(["config", "user.email", "source-digest-self-test@example.invalid"]);
   runGit(["config", "commit.gpgsign", "false"]);
+  // The fixture repository must not inherit the host's global hooks.
+  runGit(["config", "core.hooksPath", path.join(root, ".git", "hooks")]);
   runGit(["add", "src/tracked.txt", ".gitignore"]);
   runGit(["commit", "--quiet", "-m", "fixture"]);
 
@@ -104,11 +106,22 @@ try {
     rejects(() => validateClientSourceRoots(invalid),
       "unsafe source root was accepted");
   }
-  if (!canonicalClientSourceRootsMatch(CANONICAL_CLIENT_SOURCE_ROOTS) ||
+  if (CANONICAL_CLIENT_SOURCE_ROOTS.includes("crates") ||
+    CANONICAL_CLIENT_SOURCE_ROOTS.some((entry) => /^Cargo(?:\.toml|\.lock)$/u.test(entry)) ||
+    !canonicalClientSourceRootsMatch(CANONICAL_CLIENT_SOURCE_ROOTS) ||
     canonicalClientSourceRootsMatch(CANONICAL_CLIENT_SOURCE_ROOTS.filter(
       (entry) => entry !== "package-lock.json",
     ))) {
-    throw new Error("canonical source roots could be narrowed");
+    throw new Error("canonical source roots could be narrowed or retain retired component sources");
+  }
+
+  const nestedSource = path.join(root, "src", "nested", "lib.mjs");
+  mkdirSync(path.dirname(nestedSource), { recursive: true });
+  writeFileSync(nestedSource, "export function sourceState() {}\n", "utf8");
+  const nestedDigest = clientSourceStateDigest(root, ["src"]);
+  writeFileSync(nestedSource, "export function sourceStateChanged() {}\n", "utf8");
+  if (clientSourceStateDigest(root, ["src"]) === nestedDigest) {
+    throw new Error("nested source mutation was omitted from digest");
   }
 
   const ignoredInput = path.join(root, "src", "ignored-input.txt");
@@ -152,7 +165,7 @@ try {
 
   console.log(JSON.stringify({
     ok: true,
-    caseCount: 16,
+    caseCount: 17,
     ignoredBuildInputBound: true,
     untrackedModeBound: true,
     exclusionsCodeOwned: true,

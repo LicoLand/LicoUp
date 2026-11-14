@@ -18,13 +18,12 @@ npm run client:get
 
 ```bash
 npm run client:run:macos
-npm run client:run:android
-npm run client:run:ios
 npm run client:build -- --platform macos
 npm run client:build -- --platform linux
 npm run client:build -- --platform windows
-npm run client:build -- --platform android
 ```
+
+Android 与 iOS 实现位于兄弟仓库 LicoUp-Android 与 LicoUp-iOS。
 
 这个唯一构建入口会自动回收空闲的编译产物和临时 Flutter 构建缓存，同时保留可运行及
 可打包产物供安装流程使用，包括 macOS Applications 安装流程。
@@ -70,9 +69,9 @@ Agent 二进制；未使用智能体的扫描
 侧最后一次助手回复，其后才是你的消息。之后在该 CLI 会话上的发送按正常续聊，
 不再重复交接。
 
-统一群聊 Conversation 基础仍与 Agent 直接对话入口相互独立。Adaptive Flywheel
+统一群聊 Conversation 基础仍与 Agent 直接对话入口相互独立。Acativa
 拥有自己的桌面策略界面：目录初始为空，只有导入 ZIP 包之后才会出现策略。策略导入、胶囊角色编辑器、后台运行时检测与工作流程图详见
-[Adaptive Flywheel 策略](ADAPTIVE-FLYWHEEL.zh-CN.md)。
+[Acativa 策略](ACATIVA.zh-CN.md)。
 
 **Lico Agent** 是智能体列表中的独立自研运行时（不是群聊入口本身）。与其对话时可
 选择 Agent 或 Plan 模式；Plan 模式在操作系统沙盒下仅能写入绑定的本地计划文件。
@@ -92,7 +91,7 @@ Assistant 是在同一原生 Conversation 中对你的目标负责到底的长�
 选择 route、绑定原生会话或创建隐藏参与者。不同工作流可以并发执行，每个工作流与
 Membership turn 保持有序。
 
-日常对话选择仍由 Assistant 配置控制，其模型和思考强度控制与 Adaptive Flywheel route
+日常对话选择仍由 Assistant 配置控制，其模型和思考强度控制与 Acativa route
 选择分离。修改 route 后请保存适应性飞轮，客户端会读取新的持久化状态；
 客户端不会暴露状态文件、可执行文件路径或原生续接位置。
 
@@ -191,7 +190,7 @@ LicoUp Adaptive Bridge 负责针对该目标的交互适配。只有目录条目
 - Token 用量视图根据本地记录计算，默认窗口为最近 30 天；也可以选择按智能体、模型或
   工作流统计，并指定自定义时间窗口。工作流视图展示 Graph run、command、准确
   Membership 归属、校验过的数字用量与精确覆盖率。LicoUp 负责工作流用量
-  记账，Adaptive Flywheel 负责 route 选择，原生对话位置只作为私有 adapter 绑定。视图不会
+  记账，Acativa 负责 route 选择，原生对话位置只作为私有 adapter 绑定。视图不会
   暴露 prompt、reply、tool payload、摘要、压缩或 cache 控件；原生 ledger 只保留活动工作流
   和最新二十份终态汇总。Cursor 是例外：它的用量与额度环来自账号自己的在线看板，
   不读取本地 IDE 计数器。Cursor 未提供 token 字段的请求只计请求数；套餐、

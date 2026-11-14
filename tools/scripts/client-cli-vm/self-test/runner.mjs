@@ -8,9 +8,6 @@ import {
   linuxProductFlutterVersion,
   linuxProductNodeArm64Sha256,
   linuxProductNodeVersion,
-  linuxProductRustupArm64Sha256,
-  linuxProductRustupVersion,
-  linuxProductRustVersion,
   linuxSourceManifestRemoteRef,
   matrix,
 } from "../constants.mjs";
@@ -22,63 +19,32 @@ import {
   linuxProductReportRootPreparationCommand,
 } from "../linux-product/shell-helpers.mjs";
 import { verifyLinuxArchiveDigestSignature } from "../linux-product/validate.mjs";
-import { repoSyncExcludes } from "../sync/repo.mjs";
-import { verifyCommand } from "../verify/command.mjs";
+import { repoSyncExcludes, repoSyncIncludes } from "../sync/repo.mjs";
 
 export function runScriptSelfTest() {
   const ubuntu = matrix.distros.find((distro) => distro.id === "ubuntu");
   if (!ubuntu) throw new Error("client CLI VM matrix has no Ubuntu entry");
-  const command = verifyCommand(ubuntu);
-  const productCommand = linuxProductCommand(ubuntu, `sha256:${"a".repeat(64)}`, {
-    challenge: "A".repeat(43),
-    invocationNonce: "B".repeat(43),
-    startedAt: "2026-01-01T00:00:00.000Z",
-  });
+  const productCommand = linuxProductCommand(ubuntu, `sha256:${"a".repeat(64)}`);
   const ownerOnlyDirectoryFunction = linuxProductOwnerOnlyDirectoryFunction();
   const reportRootPreparation = linuxProductReportRootPreparationCommand();
   const distributionReportTreePreparation =
     linuxProductVerificationReportTreePreparationCommand();
   const productBootstrapCommand = linuxProductBootstrapCommand(ubuntu);
-  const requiredTokens = [
-    "--self-test",
-    "--expect-strategy os_secure_store",
-    '--platform "ubuntu-linux-arm64"',
-    "secure-mesh-linux-adaptive-custody-proof.json",
-    "mobile-relay-secret-store-self-test.json",
-  ];
-  if (!requiredTokens.every((token) => command.includes(token))) {
-    throw new Error(
-      "client CLI VM verification command omitted an adaptive Linux custody check",
-    );
-  }
-  const retiredAuthorities = [
-    ["production", "Ready"].join(""),
-    ["--expected", "-backend"].join(""),
-  ];
-  for (const retired of retiredAuthorities) {
-    if (command.includes(retired)) {
-      throw new Error(
-        "client CLI VM verification command retained a fixed readiness authority",
-      );
-    }
-  }
   for (const token of [
     "client:build -- --platform linux",
     "client:verify:linux-bundle-carrier",
-    "client-secure-mesh-linux-vm-package-receipt.mjs",
-    "client-secure-mesh-linux-node-matrix.mjs",
     "linux-vm-acceptance",
-    "secure-mesh-linux-vm-package-receipt.json",
-    "secure-mesh-linux-node-matrix.json",
-    "secure-mesh-release-cli-proof.json",
-    "archived_release_cli_proof_ready",
-    "LICO_CLIENT_RELEASE_CLOSURE_CHALLENGE",
-    "LICO_CLIENT_RELEASE_INVOCATION_NONCE",
     "LICO_LINUX_VM_REPORT_ROOT",
     "LICO_CLIENT_EXPECTED_SOURCE_STATE_DIGEST",
+    "LICO_LINUX_VERIFICATION_SIGNING_KEY_PATH",
+    "LICO_LINUX_VERIFICATION_SIGNING_KEY_ID",
     "client-source-manifest-verify.mjs",
     "source_manifest_verified_before_build",
     "source_manifest_verified_after_build",
+    "archived_delivered_cli_smoke_ready",
+    "licoup-cli",
+    "verification-manifest.json",
+    "linux-arm64-verification-manifest.json",
     linuxSourceManifestRemoteRef,
   ]) {
     if (!productCommand.includes(token)) {
@@ -92,6 +58,24 @@ export function runScriptSelfTest() {
     (productCommand.match(/export LICO_CLIENT_[A-Z_]*SOURCE[A-Z_]*=/gu) || []).length !== 1
   ) {
     throw new Error("client CLI VM retained environment-only source attestation");
+  }
+  for (const retired of [
+    "cargo",
+    "rustup",
+    ".cargo",
+    "CARGO_TARGET_DIR",
+    "crates/",
+    "secure-mesh",
+    "client-secure-mesh-",
+    "LICO_CLIENT_RELEASE_CLOSURE",
+    "LICO_CLIENT_RELEASE_INVOCATION",
+    "docker",
+  ]) {
+    if (productCommand.includes(retired)) {
+      throw new Error(
+        "client CLI VM Linux product command retained a retired toolchain or proof step",
+      );
+    }
   }
   const symlinkCheck = 'test ! -L "$LICO_LINUX_VM_REPORT_ROOT"';
   const removeUnsafeRoot = 'rm -rf "$LICO_LINUX_VM_REPORT_ROOT"';
@@ -111,17 +95,20 @@ export function runScriptSelfTest() {
     !ownerOnlyDirectoryFunction.includes("stat -c '%a'") ||
     !ownerOnlyDirectoryFunction.includes("= 700") ||
     (distributionReportTreePreparation.match(/lico_owner_only_directory/gu) || [])
-      .length !== 5 ||
-    productCommand.indexOf(distributionReportTreePreparation) >
-      productCommand.indexOf("client-secure-mesh-release-cli-proof.mjs")
+      .length !== 5
   ) {
     throw new Error("client CLI VM Linux report root is not owner-only and symlink-safe");
   }
   if (
     !repoSyncExcludes.includes(".git") ||
-    !repoSyncExcludes.includes(".lico-source-attestation")
+    !repoSyncExcludes.includes(".lico-source-attestation") ||
+    !repoSyncExcludes.includes("build") ||
+    !repoSyncIncludes.includes("build/native-artifacts/") ||
+    !repoSyncIncludes.includes("build/native-artifacts/**")
   ) {
-    throw new Error("client CLI VM repository sync included noncanonical source authority");
+    throw new Error(
+      "client CLI VM repository sync no longer binds canonical source and delivered artifacts",
+    );
   }
   for (const token of [
     "git -c advice.detachedHead=false clone --quiet --filter=blob:none --depth 1 --branch",
@@ -130,10 +117,6 @@ export function runScriptSelfTest() {
     linuxProductNodeArm64Sha256,
     linuxProductFlutterVersion,
     linuxProductFlutterCommit,
-    `rustup ${linuxProductRustupVersion}`,
-    linuxProductRustVersion,
-    linuxProductRustupArm64Sha256,
-    "rust_toolchain_ready",
   ]) {
     if (!productBootstrapCommand.includes(token)) {
       throw new Error(
@@ -146,13 +129,12 @@ export function runScriptSelfTest() {
       "client CLI VM Linux product bootstrap retained a nonexistent ARM64 SDK archive",
     );
   }
-  if (
-    productBootstrapCommand.includes(["sh", "rustup.rs"].join(".")) ||
-    productBootstrapCommand.includes(["default-toolchain", "stable"].join(" "))
-  ) {
-    throw new Error(
-      "client CLI VM Linux product bootstrap retained an unpinned Rust installer",
-    );
+  for (const retired of ["rustup", "rust_toolchain_ready", "cargo", "docker.io"]) {
+    if (productBootstrapCommand.includes(retired)) {
+      throw new Error(
+        "client CLI VM Linux product bootstrap retained a retired toolchain install",
+      );
+    }
   }
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const publicKeyDer = publicKey.export({ type: "spki", format: "der" });
@@ -183,21 +165,17 @@ export function runScriptSelfTest() {
       {
         ok: true,
         schemaVersion: "licomesh.client-cli-vm.self-test.v1",
-        exactCapabilityInputValidationReady: true,
-        unavailableServiceFallbackProofReady: true,
-        unlockedServiceOsStoreProofReady: true,
         currentSourceArchiveBindingReady: true,
-        linuxVmInstallSessionSmokeReady: true,
-        archivedReleaseCliProofReady: true,
+        verificationCarrierReady: true,
+        archivedDeliveredCliSmokeReady: true,
+        deliveredArtifactSyncReady: true,
         directArchiveSignatureVerificationReady: true,
-        isolatedLinuxNodeMatrixReady: true,
         staleSourceRejectionReady: true,
         hostileUmaskReportRootReady: true,
         unsafeExistingReportRootReplaced: true,
         reportRootSymlinkRejected: true,
         distributionReportAncestorTreeReady: true,
-        downstreamLinuxReportRootsAudited: true,
-        fixedReadinessAuthorityRemoved: true,
+        retiredRustToolchainRemoved: true,
         runtimeDataIncluded: false,
       },
       null,

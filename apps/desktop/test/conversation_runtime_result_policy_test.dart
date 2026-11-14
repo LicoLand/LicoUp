@@ -45,7 +45,6 @@ void main() {
         {
           'effective': {'model': 'gpt-5', 'reasoningEffort': 'high'},
         },
-        throughMobileRelay: false,
         requestedModel: 'gpt-5',
         requestedReasoningEffort: 'high',
       ),
@@ -54,32 +53,10 @@ void main() {
     expect(
       ConversationRuntimeResultPolicy.effectiveSettingsMatch(
         const {},
-        throughMobileRelay: false,
         requestedModel: 'gpt-5',
         requestedReasoningEffort: '',
       ),
       isFalse,
-    );
-    expect(
-      ConversationRuntimeResultPolicy.effectiveSettingsMatch(
-        {
-          'result': {
-            'openedResult': {
-              'execution': {
-                'output': {
-                  'output': {
-                    'effective': {'model': 'gpt-5'},
-                  },
-                },
-              },
-            },
-          },
-        },
-        throughMobileRelay: true,
-        requestedModel: 'gpt-5',
-        requestedReasoningEffort: '',
-      ),
-      isTrue,
     );
   });
 
@@ -107,36 +84,6 @@ void main() {
         completed: false,
       ),
       'Hello world',
-    );
-  });
-
-  test('quota or capacity failures match code and message markers', () {
-    expect(
-      ConversationRuntimeResultPolicy.isQuotaOrCapacityFailure({
-        'ok': false,
-        'error': {'code': 'quota_exhausted', 'message': 'done'},
-      }),
-      isTrue,
-    );
-    expect(
-      ConversationRuntimeResultPolicy.isQuotaOrCapacityFailure({
-        'ok': false,
-        'error': {
-          'code': 'provider_turn_failed',
-          'message': 'Insufficient credits for this model.',
-        },
-      }),
-      isTrue,
-    );
-    expect(
-      ConversationRuntimeResultPolicy.isQuotaOrCapacityFailure({
-        'ok': false,
-        'error': {
-          'code': 'authorization_denied',
-          'message': 'Sign in required.',
-        },
-      }),
-      isFalse,
     );
   });
 

@@ -13,14 +13,14 @@ void main() {
       ClientSection.monitoring,
       ClientSection.skillHub,
       ClientSection.pluginManagement,
-      ClientSection.mobileRelay,
+      ClientSection.devices,
       ClientSection.models,
       ClientSection.settings,
       ClientSection.agentHub,
     });
     expect(catalog.destinationsFor(LayoutRuntimeSurface.mobile), {
       ClientSection.agents,
-      ClientSection.mobileRelay,
+      ClientSection.devices,
       ClientSection.settings,
     });
   });

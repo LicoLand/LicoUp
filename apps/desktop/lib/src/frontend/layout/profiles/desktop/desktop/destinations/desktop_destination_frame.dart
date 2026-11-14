@@ -3,11 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_destination_content.dart';
 
 /// Desktop destination adapter. Every Desktop destination rests on the main
-/// canvas's glass wash; building one records the shared content port so the
-/// shell can later host feature panels inside floating cards.
+/// canvas's glass wash.
 final class DesktopDestinationFrame extends StatelessWidget {
   const DesktopDestinationFrame({
     super.key,
@@ -31,8 +29,6 @@ final class DesktopDestinationFrame extends StatelessWidget {
         data.destination != expectedDestination) {
       throw const FormatException('desktop_desktop_destination_mismatch');
     }
-
-    DesktopDestinationContentRegistry.contentPort = data.content;
 
     final destination =
         child ?? data.content.buildDestination(context, expectedDestination);

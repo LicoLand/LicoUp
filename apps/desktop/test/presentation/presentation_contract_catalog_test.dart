@@ -25,10 +25,10 @@ import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
-import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
-import 'package:licoup/src/presentation/mobile_relay/mobile_relay_effect.dart';
-import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
-import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
+import 'package:licoup/src/presentation/devices/devices_binding.dart';
+import 'package:licoup/src/presentation/devices/devices_effect.dart';
+import 'package:licoup/src/presentation/devices/devices_intent.dart';
+import 'package:licoup/src/presentation/devices/devices_projection.dart';
 import 'package:licoup/src/presentation/models/models_binding.dart';
 import 'package:licoup/src/presentation/models/models_effect.dart';
 import 'package:licoup/src/presentation/models/models_intent.dart';
@@ -133,19 +133,21 @@ void main() {
         intents: _Intents<PluginManagementIntent>(),
         effects: _Effects<PluginManagementEffect>(),
       ),
-      MobileRelayBinding(
+      DevicesBinding(
         projection: _Projection(
-          MobileRelayProjection(
-            peers: const [],
-            approvals: const [],
-            transfers: const [],
-            pairingCode: '',
-            stationLabel: '',
+          DevicesProjection(
             phase: PresentationPhase.idle,
+            enrolled: false,
+            station: '',
+            mailboxId: '',
+            showLegacyPairingNotice: false,
+            peers: const [],
+            pairings: const [],
+            results: const [],
           ),
         ),
-        intents: _Intents<MobileRelayIntent>(),
-        effects: _Effects<MobileRelayEffect>(),
+        intents: _Intents<DevicesIntent>(),
+        effects: _Effects<DevicesEffect>(),
       ),
       ModelsBinding(
         projection: _Projection(
@@ -203,6 +205,9 @@ void main() {
           SettingsResourceUsageProjection.unsupported(),
         ),
         autostart: _Projection(const SettingsAutostartProjection.loading()),
+        terminalCommand: _Projection(
+          const SettingsTerminalCommandProjection.loading(),
+        ),
         intents: _Intents<SettingsIntent>(),
         effects: _Effects<SettingsEffect>(),
       ),

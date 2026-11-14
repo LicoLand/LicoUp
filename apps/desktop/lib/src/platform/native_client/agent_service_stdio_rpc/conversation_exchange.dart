@@ -168,7 +168,7 @@ Future<void> _detachExecutionObservation({
   if (!session.usable) return;
   final detachId = '$requestId-execution-detach';
   try {
-    final reply = session.expectFrame(requestId: detachId);
+    final reply = session.expectFrame(requestId: detachId, control: true);
     reply.ignore();
     final encoded = ConversationCommand(
       id: detachId,

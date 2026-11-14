@@ -255,7 +255,7 @@ final class DashboardMobileComponentKit implements LayoutComponentKit {
 IconData dashboardMobileDestinationIcon(ClientSection destination) {
   return switch (destination) {
     ClientSection.agents => Icons.chat_bubble_outline_rounded,
-    ClientSection.mobileRelay => Icons.link_outlined,
+    ClientSection.devices => Icons.link_outlined,
     ClientSection.settings => Icons.tune_outlined,
     ClientSection.monitoring => Icons.monitor_heart_outlined,
     ClientSection.skillHub => Icons.extension_outlined,

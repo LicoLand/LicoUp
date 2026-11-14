@@ -1,13 +1,10 @@
-import { ANDROID_APK_RESOURCE_LIMITS } from "../lib/android-apk-facts.mjs";
 import { stableReadFile } from "../lib/client-release-artifact-digest.mjs";
 import { maxJsonBytes, maxMacosArchiveBytes } from "./constants.mjs";
 
 export function artifactFileByteLimit(spec) {
-  return spec?.artifactKind === "android-apk"
-    ? ANDROID_APK_RESOURCE_LIMITS.maxApkBytes
-    : spec?.artifactKind === "macos-distribution-archive"
-      ? maxMacosArchiveBytes
-      : maxJsonBytes;
+  return spec?.artifactKind === "macos-distribution-archive"
+    ? maxMacosArchiveBytes
+    : maxJsonBytes;
 }
 
 export function requireValue(condition, message) {

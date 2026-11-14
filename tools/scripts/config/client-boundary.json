@@ -1,0 +1,150 @@
+{
+  "schemaVersion": "licoup.client-boundary-config.v1",
+  "rules": [
+    {
+      "id": "flutter-gui-no-native-platform-implementation",
+      "description": "Application, UI, and reusable contract code must not implement device pairing crypto, platform authentication, key storage, or proof internals.",
+      "roots": [
+        "apps/desktop/lib/src/application",
+        "apps/desktop/lib/src/frontend",
+        "apps/desktop/lib/src/contracts"
+      ],
+      "includeExtensions": [
+        ".dart"
+      ],
+      "forbiddenTokens": [
+        "package:crypto/crypto.dart",
+        "package:cryptography/",
+        "dart:ffi",
+        "MethodChannel",
+        "FlutterMethodChannel",
+        "X25519",
+        "HKDF",
+        "ChaCha20Poly1305",
+        "AES-GCM",
+        "privateKeyBase64url",
+        "signingKeyBase64url",
+        "privateKeyMaterial",
+        "signingKeyMaterial",
+        "secretOverrides",
+        "secretOverrideTransport",
+        "AndroidKeyStore",
+        "createConfirmDeviceCredentialIntent",
+        "setUserAuthenticationRequired(",
+        "AUTH_DEVICE_CREDENTIAL",
+        "AUTH_BIOMETRIC_STRONG",
+        "LAContext",
+        "SecItemAdd",
+        "SecAccessControlCreateWithFlags",
+        "Keychain"
+      ],
+      "allowedMatches": []
+    },
+    {
+      "id": "dart-services-are-bridges-not-protocol-implementations",
+      "description": "Dart services may adapt CLI and platform bridge calls, but device pairing algorithms and platform auth implementations stay outside Flutter service code.",
+      "roots": [
+        "apps/desktop/lib/src/backend",
+        "apps/desktop/lib/src/contracts"
+      ],
+      "includeExtensions": [
+        ".dart"
+      ],
+      "forbiddenTokens": [
+        "package:crypto/crypto.dart",
+        "package:cryptography/",
+        "dart:ffi",
+        "X25519",
+        "HKDF",
+        "ChaCha20Poly1305",
+        "AES-GCM",
+        "privateKeyBase64url",
+        "signingKeyBase64url",
+        "privateKeyMaterial",
+        "signingKeyMaterial",
+        "AndroidKeyStore",
+        "createConfirmDeviceCredentialIntent",
+        "setUserAuthenticationRequired(",
+        "AUTH_DEVICE_CREDENTIAL",
+        "AUTH_BIOMETRIC_STRONG",
+        "LAContext",
+        "SecItemAdd",
+        "SecAccessControlCreateWithFlags",
+        "Keychain"
+      ],
+      "allowedMatches": [
+        {
+          "file": "apps/desktop/lib/src/platform/storage/portable_data_root.dart",
+          "tokens": [
+            "package:crypto/crypto.dart"
+          ],
+          "reason": "Portable workspace manifest hashing is a non-secret identifier digest, not device pairing protocol crypto."
+        }
+      ]
+    },
+    {
+      "id": "dart-method-channel-confined-to-platform-bridge",
+      "description": "Flutter MethodChannel access stays in explicit platform bridge adapters.",
+      "roots": [
+        "apps/desktop/lib/src/application",
+        "apps/desktop/lib/src/frontend",
+        "apps/desktop/lib/src/backend",
+        "apps/desktop/lib/src/contracts"
+      ],
+      "includeExtensions": [
+        ".dart"
+      ],
+      "forbiddenTokens": [
+        "MethodChannel"
+      ],
+      "allowedMatches": []
+    }
+  ],
+  "sourceChecks": [
+    {
+      "id": "macos-agent-service-reuses-one-native-stdio-workflow",
+      "file": "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc.dart",
+      "files": [
+        "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc.dart",
+        "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc/client.dart",
+        "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc/command_round_trip.dart",
+        "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc/protocol.dart",
+        "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc/session.dart",
+        "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart"
+      ],
+      "tokens": [
+        "licoup.stdio.v1",
+        "_workflowId = newStdioRpcWorkflowId()",
+        "_operations.serialize",
+        "ensureSession()",
+        "A write may reach native code",
+        "stdioRpcMaxFrameBytes",
+        "stdioRpcMaxStderrBytes",
+        "Future<void> dispose()"
+      ],
+      "forbiddenTokens": [
+        "response['error']['message']",
+        "response[\"error\"][\"message\"]"
+      ]
+    },
+    {
+      "id": "macos-agent-service-preserves-stable-authorization-required",
+      "file": "apps/desktop/lib/src/platform/native_client/native_cli_ports.dart",
+      "tokens": [
+        "class LicoClientRpcException implements Exception",
+        "const LicoClientRpcException(this.code)",
+        "final String code",
+        "bool get authorizationRequired => code == 'authorization_required'",
+        "return 'licoup authorization is required.'",
+        "return 'licoup RPC request failed (code: $code).'"
+      ],
+      "forbiddenTokens": [
+        "final String message",
+        "this.message",
+        "error.toString()",
+        "stderr",
+        "stdout"
+      ]
+    }
+  ]
+}

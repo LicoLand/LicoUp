@@ -25,7 +25,6 @@ import {
   createClientGitHubReleaseClosure,
   loadClientReleaseTargetCatalog
 } from "../tools/scripts/lib/client-release-targets.mjs";
-import { loadSecureClientContract } from "../tools/scripts/lib/secure-client-contract.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const clientVersionManifest = JSON.parse(readFileSync(path.join(repoRoot, "tools", "client-version.json"), "utf8"));
@@ -34,9 +33,7 @@ const embeddedMigrationFrontier = JSON.parse(
   readFileSync(
     path.join(
       repoRoot,
-      "crates",
-      "licoup-native",
-      "resources",
+      "tools",
       "client-state-migration-frontier.json",
     ),
     "utf8",
@@ -49,25 +46,14 @@ const workRoot = path.join(repoRoot, "build", "tmp", "client-update-release-chan
 const artifactRoot = path.join(workRoot, "artifacts");
 const stagingRoot = path.join(workRoot, "staging");
 const reportPath = path.join(repoRoot, "build", "reports", "client-update-release-channel.json");
-const androidPhysicalInstallLaunchReportPath = path.join(
-  repoRoot,
-  "build",
-  "reports",
-  "android-physical-install-launch.json"
-);
 
 const releaseTargetCatalog = loadClientReleaseTargetCatalog();
 const productionTargets = Object.freeze(clientReleaseTargets(releaseTargetCatalog, {
   includeBuildUnsupported: false,
   includeReleaseUnsupported: false
 }));
-const { createSecureClientGitHubReleaseClosure } = await loadSecureClientContract();
-
 function reduceClientGitHubReleaseClosure(options) {
-  return createClientGitHubReleaseClosure({
-    ...options,
-    githubReleaseReducer: createSecureClientGitHubReleaseClosure
-  });
+  return createClientGitHubReleaseClosure(options);
 }
 
 function stableStringify(value) {
@@ -452,39 +438,6 @@ function readJsonIfPresent(filePath) {
   }
 }
 
-function summarizeAndroidPhysicalInstallLaunchReport(report) {
-  if (!report) {
-    return {
-      report: "build/reports/android-physical-install-launch.json",
-      present: false,
-      ready: false
-    };
-  }
-  const summary = report.summary || {};
-  return {
-    report: "build/reports/android-physical-install-launch.json",
-    present: true,
-    ok: report.ok === true,
-    physicalDevice: report.physicalDevice === true,
-    packageName: String(report.packageName || ""),
-    apkReady: summary.apkReady === true,
-    installReady: summary.installReady === true,
-    launchReady: summary.launchReady === true,
-    runtimeStatusReady: summary.runtimeStatusReady === true,
-    nativeRuntimeReady: summary.nativeRuntimeReady === true,
-    androidKeyStoreReady: summary.androidKeyStoreReady === true,
-    keyStoreUserAuthReady: summary.keyStoreUserAuthReady === true,
-    ready: report.ok === true &&
-      report.physicalDevice === true &&
-      summary.apkReady === true &&
-      summary.installReady === true &&
-      summary.launchReady === true &&
-      summary.runtimeStatusReady === true &&
-      summary.nativeRuntimeReady === true &&
-      summary.androidKeyStoreReady === true &&
-      summary.keyStoreUserAuthReady === true
-  };
-}
 
 function appExecutablePath(root, appName, executableName = "licoup") {
   return path.join(root, appName, "Contents", "MacOS", executableName);
@@ -681,20 +634,12 @@ function createDryRunInstallerPlans(artifacts) {
     arch: artifact.arch,
     updateAuthority: artifact.updateAuthority,
     preUpdateStateRecord: `${artifact.targetId}.pre-update.json`,
-    preClaimAbort:
-      artifact.platform === "android"
-        ? {
-            feasibility: "platform-managed-or-recovery-install",
-            note: "Android pre-claim abort depends on platform policy; dry-run records recovery install metadata."
-          }
-        : {
-            feasibility: "supported-by-staged-previous-artifact",
-            note: "Dry-run records the previous runnable path and staged replacement path."
-          },
+    preClaimAbort: {
+      feasibility: "supported-by-staged-previous-artifact",
+      note: "Dry-run records the previous runnable path and staged replacement path."
+    },
     smokeCheckCommand:
-      artifact.platform === "android"
-        ? "npm run client:verify:android-physical-install-launch -- --install --launch"
-        : `node apps/desktop/scripts/package-client.mjs --platform ${artifact.platform} --mode release --dry-run`
+      `node apps/desktop/scripts/package-client.mjs --platform ${artifact.platform} --mode release --dry-run`
   }));
 }
 
@@ -783,7 +728,6 @@ function runMacosProductionEntitlementsDryRun() {
 function buildProductionClosureStatus({
   publicationReceiptVerification,
   macosReleaseBundleEvidence,
-  androidPhysicalInstallLaunchEvidence,
   dryRunInstallerPlans
 }) {
   const dryRunPlansCoverTargetLabels =
@@ -827,20 +771,11 @@ function buildProductionClosureStatus({
       gatekeeperVerified: macosReleaseBundleEvidence.gatekeeperVerified === true,
       productionReady: false
     },
-    androidProductionUpdateStatus: {
-      physicalInstallLaunchReady: androidPhysicalInstallLaunchEvidence.ready === true,
-      productionReady: false
-    },
     remainingProductionGates: [
       "offline-root and online-signing custody receipts",
       "publication-authority custody and production-channel publication receipt",
       "Developer ID signing, notarization, stapling, and Gatekeeper assessment",
-      "release-built installer/package execution proof on declared production hosts",
-      ...(
-        androidPhysicalInstallLaunchEvidence.ready === true
-          ? []
-          : ["Android physical-device install and launch evidence"]
-      )
+      "release-built installer/package execution proof on declared production hosts"
     ]
   };
 }
@@ -1038,17 +973,6 @@ function main() {
       artifactKind: macosReleaseBundleEvidence.artifactKind
     });
   }
-  const androidPhysicalInstallLaunchEvidence = summarizeAndroidPhysicalInstallLaunchReport(
-    readJsonIfPresent(androidPhysicalInstallLaunchReportPath)
-  );
-  if (androidPhysicalInstallLaunchEvidence.ready) {
-    positiveChecks.push({
-      name: "Android physical install and launch evidence verifies",
-      ok: true,
-      report: androidPhysicalInstallLaunchEvidence.report,
-      packageName: androidPhysicalInstallLaunchEvidence.packageName
-    });
-  }
   ensure(
     dryRunInstallerPlans.length === productionTargets.length &&
       dryRunInstallerPlans.every((plan) =>
@@ -1134,15 +1058,15 @@ function main() {
     expectFailure("unknown GitHub Release target is rejected", () =>
       reduceClientGitHubReleaseClosure({ catalog: releaseTargetCatalog, selectedTargetIds: ["freebsd-x64"], artifacts: [] })
     ),
-    expectFailure("unsupported iOS release target is explicit and rejected", () =>
+    expectFailure("release-unsupported target is explicit and rejected", () =>
       reduceClientGitHubReleaseClosure({
         catalog: releaseTargetCatalog,
-        selectedTargetIds: ["ios-app-store-arm64"],
+        selectedTargetIds: ["linux-deb-x64"],
         artifacts: []
       })
     ),
-    expectFailure("iOS simulator adaptation cannot be selected as a distribution artifact", () =>
-      reduceClientGitHubReleaseClosure({ catalog: releaseTargetCatalog, selectedTargetIds: ["ios-simulator-arm64"], artifacts: [] })
+    expectFailure("non-catalog platform target cannot be selected as a distribution artifact", () =>
+      reduceClientGitHubReleaseClosure({ catalog: releaseTargetCatalog, selectedTargetIds: ["haiku-x64"], artifacts: [] })
     ),
     expectFailure("artifact outside selected GitHub Release targets is rejected", () =>
       reduceClientGitHubReleaseClosure({
@@ -1222,18 +1146,12 @@ function main() {
   const productionClosureStatus = buildProductionClosureStatus({
     publicationReceiptVerification,
     macosReleaseBundleEvidence,
-    androidPhysicalInstallLaunchEvidence,
     dryRunInstallerPlans
   });
   mkdirSync(path.dirname(reportPath), { recursive: true });
   const diagnosticRemainingGaps = [
     "This verifier now covers local signed revocation, publication-receipt, tamper, downgrade, installer dry-run evidence, and macOS actual release bundle structure/local codesign evidence with generated test-vector keys.",
-    "Production closure still needs offline-root plus online-signing custody, release publication receipts on the production channel, production signing/notarization, and platform installer/package proof on declared hosts.",
-    ...(
-      androidPhysicalInstallLaunchEvidence.ready
-        ? []
-        : ["Android production update closure still needs physical-device install and launch evidence."]
-    )
+    "Production closure still needs offline-root plus online-signing custody, release publication receipts on the production channel, production signing/notarization, and platform installer/package proof on declared hosts."
   ];
   const report = {
     ok: true,
@@ -1282,7 +1200,6 @@ function main() {
     installerDryRunEvidence,
     macosProductionEntitlementsDryRun,
     macosReleaseBundleEvidence,
-    androidPhysicalInstallLaunchEvidence,
     dryRunInstallerPlans,
     productionClosureStatus,
     diagnosticRemainingGaps

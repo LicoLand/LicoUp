@@ -93,8 +93,8 @@ List<GlobalSearchFeatureEntry> buildGlobalSearchFeatures({
       const ['token', 'usage', 'chart', 'monitoring', '用量', '统计', '图表'],
     ),
     section(
-      ClientSection.mobileRelay,
-      strings.mobilePairing,
+      ClientSection.devices,
+      strings.devices,
       Icons.phonelink_outlined,
       const [
         'mobile',

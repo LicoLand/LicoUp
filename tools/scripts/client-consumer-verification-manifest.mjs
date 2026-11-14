@@ -5,7 +5,6 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { CLIENT_RELEASE_TARGETS } from "./client-gate-policy.mjs";
-import { androidApkSigningCertificateKeyId } from "./lib/android-apk-facts.mjs";
 import { sha256File, stableReadFile } from "./lib/client-release-artifact-digest.mjs";
 import {
   loadClientReleaseTargetCatalog,
@@ -71,10 +70,6 @@ function artifactRecord(root, target, artifact) {
     fail(`checksum mismatch: ${artifact.file}`);
   }
   const verification = { checksum: checksum.file, algorithm: "SHA-256" };
-  if (target.platform === "android" && artifact.role === "installer") {
-    verification.signatureAlgorithm = "APK Signature Scheme v2+";
-    verification.keyId = androidApkSigningCertificateKeyId(artifactPath);
-  }
   return {
     name: artifact.file,
     version: productVersion,

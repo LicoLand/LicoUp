@@ -1,12 +1,12 @@
 import 'package:licoup/src/application/state/application_signal.dart';
 
-import 'package:licoup/src/application/composition/adaptive_flywheel_gateway_adapter.dart';
+import 'package:licoup/src/application/composition/acativa_gateway_adapter.dart';
 import 'package:licoup/src/application/controller/assembly/client_agent_hub_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_catalog_convergence_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_conversation_component_assembly.dart';
+import 'package:licoup/src/application/controller/assembly/client_devices_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_lifecycle_component_assembly.dart';
 import 'package:licoup/src/application/controller/client_lifecycle_diagnostic_journal.dart';
-import 'package:licoup/src/application/controller/assembly/client_mobile_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_navigation_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_presentation_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_plugin_management_component_assembly.dart';
@@ -15,24 +15,25 @@ import 'package:licoup/src/application/controller/assembly/client_settings_compo
 import 'package:licoup/src/application/controller/assembly/client_skill_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_target_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_usage_component_assembly.dart';
-import 'package:licoup/src/application/controller/appearance_preference_owner.dart';
+import 'package:licoup/src/application/features/settings/controller/appearance_preference_owner.dart';
 import 'package:licoup/src/application/controller/functional_status_runtime.dart';
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:licoup/src/application/controller/locale_preference_owner.dart';
+import 'package:licoup/src/application/controller/locale_resource_owner.dart';
 import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
-import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
+import 'package:licoup/src/application/features/agents/contracts/acativa_gateway.dart';
 import 'package:licoup/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
+import 'package:licoup/src/application/features/devices/devices_controller.dart';
 import 'package:licoup/src/application/features/agents/controller/agent_usage_controller.dart';
 import 'package:licoup/src/application/features/agents/controller/provider_quota_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_presentation_signals.dart';
 import 'package:licoup/src/presentation/layout/layout_catalog.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
-import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
-import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
-import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
 import 'package:licoup/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_center_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_recommendation_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/client_log_export_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/client_update_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/directory_path_controller.dart';
@@ -43,13 +44,12 @@ import 'package:licoup/src/application/features/skill_hub/controller/skill_usage
 import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
 import 'package:licoup/src/application/localization/client_application_strings.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
-import 'package:licoup/src/backend/features/agents/services/adaptive_flywheel_service.dart';
+import 'package:licoup/src/backend/features/agents/services/acativa_service.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_usage_service.dart';
-import 'package:licoup/src/backend/features/mobile_relay/services/mobile_home_layout_service.dart';
 import 'package:licoup/src/backend/features/settings/services/client_update_service.dart';
 import 'package:licoup/src/backend/features/skill_hub/services/skill_hub_preferences_service.dart';
-import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
 import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
+import 'package:licoup/src/contracts/devices/devices_notice_repository.dart';
 import 'package:licoup/src/contracts/optional_collaboration_gateway.dart';
 import 'package:licoup/src/contracts/skill_delete.dart';
 import 'package:licoup/src/contracts/skill_hub.dart';
@@ -57,10 +57,8 @@ import 'package:licoup/src/contracts/skill_usage.dart';
 import 'package:licoup/src/platform/agents/agent_tab_order_store.dart';
 import 'package:licoup/src/platform/agents/scanned_targets_cache_store.dart';
 import 'package:licoup/src/platform/client_clipboard_service.dart';
-import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:licoup/src/platform/runtime_platform_bridge.dart';
-import 'package:licoup/src/platform/secure_mesh/secure_mesh_capability_service.dart';
 import 'package:licoup/src/platform/storage/client_lifecycle_diagnostic_log.dart';
 import 'package:licoup/src/platform/storage/client_log_export_service.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
@@ -74,9 +72,6 @@ final class ClientComponentAssembly {
     required AgentConversationService conversationService,
     required AgentUsageService agentUsageService,
     required ClientUpdateService clientUpdateService,
-    required MobileRelayService mobileRelayService,
-    required SecureMeshCapabilityService secureMeshCapabilityService,
-    required MobileHomeLayoutService mobileHomeLayoutService,
     required SkillHubPreferencesService skillHubPreferencesService,
     required AgentTabOrderStore agentTabOrderStore,
     required ScannedTargetsCacheStore scannedTargetsCacheStore,
@@ -86,23 +81,16 @@ final class ClientComponentAssembly {
     required bool Function() isMobileRuntime,
     required String Function() selectedAgentId,
     required List<TargetCandidate> Function() scannedTargets,
-    required void Function(List<TargetCandidate>) replaceScannedTargets,
     required Future<void> Function() ensureTargets,
-    required Future<void> Function() ensureTargetsSilently,
     required Future<void> Function(String) loadSelectedConversation,
     required bool Function() shouldLoadSelectedConversation,
-    required Future<List<TargetCandidate>> Function({
-      Map<String, dynamic>? pairingStatus,
-    })
-    discoverMobileTargets,
     required ApplicationCallback onTargetsSettled,
-    required ApplicationCallback selectDefaultConversationAgent,
     required ApplicationCallback onEnterMonitoring,
     required ApplicationCallback onExitMonitoring,
     required ClientInterfaceEntryHookTaskMap entryHookTasks,
     required LayoutCatalog layoutCatalog,
     required LayoutManager layoutManager,
-    MobileHomeLayoutRepository? mobileHomeLayoutRepository,
+    DevicesNoticeRepository? devicesNoticeRepository,
     SkillHubGateway? skillHubGateway,
     SkillDeleteGateway? skillDeleteGateway,
     SkillUsageGateway? skillUsageGateway,
@@ -110,8 +98,8 @@ final class ClientComponentAssembly {
     OptionalCollaborationGateway? optionalCollaborationGateway,
     CatalogConvergenceGateway? catalogConvergenceGateway,
   }) {
-    adaptiveFlywheelGateway = AdaptiveFlywheelGatewayAdapter(
-      service: const AdaptiveFlywheelService(),
+    acativaGateway = AcativaGatewayAdapter(
+      service: const AcativaService(),
       runner: agentService,
     );
     presentation = ClientPresentationComponentAssembly(
@@ -130,7 +118,6 @@ final class ClientComponentAssembly {
     );
     conversation = ClientConversationComponentAssembly(
       conversationService: conversationService,
-      mobileRelayService: mobileRelayService,
       agentService: agentService,
     );
     target = ClientTargetComponentAssembly(
@@ -139,7 +126,6 @@ final class ClientComponentAssembly {
       agentTabOrderStore: agentTabOrderStore,
       scannedTargetsCacheStore: scannedTargetsCacheStore,
       isMobileRuntime: isMobileRuntime,
-      discoverMobileTargets: discoverMobileTargets,
       onTargetsSettled: onTargetsSettled,
       loadSelectedConversation: loadSelectedConversation,
       selectedAgentId: selectedAgentId,
@@ -173,24 +159,14 @@ final class ClientComponentAssembly {
     );
     pluginManagement = ClientPluginManagementComponentAssembly(
       runner: agentService,
+      portableData: portableData,
       reportStatus: _reportStatus,
     );
-    mobile = ClientMobileComponentAssembly(
+    devices = ClientDevicesComponentAssembly(
       portableData: portableData,
-      agentService: agentService,
-      mobileRelayService: mobileRelayService,
-      secureMeshCapabilityService: secureMeshCapabilityService,
-      mobileHomeLayoutService: mobileHomeLayoutService,
+      runner: agentService,
       clientClipboardService: clientClipboardService,
-      runtimePlatformBridge: runtimePlatformBridge,
-      isMobileRuntime: isMobileRuntime,
-      scannedTargets: scannedTargets,
-      replaceScannedTargets: replaceScannedTargets,
-      ensureTargetsSilently: ensureTargetsSilently,
-      discoverMobileTargets: discoverMobileTargets,
-      selectDefaultConversationAgent: selectDefaultConversationAgent,
-      reportStatus: _reportStatus,
-      mobileHomeLayoutRepository: mobileHomeLayoutRepository,
+      noticeRepository: devicesNoticeRepository,
     );
     usage = ClientUsageComponentAssembly(
       agentUsageService: agentUsageService,
@@ -214,7 +190,7 @@ final class ClientComponentAssembly {
     );
   }
 
-  late final AdaptiveFlywheelGateway adaptiveFlywheelGateway;
+  late final AcativaGateway acativaGateway;
   late final ClientPresentationComponentAssembly presentation;
   late final ClientLifecycleComponentAssembly lifecycle;
   late final ClientCatalogConvergenceComponentAssembly catalogConvergence;
@@ -223,7 +199,7 @@ final class ClientComponentAssembly {
   late final ClientSkillComponentAssembly skill;
   late final ClientSettingsComponentAssembly settings;
   late final ClientPluginManagementComponentAssembly pluginManagement;
-  late final ClientMobileComponentAssembly mobile;
+  late final ClientDevicesComponentAssembly devices;
   late final ClientUsageComponentAssembly usage;
   late final ClientProviderQuotaComponentAssembly providerQuota;
   late final ClientAgentHubComponentAssembly agentHub;
@@ -233,6 +209,8 @@ final class ClientComponentAssembly {
       presentation.appearancePreferenceOwner;
   LocalePreferenceOwner get localePreferenceOwner =>
       presentation.localePreferenceOwner;
+  LocaleResourceOwner get localeResourceOwner =>
+      presentation.localeResourceOwner;
   FunctionalStatusRuntime get functionalStatusRuntime =>
       presentation.functionalStatusRuntime;
   ClientLifecycleCoordinator get lifecycleController => lifecycle.controller;
@@ -242,8 +220,6 @@ final class ClientComponentAssembly {
       conversation.presentationSignals;
   AgentConversationGateway get conversationGateway =>
       conversation.conversationGateway;
-  MobileAgentConversationGateway get mobileConversationGateway =>
-      conversation.mobileConversationGateway;
   TargetController get targetController => target.controller;
   SkillHubController get skillHubController => skill.controller;
   SkillDeleteController get skillDeleteController => skill.deleteController;
@@ -256,12 +232,13 @@ final class ClientComponentAssembly {
       settings.optionalCollaborationController;
   AdapterPluginController get adapterPluginController =>
       pluginManagement.adapterPluginController;
+  PackageCenterController get packageCenterController =>
+      pluginManagement.packageCenterController;
+  PackageRecommendationController get packageRecommendationController =>
+      pluginManagement.packageRecommendationController;
   DirectoryPathController get directoryPathController =>
       settings.directoryPathController;
-  MobileHomeLayoutController get mobileHomeLayoutController =>
-      mobile.homeLayoutController;
-  MobileRelayController get mobileRelayController => mobile.relayController;
-  SecureMeshController get secureMeshController => mobile.secureMeshController;
+  DevicesController get devicesController => devices.controller;
   LayoutCatalog get layoutCatalog => presentation.layoutCatalog;
   LayoutManager get layoutManager => presentation.layoutManager;
   AgentUsageController get agentUsageController => usage.controller;
@@ -295,7 +272,7 @@ final class ClientComponentAssembly {
     agentHub.dispose();
     usage.dispose();
     providerQuota.dispose();
-    mobile.dispose();
+    devices.dispose();
     pluginManagement.dispose();
     settings.dispose();
     skill.dispose();

@@ -6,7 +6,10 @@ import 'package:flutter/widgets.dart' show WidgetsBinding;
 
 import 'package:presentation_contract/presentation_contract.dart';
 
-import 'package:licoup/src/frontend/binding/projection_telemetry_scope.dart';
+import 'package:licoup/src/frontend/binding/presentation_observation.dart';
+
+export 'presentation_observation.dart'
+    show CausalTelemetryUnavailableReason, PresentationObservation;
 
 typedef TelemetryClock = int Function();
 typedef TraceIdFactory = String Function();
@@ -36,13 +39,6 @@ CausalFrameTelemetry? createOptInCausalFrameTelemetry({
 }
 
 enum CausalTraceOrigin { rendererIntent, runtime }
-
-enum CausalTelemetryUnavailableReason {
-  noSamples,
-  projectionNotObserved,
-  frameNotObserved,
-  capacityEvicted,
-}
 
 final class CausalTraceMeasurement {
   const CausalTraceMeasurement({
@@ -106,7 +102,7 @@ final class CausalTelemetrySummary {
   final CausalTelemetryUnavailableReason? unavailableReason;
 }
 
-final class CausalFrameTelemetry implements ProjectionReceiptObserver {
+final class CausalFrameTelemetry implements PresentationObservation {
   CausalFrameTelemetry({
     required int pendingLimit,
     required int sampleLimit,
@@ -140,12 +136,14 @@ final class CausalFrameTelemetry implements ProjectionReceiptObserver {
   int get completedCount => _samples.length;
   int get evictedCount => _evicted;
 
+  @override
   TraceContext beginRendererIntent() {
     final trace = TraceContext(traceId: _traceIdFactory());
     _start(trace, CausalTraceOrigin.rendererIntent, _clock());
     return trace;
   }
 
+  @override
   TraceContext projectionEmitted({TraceContext? trace}) {
     final now = _clock();
     final resolved = trace?.traceId?.isNotEmpty == true
@@ -160,6 +158,7 @@ final class CausalFrameTelemetry implements ProjectionReceiptObserver {
     return resolved;
   }
 
+  @override
   void flutterReceived(TraceContext trace) {
     final id = trace.traceId;
     if (_disposed || id == null) return;
@@ -193,6 +192,7 @@ final class CausalFrameTelemetry implements ProjectionReceiptObserver {
     frame.traceIds.add(id!);
   }
 
+  @override
   void attachFrameObservation(WidgetsBinding binding) {
     if (_disposed) throw StateError('causal_telemetry_disposed');
     if (identical(_frameBinding, binding)) return;
@@ -279,6 +279,7 @@ final class CausalFrameTelemetry implements ProjectionReceiptObserver {
 
   /// Releases a trace whose projection or frame can no longer be observed.
   /// Callers choose the truthful phase-specific reason; no timer guesses it.
+  @override
   void discardTrace(
     TraceContext trace,
     CausalTelemetryUnavailableReason reason,
@@ -300,6 +301,7 @@ final class CausalFrameTelemetry implements ProjectionReceiptObserver {
   /// Synchronous projection streams call this after every listener has had a
   /// chance to select the update, so one listener accepting the projection
   /// keeps the trace alive for its rendered frame.
+  @override
   void discardIfNotReceived(
     TraceContext trace,
     CausalTelemetryUnavailableReason reason,
@@ -346,6 +348,7 @@ final class CausalFrameTelemetry implements ProjectionReceiptObserver {
     );
   }
 
+  @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;

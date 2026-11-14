@@ -6,7 +6,7 @@
 | Localization | [简体中文](ASSISTANT-WORKFLOW-CONTROL.zh-CN.md) | Chinese projection |
 | Conversation | [Conversation domain](CONVERSATION-DOMAIN.md) | History, Membership and turn identity |
 | Continuity | [Continuous Assistant](CONTINUOUS-ASSISTANT.md) | Long-lived Assistant responsibilities |
-| Existing Graph | [Adaptive Flywheel](../functionality/ADAPTIVE-FLYWHEEL.md) | Current workflow format and execution contract |
+| Existing Graph | [Acativa](../functionality/ACATIVA.md) | Current workflow format and execution contract |
 | Migration | [Client update and state migration](CLIENT-UPDATE-AND-STATE-MIGRATION.md) | Independent CLI, data conversion and client admission |
 | Agent backend | [Agent adapters](AGENT-ADAPTERS-ARCHITECTURE.md) | Actual native capabilities and original conversation |
 | Current evidence | [Status](../STATUS.md) | Implemented and verified behavior |
@@ -97,13 +97,38 @@ Any optimization must preserve visible commands, event provenance, joins and
 effect order. No speculative model call, duplicated effect, dropped intervention
 or reordered cancellation is permitted as a compiler optimization.
 
-Compile a proposed revision independently. Its eventual admission checks the
-expected current revision through the Proxy. An active run remains bound to
-its immutable plan. A changed definition creates a successor revision/run and
-an atomic intent handoff in the owning Graph store; already started effects
-remain with their original run. Ordinary steering does not require recompiling
-the Graph. A new revision does not inherit an old whole-Graph authorization for
-different effects.
+Compile a proposed revision independently. Its admission checks the expected
+current revision through the Proxy; a proposal based on an older revision
+returns a typed conflict carrying the current head, and the author rebases. A
+run keeps one identity for its whole life, and its plan is an ordered chain of
+immutable revisions; the run follows the head. Each revision records its
+parent, author principal, reason and a canonical digest of the complete Graph
+semantics. The Graph store records a revision as a structural delta from its
+parent, keyed by stable node identifiers and by `(from, to, event)` for edges,
+and records a complete snapshot at revision 1 and then at a fixed interval, so
+reconstructing any revision replays a bounded number of deltas and verifies the
+stored digest. A revert is a new revision whose content equals an earlier one;
+plan history is never rewritten.
+
+Applying a revision reconciles the run by node identity. A node visit that has
+already started stays bound to the revision under which it started and settles
+there; its outputs remain available to the new head. A pending node removed by
+the new revision is cancelled before it starts, a pending node whose definition
+changed starts with the new definition, and added nodes enter the frontier when
+their dependencies are satisfied. A revision that would detach a started branch
+from its join is rejected with a diagnostic. Ordinary steering does not create
+a revision.
+
+Each Conversation selects how Assistant-authored revisions are admitted:
+applied on admission with revert available, or held as a proposal until the
+user approves it. While a proposal is held, pending nodes it would change or
+remove do not start, and unaffected nodes continue. Applying on admission is
+limited to revisions within existing authority: the same bound Memberships and
+already authorized effect kinds. A revision that adds a Membership, a script or
+runtime effect, or any effect requiring new authorization is held for approval
+under either setting, and a new revision does not inherit an old whole-Graph
+authorization for different effects. User-authored revisions, including
+reverts, apply on admission.
 
 ## 3. The runtime control structure
 
@@ -185,6 +210,13 @@ Queue order solves concurrent mutation order, not semantic disagreement:
 | Resume arrives while pause is being negotiated | A matching explicit control may withdraw a local drain request before native pause is accepted. Otherwise report the pending transition and retain an explicitly requested follow-up resume; never claim Running before the relevant backend observation |
 | Revoked permission or stale target generation | Reject that delivery before effect; publication earlier in time does not preserve authority |
 | An explicit decision gate or participant-declared semantic disagreement | Keep an attributable pending decision for authorized participants. Do not classify prompt text to manufacture disagreement or ask a human about every technical conflict |
+
+Decision gates follow the Conversation's review setting. Under Assistant
+review, the designated Assistant may settle a gate it is authorized to decide
+and records its decision with a reason; a gate it cannot decide is escalated to
+the user together with the Assistant's note. Under user review, every gate
+waits for the user. Strategy authorization and external disclosure remain user
+decisions under either setting.
 
 A definition revision identifies immutable Graph semantics; a control revision
 identifies exclusive transitions in the relevant run/node/invocation scope;
@@ -308,14 +340,14 @@ its display. The running host keeps its matching read-only code and runtime
 resources while an update candidate is staged. An incompatible candidate waits
 for controlled handoff rather than replacing live resources or taking ownership.
 
-The independent Node.js migration CLI participates in this refactor under its
+The standalone migration CLI participates in this refactor under its
 [existing migration contract](CLIENT-UPDATE-AND-STATE-MIGRATION.md). It needs a
 consistent source: request maintenance/drain through the same control path,
 wait for actual safe ownership release, then acquire the data-root lock and
 convert stores. It can operate without an installed client and ships any
 required authorized native helper. Historical bidirectional codecs remain
 maintained assets. Current pending commands, subscriptions, source cursors,
-unknown effects and successor handoffs are part of its data contracts.
+unknown effects and plan revision chains are part of its data contracts.
 
 The planned shared Rust baseline is **1.95.0**. Compiler, native host, protocol
 SDK integration and any tool-shipped native helper must resolve on that exact

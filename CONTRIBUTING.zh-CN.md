@@ -1,5 +1,7 @@
 # 参与贡献
 
+Updated: 2026-10-12
+
 [English](CONTRIBUTING.md) · 简体中文 · [首页](README.zh-CN.md)
 
 感谢你帮助 LicoUp。每次改动应只覆盖一个清晰的客户端功能、模块或流程，并且可以
@@ -8,17 +10,16 @@
 ## 环境准备
 
 源码策略只需要 Node.js 22 或 24。按下文验证范围，使用本机已有的 Flutter、
-Rust、Java 和 Android 工具链执行受影响检查。
+Rust 工具链执行受影响检查。
 
 ```bash
 npm ci
 ```
 
-开发过程中只运行与改动直接相关的最小检查。交付前运行对应模块的定向测试。所有改动
-均确认有效后，只运行一次必需的 Node 源码策略，以及真正受影响的技术通道：Flutter、
-Rust、Android 或依赖回归。各回归通道彼此独立并可并行。发布策略不是改动路径回归通道；
-它只在 `stable` → `release` 晋升边执行，具体见
-[客户端晋升权威](docs/releases/PROMOTION-GATES.zh-CN.md)。提交门禁不会构建或发布所有平台。
+开发过程中运行负责本次改动的最小已注册检查。所有改动均确认有效后，运行下方唯一
+交付入口。它先执行完整宿主档案，再构建、安装并打开客户端。公开发布仍是独立的
+`stable` → `release` 义务，具体见
+[客户端晋升权威](docs/releases/PROMOTION-GATES.zh-CN.md)。
 
 维护中的完整客户端回归是一张限并发依赖图：共享基础只运行一次，前端与后端重叠执行；
 同级任务即使有失败也会全部收口，之后才进入接口联测、核心场景，以及按本机能力激活的
@@ -32,22 +33,70 @@ Node 测试通过匿名输入索引定位失败，因此单个 Agent 或测试�
 同级批次。
 
 所有预定改动、源码审阅、范围内修复和定向检查完成后，只执行一次选定的完整回归。
-若失败，先诊断并报告原因、影响及具体修复和验证建议，由开发者决定后续修复和是否重跑；
-不得自动扩大范围、修复或重复完整回归。继续推进不依赖该决定的已授权工作，并明确报告
-尚未完成的必需检查。既有范围内的普通实现问题和定向测试失败可直接修复。晋升失败遵循
+在负责的边界诊断失败，直接修复范围内的普通错误，包括格式、类型和静态检查遗漏。
+复用仍有效的通过证据，只重跑受影响的检查。若修复改变已批准目标、已发布契约或风险
+边界，应提供具体调查和选项，由开发者决策；仅暂停依赖该决定的工作。晋升失败遵循
 独立的[晋升门禁规则](docs/releases/PROMOTION-GATES.zh-CN.md)。
 
 ```bash
-npm run client:gate:source
-npm run client:gate:flutter         # 仅 Flutter 改动
-npm run client:gate:rust            # 仅 Rust 改动
-npm run client:gate:android         # 仅 Android 改动
-npm run client:gate:dependencies    # 仅依赖权威文件改动
+npm run client:gate:step -- <module-id>
+npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery
 ```
 
-产生构建输出的测试共用一个受管编译目标。构建使用期间，测试运行器会持有活动租约；无论
-测试正常结束还是失败，都会把输出标记为可回收。可用以下命令查看状态或仅清理已标记且
-未被使用的输出：
+### 验证覆盖与漏检缺陷
+
+持续维护的注册表是覆盖权威。它将每项必需检查归入对应的功能模块和故障类别，注明
+所属子检查与依赖，并记录该检查在哪些阶段运行：本地定向开发、最终本地工作流、提交和
+推送 Hook、Pull Request、CI 或发布晋升。每个条目必须说明它能证明什么。未注册、
+未接入所有适用阶段、未执行或受阻的测试、脚本和平台检查，均不能作为合并就绪的证据。
+
+最终本地命令执行完整宿主档案：宿主支持的每项通用检查加宿主平台的每项专属检查。
+它绝不运行其他平台的检查。相互独立的检查必须全部收口，并一次汇总各自的失败。真实
+依赖未完成的检查必须报告 `blocked` 并使命令失败；不得在通过的父级结果或只读清单
+结果中隐藏受阻工作。宿主无法执行的通用检查由云端工程任务覆盖。本地环境无法证实的
+平台、设备、凭据、实时服务及其他外部限制，继续明确记录为未验证证据，不能转化为
+通过；设备也不得只因 CI 会运行，就把自身平台的检查推迟到 CI。
+
+合并就绪是各平台证据的云端汇总：通用工程结果，加上仅由变更路径选中的目标任务。
+每个被选中的目标任务在自身平台的运行器上执行，Linux 在 Ubuntu、macOS 在 macOS、
+Windows 在 Windows，且只运行该平台的专属检查。未选中的平台绝不作为必需项，因此
+变更未影响的平台即使有问题也不能阻塞 Pull Request。本地交付成功是独立的、按平台
+分别声明的结果。
+
+缺陷发生漏检时，首先调查工作流为何没有发现它。先修复所属子检查及其注册表和阶段接线，
+再修复产品缺陷。现有类别均不负责该故障时，新增一个边界清晰的已注册子检查。开发修复
+期间可直接运行该子检查。所有范围内修复和定向检查通过后，在本地工作流中完整运行一次
+宿主档案；只有通过后，才能提交、创建 Pull Request 或启动发布流程。只读清单、部分
+通过或启动器成功，均不能替代这一结果。
+
+`client:gate:verify` 是唯一的已验证交付入口，也是每台平台设备上的同一命令。它在真实
+主机上运行权威隐私检查，并执行完整宿主档案：宿主支持的每项通用检查加宿主平台的
+每项专属检查。权威模块报告写入 `build/reports/client-module-regression.json`。实时
+Agent、设备、凭据、签名、安装、启动和发布检查仍属于单独的显式流程，不得转换为工程
+通过。任何验证工具也不得承诺穷尽尚未知晓的缺陷。宿主档案通过后，交付目标使用既有
+属主构建、安装并打开本地客户端；它绝不发布或激活真实数据。
+
+### 跨平台归属
+
+受支持目标具备所需能力时，使用可移植实现。共享 Rust、Flutter 和 Node 模块不得根据
+开发主机决定产品行为，也不得嵌入某个操作系统的路径、命令、权限、生命周期或存储假设。
+真实的目标系统差异必须收敛到明确的平台适配器契约，共享调用方只依赖该契约。
+
+平台改动只覆盖真正受影响的目标。单个平台的常规修复不得修改或重新验证无关适配器。
+共享行为或多个适配器发生重构时，必须注册每个受影响目标；每个受影响目标在自身平台的
+设备或运行器上执行必需的工程检查。某个受影响目标未运行时，对应结果记为 `blocked`
+或 `unverified`；Pull Request 只要求其变更路径选中的目标任务。确定性工程检查无法
+证明的行为仍由独立的实时验收负责。
+
+验证注册表拥有每个模块的平台适用范围，工作流拥有对应的运行环境。选择、定向执行、最终
+本地工作流和 CI 必须消费同一份权威；一台机器绝不运行其他平台的检查。静态源码检查可以
+发现可疑的主机假设，但仅凭关键字或路径扫描，不能证明共享代码可移植，也不能证明平台
+适配器有效。
+
+产生构建输出的测试共用一个受管构建输出根（`apps/desktop/build`）。
+构建使用期间，测试运行器对该受管目标持有活动租约，并保留其产物供增量复用；
+无论测试正常结束还是失败，都会把输出标记为可回收。可用以下命令查看状态或仅清理
+已标记且未被使用的输出：
 
 ```bash
 npm run client:artifacts:status
@@ -55,8 +104,8 @@ npm run client:artifacts:prune -- --dry-run
 npm run client:artifacts:prune
 ```
 
-清理操作绝不会删除 Cargo、Pub、Gradle、SDK 或工具链下载缓存，后续构建仍可复用已经
-下载的依赖。未纳管的旧目标只会被报告，不会自动删除。测试异常退出后，结构完整的失效
+清理操作绝不会删除 Pub、SDK 或工具链下载缓存，后续构建仍可复用已经
+下载的依赖。未纳管的目录只会被报告，不会自动删除。测试异常退出后，结构完整的失效
 租约会先经过保护宽限期，之后才进入可回收状态；格式错误或被篡改的记录始终关闭失败。
 
 ## 最终验证前的格式化
@@ -65,23 +114,23 @@ npm run client:artifacts:prune
 这是固定的准备步骤，也适用于智能体辅助开发。审阅格式化差异后，再启动选定的检查。
 
 ```bash
-npm run client:format              # 同时修改 Flutter 和 Rust
+npm run client:format              # Flutter 改动
 npm run client:format:flutter      # 仅 Flutter 改动
-npm run client:format:rust         # 仅 Rust 改动
 ```
 
-统一入口复用 `dart format` 和 `cargo fmt --all`，不增加格式化依赖。Dart 的处理范围
-与现有 Flutter 格式检查相同，为 `lib` 和 `test`；Rust 覆盖工作区。只使用受影响的
+统一入口复用 `dart format`，不增加格式化依赖。处理范围
+与现有 Flutter 格式检查相同，为 `lib` 和 `test`；Rust 工作区的格式通道位于
+LicoUp-CLI 仓库。只使用受影响的
 入口，纯文档或 Node 改动不需要这些工具链。其他开发者仍在写入时不得运行格式化；
 后续修复再次改动源码时，在验证前格式化受影响的源码。CI 和回归通道仍只检查格式，
 报告遗漏，不静默修改正在验证的源码。格式化不会暂存文件或创建提交。
 
 ### 验证范围
 
-本机有什么环境，就用什么环境验证受影响行为。额外设备和跨平台测试由开发者自行
-组织。不得把设备矩阵、最低硬件档位或缺少的宿主、模拟器、SDK、设备设成本地开发与
-交付的前置条件。缺少环境的检查如实记录为未运行并说明验证范围，不使本次本地交付
-失败或阻塞，也不据此宣称未测平台已经达标。
+本机有什么环境，就用什么环境验证受影响行为。可选设备与实时验收由开发者组织；不得
+为未受影响的改动凭空增加设备矩阵或最低硬件档位。无法执行的可选验收如实记录为未运行，
+且不能据此宣称未测平台已经达标。已注册工程所有者命中的真实目标在自身平台的设备或
+运行器上执行；只有变更路径选中的目标任务会阻塞合并就绪。
 
 复用已有检查，共享检查只执行一次。不得为满足计划或报告额外叠加审批门禁、验证框架、
 重复回归或设备准备。新增检查必须直接验证用户要求的行为，或防止具体回归。此范围
@@ -90,7 +139,8 @@ npm run client:format:rust         # 仅 Rust 改动
 ### 界面验收
 
 修改组件样式时，先按[设计系统视觉参考](docs/functionality/DESIGN-SYSTEM.md#视觉参考与样式审阅)
-制作真实组件展示图。
+制作真实组件展示图。已有批准设计参考的界面（例如交互设计实验室稿），还须与参考
+对照渲染结果并记录对照证据。
 
 用用户动作和看得见的结果描述界面验收：刷新对话列表、连续切换导航、长列表上下
 滑动、流式输出时输入和点击、打开关闭弹窗并返回。流程正确、状态符合预期，操作
@@ -108,23 +158,53 @@ controller、renderer 或后端代码。用可见状态、可点击动作和预�
 明确区分使用虚拟时间的 widget 检查和真实引擎性能运行。不得用后端 trace 工程替代这套
 统计，也不额外叠加任意数字评分表或审批门禁。必要的状态和生命周期测试服务于此模型。
 
+## 扩展开发
+
+扩展包是客户端启动的程序，双方使用按行分隔的 JSON-RPC 2.0 协议通信。可以用任何语言
+编写：实现握手，以及所服务 Profile 声明的方法，然后打成 ZIP 归档，根目录放置
+`manifest.json`。完整步骤见[扩展平台指南](docs/architecture/EXTENSION-PLATFORM.md#12-build-package-and-import-an-extension)；
+它引用的规则位于 `crates/licoup-extension-contracts/`，
+实际运行宿主位于 `crates/licoup/src/platform/extension_packages/`——两者均在
+组件仓库 `LicoUp-CLI` 中。
+
+两个受检样例是最快的起点：`samples/echo-agent/` 是最小的完整 Agent，
+`samples/converter-package/` 是最小的完整格式转换器。两者位于 LicoUp-CLI，
+由该 crate 自己的测试读取，因此不会与它们演示的契约脱节。其检查在 LicoUp-CLI
+仓库中运行：
+
+```bash
+cargo test -p licoup-extension-contracts
+cd crates/licoup-extension-contracts && python3 -B -m unittest discover -s tests -p 'test_*.py'
+npm run repo:docs
+```
+
+保持平台公布的边界：程序与其所需协议由包自身携带；内核只保留通用 PTY/CLI 适配器和扩展
+宿主，不保留任何厂商实现；转换器必须是包载荷内的原生可执行程序；本地导入全程离线，信任
+绑定到具体字节；`user:` 运行时引用指向用户自行安装的对象，客户端永不删除。诊断信息保持
+本地且有界；包给出的取消结论按原样上报。
+
 ## 本地客户端验证
 
-客户端修复或行为变更（包括打包的 Agent Prompt 或 Skill）完成后，若本机具备 macOS
-构建和安装环境，则构建一次，安装并验证该次构建的准确产物：
+实现者可以构建、安装、启动并检查本地客户端，用以验证和诊断自己的改动，包括对
+渲染界面的视觉检查。整合候选的交付构建、安装与启动仍由维护者指派给交付负责人，
+由其验证该次安装的准确产物：
 
 ```bash
 npm run client:build -- --platform macos
 npm run client:install:macos -- --launch-installed --verify-stable
 ```
 
-不得用会重新构建的 `client:run:macos` 替代。普通文档修改或不影响产品二进制的测试修改
-无需构建、安装或启动客户端。用户明确要求跳过安装时遵从，并报告剩余验证。本地安装
-不代表授权签名、公证、源码晋升、公开发布或生产环境变更。
+不得用会重新构建的 `client:run:macos` 替代。`npm run client:deliver:macos` 通过同一批
+属主执行单纯的构建、安装和打开，不作任何验证或交付声明；里程碑可用交付声明仍须使用
+统一入口。普通文档修改或不影响产品二进制的测试修改
+无需构建、安装或启动客户端。安装验证本身不会启动下一个里程碑；显式有限程序安排可以
+在当前里程碑通过评审并记录交付后，继续到下一个依赖已满足的工程里程碑。本地安装不
+代表授权签名、公证、源码晋升、公开发布或生产环境变更。
 
 真实响应或传输检查要花真 token，所以使用够用的最便宜模型。每个 Agent 的
 选型只有一个文件：
-[`tools/scripts/config/agent-conversation-verification-models.toml`](tools/scripts/config/agent-conversation-verification-models.toml)。
+`tools/scripts/config/agent-conversation-verification-models.toml`
+（位于组件仓库 `LicoUp-CLI`）。
 要改测试模型只改这里；不得通过继承的环境变量选用更贵的模型或思考档位。响应检查使用
 最低支持的思考档位，只发送一次 `Hi`，接受 Agent 原始回复，不要求指定词语、数字、
 标记或输出格式。只有验证同一会话续接时才增加短回合。
@@ -149,13 +229,26 @@ SKILL.md 只做通往按需参考文档或现有工具的最小路由。打包 S
 准确来源、引用相关规则，并说明缺少的决定或权限。
 
 规划和验证规模应匹配改动。仅派发有价值且独立的工作，明确归属，禁止快速模式。普通
-子任务至少允许 10 分钟观察窗口，大型任务 30 分钟；优先使用宿主的完成通知，派出后等
-通知到达，不要把窗口拆成反复等待，仅当宿主无法通知时才采用有界等待，且每次到期给出进度反馈。
+子任务至少允许 10 分钟观察窗口，大型任务 30 分钟，按宿主工具限制分段等待并提供进度。
 窗口不是终止期限；等待返回不证明完成，也不构成取消授权。
 
 只传递 Agent 自己的对话。绝不要求 Agent 按 LicoUp 定义的格式回答，也绝不校验它有没有
 遵循某种格式。自然语言的回复，不会因为没有格式就被判成无效、空回复或弃权。连续性只读
 Agent 实际说了什么。
+
+## 本地报告
+
+本地工作流、状态机和架构页面由维护中的报告来源生成：
+
+```bash
+node tools/development/reports.mjs
+node tools/development/reports.mjs --better-plan <local-source>
+```
+
+输出留在被忽略的 `build/reports/`。第二种形式为私有规划工作区增加一个显式选择的
+只读 Better Plan 投影；不带该选项运行会删除生成的计划页面及其导航入口。报告是英文、
+仅在本地使用：不随客户端分发，不运行检查、Agent 或客户端进程，也不是执行权威。修改
+[工作流与报告来源](tools/development/workflows/README.md)所述的来源，绝不改动生成页面。
 
 ## 系统权限
 
@@ -164,22 +257,21 @@ Agent 实际说了什么。
 网络宗卷或未使用的 Agent 存储。当前操作用不到的用途说明、entitlement 或插件不得随
 包提供。
 
-锁定依赖均已缓存时，可单独运行离线依赖审计
-`npm run client:deps:audit:offline`。它不会带动未受影响的语言或平台通道。
-
 ## 提交身份与署名
 
-每个提交必须有且仅有一个开发者身份。Git 的 `Author` 和 `Committer` 姓名及邮箱
-必须与 GitHub CLI 当前认证的账号一致。克隆仓库后，以及每次 `gh auth` 切换账号
-后，都必须安装并校验仓库策略：
+每个提交必须有且仅有一个真实开发者身份。具体是哪一个身份由贡献者本机
+决定——仓库不规定；在通过 GitVault 路由仓库的机器上，由该路由决定哪个
+账号可以操作本仓库。克隆仓库后安装并校验仓库策略：
 
 ```bash
 npm run repo:identity:install
 npm run repo:identity:verify
 ```
 
-安装程序使用该账号规范的 GitHub noreply 地址，并启用仓库控制的 `pre-commit`、
-`commit-msg` 和 `pre-push` hook。hook 会检查所有待推送提交，而不只是 `HEAD`。
+安装程序启用仓库控制的 `pre-commit`、`commit-msg` 和 `pre-push` hook，
+不会改写 `user.name` 或 `user.email`——门禁只断言已配置非 Agent 身份。
+存在受认可的全局 hook 调度器时，仓库 hook 交由其调度；否则
+`core.hooksPath` 指向 `.githooks`。hook 会检查所有待推送提交，而不只是 `HEAD`。
 策略文件缺失、被重定向、被修改、成为符号链接或不可执行时，一律关闭失败。严禁使用
 `--no-verify`、修改 `core.hooksPath` 或以其它方式绕过门禁。
 
@@ -202,11 +294,11 @@ Agent 可以辅助开发者，但严禁替换、覆盖或抢占开发者署名�
 
 Flutter 客户端与 Rust 原生核心共享两类接口：
 
-- 生成的契约类型：由 `schemas/client_bridge/` 中的单一 schema 生成到 Dart
-  （`apps/desktop/lib/src/contracts/generated/*.g.dart`）和 Rust
-  （`crates/licoup-native/src/ffi/generated/*.rs`）。
-- 原生 CLI 命令面（`licoup.stdio.v1` 帧与一次性参数）。Rust 侧在
-  `crates/licoup-native/src/ffi/commands/` 通过 `admitted_params` 接纳参数；
+- 生成的契约类型：由 `schemas/client_bridge/` 中的单一 schema 在本仓库生成到
+  Dart（`apps/desktop/lib/src/contracts/generated/*.g.dart`），并在 LicoUp-CLI
+  仓库生成到 Rust（`crates/licoup/src/ffi/generated/*.rs`）。
+- 原生 CLI 命令面（`licoup.stdio.v1` 帧与一次性参数）。Rust 侧在 LicoUp-CLI 的
+  `crates/licoup/src/ffi/commands/` 通过 `admitted_params` 接纳参数；
   Flutter 侧在 `apps/desktop/lib/src/platform/native_client/` 发送参数。
 
 打包后的 App 自带 sidecar；不重新打包前，运行中的 App 会一直使用旧的原生二进制。
@@ -234,9 +326,9 @@ Flutter 客户端与 Rust 原生核心共享两类接口：
 
 ## 切分到 `release`，再委托公开发布
 
-`nightly` 是持续开放的集成分支。产品改动通过带动作前缀的普通 Pull Request 合入，
-一份已接受快照再通过 merge commit 从 `nightly` 晋升到 `stable`，最后晋升到
-`release`。
+`nightly` 是唯一的集成主干，也是持续开放的开发分支。产品改动通过带动作前缀的普通
+Pull Request 合入，一份已接受快照再通过 merge commit 从 `nightly` 晋升到 `stable`，
+最后晋升到 `release`。
 
 临时分支只活到合并为止。Pull Request 合并且 merge commit 进入 `nightly` 后，立刻删掉它的
 远程分支和本地分支，就在同一次会话里做。只删那一个分支，并且只在确认合并已进入 `nightly`
@@ -253,10 +345,10 @@ Flutter 客户端与 Rust 原生核心共享两类接口：
 
 ## 合并请求检查
 
-产品改动、重构、迁移、发布工具、Workflow、Ruleset、身份策略和 Auditor 策略必须
+产品改动、重构、迁移、发布工具、Workflow、Ruleset 和身份策略必须
 分别通过普通 Pull Request 完成。产品改动进入 `nightly`，并且只通过固定的受保护
 晋升链完成切分。公开发布是独立操作，只能来自精确接受的 `origin/release` 来源，
-由 Apple Release 负责。
+由 the release plane 负责。
 
 远程构建成功、晋升合并、Workflow 成功或生成草稿都不代表发布成功。只有重新下载
 最终公开制品、验证绑定的来源和摘要、按公开路径安装、确认稳定启动并验证公开更新
@@ -273,8 +365,8 @@ Flutter 客户端与 Rust 原生核心共享两类接口：
 - 新增或修改的测试只使用虚构并脱敏的数据。
 - 公开文档有对应的中英文版本。
 - 不包含敏感值或原始运行输出。
-- 提交 Author 与 Committer 和当前 `gh` 账号一致，且没有第二署名、署名 trailer、
-  Agent 身份或被绕过的 hook。
+- 提交 Author 与 Committer 是已配置的真实开发者身份，且没有第二署名、
+  署名 trailer、Agent 身份或被绕过的 hook。
 - merge commit 进入 `nightly` 后，临时分支的远程与本地副本均已删除。
 
 LicoUp 使用 `AGPL-3.0-or-later` 许可证。

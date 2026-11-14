@@ -14,7 +14,7 @@ enum ProblemDomain {
   /// Agent workspace conversation, dispatch, native session. Range 1500-1899.
   agentConversation('AG', 1500, 1899, 'agent'),
 
-  /// Adaptive Flywheel / strategy envelope. Range 1900-2199.
+  /// Acativa / strategy envelope. Range 1900-2199.
   strategy('ST', 1900, 2199, 'strategy'),
 
   /// Native CLI admission. Range 2200-2399.
@@ -29,11 +29,9 @@ enum ProblemDomain {
   /// Target scan and pins. Range 2600-2699.
   targets('TG', 2600, 2699, 'target'),
 
-  /// Mobile relay pairing and command relay. Range 2700-2899.
-  mobileRelay('MR', 2700, 2899, 'relay'),
-
-  /// Secure Mesh / secure agent sessions. Range 2900-3199.
-  secureMesh('SM', 2900, 3199, 'mesh'),
+  /// Devices: station enrollment, desktop pairing and agent messages to a
+  /// paired device. Range 2700-2899.
+  devices('DV', 2700, 2899, 'devices'),
 
   /// In-client update. Range 3200-3299.
   clientUpdate('UP', 3200, 3299, 'update'),

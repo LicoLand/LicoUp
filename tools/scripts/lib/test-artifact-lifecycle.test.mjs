@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -12,18 +13,28 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { execFileSync, spawn } from "node:child_process";
 import {
+  completeTestArtifactWorkspace,
   acquireTestArtifactLease,
+  inventoryTestArtifacts,
+  pruneTestArtifactTarget,
   pruneReclaimableTestArtifacts,
   testArtifactId,
   testArtifactStatus,
 } from "./test-artifact-lifecycle.mjs";
+import { FLUTTER_TEST_TARGET } from "./test-artifact-lifecycle/constants.mjs";
+import { targetProcessUsage } from "./test-artifact-lifecycle/process-use.mjs";
+import { parseArtifactCommand, runArtifactCommand } from "../client-test-artifacts.mjs";
+
+const syntheticValue = (label) => `${label}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 const projectRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 
 function temporaryRepository(t) {
-  const repoRoot = mkdtempSync(path.join(os.tmpdir(), "licoup-artifact-test-"));
+  const repoRoot = realpathSync(mkdtempSync(path.join(os.tmpdir(), "licoup-artifact-test-")));
   mkdirSync(path.join(repoRoot, "build"), { recursive: true });
+  execFileSync("git", ["init", "--quiet", repoRoot]);
   t.after(() => rmSync(repoRoot, { force: true, recursive: true }));
   return repoRoot;
 }
@@ -31,18 +42,18 @@ function temporaryRepository(t) {
 function materialize(repoRoot, relativePath, contents = "compiled") {
   const target = path.join(repoRoot, ...relativePath.split("/"));
   mkdirSync(path.dirname(target), { recursive: true });
-  writeFileSync(target, contents);
+  writeFileSync(target, contents, { mode: 0o755 });
   return target;
 }
 
-test("active compiler output is protected and released output is reclaimable", (t) => {
+test("active build output is protected and released output is reclaimable", (t) => {
   const repoRoot = temporaryRepository(t);
-  const targetPath = "build/native/target";
-  const compiledFile = materialize(repoRoot, `${targetPath}/debug/client`);
-  const dependencyCache = materialize(repoRoot, "build/dependency-downloads/crate.cache");
+  const targetPath = FLUTTER_TEST_TARGET;
+  const compiledFile = materialize(repoRoot, `${targetPath}/test/client.dill`);
+  const deliverable = materialize(repoRoot, "build/out/package.tar", "deliverable");
   const lease = acquireTestArtifactLease({
     repoRoot,
-    scope: "native-test",
+    scope: "flutter-test",
     targetPath,
   });
 
@@ -73,16 +84,16 @@ test("active compiler output is protected and released output is reclaimable", (
   const pruned = pruneReclaimableTestArtifacts({ repoRoot });
   assert.equal(pruned.removed, 1);
   assert.equal(existsSync(compiledFile), false);
-  assert.equal(existsSync(dependencyCache), true);
+  assert.equal(existsSync(deliverable), true);
   assert.equal(testArtifactStatus({ repoRoot }).cleaned, 1);
 });
 
-test("compiler cleanup preserves packaged and installed clients", (t) => {
+test("output cleanup preserves packaged and installed clients", (t) => {
   const repoRoot = temporaryRepository(t);
   const installedRoot = mkdtempSync(path.join(os.tmpdir(), "licoup-installed-test-"));
   t.after(() => rmSync(installedRoot, { force: true, recursive: true }));
-  const targetPath = "build/crates/licoup-native/target";
-  const compiledFile = materialize(repoRoot, `${targetPath}/release/licoup`);
+  const targetPath = FLUTTER_TEST_TARGET;
+  const compiledFile = materialize(repoRoot, `${targetPath}/release/client.dill`);
   const runnableFile = materialize(
     repoRoot,
     "build/apps/desktop/runnable/macos/release/LicoUp.app/Contents/MacOS/licoup",
@@ -108,8 +119,8 @@ test("compiler cleanup preserves packaged and installed clients", (t) => {
 
 test("all concurrent leases must finish before output becomes reclaimable", (t) => {
   const repoRoot = temporaryRepository(t);
-  const targetPath = "build/native/target";
-  materialize(repoRoot, `${targetPath}/debug/client`);
+  const targetPath = FLUTTER_TEST_TARGET;
+  materialize(repoRoot, `${targetPath}/test/client.dill`);
   const first = acquireTestArtifactLease({ repoRoot, scope: "first", targetPath });
   const second = acquireTestArtifactLease({ repoRoot, scope: "second", targetPath });
 
@@ -122,8 +133,8 @@ test("all concurrent leases must finish before output becomes reclaimable", (t) 
 
 test("dead leases require the configured grace period before recovery", (t) => {
   const repoRoot = temporaryRepository(t);
-  const targetPath = "build/native/target";
-  const compiledFile = materialize(repoRoot, `${targetPath}/debug/client`);
+  const targetPath = FLUTTER_TEST_TARGET;
+  const compiledFile = materialize(repoRoot, `${targetPath}/test/client.dill`);
   const clock = { value: Date.parse("2026-01-01T00:00:00.000Z") };
   acquireTestArtifactLease({
     deadLeaseGraceMs: 1_000,
@@ -161,12 +172,119 @@ test("dead leases require the configured grace period before recovery", (t) => {
   assert.equal(existsSync(compiledFile), false);
 });
 
+test("concurrent processes reclaim a stale lock once and serialize output ownership", async (t) => {
+  const sv_stale = syntheticValue('stale');
+  const repoRoot = temporaryRepository(t);
+  const targetPath = FLUTTER_TEST_TARGET;
+  const artifactId = testArtifactId(targetPath);
+  const record = path.join(repoRoot, "build", ".test-artifacts", artifactId);
+  const lock = path.join(record, ".lock");
+  mkdirSync(lock, { recursive: true });
+  writeFileSync(path.join(lock, "owner.json"), JSON.stringify({
+    acquiredAt: "2000-01-01T00:00:00.000Z",
+    pid: 2_000_000_000,
+    token: sv_stale,
+  }));
+
+  const source = String.raw`
+    import { existsSync, readFileSync, writeFileSync } from "node:fs";
+    import path from "node:path";
+    import { pathToFileURL } from "node:url";
+    const root = process.argv[1];
+    const id = process.argv[2];
+    const sourceRoot = process.argv[3];
+    const { artifactRecordPaths, withArtifactLock } = await import(
+      pathToFileURL(path.join(sourceRoot, "tools/scripts/lib/test-artifact-lifecycle/registry.mjs"))
+    );
+    const state = path.join(root, "build", "critical-section.json");
+    withArtifactLock(artifactRecordPaths(root, id), () => {
+      const active = existsSync(state) ? JSON.parse(readFileSync(state, "utf8")).active : 0;
+      if (active !== 0) process.exitCode = 4;
+      writeFileSync(state, JSON.stringify({ active: active + 1 }));
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30);
+      writeFileSync(state, JSON.stringify({ active: 0 }));
+    });
+  `;
+
+  const children = [0, 1].map(() => spawn(process.execPath, [
+    "--input-type=module",
+    "-e",
+    source,
+    repoRoot,
+    artifactId,
+    projectRoot,
+  ], { stdio: "ignore" }));
+  const exitCodes = await Promise.all(children.map((child) => new Promise((resolve) => {
+    child.once("close", resolve);
+  })));
+
+  assert.deepEqual(exitCodes, [0, 0]);
+  assert.deepEqual(JSON.parse(readFileSync(path.join(repoRoot, "build", "critical-section.json"), "utf8")), {
+    active: 0,
+  });
+  assert.equal(existsSync(lock), false);
+});
+
+test("concurrent processes reclaim an ownerless lock that is still younger than the grace period", async (t) => {
+  const repoRoot = temporaryRepository(t);
+  const targetPath = FLUTTER_TEST_TARGET;
+  const artifactId = testArtifactId(targetPath);
+  const record = path.join(repoRoot, "build", ".test-artifacts", artifactId);
+  const lock = path.join(record, ".lock");
+  // An ownerless lock whose mtime is fresh: the owner died between creating
+  // the lock and writing owner.json. Contenders must spin until the lock
+  // ages past the grace period, then reclaim it exactly once — previously the
+  // reclaim claim lived inside the lock and refreshed its mtime on every
+  // attempt, so this case livelocked forever.
+  mkdirSync(lock, { recursive: true });
+
+  const source = String.raw`
+    import { existsSync, readFileSync, writeFileSync } from "node:fs";
+    import path from "node:path";
+    import { pathToFileURL } from "node:url";
+    const root = process.argv[1];
+    const id = process.argv[2];
+    const sourceRoot = process.argv[3];
+    const deadLeaseGraceMs = Number(process.argv[4]);
+    const { artifactRecordPaths, withArtifactLock } = await import(
+      pathToFileURL(path.join(sourceRoot, "tools/scripts/lib/test-artifact-lifecycle/registry.mjs"))
+    );
+    const state = path.join(root, "build", "critical-section.json");
+    withArtifactLock(artifactRecordPaths(root, id), () => {
+      const active = existsSync(state) ? JSON.parse(readFileSync(state, "utf8")).active : 0;
+      if (active !== 0) process.exitCode = 4;
+      writeFileSync(state, JSON.stringify({ active: active + 1 }));
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30);
+      writeFileSync(state, JSON.stringify({ active: 0 }));
+    }, { deadLeaseGraceMs });
+  `;
+
+  const children = [0, 1].map(() => spawn(process.execPath, [
+    "--input-type=module",
+    "-e",
+    source,
+    repoRoot,
+    artifactId,
+    projectRoot,
+    "2000",
+  ], { stdio: "ignore" }));
+  const exitCodes = await Promise.all(children.map((child) => new Promise((resolve) => {
+    child.once("close", resolve);
+  })));
+
+  assert.deepEqual(exitCodes, [0, 0]);
+  assert.deepEqual(JSON.parse(readFileSync(path.join(repoRoot, "build", "critical-section.json"), "utf8")), {
+    active: 0,
+  });
+  assert.equal(existsSync(lock), false);
+});
+
 test("tampered descriptors and unmanaged targets fail closed", (t) => {
   const repoRoot = temporaryRepository(t);
-  const targetPath = "build/native/target";
-  const protectedFile = materialize(repoRoot, `${targetPath}/debug/client`);
-  const unmanagedFile = materialize(repoRoot, "build/agents/old-target/debug/client");
-  const lease = acquireTestArtifactLease({ repoRoot, scope: "native", targetPath });
+  const targetPath = FLUTTER_TEST_TARGET;
+  const protectedFile = materialize(repoRoot, `${targetPath}/test/client.dill`);
+  const unmanagedFile = materialize(repoRoot, "build/agents/old-target/test/client");
+  const lease = acquireTestArtifactLease({ repoRoot, scope: "flutter", targetPath });
   lease.release();
   const descriptorPath = path.join(
     repoRoot,
@@ -176,7 +294,7 @@ test("tampered descriptors and unmanaged targets fail closed", (t) => {
     "descriptor.json",
   );
   const descriptor = JSON.parse(readFileSync(descriptorPath, "utf8"));
-  descriptor.relativeTarget = "build/other-target";
+  descriptor.relativeTarget = `${FLUTTER_TEST_TARGET}/other`;
   writeFileSync(descriptorPath, `${JSON.stringify(descriptor)}\n`);
 
   const result = pruneReclaimableTestArtifacts({ repoRoot });
@@ -196,8 +314,13 @@ test("outside, download-cache, registry, and symlink targets are rejected", (t) 
   }), /inside/u);
   assert.throws(() => acquireTestArtifactLease({
     repoRoot,
+    scope: "unmanaged-root",
+    targetPath: "build/out",
+  }), /managed build output/u);
+  assert.throws(() => acquireTestArtifactLease({
+    repoRoot,
     scope: "download-cache",
-    targetPath: "build/pub-cache",
+    targetPath: `${FLUTTER_TEST_TARGET}/registry`,
   }), /download caches/u);
   assert.throws(() => acquireTestArtifactLease({
     repoRoot,
@@ -208,30 +331,19 @@ test("outside, download-cache, registry, and symlink targets are rejected", (t) 
   if (process.platform !== "win32") {
     const outside = path.join(repoRoot, "outside");
     mkdirSync(outside);
-    symlinkSync(outside, path.join(repoRoot, "build", "linked"));
+    const flutterBuild = path.join(repoRoot, "apps", "desktop", "build");
+    mkdirSync(flutterBuild, { recursive: true });
+    symlinkSync(outside, path.join(flutterBuild, "linked-target"));
     assert.throws(() => acquireTestArtifactLease({
       repoRoot,
       scope: "symlink",
-      targetPath: "build/linked/target",
+      targetPath: `${FLUTTER_TEST_TARGET}/linked-target`,
     }), /symbolic links/u);
   }
 });
 
-test("repository build-producing Cargo scripts use the lifecycle wrapper", () => {
+test("repository scripts never invoke a bare Cargo toolchain", () => {
   const packageJson = JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8"));
-  const cargoConfig = readFileSync(path.join(projectRoot, ".cargo", "config.toml"), "utf8");
-  const androidBuild = readFileSync(
-    path.join(projectRoot, "apps", "desktop", "android", "app", "build.gradle.kts"),
-    "utf8",
-  );
-  const macosProject = readFileSync(
-    path.join(projectRoot, "apps", "desktop", "macos", "Runner.xcodeproj", "project.pbxproj"),
-    "utf8",
-  );
-  const packageNativeBuild = readFileSync(
-    path.join(projectRoot, "apps", "desktop", "scripts", "package-client", "build", "native.mjs"),
-    "utf8",
-  );
   assert.equal(
     Object.entries(packageJson.scripts).filter(([, command]) =>
       /(?:^|&&|\|)\s*cargo\s+(?:build|clippy|run|test)\b/u.test(command)).length,
@@ -245,16 +357,213 @@ test("repository build-producing Cargo scripts use the lifecycle wrapper", () =>
     packageJson.scripts["client:artifacts:prune"],
     "node tools/scripts/client-test-artifacts.mjs prune",
   );
-  assert.match(cargoConfig, /target-dir = "build\/crates\/licoup-native\/target"/u);
-  assert.match(
-    androidBuild,
-    /repoRoot\.resolve\("build\/crates\/licoup-native\/target"\)/u,
+  assert.equal(
+    packageJson.scripts["client:artifacts:inventory"],
+    "node tools/scripts/client-test-artifacts.mjs inventory",
   );
-  assert.match(androidBuild, /tools\/scripts\/cargo-client\.mjs/u);
-  assert.doesNotMatch(androidBuild, /commandLine\(\s*"cargo"/u);
-  assert.doesNotMatch(androidBuild, /android-target/u);
-  assert.match(macosProject, /tools\/scripts\/cargo-client\.mjs/u);
-  assert.doesNotMatch(macosProject, /CARGO_TARGET_DIR=.*cargo build/u);
-  assert.match(packageNativeBuild, /cargo-client\.mjs/u);
-  assert.doesNotMatch(packageNativeBuild, /runPackageProcess\("cargo"/u);
+  assert.equal(
+    packageJson.scripts["client:artifacts:workspace-complete"],
+    "node tools/scripts/client-test-artifacts.mjs workspace-complete",
+  );
+});
+
+test("inventory finds unregistered build output without scanning deliverables", (t) => {
+  const repoRoot = temporaryRepository(t);
+  const compiledFile = materialize(
+    repoRoot,
+    `${FLUTTER_TEST_TARGET}/test/client.dill`,
+    "compiler output",
+  );
+  materialize(repoRoot, "build/out/package.tar", "deliverable");
+  const inventory = inventoryTestArtifacts({
+    repoRoot,
+    processSnapshot: { available: true, entries: [] },
+  });
+  assert.deepEqual(inventory.entries.map((entry) => entry.relativeTarget), [
+    FLUTTER_TEST_TARGET,
+  ]);
+  assert.equal(inventory.entries[0].bytes, Buffer.byteLength("compiler output"));
+  assert.equal(inventory.entries[0].state, "reclaimable");
+  assert.equal(typeof inventory.entries[0].lastUsedAt, "string");
+  assert.deepEqual(inventory.entries[0].protectedReasons, []);
+  assert.equal(existsSync(compiledFile), true);
+});
+
+test("targeted dry-run is read-only and targeted prune only removes the selected output", (t) => {
+  const repoRoot = temporaryRepository(t);
+  const selected = materialize(repoRoot, `${FLUTTER_TEST_TARGET}/test/client.dill`);
+  const deliverable = materialize(repoRoot, "build/out/package.tar", "package");
+  const options = {
+    processSnapshot: { available: true, entries: [] },
+    repoRoot,
+    targetPath: FLUTTER_TEST_TARGET,
+  };
+  const dryRun = pruneTestArtifactTarget({ ...options, dryRun: true });
+  const inventory = inventoryTestArtifacts(options).entries[0];
+  assert.equal(inventory.reclaimableBytes, Buffer.byteLength("compiled"));
+  assert.equal(dryRun.eligible, 1);
+  assert.equal(dryRun.removed, false);
+  assert.equal(existsSync(selected), true);
+  assert.equal(existsSync(path.join(repoRoot, "build", ".test-artifacts")), false);
+
+  const pruned = pruneTestArtifactTarget(options);
+  assert.equal(pruned.removed, true);
+  assert.equal(pruned.removedCount, 1);
+  assert.equal(pruned.bytesAfter, 0);
+  assert.equal(existsSync(selected), false);
+  assert.equal(existsSync(path.dirname(selected)), false);
+  assert.equal(existsSync(deliverable), true);
+});
+
+test("tracked source inside a managed output root is protected", (t) => {
+  const repoRoot = temporaryRepository(t);
+  const source = materialize(
+    repoRoot,
+    `${FLUTTER_TEST_TARGET}/kept-source.dart`,
+    "source",
+  );
+  execFileSync("git", ["-C", repoRoot, "add", "--", `${FLUTTER_TEST_TARGET}/kept-source.dart`]);
+  const result = pruneTestArtifactTarget({
+    processSnapshot: { available: true, entries: [] },
+    repoRoot,
+    targetPath: FLUTTER_TEST_TARGET,
+  });
+  assert.equal(result.removed, false);
+  assert.equal(result.protectedReasons.includes("tracked-source"), true);
+  assert.equal(existsSync(source), true);
+});
+
+test("workspace completion prunes the managed output and protects active builds and binaries", (t) => {
+  const repoRoot = temporaryRepository(t);
+  const compiled = materialize(repoRoot, `${FLUTTER_TEST_TARGET}/test/client.dill`);
+  const deliverable = materialize(repoRoot, "build/out/package.bin", "deliverable");
+  const activeBuild = completeTestArtifactWorkspace({
+    processSnapshot: {
+      available: true,
+      entries: [{
+        pid: 4242,
+        path: "/usr/bin/flutter",
+        cwd: repoRoot,
+        command: "flutter",
+      }],
+    },
+    repoRoot,
+  });
+  assert.equal(activeBuild.removed, false);
+  assert.equal(activeBuild.active, 1);
+  assert.equal(activeBuild.protectedReasons.includes("active-build"), true);
+  assert.equal(existsSync(compiled), true);
+  assert.equal(existsSync(deliverable), true);
+
+  const activeBinary = pruneTestArtifactTarget({
+    processSnapshot: {
+      available: true,
+      entries: [{ pid: 4243, path: compiled, command: "client" }],
+    },
+    repoRoot,
+    targetPath: FLUTTER_TEST_TARGET,
+  });
+  assert.equal(activeBinary.removed, false);
+  assert.deepEqual(activeBinary.protectedReasons, ["running-binary"]);
+  assert.equal(existsSync(compiled), true);
+
+  const completed = completeTestArtifactWorkspace({
+    processSnapshot: { available: true, entries: [] },
+    repoRoot,
+  });
+  assert.equal(completed.removed, true);
+  assert.equal(completed.removedCount, 1);
+  assert.deepEqual(completed.relativeTargets, [FLUTTER_TEST_TARGET]);
+  assert.equal(existsSync(compiled), false);
+  assert.equal(existsSync(deliverable), true);
+});
+
+test("process probes protect managed output while a build tool references it", (t) => {
+  const repoRoot = temporaryRepository(t);
+  const targetPath = path.join(repoRoot, ...FLUTTER_TEST_TARGET.split("/"));
+  const flutter = targetProcessUsage(targetPath, {
+    available: true,
+    entries: [{
+      pid: 4244,
+      path: "/usr/bin/flutter",
+      cwd: os.tmpdir(),
+      command: "flutter",
+      arguments: ["build", "macos", "--build-dir", targetPath],
+    }],
+  }, repoRoot);
+  assert.deepEqual(flutter.buildPids, [4244]);
+
+  const unrelated = targetProcessUsage(targetPath, {
+    available: true,
+    entries: [{
+      pid: 4245,
+      path: "/usr/bin/vim",
+      cwd: repoRoot,
+      command: "vim",
+      arguments: ["notes.txt"],
+    }],
+  }, repoRoot);
+  assert.deepEqual(unrelated.buildPids, []);
+});
+
+test("artifact CLI parses checkout-scoped inventory and maintenance commands", () => {
+  assert.deepEqual(parseArtifactCommand(["prune", "--dry-run"]), {
+    command: "prune",
+    dryRun: true,
+    repoRoot: null,
+    targetPath: null,
+  });
+  assert.equal(parseArtifactCommand(["prune", "--repo-root", "/checkout"]), null);
+  assert.deepEqual(parseArtifactCommand(["inventory", "--repo-root", "/checkout"]), {
+    command: "inventory",
+    dryRun: false,
+    repoRoot: "/checkout",
+    targetPath: null,
+  });
+  assert.deepEqual(parseArtifactCommand([
+    "prune",
+    "--target",
+    FLUTTER_TEST_TARGET,
+    "--dry-run",
+  ]), {
+    command: "prune",
+    dryRun: true,
+    repoRoot: null,
+    targetPath: FLUTTER_TEST_TARGET,
+  });
+  assert.equal(parseArtifactCommand(["workspace-complete", "--target", "target"]), null);
+});
+
+test("artifact CLI dispatches one checkout and reports only relative targets", (t) => {
+  const repoRoot = temporaryRepository(t);
+  const compiled = materialize(repoRoot, `${FLUTTER_TEST_TARGET}/test/client.dill`);
+  const inventory = runArtifactCommand(parseArtifactCommand([
+    "inventory",
+    "--repo-root",
+    repoRoot,
+  ]), { currentRepoRoot: repoRoot });
+  assert.equal(inventory.ok, true);
+  assert.equal(inventory.operation, "inventory");
+  assert.deepEqual(inventory.entries.map((entry) => entry.relativeTarget), [
+    FLUTTER_TEST_TARGET,
+  ]);
+  assert.equal(JSON.stringify(inventory).includes(repoRoot), false);
+
+  const preview = runArtifactCommand(parseArtifactCommand(["prune", "--dry-run"]), {
+    currentRepoRoot: repoRoot,
+  });
+  assert.equal(preview.ok, true);
+  assert.equal(preview.operation, "prune-dry-run");
+  assert.equal(existsSync(compiled), true);
+
+  const completed = runArtifactCommand(parseArtifactCommand([
+    "workspace-complete",
+    "--repo-root",
+    repoRoot,
+  ]), { currentRepoRoot: repoRoot });
+  assert.equal(completed.ok, true);
+  assert.equal(completed.removed, true);
+  assert.deepEqual(completed.relativeTargets, [FLUTTER_TEST_TARGET]);
+  assert.equal(existsSync(compiled), false);
+  assert.equal(JSON.stringify(completed).includes(repoRoot), false);
 });

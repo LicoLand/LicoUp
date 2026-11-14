@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
-import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
+
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 
 const LayoutAgentsPresentation desktopDesktopAgentsPresentation =
@@ -11,21 +12,22 @@ const LayoutAgentsPresentation desktopDesktopAgentsPresentation =
 const LayoutSettingsPresentation desktopDesktopSettingsPresentation =
     DesktopDesktopSettingsPresentation();
 
-/// Desktop 对话 fullscreen: transparent canvas over the clear window veil so
-/// the conversation surface and the floating capsule dock read as one screen;
-/// the conversation list floats in a nested glass card.
+/// Desktop conversation presentation: a transparent canvas inside the chat
+/// sidebar card. The shell hosts the conversation list as the avatar column
+/// and the header switcher, so the list frame only applies when the shared
+/// workspace falls back to its own list layout.
 final class DesktopDesktopAgentsPresentation
     implements LayoutAgentsPresentation {
   const DesktopDesktopAgentsPresentation();
-
-  static const double _listCardInset = 8;
-  static const double _listCardRadius = 14;
 
   @override
   Color canvasColor(LayoutPalette palette) => Colors.transparent;
 
   @override
-  double get sidebarOuterHorizontalExtent => _listCardInset;
+  bool get canvasGroundsWorkspace => true;
+
+  @override
+  double get sidebarOuterHorizontalExtent => 0;
 
   @override
   double get detailOuterHorizontalExtent => 0;
@@ -45,53 +47,50 @@ final class DesktopDesktopAgentsPresentation
   @override
   bool get showConversationSidebarControl => false;
 
-  // The Desktop dock already carries 设置/功能 plus the 对话 button, so the
-  // fullscreen-exclusive conversation app renders no Dashboard nav row.
+  // The Desktop dock already carries every app and Settings, so the
+  // conversation list renders no Dashboard nav row.
   @override
   bool get showSidebarBottomNav => false;
+
+  @override
+  LayoutAgentsSidebarHeader get sidebarHeader =>
+      LayoutAgentsSidebarHeader.trafficLights;
+
+  @override
+  bool get showConversationFilters => false;
+
+  @override
+  @override
+  double get conversationHeaderBarExtent => 52;
+
+  @override
+  LayoutConversationHeaderStyle get conversationHeaderStyle =>
+      LayoutConversationHeaderStyle.bar;
+
+  @override
+  LayoutGroupMembersPlacement get groupMembersPlacement =>
+      LayoutGroupMembersPlacement.avatarStrip;
 
   @override
   Widget frameWorkspace(
     BuildContext context, {
     required Key key,
     required Widget child,
-  }) => KeyedSubtree(key: key, child: child);
+  }) => KeyedSubtree(
+    key: key,
+    child: Card(child: child),
+  );
 
   @override
   Widget frameSidebar(
     BuildContext context, {
     required Key key,
     required Widget child,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        _listCardInset,
-        _listCardInset,
-        0,
-        _listCardInset,
-      ),
-      child: DecoratedBox(
-        key: key,
-        decoration: continuousHairlineDecoration(
-          color: desktopDesktopSurfaceBlack,
-          borderRadius: BorderRadius.circular(_listCardRadius),
-          stroke: DesktopDesktopOnBlack.line,
-          strokeWidth: 0.5,
-          shadows: const [
-            BoxShadow(
-              color: Color(0x59000000),
-              blurRadius: 18,
-              offset: Offset(0, 6),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(_listCardRadius),
-          child: child,
-        ),
-      ),
-    );
-  }
+  }) => LicoPaneCard(
+    key: key,
+    borderRadius: BorderRadius.circular(DesktopDesktopMetrics.paneRadius),
+    child: child,
+  );
 
   @override
   Widget frameDetail(
@@ -99,12 +98,18 @@ final class DesktopDesktopAgentsPresentation
     required Key key,
     required bool sidebarCollapsed,
     required Widget child,
-  }) => KeyedSubtree(key: key, child: child);
+  }) => KeyedSubtree(
+    key: key,
+    child: Card(child: child),
+  );
 }
 
-/// Desktop settings copy presentation: the settings section index is hosted
-/// by the copy's own left navigation card, so the shared SettingsPanel
-/// renders its content full width with Desktop-owned insets.
+/// Desktop settings presentation: the Desktop settings surface carries no
+/// section index at all — the work area is already the navigation slot, and
+/// a second rail inside settings is redundant chrome. Reporting
+/// `indexHostedByNavigation` keeps the shared panel from rendering its own
+/// rail, so the sections read as one continuous content page (scroll-spy
+/// still publishes the shared section tab channel).
 final class DesktopDesktopSettingsPresentation
     implements LayoutSettingsPresentation {
   const DesktopDesktopSettingsPresentation();
@@ -137,7 +142,8 @@ final class DesktopDesktopSettingsPresentation
 
   @override
   EdgeInsetsGeometry get selectorGridPadding =>
-      const EdgeInsets.only(top: LicoContentSpacing.item);
+      // The selector cards align with the setting rows' left edge.
+      const EdgeInsets.fromLTRB(20, LicoContentSpacing.item, 20, 0);
 
   @override
   Widget frameIndex(
@@ -151,7 +157,10 @@ final class DesktopDesktopSettingsPresentation
     BuildContext context, {
     required Key key,
     required Widget child,
-  }) => KeyedSubtree(key: key, child: child);
+  }) => KeyedSubtree(
+    key: key,
+    child: Card(child: child),
+  );
 
   @override
   Widget frameSelector(BuildContext context, {required Widget child}) => child;

@@ -130,6 +130,7 @@ final class NativeConversationCatalogProjection {
         const <AgentConversationSession>[],
     Iterable<NativeConversationAgentCatalogProjection> agentCatalogs =
         const <NativeConversationAgentCatalogProjection>[],
+    Iterable<String> loadingAgentIds = const <String>[],
     this.groupConversationId = '',
     Map<String, List<AgentConversationSession>> groupSessionsByAgent = const {},
     Iterable<String> runningSessionIds = const <String>[],
@@ -152,6 +153,7 @@ final class NativeConversationCatalogProjection {
   }) : sessions = immutablePresentationList(sessions),
        nativeSessions = immutablePresentationList(nativeSessions),
        agentCatalogs = immutablePresentationList(agentCatalogs),
+       loadingAgentIds = immutablePresentationList(loadingAgentIds),
        groupSessionsByAgent = Map.unmodifiable({
          for (final entry in groupSessionsByAgent.entries)
            entry.key: immutablePresentationList(entry.value),
@@ -162,6 +164,12 @@ final class NativeConversationCatalogProjection {
   final List<NativeConversationSessionProjection> sessions;
   final List<AgentConversationSession> nativeSessions;
   final List<NativeConversationAgentCatalogProjection> agentCatalogs;
+
+  /// Agents whose conversation catalog or runtime is loading right now: the
+  /// foreground selection load plus first-page browse prefetches that have no
+  /// catalog entry yet. Sidebar rows substitute skeleton bars for the pending
+  /// preview and timestamp (docs/functionality/MESSAGING-LOADING-PRESENTATION.md).
+  final List<String> loadingAgentIds;
   final String groupConversationId;
   final Map<String, List<AgentConversationSession>> groupSessionsByAgent;
   final List<String> runningSessionIds;
@@ -189,6 +197,7 @@ final class NativeConversationCatalogProjection {
           samePresentationList(other.sessions, sessions) &&
           samePresentationList(other.nativeSessions, nativeSessions) &&
           samePresentationList(other.agentCatalogs, agentCatalogs) &&
+          samePresentationList(other.loadingAgentIds, loadingAgentIds) &&
           other.groupConversationId == groupConversationId &&
           _sameGroupSessions(
             other.groupSessionsByAgent,
@@ -217,6 +226,7 @@ final class NativeConversationCatalogProjection {
     Object.hashAll(sessions),
     Object.hashAll(nativeSessions),
     Object.hashAll(agentCatalogs),
+    Object.hashAll(loadingAgentIds),
     groupConversationId,
     Object.hashAllUnordered(
       groupSessionsByAgent.entries.map(
@@ -342,6 +352,8 @@ final class CanonicalConversationProjection {
     Iterable<String> recentParticipantAgentIds = const <String>[],
     Iterable<ClientConversationSummary> groupConversations =
         const <ClientConversationSummary>[],
+    Iterable<ClientConversationSummary> directConversations =
+        const <ClientConversationSummary>[],
     Iterable<ConversationParticipantRuntimeProjection>
         participantRuntimeProfiles =
         const <ConversationParticipantRuntimeProjection>[],
@@ -349,6 +361,7 @@ final class CanonicalConversationProjection {
         const <String, ProviderQuotaSnapshot>{},
     this.assistantModel = '',
     this.assistantReasoningEffort = '',
+    this.assistantPermissionMode = '',
     this.failureStage = '',
     this.failureRef = '',
     this.failureRecovery = '',
@@ -367,6 +380,7 @@ final class CanonicalConversationProjection {
          recentParticipantAgentIds,
        ),
        groupConversations = immutablePresentationList(groupConversations),
+       directConversations = immutablePresentationList(directConversations),
        participantRuntimeProfiles = immutablePresentationList(
          participantRuntimeProfiles,
        ),
@@ -381,11 +395,16 @@ final class CanonicalConversationProjection {
   final List<ClientConversationEvent> canonicalEvents;
   final List<String> recentParticipantAgentIds;
   final List<ClientConversationSummary> groupConversations;
+
+  /// Non-group canonical Conversations — Profile direct chats — listed
+  /// separately so contact rows never surface under the Groups filter.
+  final List<ClientConversationSummary> directConversations;
   final List<ConversationParticipantRuntimeProjection>
   participantRuntimeProfiles;
   final Map<String, ProviderQuotaSnapshot> quotaSnapshots;
   final String assistantModel;
   final String assistantReasoningEffort;
+  final String assistantPermissionMode;
   final String failureStage;
   final String failureRef;
   final String failureRecovery;
@@ -413,12 +432,17 @@ final class CanonicalConversationProjection {
           ) &&
           samePresentationList(other.groupConversations, groupConversations) &&
           samePresentationList(
+            other.directConversations,
+            directConversations,
+          ) &&
+          samePresentationList(
             other.participantRuntimeProfiles,
             participantRuntimeProfiles,
           ) &&
           _sameQuotaSnapshots(other.quotaSnapshots, quotaSnapshots) &&
           other.assistantModel == assistantModel &&
           other.assistantReasoningEffort == assistantReasoningEffort &&
+          other.assistantPermissionMode == assistantPermissionMode &&
           other.failureStage == failureStage &&
           other.failureRef == failureRef &&
           other.failureRecovery == failureRecovery &&
@@ -440,6 +464,7 @@ final class CanonicalConversationProjection {
     Object.hashAll(canonicalEvents),
     Object.hashAll(recentParticipantAgentIds),
     Object.hashAll(groupConversations),
+    Object.hashAll(directConversations),
     Object.hashAll(participantRuntimeProfiles),
     Object.hashAll(
       quotaSnapshots.entries.map(
@@ -448,6 +473,7 @@ final class CanonicalConversationProjection {
     ),
     assistantModel,
     assistantReasoningEffort,
+    assistantPermissionMode,
     failureStage,
     failureRef,
     failureRecovery,
@@ -726,13 +752,24 @@ final class ConversationTabActivityProjection {
     required this.requiresAttention,
     Iterable<ConversationAgentActivityProjection> agentActivities =
         const <ConversationAgentActivityProjection>[],
-  }) : agentActivities = immutablePresentationList(agentActivities);
+    Iterable<NativeApprovalRequestProjection> pendingApprovals =
+        const <NativeApprovalRequestProjection>[],
+    this.approvalErrorCode = '',
+  }) : agentActivities = immutablePresentationList(agentActivities),
+       pendingApprovals = immutablePresentationList(pendingApprovals);
 
   final String conversationId;
   final bool active;
   final int unreadCount;
   final bool requiresAttention;
   final List<ConversationAgentActivityProjection> agentActivities;
+
+  /// Local native permission requests of the visible conversation waiting
+  /// for an Allow or Deny decision.
+  final List<NativeApprovalRequestProjection> pendingApprovals;
+
+  /// The stable code of the last approval resolution that failed, or empty.
+  final String approvalErrorCode;
 
   @override
   bool operator ==(Object other) =>
@@ -742,7 +779,9 @@ final class ConversationTabActivityProjection {
           other.active == active &&
           other.unreadCount == unreadCount &&
           other.requiresAttention == requiresAttention &&
-          samePresentationList(other.agentActivities, agentActivities);
+          samePresentationList(other.agentActivities, agentActivities) &&
+          samePresentationList(other.pendingApprovals, pendingApprovals) &&
+          other.approvalErrorCode == approvalErrorCode;
 
   @override
   int get hashCode => Object.hash(
@@ -751,6 +790,47 @@ final class ConversationTabActivityProjection {
     unreadCount,
     requiresAttention,
     Object.hashAll(agentActivities),
+    Object.hashAll(pendingApprovals),
+    approvalErrorCode,
+  );
+}
+
+/// One local native permission request (ACP `session/request_permission` or
+/// an adapter equivalent) parked by the Agent until the user decides.
+final class NativeApprovalRequestProjection {
+  NativeApprovalRequestProjection({
+    required this.pendingOperationId,
+    required this.agentId,
+    required this.summary,
+    Iterable<String> requestedTools = const <String>[],
+    this.resolving = false,
+  }) : requestedTools = immutablePresentationList(requestedTools);
+
+  final String pendingOperationId;
+  final String agentId;
+  final String summary;
+  final List<String> requestedTools;
+
+  /// Whether an Allow or Deny decision is being delivered.
+  final bool resolving;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is NativeApprovalRequestProjection &&
+          other.pendingOperationId == pendingOperationId &&
+          other.agentId == agentId &&
+          other.summary == summary &&
+          samePresentationList(other.requestedTools, requestedTools) &&
+          other.resolving == resolving;
+
+  @override
+  int get hashCode => Object.hash(
+    pendingOperationId,
+    agentId,
+    summary,
+    Object.hashAll(requestedTools),
+    resolving,
   );
 }
 

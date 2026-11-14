@@ -7,15 +7,8 @@ import 'package:licoup/src/frontend/features/continuous_assistant/continuous_ass
 
 import 'support/continuous_assistant_test_harness.dart';
 
-Directory _fixturesRoot() {
-  final fromDesktop = Directory(
-    '../../tests/fixtures/continuous-assistant/contracts',
-  );
-  if (fromDesktop.existsSync()) {
-    return fromDesktop;
-  }
-  return Directory('tests/fixtures/continuous-assistant/contracts');
-}
+Directory _fixturesRoot() =>
+    Directory('test/fixtures/continuous-assistant/contracts');
 
 Map<String, Object?> _readFixture(String relative) {
   return jsonDecode(

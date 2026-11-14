@@ -11,14 +11,17 @@ class DefaultAgentRenderAdapterJsonSource
   DefaultAgentRenderAdapterJsonSource({
     AssetBundle? assetBundle,
     Map<String, String>? environmentOverride,
+    Future<String> Function()? dataDirectory,
   }) : _assetBundle = assetBundle ?? rootBundle,
-       _environmentOverride = environmentOverride;
+       _environmentOverride = environmentOverride,
+       _dataDirectory = dataDirectory;
 
   static const String externalRootsEnvironmentKey =
       'LICOUP_AGENT_RENDER_ADAPTER_ROOTS';
 
   final AssetBundle _assetBundle;
   final Map<String, String>? _environmentOverride;
+  final Future<String> Function()? _dataDirectory;
 
   @override
   Future<List<Map<String, dynamic>>> loadAdapterJson() async {
@@ -61,10 +64,11 @@ class DefaultAgentRenderAdapterJsonSource
             .map(Directory.new),
       );
     }
-    final home = (_environment['HOME'] ?? _environment['USERPROFILE'] ?? '')
-        .trim();
-    if (home.isNotEmpty) {
-      roots.add(Directory(p.join(home, '.lico-up', 'agent-render-adapters')));
+    final dataDirectory = _dataDirectory;
+    if (dataDirectory != null) {
+      roots.add(
+        Directory(p.join(await dataDirectory(), 'agent-render-adapters')),
+      );
     }
 
     final adapters = <Map<String, dynamic>>[];

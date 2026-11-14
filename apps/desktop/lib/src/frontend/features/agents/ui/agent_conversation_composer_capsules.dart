@@ -14,7 +14,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Stadium ends for messaging composer context capsules.
 const BorderRadius kComposerCapsuleBorderRadius = BorderRadius.all(
-  Radius.circular(999),
+  Radius.circular(14),
 );
 
 /// Glass capsule row pinned directly above the messaging composer: workspace
@@ -152,7 +152,7 @@ class ComposerWorkspaceCapsule extends StatelessWidget {
         label: '${strings.workingDirectory}: $display',
         child: AppleGlassSurface(
           borderRadius: kComposerCapsuleBorderRadius,
-          fillAlpha: colors.isDark ? (canChoose ? 22 : 12) : 10,
+          fillAlpha: colors.isDark ? 13 : 10,
           child: InkWell(
             key: const Key('conversation-workspace-button'),
             onTap: canChoose ? onChoose : null,
@@ -171,7 +171,7 @@ class ComposerWorkspaceCapsule extends StatelessWidget {
                         : Icons.folder_outlined,
                     size: 15,
                     color: canChoose
-                        ? colors.primaryStrong
+                        ? colors.selectionInk
                         : colors.textMuted.withAlpha(140),
                   ),
                   const SizedBox(width: 7),
@@ -199,7 +199,7 @@ class ComposerWorkspaceCapsule extends StatelessWidget {
                       ),
                       style: const TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w400,
+                        fontWeight: FontWeight.w500,
                         letterSpacing: -0.08,
                         height: 1.15,
                       ),
@@ -389,7 +389,7 @@ class _RuntimeCapsuleTrigger extends StatelessWidget {
         label: tooltip,
         child: AppleGlassSurface(
           borderRadius: kComposerCapsuleBorderRadius,
-          fillAlpha: colors.isDark ? (menuEnabled ? 22 : 12) : 10,
+          fillAlpha: colors.isDark ? 13 : 10,
           child: InkWell(
             key: const Key('conversation-model-button'),
             onTap: menuEnabled ? onTap : null,
@@ -406,7 +406,7 @@ class _RuntimeCapsuleTrigger extends StatelessWidget {
                     Icons.auto_awesome_outlined,
                     size: 15,
                     color: menuEnabled
-                        ? colors.primaryStrong
+                        ? colors.selectionInk
                         : colors.textMuted.withAlpha(140),
                   ),
                   const SizedBox(width: 7),
@@ -867,7 +867,7 @@ class ComposerLicoProfileCapsule extends StatelessWidget {
     final isPlan = selectedProfile.trim().toLowerCase() == 'plan';
     return AppleGlassSurface(
       borderRadius: kComposerCapsuleBorderRadius,
-      fillAlpha: colors.isDark ? 22 : 10,
+      fillAlpha: colors.isDark ? 13 : 10,
       child: Padding(
         padding: const EdgeInsets.all(2),
         child: Row(
@@ -1056,7 +1056,7 @@ String composeRuntimeCapsuleLabel({
   return parts.join(' · ');
 }
 
-/// Adaptive Flywheel capsule text: `Agent · Model · Effort`.
+/// Acativa capsule text: `Agent · Model · Effort`.
 String composeOrchestrationAssignmentCapsuleLabel({
   required String agentLabel,
   String modelName = '',

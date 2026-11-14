@@ -24,6 +24,9 @@ enum LicoIconButtonSize {
   /// Inline with dense text: table rows, chips, inline disclosures.
   small(28, 15),
 
+  /// A compact header-bar control: 28 pt hit target, 18 pt glyph.
+  compact(28, 18),
+
   /// The default. Toolbars, headers, composer controls.
   medium(32, 17),
 

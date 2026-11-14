@@ -33,7 +33,7 @@ is an adequate organizing principle.
 Adopt the [Continuous Assistant specification](../architecture/CONTINUOUS-ASSISTANT.md)
 as the sole owner of the new continuity semantics. Preserve the explicit
 Conversation Assistant role, canonical Event/Part history, Membership admission,
-existing PersistentTurn and Adaptive Flywheel execution, and native adapters.
+existing PersistentTurn and Acativa execution, and native adapters.
 
 An Agent interprets intent and proposes Matter, agreement and commitment changes.
 The deterministic Conversation authority validates and commits those proposals.

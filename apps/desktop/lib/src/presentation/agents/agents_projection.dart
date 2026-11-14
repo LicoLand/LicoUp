@@ -1,5 +1,5 @@
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/presentation/agents/adaptive_flywheel_projection.dart';
+import 'package:licoup/src/presentation/agents/acativa_projection.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 final class AgentTargetProjection {
@@ -57,11 +57,10 @@ final class AgentsProjection {
     this.scanning = false,
     this.adding = false,
     this.notice,
-    AdaptiveFlywheelProjection? adaptiveFlywheel,
+    AcativaProjection? acativa,
   }) : targets = immutablePresentationList(targets),
        targetDetails = immutablePresentationList(targetDetails),
-       adaptiveFlywheel =
-           adaptiveFlywheel ?? AdaptiveFlywheelProjection.empty();
+       acativa = acativa ?? AcativaProjection.empty();
 
   final List<AgentTargetProjection> targets;
   final String selectedAgentId;
@@ -72,7 +71,7 @@ final class AgentsProjection {
   final bool scanning;
   final bool adding;
   final PresentationNotice? notice;
-  final AdaptiveFlywheelProjection adaptiveFlywheel;
+  final AcativaProjection acativa;
 
   @override
   bool operator ==(Object other) =>
@@ -87,7 +86,7 @@ final class AgentsProjection {
           other.scanning == scanning &&
           other.adding == adding &&
           other.notice == notice &&
-          other.adaptiveFlywheel == adaptiveFlywheel;
+          other.acativa == acativa;
 
   @override
   int get hashCode => Object.hash(
@@ -100,6 +99,6 @@ final class AgentsProjection {
     scanning,
     adding,
     notice,
-    adaptiveFlywheel,
+    acativa,
   );
 }

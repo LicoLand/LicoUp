@@ -78,6 +78,9 @@ extension LicoStringsLabels on LicoStrings {
   String get nightlyChannel => isChinese ? 'Nightly' : 'Nightly';
   String get stableChannel => isChinese ? '稳定版' : 'Stable';
   String get availableVersion => isChinese ? '可用版本' : 'Available Version';
+  String get clientUpdateAdvanced => isChinese ? '高级' : 'Advanced';
+  String updateAvailableNamed(String version) =>
+      isChinese ? '新版本 $version 可用' : 'Version $version available';
   String get digest => isChinese ? '摘要' : 'Digest';
   String get done => isChinese ? '完成' : 'Done';
   String get customize => isChinese ? '自定义' : 'Customize';
@@ -194,6 +197,9 @@ extension LicoStringsLabels on LicoStrings {
   String get searchFeaturesGroup => isChinese ? '功能' : 'Features';
   String get noConversationSearchResults =>
       isChinese ? '没有匹配的对话' : 'No matching conversations';
+  String get quickSwitcherHint =>
+      isChinese ? '切换到对话或应用' : 'Jump to a conversation or app';
+  String get quickSwitcherApps => isChinese ? '应用' : 'Apps';
   String get collapseHistory => isChinese ? '收起历史' : 'Collapse history';
   String get expandHistory => isChinese ? '展开历史' : 'Expand history';
   // File chooser labels. File formats are intentionally not translated.
@@ -214,12 +220,10 @@ extension LicoStringsLabels on LicoStrings {
       'Conversation archive' => '对话归档',
       'Error' => '错误',
       'LicoUp client' => '客户端',
-      'Mobile agents' => '移动端智能体',
-      'Mobile relay' => '移动中转',
+      'Devices' => '设备',
       'Project archive' => '项目归档',
       'Ready' => '就绪',
       'Runtime' => '运行时',
-      'Secure Mesh' => '安全网格',
       'Settings' => '设置',
       'Skill Hub' => '技能中心',
       'Snapshots' => '快照',
@@ -305,11 +309,6 @@ extension LicoStringsLabels on LicoStrings {
   String get selectAgentToView => isChinese
       ? '选择一个智能体查看历史并对话'
       : 'Select an agent to view histories and chat';
-  String get welcome => isChinese ? '欢迎' : 'Welcome';
-  String get mobileAppPairing => isChinese ? '移动 App 配对' : 'Pair Mobile App';
-  String get welcomeNewGroupConversation =>
-      isChinese ? '新群聊' : 'New Group Chat';
-
   String get target => isChinese ? '目标' : 'Target';
   String get configPath => isChinese ? '配置路径' : 'Config path';
   String get binaryPath => isChinese ? '程序路径' : 'Binary path';
@@ -381,6 +380,25 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '未命名对话' : 'Untitled conversation';
   String get createConversation => isChinese ? '新建' : 'New';
   String get newGroupConversation => isChinese ? '新群组' : 'New Group';
+  String get newAgentProfile => isChinese ? '创建智能体' : 'Create Agent';
+  String get agentProfileNameLabel => isChinese ? '名称' : 'Name';
+  String get agentProfileNameHint => isChinese ? '给智能体起个名字' : 'Name this agent';
+  String get agentProfileAvatarLabel => isChinese ? '头像' : 'Avatar';
+  String get agentProfileAdvancedTitle => isChinese ? '高级选项' : 'Advanced';
+  String get agentProfileContextWindow =>
+      isChinese ? '上下文窗口（tokens）' : 'Context window (tokens)';
+  String get agentProfileContextWindowHint =>
+      isChinese ? '留空使用 Agent 默认值' : 'Leave empty for the Agent default';
+  String get agentProfileDefaultPrompt =>
+      isChinese ? '默认提示词' : 'Default prompt';
+  String get agentProfileDefaultPromptHint => isChinese
+      ? '每次对话都会携带的人格指令'
+      : 'Persona instructions carried with every turn';
+  String get agentProfileEnvironment =>
+      isChinese ? '工作目录' : 'Working directory';
+  String get agentProfileCreate => isChinese ? '创建' : 'Create';
+  String agentProfileCreateFailure(String code) =>
+      isChinese ? '创建智能体失败（$code）' : 'Agent creation failed ($code)';
   String get recycleBin => isChinese ? '回收站' : 'Recycle Bin';
   String get archivedConversations => isChinese ? '归档' : 'Archived';
   String get archivedConversationsTitle =>
@@ -546,6 +564,9 @@ extension LicoStringsLabels on LicoStrings {
   String archiveGroupConversationMessage(String title) => isChinese
       ? '“$title” 与其真正涉及的对话会一起归档保存，随后开启新的助手对话。'
       : '“$title” and the conversations it involves will be archived together, then a new Assistant conversation opens.';
+  String archiveDefaultGroupConversationMessage(String title) => isChinese
+      ? '“$title” 将清空历史并重置为全新对话，其真正涉及的对话会一起归档保存。'
+      : '“$title” clears its history and resets to a fresh conversation; the conversations it involves are archived together.';
   String get conversationResetNotice =>
       isChinese ? '已开启新对话' : 'New conversation started';
   String get archivedContinuityChildren =>
@@ -553,13 +574,11 @@ extension LicoStringsLabels on LicoStrings {
   String get discardPendingImages =>
       isChinese ? '丢弃待发送的图片' : 'Discard pending images';
   String get contacts => isChinese ? '对话' : 'Conversations';
-  String get conversationBack => isChinese ? '返回上一级' : 'Back one level';
+  String get backToGroup => isChinese ? '返回群组' : 'Back to group';
   String mentionAgent(String agent) =>
       isChinese ? '@ $agent' : 'Mention $agent';
-  String openAgentConversations(String agent) =>
-      isChinese ? '打开 $agent 的对话' : 'Open $agent conversations';
   String get automaticAdaptation => isChinese ? '自动适配' : 'Automatic adaptation';
-  String get adaptiveFlywheel => 'Adaptive Flywheel';
+  String get acativa => 'Acativa';
   String get noAuthorizedStrategies =>
       isChinese ? '没有已授权的策略' : 'No authorized strategies';
   String get exitStrategyMode => isChinese ? '退出策略模式' : 'Exit strategy mode';
@@ -574,6 +593,10 @@ extension LicoStringsLabels on LicoStrings {
   String get noGroupConversationsYet => isChinese ? '还没有群聊' : 'No groups yet';
   String groupConversationMemberCount(int count) =>
       isChinese ? '$count 位成员' : '$count members';
+  String groupConversationMemberTag(int count) =>
+      isChinese ? '$count 人' : '$count';
+  String memberPresenceStatus(String name, String status) =>
+      isChinese ? '$name$status' : '$name $status';
   String get groupConversationMembershipChangeTitle =>
       isChinese ? '群成员变更' : 'Group membership change';
   String get groupConversationAvailabilityChangeTitle =>
@@ -662,6 +685,15 @@ extension LicoStringsLabels on LicoStrings {
       '$stage · $code';
   String get copyFailureReport => isChinese ? '复制报错' : 'Copy error';
   String get attachments => isChinese ? '附件' : 'Attachments';
+  String get mention => isChinese ? '提及成员' : 'Mention member';
+  String get stickers => isChinese ? '表情' : 'Stickers';
+  String sendSticker(String name) =>
+      isChinese ? '发送表情 $name' : 'Send sticker $name';
+  String get stickerRecent => isChinese ? '最近' : 'Recent';
+  String get stickerRecentEmpty =>
+      isChinese ? '还没有用过的表情' : 'No recently used stickers';
+  String stickerDeliveredNote(String name) =>
+      isChinese ? '智能体收到：[表情：$name]' : 'Agent received: [sticker: $name]';
   String get imageAttachment => isChinese ? '图片' : 'Image';
   String get imageUnavailable => isChinese ? '图片不可用' : 'Image unavailable';
   String get localUser => isChinese ? '本地用户' : 'Local User';
@@ -844,6 +876,8 @@ extension LicoStringsLabels on LicoStrings {
   String get send => isChinese ? '发送' : 'Send';
   String conversationSendFailed(String reason) =>
       isChinese ? '发送失败：$reason' : 'Send failed: $reason';
+  String get conversationSendResolving =>
+      isChinese ? '正在检测本地运行环境…' : 'Checking the local runtime…';
   String get conversationAuthorizeRuntimeAction =>
       isChinese ? '授权' : 'Authorize';
   String get conversationAuthorizingRuntimeAction =>
@@ -879,6 +913,9 @@ extension LicoStringsLabels on LicoStrings {
   String get appearanceDayNight => isChinese ? '明暗模式' : 'Brightness';
   String get appearanceDay => isChinese ? '明亮' : 'Light';
   String get appearanceNight => isChinese ? '暗黑' : 'Dark';
+  String get reduceMotionTitle => isChinese ? '减少动态效果' : 'Reduce motion';
+  String get reduceMotionOn => isChinese ? '开启' : 'On';
+  String get reduceMotionOff => isChinese ? '关闭' : 'Off';
   String get appearancePreset => isChinese ? '主题风格' : 'Theme style';
   String get layoutProfile => isChinese ? '界面布局' : 'Interface Layout';
   String get layoutProfileDescription => isChinese
@@ -906,24 +943,156 @@ extension LicoStringsLabels on LicoStrings {
 
   String get appearancePresetDirectory =>
       isChinese ? '主题目录' : 'Theme directory';
-  String get reloadPresets => isChinese ? '重新加载预设' : 'Reload Presets';
   String invalidPresetConfigs(int count) =>
       isChinese ? '$count 个主题配置无效' : '$count invalid theme configurations';
   String get portableData =>
       isChinese ? 'LicoUp 数据目录' : 'LicoUp Data Directory';
+  String dataHomeSource(String source) => switch (source) {
+    'explicitEnvironment' =>
+      isChinese ? '由 LICOUP_HOME 环境变量指定' : 'Set by LICOUP_HOME',
+    'legacyEnvironment' =>
+      isChinese
+          ? '由已发布的 LICOUP_PORTABLE_DIR 别名指定'
+          : 'Set by the published LICOUP_PORTABLE_DIR alias',
+    'saved' => isChinese ? '已保存的位置' : 'Saved location',
+    'mobileSandbox' => isChinese ? '应用沙盒' : 'Application sandbox',
+    'testOverride' => isChinese ? '测试目录' : 'Test directory',
+    _ => isChinese ? '默认位置' : 'Default location',
+  };
+  String get moveDataHome => isChinese ? '移动数据目录' : 'Move data folder';
+  String get moveDataHomeDescription => isChinese
+      ? '选择新位置后，客户端会先停止写入，再复制应用数据。原目录会保留。'
+      : 'Choose a destination. LicoUp will stop its writers before copying. The original folder stays in place.';
+  String get dataHomeMoveRequiresSavedSelection => isChinese
+      ? '环境变量指定的位置和移动设备沙盒由其各自的设置管理，不能在此移动。'
+      : 'Environment-selected locations and mobile sandbox data are managed by their respective settings.';
+  String get chooseDataHomeDestination =>
+      isChinese ? '选择目标文件夹' : 'Choose destination folder';
+  String get confirmDataHomeMove =>
+      isChinese ? '移动 LicoUp 数据？' : 'Move LicoUp data?';
+  String dataHomeMoveConfirmation(String folder) => isChinese
+      ? '将在“$folder”中创建 LicoUp 文件夹并复制当前数据。迁移成功后，客户端会继续使用新位置，原目录仍会保留。'
+      : 'LicoUp will create a LicoUp folder inside “$folder”, copy the current data, and continue from the new location. The original folder will remain.';
+  String get move => isChinese ? '移动' : 'Move';
+  String get dismiss => isChinese ? '关闭' : 'Dismiss';
+  String get dataHomeMoveTitle =>
+      isChinese ? '正在移动 LicoUp 数据' : 'Moving LicoUp data';
+  String get dataHomeMoveSourcePreserved => isChinese
+      ? '原目录会保留，直到你明确选择清理。'
+      : 'The original folder stays in place until you choose to remove it.';
+  String dataHomePreviousRootRetained(String path) =>
+      isChinese ? '已保留原目录：$path' : 'Original folder retained: $path';
+  String get cleanPreviousDataHome =>
+      isChinese ? '将原目录移到废纸篓' : 'Move original folder to Trash';
+  String get confirmPreviousDataHomeCleanup =>
+      isChinese ? '清理原数据目录？' : 'Move the original data folder to Trash?';
+  String dataHomeCleanupConfirmation(String path) => isChinese
+      ? '“$path”将被移到系统废纸篓。当前 LicoUp 数据目录不会更改。'
+      : '“$path” will be moved to the system Trash. Your current LicoUp data folder will not change.';
+  String get cleaningPreviousDataHome =>
+      isChinese ? '正在清理原数据目录' : 'Cleaning the original data folder';
+  String get dataHomeRecoveryTitle =>
+      isChinese ? '找不到已保存的数据目录' : 'Saved data folder not found';
+  String get dataHomeRecoveryDescription => isChinese
+      ? 'LicoUp 不会创建空目录替代原数据。请重新连接原位置并重试，或选择一个已有的 LicoUp 数据目录。'
+      : 'LicoUp will not replace your data with an empty folder. Reconnect the saved location and retry, or choose an existing LicoUp data folder.';
+  String get chooseExistingDataHome =>
+      isChinese ? '选择已有数据目录' : 'Choose existing data folder';
+  String get confirmDataHomeRecovery =>
+      isChinese ? '使用此数据目录？' : 'Use this data folder?';
+  String get dataHomeRecoveryConfirmation => isChinese
+      ? '此现有目录将成为 LicoUp 的数据位置。请确认它包含你要继续使用的数据。'
+      : 'This existing folder will become LicoUp’s data location. Confirm that it contains the data you want to use.';
+  String dataHomeRecoveryFailed(String _) => isChinese
+      ? '恢复失败，已保存的数据位置仍不可用，LicoUp 没有创建空目录。请重试或选择包含数据的现有目录。'
+      : 'Recovery failed. The saved location is still unavailable, and LicoUp did not create an empty folder. Retry or choose an existing folder that contains your data.';
+  String get useThisFolder => isChinese ? '使用此文件夹' : 'Use this folder';
+  String dataHomeOperationTitle(String operation) => switch (operation) {
+    'cleanup' => cleaningPreviousDataHome,
+    'recovery' => isChinese ? '正在恢复 LicoUp 数据' : 'Recovering LicoUp data',
+    _ => dataHomeMoveTitle,
+  };
+  String dataHomeMovePhase(String phase) => switch (phase) {
+    'stopping-writers' =>
+      isChinese ? '正在停止应用写入进程…' : 'Stopping application writers…',
+    'stopping-conversation-host' =>
+      isChinese ? '正在排空会话主机…' : 'Draining the conversation host…',
+    'stopping-mcp-service' =>
+      isChinese ? '正在停止 MCP 服务…' : 'Stopping the MCP service…',
+    'stopping-gateway' => isChinese ? '正在停止网关…' : 'Stopping the Gateway…',
+    'waiting-for-native-access' =>
+      isChinese
+          ? '正在等待其他 LicoUp 进程释放数据目录…'
+          : 'Waiting for other LicoUp processes to release the data root…',
+    'copying-data' => isChinese ? '正在复制应用数据…' : 'Copying application data…',
+    'publishing-data' =>
+      isChinese ? '正在完成新目录…' : 'Finalizing the copied folder…',
+    'updating-owned-references' =>
+      isChinese ? '正在更新应用管理的路径引用…' : 'Updating app-managed path references…',
+    'switching-data-home' =>
+      isChinese ? '正在切换数据位置…' : 'Switching to the new location…',
+    'cleaning-previous-root' =>
+      isChinese
+          ? '正在将原目录移到系统废纸篓…'
+          : 'Moving the original folder to the system Trash…',
+    'recovering-root' =>
+      isChinese ? '正在恢复数据位置…' : 'Recovering the data location…',
+    'complete' => isChinese ? '正在重新载入客户端…' : 'Reloading the client…',
+    _ => isChinese ? '正在准备迁移…' : 'Preparing the move…',
+  };
+  String dataHomeOperationFailed(
+    String operation,
+    String code,
+  ) => switch (code) {
+    'data_home_destination_exists' ||
+    'data_home_destination_nested' ||
+    'data_home_destination_invalid' ||
+    'data_home_destination_unavailable' =>
+      isChinese
+          ? '目标位置不可用或已包含数据。当前数据位置未更改，请选择其他目标文件夹后重试。'
+          : 'Choose another destination folder and try again. The current data folder was not changed.',
+    'data_home_copy_failed' || 'data_home_copy_unsupported_entry' =>
+      isChinese
+          ? '复制未完成，当前数据位置未更改，原数据仍保留。请检查目标磁盘空间和文件访问权限后重试。'
+          : 'The copy did not finish, and the current data folder was not changed. Your original data remains. Check the destination space and file access, then retry.',
+    'data_home_relocation_recovery_required' ||
+    'data_home_recovery_autostart_failed' =>
+      isChinese
+          ? '数据副本和原数据都已保留。新位置可能已经生效；请查看设置中显示的当前数据位置，并检查已启用的自启动项。'
+          : 'Both data folders were preserved, and the new location may already be active. Check the current folder shown in Settings and review enabled startup items.',
+    'data_home_previous_root_cleanup_failed' =>
+      isChinese
+          ? '未能将原目录移到废纸篓。当前数据位置未更改，原目录仍保留；你可以稍后重试。'
+          : 'The original folder could not be moved to Trash. The active data folder is unchanged, and the original remains available to retry later.',
+    'data_home_previous_root_marker_cleanup_failed' =>
+      isChinese
+          ? '原目录已移到废纸篓，但 LicoUp 未能清除保存的清理记录。当前数据位置未更改。'
+          : 'The original folder was moved to Trash, but LicoUp could not clear its saved cleanup record. The active data folder is unchanged.',
+    _ when operation == 'cleanup' =>
+      isChinese
+          ? '清理未完成，当前数据位置未更改，原目录仍保留。请稍后重试。'
+          : 'Cleanup did not finish. The current data folder is unchanged and the original remains available to retry later.',
+    _ when operation == 'recovery' =>
+      isChinese
+          ? '恢复未完成，原有选择未更改，也没有创建空目录。请重新连接原位置并重试，或选择包含数据的现有目录。'
+          : 'Recovery did not finish, the saved selection was not changed, and no empty folder was created. Reconnect the original location or choose an existing data folder, then retry.',
+    _ =>
+      isChinese
+          ? '移动未完成，当前数据位置未更改，原数据仍保留。请检查目标文件夹后重试。'
+          : 'The move did not finish, and the current data folder was not changed. Your original data remains. Check the destination and retry.',
+  };
   String get clientLogs => isChinese ? '客户端日志' : 'Client Logs';
   String get exportLogs => isChinese ? '导出日志' : 'Export Logs';
-  String get exportLogsDescription => '';
+  String get exportLogsDescription => isChinese
+      ? '导出最近的客户端运行日志，用于诊断与问题反馈。'
+      : 'Export recent client runtime logs for diagnostics and support.';
   String get exportingLogs => isChinese ? '正在导出日志...' : 'Exporting logs...';
   String get conversationArchiveRoot =>
       isChinese ? 'LicoUp 备份目录' : 'LicoUp Backup Directory';
-  String get refreshArchiveRoot =>
-      isChinese ? '刷新归档目录' : 'Refresh Archive Directory';
   String get snapshotRootPath => isChinese ? '快照根路径' : 'Snapshot Root Path';
   String get save => isChinese ? '保存' : 'Save';
   String get recommendedPlugins => isChinese ? '推荐插件' : 'Recommended Plugins';
 
-  String get secureMesh => isChinese ? '安全网格' : 'Secure Mesh';
   String get refresh => isChinese ? '刷新' : 'Refresh';
   String get protocol => isChinese ? '协议' : 'Protocol';
   String get pairwise => isChinese ? '点对点' : 'Pairwise';
@@ -972,20 +1141,7 @@ extension LicoStringsLabels on LicoStrings {
   String get sourceAgent => isChinese ? '源智能体' : 'Source Agent';
   String get targetAgent => isChinese ? '目标智能体' : 'Target Agent';
   String get packageDigest => isChinese ? '包摘要' : 'Package Digest';
-  String get fileReceiveDestination =>
-      isChinese ? '文件接收位置' : 'File Receive Destination';
-  String get evaluatingFileReceiveDestination => isChinese
-      ? '正在评估安全网格文件接收位置。'
-      : 'Evaluating Secure Mesh file receive destination.';
-  String get fileReceiveDestinationEvaluated => isChinese
-      ? '安全网格文件接收位置已评估。'
-      : 'Secure Mesh file receive destination evaluated.';
-  String get fileReceiveDestinationEvaluationFailed => isChinese
-      ? '安全网格文件接收位置评估失败。'
-      : 'Secure Mesh file receive destination evaluation failed.';
   String get command => isChinese ? '命令' : 'Command';
-  String get deviceTrust => isChinese ? '设备信任' : 'Device Trust';
-  String get trustPolicy => isChinese ? '信任策略' : 'Trust Policy';
   String get adapter => isChinese ? '适配器' : 'Adapter';
   String get readiness => isChinese ? '就绪状态' : 'Readiness';
   String get e2eeReadiness => isChinese ? '端到端加密就绪' : 'E2EE Readiness';
@@ -1063,6 +1219,21 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '扫描此二维码完成手机配对' : 'Scan This QR Code To Pair Your Phone';
   String get status => isChinese ? '状态' : 'Status';
   String get model => isChinese ? '模型' : 'Model';
+  String get permissionMode => isChinese ? '权限模式' : 'Permission Mode';
+  String permissionModeOptionLabel(String value, String fallback) {
+    return switch (value.trim()) {
+      'default' => 'Default',
+      'plan' => 'Plan',
+      'acceptEdits' => isChinese ? '接受编辑' : 'Accept Edits',
+      'bypassPermissions' => isChinese ? '跳过权限' : 'Bypass Permissions',
+      'dangerously-skip-permissions' => isChinese ? '跳过权限' : 'Skip Permissions',
+      'read-only' => isChinese ? '只读' : 'Read Only',
+      'workspace-write' => isChinese ? '工作区写入' : 'Workspace Write',
+      'danger-full-access' => isChinese ? '完全访问' : 'Full Access',
+      _ => fallback,
+    };
+  }
+
   String get reasoningEffort => isChinese ? '思考强度' : 'Reasoning Effort';
   String reasoningEffortOptionLabel(String value, String fallback) {
     return switch (value.trim().toLowerCase()) {
@@ -1137,6 +1308,8 @@ extension LicoStringsLabels on LicoStrings {
   String get conversationCopyMessage => isChinese ? '复制消息' : 'Copy message';
   String get conversationMessageCopied =>
       isChinese ? '消息已复制' : 'Message copied';
+  String get copyCode => isChinese ? '复制代码' : 'Copy code';
+  String get codeCopied => isChinese ? '代码已复制' : 'Code copied';
   String get edit => isChinese ? '编辑' : 'Edit';
   String get llmGatewayLaunchAtLogin => isChinese ? '开机自启动' : 'Launch at login';
   String get llmGatewayLaunchAtLoginDisabled =>
@@ -1161,6 +1334,38 @@ extension LicoStringsLabels on LicoStrings {
   String get startupAutostartSaved =>
       isChinese ? '自启动设置已保存。' : 'Auto-start settings saved.';
   String get startupAutostartTitle => isChinese ? '开启自启动' : 'Enable auto-start';
+  String get terminalCommandTitle => isChinese ? '终端命令' : 'Terminal command';
+  String get terminalCommandStatusInstalled => isChinese ? '已安装' : 'Installed';
+  String get terminalCommandStatusStale => isChinese ? '链接失效' : 'Link is stale';
+  String get terminalCommandStatusNotInstalled =>
+      isChinese ? '未安装' : 'Not installed';
+  String get terminalCommandStatusOccupied => isChinese ? '已被占用' : 'Occupied';
+  String get terminalCommandInstall =>
+      isChinese ? '安装终端命令' : 'Install terminal command';
+  String get terminalCommandRepoint =>
+      isChinese ? '修复终端命令链接' : 'Repair terminal command link';
+  String get terminalCommandUninstall =>
+      isChinese ? '移除终端命令' : 'Remove terminal command';
+  String get terminalCommandInstalled => isChinese
+      ? '已安装：licoup 指向本应用的内置二进制'
+      : 'Installed: licoup points at this app\'s bundled binary';
+  String get terminalCommandStale => isChinese
+      ? '链接已失效：指向一个不存在的位置'
+      : 'Link is stale: it points at a missing location';
+  String get terminalCommandNotInstalled => isChinese
+      ? '未安装：将 licoup 链接到 /usr/local/bin 以便在终端中使用'
+      : 'Not installed: link licoup into /usr/local/bin for terminal use';
+  String terminalCommandOccupied(String occupiedPath) => isChinese
+      ? '目标位置已被占用：$occupiedPath。不会更改现有文件。'
+      : 'Destination is occupied: $occupiedPath. The existing file is left unchanged.';
+  String get terminalCommandDone =>
+      isChinese ? '终端命令已就绪' : 'Terminal command is ready';
+  String get terminalCommandRemoved =>
+      isChinese ? '终端命令已移除' : 'Terminal command removed';
+  String get terminalCommandCancelled =>
+      isChinese ? '已取消授权，未做任何更改' : 'Authorization cancelled; nothing changed';
+  String get terminalCommandFailed =>
+      isChinese ? '操作失败，请重试' : 'The operation failed; please try again';
   String get startupAutostartUnsupported => isChinese
       ? '当前系统不支持登录自启动。'
       : 'Login auto-start is not supported on this system.';
@@ -1201,4 +1406,101 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '安装失败，请重试。' : 'Installation failed. Please try again.';
   String get agentHubDownloadSource => isChinese ? '下载源' : 'Download source';
   String get agentHubPendingCommand => isChinese ? '即将执行的命令' : 'Command to run';
+
+  // Three-column Dashboard style: navigation rail, list filters and group
+  // members panel.
+  String get layoutColumns => isChinese ? '栏位' : 'Columns';
+  String get viewMyProfile => isChinese ? '查看我的资料' : 'View my profile';
+  String get conversationFilters => isChinese ? '筛选会话' : 'Filter conversations';
+  String get conversationFilterAll => isChinese ? '全部' : 'All';
+  String get conversationFilterAgents => isChinese ? '智能体' : 'Agents';
+  String get conversationFilterGroups => isChinese ? '群组' : 'Groups';
+  String groupMembersTitle(int count) =>
+      isChinese ? '成员 · $count' : 'Members · $count';
+  String get showGroupMembers => isChinese ? '显示成员' : 'Show members';
+  String get hideGroupMembers => isChinese ? '隐藏成员' : 'Hide members';
+  String get memberSelf => isChinese ? '我' : 'You';
+  String get memberTagAssistant => isChinese ? '助手' : 'Assistant';
+  String get memberTagAgent => 'AI';
+  String unreadMessagesLabel(int count) =>
+      isChinese ? '$count 条未读消息' : '$count unread messages';
+  String get memberStatusOnline => isChinese ? '在线' : 'Online';
+  String get memberStatusWorking => isChinese ? '工作中' : 'Working';
+  String get memberStatusNeedsApproval => isChinese ? '待审批' : 'Needs approval';
+  String get memberStatusOffline => isChinese ? '离线' : 'Offline';
+  String get memberProfileMessage => isChinese ? '发消息' : 'Message';
+  String get memberProfileMention => isChinese ? '提及' : 'Mention';
+  String get memberProfileEdit => isChinese ? '编辑资料' : 'Edit profile';
+  String get memberProfileChangeAvatar => isChinese ? '更换头像' : 'Change avatar';
+  String get memberProfileDevice =>
+      isChinese ? '设备 · 本机 macOS' : 'Device · This Mac';
+  String get memberProfileIdentity =>
+      isChinese ? '身份 · 本地身份已保护' : 'Identity · local identity protected';
+  String get memberProfileAvatarNote =>
+      isChinese ? '头像仅保存在本机' : 'Avatar is stored only on this device';
+  String get memberProfileSelfNote => isChinese
+      ? '头像与昵称仅保存在本机'
+      : 'Avatar and nickname are stored only on this device';
+  String memberProfileVendorInstalled(String vendor) =>
+      isChinese ? '$vendor · 本机已安装' : '$vendor · installed';
+  String memberProfileVendorMissing(String vendor) =>
+      isChinese ? '$vendor · 未安装' : '$vendor · not installed';
+  String get memberFactAdapter => isChinese ? '适配器' : 'Adapter';
+  String get memberFactWorkspace => isChinese ? '工作区' : 'Workspace';
+  String get memberFactSessions => isChinese ? '会话数' : 'Sessions';
+  String get memberFactLocation => isChinese ? '位置' : 'Location';
+  String get memberProfileMembers => isChinese ? '成员' : 'Members';
+  String get memberProfileGroupSettings => isChinese ? '群设置' : 'Group settings';
+  String get memberProfileDetails => isChinese ? '详情 →' : 'Details →';
+
+  // Selection facts and the adopted selection policy.
+  String get selectionFactsTitle => isChinese ? '选择依据' : 'Selection facts';
+  String selectionFactsCaption(String agent) => isChinese
+      ? '按维度说明为何选择 $agent 的候选路线。'
+      : 'Why $agent\u2019s candidate route was selected, by dimension.';
+  String get selectionFactsLoading =>
+      isChinese ? '正在读取选择依据…' : 'Loading selection facts…';
+  String get selectionFactsEmpty => isChinese
+      ? '尚未记录该 Agent 的选择依据。'
+      : 'No selection facts were recorded for this Agent.';
+  String get selectionSupport => isChinese ? '支持' : 'Support';
+  String get selectionAvailability => isChinese ? '可用性' : 'Availability';
+  String get selectionCredentials => isChinese ? '凭据' : 'Credential';
+
+  String get selectionPolicyTitle =>
+      isChinese ? '路线选择策略' : 'Route selection policy';
+  String get selectionPolicyUnadopted =>
+      isChinese ? '尚未采纳任何策略' : 'No policy is adopted';
+  String get selectionPolicyRevisionInForce =>
+      isChinese ? '生效版本' : 'Revision in force';
+  String get selectionPolicySuggestions => isChinese ? '待决建议' : 'Suggestions';
+  String get selectionPolicyNoSuggestions =>
+      isChinese ? '当前没有可采纳的建议。' : 'There is no suggestion to adopt right now.';
+  String get selectionPolicyEvaluatorLabel =>
+      isChinese ? '评估 Agent' : 'Evaluating Agent';
+  String get selectionPolicyEvidenceLimitsLabel =>
+      isChinese ? '证据范围' : 'Evidence limits';
+  String get selectionPolicyRationaleLabel => isChinese ? '理由' : 'Rationale';
+  String get selectionPolicyEffectsLabel =>
+      isChinese ? '预期影响' : 'Proposed effects';
+  String get selectionPolicyEvidenceDigestLabel =>
+      isChinese ? '证据摘要' : 'Evidence digest';
+  String get selectionPolicyRoutingOnlyNote => isChinese
+      ? '该样本仅测量了候选顺序，不构成上下文或协作方面的改进。'
+      : 'This sample measured candidate order only; it is not a context or '
+            'collaboration improvement.';
+  String get selectionPolicyInvalidated =>
+      isChinese ? '已被更新的结果作废' : 'Invalidated by a newer outcome';
+  String get selectionPolicyAdopt => isChinese ? '采纳' : 'Adopt';
+  String get selectionPolicyDismiss => isChinese ? '忽略' : 'Dismiss';
+  String get selectionPolicyRevoke =>
+      isChinese ? '撤销已采纳策略' : 'Revoke adopted policy';
+  String selectionPolicyRefused(String reasonCode) =>
+      isChinese ? '未能完成：$reasonCode' : 'Not applied: $reasonCode';
+  String get selectionPolicyOwnerAbsent => isChinese
+      ? '此版本未组合策略所有者，未做任何更改。'
+      : 'This build composes no policy owner; nothing was changed.';
+  String get selectionPolicyKeptCurrent => isChinese
+      ? '已忽略该建议，当前策略保持不变。'
+      : 'The suggestion was dismissed; the current policy stays in force.';
 }

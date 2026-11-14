@@ -197,7 +197,14 @@ final class LicoSearchField extends StatelessWidget {
               decoration: InputDecoration(
                 isDense: true,
                 isCollapsed: true,
+                // The capsule chrome supplies the visuals; the editable part
+                // stays transparent — the theme's field borders and fill
+                // must not appear inside the capsule.
                 border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                filled: false,
                 hintText: hintText ?? strings.sidebarSearchHint,
                 hintStyle: TextStyle(
                   color: resolved.hint,

@@ -61,10 +61,10 @@ export function pairwiseAuditDependencyReceipts(buildRoot, report) {
   const signoffRef = report?.reviewSignoff?.report;
   const snapshotRef = report?.reviewSignoff?.vectorCorpusSnapshot?.report;
   if (corpusRef !==
-      "build/reports/secure-mesh-pairwise-content-vector-corpus.json" ||
+      "build/reports/pairwise-content-vector-corpus.json" ||
     signoffRef !==
-      "build/reports/secure-mesh-pairwise-content-review-signoff.json" ||
-    !/^build\/reports\/secure-mesh-pairwise-content-vector-corpus-[a-f0-9]{16}\.json$/u
+      "build/reports/pairwise-content-review-signoff.json" ||
+    !/^build\/reports\/pairwise-content-vector-corpus-[a-f0-9]{16}\.json$/u
       .test(String(snapshotRef || ""))) {
     throw new Error("pairwise_release_dependencies_invalid");
   }
@@ -122,7 +122,7 @@ export function pairwiseAuditDependencyReceipts(buildRoot, report) {
     path.join(repoRoot, "tools/scripts/config"),
     path.join(
       repoRoot,
-      "tools/scripts/config/secure-mesh-pairwise-review-authorities.json",
+      "tools/scripts/config/pairwise-review-authorities.json",
     ),
     { expectedKind: "file" },
   );

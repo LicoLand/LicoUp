@@ -11,10 +11,8 @@ import path from "node:path";
 import process from "node:process";
 import {
   clientPubCacheRoot,
-  seedClientGradleHome,
   withClientToolchainEnv,
 } from "../client-toolchain-env.mjs";
-import { androidJavaEnvironment } from "../lib/android-apk-facts/sdk.mjs";
 import {
   createFlutterJsonStatsCollector,
   hasFlutterTestReporter,
@@ -44,13 +42,6 @@ export function isFlutterPubGet(args) {
 
 export function shouldPrepareFlutterDependencies(args) {
   return args[0] === "analyze" || args[0] === "test" || args[0] === "run" || args[0] === "build";
-}
-
-export function shouldPrepareGradleDependencies(args) {
-  if (args[0] === "run") {
-    return true;
-  }
-  return args[0] === "build" && ["apk", "appbundle", "aar"].includes(args[1]);
 }
 
 export function withNoImplicitPub(args) {
@@ -155,18 +146,11 @@ export function restoreFlutterGeneratedPluginFiles(snapshot) {
 }
 
 export async function prepareFlutterCommand(command, args, cwd) {
-  if (["gradlew", "gradlew.bat"].includes(path.basename(command).toLowerCase())) {
-    const java = androidJavaEnvironment();
-    return { command, args, env: { ...process.env, JAVA_HOME: java.env.JAVA_HOME } };
-  }
   if (!isFlutterCommand(command) || !existsSync(path.join(cwd, "pubspec.yaml"))) {
     return { command, args, env: process.env };
   }
   const env = flutterEnv(cwd);
   seedStablePubCache(cwd, env);
-  if (shouldPrepareGradleDependencies(args)) {
-    seedClientGradleHome(env, { log: (message) => console.log(message) });
-  }
   if (shouldPrepareFlutterDependencies(args)) {
     const generatedPluginSnapshot = snapshotFlutterGeneratedPluginFiles(cwd);
     try {

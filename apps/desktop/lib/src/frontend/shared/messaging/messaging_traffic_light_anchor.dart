@@ -16,10 +16,14 @@ final class MessagingTrafficLightAnchor extends StatefulWidget {
     super.key,
     this.width = MessagingDesktopMetrics.trafficLightAnchorExtent,
     this.height = MessagingDesktopMetrics.trafficLightRowExtent,
+    this.onEdges,
   });
-
   final double width;
   final double height;
+
+  /// Called with the measured cluster edges whenever the native reply
+  /// carries them — lets shells size layout to the real cluster width.
+  final void Function(TrafficLightClusterEdges edges)? onEdges;
 
   @override
   State<MessagingTrafficLightAnchor> createState() =>
@@ -43,7 +47,14 @@ final class _MessagingTrafficLightAnchorState
       return;
     }
     _reported = rect;
-    unawaited(ClientPlatformPorts.reportTrafficLightAnchor(rect));
+    unawaited(_reportAndNotify(rect));
+  }
+
+  Future<void> _reportAndNotify(Rect rect) async {
+    final edges = await ClientPlatformPorts.reportTrafficLightAnchor(rect);
+    if (mounted && edges != null) {
+      widget.onEdges?.call(edges);
+    }
   }
 
   void _scheduleReport() {
@@ -77,4 +88,29 @@ final class _MessagingTrafficLightAnchorState
       ),
     );
   }
+}
+
+/// Opt-in suppression for shells that mount their own traffic-light anchor
+/// over the sidebar's top row (the Desktop split workspace). While
+/// suppressed, the sidebar foundation renders no [MessagingTrafficLightAnchor]
+/// — so exactly one reporter feeds the window chrome and the two anchors can
+/// never fight over the native cluster — and reserves [reservedExtent] so the
+/// row's actions never slide under the shell's overlay.
+final class MessagingTrafficLightSuppression extends InheritedWidget {
+  const MessagingTrafficLightSuppression({
+    super.key,
+    this.reservedExtent = MessagingDesktopMetrics.trafficLightAnchorExtent,
+    required super.child,
+  });
+
+  final double reservedExtent;
+
+  static MessagingTrafficLightSuppression? maybeOf(
+    BuildContext context,
+  ) => context
+      .dependOnInheritedWidgetOfExactType<MessagingTrafficLightSuppression>();
+
+  @override
+  bool updateShouldNotify(MessagingTrafficLightSuppression oldWidget) =>
+      oldWidget.reservedExtent != reservedExtent;
 }

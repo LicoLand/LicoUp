@@ -196,7 +196,7 @@ export const PUBLISHED_FORMAT_PROFILES = {
     },
   },
   "v0.2.1": {
-    label: "LicoUp v0.2.1 Flywheel Schema 2 Profile",
+    label: "LicoUp v0.2.1 Acativa Schema 2 Profile",
     productVersion: "0.2.1",
     frontierId: "licoup-state-0.2.1",
     domains: {
@@ -215,7 +215,7 @@ export const PUBLISHED_FORMAT_PROFILES = {
     },
   },
   "v0.2.2": {
-    label: "LicoUp v0.2.2 Flywheel Schema 3 Profile",
+    label: "LicoUp v0.2.2 Acativa Schema 3 Profile",
     productVersion: "0.2.2",
     frontierId: "licoup-state-0.2.2",
     domains: {

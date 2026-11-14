@@ -7,7 +7,6 @@ import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 /// Desktop conversation adapter. Every operation uses the owned structured
 /// transport even when stateless commands use an injected one-shot executor.
-/// Mobile conversation dispatch stays on its secure relay/FFI gateway.
 final class StdioConversationNativePort
     implements ConversationNativePort, ConversationExecutionNativePort {
   const StdioConversationNativePort({
@@ -91,6 +90,17 @@ final class StdioConversationNativePort
     ..._turnFields(turn),
     'text': text.trim(),
     ..._bindFields(bind),
+  });
+
+  @override
+  Future<Map<String, dynamic>> resolveInteraction(
+    AgentSessionTurnScope turn, {
+    required String adapterCallbackTokenRef,
+    required Map<String, Object?> interactionResponse,
+  }) => _execute(ConversationProtocolMethod.agentConversationSteer, {
+    ..._turnFields(turn),
+    'adapterCallbackTokenRef': adapterCallbackTokenRef.trim(),
+    'interactionResponse': interactionResponse,
   });
 
   @override

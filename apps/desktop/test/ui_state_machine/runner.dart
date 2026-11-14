@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/presentation/dashboard_feature_order.dart';
 import 'package:licoup/src/contracts/presentation/desktop_dock_layout.dart';
@@ -63,8 +64,16 @@ final class UiInteractionRun {
         ? const Size(820, 1100)
         : const Size(430, 900);
     await tester.binding.setSurfaceSize(size);
+    final profileId = LayoutProfileId.parse(
+      machine.presentation.split('-').first,
+    );
     final fixture = await ProductionClientShellFixture.create(
-      profileId: LayoutProfileId.parse(machine.presentation.split('-').first),
+      profileId: profileId,
+      // The interaction model describes the classic card Dashboard
+      // chrome; the plain style has its own dedicated shell tests.
+      layoutStyleId: profileId.value == 'dashboard'
+          ? LayoutStyleId.parse('card')
+          : null,
       surface: wide
           ? LayoutRuntimeSurface.desktop
           : LayoutRuntimeSurface.mobile,

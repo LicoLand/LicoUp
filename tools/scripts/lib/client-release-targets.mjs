@@ -249,8 +249,7 @@ export function validateClientReleaseTargetCatalog(rawCatalog = {}) {
   requireValue(targets.some((target) => target.platform === "macos") &&
     targets.some((target) => target.platform === "windows") &&
     targets.some((target) => target.platform === "linux") &&
-    targets.some((target) => target.platform === "android") &&
-    targets.some((target) => target.platform === "ios"),
+    targets.every((target) => ["macos", "windows", "linux"].includes(target.platform)),
   "client release target catalog must cover every product platform");
   requireValue(!targets.some((target) => target.packageFormat === "tar" ||
     target.packageFormat === "tar.gz"),
@@ -413,7 +412,7 @@ export function createClientGitHubReleaseClosure({
   selectedTargetIds = [],
   artifacts = [],
   targetReadiness = [],
-  githubReleaseReducer,
+  githubReleaseReducer = createClientGitHubReleaseCanonicalClosure,
 } = {}) {
   requireValue(typeof githubReleaseReducer === "function",
     "canonical GitHub Release reducer is required");
@@ -482,5 +481,140 @@ export function createClientGitHubReleaseClosure({
     notProductionReadinessInput: true,
     productionReady: false,
     productionReleaseReady: false,
+  };
+}
+
+export const CLIENT_GITHUB_RELEASE_READINESS_SCHEMA_VERSION =
+  "licomesh.client.github-release-readiness.v1";
+export const CLIENT_GITHUB_RELEASE_CLOSURE_SCHEMA_VERSION =
+  "licomesh.client.github-release-closure.v1";
+export const CLIENT_GITHUB_RELEASE_CLOSURE_REDUCER =
+  "tools/scripts/lib/client-release-targets.mjs#createClientGitHubReleaseCanonicalClosure";
+
+function asRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function duplicateStrings(values = []) {
+  const seen = new Set();
+  const duplicates = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const normalized = text(value);
+    if (!normalized) continue;
+    if (seen.has(normalized)) duplicates.add(normalized);
+    seen.add(normalized);
+  }
+  return [...duplicates].sort();
+}
+
+export function normalizeClientGitHubReleaseReadiness(value = {}) {
+  const record = asRecord(value);
+  const targetId = text(record.targetId);
+  const platform = text(record.platform);
+  const osFamily = text(record.osFamily);
+  const arch = text(record.arch);
+  const blockers = stableStringList(record.blockers);
+  const evidenceRefs = stableStringList(record.evidenceRefs);
+  const artifactDigest = text(record.artifactDigest);
+  const requestedReady = record.githubReleaseReady === true;
+  const shapeAccepted = Boolean(targetId && platform && osFamily && arch) &&
+    (!artifactDigest || /^sha256:[a-f0-9]{64}$/u.test(artifactDigest));
+  const githubReleaseReady = shapeAccepted && requestedReady && blockers.length === 0 &&
+    evidenceRefs.length > 0 && Boolean(artifactDigest);
+  return {
+    schemaVersion: CLIENT_GITHUB_RELEASE_READINESS_SCHEMA_VERSION,
+    targetId,
+    platform,
+    osFamily,
+    arch,
+    status: githubReleaseReady ? "ready" : text(record.status) || "blocked",
+    githubReleaseReady,
+    blockers,
+    evidenceRefs,
+    artifactDigest,
+    shapeAccepted
+  };
+}
+
+/**
+ * Canonical reducer behind `createClientGitHubReleaseClosure`: validates the
+ * selected target/readiness/artifact triple and emits the deterministic
+ * closure blockers. Desktop owns this reducer — the release channel it
+ * verifies is the Desktop update channel.
+ */
+export function createClientGitHubReleaseCanonicalClosure({
+  selectedTargetIds = [],
+  targetReadiness = [],
+  artifacts = [],
+  knownTargetIds = []
+} = {}) {
+  const selected = stableStringList(selectedTargetIds);
+  const selectedDuplicates = duplicateStrings(selectedTargetIds);
+  const known = new Set(stableStringList(knownTargetIds));
+  const normalizedReadiness = (Array.isArray(targetReadiness) ? targetReadiness : [])
+    .map(normalizeClientGitHubReleaseReadiness)
+    .sort((left, right) => left.targetId.localeCompare(right.targetId));
+  const readinessDuplicates = duplicateStrings(normalizedReadiness.map((item) => item.targetId));
+  const readinessByTarget = new Map(normalizedReadiness.map((item) => [item.targetId, item]));
+  const normalizedArtifacts = (Array.isArray(artifacts) ? artifacts : [])
+    .map((artifact) => {
+      const record = asRecord(artifact);
+      return {
+        targetId: text(record.targetId),
+        artifactDigest: text(record.artifactDigest || record.sha256)
+      };
+    })
+    .filter((artifact) => artifact.targetId);
+  const artifactTargetIds = normalizedArtifacts.map((artifact) => artifact.targetId);
+  const artifactByTarget = new Map(normalizedArtifacts.map((artifact) => [artifact.targetId, artifact]));
+  const artifactDuplicates = duplicateStrings(artifactTargetIds);
+  const artifactSet = new Set(artifactTargetIds);
+  const selectedSet = new Set(selected);
+  const unknownSelectedTargetIds = known.size === 0
+    ? []
+    : selected.filter((targetId) => !known.has(targetId));
+  const missingReadinessTargetIds = selected.filter((targetId) => !readinessByTarget.has(targetId));
+  const blockedSelectedTargetIds = selected.filter((targetId) =>
+    readinessByTarget.has(targetId) && readinessByTarget.get(targetId).githubReleaseReady !== true
+  );
+  const missingArtifactTargetIds = selected.filter((targetId) => !artifactSet.has(targetId));
+  const unselectedArtifactTargetIds = stableStringList(
+    artifactTargetIds.filter((targetId) => !selectedSet.has(targetId))
+  );
+  const artifactDigestMismatchTargetIds = selected.filter((targetId) => {
+    const readiness = readinessByTarget.get(targetId);
+    const artifact = artifactByTarget.get(targetId);
+    return Boolean(readiness && artifact) && readiness.artifactDigest !== artifact.artifactDigest;
+  });
+  const githubReleaseReady = selected.length > 0 &&
+    selectedDuplicates.length === 0 &&
+    unknownSelectedTargetIds.length === 0 &&
+    readinessDuplicates.length === 0 &&
+    artifactDuplicates.length === 0 &&
+    missingReadinessTargetIds.length === 0 &&
+    blockedSelectedTargetIds.length === 0 &&
+    missingArtifactTargetIds.length === 0 &&
+    unselectedArtifactTargetIds.length === 0 &&
+    artifactDigestMismatchTargetIds.length === 0 &&
+    artifactTargetIds.length === selected.length;
+  return {
+    schemaVersion: CLIENT_GITHUB_RELEASE_CLOSURE_SCHEMA_VERSION,
+    githubReleaseReducer: CLIENT_GITHUB_RELEASE_CLOSURE_REDUCER,
+    selectedTargetIds: selected,
+    targetReadiness: selected.map((targetId) => readinessByTarget.get(targetId)).filter(Boolean),
+    githubReleaseStatus: githubReleaseReady ? "ready" : "blocked",
+    githubReleaseReady,
+    blockers: {
+      emptySelection: selected.length === 0,
+      duplicateSelectedTargetIds: selectedDuplicates,
+      unknownSelectedTargetIds,
+      duplicateReadinessTargetIds: readinessDuplicates,
+      missingReadinessTargetIds,
+      blockedSelectedTargetIds,
+      duplicateArtifactTargetIds: artifactDuplicates,
+      missingArtifactTargetIds,
+      unselectedArtifactTargetIds,
+      artifactDigestMismatchTargetIds
+    }
   };
 }

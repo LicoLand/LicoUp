@@ -241,7 +241,7 @@ exec sleep 5
   });
 
   test(
-    'falls back to licoup-cli in PATH when no binary is discovered',
+    'fails typed when no bundled binary is discovered, never falling back to PATH',
     () async {
       final captured = <String>[];
       final agentService = AgentService(
@@ -252,15 +252,18 @@ exec sleep 5
         },
       );
 
-      await agentService.restoreSnapshot('snapshot-codex-1');
-      expect(captured.single, 'licoup-cli');
-      expect(captured.length, 1);
+      await expectLater(
+        agentService.restoreSnapshot('snapshot-codex-1'),
+        throwsA(anything),
+      );
+      expect(captured, isEmpty);
     },
   );
 
   test('addTarget passes optional manual history root', () async {
     final captured = <List<String>>[];
     final agentService = AgentService(
+      resolveCliBinary: () async => File('/synthetic/licoup'),
       runCliExecutable: (executable, args, env) {
         captured.add(List<String>.from(args));
         return Future.value(ProcessResult(0, 0, '{"ok":true}', ''));
@@ -290,6 +293,7 @@ exec sleep 5
 
   test('wraps licoup execution failure as an exception', () async {
     final agentService = AgentService(
+      resolveCliBinary: () async => File('/synthetic/licoup'),
       runCliExecutable: (executable, args, env) {
         return Future.value(ProcessResult(1, 1, '', 'cli failed'));
       },
@@ -318,6 +322,7 @@ exec sleep 5
     () async {
       final captured = <List<String>>[];
       final agentService = AgentService(
+        resolveCliBinary: () async => File('/synthetic/licoup'),
         runCliExecutable: (executable, args, env) {
           captured.add(List<String>.from(args));
           return Future.value(
@@ -362,6 +367,7 @@ exec sleep 5
 
   test('returns empty list when list output is invalid', () async {
     final agentService = AgentService(
+      resolveCliBinary: () async => File('/synthetic/licoup'),
       runCliExecutable: (executable, args, env) {
         return Future.value(
           ProcessResult(

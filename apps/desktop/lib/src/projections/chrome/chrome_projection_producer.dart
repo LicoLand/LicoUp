@@ -79,7 +79,7 @@ final class ChromeProjectionProducer
             enabled:
                 !controller.mobileClientRuntimePlatform ||
                 destination == ClientSection.agents ||
-                destination == ClientSection.mobileRelay ||
+                destination == ClientSection.devices ||
                 destination == ClientSection.settings,
           ),
       ],

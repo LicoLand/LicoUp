@@ -7,8 +7,8 @@
 English · [简体中文](README.zh-CN.md)
 
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?style=flat-square)](LICENSE)
-[![Version: 0.1.0-alpha](https://img.shields.io/badge/version-0.1.0--alpha-orange?style=flat-square)](docs/STATUS.md)
-[![Platforms: macOS · Windows · Linux · Android · iOS](https://img.shields.io/badge/platforms-macOS_%C2%B7_Windows_%C2%B7_Linux_%C2%B7_Android_%C2%B7_iOS-24292f?style=flat-square)](docs/COMPATIBILITY.md)
+[![Version: 0.3.0 (candidate) · latest release v0.2.1](https://img.shields.io/badge/version-0.3.0_candidate_%7C_release_v0.2.1-orange?style=flat-square)](docs/STATUS.md)
+[![Platforms: macOS · Windows · Linux](https://img.shields.io/badge/platforms-macOS_%C2%B7_Windows_%C2%B7_Linux-24292f?style=flat-square)](docs/COMPATIBILITY.md)
 
 </div>
 
@@ -34,7 +34,6 @@ To build from source instead:
 | --- | --- |
 | Node.js | 22 or 24 |
 | Flutter | stable |
-| Rust | stable |
 
 ```bash
 npm ci
@@ -43,10 +42,21 @@ npm run client:analyze
 npm run client:test
 ```
 
+The native sidecar binaries this client embeds are delivered by the
+[LicoUp-CLI](https://github.com/LicoLand/LicoUp-CLI) component repository —
+this repository no longer carries the Rust workspace that produces them.
+The Android and iOS implementations live in the sibling
+[LicoUp-Android](https://github.com/LicoLand/LicoUp-Android) and
+[LicoUp-iOS](https://github.com/LicoLand/LicoUp-iOS) repositories.
+
 > [!NOTE]
-> LicoUp is in early alpha: a build target or preview feature is not a
-> supported release. Check the [compatibility matrix](docs/COMPATIBILITY.md)
-> before relying on a platform or feature.
+> `0.3.0` is an unreleased delivery candidate (`tools/client-version.json`);
+> `v0.2.1` is the latest published GitHub Release. On desktop targets,
+> `macos-arm64` client shell is `supported` (`devices` is `preview`), while
+> agent conversation adapters are currently `unverified` (`0/13` verified,
+> send disabled) pending real CLI verification. Check [Status](docs/STATUS.md)
+> and the [compatibility matrix](docs/COMPATIBILITY.md) before relying on a
+> platform or feature.
 
 ## Perspective
 
@@ -66,7 +76,7 @@ Building a distributed collaboration network for the agentic era — where human
 | **Multi-Agent Collaboration** | Connect agents across devices and endpoints into one collaborative network where your workflow and others' naturally converge. |
 | **Extending Agents** | Discover, customize, and add extensions to enhance agent capabilities, reduce operational cost, and maximize the value of every token. |
 | **Seamless Chat with Agents** | Bring agents into any conversation on demand. They join as visible participants, pick up context, and assist in place. |
-| **Customized Workflow** | Adaptive Flywheel is a strategy generator for your way of working: one-shot pipelines, branching flows, or self-looping agent cycles that keep iterating toward the goal. Bind each role's agent, model, and reasoning effort, authorize the exact revision, and let the conversation run it. |
+| **Customized Workflow** | Acativa is a strategy generator for your way of working: one-shot pipelines, branching flows, or self-looping agent cycles that keep iterating toward the goal. Bind each role's agent, model, and reasoning effort, authorize the exact revision, and let the conversation run it. |
 | **Privacy and Security** | Sensitive runtime data stays on the device; default scenarios do not upload plaintext. Peer transfers are end-to-end encrypted before they leave the sender, and no protected content leaves the client without explicit approval, unless you choose Telegram or another external messenger as a trusted channel — details in [Privacy concerns](#privacy-concerns). |
 
 ## Privacy concerns
@@ -78,12 +88,14 @@ authorization-bound path.
 
 **Endpoint-protected peer transfer (preview).** Content is encrypted with the
 selected peer's keys before it leaves the device; the receiving endpoint
-authenticates and verifies it before use. The station is untrusted — it
-supplies no algorithms, keys, or security policy, and its receipts are only
-delivery hints. Lico Arc owns the wire-observable protocol semantics; LicoUp
-keeps private keys, plaintext, history, backups, trust, and approvals. The
-current Preview is not a Lico Arc Profile and retires directly when a pinned
-Lico Arc Protocol Line replaces it.
+authenticates and verifies it before use. The `devices` module executes
+endpoint sessions over `licoarc-client` and connects to an explicitly
+configured `BadTower.js` (`licoarc.mailbox.v1`) candidate station. The station
+is untrusted — it supplies no algorithms, keys, or security policy, and its
+receipts are only delivery hints. Lico Arc owns the wire-observable protocol
+semantics; LicoUp keeps private keys, plaintext, history, backups, trust, and
+approvals. No hosted official network or Published Lico Arc Protocol Line is
+claimed.
 
 ```mermaid
 flowchart LR

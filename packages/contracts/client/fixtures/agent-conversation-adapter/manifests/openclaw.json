@@ -9,6 +9,11 @@
   "officialCapabilityAssessment": {
     "completedBeforeImplementation": true,
     "sourceAuthority": "official",
+    "versionSupport": {
+      "kind": "unknown",
+      "source": "unverified",
+      "reason": "no_verified_vendor_bound"
+    },
     "interfaceName": "official ACP stdio interface",
     "assessedVersion": "version reported by fixed OpenClaw probe",
     "versionProbe": "fixed --version probe",

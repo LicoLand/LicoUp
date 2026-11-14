@@ -70,22 +70,6 @@ test("build-producing tests lease only compiler outputs", async () => {
     cwd: path.join(repoRoot, "apps/desktop"),
   }), ["apps/desktop/build"]);
   assert.deepEqual(module.toolchainTestArtifactTargets({
-    command: "./gradlew",
-    args: [":app:testDebugUnitTest"],
-    cwd: path.join(repoRoot, "apps/desktop/android"),
-  }), [
-    "apps/desktop/build",
-    "build/crates/licoup-native/android-target",
-  ]);
-  assert.deepEqual(module.toolchainTestArtifactTargets({
-    command: "./gradlew",
-    args: [":app:compileDebugKotlin"],
-    cwd: path.join(repoRoot, "apps/desktop/android"),
-  }), [
-    "apps/desktop/build",
-    "build/crates/licoup-native/android-target",
-  ]);
-  assert.deepEqual(module.toolchainTestArtifactTargets({
     command: "flutter",
     args: ["pub", "get", "--offline"],
     cwd: path.join(repoRoot, "apps/desktop"),

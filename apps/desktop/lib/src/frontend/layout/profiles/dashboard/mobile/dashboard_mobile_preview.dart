@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 
-Widget buildDashboardMobilePreview(BuildContext context) {
+Widget buildDashboardMobilePreview(BuildContext context, LayoutStyleId? style) {
   return const DashboardMobilePreview();
 }
 

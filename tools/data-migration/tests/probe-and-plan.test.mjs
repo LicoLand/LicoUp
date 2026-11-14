@@ -37,7 +37,7 @@ test("plan computes forward steps from empty root to latest", () => {
     assert.ok(p.steps.length > 0);
     assert.equal(p.targetVersion, "0.3.0");
 
-    // Adaptive flywheel has 2 steps from 0 to 2
+    // Acativa has 2 steps from 0 to 2
     const flywheelSteps = p.steps.filter((s) => s.domainId === "adaptive-flywheel");
     assert.equal(flywheelSteps.length, 2);
     assert.equal(flywheelSteps[0].fromVersion, 0);

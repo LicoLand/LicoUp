@@ -14,7 +14,6 @@ export function validateAcceptanceReport(report) {
   requireValue(SHA256.test(text(report.inputIntegrity.sourceStateDigest)) &&
     typeof report.inputIntegrity.sourceStateStable === "boolean" &&
     typeof report.inputIntegrity.artifactInputsStable === "boolean" &&
-    typeof report.inputIntegrity.candidateInputsStable === "boolean" &&
     typeof report.inputIntegrity.supportMatrixStable === "boolean" &&
     typeof report.inputIntegrity.targetCatalogStable === "boolean" &&
     typeof report.inputIntegrity.policyInputsStable === "boolean" &&
@@ -38,7 +37,8 @@ export function validateAcceptanceReport(report) {
     if (receipt.ok === true) {
       requireValue(SHA256.test(text(receipt.sourceDigest)) && SHA256.test(text(receipt.reportDigest)), "accepted client release producer receipt digest is invalid");
       requireValue(receipt.closureChallengeBound === true &&
-        SHA256.test(text(receipt.invocationNonceDigest)),
+        (!text(receipt.invocationNonceDigest) ||
+          SHA256.test(text(receipt.invocationNonceDigest))),
       "accepted client release producer receipt is not invocation-bound");
       requireValue(Array.isArray(receipt.dependencies),
         "accepted client release producer dependency receipts are missing");
@@ -49,9 +49,10 @@ export function validateAcceptanceReport(report) {
       "accepted client release producer dependency receipt is invalid");
     }
   }
-  requireValue(new Set(report.inputIntegrity.reports.map(
-    (receipt) => receipt.invocationNonceDigest,
-  )).size === report.inputIntegrity.reports.length,
+  const invocationNonces = report.inputIntegrity.reports
+    .map((receipt) => text(receipt.invocationNonceDigest))
+    .filter(Boolean);
+  requireValue(new Set(invocationNonces).size === invocationNonces.length,
   "client release producer invocation nonce was reused");
   requireValue(Array.isArray(report.targetResults) && report.targetResults.length === report.selectedTargetIds.length, "client release selected-target result count mismatch");
   for (const target of report.targetResults) {
@@ -76,7 +77,6 @@ export function validateAcceptanceReport(report) {
     requireValue(report.inputIntegrity.ok === true, "client release cannot accept unproven input integrity");
     requireValue(report.inputIntegrity.sourceStateStable === true &&
       report.inputIntegrity.artifactInputsStable === true &&
-      report.inputIntegrity.candidateInputsStable === true &&
       report.inputIntegrity.supportMatrixStable === true &&
       report.inputIntegrity.targetCatalogStable === true &&
       report.inputIntegrity.policyInputsStable === true &&

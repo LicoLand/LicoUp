@@ -40,6 +40,7 @@ final class AgentConversationPaneState {
     this.workingDirectory = '',
     this.workingDirectorySelectable = false,
     this.sendAuthorizeActive = false,
+    this.sendGateResolving = false,
     this.permissionRetryTool = '',
     List<TargetCandidate> participantTargets = const [],
     Map<String, String> composerMentionLabels = const {},
@@ -102,6 +103,11 @@ final class AgentConversationPaneState {
   final String workingDirectory;
   final bool workingDirectorySelectable;
   final bool sendAuthorizeActive;
+
+  /// The send-gate reason belongs to the runtime-binding family and a scan or
+  /// binding pass is still resolving it: the unavailable row shows a loading
+  /// indicator instead of a verdict that may clear on its own.
+  final bool sendGateResolving;
   final String permissionRetryTool;
   final List<TargetCandidate> participantTargets;
   final Map<String, String> composerMentionLabels;

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -98,7 +99,9 @@ class ExecutionViewerRecords extends StatelessWidget {
               icon: const Icon(Icons.arrow_downward_rounded, size: 17),
               label: Text(strings.executionProcessLatest),
               style: FilledButton.styleFrom(
-                backgroundColor: colors.surfaceRaised,
+                backgroundColor: (colors.isDark
+                    ? LicoPaneGlass.contentInnerCardFill
+                    : colors.surfaceRaised),
                 foregroundColor: colors.text,
               ),
             ),
@@ -202,7 +205,7 @@ class ExecutionViewerRecords extends StatelessWidget {
             backgroundColor: index == matchIndex
                 ? colors.primary
                 : colors.accentSurface,
-            color: index == matchIndex ? colors.textOnPrimary : colors.text,
+            color: index == matchIndex ? colors.selectionInk : colors.text,
           ),
         ),
       );

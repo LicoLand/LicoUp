@@ -1,4 +1,3 @@
-import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/contracts/generated/client_error.g.dart';
 
 /// Pure validation for native dispatch results. It never mutates UI state.
@@ -39,29 +38,6 @@ abstract final class ConversationRuntimeResultPolicy {
     return wireName.isNotEmpty ? wireName : rawFailureCode(result);
   }
 
-  /// Quota, credit, rate-limit, or provider-capacity failures that may walk the
-  /// Daily Conversation priority list. Matches Subagent MCP markers on both
-  /// raw `error.code` and `error.message` (drivers often keep a generic code).
-  static bool isQuotaOrCapacityFailure(Map<String, dynamic> result) {
-    final nested = result['error'];
-    final code = rawFailureCode(result).toLowerCase();
-    final message = nested is Map
-        ? (nested['message'] ?? '').toString().trim().toLowerCase()
-        : '';
-    const markers = <String>[
-      'quota',
-      'usage_limit',
-      'credit',
-      'rate_limit',
-      'rate-limit',
-      'capacity',
-      'exhaust',
-    ];
-    return markers.any(
-      (marker) => code.contains(marker) || message.contains(marker),
-    );
-  }
-
   static bool outcomeMayBeUnknown(ClientError error) {
     return error.retryable &&
         (error.stage == ClientErrorStage.conversationDispatch ||
@@ -87,7 +63,6 @@ abstract final class ConversationRuntimeResultPolicy {
 
   static bool effectiveSettingsMatch(
     Map<String, dynamic> result, {
-    required bool throughMobileRelay,
     required String requestedModel,
     required String requestedReasoningEffort,
   }) {
@@ -96,17 +71,8 @@ abstract final class ConversationRuntimeResultPolicy {
     if (model.isEmpty && reasoning.isEmpty) {
       return true;
     }
-    Map<String, dynamic>? effective;
-    if (throughMobileRelay) {
-      final polled = agentRelayMap(result['result']);
-      final opened = agentRelayMap(polled?['openedResult']);
-      final execution = agentRelayMap(opened?['execution']);
-      final output = agentRelayMap(execution?['output']);
-      final runtime = agentRelayMap(output?['output']);
-      effective = agentRelayMap(runtime?['effective']);
-    } else {
-      effective = agentRelayMap(result['effective']);
-    }
+    final raw = result['effective'];
+    final effective = raw is Map ? raw : null;
     if (effective == null) {
       return false;
     }

@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/frontend/binding/effect_listener.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/binding/shell_renderer_port.dart';
 import 'package:licoup/src/frontend/environment/environment_projection_adapter.dart';
@@ -19,7 +18,6 @@ import 'package:licoup/src/frontend/shell/projected_layout_chrome_port.dart';
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/shell/shell_binding.dart';
-import 'package:licoup/src/presentation/shell/shell_effect.dart';
 import 'package:licoup/src/presentation/shell/shell_intent.dart';
 import 'package:licoup/src/presentation/shell/shell_projection.dart';
 import 'package:licoup/src/presentation/environment/environment_projection.dart';
@@ -37,7 +35,6 @@ class ClientShell extends StatefulWidget {
 
 class _ClientShellState extends State<ClientShell>
     implements LayoutDestinationContentPort {
-  late GlobalKey _agentsHomeKey;
   final LayoutFocusCoordinator _focusCoordinator = LayoutFocusCoordinator();
   final ValueNotifier<bool> _auxChromePanelOpen = ValueNotifier<bool>(false);
   late LayoutChromeFeatures _chromeFeatures;
@@ -48,7 +45,6 @@ class _ClientShellState extends State<ClientShell>
   @override
   void initState() {
     super.initState();
-    _agentsHomeKey = widget.renderer.createAgentsHomeKey();
     _chromeFeatures = widget.renderer.createChromeFeatures(_auxChromePanelOpen);
     _layoutChrome = _createLayoutChrome();
   }
@@ -58,7 +54,6 @@ class _ClientShellState extends State<ClientShell>
     super.didUpdateWidget(oldWidget);
     final rendererChanged = !identical(oldWidget.renderer, widget.renderer);
     if (rendererChanged) {
-      _agentsHomeKey = widget.renderer.createAgentsHomeKey();
       _chromeFeatures = widget.renderer.createChromeFeatures(
         _auxChromePanelOpen,
       );
@@ -89,49 +84,42 @@ class _ClientShellState extends State<ClientShell>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: EffectListener<ShellEffect>(
-        source: widget.binding.effects,
-        onEffect: _handleEffect,
-        child: ProjectionBuilder<EnvironmentProjection, EnvironmentProjection>(
-          source: widget.binding.environment,
-          select: _environmentProjection,
-          builder: (context, projectedEnvironment) => LayoutBuilder(
-            builder: (context, constraints) {
-              final environment = collectLayoutEnvironment(
-                context,
-                constraints,
-                projectedEnvironment.runtimeSurface,
-              );
-              _scheduleEnvironmentUpdate(
-                projected: projectedEnvironment.environment,
-                measured: environment,
-              );
-              return ProjectionBuilder<LayoutProjection, LayoutSelectionState>(
-                source: widget.binding.layout,
-                select: _layoutProjection,
-                builder: (context, selection) =>
-                    ProjectionBuilder<
-                      NavigationProjection,
-                      NavigationProjection
-                    >(
-                      source: widget.binding.navigation,
-                      select: _navigationProjection,
-                      builder: (context, navigation) =>
-                          ProjectionBuilder<StatusProjection, StatusProjection>(
-                            source: widget.binding.status,
-                            select: _statusProjection,
-                            builder: (context, status) => _buildLayoutHost(
-                              context,
-                              environment,
-                              selection,
-                              navigation,
-                              status,
-                            ),
+      body: ProjectionBuilder<EnvironmentProjection, EnvironmentProjection>(
+        source: widget.binding.environment,
+        select: _environmentProjection,
+        builder: (context, projectedEnvironment) => LayoutBuilder(
+          builder: (context, constraints) {
+            final environment = collectLayoutEnvironment(
+              context,
+              constraints,
+              projectedEnvironment.runtimeSurface,
+            );
+            _scheduleEnvironmentUpdate(
+              projected: projectedEnvironment.environment,
+              measured: environment,
+            );
+            return ProjectionBuilder<LayoutProjection, LayoutSelectionState>(
+              source: widget.binding.layout,
+              select: _layoutProjection,
+              builder: (context, selection) =>
+                  ProjectionBuilder<NavigationProjection, NavigationProjection>(
+                    source: widget.binding.navigation,
+                    select: _navigationProjection,
+                    builder: (context, navigation) =>
+                        ProjectionBuilder<StatusProjection, StatusProjection>(
+                          source: widget.binding.status,
+                          select: _statusProjection,
+                          builder: (context, status) => _buildLayoutHost(
+                            context,
+                            environment,
+                            selection,
+                            navigation,
+                            status,
                           ),
-                    ),
-              );
-            },
-          ),
+                        ),
+                  ),
+            );
+          },
         ),
       ),
     );
@@ -145,25 +133,28 @@ class _ClientShellState extends State<ClientShell>
     StatusProjection status,
   ) {
     final colors = context.licoColors;
-    return LayoutChromeFeaturesScope(
-      features: _chromeFeatures,
-      child: LayoutHost(
-        selection: selection,
-        registry: widget.renderer.layoutRegistry,
-        stateStore: widget.renderer.layoutStateStore,
-        environment: environment,
-        destination: navigation.destination,
-        availableDestinations: navigation.destinations,
-        onSelectDestination: (destination) =>
-            widget.binding.intents.send(SelectShellDestination(destination)),
-        destinationLabel: (destination) =>
-            _destinationLabel(LicoStrings.of(context), destination),
-        content: this,
-        focusCoordinator: _focusCoordinator,
-        primaryFocusTarget: LayoutFocusTargets.primaryLandmark,
-        loadingBuilder: (context) => _startupLoading(context, status),
-        palette: layoutPaletteFromColors(colors),
-        chrome: _layoutChrome,
+    return widget.renderer.wrapShellContent(
+      context,
+      LayoutChromeFeaturesScope(
+        features: _chromeFeatures,
+        child: LayoutHost(
+          selection: selection,
+          registry: widget.renderer.layoutRegistry,
+          stateStore: widget.renderer.layoutStateStore,
+          environment: environment,
+          destination: navigation.destination,
+          availableDestinations: navigation.destinations,
+          onSelectDestination: (destination) =>
+              widget.binding.intents.send(SelectShellDestination(destination)),
+          destinationLabel: (destination) =>
+              _destinationLabel(LicoStrings.of(context), destination),
+          content: this,
+          focusCoordinator: _focusCoordinator,
+          primaryFocusTarget: LayoutFocusTargets.primaryLandmark,
+          loadingBuilder: (context) => _startupLoading(context, status),
+          palette: layoutPaletteFromColors(colors),
+          chrome: _layoutChrome,
+        ),
       ),
     );
   }
@@ -188,21 +179,9 @@ class _ClientShellState extends State<ClientShell>
     });
   }
 
-  void _handleEffect(ShellEffect effect) {
-    if (effect case ShellDestinationReselected(
-      destination: ClientSection.agents,
-    )) {
-      widget.renderer.resetAgentsHome(_agentsHomeKey);
-    }
-  }
-
   @override
   Widget buildDestination(BuildContext context, ClientSection destination) =>
-      widget.renderer.buildDestination(
-        context,
-        destination,
-        agentsHomeKey: _agentsHomeKey,
-      );
+      widget.renderer.buildDestination(context, destination);
 
   String _destinationLabel(LicoStrings strings, ClientSection section) =>
       switch (section) {
@@ -210,7 +189,7 @@ class _ClientShellState extends State<ClientShell>
         ClientSection.monitoring => strings.tokenUsage,
         ClientSection.skillHub => strings.skillHub,
         ClientSection.pluginManagement => strings.pluginManagement,
-        ClientSection.mobileRelay => strings.mobileRelay,
+        ClientSection.devices => strings.devices,
         ClientSection.models => strings.modelGateway,
         ClientSection.settings => strings.settings,
         ClientSection.agentHub => strings.agentHub,
@@ -228,6 +207,16 @@ NavigationProjection _navigationProjection(NavigationProjection value) => value;
 StatusProjection _statusProjection(StatusProjection value) => value;
 
 Widget _startupLoading(BuildContext context, StatusProjection status) {
+  // No layout surface exists before storage admission. Keep both progress
+  // and terminal bootstrap errors readable in a transparent native window.
+  return ColoredBox(
+    key: const Key('client-startup-surface'),
+    color: Theme.of(context).colorScheme.surface.withValues(alpha: 1),
+    child: _startupContent(context, status),
+  );
+}
+
+Widget _startupContent(BuildContext context, StatusProjection status) {
   if (status.errorCode.isEmpty) {
     return const Center(child: LicoLoadingIndicator());
   }

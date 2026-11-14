@@ -303,12 +303,14 @@ final class SettingsPresentationHub {
           controller.appearancePresetLoadErrors.length,
       reduceMotion: controller.reduceMotion,
       loadingEffectId: controller.loadingEffectId,
+      planContributions: controller.planContributions,
     );
   }
 
   static SettingsLayoutInputs _readLayout(ClientController controller) {
     final layout = controller.layoutManager;
     final layoutState = layout.state;
+    final committedProfile = layout.catalog.profile(layoutState.committedId);
     return SettingsLayoutInputs(
       layoutChoices: [
         for (final profile in layout.catalog.profiles)
@@ -320,6 +322,15 @@ final class SettingsPresentationHub {
             enabled:
                 layoutState.status != LayoutSelectionStatus.committing &&
                 profile.selectable,
+          ),
+      ],
+      layoutStyleChoices: [
+        for (final style in committedProfile?.styles ?? const [])
+          PresentationChoice(
+            id: style.id.value,
+            label: style.label.english,
+            selected: style.id == layoutState.effectiveStyleId,
+            enabled: layoutState.status != LayoutSelectionStatus.committing,
           ),
       ],
       layoutPhase: switch (layoutState.status) {
@@ -335,13 +346,16 @@ final class SettingsPresentationHub {
   static SettingsStorageInputs _readStorage(ClientController controller) {
     return SettingsStorageInputs(
       portableDataPath: controller.portableDataPath,
+      portableDataSource: controller.portableDataSource,
+      previousDataHomePath: controller.portableDataPreviousRootPath,
+      previousDataHomeAvailable: controller.portableDataPreviousRootAvailable,
       snapshotRootPath: controller.snapshotRootDraft,
       savingSnapshotRoot: controller.isSavingSnapshotRoot,
     );
   }
 
   static SettingsUpdateInputs _readUpdate(ClientController controller) {
-    final update = controller.clientUpdateStatus;
+    final update = controller.clientUpdateController.status;
     return SettingsUpdateInputs(
       status: SettingsClientUpdateProjection(
         phase: update.phase,
@@ -573,6 +587,16 @@ final settingsAutostartFieldGroup =
       name: 'inputs',
     );
 
+/// Stable resource identity for the terminal-command region.
+final settingsTerminalCommandFieldGroup =
+    ResourceFieldGroup<SettingsTerminalCommandProjection>(
+      resource: ResourceKey(
+        scope: const ResourceScope('settings'),
+        stableKey: 'terminal-command',
+      ),
+      name: 'inputs',
+    );
+
 /// Stable resource identity for the resource-usage region.
 final settingsResourceUsageFieldGroup =
     ResourceFieldGroup<SettingsResourceUsageProjection>(
@@ -608,5 +632,18 @@ settingsResourceUsagePresentationSource(
     fieldGroup: settingsResourceUsageFieldGroup,
     source: source,
     epochId: 'settings-resource-usage-${_sharedEpochCounter++}',
+  );
+}
+
+/// Creates the terminal-command presentation source over the existing
+/// terminal-command application source.
+SettingsValuePresentationSource<SettingsTerminalCommandProjection>
+settingsTerminalCommandPresentationSource(
+  ProjectionSource<SettingsTerminalCommandProjection> source,
+) {
+  return SettingsValuePresentationSource<SettingsTerminalCommandProjection>(
+    fieldGroup: settingsTerminalCommandFieldGroup,
+    source: source,
+    epochId: 'settings-terminal-command-${_sharedEpochCounter++}',
   );
 }

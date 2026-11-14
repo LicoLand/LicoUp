@@ -21,7 +21,7 @@ class CanonicalGroupRoster extends StatelessWidget {
     required this.conversation,
     required this.targets,
     required this.onMentionAgent,
-    this.onOpenAgentConversations,
+    this.onOpenMemberHistory,
     this.onBoundaryOverscroll,
     this.quotaSnapshots = const <String, ProviderQuotaSnapshot>{},
   });
@@ -29,49 +29,17 @@ class CanonicalGroupRoster extends StatelessWidget {
   final ClientConversation conversation;
   final List<TargetCandidate> targets;
   final ValueChanged<TargetCandidate> onMentionAgent;
-  final ValueChanged<TargetCandidate>? onOpenAgentConversations;
+
+  /// Opens the member's in-group conversation history anchored at the tap
+  /// position. A single tap replaces the former double-tap plus context-menu
+  /// path; a null handler keeps the tap on the mention affordance.
+  final void Function(TargetCandidate target, Offset globalPosition)?
+  onOpenMemberHistory;
   final ValueChanged<double>? onBoundaryOverscroll;
 
   /// Immutable provider-quota projection keyed by agent id. Members without
   /// an entry render no ring and no hover card — never placeholder data.
   final Map<String, ProviderQuotaSnapshot> quotaSnapshots;
-
-  Future<void> _showAgentMenu({
-    required BuildContext context,
-    required TargetCandidate target,
-    required String label,
-    required Offset globalPosition,
-  }) async {
-    final strings = LicoStrings.of(context);
-    final action = await showMessagingGlassMenu<_CanonicalGroupRosterAction>(
-      context: context,
-      globalPosition: globalPosition,
-      menuKey: Key('canonical-group-roster-menu-${target.target}'),
-      actions: [
-        MessagingGlassMenuAction(
-          value: _CanonicalGroupRosterAction.mention,
-          label: strings.mentionAgent(label),
-          leading: const Icon(Icons.alternate_email_rounded, size: 17),
-        ),
-        if (onOpenAgentConversations != null)
-          MessagingGlassMenuAction(
-            value: _CanonicalGroupRosterAction.openConversations,
-            label: strings.openAgentConversations(label),
-            leading: const Icon(Icons.forum_outlined, size: 17),
-          ),
-      ],
-    );
-    switch (action) {
-      case _CanonicalGroupRosterAction.mention:
-        onMentionAgent(target);
-        break;
-      case _CanonicalGroupRosterAction.openConversations:
-        onOpenAgentConversations?.call(target);
-        break;
-      case null:
-        break;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -105,15 +73,10 @@ class CanonicalGroupRoster extends StatelessWidget {
             ),
             itemBuilder: (context, index) {
               final target = targets[index];
-              final membership = membershipsByAgentId[target.target];
-              final membershipLabel =
-                  membership?.principal.displayName.trim() ?? '';
-              final fullLabel =
-                  agentProductDisplayName(target.target) ??
-                  agentProductDisplayName(target.id) ??
-                  (membershipLabel.isEmpty
-                      ? agentConversationTargetDisplayName(target)
-                      : membershipLabel);
+              final fullLabel = canonicalGroupMemberLabel(
+                target,
+                membershipsByAgentId[target.target],
+              );
               final compactLabel = agentConversationTargetCompactDisplayName(
                 target,
               );
@@ -127,19 +90,21 @@ class CanonicalGroupRoster extends StatelessWidget {
                 // tooltip so the capsule keeps its true stadium silhouette.
                 child: MouseRegion(
                   cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    key: Key('canonical-group-roster-agent-${target.target}'),
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => onMentionAgent(target),
-                    onDoubleTap: onOpenAgentConversations == null
-                        ? null
-                        : () => onOpenAgentConversations!(target),
-                    onSecondaryTapDown: (details) => _showAgentMenu(
-                      context: context,
-                      target: target,
-                      label: compactLabel,
-                      globalPosition: details.globalPosition,
+                  child: _CanonicalGroupRosterMemberTap(
+                    memberKey: Key(
+                      'canonical-group-roster-agent-${target.target}',
                     ),
+                    onTap: onOpenMemberHistory == null
+                        ? (position) => onMentionAgent(target)
+                        : (position) => onOpenMemberHistory!(target, position),
+                    onSecondaryTapDown: (details) =>
+                        showCanonicalGroupMemberMenu(
+                          context: context,
+                          target: target,
+                          label: compactLabel,
+                          globalPosition: details.globalPosition,
+                          onMentionAgent: onMentionAgent,
+                        ),
                     // Anchor the relay dot to the avatar box itself: the
                     // ListView stretches items to the capsule width, so a
                     // bare Stack would pin the dot past the icon's edge.
@@ -231,7 +196,93 @@ class CanonicalGroupRoster extends StatelessWidget {
   }
 }
 
-enum _CanonicalGroupRosterAction { mention, openConversations }
+/// Member avatar hit target: a single tap opens the member's in-group
+/// conversation history anchored at the tap position; secondary click still
+/// offers the mention menu. The tap position is captured on pointer-up so the
+/// floating menu can anchor beside the avatar.
+final class _CanonicalGroupRosterMemberTap extends StatefulWidget {
+  const _CanonicalGroupRosterMemberTap({
+    required this.memberKey,
+    required this.onTap,
+    required this.onSecondaryTapDown,
+    required this.child,
+  });
+
+  final Key memberKey;
+  final ValueChanged<Offset> onTap;
+  final GestureTapDownCallback onSecondaryTapDown;
+  final Widget child;
+
+  @override
+  State<_CanonicalGroupRosterMemberTap> createState() =>
+      _CanonicalGroupRosterMemberTapState();
+}
+
+final class _CanonicalGroupRosterMemberTapState
+    extends State<_CanonicalGroupRosterMemberTap> {
+  Offset _lastTapPosition = Offset.zero;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      key: widget.memberKey,
+      behavior: HitTestBehavior.opaque,
+      onTapUp: (details) => _lastTapPosition = details.globalPosition,
+      onTap: () => widget.onTap(_lastTapPosition),
+      onSecondaryTapDown: widget.onSecondaryTapDown,
+      child: widget.child,
+    );
+  }
+}
+
+enum _CanonicalGroupRosterAction { mention }
+
+/// The name a group member goes by: the product name when the agent is a
+/// known product, otherwise the membership's display name, otherwise the
+/// target's own label.
+String canonicalGroupMemberLabel(
+  TargetCandidate target,
+  ClientConversationMembership? membership,
+) {
+  final membershipLabel = membership?.principal.displayName.trim() ?? '';
+  return agentProductDisplayName(target.target) ??
+      agentProductDisplayName(target.id) ??
+      (membershipLabel.isEmpty
+          ? agentConversationTargetDisplayName(target)
+          : membershipLabel);
+}
+
+/// Secondary-click menu for one group member: mention it in the composer.
+/// Opening the member's in-group history is the primary single-tap path, so
+/// the menu no longer duplicates it.
+Future<void> showCanonicalGroupMemberMenu({
+  required BuildContext context,
+  required TargetCandidate target,
+  required String label,
+  required Offset globalPosition,
+  required ValueChanged<TargetCandidate> onMentionAgent,
+}) async {
+  final strings = LicoStrings.of(context);
+  final action = await showMessagingGlassMenu<_CanonicalGroupRosterAction>(
+    context: context,
+    globalPosition: globalPosition,
+    menuKey: Key('canonical-group-roster-menu-${target.target}'),
+    actions: [
+      MessagingGlassMenuAction(
+        value: _CanonicalGroupRosterAction.mention,
+        label: strings.mentionAgent(label),
+        leading: const Icon(Icons.alternate_email_rounded, size: 17),
+      ),
+    ],
+  );
+  switch (action) {
+    case _CanonicalGroupRosterAction.mention:
+      onMentionAgent(target);
+      break;
+    case null:
+      break;
+  }
+}
 
 /// Only snapshots with usable quota windows render chrome; unavailable or
 /// window-less entries behave exactly like a missing snapshot.

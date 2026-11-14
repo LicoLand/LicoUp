@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:presentation_runtime/presentation_runtime.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
@@ -15,10 +17,15 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/mascot/mascot_catalog.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/conversation/conversation_markdown_port.dart';
+import 'package:licoup/src/projections/conversation/conversation_markdown_preparation.dart';
+
+import '../presentation/conversation_markdown/prepared_message_markdown_harness.dart';
+import '../support/bundled_font_loader.dart';
 
 void main() {
   group('buildMessagingFlowEntries', () {
@@ -327,7 +334,13 @@ void main() {
     expect(find.text('AGENT'), findsNWidgets(2));
     expect(find.byType(AgentBrandIcon), findsNWidgets(2));
     expect(find.byKey(const Key('messaging-user-avatar')), findsNWidgets(2));
-    expect(find.byIcon(Icons.person_outline_rounded), findsNWidgets(2));
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('messaging-user-avatar')),
+        matching: find.byType(MascotImage),
+      ),
+      findsNWidgets(2),
+    );
     expect(find.text('Today'), findsOneWidget);
     expect(find.text('Yesterday'), findsOneWidget);
     expect(find.text('old request', findRichText: true), findsOneWidget);
@@ -606,12 +619,14 @@ void main() {
       final themeColors = Theme.of(
         tester.element(find.byWidget(assistantBubble)),
       ).extension<LicoThemeColors>()!;
-      final expectedVeil = MessagingDesktopMetrics.agentBubbleVeilFill(
-        isDark: themeColors.isDark,
-      );
+      // Dark bubbles are a white 5.5% tint over the glass ground; light
+      // keeps the solid surface fill.
+      final expectedFill = themeColors.isDark
+          ? const Color(0xB807070A)
+          : themeColors.surface;
       for (final bubble in [assistantBubble, subagentBubble]) {
         final decoration = bubbleDecoration(bubble);
-        expect(decoration.color, expectedVeil);
+        expect(decoration.color, expectedFill);
         expect(decoration.color, isNot(equals(themeColors.accentSurface)));
         expect(decoration.gradient, isNull);
       }
@@ -639,10 +654,8 @@ void main() {
     );
 
     expect(find.byKey(const Key('messaging-assistant-avatar')), findsNothing);
-    expect(
-      find.byKey(const Key('messaging-agent-avatar-well')),
-      findsOneWidget,
-    );
+    // The header renders the bare agent brand mark — no identity well.
+    expect(find.byType(AgentBrandIcon), findsOneWidget);
   });
 
   testWidgets(
@@ -668,10 +681,9 @@ void main() {
         of: find.text('agent reply', findRichText: true),
         matching: find.byKey(const Key('messaging-message-bubble')),
       );
-      final agentRow = find.ancestor(
-        of: agentBubble,
-        matching: find.byType(MouseRegion),
-      );
+      final agentRow = find
+          .ancestor(of: agentBubble, matching: find.byType(MouseRegion))
+          .last;
       final agentTimestamp = find.descendant(
         of: agentRow,
         matching: find.byKey(const Key('messaging-message-hover-timestamp')),
@@ -759,7 +771,9 @@ void main() {
       ).formatTimeOfDay(TimeOfDay.fromDateTime(messageAt.toLocal()));
 
       final bubble = find.byKey(const Key('messaging-message-bubble'));
-      final row = find.ancestor(of: bubble, matching: find.byType(MouseRegion));
+      final row = find
+          .ancestor(of: bubble, matching: find.byType(MouseRegion))
+          .last;
       final heightBeforeHover = tester.getSize(row).height;
       final hoverTimestamp = find.byKey(
         const Key('messaging-message-hover-timestamp'),
@@ -810,7 +824,13 @@ void main() {
       findsOneWidget,
     );
     expect(find.byKey(const Key('messaging-user-avatar')), findsOneWidget);
-    expect(find.byIcon(Icons.person_outline_rounded), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('messaging-user-avatar')),
+        matching: find.byType(MascotImage),
+      ),
+      findsOneWidget,
+    );
 
     final agentGroupFinder = find.byKey(
       const Key('messaging-agent-message-group'),
@@ -861,7 +881,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('user bubbles use frosted glass instead of solid brandSurface', (
+  testWidgets('user bubbles use the accent tint over glass in dark', (
     tester,
   ) async {
     final now = DateTime.now();
@@ -882,9 +902,20 @@ void main() {
       ),
     );
     final decoration = animated.decoration! as ShapeDecoration;
-    expect(decoration.color, Colors.transparent);
-    expect(decoration.gradient, isNull);
-    expect(decoration.color, isNot(themeColors.brandSurface));
+    // Dark: an opaque deep-violet diagonal with a violet rim hairline;
+    // the brand gold gradient stays only in light.
+    if (themeColors.isDark) {
+      final gradient = decoration.gradient as LinearGradient?;
+      expect(gradient, isNotNull);
+      expect(
+        gradient!.colors,
+        MessagingUserBubbleGlass.deepVioletBody(themeColors.accent),
+      );
+    } else {
+      final gradient = decoration.gradient as LinearGradient;
+      expect(gradient.colors, contains(themeColors.primaryStrong));
+      expect(gradient.colors, contains(themeColors.primary));
+    }
     expect(tester.takeException(), isNull);
   });
 
@@ -1112,6 +1143,87 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('user bubble code sits on translucent on-brand ink, agent '
+      'keeps the opaque surface tone', (tester) async {
+    await loadBundledVisualFonts();
+    final runtime = PresentationRuntime();
+    final preparation = conversationMarkdownTestPreparation(runtime: runtime);
+    addTearDown(() {
+      unawaited(preparation.dispose());
+      runtime.dispose();
+    });
+    await _pumpFlow(tester, [
+      _messageItem('k1', 'assistant', 'see `agent-thing` here', _at(10, 0)),
+      _messageItem(
+        'k2',
+        'user',
+        '**Changed** `path/to/output`: refresh `sha256:abc` complete',
+        _at(10, 1),
+      ),
+    ], preparation: preparation);
+
+    bool preparedSpanVisible(String fragment) {
+      for (final rich in tester.widgetList<RichText>(
+        find.textContaining(fragment, findRichText: true),
+      )) {
+        var found = false;
+        (rich.text as TextSpan).visitChildren((span) {
+          if (span is TextSpan &&
+              (span.text ?? '').contains(fragment) &&
+              span.style?.backgroundColor != null) {
+            found = true;
+          }
+          return true;
+        });
+        if (found) return true;
+      }
+      return false;
+    }
+
+    await waitForConversationMarkdown(
+      tester,
+      () => preparedSpanVisible('path/to/output'),
+      description: 'the prepared user code span',
+    );
+
+    final flowContext = tester.element(find.byType(MessagingParticipantFlow));
+    final colors = flowContext.licoColors;
+
+    TextSpan codeSpanOf(String fragment) {
+      final rich = tester.widget<RichText>(
+        find.textContaining(fragment, findRichText: true),
+      );
+      final spans = <TextSpan>[];
+      (rich.text as TextSpan).visitChildren((span) {
+        if (span is TextSpan && (span.text ?? '').contains(fragment)) {
+          spans.add(span);
+        }
+        return true;
+      });
+      return spans.single;
+    }
+
+    final userCode = codeSpanOf('path/to/output');
+    expect(userCode.style?.backgroundColor, colors.textOnPrimary.withAlpha(30));
+    expect(userCode.style?.backgroundColor?.a, lessThan(0.5));
+
+    final agentCode = codeSpanOf('agent-thing');
+    expect(
+      agentCode.style?.backgroundColor,
+      agentConversationToneColor(
+        colors,
+        AgentRenderAdapter.fallback().codeTone,
+      ),
+    );
+    expect(agentCode.style?.backgroundColor?.a, 1.0);
+    await expectLater(
+      find.byType(MessagingUserBubbleGlass),
+      matchesGoldenFile('goldens/user_bubble_inline_code.png'),
+    );
+    expect(tester.takeException(), isNull);
+    await finishConversationMarkdownTest(tester, preparation, runtime);
+  });
 }
 
 ConversationMessageTimelineItem _participantMessageItem(
@@ -1182,46 +1294,53 @@ Future<void> _pumpFlow(
   Future<void> Function(String)? onDeleteMessage,
   bool assistantActive = false,
   double viewportHeight = 600,
+  ConversationMarkdownPreparation? preparation,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = Size(800, viewportHeight);
   addTearDown(tester.view.resetDevicePixelRatio);
   addTearDown(tester.view.resetPhysicalSize);
   await tester.pumpWidget(
-    MaterialApp(
-      locale: const Locale('en'),
-      supportedLocales: LicoStrings.supportedLocales,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
+    ProviderScope(
+      overrides: [
+        if (preparation != null)
+          conversationMarkdownPortProvider.overrideWithValue(preparation),
       ],
-      theme: buildLicoTheme(platformBrightness: Brightness.dark),
-      home: Scaffold(
-        body: SizedBox(
-          width: 800,
-          height: viewportHeight,
-          child: MessagingParticipantFlow(
-            items: newestFirst,
-            adapter: AgentRenderAdapter.fallback(),
-            target: TargetCandidate(
-              target: 'codex',
-              label: 'Codex',
-              kind: 'cli',
-              status: 'detected',
-              configured: true,
-              confidence: 1,
-              adapterStatus: 'implemented',
+      child: MaterialApp(
+        locale: const Locale('en'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: SizedBox(
+            width: 800,
+            height: viewportHeight,
+            child: MessagingParticipantFlow(
+              items: newestFirst,
+              adapter: AgentRenderAdapter.fallback(),
+              target: TargetCandidate(
+                target: 'codex',
+                label: 'Codex',
+                kind: 'cli',
+                status: 'detected',
+                configured: true,
+                confidence: 1,
+                adapterStatus: 'implemented',
+              ),
+              participantTargets: participantTargets,
+              participantRuntimeProfiles: participantRuntimeProfiles,
+              assistantActive: assistantActive,
+              scrollController: scrollController,
+              hasEarlier: hasEarlier,
+              onLoadEarlier: onLoadEarlier,
+              onCopyText: onCopyText,
+              onRetryMessage: onRetryMessage,
+              onDeleteMessage: onDeleteMessage,
             ),
-            participantTargets: participantTargets,
-            participantRuntimeProfiles: participantRuntimeProfiles,
-            assistantActive: assistantActive,
-            scrollController: scrollController,
-            hasEarlier: hasEarlier,
-            onLoadEarlier: onLoadEarlier,
-            onCopyText: onCopyText,
-            onRetryMessage: onRetryMessage,
-            onDeleteMessage: onDeleteMessage,
           ),
         ),
       ),

@@ -86,13 +86,13 @@ void main() {
     );
     expect(
       runner.calls.where(
-        (call) => call.take(3).join(' ') == 'llm-gateway service stop',
+        (call) => call.take(3).join(' ') == 'gateway service stop',
       ),
       isNotEmpty,
     );
     expect(
       runner.calls.where(
-        (call) => call.take(3).join(' ') == 'llm-gateway service start',
+        (call) => call.take(3).join(' ') == 'gateway service start',
       ),
       isNotEmpty,
     );
@@ -217,9 +217,7 @@ final class _FakeTelegramRunner implements AgentCommandRunner {
   @override
   Future<Map<String, dynamic>> runCli(List<String> args) async {
     calls.add(List.of(args));
-    if (args.length >= 3 &&
-        (args[0] == 'gateway' || args[0] == 'llm-gateway') &&
-        args[1] == 'service') {
+    if (args.length >= 3 && args[0] == 'gateway' && args[1] == 'service') {
       final action = args[2];
       return {
         'ok': true,

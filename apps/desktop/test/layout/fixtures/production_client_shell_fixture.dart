@@ -12,15 +12,18 @@ import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/generated/client_state.g.dart';
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/llm_gateway_diagnostics.dart';
-import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/presentation/layout/built_in_layout_catalog.dart';
+
+import 'package:licoup/src/frontend/shared/mascot/self_mascot_identity.dart';
 
 import '../../presentation/composed_client_shell_test_helper.dart';
 import '../../support/fake_conversation_transport.dart';
@@ -63,8 +66,12 @@ final class ProductionClientShellFixture {
     required Size size,
     required Brightness brightness,
     ClientConversationNativePort? conversationNativePort,
+    LayoutStyleId? layoutStyleId,
   }) async {
     final layoutCatalog = createBuiltInLayoutCatalog();
+    // Golden baselines keep the deterministic self face; the composed
+    // application would otherwise pick a random first-run mascot.
+    selfMascotIdentity.value = 'lico';
     // The production baseline renders the out-of-box preference: the
     // system-following preset, which resolves per platform brightness.
     const appearancePresetId = 'default-system';
@@ -73,6 +80,7 @@ final class ProductionClientShellFixture {
         layoutProfileId: profileId,
         appearancePresetId: appearancePresetId,
         localePreference: LocalePreference.english,
+        layoutStyleIds: {profileId: ?layoutStyleId},
       ),
     );
     final targets = _fixtureTargets();
@@ -115,9 +123,14 @@ final class ProductionClientShellFixture {
       ..statusMessage = 'Deterministic layout baseline ready.'
       ..portableDataPath = ''
       ..scannedTargets = targets
-      ..agentTabOrder = [primaryTarget.target]
-      ..mobileRelayConfig = _fixtureMobileRelayConfig();
+      ..agentTabOrder = [primaryTarget.target];
 
+    if (destination == ClientSection.agentHub) {
+      // Populate the catalog the way the section entry hook does on a real
+      // launch, so the baseline renders the populated grid instead of the
+      // first-frame empty scan.
+      await controller.agentHubCatalogController.refresh();
+    }
     if (destination == ClientSection.agents) {
       final session = _fixtureConversation(primaryTarget);
       controller
@@ -248,8 +261,9 @@ final class InMemoryPresentationPreferencesRepository
       PresentationPreferencesLoadResult(preferences: _preferences);
 
   @override
-  Future<PresentationPreferences> setReduceMotion(bool enabled) async =>
-      _preferences = _preferences.copyWith(reduceMotion: enabled);
+  Future<PresentationPreferences> setReduceMotion(
+    ReduceMotionPreference preference,
+  ) async => _preferences = _preferences.copyWith(reduceMotion: preference);
 
   @override
   Future<PresentationPreferences> setLoadingEffect(String id) async =>
@@ -264,9 +278,23 @@ final class InMemoryPresentationPreferencesRepository
       _preferences = _preferences.copyWith(layoutProfileId: id);
 
   @override
+  Future<PresentationPreferences> setLayoutStyle(
+    LayoutProfileId profile,
+    LayoutStyleId style,
+  ) async => _preferences = _preferences.copyWith(
+    layoutStyleIds: {..._preferences.layoutStyleIds, profile: style},
+  );
+
+  @override
   Future<PresentationPreferences> setLocalePreference(
     String preference,
   ) async => _preferences = _preferences.copyWith(localePreference: preference);
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) async => _preferences = _preferences.withResourceSelection(kind, selection);
 }
 
 final class _FixtureAgentService extends AgentService {
@@ -301,6 +329,24 @@ final class _FixtureAgentService extends AgentService {
 
   @override
   Future<Map<String, dynamic>> runCli(List<String> args) async {
+    if (args.length >= 2 && args.first == 'agent-hub' && args[1] == 'catalog') {
+      return {
+        'ok': true,
+        'scanGeneration': 1,
+        'cards': _fixtureAgentHubCards(),
+      };
+    }
+    if (args.length >= 2 && args.first == 'devices' && args[1] == 'status') {
+      return const {
+        'ok': true,
+        'enrolled': false,
+        'legacyPairingsDetected': false,
+        'station': null,
+        'mailboxId': null,
+        'peers': <Map<String, Object?>>[],
+        'pairings': <Map<String, Object?>>[],
+      };
+    }
     if (args.length >= 2 && args.first == 'agent-usage' && args[1] == 'scan') {
       return {
         'schemaVersion': AgentUsageReport.currentSchemaVersion,
@@ -365,6 +411,113 @@ final class _FixtureConversationService extends AgentConversationService {
 
 const String _fixtureTimestamp = '2020-01-02T03:04:00Z';
 
+/// Deterministic Agent Hub catalog mirroring the approved design lab roster:
+/// the resident assistant, the extensible entry point, the tool agents and one
+/// not-installed tile so the grid renders both status styles.
+List<Map<String, dynamic>> _fixtureAgentHubCards() => [
+  _fixtureAgentHubCard(
+    id: 'lico-assistant',
+    label: 'Lico Assistant',
+    summary: 'The resident assistant that keeps track of ongoing work.',
+    present: true,
+    ownership: 'owned',
+    lifecycle: 'ready',
+    primaryAction: 'open',
+  ),
+  _fixtureAgentHubCard(
+    id: 'lico-agent',
+    label: 'Lico Agent',
+    summary: 'The extensible agent entry point with custom capabilities.',
+    present: true,
+    ownership: 'owned',
+    lifecycle: 'ready',
+    primaryAction: 'open',
+    installedVersion: '1.0',
+  ),
+  _fixtureAgentHubCard(
+    id: 'claude-code',
+    label: 'Claude Code',
+    summary: 'Terminal coding agent that reads, writes and runs code.',
+    present: true,
+    lifecycle: 'detected',
+    primaryAction: 'open',
+    installedVersion: '2.1',
+    installable: true,
+  ),
+  _fixtureAgentHubCard(
+    id: 'codex',
+    label: 'Codex',
+    summary: 'Coding agent focused on review and autonomous edits.',
+    present: true,
+    lifecycle: 'detected',
+    primaryAction: 'open',
+    installedVersion: '0.9',
+    installable: true,
+  ),
+  _fixtureAgentHubCard(
+    id: 'cursor',
+    label: 'Cursor',
+    summary: 'Coding agent strong at code completion and quick edits.',
+    present: true,
+    lifecycle: 'detected',
+    primaryAction: 'open',
+    installedVersion: '1.7',
+    installable: true,
+  ),
+  _fixtureAgentHubCard(
+    id: 'kimi-code',
+    label: 'Kimi Code',
+    summary: 'Long-context coding agent that reads the whole repository.',
+    present: true,
+    lifecycle: 'detected',
+    primaryAction: 'open',
+    installedVersion: '1.2',
+    installable: true,
+  ),
+  _fixtureAgentHubCard(
+    id: 'deepseek-harness',
+    label: 'DeepSeek Harness',
+    summary: 'Automated test agent that runs suites and reports results.',
+    present: true,
+    lifecycle: 'detected',
+    primaryAction: 'open',
+    installedVersion: '0.6',
+    installable: true,
+  ),
+  _fixtureAgentHubCard(
+    id: 'github-copilot',
+    label: 'GitHub Copilot',
+    summary: 'Pair-programming agent for completion and answers.',
+    present: false,
+    lifecycle: 'absent',
+    primaryAction: 'install',
+    installable: true,
+  ),
+];
+
+Map<String, dynamic> _fixtureAgentHubCard({
+  required String id,
+  required String label,
+  required String summary,
+  required bool present,
+  required String lifecycle,
+  required String primaryAction,
+  String ownership = 'none',
+  String installedVersion = '',
+  bool installable = false,
+}) => <String, dynamic>{
+  'id': id,
+  'label': label,
+  'summary': summary,
+  'present': present,
+  'ownership': ownership,
+  'lifecycle': lifecycle,
+  'primaryAction': primaryAction,
+  'installable': installable,
+  'installedVersion': installedVersion,
+  'adaptation': 'deep',
+};
+
 List<TargetCandidate> _fixtureTargets() {
   final ids = AgentService.packagedScanTargetIds;
   if (ids.isEmpty) {
@@ -417,20 +570,3 @@ AgentConversationSession _fixtureConversation(TargetCandidate target) =>
         ),
       ],
     );
-
-MobileRelayConfig _fixtureMobileRelayConfig() => const MobileRelayConfig(
-  schemaVersion: MobileRelayConfig.currentSchemaVersion,
-  stationBaseUrl: '',
-  pcClientId: '',
-  pcClientName: 'Fixture Desktop',
-  pairingId: '',
-  pcToken: '',
-  mobileToken: '',
-  lastPairingCode: '',
-  lastPairingExpiresAt: '',
-  paired: false,
-  relayEnabled: false,
-  pollIntervalSeconds: 5,
-  pcTokenPresent: false,
-  mobileTokenPresent: false,
-);

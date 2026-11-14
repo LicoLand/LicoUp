@@ -14,31 +14,76 @@ independent when a user changes settings.
 
 ## Theme styles
 
-The client identity pairs taro violet with warm gold. Light schemes put the
-violet on the brand and the gold on interaction; dark schemes invert — gold
-carries the brand and violet carries interaction. Large reading surfaces stay
-on the scheme's neutral ramp: warm cream paper in light, violet night in dark.
-Success, warning and failure retain distinct semantic colors and visible
-labels or icons.
+The client identity pairs taro violet with warm gold. The light scheme is
+cute and approachable: a taro-violet brand, a waffle-brown interaction color
+and cream-white reading surfaces with cocoa-brown ink. The dark scheme is
+luminous: the client's own opaque deep-space ground carries a slowly turning
+galaxy, and every surface above it is neutral smoke glass. Violet appears only
+as light — the galaxy glow, focus and selection halos, active indicators and
+thin rims — never as a large fill. Gold is an accent: a few stars, active
+markers, badges and the waiting-for-you pulse. Success, warning and failure
+retain distinct semantic colors and visible labels or icons.
 
-Three built-in scheme pairs ship with the client, each as a light and a dark
-preset:
+Two fixed presets ship with the client:
 
-| Scheme | Presets | Character |
+| Scheme | Preset | Character |
 | --- | --- | --- |
-| Taro Mist / 香芋晨雾 | `lico-mist`, `lico-mist-light` | The default. Paper-cream light, violet-night dark, balanced contrast |
-| Butter Cream / 奶油主场 | `lico-cream`, `lico-cream-light` | Warmer custard light, quieter violet dark |
-| Violet Royale / 紫雾浓郁 | `lico-royale`, `lico-royale-light` | Saturated violet surfaces for a denser look |
-| Orbital / 轨道 | `lico-soda`, `lico-soda-light` | The earlier graphite-and-lemon identity, preserved |
+| Taro Waffle / 香芋华夫 | `lico-taro-waffle` (light) | Cream-white paper, taro-violet brand, waffle-brown interaction, cocoa ink |
+| Starlit Gold / 星河鎏金 | `lico-starlit-gold` (dark) | Deep-space ground with a galaxy, neutral smoke-glass surfaces, violet as light, gold as accent |
 
-The system option (**System Default / 跟随系统**) resolves Taro Mist by
-brightness from the operating system. Theme selection persists without
-changing layout, navigation, running work, subscriptions, input or scroll
-ownership.
+The system option (**System Default / 跟随系统**) is the default and resolves
+Taro Waffle or Starlit Gold by brightness from the operating system. A stored
+preset identifier that the catalog no longer contains resolves to System
+Default, and the normalized selection is persisted. Theme selection persists
+without changing layout, navigation, running work, subscriptions, input or
+scroll ownership.
 
 Settings labels this control **Theme style / 主题风格**. The preset identifiers
 are storage identifiers; they are not product-facing names. Theme files load
 and reload at runtime through the existing catalog.
+
+## Appearance resource preferences
+
+A resource package may supply a theme, layout, style, font, language or
+composition. Two owners answer for one such kind, and neither answers for the
+other:
+
+| Fact | Owner |
+| --- | --- |
+| Which resource the user asked this client to serve | The durable appearance preference, `client-state/appearance-preferences.json` |
+| Which resource is served, and why a request is not | The package owner, through the resource lifecycle |
+
+The client's own appearance style (`appearancePresetId`) and layout profile
+(`layoutProfileId`) remain the stored choice *within* the declared default; a
+resource request is recorded beside them under `resourceSelections`, keyed by
+the host contract's own kind spelling. The record carries the resource identity,
+the package that supplied it and the generation that was reported when the
+choice was made. A generation is an observation, not the identity: a reinstall
+publishes the same identity at a new generation and the user's request still
+applies.
+
+A surface reports one of five states, resolved from the request and the report
+alone:
+
+| State | Rendered |
+| --- | --- |
+| The user asked for the declared default | The client's own appearance |
+| The reported resource is the requested one | The requested resource |
+| The request is recorded and the report says it is not served | The declared appearance, with the reason `disabled`, `uninstalled` or `replaced` |
+| The request is recorded and no report answered yet | The declared appearance; the surface reports that the answer is pending rather than claiming the resource is served or that it failed |
+| A resource is reported serving that no record names | The reported resource; the surface reports that no stored request explains it |
+
+Disabling, uninstalling or replacing a package never rewrites the request and
+never records a fallback as the user's choice. Switching the package back on or
+reinstalling it restores the request without a new selection, and a request is
+stored exactly as chosen rather than being replaced by an identifier the client
+happens to publish. Changing a resource preference is an ordinary preference
+operation: it changes no layout, navigation, running work, subscription, input
+or scroll ownership, and it waits for no unrelated work.
+
+An unreadable resource entry refuses the document instead of being dropped or
+reinterpreted, and a kind a build does not know keeps the identity it was
+written with, so a newer client's request survives an older client's write.
 
 The optional visual tokens are intentionally bounded:
 
@@ -64,10 +109,14 @@ icons or focus state. These Dashboard roles do not change another layout's
 surface treatment. A shared opacity multiplier must not make message bubbles
 translucent.
 
-Conversation chrome follows the scheme. On the Plain profile the user's own
-bubble is the brand as a diagonal fill — violet in light, gold in dark — with
-a tighter corner toward the screen edge; the other speaker's bubble sits on
-the scheme's brand-family wash with the anchor corner toward the avatar.
+Conversation chrome follows the scheme. In light the user's own bubble is the
+violet brand as a diagonal fill. In dark it is a light lavender layer — the
+accent at 18% with a 32% accent hairline and primary ink — composited over
+`surfaceLow` where bubbles are opaque, translucent over the glass otherwise;
+the dark user bubble never uses gold. The user's bubble keeps a tighter corner
+toward the screen edge; the other speaker's bubble sits on the scheme's wash
+(white 5.5% with a white 7% hairline on dark glass) with the anchor corner
+toward the avatar.
 Agent avatar wells tint with each agent's brand hue, and the user's own mark
 is the ink disc. Permission moments render as the gold-family card. The Card
 profile keeps its clear-glass bubbles; only the palette changes.
@@ -78,10 +127,17 @@ uses. The empty conversation greets with the waving mascot.
 
 ## Typography and content
 
-Geist Sans is the interface family. Geist Mono marks commands, paths, identifiers
-and exact values. Noto Sans SC supplies Chinese glyphs before any platform
-fallback. All three families ship locally under the SIL Open Font License 1.1;
-font loading causes no network requests.
+The platform's own interface family renders the interface: `.AppleSystemUIFont`
+on macOS, `Segoe UI Variable Text` on Windows, `Roboto` on Android and `Ubuntu`
+on Linux, with that platform's Chinese face behind it. A first launch, an offline
+client and an installed client all render from fonts the operating system
+already owns. Geist Mono marks commands, paths, identifiers and exact values, and
+the bundled Geist Sans covers glyphs no platform face supplies; both ship locally
+under the SIL Open Font License 1.1, and font loading causes no network requests.
+
+The interface family is a preference. An installed font family can be preferred
+through the appearance font preference, and it is then placed first with the
+platform chain behind it.
 
 `LicoTypography` owns the scale and fallback order. Titles use 18–24 px with
 semibold weight; the Agent detail identity uses 28 px. Conversation reading text
@@ -129,7 +185,11 @@ refracted into a grey pill. Nested glass on glass is forbidden: ghost header
 icons already inside overlay glass do not receive a second glass surface.
 Search capsules and outlined circular buttons use this glass owner; they do
 not use `ContinuousRoundedBorder` as their material edge. Focus remains a 2 px
-interaction ring, not a material rim.
+interaction ring, not a material rim. While the owning window ground animates
+its ambient effect, `LicoGlass` reads no backdrop: it composites its wash over a
+smoke base of the surface's own tone (dark `#141419` at 88%, light white at
+90%) and never raises the wash's own alpha, which would turn it into a grey
+slab.
 The sidebar, conversation header and composer must also avoid a second outline
 from an enclosing surface. Visual review includes the straight-to-curve joins,
 all four sidebar corners and the navigation divider. The composer's attachment
@@ -151,6 +211,182 @@ geometry. Theme files cannot override these dimensions. Opaque glass controls
 do not perform backdrop blur; translucent conversation overlays retain their
 explicit glass treatment. Content-layer rims use uniform alpha around the
 entire shape. Glass rims do not.
+
+## Layout profiles
+
+Each layout profile owns its shell geometry independently; a change to one
+profile's chrome never moves another profile's surfaces.
+
+The Desktop profile is a two-pane workspace of glass pane cards over the
+window ground (see [Window ground and ambience](#window-ground-and-ambience)).
+The panes sit 10 px from the window edge and 12 px apart; their 14 px corner is
+concentric with the 24 px window corner. The work area on the left hosts one
+app or plugin window at a time; Collaboration is the default app. The chat
+sidebar on the right hosts the conversation permanently.
+
+Both panes share one 52 px title row, and each row ends in a 0.5 px hairline
+(white 6% dark, black 7% light). The traffic lights sit in the work-area row's
+leading band: the native window places them with equal top, bottom and left
+insets and replies with the cluster's leading and trailing edges, and the
+title content
+starts 16 px after that edge, so the lights never overlap content at any
+system button size. The row shows the current app's 28 px icon tile (radius
+8, neutral fill and hairline, glyph in the brand color), the name at 14/600
+and a muted subtitle, and the app's actions on the right as ghost 28 px
+buttons. The sidebar header is the flat conversation bar at the same 52 px
+height with a 28 px avatar; the first avatar of the avatar column is centred
+in the same band.
+
+The Dock floats centered at the bottom of the work area only: glass, radius
+22 px, height 64 px, 44 px icons. It holds three groups: the built-in apps,
+the open and pinned plugin windows, then Plugin Center and Settings. Users
+arrange the built-in group by dragging, and dropping one app onto another
+creates a folder; folders do not nest. The arrangement persists in
+`desktop-dock-layout.json` and is restored on return. A built-in app missing
+from the stored arrangement is inserted after the nearest app that precedes it
+in catalog order. The Dock stays hidden until the stored arrangement is
+applied, so a restored order never visibly replaces the default. Hovering
+magnifies the icon to 1.35 and its neighbours to 1.15 by transform, with a
+label above; reduced motion keeps every icon at rest. A dot under each running
+app or plugin window marks it, and the active dot is brighter. The dot
+overlays the icon slot and never participates in layout, so an active icon
+never shifts off center. Badges count waiting decisions. Work-area content
+reserves bottom space so the Dock never covers it.
+
+The Dock is denser glass than the panes (dark `#101015` at 72%) with a
+specular rim and an outside shadow. Icons rest as bare glyphs in the secondary
+ink with no tile; hovering adds a faint tile and primary ink; the active app
+keeps a faint tile and hairline and its glyph takes the brand color with a soft
+glow in dark. The running dot is neutral and the active dot is the brand
+color.
+
+The chat sidebar defaults to 400 px and drags between 340 and 560 px. It
+collapses to a 64 px rail with an expand control at the top and conversation
+avatars below; selecting an avatar expands the sidebar and switches to that
+conversation. The selected avatar carries a 1.5 px accent ring with a soft
+accent halo and a 3 × 20 px accent pill at the column's left edge; working
+badges are accent dots, unread badges stay gold. Command-K opens a quick
+switcher over conversations and apps. The macOS traffic-light cluster has
+exactly one anchor reporter in this profile, the work-area title row, and
+every embedded sidebar suppresses its own.
+
+## Window ground and ambience
+
+The host window is transparent with a continuous 24 pt corner clip; the
+client paints its own ground across it. In dark the galaxy covers the whole window in every
+layout (light: the theme's solid ground; the cream-waffle ambient stays a
+reserved slot). Material assignment follows one doctrine. In dark,
+surfaces divide into three roles:
+
+- **Nav glass** — sidebars, navigation and tab bars and floating chrome.
+  A light black veil (34%) over the ambient with a faint specular rim —
+  as clear as possible, never foggy smoke, no shadow halo. Nav glass
+  registers no smoke region, so the ambient stays uninterrupted around
+  and beneath it.
+- **Pane glass** — Desktop panes and flat content planes: the same clear
+  recipe at ~30% black (`paneGlassVeil`), no gradient, no shadow, no
+  smoke region.
+- **Information glass** — every component that carries information sits
+  on black transparent glass (~52%, `contentInnerCardFill`) with a 1 px
+  white ~8% hairline: inner cards, header capsules, the floating
+  composer, menus, the agent bubble, secondary buttons and text fields.
+  One owner — the theme `cardTheme` and `AppleControlButtons` — so no
+  widget declares its own gray.
+
+Highlights on clear glass darken, never lighten: hover paints a ~22%
+black mask, selection paints ~30% plus the accent indicator and glow.
+
+Selection on navigation surfaces is the fluorescent highlight: a 3×20 px
+accent pill at the leading edge with a soft accent glow, a faint accent
+wash fading toward the trailing side, and the icon in `selectionInk` —
+never a solid fill. A horizontal tab bar (the Card sidebar's bottom nav)
+carries the same highlight as a short glowing bar centred at the item's
+bottom edge. Buttons and fields share one owner (`AppleControlButtons` + the theme's
+`InputDecorationTheme`): dark secondary actions and text fields are
+black-mask glass (black ~40%, a 1 px white ~10% hairline) and primary
+actions are accent-tinted glass with a soft accent glow; light secondary
+actions and fields are milk latex (a soft cream surface with a warm
+shadow, no hard border) and primaries are taro latex (brand tone with a
+soft taro shadow). Focus is a 2 px accent ring.
+
+In light the surfaces stay solid: content areas are
+solid layered surfaces, and text never sits directly on the ambient sky —
+conversation content is the exception because it carries its own fills.
+How a route covers the backdrop is profile-owned:
+
+- The Desktop shell paints one opaque `LicoWindowGround` for the whole
+  window; its panes sit on that ground.
+- The Dashboard card style is a card hierarchy over one shell-level
+  `LicoWindowGround` that covers the whole window — the galaxy in dark,
+  solid cream in light. The sidebar (conversation list or destination
+  list) is a single floating `LicoPaneCard` inset 10 px from the
+  window's top, left and bottom at radius 14, concentric with the
+  window corner; in dark it is nav glass — clear, 18% veil, no smoke,
+  so the ground runs continuously behind and around it with no seam.
+  Messages' conversation sits directly on the shell ground — it mounts
+  no fill and no second ambient — keeping its floating header capsules
+  and composer. Every other destination (Features, Agent Hub, Settings)
+  sits inside one content card inset 10 px from the window's
+  top/right/bottom and 10 px from the sidebar card at radius 14 — the
+  black-mask content glass in dark, opaque bg-base with a hairline and
+  the shared soft shadow in light. Settings in
+  Card follows the same sub-list rule as Plain: its section index lives
+  in the sidebar card's list, bound to the shared section channel.
+- The Dashboard plain style is flat: rail | list column | detail, separated
+  only by hairlines — no cards. In dark the whole window is the galaxy and
+  the left sidebar (rail + list column) sits on it as nav glass (the 34%
+  veil); non-Messages details are a flat content-glass plane over the same
+  sky. Light keeps the solid palette ground. The macOS traffic lights live only in the sidebar's
+  top strip: the rail's first 52 px is the single anchor reporter and its
+  hairline starts below it; the list column's first row is the 52 px
+  centred action row (a right-aligned ghost search button, plus the
+  matching compose action for Messages) whose empty pixels drag the
+  window or zoom it on double-tap.
+  The detail runs from the window's top edge: Messages' conversation pane
+  paints its own `LicoWindowGround`, so the preset's ambient sky lives
+  inside the detail bounds only; Features, Agent Hub and Settings paint
+  one solid opaque surface with no ambient effect. Settings follows the
+  same rail → sub-list structure as Messages — its section index is a
+  list-column list bound to the shared section channel — and feature and
+  settings index rows share the conversation rows' geometry. On a host
+  without a translucent window backdrop the plain style paints the opaque
+  palette ground.
+
+One render pipeline serves every layout. From back to front:
+
+| Layer | Owner | Rule |
+| --- | --- | --- |
+| Window ground | The outermost `LicoWindowGround` | Paints the opaque ground color and owns the preset's ambient effect. A nested ground paints only its own fill and never a second sky. |
+| Ambient effect | `LicoAmbientLayer` | `starfield` mounts `LicoGalaxy`; `waffle` is reserved for the upcoming cream-waffle ambient and mounts no layer until that design lands. |
+| Glass regions | `LicoGlassRegion` | Pane cards register their rounded rects with the owning ground; content hosted inside a region paints no root fill. |
+| Pane cards | The layout profile | While the ambient shader paints the glass smoke, a dark pane paints only a white 3% top sheen fading out by 40% of its height, its specular rim (white 16% → 5%) and no shadow; otherwise it paints its own smoke gradient. |
+| Content and controls | Features | Cards and bubbles keep their own fills; control glass follows the no-live-blur rule above. |
+| Overlays | Features | Menus, popovers and the Dock float with outside shadows. |
+
+`LicoGalaxy` renders `shaders/lico_galaxy.frag` on the GPU in logical
+coordinates. The galaxy is a two-armed density-wave spiral seen at an angle:
+its warm-white core sits at 15% of the width and 80% of the height, its arms
+are ice white with lavender toward the rim and a lavender halo, and sparse
+background stars include a few gold points. The arm pattern turns rigidly once
+every 30 minutes; star rings orbit faster toward the core, from 2 minutes per
+turn at the core to about 15 at the disk edge, and each ring turns rigidly so
+stars keep their shape.
+Inside a glass region the shader draws a softened version and applies the
+smoke transfer `pane + (1 − pane) · c^1.45 · 0.95` with pane `#0C0C11`: the
+dark sky sinks to smoke while the core and arms keep their light. The window
+gutters show the sharp sky.
+
+The pointer pushes nearby light up to 18 px outward within 120 px and
+brightens it by up to 60%; a six-slot trail of critically damped springs
+returns it within about 1.5 s. The summed push and brightening are capped at
+those maxima, and every spring, including the parallax, advances by the
+closed-form critically damped step, so a long frame can never overshoot it
+into a flash. The sky shifts slightly against the pointer by depth. The ticker caps repaints at 30 per second, stops while the surface is
+offstage or the window hidden, and reduced motion renders the galaxy static
+with no pointer response. Nothing live-blurs the animated ground: the header
+bar and control glass drop their backdrop filters while it animates. A device
+that cannot load the shader paints the ground color, and the panes then paint
+their own smoke.
 
 ## Navigation and feature pages
 
@@ -302,8 +538,14 @@ boundaries and avoids per-frame descendant rebuilds or backdrop reads.
 ## Conversation loading and hierarchy
 
 Desktop messaging places a content-sized identity capsule at the upper left and
-one circular ellipsis menu at the upper right. Long titles truncate within the
-available width. The direct-conversation menu retains history, new-conversation
+one circular ellipsis menu at the upper right; profiles that select the flat
+header bar (Dashboard three-column at 60 px, Desktop at its 52 px title-row
+height, avatar = bar height − 24 px) show the same identity and actions in a
+bar with a bottom hairline instead. The transcript scrolls under either header
+but is never painted above the header's bottom edge: it fades from transparent
+at that edge to opaque 24 px below it, and the transcript's top inset equals
+that edge plus the fade, so a transcript scrolled to its start is never faded.
+Long titles truncate within the available width. The direct-conversation menu retains history, new-conversation
 and details access; the group menu retains the member-list toggle. Menus support
 keyboard activation, Escape dismissal and focus return to the trigger. The
 identity capsule has generous horizontal padding. The group member list starts
@@ -322,17 +564,18 @@ console layout geometry retain their respective owners.
 The group action row uses a bare plus glyph, and the capsule row above the
 composer leads with the Assistant identity capsule followed by the Adaptive
 Flywheel capsule — both glass, the same height. The Assistant name opens its
-editor in a centered dialog, and a small purple toggle at the trailing edge
-pauses or resumes future Assistant participation. An active capsule carries the
-purple-and-gold sunset light on its rim and across the name; paused or
+editor in a centered dialog, and a small toggle at the trailing edge (accent
+track in dark) pauses or resumes future Assistant participation. An active
+capsule carries a quiet purple-and-gold sunset light on its 1 px rim and
+across the name; paused or
 unconfigured capsules rest as plain glass. Reduced motion keeps a static rim.
 Inactive names remain readable. Before the send action, a quiet readout shows
 the active Assistant's selected model in the readable text color with its
 reasoning effort muted behind it; it opens the same editor, hides the effort
 half when no effort is configured, and disappears entirely while the Assistant
-is paused or unconfigured. The Adaptive Flywheel capsule opens its
+is paused or unconfigured. The Acativa capsule opens its
 configuration only. Configuration and
-message routing belong to the [Adaptive Flywheel flow](ADAPTIVE-FLYWHEEL.md#group-conversation-start).
+message routing belong to the [Acativa flow](ACATIVA.md#group-conversation-start).
 
 桌面消息界面左上角使用随内容收窄的身份胶囊，右上角使用一个圆形三点菜单。
 长标题在可用宽度内省略。单聊菜单保留历史、新建与详情入口，群聊菜单保留成员
@@ -345,13 +588,13 @@ message routing belong to the [Adaptive Flywheel flow](ADAPTIVE-FLYWHEEL.md#grou
 几何仍由各自属主维护。
 
 群聊操作行使用不带圆形底的加号；输入框上方胶囊行先放助手身份胶囊、再放
-Adaptive Flywheel 胶囊，两者同为玻璃材质、同高。点击助手名称打开独立的助手编辑框；
-尾部一枚紫色小开关控制后续助手参与。激活时助手胶囊边框与名称同披紫金晚霞流光，
+Acativa 胶囊，两者同为玻璃材质、同高。点击助手名称打开独立的助手编辑框；
+尾部一枚小开关（深色下为强调色轨道）控制后续助手参与。激活时助手胶囊 1 px 边框与名称同披一道克制的紫金晚霞流光，
 暂停或未配置时回到素玻璃；减弱动态时保留静态边框，关闭时文字仍清晰可读。发送按钮
 前方有一处安静的模型展示器：以正文色显示激活助手已选的模型名称，思考强度以弱化色
 跟在其后，点击同样打开助手编辑框；未配置思考强度时不显示后半段，助手暂停或未配置
-时整体消失。Adaptive Flywheel 胶囊仅打开其配置；配置和发送语义
-由[对应流程](ADAPTIVE-FLYWHEEL.md#group-conversation-start)维护。
+时整体消失。Acativa 胶囊仅打开其配置；配置和发送语义
+由[对应流程](ACATIVA.md#group-conversation-start)维护。
 
 The product-owned **Local** group is the highest-priority cold-start data
 target. After native state admission, load the canonical group catalog and
@@ -456,6 +699,48 @@ Pulling beyond the refresh threshold dispatches one refresh and shows its
 activity without holding the list at a negative offset. The authoritative
 loading state controls completion; a decorative ticker pause must not stop
 the Scrollable's own simulation.
+
+## Collaboration flowchart
+
+The collaboration flowchart projects a conversation's run graph onto a
+dot-grid canvas with pan and zoom, a fit action, a draggable minimap, and a
+follow-latest mode that centers the first running or waiting node. Layout is
+deterministic: longest-path ranking places nodes in columns, consecutive
+actor nodes sharing a group label merge into stack cards, cards keep at least
+28 px of vertical clearance, forward routes detour around intervening cards,
+back edges route below, callback arcs route above both endpoints, and no
+route segment intersects a card.
+
+The canvas opens at zoom 1.0 centred on the follow target, or on the graph
+centre when nothing runs; fit is an explicit action. Inside a glass pane the
+canvas paints no fill, only its dot grid (white 6% in dark).
+
+Cards carry every node status label; dispatch and merge render as connector
+shapes, and active edges animate a dash flow inside a repaint boundary. A
+zoom HUD — one 32 px capsule with zoom in, zoom out and fit — sits above the
+minimap. Both are smoke glass with a hairline; minimap nodes are neutral, the
+running node takes the accent, a node waiting for the user takes the brand
+color and a failed node the error color, and the viewport is a light hairline
+frame. The waiting run chip is a brand-tinted pill with a pulsing brand dot;
+the revision chip is neutral glass with tabular figures.
+The header holds the run status chip, a single-line live caption, agent
+avatars, the revision chip, and the diff and follow toggles. A settings menu
+owns the plan-change policy and the gate-review policy for the run. The
+history drawer lists revisions newest first with author, time, stats, reason
+and approval badge, plus compare and revert actions. A held proposal overlays
+added nodes as dashed translucent ghosts, tags changed nodes, locks affected
+pending nodes, and offers approve, reject and ask-to-revise actions, the
+last with an optional note. Applying a head revision sweeps a shimmer, fades
+added nodes in, and draws in new edges, then a transient banner confirms the
+applied or reverted revision with view-changes, replay and revert actions;
+the banner dismisses itself after a short dwell. Selecting a past revision
+loads that revision's graph structure only, without node states or run
+controls, and a persistent banner offers restore and back-to-head actions.
+
+Reduced motion stops the dash flow, shimmer and entrance animations;
+settling leaves no active ticker. Cards are Tab-focusable, Enter opens the
+node popover with gate decision buttons, and Escape closes it and returns
+focus to the card.
 
 ## Motion and accessibility
 

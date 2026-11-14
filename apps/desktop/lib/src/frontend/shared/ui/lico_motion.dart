@@ -33,6 +33,9 @@ abstract final class LicoMotion {
   /// One cycle of an ambient activity loop (edge pulse, shimmer).
   static const Duration loopLong = Duration(milliseconds: 1600);
 
+  /// One cycle of a slow ambient drift loop (selection stardust).
+  static const Duration driftLong = Duration(seconds: 7);
+
   /// Standard easing for state changes that begin and end on screen.
   static const Curve standard = Curves.easeOutCubic;
 
@@ -55,6 +58,13 @@ abstract final class LicoMotion {
   /// How long a floating toast stays visible by default. Not an animation,
   /// but shared so every surface agrees on the dwell.
   static const Duration toastDwell = Duration(milliseconds: 2500);
+
+  /// Pointer-trail slot refresh cadence for ambient surfaces (a new slot is
+  /// pushed when the previous one is older than this).
+  static const Duration ambientTrailSlotAge = Duration(milliseconds: 80);
+
+  /// Frame interval cap for ambient surfaces — 30 fps.
+  static const Duration ambientFrame = Duration(microseconds: 33333);
 }
 
 /// Resolves a motion duration against the platform's reduced-motion setting.

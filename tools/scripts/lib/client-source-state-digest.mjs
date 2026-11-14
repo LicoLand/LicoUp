@@ -7,15 +7,11 @@ import {
 } from "./client-release-artifact-digest.mjs";
 
 export const CANONICAL_CLIENT_SOURCE_ROOTS = Object.freeze([
-  "Cargo.toml",
-  "Cargo.lock",
   "package.json",
   "package-lock.json",
-  "crates/licoup-native",
-  "crates/licoup-mcp",
-  "crates/licoup-workflow",
   "apps/desktop",
   "packages/protocols",
+  "schemas/client_bridge",
   "tools",
 ]);
 
@@ -33,7 +29,6 @@ const DEFAULT_MAX_MANIFEST_BYTES = 64 * 1024 * 1024;
 const EXCLUDED_SOURCE_COMPONENTS = Object.freeze(new Set([
   ".cache",
   ".dart_tool",
-  ".gradle",
   ".idea",
   ".playwright-cli",
   ".pub",

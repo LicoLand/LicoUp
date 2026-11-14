@@ -41,8 +41,8 @@ void main() {
           MaterialApp(
             theme: buildLicoTheme(
               presetId: brightness == Brightness.light
-                  ? AppearancePresetIds.licoSodaLight
-                  : AppearancePresetIds.licoSoda,
+                  ? AppearancePresetIds.taroWaffle
+                  : AppearancePresetIds.starlitGold,
               platformBrightness: brightness,
             ),
             home: SingleChildScrollView(

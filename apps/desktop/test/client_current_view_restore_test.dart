@@ -204,7 +204,7 @@ void main() {
     first.selectSection(ClientSection.models);
     first.selectSection(ClientSection.settings);
     first.selectSection(ClientSection.agents);
-    first.showConversationWelcomePage();
+    first.clientConversationController.clearSelection();
     await first.clientConversationController.selectConversation(
       _CurrentViewAgentService.groupId,
     );

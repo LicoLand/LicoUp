@@ -71,22 +71,25 @@ attach、活跃 turn 查询、会话动作、目录观察和策略执行均保�
 
 `subagents catalog` 提供原生调用者与操作 schema；`subagents execute`
 准入包含 `name`、`arguments`、`caller` 的本地调用。原生 Subagents
-领域检查调用者作用域。`mcp start`、`stop`、`reload`、`status` 管理独立
-MCP 进程。开发时 `start` 与 `reload` 可通过 `--binary` 明确指定 MCP
-可执行文件。MCP 适配器收窄的远程能力面由其
+领域检查调用者作用域。`licoup mcp stdio` 为 Codex 与其他外部调用方提供通用
+本地 MCP stdio 入口，而 `mcp start`、`stop`、`reload`、`status` 管理可选
+`org.licoland.feature.mcp` 服务进程。开发时 `start` 与 `reload` 可通过
+`--binary` 明确指定 MCP 可执行文件。MCP 适配器收窄的远程能力面由其
 [协议文档](../protocols/subagent-mcp.zh-CN.md)拥有。
 
 ## 实现权威
 
+下表中的 `crates/` 源码位于 LicoUp-CLI 仓库，Rust workspace 归其所有。
+
 | 关注点 | 源码 |
 | --- | --- |
-| 准入、帮助与命令目录 | `crates/licoup-native/src/ffi/commands/mod.rs` |
+| 准入、帮助与命令目录 | `crates/licoup/src/ffi/commands/mod.rs`（LicoUp-CLI） |
 | 生成的 RPC 方法权威 | `schemas/conversation_protocol/conversation_protocol.schema.json` |
-| CLI 请求投影 | `crates/licoup-native/src/ffi/commands/native_rpc.rs` |
-| 原生宿主帧与流式输出 | `crates/licoup-native/src/platform/conversation_host_client.rs` |
-| 原生可执行程序与宿主启动 | `crates/licoup-native/src/bin/licoup.rs` 与 `bin/licoup/conversation_host.rs` |
-| 本地 Subagents 与 MCP 生命周期命令 | `crates/licoup-native/src/ffi/commands/subagents.rs` |
-| 本地 Subagents 调用与调用者准入 | `crates/licoup-native/src/domain/subagents/local.rs` |
+| CLI 请求投影 | `crates/licoup/src/ffi/commands/native_rpc.rs`（LicoUp-CLI） |
+| 原生宿主帧与流式输出 | `crates/licoup/src/platform/conversation_host_client.rs`（LicoUp-CLI） |
+| 原生可执行程序与宿主启动 | `crates/licoup/src/bin/licoup.rs` 与 `bin/licoup/conversation_host.rs`（均为 LicoUp-CLI） |
+| 本地 Subagents 与 MCP 生命周期命令 | `crates/licoup/src/ffi/commands/subagents.rs`（LicoUp-CLI） |
+| 本地 Subagents 调用与调用者准入 | `crates/licoup/src/domain/subagents/mod.rs`（LicoUp-CLI） |
 
 ## 自定义操作属性
 

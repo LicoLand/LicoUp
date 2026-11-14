@@ -4,8 +4,8 @@
 
 - Last updated: 2026-07-30
 - Status: Implemented capability overview
-- Scope: Desktop, mobile, Rust sidecar, ACP, MCP, platform adapters, local-agent workflows, and the current retiring endpoint-protection Preview.
-- Staleness check: Reconciled with `PRODUCT.md`, `docs/STATUS.md`, client application boundaries, the native sidecar, packaging manifests, target adapters, current endpoint-protection Preview contracts, and module-scoped regression catalog on 2026-07-30.
+- Scope: Desktop, Devices, Rust sidecar, ACP, MCP, platform adapters, and local-agent workflows.
+- Staleness check: Reconciled with `PRODUCT.md`, `docs/STATUS.md`, client application boundaries, the native sidecar, packaging manifests, target adapters, Devices contracts, and module-scoped regression catalog on 2026-07-30.
 
 ## Product Boundary
 
@@ -23,7 +23,7 @@ Built-in capabilities are limited to:
 1. a lightweight Rust local task queue;
 2. ACP adaptation for local agents and encrypted remote relay;
 3. MCP request and response adaptation;
-4. macOS, Windows, Ubuntu, Android, and iOS platform adaptation;
+4. macOS, Windows, and Ubuntu platform adaptation (the Android and iOS implementations live in the sibling LicoUp-Android and LicoUp-iOS repositories);
 5. the six product scenarios defined below.
 
 Capabilities outside this scope are not built into the client, registered as
@@ -64,7 +64,7 @@ requires a separate direct approval for each file.
 | Rust ACP adapter | Owns ACP framing and capability translation; per-agent semantics stay in target-specific leaves. |
 | Rust MCP adapter | Owns strict bounded JSON-RPC request/notification/response codecs plus a short-lived one-shot direction/destination/purpose/digest-bound transfer gate. |
 | Platform adapters | Own OS discovery, secure storage, authorization, paths, process launch, and packaging behind platform-neutral ports. |
-| [Endpoint-protection Preview](../STATUS.md) | Owns the current LicoUp implementation, private-key/Provider custody, user trust and approval, and local effects. This retiring implementation is not a Lico Arc Profile and has no future compatibility promise. |
+| Devices | Owns desktop-to-desktop enroll, pairing, session custody, and protected message exchange on the client-owned `licoarc-client` line, plus private-key/Provider custody, user trust and approval, and local effects. |
 | Lico Arc Protocol Line | Owns stable wire-observable Pairwise Protection, Generic Message, Reliable Exchange, negotiation, and Transport Profile semantics. LicoUp executes one pinned line; it does not redefine one. |
 
 The architecture gate rejects cross-layer reverse dependencies, duplicate protocol
@@ -87,10 +87,10 @@ shared facade.
 
 | Item | Contract |
 | --- | --- |
-| Objective | Use ACP for supported local-agent conversations and carry ACP-derived application messages inside encrypted client relay payloads. |
+| Objective | Use ACP for supported local-agent conversations and carry ACP-derived application messages inside protected client session payloads. |
 | Processing | Parse and emit bounded frames, preserve request/session correlation, order events, propagate cancellation, and map capabilities without target-specific branching in the shared codec. |
-| Rejection | Oversized, malformed, out-of-order, unknown-session, untrusted, or plaintext relay payloads fail closed. |
-| Regression | Codec vectors, malformed-frame property tests, exact-session conversation parity, cancellation, and endpoint-protection Preview ACP relay tests. |
+| Rejection | Oversized, malformed, out-of-order, unknown-session, untrusted, or plaintext session payloads fail closed. |
+| Regression | Codec vectors, malformed-frame property tests, exact-session conversation parity, cancellation, and Devices session ACP tests. |
 
 ## Foundation F-03 — MCP Adaptation
 
@@ -108,8 +108,7 @@ shared facade.
 | macOS | App discovery, executable launch, sandbox/path boundaries, Keychain/LocalAuthentication, packaging, build, and launch. |
 | Windows | Registry/application discovery, process/path boundaries, owner-only secret storage, x64/arm64 packaging, build, and launch. |
 | Ubuntu | Desktop/package/binary discovery, process/path boundaries, Secret Service or memory-only custody, package build, and launch. |
-| Android | Secure storage and biometric authorization through the shared Rust cryptographic core, lifecycle-safe relay, build, install when an authorized device is present, and launch. |
-| iOS | Keychain/LocalAuthentication through the shared Rust cryptographic core, lifecycle-safe relay, build, simulator or authorized-device installation, and launch. |
+| Android/iOS | Implemented in the sibling LicoUp-Android and LicoUp-iOS repositories; secure storage, biometric authorization, lifecycle-safe sessions, build, install, and launch remain their acceptance boundary. |
 
 Platform code may implement OS mechanics only. ACP, MCP, queue semantics, target
 business rules, and encryption algorithms remain platform-neutral.
@@ -258,7 +257,7 @@ the share list keeps its fifteen-row limit, with one Others row for unattributed
 usage and any overflow. Source disclosure never changes the selected window or
 the underlying counts.
 
-LicoUp is the scheduling authority and Adaptive Flywheel is the route-selection
+LicoUp is the scheduling authority and Acativa is the route-selection
 authority. A raw native conversation location is handed to a selected adapter
 privately; it is never part of the desktop report. The native ledger keeps active
 workflows and the newest twenty terminal rollups, while the client adds no second
@@ -311,38 +310,34 @@ recorded by the existing background scan cache. A reader failure reports a
 sanitized stage. Historical usage support does not imply SDK transcript
 readback or a live `usageStatus` control.
 
-## Preview Scenario S-06 — End-to-End Encryption and Mobile Relay
+## Scenario S-06 — Devices
 
-Desktop and mobile clients establish authenticated trust and encrypt application
-payloads before relay. The relay receives only bounded routing metadata and opaque
-ciphertext. A compromised relay must be unable to decrypt messages, commands,
-results, approvals, or explicitly approved files.
+Desktop clients enroll device identities, pair through an explicit offer/claim
+exchange, and exchange protected session messages. The station transport receives
+only bounded routing metadata and opaque ciphertext. A compromised relay must be
+unable to decrypt messages, commands, or results.
 
-Current source paths use the shared Rust endpoint-protection core. Android and iOS
-bridges provide platform authorization and secret custody but do not reimplement
-cryptographic algorithms. Replay, wrong recipient, revoked endpoint, stale key,
-expired payload, modified ciphertext, unapproved local effect, and plaintext relay
-attempts fail closed.
+The Rust `devices` domain owns session custody and protocol state on the
+client-owned `licoarc-client` line; platform code provides authorization and
+secret custody but does not reimplement cryptographic algorithms. Replay, wrong
+recipient, revoked endpoint, stale key, modified ciphertext, unapproved local
+effect, and plaintext relay attempts fail closed.
 
-Those current mechanisms form a LicoUp preview implementation, not a Lico Arc
-Profile or future compatibility contract. They are to be retired directly when
-a complete pinned Lico Arc Protocol Line replaces them. Lico Arc owns the
-observable Pairwise Protection, Generic Message, Reliable Exchange,
-negotiation, and Transport Profile contract; LicoUp retains private keys,
-Provider configuration, plaintext, history, backups, user trust, approval,
+Lico Arc owns the wire-observable protocol semantics; LicoUp retains private
+keys, Provider configuration, plaintext, history, backups, user trust, approval,
 and local-effect handling.
 
-This scenario remains `preview` in the compatibility matrix. The direct
-client-owned Lico Arc candidate adapter has completed one bounded exchange
-between two freshly initialized endpoints through an actual BadTower candidate,
-as recorded in [`../STATUS.md`](../STATUS.md) and the
+The direct client-owned Lico Arc candidate adapter has completed one bounded
+exchange between two freshly initialized endpoints through an actual BadTower
+candidate, as recorded in [`../STATUS.md`](../STATUS.md) and the
 [station-adapter contract](../protocols/licoarc-station-adapter.md). That local
 candidate evidence does not establish stable neutral-station support,
 physical-device acceptance, release, or hosted operation.
 
-Regression: pairwise/group codec vectors, cross-platform bridge tests, trust and
-revocation UX, wrong-recipient/tamper/replay controls, opaque-relay conformance,
-message/result round trips, and physical-device verification when authorized.
+Regression: Devices session and custody tests, cross-platform bridge tests,
+trust and revocation UX, wrong-recipient/tamper/replay controls, opaque-relay
+conformance, message/result round trips, and physical-device verification when
+authorized.
 
 ## Regression Closure
 
@@ -368,20 +363,20 @@ Agent validation has one shared inventory/schema contract and one independent
 static batch per Agent. A failed Agent batch blocks only that Agent's live
 branch; the other Agent branches continue.
 
-Complete selections batch compatible Cargo targets, Node test files, Flutter
-paths, and Gradle filters before scheduling. Cargo jobs, libtest threads,
-Flutter test workers, and Node test-file processes remain bounded by the
-central resource pools. Aggregated Node tests report only failed numeric input
-indexes, which the parent maps to module IDs without retaining paths, test
-names, stacks, or raw output; retries can therefore select only failed
-members. The privacy-safe report records per-command wall time,
-measured/unavailable process-resource fields, anonymous Rust/Flutter native
-statistics, and the compatibility matrix. Use `--retry-report` to redispatch
-only failed or blocked evidence.
+Complete selections batch compatible Node test files and Flutter paths
+before scheduling. Flutter test workers and Node test-file processes remain
+bounded by the central resource pools; the Cargo lanes run in the LicoUp-CLI
+repository, which owns the Rust workspace. Aggregated Node tests report only
+failed numeric input indexes, which the parent maps to module IDs without
+retaining paths, test names, stacks, or raw output; retries can therefore
+select only failed members. The privacy-safe report records per-command wall
+time, measured/unavailable process-resource fields, anonymous
+toolchain-native statistics, and the compatibility matrix. Use
+`--retry-report` to redispatch only failed or blocked evidence.
 
 Run the smallest affected module set first. After all changed modules and
 integration edges pass, run `npm run client:gate:source` exactly once and run
-only the affected Flutter, Rust, Android, or dependency lane.
+only the affected Flutter or dependency lane.
 Release policy is not a changed-path regression lane; it runs only on the
 `stable` → `release` promotion edge. The regression lanes are independent
 and may run in parallel. The source policy never

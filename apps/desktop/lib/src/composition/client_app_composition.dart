@@ -1,58 +1,87 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter/foundation.dart';
+import 'package:presentation_runtime/presentation_runtime.dart'
+    show presentationRuntimeProvider;
 import 'package:riverpod/misc.dart' show Override;
+import 'package:riverpod/riverpod.dart' show Ref;
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
+import 'package:licoup/src/application/features/runtime_control/controller/work_control_controller.dart';
 import 'package:licoup/src/composition/binding_shell_renderer.dart';
+import 'package:licoup/src/composition/binding_shell_renderer/shell_destinations.dart';
 import 'package:licoup/src/composition/built_in_layout_composition.dart';
+import 'package:licoup/src/composition/client_composition_set.dart';
+import 'package:licoup/src/composition/work_control_presentation.dart';
 import 'package:licoup/src/composition/dispose_all.dart';
 import 'package:licoup/src/composition/features/agent_hub/agent_hub_feature_composition.dart';
 import 'package:licoup/src/composition/features/agents/agents_feature_composition.dart';
 import 'package:licoup/src/composition/features/chrome/chrome_feature_composition.dart';
+import 'package:licoup/src/composition/features/collaboration/collaboration_feature_composition.dart';
+import 'package:licoup/src/composition/features/plugin_window/plugin_window_feature_composition.dart';
 import 'package:licoup/src/composition/features/conversation/conversation_feature_composition.dart';
-import 'package:licoup/src/composition/features/mobile_relay/mobile_relay_feature_composition.dart';
+import 'package:licoup/src/composition/features/devices/devices_feature_composition.dart';
 import 'package:licoup/src/composition/features/models/models_feature_composition.dart';
 import 'package:licoup/src/composition/features/monitoring/monitoring_feature_composition.dart';
 import 'package:licoup/src/composition/features/plugin_management/plugin_management_feature_composition.dart';
+import 'package:licoup/src/composition/features/projects/projects_feature_composition.dart';
 import 'package:licoup/src/composition/features/search/search_feature_composition.dart';
 import 'package:licoup/src/composition/features/settings/settings_feature_composition.dart';
 import 'package:licoup/src/composition/features/skill_hub/skill_hub_feature_composition.dart';
 import 'package:licoup/src/composition/features/targets/targets_feature_composition.dart';
 import 'package:licoup/src/composition/shell_intent_adapter.dart';
+import 'package:licoup/src/contracts/collaboration_run_port.dart';
+import 'package:licoup/src/contracts/plugin_window_host_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/mounted_destination_set.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/contracts/work_control_gateway.dart';
+import 'package:licoup/src/contracts/project_management.dart';
 import 'package:licoup/src/contracts/user_home_directory.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/binding/causal_frame_telemetry.dart';
 import 'package:licoup/src/frontend/binding/causal_projection_source_registry.dart';
 import 'package:licoup/src/frontend/binding/shell_renderer_port.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/frontend/projects/project_plan_submission.dart';
 import 'package:licoup/src/frontend/shared/client_platform_ports.dart';
+import 'package:licoup/src/frontend/shared/mascot/mascot_catalog.dart';
+import 'package:licoup/src/frontend/shared/mascot/self_mascot_identity.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_profile_registry.dart';
 import 'package:licoup/src/composition/client_platform_port_adapters.dart';
 import 'package:licoup/src/platform/agent_render_adapter/agent_render_adapter_service.dart';
 import 'package:licoup/src/platform/window_chrome/window_chrome_channel.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/chrome/chrome_binding.dart';
+import 'package:licoup/src/presentation/collaboration/collaboration_binding.dart';
+import 'package:licoup/src/presentation/plugin_window/plugin_window_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
-import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
+import 'package:licoup/src/presentation/conversation/conversation_markdown_port.dart';
+import 'package:licoup/src/presentation/devices/devices_binding.dart';
 import 'package:licoup/src/presentation/models/models_binding.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_binding.dart';
+import 'package:licoup/src/presentation/projects/projects_binding.dart';
 import 'package:licoup/src/presentation/search/search_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/shell/shell_binding.dart';
 import 'package:licoup/src/presentation/environment/environment_projection.dart';
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
-import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
+import 'package:licoup/src/platform/presentation/file_presentation_preferences_repository.dart';
 import 'package:licoup/src/platform/presentation/macos_reduce_motion_channel.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/platform/native_client/data_home_executor.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/stream_observation_journal.dart';
 import 'package:licoup/src/projections/environment/environment_projection_source.dart';
+import 'package:licoup/src/projections/conversation/conversation_markdown_preparation.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
 import 'package:licoup/src/presentation/targets/targets_binding.dart';
 import 'package:licoup/src/projections/shell/shell_effect_producer.dart';
@@ -61,42 +90,93 @@ import 'package:licoup/src/projections/shell/shell_projection_producer.dart';
 final class ClientAppComposition {
   factory ClientAppComposition({
     ClientController? controller,
-    CausalFrameTelemetry? telemetry,
+    PresentationObservation? telemetry,
     Stream<bool>? systemReduceMotionChanges,
+    ClientCompositionSet? compositionSet,
+    WorkControlGateway? workControlGateway,
+    ProjectManagementGateway? projectGateway,
+    ProjectPlanSubmission? projectPlanSubmission,
+    CollaborationRunPort? collaborationRunPort,
+    PluginWindowHostPort? pluginWindowHostPort,
   }) {
-    AgentRenderAdapterRegistry.instance = AgentRenderAdapterRegistry(
-      loadJson: DefaultAgentRenderAdapterJsonSource().loadAdapterJson,
-    );
+    final resolvedCompositionSet = compositionSet ?? ClientCompositionSet.full;
     final resolvedTelemetry = telemetry ?? createOptInCausalFrameTelemetry();
     final layout = controller == null
         ? BuiltInLayoutComposition()
         : BuiltInLayoutComposition.attach(catalog: controller.layoutCatalog);
     final resolvedController =
-        controller ?? _createProductionController(layout);
+        controller ?? createProductionController(layout: layout);
+    // The work-control lane defaults to the controller's own native service, so
+    // the production root reaches the real manual-stop and force-stop owner.
+    // An injected gateway stays available for a caller that supplies a
+    // different lane; omitting it never silently keeps the fail-closed stub.
+    final resolvedWorkControlGateway =
+        workControlGateway ??
+        resolvedController.agentService.workControlGateway;
+    AgentRenderAdapterRegistry.instance = AgentRenderAdapterRegistry(
+      loadJson: DefaultAgentRenderAdapterJsonSource(
+        dataDirectory: () async =>
+            (await resolvedController.portableData.dataDirectory()).path,
+      ).loadAdapterJson,
+    );
     // Frontend code never imports the platform layer; the composition root
     // hands the renderer its platform-backed services here instead.
+    final mascotIds = MascotCatalog.avatars.keys.toList(growable: false);
     ClientPlatformPorts.install(
       portableData: resolvedController.portableData,
       featureOrderStore: PlatformDashboardFeatureOrderStoreAdapter.new,
       dockLayoutStore: PlatformDesktopDockLayoutStoreAdapter.new,
+      unreadCursorStore: PlatformMessagingUnreadCursorStoreAdapter.new,
+      selfMascotStore: PlatformSelfMascotStoreAdapter.new,
+      conversationProfileStore: PlatformConversationProfileStoreAdapter.new,
+      selfMascotSeed: mascotIds[Random().nextInt(mascotIds.length)],
       reportTrafficLightAnchor:
           WindowChromeChannel.instance.setTrafficLightAnchor,
+      dragWindow: WindowChromeChannel.instance.dragWindow,
+      toggleZoom: WindowChromeChannel.instance.toggleZoom,
     );
+    unawaited(hydrateSelfMascotIdentity());
+    unawaited(hydrateConversationProfiles());
     return ClientAppComposition._(
       resolvedController,
       layout,
       resolvedTelemetry,
+      resolvedCompositionSet,
+      resolvedWorkControlGateway,
       systemReduceMotionChanges ??
           (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS
               ? const MacosReduceMotionChannel().changes
               : const Stream<bool>.empty()),
+      // The project owner lane. The production gateway lives in the platform
+      // layer and is injected here once it exists; until then the mount keeps
+      // the fail-closed lane, which refuses every read and every submission
+      // instead of presenting an empty project list as a read fact.
+      projectGateway ?? const UnboundProjectManagementGateway(),
+      projectPlanSubmission ?? const UnconvertedProjectPlan(),
+      collaborationRunPort,
+      pluginWindowHostPort,
     );
   }
 
-  static ClientController _createProductionController(
-    BuiltInLayoutComposition layout,
-  ) {
-    final portableData = PortableDataRoot();
+  /// Builds the client controller every production application startup owns.
+  ///
+  /// This is the composition point: it owns the client's data root instance and
+  /// is therefore the only production site that may decide which app-managed
+  /// writers exist for that root. The transport observation backend is installed
+  /// here, over the same root, so the records the native stdio transport admits
+  /// land inside the client's own state tree and are covered by the write
+  /// admission `PortableDataRoot` drains before a data-home relocation.
+  ///
+  /// Observation stays opt-in: the injection seams exist so verification can
+  /// build this exact production controller over a one-off root and a synthetic
+  /// native peer, and a controller built without a backend composes no
+  /// observation state at all.
+  static ClientController createProductionController({
+    required BuiltInLayoutComposition layout,
+    PortableDataRoot? portableData,
+    NativeCliProcessContext? processContext,
+  }) {
+    final root = portableData ?? PortableDataRoot();
     final preferredLayout = switch (defaultTargetPlatform) {
       TargetPlatform.macOS ||
       TargetPlatform.windows ||
@@ -110,19 +190,20 @@ final class ClientAppComposition {
       localePreference: LocalePreference.system,
     );
     final preferences = FilePresentationPreferencesRepository(
-      portableData: portableData,
+      portableData: root,
       fallback: fallback,
     );
     final manager = LayoutManager(
       catalog: layout.catalog,
       preferencesRepository: preferences,
       canonicalFallback: fallback,
-      preferredDefaultId: preferredLayout,
     );
     return ClientController(
-      portableData: portableData,
+      portableData: root,
       layoutCatalog: layout.catalog,
       layoutManager: manager,
+      processContext: processContext,
+      streamObservationBackend: StreamObservationJournal(portableData: root),
     );
   }
 
@@ -130,8 +211,19 @@ final class ClientAppComposition {
     this._controller,
     this._layout,
     this.telemetry,
+    this.compositionSet,
+    WorkControlGateway workControlGateway,
     Stream<bool> systemReduceMotionChanges,
-  ) : _projectionTracing = CausalProjectionSourceRegistry(telemetry) {
+    ProjectManagementGateway projectGateway,
+    ProjectPlanSubmission projectPlanSubmission,
+    CollaborationRunPort? collaborationRunPort,
+    PluginWindowHostPort? pluginWindowHostPort,
+  ) : _collaborationRunPort = collaborationRunPort,
+      _pluginWindowHostPort = pluginWindowHostPort,
+      _projectionTracing = CausalProjectionSourceRegistry(telemetry),
+      _projectPlanSubmission = projectPlanSubmission,
+      _workControl = WorkControlController(gateway: workControlGateway) {
+    _workControlPresentation = WorkControlPresentation(_workControl);
     final beginRendererIntent = telemetry?.beginRendererIntent;
     final runtimeSurface = _controller.mobileClientRuntimePlatform
         ? LayoutRuntimeSurface.mobile
@@ -153,10 +245,12 @@ final class ClientAppComposition {
     _shellProjection = ShellProjectionProducer(
       appearance: _controller.appearancePreferenceOwner,
       locale: _controller.localePreferenceOwner,
+      localeResources: _controller.localeResourceOwner,
       status: _controller.functionalStatusRuntime,
       navigation: _controller.navigationController,
       layoutManager: _controller.layoutManager,
       environment: _environment,
+      mountedDestinations: mountedDestinations,
     );
     _systemReduceMotionSubscription = systemReduceMotionChanges.listen(
       _environment.replaceSystemReduceMotion,
@@ -190,12 +284,10 @@ final class ClientAppComposition {
     _conversation = ConversationFeatureComposition(
       _controller,
       beginRendererIntent: beginRendererIntent,
+      workControl: _workControl,
     );
-    _mobileRelay = MobileRelayFeatureComposition(
-      relay: _controller.mobileRelayController,
-      secureMesh: _controller.secureMeshController,
-      homeLayout: _controller.mobileHomeLayoutController,
-      readMobileRuntime: () => _controller.mobileClientRuntimePlatform,
+    _devices = DevicesFeatureComposition(
+      _controller.devicesController,
       beginRendererIntent: beginRendererIntent,
     );
     _models = ModelsFeatureComposition(
@@ -218,6 +310,10 @@ final class ClientAppComposition {
       _controller,
       beginRendererIntent: beginRendererIntent,
     );
+    _projects = ProjectsFeatureComposition(
+      projectGateway,
+      beginRendererIntent: beginRendererIntent,
+    );
     _search = SearchFeatureComposition(
       _controller,
       beginRendererIntent: beginRendererIntent,
@@ -230,6 +326,29 @@ final class ClientAppComposition {
       controller: _controller,
       beginRendererIntent: beginRendererIntent,
     );
+    _collaboration = CollaborationFeatureComposition(
+      port: _collaborationRunPort,
+      wrapBinding: (source) => CollaborationBinding(
+        projection: _projectionTracing.wrap(source),
+        intents: source,
+        effects: source,
+      ),
+    );
+    _pluginWindow = PluginWindowFeatureComposition(
+      port: _pluginWindowHostPort,
+      wrapBinding: (source) => PluginWindowBinding(
+        projection: _projectionTracing.wrap(source),
+        intents: source,
+        effects: source,
+      ),
+    );
+
+    /// The binding a feature contributes only when the declaration names it.
+    ///
+    /// An undeclared feature therefore reaches the renderer as null and has no
+    /// surface, while its composition is still torn down with the container.
+    T? mounted<T>(bool installed, T Function() binding) =>
+        installed ? binding() : null;
 
     final rawAgents = _agents.binding;
     agents = AgentsBinding(
@@ -261,35 +380,50 @@ final class ClientAppComposition {
       intents: rawConversation.intents,
       effects: rawConversation.effects,
     );
-    final rawMobileRelay = _mobileRelay.binding;
-    mobileRelay = MobileRelayBinding(
-      projection: _projectionTracing.wrap(rawMobileRelay.projection),
-      intents: rawMobileRelay.intents,
-      effects: rawMobileRelay.effects,
+    final rawDevices = _devices.binding;
+    devices = mounted(
+      compositionSet.devices,
+      () => DevicesBinding(
+        projection: _projectionTracing.wrap(rawDevices.projection),
+        intents: rawDevices.intents,
+        effects: rawDevices.effects,
+      ),
     );
     final rawModels = _models.binding;
-    models = ModelsBinding(
-      projection: _projectionTracing.wrap(rawModels.projection),
-      intents: rawModels.intents,
-      effects: rawModels.effects,
+    models = mounted(
+      compositionSet.models,
+      () => ModelsBinding(
+        projection: _projectionTracing.wrap(rawModels.projection),
+        intents: rawModels.intents,
+        effects: rawModels.effects,
+      ),
     );
     final rawSkillHub = _skillHub.binding;
-    skillHub = SkillHubBinding(
-      projection: _projectionTracing.wrap(rawSkillHub.projection),
-      intents: rawSkillHub.intents,
-      effects: rawSkillHub.effects,
+    skillHub = mounted(
+      compositionSet.skillHub,
+      () => SkillHubBinding(
+        projection: _projectionTracing.wrap(rawSkillHub.projection),
+        intents: rawSkillHub.intents,
+        effects: rawSkillHub.effects,
+      ),
     );
     final rawPluginManagement = _pluginManagement.binding;
-    pluginManagement = PluginManagementBinding(
-      projection: _projectionTracing.wrap(rawPluginManagement.projection),
-      intents: rawPluginManagement.intents,
-      effects: rawPluginManagement.effects,
+    pluginManagement = mounted(
+      compositionSet.pluginManagement,
+      () => PluginManagementBinding(
+        projection: _projectionTracing.wrap(rawPluginManagement.projection),
+        intents: rawPluginManagement.intents,
+        effects: rawPluginManagement.effects,
+      ),
     );
     final rawAgentHub = _agentHub.binding;
-    agentHub = AgentHubBinding(
-      projection: _projectionTracing.wrap(rawAgentHub.projection),
-      intents: rawAgentHub.intents,
-      effects: rawAgentHub.effects,
+    agentHub = mounted(
+      compositionSet.agentHub,
+      () => AgentHubBinding(
+        projection: _projectionTracing.wrap(rawAgentHub.projection),
+        intents: rawAgentHub.intents,
+        effects: rawAgentHub.effects,
+      ),
     );
     final rawTargets = _targets.binding;
     targets = TargetsBinding(
@@ -297,11 +431,25 @@ final class ClientAppComposition {
       intents: rawTargets.intents,
       effects: rawTargets.effects,
     );
+    final rawProjects = _projects.binding;
+    projects = mounted(
+      compositionSet.projects,
+      () => ProjectsBinding(
+        projection: _projectionTracing.wrap(rawProjects.projection),
+        layout: _projectionTracing.wrap(rawProjects.layout),
+        intents: rawProjects.intents,
+        layoutMutations: rawProjects.layoutMutations,
+        effects: rawProjects.effects,
+      ),
+    );
     final rawSearch = _search.binding;
-    search = SearchBinding(
-      projection: _projectionTracing.wrap(rawSearch.projection),
-      intents: rawSearch.intents,
-      effects: rawSearch.effects,
+    search = mounted(
+      compositionSet.search,
+      () => SearchBinding(
+        projection: _projectionTracing.wrap(rawSearch.projection),
+        intents: rawSearch.intents,
+        effects: rawSearch.effects,
+      ),
     );
     final rawChrome = _chrome.binding;
     chrome = ChromeBinding(
@@ -314,11 +462,13 @@ final class ClientAppComposition {
       projection: _projectionTracing.wrap(rawSettings.projection),
       resourceUsage: _projectionTracing.wrap(rawSettings.resourceUsage),
       autostart: _projectionTracing.wrap(rawSettings.autostart),
+      terminalCommand: _projectionTracing.wrap(rawSettings.terminalCommand),
       intents: rawSettings.intents,
       effects: rawSettings.effects,
     );
 
     _renderer = BindingShellRenderer(
+      composition: compositionSet,
       layout: _layout,
       shellIntents: _shellIntents,
       status: binding.status,
@@ -329,22 +479,45 @@ final class ClientAppComposition {
       monitoring: monitoring,
       skillHub: skillHub,
       pluginManagement: pluginManagement,
-      mobileRelay: mobileRelay,
+      devices: devices,
       models: models,
-      settings: settings,
+      settings: compositionSet.settings ? settings : null,
       agentHub: agentHub,
-      search: search,
+      search: compositionSet.search ? search : null,
       targets: targets,
+      pluginWindow: _pluginWindow.binding,
+      collaborationFor: collaborationBindingFor,
+      releaseCollaboration: releaseCollaborationBinding,
       openExternalUri: _controller.runtimePlatformBridge.openHttps,
       workspaceHomeDirectory: userHomeDirectory(),
+      clientUpdateAdmission: () => _controller.clientUpdateController.admission,
+      workControl: _workControlPresentation,
+      projects: projects,
+      projectPlanSubmission: _projectPlanSubmission,
     );
     renderer = _renderer;
   }
 
+  /// The destination owner the renderer delegates section dispatch to.
+  ///
+  /// Exposing it here keeps the destination-to-surface decision at the same
+  /// boundary that decides which features exist, so a test can ask which
+  /// surface a declaration produces without building the shell.
+  ShellDestinations get shellDestinations => _renderer.destinations;
+
   final ClientController _controller;
   final BuiltInLayoutComposition _layout;
-  final CausalFrameTelemetry? telemetry;
+  final WorkControlController _workControl;
+  late final WorkControlPresentation _workControlPresentation;
+  final PresentationObservation? telemetry;
   final CausalProjectionSourceRegistry _projectionTracing;
+
+  /// The caller-converted plan document the project surface may submit, or the
+  /// explicit absence of one.
+  final ProjectPlanSubmission _projectPlanSubmission;
+
+  /// The declaration naming every feature composition this client owns.
+  final ClientCompositionSet compositionSet;
   late final ShellProjectionProducer _shellProjection;
   late final EnvironmentProjectionSource _environment;
   late final StreamSubscription<bool> _systemReduceMotionSubscription;
@@ -353,44 +526,133 @@ final class ClientAppComposition {
   late final AgentsFeatureComposition _agents;
   late final MonitoringFeatureComposition _monitoring;
   late final ConversationFeatureComposition _conversation;
-  late final MobileRelayFeatureComposition _mobileRelay;
+  late final DevicesFeatureComposition _devices;
   late final ModelsFeatureComposition _models;
   late final SkillHubFeatureComposition _skillHub;
   late final PluginManagementFeatureComposition _pluginManagement;
   late final AgentHubFeatureComposition _agentHub;
   late final TargetsFeatureComposition _targets;
+  late final ProjectsFeatureComposition _projects;
   late final SearchFeatureComposition _search;
   late final ChromeFeatureComposition _chrome;
   late final SettingsFeatureComposition _settings;
+  late final CollaborationFeatureComposition _collaboration;
+  late final PluginWindowFeatureComposition _pluginWindow;
+  final CollaborationRunPort? _collaborationRunPort;
+  final PluginWindowHostPort? _pluginWindowHostPort;
   late final BindingShellRenderer _renderer;
 
   late final ShellBinding binding;
   late final AgentsBinding agents;
   late final MonitoringBinding monitoring;
   late final ConversationBinding conversation;
-  late final MobileRelayBinding mobileRelay;
-  late final ModelsBinding models;
-  late final SkillHubBinding skillHub;
-  late final PluginManagementBinding pluginManagement;
-  late final AgentHubBinding agentHub;
+  late final DevicesBinding? devices;
+  late final ModelsBinding? models;
+  late final SkillHubBinding? skillHub;
+  late final PluginManagementBinding? pluginManagement;
+  late final AgentHubBinding? agentHub;
   late final TargetsBinding targets;
-  late final SearchBinding search;
+
+  /// The project canvas binding, present exactly while the projects mount is
+  /// declared enabled.
+  late final ProjectsBinding? projects;
+  late final SearchBinding? search;
   late final ChromeBinding chrome;
+
+  /// The settings composition is part of the shell's own minimum: the
+  /// settings feature serves the relocation effects the application root
+  /// consumes, so it is always bound even when the declaration leaves the
+  /// settings destination optional.
   late final SettingsBinding settings;
   late final ShellRendererPort renderer;
+
+  /// The collaboration-flowchart binding of [conversationId] over the
+  /// reserved run port, retained until [releaseCollaborationBinding]. Until
+  /// the native producer lands the projection reports `unavailable`.
+  CollaborationBinding collaborationBindingFor(String conversationId) =>
+      _collaboration.bindingFor(conversationId);
+
+  Future<void> releaseCollaborationBinding(String conversationId) =>
+      _collaboration.release(conversationId);
   Future<void>? _disposal;
 
   /// Aggregated Riverpod overrides that install every migrated feature's live
   /// presentation sources. The app root wraps its tree in a `ProviderScope`
   /// with these; feature tests install their own synthetic overrides instead.
   List<Override> get presentationOverrides => <Override>[
+    conversationMarkdownPortProvider.overrideWith(_bindConversationMarkdown),
     ..._settings.providerOverrides,
     ..._pluginManagement.providerOverrides,
     ..._skillHub.providerOverrides,
-    ..._mobileRelay.providerOverrides,
   ];
 
+  /// The catalogue projection of the destinations this declaration mounts.
+  ///
+  /// The shell navigation plane reads it so an uninstalled capability is
+  /// absent from the offered destinations and a request for it recovers to a
+  /// mounted one, instead of rendering a surface no feature owns.
+  MountedDestinationSet get mountedDestinations => MountedDestinationSet([
+    for (final destination in ClientSection.values)
+      if (compositionSet.isInstalled(destination)) destination,
+  ]);
+
+  /// Binds the conversation markdown port to the container's runtime.
+  ///
+  /// One preparation owner exists per presentation container and lives behind
+  /// the port, so a view publishes narrow input and reads prepared state
+  /// without owning a runtime, a worker pool, or a cache. The owner is disposed
+  /// with the container, which stops its worker isolates with the scope.
+  ConversationMarkdownPort _bindConversationMarkdown(Ref ref) {
+    final runtime = ref.watch(presentationRuntimeProvider);
+    final preparation = ConversationMarkdownPreparation.spawn(runtime: runtime);
+    ref.onDispose(preparation.dispose);
+    return preparation;
+  }
+
   Future<void> initialize() => _controller.initialize();
+
+  bool get initialized => _controller.lifecycleProjection.initialized;
+
+  bool get bootstrapFailed =>
+      _controller.lifecycleController.lastFailureStepId.isNotEmpty;
+
+  Future<bool> get needsDataHomeRecovery async =>
+      _controller.lifecycleController.lastFailureStepId ==
+          'client_storage_root' &&
+      await _controller.portableData.missingSavedDataHome();
+
+  /// Closes every root-bound controller and native session before invoking
+  /// the isolated migration process. The returned native facade retains only
+  /// the immutable process bootstrap needed to locate and start that helper.
+  Future<Map<String, dynamic>> relocateDataHome(
+    String destinationParent, {
+    DataHomePhaseHandler? onPhase,
+  }) async {
+    final native = _controller.agentService;
+    await dispose();
+    return native.relocateDataHome(destinationParent, onPhase: onPhase);
+  }
+
+  Future<Map<String, dynamic>> recoverDataHome(
+    String dataHome, {
+    DataHomePhaseHandler? onPhase,
+  }) async {
+    final native = _controller.agentService;
+    await dispose();
+    return native.recoverDataHome(dataHome, onPhase: onPhase);
+  }
+
+  Future<Map<String, dynamic>> cleanupPreviousDataHome(
+    String expectedPreviousRootPath, {
+    DataHomePhaseHandler? onPhase,
+  }) async {
+    final native = _controller.agentService;
+    await dispose();
+    return native.cleanupPreviousDataHome(
+      expectedPreviousRootPath,
+      onPhase: onPhase,
+    );
+  }
 
   Future<void> initializeLlmGateway() => _controller.initializeLlmGateway();
 
@@ -415,27 +677,32 @@ final class ClientAppComposition {
 
   Future<void> dispose() => _disposal ??= _dispose();
 
-  Future<void> _dispose() => disposeAll([
-    _renderer.dispose,
-    _layout.dispose,
-    _projectionTracing.dispose,
-    () => telemetry?.dispose(),
-    _settings.dispose,
-    _chrome.close,
-    _search.close,
-    _targets.dispose,
-    _agentHub.dispose,
-    _pluginManagement.dispose,
-    _skillHub.dispose,
-    _models.dispose,
-    _mobileRelay.dispose,
-    _conversation.close,
-    _monitoring.close,
-    _agents.close,
-    _shellProjection.dispose,
-    _systemReduceMotionSubscription.cancel,
-    _environment.dispose,
-    _shellEffects.dispose,
-    _controller.close,
-  ]);
+  Future<void> _dispose() async {
+    await _controller.portableData.stopAppManagedWritersAndDrain();
+    await disposeAll([
+      _renderer.dispose,
+      _layout.dispose,
+      _projectionTracing.dispose,
+      () => telemetry?.dispose(),
+      _settings.dispose,
+      _collaboration.close,
+      _pluginWindow.close,
+      _chrome.close,
+      _search.close,
+      _targets.dispose,
+      _agentHub.dispose,
+      _pluginManagement.dispose,
+      _skillHub.dispose,
+      _models.dispose,
+      _devices.dispose,
+      _conversation.close,
+      _monitoring.close,
+      _agents.close,
+      _shellProjection.dispose,
+      _systemReduceMotionSubscription.cancel,
+      _environment.dispose,
+      _shellEffects.dispose,
+      _controller.close,
+    ]);
+  }
 }

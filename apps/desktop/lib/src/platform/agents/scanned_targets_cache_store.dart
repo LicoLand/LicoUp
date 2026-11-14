@@ -1,6 +1,6 @@
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/contracts/target_management.dart';
-import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
+import 'package:licoup/src/platform/storage/client_json_document_store.dart';
 
 /// Persists the last successful local agent discovery snapshot so the Agents
 /// sidebar can paint immediately on the next launch without waiting for scan.
@@ -16,12 +16,12 @@ abstract class ScannedTargetsCacheStore implements TargetSnapshotRepository {
 
 class PlatformScannedTargetsCacheStore implements ScannedTargetsCacheStore {
   const PlatformScannedTargetsCacheStore({
-    MobileRelayJsonStore jsonStore = const MobileRelayJsonStore(),
+    ClientJsonDocumentStore jsonStore = const ClientJsonDocumentStore(),
   }) : _jsonStore = jsonStore;
 
   static const _fileName = 'scanned-targets-cache.json';
 
-  final MobileRelayJsonStore _jsonStore;
+  final ClientJsonDocumentStore _jsonStore;
 
   @override
   Future<List<TargetCandidate>> load(Object portableData) async {

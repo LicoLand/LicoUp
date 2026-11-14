@@ -4,6 +4,7 @@ import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
+import 'package:licoup/src/application/features/agents/conversation/native_approval_request.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_presentation_signals.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_queue.dart';
@@ -18,7 +19,6 @@ import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/agent_tool_allowlist_repository.dart';
 import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
-import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 
@@ -36,7 +36,6 @@ abstract class AgentWorkspaceCoordinator extends ApplicationStateOwner {
       const [];
 
   AgentConversationGateway get conversationGateway;
-  MobileAgentConversationGateway get mobileConversationGateway;
   List<TargetCandidate> get scannedTargets;
   set scannedTargets(List<TargetCandidate> value);
   ClientLifecycleProjection get lifecycleProjection;
@@ -52,6 +51,7 @@ abstract class AgentWorkspaceCoordinator extends ApplicationStateOwner {
   ClientSection get agentWorkspaceCurrentSection;
   ClientApplicationStrings get agentWorkspaceStrings;
   Object get agentWorkspacePortableData;
+  String get agentWorkspaceDataRoot;
   AgentToolAllowlistRepository get agentToolAllowlistRepository;
   Future<Map<String, Object?>> agentWorkspaceReadSettingsState();
   Future<void> agentWorkspaceWriteSettingsState(Map<String, Object?> content);
@@ -101,11 +101,6 @@ abstract class AgentWorkspaceCoordinator extends ApplicationStateOwner {
   void agentWorkspaceNotifyConversationTabActivityChanged();
   void agentWorkspaceRecordCurrentAgentView();
   Future<void> agentWorkspaceOpenDirectory(String path, {String caption = ''});
-  String get relaySourceClientId;
-  String get relaySourceClientLabel;
-  List<SecureMeshApprovalRequest> get secureMeshApprovalInbox;
-  set secureMeshApprovalInbox(List<SecureMeshApprovalRequest> value);
-  Future<void> refreshSecureMeshApprovalInbox({bool includeResolved = true});
 
   TargetCandidate? get selectedConversationAgent;
   List<AgentConversationSession> get selectedConversationSessions;
@@ -132,11 +127,17 @@ abstract class AgentWorkspaceCoordinator extends ApplicationStateOwner {
   AgentConversationTabActivity conversationTabActivityFor(String agentId);
   void acknowledgeConversationTabWorkFinished(String agentId);
   String runtimeAdapterFailureCode(Map<String, dynamic> result);
-  Future<void> refreshConversationCatalogInternal(
+
+  /// Reads one catalog page for [agentId]. Returns whether the applied
+  /// projection differs from what was shown before the read.
+  Future<bool> refreshConversationCatalogInternal(
     String agentId, {
     required bool foreground,
   });
-  Future<void> refreshActiveConversationSessionInternal(
+
+  /// Reads the head page of the exact session [sessionId]. Returns whether
+  /// the applied projection differs from what was shown before the read.
+  Future<bool> refreshActiveConversationSessionInternal(
     String agentId,
     String sessionId,
   );
@@ -150,13 +151,28 @@ abstract class AgentWorkspaceCoordinator extends ApplicationStateOwner {
   ) async => false;
 
   bool get agentWorkspaceDisposed => lifecycleProjection.disposed;
-  bool conversationMobileLoading = false;
+
+  /// Local native permission requests waiting for an Allow or Deny decision,
+  /// in arrival order.
+  List<NativeApprovalRequest> pendingNativeApprovals =
+      const <NativeApprovalRequest>[];
+
+  /// Pending operations whose decision is being delivered.
+  Set<String> resolvingNativeApprovals = const <String>{};
+
+  /// The stable code of the last approval resolution that failed, or empty.
+  String nativeApprovalErrorCode = '';
   Map<String, String> _newConversationDraftTokensByAgent = const {};
   int _newConversationDraftSequence = 0;
   Map<String, String> newConversationWorkingDirectories = const {};
   Timer? conversationActiveRefreshTimer;
   Timer? conversationBackgroundRefreshTimer;
   Timer? conversationCodexRuntimeRefreshTimer;
+
+  /// Consecutive active-lane reads that observed no applied change — the
+  /// active lane's exponential backoff position. Reset on selection
+  /// change, attention change and any read that applies new data.
+  int conversationActiveUnchangedReads = 0;
   final Set<String> conversationSessionLoadingTargets = <String>{};
   final Set<({String agentId, String sessionId})>
   conversationActiveRefreshTargets = <({String agentId, String sessionId})>{};
@@ -321,7 +337,7 @@ abstract class AgentWorkspaceCoordinator extends ApplicationStateOwner {
 
   /// Whether the selected target transports images end to end: the packaged
   /// `multimodal` capability truth intersected with desktop, direct-local,
-  /// non-VM transport. Every other adapter, Mobile Relay target, and VM target
+  /// non-VM transport. Every other adapter, Devices peer target, and VM target
   /// stays attachment-unsupported.
   bool get selectedConversationSupportsImageAttachments {
     final target = selectedConversationAgent;
@@ -517,9 +533,8 @@ abstract class AgentWorkspaceCoordinator extends ApplicationStateOwner {
     ];
   }
 
-  bool get isLoadingConversations => agentWorkspaceMobileRuntime
-      ? conversationMobileLoading
-      : conversationSessionLoadingTargets.contains(selectedConversationAgentId);
+  bool get isLoadingConversations =>
+      conversationSessionLoadingTargets.contains(selectedConversationAgentId);
 
   String get selectedConversationMessagePageKey {
     final session = selectedConversationSession;

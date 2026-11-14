@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
@@ -88,7 +89,11 @@ class ConversationParityDisclosurePanel extends StatelessWidget {
       key: const Key('conversation-parity-disclosure'),
       consumeOutsideTap: true,
       style: MenuStyle(
-        backgroundColor: WidgetStatePropertyAll(colors.surfaceLow),
+        backgroundColor: WidgetStatePropertyAll(
+          (colors.isDark
+              ? LicoPaneGlass.contentInnerCardFill
+              : colors.surfaceLow),
+        ),
         elevation: const WidgetStatePropertyAll(6),
         shape: WidgetStatePropertyAll(
           ContinuousRoundedBorder(
@@ -151,7 +156,9 @@ class ConversationParityDisclosurePanel extends StatelessWidget {
                                               ? colors.success
                                               : colors.textMuted)
                                           .withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(6),
+                                  borderRadius: BorderRadius.circular(
+                                    LicoRadius.well,
+                                  ),
                                 ),
                                 child: Text(
                                   '${entry.key}:${supported ? 'yes' : 'no'}',

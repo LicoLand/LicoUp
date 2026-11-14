@@ -18,6 +18,17 @@ enum MacStatusBarPresencePolicy {
   }
 
   /// Another live process of this bundle should own the session.
+  /// Debug builds started for the design bench set `LICOUP_DESIGN_BENCH=1`
+  /// and run on synthetic data in their own `LICOUP_HOME`; they must not
+  /// hand over to an installed client that is already running.
+  static func runsBesideExistingInstance(environment: [String: String]) -> Bool {
+    #if DEBUG
+      return environment["LICOUP_DESIGN_BENCH"] == "1"
+    #else
+      return false
+    #endif
+  }
+
   static func existingInstancePid(
     currentPid: pid_t,
     otherInstancePids: [pid_t]

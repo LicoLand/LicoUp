@@ -75,7 +75,7 @@ A named collaboration responsibility inside one Conversation, with an ordered
 pool of eligible Agent Memberships and optional runtime preferences.
 _Avoid_: hard-coded worker lane, global agent type
 
-**Adaptive Flywheel**:
+**Acativa**:
 An ordered sequence of Conversation Roles resolved at run start from immutable
 role and candidate snapshots. It has no built-in team topology.
 _Avoid_: fixed workflow, global orchestration preset

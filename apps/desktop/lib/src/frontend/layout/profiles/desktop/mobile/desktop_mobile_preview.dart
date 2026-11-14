@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/layout/profiles/desktop/mobile/desktop_mobile_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 
 const String desktopMobilePreviewSemanticLabel = 'layout.profile.desktop.label';
 
 /// Metadata-only preview: the shapes describe the Desktop composition but
 /// never consume live feature state, user content, or backend data.
-Widget buildDesktopMobilePreview(BuildContext context) {
+Widget buildDesktopMobilePreview(BuildContext context, LayoutStyleId? style) {
   final colors = Theme.of(context).colorScheme;
   return Semantics(
     key: const ValueKey<String>('desktop-mobile-preview'),

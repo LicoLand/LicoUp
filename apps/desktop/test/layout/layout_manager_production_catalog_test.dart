@@ -6,7 +6,7 @@ import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
-import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
+import 'package:licoup/src/platform/presentation/file_presentation_preferences_repository.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 void main() {
@@ -25,22 +25,45 @@ void main() {
   });
 
   test(
-    'production wiring: dashboard default switches to desktop and back',
+    'production wiring: a fresh data root starts on the dashboard layout',
+    () async {
+      final catalog = BuiltInLayoutComposition().catalog;
+      // Mirror client_controller.dart exactly: the catalog owns the default.
+      final fallback = PresentationPreferences(
+        layoutProfileId: catalog.defaultProfile.id,
+        appearancePresetId: 'default-system',
+        localePreference: 'system',
+      );
+      final manager = LayoutManager(
+        catalog: catalog,
+        preferencesRepository: FilePresentationPreferencesRepository(
+          portableData: PortableDataRoot(dataDirectoryOverride: temporaryRoot),
+          fallback: fallback,
+        ),
+        canonicalFallback: fallback,
+      );
+
+      await manager.initialize();
+      expect(catalog.defaultProfile.id, LayoutProfileId.parse('dashboard'));
+      expect(manager.state.status, LayoutSelectionStatus.stable);
+      expect(manager.state.committedId, LayoutProfileId.parse('dashboard'));
+      manager.dispose();
+    },
+  );
+
+  test(
+    'production wiring: a stored dashboard layout is kept and switches to desktop and back',
     () async {
       final composition = BuiltInLayoutComposition();
       final catalog = composition.catalog;
-      // Mirror client_controller.dart exactly.
-      final preferredLayout = LayoutProfileId.parse('dashboard');
-      expect(preferredLayout, LayoutProfileId.parse('dashboard'));
       expect(
         catalog.containsProfile(LayoutProfileId.parse('desktop')),
         isTrue,
         reason: 'desktop profile must be registered in the built-in catalog',
       );
-      expect(catalog.containsProfile(preferredLayout), isTrue);
 
       final fallback = PresentationPreferences(
-        layoutProfileId: preferredLayout,
+        layoutProfileId: catalog.defaultProfile.id,
         appearancePresetId: 'default-system',
         localePreference: 'system',
       );
@@ -55,7 +78,6 @@ void main() {
         catalog: catalog,
         preferencesRepository: repository,
         canonicalFallback: fallback,
-        preferredDefaultId: preferredLayout,
       );
       final transitions = <LayoutSelectionStatus>[];
       manager.changes.listen((_) => transitions.add(manager.state.status));

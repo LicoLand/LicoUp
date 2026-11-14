@@ -53,6 +53,17 @@ abstract interface class AgentConversationGateway {
     AgentDispatchBind bind = const AgentDispatchBind(),
   });
 
+  /// Allows or denies one parked native permission request; empty when the
+  /// decision is delivered or the request was already settled, otherwise the
+  /// stable failure code.
+  Future<String> resolveNativeApproval({
+    required String agentId,
+    required String sessionId,
+    required String turnId,
+    required String adapterCallbackTokenRef,
+    required bool allow,
+  });
+
   Future<AgentDispatchCancelResult> cancel({
     required String agentId,
     required String sessionId,
@@ -121,38 +132,5 @@ abstract interface class PersistentAgentConversationGateway {
   Future<AgentDispatchCancelResult> cancelActiveTurn({
     required String turnHandle,
     required String conversationId,
-  });
-}
-
-abstract interface class MobileAgentConversationGateway {
-  Future<Map<String, dynamic>> send({
-    required String agentId,
-    required String text,
-    String sessionId = '',
-    String model = '',
-    String reasoningEffort = '',
-  });
-
-  Future<Map<String, dynamic>> listSessions({
-    required String agentId,
-    int limit = 20,
-    int offset = 0,
-  });
-
-  Future<Map<String, dynamic>> describeSession({
-    required String agentId,
-    required String sessionId,
-  });
-}
-
-/// Optional exact-message continuation implemented by the production Secure
-/// Mesh adapter. Older test or embedding gateways can keep the one-shot
-/// describe contract without silently claiming page support.
-abstract interface class MobilePagedAgentConversationGateway {
-  Future<Map<String, dynamic>> describeSessionPage({
-    required String agentId,
-    required String sessionId,
-    String messageBefore = '',
-    required int messageLimit,
   });
 }

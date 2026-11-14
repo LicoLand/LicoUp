@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/features/agents/data/plan_document_loader.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -70,7 +71,11 @@ class _LicoPlanDocumentPanelState extends State<LicoPlanDocumentPanel> {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     return Material(
-      color: colors.surfaceLow.withAlpha(colors.isDark ? 160 : 220),
+      color:
+          (colors.isDark
+                  ? LicoPaneGlass.contentInnerCardFill
+                  : colors.surfaceLow)
+              .withAlpha(colors.isDark ? 160 : 220),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

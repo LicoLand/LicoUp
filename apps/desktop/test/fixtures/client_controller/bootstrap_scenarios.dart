@@ -3,7 +3,8 @@ import 'package:path/path.dart' as p;
 import 'support/client_controller_scenario_dependencies.dart';
 import 'support/client_controller_scenario_environment.dart';
 import 'support/fake_agent_service.dart';
-import 'support/fake_mobile_relay_service.dart';
+
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 
 void registerClientBootstrapScenarios() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -71,58 +72,6 @@ void registerClientBootstrapScenarios() {
     expect(controller.lastError, 'target_scan_failed');
   });
 
-  test('persists mobile home pinned order and pinned entries', () async {
-    final directory = await Directory.systemTemp.createTemp(
-      'lico-mobile-home-layout-',
-    );
-    addTearDown(() async {
-      if (await directory.exists()) {
-        await directory.delete(recursive: true);
-      }
-    });
-    final portableData = PortableDataRoot(dataDirectoryOverride: directory);
-    final controller = ClientController(
-      portableData: portableData,
-      agentService: FakeAgentService(),
-    );
-    addTearDown(controller.dispose);
-
-    await controller.toggleMobileHomeEntryPinned('target:codex');
-    await controller.toggleMobileHomeEntryPinned('device:mac');
-    await controller.reorderMobileHomePinnedEntries(
-      ['target:codex', 'device:mac'],
-      1,
-      0,
-    );
-
-    expect(controller.mobileHomeLayout.order, ['device:mac', 'target:codex']);
-    expect(
-      controller.mobileHomeLayout.pinnedEntryIds,
-      containsAll(['target:codex', 'device:mac']),
-    );
-
-    final layoutFile = File(
-      '${(await portableData.clientDirectory()).path}/mobile-home-layout.json',
-    );
-    final raw = await layoutFile.readAsString();
-    expect(raw, isNot(contains('"account:')));
-    expect(raw, contains('"pinnedEntryIds"'));
-
-    final reloaded = ClientController(
-      portableData: portableData,
-      agentService: FakeAgentService(),
-    );
-    addTearDown(reloaded.dispose);
-
-    await reloaded.initialize();
-
-    expect(reloaded.mobileHomeLayout.order.first, 'device:mac');
-    expect(
-      reloaded.mobileHomeLayout.pinnedEntryIds,
-      containsAll(['target:codex', 'device:mac']),
-    );
-  });
-
   test('loads and saves local appearance preset preference', () async {
     final directory = await Directory.systemTemp.createTemp(
       'lico-appearance-preference-',
@@ -133,7 +82,7 @@ void registerClientBootstrapScenarios() {
       '${(await portableData.clientDirectory()).path}/appearance-preferences.json',
     );
     await preferencesFile.writeAsString(
-      '{"schemaVersion":1,"appearancePresetId":"lico-soda-light","reduceMotion":true}',
+      '{"schemaVersion":1,"appearancePresetId":"lico-taro-waffle","reduceMotion":true}',
       flush: true,
     );
 
@@ -143,8 +92,8 @@ void registerClientBootstrapScenarios() {
     );
     addTearDown(controller.dispose);
     await controller.initialize();
-    expect(controller.appearancePresetId, AppearancePresetIds.licoSodaLight);
-    expect(controller.reduceMotion, isTrue);
+    expect(controller.appearancePresetId, AppearancePresetIds.taroWaffle);
+    expect(controller.reduceMotion, ReduceMotionPreference.on);
 
     await controller.setAppearancePreset(AppearancePresetIds.defaultSystem);
     expect(controller.appearancePresetId, AppearancePresetIds.defaultSystem);
@@ -160,10 +109,10 @@ void registerClientBootstrapScenarios() {
     addTearDown(reloaded.dispose);
     await reloaded.initialize();
     expect(reloaded.appearancePresetId, AppearancePresetIds.defaultSystem);
-    expect(reloaded.reduceMotion, isTrue);
+    expect(reloaded.reduceMotion, ReduceMotionPreference.on);
   });
 
-  test('retired appearance preset falls back to the ready dark preset', () async {
+  test('retired appearance preset falls back to the system default', () async {
     final directory = await Directory.systemTemp.createTemp(
       'lico-appearance-retired-',
     );
@@ -173,7 +122,7 @@ void registerClientBootstrapScenarios() {
       '${(await portableData.clientDirectory()).path}/appearance-preferences.json',
     );
     await preferencesFile.writeAsString(
-      '{"schemaVersion":1,"appearancePresetId":"sunset-ember"}',
+      '{"schemaVersion":1,"appearancePresetId":"retired-preset"}',
       flush: true,
     );
 
@@ -184,11 +133,17 @@ void registerClientBootstrapScenarios() {
     addTearDown(controller.dispose);
 
     await controller.initialize();
-    expect(controller.appearancePresetId, AppearancePresetIds.licoMist);
+    expect(controller.appearancePresetId, AppearancePresetIds.defaultSystem);
+    // The normalized selection is persisted so the retired id does not
+    // linger in the preference file.
+    expect(
+      await preferencesFile.readAsString(),
+      contains('"appearancePresetId": "default-system"'),
+    );
   });
 
   test(
-    'invalid local appearance preset falls back to the ready dark preset',
+    'invalid local appearance preset falls back to the system default',
     () async {
       final directory = await Directory.systemTemp.createTemp(
         'lico-appearance-invalid-',
@@ -210,7 +165,11 @@ void registerClientBootstrapScenarios() {
       addTearDown(controller.dispose);
 
       await controller.initialize();
-      expect(controller.appearancePresetId, AppearancePresetIds.licoMist);
+      expect(controller.appearancePresetId, AppearancePresetIds.defaultSystem);
+      expect(
+        await preferencesFile.readAsString(),
+        contains('"appearancePresetId": "default-system"'),
+      );
     },
   );
 
@@ -428,12 +387,18 @@ void registerClientBootstrapScenarios() {
     await File(
       '${presetsDirectory.path}/broken.json',
     ).writeAsString('{"schemaVersion": 1, "id": "broken"}', flush: true);
-    await controller.reloadAppearancePresets();
 
-    expect(controller.appearancePresetId, 'agent-preview');
-    expect(controller.appearancePresetLoadErrors, isNotEmpty);
-    expect(controller.statusMessage, '外观预设已重新加载，部分配置无效。');
-    expect(controller.statusCaption, 'Appearance');
+    // The preset catalog loads at startup; external file changes are picked
+    // up on the next launch.
+    final restarted = ClientController(
+      portableData: portableData,
+      agentService: FakeAgentService(),
+    );
+    addTearDown(restarted.dispose);
+    await restarted.initialize();
+
+    expect(restarted.appearancePresetId, 'agent-preview');
+    expect(restarted.appearancePresetLoadErrors, isNotEmpty);
   });
 
   test(
@@ -499,25 +464,6 @@ void registerClientBootstrapScenarios() {
         service.scanBatchSlotCalls,
         lessThan(AgentService.packagedScanTargetIds.length * 2),
       );
-    },
-  );
-
-  test(
-    'selecting mobile relay section refreshes public secure mesh status',
-    () async {
-      final relayService = FakeMobileRelayService();
-      final controller = ClientController(
-        agentService: FakeAgentService(),
-        mobileRelayService: relayService,
-      );
-      addTearDown(controller.dispose);
-
-      controller.selectSection(ClientSection.mobileRelay);
-      await Future<void>.delayed(Duration.zero);
-
-      expect(controller.currentSection, ClientSection.mobileRelay);
-      expect(relayService.secureMeshStatusCalls, 1);
-      expect(relayService.secureMeshStatusAuthorizeFlags, [false]);
     },
   );
 }

@@ -7,25 +7,22 @@ import { loadClientReleaseTargetCatalog } from "./lib/client-release-targets.mjs
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const catalogPath = path.join(repoRoot, "tools", "client-support-matrix.json");
+// The agent inventories are checked-in projections: the canonical sources
+// live in the component repository's native resources and are vendored here
+// the same way the migration frontier and update key catalogue are.
 const driverInventoryPath = path.join(
   repoRoot,
-  "crates",
-  "licoup-native",
-  "resources",
+  "tools",
   "agent-conversation-drivers.json",
 );
 const nativeCapabilityInventoryPath = path.join(
   repoRoot,
-  "crates",
-  "licoup-native",
-  "resources",
+  "tools",
   "agent-native-capabilities.json",
 );
 const driverReadinessPath = path.join(
   repoRoot,
-  "crates",
-  "licoup-native",
-  "resources",
+  "tools",
   "agent-conversation-readiness.json",
 );
 const reportPaths = Object.freeze({
@@ -70,6 +67,35 @@ function requireValue(condition, message) {
 
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, "utf8"));
+}
+
+// The migration frontier is a checked-in projection of the authority the
+// component repository's admission embeds; the projection lives in `tools/`
+// beside the update key catalogue.
+const migrationFrontierPath = path.join(
+  repoRoot,
+  "tools",
+  "client-state-migration-frontier.json",
+);
+
+/**
+ * The two conversion endpoints the frontier catalog declares: the last
+ * published format as source and this client's own target as destination.
+ * A reader enumerates this pair instead of restating a format name.
+ */
+function conversionEndpoints() {
+  const frontier = readJson(migrationFrontierPath);
+  requireValue(
+    frontier?.schemaVersion === "v0.0.1:client-state-migration-frontier-1" &&
+      typeof frontier.sourceFrontierId === "string" &&
+      typeof frontier.frontierId === "string" &&
+      Array.isArray(frontier.domains) && frontier.domains.length > 0,
+    "embedded migration frontier is invalid",
+  );
+  return Object.freeze({
+    sourceFrontierId: frontier.sourceFrontierId,
+    targetFrontierId: frontier.frontierId,
+  });
 }
 
 export function validateClientSupportMatrix(raw) {
@@ -267,7 +293,7 @@ function capabilityRole(capabilityList, locale) {
   return locale === "zhCN" ? "直接进程接口" : "direct process interface";
 }
 
-function renderEnglishReport(validated, productVersion, drivers, readiness, nativeCapabilities) {
+function renderEnglishReport(validated, productVersion, drivers, readiness, nativeCapabilities, endpoints) {
   const lines = [
     "# LicoUp Compatibility",
     "",
@@ -275,7 +301,7 @@ function renderEnglishReport(validated, productVersion, drivers, readiness, nati
     "",
     `Product version: \`${productVersion}\``,
     "",
-    "Generated sources: `tools/client-support-matrix.json`, `tools/client-release-targets.json`, `tools/client-version.json`, `crates/licoup-native/resources/agent-conversation-drivers.json`, `crates/licoup-native/resources/agent-native-capabilities.json`, and `crates/licoup-native/resources/agent-conversation-readiness.json`.",
+    "Generated sources: `tools/client-support-matrix.json`, `tools/client-release-targets.json`, `tools/client-version.json`, `tools/agent-conversation-drivers.json`, `tools/agent-native-capabilities.json`, `tools/agent-conversation-readiness.json`, and `tools/client-state-migration-frontier.json`.",
     "",
     "Update with `npm run client:support-matrix:sync`; verify with `npm run client:support-matrix:check`. Do not edit this projection by hand.",
     "",
@@ -285,14 +311,14 @@ function renderEnglishReport(validated, productVersion, drivers, readiness, nati
     "",
     "LicoUp for macOS supports Apple Silicon (`arm64`) on macOS 11 or later. Intel (`x86_64`) Macs and Rosetta are outside the supported product boundary; no Intel app or update package is produced.",
     "",
-    "| Runtime target | Build | Physical/device evidence | Client | Peer encryption | Mobile relay |",
-    "| --- | --- | --- | --- | --- | --- |"
+    "| Runtime target | Build | Physical/device evidence | Client | Devices |",
+    "| --- | --- | --- | --- | --- |"
   ];
   for (const row of validated.rows) {
     const deviceEvidence = row.deviceClass === "simulator"
       ? "simulator only"
       : "not claimed";
-    lines.push(`| ${row.targetId} | ${row.buildSupported ? "available" : "unavailable"} | ${deviceEvidence} | ${selectedStatus(row, "client-shell")} | ${selectedStatus(row, "secure-mesh-pairwise")} | ${selectedStatus(row, "mobile-relay")} |`);
+    lines.push(`| ${row.targetId} | ${row.buildSupported ? "available" : "unavailable"} | ${deviceEvidence} | ${selectedStatus(row, "client-shell")} | ${selectedStatus(row, "devices")} |`);
   }
   lines.push(
     "",
@@ -306,6 +332,17 @@ function renderEnglishReport(validated, productVersion, drivers, readiness, nati
   for (const target of validated.releaseCatalog.targets) {
     lines.push(`| ${target.id} | ${target.runtimeTargetId} | ${target.platform} | ${target.channel} | ${target.packageFormat} | ${target.arch} | ${target.packageBuildSupported ? "available" : "blocked"} | ${target.releaseSupported ? "eligible" : "not eligible"} | ${target.update.kind} |`);
   }
+  lines.push(
+    "",
+    "## State migration endpoints",
+    "",
+    "The embedded frontier catalog declares exactly two conversion endpoints: the last published format as the source and this client's own target format as the destination. A root that names any other format is refused as an unsupported source; older published formats are release history, not additional endpoints.",
+    "",
+    "| Endpoint | Format identity |",
+    "| --- | --- |",
+    `| Source (last published) | \`${endpoints.sourceFrontierId}\` |`,
+    `| Destination (this client) | \`${endpoints.targetFrontierId}\` |`,
+  );
   lines.push(
     "",
     "## Meaning",
@@ -365,7 +402,7 @@ function renderEnglishReport(validated, productVersion, drivers, readiness, nati
   return lines.join("\n");
 }
 
-function renderChineseReport(validated, productVersion, drivers, readiness, nativeCapabilities) {
+function renderChineseReport(validated, productVersion, drivers, readiness, nativeCapabilities, endpoints) {
   const lines = [
     "# LicoUp 兼容性",
     "",
@@ -373,7 +410,7 @@ function renderChineseReport(validated, productVersion, drivers, readiness, nati
     "",
     `产品版本：\`${productVersion}\``,
     "",
-    "生成来源：`tools/client-support-matrix.json`、`tools/client-release-targets.json`、`tools/client-version.json`、`crates/licoup-native/resources/agent-conversation-drivers.json`、`crates/licoup-native/resources/agent-native-capabilities.json` 和 `crates/licoup-native/resources/agent-conversation-readiness.json`。",
+    "生成来源：`tools/client-support-matrix.json`、`tools/client-release-targets.json`、`tools/client-version.json`、`tools/agent-conversation-drivers.json`、`tools/agent-native-capabilities.json`、`tools/agent-conversation-readiness.json` 和 `tools/client-state-migration-frontier.json`。",
     "",
     "使用 `npm run client:support-matrix:sync` 更新，使用 `npm run client:support-matrix:check` 验证。请勿手工维护本投影。",
     "",
@@ -383,14 +420,14 @@ function renderChineseReport(validated, productVersion, drivers, readiness, nati
     "",
     "LicoUp macOS 客户端仅支持运行 macOS 11 或更高版本的 Apple Silicon（`arm64`）设备。Intel（`x86_64`）Mac 与 Rosetta 不在产品支持范围内，不提供 Intel 应用或更新包。",
     "",
-    "| 运行目标 | 构建 | 真机/设备证据 | 客户端 | 对端加密 | 移动中转 |",
-    "| --- | --- | --- | --- | --- | --- |"
+    "| 运行目标 | 构建 | 真机/设备证据 | 客户端 | 设备 |",
+    "| --- | --- | --- | --- | --- |"
   ];
   for (const row of validated.rows) {
     const deviceEvidence = row.deviceClass === "simulator"
       ? "仅模拟器"
       : "未声明";
-    lines.push(`| ${row.targetId} | ${row.buildSupported ? "可用" : "不可用"} | ${deviceEvidence} | ${chineseStatus[selectedStatus(row, "client-shell")]} | ${chineseStatus[selectedStatus(row, "secure-mesh-pairwise")]} | ${chineseStatus[selectedStatus(row, "mobile-relay")]} |`);
+    lines.push(`| ${row.targetId} | ${row.buildSupported ? "可用" : "不可用"} | ${deviceEvidence} | ${chineseStatus[selectedStatus(row, "client-shell")]} | ${chineseStatus[selectedStatus(row, "devices")]} |`);
   }
   lines.push(
     "",
@@ -404,6 +441,17 @@ function renderChineseReport(validated, productVersion, drivers, readiness, nati
   for (const target of validated.releaseCatalog.targets) {
     lines.push(`| ${target.id} | ${target.runtimeTargetId} | ${target.platform} | ${target.channel} | ${target.packageFormat} | ${target.arch} | ${target.packageBuildSupported ? "可用" : "阻塞"} | ${target.releaseSupported ? "可选入" : "不可选入"} | ${target.update.kind} |`);
   }
+  lines.push(
+    "",
+    "## 状态迁移端点",
+    "",
+    "内嵌 frontier 目录只声明两个转换端点：最近发布格式作为来源，当前客户端自身的目标格式作为目标。任何其他格式的根目录都会作为不受支持的来源被拒绝；更早的发布格式属于发布历史，不是额外端点。",
+    "",
+    "| 端点 | 格式标识 |",
+    "| --- | --- |",
+    `| 来源（最近发布） | \`${endpoints.sourceFrontierId}\` |`,
+    `| 目标（当前客户端） | \`${endpoints.targetFrontierId}\` |`,
+  );
   lines.push(
     "",
     "## 状态说明",
@@ -473,9 +521,13 @@ if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] || "")) {
     drivers,
   );
   const readiness = validateDriverReadiness(readJson(driverReadinessPath), drivers);
+  // The declared endpoints are read from the checked-in frontier projection,
+  // so this projection cannot drift from the single authority the admission
+  // embeds.
+  const endpoints = conversionEndpoints();
   const reports = Object.freeze({
-    en: renderEnglishReport(validated, productVersion, drivers, readiness, nativeCapabilities),
-    zhCN: renderChineseReport(validated, productVersion, drivers, readiness, nativeCapabilities)
+    en: renderEnglishReport(validated, productVersion, drivers, readiness, nativeCapabilities, endpoints),
+    zhCN: renderChineseReport(validated, productVersion, drivers, readiness, nativeCapabilities, endpoints)
   });
   if (action === "sync") {
     for (const [locale, reportPath] of Object.entries(reportPaths)) {

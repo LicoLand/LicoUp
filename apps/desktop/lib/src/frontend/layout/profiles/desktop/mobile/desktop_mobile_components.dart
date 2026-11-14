@@ -42,7 +42,9 @@ final class DesktopMobileComponentKit implements LayoutComponentKit {
       selected: selected,
       label: label,
       child: Material(
-        color: selected ? colors.primaryContainer : Colors.transparent,
+        color: selected
+            ? colors.primary.withValues(alpha: 0.14)
+            : Colors.transparent,
         shape: ContinuousRoundedBorder(
           borderRadius: BorderRadius.circular(
             desktopMobileTokens.cardRadius * 0.72,

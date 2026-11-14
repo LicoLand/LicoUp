@@ -314,10 +314,7 @@ void main() {
           )
           .first,
     );
-    expect(
-      (container.decoration as BoxDecoration?)?.color,
-      Colors.white.withAlpha(26),
-    );
+    expect((container.decoration as BoxDecoration?)?.color, Colors.transparent);
 
     final title = tester.widget<Text>(
       find
@@ -327,7 +324,7 @@ void main() {
           )
           .first,
     );
-    expect(title.style?.color, colors.text);
+    expect(title.style?.color, colors.selectionInk);
     expect(tester.takeException(), isNull);
   });
 

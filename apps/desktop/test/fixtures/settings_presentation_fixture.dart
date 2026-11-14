@@ -12,20 +12,29 @@ import 'settings_binding_fixture.dart';
 /// feature widget tests. Region values derive from the existing projection
 /// fixture shape so test data setup stays unchanged.
 final class SettingsPresentationFixture {
-  factory SettingsPresentationFixture({SettingsProjection? projection}) {
+  factory SettingsPresentationFixture({
+    SettingsProjection? projection,
+    List<MountedContribution> planContributions = const [],
+  }) {
     return SettingsPresentationFixture._(
       projection ?? settingsProjectionFixture(),
+      planContributions,
     );
   }
 
-  SettingsPresentationFixture._(SettingsProjection projection)
-    : general = PresentationSourceFixture(
+  SettingsPresentationFixture._(
+    SettingsProjection projection,
+    List<MountedContribution> planContributions,
+  ) : _planContributions = List<MountedContribution>.unmodifiable(
+        planContributions,
+      ),
+      general = PresentationSourceFixture(
         fieldGroup: _fieldGroup('general'),
         initial: _generalOf(projection),
       ),
       appearance = PresentationSourceFixture(
         fieldGroup: _fieldGroup('appearance'),
-        initial: _appearanceOf(projection),
+        initial: _appearanceOf(projection, planContributions),
       ),
       layout = PresentationSourceFixture(
         fieldGroup: _fieldGroup('layout'),
@@ -51,6 +60,10 @@ final class SettingsPresentationFixture {
         fieldGroup: _fieldGroup('autostart'),
         initial: const SettingsAutostartProjection.loading(),
       ),
+      terminalCommand = PresentationSourceFixture(
+        fieldGroup: _fieldGroup('terminal-command'),
+        initial: const SettingsTerminalCommandProjection.loading(),
+      ),
       resourceUsage = PresentationSourceFixture(
         fieldGroup: _fieldGroup('resource-usage'),
         initial: SettingsResourceUsageProjection.unsupported(),
@@ -64,8 +77,14 @@ final class SettingsPresentationFixture {
   final PresentationSourceFixture<SettingsArchivedInputs> archived;
   final PresentationSourceFixture<SettingsLogExportInputs> logExport;
   final PresentationSourceFixture<SettingsAutostartProjection> autostart;
+
+  final PresentationSourceFixture<SettingsTerminalCommandProjection>
+  terminalCommand;
   final PresentationSourceFixture<SettingsResourceUsageProjection>
   resourceUsage;
+
+  /// What the mounted plan contributes, as the region carries it.
+  final List<MountedContribution> _planContributions;
 
   List<Override> get overrides => <Override>[
     settingsGeneralSourceProvider.overrideWithValue(general),
@@ -76,6 +95,7 @@ final class SettingsPresentationFixture {
     settingsArchivedSourceProvider.overrideWithValue(archived),
     settingsLogExportSourceProvider.overrideWithValue(logExport),
     settingsAutostartSourceProvider.overrideWithValue(autostart),
+    settingsTerminalCommandSourceProvider.overrideWithValue(terminalCommand),
     settingsResourceUsageSourceProvider.overrideWithValue(resourceUsage),
   ];
 
@@ -85,7 +105,10 @@ final class SettingsPresentationFixture {
   /// installed snapshot, so subscribers of unrelated regions do not rebuild.
   void publishProjection(SettingsProjection projection) {
     _publishIfChanged(general, _generalOf(projection));
-    _publishIfChanged(appearance, _appearanceOf(projection));
+    _publishIfChanged(
+      appearance,
+      _appearanceOf(projection, _planContributions),
+    );
     _publishIfChanged(layout, _layoutOf(projection));
     _publishIfChanged(storage, _storageOf(projection));
     _publishIfChanged(update, _updateOf(projection));
@@ -110,6 +133,7 @@ final class SettingsPresentationFixture {
     await archived.dispose();
     await logExport.dispose();
     await autostart.dispose();
+    await terminalCommand.dispose();
     await resourceUsage.dispose();
   }
 
@@ -127,6 +151,7 @@ final class SettingsPresentationFixture {
 
   static SettingsAppearanceInputs _appearanceOf(
     SettingsProjection projection,
+    List<MountedContribution> planContributions,
   ) => SettingsAppearanceInputs(
     appearancePresetId: projection.appearancePresetId,
     appearancePresets: projection.appearancePresets,
@@ -134,11 +159,13 @@ final class SettingsPresentationFixture {
     appearancePresetLoadErrorCount: projection.appearancePresetLoadErrorCount,
     reduceMotion: projection.reduceMotion,
     loadingEffectId: projection.loadingEffectId,
+    planContributions: planContributions,
   );
 
   static SettingsLayoutInputs _layoutOf(SettingsProjection projection) =>
       SettingsLayoutInputs(
         layoutChoices: projection.layoutChoices,
+        layoutStyleChoices: projection.layoutStyleChoices,
         layoutPhase: projection.layoutPhase,
         layoutFailureReasonCode: projection.layoutFailureReasonCode,
       );

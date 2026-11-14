@@ -11,7 +11,7 @@ ClientInterfaceEntryGroup? clientInterfaceEntryGroupOf(ClientSection section) {
   return switch (section) {
     ClientSection.agents => ClientInterfaceEntryGroup.conversation,
     ClientSection.models ||
-    ClientSection.mobileRelay => ClientInterfaceEntryGroup.communication,
+    ClientSection.devices => ClientInterfaceEntryGroup.communication,
     ClientSection.agentHub ||
     ClientSection.skillHub ||
     ClientSection.pluginManagement => ClientInterfaceEntryGroup.feature,

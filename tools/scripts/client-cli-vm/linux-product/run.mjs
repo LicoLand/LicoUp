@@ -1,12 +1,4 @@
 import { existsSync, rmSync } from "node:fs";
-import process from "node:process";
-import {
-  createReleaseClosureChallenge,
-  createReleaseInvocationNonce,
-  requiredReleaseClosureChallenge,
-  requiredReleaseClosureStartedAt,
-  requiredReleaseInvocationNonce,
-} from "../../lib/release-closure-challenge.mjs";
 import { fetchArtifacts } from "../sync/artifacts.mjs";
 import { syncRepoToVm } from "../sync/repo.mjs";
 import { runSsh } from "../ssh/session.mjs";
@@ -29,20 +21,6 @@ import { validateLinuxProductArtifacts } from "./validate.mjs";
 
 export function verifyLinuxProductDistro(distro, options) {
   clearLinuxProductHostArtifacts(distro);
-  const inheritedClosure = String(
-    process.env.LICO_CLIENT_RELEASE_CLOSURE_CHALLENGE || "",
-  ).trim();
-  const releaseBinding = Object.freeze({
-    challenge: inheritedClosure
-      ? requiredReleaseClosureChallenge()
-      : createReleaseClosureChallenge(),
-    invocationNonce: inheritedClosure
-      ? requiredReleaseInvocationNonce()
-      : createReleaseInvocationNonce(),
-    startedAt: inheritedClosure
-      ? requiredReleaseClosureStartedAt().value
-      : new Date().toISOString(),
-  });
   const sourceBefore = currentClientSourceDigest();
   let sourceManifestDigest = "";
   prepareDistro(distro, options);
@@ -81,7 +59,7 @@ export function verifyLinuxProductDistro(distro, options) {
     console.log(
       `[client-cli-vm] Building and verifying current Linux product on ${distro.id}.`,
     );
-    runSsh(distro, linuxProductCommand(distro, sourceBefore, releaseBinding));
+    runSsh(distro, linuxProductCommand(distro, sourceBefore));
     if (currentClientSourceDigest() !== sourceBefore) {
       writeLinuxProductIncomplete(distro, "source_state_changed_during_verification");
       throw new Error(
@@ -111,7 +89,7 @@ export function verifyLinuxProductDistro(distro, options) {
         "Client source manifest changed while binding Linux product artifacts.",
       );
     }
-    validateLinuxProductArtifacts(distro, sourceBefore, releaseBinding);
+    validateLinuxProductArtifacts(distro, sourceBefore);
     rmSync(linuxProductArtifactPaths(distro).incomplete, { force: true });
     console.log(
       JSON.stringify(
@@ -119,9 +97,8 @@ export function verifyLinuxProductDistro(distro, options) {
           ok: true,
           target: "ubuntu-linux-arm64",
           currentSourceArchive: true,
-          vmInstallReceiptReady: true,
-          threeNodeMatrixReady: true,
-          archivedReleaseCliProofReady: true,
+          verificationCarrierReady: true,
+          archivedDeliveredCliSmokeReady: true,
           sourceBindingStale: false,
           runtimeDataIncluded: false,
         },

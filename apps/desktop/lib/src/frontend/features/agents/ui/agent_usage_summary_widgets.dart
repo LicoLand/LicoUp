@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 
 import 'agent_usage_formatters.dart';
 import 'agent_usage_timeline_data.dart';
@@ -8,6 +9,7 @@ import 'agent_usage_source_hover.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 
 class AgentUsagePanelHeader extends StatelessWidget {
   const AgentUsagePanelHeader({
@@ -238,7 +240,7 @@ class _UsageBarRowState extends State<_UsageBarRow> {
             type: MaterialType.transparency,
             child: InkWell(
               key: ValueKey('usage-model-expand-${data.seriesKey}'),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(LicoRadius.chip),
               onTap: () => setState(() => _expanded = !_expanded),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
@@ -477,7 +479,9 @@ class _UsageProgressBar extends StatelessWidget {
               key: const ValueKey('usage-progress-track'),
               height: 10,
               decoration: BoxDecoration(
-                color: colors.surfaceLow,
+                color: (colors.isDark
+                    ? LicoPaneGlass.contentInnerCardFill
+                    : colors.surfaceLow),
                 borderRadius: BorderRadius.circular(999),
               ),
             ),

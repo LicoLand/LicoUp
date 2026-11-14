@@ -33,19 +33,13 @@ export function validateReleaseSelectionPreflight({
   requireValue(JSON.stringify(requestedTargetIds) === JSON.stringify(
     authorityIds.filter((id) => requestedTargetIds.includes(id)),
   ), "release target selection is not in canonical authority order");
-  const targetEvidenceByTarget = {
-    "macos-direct-arm64": "macosCli",
-    "android-direct-arm64-v8a": "androidPlatformCrypto",
-  };
   for (const targetId of requestedTargetIds) {
     const target = catalog.targets.find((entry) => entry.id === targetId);
     requireValue(target?.packageBuildSupported === true && authorityIds.includes(targetId),
       `selected target is outside package acceptance authority: ${targetId}`);
     const artifact = config.artifacts[targetId];
     const receipt = receiptConfig.targets[targetId];
-    const evidenceId = targetEvidenceByTarget[targetId];
-    const targetEvidence = config.reports[evidenceId];
-    requireValue(artifact && receipt && evidenceId && targetEvidence,
+    requireValue(artifact && receipt,
       `selected target closure specification is missing: ${targetId}`);
     requireValue(
       receipt.platform === target.platform &&
@@ -59,8 +53,10 @@ export function validateReleaseSelectionPreflight({
       `selected target artifact/receipt specification mismatch: ${targetId}`,
     );
     requireValue(
-      JSON.stringify(targetEvidence.targetIds) === JSON.stringify([targetId]),
-      `selected target evidence specification mismatch: ${targetId}`,
+      text(receipt.evidenceRef) && text(receipt.evidenceSchemaVersion) &&
+        text(receipt.evidenceProducer) &&
+        text(receipt.evidenceInvocation?.script),
+      `selected target evidence specification is incomplete: ${targetId}`,
     );
     if (targetId === "macos-direct-arm64") {
       requireValue(receipt.evidenceArtifactKind === "macos-app-bundle" &&

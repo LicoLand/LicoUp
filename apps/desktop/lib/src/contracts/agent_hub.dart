@@ -42,6 +42,7 @@ final class AgentHubRecipe {
     this.latestVersion = '',
     this.updateAvailable = false,
     this.version = '',
+    this.installKinds = const [],
     this.installChannels = const [],
   });
 
@@ -61,6 +62,10 @@ final class AgentHubRecipe {
   final String latestVersion;
   final bool updateAvailable;
   final String version;
+
+  /// Install forms detected on this host (`desktop`, `cli`, `ide`,
+  /// `plugin`) — the card's type badges. Empty when nothing was found.
+  final List<String> installKinds;
   final List<AgentHubInstallChannel> installChannels;
 
   /// Package-manager chip: planned/detected kind, else recipe preferred.
@@ -153,6 +158,12 @@ final class AgentHubRecipe {
       latestVersion: (card['latestVersion'] as String? ?? '').trim(),
       updateAvailable: card['updateAvailable'] == true,
       version: (card['version'] as String? ?? '').trim(),
+      installKinds: card['installKinds'] is List
+          ? (card['installKinds'] as List)
+                .map((kind) => kind.toString().trim())
+                .where((kind) => kind.isNotEmpty)
+                .toList(growable: false)
+          : const [],
       installChannels: AgentHubInstallChannel.listFromNative(
         card['installChannels'],
       ),

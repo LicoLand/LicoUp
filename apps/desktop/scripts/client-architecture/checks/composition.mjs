@@ -1,10 +1,8 @@
-export async function checkConversationBridges(context, { packagedTargets, conversationSourceCatalogRustSource }) {
+export async function checkConversationBridges(context) {
   const {
     assert,
     collectDartSourceFiles,
     collectEnumValues,
-    collectRustPubMods,
-    collectRustUnsafeFiles,
     collectSourceFiles,
     exists,
     fail,
@@ -19,26 +17,6 @@ export async function checkConversationBridges(context, { packagedTargets, conve
     runJson,
     sameSet,
   } = context;
-  const driverInventory = await readJson(
-    "crates/licoup-native/resources/agent-conversation-drivers.json"
-  );
-  const driverProfiles = new Map(
-    (driverInventory.drivers || []).map((driver) => [driver.agentId, driver])
-  );
-  const historyAdapterRoutes = /fn adapter_for_agent\([^]*?\n\}/u.exec(
-    conversationSourceCatalogRustSource
-  )?.[0] || "";
-  assert(historyAdapterRoutes.length > 0, "native transcript adapter routes must be declared");
-  for (const target of packagedTargets) {
-    const driver = driverProfiles.get(target);
-    assert(driver, `packaged target must have a conversation driver profile: ${target}`);
-    assert(typeof driver?.historyReadable === "boolean",
-      `conversation driver must declare history readability: ${target}`);
-    assert(
-      historyAdapterRoutes.includes(`"${target}"`) === driver?.historyReadable,
-      `native history adapter availability must match the conversation driver profile: ${target}`
-    );
-  }
   const agentConversationGatewaySource = await readDartSourceByBasename(
     "agent_conversation_gateway.dart"
   );
@@ -149,7 +127,7 @@ export async function checkConversationBridges(context, { packagedTargets, conve
       agentConversationWorkspaceSource.includes("buildConversationTimelineItems(") &&
       agentConversationWorkspaceSource.includes("PostConversationMessage(") &&
       agentConversationComposerSource.includes("class RuntimeMessageComposer") &&
-      agentConversationComposerSource.includes("TextField(") &&
+      agentConversationComposerSource.includes("InputField(") &&
       agentConversationComposerSource.includes("widget.onSend(text)") &&
       agentConversationTimelineSource.includes("class ConversationExecutionMenu") &&
       agentConversationTimelineSource.includes("ProjectionSource<ConversationExecutionProjection>") &&
@@ -170,18 +148,11 @@ export async function checkConversationBridges(context, { packagedTargets, conve
 
 export async function checkClientRootAndShell(context, {
     agentConversationServiceSource,
-    mobileRelayClientAdapterSource,
-    mobileRelayPanelFacadeSource,
-    mobileRelayPanelSources,
-    mobileRelayServiceSource,
-    secureMeshControllerSource,
   }) {
   const {
     assert,
     collectDartSourceFiles,
     collectEnumValues,
-    collectRustPubMods,
-    collectRustUnsafeFiles,
     collectSourceFiles,
     exists,
     fail,
@@ -199,25 +170,10 @@ export async function checkClientRootAndShell(context, {
   const applicationSources = await readJoinedText(
     await collectSourceFiles("apps/desktop/lib/src/application", ".dart")
   );
-    assert(applicationSources.includes("mobileRelayController.loadConfig(authorizeSecrets: false)"),
-      "core hydration must load public Mobile Relay configuration without authorizing secret access"
+    assert(applicationSources.includes("devicesController.loadNoticeAcknowledgement"),
+      "core hydration must load the Devices legacy-pairing notice acknowledgement without authorizing secret access"
     );
-    assert(applicationSources.includes("secureMeshFileReceiveDestination") &&
-      secureMeshControllerSource.includes("evaluateFileReceiveDestination") &&
-      mobileRelayClientAdapterSource.includes("evaluateSecureMeshFileReceiveDestination"),
-      "LicoUp Application must retain Secure Mesh file receive-destination policy state"
-    );
-    const mobileRelayPanelSource = [
-      mobileRelayPanelFacadeSource,
-      ...Object.values(mobileRelayPanelSources)
-    ].join("\n");
-  assert(!mobileRelayPanelSource.includes("mobileRelayE2eeStatus") &&
-    !mobileRelayPanelSource.includes("mobileRelayE2eeSecretStore") &&
-    !mobileRelayPanelSource.includes("_e2eeReadinessText") &&
-    !mobileRelayPanelSource.includes("_secretStoreText") &&
-    !mobileRelayPanelSource.includes("pairwiseCryptoStatus"),
-    "mobile relay panel must not expose Secure Mesh diagnostic state"
-  );
+  const devicesServiceSource = await readDartSourceByBasename("devices_service.dart");
   const clientLogExportServiceSource = await readDartSourceByBasename("client_log_export_service.dart");
   const clientShellSource = await readDartSourceByBasename("client_shell.dart");
   const semanticDestinationsSource = await readDartSourceByBasename("semantic_destination.dart");
@@ -232,7 +188,7 @@ export async function checkClientRootAndShell(context, {
     "monitoring",
     "skillHub",
     "pluginManagement",
-    "mobileRelay",
+    "devices",
     "models",
     "settings",
     "agentHub"
@@ -241,9 +197,9 @@ export async function checkClientRootAndShell(context, {
   );
   for (const [relativePath, source] of [
     ["agent_conversation_service.dart", agentConversationServiceSource],
-    ["mobile_relay_service.dart", mobileRelayServiceSource]
+    ["devices_service.dart", devicesServiceSource]
   ]) {
-    for (const token of ["HttpClient", "/api/mobile-relay", "readAsString", "writeAsString", "Directory(", "File("]) {
+    for (const token of ["HttpClient", "readAsString", "writeAsString", "Directory(", "File("]) {
       assert(!source.includes(token), `${relativePath} must not perform runtime IO/network directly; use licoup CLI`);
     }
   }
@@ -251,21 +207,24 @@ export async function checkClientRootAndShell(context, {
   const licoStringsBaseSource = await readDartSourceByBasename(
     "lico_strings_base.dart"
   );
-  for (const [getter, label] of [
-    ["agents", "Agents"],
-    ["tokenUsage", "Token Usage"],
-    ["skillHub", "Skill Hub"],
-    ["agentHub", "Agent Hub"],
-    ["mobileRelay", "Mobile Relay"],
-    ["settings", "Settings"]
+  const licoStringsDevicesSource = await readDartSourceByBasename(
+    "lico_strings_devices.dart"
+  );
+  for (const [getter, label, labelSource] of [
+    ["agents", "Agents", licoStringsBaseSource],
+    ["tokenUsage", "Token Usage", licoStringsBaseSource],
+    ["skillHub", "Skill Hub", licoStringsBaseSource],
+    ["agentHub", "Agent Hub", licoStringsBaseSource],
+    ["devices", "Devices", licoStringsDevicesSource],
+    ["settings", "Settings", licoStringsBaseSource]
   ]) {
     assert(
-      licoStringsBaseSource.includes(`String get ${getter}`) &&
-        licoStringsBaseSource.includes(`: '${label}'`),
+      labelSource.includes(`String get ${getter}`) &&
+        labelSource.includes(`'${label}'`),
       `LicoStrings must expose the current module label through ${getter}`
     );
   }
-  for (const getter of ["agents", "tokenUsage", "skillHub", "agentHub", "mobileRelay", "settings"]) {
+  for (const getter of ["agents", "tokenUsage", "skillHub", "agentHub", "devices", "settings"]) {
     assert(
       clientShellSource.includes(`strings.${getter}`),
       `client shell must resolve destination labels through LicoStrings.${getter}`

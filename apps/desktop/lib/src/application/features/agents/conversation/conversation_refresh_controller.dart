@@ -66,6 +66,9 @@ mixin ConversationRefreshController on AgentWorkspaceCoordinator {
     conversationBackgroundRefreshTimer = null;
     conversationCodexRuntimeRefreshTimer?.cancel();
     conversationCodexRuntimeRefreshTimer = null;
+    // A selection, attention or turn-context change restarts the active
+    // lane's backoff at the active interval.
+    conversationActiveUnchangedReads = 0;
 
     final agentId = selectedConversationAgentId.trim();
     final priority = conversationRefreshPriority;
@@ -145,23 +148,45 @@ mixin ConversationRefreshController on AgentWorkspaceCoordinator {
       return;
     }
     final selectedSessionId = selectedConversationSessionId.trim();
-    if (selectedSessionId.isEmpty ||
-        selectedSessionId == conversationSessionReadbackPendingSelectionId ||
+    final priority = conversationRefreshPriority;
+    if (selectedSessionId.isEmpty) {
+      // An agent with no selected session has no active lane at all: the
+      // catalog lane discovers new conversations on its own cadence.
+      _scheduleActiveConversationRefresh(
+        agentId,
+        conversationRefreshPolicy.activeDelay(priority),
+      );
+      return;
+    }
+    var changed = false;
+    if (selectedSessionId == conversationSessionReadbackPendingSelectionId ||
         selectedSessionId == conversationSessionLoadFailedSelectionId) {
-      await refreshConversationCatalogInternal(agentId, foreground: true);
+      // A catalog read already in flight for this agent owns the lane —
+      // never overlap a second foreground read on top of it.
+      if (!conversationBackgroundRefreshTargets.contains(agentId)) {
+        changed = await refreshConversationCatalogInternal(
+          agentId,
+          foreground: true,
+        );
+      }
     } else {
-      await refreshActiveConversationSessionInternal(
+      changed = await refreshActiveConversationSessionInternal(
         agentId,
         selectedSessionId,
       );
     }
+    conversationActiveUnchangedReads = changed
+        ? 0
+        : conversationActiveUnchangedReads + 1;
     if (!_conversationRefreshTargetIsCurrent(agentId)) {
       return;
     }
-    final priority = conversationRefreshPriority;
     _scheduleActiveConversationRefresh(
       agentId,
-      conversationRefreshPolicy.activeDelay(priority),
+      conversationRefreshPolicy.activeDelayAfter(
+        conversationRefreshPriority,
+        conversationActiveUnchangedReads,
+      ),
     );
   }
 

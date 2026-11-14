@@ -74,7 +74,7 @@ async function main() {
 
   const bundleDir = findLinuxBundle();
   const flutterBinary = path.join(bundleDir, "licoup");
-  const cli = path.join(bundleDir, "licoup-cli");
+  const cli = path.join(bundleDir, "helpers", "licoup");
   const packagingManifest = path.join(
     bundleDir,
     "package-metadata",
@@ -107,7 +107,7 @@ async function main() {
   }
   const dataDir = path.join(os.tmpdir(), `lico-ubuntu-smoke-${process.pid}-${Date.now()}`);
   mkdirSync(dataDir, { recursive: true });
-  const env = { ...process.env, LICOUP_PORTABLE_DIR: dataDir };
+  const env = { ...process.env, LICOUP_HOME: dataDir };
   try {
     const scan = runJson(cli, ["targets", "scan"], env);
     assertTargetScan(scan);

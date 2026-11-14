@@ -2,7 +2,7 @@
   "title": "LicoUp 用户界面交互状态机",
   "version": 1,
   "authority": "用户可见状态与操作预期；不从生产导航代码生成，不包含 Dart 类名、controller、RPC 或 Widget key。",
-  "scope": "两种布局的导航、菜单、功能窗口、设置目录；dashboard 群聊、返回、搜索输入/结果、取消弹窗、刷新、滚动及跨页面连续操作。穷举已声明转换并随机游走；报告遗漏，不声称已覆盖所有业务操作。",
+  "scope": "两种布局的导航、菜单、桌面 Dock 应用窗口与快速切换、设置目录；dashboard 群聊、返回、搜索输入/结果、取消弹窗、刷新、滚动及跨页面连续操作。穷举已声明转换并随机游走；报告遗漏，不声称已覆盖所有业务操作。",
   "principles": [
     "状态由实际可见内容判定；按钮存在或 controller 值变化不能单独证明跳转成功。",
     "操作模型与 Flutter 定位适配分离；内部重构只改适配，用户行为变化才改此模型。",
@@ -41,31 +41,31 @@
       "gesture": "tap"
     },
     "settings.general": {
-      "label": "点击设置目录中的通用",
+      "label": "前往设置：通用",
       "gesture": "tap"
     },
     "settings.appearance": {
-      "label": "点击设置目录中的外观",
+      "label": "前往设置：外观",
       "gesture": "tap"
     },
     "settings.updates": {
-      "label": "点击设置目录中的更新",
+      "label": "前往设置：更新",
       "gesture": "tap"
     },
     "settings.startup": {
-      "label": "点击设置目录中的启动",
+      "label": "前往设置：启动",
       "gesture": "tap"
     },
     "settings.storage": {
-      "label": "点击设置目录中的存储",
+      "label": "前往设置：存储",
       "gesture": "tap"
     },
     "settings.diagnostics": {
-      "label": "点击设置目录中的诊断",
+      "label": "前往设置：诊断",
       "gesture": "tap"
     },
     "settings.archived-conversations": {
-      "label": "点击设置目录中的已归档对话",
+      "label": "前往设置：已归档对话",
       "gesture": "tap"
     },
     "nav.open-menu": {
@@ -80,36 +80,24 @@
       "label": "点击移动配对",
       "gesture": "tap"
     },
-    "window.close.agent-center": {
-      "label": "点击智能体中心窗口的关闭按钮",
-      "gesture": "tap"
-    },
     "dock.agent-center": {
       "label": "点击 Dock 中的智能体中心",
-      "gesture": "tap"
-    },
-    "window.close.model-gateway": {
-      "label": "点击模型网关窗口的关闭按钮",
       "gesture": "tap"
     },
     "dock.model-gateway": {
       "label": "点击 Dock 中的模型网关",
       "gesture": "tap"
     },
-    "window.close.device-pairing": {
-      "label": "点击移动配对窗口的关闭按钮",
-      "gesture": "tap"
-    },
     "dock.device-pairing": {
       "label": "点击 Dock 中的移动配对",
       "gesture": "tap"
     },
-    "window.close.usage": {
-      "label": "点击统计面板窗口的关闭按钮",
-      "gesture": "tap"
-    },
     "dock.usage": {
       "label": "点击 Dock 中的统计面板",
+      "gesture": "tap"
+    },
+    "pane.toggle": {
+      "label": "点击聊天侧栏的收起或展开按钮",
       "gesture": "tap"
     },
     "search.open": {
@@ -171,6 +159,26 @@
     },
     "group.menu": {
       "label": "打开或关闭群聊右上角更多菜单",
+      "gesture": "tap"
+    },
+    "nav.collaboration": {
+      "label": "点击 Dock 中的协作",
+      "gesture": "tap"
+    },
+    "dock.collaboration": {
+      "label": "点击 Dock 中的协作图标",
+      "gesture": "tap"
+    },
+    "switcher.open": {
+      "label": "点击标题栏的快速切换按钮",
+      "gesture": "tap"
+    },
+    "switcher.dismiss": {
+      "label": "点击快速切换弹窗外部",
+      "gesture": "dismiss"
+    },
+    "switcher.usage": {
+      "label": "在快速切换中选择统计面板",
       "gesture": "tap"
     }
   },
@@ -1492,14 +1500,14 @@
     },
     {
       "id": "desktop.navigation",
-      "label": "桌面布局：对话与设置",
+      "label": "桌面布局：默认应用与设置",
       "presentation": "desktop-wide",
-      "initial": "chats",
+      "initial": "collaboration",
       "setup": [],
       "states": [
         {
-          "id": "chats",
-          "label": "对话"
+          "id": "collaboration",
+          "label": "协作（默认应用）"
         },
         {
           "id": "settings",
@@ -1508,22 +1516,22 @@
       ],
       "transitions": [
         {
-          "id": "desktop.navigation.chats.nav.chats",
-          "from_state": "chats",
-          "action": "nav.chats",
-          "to_state": "chats"
+          "id": "desktop.navigation.collaboration.nav.collaboration",
+          "from_state": "collaboration",
+          "action": "nav.collaboration",
+          "to_state": "collaboration"
         },
         {
-          "id": "desktop.navigation.chats.nav.settings",
-          "from_state": "chats",
+          "id": "desktop.navigation.collaboration.nav.settings",
+          "from_state": "collaboration",
           "action": "nav.settings",
           "to_state": "settings"
         },
         {
-          "id": "desktop.navigation.settings.nav.chats",
+          "id": "desktop.navigation.settings.nav.collaboration",
           "from_state": "settings",
-          "action": "nav.chats",
-          "to_state": "chats"
+          "action": "nav.collaboration",
+          "to_state": "collaboration"
         },
         {
           "id": "desktop.navigation.settings.nav.settings",
@@ -1535,303 +1543,183 @@
     },
     {
       "id": "desktop.window.agent-center",
-      "label": "桌面窗口：智能体中心",
+      "label": "桌面布局：智能体中心面板",
       "presentation": "desktop-wide",
-      "initial": "chats",
+      "initial": "collaboration",
       "setup": [],
       "states": [
         {
-          "id": "chats",
-          "label": "对话，窗口未打开"
+          "id": "collaboration",
+          "label": "协作（默认应用）"
         },
         {
-          "id": "menu",
-          "label": "功能菜单"
-        },
-        {
-          "id": "window",
-          "label": "智能体中心窗口"
-        },
-        {
-          "id": "window-menu",
-          "label": "智能体中心窗口上打开功能菜单"
+          "id": "app",
+          "label": "智能体中心面板"
         }
       ],
       "transitions": [
         {
-          "id": "desktop.window.agent-center.chats.nav.features",
-          "from_state": "chats",
-          "action": "nav.features",
-          "to_state": "menu"
-        },
-        {
-          "id": "desktop.window.agent-center.menu.nav.features",
-          "from_state": "menu",
-          "action": "nav.features",
-          "to_state": "chats"
-        },
-        {
-          "id": "desktop.window.agent-center.menu.feature.agent-center",
-          "from_state": "menu",
-          "action": "feature.agent-center",
-          "to_state": "window"
-        },
-        {
-          "id": "desktop.window.agent-center.window.window.close.agent-center",
-          "from_state": "window",
-          "action": "window.close.agent-center",
-          "to_state": "chats"
-        },
-        {
-          "id": "desktop.window.agent-center.window.dock.agent-center",
-          "from_state": "window",
+          "id": "desktop.window.agent-center.collaboration.dock.agent-center",
+          "from_state": "collaboration",
           "action": "dock.agent-center",
-          "to_state": "window"
+          "to_state": "app"
         },
         {
-          "id": "desktop.window.agent-center.window.nav.features",
-          "from_state": "window",
-          "action": "nav.features",
-          "to_state": "window-menu"
+          "id": "desktop.window.agent-center.app.dock.agent-center",
+          "from_state": "app",
+          "action": "dock.agent-center",
+          "to_state": "app"
         },
         {
-          "id": "desktop.window.agent-center.window-menu.nav.features",
-          "from_state": "window-menu",
-          "action": "nav.features",
-          "to_state": "window"
-        },
-        {
-          "id": "desktop.window.agent-center.window-menu.feature.agent-center",
-          "from_state": "window-menu",
-          "action": "feature.agent-center",
-          "to_state": "window"
+          "id": "desktop.window.agent-center.app.dock.collaboration",
+          "from_state": "app",
+          "action": "dock.collaboration",
+          "to_state": "collaboration"
         }
       ]
     },
     {
       "id": "desktop.window.model-gateway",
-      "label": "桌面窗口：模型网关",
+      "label": "桌面布局：模型网关面板",
       "presentation": "desktop-wide",
-      "initial": "chats",
+      "initial": "collaboration",
       "setup": [],
       "states": [
         {
-          "id": "chats",
-          "label": "对话，窗口未打开"
+          "id": "collaboration",
+          "label": "协作（默认应用）"
         },
         {
-          "id": "menu",
-          "label": "功能菜单"
-        },
-        {
-          "id": "window",
-          "label": "模型网关窗口"
-        },
-        {
-          "id": "window-menu",
-          "label": "模型网关窗口上打开功能菜单"
+          "id": "app",
+          "label": "模型网关面板"
         }
       ],
       "transitions": [
         {
-          "id": "desktop.window.model-gateway.chats.nav.features",
-          "from_state": "chats",
-          "action": "nav.features",
-          "to_state": "menu"
-        },
-        {
-          "id": "desktop.window.model-gateway.menu.nav.features",
-          "from_state": "menu",
-          "action": "nav.features",
-          "to_state": "chats"
-        },
-        {
-          "id": "desktop.window.model-gateway.menu.feature.model-gateway",
-          "from_state": "menu",
-          "action": "feature.model-gateway",
-          "to_state": "window"
-        },
-        {
-          "id": "desktop.window.model-gateway.window.window.close.model-gateway",
-          "from_state": "window",
-          "action": "window.close.model-gateway",
-          "to_state": "chats"
-        },
-        {
-          "id": "desktop.window.model-gateway.window.dock.model-gateway",
-          "from_state": "window",
+          "id": "desktop.window.model-gateway.collaboration.dock.model-gateway",
+          "from_state": "collaboration",
           "action": "dock.model-gateway",
-          "to_state": "window"
+          "to_state": "app"
         },
         {
-          "id": "desktop.window.model-gateway.window.nav.features",
-          "from_state": "window",
-          "action": "nav.features",
-          "to_state": "window-menu"
+          "id": "desktop.window.model-gateway.app.dock.model-gateway",
+          "from_state": "app",
+          "action": "dock.model-gateway",
+          "to_state": "app"
         },
         {
-          "id": "desktop.window.model-gateway.window-menu.nav.features",
-          "from_state": "window-menu",
-          "action": "nav.features",
-          "to_state": "window"
-        },
-        {
-          "id": "desktop.window.model-gateway.window-menu.feature.model-gateway",
-          "from_state": "window-menu",
-          "action": "feature.model-gateway",
-          "to_state": "window"
+          "id": "desktop.window.model-gateway.app.dock.collaboration",
+          "from_state": "app",
+          "action": "dock.collaboration",
+          "to_state": "collaboration"
         }
       ]
     },
     {
       "id": "desktop.window.device-pairing",
-      "label": "桌面窗口：移动配对",
+      "label": "桌面布局：移动配对面板",
       "presentation": "desktop-wide",
-      "initial": "chats",
+      "initial": "collaboration",
       "setup": [],
       "states": [
         {
-          "id": "chats",
-          "label": "对话，窗口未打开"
+          "id": "collaboration",
+          "label": "协作（默认应用）"
         },
         {
-          "id": "menu",
-          "label": "功能菜单"
-        },
-        {
-          "id": "window",
-          "label": "移动配对窗口"
-        },
-        {
-          "id": "window-menu",
-          "label": "移动配对窗口上打开功能菜单"
+          "id": "app",
+          "label": "移动配对面板"
         }
       ],
       "transitions": [
         {
-          "id": "desktop.window.device-pairing.chats.nav.features",
-          "from_state": "chats",
-          "action": "nav.features",
-          "to_state": "menu"
-        },
-        {
-          "id": "desktop.window.device-pairing.menu.nav.features",
-          "from_state": "menu",
-          "action": "nav.features",
-          "to_state": "chats"
-        },
-        {
-          "id": "desktop.window.device-pairing.menu.feature.device-pairing",
-          "from_state": "menu",
-          "action": "feature.device-pairing",
-          "to_state": "window"
-        },
-        {
-          "id": "desktop.window.device-pairing.window.window.close.device-pairing",
-          "from_state": "window",
-          "action": "window.close.device-pairing",
-          "to_state": "chats"
-        },
-        {
-          "id": "desktop.window.device-pairing.window.dock.device-pairing",
-          "from_state": "window",
+          "id": "desktop.window.device-pairing.collaboration.dock.device-pairing",
+          "from_state": "collaboration",
           "action": "dock.device-pairing",
-          "to_state": "window"
+          "to_state": "app"
         },
         {
-          "id": "desktop.window.device-pairing.window.nav.features",
-          "from_state": "window",
-          "action": "nav.features",
-          "to_state": "window-menu"
+          "id": "desktop.window.device-pairing.app.dock.device-pairing",
+          "from_state": "app",
+          "action": "dock.device-pairing",
+          "to_state": "app"
         },
         {
-          "id": "desktop.window.device-pairing.window-menu.nav.features",
-          "from_state": "window-menu",
-          "action": "nav.features",
-          "to_state": "window"
-        },
-        {
-          "id": "desktop.window.device-pairing.window-menu.feature.device-pairing",
-          "from_state": "window-menu",
-          "action": "feature.device-pairing",
-          "to_state": "window"
+          "id": "desktop.window.device-pairing.app.dock.collaboration",
+          "from_state": "app",
+          "action": "dock.collaboration",
+          "to_state": "collaboration"
         }
       ]
     },
     {
       "id": "desktop.window.usage",
-      "label": "桌面窗口：统计面板",
+      "label": "桌面布局：统计面板面板",
       "presentation": "desktop-wide",
-      "initial": "chats",
+      "initial": "collaboration",
       "setup": [],
       "states": [
         {
-          "id": "chats",
-          "label": "对话，窗口未打开"
+          "id": "collaboration",
+          "label": "协作（默认应用）"
         },
         {
-          "id": "menu",
-          "label": "功能菜单"
-        },
-        {
-          "id": "window",
-          "label": "统计面板窗口"
-        },
-        {
-          "id": "window-menu",
-          "label": "统计面板窗口上打开功能菜单"
+          "id": "app",
+          "label": "统计面板"
         }
       ],
       "transitions": [
         {
-          "id": "desktop.window.usage.chats.nav.features",
-          "from_state": "chats",
-          "action": "nav.features",
-          "to_state": "menu"
-        },
-        {
-          "id": "desktop.window.usage.menu.nav.features",
-          "from_state": "menu",
-          "action": "nav.features",
-          "to_state": "chats"
-        },
-        {
-          "id": "desktop.window.usage.menu.feature.usage",
-          "from_state": "menu",
-          "action": "feature.usage",
-          "to_state": "window"
-        },
-        {
-          "id": "desktop.window.usage.window.window.close.usage",
-          "from_state": "window",
-          "action": "window.close.usage",
-          "to_state": "chats"
-        },
-        {
-          "id": "desktop.window.usage.window.dock.usage",
-          "from_state": "window",
+          "id": "desktop.window.usage.collaboration.dock.usage",
+          "from_state": "collaboration",
           "action": "dock.usage",
-          "to_state": "window"
+          "to_state": "app"
         },
         {
-          "id": "desktop.window.usage.window.nav.features",
-          "from_state": "window",
-          "action": "nav.features",
-          "to_state": "window-menu"
+          "id": "desktop.window.usage.app.dock.usage",
+          "from_state": "app",
+          "action": "dock.usage",
+          "to_state": "app"
         },
         {
-          "id": "desktop.window.usage.window-menu.nav.features",
-          "from_state": "window-menu",
-          "action": "nav.features",
-          "to_state": "window"
-        },
-        {
-          "id": "desktop.window.usage.window-menu.feature.usage",
-          "from_state": "window-menu",
-          "action": "feature.usage",
-          "to_state": "window"
+          "id": "desktop.window.usage.app.dock.collaboration",
+          "from_state": "app",
+          "action": "dock.collaboration",
+          "to_state": "collaboration"
         }
       ]
+    },
+    {
+      "id": "desktop.pane",
+      "label": "桌面布局：聊天侧栏展开与收起",
+      "presentation": "desktop-wide",
+      "initial": "open",
+      "setup": [],
+      "states": [
+        {
+          "id": "open",
+          "label": "聊天侧栏展开"
+        },
+        {
+          "id": "collapsed",
+          "label": "聊天侧栏收起为头像栏"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "desktop.pane.open.pane.toggle",
+          "from_state": "open",
+          "action": "pane.toggle",
+          "to_state": "collapsed"
+        },
+        {
+          "id": "desktop.pane.collapsed.pane.toggle",
+          "from_state": "collapsed",
+          "action": "pane.toggle",
+          "to_state": "open"
+        }
+      ],
+      "scenario": "populated-conversations"
     },
     {
       "id": "dashboard.search",
@@ -1869,94 +1757,9 @@
       "label": "普通对话、群聊、返回、搜索与导航的连续随机操作",
       "presentation": "dashboard-wide",
       "scenario": "populated-conversations",
-      "initial": "native-agent",
+      "initial": "native-catalog",
       "setup": [],
       "states": [
-        {
-          "id": "native-agent",
-          "label": "普通对话 / 历史列表",
-          "view": {
-            "page": "native",
-            "list": "agent",
-            "roster": false
-          }
-        },
-        {
-          "id": "native-agent.search",
-          "label": "普通对话 / 历史列表 / 搜索框",
-          "view": {
-            "page": "native",
-            "list": "agent",
-            "roster": false,
-            "overlay": "search"
-          }
-        },
-        {
-          "id": "native-agent.create",
-          "label": "普通对话 / 历史列表 / 新建菜单",
-          "view": {
-            "page": "native",
-            "list": "agent",
-            "roster": false,
-            "overlay": "create"
-          }
-        },
-        {
-          "id": "native-agent.new-group",
-          "label": "普通对话 / 历史列表 / 新建群聊对话框",
-          "view": {
-            "page": "native",
-            "list": "agent",
-            "roster": false,
-            "overlay": "new-group"
-          }
-        },
-        {
-          "id": "native-agent.search-query",
-          "label": "普通对话 / 历史列表 / 搜索设置",
-          "view": {
-            "page": "native",
-            "list": "agent",
-            "roster": false,
-            "overlay": "search",
-            "query": "Settings"
-          }
-        },
-        {
-          "id": "native-agent.destination.settings",
-          "label": "设置 / 保留普通对话 / 历史列表",
-          "view": {
-            "destination": "settings"
-          }
-        },
-        {
-          "id": "native-agent.destination.agent-center",
-          "label": "智能体中心 / 保留普通对话 / 历史列表",
-          "view": {
-            "destination": "agent-center"
-          }
-        },
-        {
-          "id": "native-agent.destination.model-gateway",
-          "label": "模型网关 / 保留普通对话 / 历史列表",
-          "view": {
-            "destination": "model-gateway"
-          }
-        },
-        {
-          "id": "native-agent.destination.device-pairing",
-          "label": "设备配对 / 保留普通对话 / 历史列表",
-          "view": {
-            "destination": "device-pairing"
-          }
-        },
-        {
-          "id": "native-agent.destination.usage",
-          "label": "用量统计 / 保留普通对话 / 历史列表",
-          "view": {
-            "destination": "usage"
-          }
-        },
         {
           "id": "native-catalog",
           "label": "普通对话 / 对话总列表",
@@ -2038,111 +1841,6 @@
         {
           "id": "native-catalog.destination.usage",
           "label": "用量统计 / 保留普通对话 / 对话总列表",
-          "view": {
-            "destination": "usage"
-          }
-        },
-        {
-          "id": "group-group-1",
-          "label": "群聊 / 群内列表 / 成员展开",
-          "view": {
-            "page": "group",
-            "list": "group",
-            "roster": true
-          }
-        },
-        {
-          "id": "group-group-1.search",
-          "label": "群聊 / 群内列表 / 成员展开 / 搜索框",
-          "view": {
-            "page": "group",
-            "list": "group",
-            "roster": true,
-            "overlay": "search"
-          }
-        },
-        {
-          "id": "group-group-1.create",
-          "label": "群聊 / 群内列表 / 成员展开 / 新建菜单",
-          "view": {
-            "page": "group",
-            "list": "group",
-            "roster": true,
-            "overlay": "create"
-          }
-        },
-        {
-          "id": "group-group-1.new-group",
-          "label": "群聊 / 群内列表 / 成员展开 / 新建群聊对话框",
-          "view": {
-            "page": "group",
-            "list": "group",
-            "roster": true,
-            "overlay": "new-group"
-          }
-        },
-        {
-          "id": "group-group-1.group-actions",
-          "label": "群聊 / 群内列表 / 成员展开 / 群聊操作菜单",
-          "view": {
-            "page": "group",
-            "list": "group",
-            "roster": true,
-            "overlay": "group-actions"
-          }
-        },
-        {
-          "id": "group-group-1.clear-confirm",
-          "label": "群聊 / 群内列表 / 成员展开 / 归档确认框",
-          "view": {
-            "page": "group",
-            "list": "group",
-            "roster": true,
-            "overlay": "clear-confirm"
-          }
-        },
-        {
-          "id": "group-group-1.search-query",
-          "label": "群聊 / 群内列表 / 成员展开 / 搜索设置",
-          "view": {
-            "page": "group",
-            "list": "group",
-            "roster": true,
-            "overlay": "search",
-            "query": "Settings"
-          }
-        },
-        {
-          "id": "group-group-1.destination.settings",
-          "label": "设置 / 保留群聊 / 群内列表 / 成员展开",
-          "view": {
-            "destination": "settings"
-          }
-        },
-        {
-          "id": "group-group-1.destination.agent-center",
-          "label": "智能体中心 / 保留群聊 / 群内列表 / 成员展开",
-          "view": {
-            "destination": "agent-center"
-          }
-        },
-        {
-          "id": "group-group-1.destination.model-gateway",
-          "label": "模型网关 / 保留群聊 / 群内列表 / 成员展开",
-          "view": {
-            "destination": "model-gateway"
-          }
-        },
-        {
-          "id": "group-group-1.destination.device-pairing",
-          "label": "设备配对 / 保留群聊 / 群内列表 / 成员展开",
-          "view": {
-            "destination": "device-pairing"
-          }
-        },
-        {
-          "id": "group-group-1.destination.usage",
-          "label": "用量统计 / 保留群聊 / 群内列表 / 成员展开",
           "view": {
             "destination": "usage"
           }
@@ -2253,111 +1951,6 @@
           }
         },
         {
-          "id": "group-group-0",
-          "label": "群聊 / 群内列表 / 成员收起",
-          "view": {
-            "page": "group",
-            "list": "group",
-            "roster": false
-          }
-        },
-        {
-          "id": "group-group-0.search",
-          "label": "群聊 / 群内列表 / 成员收起 / 搜索框",
-          "view": {
-            "page": "group",
-            "list": "group",
-            "roster": false,
-            "overlay": "search"
-          }
-        },
-        {
-          "id": "group-group-0.create",
-          "label": "群聊 / 群内列表 / 成员收起 / 新建菜单",
-          "view": {
-            "page": "group",
-            "list": "group",
-            "roster": false,
-            "overlay": "create"
-          }
-        },
-        {
-          "id": "group-group-0.new-group",
-          "label": "群聊 / 群内列表 / 成员收起 / 新建群聊对话框",
-          "view": {
-            "page": "group",
-            "list": "group",
-            "roster": false,
-            "overlay": "new-group"
-          }
-        },
-        {
-          "id": "group-group-0.group-actions",
-          "label": "群聊 / 群内列表 / 成员收起 / 群聊操作菜单",
-          "view": {
-            "page": "group",
-            "list": "group",
-            "roster": false,
-            "overlay": "group-actions"
-          }
-        },
-        {
-          "id": "group-group-0.clear-confirm",
-          "label": "群聊 / 群内列表 / 成员收起 / 归档确认框",
-          "view": {
-            "page": "group",
-            "list": "group",
-            "roster": false,
-            "overlay": "clear-confirm"
-          }
-        },
-        {
-          "id": "group-group-0.search-query",
-          "label": "群聊 / 群内列表 / 成员收起 / 搜索设置",
-          "view": {
-            "page": "group",
-            "list": "group",
-            "roster": false,
-            "overlay": "search",
-            "query": "Settings"
-          }
-        },
-        {
-          "id": "group-group-0.destination.settings",
-          "label": "设置 / 保留群聊 / 群内列表 / 成员收起",
-          "view": {
-            "destination": "settings"
-          }
-        },
-        {
-          "id": "group-group-0.destination.agent-center",
-          "label": "智能体中心 / 保留群聊 / 群内列表 / 成员收起",
-          "view": {
-            "destination": "agent-center"
-          }
-        },
-        {
-          "id": "group-group-0.destination.model-gateway",
-          "label": "模型网关 / 保留群聊 / 群内列表 / 成员收起",
-          "view": {
-            "destination": "model-gateway"
-          }
-        },
-        {
-          "id": "group-group-0.destination.device-pairing",
-          "label": "设备配对 / 保留群聊 / 群内列表 / 成员收起",
-          "view": {
-            "destination": "device-pairing"
-          }
-        },
-        {
-          "id": "group-group-0.destination.usage",
-          "label": "用量统计 / 保留群聊 / 群内列表 / 成员收起",
-          "view": {
-            "destination": "usage"
-          }
-        },
-        {
           "id": "group-catalog-0",
           "label": "群聊 / 对话总列表 / 成员收起",
           "view": {
@@ -2463,32 +2056,12 @@
           }
         },
         {
-          "id": "group-group-1.menu",
-          "label": "群聊 / 群内列表 / 成员展开 / 更多菜单",
-          "view": {
-            "page": "group",
-            "list": "group",
-            "roster": true,
-            "overlay": "group-menu"
-          }
-        },
-        {
           "id": "group-catalog-1.menu",
           "label": "群聊 / 对话总列表 / 成员展开 / 更多菜单",
           "view": {
             "page": "group",
             "list": "catalog",
             "roster": true,
-            "overlay": "group-menu"
-          }
-        },
-        {
-          "id": "group-group-0.menu",
-          "label": "群聊 / 群内列表 / 成员收起 / 更多菜单",
-          "view": {
-            "page": "group",
-            "list": "group",
-            "roster": false,
             "overlay": "group-menu"
           }
         },
@@ -2504,282 +2077,6 @@
         }
       ],
       "transitions": [
-        {
-          "id": "chat.native-agent.search.open",
-          "from_state": "native-agent",
-          "action": "search.open",
-          "to_state": "native-agent.search"
-        },
-        {
-          "id": "chat.native-agent.search.search.dismiss",
-          "from_state": "native-agent.search",
-          "action": "search.dismiss",
-          "to_state": "native-agent"
-        },
-        {
-          "id": "chat.native-agent.create.open",
-          "from_state": "native-agent",
-          "action": "create.open",
-          "to_state": "native-agent.create"
-        },
-        {
-          "id": "chat.native-agent.create.menu.dismiss",
-          "from_state": "native-agent.create",
-          "action": "menu.dismiss",
-          "to_state": "native-agent"
-        },
-        {
-          "id": "chat.native-agent.create.create.group",
-          "from_state": "native-agent.create",
-          "action": "create.group",
-          "to_state": "native-agent.new-group"
-        },
-        {
-          "id": "chat.native-agent.new-group.dialog.cancel",
-          "from_state": "native-agent.new-group",
-          "action": "dialog.cancel",
-          "to_state": "native-agent"
-        },
-        {
-          "id": "chat.native-agent.list.refresh",
-          "from_state": "native-agent",
-          "action": "list.refresh",
-          "to_state": "native-agent"
-        },
-        {
-          "id": "chat.native-agent.list.back",
-          "from_state": "native-agent",
-          "action": "list.back",
-          "to_state": "native-catalog"
-        },
-        {
-          "id": "chat.native-agent.search.search.type-settings",
-          "from_state": "native-agent.search",
-          "action": "search.type-settings",
-          "to_state": "native-agent.search-query"
-        },
-        {
-          "id": "chat.native-agent.search-query.search.clear",
-          "from_state": "native-agent.search-query",
-          "action": "search.clear",
-          "to_state": "native-agent.search"
-        },
-        {
-          "id": "chat.native-agent.search-query.search.dismiss",
-          "from_state": "native-agent.search-query",
-          "action": "search.dismiss",
-          "to_state": "native-agent"
-        },
-        {
-          "id": "chat.native-agent.search-query.search.select-settings",
-          "from_state": "native-agent.search-query",
-          "action": "search.select-settings",
-          "to_state": "native-agent.destination.settings"
-        },
-        {
-          "id": "chat.native-agent.nav.chats",
-          "from_state": "native-agent",
-          "action": "nav.chats",
-          "to_state": "native-agent"
-        },
-        {
-          "id": "chat.native-agent.nav.settings",
-          "from_state": "native-agent",
-          "action": "nav.settings",
-          "to_state": "native-agent.destination.settings"
-        },
-        {
-          "id": "chat.native-agent.nav.features",
-          "from_state": "native-agent",
-          "action": "nav.features",
-          "to_state": "native-agent.destination.agent-center"
-        },
-        {
-          "id": "chat.native-agent.destination.settings.nav.chats",
-          "from_state": "native-agent.destination.settings",
-          "action": "nav.chats",
-          "to_state": "native-agent"
-        },
-        {
-          "id": "chat.native-agent.destination.settings.nav.settings",
-          "from_state": "native-agent.destination.settings",
-          "action": "nav.settings",
-          "to_state": "native-agent.destination.settings"
-        },
-        {
-          "id": "chat.native-agent.destination.settings.nav.features",
-          "from_state": "native-agent.destination.settings",
-          "action": "nav.features",
-          "to_state": "native-agent.destination.agent-center"
-        },
-        {
-          "id": "chat.native-agent.destination.agent-center.nav.chats",
-          "from_state": "native-agent.destination.agent-center",
-          "action": "nav.chats",
-          "to_state": "native-agent"
-        },
-        {
-          "id": "chat.native-agent.destination.agent-center.nav.settings",
-          "from_state": "native-agent.destination.agent-center",
-          "action": "nav.settings",
-          "to_state": "native-agent.destination.settings"
-        },
-        {
-          "id": "chat.native-agent.destination.agent-center.nav.features",
-          "from_state": "native-agent.destination.agent-center",
-          "action": "nav.features",
-          "to_state": "native-agent.destination.agent-center"
-        },
-        {
-          "id": "chat.native-agent.destination.agent-center.feature.agent-center",
-          "from_state": "native-agent.destination.agent-center",
-          "action": "feature.agent-center",
-          "to_state": "native-agent.destination.agent-center"
-        },
-        {
-          "id": "chat.native-agent.destination.agent-center.feature.model-gateway",
-          "from_state": "native-agent.destination.agent-center",
-          "action": "feature.model-gateway",
-          "to_state": "native-agent.destination.model-gateway"
-        },
-        {
-          "id": "chat.native-agent.destination.agent-center.feature.device-pairing",
-          "from_state": "native-agent.destination.agent-center",
-          "action": "feature.device-pairing",
-          "to_state": "native-agent.destination.device-pairing"
-        },
-        {
-          "id": "chat.native-agent.destination.agent-center.feature.usage",
-          "from_state": "native-agent.destination.agent-center",
-          "action": "feature.usage",
-          "to_state": "native-agent.destination.usage"
-        },
-        {
-          "id": "chat.native-agent.destination.model-gateway.nav.chats",
-          "from_state": "native-agent.destination.model-gateway",
-          "action": "nav.chats",
-          "to_state": "native-agent"
-        },
-        {
-          "id": "chat.native-agent.destination.model-gateway.nav.settings",
-          "from_state": "native-agent.destination.model-gateway",
-          "action": "nav.settings",
-          "to_state": "native-agent.destination.settings"
-        },
-        {
-          "id": "chat.native-agent.destination.model-gateway.nav.features",
-          "from_state": "native-agent.destination.model-gateway",
-          "action": "nav.features",
-          "to_state": "native-agent.destination.model-gateway"
-        },
-        {
-          "id": "chat.native-agent.destination.model-gateway.feature.agent-center",
-          "from_state": "native-agent.destination.model-gateway",
-          "action": "feature.agent-center",
-          "to_state": "native-agent.destination.agent-center"
-        },
-        {
-          "id": "chat.native-agent.destination.model-gateway.feature.model-gateway",
-          "from_state": "native-agent.destination.model-gateway",
-          "action": "feature.model-gateway",
-          "to_state": "native-agent.destination.model-gateway"
-        },
-        {
-          "id": "chat.native-agent.destination.model-gateway.feature.device-pairing",
-          "from_state": "native-agent.destination.model-gateway",
-          "action": "feature.device-pairing",
-          "to_state": "native-agent.destination.device-pairing"
-        },
-        {
-          "id": "chat.native-agent.destination.model-gateway.feature.usage",
-          "from_state": "native-agent.destination.model-gateway",
-          "action": "feature.usage",
-          "to_state": "native-agent.destination.usage"
-        },
-        {
-          "id": "chat.native-agent.destination.device-pairing.nav.chats",
-          "from_state": "native-agent.destination.device-pairing",
-          "action": "nav.chats",
-          "to_state": "native-agent"
-        },
-        {
-          "id": "chat.native-agent.destination.device-pairing.nav.settings",
-          "from_state": "native-agent.destination.device-pairing",
-          "action": "nav.settings",
-          "to_state": "native-agent.destination.settings"
-        },
-        {
-          "id": "chat.native-agent.destination.device-pairing.nav.features",
-          "from_state": "native-agent.destination.device-pairing",
-          "action": "nav.features",
-          "to_state": "native-agent.destination.device-pairing"
-        },
-        {
-          "id": "chat.native-agent.destination.device-pairing.feature.agent-center",
-          "from_state": "native-agent.destination.device-pairing",
-          "action": "feature.agent-center",
-          "to_state": "native-agent.destination.agent-center"
-        },
-        {
-          "id": "chat.native-agent.destination.device-pairing.feature.model-gateway",
-          "from_state": "native-agent.destination.device-pairing",
-          "action": "feature.model-gateway",
-          "to_state": "native-agent.destination.model-gateway"
-        },
-        {
-          "id": "chat.native-agent.destination.device-pairing.feature.device-pairing",
-          "from_state": "native-agent.destination.device-pairing",
-          "action": "feature.device-pairing",
-          "to_state": "native-agent.destination.device-pairing"
-        },
-        {
-          "id": "chat.native-agent.destination.device-pairing.feature.usage",
-          "from_state": "native-agent.destination.device-pairing",
-          "action": "feature.usage",
-          "to_state": "native-agent.destination.usage"
-        },
-        {
-          "id": "chat.native-agent.destination.usage.nav.chats",
-          "from_state": "native-agent.destination.usage",
-          "action": "nav.chats",
-          "to_state": "native-agent"
-        },
-        {
-          "id": "chat.native-agent.destination.usage.nav.settings",
-          "from_state": "native-agent.destination.usage",
-          "action": "nav.settings",
-          "to_state": "native-agent.destination.settings"
-        },
-        {
-          "id": "chat.native-agent.destination.usage.nav.features",
-          "from_state": "native-agent.destination.usage",
-          "action": "nav.features",
-          "to_state": "native-agent.destination.usage"
-        },
-        {
-          "id": "chat.native-agent.destination.usage.feature.agent-center",
-          "from_state": "native-agent.destination.usage",
-          "action": "feature.agent-center",
-          "to_state": "native-agent.destination.agent-center"
-        },
-        {
-          "id": "chat.native-agent.destination.usage.feature.model-gateway",
-          "from_state": "native-agent.destination.usage",
-          "action": "feature.model-gateway",
-          "to_state": "native-agent.destination.model-gateway"
-        },
-        {
-          "id": "chat.native-agent.destination.usage.feature.device-pairing",
-          "from_state": "native-agent.destination.usage",
-          "action": "feature.device-pairing",
-          "to_state": "native-agent.destination.device-pairing"
-        },
-        {
-          "id": "chat.native-agent.destination.usage.feature.usage",
-          "from_state": "native-agent.destination.usage",
-          "action": "feature.usage",
-          "to_state": "native-agent.destination.usage"
-        },
         {
           "id": "chat.native-catalog.search.open",
           "from_state": "native-catalog",
@@ -2826,13 +2123,13 @@
           "id": "chat.native-catalog.group.open",
           "from_state": "native-catalog",
           "action": "group.open",
-          "to_state": "group-group-0"
+          "to_state": "group-catalog-0"
         },
         {
           "id": "chat.native-catalog.native.open",
           "from_state": "native-catalog",
           "action": "native.open",
-          "to_state": "native-agent"
+          "to_state": "native-catalog"
         },
         {
           "id": "chat.native-catalog.search.search.type-settings",
@@ -3063,330 +2360,6 @@
           "to_state": "native-catalog.destination.usage"
         },
         {
-          "id": "chat.group-group-1.search.open",
-          "from_state": "group-group-1",
-          "action": "search.open",
-          "to_state": "group-group-1.search"
-        },
-        {
-          "id": "chat.group-group-1.search.search.dismiss",
-          "from_state": "group-group-1.search",
-          "action": "search.dismiss",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.create.open",
-          "from_state": "group-group-1",
-          "action": "create.open",
-          "to_state": "group-group-1.create"
-        },
-        {
-          "id": "chat.group-group-1.create.menu.dismiss",
-          "from_state": "group-group-1.create",
-          "action": "menu.dismiss",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.create.create.group",
-          "from_state": "group-group-1.create",
-          "action": "create.group",
-          "to_state": "group-group-1.new-group"
-        },
-        {
-          "id": "chat.group-group-1.new-group.dialog.cancel",
-          "from_state": "group-group-1.new-group",
-          "action": "dialog.cancel",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.list.refresh",
-          "from_state": "group-group-1",
-          "action": "list.refresh",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.list.back",
-          "from_state": "group-group-1",
-          "action": "list.back",
-          "to_state": "group-catalog-1"
-        },
-        {
-          "id": "chat.group-group-1.group.menu",
-          "from_state": "group-group-1",
-          "action": "group.menu",
-          "to_state": "group-group-1.menu"
-        },
-        {
-          "id": "chat.group-group-1.conversation.scroll-up",
-          "from_state": "group-group-1",
-          "action": "conversation.scroll-up",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.conversation.scroll-down",
-          "from_state": "group-group-1",
-          "action": "conversation.scroll-down",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.group.actions",
-          "from_state": "group-group-1",
-          "action": "group.actions",
-          "to_state": "group-group-1.group-actions"
-        },
-        {
-          "id": "chat.group-group-1.group-actions.group.actions",
-          "from_state": "group-group-1.group-actions",
-          "action": "group.actions",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.group-actions.menu.dismiss",
-          "from_state": "group-group-1.group-actions",
-          "action": "menu.dismiss",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.group-actions.group.clear",
-          "from_state": "group-group-1.group-actions",
-          "action": "group.clear",
-          "to_state": "group-group-1.clear-confirm"
-        },
-        {
-          "id": "chat.group-group-1.clear-confirm.dialog.cancel",
-          "from_state": "group-group-1.clear-confirm",
-          "action": "dialog.cancel",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.search.search.type-settings",
-          "from_state": "group-group-1.search",
-          "action": "search.type-settings",
-          "to_state": "group-group-1.search-query"
-        },
-        {
-          "id": "chat.group-group-1.search-query.search.clear",
-          "from_state": "group-group-1.search-query",
-          "action": "search.clear",
-          "to_state": "group-group-1.search"
-        },
-        {
-          "id": "chat.group-group-1.search-query.search.dismiss",
-          "from_state": "group-group-1.search-query",
-          "action": "search.dismiss",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.search-query.search.select-settings",
-          "from_state": "group-group-1.search-query",
-          "action": "search.select-settings",
-          "to_state": "group-group-1.destination.settings"
-        },
-        {
-          "id": "chat.group-group-1.nav.chats",
-          "from_state": "group-group-1",
-          "action": "nav.chats",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.nav.settings",
-          "from_state": "group-group-1",
-          "action": "nav.settings",
-          "to_state": "group-group-1.destination.settings"
-        },
-        {
-          "id": "chat.group-group-1.nav.features",
-          "from_state": "group-group-1",
-          "action": "nav.features",
-          "to_state": "group-group-1.destination.agent-center"
-        },
-        {
-          "id": "chat.group-group-1.destination.settings.nav.chats",
-          "from_state": "group-group-1.destination.settings",
-          "action": "nav.chats",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.destination.settings.nav.settings",
-          "from_state": "group-group-1.destination.settings",
-          "action": "nav.settings",
-          "to_state": "group-group-1.destination.settings"
-        },
-        {
-          "id": "chat.group-group-1.destination.settings.nav.features",
-          "from_state": "group-group-1.destination.settings",
-          "action": "nav.features",
-          "to_state": "group-group-1.destination.agent-center"
-        },
-        {
-          "id": "chat.group-group-1.destination.agent-center.nav.chats",
-          "from_state": "group-group-1.destination.agent-center",
-          "action": "nav.chats",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.destination.agent-center.nav.settings",
-          "from_state": "group-group-1.destination.agent-center",
-          "action": "nav.settings",
-          "to_state": "group-group-1.destination.settings"
-        },
-        {
-          "id": "chat.group-group-1.destination.agent-center.nav.features",
-          "from_state": "group-group-1.destination.agent-center",
-          "action": "nav.features",
-          "to_state": "group-group-1.destination.agent-center"
-        },
-        {
-          "id": "chat.group-group-1.destination.agent-center.feature.agent-center",
-          "from_state": "group-group-1.destination.agent-center",
-          "action": "feature.agent-center",
-          "to_state": "group-group-1.destination.agent-center"
-        },
-        {
-          "id": "chat.group-group-1.destination.agent-center.feature.model-gateway",
-          "from_state": "group-group-1.destination.agent-center",
-          "action": "feature.model-gateway",
-          "to_state": "group-group-1.destination.model-gateway"
-        },
-        {
-          "id": "chat.group-group-1.destination.agent-center.feature.device-pairing",
-          "from_state": "group-group-1.destination.agent-center",
-          "action": "feature.device-pairing",
-          "to_state": "group-group-1.destination.device-pairing"
-        },
-        {
-          "id": "chat.group-group-1.destination.agent-center.feature.usage",
-          "from_state": "group-group-1.destination.agent-center",
-          "action": "feature.usage",
-          "to_state": "group-group-1.destination.usage"
-        },
-        {
-          "id": "chat.group-group-1.destination.model-gateway.nav.chats",
-          "from_state": "group-group-1.destination.model-gateway",
-          "action": "nav.chats",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.destination.model-gateway.nav.settings",
-          "from_state": "group-group-1.destination.model-gateway",
-          "action": "nav.settings",
-          "to_state": "group-group-1.destination.settings"
-        },
-        {
-          "id": "chat.group-group-1.destination.model-gateway.nav.features",
-          "from_state": "group-group-1.destination.model-gateway",
-          "action": "nav.features",
-          "to_state": "group-group-1.destination.model-gateway"
-        },
-        {
-          "id": "chat.group-group-1.destination.model-gateway.feature.agent-center",
-          "from_state": "group-group-1.destination.model-gateway",
-          "action": "feature.agent-center",
-          "to_state": "group-group-1.destination.agent-center"
-        },
-        {
-          "id": "chat.group-group-1.destination.model-gateway.feature.model-gateway",
-          "from_state": "group-group-1.destination.model-gateway",
-          "action": "feature.model-gateway",
-          "to_state": "group-group-1.destination.model-gateway"
-        },
-        {
-          "id": "chat.group-group-1.destination.model-gateway.feature.device-pairing",
-          "from_state": "group-group-1.destination.model-gateway",
-          "action": "feature.device-pairing",
-          "to_state": "group-group-1.destination.device-pairing"
-        },
-        {
-          "id": "chat.group-group-1.destination.model-gateway.feature.usage",
-          "from_state": "group-group-1.destination.model-gateway",
-          "action": "feature.usage",
-          "to_state": "group-group-1.destination.usage"
-        },
-        {
-          "id": "chat.group-group-1.destination.device-pairing.nav.chats",
-          "from_state": "group-group-1.destination.device-pairing",
-          "action": "nav.chats",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.destination.device-pairing.nav.settings",
-          "from_state": "group-group-1.destination.device-pairing",
-          "action": "nav.settings",
-          "to_state": "group-group-1.destination.settings"
-        },
-        {
-          "id": "chat.group-group-1.destination.device-pairing.nav.features",
-          "from_state": "group-group-1.destination.device-pairing",
-          "action": "nav.features",
-          "to_state": "group-group-1.destination.device-pairing"
-        },
-        {
-          "id": "chat.group-group-1.destination.device-pairing.feature.agent-center",
-          "from_state": "group-group-1.destination.device-pairing",
-          "action": "feature.agent-center",
-          "to_state": "group-group-1.destination.agent-center"
-        },
-        {
-          "id": "chat.group-group-1.destination.device-pairing.feature.model-gateway",
-          "from_state": "group-group-1.destination.device-pairing",
-          "action": "feature.model-gateway",
-          "to_state": "group-group-1.destination.model-gateway"
-        },
-        {
-          "id": "chat.group-group-1.destination.device-pairing.feature.device-pairing",
-          "from_state": "group-group-1.destination.device-pairing",
-          "action": "feature.device-pairing",
-          "to_state": "group-group-1.destination.device-pairing"
-        },
-        {
-          "id": "chat.group-group-1.destination.device-pairing.feature.usage",
-          "from_state": "group-group-1.destination.device-pairing",
-          "action": "feature.usage",
-          "to_state": "group-group-1.destination.usage"
-        },
-        {
-          "id": "chat.group-group-1.destination.usage.nav.chats",
-          "from_state": "group-group-1.destination.usage",
-          "action": "nav.chats",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.destination.usage.nav.settings",
-          "from_state": "group-group-1.destination.usage",
-          "action": "nav.settings",
-          "to_state": "group-group-1.destination.settings"
-        },
-        {
-          "id": "chat.group-group-1.destination.usage.nav.features",
-          "from_state": "group-group-1.destination.usage",
-          "action": "nav.features",
-          "to_state": "group-group-1.destination.usage"
-        },
-        {
-          "id": "chat.group-group-1.destination.usage.feature.agent-center",
-          "from_state": "group-group-1.destination.usage",
-          "action": "feature.agent-center",
-          "to_state": "group-group-1.destination.agent-center"
-        },
-        {
-          "id": "chat.group-group-1.destination.usage.feature.model-gateway",
-          "from_state": "group-group-1.destination.usage",
-          "action": "feature.model-gateway",
-          "to_state": "group-group-1.destination.model-gateway"
-        },
-        {
-          "id": "chat.group-group-1.destination.usage.feature.device-pairing",
-          "from_state": "group-group-1.destination.usage",
-          "action": "feature.device-pairing",
-          "to_state": "group-group-1.destination.device-pairing"
-        },
-        {
-          "id": "chat.group-group-1.destination.usage.feature.usage",
-          "from_state": "group-group-1.destination.usage",
-          "action": "feature.usage",
-          "to_state": "group-group-1.destination.usage"
-        },
-        {
           "id": "chat.group-catalog-1.search.open",
           "from_state": "group-catalog-1",
           "action": "search.open",
@@ -3432,13 +2405,13 @@
           "id": "chat.group-catalog-1.group.open",
           "from_state": "group-catalog-1",
           "action": "group.open",
-          "to_state": "group-group-1"
+          "to_state": "group-catalog-1"
         },
         {
           "id": "chat.group-catalog-1.native.open",
           "from_state": "group-catalog-1",
           "action": "native.open",
-          "to_state": "native-agent"
+          "to_state": "native-catalog"
         },
         {
           "id": "chat.group-catalog-1.group.menu",
@@ -3717,330 +2690,6 @@
           "to_state": "group-catalog-1.destination.usage"
         },
         {
-          "id": "chat.group-group-0.search.open",
-          "from_state": "group-group-0",
-          "action": "search.open",
-          "to_state": "group-group-0.search"
-        },
-        {
-          "id": "chat.group-group-0.search.search.dismiss",
-          "from_state": "group-group-0.search",
-          "action": "search.dismiss",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.create.open",
-          "from_state": "group-group-0",
-          "action": "create.open",
-          "to_state": "group-group-0.create"
-        },
-        {
-          "id": "chat.group-group-0.create.menu.dismiss",
-          "from_state": "group-group-0.create",
-          "action": "menu.dismiss",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.create.create.group",
-          "from_state": "group-group-0.create",
-          "action": "create.group",
-          "to_state": "group-group-0.new-group"
-        },
-        {
-          "id": "chat.group-group-0.new-group.dialog.cancel",
-          "from_state": "group-group-0.new-group",
-          "action": "dialog.cancel",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.list.refresh",
-          "from_state": "group-group-0",
-          "action": "list.refresh",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.list.back",
-          "from_state": "group-group-0",
-          "action": "list.back",
-          "to_state": "group-catalog-0"
-        },
-        {
-          "id": "chat.group-group-0.group.menu",
-          "from_state": "group-group-0",
-          "action": "group.menu",
-          "to_state": "group-group-0.menu"
-        },
-        {
-          "id": "chat.group-group-0.conversation.scroll-up",
-          "from_state": "group-group-0",
-          "action": "conversation.scroll-up",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.conversation.scroll-down",
-          "from_state": "group-group-0",
-          "action": "conversation.scroll-down",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.group.actions",
-          "from_state": "group-group-0",
-          "action": "group.actions",
-          "to_state": "group-group-0.group-actions"
-        },
-        {
-          "id": "chat.group-group-0.group-actions.group.actions",
-          "from_state": "group-group-0.group-actions",
-          "action": "group.actions",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.group-actions.menu.dismiss",
-          "from_state": "group-group-0.group-actions",
-          "action": "menu.dismiss",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.group-actions.group.clear",
-          "from_state": "group-group-0.group-actions",
-          "action": "group.clear",
-          "to_state": "group-group-0.clear-confirm"
-        },
-        {
-          "id": "chat.group-group-0.clear-confirm.dialog.cancel",
-          "from_state": "group-group-0.clear-confirm",
-          "action": "dialog.cancel",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.search.search.type-settings",
-          "from_state": "group-group-0.search",
-          "action": "search.type-settings",
-          "to_state": "group-group-0.search-query"
-        },
-        {
-          "id": "chat.group-group-0.search-query.search.clear",
-          "from_state": "group-group-0.search-query",
-          "action": "search.clear",
-          "to_state": "group-group-0.search"
-        },
-        {
-          "id": "chat.group-group-0.search-query.search.dismiss",
-          "from_state": "group-group-0.search-query",
-          "action": "search.dismiss",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.search-query.search.select-settings",
-          "from_state": "group-group-0.search-query",
-          "action": "search.select-settings",
-          "to_state": "group-group-0.destination.settings"
-        },
-        {
-          "id": "chat.group-group-0.nav.chats",
-          "from_state": "group-group-0",
-          "action": "nav.chats",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.nav.settings",
-          "from_state": "group-group-0",
-          "action": "nav.settings",
-          "to_state": "group-group-0.destination.settings"
-        },
-        {
-          "id": "chat.group-group-0.nav.features",
-          "from_state": "group-group-0",
-          "action": "nav.features",
-          "to_state": "group-group-0.destination.agent-center"
-        },
-        {
-          "id": "chat.group-group-0.destination.settings.nav.chats",
-          "from_state": "group-group-0.destination.settings",
-          "action": "nav.chats",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.destination.settings.nav.settings",
-          "from_state": "group-group-0.destination.settings",
-          "action": "nav.settings",
-          "to_state": "group-group-0.destination.settings"
-        },
-        {
-          "id": "chat.group-group-0.destination.settings.nav.features",
-          "from_state": "group-group-0.destination.settings",
-          "action": "nav.features",
-          "to_state": "group-group-0.destination.agent-center"
-        },
-        {
-          "id": "chat.group-group-0.destination.agent-center.nav.chats",
-          "from_state": "group-group-0.destination.agent-center",
-          "action": "nav.chats",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.destination.agent-center.nav.settings",
-          "from_state": "group-group-0.destination.agent-center",
-          "action": "nav.settings",
-          "to_state": "group-group-0.destination.settings"
-        },
-        {
-          "id": "chat.group-group-0.destination.agent-center.nav.features",
-          "from_state": "group-group-0.destination.agent-center",
-          "action": "nav.features",
-          "to_state": "group-group-0.destination.agent-center"
-        },
-        {
-          "id": "chat.group-group-0.destination.agent-center.feature.agent-center",
-          "from_state": "group-group-0.destination.agent-center",
-          "action": "feature.agent-center",
-          "to_state": "group-group-0.destination.agent-center"
-        },
-        {
-          "id": "chat.group-group-0.destination.agent-center.feature.model-gateway",
-          "from_state": "group-group-0.destination.agent-center",
-          "action": "feature.model-gateway",
-          "to_state": "group-group-0.destination.model-gateway"
-        },
-        {
-          "id": "chat.group-group-0.destination.agent-center.feature.device-pairing",
-          "from_state": "group-group-0.destination.agent-center",
-          "action": "feature.device-pairing",
-          "to_state": "group-group-0.destination.device-pairing"
-        },
-        {
-          "id": "chat.group-group-0.destination.agent-center.feature.usage",
-          "from_state": "group-group-0.destination.agent-center",
-          "action": "feature.usage",
-          "to_state": "group-group-0.destination.usage"
-        },
-        {
-          "id": "chat.group-group-0.destination.model-gateway.nav.chats",
-          "from_state": "group-group-0.destination.model-gateway",
-          "action": "nav.chats",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.destination.model-gateway.nav.settings",
-          "from_state": "group-group-0.destination.model-gateway",
-          "action": "nav.settings",
-          "to_state": "group-group-0.destination.settings"
-        },
-        {
-          "id": "chat.group-group-0.destination.model-gateway.nav.features",
-          "from_state": "group-group-0.destination.model-gateway",
-          "action": "nav.features",
-          "to_state": "group-group-0.destination.model-gateway"
-        },
-        {
-          "id": "chat.group-group-0.destination.model-gateway.feature.agent-center",
-          "from_state": "group-group-0.destination.model-gateway",
-          "action": "feature.agent-center",
-          "to_state": "group-group-0.destination.agent-center"
-        },
-        {
-          "id": "chat.group-group-0.destination.model-gateway.feature.model-gateway",
-          "from_state": "group-group-0.destination.model-gateway",
-          "action": "feature.model-gateway",
-          "to_state": "group-group-0.destination.model-gateway"
-        },
-        {
-          "id": "chat.group-group-0.destination.model-gateway.feature.device-pairing",
-          "from_state": "group-group-0.destination.model-gateway",
-          "action": "feature.device-pairing",
-          "to_state": "group-group-0.destination.device-pairing"
-        },
-        {
-          "id": "chat.group-group-0.destination.model-gateway.feature.usage",
-          "from_state": "group-group-0.destination.model-gateway",
-          "action": "feature.usage",
-          "to_state": "group-group-0.destination.usage"
-        },
-        {
-          "id": "chat.group-group-0.destination.device-pairing.nav.chats",
-          "from_state": "group-group-0.destination.device-pairing",
-          "action": "nav.chats",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.destination.device-pairing.nav.settings",
-          "from_state": "group-group-0.destination.device-pairing",
-          "action": "nav.settings",
-          "to_state": "group-group-0.destination.settings"
-        },
-        {
-          "id": "chat.group-group-0.destination.device-pairing.nav.features",
-          "from_state": "group-group-0.destination.device-pairing",
-          "action": "nav.features",
-          "to_state": "group-group-0.destination.device-pairing"
-        },
-        {
-          "id": "chat.group-group-0.destination.device-pairing.feature.agent-center",
-          "from_state": "group-group-0.destination.device-pairing",
-          "action": "feature.agent-center",
-          "to_state": "group-group-0.destination.agent-center"
-        },
-        {
-          "id": "chat.group-group-0.destination.device-pairing.feature.model-gateway",
-          "from_state": "group-group-0.destination.device-pairing",
-          "action": "feature.model-gateway",
-          "to_state": "group-group-0.destination.model-gateway"
-        },
-        {
-          "id": "chat.group-group-0.destination.device-pairing.feature.device-pairing",
-          "from_state": "group-group-0.destination.device-pairing",
-          "action": "feature.device-pairing",
-          "to_state": "group-group-0.destination.device-pairing"
-        },
-        {
-          "id": "chat.group-group-0.destination.device-pairing.feature.usage",
-          "from_state": "group-group-0.destination.device-pairing",
-          "action": "feature.usage",
-          "to_state": "group-group-0.destination.usage"
-        },
-        {
-          "id": "chat.group-group-0.destination.usage.nav.chats",
-          "from_state": "group-group-0.destination.usage",
-          "action": "nav.chats",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.destination.usage.nav.settings",
-          "from_state": "group-group-0.destination.usage",
-          "action": "nav.settings",
-          "to_state": "group-group-0.destination.settings"
-        },
-        {
-          "id": "chat.group-group-0.destination.usage.nav.features",
-          "from_state": "group-group-0.destination.usage",
-          "action": "nav.features",
-          "to_state": "group-group-0.destination.usage"
-        },
-        {
-          "id": "chat.group-group-0.destination.usage.feature.agent-center",
-          "from_state": "group-group-0.destination.usage",
-          "action": "feature.agent-center",
-          "to_state": "group-group-0.destination.agent-center"
-        },
-        {
-          "id": "chat.group-group-0.destination.usage.feature.model-gateway",
-          "from_state": "group-group-0.destination.usage",
-          "action": "feature.model-gateway",
-          "to_state": "group-group-0.destination.model-gateway"
-        },
-        {
-          "id": "chat.group-group-0.destination.usage.feature.device-pairing",
-          "from_state": "group-group-0.destination.usage",
-          "action": "feature.device-pairing",
-          "to_state": "group-group-0.destination.device-pairing"
-        },
-        {
-          "id": "chat.group-group-0.destination.usage.feature.usage",
-          "from_state": "group-group-0.destination.usage",
-          "action": "feature.usage",
-          "to_state": "group-group-0.destination.usage"
-        },
-        {
           "id": "chat.group-catalog-0.search.open",
           "from_state": "group-catalog-0",
           "action": "search.open",
@@ -4086,13 +2735,13 @@
           "id": "chat.group-catalog-0.group.open",
           "from_state": "group-catalog-0",
           "action": "group.open",
-          "to_state": "group-group-0"
+          "to_state": "group-catalog-0"
         },
         {
           "id": "chat.group-catalog-0.native.open",
           "from_state": "group-catalog-0",
           "action": "native.open",
-          "to_state": "native-agent"
+          "to_state": "native-catalog"
         },
         {
           "id": "chat.group-catalog-0.group.menu",
@@ -4371,66 +3020,6 @@
           "to_state": "group-catalog-0.destination.usage"
         },
         {
-          "id": "chat.group-group-1.group-actions.search.open",
-          "from_state": "group-group-1.group-actions",
-          "action": "search.open",
-          "to_state": "group-group-1.search"
-        },
-        {
-          "id": "chat.group-group-1.group-actions.create.open",
-          "from_state": "group-group-1.group-actions",
-          "action": "create.open",
-          "to_state": "group-group-1.create"
-        },
-        {
-          "id": "chat.group-group-1.group-actions.list.refresh",
-          "from_state": "group-group-1.group-actions",
-          "action": "list.refresh",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.group-actions.list.back",
-          "from_state": "group-group-1.group-actions",
-          "action": "list.back",
-          "to_state": "group-catalog-1"
-        },
-        {
-          "id": "chat.group-group-1.group-actions.group.menu",
-          "from_state": "group-group-1.group-actions",
-          "action": "group.menu",
-          "to_state": "group-group-1.menu"
-        },
-        {
-          "id": "chat.group-group-1.group-actions.conversation.scroll-up",
-          "from_state": "group-group-1.group-actions",
-          "action": "conversation.scroll-up",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.group-actions.conversation.scroll-down",
-          "from_state": "group-group-1.group-actions",
-          "action": "conversation.scroll-down",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.group-actions.nav.chats",
-          "from_state": "group-group-1.group-actions",
-          "action": "nav.chats",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.group-actions.nav.settings",
-          "from_state": "group-group-1.group-actions",
-          "action": "nav.settings",
-          "to_state": "group-group-1.destination.settings"
-        },
-        {
-          "id": "chat.group-group-1.group-actions.nav.features",
-          "from_state": "group-group-1.group-actions",
-          "action": "nav.features",
-          "to_state": "group-group-1.destination.agent-center"
-        },
-        {
           "id": "chat.group-catalog-1.group-actions.search.open",
           "from_state": "group-catalog-1.group-actions",
           "action": "search.open",
@@ -4452,13 +3041,13 @@
           "id": "chat.group-catalog-1.group-actions.group.open",
           "from_state": "group-catalog-1.group-actions",
           "action": "group.open",
-          "to_state": "group-group-1"
+          "to_state": "group-catalog-1"
         },
         {
           "id": "chat.group-catalog-1.group-actions.native.open",
           "from_state": "group-catalog-1.group-actions",
           "action": "native.open",
-          "to_state": "native-agent"
+          "to_state": "native-catalog"
         },
         {
           "id": "chat.group-catalog-1.group-actions.group.menu",
@@ -4497,66 +3086,6 @@
           "to_state": "group-catalog-1.destination.agent-center"
         },
         {
-          "id": "chat.group-group-0.group-actions.search.open",
-          "from_state": "group-group-0.group-actions",
-          "action": "search.open",
-          "to_state": "group-group-0.search"
-        },
-        {
-          "id": "chat.group-group-0.group-actions.create.open",
-          "from_state": "group-group-0.group-actions",
-          "action": "create.open",
-          "to_state": "group-group-0.create"
-        },
-        {
-          "id": "chat.group-group-0.group-actions.list.refresh",
-          "from_state": "group-group-0.group-actions",
-          "action": "list.refresh",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.group-actions.list.back",
-          "from_state": "group-group-0.group-actions",
-          "action": "list.back",
-          "to_state": "group-catalog-0"
-        },
-        {
-          "id": "chat.group-group-0.group-actions.group.menu",
-          "from_state": "group-group-0.group-actions",
-          "action": "group.menu",
-          "to_state": "group-group-0.menu"
-        },
-        {
-          "id": "chat.group-group-0.group-actions.conversation.scroll-up",
-          "from_state": "group-group-0.group-actions",
-          "action": "conversation.scroll-up",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.group-actions.conversation.scroll-down",
-          "from_state": "group-group-0.group-actions",
-          "action": "conversation.scroll-down",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.group-actions.nav.chats",
-          "from_state": "group-group-0.group-actions",
-          "action": "nav.chats",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.group-actions.nav.settings",
-          "from_state": "group-group-0.group-actions",
-          "action": "nav.settings",
-          "to_state": "group-group-0.destination.settings"
-        },
-        {
-          "id": "chat.group-group-0.group-actions.nav.features",
-          "from_state": "group-group-0.group-actions",
-          "action": "nav.features",
-          "to_state": "group-group-0.destination.agent-center"
-        },
-        {
           "id": "chat.group-catalog-0.group-actions.search.open",
           "from_state": "group-catalog-0.group-actions",
           "action": "search.open",
@@ -4578,13 +3107,13 @@
           "id": "chat.group-catalog-0.group-actions.group.open",
           "from_state": "group-catalog-0.group-actions",
           "action": "group.open",
-          "to_state": "group-group-0"
+          "to_state": "group-catalog-0"
         },
         {
           "id": "chat.group-catalog-0.group-actions.native.open",
           "from_state": "group-catalog-0.group-actions",
           "action": "native.open",
-          "to_state": "native-agent"
+          "to_state": "native-catalog"
         },
         {
           "id": "chat.group-catalog-0.group-actions.group.menu",
@@ -4623,24 +3152,6 @@
           "to_state": "group-catalog-0.destination.agent-center"
         },
         {
-          "id": "chat.group-group-1.menu.roster.toggle",
-          "from_state": "group-group-1.menu",
-          "action": "roster.toggle",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-1.menu.menu.dismiss",
-          "from_state": "group-group-1.menu",
-          "action": "menu.dismiss",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-1.menu.group.menu",
-          "from_state": "group-group-1.menu",
-          "action": "group.menu",
-          "to_state": "group-group-1"
-        },
-        {
           "id": "chat.group-catalog-1.menu.roster.toggle",
           "from_state": "group-catalog-1.menu",
           "action": "roster.toggle",
@@ -4659,24 +3170,6 @@
           "to_state": "group-catalog-1"
         },
         {
-          "id": "chat.group-group-0.menu.roster.toggle",
-          "from_state": "group-group-0.menu",
-          "action": "roster.toggle",
-          "to_state": "group-group-1"
-        },
-        {
-          "id": "chat.group-group-0.menu.menu.dismiss",
-          "from_state": "group-group-0.menu",
-          "action": "menu.dismiss",
-          "to_state": "group-group-0"
-        },
-        {
-          "id": "chat.group-group-0.menu.group.menu",
-          "from_state": "group-group-0.menu",
-          "action": "group.menu",
-          "to_state": "group-group-0"
-        },
-        {
           "id": "chat.group-catalog-0.menu.roster.toggle",
           "from_state": "group-catalog-0.menu",
           "action": "roster.toggle",
@@ -4693,6 +3186,53 @@
           "from_state": "group-catalog-0.menu",
           "action": "group.menu",
           "to_state": "group-catalog-0"
+        }
+      ]
+    },
+    {
+      "id": "desktop.quick-switcher",
+      "label": "桌面布局：快速切换",
+      "presentation": "desktop-wide",
+      "initial": "closed",
+      "setup": [],
+      "states": [
+        {
+          "id": "closed",
+          "label": "快速切换已关闭"
+        },
+        {
+          "id": "open",
+          "label": "快速切换弹窗"
+        },
+        {
+          "id": "usage",
+          "label": "统计面板"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "desktop.quick-switcher.closed.switcher.open",
+          "from_state": "closed",
+          "action": "switcher.open",
+          "to_state": "open"
+        },
+        {
+          "id": "desktop.quick-switcher.open.switcher.dismiss",
+          "from_state": "open",
+          "action": "switcher.dismiss",
+          "to_state": "closed"
+        },
+        {
+          "id": "desktop.quick-switcher.open.switcher.usage",
+          "from_state": "open",
+          "action": "switcher.usage",
+          "to_state": "usage"
+        },
+        {
+          "id": "desktop.quick-switcher.usage.switcher.open",
+          "from_state": "usage",
+          "action": "switcher.open",
+          "to_state": "open"
         }
       ]
     }

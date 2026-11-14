@@ -18,7 +18,6 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
-  readdirSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -187,7 +186,7 @@ function recipeFor(target, version) {
       ], { label: "xcode-archive" });
       add("xcodebuild", [
         "-exportArchive", "-archivePath", `${outputDir}/Runner.xcarchive`,
-        "-exportOptionsPlist", "apps/desktop/packaging/ios/ExportOptions-AppStore.plist",
+        "-exportOptionsPlist", "apps/desktop/packaging/macos/ExportOptions-AppStore.plist",
         "-exportPath", `${outputDir}/export`,
       ], { label: "xcode-export" });
       credentials("LICO_MACOS_APP_STORE_SIGNING_IDENTITY", "LICO_MACOS_APP_STORE_TEAM_ID");
@@ -228,42 +227,6 @@ function recipeFor(target, version) {
     case "linux-appimage-x64":
       add("flutter", ["build", "linux", "--release"], { cwd: "apps/desktop", label: "flutter-linux" });
       add("appimagetool", ["apps/desktop/packaging/linux/appimage", packagePath], { label: "appimage-pack" });
-      break;
-    case "android-direct-arm64-v8a":
-      add("node", ["apps/desktop/scripts/build-android-apk.mjs", "--release"], { label: "android-apk" });
-      requiredTools.add("flutter");
-      credentials(
-        "LICO_ANDROID_KEYSTORE_PATH",
-        "LICO_ANDROID_KEYSTORE_PASSWORD",
-        "LICO_ANDROID_KEY_ALIAS",
-        "LICO_ANDROID_KEY_PASSWORD",
-      );
-      break;
-    case "android-play-arm64-v8a":
-      add("flutter", ["build", "appbundle", "--release", "--target-platform", "android-arm64"], {
-        cwd: "apps/desktop",
-        label: "android-aab",
-      });
-      credentials(
-        "LICO_ANDROID_KEYSTORE_PATH",
-        "LICO_ANDROID_KEYSTORE_PASSWORD",
-        "LICO_ANDROID_KEY_ALIAS",
-        "LICO_ANDROID_KEY_PASSWORD",
-      );
-      break;
-    case "ios-app-store-arm64":
-      add("xcodebuild", ["-version"], { label: "xcode-version" });
-      add("xcodebuild", [
-        "-workspace", "apps/desktop/ios/Runner.xcworkspace",
-        "-scheme", "Runner", "-configuration", "Release",
-        "-archivePath", `${outputDir}/Runner.xcarchive`, "archive",
-      ], { label: "xcode-archive" });
-      add("xcodebuild", [
-        "-exportArchive", "-archivePath", `${outputDir}/Runner.xcarchive`,
-        "-exportOptionsPlist", "apps/desktop/packaging/ios/ExportOptions-AppStore.plist",
-        "-exportPath", `${outputDir}/export`,
-      ], { label: "ipa-export" });
-      credentials("LICO_IOS_SIGNING_IDENTITY", "LICO_IOS_TEAM_ID", "LICO_IOS_PROVISIONING_PROFILE");
       break;
     default:
       fail("client_platform_release_recipe_missing");
@@ -397,36 +360,23 @@ function copyRegularFile(source, destination) {
 
 function candidateFiles(target, artifact, version) {
   const name = resolveToken(artifact.file, version, target);
+  if (artifact.role === "migration-tool") {
+    // One producer owns this unbundled asset. Never substitute an old file from
+    // a distribution directory or checkout root when that producer skipped it.
+    return [path.join(
+      workspaceRoot,
+      "build", "apps", "desktop", "release-tools", target.platform, name,
+    )];
+  }
   const distributionRoot = path.join(workspaceRoot, "build", "apps", "desktop", "distribution", "macos");
   const candidates = [];
   if (target.platform === "macos" && target.channel === "direct") {
     candidates.push(path.join(distributionRoot, artifact.role === "build-manifest" ? "manifest.json" : name));
   }
-  if (target.id === "android-direct-arm64-v8a") {
-    candidates.push(path.join(
-      workspaceRoot,
-      "build", "apps", "desktop", "android", "release",
-      artifact.role === "installer" ? "app-release.apk" : "build-manifest.json",
-    ));
-  }
-  if (target.id === "android-play-arm64-v8a") {
-    candidates.push(path.join(workspaceRoot, "apps", "desktop", "build", "app", "outputs", "bundle", "release", "app-release.aab"));
-  }
-  if (target.platform === "ios") {
-    candidates.push(...findByExtension(path.join(workspaceRoot, "build", "apps", "desktop", "native-release", target.id, "export"), ".ipa"));
-  }
   candidates.push(path.join(workspaceRoot, name));
   return candidates;
 }
 
-function findByExtension(directory, extension) {
-  const info = lstatSync(directory, { throwIfNoEntry: false });
-  if (!info?.isDirectory() || info.isSymbolicLink()) return [];
-  return readdirSync(directory, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(extension))
-    .sort((left, right) => left.name.localeCompare(right.name))
-    .map((entry) => path.join(directory, entry.name));
-}
 
 function materializeDeclaredSources(target, version) {
   for (const artifact of target.artifacts.filter((candidate) =>

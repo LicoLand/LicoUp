@@ -1,4 +1,5 @@
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -296,8 +297,10 @@ final class _CredentialsTable extends StatelessWidget {
     final textScale =
         MediaQuery.textScalerOf(context).scale(fontSize) / fontSize;
     final authorizeColumnWidth = _authorizeToggleWidth * textScale;
+    // Columns flex to the card at every window width — the floor keeps
+    // headers readable without ever pushing a column off the card edge.
     final minimumWidth =
-        120 * textScale * 5 + authorizeColumnWidth + _rowActionsWidth + 16;
+        64 * textScale * 5 + authorizeColumnWidth + _rowActionsWidth + 16;
     final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     Widget headerCell(String label, [int flex = 1]) => Expanded(
       flex: flex,
@@ -519,7 +522,9 @@ final class _AuthorizeSwitch extends StatelessWidget {
               ? green.withValues(alpha: 0.45)
               : green;
         }
-        return colors.surfaceLow;
+        return (colors.isDark
+            ? LicoPaneGlass.contentInnerCardFill
+            : colors.surfaceLow);
       }),
       trackOutlineColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {

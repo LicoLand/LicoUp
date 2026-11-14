@@ -200,3 +200,47 @@ test("failure diagnostics retain only repository-relative, bounded, redacted fac
     error: "Expected one widget at <local-path> | Actual endpoint: <endpoint> @ apps/desktop/test/safe_fixture_test.dart:10:2",
   }]);
 });
+
+test("Flutter input attribution requires completed non-skipped tests for every input", () => {
+  const repoRoot = path.resolve("fixture-repository");
+  const commandCwd = path.join(repoRoot, "apps/desktop");
+  const collector = createFlutterJsonStatsCollector({
+    repoRoot,
+    commandCwd,
+    inputFiles: ["test/startup_test.dart", "test/dock_test.dart"],
+  });
+  const files = [
+    path.join(commandCwd, "test/startup_test.dart"),
+    path.join(commandCwd, "test/dock_test.dart"),
+  ];
+  for (const event of [
+    { type: "start", time: 0, protocolVersion: "0.1.1", pid: 7 },
+    { type: "suite", time: 1, suite: { id: 1, path: files[0] } },
+    { type: "suite", time: 2, suite: { id: 2, path: files[1] } },
+    { type: "testStart", time: 3, test: { id: 10, suiteID: 1, name: "startup passes" } },
+    { type: "testDone", time: 4, testID: 10, result: "success", hidden: false, skipped: false },
+    { type: "testStart", time: 5, test: { id: 20, suiteID: 2, name: "dock fails" } },
+    { type: "testDone", time: 6, testID: 20, result: "failure", hidden: false, skipped: false },
+    { type: "done", time: 7, success: false },
+  ]) collector.push(`${JSON.stringify(event)}\n`);
+  collector.finish();
+  assert.deepEqual(collector.attribution(), {
+    attributionComplete: true,
+    failedInputIndexes: [1],
+  });
+
+  const skipped = createFlutterJsonStatsCollector({
+    repoRoot,
+    commandCwd,
+    inputFiles: ["test/startup_test.dart"],
+  });
+  for (const event of [
+    { type: "start", time: 0, protocolVersion: "0.1.1", pid: 8 },
+    { type: "suite", time: 1, suite: { id: 1, path: files[0] } },
+    { type: "testStart", time: 2, test: { id: 30, suiteID: 1, name: "not executed" } },
+    { type: "testDone", time: 3, testID: 30, result: "success", hidden: false, skipped: true },
+    { type: "done", time: 4, success: true },
+  ]) skipped.push(`${JSON.stringify(event)}\n`);
+  skipped.finish();
+  assert.equal(skipped.attribution().attributionComplete, false);
+});

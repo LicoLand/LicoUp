@@ -1,4 +1,4 @@
-import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
+import 'package:licoup/src/platform/storage/client_json_document_store.dart';
 import 'package:licoup/src/contracts/target_management.dart';
 
 abstract class AgentTabOrderStore implements TargetTabOrderRepository {
@@ -22,12 +22,12 @@ abstract class AgentTabOrderStore implements TargetTabOrderRepository {
 
 class PlatformAgentTabOrderStore implements AgentTabOrderStore {
   const PlatformAgentTabOrderStore({
-    MobileRelayJsonStore jsonStore = const MobileRelayJsonStore(),
+    ClientJsonDocumentStore jsonStore = const ClientJsonDocumentStore(),
   }) : _jsonStore = jsonStore;
 
   static const _fileName = 'agent-tab-order.json';
 
-  final MobileRelayJsonStore _jsonStore;
+  final ClientJsonDocumentStore _jsonStore;
 
   @override
   Future<List<String>> load(Object portableData) async {

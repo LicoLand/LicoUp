@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
-import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
+import 'package:licoup/src/application/features/agents/contracts/acativa_gateway.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_state_holder.dart';
 import 'package:licoup/src/application/features/agents/conversation/persistent_turn_process_observer.dart';
@@ -12,17 +12,19 @@ import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
-import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
+import 'package:licoup/src/contracts/acativa_models.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
+import 'package:licoup/src/contracts/conversation_profile.dart';
 import 'package:licoup/src/contracts/generated/conversation.g.dart';
 import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_profile_registry.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_effect.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
-import 'package:licoup/src/presentation/agents/adaptive_flywheel_projection.dart';
+import 'package:licoup/src/presentation/agents/acativa_projection.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
@@ -60,7 +62,7 @@ final class CanonicalGroupBindingFixture {
   List<ConversationAttachment> composerAttachments;
   String assistantModel = '';
   String assistantReasoningEffort = '';
-  List<AdaptiveFlywheelAssignmentProjection> strategyProfiles = const [];
+  List<AcativaAssignmentProjection> strategyProfiles = const [];
 
   final _ConversationEffectBus _effects = _ConversationEffectBus();
   final ConversationStateHolder _turnStates = ConversationStateHolder();
@@ -177,13 +179,13 @@ final class CanonicalGroupBindingFixture {
       workingDirectoryLabel: '',
       phase: PresentationPhase.ready,
       targetDetails: targets,
-      adaptiveFlywheel: AdaptiveFlywheelProjection(
+      acativa: AcativaProjection(
         definitions: const [],
         selectedRevision:
             controller.selectedConversation?.strategyRevision ?? '',
         inspection: strategyProfiles.isEmpty
             ? null
-            : AdaptiveFlywheelInspectionProjection(
+            : AcativaInspectionProjection(
                 status: 'active',
                 currentStates: const [],
                 neighborStates: const [],
@@ -196,13 +198,14 @@ final class CanonicalGroupBindingFixture {
                 diagnosticCode: '',
               ),
         callableAgents: const [],
-        assistant: AdaptiveFlywheelAssistantProjection(
+        assistant: AcativaAssistantProjection(
           conversationId: controller.selectedConversationId,
           membershipId:
               controller.selectedConversation?.assistantMembershipId ?? '',
           agentId: selectedAgentId,
           modelId: assistantModel,
           reasoningEffort: assistantReasoningEffort,
+          permissionMode: '',
           profileRevision: 0,
           loading: false,
           saving: false,
@@ -735,12 +738,12 @@ class CanonicalGroupConversationPaneFixture extends StatefulWidget {
     required this.controller,
     required this.targets,
     required this.onCopyText,
-    this.onOpenAgentConversations,
+    this.onOpenMemberHistory,
     this.framed = true,
     this.reduceMotion = true,
     this.flywheelGateway,
     this.persistentGateway,
-    this.onOpenAdaptiveFlywheel,
+    this.onOpenAcativa,
     this.composerAttachments = const <ConversationAttachment>[],
     this.onPickComposerImages,
     this.onClearComposerImages,
@@ -750,12 +753,15 @@ class CanonicalGroupConversationPaneFixture extends StatefulWidget {
   final ClientConversationController controller;
   final List<TargetCandidate> targets;
   final Future<void> Function(String) onCopyText;
-  final ValueChanged<String>? onOpenAgentConversations;
+
+  /// Member's in-group history hook: the pane reports the tapped member and
+  /// the tap position; the fixture keeps reporting the member's agent id.
+  final ValueChanged<String>? onOpenMemberHistory;
   final bool framed;
   final bool reduceMotion;
-  final AdaptiveFlywheelGateway? flywheelGateway;
+  final AcativaGateway? flywheelGateway;
   final PersistentAgentConversationGateway? persistentGateway;
-  final Future<void> Function(String? revisionDigest)? onOpenAdaptiveFlywheel;
+  final Future<void> Function(String? revisionDigest)? onOpenAcativa;
   final List<ConversationAttachment> composerAttachments;
   final VoidCallback? onPickComposerImages;
   final VoidCallback? onClearComposerImages;
@@ -930,9 +936,9 @@ class _CanonicalGroupConversationPaneFixtureState
       return;
     }
     try {
-      final definitions = adaptiveFlywheelMaps(
+      final definitions = acativaMaps(
         await gateway.execute({'action': 'strategy.definition.list'}),
-      ).map(AdaptiveFlywheelDefinition.fromJson);
+      ).map(AcativaDefinition.fromJson);
       if (!definitions.any(
         (definition) =>
             definition.authorized && definition.revisionDigest == revision,
@@ -941,8 +947,8 @@ class _CanonicalGroupConversationPaneFixtureState
         _strategyRevision = revision;
         return;
       }
-      final inspection = AdaptiveFlywheelInspection.fromJson(
-        adaptiveFlywheelStringMap(
+      final inspection = AcativaInspection.fromJson(
+        acativaStringMap(
           await gateway.execute({
             'action': 'strategy.definition.inspect',
             'revisionDigest': revision,
@@ -958,13 +964,13 @@ class _CanonicalGroupConversationPaneFixtureState
       _strategyConversationId = conversationId;
       _strategyRevision = revision;
       _fixture.strategyProfiles =
-          List<AdaptiveFlywheelAssignmentProjection>.unmodifiable([
+          List<AcativaAssignmentProjection>.unmodifiable([
             for (final slot in inspection.slots.where(
               (slot) => slot.kind == 'actor',
             ))
               for (final binding in inspection.bindings[slot.id] ?? const [])
                 if (binding.valueId.trim().isNotEmpty)
-                  AdaptiveFlywheelAssignmentProjection(
+                  AcativaAssignmentProjection(
                     slotId: binding.slotId,
                     ordinal: binding.ordinal,
                     agentId: binding.valueId.trim(),
@@ -992,9 +998,11 @@ class _CanonicalGroupConversationPaneFixtureState
       turns: _fixture.turns,
       composer: _fixture.composer,
       attachments: _fixture.attachments,
-      onOpenAgentConversations: widget.onOpenAgentConversations,
-      onOpenAdaptiveFlywheel: (revision) async {
-        await widget.onOpenAdaptiveFlywheel?.call(revision);
+      onOpenMemberHistory: widget.onOpenMemberHistory == null
+          ? null
+          : (target, _) => widget.onOpenMemberHistory!.call(target.target),
+      onOpenAcativa: (revision) async {
+        await widget.onOpenAcativa?.call(revision);
         await _reloadAssistantProfile(force: true);
       },
       onPickComposerImages: widget.onPickComposerImages,
@@ -1024,6 +1032,8 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
         controller.clearSelection();
       case CreateCanonicalConversationGroup(:final title, :final members):
         unawaited(_createGroup(title, members, intent));
+      case CreateConversationProfile(:final profile):
+        unawaited(_createProfile(profile));
       case StartConversationSession():
         controller.clearSelection();
       case LoadEarlierConversationEvents(:final conversationId):
@@ -1063,6 +1073,8 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
       case RetryConversationPermission():
         break;
       case DismissConversationPermission():
+        break;
+      case ResolveNativeApproval():
         break;
       case AuthorizeConversationRuntime():
         break;
@@ -1168,6 +1180,27 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
         trace: intent.trace,
       ),
     );
+  }
+
+  Future<void> _createProfile(ConversationProfile profile) async {
+    final conversationId = await fixture.controller.createProfileConversation(
+      profileId: profile.id,
+      displayName: profile.name,
+      agentId: profile.agentId,
+      profileIntent: profile.intent,
+    );
+    if (conversationId == null) {
+      fixture._effects.add(
+        const ConversationActionRejected(
+          conversationId: '',
+          stage: 'profile-create',
+          reasonCode: 'conversation_operation_failed',
+        ),
+      );
+      return;
+    }
+    addConversationProfile(profile.copyWith(conversationId: conversationId));
+    fixture._effects.add(ConversationProfileCreated(conversationId));
   }
 
   Future<void> _post(

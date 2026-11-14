@@ -137,8 +137,8 @@ final class SemanticDestinationCatalog {
       surfaces: const {LayoutRuntimeSurface.desktop},
     ),
     SemanticDestinationDescriptor(
-      destination: ClientSection.mobileRelay,
-      labelKey: 'destination.mobile-relay',
+      destination: ClientSection.devices,
+      labelKey: 'destination.devices',
       surfaces: const {
         LayoutRuntimeSurface.desktop,
         LayoutRuntimeSurface.mobile,

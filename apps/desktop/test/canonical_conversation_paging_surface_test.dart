@@ -10,8 +10,8 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
-import 'package:licoup/src/frontend/shared/ui/reading_position_scroll_controller.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 
 import 'support/canonical_group/canonical_group_binding_fixture.dart';
 import 'support/canonical_group/paged_conversation_native.dart';

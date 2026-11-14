@@ -8,7 +8,7 @@
 | 决策 | [ADR 0010](../adrs/0010-continuous-assistant.zh-CN.md) | 采纳理由、替代方案与影响 |
 | Conversation | [Conversation 领域](CONVERSATION-DOMAIN.zh-CN.md) | 历史、Membership 与回合权威 |
 | 原生 Agent | [适配器架构](AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md) | 原生传输、解析与能力 |
-| 工作流 | [Adaptive Flywheel](../functionality/ADAPTIVE-FLYWHEEL.zh-CN.md) | Graph 执行权威 |
+| 工作流 | [Acativa](../functionality/ACATIVA.zh-CN.md) | Graph 执行权威 |
 | 工作流演进 | [工作流控制与编译器](ASSISTANT-WORKFLOW-CONTROL.zh-CN.md) | 编译器、节点激活与本地/Peer 干预目标 |
 | 当前证据 | [STATUS.zh-CN.md](../STATUS.zh-CN.md) | 实现、验证和支持事实 |
 
@@ -92,7 +92,7 @@
 
 删除或撤销使相关索引、摘要、组装结果和可复用工作上下文失效。权限或约定变化后，派发前重新验证组装结果。已经向服务商披露的信息不能被系统召回，产品须准确说明实际边界。本地派生存储不能从旧摘要或旧备份代际中静默复活已删除信息。
 
-可选 Requirement Cognition 与 Knowledge Domain 服务继续独立拥有各自数据。LicoUp 经已准入的发现边界读取其声明的版本化能力，不镜像另一个仓库的端点清单或 Schema。只读查询不会创建需求或知识。服务不可用时返回具名 unknown 或 source-unavailable，不猜造知识或自动远端建档。本地连续协作不依赖这些服务运行。
+可选的需求域与知识域服务继续独立拥有各自数据。LicoUp 经已准入的发现边界读取其声明的版本化能力，不镜像另一个仓库的端点清单或 Schema。只读查询不会创建需求或知识。服务不可用时返回具名 unknown 或 source-unavailable，不猜造知识或自动远端建档。本地连续协作不依赖这些服务运行。
 
 ## 6. 上下文组合与注意力
 
@@ -143,7 +143,7 @@ Goal 记录来源意图、版本化预期结果、验收条件、范围、负责
 
 运行结束、callback 和新的获准证据可以唤醒已登记的外部等待；用户回答可以请求继续工作。定时复查须有既有授权触发，重复事件合并。到期、未验收或未完成 Goal 本身不授权模型调用，也不制造成功、失败、审批或外部事件。已结束回合可以等待证据或用户验收。
 
-Assistant 决定是否继续。Goal 跟踪记录尚欠结果及未验证项，不施加外层模型循环。PersistentTurn 或 Adaptive Flywheel 经原有派发、权限、资源与效果门执行已接纳动作；原生终态不能替代约定验收。
+Assistant 决定是否继续。Goal 跟踪记录尚欠结果及未验证项，不施加外层模型循环。PersistentTurn 或 Acativa 经原有派发、权限、资源与效果门执行已接纳动作；原生终态不能替代约定验收。
 
 闭环要求所有必需条件具有当前有效证据、符合约定验收方式，且不存在可能推翻结果的未决操作。可机械验证条件使用确定性判据；主观条件使用约定评估者或用户验收。执行者自报、Graph 终止、送达回执、Worker 退出、审阅回合或 PersistentTurn 结算都不能单独关闭目标或发出 GoalCompletionTransition。已验收闭环只就地更新原父卡片，并通过稳定 `notificationId` 发出一条既有系统通知。不抢焦点、不追加替代完成消息是该转换的不变量，不是可配置导线字段。重试、复审和重启沿用同一 Goal、子 Conversation 与卡片身份。卡片保持原 Event/Part 与序号，`partId` 属于该身份。
 

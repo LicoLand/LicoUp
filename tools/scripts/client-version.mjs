@@ -1,27 +1,20 @@
 #!/usr/bin/env node
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  clientPackageManifestPaths,
+  evaluateClientPackageCompatibility,
+  parseVersion,
+} from "./lib/client-package-compatibility.mjs";
 import { sanitizeError } from "./lib/sanitize-error.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const versionManifestPath = path.join(repoRoot, "tools", "client-version.json");
+const packageSetPath = "tools/client-release-package-set.json";
 const versionManifestSchema = "v0.0.1:client-version-manifest-1";
-export const cargoWorkspaceVersionPackages = Object.freeze([
-  "licoup-agent-adapters",
-  "licoup-agent-runtime",
-  "licoup-application",
-  "licoup-client-state",
-  "licoup-conversation",
-  "licoup-endpoint-core",
-  "licoup-native",
-  "licoup-platform-bridges",
-  "licoup-protocol-bindings",
-  "licoup-workflow",
-  "trybuild",
-]);
-
 function readJson(relativePath) {
   return JSON.parse(readFileSync(path.join(repoRoot, relativePath), "utf8"));
 }
@@ -107,41 +100,6 @@ function syncPackageJson(manifest) {
   }
 }
 
-function syncTomlManifest(relativePath, sectionName, manifest) {
-  const source = readText(relativePath);
-  const sectionRegex = new RegExp(
-    String.raw`(\[${sectionName.replace(".", String.raw`\.`)}\].*?\nversion\s*=\s*")[^"]+(")`,
-    "s",
-  );
-  writeText(relativePath, replaceExactly(
-    source,
-    sectionRegex,
-    (_, prefix, suffix) => `${prefix}${manifest.productVersion}${suffix}`,
-    `${relativePath} [${sectionName}] version`
-  ));
-}
-
-function syncCargoLock(relativePath, manifest) {
-  const absolutePath = path.join(repoRoot, relativePath);
-  if (!existsSync(absolutePath)) {
-    return;
-  }
-  let source = readText(relativePath);
-  for (const packageName of cargoWorkspaceVersionPackages) {
-    const regex = new RegExp(
-      String.raw`(\[\[package\]\]\nname = "${packageName}"\nversion = ")[^"]+(")`,
-    );
-    if (!regex.test(source)) continue;
-    source = replaceExactly(
-      source,
-      regex,
-      (_, prefix, suffix) => `${prefix}${manifest.productVersion}${suffix}`,
-      `${relativePath} ${packageName} version`,
-    );
-  }
-  writeText(relativePath, source);
-}
-
 function syncPubspec(manifest) {
   const relativePath = "apps/desktop/pubspec.yaml";
   const source = readText(relativePath);
@@ -173,12 +131,7 @@ function syncXcodeProject(relativePath, manifest) {
 function syncVersion() {
   const manifest = loadManifest();
   syncPackageJson(manifest);
-  syncTomlManifest("Cargo.toml", "workspace.package", manifest);
-  syncTomlManifest("crates/licoup-native/Cargo.toml", "package", manifest);
-  syncCargoLock("Cargo.lock", manifest);
-  syncCargoLock("crates/licoup-native/Cargo.lock", manifest);
   syncPubspec(manifest);
-  syncXcodeProject("apps/desktop/ios/Runner.xcodeproj/project.pbxproj", manifest);
   syncXcodeProject("apps/desktop/macos/Runner.xcodeproj/project.pbxproj", manifest);
 }
 
@@ -217,6 +170,71 @@ function checkAllEqual(records, label, actualValues, expected) {
   return ok;
 }
 
+/**
+ * Every package manifest whose declared client compatibility has to cover the
+ * client this release builds.
+ *
+ * The inventory is read from the tracked tree rather than from a list written
+ * here, so a package cannot add a manifest without being checked. The release
+ * set is folded in as well, so a package the release declares is checked even
+ * from a source directory that does not carry the `package/` name, and an
+ * inventory that resolved to nothing is an error rather than a green run that
+ * checked no package.
+ */
+export function packageManifestInventory() {
+  const tracked = spawnSync("git", ["ls-files", "-z"], {
+    cwd: repoRoot,
+    encoding: "buffer",
+    shell: false,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (tracked.status !== 0) {
+    throw new Error("the package manifest inventory requires git ls-files");
+  }
+  const set = readJson(packageSetPath);
+  if (!Array.isArray(set.packages)) {
+    throw new Error(`${packageSetPath} must declare a packages list`);
+  }
+  const paths = clientPackageManifestPaths({
+    trackedFiles: tracked.stdout.toString("utf8").split("\0").filter(Boolean),
+    // A `.licopkg` source is a delivered payload artifact, not a directory this
+    // tree reads a manifest from; its compatibility is enforced when the
+    // package index is built or verified.
+    declaredSources: set.packages
+      .map((entry) => String(entry?.source ?? ""))
+      .filter((source) => source && !source.endsWith(".licopkg")),
+  });
+  if (paths.length === 0) {
+    throw new Error(
+      "no package manifest is tracked; the client compatibility check would cover nothing");
+  }
+  return paths;
+}
+
+/**
+ * One verdict per package manifest: the compatibility declaration it carries
+ * and whether that declaration covers `productVersion`.
+ *
+ * The verdict is decided with the semantics the host applies when it installs a
+ * package, so a range this check accepts is a range the install accepts, and a
+ * client the packages stop covering fails here rather than on a user's machine
+ * with `package_client_incompatible`.
+ */
+export function packageClientCompatibility(productVersion) {
+  const manifests = packageManifestInventory().map((manifestPath) => {
+    try {
+      return { path: manifestPath, manifest: readJson(manifestPath) };
+    } catch (error) {
+      return {
+        path: manifestPath,
+        manifest: null,
+        readError: `package manifest is unreadable: ${sanitizeError(error)}`,
+      };
+    }
+  });
+  return evaluateClientPackageCompatibility({ productVersion, manifests });
+}
+
 function checkVersion() {
   const manifest = loadManifest();
   const records = [];
@@ -234,63 +252,12 @@ function checkVersion() {
 
   ok = checkEqual(
     records,
-    "Cargo.toml workspace.package version",
-    valueAtRegex("Cargo.toml", /\[workspace\.package\][\s\S]*?\nversion\s*=\s*"([^"]+)"/g, "Cargo.toml workspace.package version"),
-    manifest.productVersion
-  ) && ok;
-  ok = checkEqual(
-    records,
-    "crates/licoup-native/Cargo.toml package version",
-    valueAtRegex("crates/licoup-native/Cargo.toml", /\[package\][\s\S]*?\nversion\s*=\s*"([^"]+)"/g, "crates/licoup-native/Cargo.toml package version"),
-    manifest.productVersion
-  ) && ok;
-
-  for (const cargoLockPath of ["Cargo.lock", "crates/licoup-native/Cargo.lock"]) {
-    if (existsSync(path.join(repoRoot, cargoLockPath))) {
-      const source = readText(cargoLockPath);
-      for (const packageName of cargoWorkspaceVersionPackages) {
-        const matches = [...source.matchAll(new RegExp(
-          String.raw`\[\[package\]\]\nname = "${packageName}"\nversion = "([^"]+)"`, "g"))];
-        if (matches.length > 1) {
-          throw new Error(`${cargoLockPath} ${packageName} version must exist at most once; found ${matches.length}.`);
-        }
-        if (matches.length === 1) {
-          ok = checkEqual(records, `${cargoLockPath} ${packageName} version`,
-            matches[0][1], manifest.productVersion) && ok;
-        }
-      }
-    }
-  }
-
-  ok = checkEqual(
-    records,
     "apps/desktop/pubspec.yaml version",
     valueAtRegex("apps/desktop/pubspec.yaml", /^version:\s+(.+)$/gm, "apps/desktop/pubspec.yaml version"),
     flutterVersion(manifest)
   ) && ok;
 
-  ok = checkEqual(
-    records,
-    "Android versionCode source",
-    valueAtRegex(
-      "apps/desktop/android/app/build.gradle.kts",
-      /^\s*versionCode\s*=\s*(.+)$/gm,
-      "apps/desktop/android/app/build.gradle.kts versionCode"
-    ),
-    "flutter.versionCode"
-  ) && ok;
-  ok = checkEqual(
-    records,
-    "Android versionName source",
-    valueAtRegex(
-      "apps/desktop/android/app/build.gradle.kts",
-      /^\s*versionName\s*=\s*(.+)$/gm,
-      "apps/desktop/android/app/build.gradle.kts versionName"
-    ),
-    "flutter.versionName"
-  ) && ok;
-
-  for (const infoPlist of ["apps/desktop/ios/Runner/Info.plist", "apps/desktop/macos/Runner/Info.plist"]) {
+  for (const infoPlist of ["apps/desktop/macos/Runner/Info.plist"]) {
     const source = readText(infoPlist);
     ok = checkEqual(
       records,
@@ -308,21 +275,9 @@ function checkVersion() {
 
   ok = checkAllEqual(
     records,
-    "iOS RunnerTests MARKETING_VERSION",
-    valuesAtRegex("apps/desktop/ios/Runner.xcodeproj/project.pbxproj", /MARKETING_VERSION = ([^;]+);/g, "iOS MARKETING_VERSION"),
-    manifest.productVersion
-  ) && ok;
-  ok = checkAllEqual(
-    records,
     "macOS RunnerTests MARKETING_VERSION",
     valuesAtRegex("apps/desktop/macos/Runner.xcodeproj/project.pbxproj", /MARKETING_VERSION = ([^;]+);/g, "macOS MARKETING_VERSION"),
     manifest.productVersion
-  ) && ok;
-  ok = checkAllEqual(
-    records,
-    "iOS literal CURRENT_PROJECT_VERSION",
-    valuesAtRegex("apps/desktop/ios/Runner.xcodeproj/project.pbxproj", /CURRENT_PROJECT_VERSION = ([0-9]+);/g, "iOS literal CURRENT_PROJECT_VERSION"),
-    String(manifest.buildNumber)
   ) && ok;
   ok = checkAllEqual(
     records,
@@ -331,7 +286,40 @@ function checkVersion() {
     String(manifest.buildNumber)
   ) && ok;
 
-  console.log(JSON.stringify({ ok, productVersion: manifest.productVersion, buildNumber: manifest.buildNumber, records }, null, 2));
+  // Every shipped package declares the client versions it loads on, and the host
+  // refuses an install of one whose declaration does not cover the client being
+  // built. The version strings above can all agree while this is already false,
+  // so it is checked here rather than discovered on a user's machine.
+  const packageCompatibility = packageClientCompatibility(manifest.productVersion);
+  // A product version outside the grammar the host matches with leaves every
+  // package uncovered for a reason that is not the package's own declaration, so
+  // the cause is recorded before the packages it explains.
+  if (parseVersion(manifest.productVersion) === null) {
+    records.push({
+      label: "client product version readability",
+      expected: "a version the host requirement grammar reads",
+      actual: manifest.productVersion,
+      ok: false,
+    });
+    ok = false;
+  }
+  for (const verdict of packageCompatibility) {
+    records.push({
+      label: `${verdict.path} client compatibility`,
+      expected: `a declared client line covering ${manifest.productVersion}`,
+      actual: verdict.covered ? verdict.clientVersions : verdict.reasons,
+      ok: verdict.covered,
+    });
+    ok = verdict.covered && ok;
+  }
+
+  console.log(JSON.stringify({
+    ok,
+    productVersion: manifest.productVersion,
+    buildNumber: manifest.buildNumber,
+    packageClientCompatibility: packageCompatibility,
+    records,
+  }, null, 2));
   if (!ok) {
     process.exitCode = 1;
   }

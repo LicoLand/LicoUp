@@ -8,29 +8,34 @@ import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_agents_directive.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_scope.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_app_catalog.dart';
-import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_destination_content.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_desktop_copy.dart';
+import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/destinations/desktop_desktop_destination_builders.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_bar.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_model.dart';
-import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/overlay/desktop_floating_card.dart';
-import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/overlay/desktop_launchpad.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/shell/desktop_traffic_light_anchor.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion_surface.dart';
-import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_traffic_light_anchor.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
-import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_window_ground.dart';
 
-/// Desktop shell builders: one huge main area with a floating stretchable
-/// capsule dock below.
+/// Desktop shell: the work area on the left hosts one app at a time under a
+/// shared 52px title row, with the floating dock at its bottom; the chat
+/// sidebar on the right hosts the conversation permanently. The two rounded
+/// cards sit over the window ground with a 12px gutter. The work-area title
+/// row carries the traffic-light anchor, the only anchor reporter in this
+/// profile.
 Widget buildDesktopDesktopMediumShell(
   BuildContext context,
   LayoutShellBuildContext data,
@@ -40,12 +45,6 @@ Widget buildDesktopDesktopExpandedShell(
   BuildContext context,
   LayoutShellBuildContext data,
 ) => DesktopDesktopShell(data: data);
-
-/// Which fullscreen-exclusive app the main area currently hosts. Any other
-/// active destination (for example one restored from another profile's
-/// current-view state) is hosted as a plain fullscreen surface until the
-/// user drives the dock.
-enum DesktopFullscreenApp { conversation, settings, hosted }
 
 final class DesktopDesktopShell extends StatefulWidget {
   const DesktopDesktopShell({super.key, required this.data, this.dockModel});
@@ -59,16 +58,62 @@ final class DesktopDesktopShell extends StatefulWidget {
   State<DesktopDesktopShell> createState() => _DesktopDesktopShellState();
 }
 
+/// An open dock context menu.
+final class _DockMenu {
+  const _DockMenu(this.item, this.left);
+
+  final DesktopWorkItem item;
+
+  /// Horizontal anchor inside the work area.
+  final double left;
+}
+
 final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
   late DesktopDockModel _dock;
   late bool _ownsDock;
-  final List<DesktopAppId> _floatingStack = <DesktopAppId>[];
-  final Map<DesktopAppId, Rect> _floatingRects = <DesktopAppId, Rect>{};
-  BoxConstraints? _lastConstraints;
-  bool _restoredFloating = false;
-  bool _launchpadOpen = false;
+
+  LayoutChromeFeatures? _features;
+
+  DesktopWorkItem _active = const DesktopWorkApp(desktopDefaultApp);
+
+  /// The item the work area actually shows: [_active] once its content
+  /// exists. A locally requested destination arrives with the next host
+  /// rebuild; until then the previous item stays on screen.
+  DesktopWorkItem _shown = const DesktopWorkApp(desktopDefaultApp);
+
+  /// Running built-in apps, most recently opened first. Session-scoped;
+  /// plugin windows report their own running state.
+  final List<DesktopAppId> _running = <DesktopAppId>[desktopDefaultApp];
+
+  /// Plugin windows opened this session, most recent first, for falling
+  /// back when the active window closes.
+  final List<String> _pluginRecency = <String>[];
+
+  /// Visited destinations stay mounted in offstage slots, so switching never
+  /// remounts an app: each keeps its scroll and selection state until it
+  /// quits.
+  final Map<ClientSection, Widget> _destinationSlots =
+      <ClientSection, Widget>{};
+  final Set<String> _mountedPlugins = <String>{};
+  bool _collaborationMounted = false;
+
+  /// The permanent conversation surface: the host-built agents destination
+  /// once visited, otherwise the port-built embed.
+  Widget? _conversationBase;
+
   String? _openFolderId;
-  int _cascadeCounter = 0;
+  _DockMenu? _menu;
+  final GlobalKey _workAreaKey = GlobalKey();
+  final ValueNotifier<Widget?> _hostedPaneActions = ValueNotifier<Widget?>(
+    null,
+  );
+
+  bool _sidebarCollapsed = false;
+  bool _switcherOpen = false;
+  double _sidebarExtent = DesktopDesktopMetrics.sidebarDefaultExtent;
+  bool _sidebarDragging = false;
+  bool _sidebarHydrated = false;
+  bool _destinationSynced = false;
 
   @override
   void initState() {
@@ -76,10 +121,24 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
     _dock = widget.dockModel ?? DesktopDockModel();
     _ownsDock = widget.dockModel == null;
     _dock.addListener(_handleDockChanged);
-    if (_dock.ready) {
-      _restoreFloating();
-    } else {
-      unawaited(_dock.load());
+    if (!_dock.ready) unawaited(_dock.load());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final features = LayoutChromeFeaturesScope.maybeOf(context);
+    if (!identical(features, _features)) {
+      _features?.collaborationApp.removeListener(_handleFeaturesChanged);
+      _features?.pluginWindows.removeListener(_handleFeaturesChanged);
+      _features = features;
+      features?.collaborationApp.addListener(_handleFeaturesChanged);
+      features?.pluginWindows.addListener(_handleFeaturesChanged);
+    }
+    if (!_destinationSynced) {
+      _destinationSynced = true;
+      _syncFromDestination(widget.data.activeDestination);
+      _shown = _active;
     }
   }
 
@@ -92,45 +151,52 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
       if (_ownsDock) _dock.dispose();
       _dock = next;
       _ownsDock = false;
-      _restoredFloating = false;
       _dock.addListener(_handleDockChanged);
-      if (_dock.ready) {
-        _restoreFloating();
-      } else {
-        unawaited(_dock.load());
-      }
+      if (!_dock.ready) unawaited(_dock.load());
+    }
+    if (!identical(oldWidget.data.content, widget.data.content)) {
+      _conversationBase = null;
+    }
+    if (oldWidget.data.activeDestination != widget.data.activeDestination) {
+      _syncFromDestination(widget.data.activeDestination);
     }
   }
 
   @override
   void dispose() {
+    _features?.collaborationApp.removeListener(_handleFeaturesChanged);
+    _features?.pluginWindows.removeListener(_handleFeaturesChanged);
     _dock.removeListener(_handleDockChanged);
     if (_ownsDock) _dock.dispose();
     super.dispose();
   }
 
-  DesktopFullscreenApp get _fullscreenApp =>
-      switch (widget.data.activeDestination) {
-        ClientSection.settings => DesktopFullscreenApp.settings,
-        ClientSection.agents => DesktopFullscreenApp.conversation,
-        _ => DesktopFullscreenApp.hosted,
-      };
+  /// External navigation drives the work area: every destination except the
+  /// conversation claims it. The conversation never does; it is permanent in
+  /// the sidebar, so navigating there keeps the current app.
+  void _syncFromDestination(ClientSection destination) {
+    if (destination == ClientSection.agents) return;
+    final app = _appForSection(destination);
+    if (app == null) return;
+    _active = DesktopWorkApp(app);
+    _noteRunning(app);
+  }
+
+  DesktopAppId? _appForSection(ClientSection section) {
+    if (section == ClientSection.models) {
+      final pane = LayoutScope.maybeOf(context)?.state.readIfDeclaredFor(
+        ClientSection.models,
+        LayoutStateChannels.communicationSection,
+      );
+      if (pane is LayoutTabState) return desktopModelsAppForPane(pane.index);
+      return DesktopAppId.modelsGateway;
+    }
+    return desktopAppForSection(section);
+  }
 
   void _handleDockChanged() {
     if (!mounted) return;
-    if (!_restoredFloating && _dock.ready) {
-      _restoreFloating();
-    }
-    final openApps = _dock.openApps;
-    final removed = <DesktopAppId>[];
-    for (final app in _floatingStack) {
-      if (!openApps.contains(app)) removed.add(app);
-    }
-    if (removed.isNotEmpty) {
-      for (final app in removed) {
-        _floatingStack.remove(app);
-        _floatingRects.remove(app);
-      }
+    setState(() {
       if (_openFolderId != null &&
           !_dock.entries.any(
             (entry) =>
@@ -138,122 +204,35 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
           )) {
         _openFolderId = null;
       }
+    });
+  }
+
+  void _handleFeaturesChanged() {
+    if (!mounted) return;
+    final active = _active;
+    if (active is DesktopWorkPlugin && !_pluginInstalled(active.pluginId)) {
+      _mountedPlugins.remove(active.pluginId);
+      _pluginRecency.remove(active.pluginId);
+      _openFallback(excluding: active);
+      return;
     }
     setState(() {});
   }
 
-  void _restoreFloating() {
-    _restoredFloating = true;
-    for (final entry in _dock.entries) {
-      switch (entry) {
-        case DesktopDockAppEntry(app: final app):
-          _restoreApp(app);
-        case DesktopDockFolderEntry(children: final children):
-          for (final app in children) {
-            _restoreApp(app);
-          }
-      }
-    }
-  }
+  bool _pluginInstalled(String pluginId) =>
+      _features?.pluginWindows.value.any((plugin) => plugin.id == pluginId) ??
+      false;
 
-  void _restoreApp(DesktopAppId app) {
-    if (!desktopAppIsFloating(app) || _floatingStack.contains(app)) return;
-    _floatingStack.add(app);
-    _floatingRects[app] = _nextCascadeRect();
-  }
+  bool _pluginRunning(String pluginId) =>
+      _features?.pluginWindows.value.any(
+        (plugin) => plugin.id == pluginId && plugin.open,
+      ) ??
+      false;
 
-  Rect _nextCascadeRect() {
-    final step =
-        (_cascadeCounter++ % 6) * DesktopDesktopMetrics.floatingCardCascadeStep;
-    return Rect.fromLTWH(
-      120 + step,
-      88 + step,
-      DesktopDesktopMetrics.floatingCardWidth,
-      DesktopDesktopMetrics.floatingCardHeight,
-    );
-  }
-
-  Rect _clampedRect(Rect rect, BoxConstraints constraints) {
-    final width = math.min(rect.width, constraints.maxWidth - 48);
-    final height = math.min(
-      rect.height,
-      constraints.maxHeight - DesktopDesktopMetrics.mainAreaBottomInset - 24,
-    );
-    final left = rect.left
-        .clamp(12.0, math.max(12.0, constraints.maxWidth - width - 12))
-        .toDouble();
-    final top = rect.top
-        .clamp(
-          12.0,
-          math.max(
-            12.0,
-            constraints.maxHeight -
-                height -
-                DesktopDesktopMetrics.mainAreaBottomInset,
-          ),
-        )
-        .toDouble();
-    return Rect.fromLTWH(left, top, width, height);
-  }
-
-  void _moveApp(DesktopAppId app, Offset delta) {
-    final rect = _floatingRects[app];
-    if (rect == null) return;
-    // Clamp while accumulating: an unclamped store would let the rect drift
-    // past the render clamp and swallow that much reverse drag before the
-    // card visibly moves again.
-    var next = rect.shift(delta);
-    final constraints = _lastConstraints;
-    if (constraints != null) {
-      next = _clampedRect(next, constraints);
-    }
-    setState(() => _floatingRects[app] = next);
-  }
-
-  void _openSettings() {
-    _dismissOverlays();
-    if (widget.data.activeDestination != ClientSection.settings) {
-      widget.data.onSelectDestination(ClientSection.settings);
-    }
-  }
-
-  void _openConversation() {
-    _dismissOverlays();
-    if (_dock.ready) _dock.openApp(DesktopAppId.conversation);
-    if (widget.data.activeDestination != ClientSection.agents) {
-      widget.data.onSelectDestination(ClientSection.agents);
-    }
-  }
-
-  void _launchApp(DesktopAppId app) {
-    _dismissOverlays();
-    if (app == DesktopAppId.conversation) {
-      _openConversation();
-      return;
-    }
-    _writeModelsPane(app);
-    if (_dock.ready) _dock.openApp(app);
-    setState(() => _raiseInStack(app));
-  }
-
-  void _raiseApp(DesktopAppId app) {
-    _writeModelsPane(app);
-    setState(() => _raiseInStack(app));
-  }
-
-  void _raiseInStack(DesktopAppId app) {
-    _floatingStack.remove(app);
-    _floatingStack.add(app);
-    _floatingRects.putIfAbsent(app, _nextCascadeRect);
-  }
-
-  void _closeApp(DesktopAppId app) {
-    if (app == DesktopAppId.conversation &&
-        _fullscreenApp == DesktopFullscreenApp.conversation) {
-      return;
-    }
-    _dismissOverlays();
-    _dock.closeApp(app);
+  void _noteRunning(DesktopAppId app) {
+    _running
+      ..remove(app)
+      ..insert(0, app);
   }
 
   void _writeModelsPane(DesktopAppId app) {
@@ -267,25 +246,168 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
   }
 
   void _dismissOverlays() {
-    if (!_launchpadOpen && _openFolderId == null) return;
+    if (_openFolderId == null && _menu == null && !_switcherOpen) return;
     setState(() {
-      _launchpadOpen = false;
       _openFolderId = null;
+      _menu = null;
+      _switcherOpen = false;
     });
   }
 
-  void _toggleAppStore() {
+  void _open(DesktopWorkItem item) {
+    Tooltip.dismissAllToolTips();
     setState(() {
-      _launchpadOpen = !_launchpadOpen;
       _openFolderId = null;
+      _menu = null;
+      _active = item;
     });
+    switch (item) {
+      case DesktopWorkApp(app: final app):
+        _noteRunning(app);
+        _writeModelsPane(app);
+        _selectDestination(desktopAppSection(app) ?? ClientSection.agents);
+      case DesktopWorkPlugin(pluginId: final id):
+        _pluginRecency
+          ..remove(id)
+          ..insert(0, id);
+        _mountedPlugins.add(id);
+        if (!_pluginRunning(id)) _features?.openPluginWindow(id);
+        _selectDestination(ClientSection.agents);
+    }
+  }
+
+  void _selectDestination(ClientSection section) {
+    if (widget.data.activeDestination != section) {
+      widget.data.onSelectDestination(section);
+    }
+  }
+
+  void _quit(DesktopWorkItem item) {
+    setState(() => _menu = null);
+    switch (item) {
+      case DesktopWorkApp(app: final app):
+        if (app == desktopDefaultApp || !_running.contains(app)) return;
+        _running.remove(app);
+        final section = desktopAppSection(app);
+        final shared = _running.any(
+          (other) => desktopAppSection(other) == section,
+        );
+        if (section != null && !shared) {
+          setState(() => _destinationSlots.remove(section));
+        }
+      case DesktopWorkPlugin(pluginId: final id):
+        _pluginRecency.remove(id);
+        setState(() => _mountedPlugins.remove(id));
+        _features?.closePluginWindow(id);
+    }
+    if (_active == item) _openFallback(excluding: item);
+  }
+
+  /// Opens the most recently used running item other than [excluding], or
+  /// the default app.
+  void _openFallback({required DesktopWorkItem excluding}) {
+    for (final app in _running) {
+      final candidate = DesktopWorkApp(app);
+      if (candidate != excluding) return _open(candidate);
+    }
+    for (final id in _pluginRecency) {
+      final candidate = DesktopWorkPlugin(id);
+      if (candidate != excluding && _pluginRunning(id)) {
+        return _open(candidate);
+      }
+    }
+    _open(const DesktopWorkApp(desktopDefaultApp));
   }
 
   void _openFolder(String folderId) {
     setState(() {
+      _menu = null;
       _openFolderId = _openFolderId == folderId ? null : folderId;
-      _launchpadOpen = false;
     });
+  }
+
+  void _openMenu(DesktopWorkItem item, Offset globalPosition) {
+    final box = _workAreaKey.currentContext?.findRenderObject();
+    if (box is! RenderBox) return;
+    final local = box.globalToLocal(globalPosition);
+    setState(() {
+      _openFolderId = null;
+      _menu = _DockMenu(item, local.dx);
+    });
+  }
+
+  void _toggleSwitcher() => setState(() => _switcherOpen = !_switcherOpen);
+
+  void _collapseSidebar() => setState(() {
+    _sidebarCollapsed = true;
+    _switcherOpen = false;
+  });
+
+  void _expandSidebar() => setState(() => _sidebarCollapsed = false);
+
+  void _hydrateSidebarExtent() {
+    if (_sidebarHydrated) return;
+    _sidebarHydrated = true;
+    final stored = LayoutScope.maybeOf(context)?.state.readIfDeclaredFor(
+      ClientSection.agents,
+      LayoutStateChannels.agentsSidebar,
+    );
+    if (stored is LayoutPaneExtentState) {
+      _sidebarExtent = stored.extent
+          .clamp(
+            DesktopDesktopMetrics.sidebarMinExtent,
+            DesktopDesktopMetrics.sidebarMaxExtent,
+          )
+          .toDouble();
+    }
+  }
+
+  void _resizeSidebar(double delta, double maxExtent) {
+    final next = (_sidebarExtent - delta)
+        .clamp(DesktopDesktopMetrics.sidebarMinExtent, maxExtent)
+        .toDouble();
+    if (next == _sidebarExtent) return;
+    setState(() => _sidebarExtent = next);
+  }
+
+  void _endSidebarResize() {
+    setState(() => _sidebarDragging = false);
+    LayoutScope.maybeOf(context)?.state.writeIfDeclaredFor(
+      ClientSection.agents,
+      LayoutStateChannels.agentsSidebar,
+      LayoutPaneExtentState(_sidebarExtent),
+    );
+  }
+
+  Future<void> _openQuickSwitcher() async {
+    final features = _features;
+    if (features == null) return;
+    _dismissOverlays();
+    final strings = LicoStrings.of(context);
+    // Every app, not only the dock's: apps outside the dock (Skill Hub, Chat
+    // Channels) are reached here and join the dock only while running.
+    final apps = <LayoutQuickSwitcherApp>[
+      for (final app in DesktopAppId.values)
+        LayoutQuickSwitcherApp(
+          id: DesktopWorkApp(app).id,
+          label: desktopAppLabel(strings, app),
+          icon: desktopAppIcon(app),
+        ),
+      for (final plugin in features.pluginWindows.value)
+        LayoutQuickSwitcherApp(
+          id: DesktopWorkPlugin(plugin.id).id,
+          label: plugin.name,
+          icon: Icons.web_asset_outlined,
+        ),
+    ];
+    await features.openQuickSwitcher(
+      context,
+      apps: apps,
+      onOpenApp: (id) {
+        final item = desktopWorkItemById(id);
+        if (item != null && mounted) _open(item);
+      },
+    );
   }
 
   @override
@@ -298,17 +420,7 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
     if (data.environment.surface != LayoutRuntimeSurface.desktop) {
       return ColoredBox(color: context.layoutPalette.background);
     }
-    // Keep the 对话 entry present while the conversation fullscreen app is
-    // active, matching macOS Dock running-app semantics.
-    if (_fullscreenApp == DesktopFullscreenApp.conversation &&
-        _dock.ready &&
-        !_dock.isOpen(DesktopAppId.conversation)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !_dock.isOpen(DesktopAppId.conversation)) {
-          _dock.openApp(DesktopAppId.conversation);
-        }
-      });
-    }
+    _hydrateSidebarExtent();
 
     final content = Semantics(
       key: const ValueKey<String>('desktop-desktop-shell'),
@@ -317,6 +429,10 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
       child: CallbackShortcuts(
         bindings: <ShortcutActivator, VoidCallback>{
           const SingleActivator(LogicalKeyboardKey.escape): _dismissOverlays,
+          const SingleActivator(LogicalKeyboardKey.keyK, meta: true): () =>
+              unawaited(_openQuickSwitcher()),
+          const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
+              unawaited(_openQuickSwitcher()),
         },
         child: Focus(
           skipTraversal: true,
@@ -325,7 +441,7 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
             child: ConversationMotionHost(
               child: LayoutBuilder(
                 builder: (context, constraints) =>
-                    _buildZStack(context, constraints),
+                    _buildWindow(context, constraints),
               ),
             ),
           ),
@@ -333,7 +449,7 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
       ),
     );
 
-    final features = LayoutChromeFeaturesScope.maybeOf(context);
+    final features = _features;
     if (features == null) return content;
     return LicoToastHost(
       child: LicoToastNoticesListener(
@@ -344,247 +460,599 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
     );
   }
 
-  Widget _buildZStack(BuildContext context, BoxConstraints constraints) {
-    _lastConstraints = constraints;
-    final entries = _dock.entries;
-    final maxBarWidth =
-        (constraints.maxWidth - DesktopDesktopMetrics.dockBarSideInset * 2)
-            .clamp(0.0, DesktopDesktopMetrics.dockBarMaxWidth);
-    final barWidth = desktopDockBarWidth(
-      maxWidth: maxBarWidth,
-      entryCount: entries.length,
-    );
-    final fullscreenApp = _fullscreenApp;
-    final composerMode = fullscreenApp == DesktopFullscreenApp.conversation;
-    final inputBottomInset =
-        DesktopDesktopMetrics.dockBarBottomInset +
-        (composerMode ? 3 : (DesktopDesktopMetrics.dockBarHeight - 44) / 2);
+  Widget _buildWindow(BuildContext context, BoxConstraints constraints) {
+    final colors = context.layoutPalette;
+    final activeDestination = widget.data.activeDestination;
+    // A quit app's destination stays active until the host delivers the
+    // fallback; only a running app's destination may (re)claim a slot.
+    if (activeDestination != ClientSection.agents &&
+        _running.any((app) => desktopAppSection(app) == activeDestination)) {
+      _destinationSlots[activeDestination] = widget.data.destination;
+    }
+    final available =
+        constraints.maxWidth -
+        DesktopDesktopMetrics.windowInset * 2 -
+        DesktopDesktopMetrics.paneGap;
+    final maxSidebar = (available - DesktopDesktopMetrics.workAreaMinExtent)
+        .clamp(
+          DesktopDesktopMetrics.sidebarMinExtent,
+          DesktopDesktopMetrics.sidebarMaxExtent,
+        )
+        .toDouble();
+    final openExtent = _sidebarExtent
+        .clamp(DesktopDesktopMetrics.sidebarMinExtent, maxSidebar)
+        .toDouble();
+    final sidebarWidth = _sidebarCollapsed
+        ? DesktopDesktopMetrics.sidebarRailExtent
+        : openExtent;
 
-    final folderEntry = _openFolderId == null
+    // The window ground owns the preset's ambient effect: the two pane
+    // cards are translucent glass over it, and nested conversation grounds
+    // below paint no second sky.
+    return LicoWindowGround(
+      key: const Key('desktop-window-veil'),
+      color: DesktopDesktopGlass.veil(colors),
+      child: KeyedSubtree(
+        key: const Key('desktop-desktop-z-stack'),
+        child: Padding(
+          padding: const EdgeInsets.all(DesktopDesktopMetrics.windowInset),
+          child: Row(
+            key: const Key('desktop-main-area'),
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _buildWorkArea(context)),
+              _SidebarResizeHandle(
+                enabled: !_sidebarCollapsed,
+                onStart: () => setState(() => _sidebarDragging = true),
+                onUpdate: (delta) => _resizeSidebar(delta, maxSidebar),
+                onEnd: _endSidebarResize,
+              ),
+              AnimatedContainer(
+                key: const Key('desktop-chat-sidebar-viewport'),
+                duration: _sidebarDragging
+                    ? Duration.zero
+                    : context.motion(LicoMotion.medium),
+                curve: LicoMotion.emphasized,
+                width: sidebarWidth,
+                child: _buildSidebar(context, sidebarWidth),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// One window pane: the shared pane-card glass over the window ground.
+  Widget _card({required Key key, required Widget child}) => LicoPaneCard(
+    key: key,
+    borderRadius: BorderRadius.circular(DesktopDesktopMetrics.paneRadius),
+    child: child,
+  );
+
+  Widget _buildWorkArea(BuildContext context) {
+    final features = _features;
+    final shown = _resolveShown();
+    final folder = _openFolderId == null
         ? null
-        : entries
+        : _dock.entries
               .whereType<DesktopDockFolderEntry>()
               .where((entry) => entry.id == _openFolderId)
               .firstOrNull;
+    final menu = _menu;
+    return _card(
+      key: const Key('desktop-work-area'),
+      child: Stack(
+        key: _workAreaKey,
+        fit: StackFit.expand,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _WorkAreaTitleRow(
+                item: shown,
+                hostedActions: _hostedPaneActions,
+                features: features,
+                onOpenQuickSwitcher: features == null
+                    ? null
+                    : () => unawaited(_openQuickSwitcher()),
+                onOpenPluginCenter: () =>
+                    _open(const DesktopWorkApp(DesktopAppId.pluginCenter)),
+                onClosePlugin: (id) => _quit(DesktopWorkPlugin(id)),
+              ),
+              Expanded(
+                child: Padding(
+                  key: const Key('desktop-work-area-content'),
+                  padding: const EdgeInsets.only(
+                    bottom: DesktopDesktopMetrics.dockReservedExtent,
+                  ),
+                  child: LicoPaneActionsHostScope(
+                    actions: _hostedPaneActions,
+                    child: _buildWorkAreaSlots(context, shown),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Positioned(
+            left: DesktopDesktopMetrics.dockBottomInset,
+            right: DesktopDesktopMetrics.dockBottomInset,
+            bottom: DesktopDesktopMetrics.dockBottomInset,
+            child: Center(child: _buildDock(context)),
+          ),
+          // The folder view stops above the dock so a child dragged out of
+          // the folder can still reach the dock's drop gaps.
+          if (folder != null)
+            Positioned(
+              left: 0,
+              top: 0,
+              right: 0,
+              bottom: DesktopDesktopMetrics.dockReservedExtent,
+              child: DesktopDockFolderView(
+                folderId: folder.id,
+                children: folder.children,
+                active: _active,
+                onOpenApp: (app) => _open(DesktopWorkApp(app)),
+                onDismiss: () => setState(() => _openFolderId = null),
+              ),
+            ),
+          if (menu != null) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                key: const Key('desktop-dock-menu-barrier'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _menu = null),
+                onSecondaryTap: () => setState(() => _menu = null),
+              ),
+            ),
+            Positioned(
+              left: math.max(8, menu.left - 24),
+              bottom: DesktopDesktopMetrics.dockReservedExtent + 4,
+              child: _DockContextMenu(entries: _menuEntries(menu.item)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
+  DesktopWorkItem _resolveShown() {
+    final active = _active;
+    final ready = switch (active) {
+      DesktopWorkApp(app: final app) =>
+        desktopAppSection(app) == null ||
+            _destinationSlots.containsKey(desktopAppSection(app)),
+      DesktopWorkPlugin() => _features != null,
+    };
+    if (ready) _shown = active;
+    return _shown;
+  }
+
+  Widget _buildWorkAreaSlots(BuildContext context, DesktopWorkItem shown) {
+    final features = _features;
+    final shownSection = switch (shown) {
+      DesktopWorkApp(app: final app) => desktopAppSection(app),
+      DesktopWorkPlugin() => null,
+    };
+    final collaborationVisible =
+        shown == const DesktopWorkApp(DesktopAppId.collaboration);
+    if (collaborationVisible) _collaborationMounted = true;
+    if (shown case DesktopWorkPlugin(pluginId: final id)) {
+      _mountedPlugins.add(id);
+    }
+    Widget slot({
+      required String key,
+      required bool visible,
+      required Widget child,
+    }) => Offstage(
+      offstage: !visible,
+      child: TickerMode(
+        enabled: visible,
+        child: KeyedSubtree(key: ValueKey<String>(key), child: child),
+      ),
+    );
     return Stack(
-      key: const Key('desktop-desktop-z-stack'),
       fit: StackFit.expand,
       children: [
-        Positioned.fill(
-          child: ColoredBox(
-            key: const Key('desktop-window-veil'),
-            color: MessagingDesktopMetrics.surfaceGlassTint(context.licoColors),
+        if (_collaborationMounted && features != null)
+          slot(
+            key: 'desktop-work-slot-collaboration',
+            visible: collaborationVisible,
+            child: features.buildCollaborationApp(context),
           ),
-        ),
-        Positioned.fill(child: _buildMainArea(context)),
-        if (fullscreenApp != DesktopFullscreenApp.settings)
-          const Positioned(
-            left: 10,
-            top: 8,
-            child: DesktopTrafficLightAnchor(
-              key: Key('desktop-main-traffic-light-anchor'),
-            ),
+        for (final section in _destinationSlots.keys)
+          slot(
+            key: 'desktop-work-slot-${section.name}',
+            visible: shownSection == section,
+            child: _destinationSlots[section]!,
           ),
-        for (final app in _floatingStack)
-          DesktopFloatingCard(
-            key: ValueKey<String>('desktop-floating-card-${app.name}'),
-            app: app,
-            rect: _clampedRect(_floatingRects[app]!, constraints),
-            onClose: () => _closeApp(app),
-            onRaise: () => _raiseApp(app),
-            onMove: (delta) => _moveApp(app, delta),
-            child: _buildFloatingContent(context, app),
-          ),
-        if (_launchpadOpen)
-          Positioned.fill(
-            child: DesktopLaunchpad(
-              onLaunchApp: _launchApp,
-              onDismiss: () => setState(() => _launchpadOpen = false),
-            ),
-          ),
-        if (folderEntry != null)
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom:
-                DesktopDesktopMetrics.dockBarBottomInset +
-                DesktopDesktopMetrics.dockBarHeight +
-                10,
-            child: DesktopDockFolderView(
-              folderId: folderEntry.id,
-              children: folderEntry.children,
-              onLaunchApp: _launchApp,
-              onDismiss: () => setState(() => _openFolderId = null),
-            ),
-          ),
-        Positioned.fill(
-          child: DesktopDockBar(
-            entries: entries,
-            openApps: _dock.openApps,
-            activeApp: composerMode ? DesktopAppId.conversation : null,
-            settingsActive: fullscreenApp == DesktopFullscreenApp.settings,
-            appStoreOpen: _launchpadOpen,
-            onOpenSettings: _openSettings,
-            onToggleAppStore: _toggleAppStore,
-            onLaunchApp: _launchApp,
-            onCloseApp: _closeApp,
-            onMoveEntry: (storageId, index) =>
-                _dock.moveEntry(storageId, index),
-            onMergeEntries: (dragged, target) =>
-                _dock.mergeEntries(dragged, target),
-            onOpenFolder: _openFolder,
-            onExtractFromFolder: (folderId, app, index) =>
-                _dock.extractFromFolder(folderId, app, insertIndex: index),
-          ),
-        ),
-        Positioned(
-          right:
-              (constraints.maxWidth - barWidth) / 2 +
-              DesktopDesktopMetrics.dockIconGap,
-          bottom: inputBottomInset,
-          child: KeyedSubtree(
-            key: const Key('desktop-dock-input'),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _DesktopDockConversationButton(
-                  active: composerMode,
-                  onTap: _openConversation,
-                ),
-                const SizedBox(width: DesktopDesktopMetrics.dockIconGap),
-                SizedBox(
-                  width: DesktopDesktopMetrics.dockInputWidth,
-                  child: _buildInput(context, composerMode: composerMode),
-                ),
-              ],
-            ),
-          ),
-        ),
+        if (features != null)
+          for (final id in _mountedPlugins)
+            if (_pluginInstalled(id))
+              slot(
+                key: 'desktop-work-slot-plugin-$id',
+                visible: shown == DesktopWorkPlugin(id),
+                child: features.buildPluginWindow(context, id),
+              ),
       ],
     );
   }
 
-  Widget _buildMainArea(BuildContext context) {
-    final data = widget.data;
-    final colors = context.layoutPalette;
-    final fullscreenApp = _fullscreenApp;
-    final tint = switch (fullscreenApp) {
-      DesktopFullscreenApp.conversation => Colors.transparent,
-      DesktopFullscreenApp.settings => colors.surfaceLow.withValues(
-        alpha: colors.isDark ? 0.20 : 0.28,
-      ),
-      DesktopFullscreenApp.hosted => colors.surfaceLow.withValues(
-        alpha: colors.isDark ? 0.16 : 0.22,
-      ),
-    };
-    Widget content = KeyedSubtree(
-      key: const Key('desktop-main-area-content'),
-      child: data.destination,
-    );
-    if (fullscreenApp == DesktopFullscreenApp.conversation) {
-      content = LayoutExternalComposerScope(hosted: true, child: content);
-    }
-    return ColoredBox(
-      key: const Key('desktop-main-area'),
-      color: tint,
-      child: Padding(
-        padding: const EdgeInsets.only(
-          bottom: DesktopDesktopMetrics.mainAreaBottomInset,
-        ),
-        child: content,
-      ),
-    );
-  }
-
-  Widget _buildFloatingContent(BuildContext context, DesktopAppId app) {
-    final port = DesktopDestinationContentRegistry.contentPort;
-    final section = desktopAppSection(app);
-    final fallback = ColoredBox(
-      key: ValueKey<String>('desktop-floating-missing-${app.name}'),
-      color: context.layoutPalette.surface,
-    );
-    if (port == null) return fallback;
-    Widget content = Builder(
-      builder: (innerContext) => port.buildDestination(innerContext, section),
-    );
-    if (section == ClientSection.models) {
-      // Pin the models pane per card: the shared ModelsPanel resolves its
-      // pane from the models destination namespace, and two floating models
-      // cards would otherwise re-target each other through the one retained
-      // pane channel.
-      final scope = LayoutScope.maybeOf(context);
-      final paneIndex = desktopAppModelsPane(app);
-      if (scope != null && paneIndex != null) {
-        content = LayoutScope(
-          profileId: scope.profileId,
-          environment: scope.environment,
-          restorationNamespace: scope.restorationNamespace,
-          tokens: scope.tokens,
-          state: LayoutScopedState(
-            profileId: scope.state.profileId,
-            surface: scope.state.surface,
-            destination: ClientSection.models,
-            store: _PinnedModelsPaneStatePort(scope.state.statePort, paneIndex),
+  Widget _buildDock(BuildContext context) {
+    final features = _features;
+    final summaries =
+        features?.pluginWindows.value ?? const <LayoutPluginWindowSummary>[];
+    final byId = {for (final plugin in summaries) plugin.id: plugin};
+    final plugins = <DesktopDockPlugin>[
+      for (final id in _dock.pinnedPlugins)
+        if (byId[id] case final plugin?)
+          DesktopDockPlugin(id: id, name: plugin.name, running: plugin.open),
+      for (final plugin in summaries)
+        if (!_dock.isPluginPinned(plugin.id) &&
+            (plugin.open || _active == DesktopWorkPlugin(plugin.id)))
+          DesktopDockPlugin(
+            id: plugin.id,
+            name: plugin.name,
+            running: plugin.open,
           ),
-          child: content,
-        );
-      }
-    }
-    return KeyedSubtree(
-      key: ValueKey<String>('desktop-floating-content-${app.name}'),
-      child: content,
+    ];
+    final transient = [
+      for (final app in DesktopAppId.values)
+        if (!desktopDockApps.contains(app) &&
+            !desktopDockSystemApps.contains(app) &&
+            (_running.contains(app) || _active == DesktopWorkApp(app)))
+          app,
+    ];
+    final running = <DesktopWorkItem>{
+      for (final app in _running) DesktopWorkApp(app),
+      for (final plugin in plugins)
+        if (plugin.running) DesktopWorkPlugin(plugin.id),
+    };
+    final pending = features?.collaborationApp.value.pendingDecisions ?? 0;
+    final dock = DesktopDockBar(
+      entries: _dock.entries,
+      transientApps: transient,
+      plugins: plugins,
+      active: _active,
+      running: running,
+      badges: {
+        if (pending > 0)
+          const DesktopWorkApp(DesktopAppId.collaboration): pending,
+      },
+      onOpen: _open,
+      onMenu: _openMenu,
+      onOpenFolder: _openFolder,
+      onMoveEntry: (storageId, index) => _dock.moveEntry(storageId, index),
+      onMergeEntries: (dragged, target) => _dock.mergeEntries(dragged, target),
+      onExtractFromFolder: (folderId, app, index) =>
+          _dock.extractFromFolder(folderId, app, insertIndex: index),
+    );
+    // The stored arrangement replaces the catalog default before the dock
+    // first appears, so a restored order never visibly reshuffles.
+    return IgnorePointer(
+      ignoring: !_dock.ready,
+      child: AnimatedOpacity(
+        opacity: _dock.ready ? 1 : 0,
+        duration: context.motion(LicoMotion.short),
+        child: dock,
+      ),
     );
   }
 
-  Widget _buildInput(BuildContext context, {required bool composerMode}) {
-    if (composerMode) {
-      final features = LayoutChromeFeaturesScope.maybeOf(context);
-      if (features != null) {
-        return KeyedSubtree(
-          key: const Key('desktop-dock-input-composer'),
-          child: features.buildDockComposer(context),
-        );
-      }
+  List<_DockMenuEntry> _menuEntries(DesktopWorkItem item) {
+    final strings = LicoStrings.of(context);
+    return switch (item) {
+      DesktopWorkApp(app: final app) => [
+        _DockMenuEntry(
+          key: 'open',
+          label: DesktopDesktopCopy.dockOpen(strings),
+          onSelected: () => _open(item),
+        ),
+        if (app != desktopDefaultApp && _running.contains(app))
+          _DockMenuEntry(
+            key: 'quit',
+            label: DesktopDesktopCopy.dockQuit(strings),
+            onSelected: () => _quit(item),
+          ),
+      ],
+      DesktopWorkPlugin(pluginId: final id) => [
+        _DockMenuEntry(
+          key: 'open',
+          label: DesktopDesktopCopy.dockOpen(strings),
+          onSelected: () => _open(item),
+        ),
+        if (_pluginRunning(id))
+          _DockMenuEntry(
+            key: 'close',
+            label: DesktopDesktopCopy.dockCloseWindow(strings),
+            onSelected: () => _quit(item),
+          ),
+        if (_dock.isPluginPinned(id))
+          _DockMenuEntry(
+            key: 'remove',
+            label: DesktopDesktopCopy.dockRemoveFromDock(strings),
+            onSelected: () {
+              setState(() => _menu = null);
+              _dock.unpinPlugin(id);
+            },
+          )
+        else
+          _DockMenuEntry(
+            key: 'keep',
+            label: DesktopDesktopCopy.dockKeepInDock(strings),
+            onSelected: () {
+              setState(() => _menu = null);
+              _dock.pinPlugin(id);
+            },
+          ),
+      ],
+    };
+  }
+
+  Widget _buildSidebar(BuildContext context, double width) {
+    final hostScope = LayoutScope.maybeOf(context);
+    Widget base = _resolveConversationBase(context);
+    if (hostScope != null) {
+      // Re-scope the embedded workspace to the agents namespace so its layout
+      // channels resolve the same no matter which destination is active.
+      base = LayoutScope(
+        profileId: hostScope.profileId,
+        environment: hostScope.environment,
+        restorationNamespace: hostScope.restorationNamespace,
+        tokens: hostScope.tokens,
+        state: LayoutScopedState(
+          profileId: hostScope.state.profileId,
+          surface: hostScope.state.surface,
+          destination: ClientSection.agents,
+          store: hostScope.state.statePort,
+        ),
+        child: base,
+      );
     }
-    return _DesktopSearchCapsule(
-      onTap: () => unawaited(widget.data.chrome.openGlobalSearch(context)),
+    return _card(
+      key: const Key('desktop-chat-sidebar'),
+      // The content lays out at its target width while the card animates,
+      // so neither mode ever renders squeezed between the two widths.
+      child: OverflowBox(
+        alignment: Alignment.topLeft,
+        minWidth: width,
+        maxWidth: width,
+        child: LayoutAgentsDirectiveScope(
+          directive: LayoutAgentsDirective(
+            sidebarMode: _sidebarCollapsed
+                ? LayoutAgentsSidebarMode.avatarRail
+                : LayoutAgentsSidebarMode.avatarColumn,
+            selectLocalGroupWhenIdle: true,
+            switcherOpen: _switcherOpen,
+            onToggleSwitcher: _toggleSwitcher,
+            onCollapseSidebar: _collapseSidebar,
+            onExpandSidebar: _expandSidebar,
+          ),
+          child: MessagingTrafficLightSuppression(
+            reservedExtent: 0,
+            child: base,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _resolveConversationBase(BuildContext context) {
+    if (widget.data.activeDestination == ClientSection.agents) {
+      _conversationBase = widget.data.destination;
+    }
+    final cached = _conversationBase;
+    if (cached != null) return cached;
+    final hostScope = LayoutScope.maybeOf(context);
+    if (hostScope == null) {
+      return const ColoredBox(
+        key: Key('desktop-conversation-unready'),
+        color: Colors.transparent,
+      );
+    }
+    _conversationBase = buildDesktopAgentsDestination(
+      context,
+      LayoutDestinationBuildContext(
+        environment: widget.data.environment,
+        destination: ClientSection.agents,
+        content: widget.data.content,
+        state: hostScope.state,
+        style: widget.data.style,
+      ),
+    );
+    return _conversationBase!;
+  }
+}
+
+/// The work-area title row: the traffic-light anchor, the current app's
+/// tile, name and subtitle, and the app's actions on the right.
+final class _WorkAreaTitleRow extends StatelessWidget {
+  const _WorkAreaTitleRow({
+    required this.item,
+    required this.features,
+    required this.onOpenQuickSwitcher,
+    required this.onOpenPluginCenter,
+    required this.onClosePlugin,
+    this.hostedActions,
+  });
+
+  /// The destination's hosted title actions (published by
+  /// [LicoPaneScaffold] panes); rendered in the right action slot.
+  final ValueNotifier<Widget?>? hostedActions;
+
+  final DesktopWorkItem item;
+  final LayoutChromeFeatures? features;
+  final VoidCallback? onOpenQuickSwitcher;
+  final VoidCallback onOpenPluginCenter;
+  final ValueChanged<String> onClosePlugin;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.layoutPalette;
+    final strings = LicoStrings.of(context);
+    final features = this.features;
+    final (
+      IconData? icon,
+      String name,
+      String subtitle,
+      Widget? actions,
+    ) = switch (item) {
+      DesktopWorkApp(app: final app) => (
+        desktopAppIcon(app),
+        desktopAppLabel(strings, app),
+        app == DesktopAppId.collaboration
+            ? features?.collaborationApp.value.subtitle ?? ''
+            : '',
+        null,
+      ),
+      DesktopWorkPlugin(pluginId: final id) => () {
+        final summary = features?.pluginWindows.value
+            .where((plugin) => plugin.id == id)
+            .firstOrNull;
+        return (
+          null,
+          summary?.name ?? id,
+          DesktopDesktopCopy.pluginPublisher(
+            strings,
+            official: summary?.official ?? false,
+          ),
+          features?.buildPluginWindowActions(
+            context,
+            id,
+            onOpenPermissionSettings: onOpenPluginCenter,
+            onClose: () => onClosePlugin(id),
+          ),
+        );
+      }(),
+    };
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      key: const Key('desktop-work-area-title-row'),
+      height: DesktopDesktopMetrics.titleRowExtent,
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: colors.isDark
+                ? const Color(0x0FFFFFFF)
+                : const Color(0x12000000),
+            width: 0.5,
+          ),
+        ),
+      ),
+      padding: const EdgeInsets.only(right: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const DesktopTrafficLightAnchor(
+            key: Key('desktop-main-traffic-light-anchor'),
+          ),
+          Container(
+            key: const Key('desktop-work-area-title-icon'),
+            width: DesktopDesktopMetrics.titleIconExtent,
+            height: DesktopDesktopMetrics.titleIconExtent,
+            alignment: Alignment.center,
+            decoration: continuousHairlineDecoration(
+              color: colors.isDark
+                  ? const Color(0x0DFFFFFF)
+                  : const Color(0x0A000000),
+              borderRadius: BorderRadius.circular(8),
+              stroke: colors.isDark
+                  ? const Color(0x17FFFFFF)
+                  : const Color(0x14000000),
+              strokeWidth: 0.5,
+            ),
+            child: icon == null
+                ? Text(
+                    name.trim().isEmpty
+                        ? '?'
+                        : String.fromCharCode(
+                            name.trim().runes.first,
+                          ).toUpperCase(),
+                    style: TextStyle(
+                      color: colors.primaryStrong,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  )
+                : Icon(icon, size: 16, color: colors.primaryStrong),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: name,
+                    style: TextStyle(
+                      color: colors.text,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (subtitle.isNotEmpty)
+                    TextSpan(
+                      text: ' · $subtitle',
+                      style: TextStyle(
+                        color: colors.textMuted,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                ],
+              ),
+              key: const Key('desktop-work-area-title'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: textTheme.titleSmall?.copyWith(fontSize: 14),
+            ),
+          ),
+          if (hostedActions != null)
+            ValueListenableBuilder<Widget?>(
+              valueListenable: hostedActions!,
+              builder: (context, actions, _) =>
+                  actions ?? const SizedBox.shrink(),
+            ),
+          ?actions,
+          if (onOpenQuickSwitcher != null) ...[
+            const SizedBox(width: 4),
+            _TitleRowButton(
+              key: const Key('desktop-quick-switcher-button'),
+              icon: Icons.search_rounded,
+              tooltip: DesktopDesktopCopy.quickSwitcherTooltip(strings),
+              onTap: onOpenQuickSwitcher!,
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
 
-/// The 对话 button pinned at the left of the input slot: activates the
-/// conversation fullscreen app (and with it the composer input state).
-final class _DesktopDockConversationButton extends StatefulWidget {
-  const _DesktopDockConversationButton({
-    required this.active,
+final class _TitleRowButton extends StatefulWidget {
+  const _TitleRowButton({
+    super.key,
+    required this.icon,
+    required this.tooltip,
     required this.onTap,
   });
 
-  final bool active;
+  final IconData icon;
+  final String tooltip;
   final VoidCallback onTap;
 
   @override
-  State<_DesktopDockConversationButton> createState() =>
-      _DesktopDockConversationButtonState();
+  State<_TitleRowButton> createState() => _TitleRowButtonState();
 }
 
-final class _DesktopDockConversationButtonState
-    extends State<_DesktopDockConversationButton> {
+final class _TitleRowButtonState extends State<_TitleRowButton> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
-    final strings = LicoStrings.of(context);
-    final label = strings.conversationListNav;
-    final highlighted = widget.active || _hovered;
+    final colors = context.layoutPalette;
     return Semantics(
       button: true,
-      selected: widget.active,
-      label: label,
+      label: widget.tooltip,
       child: Tooltip(
-        message: label,
+        message: widget.tooltip,
         waitDuration: LicoMotion.tooltipWait,
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
@@ -594,28 +1062,20 @@ final class _DesktopDockConversationButtonState
             behavior: HitTestBehavior.opaque,
             onTap: widget.onTap,
             child: AnimatedContainer(
-              key: const Key('desktop-dock-input-conversation'),
               duration: context.motion(LicoMotion.micro),
-              width: DesktopDesktopMetrics.dockConversationButtonExtent,
-              height: 44,
-              decoration: continuousHairlineDecoration(
+              curve: LicoMotion.standard,
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
                 color: _hovered
-                    ? DesktopDesktopOnBlack.hoverOverlay
-                    : desktopDesktopSurfaceBlack,
-                borderRadius: BorderRadius.circular(
-                  DesktopDesktopMetrics.dockInputRadius,
-                ),
-                stroke: widget.active
-                    ? DesktopDesktopOnBlack.textSecondary
-                    : DesktopDesktopOnBlack.line,
-                strokeWidth: 0.5,
+                    ? DesktopDesktopGlass.hoverFill(isDark: colors.isDark)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
-                Icons.chat_bubble_outline_rounded,
-                size: 17,
-                color: highlighted
-                    ? DesktopDesktopOnBlack.text
-                    : DesktopDesktopOnBlack.textSecondary,
+                widget.icon,
+                size: 18,
+                color: _hovered ? colors.text : colors.textSecondary,
               ),
             ),
           ),
@@ -625,124 +1085,162 @@ final class _DesktopDockConversationButtonState
   }
 }
 
-/// The search/command visual state of the contextual input: a quiet rounded
-/// rectangle on the same pure black surface as the bar that opens the global
-/// search palette.
-final class _DesktopSearchCapsule extends StatefulWidget {
-  const _DesktopSearchCapsule({required this.onTap});
+/// The drag handle in the gutter between the work area and the chat
+/// sidebar. It paints only a short grip while hovered or dragged.
+final class _SidebarResizeHandle extends StatefulWidget {
+  const _SidebarResizeHandle({
+    required this.enabled,
+    required this.onStart,
+    required this.onUpdate,
+    required this.onEnd,
+  });
 
-  final VoidCallback onTap;
+  final bool enabled;
+  final VoidCallback onStart;
+  final ValueChanged<double> onUpdate;
+  final VoidCallback onEnd;
 
   @override
-  State<_DesktopSearchCapsule> createState() => _DesktopSearchCapsuleState();
+  State<_SidebarResizeHandle> createState() => _SidebarResizeHandleState();
 }
 
-final class _DesktopSearchCapsuleState extends State<_DesktopSearchCapsule> {
+final class _SidebarResizeHandleState extends State<_SidebarResizeHandle> {
+  bool _hovered = false;
+  bool _dragging = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.layoutPalette;
+    final strings = LicoStrings.of(context);
+    if (!widget.enabled) {
+      return const SizedBox(width: DesktopDesktopMetrics.paneGap);
+    }
+    return Semantics(
+      label: DesktopDesktopCopy.resizeSidebarLabel(strings),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.resizeLeftRight,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: GestureDetector(
+          key: const Key('desktop-sidebar-resize-handle'),
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragStart: (_) {
+            setState(() => _dragging = true);
+            widget.onStart();
+          },
+          onHorizontalDragUpdate: (details) =>
+              widget.onUpdate(details.delta.dx),
+          onHorizontalDragEnd: (_) {
+            setState(() => _dragging = false);
+            widget.onEnd();
+          },
+          onHorizontalDragCancel: () {
+            setState(() => _dragging = false);
+            widget.onEnd();
+          },
+          child: SizedBox(
+            width: DesktopDesktopMetrics.paneGap,
+            child: Center(
+              child: AnimatedContainer(
+                duration: context.motion(LicoMotion.micro),
+                width: 3,
+                height: _hovered || _dragging ? 36 : 0,
+                decoration: BoxDecoration(
+                  color: colors.textMuted.withAlpha(_dragging ? 200 : 120),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+@immutable
+final class _DockMenuEntry {
+  const _DockMenuEntry({
+    required this.key,
+    required this.label,
+    required this.onSelected,
+  });
+
+  final String key;
+  final String label;
+  final VoidCallback onSelected;
+}
+
+/// The dock icon context menu: a small glass card above the dock.
+final class _DockContextMenu extends StatelessWidget {
+  const _DockContextMenu({required this.entries});
+
+  final List<_DockMenuEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.layoutPalette;
+    return Container(
+      key: const Key('desktop-dock-menu'),
+      constraints: const BoxConstraints(minWidth: 168),
+      padding: const EdgeInsets.all(5),
+      decoration: continuousHairlineDecoration(
+        color: DesktopDesktopGlass.dockFill(colors),
+        borderRadius: BorderRadius.circular(12),
+        stroke: LicoPaneGlass.cardBorder(colors.line, isDark: colors.isDark),
+        strokeWidth: 0.5,
+        shadows: DesktopDesktopGlass.dockShadows(isDark: colors.isDark),
+      ),
+      child: IntrinsicWidth(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [for (final entry in entries) _DockMenuItem(entry: entry)],
+        ),
+      ),
+    );
+  }
+}
+
+final class _DockMenuItem extends StatefulWidget {
+  const _DockMenuItem({required this.entry});
+
+  final _DockMenuEntry entry;
+
+  @override
+  State<_DockMenuItem> createState() => _DockMenuItemState();
+}
+
+final class _DockMenuItemState extends State<_DockMenuItem> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
-    final strings = LicoStrings.of(context);
-    final hint = DesktopDesktopCopy.dockSearchHint(strings);
-    return Semantics(
-      button: true,
-      label: hint,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: AnimatedContainer(
-            key: const Key('desktop-dock-input-search'),
-            duration: context.motion(LicoMotion.micro),
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: continuousHairlineDecoration(
-              color: desktopDesktopSurfaceBlack,
-              borderRadius: BorderRadius.circular(
-                DesktopDesktopMetrics.dockInputRadius,
-              ),
-              stroke: _hovered
-                  ? DesktopDesktopOnBlack.textMuted
-                  : DesktopDesktopOnBlack.line,
-              strokeWidth: 0.5,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.search_rounded,
-                  size: 17,
-                  color: _hovered
-                      ? DesktopDesktopOnBlack.text
-                      : DesktopDesktopOnBlack.textMuted,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    hint,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: DesktopDesktopOnBlack.textMuted,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
+    final colors = context.layoutPalette;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        key: ValueKey<String>('desktop-dock-menu-${widget.entry.key}'),
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.entry.onSelected,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: _hovered ? colors.brandSurface : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            widget.entry.label,
+            style: TextStyle(
+              color: colors.text,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ),
       ),
     );
-  }
-}
-
-/// Pins the retained models pane channel to one app's pane so two floating
-/// models cards never re-target each other through the single shared channel.
-final class _PinnedModelsPaneStatePort implements LayoutStatePort {
-  const _PinnedModelsPaneStatePort(this._inner, this._paneIndex);
-
-  final LayoutStatePort _inner;
-  final int _paneIndex;
-
-  bool _isPaneNamespace(LayoutStateNamespace namespace) =>
-      namespace.destination == ClientSection.models &&
-      namespace.surfaceId == LayoutStateChannels.communicationSection.id;
-
-  @override
-  Object get catalogIdentity => _inner.catalogIdentity;
-
-  @override
-  Stream<void> get changes => _inner.changes;
-
-  @override
-  bool declares(LayoutStateNamespace namespace) => _inner.declares(namespace);
-
-  @override
-  LayoutPresentationStateValue? read(LayoutStateNamespace namespace) =>
-      _isPaneNamespace(namespace)
-      ? LayoutTabState(_paneIndex)
-      : _inner.read(namespace);
-
-  @override
-  void write(
-    LayoutStateNamespace namespace,
-    LayoutPresentationStateValue value,
-  ) {
-    if (_isPaneNamespace(namespace)) {
-      return;
-    }
-    _inner.write(namespace, value);
-  }
-
-  @override
-  void remove(LayoutStateNamespace namespace) {
-    if (_isPaneNamespace(namespace)) {
-      return;
-    }
-    _inner.remove(namespace);
   }
 }

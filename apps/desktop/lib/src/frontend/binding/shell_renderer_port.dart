@@ -17,13 +17,10 @@ abstract interface class ShellRendererPort {
     ValueNotifier<bool> auxChromePanelOpen,
   );
 
-  GlobalKey createAgentsHomeKey();
+  Widget buildDestination(BuildContext context, ClientSection destination);
 
-  Widget buildDestination(
-    BuildContext context,
-    ClientSection destination, {
-    required GlobalKey agentsHomeKey,
-  });
-
-  void resetAgentsHome(GlobalKey agentsHomeKey);
+  /// Wraps the rendered shell content with the features that must be reachable
+  /// from every destination, such as the one package-recommendation
+  /// confirmation. A renderer that owns no such feature returns [child].
+  Widget wrapShellContent(BuildContext context, Widget child) => child;
 }

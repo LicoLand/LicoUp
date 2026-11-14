@@ -3,6 +3,7 @@ import 'package:presentation_contract/presentation_contract.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/conversation_execution.dart';
+import 'package:licoup/src/contracts/conversation_profile.dart';
 import 'package:licoup/src/presentation/conversation/conversation_execution_projection.dart';
 
 sealed class ConversationIntent {
@@ -38,6 +39,18 @@ final class LoadMoreConversationSessions extends ConversationIntent {
   const LoadMoreConversationSessions({super.trace});
 }
 
+/// Allows or denies one pending local native permission request.
+final class ResolveNativeApproval extends ConversationIntent {
+  const ResolveNativeApproval(
+    this.pendingOperationId, {
+    required this.allow,
+    super.trace,
+  });
+
+  final String pendingOperationId;
+  final bool allow;
+}
+
 final class SelectConversationSession extends ConversationIntent {
   const SelectConversationSession(this.sessionId, {super.trace});
 
@@ -52,6 +65,17 @@ final class SelectCanonicalConversation extends ConversationIntent {
 
 final class ClearCanonicalConversationSelection extends ConversationIntent {
   const ClearCanonicalConversationSelection({super.trace});
+}
+
+/// Creates a reusable Agent profile ("创建智能体"): registers the persona
+/// client-side and materializes its direct (non-group) canonical
+/// Conversation with the `profile:<id>` persona member designated as the
+/// assistant. The profile's model/reasoning/advanced preferences are
+/// persisted as that membership's profile intent.
+final class CreateConversationProfile extends ConversationIntent {
+  const CreateConversationProfile(this.profile, {super.trace});
+
+  final ConversationProfile profile;
 }
 
 final class CreateCanonicalConversationGroup extends ConversationIntent {

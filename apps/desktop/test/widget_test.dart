@@ -15,7 +15,7 @@ void main() {
       ClientSection.monitoring,
       ClientSection.skillHub,
       ClientSection.pluginManagement,
-      ClientSection.mobileRelay,
+      ClientSection.devices,
       ClientSection.models,
       ClientSection.settings,
       ClientSection.agentHub,

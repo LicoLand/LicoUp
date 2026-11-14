@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_typography.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import 'conversation_execution_models.dart';
@@ -129,16 +130,16 @@ class ExecutionViewerBody extends StatelessWidget {
                     final textStyle = TextStyle(
                       inherit: false,
                       color: colors.text,
-                      fontFamily: 'Geist Mono',
-                      fontFamilyFallback: const ['Noto Sans SC', 'monospace'],
+                      fontFamily: LicoTypography.monoFamily,
+                      fontFamilyFallback: LicoTypography.monoFallback,
                       fontSize: 12.5,
                       height: 1.55,
                     );
                     final headerStyle = TextStyle(
                       inherit: false,
                       color: colors.textMuted,
-                      fontFamily: 'Geist Sans',
-                      fontFamilyFallback: const ['Noto Sans SC'],
+                      fontFamily: LicoTypography.bundledSansFamily,
+                      fontFamilyFallback: LicoTypography.sansFallback,
                       fontSize: 12,
                       height: 1.4,
                       fontWeight: FontWeight.w600,

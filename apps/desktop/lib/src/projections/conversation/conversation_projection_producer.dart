@@ -16,7 +16,7 @@ import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
-import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
+import 'package:licoup/src/contracts/acativa_models.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/generated/conversation.g.dart';
 import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
@@ -240,11 +240,11 @@ final class ConversationProjectionProducer {
       return;
     }
     try {
-      final definitions = adaptiveFlywheelMaps(
-        await _controller.adaptiveFlywheelGateway.execute({
+      final definitions = acativaMaps(
+        await _controller.acativaGateway.execute({
           'action': 'strategy.definition.list',
         }),
-      ).map(AdaptiveFlywheelDefinition.fromJson);
+      ).map(AcativaDefinition.fromJson);
       if (!definitions.any(
         (definition) =>
             definition.authorized && definition.revisionDigest == revision,
@@ -253,9 +253,9 @@ final class ConversationProjectionProducer {
         _strategyProjectionRevision = revision;
         return;
       }
-      final inspection = AdaptiveFlywheelInspection.fromJson(
-        adaptiveFlywheelStringMap(
-          await _controller.adaptiveFlywheelGateway.execute({
+      final inspection = AcativaInspection.fromJson(
+        acativaStringMap(
+          await _controller.acativaGateway.execute({
             'action': 'strategy.definition.inspect',
             'revisionDigest': revision,
           }),
@@ -724,6 +724,17 @@ NativeConversationCatalogProjection _readNativeCatalog(
     ],
     nativeSessions: sessions,
     agentCatalogs: catalogs,
+    // Skeletons only cover the not-yet-loaded window: once a catalog entry
+    // exists — including a progressive milestone commit mid-stream — the row
+    // shows real content and never flashes bars under it again.
+    loadingAgentIds: <String>{
+      for (final agentId in <String>{
+        ...controller.conversationSessionLoadingTargets,
+        ...controller.conversationBackgroundRefreshTargets,
+      })
+        if (!controller.conversationSessionsByAgent.containsKey(agentId))
+          agentId,
+    },
     groupConversationId: groupId,
     groupSessionsByAgent: groupSessions,
     runningSessionIds: runningSessionIds,
@@ -795,11 +806,14 @@ CanonicalConversationProjection _readCanonical(
     canonicalEvents: owner.events,
     recentParticipantAgentIds: owner.recentParticipantAgentIds,
     groupConversations: owner.groupConversations,
+    directConversations: owner.directConversations,
     participantRuntimeProfiles: strategyProfiles,
     quotaSnapshots: controller.providerQuotaController.snapshots,
     assistantModel: (assistantProfile['preferredModel'] ?? '').toString(),
     assistantReasoningEffort:
         (assistantProfile['preferredReasoningEffort'] ?? '').toString(),
+    assistantPermissionMode: (assistantProfile['preferredPermissionMode'] ?? '')
+        .toString(),
     failureStage: failureVisible ? owner.failureStage : '',
     failureRef: failureVisible ? owner.failureRef : '',
     failureRecovery: failureVisible ? owner.failureRecovery : '',
@@ -1086,12 +1100,17 @@ ConversationTabActivityProjection _readTabActivity(
         canonical.failureCode.isNotEmpty &&
         (failureAttribution.isEmpty ||
             failureAttribution == canonical.selectedConversationId);
+    // A group turn's members park their own requests; all of them belong to
+    // the visible group conversation.
+    final approvals = _nativeApprovals(controller, (_) => true);
     return ConversationTabActivityProjection(
       conversationId: canonical.selectedConversationId,
       active: true,
       unreadCount: failureVisible ? 1 : 0,
-      requiresAttention: failureVisible,
+      requiresAttention: failureVisible || approvals.isNotEmpty,
       agentActivities: agentActivities,
+      pendingApprovals: approvals,
+      approvalErrorCode: controller.nativeApprovalErrorCode,
     );
   }
   final agentId = controller.selectedConversationAgentId;
@@ -1102,8 +1121,30 @@ ConversationTabActivityProjection _readTabActivity(
     unreadCount: activity == AgentConversationTabActivity.none ? 0 : 1,
     requiresAttention: activity == AgentConversationTabActivity.needsApproval,
     agentActivities: agentActivities,
+    pendingApprovals: _nativeApprovals(
+      controller,
+      (requestAgentId) => requestAgentId == agentId,
+    ),
+    approvalErrorCode: controller.nativeApprovalErrorCode,
   );
 }
+
+List<NativeApprovalRequestProjection> _nativeApprovals(
+  ClientController controller,
+  bool Function(String agentId) visible,
+) => [
+  for (final request in controller.pendingNativeApprovals)
+    if (visible(request.agentId))
+      NativeApprovalRequestProjection(
+        pendingOperationId: request.pendingOperationId,
+        agentId: request.agentId,
+        summary: request.summary,
+        requestedTools: request.requestedTools,
+        resolving: controller.resolvingNativeApprovals.contains(
+          request.pendingOperationId,
+        ),
+      ),
+];
 
 ConversationNotificationsProjection _readNotifications(
   ClientController controller,

@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
+  createArchitectureContext,
   emitArchitectureResult,
   formatArchitectureResult,
 } from "../../../apps/desktop/scripts/client-architecture/context.mjs";
@@ -42,7 +43,6 @@ const expectedImplFacades = Object.freeze({
   ],
   "privacy.mjs": [
     "checkProductContractsAndPortableData",
-    "checkFileSecurityAndClientState",
   ],
 });
 
@@ -50,23 +50,7 @@ const expectedReexportFacades = Object.freeze({
   "flutter.mjs": Object.freeze([
     ["checkFlutterPhysicalLayersAndLibraries", "flutter/physical-layers-and-libraries.mjs"],
     ["checkShellIsolationAndNativeStdio", "flutter/shell-isolation-and-native-stdio.mjs"],
-    ["checkMobileRelayBridges", "flutter/mobile-relay-bridges.mjs"],
     ["checkPresentationBoundary", "flutter/presentation-boundary.mjs"],
-  ]),
-  "native.mjs": Object.freeze([
-    ["checkCrateCoreAndFacadeBounds", "native/crate-core-and-facade-bounds.mjs"],
-    ["checkDomainAndCryptoBoundaries", "native/domain-and-crypto-boundaries.mjs"],
-    ["checkSecureMeshFoundationsAndLocalArchive", "native/secure-mesh-foundations-and-local-archive.mjs"],
-    ["checkConversationDomain", "native/conversation-domain.mjs"],
-    ["checkSecureMeshAuthorityAndCustody", "native/secure-mesh-authority-and-custody.mjs"],
-    ["checkCommandAndFileTransport", "native/command-and-file-transport.mjs"],
-    ["checkTargetReadinessReducer", "native/target-readiness-reducer.mjs"],
-  ]),
-  "platform.mjs": Object.freeze([
-    ["checkRuntimeDriversAndLocalService", "platform/runtime-drivers-and-local-service.mjs"],
-    ["checkTargetServeAndGateway", "platform/target-serve-and-gateway.mjs"],
-    ["checkIosSecureMesh", "platform/ios-secure-mesh.mjs"],
-    ["checkAndroidSecureMesh", "platform/android-secure-mesh.mjs"],
   ]),
 });
 
@@ -74,40 +58,23 @@ const expectedCheckRootEntries = Object.freeze([
   ...Object.keys(expectedImplFacades),
   ...Object.keys(expectedReexportFacades),
   "flutter",
-  "native",
-  "platform",
 ].sort());
 
 const ownedCheckLeaves = Object.freeze(
   Object.values(expectedReexportFacades).flatMap((bindings) =>
     bindings.map(([, relativeLeaf]) => relativeLeaf)),
 );
-const supportCheckLeaves = Object.freeze([
-  "native/licoarc-badtower-boundary.mjs",
-]);
+const supportCheckLeaves = Object.freeze([]);
 
 const phaseRunners = Object.freeze([
   ["foundations.packaging-and-target-projection", "checkPackagingAndTargetProjection"],
   ["privacy.product-contracts-and-portable-data", "checkProductContractsAndPortableData"],
   ["flutter.physical-layers-and-libraries", "checkFlutterPhysicalLayersAndLibraries"],
   ["foundations.package-dry-runs", "checkPackageDryRuns"],
-  ["native.crate-core-and-facade-bounds", "checkCrateCoreAndFacadeBounds"],
-  ["native.domain-and-crypto-boundaries", "checkDomainAndCryptoBoundaries"],
-  ["platform.runtime-drivers-and-local-service", "checkRuntimeDriversAndLocalService"],
-  ["privacy.file-security-and-client-state", "checkFileSecurityAndClientState"],
-  ["platform.target-serve-and-gateway", "checkTargetServeAndGateway"],
-  ["native.secure-mesh-foundations-and-local-archive", "checkSecureMeshFoundationsAndLocalArchive"],
   ["flutter.shell-isolation-and-native-stdio", "checkShellIsolationAndNativeStdio"],
-  ["native.conversation-domain", "checkConversationDomain"],
   ["composition.conversation-bridges", "checkConversationBridges"],
-  ["native.secure-mesh-authority-and-custody", "checkSecureMeshAuthorityAndCustody"],
-  ["platform.ios-secure-mesh", "checkIosSecureMesh"],
-  ["platform.android-secure-mesh", "checkAndroidSecureMesh"],
-  ["native.command-and-file-transport", "checkCommandAndFileTransport"],
-  ["flutter.mobile-relay-bridges", "checkMobileRelayBridges"],
   ["flutter.presentation-boundary", "checkPresentationBoundary"],
   ["composition.client-root-and-shell", "checkClientRootAndShell"],
-  ["native.target-readiness-reducer", "checkTargetReadinessReducer"],
 ]);
 
 test("client architecture verifier has one thin entry and the complete source bundle", async () => {
@@ -122,7 +89,6 @@ test("client architecture verifier has one thin entry and the complete source bu
 
   const entrySource = await fs.readFile(path.join(repoRoot, entryPath), "utf8");
   assert.equal(entrySource.includes("packaging.modules.json"), false);
-  assert.equal(entrySource.includes("secure_mesh_file.rs"), false);
   assert.equal(entrySource.includes("agent_conversation_service.dart"), false);
 
   const sideEffectFreeSources = [
@@ -170,7 +136,7 @@ test("client architecture verifier has one thin entry and the complete source bu
     }
   }
 
-  for (const directoryName of ["flutter", "native", "platform"]) {
+  for (const directoryName of ["flutter"]) {
     const expectedLeaves = ownedCheckLeaves
       .filter((relativeLeaf) => relativeLeaf.startsWith(`${directoryName}/`))
       .map((relativeLeaf) => relativeLeaf.slice(directoryName.length + 1))
@@ -191,7 +157,6 @@ test("source and architecture gates share one required Flutter layer catalog", a
   assert.deepEqual(REQUIRED_FLUTTER_TOP_LEVEL_DIRS, [
     "events",
     "projections",
-    "display",
     "protocol",
     "shared",
     "presentation",
@@ -203,6 +168,18 @@ test("source and architecture gates share one required Flutter layer catalog", a
     "contracts",
   ]);
   assert.equal(Object.isFrozen(REQUIRED_FLUTTER_TOP_LEVEL_DIRS), true);
+
+  const topLevelEntries = await fs.readdir(
+    path.join(repoRoot, "apps/desktop/lib/src"),
+    { withFileTypes: true },
+  );
+  assert.deepEqual(
+    topLevelEntries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort(),
+    [...REQUIRED_FLUTTER_TOP_LEVEL_DIRS].sort(),
+  );
 
   const sourceGate = await fs.readFile(
     path.join(repoRoot, "tools/verify-client-boundary.mjs"),
@@ -247,7 +224,7 @@ test("client architecture phases run strictly and sequentially in the frozen ord
     CLIENT_ARCHITECTURE_PHASE_IDS,
     phaseRunners.map(([id]) => id),
   );
-  assert.equal(CLIENT_ARCHITECTURE_PHASE_IDS.length, 21);
+  assert.equal(CLIENT_ARCHITECTURE_PHASE_IDS.length, 8);
 
   const context = Object.freeze({ marker: "context" });
   const events = [];
@@ -258,35 +235,11 @@ test("client architecture phases run strictly and sequentially in the frozen ord
       modules,
       packagedTargets: ["codex"],
     },
-    "flutter.physical-layers-and-libraries": {
-      mobileRelayPanelFacadeSource: "panel-facade",
-      mobileRelayPanelSources: Object.freeze({ "composition.dart": "panel-leaf" }),
-    },
     "foundations.package-dry-runs": {
       packagePlanCheckedPlatforms: ["macos"],
     },
-    "native.crate-core-and-facade-bounds": {
-      reviewedRustUnsafeFiles: new Set(["reviewed-unsafe.rs"]),
-    },
-    "native.domain-and-crypto-boundaries": {
-      secureMeshMobileFfiRoot: "mobile-ffi-root",
-    },
-    "platform.runtime-drivers-and-local-service": {
-      localServiceSource: "local-service",
-    },
     "flutter.shell-isolation-and-native-stdio": {
       agentConversationServiceSource: "conversation-service",
-    },
-    "native.conversation-domain": {
-      conversationSourceCatalogRustSource: "source-catalog",
-    },
-    "native.command-and-file-transport": {
-      secureMeshMobileFfiSource: "mobile-ffi",
-    },
-    "flutter.mobile-relay-bridges": {
-      mobileRelayClientAdapterSource: "relay-adapter",
-      mobileRelayServiceSource: "relay-service",
-      secureMeshControllerSource: "mesh-controller",
     },
   };
   const expectedInputs = {
@@ -295,32 +248,8 @@ test("client architecture phases run strictly and sequentially in the frozen ord
       futureModules: ["desktop-app"],
       modules,
     },
-    "platform.runtime-drivers-and-local-service": {
-      reviewedRustUnsafeFiles: new Set(["reviewed-unsafe.rs"]),
-    },
-    "platform.target-serve-and-gateway": {
-      localServiceSource: "local-service",
-    },
-    "native.conversation-domain": {
-      agentConversationServiceSource: "conversation-service",
-    },
-    "composition.conversation-bridges": {
-      conversationSourceCatalogRustSource: "source-catalog",
-      packagedTargets: ["codex"],
-    },
-    "native.command-and-file-transport": {
-      secureMeshMobileFfiRoot: "mobile-ffi-root",
-    },
-    "flutter.mobile-relay-bridges": {
-      secureMeshMobileFfiSource: "mobile-ffi",
-    },
     "composition.client-root-and-shell": {
       agentConversationServiceSource: "conversation-service",
-      mobileRelayClientAdapterSource: "relay-adapter",
-      mobileRelayPanelFacadeSource: "panel-facade",
-      mobileRelayPanelSources: { "composition.dart": "panel-leaf" },
-      mobileRelayServiceSource: "relay-service",
-      secureMeshControllerSource: "mesh-controller",
     },
   };
   const checks = Object.fromEntries(phaseRunners.map(([id, runner]) => [
@@ -341,7 +270,7 @@ test("client architecture phases run strictly and sequentially in the frozen ord
     `end:${id}`,
   ]));
   assert.deepEqual(state.packagePlanCheckedPlatforms, ["macos"]);
-  assert.equal(state.secureMeshControllerSource, "mesh-controller");
+  assert.equal(state.agentConversationServiceSource, "conversation-service");
 });
 
 test("architecture finalization preserves JSON shape, stream, and exit semantics", () => {
@@ -489,14 +418,17 @@ test("terminal presentation boundary accepts the complete target architecture", 
     "ShellBinding",
     "AgentsBinding",
     "MonitoringBinding",
+    "CollaborationBinding",
+    "PluginWindowBinding",
     "SkillHubBinding",
     "PluginManagementBinding",
-    "MobileRelayBinding",
+    "DevicesBinding",
     "ModelsBinding",
     "SettingsBinding",
     "AgentHubBinding",
     "ConversationBinding",
     "TargetsBinding",
+    "ProjectsBinding",
     "SearchBinding",
     "ChromeBinding",
   ]);
@@ -822,12 +754,18 @@ test("retired paths, symbols, annotations, and path-count substitution stay abse
     "apps/desktop/lib/src/frontend/shared/appearance/appearance_preset_config.dart",
     "apps/desktop/lib/src/projections/listenable_projection_consumer.dart",
     "apps/desktop/lib/src/projections/adapters/legacy_projection_consumer_source_adapter.dart",
+    "apps/desktop/lib/src/projections/composite_application_projection_source.dart",
+    "apps/desktop/lib/src/projections/projection_consumer.dart",
+    "apps/desktop/lib/src/projections/conversation/conversation_projection_consumer.dart",
+    "apps/desktop/lib/src/display/agent_hub/agent_hub_display.dart",
+    "apps/desktop/lib/src/display/settings/settings_display.dart",
+    "apps/desktop/lib/src/display/targets/targets_display.dart",
   ]);
   assert.equal(Object.isFrozen(RETIRED_PRESENTATION_PATHS), true);
-  assert.ok(rulesFor(withSource(tree, RETIRED_PRESENTATION_PATHS[0], ""))
-    .includes("presentation_boundary_retired_path"));
-  assert.ok(rulesFor(withSource(tree, RETIRED_PRESENTATION_PATHS[2], ""))
-    .includes("presentation_boundary_retired_path"));
+  for (const retiredPath of RETIRED_PRESENTATION_PATHS) {
+    assert.ok(rulesFor(withSource(tree, retiredPath, ""))
+      .includes("presentation_boundary_retired_path"), retiredPath);
+  }
   assert.ok(rulesFor(withSource(
     tree,
     "apps/desktop/lib/src/composition/replacement.dart",
@@ -882,6 +820,18 @@ test("SDK-only presentation contract source and pubspec have positive and negati
   assert.deepEqual(inspectPresentationContractSources(new Map([
     [contractPath, "final class Port { void close() {} }\n"],
   ])), [["presentation_boundary_package_surface", contractPath]]);
+  assert.deepEqual(inspectPresentationContractSources(new Map([
+    [contractPath, "final class SyntaxConfig { const SyntaxConfig(this.revision); final String revision; }\n"],
+  ])), []);
+  for (const source of [
+    "final class SyntaxConfig { int revision = 0; }\n",
+    "final class Port { final int revision; }\n",
+    "final class SyntaxConfig { final String revision; void close() {} }\n",
+    "final class SyntaxConfig { final String revision; }\nfinal revision = 0;\n",
+  ]) {
+    assert.deepEqual(inspectPresentationContractSources(new Map([[contractPath, source]])),
+      [["presentation_boundary_package_surface", contractPath]]);
+  }
   assert.deepEqual(inspectPresentationContractPubspec("name: contract\n"), []);
   assert.deepEqual(inspectPresentationContractPubspec("name: contract\ndependencies:\n"), [
     "presentation_boundary_package_dependency_surface",

@@ -1,20 +1,26 @@
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_list_typography.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_selection_highlight.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:file_selector/file_selector.dart';
+import 'package:path/path.dart' as p;
 import 'package:licoup/src/frontend/appearance/loading_effect_catalog.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 import 'package:presentation_flutter/presentation_flutter.dart';
 
+import 'package:licoup/src/contracts/presentation/reduce_motion_preference.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/frontend/features/settings/ui/archived_conversations_settings_section.dart';
+import 'package:licoup/src/contracts/client_update_models.dart';
 import 'package:licoup/src/frontend/features/settings/ui/client_update_settings_card.dart';
+import 'package:licoup/src/frontend/features/settings/ui/diagnostics_settings_section.dart';
 import 'package:licoup/src/frontend/features/settings/ui/layout_profile_selector.dart';
-import 'package:licoup/src/frontend/features/settings/ui/settings_log_export_tile.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_panel_widgets.dart';
 import 'package:licoup/src/frontend/shared/settings_section_catalog.dart';
 import 'package:licoup/src/frontend/features/settings/ui/startup_autostart_card.dart';
@@ -38,6 +44,11 @@ import 'package:licoup/src/presentation/settings/settings_providers.dart';
 
 const _settingsSectionIds = settingsSectionIdOrder;
 
+bool _supportsDesktopDataHome(TargetPlatform platform) =>
+    platform == TargetPlatform.macOS ||
+    platform == TargetPlatform.windows ||
+    platform == TargetPlatform.linux;
+
 /// Settings index rail bounds. The rail defaults to the narrowest usable
 /// width and the user drags the split divider wider, mirroring the
 /// conversation-list sidebar in the agents workspace.
@@ -51,10 +62,15 @@ class SettingsPanel extends StatefulWidget {
     super.key,
     required this.binding,
     required this.layoutRegistry,
+    this.clientUpdateAdmission = clientUpdateAdmissionUnavailable,
   });
 
   final SettingsBinding binding;
   final LayoutRegistry layoutRegistry;
+
+  /// Live read of the host maintenance answer the update card gates apply on.
+  /// Hosts that do not supply one keep the fail-closed default.
+  final ClientUpdateAdmission Function() clientUpdateAdmission;
 
   @override
   State<SettingsPanel> createState() => _SettingsPanelState();
@@ -476,11 +492,9 @@ class _SettingsPanelState extends State<SettingsPanel> {
             if (index.isOdd) {
               // Equal space above and below the hairline; section headers
               // and rows use the same vertical token so the gap stays even.
-              return Divider(
-                key: Key('settings-section-divider-${sections[index ~/ 2].id}'),
-                height: LicoContentSpacing.item,
-                color: context.licoColors.line,
-              );
+              // Section cards separate with a clear gap; the clear pane
+              // reads between them, so there is no hairline divider.
+              return const SizedBox(height: 12);
             }
             final section = sections[index ~/ 2];
             return presentation.frameSection(
@@ -503,13 +517,16 @@ class _SettingsPanelState extends State<SettingsPanel> {
         layoutRegistry: widget.layoutRegistry,
         surface: LayoutRuntimeSurface.desktop,
       ),
-      'updates' => ClientUpdateSettingsCard(binding: widget.binding),
+      'updates' => ClientUpdateSettingsCard(
+        binding: widget.binding,
+        admission: widget.clientUpdateAdmission,
+      ),
       'storage' => _StorageSettings(binding: widget.binding),
       'startup' => StartupAutostartCard(binding: widget.binding),
       'archived-conversations' => ArchivedConversationsSettingsSection(
         binding: widget.binding,
       ),
-      _ => SettingsLogExportTile(binding: widget.binding),
+      _ => DiagnosticsSettingsSection(binding: widget.binding),
     };
     return [
       for (final descriptor in settingsSectionDescriptors(strings))
@@ -616,14 +633,10 @@ class _IndexItemState extends State<_IndexItem> {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    // Solid brand-yellow selection with dark foreground, replacing the old
-    // gold tint (primaryFixed background + primaryStrong text).
-    final bgColor = widget.selected
-        ? colors.primary
-        : _hovered
-        ? colors.surfaceLow.withAlpha(colors.isDark ? 120 : 80)
+    final bgColor = _hovered && !widget.selected
+        ? LicoSelectionLight.hoverFill(context)
         : Colors.transparent;
-    final fgColor = widget.selected ? colors.textOnPrimary : colors.text;
+    final fgColor = widget.selected ? colors.selectionInk : colors.text;
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -634,31 +647,41 @@ class _IndexItemState extends State<_IndexItem> {
             horizontal: LicoContentSpacing.compact,
             vertical: LicoContentSpacing.inline / 2,
           ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: LicoContentSpacing.compact,
-            vertical: LicoContentSpacing.compact,
-          ),
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(7),
-          ),
-          child: Row(
-            children: [
-              Icon(widget.icon, size: 17, color: fgColor),
-              const SizedBox(width: LicoContentSpacing.compact),
-              Expanded(
-                child: Text(
-                  widget.label,
-                  style: TextStyle(
-                    color: fgColor,
-                    fontSize: 12.5,
-                    fontWeight: widget.selected
-                        ? FontWeight.w700
-                        : FontWeight.w500,
-                  ),
-                ),
+          child: LicoSelectionLight(
+            selected: widget.selected,
+            radius: 7,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: LicoContentSpacing.compact,
+                vertical: LicoContentSpacing.compact,
               ),
-            ],
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: Row(
+                children: [
+                  Icon(widget.icon, size: 17, color: fgColor),
+                  const SizedBox(width: LicoContentSpacing.compact),
+                  Expanded(
+                    child: Text(
+                      widget.label,
+                      style:
+                          (widget.selected
+                                  ? LicoListTypeRamp.of(
+                                      context,
+                                    ).denseIndexLabelSelected
+                                  : LicoListTypeRamp.of(
+                                      context,
+                                    ).denseIndexLabel)
+                              .copyWith(
+                                color: fgColor == colors.text ? null : fgColor,
+                              ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -684,6 +707,7 @@ class _GeneralSettings extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               LicoSectionHeader(
+                key: const Key('settings-section-header-general'),
                 title: strings.general,
                 leading: Icon(
                   Icons.tune_outlined,
@@ -767,6 +791,7 @@ class _AppearanceSettings extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         LicoSectionHeader(
+          key: const Key('settings-section-header-appearance'),
           title: strings.appearance,
           leading: Icon(
             Icons.palette_outlined,
@@ -851,20 +876,13 @@ class _AppearanceSettings extends StatelessWidget {
               );
               return Future<void>.value();
             },
-            headerTrailing: IconButton(
-              tooltip: strings.reloadPresets,
-              onPressed: () {
-                intents.send(const ReloadAppearancePresets());
-              },
-              icon: const Icon(Icons.refresh_outlined, size: 18),
-            ),
           ),
         if (projection.appearancePresetLoadErrorCount > 0)
           Padding(
-            padding: const EdgeInsets.fromLTRB(
-              LicoContentSpacing.item,
+            padding: EdgeInsets.fromLTRB(
+              presentation.rowPadding.resolve(Directionality.of(context)).left,
               0,
-              LicoContentSpacing.item,
+              presentation.rowPadding.resolve(Directionality.of(context)).right,
               LicoContentSpacing.item,
             ),
             child: Text(
@@ -875,6 +893,49 @@ class _AppearanceSettings extends StatelessWidget {
                 color: Theme.of(context).colorScheme.error,
               ),
             ),
+          ),
+        _MountedPlanContributions(
+          contributions: projection.planContributions,
+          rowPadding: presentation.rowPadding,
+        ),
+      ],
+    );
+  }
+}
+
+/// What the mounted native plan contributes to this client's interface.
+///
+/// The values come from the registry that mounted one plan revision, so a
+/// contribution the native host refused never reaches here. Each one is rendered
+/// by the compiled primitive it names ([HostPrimitiveView]); a primitive this
+/// build did not compile cannot be in the list, because the registry refuses it
+/// before mounting.
+class _MountedPlanContributions extends StatelessWidget {
+  const _MountedPlanContributions({
+    required this.contributions,
+    required this.rowPadding,
+  });
+
+  final List<MountedContribution> contributions;
+  final EdgeInsetsGeometry rowPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    if (contributions.isEmpty) return const SizedBox.shrink();
+    return Column(
+      key: const Key('settings-plan-contributions'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final contribution in contributions)
+          Padding(
+            key: Key('settings-plan-contribution-${contribution.id}'),
+            padding: EdgeInsets.fromLTRB(
+              rowPadding.resolve(Directionality.of(context)).left,
+              0,
+              rowPadding.resolve(Directionality.of(context)).right,
+              LicoContentSpacing.item,
+            ),
+            child: HostPrimitiveView(contribution: contribution),
           ),
       ],
     );
@@ -888,65 +949,66 @@ class _ReduceMotionSetting extends StatelessWidget {
   });
 
   final SettingsBinding binding;
-  final bool manualReduced;
+  final ReduceMotionPreference manualReduced;
 
   @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
-    final systemManaged = Theme.of(context).platform == TargetPlatform.macOS;
     final colors = context.licoColors;
-    final effectiveReduced = MediaQuery.disableAnimationsOf(context);
-    final title = strings.isChinese ? '减少动态效果' : 'Reduce motion';
-    final icon = Icon(
-      Icons.motion_photos_off_outlined,
-      size: 18,
-      color: colors.textSecondary,
+    final presentation = layoutSettingsPresentationOf(context);
+    final titleStyle = Theme.of(context).textTheme.titleSmall?.copyWith(
+      color: colors.text,
+      fontWeight: FontWeight.w600,
     );
-    return Material(
-      type: MaterialType.transparency,
-      child: systemManaged
-          ? Semantics(
-              toggled: effectiveReduced,
-              readOnly: true,
-              child: ListTile(
-                key: const Key('settings-reduce-motion'),
-                contentPadding: layoutSettingsPresentationOf(
-                  context,
-                ).rowPadding,
-                leading: icon,
-                title: Text(title, style: TextStyle(color: colors.text)),
-                subtitle: Text(
-                  strings.isChinese
-                      ? '${effectiveReduced ? '开启' : '关闭'} · 由系统控制'
-                      : '${effectiveReduced ? 'On' : 'Off'} · Managed by system',
-                  style: TextStyle(color: colors.textSecondary),
-                ),
-                trailing: Icon(
-                  effectiveReduced
-                      ? Icons.check_circle_outline
-                      : Icons.remove_circle_outline,
-                  size: 20,
-                  color: effectiveReduced
-                      ? colors.primaryStrong
-                      : colors.textMuted,
-                ),
+    final segments = [
+      (value: ReduceMotionPreference.system, label: strings.followSystem),
+      (value: ReduceMotionPreference.on, label: strings.reduceMotionOn),
+      (value: ReduceMotionPreference.off, label: strings.reduceMotionOff),
+    ];
+    final toggle = SettingsSegmentedControl<ReduceMotionPreference>(
+      key: const Key('settings-reduce-motion'),
+      segments: segments,
+      selected: manualReduced,
+      onChanged: (value) =>
+          binding.intents.send(SetReduceMotionPreference(value)),
+    );
+    return Padding(
+      padding: presentation.rowPadding,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 560;
+          final titleRow = Row(
+            children: [
+              Icon(
+                Icons.motion_photos_off_outlined,
+                size: 18,
+                color: colors.textSecondary,
               ),
-            )
-          : SwitchListTile.adaptive(
-              key: const Key('settings-reduce-motion'),
-              contentPadding: layoutSettingsPresentationOf(context).rowPadding,
-              secondary: icon,
-              title: Text(title),
-              subtitle: Text(
-                strings.isChinese
-                    ? '系统设置始终生效'
-                    : 'System preferences always apply',
+              const SizedBox(width: LicoContentSpacing.compact),
+              Expanded(
+                child: Text(strings.reduceMotionTitle, style: titleStyle),
               ),
-              activeTrackColor: colors.primaryStrong,
-              value: manualReduced,
-              onChanged: (value) =>
-                  binding.intents.send(SetReduceMotionPreference(value)),
-            ),
+            ],
+          );
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                titleRow,
+                const SizedBox(height: LicoContentSpacing.compact),
+                toggle,
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: titleRow),
+              const SizedBox(width: LicoContentSpacing.item),
+              toggle,
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -1000,6 +1062,69 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
     }
   }
 
+  bool _canRelocateDataHome(BuildContext context) =>
+      (widget.inputs.portableDataSource == 'saved' ||
+          widget.inputs.portableDataSource == 'defaultHome') &&
+      _supportsDesktopDataHome(Theme.of(context).platform);
+
+  bool _canCleanPreviousDataHome(BuildContext context) =>
+      widget.inputs.previousDataHomeAvailable &&
+      (widget.inputs.portableDataSource == 'saved' ||
+          widget.inputs.portableDataSource == 'defaultHome') &&
+      _supportsDesktopDataHome(Theme.of(context).platform);
+
+  Future<void> _chooseDataHomeDestination(BuildContext context) async {
+    final strings = LicoStrings.of(context);
+    final destination = await getDirectoryPath(
+      confirmButtonText: strings.chooseDataHomeDestination,
+    );
+    if (destination == null || !mounted || !context.mounted) return;
+    final folder = p.basename(p.normalize(destination));
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(strings.confirmDataHomeMove),
+        content: Text(strings.dataHomeMoveConfirmation(folder)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(strings.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(strings.move),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    widget.binding.intents.send(RelocateDataHome(destination));
+  }
+
+  Future<void> _confirmPreviousDataHomeCleanup(BuildContext context) async {
+    final strings = LicoStrings.of(context);
+    final path = widget.inputs.previousDataHomePath;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(strings.confirmPreviousDataHomeCleanup),
+        content: Text(strings.dataHomeCleanupConfirmation(path)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(strings.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(strings.cleanPreviousDataHome),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    widget.binding.intents.send(CleanupPreviousDataHome(path));
+  }
+
   @override
   void dispose() {
     _snapshotRootController.dispose();
@@ -1014,6 +1139,7 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         LicoSectionHeader(
+          key: const Key('settings-section-header-storage'),
           title: strings.storageAndData,
           leading: Icon(
             Icons.inventory_2_outlined,
@@ -1026,6 +1152,7 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
           title: strings.portableData,
           label: strings.portableData,
           path: widget.inputs.portableDataPath,
+          subtitle: strings.dataHomeSource(widget.inputs.portableDataSource),
           icon: Icons.folder_outlined,
           readOnly: true,
           padding: presentation.rowPadding,
@@ -1038,6 +1165,52 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
             );
             return Future<void>.value();
           },
+        ),
+        Padding(
+          padding: presentation.rowPadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(strings.moveDataHomeDescription),
+              const SizedBox(height: 10),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: FilledButton.icon(
+                  key: const Key('settings-data-home-relocate'),
+                  onPressed: _canRelocateDataHome(context)
+                      ? () => unawaited(_chooseDataHomeDestination(context))
+                      : null,
+                  icon: const Icon(Icons.drive_file_move_outline),
+                  label: Text(strings.moveDataHome),
+                ),
+              ),
+              if (!_canRelocateDataHome(context)) ...[
+                const SizedBox(height: 6),
+                Text(
+                  strings.dataHomeMoveRequiresSavedSelection,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+              if (widget.inputs.previousDataHomeAvailable) ...[
+                const SizedBox(height: 12),
+                Text(
+                  strings.dataHomePreviousRootRetained(
+                    widget.inputs.previousDataHomePath,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: const Key('settings-data-home-cleanup-previous'),
+                  onPressed: _canCleanPreviousDataHome(context)
+                      ? () =>
+                            unawaited(_confirmPreviousDataHomeCleanup(context))
+                      : null,
+                  icon: const Icon(Icons.delete_outline),
+                  label: Text(strings.cleanPreviousDataHome),
+                ),
+              ],
+            ],
+          ),
         ),
         DirectoryPathField(
           title: strings.conversationArchiveRoot,
@@ -1057,18 +1230,9 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
             );
             return Future<void>.value();
           },
-          headerTrailing: IconButton(
-            tooltip: strings.refreshArchiveRoot,
-            onPressed: () {
-              widget.binding.intents.send(
-                const RefreshConversationSnapshotLocation(),
-              );
-            },
-            icon: const Icon(Icons.refresh_outlined, size: 18),
-          ),
           actions: [
             SizedBox(
-              height: 38,
+              height: settingsControlHeight,
               child: FilledButton.icon(
                 onPressed: widget.inputs.savingSnapshotRoot
                     ? null
@@ -1171,11 +1335,11 @@ String _appearancePresetIdForBrightnessSelection(
   AppearanceBrightnessSelection.light =>
     _appearancePreset(currentId, presets)?.mode == SettingsAppearanceMode.light
         ? currentId
-        : AppearancePresetIds.licoMistLight,
+        : AppearancePresetIds.taroWaffle,
   AppearanceBrightnessSelection.dark =>
     _appearancePreset(currentId, presets)?.mode == SettingsAppearanceMode.dark
         ? currentId
-        : AppearancePresetIds.licoMist,
+        : AppearancePresetIds.starlitGold,
 };
 
 List<SettingsAppearancePresetProjection>

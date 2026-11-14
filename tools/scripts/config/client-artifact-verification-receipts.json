@@ -6,14 +6,11 @@
   "producerPolicy": "same-closure-approved-producer-invocation",
   "maxClockSkewMs": 5000,
   "sourceRoots": [
-    "Cargo.toml",
-    "Cargo.lock",
     "package.json",
     "package-lock.json",
-    "crates/licoup-native",
-    "crates/licoup-mcp",
     "apps/desktop",
     "packages/protocols",
+    "schemas/client_bridge",
     "tools"
   ],
   "targets": {
@@ -27,16 +24,19 @@
       "evidenceArtifactKind": "macos-app-bundle",
       "evidenceArtifactRef": "build/apps/desktop/runnable/macos/release/LicoUp.app",
       "evidenceArtifactDigestKind": "tree",
-      "evidenceRef": "build/reports/secure-mesh-macos-capabilities.json",
-      "evidenceSchemaVersion": "licomesh.secure-mesh.macos-adaptive-capabilities-receipt.v3",
-      "evidenceProducer": "tools/scripts/client-secure-mesh-macos-capabilities.mjs",
+      "evidenceRef": "build/reports/client-macos-consumer-verification.json",
+      "evidenceSchemaVersion": "licomesh.client.macos-consumer-verification.v1",
+      "evidenceProducer": "tools/scripts/client-macos-consumer-verification.mjs",
       "evidenceProducerField": "verifier",
       "freshnessKind": "generated-at",
       "consumerVerificationPolicy": "provenance-or-verifiable-signature",
       "evidenceInvocation": {
-        "script": "tools/scripts/client-secure-mesh-macos-capabilities.mjs",
-        "args": [],
-        "timeoutMs": 180000
+        "script": "tools/scripts/client-macos-consumer-verification.mjs",
+        "args": [
+          "--report",
+          "{evidenceRef}"
+        ],
+        "timeoutMs": 240000
       }
     }
   }

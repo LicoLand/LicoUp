@@ -41,7 +41,7 @@ LicoUp is structured across **Horizontal Platform Tiers** and **Vertical Domain 
 1. **Tier 1: Flutter Presentation / Shell Layer** — Pure user appearance, navigation, and interaction views without core business processing logic (any legacy processing logic will be progressively decoupled downward).
 2. **Tier 2: Bridging Contract / RPC Protocol Layer** — Bidirectional communication contract between Flutter and Rust (`licoup.stdio.v1` structured method frames and mobile platform FFI commands), strictly precluding raw CLI argument array pass-through.
 3. **Tier 3: Rust Functional Core & Infrastructure Layer** — Explicitly bifurcated into:
-   - **Rust Domain Core**: Hosts `Canonical Conversation` (dispatch door & turn host), `Adaptive Flywheel` (strategy graphs and route selection), and `Agent Adapters & Runtime` (registry-listed agent vendor protocols and dispatch).
+   - **Rust Domain Core**: Hosts `Canonical Conversation` (dispatch door & turn host), `Acativa` (strategy graphs and route selection), and `Agent Adapters & Runtime` (registry-listed agent vendor protocols and dispatch).
    - **Rust Infrastructure & External Boundary Gateway**: Serves as the clear boundary between internal domain logic and the external physical world, encompassing **Database Storage (SQLite WAL)**, **Dynamic Configuration**, **Secret & Key Custody Facade (Layered atop Native OS)**, **Network & Transport**, and **PTY / TTY & Subprocess Management**.
 4. **Tier 4: Native OS / System Adaptation Layer** — Low-level operating system and platform script/API adaptations (macOS Keychain/PTY/launchd; Windows WinCred/ConPTY/PowerShell; Linux Secret Service/XDG; Android JNI/Keystore/SAF; iOS Secure Enclave/FaceID, etc.).
 
@@ -67,7 +67,7 @@ flowchart TB
     subgraph LAYER3["3. Rust Functional Core & Infrastructure Layer"]
         subgraph DOMAIN_BOX["Rust Domain Core"]
             CONVERSATIONS["Canonical Conversation Domain<br/>Sole Durable Chat Authority · Memberships · Dispatch Door · Turn Host"]
-            STRATEGIES["Adaptive Flywheel Strategy Domain<br/>Immutable Graphs · Route Selection · Durable Runs"]
+            STRATEGIES["Acativa Strategy Domain<br/>Immutable Graphs · Route Selection · Durable Runs"]
             AGENTS["Agent Adapters & Runtime<br/>ACP · app-server · RPC · CLI · Packaged Agent Drivers (registry-listed)"]
         end
 
@@ -114,7 +114,7 @@ flowchart TB
 | **Tier 1: Flutter Presentation Layer** | Flutter User Interface (Shell / UI) | Navigation, views, user interactions, visual styling, and security summaries. Must not contain core business processing logic. |
 | **Tier 2: Bridging Contract Layer** | RPC / FFI Communication Contract | Governs Flutter ↔ Rust contract. Desktop uses `licoup.stdio.v1` structured method frames, mobile uses C-ABI FFI commands; strictly prohibits CLI argument array pass-through. |
 | **Tier 3: Rust Domain Core** | Canonical Conversation Domain | Sole durable authority for direct/group chat, Human/Agent Memberships, structured Events, and Membership-scoped dispatch; native runtime locations stay private. |
-| | Adaptive Flywheel Strategy Domain | Immutable package revisions, JSON Graph validation, bindings, exact authorization, durable run reduction, and bounded effect scheduling independent from Conversation history. |
+| | Acativa Strategy Domain | Immutable package revisions, JSON Graph validation, bindings, exact authorization, durable run reduction, and bounded effect scheduling independent from Conversation history. |
 | | Agent Adapters & Runtime | Translates the registry-listed local agent interfaces (ACP, app-server, CLI, RPC) and discovered VM protocol connections. |
 | **Tier 3: Rust Infrastructure Layer** | Database Storage (SQLite WAL) | Sole persistence engine providing ACID transactions, typed migrations, and compound indexed query access. |
 | | Dynamic Configuration System | Runtime config parsing, dynamic reload/perception, deterministic precedence (CLI > Env > Manifest > Platform defaults). |
@@ -155,11 +155,13 @@ To maintain clarity across the four primary architectural tiers, detailed domain
 | **Canonical Conversation Vertical** | Vertical Slice (Tiers 1 ~ 4) | [CONVERSATION-DOMAIN.md](CONVERSATION-DOMAIN.md) | Bidirectional binding, direct chat base with group orchestration encapsulation, state machine & end-to-end flows |
 | **Agent Adapters & Runtime Architecture** | Tier 3: Rust Functional Core | [AGENT-ADAPTERS-ARCHITECTURE.md](AGENT-ADAPTERS-ARCHITECTURE.md) | Registry-derived driver taxonomy, standard protocols (ACP/RPC/PTY) vs proprietary (Codex/OpenCode) normalization |
 | **Rust Infrastructure & Boundaries** | Tier 3: Infra & Boundary Gateway | [RUST-INFRASTRUCTURE-LAYER.md](RUST-INFRASTRUCTURE-LAYER.md) | Database (SQLite WAL), dynamic config, secret custody facade, transport, PTY/TTY |
-| **Adaptive Flywheel** | Tier 3: Rust Functional Core | [ADAPTIVE-FLYWHEEL.md](../functionality/ADAPTIVE-FLYWHEEL.md) | Immutable Graph revisions, route selection, and durable run reduction |
+| **Acativa** | Tier 3: Rust Functional Core | [ACATIVA.md](../functionality/ACATIVA.md) | Immutable Graph revisions, route selection, and durable run reduction |
 | **Subagent MCP** | External Protocol Adapter | [subagent-mcp.md](../protocols/subagent-mcp.md) | Independently built MCP process exposing the remote-approved Subagents subset through the native CLI |
 | **Semantic Conversation** | Tier 3: Rust Functional Core | [semantic-conversation.md](../protocols/semantic-conversation.md) | Registry-listed agent protocol translations, native catalog discovery, and read-only replay |
 | **Security & Data Boundaries** | Tier 3: Rust Functional Core | [SECURITY-AND-DATA-BOUNDARY.md](SECURITY-AND-DATA-BOUNDARY.md) | VM discovery isolation, endpoint protection preview, platform secret custody, zero-trust data |
-| **Platform System Bridges** | Tier 4: Native OS Adaptation | `crates/licoup-native/src/platform/` | Low-level OS APIs and system tooling for macOS, Windows, Linux, Android, iOS |
+| **Extension Platform** | Tier 3: Rust Functional Core | [EXTENSION-PLATFORM.md](EXTENSION-PLATFORM.md) | Extension contract, profiles, carrier, lifecycle, the kernel decision and the package compatibility list |
+| **Deployment Profiles** | Tier 3: Rust Functional Core | [DEPLOYMENT-PROFILES.md](DEPLOYMENT-PROFILES.md) | Installation profiles, install closure, per-capability ownership and the first-party package rule |
+| **Platform System Bridges** | Tier 4: Native OS Adaptation | `crates/licoup/src/platform/` (LicoUp-CLI) | Low-level OS APIs and system tooling for macOS, Windows, Linux, Android, iOS |
 
 ---
 
@@ -168,19 +170,19 @@ To maintain clarity across the four primary architectural tiers, detailed domain
 | Path | Purpose |
 |:---|:---|
 | `apps/desktop/` | Flutter desktop and mobile client (Tier 1 and parts of Tier 2) |
-| `crates/licoup-native/` | Rust client core, commands, and platform bridges (Tier 3 and Tier 4) |
-| `crates/licoup-workflow/` | Pure workflow definition, diagnostics, compiler indexes and transition machine |
-| `crates/licoup-conversation/` | Canonical Conversation domain crate (workspace member; extraction in progress) |
-| `crates/licoup-agent-runtime/` | Agent Runtime and adapter crate (workspace member; extraction in progress) |
-| `crates/licoup-platform-bridges/` | Native platform ABI and handle management (Tier 4) |
-| `crates/licoup-endpoint-core/` | Endpoint identity, key custody, crypto foundations |
-| `crates/licoup-protocol-bindings/` | Fixed-input admission for the LicoArc Candidate (verification by the LicoArc SDK) |
-| `crates/licoup-client-state/` | Client state management contracts |
-| `crates/licoup-agent-adapters/` | Agent adapter trait definitions |
-| `crates/lico-catalog-convergence/` | Catalog convergence logic |
-| `packages/contracts/client/` | Client-owned schemas (Tier 2) |
+| `packages/` | Client-owned package tooling and contracts (Tier 2) |
+| `schemas/client_bridge/` | Desktop-owned client bridge contract schemas |
 | `tests/` | Contract and boundary tests with synthetic data |
 | `tools/` | Reusable build and validation tools |
+| `docs/` | Architecture, functionality, protocol and workflow documentation |
+
+The Rust workspace — `crates/licoup/` (Rust client core, commands and
+platform bridges, Tiers 3 and 4) plus the gateway, workflow, conversation,
+agent-runtime, platform-bridge, endpoint-core, protocol-binding, client-state,
+adapter and convergence crates — lives in the
+[LicoUp-CLI](https://github.com/LicoLand/LicoUp-CLI) component repository.
+This repository consumes its delivered binaries and package payloads; it does
+not carry or build Rust sources.
 
 Plans, temporary scripts, local skills, raw evidence, and runtime data belong to local working materials and do not enter public source.
 
@@ -197,9 +199,9 @@ Plans, temporary scripts, local skills, raw evidence, and runtime data belong to
 |:---|:---|:---|:---|
 | **Application orchestrator breadth** | Medium | `apps/desktop/lib/src/application/controller/` | `ClientController` remains an internal, Flutter-free lifetime/orchestration aggregate. Renderers cannot import it; feature-local composition exposes only semantic bindings. |
 | **Mixin abuse as decomposition** | High | `application/controller/`, `application/features/agents/conversation/` | All 24 mixins in the app sit on a single inheritance chain; shared `this` means no encapsulation. |
-| **Monolithic Rust crate** | High | `crates/licoup-native/` (~299K lines) | `domain/` has 48 entries, `core/` 52, `platform/` 85 (72K lines). Compilation slow, boundaries unclear. Largest files: `client_conversation/store.rs` (6.6K lines), `ffi/commands/mod.rs` (5.2K). |
+| **Monolithic Rust crate** | High | `crates/licoup/` (~299K lines, LicoUp-CLI) | `domain/` has 48 entries, `core/` 52, `platform/` 85 (72K lines). Compilation slow, boundaries unclear. Largest files: `client_conversation/store.rs` (6.6K lines), `ffi/commands/mod.rs` (5.2K). |
 | **Contracts layer bloat** | Medium | `apps/desktop/lib/src/contracts/` (93 files, 15.7K lines) | Mixes models, interfaces, parsing logic, and generated code in one layer. |
-| **Large Flutter surfaces** | Medium | `frontend/features/` | The former 2.6K-line Canonical pane is split into focused files (largest leaf: 572 lines). Remaining large feature files include `adaptive_flywheel_multi_capsule_section.dart` (1626), `settings_panel.dart` (1184), `agent_conversation_composer_capsules.dart` (1135), and `agent_conversation_workspace.dart` (1132). |
+| **Large Flutter surfaces** | Medium | `frontend/features/` | The former 2.6K-line Canonical pane is split into focused files (largest leaf: 572 lines). Remaining large feature files include `acativa_multi_capsule_section.dart` (1626), `settings_panel.dart` (1184), `agent_conversation_composer_capsules.dart` (1135), and `agent_conversation_workspace.dart` (1132). |
 
 ### Native boundary migration
 
@@ -310,7 +312,7 @@ tokens, layout, motion, Conversation authority, or wire behavior.
 
 #### Foundational Principle: CLI is the Product, Flutter is a Display Adapter
 
-The Rust native host (`licoup-cli`) is a **complete semantic client** that runs independently
+The Rust native host (`licoup`) is a **complete semantic client** that runs independently
 of any UI. It owns all conversation state, agent runtime, persistence, authorization, and
 protocol execution. Flutter's sole responsibility is to **send user events** and **faithfully
 render projected state**. Flutter contains zero business logic.
@@ -360,13 +362,22 @@ and cannot wait for a replacement frame. Control latency and causal measurements
 [the native interaction boundary](CLIENT-NATIVE-INTERACTION.md). These are migration
 requirements, not claims that the current frontend already implements them.
 
-#### Rust Crates (Target Decomposition)
+#### Rust Crates (Target Decomposition, LicoUp-CLI repository)
 
 ```
 crates/
-├── licoup-native/              # Host binary + FFI entry points
-│   ├── src/bin/                # licoup-cli, lico-gateway, lico-agent, etc.
+├── licoup/              # Host binary + FFI entry points
+│   ├── src/bin/                # licoup: the single shipped binary
+│   │   │                     # (agent run / migrate / gateway run are
+│   │   │                     #  process entries, not executables)
 │   └── src/ffi/                # Mobile platform FFI (Android/iOS)
+├── licoup-private-gateway/     # Private Gateway Runtime: loopback model server
+│   │                           # the gateway service runs inside licoup
+│   └── package/                # The release source the host installs as a package
+├── licoup-public-gateway/      # Public gateway: MCP engine + optional services, Telegram channel
+│   ├── entry/src/bin/          # The channel package's program: lico-telegram-channel
+│   └── package*/               # The release sources the host installs as packages
+├── licoup-vault/               # Gateway credential lease, handoff and vault port contracts
 ├── licoup-conversation/        # L3: Conversation domain (state machine, events, projections)
 ├── licoup-workflow/            # Pure workflow compiler and transition machine
 ├── licoup-agent-runtime/       # L4+L5: Agent adapters + settlement arbiter
@@ -374,6 +385,7 @@ crates/
 ├── licoup-protocol-bindings/   # L2: Fixed-input admission for the LicoArc Candidate
 ├── licoup-client-state/        # Client state management (quotas, persistence)
 ├── licoup-platform-bridges/    # OS-specific bridges (Keychain, WinCred, etc.)
+├── licoup-agent-adapter-sdk/   # Shared adapter contract, registry, replay harness, parser lifecycle
 ├── licoup-agent-adapters/      # Agent adapter trait definitions
 └── lico-catalog-convergence/   # Catalog management
 ```
@@ -383,7 +395,12 @@ crates/
   Projection emission. Source-agnostic (handles local and future remote events identically).
 - `licoup-agent-runtime` owns L4+L5: adapter dispatch, protocol translation, settlement.
   Adapters REPORT signals; settlement DECIDES outcomes.
-- `licoup-native` remains the binary host that composes these crates.
+- `licoup` remains the binary host that composes these crates. It declares
+  no gateway program: the runtime's programs belong to the optional packages
+  (`licoup-private-gateway/entry`, `licoup-public-gateway/entry`), and the host
+  reaches a running runtime only through the lane, vault and readiness ports
+  installed for it. A client build that never installs the packages carries
+  neither the runtime nor its listeners.
 - Crate boundaries enforce: conversation logic cannot depend on adapter details, and
   adapters cannot decide conversation outcomes.
 
@@ -455,8 +472,8 @@ this document.
 
 3. **Rust crate extraction** — `licoup-conversation` and
    `licoup-agent-runtime` are workspace members; continue extracting L3 from
-   `licoup-native/src/domain/` and L4+L5 from `licoup-native/src/platform/`
-   into them, and reduce `licoup-native` to the binary host + FFI shell.
+   `licoup/src/domain/` and L4+L5 from `licoup/src/platform/`
+   into them, and reduce `licoup` to the binary host + FFI shell.
 
 The legacy directory tree, the architecture verifier allowlist, and the target
 tree must switch atomically per migrated feature; a false "done" claim in either

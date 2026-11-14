@@ -2,10 +2,10 @@
 
 // Generates the signed LicoUp-update-manifest.json release asset that
 // clients verify against the bundled public keys
-// (crates/licoup-native/resources/client-update-public-keys.json) before
+// (tools/client-update-public-keys.json) before
 // selecting an update artifact. The manifest schema is
-// v0.0.1:client-update:manifest-2 and the signatures must match the Rust
-// canonical stable-stringify used by crates/licoup-native.
+// v0.0.1:client-update:manifest-2 and the signatures must match the
+// canonical stable-stringify used by the client runtime.
 
 import {
   createHash,
@@ -41,18 +41,14 @@ const MAX_MANIFEST_BYTES = 1024 * 1024;
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const bundledPublicKeysPath = path.join(
   repoRoot,
-  "crates",
-  "licoup-native",
-  "resources",
+  "tools",
   "client-update-public-keys.json",
 );
 const MACOS_APPLICATION_NAME = "LicoUp.app";
 const MACOS_BUNDLE_ID = "land.lico.licoup";
 const migrationFrontierPath = path.join(
   repoRoot,
-  "crates",
-  "licoup-native",
-  "resources",
+  "tools",
   "client-state-migration-frontier.json",
 );
 

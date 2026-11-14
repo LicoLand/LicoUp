@@ -211,12 +211,17 @@ export function preparePortableManifest(
 }
 
 export function writeBundleNotes(config, selected, bundle, options) {
+  const cliRef = options.platform === "macos"
+    ? "licoup"
+    : options.platform === "windows"
+      ? "helpers\\licoup.exe"
+      : "helpers/licoup";
   const lines = [
     `LicoUp ${options.platform} Client Bundle`,
     "",
     "Run the Flutter desktop frontend from this bundle.",
     "The frontend resolves licoup as its LicoUp client sidecar.",
-    "Run licoup for command-line operations against the same system data workspace.",
+    `Run ${cliRef} for command-line operations against the same system data workspace.`,
     "",
     "Enabled modules:",
     ...selected.map((item) => `- ${item.id}: ${item.label || item.id}`),

@@ -12,7 +12,6 @@ const repoRoot = path.resolve(
 const facadeRef = "tools/scripts/client-release-acceptance.mjs";
 const moduleRoot = "tools/scripts/client-release-acceptance";
 const leaves = Object.freeze([
-  "artifacts/android.mjs",
   "artifacts/digests.mjs",
   "artifacts/helpers.mjs",
   "artifacts/macos.mjs",
@@ -22,16 +21,13 @@ const leaves = Object.freeze([
   "artifacts/stability.mjs",
   "cli.mjs",
   "constants.mjs",
-  "evidence.mjs",
   "load-reports.mjs",
   "preflight.mjs",
   "privacy.mjs",
   "reduce.mjs",
   "refs.mjs",
-  "report-deps.mjs",
   "run.mjs",
   "sanitize-binding.mjs",
-  "self-test/fixtures.mjs",
   "self-test/runner.mjs",
   "support-matrix.mjs",
   "targets.mjs",
@@ -133,7 +129,7 @@ test("client release acceptance facade is a thin serial CLI entry", async () => 
   assert.equal(typeof module.runClientReleaseAcceptanceCli, "function");
 });
 
-test("client release acceptance owns exactly twenty-six bounded ordinary modules", async () => {
+test("client release acceptance owns exactly twenty-two bounded ordinary modules", async () => {
   assert.deepEqual(await collectModules(moduleRoot), [...leaves]);
   const source = await sources();
   for (const leaf of Object.keys(source)) {
@@ -184,5 +180,5 @@ test("release acceptance self-test dry-run preserves fail-closed contracts", () 
   assert.equal(result.status, 0, result.stderr || result.stdout.slice(0, 400));
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.ok, true);
-  assert.equal(payload.caseCount, 42);
+  assert.equal(payload.caseCount, 30);
 });

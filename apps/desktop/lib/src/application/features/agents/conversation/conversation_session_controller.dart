@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:path/path.dart' as p;
 
 import 'package:licoup/src/application/features/agents/conversation/agent_conversation_read_only_policy.dart';
-import 'package:licoup/src/application/features/agents/conversation/conversation_mobile_session_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_session_state_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
@@ -17,10 +16,7 @@ const int _conversationMessagePageSize = 20;
 
 /// Desktop history paging plus user-driven session and agent selection.
 mixin AgentConversationSessionController
-    on
-        AgentWorkspaceCoordinator,
-        AgentConversationSessionStateController,
-        AgentConversationMobileSessionController {
+    on AgentWorkspaceCoordinator, AgentConversationSessionStateController {
   Future<void>? _groupHydration;
   int _groupHydrationGeneration = -1;
 
@@ -179,7 +175,7 @@ mixin AgentConversationSessionController
       canApplyConversationRequest(agentId, sequence);
 
   @override
-  Future<void> refreshConversationCatalogInternal(
+  Future<bool> refreshConversationCatalogInternal(
     String agentId, {
     required bool foreground,
   }) async {
@@ -187,12 +183,12 @@ mixin AgentConversationSessionController
       if (foreground) {
         await refreshGroupConversationSessions();
       }
-      return;
+      return false;
     }
     if (agentId.isEmpty ||
         agentWorkspaceMobileRuntime ||
         conversationSessionLoadingTargets.contains(agentId)) {
-      return;
+      return false;
     }
     final activeKey = (
       agentId: agentId,
@@ -200,10 +196,18 @@ mixin AgentConversationSessionController
     );
     if (foreground) {
       if (!conversationActiveRefreshTargets.add(activeKey)) {
-        return;
+        return false;
       }
     } else if (!conversationBackgroundRefreshTargets.add(agentId)) {
-      return;
+      return false;
+    }
+    if (!foreground &&
+        !conversationSessionsByAgent.containsKey(agentId) &&
+        !agentWorkspaceDisposed) {
+      // The row skeleton covers background catalog loads too — publish the
+      // loading target so the native catalog projection marks the Agent.
+      agentWorkspaceNotifyConversationStructureChanged(activeChanged: false);
+      agentWorkspaceNotifyStateChanged();
     }
 
     final sequence = beginConversationRequest();
@@ -214,9 +218,9 @@ mixin AgentConversationSessionController
         pageSize: conversationSessionPageSize,
       );
       if (!_canApplyAgentBrowseRequest(agentId, sequence)) {
-        return;
+        return false;
       }
-      conversationCommitCatalog(
+      return conversationCommitCatalog(
         agentId,
         page,
         replaceAll: false,
@@ -225,17 +229,27 @@ mixin AgentConversationSessionController
     } catch (_) {
       // Timer-driven refresh is silent. A later foreground request may repair
       // the stale local projection.
+      return false;
     } finally {
       if (foreground) {
         conversationActiveRefreshTargets.remove(activeKey);
       } else {
         conversationBackgroundRefreshTargets.remove(agentId);
+        if (!conversationSessionsByAgent.containsKey(agentId) &&
+            !agentWorkspaceDisposed) {
+          // A failed first-page refresh leaves no catalog commit to repaint
+          // the row — clear the skeleton explicitly.
+          agentWorkspaceNotifyConversationStructureChanged(
+            activeChanged: false,
+          );
+          agentWorkspaceNotifyStateChanged();
+        }
       }
     }
   }
 
   @override
-  Future<void> refreshActiveConversationSessionInternal(
+  Future<bool> refreshActiveConversationSessionInternal(
     String agentId,
     String sessionId,
   ) async {
@@ -244,11 +258,11 @@ mixin AgentConversationSessionController
           groupNativeSessions.resolve(agentId, sessionId) != null) {
         await _loadSelectedConversationMessagePage(earlier: false);
       }
-      return;
+      return false;
     }
     final key = (agentId: agentId, sessionId: sessionId);
     if (!conversationActiveRefreshTargets.add(key)) {
-      return;
+      return false;
     }
     final sequence = beginConversationRequest();
     var exactSessionFound = false;
@@ -269,11 +283,11 @@ mixin AgentConversationSessionController
         }
       }
       if (refreshed == null) {
-        return;
+        return false;
       }
       exactSessionFound = true;
       if (!_canApplyAgentBrowseRequest(agentId, sequence)) {
-        return;
+        return false;
       }
       final previous = conversationSessionsByAgent[agentId] ?? const [];
       final refreshedNativeSessionId = refreshed.nativeSessionId.trim();
@@ -290,12 +304,12 @@ mixin AgentConversationSessionController
           refreshed,
         );
       }
-      if (!_canApplyAgentBrowseRequest(agentId, sequence)) return;
+      if (!_canApplyAgentBrowseRequest(agentId, sequence)) return false;
       final next = insertConversationSessionByUpdatedAt(previous, refreshed);
       if (conversationSessionListsEquivalent(previous, next)) {
-        return;
+        return false;
       }
-      conversationCommitCatalog(
+      return conversationCommitCatalog(
         agentId,
         ConversationSessionPage(
           sessions: next,
@@ -306,6 +320,7 @@ mixin AgentConversationSessionController
       );
     } catch (_) {
       // Exact-session refresh is best effort. The catalog lane repairs misses.
+      return false;
     } finally {
       conversationActiveRefreshTargets.remove(key);
       if (!exactSessionFound &&
@@ -431,10 +446,7 @@ mixin AgentConversationSessionController
       return;
     }
     final normalized = agentId.trim();
-    if (agentWorkspaceMobileRuntime) {
-      await loadMoreMobileConversationSessions(normalized);
-      return;
-    }
+    if (agentWorkspaceMobileRuntime) return;
     if (normalized.isEmpty ||
         isLoadingConversations ||
         conversationSessionLoadMoreTargets.contains(normalized) ||
@@ -692,28 +704,15 @@ mixin AgentConversationSessionController
     try {
       final before = earlier ? previous!.messagePage.nextBefore : '';
       final AgentConversationSession incoming;
-      if (agentWorkspaceMobileRuntime) {
-        final described = await describeMobileConversationSession(
-          agentId,
-          childSessionId,
-          messageBefore: before,
-          messageLimit: _conversationMessagePageSize,
-        );
-        if (described == null) {
-          throw const FormatException('native_history_session_not_found');
-        }
-        incoming = described;
-      } else {
-        final page = await readConversationSessionPage(
-          agentId,
-          sessionId: childSessionId,
-          offset: 0,
-          pageSize: 1,
-          messageBefore: before,
-          messageLimit: _conversationMessagePageSize,
-        );
-        incoming = page.sessions.single;
-      }
+      final page = await readConversationSessionPage(
+        agentId,
+        sessionId: childSessionId,
+        offset: 0,
+        pageSize: 1,
+        messageBefore: before,
+        messageLimit: _conversationMessagePageSize,
+      );
+      incoming = page.sessions.single;
       if (agentWorkspaceDisposed ||
           selectedConversationChildHistoryScope != scope) {
         return;
@@ -769,28 +768,15 @@ mixin AgentConversationSessionController
         previous.messagePage.endExclusive < latest.messagePage.start) {
       final before = latest.messagePage.nextBefore;
       final AgentConversationSession earlier;
-      if (agentWorkspaceMobileRuntime) {
-        final described = await describeMobileConversationSession(
-          agentId,
-          latest.nativeSessionId,
-          messageBefore: before,
-          messageLimit: _conversationMessagePageSize,
-        );
-        if (described == null) {
-          throw const FormatException('native_history_session_not_found');
-        }
-        earlier = described;
-      } else {
-        final page = await readConversationSessionPage(
-          agentId,
-          sessionId: latest.nativeSessionId,
-          offset: 0,
-          pageSize: 1,
-          messageBefore: before,
-          messageLimit: _conversationMessagePageSize,
-        );
-        earlier = page.sessions.single;
-      }
+      final page = await readConversationSessionPage(
+        agentId,
+        sessionId: latest.nativeSessionId,
+        offset: 0,
+        pageSize: 1,
+        messageBefore: before,
+        messageLimit: _conversationMessagePageSize,
+      );
+      earlier = page.sessions.single;
       if (earlier.messagePage.start >= latest.messagePage.start) {
         throw const FormatException('native_history_message_page_gap');
       }
@@ -822,28 +808,15 @@ mixin AgentConversationSessionController
     final messageBefore = earlier ? selected.messagePage.nextBefore : '';
     try {
       final AgentConversationSession incoming;
-      if (agentWorkspaceMobileRuntime) {
-        final described = await describeMobileConversationSession(
-          agentId,
-          nativeSessionId,
-          messageBefore: messageBefore,
-          messageLimit: _conversationMessagePageSize,
-        );
-        if (described == null) {
-          throw const FormatException('native_history_session_not_found');
-        }
-        incoming = described;
-      } else {
-        final page = await readConversationSessionPage(
-          agentId,
-          sessionId: nativeSessionId,
-          offset: 0,
-          pageSize: 1,
-          messageBefore: messageBefore,
-          messageLimit: _conversationMessagePageSize,
-        );
-        incoming = page.sessions.single;
-      }
+      final page = await readConversationSessionPage(
+        agentId,
+        sessionId: nativeSessionId,
+        offset: 0,
+        pageSize: 1,
+        messageBefore: messageBefore,
+        messageLimit: _conversationMessagePageSize,
+      );
+      incoming = page.sessions.single;
       if (agentWorkspaceDisposed ||
           groupGeneration != groupNativeSessions.generation ||
           selectedConversationAgentId.trim() != agentId ||
@@ -942,13 +915,19 @@ mixin AgentConversationSessionController
     // the shared client-owned fallback.
     final draftDirectory =
         (newConversationWorkingDirectories[agent.target] ?? '').trim();
-    if (isBoundableConversationWorkingDirectory(draftDirectory)) {
+    if (isBoundableConversationWorkingDirectory(
+      draftDirectory,
+      dataHome: agentWorkspaceDataRoot,
+    )) {
       return draftDirectory;
     }
     if (!preparingNewConversation) {
       final sessionDirectory =
           selectedConversationSession?.workingDirectory.trim() ?? '';
-      if (isUsableLocalConversationWorkingDirectory(sessionDirectory)) {
+      if (isUsableLocalConversationWorkingDirectory(
+        sessionDirectory,
+        dataHome: agentWorkspaceDataRoot,
+      )) {
         return sessionDirectory;
       }
       // Same native identity may appear twice (turn projection + catalog).
@@ -961,7 +940,10 @@ mixin AgentConversationSessionController
             continue;
           }
           final directory = session.workingDirectory.trim();
-          if (isUsableLocalConversationWorkingDirectory(directory)) {
+          if (isUsableLocalConversationWorkingDirectory(
+            directory,
+            dataHome: agentWorkspaceDataRoot,
+          )) {
             return directory;
           }
         }
@@ -969,15 +951,22 @@ mixin AgentConversationSessionController
     }
     final historicalDirectory = historicalConversationWorkingDirectory(
       agentSessions,
+      dataHome: agentWorkspaceDataRoot,
     );
     if (historicalDirectory.isNotEmpty) {
       return historicalDirectory;
     }
     final remoteDirectory = agent.remoteWorkingDirectory.trim();
-    if (isUsableLocalConversationWorkingDirectory(remoteDirectory)) {
+    if (isUsableLocalConversationWorkingDirectory(
+      remoteDirectory,
+      dataHome: agentWorkspaceDataRoot,
+    )) {
       return remoteDirectory;
     }
-    return localConversationWorkingDirectoryFallback(agentId: agent.target);
+    return localConversationWorkingDirectoryFallback(
+      agentId: agent.target,
+      dataHome: agentWorkspaceDataRoot,
+    );
   }
 
   /// Local desktop agents may always rebind the next-turn working directory.
@@ -1061,16 +1050,23 @@ mixin AgentConversationSessionController
     }
     final existingDraft =
         (newConversationWorkingDirectories[agent.target] ?? '').trim();
-    if (isBoundableConversationWorkingDirectory(existingDraft)) {
+    if (isBoundableConversationWorkingDirectory(
+      existingDraft,
+      dataHome: agentWorkspaceDataRoot,
+    )) {
       return;
     }
     final selectedDirectory =
         selectedConversationSession?.workingDirectory.trim() ?? '';
     final previousWorkingDirectory =
-        isUsableLocalConversationWorkingDirectory(selectedDirectory)
+        isUsableLocalConversationWorkingDirectory(
+          selectedDirectory,
+          dataHome: agentWorkspaceDataRoot,
+        )
         ? selectedDirectory
         : historicalConversationWorkingDirectory(
             conversationSessionsByAgent[agent.target] ?? const [],
+            dataHome: agentWorkspaceDataRoot,
           );
     if (previousWorkingDirectory.isEmpty) {
       return;
@@ -1192,14 +1188,17 @@ mixin AgentConversationSessionController
       final cachedSessions =
           conversationSessionsByAgent[normalizedAgentId] ?? const [];
       final hasUsableWorkingDirectory = cachedSessions.any(
-        (session) =>
-            isUsableLocalConversationWorkingDirectory(session.workingDirectory),
+        (session) => isUsableLocalConversationWorkingDirectory(
+          session.workingDirectory,
+          dataHome: agentWorkspaceDataRoot,
+        ),
       );
       if (runtimeBound &&
           !hasUsableWorkingDirectory &&
           cachedSessions.any(
             (session) => isBoundableConversationWorkingDirectory(
               session.workingDirectory,
+              dataHome: agentWorkspaceDataRoot,
             ),
           )) {
         await loadConversationSessions(normalizedAgentId);
@@ -1264,8 +1263,9 @@ mixin AgentConversationSessionController
       return;
     }
     if (agentWorkspaceMobileRuntime) {
+      // The mobile runtime has no native history transport until the mobile
+      // clients adopt LicoArc pairing.
       stopConversationRefreshScheduling();
-      await loadMobileConversationSessions(normalizedAgentId);
       return;
     }
 
@@ -1408,6 +1408,13 @@ mixin AgentConversationSessionController
         !conversationBackgroundRefreshTargets.add(normalized)) {
       return;
     }
+    // The contact row shows its loading skeleton while this first page is in
+    // flight — silent warm still skips error/status writes, but the pending
+    // state itself is visible by design. The structure signal carries the
+    // loading target into the native catalog projection; state notify covers
+    // direct controller listeners.
+    agentWorkspaceNotifyConversationStructureChanged(activeChanged: false);
+    agentWorkspaceNotifyStateChanged();
     try {
       final page = await readConversationSessionPage(
         normalized,
@@ -1438,6 +1445,10 @@ mixin AgentConversationSessionController
       // first page through the ordinary selected-history path.
     } finally {
       conversationBackgroundRefreshTargets.remove(normalized);
+      // A failed warm leaves no catalog commit to repaint the row — clear the
+      // skeleton explicitly so the row falls back to its honest empty state.
+      agentWorkspaceNotifyConversationStructureChanged(activeChanged: false);
+      agentWorkspaceNotifyStateChanged();
     }
   }
 

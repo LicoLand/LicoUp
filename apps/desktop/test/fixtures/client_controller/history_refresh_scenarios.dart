@@ -1,3 +1,6 @@
+import 'package:licoup/src/application/features/agents/conversation/conversation_session_state_controller.dart'
+    show conversationSessionReadbackPendingSelectionId;
+
 import 'support/client_controller_scenario_dependencies.dart';
 import 'support/client_controller_scenario_json.dart';
 import 'support/fake_agent_service.dart';
@@ -817,6 +820,188 @@ void registerClientHistoryRefreshScenarios() {
       expect(controller.selectedConversationAgentId, 'opencode');
       expect(controller.selectedConversationSession, isNull);
       expect(controller.conversationSessionsByAgent['codex'], hasLength(1));
+    },
+  );
+
+  test('an empty session selection never starts an active-lane read', () async {
+    // An agent with no selected session must not re-list history on the
+    // 2 s active lane: only the catalog lane runs, on its own cadence.
+    final service = FakeAgentService();
+    final controller = ClientController(
+      agentService: service,
+      conversationRefreshPolicy: const ConversationRefreshPolicy(
+        activeInterval: Duration(milliseconds: 8),
+        warmInterval: Duration(milliseconds: 8),
+        backgroundInterval: Duration(milliseconds: 8),
+        activeCatalogInterval: Duration(milliseconds: 60),
+        warmCatalogInterval: Duration(milliseconds: 60),
+        backgroundCatalogInterval: Duration(milliseconds: 60),
+      ),
+    );
+    addTearDown(controller.dispose);
+    await controller.lifecycleController.initialize(sequentialSteps: const []);
+    controller.currentSection = ClientSection.agents;
+    controller.selectedConversationAgentId = 'codex';
+    service.conversationStreamCalls = 0;
+    service.conversationStdinRequests = const [];
+
+    controller.conversationAttentionContextChanged(immediateActive: true);
+    // ~200 ms covers ~25 would-be active reads but only ~3 catalog reads.
+    await _waitForHistoryRefresh(() => service.conversationStreamCalls >= 2);
+    await Future<void>.delayed(const Duration(milliseconds: 140));
+
+    expect(
+      controller.selectedConversationSessionId.trim(),
+      isEmpty,
+      reason: 'the fixture keeps no selection for an agent without history',
+    );
+    expect(
+      service.conversationStdinRequests,
+      isEmpty,
+      reason: 'no selected session may ever trigger an exact-session read',
+    );
+    expect(
+      service.conversationStreamCalls,
+      lessThan(10),
+      reason:
+          'active-lane catalog fallbacks would add one read every 8 ms; '
+          'only the 60 ms catalog lane may run',
+    );
+  });
+
+  test(
+    'an unchanged selected session backs the active lane off exponentially',
+    () async {
+      final service = FakeAgentService()
+        ..conversationSessions['codex'] = [
+          conversationSessionJson(
+            id: 'native-codex-quiet',
+            agentId: 'codex',
+            text: 'Quiet native history',
+          ),
+        ];
+      final controller = ClientController(
+        agentService: service,
+        conversationRefreshPolicy: const ConversationRefreshPolicy(
+          activeInterval: Duration(milliseconds: 8),
+          warmInterval: Duration(milliseconds: 8),
+          backgroundInterval: Duration(milliseconds: 8),
+          activeCatalogInterval: Duration(milliseconds: 40),
+          warmCatalogInterval: Duration(milliseconds: 40),
+          backgroundCatalogInterval: Duration(milliseconds: 40),
+        ),
+      );
+      addTearDown(controller.dispose);
+      await controller.lifecycleController.initialize(
+        sequentialSteps: const [],
+      );
+      controller.currentSection = ClientSection.agents;
+      controller.selectedConversationAgentId = 'codex';
+      await controller.loadConversationSessions('codex');
+      expect(controller.selectedConversationSessionId.trim(), isNotEmpty);
+      service.conversationStreamCalls = 0;
+      service.conversationStdinRequests = const [];
+      service.cliCalls = const [];
+
+      controller.conversationAttentionContextChanged(immediateActive: true);
+      // Reads land at ~8, 24, 56, 96, 136, 176 … (8,16,32 then capped at the
+      // 40 ms catalog interval). In 200 ms that is ~6 reads, versus ~25 at
+      // the unbounded cadence.
+      await _waitForHistoryRefresh(
+        () => service.conversationStdinRequests.length >= 3,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 170));
+      final quietReads = service.conversationStdinRequests.length;
+      expect(
+        quietReads,
+        inInclusiveRange(3, 12),
+        reason:
+            'exact-session reads must decay toward the catalog cadence '
+            '(found $quietReads in the window)',
+      );
+
+      // A change resets the lane to the active interval: an updated session
+      // must be picked up roughly immediately, not after the capped delay.
+      service.conversationSessions['codex'] = [
+        conversationSessionJson(
+          id: 'native-codex-quiet',
+          agentId: 'codex',
+          text: 'Quiet native history — new turn arrived',
+          updatedAt: '2026-07-10T00:00:03Z',
+        ),
+      ];
+      await _waitForHistoryRefresh(
+        () => service.conversationStdinRequests.length > quietReads,
+      );
+      final readsAfterChange = service.conversationStdinRequests.length;
+      await _waitForHistoryRefresh(
+        () => service.conversationStdinRequests.length > readsAfterChange,
+      );
+      // The first post-change read is scheduled at the active interval; a
+      // second read arrives within roughly another active interval.
+      await _waitForHistoryRefresh(
+        () => service.conversationStdinRequests.length > readsAfterChange + 1,
+      );
+    },
+  );
+
+  test(
+    'a pending selection backs off and never overlaps the catalog lane',
+    () async {
+      final service = FakeAgentService();
+      final controller = ClientController(
+        agentService: service,
+        conversationRefreshPolicy: const ConversationRefreshPolicy(
+          activeInterval: Duration(milliseconds: 8),
+          warmInterval: Duration(milliseconds: 8),
+          backgroundInterval: Duration(milliseconds: 8),
+          activeCatalogInterval: Duration(milliseconds: 40),
+          warmCatalogInterval: Duration(milliseconds: 40),
+          backgroundCatalogInterval: Duration(milliseconds: 40),
+        ),
+      );
+      addTearDown(controller.dispose);
+      await controller.lifecycleController.initialize(
+        sequentialSteps: const [],
+      );
+      controller.currentSection = ClientSection.agents;
+      controller.selectedConversationAgentId = 'codex';
+      controller.selectedConversationSessionId =
+          conversationSessionReadbackPendingSelectionId;
+
+      // Park a catalog read in flight through the same in-flight
+      // registration the background lane uses; the active fallback must
+      // not overlap it.
+      service.conversationStreamGates['codex'] = Completer<void>();
+      unawaited(
+        controller.refreshConversationCatalogInternal(
+          'codex',
+          foreground: false,
+        ),
+      );
+      await _waitForHistoryRefresh(() => service.conversationStreamCalls >= 1);
+      controller.conversationAttentionContextChanged(immediateActive: true);
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      expect(
+        service.conversationStreamCalls,
+        1,
+        reason:
+            'the in-flight catalog read owns the lane; the active lane may '
+            'not overlap another catalog read for the same agent',
+      );
+
+      // Once the lane drains, the fallback may read again — but decayed by
+      // the same backoff as session reads, not every 8 ms forever.
+      service.conversationStreamGates['codex']?.complete();
+      await _waitForHistoryRefresh(() => service.conversationStreamCalls >= 2);
+      await Future<void>.delayed(const Duration(milliseconds: 170));
+      expect(
+        service.conversationStreamCalls,
+        lessThan(15),
+        reason:
+            'catalog fallbacks must decay toward the catalog cadence '
+            '(found ${service.conversationStreamCalls})',
+      );
     },
   );
 }

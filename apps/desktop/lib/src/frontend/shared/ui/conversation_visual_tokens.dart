@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 
 /// Pixel-stable visual roles shared by canonical and agent conversations.
@@ -9,23 +10,25 @@ import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 /// both conversation projections share the same semantics without restating
 /// raw white/black overlays in feature widgets.
 abstract final class ConversationVisualTokens {
-  /// Default fill behind circular messaging identity marks. Dark messaging
+  /// Default fill behind messaging identity-mark wells. Dark messaging
   /// surfaces use pure black; light surfaces keep the neutral recessed well.
-  static Color circularIdentityWellFill(LicoThemeColors colors) =>
+  static Color identityWellFill(LicoThemeColors colors) =>
       colors.isDark ? Colors.black : colors.surfaceLow;
 
   /// Brand mark used to identify a canonical group conversation.
   static Color groupIdentityMark(LicoThemeColors colors) => colors.primary;
 
-  /// Quiet row hover used by conversation-list items.
-  static Color quietRowHover(LicoThemeColors colors) =>
-      colors.isDark ? const Color(0x08FFFFFF) : const Color(0x08000000);
-
   /// Selected option fill used inside detached conversation menus.
   static Color selectedOptionFill(LicoThemeColors colors) =>
-      colors.isDark ? const Color(0x0AFFFFFF) : const Color(0x08000000);
+      colors.selectionInk.withValues(alpha: colors.isDark ? 0.16 : 0.10);
 
-  /// Recessed black veil behind the Adaptive Flywheel capsule stadium.
-  static Color adaptiveFlywheelStadiumVeil(LicoThemeColors colors) =>
+  /// Unread/reminder count badge: the deep accent violet in dark presets,
+  /// the taro brand violet in light presets — always white numerals.
+  static Color unreadBadgeFill(LicoThemeColors colors) => colors.isDark
+      ? licoDeepViolet(colors.accent, lightness: 0.38)
+      : colors.primary;
+
+  /// Recessed black veil behind the Acativa capsule stadium.
+  static Color acativaStadiumVeil(LicoThemeColors colors) =>
       colors.isDark ? const Color(0x6E000000) : const Color(0x24000000);
 }

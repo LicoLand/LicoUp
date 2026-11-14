@@ -18,12 +18,12 @@ final class AgentWorkingDirectorySelectionRejected extends AgentsEffect {
   final String reasonCode;
 }
 
-final class AdaptiveFlywheelSaveCompleted extends AgentsEffect {
-  const AdaptiveFlywheelSaveCompleted({super.trace});
+final class AcativaSaveCompleted extends AgentsEffect {
+  const AcativaSaveCompleted({super.trace});
 }
 
-final class AdaptiveFlywheelActionRejected extends AgentsEffect {
-  const AdaptiveFlywheelActionRejected(this.reasonCode, {super.trace});
+final class AcativaActionRejected extends AgentsEffect {
+  const AcativaActionRejected(this.reasonCode, {super.trace});
 
   final String reasonCode;
 }

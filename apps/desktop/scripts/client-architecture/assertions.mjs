@@ -35,12 +35,6 @@ export function collectEnumValues(source, enumName) {
     .map((item) => item.split(/\s|\(/)[0]);
 }
 
-export function collectRustPubMods(source) {
-  return [...source.matchAll(/^pub mod ([A-Za-z0-9_]+);$/gm)]
-    .map((match) => match[1])
-    .sort();
-}
-
 export function lineNumberForToken(source, token) {
   const lines = source.split(/\r?\n/);
   const index = lines.findIndex((line) => line.includes(token));

@@ -35,11 +35,11 @@ build/releases/<产品版本>/
 │   ├── LicoUp-macos-arm64-update.zip.sha256
 │   ├── LicoUp-macos-arm64.build.json
 │   └── LicoUp-macos-direct-arm64.package.json
-└── android-direct-arm64-v8a/
-    ├── LicoUp-android-arm64.apk
-    ├── LicoUp-android-arm64.apk.sha256
-    ├── LicoUp-android-arm64.build.json
-    └── LicoUp-android-direct-arm64-v8a.package.json
+└── linux-deb-arm64/
+    ├── licoup_<version>_arm64.deb
+    ├── licoup_<version>_arm64.deb.sha256
+    ├── licoup_<version>_arm64-deb.build.json
+    └── LicoUp-linux-deb-arm64.package.json
 ```
 
 外层不再套统一压缩包。每个叶子目录都可以单独暂存和校验。包级清单绑定
@@ -67,12 +67,11 @@ build/releases/<产品版本>/
 | Arch Linux ARM（arm64） | Arch Linux ARM rolling | `.pkg.tar.zst` | Pacman 仓库 | Linux arm64 | Pacman 仓库 |
 | Alpine（arm64、x64） | Alpine 3.20 | APK | Alpine 仓库 | 对应 Linux 主机 | Alpine 仓库 |
 | AppImage（arm64、x64） | glibc 2.31 | AppImage | direct | 对应 Linux 主机 | AppImage 更新信息 |
-| Android 直发（arm64-v8a） | Android API 21 | APK | direct | macOS arm64 发布主机 | 手工下载 |
-| Android Play（arm64-v8a） | Android API 21 | AAB | Google Play | macOS arm64 发布主机 | Google Play |
-| iOS App Store（arm64） | iOS 13.0 | IPA | App Store | macOS arm64 | App Store |
 
 上表括号中的架构分别对应不同目标 ID。Debian、RPM、Arch Linux、Arch Linux
 ARM、Alpine 与 AppImage 是有意分开的家族，不存在通用 Linux 发布包目标。
+Android 与 iOS 的实现与发布包目标位于兄弟仓库 LicoUp-Android 与
+LicoUp-iOS，本目录不再包含移动包目标。
 
 `packageBuildSupported` 与 `releaseSupported` 是相互独立的事实。某个配方
 可以已经能够构建，但发布闭环仍被阻塞。macOS 直发目标明确禁止进入
@@ -97,7 +96,7 @@ npm run client:release:plan -- --target macos-direct-arm64
 
 ```sh
 npm run client:release:plan -- \
-  --targets macos-direct-arm64,android-direct-arm64-v8a
+  --targets macos-direct-arm64,linux-deb-arm64
 ```
 
 可以重复使用 `--target`，也可以使用逗号分隔的 `--targets`。重复目标、未知
@@ -108,22 +107,22 @@ npm run client:release:plan -- \
 构建、暂存和校验使用同一套单目标/多目标选择器：
 
 ```sh
-npm run client:release:build -- --target android-direct-arm64-v8a
+npm run client:release:build -- --target linux-deb-arm64
 npm run client:release:stage -- \
   --target macos-direct-arm64 \
-  --target android-direct-arm64-v8a
+  --target linux-deb-arm64
 npm run client:release:verify -- \
-  --targets macos-direct-arm64,android-direct-arm64-v8a
+  --targets macos-direct-arm64,linux-deb-arm64
 ```
 
 `stage` 只消费已经构建的原生产物并写入标准叶子目录。`verify` 会拒绝多余
 文件、符号链接、陈旧包元数据、摘要不匹配和校验和不匹配。
 
 `build` 会先执行目标的完整原生配方，再原子暂存整个所选集合。通用或远程
-macOS 直发会直接失败；获得明确授权的本机操作方使用 Apple Release 所拥有的
+macOS 直发会直接失败；获得明确授权的本机操作方使用 the release plane 所拥有的
 `client:release:macos` 入口。该协调器强制 Developer ID、Hardened Runtime、
-安全时间戳、公证、票据装订和 Gatekeeper 验收。Android 直发要求受保护
-的 APK 签名输入。缺少平台权威时，会在替换任何标准包叶子前失败。
+安全时间戳、公证、票据装订和 Gatekeeper 验收。缺少平台权威时，会在
+替换任何标准包叶子前失败。
 
 ## 发布
 
@@ -138,8 +137,8 @@ runner 标签。工作流会安装共享的 Node、Rust 与 Flutter 工具链；
 每个安装包摘要，在同一 Draft Release 中完成合并，生成一份同时绑定每份包
 清单摘要的跨目标消费者校验清单，并只在整个所选集合成功后发布一次。
 
-商店和软件仓库提交仍是独立渠道操作。构建出 AAB、MSIX 上传包、DEB、RPM、
-Pacman 包、Alpine 包或 App Store IPA，不代表对应商店或仓库已经接受。
+商店和软件仓库提交仍是独立渠道操作。构建出 MSIX 上传包、DEB、RPM、
+Pacman 包、Alpine 包或 App Store PKG，不代表对应商店或仓库已经接受。
 
 原生格式模板位于
 [`apps/desktop/packaging/`](../apps/desktop/packaging/)，外部规范链接由

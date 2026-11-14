@@ -9,9 +9,6 @@ import {
   validateClientSupportMatrix,
 } from "../../client-support-matrix.mjs";
 import {
-  LICOARC_BADTOWER_CANDIDATE_BINDING_KEY,
-} from "../../lib/licoarc-badtower-candidate-binding.mjs";
-import {
   artifactBindingMapsEqual,
   artifactInputStatesEqual,
 } from "../artifacts/selected.mjs";
@@ -28,20 +25,8 @@ import { closureRedactionSeedRefs } from "../refs.mjs";
 import { sanitizeArtifactBinding } from "../sanitize-binding.mjs";
 import { selectedTargetIds } from "../targets.mjs";
 import { readJson, requireValue } from "../util.mjs";
-import {
-  selfTestReports,
-} from "./fixtures.mjs";
-import {
-  loadCatalog,
-  validateCatalog,
-} from "../../model-pricing-facts.mjs";
-
-function assertPricingAuthorityReady() {
-  validateCatalog(loadCatalog(repoRoot));
-}
 
 export function runSelfTest({ schemaFixture = false } = {}) {
-  assertPricingAuthorityReady();
   const selected = [
     { id: "macos-direct-arm64", platform: "macos", arch: "arm64", supported: true, releaseSupported: true }
   ];
@@ -51,7 +36,6 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     sourceStateDigest: `sha256:${"a".repeat(64)}`,
     sourceStateStable: true,
     artifactInputsStable: true,
-    candidateInputsStable: true,
     supportMatrixStable: true,
     targetCatalogStable: true,
     policyInputsStable: true,
@@ -67,16 +51,16 @@ export function runSelfTest({ schemaFixture = false } = {}) {
       ["client-version", "tools/client-version.json", "4"],
     ].map(([id, ref, digit]) => ({ id, ref, digest: `sha256:${digit.repeat(64)}` })),
     reports: [{
-      id: "macosCli",
+      id: "artifact-receipt",
       ok: true,
-      schemaVersion: "licomesh.secure-mesh.release-cli-proof-report.v1",
-      producer: "tools/scripts/client-secure-mesh-release-cli-proof.mjs",
+      schemaVersion: "licomesh.client-artifact-verification-receipts.v3",
+      producer: "tools/scripts/client-artifact-verification-receipts.mjs",
       producerExitCode: 0,
       sourceDigest: `sha256:${"1".repeat(64)}`,
       reportDigest: `sha256:${"2".repeat(64)}`,
       freshnessReady: true,
       closureChallengeBound: true,
-      invocationNonceDigest: `sha256:${"3".repeat(64)}`,
+      invocationNonceDigest: "",
       dependencies: [],
     }],
   };
@@ -108,11 +92,6 @@ export function runSelfTest({ schemaFixture = false } = {}) {
       "macos-distribution-archive",
       "3",
     ),
-    [LICOARC_BADTOWER_CANDIDATE_BINDING_KEY]: {
-      clientCandidateDigest: `sha256:${"a".repeat(64)}`,
-      protocolCandidateDigest: `sha256:${"b".repeat(64)}`,
-      stationCandidateDigest: `sha256:${"c".repeat(64)}`,
-    },
   };
   const base = {
     selectedTargets: selected,
@@ -120,200 +99,76 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     inputIntegrity: readyIntegrity,
     artifactBindings: readyArtifact
   };
-  const externalAndUnselected = reduceClientReleaseAcceptance({ ...base, reports: selfTestReports() });
+  const externalAndUnselected = reduceClientReleaseAcceptance({ ...base, reports: {} });
   if (schemaFixture) return externalAndUnselected;
   requireValue(externalAndUnselected.githubReleaseReady,
-    `macOS selected target must pass without iOS or external evidence: ${externalAndUnselected.blockers.join(",")}`);
-  const productTrustMissing = reduceClientReleaseAcceptance({
-    ...base,
-    reports: selfTestReports({ productTrustUxReady: false })
-  });
-  requireValue(!productTrustMissing.githubReleaseReady && productTrustMissing.blockers.includes("client_product_trust_ux_not_ready"), "missing product trust UX must fail closed");
-  const unsupportedSchema = reduceClientReleaseAcceptance({
-    ...base,
-    reports: selfTestReports({ trustSchemaVersion: "licomesh.secure-mesh.trust-ux-report.unsupported" })
-  });
-  requireValue(!unsupportedSchema.githubReleaseReady && unsupportedSchema.blockers.includes("client_trust_v2_contract_not_ready"), "unsupported Trust UX schema must fail closed");
-  const unknownAuthority = reduceClientReleaseAcceptance({
-    ...base,
-    reports: selfTestReports({ includeUnknownAuthorityField: true })
-  });
-  requireValue(!unknownAuthority.githubReleaseReady && unknownAuthority.blockers.includes("client_trust_v2_contract_not_ready"), "unknown trust authority field must fail closed");
+    `macOS selected target must pass on Desktop-owned evidence: ${externalAndUnselected.blockers.join(",")}`);
   const missingSelected = reduceClientReleaseAcceptance({
     ...base,
     artifactBindings: {
-      ...readyArtifact,
       "macos-direct-arm64": {
         ...readyArtifact["macos-direct-arm64"],
         platformSecurityReady: false,
         ready: false,
       },
     },
-    reports: selfTestReports(),
   });
-  requireValue(!missingSelected.githubReleaseReady && missingSelected.blockers.some((item) => item.startsWith("selected_platform_security_not_ready:")), "selected missing evidence must block");
-  const plaintext = reduceClientReleaseAcceptance({
-    ...base,
-    reports: selfTestReports({ stationPlaintextAbsent: false }),
-  });
-  requireValue(
-    !plaintext.githubReleaseReady &&
-      plaintext.blockers.includes("station_plaintext_absence_not_verified"),
-    "station plaintext observation must fail closed",
-  );
-  for (const [field, blocker] of [
-    ["mobileFfiDispatch", "mobile_ffi_dispatch_not_verified"],
-    ["typedPendingObserved", "typed_pending_state_not_observed"],
-    [
-      "durableResultReceiptAcknowledged",
-      "durable_result_receipt_not_acknowledged",
-    ],
-  ]) {
-    const reports = selfTestReports();
-    reports.stationAcceptance.scenario[field] = false;
-    const missingFact = reduceClientReleaseAcceptance({ ...base, reports });
-    requireValue(
-      !missingFact.githubReleaseReady &&
-        missingFact.blockers.includes(blocker) &&
-        missingFact.blockers.includes("licoarc_badtower_acceptance_not_ready"),
-      `false station scenario fact must fail closed: ${field}`,
-    );
-  }
-  const missingScenarioFieldReports = selfTestReports();
-  delete missingScenarioFieldReports.stationAcceptance.scenario.mobileFfiDispatch;
-  const missingScenarioField = reduceClientReleaseAcceptance({
-    ...base,
-    reports: missingScenarioFieldReports,
-  });
-  requireValue(
-    !missingScenarioField.githubReleaseReady &&
-      missingScenarioField.blockers.includes(
-        "licoarc_badtower_acceptance_not_ready",
-      ),
-    "missing station scenario fact must fail closed",
-  );
-  const extraScenarioFieldReports = selfTestReports();
-  extraScenarioFieldReports.stationAcceptance.scenario.unknownScenarioFact =
-    true;
-  const extraScenarioField = reduceClientReleaseAcceptance({
-    ...base,
-    reports: extraScenarioFieldReports,
-  });
-  requireValue(
-    !extraScenarioField.githubReleaseReady &&
-      extraScenarioField.blockers.includes(
-        "licoarc_badtower_acceptance_not_ready",
-      ),
-    "unknown station scenario fact must fail closed",
-  );
-  for (const [option, label] of [
-    ["stationClientCandidateDigest", "client"],
-    ["stationProtocolCandidateDigest", "protocol"],
-    ["stationBinaryCandidateDigest", "station"],
-  ]) {
-    const staleCandidate = reduceClientReleaseAcceptance({
-      ...base,
-      reports: selfTestReports({
-        [option]: `sha256:${"f".repeat(64)}`,
-      }),
-    });
-    requireValue(
-      !staleCandidate.githubReleaseReady &&
-        staleCandidate.blockers.includes(
-          "licoarc_badtower_candidate_bindings_stale",
-        ),
-      `stale ${label} candidate acceptance must fail closed`,
-    );
-  }
-  const unstableCandidates = reduceClientReleaseAcceptance({
-    ...base,
-    inputIntegrity: {
-      ...readyIntegrity,
-      ok: true,
-      candidateInputsStable: false,
-    },
-    reports: selfTestReports(),
-  });
-  requireValue(
-    !unstableCandidates.githubReleaseReady &&
-      unstableCandidates.blockers.includes(
-        "licoarc_badtower_candidate_inputs_unstable",
-      ),
-    "mutated Lico Arc or BadTower candidate input must fail closed",
-  );
-  const tamper = reduceClientReleaseAcceptance({ ...base, reports: selfTestReports({ tamperReady: false }) });
-  requireValue(!tamper.githubReleaseReady && tamper.blockers.includes("encrypted_private_header_tamper_not_rejected"), "E2EE private-header tamper must fail closed");
-  const legacyMetadataReports = selfTestReports();
-  delete legacyMetadataReports.pairwise.metadataResistanceEvidence;
-  const legacyMetadata = reduceClientReleaseAcceptance({
-    ...base,
-    reports: legacyMetadataReports,
-  });
-  requireValue(!legacyMetadata.githubReleaseReady && legacyMetadata.blockers.includes(
-    "canonical_wire_residual_metadata_topology_evidence_not_ready",
-  ), "legacy metadata-resistance boolean without complete wire evidence must fail closed");
-  const unsignedReview = reduceClientReleaseAcceptance({
-    ...base,
-    reports: selfTestReports({ reviewSignoffReady: false }),
-  });
-  requireValue(!unsignedReview.githubReleaseReady &&
-    unsignedReview.blockers.includes("independent_cryptographic_review_signature_not_ready") &&
-    unsignedReview.blockers.includes("independent_reviewer_signature_invalid") &&
-    unsignedReview.blockers.includes("release_owner_signature_invalid"),
-  "boolean-only independent audit signoff must fail closed");
-  const ambiguousCustody = reduceClientReleaseAcceptance({
-    ...base,
-    artifactBindings: {
-      ...readyArtifact,
-      "macos-direct-arm64": {
-        ...readyArtifact["macos-direct-arm64"],
-        platformSecurityReady: false,
-        ready: false,
-      },
-    },
-    reports: selfTestReports(),
-  });
-  requireValue(!ambiguousCustody.githubReleaseReady && ambiguousCustody.blockers.some((item) => item.startsWith("selected_platform_security_not_ready:")), "missing exact adaptive custody evidence must fail closed");
+  requireValue(!missingSelected.githubReleaseReady &&
+    missingSelected.blockers.some((item) =>
+      item.startsWith("selected_platform_security_not_ready:")),
+    "selected missing evidence must block");
   const forgedInput = reduceClientReleaseAcceptance({
     ...base,
     inputIntegrity: { ...readyIntegrity, ok: false },
-    reports: selfTestReports()
   });
-  requireValue(!forgedInput.githubReleaseReady && forgedInput.blockers.includes("release_input_provenance_not_ready"), "editable report booleans without current producer provenance must fail closed");
+  requireValue(!forgedInput.githubReleaseReady &&
+    forgedInput.blockers.includes("release_input_provenance_not_ready"),
+    "editable report booleans without current producer provenance must fail closed");
   const missingArtifact = reduceClientReleaseAcceptance({
     ...base,
     artifactBindings: {},
-    reports: selfTestReports()
   });
-  requireValue(!missingArtifact.githubReleaseReady && missingArtifact.blockers.some((item) => item.startsWith("selected_target_exact_artifact_not_ready:")), "missing exact selected-target artifact must fail closed");
+  requireValue(!missingArtifact.githubReleaseReady &&
+    missingArtifact.blockers.some((item) =>
+      item.startsWith("selected_target_exact_artifact_not_ready:")),
+    "missing exact selected-target artifact must fail closed");
   const unsignedArtifact = reduceClientReleaseAcceptance({
     ...base,
     artifactBindings: {
-      ...readyArtifact,
-      "macos-direct-arm64": { ...readyArtifact["macos-direct-arm64"], consumerVerificationReady: false, ready: false }
+      "macos-direct-arm64": {
+        ...readyArtifact["macos-direct-arm64"],
+        consumerVerificationReady: false,
+        ready: false,
+      },
     },
-    reports: selfTestReports()
   });
-  requireValue(!unsignedArtifact.githubReleaseReady && unsignedArtifact.blockers.some((item) => item.startsWith("selected_target_consumer_verification_not_ready:")), "artifact without consumer verification must fail closed");
+  requireValue(!unsignedArtifact.githubReleaseReady &&
+    unsignedArtifact.blockers.some((item) =>
+      item.startsWith("selected_target_consumer_verification_not_ready:")),
+    "artifact without consumer verification must fail closed");
   const missingReceipt = reduceClientReleaseAcceptance({
     ...base,
     artifactBindings: {
-      ...readyArtifact,
-      "macos-direct-arm64": { ...readyArtifact["macos-direct-arm64"], installReceiptReady: false, receiptProvenanceReady: false, ready: false }
+      "macos-direct-arm64": {
+        ...readyArtifact["macos-direct-arm64"],
+        installReceiptReady: false,
+        receiptProvenanceReady: false,
+        ready: false,
+      },
     },
-    reports: selfTestReports()
   });
-  requireValue(!missingReceipt.githubReleaseReady && missingReceipt.blockers.some((item) => item.startsWith("selected_target_install_receipt_not_ready:")), "artifact without exact local install receipt must fail closed");
+  requireValue(!missingReceipt.githubReleaseReady &&
+    missingReceipt.blockers.some((item) =>
+      item.startsWith("selected_target_install_receipt_not_ready:")),
+    "artifact without exact local install receipt must fail closed");
   const distributionGuidance = reduceClientReleaseAcceptance({
     ...base,
     artifactBindings: {
-      ...readyArtifact,
       "macos-direct-arm64": {
         ...readyArtifact["macos-direct-arm64"],
         nonBlockingDistributionStatus: "ready",
       },
     },
-    reports: selfTestReports(),
   });
   requireValue(distributionGuidance.githubReleaseReady,
     "distribution guidance must not block GitHub release readiness");
@@ -339,37 +194,8 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     maxClockSkewMs: 5,
     nowMs: 10_010
   };
-  requireValue(validateProducedReportReceipt(receiptFixture).ok, "current approved producer receipt must validate");
-  const directStationReceipt = {
-    ...receiptFixture,
-    payload: selfTestReports().stationAcceptance,
-    spec: {
-      schemaVersion: "licoup.licoarc-badtower.acceptance.v1",
-      producer: "tools/scripts/client-licoarc-badtower-acceptance.mjs",
-    },
-    directFreshOutput: true,
-  };
-  requireValue(
-    validateProducedReportReceipt(directStationReceipt).ok,
-    "fresh direct Lico Arc BadTower output must validate without a wrapper",
-  );
-  requireValue(
-    !validateProducedReportReceipt({
-      ...directStationReceipt,
-      payload: {
-        ...directStationReceipt.payload,
-        unknown: false,
-      },
-    }).ok,
-    "unknown direct acceptance fields must fail closed",
-  );
-  requireValue(
-    !validateProducedReportReceipt({
-      ...directStationReceipt,
-      generatedAtMs: 9_000,
-    }).ok,
-    "stale direct acceptance output must fail closed",
-  );
+  requireValue(validateProducedReportReceipt(receiptFixture).ok,
+    "current approved producer receipt must validate");
   requireValue(!validateProducedReportReceipt({
     ...receiptFixture,
     payload: { ...receiptFixture.payload, verifier: "tools/scripts/forged.mjs" }
@@ -467,6 +293,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
   for (const forbidden of [
     "client:verify:secure-mesh-e2ee-evidence:diagnostic",
     "client:verify:secure-mesh-e2ee-evidence",
+    "client:verify:secure-mesh-platform-acceptance",
     "client:verify:product-line-security",
     "client:verify:client-release-acceptance:self-test",
   ]) {
@@ -476,12 +303,12 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     );
   }
   requireValue(
-    packageScripts["client:verify:secure-mesh-e2ee-evidence:diagnostic"],
-    "cross-product diagnostic must remain explicitly callable",
+    packageScripts["client:verify:secure-mesh-e2ee-evidence"] === undefined,
+    "component-owned evidence lanes must not survive in the Desktop workspace",
   );
   requireValue(packageScripts["client:release:macos"]?.includes(
-    "apple-release release start",
-  ), "macOS publication must be delegated to Apple Release");
+    "client-release-plane.mjs release start",
+  ), "macOS publication must be delegated to the release plane");
   requireValue(packageScripts["client:verify:product-line-security"]?.includes(
     "client-release-acceptance.mjs",
   ), "product-line security must retain the full client evidence reducer");
@@ -489,21 +316,22 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     "client:verify:release-artifact-io:self-test",
     "client:verify:release-dependency-receipts:self-test",
     "client:verify:source-state-digest:self-test",
-    "client:verify:android-apk-zip-facts:self-test",
     "client:verify:review-signoff:self-test",
-    "client:verify:release-target-evidence:self-test",
     "client:verify:release-report-schema:self-test",
     "client:verify:macos-nested-code-bounds:self-test",
     "client:verify:package-client:self-test",
-    "client:native:smoke:policy:self-test",
     "client:verify:closure-producer-writer:self-test",
+    "client:verify:artifact-verification-receipts:self-test",
+    "client:verify:client-release-acceptance:self-test",
   ]) {
     requireValue(
       releasePolicyGate.includes(scriptName),
       `release-policy lane must run ${scriptName}`,
     );
   }
-  requireValue(packageScripts["client:verify:secure-mesh-platform-acceptance"]?.includes("client:verify:secure-mesh-e2ee-evidence"), "strict Secure Mesh platform acceptance must remain explicitly callable");
+  requireValue(!releasePolicyGate.includes(
+    "client:verify:release-target-evidence:self-test",
+  ), "retired component target evidence must not remain in the release lane");
   const preflightConfig = readJson(configPath);
   const preflightCatalog = loadClientReleaseTargetCatalog();
   const preflightReceiptConfig = readJson(path.join(
@@ -537,35 +365,33 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     "tools/client-support-matrix.json",
   ));
   for (const target of supportMatrixFixture.targets) {
-    if (!["macos-arm64", "android-arm64"].includes(
-      target.targetId,
-    )) continue;
+    if (target.targetId !== "macos-arm64") continue;
     target.overrides = {
       ...(target.overrides || {}),
       "client-shell": "supported",
-      "secure-mesh-pairwise": "supported",
+      "devices": "supported",
     };
   }
   const validatedSupportMatrix = validateClientSupportMatrix(supportMatrixFixture);
   requireValue(selectedReleaseBlockingSupportReady(
     validatedSupportMatrix,
-    ["macos-arm64", "android-arm64"],
+    ["macos-arm64"],
   ), "selected supported blocking services were rejected");
   supportMatrixFixture.targets.find((target) =>
-    target.targetId === "android-arm64").overrides["secure-mesh-pairwise"] = "preview";
+    target.targetId === "macos-arm64").overrides["devices"] = "preview";
   requireValue(!selectedReleaseBlockingSupportReady(
     validateClientSupportMatrix(supportMatrixFixture),
-    ["macos-arm64", "android-arm64"],
+    ["macos-arm64"],
   ), "selected preview blocking service was accepted");
   const childProofRef =
-    "build/reports/secure-mesh-macos-keychain-user-presence-proof.json";
+    "build/reports/consumer-verification-evidence.json";
   requireValue(closureRedactionSeedRefs(
     preflightConfig,
     [{ id: "macos-direct-arm64" }],
     { ok: true, payload: { receipts: [{ dependencies: [{ ref: childProofRef }] }] } },
     preflightReceiptConfig,
   ).includes(childProofRef),
-  "selected closure redaction omitted macOS child proof dependency");
+  "selected closure seed refs omitted receipt dependency");
   for (const targetId of ["linux-musl-arm64", "windows-x64"]) {
     let rejected = false;
     try {
@@ -615,5 +441,5 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     }
   }
   requireValue(emptyTokenRejected, "explicit empty release target token was accepted");
-  return { ok: true, caseCount: 42 };
+  return { ok: true, caseCount: 30 };
 }

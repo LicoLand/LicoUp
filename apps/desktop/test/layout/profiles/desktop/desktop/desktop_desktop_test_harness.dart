@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,10 +16,10 @@ import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_desk
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_model.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/shell/desktop_desktop_shell.dart';
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import '../../../fixtures/desktop_dock_store_fixture.dart';
+import '../../../fixtures/layout_chrome_features_fixture.dart';
 import '../../../fixtures/layout_scoped_state_fixture.dart';
 
 const Set<ClientSection> desktopDesktopExpectedDestinations = <ClientSection>{
@@ -29,7 +28,7 @@ const Set<ClientSection> desktopDesktopExpectedDestinations = <ClientSection>{
   ClientSection.skillHub,
   ClientSection.pluginManagement,
   ClientSection.agentHub,
-  ClientSection.mobileRelay,
+  ClientSection.devices,
   ClientSection.models,
   ClientSection.settings,
 };
@@ -40,8 +39,8 @@ final class DesktopDesktopHarness {
   final List<ClientSection> buildCalls = <ClientSection>[];
   final List<ClientSection> selections = <ClientSection>[];
   int searchOpens = 0;
-  int dockComposerBuilds = 0;
   LayoutScopedState? scopedState;
+  final FixtureLayoutChromeFeatures features = FixtureLayoutChromeFeatures();
 
   void selectDestination(ClientSection destination) {
     if (!desktopDesktopExpectedDestinations.contains(destination)) {
@@ -86,43 +85,9 @@ final class DesktopDesktopRecordingChromePort implements LayoutChromePort {
   void removeListener(VoidCallback listener) {}
 
   @override
-  Future<void> openPairing(BuildContext context) async {}
-
-  @override
   Future<void> openGlobalSearch(BuildContext context) async {
     harness.searchOpens += 1;
   }
-}
-
-/// Chrome-features stand-in: the dock composer is a probe widget so tests
-/// can assert the contextual input state without feature code.
-final class DesktopDesktopFixtureChromeFeatures
-    implements LayoutChromeFeatures {
-  DesktopDesktopFixtureChromeFeatures(this.harness);
-
-  final DesktopDesktopHarness harness;
-
-  @override
-  void activateOperationNotice(notice) {}
-
-  final ValueNotifier<LicoToastNoticesSnapshot> _notices =
-      ValueNotifier<LicoToastNoticesSnapshot>(const LicoToastNoticesSnapshot());
-
-  @override
-  ValueNotifier<bool>? get auxChromePanelOpen => null;
-
-  @override
-  Widget buildDockComposer(BuildContext context) {
-    harness.dockComposerBuilds += 1;
-    return const SizedBox(
-      key: Key('fixture-dock-composer'),
-      height: 44,
-      child: Center(child: Text('composer')),
-    );
-  }
-
-  @override
-  ValueListenable<LicoToastNoticesSnapshot> get notificationNotices => _notices;
 }
 
 /// Builds a dock model backed by a throwaway directory, registered for
@@ -178,8 +143,8 @@ final class DesktopDesktopTestShell extends StatelessWidget {
       ..sort((left, right) => left.index.compareTo(right.index));
     final baseTheme = buildLicoTheme(
       presetId: brightness == Brightness.dark
-          ? 'lico-crystal'
-          : 'geek-light-blue',
+          ? 'lico-starlit-gold'
+          : 'lico-taro-waffle',
       platformBrightness: brightness,
     );
     final scopedState = buildLayoutScopedStateFixture(
@@ -213,7 +178,7 @@ final class DesktopDesktopTestShell extends StatelessWidget {
               builder: (paletteContext) => LayoutPaletteScope(
                 palette: layoutPaletteFromColors(paletteContext.licoColors),
                 child: LayoutChromeFeaturesScope(
-                  features: DesktopDesktopFixtureChromeFeatures(harness),
+                  features: harness.features,
                   child: LayoutScope(
                     profileId: bundle.profile.id,
                     environment: environment,
@@ -229,6 +194,7 @@ final class DesktopDesktopTestShell extends StatelessWidget {
                             destination: activeDestination,
                             content: content,
                             state: scopedState,
+                            style: null,
                           ),
                         );
                         return DesktopDesktopShell(
@@ -238,12 +204,14 @@ final class DesktopDesktopTestShell extends StatelessWidget {
                             activeDestination: activeDestination,
                             availableDestinations: destinations,
                             destination: destination,
+                            content: content,
                             onSelectDestination: harness.selectDestination,
                             destinationLabel: (value) => value.name,
                             components: bundle.components,
                             tokens: bundle.tokens,
                             initialFocusTarget: 'primary-content',
                             chrome: DesktopDesktopRecordingChromePort(harness),
+                            style: null,
                           ),
                         );
                       },
@@ -285,6 +253,7 @@ Future<void> pumpDesktopShell(
   required DesktopDockModel dockModel,
   ClientSection activeDestination = ClientSection.agents,
   Size size = const Size(1280, 800),
+  bool reducedMotion = false,
 }) async {
   configureDesktopTestView(tester, size);
   await tester.pumpWidget(
@@ -292,6 +261,7 @@ Future<void> pumpDesktopShell(
       environment: desktopDesktopEnvironment(
         width: size.width,
         height: size.height,
+        reducedMotion: reducedMotion,
       ),
       activeDestination: activeDestination,
       content: DesktopDesktopFixtureContent(harness),

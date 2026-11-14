@@ -9,6 +9,7 @@ final class SettingsBinding {
     required this.projection,
     required this.resourceUsage,
     required this.autostart,
+    required this.terminalCommand,
     required this.intents,
     required this.effects,
   });
@@ -16,6 +17,7 @@ final class SettingsBinding {
   final ProjectionSource<SettingsProjection> projection;
   final ProjectionSource<SettingsResourceUsageProjection> resourceUsage;
   final ProjectionSource<SettingsAutostartProjection> autostart;
+  final ProjectionSource<SettingsTerminalCommandProjection> terminalCommand;
   final IntentSink<SettingsIntent> intents;
   final EffectSource<SettingsEffect> effects;
 }

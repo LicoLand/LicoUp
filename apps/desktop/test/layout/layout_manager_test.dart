@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
+import 'package:licoup/src/presentation/layout/layout_catalog.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'layout_catalog_test_fixtures.dart';
@@ -215,18 +218,23 @@ void main() {
   });
 
   test(
-    'all recovery and reset paths use the injected preferred default',
+    'all recovery and reset paths use the catalog default profile',
     () async {
       final repository = FakePreferencesRepository(
         preferences: preferences(layout: LayoutProfileId.parse('unavailable')),
       );
       final manager = createManager(
         repository,
-        preferredDefaultId: LayoutProfileId.parse('atlas'),
+        catalog: fixtureLayoutCatalog(
+          profiles: fixtureProfiles(
+            dashboardDefault: false,
+            nativeDefault: true,
+          ),
+        ),
       );
 
       await manager.initialize();
-      expect(manager.preferredDefaultId, LayoutProfileId.parse('atlas'));
+      expect(manager.defaultId, LayoutProfileId.parse('atlas'));
       expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
       expect(
         manager.state.errorCode,
@@ -430,6 +438,138 @@ void main() {
     },
   );
 
+  group('column styles', () {
+    test('effective style defaults to the profile default', () async {
+      final repository = FakePreferencesRepository(preferences: preferences());
+      final manager = createManager(
+        repository,
+        catalog: styledFixtureCatalog(),
+      );
+      await manager.initialize();
+
+      expect(manager.state.committedId, LayoutProfileId.parse('dashboard'));
+      expect(manager.state.effectiveStyleId, LayoutStyleId.parse('plain'));
+      manager.dispose();
+    });
+
+    test('selectStyle persists the choice and updates the state', () async {
+      final repository = FakePreferencesRepository(preferences: preferences());
+      final manager = createManager(
+        repository,
+        catalog: styledFixtureCatalog(),
+      );
+      await manager.initialize();
+
+      expect(
+        await manager.selectStyle(
+          LayoutProfileId.parse('dashboard'),
+          LayoutStyleId.parse('card'),
+        ),
+        isTrue,
+      );
+      expect(repository.styleWriteCount, 1);
+      expect(manager.state.effectiveStyleId, LayoutStyleId.parse('card'));
+      expect(
+        manager.preferences!.layoutStyleIds[LayoutProfileId.parse('dashboard')],
+        LayoutStyleId.parse('card'),
+      );
+      manager.dispose();
+    });
+
+    test('a stored style choice loads as the effective style', () async {
+      final repository = FakePreferencesRepository(
+        preferences: preferences().copyWith(
+          layoutStyleIds: {
+            LayoutProfileId.parse('dashboard'): LayoutStyleId.parse('card'),
+          },
+        ),
+      );
+      final manager = createManager(
+        repository,
+        catalog: styledFixtureCatalog(),
+      );
+      await manager.initialize();
+
+      expect(manager.state.effectiveStyleId, LayoutStyleId.parse('card'));
+      manager.dispose();
+    });
+
+    test(
+      'an undeclared style is rejected without a repository write',
+      () async {
+        final repository = FakePreferencesRepository(
+          preferences: preferences(),
+        );
+        final manager = createManager(
+          repository,
+          catalog: styledFixtureCatalog(),
+        );
+        await manager.initialize();
+
+        expect(
+          await manager.selectStyle(
+            LayoutProfileId.parse('dashboard'),
+            LayoutStyleId.parse('compact'),
+          ),
+          isFalse,
+        );
+        expect(repository.styleWriteCount, 0);
+        expect(manager.state.status, LayoutSelectionStatus.error);
+        expect(
+          manager.state.errorCode,
+          LayoutSelectionErrorCode.unavailableProfile,
+        );
+        expect(manager.state.effectiveStyleId, LayoutStyleId.parse('plain'));
+        manager.dispose();
+      },
+    );
+
+    test(
+      'a repository failure ends the style commit like a profile commit',
+      () async {
+        final repository = FakePreferencesRepository(
+          preferences: preferences(),
+        );
+        final manager = createManager(
+          repository,
+          catalog: styledFixtureCatalog(),
+        );
+        await manager.initialize();
+        repository.failNextLayoutWrite = true;
+
+        expect(
+          await manager.selectStyle(
+            LayoutProfileId.parse('dashboard'),
+            LayoutStyleId.parse('card'),
+          ),
+          isFalse,
+        );
+        expect(manager.state.status, LayoutSelectionStatus.error);
+        expect(
+          manager.state.errorCode,
+          LayoutSelectionErrorCode.persistenceFailed,
+        );
+        manager.dispose();
+      },
+    );
+
+    test('switching to a profile without styles yields a null style', () async {
+      final repository = FakePreferencesRepository(preferences: preferences());
+      final manager = createManager(
+        repository,
+        catalog: styledFixtureCatalog(),
+      );
+      await manager.initialize();
+
+      expect(
+        await manager.selectLayout(LayoutProfileId.parse('atlas')),
+        isTrue,
+      );
+      expect(manager.state.effectiveStyleId, isNull);
+      manager.dispose();
+    });
+  });
+
   test('layout preference state owns no viewport or surface fields', () async {
     final repository = FakePreferencesRepository(
       preferences: preferences(layout: LayoutProfileId.parse('atlas')),
@@ -443,15 +583,50 @@ void main() {
   });
 }
 
+/// The fixture catalog with Dashboard declaring both column styles, mirroring
+/// the production descriptors, while Atlas stays a single-arrangement
+/// profile.
+LayoutCatalog styledFixtureCatalog() => fixtureLayoutCatalog(
+  profiles: [
+    LayoutProfileDescriptor(
+      id: LayoutProfileId.parse('dashboard'),
+      label: LayoutProfileCopy(english: 'Dashboard', chinese: '工作台'),
+      description: LayoutProfileCopy(
+        english: 'Dashboard fixture',
+        chinese: '工作台夹具',
+      ),
+      styleIdentity: 'spacious-card-dashboard',
+      isDefault: true,
+      styles: [
+        LayoutStyleDescriptor(
+          id: LayoutStyleId.parse('plain'),
+          label: LayoutProfileCopy(english: 'Plain', chinese: '平铺'),
+        ),
+        LayoutStyleDescriptor(
+          id: LayoutStyleId.parse('card'),
+          label: LayoutProfileCopy(english: 'Card', chinese: '卡片'),
+        ),
+      ],
+      defaultStyleId: LayoutStyleId.parse('plain'),
+    ),
+    LayoutProfileDescriptor(
+      id: LayoutProfileId.parse('atlas'),
+      label: LayoutProfileCopy(english: 'Atlas', chinese: '图集'),
+      description: LayoutProfileCopy(english: 'Atlas fixture', chinese: '图集夹具'),
+      styleIdentity: 'glassy-rail-atlas',
+      isDefault: false,
+    ),
+  ],
+);
+
 LayoutManager createManager(
   PresentationPreferencesRepository repository, {
-  LayoutProfileId? preferredDefaultId,
+  LayoutCatalog? catalog,
   Duration? persistenceTimeout,
 }) => LayoutManager(
-  catalog: fixtureLayoutCatalog(),
+  catalog: catalog ?? fixtureLayoutCatalog(),
   preferencesRepository: repository,
   canonicalFallback: preferences(),
-  preferredDefaultId: preferredDefaultId,
   persistenceTimeout: persistenceTimeout ?? const Duration(seconds: 5),
 );
 
@@ -489,6 +664,7 @@ final class FakePreferencesRepository
   bool failNextLayoutWrite = false;
   int loadCount = 0;
   int layoutWriteCount = 0;
+  int styleWriteCount = 0;
   Completer<void>? loadGate;
   Completer<void> loadStarted = Completer<void>();
   Completer<void>? layoutWriteGate;
@@ -532,11 +708,34 @@ final class FakePreferencesRepository
       });
 
   @override
-  Future<PresentationPreferences> setReduceMotion(bool enabled) =>
-      _enqueue(() async {
-        preferences = preferences.copyWith(reduceMotion: enabled);
-        return preferences;
-      });
+  Future<PresentationPreferences> setLayoutStyle(
+    LayoutProfileId profile,
+    LayoutStyleId style,
+  ) => _enqueue(() async {
+    styleWriteCount += 1;
+    if (!layoutWriteStarted.isCompleted) {
+      layoutWriteStarted.complete();
+    }
+    await layoutWriteGate?.future;
+    if (failNextLayoutWrite) {
+      failNextLayoutWrite = false;
+      throw const PresentationPreferencesRepositoryException(
+        PresentationPreferencesRepositoryErrorCode.writeFailed,
+      );
+    }
+    preferences = preferences.copyWith(
+      layoutStyleIds: {...preferences.layoutStyleIds, profile: style},
+    );
+    return preferences;
+  });
+
+  @override
+  Future<PresentationPreferences> setReduceMotion(
+    ReduceMotionPreference preference,
+  ) => _enqueue(() async {
+    preferences = preferences.copyWith(reduceMotion: preference);
+    return preferences;
+  });
 
   @override
   Future<PresentationPreferences> setLoadingEffect(String id) =>
@@ -570,4 +769,10 @@ final class FakePreferencesRepository
     });
     return completer.future;
   }
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) async => preferences = preferences.withResourceSelection(kind, selection);
 }

@@ -34,8 +34,8 @@ void main() {
           ]
           ..['adapterPlugins'] = [
             {
-              'id': 'lico-up-codex',
-              'label': 'LicoUp Codex Plugin',
+              'id': 'subagent-mcp',
+              'label': 'Subagent MCP',
               'detail': 'lico-subagent-mcp',
               'installationState': 'not-installed',
               'lifecycleActions': <String>[],
@@ -65,8 +65,8 @@ void main() {
     final runningServer = codex.nativeCapabilities.last;
     expect(runningServer.port, 24173);
     final plugin = codex.plugins.single;
-    expect(plugin.id, 'lico-up-codex');
-    expect(plugin.label, 'LicoUp Codex Plugin');
+    expect(plugin.id, 'subagent-mcp');
+    expect(plugin.label, 'Subagent MCP');
     expect(plugin.detail, 'lico-subagent-mcp');
     expect(plugin.installationState, 'not-installed');
     expect(plugin.lifecycleActions, isEmpty);

@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:licoup/src/platform/presentation/client_current_view_store.dart';
 import 'package:licoup/app.dart';
 import 'package:licoup/src/composition/client_app_composition.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
@@ -7,7 +8,6 @@ import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/presentation/client_current_view.dart';
-
 import 'fixtures/client_controller/support/client_controller_scenario_dependencies.dart';
 import 'fixtures/client_controller/support/fake_agent_service.dart';
 
@@ -15,6 +15,170 @@ const _localId = ClientConversation.defaultLocalAgentGroupId;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test(
+    'unreadable optional state preserves files and starts with no tool grants or relay',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'optional-startup-',
+      );
+      final portable = PortableDataRoot(dataDirectoryOverride: directory);
+      final state = await portable.clientDirectory();
+      const files = [
+        'appearance-preferences.json',
+        'agent-tab-order.json',
+        'agent-tool-allowlists.json',
+        'current-client-view.json',
+        'mobile-home-layout.json',
+        'skill-hub-preferences.json',
+        'mobile-relay/config.json',
+      ];
+      const raw = '{"schemaVersion":999,"retained":"synthetic"}';
+      for (final name in files) {
+        final file = File('${state.path}/$name');
+        await file.parent.create(recursive: true);
+        await file.writeAsString(raw);
+      }
+      final tracker = ClientCurrentViewTracker();
+      final controller = _StartupClient(
+        portableData: portable,
+        conversationNativePort: _StartupConversationNative(),
+        currentViewStore: const PlatformClientCurrentViewStore(),
+        currentViewTracker: tracker,
+        agentService: _OptionalFailureService(),
+      );
+      controller.scanGate.complete();
+      addTearDown(() async {
+        await controller.close();
+        await tracker.flush();
+        tracker.dispose();
+        await directory.delete(recursive: true);
+      });
+      controller.replaceConversationToolAllowlists({
+        'synthetic': ['permission'],
+      });
+      await controller.initializeWithOptions(runBackgroundSteps: false);
+      expect(controller.initialized, isTrue);
+      expect(controller.conversationToolAllowlistsByAgent, isEmpty);
+      await tracker.flush();
+      for (final name in files) {
+        expect(
+          await File('${state.path}/$name').readAsString(),
+          raw,
+          reason: name,
+        );
+      }
+    },
+  );
+
+  test(
+    'native optional refusal prevents reading an otherwise parseable allowlist',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'optional-authority-',
+      );
+      final portable = PortableDataRoot(dataDirectoryOverride: directory);
+      final state = await portable.clientDirectory();
+      final file = File('${state.path}/agent-tool-allowlists.json');
+      const raw =
+          '{"schemaVersion":1,"allowlistsByAgent":{"synthetic":["permission"]}}';
+      await file.writeAsString(raw);
+      final tracker = ClientCurrentViewTracker();
+      final service = _OptionalFailureService()
+        ..unavailableDomains = [
+          'agent-tool-allowlist',
+          'appearance-presentation',
+          'current-view',
+          'agent-tab-order',
+          'mobile-relay',
+          'mobile-home-layout',
+          'skill-hub-preferences',
+        ];
+      final controller = _StartupClient(
+        portableData: portable,
+        conversationNativePort: _StartupConversationNative(),
+        currentViewStore: const PlatformClientCurrentViewStore(),
+        currentViewTracker: tracker,
+        agentService: service,
+      );
+      controller.scanGate.complete();
+      addTearDown(() async {
+        await controller.close();
+        await tracker.flush();
+        tracker.dispose();
+        await directory.delete(recursive: true);
+      });
+      await controller.initializeWithOptions(runBackgroundSteps: false);
+      expect(controller.initialized, isTrue);
+      expect(controller.conversationToolAllowlistsByAgent, isEmpty);
+      expect(controller.layoutManager.initialized, isTrue);
+      expect(await file.readAsString(), raw);
+    },
+  );
+
+  testWidgets(
+    'refused data admission leaves an opaque failure surface without starting product services',
+    (tester) async {
+      final directory = Directory.systemTemp.createTempSync(
+        'licoup-admission-ui-',
+      );
+      final native = _StartupConversationNative();
+      final controller = _AdmissionFailureClient(
+        portableData: PortableDataRoot(dataDirectoryOverride: directory),
+        conversationNativePort: native,
+      );
+      final composition = ClientAppComposition(controller: controller);
+      addTearDown(() async {
+        await tester.runAsync(composition.dispose);
+        directory.deleteSync(recursive: true);
+      });
+
+      await tester.runAsync(composition.initialize);
+      await tester.pumpWidget(LicoApp(compositionFactory: () => composition));
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump();
+
+      expect(composition.bootstrapFailed, isTrue);
+      expect(
+        controller.lifecycleController.lastFailureStepId,
+        'client_state_migration',
+      );
+      expect(controller.gatewayStarts, 0);
+      expect(native.actions, isEmpty);
+      expect(find.text('Local data initialization failed.'), findsOneWidget);
+      expect(find.text('synthetic_admission_refusal'), findsNothing);
+      final surface = find.byKey(const Key('client-startup-surface'));
+      expect(tester.widget<ColoredBox>(surface).color.a, 1);
+      expect(tester.getSize(surface), tester.getSize(find.byType(LicoApp)));
+      expect(tester.takeException(), isNull);
+      await tester.runAsync(composition.dispose);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets('missing saved root shows retry and choose recovery actions', (
+    tester,
+  ) async {
+    final controller = ClientController(
+      portableData: _UnavailableSavedDataRoot(),
+      agentService: FakeAgentService(),
+    );
+    final composition = ClientAppComposition(controller: controller);
+    addTearDown(() => tester.runAsync(composition.dispose));
+
+    await tester.pumpWidget(LicoApp(compositionFactory: () => composition));
+    await tester.pump();
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+
+    expect(find.text('Saved data folder not found'), findsOneWidget);
+    expect(find.text('Choose existing data folder'), findsOneWidget);
+    expect(find.byKey(const Key('data-home-recovery-retry')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.runAsync(composition.dispose);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   for (final remainsMounted in [true, false]) {
     testWidgets(
@@ -200,6 +364,22 @@ void main() {
   );
 }
 
+final class _UnavailableSavedDataRoot extends PortableDataRoot {
+  @override
+  Future<Directory> dataDirectory() async =>
+      throw const MissingSavedDataHome('/synthetic/removed/LicoUp');
+
+  @override
+  Future<DataHomeSelection> dataHomeSelection() async =>
+      const DataHomeSelection(
+        path: '/synthetic/removed/LicoUp',
+        source: DataHomeSelectionSource.saved,
+      );
+
+  @override
+  Future<bool> missingSavedDataHome() async => true;
+}
+
 final class _BlockedDiagnosticDataRoot extends PortableDataRoot {
   _BlockedDiagnosticDataRoot(Directory directory)
     : super(dataDirectoryOverride: directory);
@@ -221,7 +401,8 @@ final class _StartupClient extends ClientController {
     required super.conversationNativePort,
     required super.currentViewStore,
     required super.currentViewTracker,
-  }) : super(agentService: FakeAgentService());
+    AgentService? agentService,
+  }) : super(agentService: agentService ?? FakeAgentService());
 
   final scanStarted = Completer<void>();
   final scanGate = Completer<void>();
@@ -237,6 +418,18 @@ final class _StartupClient extends ClientController {
   }
 }
 
+final class _OptionalFailureService extends FakeAgentService {
+  List<String> unavailableDomains = [];
+
+  @override
+  Future<Map<String, dynamic>> admitClientStateMigration(
+    String dataRoot,
+  ) async => {
+    'status': 'ready',
+    'unavailableFeatureDomainIds': unavailableDomains,
+  };
+}
+
 final class _FirstFrameClient extends ClientController {
   _FirstFrameClient() : super(agentService: FakeAgentService());
 
@@ -250,6 +443,30 @@ final class _FirstFrameClient extends ClientController {
   Future<void> initializeLlmGateway() async {
     gatewayStarts += 1;
   }
+}
+
+final class _AdmissionFailureClient extends ClientController {
+  _AdmissionFailureClient({
+    required super.portableData,
+    required super.conversationNativePort,
+  }) : super(agentService: _AdmissionFailureService());
+
+  int gatewayStarts = 0;
+
+  @override
+  Future<void> initializeLlmGateway() async {
+    gatewayStarts += 1;
+  }
+}
+
+final class _AdmissionFailureService extends FakeAgentService {
+  @override
+  Future<Map<String, dynamic>> dataHomeStatus() async => {};
+
+  @override
+  Future<Map<String, dynamic>> admitClientStateMigration(
+    String dataRoot,
+  ) async => throw StateError('synthetic_admission_refusal');
 }
 
 final class _StartupViewStore implements ClientCurrentViewStore {

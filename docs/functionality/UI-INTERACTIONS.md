@@ -61,9 +61,11 @@ on replay.
 ## What is covered
 
 The model covers primary navigation in both layouts, compact menus, desktop
-feature-window opening/reselect/closing, all settings index entries, and a
-populated dashboard journey connecting group conversations, parent lists,
-native-conversation selection, search input/results, creation-dialog cancellation,
+app windows opened from the dock, dock-icon reselect, the quick switcher
+(open, dismiss, and choosing an app), chat-sidebar collapse to the avatar
+rail and expand back, all settings index entries, and a populated dashboard
+journey connecting group conversations, parent lists, native-conversation
+selection, search input/results, creation-dialog cancellation,
 group-menu cancellation, settings/features, refresh, and scrolling in both
 directions. The nonmodal group menu also allows the visible surrounding
 navigation, list, search, roster, and scroll actions in that same state.
@@ -81,8 +83,9 @@ not randomly selected.
 Known remaining areas include other conversation rows and native-session
 selection, message actions/execution detail, member mentions and assistant
 configuration, successful data-editing commands, file pickers, feature-specific
-forms, and concurrent desktop-window arrangements. These are visible coverage
-gaps, not silently accepted transitions. Add their expected user behavior to the
+forms, and desktop dock reordering, folder management, and sidebar-resize
+drags. These are
+visible coverage gaps, not silently accepted transitions. Add their expected user behavior to the
 model and map their controls in the adapter; do not infer expected destinations
 from controller state or make an unexpected result pass by changing the oracle.
 

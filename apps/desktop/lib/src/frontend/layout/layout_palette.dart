@@ -38,6 +38,8 @@ final class LayoutPalette {
     required this.hoverOverlay,
     required this.pressedOverlay,
     required this.selectedSurface,
+    required this.selectionInk,
+    required this.textOnSelection,
     required this.brandGlow,
     required this.accentGlow,
   });
@@ -69,11 +71,18 @@ final class LayoutPalette {
   final Color hoverOverlay;
   final Color pressedOverlay;
   final Color selectedSurface;
+  final Color selectionInk;
+  final Color textOnSelection;
   final Color brandGlow;
   final Color accentGlow;
 
   bool get isDark =>
       ThemeData.estimateBrightnessForColor(background) == Brightness.dark;
+
+  /// Unread/reminder badge fill: the deep accent violet in dark presets,
+  /// the taro brand violet in light presets — always white numerals.
+  Color get unreadBadgeFill =>
+      isDark ? licoDeepViolet(accent, lightness: 0.38) : primary;
 
   List<Color> get _roles => [
     background,
@@ -103,6 +112,8 @@ final class LayoutPalette {
     hoverOverlay,
     pressedOverlay,
     selectedSurface,
+    selectionInk,
+    textOnSelection,
     brandGlow,
     accentGlow,
   ];
@@ -127,6 +138,18 @@ final class LayoutPalette {
 
   @override
   int get hashCode => Object.hashAll(_roles);
+}
+
+/// Deep violet derived from the preset's accent hue — the shared lamp
+/// violet behind the user bubble and the unread-count badge. Preset
+/// accents are deliberately pale (the lamp ink is a lavender like
+/// `#b8a4ff` at ~22% saturation), so a plain alpha blend reads grey-mauve
+/// on glass; re-saturating the hue and pulling the lightness down keeps
+/// the result on-theme.
+Color licoDeepViolet(Color accent, {required double lightness}) {
+  final hsl = HSLColor.fromColor(accent);
+  final saturation = (hsl.saturation * 2.4 + 0.18).clamp(0.0, 1.0);
+  return hsl.withSaturation(saturation).withLightness(lightness).toColor();
 }
 
 final class LayoutPaletteScope extends InheritedWidget {

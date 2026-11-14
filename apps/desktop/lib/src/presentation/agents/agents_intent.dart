@@ -6,37 +6,35 @@ sealed class AgentsIntent {
   final TraceContext? trace;
 }
 
-final class InitializeAdaptiveFlywheel extends AgentsIntent {
-  const InitializeAdaptiveFlywheel({this.initialRevision = '', super.trace});
+final class InitializeAcativa extends AgentsIntent {
+  const InitializeAcativa({this.initialRevision = '', super.trace});
 
   final String initialRevision;
 }
 
-final class ImportAdaptiveFlywheelPackage extends AgentsIntent {
-  const ImportAdaptiveFlywheelPackage(this.path, {super.trace});
+final class ImportAcativaPackage extends AgentsIntent {
+  const ImportAcativaPackage(this.path, {super.trace});
 
   final String path;
 }
 
-final class SelectAdaptiveFlywheelDefinition extends AgentsIntent {
-  const SelectAdaptiveFlywheelDefinition(this.revision, {super.trace});
+final class SelectAcativaDefinition extends AgentsIntent {
+  const SelectAcativaDefinition(this.revision, {super.trace});
 
   final String revision;
 }
 
-final class SaveAdaptiveFlywheelActorBindings extends AgentsIntent {
-  SaveAdaptiveFlywheelActorBindings({
-    required Iterable<AdaptiveFlywheelAssignmentIntent> assignments,
+final class SaveAcativaActorBindings extends AgentsIntent {
+  SaveAcativaActorBindings({
+    required Iterable<AcativaAssignmentIntent> assignments,
     super.trace,
-  }) : assignments = List<AdaptiveFlywheelAssignmentIntent>.unmodifiable(
-         assignments,
-       );
+  }) : assignments = List<AcativaAssignmentIntent>.unmodifiable(assignments);
 
-  final List<AdaptiveFlywheelAssignmentIntent> assignments;
+  final List<AcativaAssignmentIntent> assignments;
 }
 
-final class AdaptiveFlywheelAssignmentIntent {
-  const AdaptiveFlywheelAssignmentIntent({
+final class AcativaAssignmentIntent {
+  const AcativaAssignmentIntent({
     required this.slotId,
     required this.ordinal,
     required this.agentId,
@@ -51,30 +49,30 @@ final class AdaptiveFlywheelAssignmentIntent {
   final String reasoningEffort;
 }
 
-final class RefreshAdaptiveFlywheelModelCatalogs extends AgentsIntent {
-  RefreshAdaptiveFlywheelModelCatalogs({
-    required Iterable<String> agentIds,
-    super.trace,
-  }) : agentIds = List<String>.unmodifiable(agentIds);
+final class RefreshAcativaModelCatalogs extends AgentsIntent {
+  RefreshAcativaModelCatalogs({required Iterable<String> agentIds, super.trace})
+    : agentIds = List<String>.unmodifiable(agentIds);
 
   final List<String> agentIds;
 }
 
-final class ReadAdaptiveFlywheelAssistantProfile extends AgentsIntent {
-  const ReadAdaptiveFlywheelAssistantProfile({super.trace});
+final class ReadAcativaAssistantProfile extends AgentsIntent {
+  const ReadAcativaAssistantProfile({super.trace});
 }
 
-final class UpdateAdaptiveFlywheelAssistantProfile extends AgentsIntent {
-  const UpdateAdaptiveFlywheelAssistantProfile({
+final class UpdateAcativaAssistantProfile extends AgentsIntent {
+  const UpdateAcativaAssistantProfile({
     required this.agentId,
     required this.modelId,
     required this.reasoningEffort,
+    this.permissionMode,
     super.trace,
   });
 
   final String agentId;
   final String modelId;
   final String reasoningEffort;
+  final String? permissionMode;
 }
 
 final class ScanAgents extends AgentsIntent {
@@ -92,10 +90,6 @@ final class SelectAgent extends AgentsIntent {
   const SelectAgent(this.agentId, {super.trace});
 
   final String agentId;
-}
-
-final class ShowAgentsWelcome extends AgentsIntent {
-  const ShowAgentsWelcome({super.trace});
 }
 
 final class SelectAgentConversationSession extends AgentsIntent {
@@ -130,6 +124,15 @@ final class SelectGroupAgentConversationSession extends AgentsIntent {
 
 final class StartAgentConversation extends AgentsIntent {
   const StartAgentConversation(this.agentId, {super.trace});
+
+  final String agentId;
+}
+
+/// Opens an Agent contact: the most recently updated top-level conversation,
+/// or a fresh new-conversation home when none exists. Child sessions of a
+/// sub-agent thread never count as the Agent's latest conversation.
+final class OpenAgentConversation extends AgentsIntent {
+  const OpenAgentConversation(this.agentId, {super.trace});
 
   final String agentId;
 }

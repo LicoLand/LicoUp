@@ -120,16 +120,12 @@ export async function checkDocsReadiness({ assert, files }) {
     assert(gitignore.split(/\r?\n/u).includes(localPath), `.gitignore must keep ${localPath} local`);
   }
   const packaging = await readJson("apps/desktop/packaging.modules.json");
-  const driverInventory = await readJson(
-    "crates/licoup-native/resources/agent-conversation-drivers.json",
-  );
+  // The canonical agent-driver inventory is owned by LicoUp-CLI; on the
+  // Desktop side the packaging module list is the authoritative adapter set.
   const adapterIds = packaging.modules?.["target-adapters"]?.targetAdapters || [];
-  const driverIds = driverInventory.drivers?.map((driver) => driver.agentId) || [];
   assert(
-    adapterIds.length > 0 &&
-      new Set(adapterIds).size === adapterIds.length &&
-      JSON.stringify([...adapterIds].sort()) === JSON.stringify([...driverIds].sort()),
-    "packaging and canonical driver inventory must contain the exact same adapters",
+    adapterIds.length > 0 && new Set(adapterIds).size === adapterIds.length,
+    "packaging target-adapters must declare a unique, non-empty adapter set",
   );
   assert(
     packaging.packageProfile === "licoup",

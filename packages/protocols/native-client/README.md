@@ -1,22 +1,25 @@
 # Native Client Protocol Boundary
 
+Updated: 2026-09-30
+
 English (normative) · [简体中文](README.zh-CN.md)
 
 This directory documents the client-internal adaptation boundary among the
 LicoUp Flutter client, Rust native library, and local agents. “Stable” here
-does not apply to the
-[current retiring endpoint-protection Preview](../../../docs/STATUS.md).
+does not apply to retired protocol previews; see
+[docs/STATUS.md](../../../docs/STATUS.md).
 
 ## Implementation Entry Points
 
-- `../../../crates/licoup-native/src/core/task_queue.rs`: bounded local task
-  queue.
-- `../../../crates/licoup-native/src/platform/runtime_adapters.rs`: native
-  agent-session adapter registry.
-- `../../../crates/licoup-native/src/core/mcp.rs`: service-neutral MCP
+The Rust workspace lives in the LicoUp-CLI repository, which owns these
+implementation entry points:
+
+- `crates/licoup-foundation/src/core/task_queue.rs` (LicoUp-CLI): bounded
+  local task queue.
+- `crates/licoup/src/platform/runtime_adapters.rs` (LicoUp-CLI):
+  native agent-session adapter registry.
+- `crates/licoup/src/core/mcp.rs` (LicoUp-CLI): service-neutral MCP
   JSON-RPC message adaptation.
-- `../../../crates/licoup-native/src/core/secure_mesh_acp.rs`: ACP carriage
-  over the current endpoint-protection Preview.
 
 ## Protocol Scope
 
@@ -26,20 +29,17 @@ does not apply to the
 - Construction, validation, and encoding of one MCP request, notification, or
   response. Forwarding a response consumes one-time user approval bound to the
   exact request and destination.
-- ACP command and result carriage inside the current endpoint-protection
-  Preview messages.
-- Platform bridges for macOS, Windows, Ubuntu, Android, and iOS implement only
-  their platform responsibilities and do not duplicate product protocols.
+- Platform bridges for macOS, Windows, and Ubuntu implement only their
+  platform responsibilities and do not duplicate product protocols.
 
 ## Boundary Principles
 
-- CLI, Flutter, and mobile bridges reuse the same Rust protocol models instead
-  of creating message variants.
+- CLI and Flutter reuse the same Rust protocol models instead of creating
+  message variants.
 - Stable wire-observable Pairwise Protection, Generic Message, Reliable
   Exchange, negotiation, and Transport Profile semantics belong to a pinned
-  Lico Arc Protocol Line. The current retiring preview is not a Lico Arc
-  Profile, has no future compatibility promise, and is to be retired directly
-  when that line replaces it.
+  Lico Arc Protocol Line. The retired endpoint-protection preview was not a
+  Lico Arc Profile and carries no compatibility promise.
 - LicoUp retains private keys, Provider configuration, plaintext, history,
   backups, user trust, approvals, and local effects.
 - Local paths, configuration, conversations, and statistics stay in
