@@ -81,6 +81,9 @@ jobs:
         if: env.README_FAST_SELECTED != 'true'
         working-directory: apps/desktop
         run: flutter pub get --enforce-lockfile
+      - name: Verify macOS visual golden baselines
+        if: env.README_FAST_SELECTED != 'true'
+        run: npm run client:gate:step -- flutter.layer.macos-visual-goldens
       - name: Build the stable client once
         if: env.README_FAST_SELECTED != 'true'
         run: npm run client:build -- --platform macos

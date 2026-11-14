@@ -2176,7 +2176,7 @@ export const FLUTTER_MODULES = Object.freeze([
       kind: "flutter-layer",
       summary: "macOS visual golden pixel baselines verified strictly on darwin hosts",
       runnableHosts: ["darwin"],
-      targetEvidenceHosts: ["darwin"],
+      targetEvidenceHosts: [],
       inputs: [
         "apps/desktop/test/support/agent_hub_panel_test_support.dart",
         "apps/desktop/test/support/bundled_font_loader.dart",

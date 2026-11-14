@@ -472,23 +472,18 @@ test("local host selection excludes every foreign target owner", () => {
   assert.equal(linuxIds.has("target.macos-only"), false);
   assert.equal(linuxIds.has("target.linux-only"), true);
   assert.equal(linuxIds.has("target.generic"), true);
-  assert.deepEqual(
-    CLIENT_MODULE_CATALOG
-      .filter((module) => module.regression.targetEvidenceHosts.length > 0)
-      .map((module) => ({
-        id: module.id,
-        runnableHosts: module.regression.runnableHosts,
-        targetEvidenceHosts: module.regression.targetEvidenceHosts,
-      })),
-    [
-      {
-        id: "flutter.layer.macos-visual-goldens",
-        runnableHosts: ["darwin"],
-        targetEvidenceHosts: ["darwin"],
-      },
-    ],
-    "macOS visual golden baselines are isolated to darwin target evidence",
+  assert.equal(
+    CLIENT_MODULE_CATALOG.filter((module) =>
+      module.regression.targetEvidenceHosts.length > 0).length,
+    0,
+    "the Desktop catalog carries no platform-target evidence owners",
   );
+  const macosVisualGoldens = CLIENT_MODULE_CATALOG.find(
+    (module) => module.id === "flutter.layer.macos-visual-goldens",
+  );
+  assert.ok(macosVisualGoldens, "macOS visual golden module stays registered");
+  assert.deepEqual(macosVisualGoldens.regression.runnableHosts, ["darwin"]);
+  assert.deepEqual(macosVisualGoldens.regression.targetEvidenceHosts, []);
 });
 
 test("direct selection without a module id keeps only generic host-runnable modules", () => {
