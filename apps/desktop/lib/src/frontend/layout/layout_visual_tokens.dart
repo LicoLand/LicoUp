@@ -13,6 +13,7 @@ final class LayoutVisualTokens extends ThemeExtension<LayoutVisualTokens> {
     required double contentMaxWidth,
     required double typographyScale,
     required Duration motionDuration,
+    bool circularAvatars = false,
   }) {
     final values = [
       spacingUnit,
@@ -37,6 +38,7 @@ final class LayoutVisualTokens extends ThemeExtension<LayoutVisualTokens> {
       contentMaxWidth: contentMaxWidth,
       typographyScale: typographyScale,
       motionDuration: motionDuration,
+      circularAvatars: circularAvatars,
     );
   }
 
@@ -49,6 +51,7 @@ final class LayoutVisualTokens extends ThemeExtension<LayoutVisualTokens> {
     required this.contentMaxWidth,
     required this.typographyScale,
     required this.motionDuration,
+    required this.circularAvatars,
   });
 
   final double spacingUnit;
@@ -60,6 +63,10 @@ final class LayoutVisualTokens extends ThemeExtension<LayoutVisualTokens> {
   final double typographyScale;
   final Duration motionDuration;
 
+  /// Whether this profile frames user and group avatars as circles instead of
+  /// rounded rectangles.
+  final bool circularAvatars;
+
   @override
   LayoutVisualTokens copyWith({
     double? spacingUnit,
@@ -70,6 +77,7 @@ final class LayoutVisualTokens extends ThemeExtension<LayoutVisualTokens> {
     double? contentMaxWidth,
     double? typographyScale,
     Duration? motionDuration,
+    bool? circularAvatars,
   }) => LayoutVisualTokens(
     spacingUnit: spacingUnit ?? this.spacingUnit,
     density: density ?? this.density,
@@ -79,6 +87,7 @@ final class LayoutVisualTokens extends ThemeExtension<LayoutVisualTokens> {
     contentMaxWidth: contentMaxWidth ?? this.contentMaxWidth,
     typographyScale: typographyScale ?? this.typographyScale,
     motionDuration: motionDuration ?? this.motionDuration,
+    circularAvatars: circularAvatars ?? this.circularAvatars,
   );
 
   @override
@@ -108,6 +117,7 @@ final class LayoutVisualTokens extends ThemeExtension<LayoutVisualTokens> {
           t,
         )!.round(),
       ),
+      circularAvatars: t < 0.5 ? circularAvatars : other.circularAvatars,
     );
   }
 }

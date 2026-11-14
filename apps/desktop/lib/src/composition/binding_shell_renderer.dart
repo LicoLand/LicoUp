@@ -17,14 +17,17 @@ import 'package:licoup/src/frontend/environment/environment_projection_adapter.d
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_search_palette.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation_quick_switcher.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_member_profile_card.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/package_recommendation_sheet_host.dart';
 import 'package:licoup/src/frontend/features/plugin_window/ui/plugin_window_actions.dart';
 import 'package:licoup/src/frontend/features/plugin_window/ui/plugin_window_view.dart';
 import 'package:licoup/src/frontend/features/settings/ui/client_update_settings_card.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/projects/project_plan_submission.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
 import 'package:licoup/src/frontend/layout/layout_registry.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_self_avatar.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
@@ -270,6 +273,31 @@ final class _BindingChromeFeatures implements LayoutChromeFeatures {
     conversation: conversation,
     apps: apps,
     onOpenApp: onOpenApp,
+  );
+
+  @override
+  Widget buildSelfAvatar(
+    BuildContext context, {
+    required double size,
+    String? mascotId,
+  }) => MessagingSelfAvatar(size: size, mascotId: mascotId);
+
+  @override
+  Future<void> openSelfProfile(
+    BuildContext context, {
+    required Rect anchorRect,
+    String? mascotId,
+    required ValueChanged<String> onMascotChanged,
+    required VoidCallback onOpenSettings,
+  }) => showMessagingMemberProfile(
+    context: context,
+    anchorRect: anchorRect,
+    card: MessagingSelfProfileCard(
+      displayName: LicoStrings.of(context).localUser,
+      mascotId: mascotId,
+      onMascotChanged: onMascotChanged,
+      onOpenSettings: onOpenSettings,
+    ),
   );
 }
 

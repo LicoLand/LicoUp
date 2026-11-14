@@ -3,6 +3,9 @@ import path from "node:path";
 import process from "node:process";
 
 import { packageClientRuntime, packageFailure } from "../cli-policy.mjs";
+import {
+  cliReleaseRuntimeTargetIdFor,
+} from "../cli-release/release-pin.mjs";
 import { stageCliRelease } from "../cli-release/stage.mjs";
 
 /**
@@ -10,15 +13,19 @@ import { stageCliRelease } from "../cli-release/stage.mjs";
  * in this workspace as the pinned CLI release (`tools/licoup-cli-release.json`).
  * Desktop never compiles them: packaging stages the verified release into
  * `LICO_CLI_ARTIFACTS_DIR` or the conventional
- * `build/native-artifacts/<platform>` staging root, and every later stage
- * (Xcode bundling, resource assembly) reads that same directory.
+ * `build/native-artifacts/<runtime-target-id>` staging root, and every later
+ * stage (Xcode bundling, resource assembly) reads that same directory.
  */
-export function nativeArtifactsDirectory(options, environment = process.env) {
+export function nativeArtifactsDirectory(
+  options,
+  environment = process.env,
+  hostArch = process.arch,
+) {
   const override = String(environment.LICO_CLI_ARTIFACTS_DIR || "").trim();
   if (override) return path.resolve(override);
   return path.join(
     packageClientRuntime.nativeArtifactsRoot,
-    options.platform === "windows" ? packageClientRuntime.windowsX64TargetId : options.platform,
+    cliReleaseRuntimeTargetIdFor(options.platform, hostArch),
   );
 }
 

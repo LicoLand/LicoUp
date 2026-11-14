@@ -929,7 +929,8 @@ String? _liveText(PluginCapabilityProjection capability, bool chinese) {
 
 IconData _pluginIcon(String pluginId) => switch (pluginId) {
   'acp-bridge' => Icons.cable_outlined,
-  'lico-up-codex' => Icons.account_tree_outlined,
+  'subagent-mcp' || 'lico-subagent-mcp' => Icons.account_tree_outlined,
+  _ when pluginId.endsWith('-mcp') => Icons.account_tree_outlined,
   _ => Icons.extension_outlined,
 };
 

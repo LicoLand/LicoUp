@@ -225,21 +225,6 @@
         "extension-packages"
       ]
     },
-    "codex-plugin": {
-      "label": "LicoUp Codex Plugin 0.2.0 thin connector, installed from the Codex plugin marketplace",
-      "category": "agents",
-      "enabled": true,
-      "required": true,
-      "platforms": [
-        "macos",
-        "linux",
-        "windows"
-      ],
-      "packaging": "runtime-capability",
-      "requires": [
-        "native-sidecar"
-      ]
-    },
     "extension-packages": {
       "label": "Independently released first-party packages read through a signed package index",
       "category": "packages",

@@ -48,6 +48,8 @@ export function isNeutralClosureDependency(relativePath) {
     relativePath.startsWith(appearanceRendererRoot) ||
     relativePath.startsWith(presentationRoot) ||
     relativePath.startsWith("apps/desktop/lib/src/frontend/l10n/") ||
+    relativePath ===
+      "apps/desktop/lib/src/frontend/environment/lico_strings_resources.dart" ||
     isSharedRendererDependency(relativePath) ||
     NEUTRAL_LAYOUT_CONTRACTS.has(relativePath)
   );

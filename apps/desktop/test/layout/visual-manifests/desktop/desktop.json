@@ -82,7 +82,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart",
-      "digest": "sha256:bae777ce41196a0f2912a5e0129fe45ee720f484eccdb5bf3f9efbf7c3ef2f78"
+      "digest": "sha256:b94cb038c1f3dbfe1c8ab30e6d53fefad75045215a99f6bcb573544e2f8919d6"
     },
     {
       "path": "apps/desktop/test/goldens/layout/desktop/desktop/production-baseline/agentHub.png",
@@ -102,7 +102,7 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/desktop/desktop/desktop_desktop_bundle_test.dart",
-      "digest": "sha256:0830e988ae90ba29acc9e17dbe21be93403a4ae25fb9cba8fa87a01b624fb797"
+      "digest": "sha256:ced89da3f32a5077c224b918e1a209a78f63b0c84cc4f073c4626a85b5b9e9df"
     },
     {
       "path": "apps/desktop/test/layout/profiles/desktop/desktop/desktop_desktop_shell_test.dart",
@@ -117,5 +117,5 @@
       "digest": "sha256:52dfce48d59de614138194698ca9755e405e757a389008d38b193cbc5b8d82ca"
     }
   ],
-  "manifestDigest": "sha256:75fb76ee4aad49af44bdb6069854d3d77a95bdb2f438a77aa93d950b703c9ed2"
+  "manifestDigest": "sha256:979b6235203930192a9a77cf2cd77c99763796bdb8b8b8b0dc9ce3b29a1d9561"
 }

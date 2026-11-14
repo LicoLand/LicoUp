@@ -11,8 +11,7 @@ const requiredFutureModules = [
   "skill-hub",
   "activity-snapshots",
   "settings",
-  "lico-agent-sidecar",
-  "codex-plugin"
+  "lico-agent-sidecar"
 ];
 const optionalFutureModules = [
   "extension-packages",

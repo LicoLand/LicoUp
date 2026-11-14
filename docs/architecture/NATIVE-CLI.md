@@ -84,7 +84,9 @@ refresh and canonical identity. Its commands are not remote MCP operations.
 `subagents catalog` exposes the native caller and operation schemas;
 `subagents execute` admits a local invocation with `name`, `arguments`, and
 `caller`. Caller scope is checked by the native Subagents domain.
-`mcp start`, `stop`, `reload`, and `status` manage the independent MCP process.
+`licoup mcp stdio` provides the generic local MCP stdio entrypoint for Codex and
+other external callers, while `mcp start`, `stop`, `reload`, and `status` manage
+the optional `org.licoland.feature.mcp` service process.
 Development `start` and `reload` accept `--binary` for an explicit MCP
 executable. The MCP adapter's narrower remote exposure is owned by its
 [protocol document](../protocols/subagent-mcp.md).

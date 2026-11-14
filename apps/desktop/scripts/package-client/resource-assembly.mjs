@@ -179,7 +179,14 @@ function copySidecar(binaryName, bundle, options) {
   if (options.platform === "macos" && binaryName === "licoup") {
     return stageMacosCustodyHelper(source, bundle);
   }
-  const target = path.join(bundle.executableDir, `${binaryName}${suffix}`);
+  // Windows and Linux keep the sidecar under `helpers/` beside the GUI
+  // executable — the frontend binary is itself named `licoup`, so the
+  // custody-equivalent helper path is what keeps the two products distinct.
+  const target = path.join(
+    bundle.sidecarDir ?? bundle.executableDir,
+    `${binaryName}${suffix}`,
+  );
+  mkdirSync(path.dirname(target), { recursive: true });
   copyFileSync(source, target);
   if (options.platform !== "windows") chmodSync(target, 0o755);
   return target;

@@ -83,7 +83,7 @@ void main() {
   test(
     'LLM credential writes reuse the persistent authorized process',
     () async {
-  final sv_synthetic = _synth('synthetic');
+      final sv_synthetic = _synth('synthetic');
       final transport = _FakeStdioTransport();
       final context = _FakeProcessContext();
       final processIo = BoundedNativeProcessIo(
@@ -190,9 +190,10 @@ printf '{"seq":2}\n'
     );
 
     expect(
-      await processIo
-          .streamCliJsonLinesWithStdin(const ['private', 'stream'], '{}')
-          .toList(),
+      await processIo.streamCliJsonLinesWithStdin(const [
+        'private',
+        'stream',
+      ], '{}').toList(),
       [
         {'seq': 1},
         {'seq': 2},

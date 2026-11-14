@@ -15,6 +15,7 @@ final LayoutVisualTokens desktopMobileTokens = LayoutVisualTokens(
   contentMaxWidth: 920,
   typographyScale: 1.04,
   motionDuration: const Duration(milliseconds: 220),
+  circularAvatars: true,
 );
 
 /// Desktop-only measurements. Colors continue to come from the active

@@ -1,6 +1,6 @@
 # LicoUp Subagent MCP
 
-Updated: 2026-09-30
+Updated: 2026-11-14
 
 | Reference | Document |
 | --- | --- |
@@ -65,14 +65,24 @@ routes callers to the appropriate interface.
 
 ## Independent lifecycle and development
 
-The executable `lico-subagent-mcp` is the payload of the optional
-`org.licoland.feature.mcp` package, not a bundled part of the client. The client
-neither ships a copy nor starts the service on its own: the package declares
-`on-demand` activation, so a caller starts it, and an absent or switched-off
-package starts no process and publishes no endpoint. `licoup mcp start`, `stop`,
-`status`, and `reload` remain the local native façade for that process; `start`
-and `reload` accept `--binary` to select a separately built module executable.
-They ensure the native host is available without requiring Flutter.
+Codex and other external MCP callers connect through the generic local MCP
+entrypoint rather than a provider-specific plugin repository (`LicoUp-Plugins`
+and `lico-up-codex` are retired):
+
+1. **Generic local stdio entrypoint (`licoup mcp stdio`)**: serves the closed
+   five-tool Subagent MCP surface directly over local stdio through the
+   installed `licoup` binary, requiring no separate plugin package or background
+   listener.
+2. **Optional `org.licoland.feature.mcp` service (`lico-subagent-mcp`)**: the
+   executable `lico-subagent-mcp` is the payload of the optional
+   `org.licoland.feature.mcp` package, not a bundled part of the client. The
+   client neither ships a copy nor starts the service on its own: the package
+   declares `on-demand` activation, so a caller starts it, and an absent or
+   switched-off package starts no process and publishes no endpoint.
+   `licoup mcp start`, `stop`, `status`, and `reload` remain the local native
+   façade for that process; `start` and `reload` accept `--binary` to select a
+   separately built module executable. They ensure the native host is available
+   without requiring Flutter.
 
 For independent module development (the Rust workspace lives in the
 LicoUp-CLI repository):

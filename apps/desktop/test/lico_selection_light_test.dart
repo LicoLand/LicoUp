@@ -4,8 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_card_shell.dart';
-import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_plain_shell.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_ambient_clock.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
@@ -362,27 +360,5 @@ void main() {
     );
     expect(icon.shadows, hasLength(1));
     expect(icon.shadows!.first.blurRadius, 10);
-  });
-
-  test('the plain dashboard picks starlight in dark and lamp in light', () {
-    final dark = layoutPaletteFromColors(
-      licoColorsFor('lico-starlit-gold', platformBrightness: Brightness.dark),
-    );
-    final light = layoutPaletteFromColors(
-      licoColorsFor('lico-taro-waffle', platformBrightness: Brightness.light),
-    );
-    expect(
-      dashboardPlainSelectionTreatment(dark),
-      LicoSelectionTreatment.starlight,
-    );
-    expect(
-      dashboardPlainSelectionTreatment(light),
-      LicoSelectionTreatment.lamp,
-    );
-    expect(
-      dashboardCardSelectionTreatment(dark),
-      LicoSelectionTreatment.starlight,
-    );
-    expect(dashboardCardSelectionTreatment(light), LicoSelectionTreatment.lamp);
   });
 }

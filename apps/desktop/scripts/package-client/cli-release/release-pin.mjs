@@ -24,6 +24,31 @@ const DIGEST_PATTERN = /^[a-f0-9]{64}$/u;
 const TARGET_PATTERN = /^[a-z0-9_]+(?:-[a-z0-9_]+){2,3}$/u;
 
 /**
+ * The CLI release targets the Desktop can consume, keyed by
+ * `platform:architecture`. Each entry names the Rust target triple of the
+ * pinned release archive and the `runtimeTargetId` the client release
+ * catalog and the staged sidecar directory share.
+ */
+const CLI_RELEASE_HOST_TARGETS = Object.freeze({
+  "macos:arm64": Object.freeze({
+    runtimeTargetId: "macos-arm64",
+    rustTarget: "aarch64-apple-darwin",
+  }),
+  "linux:arm64": Object.freeze({
+    runtimeTargetId: "linux-glibc-arm64",
+    rustTarget: "aarch64-unknown-linux-gnu",
+  }),
+  "linux:x64": Object.freeze({
+    runtimeTargetId: "linux-glibc-x64",
+    rustTarget: "x86_64-unknown-linux-gnu",
+  }),
+  "windows:x64": Object.freeze({
+    runtimeTargetId: "windows-x64",
+    rustTarget: "x86_64-pc-windows-msvc",
+  }),
+});
+
+/**
  * The Rust target triple of the CLI release one packaging run consumes.
  *
  * The Desktop packages each platform on its own build host, so the host
@@ -31,14 +56,38 @@ const TARGET_PATTERN = /^[a-z0-9_]+(?:-[a-z0-9_]+){2,3}$/u;
  * release to consume.
  */
 export function cliReleaseTargetFor(platform, hostArch = process.arch) {
-  const target = {
-    "macos:arm64": "aarch64-apple-darwin",
-    "linux:arm64": "aarch64-unknown-linux-gnu",
-    "linux:x64": "x86_64-unknown-linux-gnu",
-    "windows:x64": "x86_64-pc-windows-msvc",
-  }[`${platform}:${hostArch}`];
+  const target = CLI_RELEASE_HOST_TARGETS[`${platform}:${hostArch}`];
   if (!target) packageFailure("cli_release_target_unsupported");
-  return target;
+  return target.rustTarget;
+}
+
+/**
+ * The client release catalog `runtimeTargetId` the staged sidecar directory
+ * is named after. Single-architecture platforms resolve their catalog arch;
+ * Linux derives it from the host because glibc targets build on matching
+ * hosts. `Abi.current()` in the client maps onto the same ids.
+ */
+export function cliReleaseRuntimeTargetIdFor(platform, hostArch = process.arch) {
+  const arch = platform === "macos"
+    ? "arm64"
+    : platform === "windows"
+      ? "x64"
+      : hostArch;
+  const target = CLI_RELEASE_HOST_TARGETS[`${platform}:${arch}`];
+  if (!target) packageFailure("cli_release_target_unsupported");
+  return target.runtimeTargetId;
+}
+
+/**
+ * Resolves a catalog `runtimeTargetId` back to its platform and
+ * architecture; unknown ids fail closed.
+ */
+export function cliReleaseRuntimeTargetDescriptor(runtimeTargetId) {
+  const entry = Object.entries(CLI_RELEASE_HOST_TARGETS)
+    .find(([, target]) => target.runtimeTargetId === runtimeTargetId);
+  if (!entry) packageFailure("cli_release_target_unsupported");
+  const [platform, arch] = entry[0].split(":");
+  return Object.freeze({ platform, arch });
 }
 
 /** Reads and validates the tracked pin; an invalid pin fails closed. */

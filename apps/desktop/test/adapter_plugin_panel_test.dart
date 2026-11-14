@@ -178,11 +178,11 @@ void main() {
     // An installed plugin exposes a disabled update action and a warning
     // uninstall action below the in-card divider.
     final updateButton = tester.widget<FilledButton>(
-      find.byKey(const Key('adapter-update-claude-code-lico-up-codex')),
+      find.byKey(const Key('adapter-update-claude-code-subagent-mcp')),
     );
     expect(updateButton.onPressed, isNull);
     expect(
-      find.byKey(const Key('adapter-uninstall-claude-code-lico-up-codex')),
+      find.byKey(const Key('adapter-uninstall-claude-code-subagent-mcp')),
       findsOneWidget,
     );
     expect(find.text('更新'), findsOneWidget);
@@ -443,13 +443,13 @@ void main() {
   );
 
   testWidgets(
-    'Codex plugin install issues no retired adapter codex plugin command',
+    'local MCP entries across Codex, Cursor, and Claude Code render uniformly and honor catalog actions',
     (tester) async {
-      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.physicalSize = const Size(1280, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final service = _CodexPluginAgentService();
+      final service = _UniformLocalMcpAgentService();
       final controller = ClientController(
         agentService: service,
         presentationPreferencesRepository: _PanelPreferencesRepository(),
@@ -461,20 +461,23 @@ void main() {
       await _pumpBinding(tester, feature, const Locale('en'));
       service.calls.clear();
 
+      for (final agentId in const ['codex', 'cursor', 'claude-code']) {
+        expect(find.byKey(Key('adapter-plugin-$agentId')), findsOneWidget);
+        expect(
+          find.byKey(Key('adapter-plugin-entry-$agentId-subagent-mcp')),
+          findsOneWidget,
+        );
+      }
+      expect(find.text('Subagent MCP'), findsNWidgets(3));
+
       await tester.tap(
-        find.byKey(const Key('adapter-install-codex-lico-up-codex')),
+        find.byKey(const Key('adapter-install-codex-subagent-mcp')),
       );
       await tester.pumpAndSettle();
 
-      // The Codex plugin belongs to Codex's own marketplace; the client only
-      // runs management actions the catalog declares for the adapter.
-      expect(
-        service.calls.where(
-          (call) =>
-              call.length >= 3 && call[1] == 'codex' && call[2] == 'plugin',
-        ),
-        isEmpty,
-      );
+      // Built-in adapters without an adapter-level lifecycle action reject
+      // undeclared installs instead of issuing any special-case plugin command.
+      expect(service.calls, isEmpty);
       expect(find.byKey(const Key('plugin-lifecycle-plan')), findsNothing);
       expect(tester.takeException(), isNull);
     },
@@ -625,8 +628,8 @@ final class _CatalogAgentService extends AgentService {
           ],
           'adapterPlugins': [
             {
-              'id': 'lico-up-codex',
-              'label': 'LicoUp Codex Plugin',
+              'id': 'subagent-mcp',
+              'label': 'Subagent MCP',
               'detail': 'lico-subagent-mcp',
               'installationState': 'installed',
               'lifecycleActions': ['uninstall'],
@@ -668,8 +671,8 @@ final class _CatalogAgentService extends AgentService {
   }
 }
 
-final class _CodexPluginAgentService extends AgentService {
-  _CodexPluginAgentService() : super(persistentStdioRpcEnabled: false);
+final class _UniformLocalMcpAgentService extends AgentService {
+  _UniformLocalMcpAgentService() : super(persistentStdioRpcEnabled: false);
 
   final List<List<String>> calls = [];
 
@@ -695,11 +698,57 @@ final class _CodexPluginAgentService extends AgentService {
           ],
           'adapterPlugins': [
             {
-              'id': 'lico-up-codex',
-              'label': 'LicoUp Codex Plugin',
+              'id': 'subagent-mcp',
+              'label': 'Subagent MCP',
               'detail': 'lico-subagent-mcp',
               'installationState': 'not-installed',
               'lifecycleActions': ['install'],
+            },
+          ],
+        },
+        {
+          'agentId': 'cursor',
+          'label': 'Cursor - CLI',
+          'driverId': 'cursor',
+          'runtimeProtocol': 'cursor-agent-acp',
+          'laneFamily': 'acp',
+          'managementKind': 'native',
+          'installationState': 'not-required',
+          'readiness': 'ready',
+          'lifecycleActions': <String>[],
+          'nativeCapabilities': [
+            {'kind': 'cli', 'detected': true, 'running': false},
+          ],
+          'adapterPlugins': [
+            {
+              'id': 'subagent-mcp',
+              'label': 'Subagent MCP',
+              'detail': 'lico-subagent-mcp',
+              'installationState': 'installed',
+              'lifecycleActions': <String>[],
+            },
+          ],
+        },
+        {
+          'agentId': 'claude-code',
+          'label': 'Claude Code - CLI',
+          'driverId': 'claude-code',
+          'runtimeProtocol': 'claude-code-cli-stream-json',
+          'laneFamily': 'official-native',
+          'managementKind': 'native',
+          'installationState': 'not-required',
+          'readiness': 'ready',
+          'lifecycleActions': <String>[],
+          'nativeCapabilities': [
+            {'kind': 'cli', 'detected': true, 'running': false},
+          ],
+          'adapterPlugins': [
+            {
+              'id': 'subagent-mcp',
+              'label': 'Subagent MCP',
+              'detail': 'lico-subagent-mcp',
+              'installationState': 'installed',
+              'lifecycleActions': <String>[],
             },
           ],
         },

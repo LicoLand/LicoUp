@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -6,7 +8,6 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/tokens/dashboard_desktop_tokens.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_member_profile_card.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_self_avatar.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
@@ -414,15 +415,16 @@ final class _DashboardRailSelfButton extends StatelessWidget {
   /// right — the demo's `openProfile` on the self avatar — instead of
   /// swapping the workspace for a full profile page.
   void _openSelfCard(BuildContext anchorContext) {
+    final features = LayoutChromeFeaturesScope.maybeOf(anchorContext);
+    if (features == null) return;
     final box = anchorContext.findRenderObject();
     final anchorRect = box is RenderBox && box.hasSize
         ? box.localToGlobal(Offset.zero) & box.size
         : Rect.zero;
-    showMessagingMemberProfile(
-      context: anchorContext,
-      anchorRect: anchorRect,
-      card: MessagingSelfProfileCard(
-        displayName: LicoStrings.of(anchorContext).localUser,
+    unawaited(
+      features.openSelfProfile(
+        anchorContext,
+        anchorRect: anchorRect,
         mascotId: mascotId,
         onMascotChanged: onMascotChanged,
         onOpenSettings: onOpenSettings,
@@ -433,6 +435,7 @@ final class _DashboardRailSelfButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.layoutPalette;
+    final features = LayoutChromeFeaturesScope.maybeOf(context);
     return Builder(
       builder: (anchorContext) => _DashboardRailPressable(
         label: label,
@@ -449,10 +452,16 @@ final class _DashboardRailSelfButton extends StatelessWidget {
           ),
           child: SizedBox.square(
             dimension: DashboardPlainMetrics.railButtonExtent,
-            child: MessagingSelfAvatar(
-              size: DashboardPlainMetrics.railButtonExtent,
-              mascotId: mascotId,
-            ),
+            child:
+                features?.buildSelfAvatar(
+                  context,
+                  size: DashboardPlainMetrics.railButtonExtent,
+                  mascotId: mascotId,
+                ) ??
+                MessagingSelfAvatar(
+                  size: DashboardPlainMetrics.railButtonExtent,
+                  mascotId: mascotId,
+                ),
           ),
         ),
       ),

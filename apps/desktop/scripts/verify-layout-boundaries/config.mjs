@@ -23,7 +23,7 @@ export const DEFAULT_LAYOUT_BOUNDARY_CONFIG = Object.freeze({
   libraryRoot: "apps/desktop/lib",
   testRoot: "apps/desktop/test",
   preferencesPath:
-    "apps/desktop/lib/src/platform/presentation/presentation_preferences_repository.dart",
+    "apps/desktop/lib/src/platform/presentation/file_presentation_preferences_repository.dart",
   portableDataRootPath:
     "apps/desktop/lib/src/platform/storage/portable_data_root.dart",
   workspaceManifestPath:

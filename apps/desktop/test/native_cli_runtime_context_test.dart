@@ -353,6 +353,57 @@ void main() {
         expect(resolved?.path, await bundledCli.resolveSymbolicLinks());
       },
     );
+
+    test(
+      'windows and linux bundles resolve the helpers sidecar beside the client',
+      () async {
+        final helpers = Directory('${bundleDir.path}/helpers');
+        await helpers.create(recursive: true);
+        final bundledCli = File(
+          '${helpers.path}/licoup${Platform.isWindows ? '.exe' : ''}',
+        );
+        await bundledCli.writeAsString('cli');
+        await appExecutable.writeAsString('app');
+
+        final resolved = await NativeCliRuntimeContext().resolveCliBinaryFor(
+          executablePath: appExecutable.path,
+          environment: const {},
+          workingDirectory: bundleDir.path,
+        );
+
+        expect(resolved?.path, await bundledCli.resolveSymbolicLinks());
+      },
+    );
+
+    test(
+      'bundled helpers sidecar outranks LICO_CLIENT_PATH and artifact overlays',
+      () async {
+        final helpers = Directory('${bundleDir.path}/helpers');
+        await helpers.create(recursive: true);
+        final bundledCli = File(
+          '${helpers.path}/licoup${Platform.isWindows ? '.exe' : ''}',
+        );
+        await bundledCli.writeAsString('cli');
+        await appExecutable.writeAsString('app');
+        final artifactsDir = await Directory.systemTemp.createTemp(
+          'lico-artifacts-',
+        );
+        addTearDown(() => artifactsDir.delete(recursive: true));
+        final delivered = File('${artifactsDir.path}/licoup');
+        await delivered.writeAsString('delivered-cli');
+
+        final resolved = await NativeCliRuntimeContext().resolveCliBinaryFor(
+          executablePath: appExecutable.path,
+          environment: {
+            'LICO_CLIENT_PATH': delivered.path,
+            'LICO_CLI_ARTIFACTS_DIR': artifactsDir.path,
+          },
+          workingDirectory: bundleDir.path,
+        );
+
+        expect(resolved?.path, await bundledCli.resolveSymbolicLinks());
+      },
+    );
   });
 }
 

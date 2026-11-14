@@ -1,6 +1,6 @@
 # LicoUp Subagent MCP
 
-Updated: 2026-09-30
+Updated: 2026-11-14
 
 | 参考 | 文档 |
 | --- | --- |
@@ -50,12 +50,17 @@ Assistant Profiles、Assistant 工作流、完整 Conversation 及其他原生�
 
 ## 独立生命周期与开发
 
-可执行文件 `lico-subagent-mcp` 是可选包 `org.licoland.feature.mcp` 的负载，
-不是客户端捆绑的一部分。客户端既不分发副本，也不自行启动该服务：包声明
-`on-demand` 激活，因此由调用方启动；包缺失或关闭时不启动任何进程，也不发布
-任何端点。`licoup mcp start`、`stop`、`status`、`reload` 仍是该进程的本地原生
-门面；`start` 和 `reload` 支持 `--binary` 选择独立构建的模块。命令确保原生宿主
-可用，无需 Flutter。
+Codex 与其他外部 MCP 调用方通过通用本地 MCP 入口连接，不再使用供应商专用插件仓库
+（`LicoUp-Plugins` 与 `lico-up-codex` 已退役）：
+
+1. **通用本地 stdio 入口（`licoup mcp stdio`）**：通过已安装的 `licoup` 二进制
+   直接经本地 stdio 提供封闭五工具 Subagent MCP 服务，无需单独的插件包或后台监听。
+2. **可选 `org.licoland.feature.mcp` 服务（`lico-subagent-mcp`）**：可执行文件
+   `lico-subagent-mcp` 是可选包 `org.licoland.feature.mcp` 的负载，不是客户端捆绑
+   的一部分。客户端既不分发副本，也不自行启动该服务：包声明 `on-demand` 激活，因此
+   由调用方启动；包缺失或关闭时不启动任何进程，也不发布任何端点。`licoup mcp start`、
+   `stop`、`status`、`reload` 仍是该进程的本地原生门面；`start` 和 `reload` 支持
+   `--binary` 选择独立构建的模块。命令确保原生宿主可用，无需 Flutter。
 
 独立模块开发（Rust 工作区位于 LicoUp-CLI 仓库）：
 

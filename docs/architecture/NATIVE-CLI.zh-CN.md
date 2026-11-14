@@ -71,9 +71,10 @@ attach、活跃 turn 查询、会话动作、目录观察和策略执行均保�
 
 `subagents catalog` 提供原生调用者与操作 schema；`subagents execute`
 准入包含 `name`、`arguments`、`caller` 的本地调用。原生 Subagents
-领域检查调用者作用域。`mcp start`、`stop`、`reload`、`status` 管理独立
-MCP 进程。开发时 `start` 与 `reload` 可通过 `--binary` 明确指定 MCP
-可执行文件。MCP 适配器收窄的远程能力面由其
+领域检查调用者作用域。`licoup mcp stdio` 为 Codex 与其他外部调用方提供通用
+本地 MCP stdio 入口，而 `mcp start`、`stop`、`reload`、`status` 管理可选
+`org.licoland.feature.mcp` 服务进程。开发时 `start` 与 `reload` 可通过
+`--binary` 明确指定 MCP 可执行文件。MCP 适配器收窄的远程能力面由其
 [协议文档](../protocols/subagent-mcp.zh-CN.md)拥有。
 
 ## 实现权威

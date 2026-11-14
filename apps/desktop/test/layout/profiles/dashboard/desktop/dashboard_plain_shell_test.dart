@@ -394,15 +394,58 @@ void main() {
     expect(find.descendant(of: badge, matching: find.text('3')), findsOne);
   });
 
-  testWidgets('avatar opens the floating self card to the avatar right', (
+  testWidgets('avatar delegates the self profile popover to chrome features', (
     tester,
   ) async {
     final harness = DashboardDesktopHarness();
+    final features = FixtureLayoutChromeFeatures();
     await pumpPlainShell(
       tester,
       activeDestination: ClientSection.agentHub,
       harness: harness,
+      chromeFeatures: features,
     );
+
+    final selfButton = find.byKey(const Key('dashboard-rail-self'));
+    expect(selfButton, findsOneWidget);
+    await tester.tap(selfButton);
+    await tester.pump();
+
+    expect(features.selfProfileOpens, 1);
+    expect(features.selfProfileAnchorRect, tester.getRect(selfButton));
+    expect(
+      find.byKey(const Key('dashboard-fake-content-agentHub')),
+      findsOneWidget,
+    );
+    expect(harness.selections, isEmpty);
+
+    features.selfProfileOnOpenSettings?.call();
+    await tester.pump();
+    expect(harness.selections, [ClientSection.settings]);
+  });
+
+  testWidgets('avatar opens the floating self card to the avatar right', (
+    tester,
+  ) async {
+    final fixture = await ProductionClientShellFixture.create(
+      profileId: BuiltInLayoutSpec.dashboard.id,
+      surface: LayoutRuntimeSurface.desktop,
+      destination: ClientSection.agentHub,
+      size: const Size(1280, 800),
+      brightness: Brightness.dark,
+      layoutStyleId: style,
+    );
+    addTearDown(fixture.dispose);
+    await tester.binding.setSurfaceSize(const Size(1280, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      fixture.buildApp(
+        semanticsKey: const Key('plain-self-card-semantics'),
+        repaintBoundaryKey: const Key('plain-self-card-repaint'),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
 
     expect(find.byKey(const Key('member-profile-card-self')), findsNothing);
     await tester.tap(find.byKey(const Key('dashboard-rail-self')));
@@ -426,20 +469,16 @@ void main() {
 
     // The workspace stays mounted beneath the popover — no page swap, no
     // destination selection.
-    expect(
-      find.byKey(const Key('dashboard-fake-content-agentHub')),
-      findsOneWidget,
-    );
-    expect(harness.selections, isEmpty);
+    expect(fixture.controller.currentSection, ClientSection.agentHub);
 
     // Barrier dismiss closes the card; rail entries still navigate.
     await tester.tapAt(const Offset(640, 350));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(card, findsNothing);
-    await tester.tap(find.byKey(const Key('dashboard-rail-messages')));
+    await tester.tap(find.byKey(const Key('dashboard-rail-settings')));
     await tester.pump();
-    expect(harness.selections, [ClientSection.agents]);
+    expect(fixture.controller.currentSection, ClientSection.settings);
   });
 
   testWidgets(

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_self_avatar.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 
 /// Chrome-features stand-in for profile shell tests: feature surfaces are
@@ -27,6 +28,11 @@ final class FixtureLayoutChromeFeatures implements LayoutChromeFeatures {
   int quickSwitcherOpens = 0;
   List<LayoutQuickSwitcherApp> quickSwitcherApps = const [];
   ValueChanged<String>? quickSwitcherOnOpenApp;
+  int selfProfileOpens = 0;
+  Rect? selfProfileAnchorRect;
+  String? selfProfileMascotId;
+  ValueChanged<String>? selfProfileOnMascotChanged;
+  VoidCallback? selfProfileOnOpenSettings;
 
   @override
   ValueListenable<LicoToastNoticesSnapshot> get notificationNotices => _notices;
@@ -119,5 +125,27 @@ final class FixtureLayoutChromeFeatures implements LayoutChromeFeatures {
     quickSwitcherOpens += 1;
     quickSwitcherApps = apps;
     quickSwitcherOnOpenApp = onOpenApp;
+  }
+
+  @override
+  Widget buildSelfAvatar(
+    BuildContext context, {
+    required double size,
+    String? mascotId,
+  }) => MessagingSelfAvatar(size: size, mascotId: mascotId);
+
+  @override
+  Future<void> openSelfProfile(
+    BuildContext context, {
+    required Rect anchorRect,
+    String? mascotId,
+    required ValueChanged<String> onMascotChanged,
+    required VoidCallback onOpenSettings,
+  }) async {
+    selfProfileOpens += 1;
+    selfProfileAnchorRect = anchorRect;
+    selfProfileMascotId = mascotId;
+    selfProfileOnMascotChanged = onMascotChanged;
+    selfProfileOnOpenSettings = onOpenSettings;
   }
 }

@@ -18,6 +18,7 @@ final LayoutVisualTokens desktopDesktopTokens = LayoutVisualTokens(
   contentMaxWidth: 1600,
   typographyScale: 0.95,
   motionDuration: const Duration(milliseconds: 150),
+  circularAvatars: true,
 );
 
 /// Desktop-owned glass recipe for the pieces only Desktop paints: the window

@@ -108,11 +108,11 @@ providers.
 
 The client installs a caller registration for Cursor, Antigravity and Claude Code
 into those Agents' own user MCP configuration, each behind a digest-bound
-single-use approval. It installs none for Codex: the plugin that carries a Codex
-caller registration belongs to Codex's own marketplace, and the Codex adapter
-package owns that side, so the ensure surface reports `unsupported` for Codex and
-the caller manager refuses every member rather than cloning a plugin repository on
-the user's behalf.
+single-use approval. For Codex, the retired `codex-plugin` / `LicoUp-Plugins`
+marketplace flow is removed; the ensure surface reports `unsupported` for
+automatic user-config plugin installation, and Codex connects through the
+generic local MCP entrypoint (`licoup mcp stdio` and the optional
+`org.licoland.feature.mcp` service).
 
 ```mermaid
 flowchart LR

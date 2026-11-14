@@ -105,10 +105,10 @@ Codex、Cursor、Antigravity 与 Claude Code 还会以 Membership 作用域 targ
 一个 caller 集成。
 
 客户端为 Cursor、Antigravity 与 Claude Code 把 caller 注册写进这些 Agent 各自的用户
-MCP 配置，每次写入都需要 digest 绑定的一次性批准。Codex 不安装任何注册：承载 Codex
-caller 注册的 plugin 属于 Codex 自身的 marketplace，由 Codex 适配器包负责；因此
-ensure 面对 Codex 直接报告 `unsupported`，caller manager 的每个成员都拒绝，而不是替
-用户克隆插件仓库。
+MCP 配置，每次写入都需要 digest 绑定的一次性批准。对于 Codex，已退役的
+`codex-plugin` / `LicoUp-Plugins` 插件市场流程已移除；ensure 面对 Codex 报告
+`unsupported`（不执行自动插件仓库安装），Codex 通过通用本地 MCP 入口
+（`licoup mcp stdio` 与可选 `org.licoland.feature.mcp` 服务）连接。
 
 ```mermaid
 flowchart LR

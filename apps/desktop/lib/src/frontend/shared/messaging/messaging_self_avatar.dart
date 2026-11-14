@@ -24,11 +24,11 @@ final class MessagingSelfAvatar extends StatelessWidget {
   /// mascot image replaces the glyph tile — the self-card avatar picker.
   final String? mascotId;
 
-  /// The Desktop profile's avatar language is circular; every other
-  /// profile (and unscoped contexts such as detached dialogs) takes the
+  /// Profiles with [LayoutVisualTokens.circularAvatars] frame avatars as circles;
+  /// other profiles (and unscoped contexts such as detached dialogs) take the
   /// rounded-square language.
   static bool circularFor(BuildContext context) =>
-      LayoutScope.maybeOf(context)?.profileId.value == 'desktop';
+      LayoutScope.maybeOf(context)?.tokens.circularAvatars ?? false;
 
   /// The figure's scale inside a circular frame — small enough that the
   /// head accessory and the cone stay inside the ring.

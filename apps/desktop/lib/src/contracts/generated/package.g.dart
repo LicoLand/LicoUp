@@ -128,7 +128,7 @@ enum PackageRegistrationOwner {
   claudeCodeMcp("claude-code-mcp"),
   cursorMcp("cursor-mcp"),
   antigravityMcp("antigravity-mcp"),
-  codexPlugin("codex-plugin"),
+  codexMcp("codex-mcp"),
   unknown('');
 
   const PackageRegistrationOwner(this.wireName);

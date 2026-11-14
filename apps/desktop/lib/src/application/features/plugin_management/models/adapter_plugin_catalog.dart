@@ -119,7 +119,7 @@ final class AdapterNativeCapability {
 }
 
 /// A LicoUp-managed adapter plugin entry (for example the Antigravity ACP
-/// bridge or the Codex subagent relay). Only plugins with real install
+/// bridge or a local MCP relay). Only plugins with real install
 /// management appear here.
 final class AdapterPluginEntry {
   AdapterPluginEntry({

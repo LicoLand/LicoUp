@@ -93,12 +93,25 @@ class NativeCliRuntimeContext
       }
       return File(canonical);
     }
+    // A Windows or Linux bundle keeps the custody-equivalent sidecar under
+    // `helpers/` beside the client executable — the frontend binary is itself
+    // named `licoup`, so the helper path is what keeps the two products
+    // distinct. Like the macOS custody helper, a bundled sidecar outranks
+    // developer delivery overrides for the same install.
+    final bundledHelper = File(
+      p.join(File(executablePath).parent.path, 'helpers', 'licoup$suffix'),
+    );
+    if (await bundledHelper.exists()) {
+      final canonical = await _canonicalPath(bundledHelper);
+      if (p.equals(canonical, selfPath)) return null;
+      return File(canonical);
+    }
     final explicitBinary = environment['LICO_CLIENT_PATH'];
     // The CLI binary is a delivered artifact: either an explicit delivery root
     // or the conventional `build/native-artifacts/<runtime-target>` staging
     // root a fetch step populated, matching the packaging delivery seam.
     final artifactsDirectory = environment['LICO_CLI_ARTIFACTS_DIR'];
-    final runtimeTarget = Abi.current().toString().replaceAll('_', '-');
+    final runtimeTarget = _runtimeTargetDirectoryName();
     final candidates = <String>[
       if (explicitBinary != null && explicitBinary.trim().isNotEmpty)
         explicitBinary.trim(),
@@ -123,6 +136,19 @@ class NativeCliRuntimeContext
       }
     }
     return null;
+  }
+
+  /// The release catalog `runtimeTargetId` naming used by the sidecar
+  /// staging root. `Abi` reports the toolchain ABI; Linux keeps the glibc
+  /// qualifier the catalog requires — Flutter desktop builds never target
+  /// musl — and every other platform maps through unchanged.
+  static String _runtimeTargetDirectoryName() {
+    final abi = Abi.current().toString().replaceAll('_', '-');
+    return switch (abi) {
+      'linux-x64' => 'linux-glibc-x64',
+      'linux-arm64' => 'linux-glibc-arm64',
+      _ => abi,
+    };
   }
 
   Future<String> _canonicalPath(File file) async {

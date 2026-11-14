@@ -73,9 +73,9 @@ final class LayoutQuickSwitcherApp {
 /// Feature-owned chrome content that layout profiles may host in their shell
 /// chrome without importing feature code: the Desktop work-area apps that
 /// are feature surfaces (Collaboration, plugin windows), the quick switcher,
-/// and the chrome notification-notices exposure. Built by composition from
-/// semantic bindings and feature-widget factories; consumed through
-/// [LayoutChromeFeaturesScope].
+/// the chrome notification-notices exposure, and the self avatar / profile
+/// popover. Built by composition from semantic bindings and feature-widget
+/// factories; consumed through [LayoutChromeFeaturesScope].
 abstract interface class LayoutChromeFeatures {
   /// The chrome notification-notices exposure consumed by
   /// [LicoToastNoticesListener] in desktop shells. Replaces the retired
@@ -125,6 +125,24 @@ abstract interface class LayoutChromeFeatures {
     BuildContext context, {
     required List<LayoutQuickSwitcherApp> apps,
     required ValueChanged<String> onOpenApp,
+  });
+
+  /// The local user's avatar widget for profile chrome such as the navigation
+  /// rail.
+  Widget buildSelfAvatar(
+    BuildContext context, {
+    required double size,
+    String? mascotId,
+  });
+
+  /// Opens the local user's floating self-profile popover anchored to
+  /// [anchorRect].
+  Future<void> openSelfProfile(
+    BuildContext context, {
+    required Rect anchorRect,
+    String? mascotId,
+    required ValueChanged<String> onMascotChanged,
+    required VoidCallback onOpenSettings,
   });
 }
 

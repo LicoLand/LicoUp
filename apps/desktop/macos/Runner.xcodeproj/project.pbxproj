@@ -407,7 +407,7 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				"$(PROJECT_DIR)/../../../build/native-artifacts/macos/licoup",
+				"$(PROJECT_DIR)/../../../build/native-artifacts/macos-arm64/licoup",
 				"$(PROJECT_DIR)/CustodyHelper/Info.plist",
 			);
 			name = "Bundle LicoUp";
@@ -418,7 +418,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -eu\n\nif [ \"${ACTION:-}\" = \"clean\" ]; then\n  exit 0\nfi\n\nif [ \"${LICO_CLIENT_SKIP_XCODE_SIDECAR_BUNDLE:-}\" = \"1\" ]; then\n  rm -rf \"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/LicoUpCustody.app\"\n  exit 0\nfi\n\nREPO_ROOT=\"$(cd \"$PROJECT_DIR/../../..\" && pwd)\"\nARTIFACTS_DIR=\"${LICO_CLI_ARTIFACTS_DIR:-$REPO_ROOT/build/native-artifacts/macos}\"\n\nCLI_SOURCE=\"$ARTIFACTS_DIR/licoup\"\nif [ ! -x \"$CLI_SOURCE\" ]; then\n  echo \"error: delivered licoup artifact is missing or not executable: $CLI_SOURCE\" >&2\n  echo \"error: stage the pinned LicoUp-CLI release with npm run client:cli-release:stage or set LICO_CLI_ARTIFACTS_DIR.\" >&2\n  exit 1\nfi\n\nCONTENTS_DIR=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH\"\nHELPER_APP=\"$CONTENTS_DIR/Helpers/LicoUpCustody.app\"\nmkdir -p \"$HELPER_APP/Contents/MacOS\"\nsed -e \"s/\\$(PRODUCT_VERSION)/${MARKETING_VERSION:-1.0}/g\" -e \"s/\\$(BUILD_NUMBER)/${CURRENT_PROJECT_VERSION:-1}/g\" \"$PROJECT_DIR/CustodyHelper/Info.plist\" > \"$HELPER_APP/Contents/Info.plist\"\ninstall -m 755 \"$CLI_SOURCE\" \"$HELPER_APP/Contents/MacOS/licoup\"\n";
+			shellScript = "set -eu\n\nif [ \"${ACTION:-}\" = \"clean\" ]; then\n  exit 0\nfi\n\nif [ \"${LICO_CLIENT_SKIP_XCODE_SIDECAR_BUNDLE:-}\" = \"1\" ]; then\n  rm -rf \"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/LicoUpCustody.app\"\n  exit 0\nfi\n\nREPO_ROOT=\"$(cd \"$PROJECT_DIR/../../..\" && pwd)\"\nARTIFACTS_DIR=\"${LICO_CLI_ARTIFACTS_DIR:-$REPO_ROOT/build/native-artifacts/macos-arm64}\"\n\nCLI_SOURCE=\"$ARTIFACTS_DIR/licoup\"\nif [ ! -x \"$CLI_SOURCE\" ]; then\n  echo \"error: delivered licoup artifact is missing or not executable: $CLI_SOURCE\" >&2\n  echo \"error: stage the pinned LicoUp-CLI release with npm run client:cli-release:stage or set LICO_CLI_ARTIFACTS_DIR.\" >&2\n  exit 1\nfi\n\nCONTENTS_DIR=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH\"\nHELPER_APP=\"$CONTENTS_DIR/Helpers/LicoUpCustody.app\"\nmkdir -p \"$HELPER_APP/Contents/MacOS\"\nsed -e \"s/\\$(PRODUCT_VERSION)/${MARKETING_VERSION:-1.0}/g\" -e \"s/\\$(BUILD_NUMBER)/${CURRENT_PROJECT_VERSION:-1}/g\" \"$PROJECT_DIR/CustodyHelper/Info.plist\" > \"$HELPER_APP/Contents/Info.plist\"\ninstall -m 755 \"$CLI_SOURCE\" \"$HELPER_APP/Contents/MacOS/licoup\"\n";
 		};
 		938324C1C8945BF7F72D2938 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;

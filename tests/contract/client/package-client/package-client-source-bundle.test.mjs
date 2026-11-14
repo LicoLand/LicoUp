@@ -277,6 +277,18 @@ test("native sidecars are staged into the delivered CLI artifact directory", asy
     nativeArtifactsDirectory({ platform: "windows" }, {}),
     path.join(repoRoot, "build", "native-artifacts", "windows-x64"),
   );
+  assert.equal(
+    nativeArtifactsDirectory({ platform: "macos" }, {}),
+    path.join(repoRoot, "build", "native-artifacts", "macos-arm64"),
+  );
+  assert.equal(
+    nativeArtifactsDirectory({ platform: "linux" }, {}, "x64"),
+    path.join(repoRoot, "build", "native-artifacts", "linux-glibc-x64"),
+  );
+  assert.equal(
+    nativeArtifactsDirectory({ platform: "linux" }, {}, "arm64"),
+    path.join(repoRoot, "build", "native-artifacts", "linux-glibc-arm64"),
+  );
 
   // Desktop consumes the pinned CLI release; it never builds the CLI.
   const source = await read(`${moduleRoot}/build/native.mjs`);

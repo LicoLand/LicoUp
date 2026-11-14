@@ -42,7 +42,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/mobile/desktop_mobile_tokens.dart",
-      "digest": "sha256:73da9abf87b2d003dc8127e04da90d6e79ce3f51ec4a47fad86e2a8dbe597801"
+      "digest": "sha256:b7f6abe41c8f66ffc23ded74031b97f21fb63cf5bb2f156aae620353197969c3"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/mobile/destinations/desktop_agents_destination.dart",
@@ -97,5 +97,5 @@
       "digest": "sha256:29f3a10cad07703661fd567e5fbfaaadfd4f1ebd60c1e62206ae0c4fb5286bbd"
     }
   ],
-  "manifestDigest": "sha256:1f5a30d611ca14b7244105d57c2344b486eeb570d19b9bdd8536dde0ae7982b4"
+  "manifestDigest": "sha256:004e9be472cfa01806b64019faca91806534b177929bfaed556f64fca570b83c"
 }
