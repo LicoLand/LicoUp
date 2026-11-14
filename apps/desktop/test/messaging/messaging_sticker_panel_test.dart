@@ -1,16 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_message_group.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_sticker_panel.dart';
-import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/shared/ui/theme.dart';
+
+import 'support/messaging_sticker_test_support.dart';
 
 void main() {
   test('wire codes round-trip between composer and transcript', () {
@@ -39,7 +36,9 @@ void main() {
   testWidgets('composer smiley opens the sticker panel in demo order', (
     tester,
   ) async {
-    await tester.pumpWidget(const _StickerTestApp(child: _ComposerHost()));
+    await tester.pumpWidget(
+      const MessagingStickerTestApp(child: MessagingStickerComposerHost()),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(
@@ -59,7 +58,9 @@ void main() {
 
   testWidgets('tapping a sticker sends the stable wire code', (tester) async {
     final sent = <String>[];
-    await tester.pumpWidget(_StickerTestApp(child: _ComposerHost(sent: sent)));
+    await tester.pumpWidget(
+      MessagingStickerTestApp(child: MessagingStickerComposerHost(sent: sent)),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(
@@ -82,7 +83,9 @@ void main() {
   });
 
   testWidgets('emoji tab inserts the glyph into the draft', (tester) async {
-    await tester.pumpWidget(const _StickerTestApp(child: _ComposerHost()));
+    await tester.pumpWidget(
+      const MessagingStickerTestApp(child: MessagingStickerComposerHost()),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(
@@ -98,27 +101,6 @@ void main() {
     expect(field.controller?.text, '😀');
   });
 
-  testWidgets('dark sticker panel matches the demo card', (tester) async {
-    await tester.pumpWidget(
-      const _StickerTestApp(
-        child: Scaffold(
-          body: Center(
-            child: MessagingStickerPanel(
-              key: Key('messaging-sticker-panel'),
-              onSendSticker: _noopString,
-              onInsertEmoji: _noopString,
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await expectLater(
-      find.byKey(const Key('messaging-sticker-panel')),
-      matchesGoldenFile('../goldens/messaging_sticker_panel_dark.png'),
-    );
-  });
-
   testWidgets('a sticker message renders the expression, not raw code', (
     tester,
   ) async {
@@ -127,7 +109,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPhysicalSize);
     await tester.pumpWidget(
-      _StickerTestApp(
+      MessagingStickerTestApp(
         child: MessagingMessageGroup(
           authorIsUser: true,
           participantLabel: 'You',
@@ -147,7 +129,7 @@ void main() {
               createdAt: DateTime(2026, 1, 1, 10, 1).toIso8601String(),
             ),
           ],
-          target: _target,
+          target: messagingStickerTestTarget,
           adapter: AgentRenderAdapter.fallback(),
         ),
       ),
@@ -160,76 +142,4 @@ void main() {
     expect(find.text('plain text stays text'), findsOneWidget);
     expect(find.byKey(const Key('messaging-message-bubble')), findsNWidgets(1));
   });
-}
-
-final _target = TargetCandidate(
-  target: 'codex',
-  label: 'Codex',
-  kind: 'cli',
-  status: 'detected',
-  configured: true,
-  confidence: 1,
-  adapterStatus: 'implemented',
-);
-
-void _noopString(String _) {}
-
-final class _ComposerHost extends StatelessWidget {
-  const _ComposerHost({this.sent});
-
-  final List<String>? sent;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Align(
-        alignment: Alignment.bottomCenter,
-        child: RuntimeMessageComposer(
-          targetLabel: 'Fixture Agent',
-          initialDraft: '',
-          busy: false,
-          enabled: true,
-          modelOptions: const [],
-          selectedModel: '',
-          reasoningEffortOptions: const [],
-          selectedReasoningEffort: '',
-          onModelChanged: (_) {},
-          onReasoningEffortChanged: (_) {},
-          onDraftChanged: (_) {},
-          onSend: (text) async {
-            sent?.add(text);
-            return true;
-          },
-          floatingMatteCapsule: true,
-        ),
-      ),
-    );
-  }
-}
-
-final class _StickerTestApp extends StatelessWidget {
-  const _StickerTestApp({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      supportedLocales: LicoStrings.supportedLocales,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ],
-      theme: buildLicoTheme(platformBrightness: Brightness.dark),
-      // The expression motion loop never settles; tests exercise the
-      // reduced-motion static path instead.
-      home: Builder(
-        builder: (context) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(disableAnimations: true),
-          child: child,
-        ),
-      ),
-    );
-  }
 }

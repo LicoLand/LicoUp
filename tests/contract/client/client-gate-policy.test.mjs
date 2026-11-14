@@ -472,11 +472,22 @@ test("local host selection excludes every foreign target owner", () => {
   assert.equal(linuxIds.has("target.macos-only"), false);
   assert.equal(linuxIds.has("target.linux-only"), true);
   assert.equal(linuxIds.has("target.generic"), true);
-  assert.equal(
-    CLIENT_MODULE_CATALOG.filter((module) =>
-      module.regression.targetEvidenceHosts.length > 0).length,
-    0,
-    "the Desktop catalog carries no platform-target evidence owners",
+  assert.deepEqual(
+    CLIENT_MODULE_CATALOG
+      .filter((module) => module.regression.targetEvidenceHosts.length > 0)
+      .map((module) => ({
+        id: module.id,
+        runnableHosts: module.regression.runnableHosts,
+        targetEvidenceHosts: module.regression.targetEvidenceHosts,
+      })),
+    [
+      {
+        id: "flutter.layer.macos-visual-goldens",
+        runnableHosts: ["darwin"],
+        targetEvidenceHosts: ["darwin"],
+      },
+    ],
+    "macOS visual golden baselines are isolated to darwin target evidence",
   );
 });
 

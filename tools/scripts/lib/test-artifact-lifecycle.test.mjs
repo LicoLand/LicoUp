@@ -24,7 +24,7 @@ import {
   testArtifactStatus,
 } from "./test-artifact-lifecycle.mjs";
 import { FLUTTER_TEST_TARGET } from "./test-artifact-lifecycle/constants.mjs";
-import { targetProcessUsage } from "./test-artifact-lifecycle/process-use.mjs";
+import { processEntriesLinux, targetProcessUsage } from "./test-artifact-lifecycle/process-use.mjs";
 import { parseArtifactCommand, runArtifactCommand } from "../client-test-artifacts.mjs";
 
 const syntheticValue = (label) => `${label}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -566,4 +566,53 @@ test("artifact CLI dispatches one checkout and reports only relative targets", (
   assert.deepEqual(completed.relativeTargets, [FLUTTER_TEST_TARGET]);
   assert.equal(existsSync(compiled), false);
   assert.equal(JSON.stringify(completed).includes(repoRoot), false);
+});
+
+test("Linux /proc enumeration skips EACCES, EPERM, and ENOENT entries while preserving accessible processes", () => {
+  const makeError = (code) => Object.assign(new Error(code), { code });
+  const fakeDirent = (name, isDir = true) => ({ name, isDirectory: () => isDir });
+  const entries = processEntriesLinux({
+    procRoot: "/proc",
+    readDir: () => [
+      fakeDirent("1"),
+      fakeDirent("2"),
+      fakeDirent("3"),
+      fakeDirent("self", true),
+      fakeDirent("42"),
+    ],
+    readLink: (target) => {
+      if (target === "/proc/1/exe") throw makeError("EACCES");
+      if (target === "/proc/2/exe") throw makeError("EPERM");
+      if (target === "/proc/3/exe") throw makeError("ENOENT");
+      if (target === "/proc/42/cwd") throw makeError("EACCES");
+      if (target === "/proc/42/exe") return "/usr/bin/node";
+      throw new Error(`unexpected readLink target: ${target}`);
+    },
+    readText: (target) => {
+      if (target === "/proc/42/comm") return "node\n";
+      if (target === "/proc/42/cmdline") return "node\0--test\0";
+      throw new Error(`unexpected readText target: ${target}`);
+    },
+  });
+  assert.deepEqual(entries, [
+    {
+      pid: 42,
+      path: "/usr/bin/node",
+      paths: ["/usr/bin/node"],
+      cwd: "",
+      command: "node",
+      arguments: ["node", "--test"],
+    },
+  ]);
+
+  assert.throws(
+    () => processEntriesLinux({
+      procRoot: "/proc",
+      readDir: () => [fakeDirent("9")],
+      readLink: () => {
+        throw makeError("EIO");
+      },
+    }),
+    /EIO/u,
+  );
 });

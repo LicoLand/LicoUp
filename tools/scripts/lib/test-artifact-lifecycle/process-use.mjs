@@ -14,25 +14,43 @@ function pathIsInside(directory, candidate) {
     (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
-function processEntriesLinux() {
+const UNREADABLE_PROC_ENTRY_CODES = new Set(["ENOENT", "EACCES", "EPERM"]);
+
+function isUnreadableProcEntryError(error) {
+  return UNREADABLE_PROC_ENTRY_CODES.has(error?.code);
+}
+
+/** Reads accessible Linux `/proc/<pid>` process metadata while skipping exited or foreign-owned entries. */
+export function processEntriesLinux({
+  procRoot = "/proc",
+  readDir = readdirSync,
+  readLink = realpathSync,
+  readText = readFileSync,
+} = {}) {
   const entries = [];
-  for (const entry of readdirSync("/proc", { withFileTypes: true })) {
+  for (const entry of readDir(procRoot, { withFileTypes: true })) {
     if (!entry.isDirectory() || !/^\d+$/u.test(entry.name)) continue;
     try {
-      const processRoot = `/proc/${entry.name}`;
-      const executable = realpathSync(`${processRoot}/exe`);
+      const processRoot = path.posix.join(procRoot, entry.name);
+      const executable = readLink(`${processRoot}/exe`);
+      let cwd = "";
+      try {
+        cwd = readLink(`${processRoot}/cwd`);
+      } catch (error) {
+        if (!isUnreadableProcEntryError(error)) throw error;
+      }
       entries.push({
         pid: Number(entry.name),
         path: executable,
         paths: [executable],
-        cwd: realpathSync(`${processRoot}/cwd`),
-        command: readFileSync(`${processRoot}/comm`, "utf8").trim(),
-        arguments: readFileSync(`${processRoot}/cmdline`, "utf8")
+        cwd,
+        command: readText(`${processRoot}/comm`, "utf8").trim(),
+        arguments: readText(`${processRoot}/cmdline`, "utf8")
           .split("\0")
           .filter(Boolean),
       });
     } catch (error) {
-      if (error?.code === "ENOENT") continue;
+      if (isUnreadableProcEntryError(error)) continue;
       throw error;
     }
   }

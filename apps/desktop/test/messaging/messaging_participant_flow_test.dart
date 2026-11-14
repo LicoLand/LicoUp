@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:presentation_runtime/presentation_runtime.dart';
 
@@ -21,11 +20,10 @@ import 'package:licoup/src/frontend/shared/mascot/mascot_catalog.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:licoup/src/presentation/conversation/conversation_markdown_port.dart';
-import 'package:licoup/src/projections/conversation/conversation_markdown_preparation.dart';
 
 import '../presentation/conversation_markdown/prepared_message_markdown_harness.dart';
 import '../support/bundled_font_loader.dart';
+import 'support/participant_flow_test_support.dart';
 
 void main() {
   group('buildMessagingFlowEntries', () {
@@ -1217,10 +1215,6 @@ void main() {
       ),
     );
     expect(agentCode.style?.backgroundColor?.a, 1.0);
-    await expectLater(
-      find.byType(MessagingUserBubbleGlass),
-      matchesGoldenFile('goldens/user_bubble_inline_code.png'),
-    );
     expect(tester.takeException(), isNull);
     await finishConversationMarkdownTest(tester, preparation, runtime);
   });
@@ -1248,28 +1242,12 @@ ConversationMessageTimelineItem _participantMessageItem(
   );
 }
 
-String _at(int hour, int minute, [int second = 0]) =>
-    DateTime(2026, 7, 20, hour, minute, second).toIso8601String();
+const _at = participantFlowAt;
 
 String _date(int year, int month, int day, int hour) =>
     DateTime(year, month, day, hour).toIso8601String();
 
-ConversationMessageTimelineItem _messageItem(
-  String key,
-  String role,
-  String text,
-  String createdAt,
-) {
-  return ConversationMessageTimelineItem(
-    key,
-    AgentConversationMessage(
-      id: key,
-      role: role,
-      text: text,
-      createdAt: createdAt,
-    ),
-  );
-}
+const _messageItem = participantFlowMessageItem;
 
 AgentConversationMessage _event(String id, String createdAt) {
   return AgentConversationMessage(
@@ -1280,74 +1258,7 @@ AgentConversationMessage _event(String id, String createdAt) {
   );
 }
 
-Future<void> _pumpFlow(
-  WidgetTester tester,
-  List<ConversationTimelineItem> newestFirst, {
-  ScrollController? scrollController,
-  List<TargetCandidate> participantTargets = const [],
-  Map<String, AgentParticipantRuntimeProfile> participantRuntimeProfiles =
-      const {},
-  bool hasEarlier = false,
-  Future<void> Function()? onLoadEarlier,
-  Future<void> Function(String)? onCopyText,
-  Future<void> Function(String)? onRetryMessage,
-  Future<void> Function(String)? onDeleteMessage,
-  bool assistantActive = false,
-  double viewportHeight = 600,
-  ConversationMarkdownPreparation? preparation,
-}) async {
-  tester.view.devicePixelRatio = 1;
-  tester.view.physicalSize = Size(800, viewportHeight);
-  addTearDown(tester.view.resetDevicePixelRatio);
-  addTearDown(tester.view.resetPhysicalSize);
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        if (preparation != null)
-          conversationMarkdownPortProvider.overrideWithValue(preparation),
-      ],
-      child: MaterialApp(
-        locale: const Locale('en'),
-        supportedLocales: LicoStrings.supportedLocales,
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-        theme: buildLicoTheme(platformBrightness: Brightness.dark),
-        home: Scaffold(
-          body: SizedBox(
-            width: 800,
-            height: viewportHeight,
-            child: MessagingParticipantFlow(
-              items: newestFirst,
-              adapter: AgentRenderAdapter.fallback(),
-              target: TargetCandidate(
-                target: 'codex',
-                label: 'Codex',
-                kind: 'cli',
-                status: 'detected',
-                configured: true,
-                confidence: 1,
-                adapterStatus: 'implemented',
-              ),
-              participantTargets: participantTargets,
-              participantRuntimeProfiles: participantRuntimeProfiles,
-              assistantActive: assistantActive,
-              scrollController: scrollController,
-              hasEarlier: hasEarlier,
-              onLoadEarlier: onLoadEarlier,
-              onCopyText: onCopyText,
-              onRetryMessage: onRetryMessage,
-              onDeleteMessage: onDeleteMessage,
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-  await tester.pump();
-}
+const _pumpFlow = pumpParticipantFlowTest;
 
 TargetCandidate _flowTarget(String id, String label) => TargetCandidate(
   target: id,

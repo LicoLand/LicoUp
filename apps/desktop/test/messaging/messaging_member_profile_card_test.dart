@@ -4,85 +4,19 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
-import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/members_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
+import 'support/member_profile_card_test_support.dart';
+
 void main() {
-  final conversation = ClientConversation.fromJson({
-    'id': 'conversation:group',
-    'title': 'Local',
-    'isGroup': true,
-    'assistantMembershipId': 'membership:codex',
-    'memberships': [
-      _membership(
-        id: 'membership:self',
-        principalId: 'human:local',
-        kind: 'human',
-        label: '小芋',
-        access: 'owner',
-      ),
-      _membership(
-        id: 'membership:codex',
-        principalId: 'agent:codex',
-        kind: 'agent',
-        label: 'Codex',
-        agentId: 'codex',
-      ),
-    ],
-  });
+  final targets = memberProfileCardTestTargets();
 
-  final targets = [_target('codex', 'Codex')];
-
-  Future<void> pumpPanel(
-    WidgetTester tester, {
-    ValueChanged<TargetCandidate>? onMentionAgent,
-    void Function(TargetCandidate, Offset)? onOpenMemberHistory,
-    VoidCallback? onOpenSettings,
-    ValueChanged<String>? onSelfMascotChanged,
-  }) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(900, 700);
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(
-      MaterialApp(
-        locale: const Locale('zh'),
-        supportedLocales: LicoStrings.supportedLocales,
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-        theme: buildLicoTheme(platformBrightness: Brightness.dark),
-        home: Builder(
-          builder: (context) => LayoutPaletteScope(
-            palette: layoutPaletteFromColors(context.licoColors),
-            child: Scaffold(
-              body: Align(
-                alignment: Alignment.centerRight,
-                child: CanonicalGroupMembersPanel(
-                  conversation: conversation,
-                  targets: targets,
-                  turnPhases: const {},
-                  onMentionAgent: onMentionAgent ?? (_) {},
-                  onOpenMemberHistory: onOpenMemberHistory,
-                  onOpenSettings: onOpenSettings,
-                  onSelfMascotChanged: onSelfMascotChanged,
-                  memberSessionCounts: const {'codex': 3},
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pump();
-  }
+  const pumpPanel = pumpMemberProfileCardTestPanel;
 
   testWidgets('tapping an agent member opens its profile card', (tester) async {
     final opened = <String>[];
@@ -267,32 +201,6 @@ void main() {
     expect(selected, ['conversation:squad']);
   });
 
-  testWidgets('member profile card matches the demo anatomy', (tester) async {
-    await pumpPanel(
-      tester,
-      onOpenMemberHistory: (_, _) {},
-      onSelfMascotChanged: (_) {},
-      onOpenSettings: () {},
-    );
-    await tester.tap(find.byKey(const Key('canonical-group-member-codex')));
-    await tester.pumpAndSettle();
-    await expectLater(
-      find.byKey(const Key('member-profile-card-codex')),
-      matchesGoldenFile('goldens/member_profile_agent.png'),
-    );
-    // Dismiss and open the self card for its own golden.
-    await tester.tapAt(const Offset(60, 350));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('canonical-group-member-self')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('编辑资料'));
-    await tester.pumpAndSettle();
-    await expectLater(
-      find.byKey(const Key('member-profile-card-self')),
-      matchesGoldenFile('goldens/member_profile_self.png'),
-    );
-  });
-
   testWidgets('编辑资料 reveals the mascot picker and reports picks', (
     tester,
   ) async {
@@ -310,38 +218,3 @@ void main() {
     expect(mascot, 'luna');
   });
 }
-
-TargetCandidate _target(String id, String label) => TargetCandidate(
-  target: id,
-  label: label,
-  kind: 'cli',
-  status: 'detected',
-  configured: true,
-  confidence: 1,
-  binaryPath: '/synthetic/bin',
-  adapterStatus: 'implemented',
-  adapterCapabilities: const {'conversationDriver': 'native'},
-  supportedActions: const ['mention', 'relay'],
-);
-
-Map<String, dynamic> _membership({
-  required String id,
-  required String principalId,
-  required String kind,
-  required String label,
-  String agentId = '',
-  String access = 'member',
-}) => {
-  'id': id,
-  'conversationId': 'conversation:group',
-  'principal': {
-    'id': principalId,
-    'kind': kind,
-    'displayName': label,
-    if (agentId.isNotEmpty) 'agentId': agentId,
-    'createdAtUnixMs': 1,
-  },
-  'access': access,
-  'status': 'active',
-  'joinedAtUnixMs': 1,
-};

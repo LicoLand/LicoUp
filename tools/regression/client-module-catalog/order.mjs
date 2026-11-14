@@ -114,6 +114,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "flutter.controller.scenario.conversation-dispatch",
   "flutter.controller.scenario.local-management",
   "flutter.layer.shell",
+  "flutter.layer.macos-visual-goldens",
   "flutter.layer.platform-storage",
   "flutter.contract.data-home",
   "bridge.flutter-native-client",

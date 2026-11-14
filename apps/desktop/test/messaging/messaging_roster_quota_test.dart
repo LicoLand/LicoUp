@@ -2,26 +2,27 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/composition/provider_quota_gateway_adapter.dart';
 import 'package:licoup/src/application/features/agents/contracts/provider_quota_gateway.dart';
 import 'package:licoup/src/application/features/agents/controller/provider_quota_controller.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
-import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/provider_quota_models.dart';
-import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_quota_ring.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_quota_usage_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
-import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
-import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import '../support/bundled_font_loader.dart';
+import 'support/roster_quota_test_support.dart';
+
+const _testApp = buildQuotaTestApp;
+const _conversation = quotaTestConversation;
+const _targets = quotaTestTargets;
+const _quotaSnapshots = quotaTestSnapshots;
 
 void main() {
   setUpAll(loadBundledVisualFonts);
@@ -139,11 +140,6 @@ void main() {
           BorderRadius.circular(999),
         );
         expect(tester.takeException(), isNull);
-
-        await expectLater(
-          find.byKey(const Key('messaging-roster-quota-qa-boundary')),
-          matchesGoldenFile('../goldens/messaging/roster_quota_rings.png'),
-        );
       },
     );
 
@@ -354,11 +350,6 @@ void main() {
       expect(find.text('Resets on Monday'), findsOneWidget);
       expect(find.text('Captured 42m ago'), findsOneWidget);
       expect(tester.takeException(), isNull);
-
-      await expectLater(
-        find.byKey(const Key('messaging-quota-usage-card-qa-boundary')),
-        matchesGoldenFile('../goldens/messaging/roster_quota_usage_card.png'),
-      );
 
       // Unmount so the countdown ticker is cancelled before teardown.
       await tester.pumpWidget(const SizedBox());
@@ -571,172 +562,6 @@ MessagingQuotaRingPainter _ringPainter(WidgetTester tester, String agentId) {
   );
   return paint.painter! as MessagingQuotaRingPainter;
 }
-
-Widget _testApp(Key boundaryKey, Widget child) {
-  return MaterialApp(
-    debugShowCheckedModeBanner: false,
-    locale: const Locale('en'),
-    supportedLocales: LicoStrings.supportedLocales,
-    localizationsDelegates: const [
-      GlobalMaterialLocalizations.delegate,
-      GlobalCupertinoLocalizations.delegate,
-      GlobalWidgetsLocalizations.delegate,
-    ],
-    theme: buildLicoTheme(
-      platformBrightness: Brightness.dark,
-    ).copyWith(platform: TargetPlatform.macOS),
-    // The golden boundary wraps the Scaffold so the dark canvas is captured
-    // behind the glass chrome instead of alpha-flattening to white.
-    home: RepaintBoundary(
-      key: boundaryKey,
-      child: Scaffold(backgroundColor: const Color(0xFF101010), body: child),
-    ),
-  );
-}
-
-Map<String, ProviderQuotaSnapshot> _quotaSnapshots() {
-  final now = DateTime.now().toUtc();
-  return {
-    'codex': ProviderQuotaSnapshot(
-      agentId: 'codex',
-      provider: 'codex',
-      status: ProviderQuotaStatus.live,
-      windows: [
-        ProviderQuotaWindow(
-          label: '5h limit',
-          usedPercent: 187.4,
-          windowMinutes: 300,
-          resetsAt: now
-              .add(const Duration(hours: 4, minutes: 49))
-              .toIso8601String(),
-        ),
-        ProviderQuotaWindow(
-          label: 'Weekly limit',
-          usedPercent: 63,
-          windowMinutes: 10080,
-          resetsAt: now
-              .add(const Duration(days: 3, hours: 2))
-              .toIso8601String(),
-        ),
-      ],
-      identity: const ProviderQuotaIdentity(
-        accountLabel: 'work@example.com',
-        plan: 'Pro',
-      ),
-      capturedAt: now.toIso8601String(),
-      staleAfterSeconds: 300,
-    ),
-    'cursor': ProviderQuotaSnapshot(
-      agentId: 'cursor',
-      provider: 'cursor',
-      status: ProviderQuotaStatus.stale,
-      windows: [
-        ProviderQuotaWindow(
-          label: 'Plan usage',
-          usedPercent: 62,
-          resetsAt: now
-              .add(const Duration(days: 12, hours: 6))
-              .toIso8601String(),
-        ),
-      ],
-      identity: const ProviderQuotaIdentity(plan: 'Pro'),
-      capturedAt: now.subtract(const Duration(minutes: 12)).toIso8601String(),
-      staleAfterSeconds: 300,
-    ),
-    // 'antigravity' intentionally absent: no quota source, no fake data.
-  };
-}
-
-ClientConversation _conversation() => ClientConversation.fromJson(const {
-  'id': 'conversation:group',
-  'title': 'Lico',
-  'archived': false,
-  'isGroup': true,
-  'revision': 2,
-  'createdAtUnixMs': 1,
-  'updatedAtUnixMs': 2,
-  'eventCount': 0,
-  'memberships': [
-    {
-      'id': 'membership:owner',
-      'conversationId': 'conversation:group',
-      'principal': {
-        'id': 'human:local',
-        'kind': 'human',
-        'displayName': 'Local User',
-        'createdAtUnixMs': 1,
-      },
-      'access': 'owner',
-      'status': 'active',
-      'joinedAtUnixMs': 1,
-    },
-    {
-      'id': 'membership:codex',
-      'conversationId': 'conversation:group',
-      'principal': {
-        'id': 'agent:codex',
-        'kind': 'agent',
-        'displayName': 'Codex',
-        'agentId': 'codex',
-        'createdAtUnixMs': 1,
-      },
-      'access': 'member',
-      'status': 'active',
-      'joinedAtUnixMs': 1,
-    },
-    {
-      'id': 'membership:cursor',
-      'conversationId': 'conversation:group',
-      'principal': {
-        'id': 'agent:cursor',
-        'kind': 'agent',
-        'displayName': 'Cursor',
-        'agentId': 'cursor',
-        'createdAtUnixMs': 1,
-      },
-      'access': 'member',
-      'status': 'active',
-      'joinedAtUnixMs': 1,
-    },
-    {
-      'id': 'membership:antigravity',
-      'conversationId': 'conversation:group',
-      'principal': {
-        'id': 'agent:antigravity',
-        'kind': 'agent',
-        'displayName': 'Antigravity',
-        'agentId': 'antigravity',
-        'createdAtUnixMs': 1,
-      },
-      'access': 'member',
-      'status': 'active',
-      'joinedAtUnixMs': 1,
-    },
-  ],
-});
-
-List<TargetCandidate> _targets() => [
-  _target('codex', 'Codex'),
-  _target('cursor', 'Cursor'),
-  _target('antigravity', 'Antigravity'),
-];
-
-TargetCandidate _target(String id, String label) => TargetCandidate(
-  id: id,
-  target: id,
-  label: label,
-  kind: 'cli',
-  status: 'detected',
-  configured: true,
-  confidence: 1,
-  adapterStatus: 'implemented',
-  adapterCapabilities: const {
-    'conversationDriver': 'implemented',
-    'conversationProtocol': 'fixture',
-    'conversationReadiness': 'ready',
-  },
-  supportedActions: const ['runtime.message.send'],
-);
 
 Map<String, dynamic> _wireReport(List<Map<String, dynamic>> snapshots) => {
   'schemaVersion': providerQuotaSnapshotsSchema,
