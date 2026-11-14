@@ -417,11 +417,11 @@ final class ControlBehindBulkFixture implements NativeChildCandidate {
   /// pipe delivers: that is the property the bounded framed backlog exists for.
   /// The whole default burst is larger than the framed backlog watermark while
   /// still fitting the declared control window.
-  static const int defaultFillerBytes = 2 * 1024 * 1024;
+  static const int defaultFillerBytes = 4608 * 1024;
 
   static Future<ControlBehindBulkFixture> create({
     required Directory directory,
-    int bulkAheadFrames = 8,
+    int bulkAheadFrames = 4,
     int releaseFrames = 2,
     int fillerBytes = defaultFillerBytes,
   }) async {
