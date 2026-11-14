@@ -8,7 +8,7 @@ enum ClientSection {
   monitoring,
   skillHub,
   pluginManagement,
-  mobileRelay,
+  devices,
   models,
   settings,
   agentHub,

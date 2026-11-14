@@ -806,6 +806,51 @@ class AgentConversationService
     }
   }
 
+  /// Allows or denies one native permission request the Agent parked in
+  /// [turnId] of [sessionId].
+  ///
+  /// Returns an empty string once the decision is delivered or the request
+  /// was already settled (its route is consumed or gone), otherwise the
+  /// stable failure code.
+  Future<String> resolveNativeApproval({
+    required String agentId,
+    required String sessionId,
+    required String turnId,
+    required String adapterCallbackTokenRef,
+    required bool allow,
+  }) async {
+    if (agentId.trim().isEmpty ||
+        sessionId.trim().isEmpty ||
+        turnId.trim().isEmpty ||
+        adapterCallbackTokenRef.trim().isEmpty) {
+      return 'native_interaction_scope_missing';
+    }
+    try {
+      final result = await _conversation.resolveInteraction(
+        AgentSessionTurnScope(
+          session: AgentConversationSessionScope(
+            agentId: agentId.trim(),
+            sessionId: sessionId.trim(),
+          ),
+          turnId: turnId.trim(),
+        ),
+        adapterCallbackTokenRef: adapterCallbackTokenRef,
+        interactionResponse: {'allow': allow},
+      );
+      if (result['ok'] == false) {
+        final nested = result['error'];
+        return nativeApprovalFailureCode(
+          nested is Map
+              ? (nested['code'] ?? '').toString()
+              : (result['code'] ?? '').toString(),
+        );
+      }
+      return '';
+    } on NativeConversationException catch (error) {
+      return nativeApprovalFailureCode(error.code);
+    }
+  }
+
   Future<AgentDispatchTurnResult> steer({
     required String agentId,
     required String text,
@@ -1082,3 +1127,12 @@ final class _PersistentTurnContext {
     return {...frame, ..._identity};
   }
 }
+
+/// A consumed or missing interaction route means the request was already
+/// settled (answered elsewhere, or the turn ended); neither is a failure.
+String nativeApprovalFailureCode(String code) => switch (code.trim()) {
+  'native_interaction_route_consumed' ||
+  'native_interaction_route_missing' => '',
+  '' => 'native_interaction_resolve_failed',
+  final other => other,
+};

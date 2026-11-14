@@ -3,9 +3,11 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
-import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
+import 'package:licoup/src/platform/presentation/file_presentation_preferences_repository.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 import 'layout_manager_test.dart' show createManager, preferences;
@@ -164,12 +166,27 @@ final class _HangingPreferencesRepository
       Completer<PresentationPreferences>().future;
 
   @override
-  Future<PresentationPreferences> setReduceMotion(bool enabled) async =>
-      _preferences;
+  Future<PresentationPreferences> setLayoutStyle(
+    LayoutProfileId profile,
+    LayoutStyleId style,
+  ) => Completer<PresentationPreferences>().future;
+
+  @override
+  Future<PresentationPreferences> setReduceMotion(
+    ReduceMotionPreference preference,
+  ) async => _preferences;
 
   @override
   Future<PresentationPreferences> setLoadingEffect(String id) async =>
       _preferences;
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) => throw UnimplementedError(
+    'synthetic repository does not store resource requests',
+  );
 
   @override
   Future<PresentationPreferences> setAppearancePreset(String id) async =>
@@ -198,14 +215,31 @@ final class _ExplodingPreferencesRepository
       Future.error(StateError('unexpected_store_failure'));
 
   @override
-  Future<PresentationPreferences> setReduceMotion(bool enabled) async {
-    _preferences = _preferences.copyWith(reduceMotion: enabled);
+  Future<PresentationPreferences> setLayoutStyle(
+    LayoutProfileId profile,
+    LayoutStyleId style,
+  ) => Future.error(StateError('unexpected_store_failure'));
+
+  @override
+  Future<PresentationPreferences> setReduceMotion(
+    ReduceMotionPreference preference,
+  ) async {
+    _preferences = _preferences.copyWith(reduceMotion: preference);
     return _preferences;
   }
 
   @override
   Future<PresentationPreferences> setLoadingEffect(String id) async {
     _preferences = _preferences.copyWith(loadingEffectId: id);
+    return _preferences;
+  }
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) async {
+    _preferences = _preferences.withResourceSelection(kind, selection);
     return _preferences;
   }
 

@@ -324,7 +324,7 @@ final class HistorySessionRow extends StatelessWidget {
                 width: 3,
                 height: double.infinity,
                 child: ColoredBox(
-                  color: item.active ? colors.primary : Colors.transparent,
+                  color: item.active ? colors.selectionInk : Colors.transparent,
                 ),
               ),
               Expanded(

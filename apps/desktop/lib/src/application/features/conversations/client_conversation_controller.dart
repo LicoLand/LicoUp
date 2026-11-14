@@ -245,7 +245,17 @@ final class ClientConversationController extends ApplicationStateOwner {
     }
   }
 
-  List<ClientConversationSummary> get groupConversations {
+  List<ClientConversationSummary> get groupConversations =>
+      _rootSummaries((conversation) => conversation.isGroup);
+
+  /// Non-group canonical Conversations — Profile direct chats — with the
+  /// same continuity children attached as the group listing.
+  List<ClientConversationSummary> get directConversations =>
+      _rootSummaries((conversation) => !conversation.isGroup);
+
+  List<ClientConversationSummary> _rootSummaries(
+    bool Function(ClientConversationSummary conversation) include,
+  ) {
     final childrenByParent = <String, List<ClientConversationSummary>>{};
     for (final summary in _summaries) {
       final parent = summary.parentConversationId;
@@ -267,7 +277,7 @@ final class ClientConversationController extends ApplicationStateOwner {
     return _summaries
         .where(
           (conversation) =>
-              conversation.isGroup && !conversation.isContinuityChild,
+              include(conversation) && !conversation.isContinuityChild,
         )
         .map(
           (root) => root
@@ -716,17 +726,19 @@ final class ClientConversationController extends ApplicationStateOwner {
     });
   }
 
-  /// Designates the selected group's Assistant Membership. Passing null
-  /// clears the designation; the ambiguous multi-Agent group stays
-  /// undesignated until an explicit choice is made.
+  /// Designates the selected Conversation's Assistant Membership. Passing
+  /// null clears the designation; the ambiguous multi-Agent group stays
+  /// undesignated until an explicit choice is made. Valid on any owned
+  /// canonical Conversation — direct Profile chats rely on it to route
+  /// plain messages to the persona member.
   Future<bool> setSelectedAssistantMembership(String? membershipId) async {
     final conversation = _selectedConversation;
-    if (conversation == null || !conversation.group) return false;
+    if (conversation == null) return false;
     final normalized = membershipId?.trim() ?? '';
     if (conversation.assistantMembershipId == normalized) return true;
     await _waitUntilIdle();
     final selected = _selectedConversation;
-    if (selected == null || !selected.group || selected.id != conversation.id) {
+    if (selected == null || selected.id != conversation.id) {
       return false;
     }
     if (selected.assistantMembershipId == normalized) return true;
@@ -1032,12 +1044,17 @@ final class ClientConversationController extends ApplicationStateOwner {
       final uniqueMembers = <String, ClientConversationGroupMemberDraft>{
         for (final member in members)
           if (member.agentId.trim().isNotEmpty)
-            member.agentId.trim(): ClientConversationGroupMemberDraft(
-              agentId: member.agentId.trim(),
-              displayName: member.displayName.trim().isEmpty
-                  ? member.agentId.trim()
-                  : member.displayName.trim(),
-            ),
+            (member.profileId?.trim().isNotEmpty == true
+                    ? 'profile:${member.profileId!.trim()}'
+                    : 'agent:${member.agentId.trim()}'):
+                ClientConversationGroupMemberDraft(
+                  agentId: member.agentId.trim(),
+                  displayName: member.displayName.trim().isEmpty
+                      ? member.agentId.trim()
+                      : member.displayName.trim(),
+                  profileId: member.profileId?.trim(),
+                  profileIntent: member.profileIntent,
+                ),
       }.values.toList(growable: false);
       if (normalizedTitle.isEmpty || uniqueMembers.isEmpty) {
         throw const ClientConversationServiceFailure('invalid_request');
@@ -1055,7 +1072,9 @@ final class ClientConversationController extends ApplicationStateOwner {
             for (final member in uniqueMembers)
               {
                 'principal': {
-                  'id': 'agent:${member.agentId}',
+                  'id': member.profileId?.trim().isNotEmpty == true
+                      ? 'profile:${member.profileId!.trim()}'
+                      : 'agent:${member.agentId}',
                   'kind': 'agent',
                   'displayName': member.displayName,
                   'agentId': member.agentId,
@@ -1066,11 +1085,226 @@ final class ClientConversationController extends ApplicationStateOwner {
         }),
       );
       final conversationId = (created['id'] ?? '').toString();
+      await _applyMemberProfileIntents(
+        conversationId: conversationId,
+        created: created,
+        members: uniqueMembers,
+      );
       await _refreshCatalogWithoutGuard();
       _selectedConversationId = conversationId;
       _onSelectionChanged?.call(conversationId);
       await _loadSelected();
     });
+  }
+
+  /// Creates the direct (non-group) canonical Conversation backing one
+  /// Profile contact: human owner plus the `profile:<id>` persona member
+  /// designated as the conversation assistant, with the Profile's
+  /// model/reasoning/advanced preferences persisted as that membership's
+  /// profile intent. Returns the created conversation id, or null when the
+  /// sequence fails (the failure is attributed to the create stage).
+  Future<String?> createProfileConversation({
+    required String profileId,
+    required String displayName,
+    required String agentId,
+    Map<String, dynamic> profileIntent = const <String, dynamic>{},
+  }) async {
+    await _waitUntilIdle();
+    String? conversationId;
+    final ok = await _guard('create', () async {
+      final principalId = 'profile:${profileId.trim()}';
+      final created = _objectMap(
+        await _service.execute({
+          'action': 'conversation.create',
+          'title': displayName.trim(),
+          'isGroup': false,
+          'owner': {
+            'id': 'human:local',
+            'kind': 'human',
+            'displayName': 'Local User',
+          },
+          'members': [
+            {
+              'principal': {
+                'id': principalId,
+                'kind': 'agent',
+                'displayName': displayName.trim(),
+                'agentId': agentId.trim(),
+              },
+              'access': 'member',
+            },
+          ],
+        }),
+      );
+      final id = (created['id'] ?? '').toString().trim();
+      if (id.isEmpty) {
+        throw const ClientConversationServiceFailure('invalid_response');
+      }
+      final memberships = [
+        for (final membership in created['memberships'] as List? ?? const [])
+          _objectMap(membership),
+      ];
+      final ownerId = memberships
+          .where(
+            (membership) =>
+                _objectMap(membership['principal'])['kind'] == 'human',
+          )
+          .map((membership) => (membership['id'] ?? '').toString())
+          .firstWhere((mid) => mid.isNotEmpty, orElse: () => '');
+      final personaId = memberships
+          .where(
+            (membership) =>
+                _objectMap(membership['principal'])['id'] == principalId,
+          )
+          .map((membership) => (membership['id'] ?? '').toString())
+          .firstWhere((mid) => mid.isNotEmpty, orElse: () => '');
+      if (ownerId.isEmpty || personaId.isEmpty) {
+        throw const ClientConversationServiceFailure('invalid_response');
+      }
+      await _service.execute({
+        'action': 'conversation.assistant.set',
+        'conversationId': id,
+        'ownerMembershipId': ownerId,
+        // Member insertion already bumped the fresh conversation to
+        // revision 1, so the CAS token must come from the create echo.
+        'expectedRevision': (created['revision'] as num?)?.toInt() ?? 0,
+        'membershipId': personaId,
+      });
+      await _applyMemberProfileIntents(
+        conversationId: id,
+        created: created,
+        members: [
+          ClientConversationGroupMemberDraft(
+            agentId: agentId.trim(),
+            displayName: displayName.trim(),
+            profileId: profileId.trim(),
+            profileIntent: profileIntent,
+          ),
+        ],
+      );
+      conversationId = id;
+      await _refreshCatalogWithoutGuard();
+      _selectedConversationId = id;
+      _onSelectionChanged?.call(id);
+      await _loadSelected();
+    });
+    return ok ? conversationId : null;
+  }
+
+  /// Adds a Profile persona member to the selected group Conversation and
+  /// persists the Profile's preferences as that membership's intent. The
+  /// member keeps the `profile:<id>` principal identity so contact and
+  /// group contexts stay linked.
+  Future<bool> addProfileMembership({
+    required String profileId,
+    required String displayName,
+    required String agentId,
+    Map<String, dynamic> profileIntent = const <String, dynamic>{},
+  }) async {
+    final conversation = _selectedConversation;
+    if (conversation == null || !conversation.group) return false;
+    await _waitUntilIdle();
+    final selected = _selectedConversation;
+    if (selected == null || selected.id != conversation.id || !selected.group) {
+      return false;
+    }
+    final owner = selected.localOwnerMembership;
+    if (owner == null) return false;
+    final principalId = 'profile:${profileId.trim()}';
+    final alreadyMember = selected.memberships.any(
+      (membership) => membership.principal.id == principalId,
+    );
+    return _guard('membership-add', conversationId: selected.id, () async {
+      if (!alreadyMember) {
+        final added = _objectMap(
+          await _service.execute({
+            'action': 'conversation.membership.add',
+            'conversationId': selected.id,
+            'ownerMembershipId': owner.id,
+            'expectedRevision': selected.revision,
+            'member': {
+              'principal': {
+                'id': principalId,
+                'kind': 'agent',
+                'displayName': displayName.trim(),
+                'agentId': agentId.trim(),
+              },
+              'access': 'member',
+            },
+          }),
+        );
+        final membershipId = (added['id'] ?? '').toString().trim();
+        if (membershipId.isNotEmpty) {
+          await _applyMemberProfileIntents(
+            conversationId: selected.id,
+            ownerMembershipId: owner.id,
+            memberships: [_objectMap(added)],
+            members: [
+              ClientConversationGroupMemberDraft(
+                agentId: agentId.trim(),
+                displayName: displayName.trim(),
+                profileId: profileId.trim(),
+                profileIntent: profileIntent,
+              ),
+            ],
+          );
+        }
+      }
+      await _loadSelected();
+    });
+  }
+
+  /// Persists each Profile member's intent onto its freshly created
+  /// membership. The membership id is located by principal id inside the
+  /// created-conversation (or membership.add) response; [memberships] may
+  /// be supplied directly for the membership.add shape, otherwise the
+  /// response's `memberships` list is used.
+  Future<void> _applyMemberProfileIntents({
+    required String conversationId,
+    required List<ClientConversationGroupMemberDraft> members,
+    Map<String, dynamic> created = const <String, dynamic>{},
+    String? ownerMembershipId,
+    List<Map<String, dynamic>>? memberships,
+  }) async {
+    final rows =
+        memberships ??
+        [
+          for (final membership in created['memberships'] as List? ?? const [])
+            _objectMap(membership),
+        ];
+    final ownerId =
+        ownerMembershipId ??
+        rows
+            .where(
+              (membership) =>
+                  _objectMap(membership['principal'])['kind'] == 'human',
+            )
+            .map((membership) => (membership['id'] ?? '').toString())
+            .firstWhere((mid) => mid.isNotEmpty, orElse: () => '');
+    if (ownerId.isEmpty) return;
+    for (final member in members) {
+      final profileId = member.profileId?.trim() ?? '';
+      final intent = member.profileIntent;
+      if (profileId.isEmpty || intent == null || intent.isEmpty) continue;
+      final membershipId = rows
+          .where(
+            (membership) =>
+                _objectMap(membership['principal'])['id'] ==
+                'profile:$profileId',
+          )
+          .map((membership) => (membership['id'] ?? '').toString())
+          .firstWhere((mid) => mid.isNotEmpty, orElse: () => '');
+      if (membershipId.isEmpty) continue;
+      final existing = await membershipProfile(membershipId);
+      await _service.execute({
+        'action': 'conversation.profile.update',
+        'conversationId': conversationId,
+        'membershipId': membershipId,
+        'ownerMembershipId': ownerId,
+        'expectedRevision': ((existing?['revision'] as num?)?.toInt() ?? 0),
+        'intent': intent,
+      });
+    }
   }
 
   Future<void> archiveSelected() async {
@@ -1091,7 +1325,11 @@ final class ClientConversationController extends ApplicationStateOwner {
       );
       _applyArchiveReport(response);
       if (_selectedConversationId == id) {
-        _clearSelection();
+        if (response['resetInPlace'] == true) {
+          await _loadSelected();
+        } else {
+          _clearSelection();
+        }
       }
       _reconcileCatalogInBackground();
     });
@@ -1103,6 +1341,9 @@ final class ClientConversationController extends ApplicationStateOwner {
   /// native transports are disconnected off the response path. The foreground
   /// applies the list change directly and selects the successor; a
   /// background-priority catalog read reconciles ordering later.
+  /// The reserved default local group is the one exception: the store resets
+  /// it in place — same Conversation, history cleared, one reset notice — so
+  /// the selection stays put and simply reloads.
   Future<bool> archiveAndReopenSelected() async {
     final conversation = _selectedConversation;
     if (conversation == null || !conversation.group) return false;
@@ -1127,15 +1368,18 @@ final class ClientConversationController extends ApplicationStateOwner {
       _applyArchiveReport(response);
       final successorId =
           _objectMap(response['successor'])['id']?.toString() ?? '';
-      if (successorId.isEmpty) {
+      final resetInPlace = response['resetInPlace'] == true;
+      if (successorId.isEmpty && !resetInPlace) {
         throw const ClientConversationServiceFailure('invalid_response');
       }
       _conversationCache.remove(selected.id);
       _earlierPageErrors.remove(selected.id);
       _liveTurns = const [];
       _dispatchPending = false;
-      _selectedConversationId = successorId;
-      _onSelectionChanged?.call(successorId);
+      if (!resetInPlace) {
+        _selectedConversationId = successorId;
+        _onSelectionChanged?.call(successorId);
+      }
       await _loadSelected();
       _reconcileCatalogInBackground();
     });
@@ -1144,10 +1388,12 @@ final class ClientConversationController extends ApplicationStateOwner {
   /// Applies one archive report to the in-memory lists so the foreground
   /// refreshes immediately: the retired conversations move to the archived
   /// partition and the successor joins the active list, with no full catalog
-  /// readback on the user's path.
+  /// readback on the user's path. A `resetInPlace` report retires only the
+  /// children — the reset conversation itself stays active.
   void _applyArchiveReport(Map<String, dynamic> response) {
     final retired = <String>{
-      (response['conversationId'] ?? '').toString(),
+      if (response['resetInPlace'] != true)
+        (response['conversationId'] ?? '').toString(),
       ...?(response['archivedChildIds'] as List?)?.map((id) => id.toString()),
     }..removeWhere((id) => id.isEmpty);
     if (retired.isEmpty) return;

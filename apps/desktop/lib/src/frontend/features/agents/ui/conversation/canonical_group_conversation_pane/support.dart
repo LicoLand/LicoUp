@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -39,7 +40,9 @@ class CanonicalGroupFailureCapsule extends StatelessWidget {
       child: DecoratedBox(
         key: const Key('canonical-group-failure'),
         decoration: continuousHairlineDecoration(
-          color: colors.surfaceRaised,
+          color: (colors.isDark
+              ? LicoPaneGlass.contentInnerCardFill
+              : colors.surfaceRaised),
           borderRadius: BorderRadius.circular(radius),
           stroke: colors.error,
           strokeWidth: 1.25,

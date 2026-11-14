@@ -3,6 +3,8 @@ import path from "node:path";
 
 export const CLIENT_REGRESSION_REPORT_SCHEMA = "licoup.client-regression-report.v1";
 export const LEGACY_INCOMPLETE_BASELINE_MS = 1_161_000;
+const PRIVATE_DIAGNOSTIC_PATTERN =
+  /^build\/private\/client-regression\/[a-z0-9_.-]+\.log$/iu;
 
 function terminalStatus(results, compatibility) {
   return results.some((result) => result.status !== "passed") ||
@@ -28,44 +30,11 @@ function numericMetric(value) {
     : unavailable(value);
 }
 
-function durationAggregate(value) {
-  const aggregate = value?.value;
-  if (value?.status !== "measured" || !aggregate ||
-      !["count", "totalMs", "minimumMs", "maximumMs"].every((key) =>
-        Number.isFinite(aggregate[key]) && aggregate[key] >= 0)) {
-    return unavailable(value);
-  }
-  return Object.freeze({
-    status: "measured",
-    value: Object.freeze({
-      count: aggregate.count,
-      totalMs: aggregate.totalMs,
-      minimumMs: aggregate.minimumMs,
-      maximumMs: aggregate.maximumMs,
-    }),
-  });
-}
-
 function safeToolchainNative(value) {
-  const kind = ["rust", "flutter", "node", "node-test", "gradle", "compatibility"]
+  const kind = ["flutter", "node", "node-test", "compatibility"]
     .includes(value?.kind) ? value.kind : "unknown";
   if (value?.status === "unavailable") {
     return Object.freeze({ kind, status: "unavailable", reason: reason(value.reason) });
-  }
-  if (kind === "rust") {
-    const cargo = value?.cargoBuildTimingReport;
-    const safeCargo = cargo?.status === "measured" && cargo.value?.generated === true
-      ? Object.freeze({
-        status: "measured",
-        value: Object.freeze({ generated: true, format: "html", machineReadable: false }),
-      })
-      : unavailable(cargo);
-    return Object.freeze({
-      kind,
-      cargoBuildTimingReport: safeCargo,
-      libtestSuiteWallTime: durationAggregate(value?.libtestSuiteWallTime),
-      libtestCaseWallTime: durationAggregate(value?.libtestCaseWallTime),
-    });
   }
   if (kind === "flutter") {
     return Object.freeze({
@@ -96,6 +65,23 @@ function safeMetrics(value) {
   });
 }
 
+function safeDiagnosticLog(value, status) {
+  if (value === undefined || value === null) return null;
+  if (!["failed", "attribution-pending"].includes(status) ||
+      typeof value !== "string" || !PRIVATE_DIAGNOSTIC_PATTERN.test(value)) {
+    throw new Error("client regression diagnostic log reference is invalid");
+  }
+  return value;
+}
+
+function safeEvidenceHead(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string" || !/^[a-f0-9]{40}$/u.test(value)) {
+    throw new Error("client regression evidence head is invalid");
+  }
+  return value;
+}
+
 export function createClientRegressionReport({
   runKind,
   startedAt,
@@ -104,18 +90,32 @@ export function createClientRegressionReport({
   results,
   concurrency,
   compatibility = [],
+  candidateHead = null,
+  sourceStateDigest = null,
 }) {
-  const safeResults = results.map((result) => Object.freeze({
-    id: result.id,
-    stage: result.stage,
-    lane: result.lane,
-    toolchain: result.toolchain,
-    status: result.status,
-    reason: result.reason ? reason(result.reason, "execution_failed") : null,
-    durationMs: result.durationMs,
-    members: Object.freeze([...result.members]),
-    metrics: safeMetrics(result.metrics),
-  }));
+  if (candidateHead !== null && !/^[a-f0-9]{40}$/u.test(candidateHead)) {
+    throw new Error("client regression candidate head is invalid");
+  }
+  if (sourceStateDigest !== null && !/^sha256:[a-f0-9]{64}$/u.test(sourceStateDigest)) {
+    throw new Error("client regression source-state digest is invalid");
+  }
+  const safeResults = results.map((result) => {
+    const diagnosticLog = safeDiagnosticLog(result.diagnosticLog, result.status);
+    const evidenceHead = safeEvidenceHead(result.evidenceHead);
+    return Object.freeze({
+      id: result.id,
+      stage: result.stage,
+      lane: result.lane,
+      toolchain: result.toolchain,
+      status: result.status,
+      reason: result.reason ? reason(result.reason, "execution_failed") : null,
+      durationMs: result.durationMs,
+      members: Object.freeze([...result.members]),
+      metrics: safeMetrics(result.metrics),
+      ...(evidenceHead ? { evidenceHead } : {}),
+      ...(diagnosticLog ? { diagnosticLog } : {}),
+    });
+  });
   const safeCompatibility = compatibility.map((row) => Object.freeze({
     id: row.id,
     kind: row.kind,
@@ -127,6 +127,8 @@ export function createClientRegressionReport({
   }));
   return Object.freeze({
     schemaVersion: CLIENT_REGRESSION_REPORT_SCHEMA,
+    ...(candidateHead ? { candidateHead } : {}),
+    ...(sourceStateDigest ? { sourceStateDigest } : {}),
     runKind,
     complete: runKind === "complete",
     status: terminalStatus(safeResults, safeCompatibility),
@@ -137,7 +139,12 @@ export function createClientRegressionReport({
     results: Object.freeze(safeResults),
     failures: Object.freeze(safeResults
       .filter((result) => ["failed", "attribution-pending", "blocked"].includes(result.status))
-      .map((result) => Object.freeze({ id: result.id, reason: result.reason, members: result.members }))),
+      .map((result) => Object.freeze({
+        id: result.id,
+        reason: result.reason,
+        members: result.members,
+        ...(result.diagnosticLog ? { diagnosticLog: result.diagnosticLog } : {}),
+      }))),
     compatibility: Object.freeze(safeCompatibility),
     legacyBaseline: Object.freeze({
       status: "incomplete",

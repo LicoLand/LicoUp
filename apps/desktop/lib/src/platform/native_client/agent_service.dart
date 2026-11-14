@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/generated/client_state.g.dart';
+import 'package:licoup/src/contracts/work_control_gateway.dart';
 import 'package:licoup/src/contracts/mcp_adapter.dart';
 import 'package:licoup/src/contracts/skill_delete.dart';
 import 'package:licoup/src/contracts/skill_hub.dart';
@@ -12,7 +13,9 @@ import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/platform/native_client/agent_service_actions.dart';
 import 'package:licoup/src/platform/native_client/agent_service_process_io.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/stream_observation.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/data_home_executor.dart';
 import 'package:licoup/src/platform/native_client/native_catalog_actions.dart';
 import 'package:licoup/src/platform/native_client/native_cli_runtime_context.dart';
 import 'package:licoup/src/platform/native_client/native_command_router.dart';
@@ -20,6 +23,8 @@ import 'package:licoup/src/platform/native_client/native_conversation_port.dart'
 import 'package:licoup/src/platform/native_client/native_mcp_actions.dart';
 import 'package:licoup/src/platform/native_client/native_one_shot_command_executor.dart';
 import 'package:licoup/src/platform/native_client/native_state_actions.dart';
+import 'package:licoup/src/platform/native_client/native_work_control_gateway.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 export 'package:licoup/src/contracts/target_candidate.dart';
 export 'package:licoup/src/platform/native_client/native_cli_ports.dart'
@@ -40,6 +45,7 @@ class AgentService
         TargetManagementGateway {
   AgentService({
     Future<String> Function()? dataDirectory,
+    Future<DataHomeSelection> Function()? dataHomeSelection,
     NativeResolveCliBinary? resolveCliBinary,
     NativeRunCliExecutable? runCliExecutable,
     NativeStartCliExecutable? startCliExecutable,
@@ -47,7 +53,9 @@ class AgentService
     NativeCliProcessContext? processContext,
     NativeCommandExecutor? oneShotCommandExecutor,
     NativeStdioRpcTransport? stdioRpcTransport,
+    StreamObservationBackend? streamObservation,
     ConversationNativePort? conversationNativePort,
+    WorkControlGateway? workControlGateway,
     AgentCommandRunner? processIo,
     NativeCommandActions? commandActions,
     bool? persistentStdioRpcEnabled,
@@ -56,29 +64,61 @@ class AgentService
         processContext ??
         NativeCliRuntimeContext(
           dataDirectory: dataDirectory,
-          resolveCliBinary: resolveCliBinary,
+          dataHomeSelection: dataHomeSelection,
+          // An injected process runner replaces the whole executable boundary:
+          // without an explicit resolver the resolved identity is part of that
+          // synthetic boundary, so a sentinel keeps resolution honest instead
+          // of probing for a delivered binary a synthetic spawn never starts.
+          resolveCliBinary:
+              resolveCliBinary ??
+              (runCliExecutable != null || startCliExecutable != null
+                  ? () async => File('/synthetic/licoup')
+                  : null),
           startCliExecutable: startCliExecutable,
           requestTimeout: privateRuntimeTimeout,
         );
+    _processContext = runtimeContext;
     final oneShotExecutor =
         oneShotCommandExecutor ??
         NativeOneShotCommandExecutor(
           processContext: runtimeContext,
           runCliExecutable: runCliExecutable,
         );
+    // Observation stays opt-in: without a backend this composition builds no
+    // port at all, so an unobserved transport is the transport that existed
+    // before the port did. With one, the port is installed once here and
+    // reaches every stdio session through the transport that owns them.
+    final observation = streamObservation == null
+        ? null
+        : (StreamObservationPort()..installBackend(streamObservation));
+    _streamObservation = observation;
     final rpcTransport =
         stdioRpcTransport ??
-        NativeStdioRpcClient(processContext: runtimeContext);
+        NativeStdioRpcClient(
+          processContext: runtimeContext,
+          observation: observation,
+        );
+    final desktopRuntime =
+        Platform.isMacOS || Platform.isLinux || Platform.isWindows;
     _conversationNativePort =
         conversationNativePort ??
         StdioConversationNativePort(
           transport: rpcTransport,
-          desktopRuntime:
-              Platform.isMacOS || Platform.isLinux || Platform.isWindows,
+          desktopRuntime: desktopRuntime,
+        );
+    // The work-control lane is a peer of the conversation lane over the same
+    // owned transport, so it is composed here rather than left unavailable.
+    // A caller that supplies its own conversation lane injects this one too,
+    // so a synthetic fixture never inherits a live native control plane.
+    _workControlGateway =
+        workControlGateway ??
+        NativeWorkControlGateway(
+          transport: rpcTransport,
+          desktopRuntime: desktopRuntime,
         );
     final persistentEnabled =
         persistentStdioRpcEnabled ??
-        ((Platform.isMacOS || Platform.isLinux || Platform.isWindows) &&
+        (desktopRuntime &&
             runCliExecutable == null &&
             startCliExecutable == null &&
             oneShotCommandExecutor == null &&
@@ -108,17 +148,16 @@ class AgentService
           privateRunner: _processIo,
         );
     _mcpActions = NativeMcpActions(privateRunner: _processIo);
-    _catalogActions = NativeCatalogActions(
-      privateRunner: _processIo,
-      stdioRpcTransport: rpcTransport,
-      persistentStdioRpcEnabled: persistentEnabled,
-    );
+    _catalogActions = NativeCatalogActions(stdioRpcTransport: rpcTransport);
     _stateActions = NativeStateActions(stdioRpcTransport: rpcTransport);
   }
 
   late final NativeCommandExecutor _commandExecutor;
+  late final NativeCliProcessContext _processContext;
   late final ConversationNativePort _conversationNativePort;
   late final NativeStdioRpcTransport _stdioRpcTransport;
+  late final StreamObservationPort? _streamObservation;
+  late final WorkControlGateway _workControlGateway;
   late final AgentCommandRunner _processIo;
   late final NativeCommandActions _commandActions;
   late final NativeMcpActions _mcpActions;
@@ -130,48 +169,43 @@ class AgentService
 
   ConversationNativePort get conversationNativePort => _conversationNativePort;
 
+  /// The installed transport observation port, or null when this composition
+  /// did not opt in. Exposed as the composition's own evidence that observation
+  /// is installed rather than inferred from a silent stream.
+  StreamObservationPort? get streamObservation => _streamObservation;
+
+  /// The manual-stop and force-stop lane over the same owned structured
+  /// transport as [conversationNativePort].
+  ///
+  /// The root composition hands this to the work-control controller; without it
+  /// every work-control action would stay fail closed.
+  WorkControlGateway get workControlGateway => _workControlGateway;
+
   @override
   Future<Map<String, dynamic>> runCli(List<String> args) =>
       _commandExecutor.execute(args);
 
-  Future<Map<String, dynamic>> planCodexPlugin({required String binaryPath}) {
-    return runCli([
-      'adapter',
-      'codex',
-      'plugin',
-      'plan',
-      '--binary-path',
-      binaryPath,
-    ]);
-  }
+  Future<Map<String, dynamic>> relocateDataHome(
+    String destinationParent, {
+    DataHomePhaseHandler? onPhase,
+  }) => DataHomeExecutor(
+    _processContext,
+  ).relocate(destinationParent, onPhase: onPhase);
 
-  Future<Map<String, dynamic>> codexPluginStatus({required String binaryPath}) {
-    return runCli([
-      'adapter',
-      'codex',
-      'plugin',
-      'status',
-      '--binary-path',
-      binaryPath,
-    ]);
-  }
+  Future<Map<String, dynamic>> dataHomeStatus() =>
+      DataHomeExecutor(_processContext).status();
 
-  Future<Map<String, dynamic>> installCodexPlugin({
-    required String binaryPath,
-    required String confirmation,
-  }) {
-    return runCli([
-      'adapter',
-      'codex',
-      'plugin',
-      'install',
-      '--binary-path',
-      binaryPath,
-      '--confirmation',
-      confirmation,
-      '--confirmed',
-    ]);
-  }
+  Future<Map<String, dynamic>> recoverDataHome(
+    String dataHome, {
+    DataHomePhaseHandler? onPhase,
+  }) => DataHomeExecutor(_processContext).recover(dataHome, onPhase: onPhase);
+
+  Future<Map<String, dynamic>> cleanupPreviousDataHome(
+    String expectedPreviousRootPath, {
+    DataHomePhaseHandler? onPhase,
+  }) => DataHomeExecutor(
+    _processContext,
+  ).cleanupPrevious(expectedPreviousRootPath, onPhase: onPhase);
 
   Future<Map<String, dynamic>> subagentMcpStatus({
     required String agentId,

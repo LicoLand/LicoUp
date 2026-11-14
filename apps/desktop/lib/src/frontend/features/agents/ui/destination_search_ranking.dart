@@ -165,7 +165,7 @@ DestinationSearchHits rankDestinationSearch({
       );
     case ClientSection.agents:
     case ClientSection.monitoring:
-    case ClientSection.mobileRelay:
+    case ClientSection.devices:
     case ClientSection.models:
       return DestinationSearchHits(
         features: featureHits,

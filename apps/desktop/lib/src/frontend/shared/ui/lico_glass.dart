@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/glass_lens.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_window_ground.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
@@ -196,7 +197,18 @@ class _LicoGlassState extends State<LicoGlass> with TickerProviderStateMixin {
     // is the accessible-material switch we can honor: skip lensing, lift fill.
     final reduceTransparency = highContrast;
     final isDark = context.licoColors.isDark;
-    final fill = _resolvedFill(liftOpacity: reduceTransparency);
+    // Spec §9: no live blur over animated content — when the owning ground
+    // animates its ambient layer, this slab drops the backdrop filter and
+    // re-grounds the wash on the smoke base instead of lifting its alpha
+    // (a lifted white wash reads as a grey slab).
+    final ambientAnimates =
+        LicoWindowGroundScope.animatesAmbientOf(context) && !highContrast;
+    final fill = ambientAnimates
+        ? Color.alphaBlend(
+            widget.fill,
+            isDark ? const Color(0xE0141419) : const Color(0xE6FFFFFF),
+          )
+        : _resolvedFill(liftOpacity: reduceTransparency);
     final blur =
         widget.blurSigma ??
         (widget.size == LicoGlassSize.large
@@ -204,7 +216,11 @@ class _LicoGlassState extends State<LicoGlass> with TickerProviderStateMixin {
             : 8.0);
 
     final useBackdrop =
-        widget.readBackdrop && blur > 0 && fill.a < 0.98 && !reduceTransparency;
+        widget.readBackdrop &&
+        blur > 0 &&
+        fill.a < 0.98 &&
+        !reduceTransparency &&
+        !ambientAnimates;
     ImageFilter filter = ImageFilter.blur(sigmaX: 0, sigmaY: 0);
     if (useBackdrop) {
       filter = ImageFilter.blur(

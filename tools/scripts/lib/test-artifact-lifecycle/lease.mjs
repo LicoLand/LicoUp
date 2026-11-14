@@ -45,12 +45,16 @@ export function classifyLeases(paths, options = {}) {
         lease.artifactId === options.artifactId &&
         typeof lease.leaseId === "string" && lease.leaseId.length > 0 &&
         Number.isSafeInteger(lease.pid) && lease.pid > 0 &&
+        (lease.processIds === undefined ||
+          (Array.isArray(lease.processIds) && lease.processIds.every((pid) =>
+            Number.isSafeInteger(pid) && pid > 0))) &&
         typeof lease.scope === "string" && Number.isFinite(startedAt);
       if (!structurallyValid) {
         invalid = true;
         continue;
       }
-      const alive = isAlive(lease.pid);
+      const alive = isAlive(lease.pid) ||
+        (lease.processIds || []).some((pid) => isAlive(pid));
       if (alive || now() - startedAt < deadLeaseGraceMs) active = true;
       else staleFiles.push(filePath);
     } catch {
@@ -82,7 +86,6 @@ export function acquireTestArtifactLease({
   const paths = artifactRecordPaths(target.root, artifactId);
   const leaseId = randomUUID();
   const normalizedScope = normalizeArtifactScope(scope);
-  mkdirSync(target.absoluteTarget, { recursive: true });
 
   withArtifactLock(paths, () => {
     ensureDescriptor(paths, {
@@ -95,11 +98,13 @@ export function acquireTestArtifactLease({
       schemaVersion: TEST_ARTIFACT_SCHEMA_VERSION,
     });
     removeStateMarkers(paths);
+    mkdirSync(target.absoluteTarget, { recursive: true });
     mkdirSync(paths.leases, { recursive: true });
     writeJson(`${paths.leases}/${leaseId}.json`, {
       artifactId,
       leaseId,
       pid: process.pid,
+      processIds: [],
       schemaVersion: TEST_ARTIFACT_SCHEMA_VERSION,
       scope: normalizedScope,
       startedAt: new Date(now()).toISOString(),
@@ -110,6 +115,18 @@ export function acquireTestArtifactLease({
   return Object.freeze({
     artifactId,
     targetPath: target.absoluteTarget,
+    trackProcess(pid) {
+      if (!Number.isSafeInteger(pid) || pid <= 0) {
+        throw new Error("test artifact process id is invalid");
+      }
+      return withArtifactLock(paths, () => {
+        const leasePath = `${paths.leases}/${leaseId}.json`;
+        const lease = readJson(leasePath);
+        const processIds = new Set(lease.processIds || []);
+        processIds.add(pid);
+        writeJson(leasePath, { ...lease, processIds: [...processIds] });
+      }, { deadLeaseGraceMs, isAlive, now });
+    },
     release() {
       return withArtifactLock(paths, () => {
         if (!released) rmSync(`${paths.leases}/${leaseId}.json`, { force: true });

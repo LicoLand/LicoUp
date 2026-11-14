@@ -9,6 +9,11 @@
   "officialCapabilityAssessment": {
     "completedBeforeImplementation": true,
     "sourceAuthority": "official",
+    "versionSupport": {
+      "kind": "unknown",
+      "source": "unverified",
+      "reason": "no_verified_vendor_bound"
+    },
     "interfaceName": "official local JSON-RPC stdio interface",
     "assessedVersion": "example-agent-cli 1.x",
     "versionProbe": "fixed --version probe",

@@ -42,8 +42,8 @@ class TargetPolicy {
     var incoming = candidate;
     if (!replaceModelCatalog &&
         index >= 0 &&
-        hasSelectedAgentModelCatalog(next[index]) &&
-        !hasSelectedAgentModelCatalog(incoming)) {
+        next[index].hasSelectedAgentModelCatalog &&
+        !incoming.hasSelectedAgentModelCatalog) {
       incoming = incoming.withModelCatalog(next[index].modelCatalog);
     }
     if (index < 0) {
@@ -52,40 +52,6 @@ class TargetPolicy {
       next[index] = incoming;
     }
     return List.unmodifiable(next);
-  }
-
-  /// Catalog sources that exist only after the user opens that Agent's
-  /// conversation interface: native CLI lookup or another app's named store.
-  static bool hasSelectedAgentModelCatalog(TargetCandidate target) {
-    final sources = target.modelCatalog['sources'];
-    if (sources is! List) {
-      return false;
-    }
-    const selected = {
-      'cursor-cli',
-      'antigravity-cli',
-      'antigravity-local',
-      'kilo-cli',
-      'claude-settings',
-      'codex-app-server',
-      'opencode-cli:models',
-      'pi-cli:list-models',
-    };
-    return sources.any((source) => selected.contains(source.toString()));
-  }
-
-  static List<TargetCandidate> mobileRelayTargets(Map<String, dynamic> status) {
-    final targets =
-        ((status['pairing'] as Map?)?['pc'] as Map?)?['targets'] as List?;
-    if (targets == null) return const [];
-    return List.unmodifiable(
-      targets
-          .whereType<Map>()
-          .map(
-            (item) => TargetCandidate.fromJson(Map<String, dynamic>.from(item)),
-          )
-          .where((target) => target.visibleInClient && target.canRelayRuntime),
-    );
   }
 
   /// Resolves the effective pin list. Until the user customizes pins, the

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_session.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_connection_chips.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_presentation.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
@@ -69,7 +70,9 @@ class MessagingDetailsPanel extends StatelessWidget {
     final colors = context.licoColors;
     return ColoredBox(
       key: const Key('messaging-details-panel'),
-      color: colors.surfaceLow,
+      color: (colors.isDark
+          ? LicoPaneGlass.contentInnerCardFill
+          : colors.surfaceLow),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

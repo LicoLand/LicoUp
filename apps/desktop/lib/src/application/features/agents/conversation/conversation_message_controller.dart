@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:licoup/src/application/features/agents/conversation/conversation_live_projection_controller.dart';
-import 'package:licoup/src/application/features/agents/conversation/conversation_relay_projection_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_runtime_result_policy.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_session_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_session_state_controller.dart';
@@ -9,7 +8,6 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
 import 'package:licoup/src/application/features/agents/conversation/cursor_ide_cli_handoff.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
-import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/application/localization/client_application_strings.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
@@ -28,8 +26,7 @@ mixin AgentConversationMessageController
     on
         AgentWorkspaceCoordinator,
         AgentConversationSessionController,
-        AgentConversationLiveProjectionController,
-        AgentConversationRelayProjectionController {
+        AgentConversationLiveProjectionController {
   bool _reattachingActiveConversationTurn = false;
   String _persistentTurnHandle = '';
   String _persistentConversationId = '';
@@ -124,6 +121,14 @@ mixin AgentConversationMessageController
           participantAgentId: agentId,
           participantLabel: selectedConversationAgent?.label ?? agentId,
         );
+        if (event.kind == 'agent.approval.needed') {
+          unawaited(
+            conversationHandleNativeApprovalNeeded(
+              agentId: agentId,
+              event: event,
+            ),
+          );
+        }
         final terminal = event.payload['terminalTransition'];
         if (terminal is Map && terminal['kind'] == 'failed') {
           lastError = (terminal['code'] ?? '').toString();
@@ -382,7 +387,6 @@ mixin AgentConversationMessageController
       workingDirectory: workingDirectory,
       model: model,
       reasoningEffort: reasoningEffort,
-      throughMobileRelay: agentWorkspaceMobileRuntime,
       licoProfile: selectedConversationLicoProfile,
       conversationOwnerAgentId: conversationOwnerAgentId,
       participantLabel: agent.label,
@@ -409,15 +413,21 @@ mixin AgentConversationMessageController
   /// Session, historical, remote, and fallback resolution already guarantee a
   /// usable or client-owned directory, so only the explicit bind can trip here.
   bool _conversationWorkingDirectoryUnavailable(ConversationQueuedTurn turn) {
-    if (turn.throughMobileRelay ||
-        turn.agent.hasValidVirtualMachineConnection) {
+    if (turn.agent.hasValidVirtualMachineConnection) {
       return false;
     }
     final directory = turn.workingDirectory.trim();
-    if (directory.isEmpty || isClientOwnedAgentWorkspace(directory)) {
+    if (directory.isEmpty ||
+        isClientOwnedAgentWorkspace(
+          directory,
+          dataHome: agentWorkspaceDataRoot,
+        )) {
       return false;
     }
-    return !isUsableLocalConversationWorkingDirectory(directory);
+    return !isUsableLocalConversationWorkingDirectory(
+      directory,
+      dataHome: agentWorkspaceDataRoot,
+    );
   }
 
   Future<void> _steerOrEnqueueConversationTurn(
@@ -430,8 +440,7 @@ mixin AgentConversationMessageController
         turn.agent.target == sendingConversationAgentId &&
         activeNativeSessionId.isNotEmpty &&
         activeTurnId.isNotEmpty &&
-        turn.nativeSessionId == activeNativeSessionId &&
-        !turn.throughMobileRelay;
+        turn.nativeSessionId == activeNativeSessionId;
     final canSteerWithoutAttachments = canSteer && turn.attachments.isEmpty;
     if (!canSteerWithoutAttachments) {
       _enqueueConversationTurn(turn);
@@ -664,171 +673,156 @@ mixin AgentConversationMessageController
         agentWorkspaceNotifyStateChanged();
         final sessionId = queuedTurn.nativeSessionId;
         final workingDirectory = queuedTurn.workingDirectory;
-        final sendThroughMobileRelay = queuedTurn.throughMobileRelay;
         late final Map<String, dynamic> result;
-        if (sendThroughMobileRelay) {
-          result = await mobileConversationGateway.send(
-            agentId: agent.target,
-            text: messageText,
-            sessionId: sessionId,
+        var streamedText = '';
+        final streamedTextByParticipant = <String, String>{};
+        AgentDispatchTurnResult? turn;
+        failureStage = 'stream';
+        await for (final event in conversationGateway.sendStreaming(
+          agentId: agent.target,
+          text: messageText,
+          sessionId: sessionId,
+          bind: AgentDispatchBind(
+            sessionPath: selectedSession?.sourcePath ?? '',
+            workingDirectory: workingDirectory,
+            binaryPath: agent.binaryPath ?? '',
             model: queuedTurn.model,
             reasoningEffort: queuedTurn.reasoningEffort,
-          );
-        } else {
-          var streamedText = '';
-          final streamedTextByParticipant = <String, String>{};
-          AgentDispatchTurnResult? turn;
-          failureStage = 'stream';
-          await for (final event in conversationGateway.sendStreaming(
-            agentId: agent.target,
-            text: messageText,
-            sessionId: sessionId,
-            bind: AgentDispatchBind(
-              sessionPath: selectedSession?.sourcePath ?? '',
-              workingDirectory: workingDirectory,
-              binaryPath: agent.binaryPath ?? '',
-              model: queuedTurn.model,
-              reasoningEffort: queuedTurn.reasoningEffort,
-              licoProfile: queuedTurn.licoProfile,
-              acceptanceMode: _releaseConversationAcceptanceMode,
-              // Native permission requests remain interactive. The shared
-              // one-shot route resumes the same turn after an explicit user
-              // decision; dispatch must never auto-allow them.
-              permissionMode: '',
-              allowedTools: queuedTurn.allowedTools,
-              runtimeConnection: agent.runtimeConnection,
-            ),
-            attachments: queuedTurn.attachments,
-          )) {
-            // Closing the UI only detaches its projection. The native host
-            // still owns this turn and must keep draining it to completion.
-            // Returning here would cancel the Dart subscription and close the
-            // transport that carries the already accepted Agent work.
-            if (agentWorkspaceDisposed) continue;
-            failureStage = 'projection';
-            _capturePersistentTurn(event);
-            final eventSessionId = event.sessionId.trim();
-            final eventTurnId = event.turnId.trim();
-            if (eventSessionId.isNotEmpty) {
-              sendingConversationNativeSessionId = eventSessionId;
-            }
-            if (eventTurnId.isNotEmpty) {
-              sendingConversationTurnId = eventTurnId;
-            }
-            conversationApplyDelta(
-              scopeKey: queuedTurn.scopeKey,
-              event: event,
-              participantAgentId: agent.target,
-              participantLabel: queuedTurn.participantLabel,
-              participantRole: queuedTurn.participantRole,
-            );
-            final terminalTransition = event.payload['terminalTransition'];
-            if (terminalTransition is Map) {
-              final terminalKind = (terminalTransition['kind'] ?? '')
-                  .toString();
-              if (terminalKind == 'failed') {
-                final code = (terminalTransition['code'] ?? '')
-                    .toString()
-                    .trim();
-                if (firstTerminalFailureCode.isEmpty && code.isNotEmpty) {
-                  firstTerminalFailureCode = code;
-                }
-              }
-            }
-            if (event.kind == 'dispatch.turn.bound' ||
-                event.kind == 'agent.turn.accepted' ||
-                event.kind == 'agent.turn.processing') {
-              continue;
-            }
-            if (event.kind == 'agent.message.chunk' ||
-                event.kind == 'agent.message.completed') {
-              final chunk = (event.payload['text'] ?? '').toString();
-              if (chunk.isNotEmpty) {
-                final participantAgentId =
-                    (event.payload['participantAgentId'] ?? agent.target)
-                        .toString()
-                        .trim();
-                final participantRole =
-                    (event.payload['participantRole'] ??
-                            queuedTurn.participantRole)
-                        .toString()
-                        .trim();
-                final participantKey =
-                    '$participantAgentId\u0000$participantRole\u0000${(event.payload['messageUnit'] ?? '').toString().trim()}';
-                final participantText =
-                    ConversationRuntimeResultPolicy.mergeProgressiveText(
-                      streamedTextByParticipant[participantKey] ?? '',
-                      chunk,
-                      completed: event.kind == 'agent.message.completed',
-                    );
-                streamedTextByParticipant[participantKey] = participantText;
-                if (participantAgentId == agent.target) {
-                  streamedText = participantText;
-                }
-              }
-            } else if (event.kind == 'permission.denied') {
-              final toolName = (event.payload['toolName'] ?? '')
-                  .toString()
-                  .trim();
-              if (toolName.isNotEmpty) {
-                pendingPermissionRetryAgentId = agent.target;
-                pendingPermissionRetryTool = toolName;
-                pendingPermissionRetryText = queuedTurn.text;
-                pendingPermissionRetryAttachments = queuedTurn.attachments;
-              }
-            } else if (event.kind == 'agent.approval.needed') {
-              await conversationHandleNativeApprovalNeeded(
-                agentId: agent.target,
-                event: event,
-              );
-            } else if (event.kind == 'dispatch.turn.completed' ||
-                event.kind == 'dispatch.turn.failed') {
-              final raw = Map<String, dynamic>.from(event.payload);
-              final ok = raw['ok'] == true;
-              // Defer lifecycle `failed` until quota fallback is ruled out so a
-              // later Daily Conversation capsule can still advance the turn.
-              final nested = raw['error'];
-              final rawCode = nested is Map
-                  ? (nested['code'] ?? '')
-                  : (raw['code'] ?? '');
-              if (!ok && firstTerminalFailureCode.isEmpty) {
-                firstTerminalFailureCode = rawCode.toString().trim();
-              }
-              turn = AgentDispatchTurnResult(
-                ok: ok,
-                sessionId: event.sessionId,
-                turnId: event.turnId,
-                status: (raw['turnStatus'] ?? raw['status'] ?? '').toString(),
-                failureCode: ok ? '' : rawCode.toString(),
-                errorMessage: ok
-                    ? ''
-                    : (nested is Map ? (nested['message'] ?? '') : '')
-                          .toString(),
-                raw: raw,
-              );
-              if (ok && streamedText.trim().isEmpty) {
-                final terminalText = (raw['text'] ?? '').toString().trim();
-                if (terminalText.isNotEmpty) {
-                  streamedText = terminalText;
-                }
-              }
-            }
-            failureStage = 'stream';
+            licoProfile: queuedTurn.licoProfile,
+            acceptanceMode: _releaseConversationAcceptanceMode,
+            // Native permission requests remain interactive. The shared
+            // one-shot route resumes the same turn after an explicit user
+            // decision; dispatch must never auto-allow them.
+            permissionMode: '',
+            allowedTools: queuedTurn.allowedTools,
+            runtimeConnection: agent.runtimeConnection,
+          ),
+          attachments: queuedTurn.attachments,
+        )) {
+          // Closing the UI only detaches its projection. The native host
+          // still owns this turn and must keep draining it to completion.
+          // Returning here would cancel the Dart subscription and close the
+          // transport that carries the already accepted Agent work.
+          if (agentWorkspaceDisposed) continue;
+          failureStage = 'projection';
+          _capturePersistentTurn(event);
+          final eventSessionId = event.sessionId.trim();
+          final eventTurnId = event.turnId.trim();
+          if (eventSessionId.isNotEmpty) {
+            sendingConversationNativeSessionId = eventSessionId;
           }
-          failureStage = 'result';
-          result =
-              (turn ??
-                      AgentDispatchTurnResult(
-                        ok: false,
-                        sessionId: sessionId,
-                        failureCode: 'dispatch_stream_incomplete',
-                        raw: const <String, dynamic>{
-                          'ok': false,
-                          'code': 'dispatch_stream_incomplete',
-                        },
-                      ))
-                  .raw;
+          if (eventTurnId.isNotEmpty) {
+            sendingConversationTurnId = eventTurnId;
+          }
+          conversationApplyDelta(
+            scopeKey: queuedTurn.scopeKey,
+            event: event,
+            participantAgentId: agent.target,
+            participantLabel: queuedTurn.participantLabel,
+            participantRole: queuedTurn.participantRole,
+          );
+          final terminalTransition = event.payload['terminalTransition'];
+          if (terminalTransition is Map) {
+            final terminalKind = (terminalTransition['kind'] ?? '').toString();
+            if (terminalKind == 'failed') {
+              final code = (terminalTransition['code'] ?? '').toString().trim();
+              if (firstTerminalFailureCode.isEmpty && code.isNotEmpty) {
+                firstTerminalFailureCode = code;
+              }
+            }
+          }
+          if (event.kind == 'dispatch.turn.bound' ||
+              event.kind == 'agent.turn.accepted' ||
+              event.kind == 'agent.turn.processing') {
+            continue;
+          }
+          if (event.kind == 'agent.message.chunk' ||
+              event.kind == 'agent.message.completed') {
+            final chunk = (event.payload['text'] ?? '').toString();
+            if (chunk.isNotEmpty) {
+              final participantAgentId =
+                  (event.payload['participantAgentId'] ?? agent.target)
+                      .toString()
+                      .trim();
+              final participantRole =
+                  (event.payload['participantRole'] ??
+                          queuedTurn.participantRole)
+                      .toString()
+                      .trim();
+              final participantKey =
+                  '$participantAgentId\u0000$participantRole\u0000${(event.payload['messageUnit'] ?? '').toString().trim()}';
+              final participantText =
+                  ConversationRuntimeResultPolicy.mergeProgressiveText(
+                    streamedTextByParticipant[participantKey] ?? '',
+                    chunk,
+                    completed: event.kind == 'agent.message.completed',
+                  );
+              streamedTextByParticipant[participantKey] = participantText;
+              if (participantAgentId == agent.target) {
+                streamedText = participantText;
+              }
+            }
+          } else if (event.kind == 'permission.denied') {
+            final toolName = (event.payload['toolName'] ?? '')
+                .toString()
+                .trim();
+            if (toolName.isNotEmpty) {
+              pendingPermissionRetryAgentId = agent.target;
+              pendingPermissionRetryTool = toolName;
+              pendingPermissionRetryText = queuedTurn.text;
+              pendingPermissionRetryAttachments = queuedTurn.attachments;
+            }
+          } else if (event.kind == 'agent.approval.needed') {
+            await conversationHandleNativeApprovalNeeded(
+              agentId: agent.target,
+              event: event,
+            );
+          } else if (event.kind == 'dispatch.turn.completed' ||
+              event.kind == 'dispatch.turn.failed') {
+            final raw = Map<String, dynamic>.from(event.payload);
+            final ok = raw['ok'] == true;
+            // Defer lifecycle `failed` until quota fallback is ruled out so a
+            // later Daily Conversation capsule can still advance the turn.
+            final nested = raw['error'];
+            final rawCode = nested is Map
+                ? (nested['code'] ?? '')
+                : (raw['code'] ?? '');
+            if (!ok && firstTerminalFailureCode.isEmpty) {
+              firstTerminalFailureCode = rawCode.toString().trim();
+            }
+            turn = AgentDispatchTurnResult(
+              ok: ok,
+              sessionId: event.sessionId,
+              turnId: event.turnId,
+              status: (raw['turnStatus'] ?? raw['status'] ?? '').toString(),
+              failureCode: ok ? '' : rawCode.toString(),
+              errorMessage: ok
+                  ? ''
+                  : (nested is Map ? (nested['message'] ?? '') : '').toString(),
+              raw: raw,
+            );
+            if (ok && streamedText.trim().isEmpty) {
+              final terminalText = (raw['text'] ?? '').toString().trim();
+              if (terminalText.isNotEmpty) {
+                streamedText = terminalText;
+              }
+            }
+          }
+          failureStage = 'stream';
         }
+        failureStage = 'result';
+        result =
+            (turn ??
+                    AgentDispatchTurnResult(
+                      ok: false,
+                      sessionId: sessionId,
+                      failureCode: 'dispatch_stream_incomplete',
+                      raw: const <String, dynamic>{
+                        'ok': false,
+                        'code': 'dispatch_stream_incomplete',
+                      },
+                    ))
+                .raw;
         if (agentWorkspaceDisposed) {
           // The turn has reached a terminal native result. The disposed UI no
           // longer projects it, but returning here must not reclassify the
@@ -836,14 +830,13 @@ mixin AgentConversationMessageController
           completedSuccessfully = result['ok'] == true;
           break;
         }
-        final returnedSessionId = sendThroughMobileRelay
-            ? secureAgentRelayNativeSessionId(result)
-            : (result['nativeSessionId'] ??
-                      result['threadId'] ??
-                      result['sessionId'] ??
-                      '')
-                  .toString()
-                  .trim();
+        final returnedSessionId =
+            (result['nativeSessionId'] ??
+                    result['threadId'] ??
+                    result['sessionId'] ??
+                    '')
+                .toString()
+                .trim();
         if (returnedSessionId.isNotEmpty) {
           sendingConversationNativeSessionId = returnedSessionId;
           conversationTurnQueue.bindAwaitingSession(
@@ -889,7 +882,6 @@ mixin AgentConversationMessageController
           }
           if (!ConversationRuntimeResultPolicy.effectiveSettingsMatch(
             result,
-            throughMobileRelay: sendThroughMobileRelay,
             requestedModel: queuedTurn.model,
             requestedReasoningEffort: queuedTurn.reasoningEffort,
           )) {
@@ -938,72 +930,48 @@ mixin AgentConversationMessageController
           statusCaption = 'Agent chat';
           break;
         }
-        if (sendThroughMobileRelay) {
-          final receivedAt = DateTime.now().toUtc().toIso8601String();
-          appendRelayConversationMessages(
-            agent: agent,
-            userText: messageText,
-            assistantText: secureAgentRelayReplyText(result),
-            sessionId: returnedSessionId,
-            updatedAt: receivedAt,
-          );
-        }
         recordConversationTabSendOutcome(agentId: agent.target, ok: true);
         final handedOffComposerId = queuedTurn.ideHandoffComposerId.trim();
         if (handedOffComposerId.isNotEmpty) {
           cursorIdeCliHandoffComposerIds.add(handedOffComposerId);
         }
         agentWorkspaceSetLocalizedStatusMessage(
-          sendThroughMobileRelay
-              ? 'Sent the ${agent.label} command through the E2EE mobile relay.'
-              : 'Sent the message through the ${agent.label} runtime adapter.',
-          sendThroughMobileRelay
-              ? 'Sent the ${agent.label} command through the E2EE mobile relay.'
-              : 'Sent the message through the ${agent.label} runtime adapter.',
+          'Sent the message through the ${agent.label} runtime adapter.',
+          'Sent the message through the ${agent.label} runtime adapter.',
         );
 
-        if (!sendThroughMobileRelay) {
-          // The streamed turn is authoritative for immediate interaction. Keep
-          // it selected and usable, then reconcile provider history in the
-          // background once the runtime has finished persisting its transcript.
-          failureStage = 'readback';
-          final projectionSaved =
-              await conversationCommitTurnBoundNativeReadback(
-                agentId: conversationOwnerAgentId,
-                nativeSessionId: returnedSessionId,
-                messages: conversationStateHolder.messagesFor(
-                  queuedTurn.scopeKey,
-                ),
-                mergeWithSelectedSession: sessionId.isNotEmpty,
-                workingDirectory: workingDirectory,
-                sourcePath: selectedSession?.sourcePath.trim() ?? '',
-              );
-          if (!projectionSaved) {
-            agentWorkspaceSetLocalizedStatusMessage(
-              '消息已发送，但本地会话记录保存失败。',
-              'The message was sent, but its local conversation record could not be saved.',
-            );
-          }
-          finishNewConversationDraft(
-            conversationOwnerAgentId,
-            queuedTurn.newConversationDraftToken,
-          );
-          unawaited(
-            reloadSelectedConversationSessionsAfterSend(
-              agent.target,
-              preferredNativeSessionId: returnedSessionId,
-            ),
-          );
-          newConversationWorkingDirectories =
-              {...newConversationWorkingDirectories}
-                ..remove(agent.target)
-                ..remove(conversationOwnerAgentId);
-        } else {
-          finishNewConversationDraft(
-            conversationOwnerAgentId,
-            queuedTurn.newConversationDraftToken,
+        // The streamed turn is authoritative for immediate interaction. Keep
+        // it selected and usable, then reconcile provider history in the
+        // background once the runtime has finished persisting its transcript.
+        failureStage = 'readback';
+        final projectionSaved = await conversationCommitTurnBoundNativeReadback(
+          agentId: conversationOwnerAgentId,
+          nativeSessionId: returnedSessionId,
+          messages: conversationStateHolder.messagesFor(queuedTurn.scopeKey),
+          mergeWithSelectedSession: sessionId.isNotEmpty,
+          workingDirectory: workingDirectory,
+          sourcePath: selectedSession?.sourcePath.trim() ?? '',
+        );
+        if (!projectionSaved) {
+          agentWorkspaceSetLocalizedStatusMessage(
+            '消息已发送，但本地会话记录保存失败。',
+            'The message was sent, but its local conversation record could not be saved.',
           );
         }
+        finishNewConversationDraft(
+          conversationOwnerAgentId,
+          queuedTurn.newConversationDraftToken,
+        );
+        unawaited(
+          reloadSelectedConversationSessionsAfterSend(
+            agent.target,
+            preferredNativeSessionId: returnedSessionId,
+          ),
+        );
+        newConversationWorkingDirectories =
+            {...newConversationWorkingDirectories}
+              ..remove(agent.target)
+              ..remove(conversationOwnerAgentId);
         statusCaption = 'Agent chat';
         await clearConversationComposerAttachmentsForScope(
           queuedTurn.scopeKey,

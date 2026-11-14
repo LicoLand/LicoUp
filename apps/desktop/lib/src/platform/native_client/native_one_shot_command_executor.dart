@@ -32,17 +32,10 @@ class NativeOneShotCommandExecutor implements NativeCommandExecutor {
       throw Exception('licoup command could not be completed.');
     }
 
+    // The bundled `licoup` is a core prerequisite: a missing binary is a typed
+    // failure, never a PATH lookup.
     if (cli == null) {
-      late ProcessResult result;
-      try {
-        result = await _runCliExecutable('licoup-cli', arguments, environment);
-      } on Object {
-        throw Exception('licoup command could not be completed.');
-      }
-      if (result.exitCode != 0) {
-        throw Exception(_failureMessage(result));
-      }
-      return _decodeResponse(result.stdout);
+      throw Exception('licoup command could not be completed.');
     }
 
     late ProcessResult result;

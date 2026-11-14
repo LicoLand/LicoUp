@@ -2,38 +2,50 @@ import 'dart:collection';
 
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/shared/ui/message_markdown_models.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown_style.dart';
 
-/// Bounded content-addressed cache for inline span parses, mirroring the
-/// block-parse cache in message_markdown_parser.dart. Every visible message
-/// row re-runs this scan on every workspace rebuild; keying on the full input
-/// (text, style, colors) makes unchanged rows cache hits. Spans are immutable
-/// value objects, so sharing one parsed result across widgets is safe.
-final LinkedHashMap<(String, TextStyle, Color, Color), List<InlineSpan>>
-_inlineSpanCache = LinkedHashMap();
+/// Bounded cache for the style mapping of prepared inline displays.
+///
+/// Mapping turns the prepared runs into styled spans for the current theme; it
+/// never reads or tokenizes Markdown text. The prepared value keeps its
+/// identity across rebuilds, so a repaint maps the same runs again and gets
+/// the identical span tree: the renderer's own layout cache stays valid and a
+/// theme change costs one mapping pass, not a re-parse.
+final LinkedHashMap<_InlineSpanCacheKey, List<InlineSpan>> _inlineSpanCache =
+    LinkedHashMap();
 const int _inlineSpanCacheLimit = 512;
 
+/// Maps one prepared inline display to styled spans.
+///
+/// [inline] is the worker-prepared display value; this function only applies
+/// [style] plus the flag decorations to each run. It has no access to the raw
+/// Markdown source, so a renderer cannot re-tokenize it here.
 List<InlineSpan> messageMarkdownInlineSpans(
-  String text,
+  MessageMarkdownInline inline,
   TextStyle style, {
   required Color accent,
   required Color codeBackground,
 }) {
-  final key = (text, style, accent, codeBackground);
+  final key = _InlineSpanCacheKey(inline, style, accent, codeBackground);
   final cached = _inlineSpanCache.remove(key);
   if (cached != null) {
     // Refresh recency: LRU eviction drops the least recently used entry.
     _inlineSpanCache[key] = cached;
     return cached;
   }
-  final spans = List<InlineSpan>.unmodifiable(
-    _scanMessageMarkdownInlineSpans(
-      text,
-      style,
-      accent: accent,
-      codeBackground: codeBackground,
-    ),
-  );
+  final spans = List<InlineSpan>.unmodifiable(<InlineSpan>[
+    for (final run in inline.runs)
+      TextSpan(
+        text: run.text,
+        style: messageMarkdownInlineRunStyle(
+          run,
+          style,
+          accent: accent,
+          codeBackground: codeBackground,
+        ),
+      ),
+  ]);
   if (_inlineSpanCache.length >= _inlineSpanCacheLimit) {
     _inlineSpanCache.remove(_inlineSpanCache.keys.first);
   }
@@ -41,86 +53,40 @@ List<InlineSpan> messageMarkdownInlineSpans(
   return spans;
 }
 
-List<InlineSpan> _scanMessageMarkdownInlineSpans(
-  String text,
+/// The style one prepared run renders with.
+///
+/// The flags apply in the order the source markup nests them, so a code span
+/// inside strong text keeps its weight while taking the code font, size, and
+/// background.
+TextStyle messageMarkdownInlineRunStyle(
+  MessageMarkdownInlineRun run,
   TextStyle style, {
   required Color accent,
   required Color codeBackground,
 }) {
-  final spans = <InlineSpan>[];
-  var index = 0;
-  while (index < text.length) {
-    if (text.startsWith('`', index)) {
-      final end = text.indexOf('`', index + 1);
-      if (end > index + 1) {
-        spans.add(
-          TextSpan(
-            text: text.substring(index + 1, end),
-            style: style.copyWith(
-              fontFamily: 'SF Mono',
-              fontFamilyFallback: const ['Menlo', 'Consolas', 'monospace'],
-              fontSize: (style.fontSize ?? 14) - 1,
-              backgroundColor: codeBackground,
-            ),
-          ),
-        );
-        index = end + 1;
-        continue;
-      }
-    }
-    if (text.startsWith('[', index)) {
-      final labelEnd = text.indexOf('](', index + 1);
-      if (labelEnd > index + 1) {
-        final urlEnd = text.indexOf(')', labelEnd + 2);
-        if (urlEnd > labelEnd + 2) {
-          spans.add(
-            TextSpan(
-              text: text.substring(index + 1, labelEnd),
-              style: style.copyWith(
-                color: accent,
-                decoration: TextDecoration.underline,
-                decorationColor: accent,
-              ),
-            ),
-          );
-          index = urlEnd + 1;
-          continue;
-        }
-      }
-    }
-    final strong =
-        _emphasisMatch(text, index, '**') ?? _emphasisMatch(text, index, '__');
-    if (strong != null) {
-      spans.addAll(
-        messageMarkdownInlineSpans(
-          strong.text,
-          style.copyWith(fontWeight: FontWeight.w800),
-          accent: accent,
-          codeBackground: codeBackground,
-        ),
-      );
-      index = strong.end;
-      continue;
-    }
-    final emphasis =
-        _emphasisMatch(text, index, '*') ?? _emphasisMatch(text, index, '_');
-    if (emphasis != null) {
-      spans.addAll(
-        messageMarkdownInlineSpans(
-          emphasis.text,
-          style.copyWith(fontStyle: FontStyle.italic),
-          accent: accent,
-          codeBackground: codeBackground,
-        ),
-      );
-      index = emphasis.end;
-      continue;
-    }
-    final next = _nextMarkdownMarker(text, index + 1);
-    spans.add(TextSpan(text: text.substring(index, next), style: style));
-    index = next;
+  var mapped = style;
+  if (run.isStrong) {
+    mapped = mapped.copyWith(fontWeight: FontWeight.w800);
   }
-  return spans;
+  if (run.isEmphasis) {
+    mapped = mapped.copyWith(fontStyle: FontStyle.italic);
+  }
+  if (run.isLink) {
+    mapped = mapped.copyWith(
+      color: accent,
+      decoration: TextDecoration.underline,
+      decorationColor: accent,
+    );
+  }
+  if (run.isCode) {
+    mapped = mapped.copyWith(
+      fontFamily: 'SF Mono',
+      fontFamilyFallback: const ['Menlo', 'Consolas', 'monospace'],
+      fontSize: (style.fontSize ?? 14) - 1,
+      backgroundColor: codeBackground,
+    );
+  }
+  return mapped;
 }
 
 TextStyle messageMarkdownHeadingStyle(
@@ -139,34 +105,34 @@ TextStyle messageMarkdownHeadingStyle(
   );
 }
 
-_EmphasisMatch? _emphasisMatch(String text, int index, String marker) {
-  if (!text.startsWith(marker, index)) return null;
-  if (marker.length == 1 &&
-      index + 1 < text.length &&
-      text.startsWith(marker, index + 1)) {
-    return null;
-  }
-  final end = text.indexOf(marker, index + marker.length);
-  if (end <= index + marker.length) return null;
-  return _EmphasisMatch(
-    text.substring(index + marker.length, end),
-    end + marker.length,
+/// Cache key of one style mapping.
+///
+/// The prepared display is shared across rebuilds, so its object identity is
+/// the content identity; the styles compare by value because a restyle must
+/// map the same prepared value again.
+final class _InlineSpanCacheKey {
+  const _InlineSpanCacheKey(
+    this.inline,
+    this.style,
+    this.accent,
+    this.codeBackground,
   );
-}
 
-int _nextMarkdownMarker(String text, int start) {
-  final candidates =
-      ['`', '[', '**', '__', '*', '_']
-          .map((marker) => text.indexOf(marker, start))
-          .where((candidate) => candidate >= 0)
-          .toList(growable: false)
-        ..sort();
-  return candidates.isEmpty ? text.length : candidates.first;
-}
+  final MessageMarkdownInline inline;
+  final TextStyle style;
+  final Color accent;
+  final Color codeBackground;
 
-final class _EmphasisMatch {
-  const _EmphasisMatch(this.text, this.end);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is _InlineSpanCacheKey &&
+          identical(other.inline, inline) &&
+          other.style == style &&
+          other.accent == accent &&
+          other.codeBackground == codeBackground;
 
-  final String text;
-  final int end;
+  @override
+  int get hashCode =>
+      Object.hash(identityHashCode(inline), style, accent, codeBackground);
 }

@@ -5,7 +5,7 @@
   <key>CFBundleIdentifier</key>
   <string>land.lico.licoup.custody</string>
   <key>CFBundleExecutable</key>
-  <string>licoup-cli</string>
+  <string>licoup</string>
   <key>CFBundleName</key>
   <string>LicoUpCustody</string>
   <key>CFBundleDisplayName</key>

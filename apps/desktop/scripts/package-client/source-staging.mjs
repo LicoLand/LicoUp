@@ -215,8 +215,6 @@ function isExcludedDartSourcePath(sourcePath, sourceRoot) {
     "macos/Podfile.lock",
     "linux/flutter/ephemeral",
     "windows/flutter/ephemeral",
-    "android/.gradle",
-    "android/build",
   ].some(
     (prefix) =>
       normalized === prefix || normalized.startsWith(`${prefix}/`),

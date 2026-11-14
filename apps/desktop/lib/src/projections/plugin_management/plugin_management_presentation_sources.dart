@@ -32,6 +32,7 @@ PluginCatalogInputs pluginCatalogSlice(PluginManagementProjection projection) =>
       plugins: projection.plugins,
       phase: projection.phase,
       notice: projection.notice,
+      recommendation: projection.recommendation,
     );
 
 /// Optional collaboration slice of the combined projection.

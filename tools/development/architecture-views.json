@@ -1,0 +1,32 @@
+[
+  {
+    "id": "presentation",
+    "title": {
+      "en": "Presentation components",
+      "zh": "\u754c\u9762\u4e0e\u663e\u793a"
+    },
+    "components": [
+      {
+        "manifest": "packages/presentation_flutter/pubspec.yaml",
+        "title": {
+          "en": "Flutter renderer",
+          "zh": "\u754c\u9762\u6e32\u67d3"
+        }
+      },
+      {
+        "manifest": "packages/presentation_runtime/pubspec.yaml",
+        "title": {
+          "en": "Presentation runtime",
+          "zh": "\u663e\u793a\u8fd0\u884c\u65f6"
+        }
+      },
+      {
+        "manifest": "packages/presentation_contract/pubspec.yaml",
+        "title": {
+          "en": "Presentation contracts",
+          "zh": "\u663e\u793a\u5951\u7ea6"
+        }
+      }
+    ]
+  }
+]

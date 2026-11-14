@@ -21,9 +21,26 @@ import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_list_typography.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_selection_highlight.dart';
 
 /// Telegram-style tabs at the bottom of the shared sidebar foundation.
+///
+/// This is the *desktop sidebar* tab set: its 功能 tab owns the seven
+/// sidebar-hosted feature panes. The mobile shell does not use it — see
+/// [MessagingMobileNavItem].
 enum MessagingSidebarNavItem { features, conversations, settings }
+
+/// The mobile shell bottom tab set, in the required order:
+/// **Devices → Chats → Settings**.
+///
+/// Declaration order *is* the rendered order — [MessagingMobileBottomNav]
+/// walks `values`, so reordering these three entries reorders the shell's
+/// bottom tabs. Exactly three tabs, one per mobile destination declared by
+/// `BuiltInLayoutSpec.mobileDestinations` (`{agents, devices, settings}`),
+/// which is the same triple `ClientNavigationController.resolve` admits on
+/// the mobile runtime.
+enum MessagingMobileNavItem { devices, conversations, settings }
 
 /// One row of the Dashboard 功能 list. 模型网关 and 聊天频道 both target the
 /// models destination and differ only in the pane they select through the
@@ -31,7 +48,7 @@ enum MessagingSidebarNavItem { features, conversations, settings }
 enum MessagingFeatureItem {
   agentHub,
   modelGateway,
-  mobilePairing,
+  devices,
   statsPanel,
   pluginManagement,
   skillHub,
@@ -51,7 +68,7 @@ bool messagingSidebarShowsSearch(ClientSection section) => true;
 bool messagingSidebarHostsFeatures(ClientSection section) =>
     section == ClientSection.agentHub ||
     section == ClientSection.models ||
-    section == ClientSection.mobileRelay ||
+    section == ClientSection.devices ||
     section == ClientSection.monitoring ||
     section == ClientSection.pluginManagement ||
     section == ClientSection.skillHub;
@@ -95,13 +112,49 @@ String messagingSidebarNavLabel(
 String messagingSidebarNavKey(MessagingSidebarNavItem item) =>
     'messaging-sidebar-nav-${item.name}';
 
+/// Where a mobile shell bottom tab lands. Deliberately *total* — it takes no
+/// `current` input — so every tab owns one fixed mobile destination and the
+/// three tabs can never collapse onto the same target the way the desktop 功能
+/// tab does by returning `current`.
+ClientSection messagingMobileNavTarget(MessagingMobileNavItem item) =>
+    switch (item) {
+      MessagingMobileNavItem.devices => ClientSection.devices,
+      MessagingMobileNavItem.conversations => ClientSection.agents,
+      MessagingMobileNavItem.settings => ClientSection.settings,
+    };
+
+bool messagingMobileNavItemSelected({
+  required MessagingMobileNavItem item,
+  required ClientSection current,
+}) => messagingMobileNavTarget(item) == current;
+
+IconData messagingMobileNavIcon(MessagingMobileNavItem item) => switch (item) {
+  MessagingMobileNavItem.devices => Icons.qr_code_2_rounded,
+  MessagingMobileNavItem.conversations => Icons.chat_bubble_outline_rounded,
+  MessagingMobileNavItem.settings => Icons.settings_outlined,
+};
+
+/// The visible tab labels. The middle tab reuses the shared "Chats"/"对话"
+/// string (`conversationListNav`) rather than 功能.
+String messagingMobileNavLabel(
+  LicoStrings strings,
+  MessagingMobileNavItem item,
+) => switch (item) {
+  MessagingMobileNavItem.devices => strings.devices,
+  MessagingMobileNavItem.conversations => strings.conversationListNav,
+  MessagingMobileNavItem.settings => strings.settings,
+};
+
+String messagingMobileNavKey(MessagingMobileNavItem item) =>
+    'messaging-mobile-nav-${item.name}';
+
 String messagingFeatureItemLabel(
   LicoStrings strings,
   MessagingFeatureItem item,
 ) => switch (item) {
   MessagingFeatureItem.agentHub => strings.agentHub,
   MessagingFeatureItem.modelGateway => strings.modelGateway,
-  MessagingFeatureItem.mobilePairing => strings.mobilePairing,
+  MessagingFeatureItem.devices => strings.devices,
   MessagingFeatureItem.statsPanel => strings.statsPanel,
   MessagingFeatureItem.pluginManagement => strings.pluginManagement,
   MessagingFeatureItem.skillHub => strings.skillHubNav,
@@ -111,7 +164,7 @@ String messagingFeatureItemLabel(
 IconData messagingFeatureItemIcon(MessagingFeatureItem item) => switch (item) {
   MessagingFeatureItem.agentHub => Icons.auto_awesome_outlined,
   MessagingFeatureItem.modelGateway => Icons.key_outlined,
-  MessagingFeatureItem.mobilePairing => Icons.qr_code_2_rounded,
+  MessagingFeatureItem.devices => Icons.qr_code_2_rounded,
   MessagingFeatureItem.statsPanel => Icons.query_stats_outlined,
   MessagingFeatureItem.pluginManagement => Icons.extension_outlined,
   MessagingFeatureItem.skillHub => Icons.library_books_outlined,
@@ -122,7 +175,7 @@ ClientSection messagingFeatureItemSection(MessagingFeatureItem item) =>
     switch (item) {
       MessagingFeatureItem.agentHub => ClientSection.agentHub,
       MessagingFeatureItem.modelGateway => ClientSection.models,
-      MessagingFeatureItem.mobilePairing => ClientSection.mobileRelay,
+      MessagingFeatureItem.devices => ClientSection.devices,
       MessagingFeatureItem.statsPanel => ClientSection.monitoring,
       MessagingFeatureItem.pluginManagement => ClientSection.pluginManagement,
       MessagingFeatureItem.skillHub => ClientSection.skillHub,
@@ -172,7 +225,7 @@ IconData messagingSidebarDestinationIcon(ClientSection section) =>
       ClientSection.agentHub => Icons.auto_awesome_outlined,
       ClientSection.monitoring => Icons.query_stats_outlined,
       ClientSection.models => Icons.key_outlined,
-      ClientSection.mobileRelay => Icons.qr_code_2_rounded,
+      ClientSection.devices => Icons.qr_code_2_rounded,
       ClientSection.settings => Icons.settings_outlined,
     };
 
@@ -206,6 +259,10 @@ Widget messagingSidebarListFor({
 }
 
 /// Persistent bottom bar for the shared sidebar foundation.
+///
+/// Desktop sidebar chrome: 功能 / 对话 / 设置. The mobile shell owns a
+/// different tab set drawn by the same implementation — see
+/// [MessagingMobileBottomNav].
 final class MessagingSidebarBottomNav extends StatelessWidget {
   const MessagingSidebarBottomNav({
     super.key,
@@ -218,10 +275,90 @@ final class MessagingSidebarBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.layoutPalette;
     final strings = LicoStrings.of(context);
+    return _MessagingBottomNavBar(
+      barKey: const Key('messaging-sidebar-bottom-nav'),
+      tabs: [
+        for (final item in MessagingSidebarNavItem.values)
+          (
+            key: Key(messagingSidebarNavKey(item)),
+            label: messagingSidebarNavLabel(strings, item),
+            icon: messagingSidebarNavIcon(item),
+            selected: messagingSidebarNavItemSelected(
+              item: item,
+              current: current,
+            ),
+            onPressed: () => onSelectDestination(
+              messagingSidebarNavTarget(item: item, current: current),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// The bottom tab bar owned by the mobile shell.
+///
+/// Renders exactly the three [MessagingMobileNavItem] tabs in declaration
+/// order — Devices → Chats → Settings — reporting each tab's fixed destination
+/// through [onSelectDestination]. Mounted as chrome by the Dashboard mobile
+/// shell (`dashboard_mobile_shell.dart`), so the tabs are reachable from every
+/// mobile destination instead of only from the Agents conversation list.
+final class MessagingMobileBottomNav extends StatelessWidget {
+  const MessagingMobileBottomNav({
+    super.key,
+    required this.current,
+    required this.onSelectDestination,
+  });
+
+  final ClientSection current;
+  final ValueChanged<ClientSection> onSelectDestination;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    return _MessagingBottomNavBar(
+      barKey: const Key('messaging-mobile-bottom-nav'),
+      tabs: [
+        for (final item in MessagingMobileNavItem.values)
+          (
+            key: Key(messagingMobileNavKey(item)),
+            label: messagingMobileNavLabel(strings, item),
+            icon: messagingMobileNavIcon(item),
+            selected: messagingMobileNavItemSelected(
+              item: item,
+              current: current,
+            ),
+            onPressed: () =>
+                onSelectDestination(messagingMobileNavTarget(item)),
+          ),
+      ],
+    );
+  }
+}
+
+/// One resolved bottom-navigation tab.
+typedef _MessagingBottomNavTab = ({
+  Key key,
+  String label,
+  IconData icon,
+  bool selected,
+  VoidCallback onPressed,
+});
+
+/// The single drawing implementation behind every bottom tab bar: a hairline
+/// top edge and one equal-width button per tab, in list order.
+final class _MessagingBottomNavBar extends StatelessWidget {
+  const _MessagingBottomNavBar({required this.barKey, required this.tabs});
+
+  final Key barKey;
+  final List<_MessagingBottomNavTab> tabs;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.layoutPalette;
     return CustomPaint(
-      key: const Key('messaging-sidebar-bottom-nav'),
+      key: barKey,
       painter: ContinuousEdgeHairlinePainter(
         color: colors.line,
         edge: AxisDirection.up,
@@ -231,19 +368,14 @@ final class MessagingSidebarBottomNav extends StatelessWidget {
         padding: const EdgeInsets.all(LicoContentSpacing.compact),
         child: Row(
           children: [
-            for (final item in MessagingSidebarNavItem.values)
+            for (final tab in tabs)
               Expanded(
                 child: _MessagingSidebarNavButton(
-                  key: Key(messagingSidebarNavKey(item)),
-                  item: item,
-                  label: messagingSidebarNavLabel(strings, item),
-                  selected: messagingSidebarNavItemSelected(
-                    item: item,
-                    current: current,
-                  ),
-                  onPressed: () => onSelectDestination(
-                    messagingSidebarNavTarget(item: item, current: current),
-                  ),
+                  key: tab.key,
+                  icon: tab.icon,
+                  label: tab.label,
+                  selected: tab.selected,
+                  onPressed: tab.onPressed,
                 ),
               ),
           ],
@@ -256,13 +388,13 @@ final class MessagingSidebarBottomNav extends StatelessWidget {
 final class _MessagingSidebarNavButton extends StatefulWidget {
   const _MessagingSidebarNavButton({
     super.key,
-    required this.item,
+    required this.icon,
     required this.label,
     required this.selected,
     required this.onPressed,
   });
 
-  final MessagingSidebarNavItem item;
+  final IconData icon;
   final String label;
   final bool selected;
   final VoidCallback onPressed;
@@ -280,8 +412,14 @@ final class _MessagingSidebarNavButtonState
   Widget build(BuildContext context) {
     final colors = context.layoutPalette;
     final selected = widget.selected;
-    final foreground = selected
-        ? colors.textOnPrimary
+    final iconColor = selected
+        ? colors.selectionInk
+        : _hovered
+        ? colors.text
+        : colors.textMuted;
+    final ramp = LicoListTypeRamp.of(context);
+    final labelColor = selected
+        ? colors.selectionInk
         : _hovered
         ? colors.text
         : colors.textMuted;
@@ -316,40 +454,50 @@ final class _MessagingSidebarNavButtonState
               duration: context.motion(LicoMotion.micro),
               curve: LicoMotion.standard,
               margin: const EdgeInsets.symmetric(horizontal: 2),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 2,
-                vertical: LicoContentSpacing.compact,
-              ),
               decoration: BoxDecoration(
-                color: selected
-                    ? colors.primary
-                    : _hovered
-                    ? colors.hoverOverlay
+                color: _hovered && !selected
+                    ? LicoSelectionLight.hoverFill(context)
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(LicoRadius.chip),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    messagingSidebarNavIcon(widget.item),
-                    size: 20,
-                    color: foreground,
+              // The highlight paints the whole button bounds — padding lives
+              // inside the painter's child so the glow reaches the edges and
+              // the indicator lands on the button's bottom edge, not the
+              // label's.
+              child: LicoSelectionLight(
+                selected: selected,
+                radius: LicoRadius.chip,
+                axis: LicoSelectionAxis.bottom,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 2,
+                    vertical: LicoContentSpacing.compact,
                   ),
-                  const SizedBox(height: LicoContentSpacing.inline),
-                  Text(
-                    widget.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: foreground,
-                      fontSize: 10,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      height: 1.1,
-                    ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        widget.icon,
+                        size: 20,
+                        color: iconColor,
+                        shadows:
+                            selected && LicoSelectionLight.isStarlight(context)
+                            ? [Shadow(color: colors.accentGlow, blurRadius: 10)]
+                            : null,
+                      ),
+                      const SizedBox(height: LicoContentSpacing.inline),
+                      Text(
+                        widget.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style:
+                            (selected ? ramp.navLabelSelected : ramp.navLabel)
+                                .copyWith(color: labelColor),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -387,7 +535,9 @@ final class _MessagingSidebarIndexRowState
   Widget build(BuildContext context) {
     final colors = context.layoutPalette;
     final selected = widget.selected;
-    final foreground = selected ? colors.textOnPrimary : colors.text;
+    final ramp = LicoListTypeRamp.of(context);
+    final iconColor = selected ? colors.selectionInk : ramp.indexIconColor;
+    final labelStyle = selected ? ramp.indexLabelSelected : ramp.indexLabel;
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -396,33 +546,56 @@ final class _MessagingSidebarIndexRowState
         child: AnimatedContainer(
           duration: context.motion(LicoMotion.micro),
           curve: LicoMotion.standard,
-          margin: const EdgeInsets.only(bottom: LicoContentSpacing.compact),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          decoration: BoxDecoration(
-            color: selected
-                ? colors.primary
-                : _hovered
-                ? colors.hoverOverlay
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(LicoRadius.chip),
+          // The shared sidebar row geometry: index rows match the
+          // conversation list rows' margin, height, corner radius and fills.
+          margin: const EdgeInsets.only(
+            bottom: MessagingDesktopMetrics.sidebarRowGap,
           ),
-          child: Row(
-            children: [
-              Icon(widget.icon, size: 20, color: foreground),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  widget.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: foreground,
-                    fontSize: 14,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  ),
-                ),
+          height: MessagingDesktopMetrics.sidebarIndexRowExtent,
+          decoration: BoxDecoration(
+            color: _hovered && !selected
+                ? LicoSelectionLight.hoverFill(context)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(LicoRadius.floating),
+          ),
+          // The highlight paints the full rounded row — the horizontal
+          // inset lives inside the painter's child so the lamp wash and
+          // rim reach the row's own edges.
+          child: LicoSelectionLight(
+            selected: selected,
+            radius: LicoRadius.floating,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: MessagingDesktopMetrics.sidebarRowHorizontalInset,
               ),
-            ],
+              child: Row(
+                children: [
+                  // The conversation rows' avatar slot; index rows centre the
+                  // 20pt section icon inside it.
+                  SizedBox(
+                    width: MessagingDesktopMetrics.sidebarRowLeadingExtent,
+                    child: Center(
+                      child: Icon(
+                        widget.icon,
+                        size: MessagingDesktopMetrics.sidebarRowIconExtent,
+                        color: iconColor,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(
+                    width: MessagingDesktopMetrics.sidebarRowLabelGap,
+                  ),
+                  Expanded(
+                    child: Text(
+                      widget.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: labelStyle,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -491,7 +664,7 @@ final class MessagingFeatureOrderScope extends InheritedWidget {
       !identical(oldWidget.portableData, portableData);
 }
 
-/// The 功能 list hosts Agent center, model gateway, mobile pairing and
+/// The 功能 list hosts Agent center, model gateway, devices and
 /// statistics. Long-press drag reorders
 /// entries vertically and the custom order persists through
 /// `dashboard-feature-order.json`.
@@ -500,10 +673,16 @@ final class MessagingFeatureSidebarList extends StatefulWidget {
     super.key,
     required this.current,
     required this.onSelectDestination,
+    this.excludedItems = const <MessagingFeatureItem>{},
   });
 
   final ClientSection current;
   final ValueChanged<ClientSection> onSelectDestination;
+
+  /// Entries the shell already exposes elsewhere. They keep their slots in
+  /// the persisted order so another layout still finds them where the user
+  /// left them.
+  final Set<MessagingFeatureItem> excludedItems;
 
   @override
   State<MessagingFeatureSidebarList> createState() =>
@@ -515,7 +694,7 @@ final class _MessagingFeatureSidebarListState
   static const _defaultItems = <MessagingFeatureItem>[
     MessagingFeatureItem.agentHub,
     MessagingFeatureItem.modelGateway,
-    MessagingFeatureItem.mobilePairing,
+    MessagingFeatureItem.devices,
     MessagingFeatureItem.statsPanel,
   ];
 
@@ -593,12 +772,21 @@ final class _MessagingFeatureSidebarListState
     widget.onSelectDestination(messagingFeatureItemSection(item));
   }
 
+  List<MessagingFeatureItem> get _visibleOrder => [
+    for (final item in _order)
+      if (!widget.excludedItems.contains(item)) item,
+  ];
+
   void _reorder(int oldIndex, int newIndex) {
     setState(() {
-      final next = [..._order];
-      final moved = next.removeAt(oldIndex);
-      next.insert(newIndex.clamp(0, next.length), moved);
-      _order = List.unmodifiable(next);
+      final visible = _visibleOrder;
+      final moved = visible.removeAt(oldIndex);
+      visible.insert(newIndex.clamp(0, visible.length), moved);
+      var cursor = 0;
+      _order = List.unmodifiable([
+        for (final item in _order)
+          widget.excludedItems.contains(item) ? item : visible[cursor++],
+      ]);
     });
     unawaited(
       _orderStore.save(_portableData, [for (final item in _order) item.name]),
@@ -645,7 +833,7 @@ final class _MessagingFeatureSidebarListState
           ),
           onReorderItem: _reorder,
           children: [
-            for (final (index, item) in _order.indexed)
+            for (final (index, item) in _visibleOrder.indexed)
               ReorderableDelayedDragStartListener(
                 key: Key('messaging-sidebar-list-${item.name}'),
                 index: index,

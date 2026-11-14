@@ -1,4 +1,5 @@
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'dart:collection';
 import 'dart:convert';
 
@@ -267,7 +268,9 @@ class _ConversationImageFrameDecoration extends StatelessWidget {
     final colors = context.licoColors;
     return Container(
       decoration: continuousHairlineDecoration(
-        color: colors.surfaceLow,
+        color: (colors.isDark
+            ? LicoPaneGlass.contentInnerCardFill
+            : colors.surfaceLow),
         borderRadius: BorderRadius.circular(LicoRadius.card),
         stroke: colors.line.withAlpha(110),
       ),

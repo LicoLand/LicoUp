@@ -7,13 +7,12 @@ import 'package:licoup/src/contracts/problem_codes/problem_code_domain.dart';
 /// - LU-RP 1000-1199 Stdio RPC, process IO, request-shape failures (22 assigned)
 /// - LU-CV 1200-1499 Canonical Conversation store and group operations (17 assigned)
 /// - LU-AG 1500-1899 Agent workspace conversation, dispatch, native session (50 assigned)
-/// - LU-ST 1900-2199 Adaptive Flywheel / strategy envelope (28 assigned)
+/// - LU-ST 1900-2199 Acativa / strategy envelope (28 assigned)
 /// - LU-CL 2200-2399 Native CLI admission (16 assigned)
 /// - LU-CS 2400-2499 Client state get/set (3 assigned)
 /// - LU-SK 2500-2599 Skill Hub (6 assigned)
 /// - LU-TG 2600-2699 Target scan and pins (5 assigned)
-/// - LU-MR 2700-2899 Mobile relay pairing and command relay (10 assigned)
-/// - LU-SM 2900-3199 Secure Mesh / secure agent sessions (20 assigned)
+/// - LU-DV 2700-2899 Devices pairing and messaging (14 assigned)
 /// - LU-UP 3200-3299 In-client update (11 assigned)
 /// - LU-GW 3300-3499 LLM Gateway and Telegram channel (21 assigned)
 /// - LU-PL 3500-3599 Adapter plugins (11 assigned)
@@ -34,7 +33,7 @@ import 'package:licoup/src/contracts/problem_codes/problem_code_domain.dart';
 /// `native_agent_timeout` → `timeout`.
 ///
 /// Intentionally unmapped (internal-only):
-/// - Adaptive Flywheel Graph validator strings (`workflow_state_limit`, …)
+/// - Acativa Graph validator strings (`workflow_state_limit`, …)
 ///   collapsed at the strategy RPC envelope to `workflow_invalid`.
 /// - Strategy store/reducer internals (`strategy_lease_lost`, …) collapsed to
 ///   StrategyFailureCode / `strategy_operation_failed`.
@@ -292,7 +291,7 @@ const Map<String, ProblemCode> problemCodeEntries = {
     ProblemDomain.agentConversation,
     1549,
   ),
-  // LU-ST Adaptive Flywheel / strategy envelope
+  // LU-ST Acativa / strategy envelope
   'binding_incomplete': ProblemCode(ProblemDomain.strategy, 1900),
   'callback_conflict': ProblemCode(ProblemDomain.strategy, 1901),
   'callback_stale': ProblemCode(ProblemDomain.strategy, 1902),
@@ -362,114 +361,22 @@ const Map<String, ProblemCode> problemCodeEntries = {
   'target_pin_save_failed': ProblemCode(ProblemDomain.targets, 2602),
   'target_scan_failed': ProblemCode(ProblemDomain.targets, 2603),
   'target_tab_order_save_failed': ProblemCode(ProblemDomain.targets, 2604),
-  // LU-MR Mobile relay pairing and command relay
-  'mobile_relay_authorization_required': ProblemCode(
-    ProblemDomain.mobileRelay,
-    2700,
-  ),
-  'mobile_relay_device_switch_failed': ProblemCode(
-    ProblemDomain.mobileRelay,
-    2701,
-  ),
-  'mobile_relay_pairing_claim_failed': ProblemCode(
-    ProblemDomain.mobileRelay,
-    2702,
-  ),
-  'mobile_relay_pairing_copy_failed': ProblemCode(
-    ProblemDomain.mobileRelay,
-    2703,
-  ),
-  'mobile_relay_pairing_create_failed': ProblemCode(
-    ProblemDomain.mobileRelay,
-    2704,
-  ),
-  'mobile_relay_pairing_invite_invalid': ProblemCode(
-    ProblemDomain.mobileRelay,
-    2705,
-  ),
-  'mobile_relay_pairing_refresh_failed': ProblemCode(
-    ProblemDomain.mobileRelay,
-    2706,
-  ),
-  'mobile_relay_station_configuration_failed': ProblemCode(
-    ProblemDomain.mobileRelay,
-    2707,
-  ),
-  'mobile_relay_station_required': ProblemCode(ProblemDomain.mobileRelay, 2708),
-  'mobile_relay_sync_failed': ProblemCode(ProblemDomain.mobileRelay, 2709),
-  // LU-SM Secure Mesh / secure agent sessions
-  'secure_agent_sessions_result_invalid': ProblemCode(
-    ProblemDomain.secureMesh,
-    2900,
-  ),
-  'secure_mesh_approval_inbox_failed': ProblemCode(
-    ProblemDomain.secureMesh,
-    2901,
-  ),
-  'secure_mesh_approval_request_failed': ProblemCode(
-    ProblemDomain.secureMesh,
-    2902,
-  ),
-  'secure_mesh_approval_request_invalid': ProblemCode(
-    ProblemDomain.secureMesh,
-    2903,
-  ),
-  'secure_mesh_approval_resolve_failed': ProblemCode(
-    ProblemDomain.secureMesh,
-    2904,
-  ),
-  'secure_mesh_approval_response_invalid': ProblemCode(
-    ProblemDomain.secureMesh,
-    2905,
-  ),
-  'secure_mesh_command_execution_failed': ProblemCode(
-    ProblemDomain.secureMesh,
-    2906,
-  ),
-  'secure_mesh_device_trust_failed': ProblemCode(
-    ProblemDomain.secureMesh,
-    2907,
-  ),
-  'secure_mesh_file_destination_failed': ProblemCode(
-    ProblemDomain.secureMesh,
-    2908,
-  ),
-  'secure_mesh_file_route_failed': ProblemCode(ProblemDomain.secureMesh, 2909),
-  'secure_mesh_file_sync_confirm_failed': ProblemCode(
-    ProblemDomain.secureMesh,
-    2910,
-  ),
-  'secure_mesh_file_sync_confirmation_unavailable': ProblemCode(
-    ProblemDomain.secureMesh,
-    2911,
-  ),
-  'secure_mesh_file_sync_destination_invalid': ProblemCode(
-    ProblemDomain.secureMesh,
-    2912,
-  ),
-  'secure_mesh_file_sync_destination_missing': ProblemCode(
-    ProblemDomain.secureMesh,
-    2913,
-  ),
-  'secure_mesh_file_sync_draft_missing': ProblemCode(
-    ProblemDomain.secureMesh,
-    2914,
-  ),
-  'secure_mesh_file_sync_prepare_failed': ProblemCode(
-    ProblemDomain.secureMesh,
-    2915,
-  ),
-  'secure_mesh_file_sync_source_invalid': ProblemCode(
-    ProblemDomain.secureMesh,
-    2916,
-  ),
-  'secure_mesh_kt_action_failed': ProblemCode(ProblemDomain.secureMesh, 2917),
-  'secure_mesh_mls_action_failed': ProblemCode(ProblemDomain.secureMesh, 2918),
-  'secure_mesh_status_refresh_failed': ProblemCode(
-    ProblemDomain.secureMesh,
-    2919,
-  ),
+  // LU-DV Devices pairing and messaging
   // LU-UP In-client update
+  'devices_station_invalid': ProblemCode(ProblemDomain.devices, 2700),
+  'devices_invitation_required': ProblemCode(ProblemDomain.devices, 2701),
+  'devices_pairing_code_required': ProblemCode(ProblemDomain.devices, 2702),
+  'devices_peer_required': ProblemCode(ProblemDomain.devices, 2703),
+  'devices_message_agent_required': ProblemCode(ProblemDomain.devices, 2704),
+  'devices_message_body_required': ProblemCode(ProblemDomain.devices, 2705),
+  'devices_pairing_code_copy_failed': ProblemCode(ProblemDomain.devices, 2706),
+  'devices_command_failed': ProblemCode(ProblemDomain.devices, 2707),
+  'devices_status_invalid': ProblemCode(ProblemDomain.devices, 2708),
+  'devices_payload_invalid': ProblemCode(ProblemDomain.devices, 2709),
+  'devices_pair_offer_invalid': ProblemCode(ProblemDomain.devices, 2710),
+  'devices_message_send_invalid': ProblemCode(ProblemDomain.devices, 2711),
+  'devices_message_results_invalid': ProblemCode(ProblemDomain.devices, 2712),
+  'devices_message_result_invalid': ProblemCode(ProblemDomain.devices, 2713),
   'client_update_apply_failed': ProblemCode(ProblemDomain.clientUpdate, 3200),
   'client_update_apply_invalid': ProblemCode(ProblemDomain.clientUpdate, 3201),
   'client_update_check_failed': ProblemCode(ProblemDomain.clientUpdate, 3202),

@@ -3,12 +3,11 @@ import 'package:flutter/widgets.dart';
 
 /// The profile-facing runtime boundary for shell chrome.
 ///
-/// Layout renderers receive only immutable semantic state and a pairing
-/// intent. Application controllers, services, platform bridges, and concrete
+/// Layout renderers receive only immutable semantic state and the global
+/// search intent. Application controllers, services, platform bridges, and concrete
 /// profile identities stay behind the shell adapter.
 abstract interface class LayoutChromePort
     implements ValueListenable<LayoutChromeSnapshot> {
-  Future<void> openPairing(BuildContext context);
   Future<void> openGlobalSearch(BuildContext context);
 }
 

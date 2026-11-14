@@ -3,7 +3,7 @@ import 'package:licoup/src/contracts/presentation/built_in_layout_spec.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/mobile/destinations/desktop_agents_destination.dart';
-import 'package:licoup/src/frontend/layout/profiles/desktop/mobile/destinations/desktop_pairing_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/desktop/mobile/destinations/desktop_devices_destination.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/mobile/destinations/desktop_settings_destination.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/mobile/desktop_mobile_components.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/mobile/desktop_mobile_preview.dart';
@@ -36,6 +36,6 @@ final LayoutSurfaceBundle desktopMobileBundle = LayoutSurfaceBundle(
 Map<ClientSection, LayoutDestinationBuilder>
 _desktopMobileDestinationBuilders() => {
   ClientSection.agents: buildDesktopAgentsDestination,
-  ClientSection.mobileRelay: buildDesktopPairingDestination,
+  ClientSection.devices: buildDesktopDevicesDestination,
   ClientSection.settings: buildDesktopSettingsDestination,
 };

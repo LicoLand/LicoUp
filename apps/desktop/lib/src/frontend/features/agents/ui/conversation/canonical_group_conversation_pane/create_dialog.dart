@@ -1,4 +1,5 @@
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -9,9 +10,12 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/mascot/mascot_catalog.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_profile_registry.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 
 Future<void> showCreateCanonicalGroupConversationDialog({
   required BuildContext context,
@@ -52,6 +56,7 @@ class _CreateCanonicalGroupConversationDialogState
     extends State<_CreateCanonicalGroupConversationDialog> {
   final _title = TextEditingController();
   final _selected = <String>{};
+  final _selectedProfiles = <String>{};
   var _creating = false;
   var _failureCode = '';
   StreamSubscription<ConversationEffect>? _effectSubscription;
@@ -89,8 +94,11 @@ class _CreateCanonicalGroupConversationDialogState
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
     final colors = context.licoColors;
+    final profiles = conversationProfiles.value;
     final canCreate =
-        !_creating && _title.text.trim().isNotEmpty && _selected.isNotEmpty;
+        !_creating &&
+        _title.text.trim().isNotEmpty &&
+        (_selected.isNotEmpty || _selectedProfiles.isNotEmpty);
     return AlertDialog(
       key: const Key('canonical-group-create-dialog'),
       title: Text(strings.newGroupConversation),
@@ -115,7 +123,7 @@ class _CreateCanonicalGroupConversationDialogState
               style: Theme.of(context).textTheme.titleSmall,
             ),
             const SizedBox(height: 8),
-            if (widget.candidates.isEmpty)
+            if (widget.candidates.isEmpty && profiles.isEmpty)
               Text(
                 strings.groupConversationNeedsAgent,
                 style: TextStyle(color: context.licoColors.error),
@@ -123,33 +131,53 @@ class _CreateCanonicalGroupConversationDialogState
             else
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 280),
-                child: ListView.builder(
+                child: ListView(
                   shrinkWrap: true,
-                  itemCount: widget.candidates.length,
-                  itemBuilder: (context, index) {
-                    final candidate = widget.candidates[index];
-                    final checked = _selected.contains(candidate.target);
-                    return CheckboxListTile(
-                      key: ValueKey<String>(
-                        'canonical-group-member-${candidate.target}',
+                  children: [
+                    for (final candidate in widget.candidates)
+                      CheckboxListTile(
+                        key: ValueKey<String>(
+                          'canonical-group-member-${candidate.target}',
+                        ),
+                        value: _selected.contains(candidate.target),
+                        title: Text(
+                          agentConversationTargetDisplayName(candidate),
+                        ),
+                        secondary: MessagingAgentAvatar(
+                          target: candidate,
+                          size: 32,
+                          iconSize: 18,
+                        ),
+                        controlAffinity: ListTileControlAffinity.trailing,
+                        onChanged: (value) => setState(() {
+                          value == true
+                              ? _selected.add(candidate.target)
+                              : _selected.remove(candidate.target);
+                        }),
                       ),
-                      value: checked,
-                      title: Text(
-                        agentConversationTargetDisplayName(candidate),
+                    for (final profile in profiles)
+                      CheckboxListTile(
+                        key: ValueKey<String>(
+                          'canonical-group-member-${profile.principalId}',
+                        ),
+                        value: _selectedProfiles.contains(profile.id),
+                        title: Text(profile.name),
+                        secondary: ClipRRect(
+                          borderRadius: BorderRadius.circular(LicoRadius.chip),
+                          child: MascotImage.avatar(
+                            profile.mascotAvatarId,
+                            semanticLabel: profile.name,
+                            size: 32,
+                          ),
+                        ),
+                        controlAffinity: ListTileControlAffinity.trailing,
+                        onChanged: (value) => setState(() {
+                          value == true
+                              ? _selectedProfiles.add(profile.id)
+                              : _selectedProfiles.remove(profile.id);
+                        }),
                       ),
-                      secondary: MessagingAgentAvatar(
-                        target: candidate,
-                        size: 32,
-                        iconSize: 18,
-                      ),
-                      controlAffinity: ListTileControlAffinity.trailing,
-                      onChanged: (value) => setState(() {
-                        value == true
-                            ? _selected.add(candidate.target)
-                            : _selected.remove(candidate.target);
-                      }),
-                    );
-                  },
+                  ],
                 ),
               ),
             if (_failureCode.isNotEmpty) ...[
@@ -174,7 +202,10 @@ class _CreateCanonicalGroupConversationDialogState
           style: ButtonStyle(
             backgroundColor: WidgetStateProperty.resolveWith((states) {
               if (states.contains(WidgetState.disabled)) {
-                return colors.surfaceLow.withValues(alpha: 0.5);
+                return (colors.isDark
+                        ? LicoPaneGlass.contentInnerCardFill
+                        : colors.surfaceLow)
+                    .withValues(alpha: 0.5);
               }
               if (states.contains(WidgetState.pressed) ||
                   states.contains(WidgetState.hovered)) {
@@ -210,6 +241,14 @@ class _CreateCanonicalGroupConversationDialogState
           ClientConversationGroupMemberDraft(
             agentId: candidate.target,
             displayName: agentConversationTargetDisplayName(candidate),
+          ),
+      for (final profile in conversationProfiles.value)
+        if (_selectedProfiles.contains(profile.id))
+          ClientConversationGroupMemberDraft(
+            agentId: profile.agentId,
+            displayName: profile.name,
+            profileId: profile.id,
+            profileIntent: profile.intent,
           ),
     ];
     widget.intents.send(

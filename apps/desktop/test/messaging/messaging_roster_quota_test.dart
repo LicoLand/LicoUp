@@ -12,6 +12,7 @@ import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/provider_quota_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_quota_ring.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_quota_usage_card.dart';
@@ -93,7 +94,7 @@ void main() {
         final ringedWell = tester.getRect(
           find.descendant(
             of: find.byKey(const Key('canonical-group-roster-agent-codex')),
-            matching: find.byKey(const Key('messaging-agent-avatar-well')),
+            matching: find.byType(MessagingAgentAvatar),
           ),
         );
         expect(
@@ -105,7 +106,7 @@ void main() {
             of: find.byKey(
               const Key('canonical-group-roster-agent-antigravity'),
             ),
-            matching: find.byKey(const Key('messaging-agent-avatar-well')),
+            matching: find.byType(MessagingAgentAvatar),
           ),
         );
         expect(

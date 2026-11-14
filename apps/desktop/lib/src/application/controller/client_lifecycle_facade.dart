@@ -5,8 +5,9 @@ import 'package:licoup/src/application/controller/client_appearance_commands.dar
 import 'package:licoup/src/application/controller/client_functional_status_commands.dart';
 import 'package:licoup/src/application/controller/client_locale_commands.dart';
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+
 import 'package:licoup/src/application/controller/client_maintenance_facade.dart';
-import 'package:licoup/src/application/controller/client_mobile_relay_facade.dart';
 import 'package:licoup/src/application/controller/client_navigation_facade.dart';
 import 'package:licoup/src/application/controller/client_routing_facade.dart';
 import 'package:licoup/src/application/controller/client_skill_hub_facade.dart';
@@ -14,8 +15,7 @@ import 'package:licoup/src/application/controller/client_target_facade.dart';
 import 'package:licoup/src/application/features/agents/archive/conversation_archive_controller.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
-import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
-import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
+import 'package:licoup/src/application/features/devices/devices_controller.dart';
 import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
 import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_controller.dart';
 import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
@@ -33,7 +33,6 @@ mixin ClientLifecycleFacade
         ClientRoutingFacade,
         ClientMaintenanceFacade,
         ClientAgentUsageFacade,
-        ClientMobileRelayFacade,
         ClientSkillHubFacade,
         ClientTargetFacade,
         ClientNavigationFacade {
@@ -41,9 +40,7 @@ mixin ClientLifecycleFacade
   @override
   TargetController get targetController;
   @override
-  MobileRelayController get mobileRelayController;
-  @override
-  MobileHomeLayoutController get mobileHomeLayoutController;
+  DevicesController get devicesController;
   @override
   SkillHubController get skillHubController;
   CatalogConvergenceController get catalogConvergenceController;
@@ -53,7 +50,12 @@ mixin ClientLifecycleFacade
   @override
   Future<void> loadConversationSessions(String agentId);
 
+  final Set<String> _unavailableFeatureDomains = {};
+
   String portableDataPath = '';
+  String portableDataSource = '';
+  String portableDataPreviousRootPath = '';
+  bool portableDataPreviousRootAvailable = false;
   Future<void> initialize() => initializeWithOptions();
 
   Future<void> initializeWithOptions({bool runBackgroundSteps = true}) =>
@@ -88,17 +90,36 @@ mixin ClientLifecycleFacade
       id: 'client_preferences',
       action: _initializeClientPreferences,
     ),
+    // The stored preference decides which built-in appearance the plan's
+    // declared default renders over, so the plan is read after it, never before.
     ClientBootstrapStep(
-      id: 'client_mobile_relay',
-      action: _initializeClientCore,
+      id: 'client_presentation_plan',
+      action: loadPresentationMountPlan,
     ),
     ClientBootstrapStep(
-      id: 'client_mobile_home',
-      action: _initializeClientMobileHome,
+      id: 'client_target_order',
+      requiredForStartup: false,
+      action: () => _loadOptionalFeature(
+        'agent-tab-order',
+        targetController.loadTabOrder,
+      ),
+    ),
+    ClientBootstrapStep(
+      id: 'client_target_cache',
+      action: targetController.hydrateCache,
+    ),
+    ClientBootstrapStep(
+      id: 'client_devices_notice',
+      requiredForStartup: false,
+      action: devicesController.loadNoticeAcknowledgement,
     ),
     ClientBootstrapStep(
       id: 'client_skill_preferences',
-      action: _initializeClientSkillPreferences,
+      requiredForStartup: false,
+      action: () => _loadOptionalFeature(
+        'skill-hub-preferences',
+        _initializeClientSkillPreferences,
+      ),
     ),
     ClientBootstrapStep(id: 'client_catalog', action: _initializeClientCatalog),
   ];
@@ -131,26 +152,74 @@ mixin ClientLifecycleFacade
   }
 
   Future<void> _resolveClientStorageRoot() async {
+    final selection = await portableData.dataHomeSelection();
     final dataDir = await portableData.dataDirectory();
     portableDataPath = dataDir.path;
+    portableDataSource = selection.source.name;
+    try {
+      final status = await agentService.dataHomeStatus();
+      portableDataPreviousRootPath = status['previousRootPath'] is String
+          ? status['previousRootPath'] as String
+          : '';
+      portableDataPreviousRootAvailable =
+          status['previousRootAvailable'] == true &&
+          portableDataPreviousRootPath.isNotEmpty;
+    } on Object {
+      portableDataPreviousRootPath = '';
+      portableDataPreviousRootAvailable = false;
+    }
   }
 
   /// The admission error itself is the diagnostic evidence: the coordinator
   /// bounds the user-facing report to the stable step id, while the original
   /// error reaches only the sanitized local diagnostic channel.
   Future<void> _admitClientStateMigration() async {
-    await agentService.admitClientStateMigration(portableDataPath);
+    final admission = await agentService.admitClientStateMigration(
+      portableDataPath,
+    );
+    _unavailableFeatureDomains
+      ..clear()
+      ..addAll(
+        (admission['unavailableFeatureDomainIds'] as List? ?? const [])
+            .whereType<String>(),
+      );
   }
 
   Future<void> _initializeClientStorage() async {
     await portableData.loadWorkspaceManifest();
-    await loadConversationToolAllowlists();
-    await loadCurrentViewRestore();
+    replaceConversationToolAllowlists(const {});
+    if (!_unavailableFeatureDomains.contains('agent-tool-allowlist')) {
+      await loadConversationToolAllowlists();
+    }
+    if (!_unavailableFeatureDomains.contains('current-view')) {
+      await loadCurrentViewRestore();
+    }
+    // Unsent composer text is the user's own typing, so it is restored with
+    // the other presentation state rather than after it. The owning store
+    // decides admission; an unreadable document never blocks startup.
+    await loadComposerDrafts();
     final catalog = await appearancePresetCatalogService.loadCatalog(
       portableData,
     );
     applyAppearancePresetCatalog(catalog);
-    await layoutManager.initialize();
+    // Installed language resources render the interface strings. A first launch
+    // has none, and the compiled baseline renders instead.
+    await loadInstalledLocaleResources();
+    await layoutManager.initialize(
+      loadStoredState: !_unavailableFeatureDomains.contains(
+        'appearance-presentation',
+      ),
+    );
+  }
+
+  Future<void> _loadOptionalFeature(
+    String domain,
+    Future<void> Function() load,
+  ) async {
+    if (_unavailableFeatureDomains.contains(domain)) {
+      throw StateError('client_optional_state_unavailable');
+    }
+    await load();
   }
 
   Future<void> _initializeLocalConversation() async {
@@ -161,13 +230,13 @@ mixin ClientLifecycleFacade
   Future<void> _initializeClientPreferences() async {
     final presentation = layoutManager.preferences;
     final requestedAppearancePresetId =
-        presentation?.appearancePresetId ?? AppearancePresetIds.licoMist;
+        presentation?.appearancePresetId ?? AppearancePresetIds.defaultSystem;
     final resolvedAppearancePresetId = requestedAppearancePresetId;
     if (!hasAppearancePresetConfig(
       resolvedAppearancePresetId,
       appearancePresetConfigs,
     )) {
-      appearancePresetId = AppearancePresetIds.licoMist;
+      appearancePresetId = AppearancePresetIds.defaultSystem;
       await layoutManager.setAppearancePreset(appearancePresetId);
     } else {
       appearancePresetId = resolvedAppearancePresetId;
@@ -176,22 +245,18 @@ mixin ClientLifecycleFacade
       presentation?.localePreference ?? LocalePreference.system,
     );
     appearancePreferenceOwner.replaceReduceMotion(
-      presentation?.reduceMotion ?? false,
+      presentation?.reduceMotion ?? ReduceMotionPreference.system,
     );
     appearancePreferenceOwner.replaceLoadingEffect(
       presentation?.loadingEffectId ?? 'spinner',
     );
-    await targetController.loadTabOrder();
-    await targetController.hydrateCache();
+    // The stored resource requests reach the owner as the user made them. No
+    // availability answer is adopted here: the package owner reports that
+    // later, and until it does the surface says so instead of guessing.
+    appearancePreferenceOwner.adoptResourceSelections(
+      presentation?.resourceSelections ?? const {},
+    );
   }
-
-  Future<void> _initializeClientCore() async {
-    if (lifecycleProjection.disposed) return;
-    await mobileRelayController.loadConfig(authorizeSecrets: false);
-  }
-
-  Future<void> _initializeClientMobileHome() =>
-      mobileHomeLayoutController.load();
 
   Future<void> _initializeClientSkillPreferences() =>
       skillHubController.loadPreferences();

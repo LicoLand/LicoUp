@@ -6,9 +6,6 @@ export function validateMacosEvidence(payload, context) {
     ? payload.receipts.find((entry) =>
       entry?.targetId === context.spec.evidenceTargetId)
     : null;
-  const dependency = Array.isArray(payload.dependencies) && payload.dependencies.length === 1
-    ? payload.dependencies[0]
-    : null;
   requireValue(payload.ok === true && payload.platform === "macos", "macos_evidence_not_ready");
   requireValue(payload.redacted === true && payload.reportLeakScan === true,
     "macos_evidence_not_redacted");
@@ -29,11 +26,9 @@ export function validateMacosEvidence(payload, context) {
     "evidence_artifact_digest_mismatch");
   requireValue(digestPattern.test(text(receipt?.runtimeExecutableDigest)),
     "macos_runtime_executable_digest_missing");
-  requireValue(dependency?.id === "macos-user-presence-proof" &&
-    dependency?.ref ===
-      "build/reports/secure-mesh-macos-keychain-user-presence-proof.json" &&
-    digestPattern.test(text(dependency?.digest)),
-  "macos_capability_dependency_receipt_missing");
+  requireValue(Array.isArray(payload.dependencies) &&
+    payload.dependencies.length === 0,
+    "macos_evidence_dependencies_unexpected");
   requireValue(receipt?.signatureKind === "local-identity-codesign" &&
     receipt?.platformLocalSignatureReady === true &&
     receipt?.hardenedRuntime === true &&
@@ -53,8 +48,7 @@ export function validateMacosEvidence(payload, context) {
     receipt?.stableProcessWindowReady === true &&
     receipt?.postLaunchArtifactStable === true,
   "macos_launch_binding_not_ready");
-  requireValue(receipt?.smokeReady === true && receipt?.capabilityProofReady === true,
-    "macos_smoke_not_ready");
+  requireValue(receipt?.smokeReady === true, "macos_smoke_not_ready");
   return {
     consumerIntegritySignatureKind: "platform-local-validation",
     consumerIntegritySignatureReady: true,
@@ -64,10 +58,6 @@ export function validateMacosEvidence(payload, context) {
     launchReady: true,
     smokeReady: true,
     runtimeExecutableDigest: receipt.runtimeExecutableDigest,
-    dependencies: [{
-      id: dependency.id,
-      ref: dependency.ref,
-      digest: dependency.digest,
-    }],
+    dependencies: [],
   };
 }

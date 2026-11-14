@@ -18,14 +18,14 @@ export const REQUIRED_FLUTTER_TOP_LEVEL_DIRS = Object.freeze([
 const allowedFlutterTopLevelDirs = new Set(REQUIRED_FLUTTER_TOP_LEVEL_DIRS);
 const requiredFrontendFeatureDirs = [
   "agents",
-  "mobile_relay",
+  "devices",
   "skill_hub",
   "settings",
   "targets"
 ];
 const requiredBackendFeatureDirs = [
   "agents",
-  "mobile_relay"
+  "devices"
 ];
 const flutterLayerImportRules = [
   {
@@ -122,9 +122,7 @@ const splitTestLibraryRegistry = new Set([
   "apps/desktop/test/fixtures/client_controller/local_management/skill_freshness_scenarios.dart",
   "apps/desktop/test/fixtures/client_controller/local_management/skill_management_scenarios.dart",
   "apps/desktop/test/fixtures/client_controller/local_management/target_management_scenarios.dart",
-  "apps/desktop/test/fixtures/client_controller/mobile_history_scenarios.dart",
   "apps/desktop/test/fixtures/client_controller/entry_hook_scenarios.dart",
-  "apps/desktop/test/fixtures/client_controller/secure_mesh_scenarios.dart",
   "apps/desktop/test/fixtures/client_controller/target_history_scenarios.dart",
   "apps/desktop/test/fixtures/client_controller/target_scenarios.dart",
   "apps/desktop/test/fixtures/client_controller/support/client_controller_scenario_dependencies.dart",
@@ -138,7 +136,6 @@ const splitTestLibraryRegistry = new Set([
   "apps/desktop/test/fixtures/client_controller/support/fake_agent_service.dart",
   "apps/desktop/test/fixtures/client_controller/support/fake_agent_state_support.dart",
   "apps/desktop/test/fixtures/client_controller/support/fake_agent_usage_support.dart",
-  "apps/desktop/test/fixtures/client_controller/support/fake_mobile_relay_service.dart",
   "apps/desktop/test/fixtures/client_controller/support/no_entry_hook_client_controller.dart",
   "apps/desktop/test/agents_workspace/agents_workspace_interaction_test.dart",
   "apps/desktop/test/agents_workspace/agents_workspace_layout_test.dart",
@@ -146,6 +143,7 @@ const splitTestLibraryRegistry = new Set([
   "apps/desktop/test/agents_workspace/agents_workspace_renderer_collapse_test.dart",
   "apps/desktop/test/agents_workspace/agents_workspace_renderer_diagnostics_test.dart",
   "apps/desktop/test/agents_workspace/agents_workspace_state_test.dart",
+  "apps/desktop/test/agents_workspace/agents_workspace_switcher_veil_test.dart",
   "apps/desktop/test/agents_workspace/support/agents_workspace_test_harness.dart",
 ]);
 const agentUsageTimelineRoot =
@@ -202,8 +200,6 @@ async function enforceNormalDartLibraries(context) {
     assert,
     collectDartSourceFiles,
     collectEnumValues,
-    collectRustPubMods,
-    collectRustUnsafeFiles,
     collectSourceFiles,
     exists,
     fail,
@@ -234,8 +230,6 @@ async function enforceSplitTestLibraries(context) {
     assert,
     collectDartSourceFiles,
     collectEnumValues,
-    collectRustPubMods,
-    collectRustUnsafeFiles,
     collectSourceFiles,
     exists,
     fail,
@@ -330,8 +324,6 @@ async function findFlutterDependencyCycle(context) {
     assert,
     collectDartSourceFiles,
     collectEnumValues,
-    collectRustPubMods,
-    collectRustUnsafeFiles,
     collectSourceFiles,
     exists,
     fail,
@@ -409,8 +401,6 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
     assert,
     collectDartSourceFiles,
     collectEnumValues,
-    collectRustPubMods,
-    collectRustUnsafeFiles,
     collectSourceFiles,
     exists,
     fail,
@@ -467,6 +457,7 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
   const migratedConversationLeaves = [
     "create_dialog.dart",
     "header.dart",
+    "members_panel.dart",
     "pane.dart",
     "projection.dart",
     "reveal.dart",
@@ -499,7 +490,7 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
       await collectSourceFiles(migratedConversationLeafRoot, ".dart"),
       migratedConversationLeaves.map((leaf) => `${migratedConversationLeafRoot}/${leaf}`)
     ),
-    "the canonical group pane must remain split into the architecture-owned nine-leaf set"
+    "the canonical group pane must remain split into the architecture-owned ten-leaf set"
   );
   for (const leaf of migratedConversationLeaves) {
     const source = await readText(`${migratedConversationLeafRoot}/${leaf}`);
@@ -528,13 +519,19 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
       `${flutterSrcRoot}/frontend/l10n/lico_strings.dart`,
       `${flutterSrcRoot}/frontend/l10n/lico_strings_base.dart`,
       `${flutterSrcRoot}/frontend/l10n/lico_strings_labels.dart`,
+      `${flutterSrcRoot}/frontend/l10n/lico_strings_collaboration.dart`,
+      `${flutterSrcRoot}/frontend/l10n/lico_strings_plugin_window.dart`,
+      `${flutterSrcRoot}/frontend/l10n/lico_strings_devices.dart`,
     ]),
     "custom localization must retain one implementation table; the locale projection adapter stays in its independent state plane"
   );
   for (const l10nLeaf of [
     "lico_strings.dart",
     "lico_strings_base.dart",
-    "lico_strings_labels.dart"
+    "lico_strings_labels.dart",
+    "lico_strings_collaboration.dart",
+    "lico_strings_plugin_window.dart",
+    "lico_strings_devices.dart"
   ]) {
     const source = await readText(`${flutterSrcRoot}/frontend/l10n/${l10nLeaf}`);
     assert(
@@ -659,55 +656,28 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
       messageBlocksSources["subagent.dart"].includes("widget.message.childMessages"),
     "message block dispatcher, disclosures, role, and subagent leaves must retain separate ownership"
   );
-  const mobileRelayPanelFacadePath =
-    "apps/desktop/lib/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart";
-  const mobileRelayPanelLeaves = [
-    "composition.dart",
-    "pairing.dart",
-    "qr.dart",
-    "scan.dart",
-    "trust.dart"
-  ];
-  const mobileRelayPanelRoot = mobileRelayPanelFacadePath.replace(/\.dart$/u, "");
-  const mobileRelayPanelFacadeSource = await readText(mobileRelayPanelFacadePath);
-  const mobileRelayPanelExports = [...mobileRelayPanelFacadeSource.matchAll(
-    /^export 'mobile_relay_panel\/([^']+)';$/gmu
-  )].map((match) => match[1]);
+  const devicesUiRoot =
+    "apps/desktop/lib/src/frontend/features/devices/ui";
   assert(
-    sameSet(mobileRelayPanelExports, mobileRelayPanelLeaves) &&
-      !/^import /mu.test(mobileRelayPanelFacadeSource) &&
-      !/^(?:class|enum|typedef|mixin|extension) /mu.test(mobileRelayPanelFacadeSource),
-    "mobile relay panel root must remain an exact five-leaf export facade"
+    sameSet(await collectSourceFiles(devicesUiRoot, ".dart"), [
+      `${devicesUiRoot}/devices_cards.dart`,
+      `${devicesUiRoot}/devices_panel.dart`,
+    ]),
+    "devices UI must remain a two-library panel surface"
   );
-  const mobileRelayPanelSources = {};
-  for (const leaf of mobileRelayPanelLeaves) {
-    const source = await readText(`${mobileRelayPanelRoot}/${leaf}`);
-    mobileRelayPanelSources[leaf] = source;
-    assert(
-      !/^[ \t]*part[ \t]+(?:of[ \t]+)?/mu.test(source) &&
-        !source.includes("mobile_relay_panel.dart"),
-      `${leaf} must remain a Mobile Relay panel library without reverse facade coupling`
-    );
-  }
+  const devicesPanelSource = await readText(`${devicesUiRoot}/devices_panel.dart`);
+  const devicesCardsSource = await readText(`${devicesUiRoot}/devices_cards.dart`);
   assert(
-    mobileRelayPanelSources["composition.dart"].includes("MobileRelayPairingWorkspaceCard") &&
-      mobileRelayPanelSources["composition.dart"].includes("MobileRelayScanPairingPrompt") &&
-      mobileRelayPanelSources["composition.dart"].includes("MobileRelayTrustVerificationCard") &&
-      mobileRelayPanelSources["pairing.dart"].includes("mobile_relay_panel/qr.dart") &&
-      mobileRelayPanelSources["pairing.dart"].includes("ConfigureRelayStation(") &&
-      mobileRelayPanelSources["qr.dart"].includes("MobileRelayPairingQrFrame") &&
-      mobileRelayPanelSources["scan.dart"].includes("MobileRelayScanPairingPrompt") &&
-      mobileRelayPanelSources["trust.dart"].includes("MobileRelayTrustVerificationCard") &&
-      !mobileRelayPanelSources["qr.dart"].includes("ClientController") &&
-      !mobileRelayPanelSources["scan.dart"].includes("ClientController") &&
-      !mobileRelayPanelSources["trust.dart"].includes("ClientController"),
-    "Mobile Relay composition, pairing, QR, scan, and trust leaves must retain separate ownership"
+    devicesPanelSource.includes("DevicesBinding binding") &&
+      devicesPanelSource.includes("devices_cards.dart") &&
+      devicesCardsSource.includes("presentation_contract") &&
+      !devicesPanelSource.includes("ClientController") &&
+      !devicesCardsSource.includes("ClientController"),
+    "devices panel and cards must stay bound to the presentation contract without controller coupling"
   );
   const flutterDependencyCycle = await findFlutterDependencyCycle(context);
   assert(
     flutterDependencyCycle === null,
     `Flutter source imports must form an acyclic dependency graph: ${(flutterDependencyCycle || []).join(" -> ")}`
   );
-
-  return { mobileRelayPanelFacadeSource, mobileRelayPanelSources };
 }

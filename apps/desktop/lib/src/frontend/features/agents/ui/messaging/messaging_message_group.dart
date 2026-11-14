@@ -3,13 +3,14 @@ import 'dart:convert';
 import 'package:licoup/src/frontend/features/agents/ui/conversation_execution_entry.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion/orb_waiting_indicator.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion_surface.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_self_avatar.dart';
 
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_renderer_models.dart';
+import 'package:licoup/src/frontend/features/agents/ui/acativa_renderer_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
@@ -18,17 +19,19 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_bubble.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_bubble_edge_glow.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_sticker_panel.dart';
+import 'package:licoup/src/frontend/shared/mascot/mascot_expression_motion.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/mascot/mascot_catalog.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
-import 'package:licoup/src/frontend/shared/ui/conversation_material_scope.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:licoup/src/frontend/shared/ui/reading_position_scroll_controller.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 
 /// One author group in the messaging participant flow: a header row with the
 /// author avatar, display name, and AGENT badge for agent authors, followed
@@ -131,7 +134,7 @@ class MessagingMessageGroup extends StatelessWidget {
                         textAlign: TextAlign.right,
                         style: TextStyle(
                           color: colors.text,
-                          fontSize: 13.5,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -149,7 +152,7 @@ class MessagingMessageGroup extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: colors.text,
-                          fontSize: 13.5,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -286,6 +289,9 @@ class _MessagingGroupMessageRow extends StatefulWidget {
 
 class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
   bool _hovered = false;
+  bool _focused = false;
+
+  bool get _actionsVisible => _hovered || _focused;
 
   DateTime? get _messageTime =>
       parseAgentConversationTimestamp(widget.message.createdAt);
@@ -455,9 +461,17 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
       children: [
         Flexible(child: bubbleBand),
         const SizedBox(width: 6),
-        ConversationExecutionMenu(
-          message: widget.message,
-          target: widget.target,
+        AnimatedOpacity(
+          opacity: _actionsVisible ? 1 : 0,
+          duration: context.motion(LicoMotion.micro),
+          curve: LicoMotion.standard,
+          child: IgnorePointer(
+            ignoring: !_actionsVisible,
+            child: ConversationExecutionMenu(
+              message: widget.message,
+              target: widget.target,
+            ),
+          ),
         ),
       ],
     );
@@ -472,12 +486,15 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
     final waiting = !widget.authorIsUser && widget.message.waitingForReply;
     final terminal = widget.message.replyTerminalState;
     final strings = LicoStrings.of(context);
+    final stickerExpressionId = waiting || terminal != null
+        ? null
+        : stickerExpressionIdFromCode(widget.message.text);
     final content = waiting
         ? const SizedBox(
             key: Key('conversation-agent-waiting-bubble'),
-            width: 70,
-            height: 30,
-            child: Center(child: OrbWaitingIndicator(active: true)),
+            width: 56,
+            height: 32,
+            child: Center(child: OrbWaitingIndicator(active: true, size: 18)),
           )
         : terminal != null
         ? Text(
@@ -497,27 +514,31 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
               height: 1.4,
             ),
           )
+        : stickerExpressionId != null
+        ? _MessagingStickerMessage(
+            expressionId: stickerExpressionId,
+            authorIsUser: widget.authorIsUser,
+          )
         : AgentConversationMessageContent(
             data: widget.message.text,
-            // On the Plain profile's brand-filled own bubble, ink switches
-            // to the on-brand role so text clears AA on violet/gold.
-            foreground:
-                widget.authorIsUser &&
-                    ConversationMaterialScope.opaqueBubblesOf(context)
-                ? colors.textOnPrimary
+            // The user's own bubble is the brand gradient, so its ink takes
+            // the on-brand role to clear AA on violet/gold.
+            foreground: widget.authorIsUser
+                ? (colors.isDark ? colors.text : colors.textOnPrimary)
                 : agentConversationMessageForeground(
                     colors,
                     widget.message.role,
                   ),
             accent: colors.accent,
-            codeBackground: agentConversationToneColor(
-              colors,
-              widget.adapter.codeTone,
-            ),
-            blockBackground: agentConversationToneColor(
-              colors,
-              widget.adapter.quoteTone,
-            ),
+            // On the brand-gradient bubble the surface tones read as opaque
+            // dark slabs; tint with the on-brand ink instead so inline code
+            // and blocks sit as translucent glass over the gradient.
+            codeBackground: widget.authorIsUser
+                ? colors.textOnPrimary.withAlpha(30)
+                : agentConversationToneColor(colors, widget.adapter.codeTone),
+            blockBackground: widget.authorIsUser
+                ? colors.textOnPrimary.withAlpha(44)
+                : agentConversationToneColor(colors, widget.adapter.quoteTone),
             borderColor: colors.line,
             renderStyle: widget.adapter.markdownStyle,
             images: widget.message.images,
@@ -538,25 +559,16 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
               MessagingDesktopMetrics.bubbleAnchorCornerRadius,
             ),
           )
-        : const BorderRadius.only(
-            topLeft: Radius.circular(
-              MessagingDesktopMetrics.bubbleAnchorCornerRadius,
-            ),
-            topRight: Radius.circular(
-              MessagingDesktopMetrics.bubbleCornerRadius,
-            ),
-            bottomLeft: Radius.circular(
-              MessagingDesktopMetrics.bubbleCornerRadius,
-            ),
-            bottomRight: Radius.circular(
-              MessagingDesktopMetrics.bubbleCornerRadius,
-            ),
-          );
+        : BorderRadius.circular(16);
     final bubblePadding = const EdgeInsets.symmetric(
       horizontal: 14,
-      vertical: 11,
+      vertical: 10,
     );
-    final bubble = widget.authorIsUser
+    // A sticker renders as the bare expression image like the demo
+    // transcript: no bubble chrome behind it.
+    final bubble = stickerExpressionId != null
+        ? content
+        : widget.authorIsUser
         ? MessagingUserBubbleGlass(
             key: const Key('messaging-message-bubble'),
             borderRadius: bubbleRadius,
@@ -601,27 +613,74 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onSecondaryTapDown:
-            widget.authorIsUser && widget.onDeleteMessage != null
-            ? (details) => _showMessageMenu(context, details)
-            : null,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 1),
-          child: widget.authorIsUser
-              ? Align(alignment: Alignment.centerRight, child: userBubble)
-              : Align(
-                  alignment: Alignment.centerLeft,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      minWidth: _bubbleMinWidth,
+      child: FocusableActionDetector(
+        onShowFocusHighlight: (focused) => setState(() => _focused = focused),
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onSecondaryTapDown:
+              widget.authorIsUser && widget.onDeleteMessage != null
+              ? (details) => _showMessageMenu(context, details)
+              : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 1),
+            child: widget.authorIsUser
+                ? Align(alignment: Alignment.centerRight, child: userBubble)
+                : Align(
+                    alignment: Alignment.centerLeft,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        minWidth: _bubbleMinWidth,
+                      ),
+                      child: _buildBubbleWithHoverBand(context, bubble),
                     ),
-                    child: _buildBubbleWithHoverBand(context, bubble),
                   ),
-                ),
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// A sticker message renders the bundled expression without bubble chrome,
+/// matching the demo transcript.
+final class _MessagingStickerMessage extends StatelessWidget {
+  const _MessagingStickerMessage({
+    required this.expressionId,
+    required this.authorIsUser,
+  });
+
+  final String expressionId;
+  final bool authorIsUser;
+
+  static const double _extent = 120;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    final name = MascotCatalog.expressionName(
+      expressionId,
+      chinese: strings.isChinese,
+    );
+    return Column(
+      key: const Key('messaging-sticker-message'),
+      crossAxisAlignment: authorIsUser
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Semantics(
+          image: true,
+          label: strings.stickerDeliveredNote(name),
+          child: MascotExpressionMotion(
+            expressionId: expressionId,
+            child: MascotImage.expression(
+              expressionId,
+              size: _extent,
+              semanticLabel: name,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -664,27 +723,11 @@ class _MessagingUserAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
     return Semantics(
       label: accessibilityLabel,
-      child: Container(
+      child: MessagingSelfAvatar(
         key: const Key('messaging-user-avatar'),
-        width: MessagingDesktopMetrics.conversationAvatarExtent,
-        height: MessagingDesktopMetrics.conversationAvatarExtent,
-        alignment: Alignment.center,
-        // The self mark is the ink disc from the site roster: solid ink fill,
-        // surface glyph, no hairline.
-        decoration: BoxDecoration(
-          color: colors.text,
-          borderRadius: BorderRadius.circular(
-            MessagingDesktopMetrics.conversationAvatarExtent / 2,
-          ),
-        ),
-        child: Icon(
-          Icons.person_outline_rounded,
-          size: MessagingDesktopMetrics.conversationAvatarMarkExtent,
-          color: colors.background,
-        ),
+        size: MessagingDesktopMetrics.conversationAvatarExtent,
       ),
     );
   }
@@ -709,20 +752,20 @@ class _MessagingAgentBadge extends StatelessWidget {
     };
     return Container(
       key: const Key('messaging-agent-badge'),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
       decoration: continuousHairlineDecoration(
-        // Neutral chip — brand/primary wash reads as olive 泛黄 on dark glass.
-        color: colors.surfaceLow.withAlpha(colors.isDark ? 180 : 220),
         borderRadius: BorderRadius.circular(4),
-        stroke: colors.line.withAlpha(colors.isDark ? 90 : 110),
+        stroke: colors.isDark
+            ? const Color(0x1AFFFFFF)
+            : colors.line.withAlpha(110),
       ),
       child: Text(
         role,
         style: TextStyle(
           color: colors.textMuted,
           fontSize: 10,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.4,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.6,
           height: 1.1,
         ),
       ),

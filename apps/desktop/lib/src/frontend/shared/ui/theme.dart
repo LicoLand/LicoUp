@@ -8,14 +8,17 @@ import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_typography.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 
 export 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 
 ThemeData buildLicoTheme({
-  String presetId = AppearancePresetIds.licoMist,
+  String presetId = AppearancePresetIds.starlitGold,
   List<AppearancePresetConfig> presets = builtInAppearancePresetConfigs,
   Brightness platformBrightness = Brightness.dark,
+  String fontPreference = LicoFontPreference.system,
+  TargetPlatform? platform,
 }) {
   final colors = licoColorsFor(
     presetId,
@@ -29,13 +32,23 @@ ThemeData buildLicoTheme({
       ? ThemeData.dark(useMaterial3: true)
       : ThemeData.light(useMaterial3: true);
 
+  // The interface family is the resolved font preference: a named preference
+  // heads the chain, then the preset's declared family, and the platform's own
+  // face is the baseline when neither names one.
+  final fonts = LicoTypography.resolveFont(
+    fontPreference,
+    presetFamily: visuals.presetFontFamily,
+    platform: platform,
+  );
+
   // The type scale is owned by LicoTypography so the roles, tracking, and
   // tabular-figure decisions live in one place instead of being restated here.
   final textTheme = LicoTypography.textTheme(
     text: colors.text,
     textSecondary: colors.textSecondary,
     textMuted: colors.textMuted,
-    fontFamily: visuals.fontFamily,
+    fontFamily: fonts.family,
+    fontFamilyFallback: fonts.fallback,
   );
 
   return base.copyWith(
@@ -137,30 +150,42 @@ ThemeData buildLicoTheme({
       ),
     ),
     cardTheme: CardThemeData(
-      color: colors.surface,
+      // Inner cards on the content glass plane: black ~40% — one step
+      // lighter than the 72% plane, separated without a white wash.
+      color: colors.isDark
+          ? LicoPaneGlass.contentInnerCardFill
+          : colors.surface,
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: ContinuousRoundedBorder(
         borderRadius: BorderRadius.circular(LicoRadius.card),
-        side: BorderSide(color: colors.line),
+        side: BorderSide(
+          color: colors.isDark
+              ? LicoPaneGlass.contentInnerCardRim
+              : colors.line,
+          width: 1,
+        ),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: AppleControlButtons.glassFilled(
         colors,
-        fontFamily: visuals.fontFamily,
+        fontFamily: fonts.family,
+        fontFamilyFallback: fonts.fallback,
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: AppleControlButtons.glassOutlined(
         colors,
-        fontFamily: visuals.fontFamily,
+        fontFamily: fonts.family,
+        fontFamilyFallback: fonts.fallback,
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: AppleControlButtons.glassText(
         colors,
-        fontFamily: visuals.fontFamily,
+        fontFamily: fonts.family,
+        fontFamilyFallback: fonts.fallback,
       ),
     ),
     switchTheme: SwitchThemeData(
@@ -169,7 +194,7 @@ ThemeData buildLicoTheme({
           return colors.textDisabled;
         }
         if (states.contains(WidgetState.selected)) {
-          return colors.textOnPrimary;
+          return colors.textOnSelection;
         }
         return colors.textMuted;
       }),
@@ -178,13 +203,13 @@ ThemeData buildLicoTheme({
           return colors.surfaceLow;
         }
         if (states.contains(WidgetState.selected)) {
-          return colors.primary;
+          return colors.selectionInk;
         }
         return colors.surfaceLow;
       }),
       trackOutlineColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
-          return colors.brandBorder;
+          return colors.selectionInk.withValues(alpha: 0.45);
         }
         return colors.line;
       }),
@@ -200,15 +225,22 @@ ThemeData buildLicoTheme({
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: colors.surfaceLow,
+      // Dark = black-mask glass; light = the milk-latex cream surface.
+      fillColor: colors.isDark
+          ? LicoPaneGlass.contentInnerCardFill
+          : colors.surfaceRaised,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       labelStyle: textTheme.bodyMedium?.copyWith(
         color: colors.textMuted,
         fontWeight: FontWeight.w500,
       ),
       hintStyle: textTheme.bodyMedium?.copyWith(color: colors.textDisabled),
-      border: _inputBorder(colors.line),
-      enabledBorder: _inputBorder(colors.line),
+      border: _inputBorder(
+        colors.isDark ? const Color(0x1AFFFFFF) : colors.line,
+      ),
+      enabledBorder: _inputBorder(
+        colors.isDark ? const Color(0x1AFFFFFF) : colors.line,
+      ),
       // Focus is an interaction, so the ring is the accent and it is two
       // pixels wide: a one-pixel color change is not a reliable focus signal.
       focusedBorder: _inputBorder(colors.accent, width: 2),

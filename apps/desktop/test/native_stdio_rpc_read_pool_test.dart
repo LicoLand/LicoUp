@@ -288,7 +288,7 @@ class _ProcessContext implements NativeCliProcessContext {
   }
 
   @override
-  Future<File?> resolveCliBinary() async => null;
+  Future<File?> resolveCliBinary() async => File('/synthetic/licoup');
 
   @override
   Future<Process> startProcess(

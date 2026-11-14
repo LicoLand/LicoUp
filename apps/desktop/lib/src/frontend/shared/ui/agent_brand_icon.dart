@@ -6,7 +6,7 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 const _agentIconAssets = <String, String>{
-  'lico-agent': 'assets/agent-icons/lico-agent.svg',
+  'lico-agent': 'assets/mascot/expressions/png/neutral.png',
   'openclaw': 'assets/agent-icons/openclaw.svg',
   'claude-code': 'assets/agent-icons/claude-code.svg',
   // ChatGPT blossom mark (no app-icon background).
@@ -85,6 +85,11 @@ class AgentBrandIcon extends StatelessWidget {
                 fit: BoxFit.contain,
                 semanticsLabel:
                     agentProductDisplayName(target.target) ?? target.label,
+                // The GitHub Copilot mark ships monochrome currentColor so it
+                // recolors with the theme; other marks keep brand colors.
+                theme: key == 'copilot'
+                    ? SvgTheme(currentColor: colors.text)
+                    : null,
               )
             : Image.asset(
                 asset,

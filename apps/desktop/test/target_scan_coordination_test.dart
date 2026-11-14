@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptive_flywheel_target_catalog.dart';
+import 'package:licoup/src/application/features/agents/acativa/acativa_target_catalog.dart';
 import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
 import 'package:licoup/src/application/features/targets/controller/target_scan_coordinator.dart';
 import 'package:licoup/src/application/features/targets/policy/target_policy.dart';
@@ -115,7 +115,7 @@ void main() {
         reduction.targets,
       ).map((target) => target.target),
       ['claude-code', 'codex'],
-      reason: 'Adaptive Flywheel must consume the same complete projection',
+      reason: 'Acativa must consume the same complete projection',
     );
   });
 
@@ -145,7 +145,6 @@ void main() {
         portableData: Object(),
         packagedTargetIds: const ['codex', 'claude-code'],
         isMobileRuntime: () => false,
-        scanMobileTargets: () async => const [],
         onTargetsSettled: () {},
         loadSelectedConversation: () async {},
         shouldLoadSelectedConversation: () => false,

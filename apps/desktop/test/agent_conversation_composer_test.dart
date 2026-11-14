@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/contracts/presentation/work_control_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
@@ -1064,7 +1065,165 @@ void main() {
       );
     },
   );
+
+  testWidgets('fixedHeight pins the compact capsule and centers its content', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const _ComposerTestApp(
+        child: SizedBox(
+          width: 420,
+          child: RuntimeMessageComposer(
+            targetLabel: 'Fixture Agent',
+            initialDraft: '',
+            busy: false,
+            enabled: true,
+            modelOptions: [],
+            selectedModel: '',
+            reasoningEffortOptions: [],
+            selectedReasoningEffort: '',
+            onModelChanged: _noopModel,
+            onReasoningEffortChanged: _noopModel,
+            onDraftChanged: _noopModel,
+            onSend: _sendTrue,
+            outerPadding: EdgeInsets.zero,
+            fixedHeight: 64,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final field = tester.getRect(
+      find.byKey(const Key('agent-conversation-composer-field')),
+    );
+    expect(field.height, 64);
+    final input = tester.getRect(find.byType(TextField));
+    expect((input.top + input.bottom) / 2, closeTo(field.center.dy, 4));
+    final send = tester.getRect(
+      find.byKey(const Key('agent-conversation-composer-send')),
+    );
+    expect((send.top + send.bottom) / 2, closeTo(field.center.dy, 2));
+
+    // Long drafts scroll inside the pinned capsule instead of growing it.
+    await tester.enterText(find.byType(TextField), 'first\nsecond\nthird');
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .getRect(find.byKey(const Key('agent-conversation-composer-field')))
+          .height,
+      64,
+    );
+  });
+  testWidgets('the composer hides the stop stage while a turn is idle', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const _ComposerTestApp(
+        child: SizedBox(
+          width: 420,
+          child: RuntimeMessageComposer(
+            targetLabel: 'Fixture Agent',
+            initialDraft: '',
+            busy: false,
+            enabled: true,
+            modelOptions: [],
+            selectedModel: '',
+            reasoningEffortOptions: [],
+            selectedReasoningEffort: '',
+            onModelChanged: _noopModel,
+            onReasoningEffortChanged: _noopModel,
+            onDraftChanged: _noopModel,
+            onSend: _sendTrue,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('work-stop-indicator')), findsNothing);
+    expect(find.byKey(const Key('work-stop-force')), findsNothing);
+  });
+
+  testWidgets('the composer projects a stopping stage with its reference', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const _ComposerTestApp(
+        child: SizedBox(
+          width: 420,
+          child: RuntimeMessageComposer(
+            targetLabel: 'Fixture Agent',
+            initialDraft: '',
+            busy: true,
+            enabled: true,
+            cancelEnabled: true,
+            modelOptions: [],
+            selectedModel: '',
+            reasoningEffortOptions: [],
+            selectedReasoningEffort: '',
+            onModelChanged: _noopModel,
+            onReasoningEffortChanged: _noopModel,
+            onDraftChanged: _noopModel,
+            onSend: _sendTrue,
+            workStopStage: WorkStopStage.stopping,
+            workStopDiagnosticReference: 'stop:corr-1',
+          ),
+        ),
+      ),
+    );
+    // The busy composer keeps a spinner running; settle by frames instead.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('Stopping…'), findsOneWidget);
+    expect(find.text('stop:corr-1'), findsOneWidget);
+    // A request that was accepted is never escalated automatically.
+    expect(find.byKey(const Key('work-stop-force')), findsNothing);
+  });
+
+  testWidgets('an unconfirmed stop offers the explicit force-stop route', (
+    tester,
+  ) async {
+    var opened = 0;
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: SizedBox(
+          width: 420,
+          child: RuntimeMessageComposer(
+            targetLabel: 'Fixture Agent',
+            initialDraft: '',
+            busy: true,
+            enabled: true,
+            cancelEnabled: true,
+            modelOptions: const [],
+            selectedModel: '',
+            reasoningEffortOptions: const [],
+            selectedReasoningEffort: '',
+            onModelChanged: _noopModel,
+            onReasoningEffortChanged: _noopModel,
+            onDraftChanged: _noopModel,
+            onSend: _sendTrue,
+            workStopStage: WorkStopStage.unconfirmed,
+            workStopDiagnosticReference: 'stop:corr-9',
+            onForceStop: () => opened += 1,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('Stop unconfirmed'), findsOneWidget);
+    expect(find.text('stop:corr-9'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('work-stop-force')));
+    expect(opened, 1);
+  });
 }
+
+void _noopModel(String _) {}
+
+Future<bool> _sendTrue(String _) async => true;
 
 Color contextPrimaryColor(WidgetTester tester) => Theme.of(
   tester.element(find.byKey(const Key('agent-conversation-mention-codex'))),

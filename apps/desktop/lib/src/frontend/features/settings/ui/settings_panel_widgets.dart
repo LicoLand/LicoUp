@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
+import 'package:licoup/src/frontend/features/settings/ui/settings_control_metrics.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_dropdown_list.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
@@ -10,10 +12,10 @@ import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 
+export 'package:licoup/src/frontend/features/settings/ui/settings_control_metrics.dart';
 export 'package:licoup/src/frontend/features/settings/ui/settings_dropdown_list.dart';
 
 const _appearanceSegmentLabelWidth = 72.0;
-const _appearanceToggleWidth = 320.0;
 
 /// One segmented control recipe for settings surfaces: a hairline rounded
 /// track with an inset sliding thumb — the iOS idiom, in the interface's own
@@ -51,7 +53,9 @@ class SettingsSegmentedControl<T> extends StatelessWidget {
       width: effectiveWidth,
       child: DecoratedBox(
         decoration: continuousHairlineDecoration(
-          color: colors.surfaceLow,
+          color: (colors.isDark
+              ? LicoPaneGlass.contentInnerCardFill
+              : colors.surfaceLow),
           borderRadius: BorderRadius.circular(LicoRadius.chip),
           stroke: colors.line,
         ),
@@ -60,7 +64,7 @@ class SettingsSegmentedControl<T> extends StatelessWidget {
           child: Opacity(
             opacity: enabled ? 1 : 0.55,
             child: SizedBox(
-              height: 28,
+              height: settingsControlHeight - 4,
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final segmentWidth = constraints.maxWidth / count;
@@ -140,7 +144,7 @@ class _SettingsSegment extends StatelessWidget {
     final foreground = !enabled
         ? colors.textMuted.withAlpha(110)
         : selected
-        ? colors.primaryStrong
+        ? colors.selectionInk
         : colors.textSecondary;
     return Semantics(
       button: true,
@@ -159,11 +163,15 @@ class _SettingsSegment extends StatelessWidget {
             child: AnimatedDefaultTextStyle(
               duration: context.motion(LicoMotion.micro),
               curve: LicoMotion.standard,
-              style: TextStyle(
-                color: foreground,
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                height: 1.15,
+              // AnimatedDefaultTextStyle replaces the inherited style, so the
+              // label must carry the theme's family and fallbacks itself.
+              style: DefaultTextStyle.of(context).style.merge(
+                TextStyle(
+                  color: foreground,
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  height: 1.15,
+                ),
               ),
               child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
@@ -241,10 +249,7 @@ class SettingsDropdownRow<T> extends StatelessWidget {
             children: [
               Expanded(child: titleRow),
               const SizedBox(width: LicoContentSpacing.item),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 320),
-                child: dropdown,
-              ),
+              SizedBox(width: settingsControlWidth, child: dropdown),
             ],
           );
         },
@@ -297,7 +302,7 @@ class SettingsDayNightToggleRow extends StatelessWidget {
       onChanged: onChanged,
       disabledSegments: disabledSegments,
       segmentMinWidth: _appearanceSegmentLabelWidth,
-      width: _appearanceToggleWidth,
+      width: settingsControlWidth,
     );
 
     return Padding(

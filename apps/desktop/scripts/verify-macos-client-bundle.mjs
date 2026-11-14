@@ -85,13 +85,12 @@ export async function verifyMacosCustodyHelper(appPath, {
       if (!plistHasString(plist, key, value)) missing.push(`custody ${key} invalid`);
     }
   }
-  const publicEntry = path.join(appPath, "Contents", "MacOS", "licoup-cli");
-  try {
-    if (await fs.readlink(publicEntry) !== "../Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli" ||
-        await fs.realpath(publicEntry) !== await fs.realpath(helper.executablePath)) {
-      missing.push("public CLI alias invalid");
+  for (const stale of ["licoup-cli", "licoup", "lico-gateway", "lico-agent", "licoup-migrate"]) {
+    const stalePath = path.join(appPath, "Contents", "MacOS", stale);
+    if (await fileExists(stalePath) || await fs.lstat(stalePath).then(() => true).catch(() => false)) {
+      missing.push(`unexpected MacOS entry: ${stale}`);
     }
-  } catch { missing.push("public CLI alias missing or not a symlink"); }
+  }
   for (const profile of [helper.profilePath, path.join(appPath, "Contents", "embedded.provisionprofile")]) {
     if ((await fileExists(profile)) !== provisioned) missing.push("provisioning profile presence differs from signing mode");
   }

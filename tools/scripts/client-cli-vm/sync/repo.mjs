@@ -10,9 +10,11 @@ export const repoSyncExcludes = Object.freeze([
   "target",
   "apps/desktop/.dart_tool",
   "apps/desktop/build",
-  "apps/desktop/android/.gradle",
-  "apps/desktop/android/build",
-  "apps/desktop/ios/build",
+]);
+
+export const repoSyncIncludes = Object.freeze([
+  "build/native-artifacts/",
+  "build/native-artifacts/**",
 ]);
 
 export function syncRepoToVm(distro) {
@@ -20,6 +22,7 @@ export function syncRepoToVm(distro) {
   run("rsync", [
     "-az",
     "--delete",
+    ...repoSyncIncludes.map((value) => `--include=${value}`),
     ...repoSyncExcludes.map((value) => `--exclude=${value}`),
     "-e",
     sshRsyncCommand(distro),

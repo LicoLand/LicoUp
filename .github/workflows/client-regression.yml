@@ -1,8 +1,8 @@
 name: Client regression
 
 # Nightly full-regression graph for the LicoUp client. This workflow is
-# scheduled, never a per-PR gate: Client CI, Branch flow, Commit identity, and
-# the Auditor stay changed-path-scoped and untouched. Failures here are a
+# scheduled, never a per-PR gate: Client CI, Branch flow, and Commit identity
+# stay changed-path-scoped and untouched. Failures here are a
 # traceable signal, not an author block.
 
 on:
@@ -32,23 +32,6 @@ jobs:
         with:
           flutter-version: "3.44.2"
           cache: true
-      - uses: dtolnay/rust-toolchain@46817827a5bfabe028bf34e1cce71fd40e2ff697 # 1.95.0
-        with:
-          components: clippy, rustfmt
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            build/crates/licoup-native/target
-          key: ${{ runner.os }}-cargo-client-regression-${{ hashFiles('Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-client-regression-
-      - name: Fetch locked Cargo dependencies
-        run: node tools/scripts/cargo-client.mjs fetch --locked
-      - name: Install Linux native test dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libdbus-1-dev pkg-config
       - run: npm ci
       - name: Resolve Flutter dependencies for regression modules
         run: npm run client:get
@@ -84,53 +67,3 @@ jobs:
       - run: npm ci
       - name: Run every contract source-bundle test
         run: npm run client:contract:bundles:test
-
-  upstream-latest-probe:
-    name: Upstream-latest agent probe (read-only)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: "24"
-          cache: npm
-      - run: npm ci
-      # Install/version/capability observation plus the sidecar dispatch-lane
-      # handshake for the 13 packaged agents. READ-ONLY: no prompt, no session,
-      # no forced reply. Breakage fails the job so it stays traceable.
-      - name: Probe the 13 packaged agent adapters
-        run: npm run client:upstream:probe:nightly
-      - name: Upload upstream probe report
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: client-upstream-agent-probe-reports
-          path: build/reports/upstream-agent-probe.json
-          if-no-files-found: ignore
-          retention-days: 14
-
-  windows-native-smoke:
-    name: Windows native smoke
-    runs-on: windows-latest
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: "24"
-          cache: npm
-      - uses: dtolnay/rust-toolchain@46817827a5bfabe028bf34e1cce71fd40e2ff697 # 1.95.0
-      - run: npm ci
-      # The static half of the smoke runs on every runner; the native half
-      # (cargo build, targets scan, secret-store lifecycle) is win32-hosted.
-      - name: Run Windows native smoke
-        run: npm run client:native:smoke:windows
-      - name: Upload Windows smoke progress
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: client-windows-native-smoke-progress
-          path: build/test-reports/windows-native-smoke-progress.jsonl
-          if-no-files-found: ignore
-          retention-days: 14

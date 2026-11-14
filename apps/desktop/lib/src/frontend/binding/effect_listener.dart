@@ -23,6 +23,7 @@ final class EffectListener<E> extends StatefulWidget {
 
 final class _EffectListenerState<E> extends State<EffectListener<E>> {
   StreamSubscription<E>? _subscription;
+  int _generation = 0;
 
   @override
   void initState() {
@@ -34,21 +35,33 @@ final class _EffectListenerState<E> extends State<EffectListener<E>> {
   void didUpdateWidget(EffectListener<E> oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.source, widget.source)) {
-      _subscription?.cancel();
+      _release();
       _subscribe();
     }
   }
 
   void _subscribe() {
-    _subscription = widget.source.effects.listen(
-      (effect) => widget.onEffect(effect),
-    );
+    // A rebind or a disposal advances the generation before the previous
+    // subscription is cancelled, so an effect already in flight from the
+    // replaced source is dropped instead of being delivered twice or after
+    // the region is gone.
+    final generation = ++_generation;
+    _subscription = widget.source.effects.listen((effect) {
+      if (!mounted || generation != _generation) return;
+      widget.onEffect(effect);
+    });
+  }
+
+  void _release() {
+    _generation++;
+    final subscription = _subscription;
+    _subscription = null;
+    unawaited(subscription?.cancel());
   }
 
   @override
   void dispose() {
-    _subscription?.cancel();
-    _subscription = null;
+    _release();
     super.dispose();
   }
 

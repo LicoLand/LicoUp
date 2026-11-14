@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
 import 'package:licoup/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_chart_controls.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_formatters.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_summary_widgets.dart';
@@ -10,6 +11,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_usage_wave_overview
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 
 export 'package:licoup/src/frontend/features/agents/ui/agent_usage_wave_overview.dart';
 
@@ -421,8 +423,10 @@ class _WorkflowMetric extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 122),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: continuousHairlineDecoration(
-        color: colors.surfaceLow,
-        borderRadius: BorderRadius.circular(10),
+        color: (colors.isDark
+            ? LicoPaneGlass.contentInnerCardFill
+            : colors.surfaceLow),
+        borderRadius: BorderRadius.circular(LicoRadius.floating),
         stroke: colors.line.withAlpha(80),
         strokeWidth: 0.5,
       ),
@@ -501,8 +505,12 @@ class _WorkflowRunCard extends StatelessWidget {
     final colors = context.licoColors;
     return DecoratedBox(
       decoration: continuousHairlineDecoration(
-        color: colors.surfaceLow.withAlpha(colors.isDark ? 90 : 120),
-        borderRadius: BorderRadius.circular(12),
+        color:
+            (colors.isDark
+                    ? LicoPaneGlass.contentInnerCardFill
+                    : colors.surfaceLow)
+                .withAlpha(colors.isDark ? 90 : 120),
+        borderRadius: BorderRadius.circular(LicoRadius.card),
         stroke: colors.line.withAlpha(80),
         strokeWidth: 0.5,
       ),

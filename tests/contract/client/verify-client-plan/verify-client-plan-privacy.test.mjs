@@ -71,7 +71,7 @@ test("every static leaf is output-free and uses shared read dependencies", async
   const fileNames = (await fs.readdir(directory))
     .filter((fileName) => fileName.endsWith(".mjs"))
     .sort();
-  assert.equal(fileNames.length, 10);
+  assert.equal(fileNames.length, 3);
   for (const fileName of fileNames) {
     const source = await fs.readFile(path.join(directory, fileName), "utf8");
     for (const forbidden of [

@@ -581,7 +581,7 @@ function copyFixtureApp(runnableRoot, destination) {
   return destination;
 }
 
-test("upgrade replaces all installed copies and unregisters build and deleted entries", () => {
+test("upgrade replaces installed copies and unregisters only existing app bundles", () => {
   const runnableRoot = makeRunnableTree();
   const installDir = tempRoot("lico-lifecycle-system-");
   const userDir = tempRoot("lico-lifecycle-user-");

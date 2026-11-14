@@ -79,6 +79,43 @@ List<TargetCandidate> resolveCanonicalGroupOrderedParticipantTargets(
   return List<TargetCandidate>.unmodifiable(resolved);
 }
 
+/// Mosaic seats for a conversation-list summary: resolves the stored member
+/// agent ids (join order) against the live catalog, synthesizing seats for
+/// current adapters the catalog does not expose — the same rule the pane
+/// roster applies to memberships.
+List<TargetCandidate> resolveCanonicalGroupSummaryMemberTargets(
+  List<String> memberAgentIds,
+  List<TargetCandidate> targets,
+) {
+  final resolved = <TargetCandidate>[];
+  for (final agentId in memberAgentIds) {
+    final target = canonicalGroupParticipantTarget(targets, agentId);
+    if (target != null) {
+      resolved.add(target);
+      continue;
+    }
+    final id = agentId.trim();
+    if (id.isEmpty ||
+        !_canonicalGroupRosterShowsAgent(id) ||
+        agentProductDisplayName(id) == null) {
+      continue;
+    }
+    resolved.add(
+      TargetCandidate(
+        target: id,
+        label: id,
+        kind: 'conversation-member',
+        status: TargetCandidateStatus.synthesizedMembership,
+        configured: false,
+        confidence: 1,
+        adapterStatus: 'runtime-unavailable',
+        scanSource: 'canonical-conversation',
+      ),
+    );
+  }
+  return List<TargetCandidate>.unmodifiable(resolved);
+}
+
 /// Live catalog match for a group member. Retired adapters and synthesized
 /// placeholders are omitted so the roster only shows Agents that still have
 /// a current adapter.

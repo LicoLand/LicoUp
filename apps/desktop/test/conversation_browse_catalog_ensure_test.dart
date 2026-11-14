@@ -131,6 +131,50 @@ void main() {
   );
 
   test(
+    'loading rows clear once a catalog exists even while a load is in flight',
+    () async {
+      final controller = _BrowseController()
+        ..conversationSessionsByAgent = {
+          'codex': [_session('codex', 'recent')],
+        };
+      addTearDown(controller.dispose);
+      controller.selectedConversationAgentId = 'codex';
+      final producer = ConversationProjectionProducer(controller);
+      addTearDown(producer.close);
+
+      // A foreground reload over an existing catalog keeps the row's real
+      // preview: slow native reads hold the loading target long after the
+      // first milestone commit, and loaded rows never re-flash skeletons.
+      final reload = controller.loadConversationSessions('codex');
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.conversationSessionLoadingTargets, contains('codex'));
+      expect(
+        producer.nativeCatalog.current.loadingAgentIds,
+        isNot(contains('codex')),
+      );
+
+      // A first load with no catalog entry still marks the row.
+      final warm = controller.ensureAgentBrowseCatalog('opencode');
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        producer.nativeCatalog.current.loadingAgentIds,
+        contains('opencode'),
+      );
+
+      controller.pages['codex']!.complete(
+        const ConversationSessionPage(sessions: [], hasMore: false),
+      );
+      controller.pages['opencode']!.complete(
+        const ConversationSessionPage(sessions: [], hasMore: false),
+      );
+      await reload;
+      await warm;
+      await Future<void>.delayed(Duration.zero);
+      expect(producer.nativeCatalog.current.loadingAgentIds, isEmpty);
+    },
+  );
+
+  test(
     'catalog prefetch intent warms browse history while a group is selected',
     () async {
       final controller = _BrowseController();

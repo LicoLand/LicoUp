@@ -13,11 +13,6 @@ import {
   clientSourceStateDigest,
 } from "../lib/client-source-state-digest.mjs";
 import {
-  captureLicoArcBadTowerCandidateBinding,
-  LICOARC_BADTOWER_CANDIDATE_BINDING_KEY,
-  licoArcBadTowerCandidateSnapshotsMatch,
-} from "../lib/licoarc-badtower-candidate-binding.mjs";
-import {
   createReleaseClosureChallenge,
   releaseClosureChallengeDigest,
 } from "../lib/release-closure-challenge.mjs";
@@ -75,10 +70,6 @@ export function runClientReleaseAcceptanceCli(argv = process.argv.slice(2)) {
       repoRoot,
       CANONICAL_CLIENT_SOURCE_ROOTS,
     );
-    const stationCandidateBefore =
-      captureLicoArcBadTowerCandidateBinding({
-        clientCandidateDigest: sourceStateDigest,
-      });
     const safeConfigPath = resolveContainedExistingPath(
       path.join(repoRoot, "tools/scripts/config"),
       configPath,
@@ -223,30 +214,33 @@ export function runClientReleaseAcceptanceCli(argv = process.argv.slice(2)) {
     const policyInputsStable = sourceBoundPolicySnapshotsStable(policySnapshots);
     const sourceStateStable =
       clientSourceStateDigest(repoRoot, config.sourceRoots) === sourceStateDigest;
-    const stationCandidateAfter =
-      captureLicoArcBadTowerCandidateBinding({
-        clientCandidateDigest: sourceStateDigest,
-      });
-    const candidateInputsStable =
-      licoArcBadTowerCandidateSnapshotsMatch(
-        stationCandidateBefore,
-        stationCandidateAfter,
-      );
     const artifactBindings = {
       ...selectedArtifactBindings,
-      [LICOARC_BADTOWER_CANDIDATE_BINDING_KEY]:
-        stationCandidateAfter.bindings,
+    };
+    const artifactReceiptEntry = {
+      id: "artifact-receipt",
+      ok: artifactReceiptContext.ok === true,
+      schemaVersion: text(config.artifactReceipt?.schemaVersion),
+      producer: artifactReceiptContext.producer ||
+        text(config.artifactReceipt?.producer),
+      producerExitCode: artifactReceiptContext.ok === true ? 0 : 1,
+      sourceDigest: artifactReceiptContext.receiptSourceDigest,
+      reportDigest: artifactReceiptContext.receiptReportDigest,
+      freshnessReady: artifactReceiptContext.fresh === true,
+      closureChallengeBound:
+        artifactReceiptContext.payload?.closureChallengeDigest ===
+          releaseClosureChallengeDigest(closureChallenge),
+      invocationNonceDigest: "",
+      dependencies: [],
     };
     const inputIntegrity = {
       ok: produced.ok && artifactReceiptContext.ok === true &&
         closureEvidenceDigestsStable && artifactInputsStable && sourceStateStable &&
-        supportMatrixStable && targetCatalogStable && policyInputsStable &&
-        candidateInputsStable,
+        supportMatrixStable && targetCatalogStable && policyInputsStable,
       productVersion,
       sourceStateDigest,
       sourceStateStable,
       artifactInputsStable,
-      candidateInputsStable,
       supportMatrixStable,
       targetCatalogStable,
       policyInputsStable,
@@ -256,7 +250,7 @@ export function runClientReleaseAcceptanceCli(argv = process.argv.slice(2)) {
       supportMatrixDigest: supportMatrix.snapshot.digest,
       targetCatalogDigest: targetCatalogBefore.digest,
       policyBindings,
-      reports: produced.receipts,
+      reports: [artifactReceiptEntry, ...produced.receipts],
     };
     const report = reduceClientReleaseAcceptance({
       selectedTargets,

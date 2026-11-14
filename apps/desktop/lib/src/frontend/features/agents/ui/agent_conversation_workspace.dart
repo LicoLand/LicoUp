@@ -1,21 +1,23 @@
 import 'dart:async';
 
+import 'package:licoup/src/frontend/features/agents/ui/native_approval_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation_execution_binding_viewer.dart';
 import 'dart:math' as math;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
+import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks/native_subagent_history_scope.dart';
@@ -23,16 +25,21 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_workspace_sidebar.d
 import 'package:licoup/src/frontend/features/agents/ui/conversation_archive_dialog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_header.dart';
-import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_approval_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_history_menu.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/conversation_profile_create_dialog.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_agents_directive.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_scope.dart';
-import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_column.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_window_ground.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
@@ -42,8 +49,6 @@ import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
 
-import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
-import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 const _conversationAttachmentMediaUnsupported = 'attachment_media_unsupported';
@@ -53,7 +58,6 @@ class AgentConversationWorkspace extends StatefulWidget {
     super.key,
     required this.agents,
     required this.conversation,
-    required this.relay,
     required this.onAddTarget,
     this.onSelectDestination,
     this.onSearch,
@@ -62,7 +66,6 @@ class AgentConversationWorkspace extends StatefulWidget {
 
   final AgentsBinding agents;
   final ConversationBinding conversation;
-  final MobileRelayBinding relay;
   final VoidCallback onAddTarget;
   final ValueChanged<ClientSection>? onSelectDestination;
   final VoidCallback? onSearch;
@@ -81,16 +84,10 @@ class _AgentConversationWorkspaceState
   String? _layoutStateIdentity;
   StreamSubscription<ConversationEffect>? _conversationEffects;
   bool _pickingConversationAttachments = false;
-  bool _showWelcome = false;
-  String _conversationListAgentId = '';
-  String _conversationListGroupId = '';
   bool _showAgentDetailInsideGroupList = false;
   String? _observedConversationSelection;
   String _warmedBrowseCatalogSignature = '';
-  final List<({String agentId, String groupId})> _conversationListHistory = [];
-
-  ({String agentId, String groupId}) get _conversationListLocation =>
-      (agentId: _conversationListAgentId, groupId: _conversationListGroupId);
+  bool _localGroupAutoSelected = false;
 
   @override
   void initState() {
@@ -155,14 +152,11 @@ class _AgentConversationWorkspaceState
     });
   }
 
-  void _applyConversationListLocation(
-    ({String agentId, String groupId}) location,
-  ) {
-    _conversationListAgentId = location.agentId;
-    _conversationListGroupId = location.groupId;
-  }
-
-  void _syncConversationListWithSelection(
+  /// Tracks the durable selection so user navigation can dismiss the empty
+  /// state and leave the member-session view. Selecting another in-group
+  /// session keeps the canonical group's `group:` identity, so the member
+  /// view survives member-session picks but not group/agent navigation.
+  void _syncConversationSelection(
     AgentsProjection agents,
     ConversationProjection root,
     NativeConversationCatalogProjection native,
@@ -181,66 +175,94 @@ class _AgentConversationWorkspaceState
         : '';
     if (_observedConversationSelection == selection) return;
     _observedConversationSelection = selection;
-    if (groupId.isNotEmpty) {
-      if (canonical.conversation != null) {
-        _showWelcome = false;
-        _applyConversationListLocation((agentId: '', groupId: groupId));
-      }
-    } else if (agentId.isNotEmpty && sessionId.isNotEmpty) {
-      _showWelcome = false;
-      _applyConversationListLocation((agentId: agentId, groupId: ''));
-    } else if (agentId.isEmpty) {
-      _applyConversationListLocation((agentId: '', groupId: ''));
-    }
+    _showAgentDetailInsideGroupList = false;
   }
 
-  void _showAgentConversationList(String agentId) {
-    final next = (agentId: agentId, groupId: '');
-    if (_conversationListLocation == next) return;
-    setState(() {
-      _showWelcome = false;
-      _showAgentDetailInsideGroupList = false;
-      _conversationListHistory.add(_conversationListLocation);
-      _applyConversationListLocation(next);
-    });
-  }
-
-  void _showGroupConversationList(String conversationId) {
-    final next = (agentId: '', groupId: conversationId);
-    if (_conversationListLocation == next) return;
-    setState(() {
-      _showWelcome = false;
-      _showAgentDetailInsideGroupList = false;
-      _conversationListHistory.add(_conversationListLocation);
-      _applyConversationListLocation(next);
-    });
-  }
-
-  void _returnToPreviousConversationList() {
-    if (_showAgentDetailInsideGroupList &&
-        _conversationListGroupId.isNotEmpty) {
-      final groupId = _conversationListGroupId;
-      setState(() => _showAgentDetailInsideGroupList = false);
-      widget.conversation.intents.send(SelectCanonicalConversation(groupId));
+  /// Layout-directed default: shells that always show a conversation (the
+  /// Desktop split workspace) ask the workspace to open the pinned Local
+  /// group once whenever it settles with nothing selected. A restored or
+  /// user-driven selection always wins; the request fires at most once per
+  /// mount so an explicit deselect is never overridden.
+  void _selectLocalGroupWhenIdle(
+    ConversationProjection root,
+    CanonicalConversationProjection canonical,
+    AgentsProjection agents,
+  ) {
+    if (_localGroupAutoSelected) return;
+    final hasSelection =
+        root.authority == ConversationAuthority.canonicalConversation
+        ? canonical.conversationId.trim().isNotEmpty
+        : agents.selectedAgentId.trim().isNotEmpty;
+    if (hasSelection) {
+      _localGroupAutoSelected = true;
       return;
     }
-    final previous = _conversationListHistory.isEmpty
-        ? (agentId: '', groupId: '')
-        : _conversationListHistory.removeLast();
-    setState(() {
-      _showAgentDetailInsideGroupList = false;
-      _applyConversationListLocation(previous);
-    });
-    if (previous.groupId.isNotEmpty) {
-      widget.conversation.intents.send(
-        SelectCanonicalConversation(previous.groupId),
-      );
-    } else if (previous.agentId.isNotEmpty) {
-      widget.conversation.intents.send(
-        const ClearCanonicalConversationSelection(),
-      );
-      widget.agents.intents.send(SelectAgent(previous.agentId));
+    String? localGroupId;
+    for (final group in canonical.groupConversations) {
+      if (group.id == ClientConversation.defaultLocalAgentGroupId) {
+        localGroupId = group.id;
+        break;
+      }
     }
+    final selectedId = localGroupId;
+    if (selectedId == null) return;
+    _localGroupAutoSelected = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.conversation.intents.send(SelectCanonicalConversation(selectedId));
+    });
+  }
+
+  /// The member's in-group history menu, anchored at the tapped roster or
+  /// members-panel row. Choosing a session selects it through the canonical
+  /// group's session path and opens the member-session view, which the
+  /// header's "Back to group" exits.
+  void _openMemberConversationHistory(
+    TargetCandidate target,
+    Offset globalPosition,
+  ) {
+    final native = widget.conversation.nativeCatalog.current;
+    final groupId = widget.conversation.canonicalEvents.current.conversationId
+        .trim();
+    if (groupId.isEmpty) return;
+    final sessionsByAgent = native.groupSessionsByAgent;
+    final sessions =
+        sessionsByAgent[target.target] ??
+        sessionsByAgent[target.id] ??
+        const <AgentConversationSession>[];
+    final memberId =
+        sessionsByAgent.containsKey(target.id) &&
+            !sessionsByAgent.containsKey(target.target)
+        ? target.id
+        : target.target;
+    final selectedAgentId = widget.agents.projection.current.selectedAgentId
+        .trim();
+    final showsMember =
+        selectedAgentId == memberId || selectedAgentId == target.id;
+    unawaited(
+      showMessagingConversationHistoryMenu(
+        context: context,
+        globalPosition: globalPosition,
+        sessions: sessions,
+        selectedSessionId: showsMember
+            ? (_selectedSession(native)?.id ?? '')
+            : '',
+        runningFor: (candidate) =>
+            native.runningSessionIds.contains(candidate.id),
+        onSelect: (sessionId) {
+          widget.agents.intents.send(
+            SelectGroupAgentConversationSession(
+              groupConversationId: groupId,
+              agentId: memberId,
+              sessionId: sessionId,
+            ),
+          );
+          if (!_showAgentDetailInsideGroupList) {
+            setState(() => _showAgentDetailInsideGroupList = true);
+          }
+        },
+      ),
+    );
   }
 
   void _scheduleAgentBrowseCatalogWarm(AgentsProjection agents) {
@@ -261,21 +283,6 @@ class _AgentConversationWorkspaceState
         );
       }
     });
-  }
-
-  void _openAgentConversationHome(String agentId) {
-    _showAgentConversationList(agentId);
-    widget.agents.intents.send(StartAgentConversation(agentId));
-  }
-
-  void _showWelcomePage() {
-    setState(() {
-      _showWelcome = true;
-      _showAgentDetailInsideGroupList = false;
-      _conversationListHistory.clear();
-      _applyConversationListLocation((agentId: '', groupId: ''));
-    });
-    widget.agents.intents.send(const ShowAgentsWelcome());
   }
 
   void _writeLayoutState(
@@ -366,112 +373,93 @@ class _AgentConversationWorkspaceState
     widget.agents.intents.send(SelectAgentWorkingDirectory(selected));
   }
 
-  void _showCreateGroup(AgentsProjection agents) {
-    unawaited(
-      showCreateCanonicalGroupConversationDialog(
-        context: context,
-        intents: widget.conversation.intents,
-        effects: widget.conversation.effects,
-        targets: agents.targetDetails,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return ProjectionBuilder<AgentsProjection, AgentsProjection>(
       source: widget.agents.projection,
       select: (projection) => projection,
-      builder: (context, agents) => ProjectionBuilder<ConversationProjection, ConversationProjection>(
-        source: widget.conversation.projection,
-        select: (projection) => projection,
-        builder: (context, root) =>
-            ProjectionBuilder<
-              NativeConversationCatalogProjection,
-              NativeConversationCatalogProjection
-            >(
-              source: widget.conversation.nativeCatalog,
-              select: (projection) => projection,
-              builder: (context, native) =>
-                  ProjectionBuilder<
-                    CanonicalConversationProjection,
-                    CanonicalConversationProjection
-                  >(
-                    source: widget.conversation.canonicalEvents,
-                    select: (projection) => projection,
-                    builder: (context, canonical) =>
-                        ProjectionBuilder<
-                          PersistentTurnProjection,
-                          PersistentTurnProjection
-                        >(
-                          source: widget.conversation.persistentTurns,
-                          select: (projection) => projection,
-                          builder: (context, turns) =>
-                              ProjectionBuilder<
-                                ComposerProjection,
-                                ComposerProjection
-                              >(
-                                source: widget.conversation.composer,
-                                select: (projection) => projection,
-                                builder: (context, composer) =>
-                                    ProjectionBuilder<
-                                      ConversationAttachmentsProjection,
-                                      ConversationAttachmentsProjection
-                                    >(
-                                      source: widget.conversation.attachments,
-                                      select: (projection) => projection,
-                                      builder: (context, attachments) =>
-                                          ProjectionBuilder<
-                                            ConversationTabActivityProjection,
-                                            ConversationTabActivityProjection
-                                          >(
-                                            source:
-                                                widget.conversation.tabActivity,
-                                            select: (projection) => projection,
-                                            builder: (context, tabActivity) =>
-                                                ProjectionBuilder<
-                                                  ConversationArchiveProjection,
-                                                  ConversationArchiveProjection
-                                                >(
-                                                  source: widget
-                                                      .conversation
-                                                      .archive,
-                                                  select: (projection) =>
-                                                      projection,
-                                                  builder: (context, archive) =>
-                                                      ProjectionBuilder<
-                                                        MobileRelayProjection,
-                                                        MobileRelayProjection
-                                                      >(
-                                                        source: widget
-                                                            .relay
-                                                            .projection,
-                                                        select: (projection) =>
-                                                            projection,
-                                                        builder:
-                                                            (context, relay) =>
-                                                                _buildWorkspace(
-                                                                  context,
-                                                                  agents,
-                                                                  root,
-                                                                  native,
-                                                                  canonical,
-                                                                  turns,
-                                                                  composer,
-                                                                  attachments,
-                                                                  tabActivity,
-                                                                  archive,
-                                                                  relay,
-                                                                ),
-                                                      ),
-                                                ),
-                                          ),
-                                    ),
-                              ),
-                        ),
-                  ),
-            ),
-      ),
+      builder: (context, agents) =>
+          ProjectionBuilder<ConversationProjection, ConversationProjection>(
+            source: widget.conversation.projection,
+            select: (projection) => projection,
+            builder: (context, root) =>
+                ProjectionBuilder<
+                  NativeConversationCatalogProjection,
+                  NativeConversationCatalogProjection
+                >(
+                  source: widget.conversation.nativeCatalog,
+                  select: (projection) => projection,
+                  builder: (context, native) =>
+                      ProjectionBuilder<
+                        CanonicalConversationProjection,
+                        CanonicalConversationProjection
+                      >(
+                        source: widget.conversation.canonicalEvents,
+                        select: (projection) => projection,
+                        builder: (context, canonical) =>
+                            ProjectionBuilder<
+                              PersistentTurnProjection,
+                              PersistentTurnProjection
+                            >(
+                              source: widget.conversation.persistentTurns,
+                              select: (projection) => projection,
+                              builder: (context, turns) =>
+                                  ProjectionBuilder<
+                                    ComposerProjection,
+                                    ComposerProjection
+                                  >(
+                                    source: widget.conversation.composer,
+                                    select: (projection) => projection,
+                                    builder: (context, composer) =>
+                                        ProjectionBuilder<
+                                          ConversationAttachmentsProjection,
+                                          ConversationAttachmentsProjection
+                                        >(
+                                          source:
+                                              widget.conversation.attachments,
+                                          select: (projection) => projection,
+                                          builder: (context, attachments) =>
+                                              ProjectionBuilder<
+                                                ConversationTabActivityProjection,
+                                                ConversationTabActivityProjection
+                                              >(
+                                                source: widget
+                                                    .conversation
+                                                    .tabActivity,
+                                                select: (projection) =>
+                                                    projection,
+                                                builder: (context, tabActivity) =>
+                                                    ProjectionBuilder<
+                                                      ConversationArchiveProjection,
+                                                      ConversationArchiveProjection
+                                                    >(
+                                                      source: widget
+                                                          .conversation
+                                                          .archive,
+                                                      select: (projection) =>
+                                                          projection,
+                                                      builder:
+                                                          (context, archive) =>
+                                                              _buildWorkspace(
+                                                                context,
+                                                                agents,
+                                                                root,
+                                                                native,
+                                                                canonical,
+                                                                turns,
+                                                                composer,
+                                                                attachments,
+                                                                tabActivity,
+                                                                archive,
+                                                              ),
+                                                    ),
+                                              ),
+                                        ),
+                                  ),
+                            ),
+                      ),
+                ),
+          ),
     );
   }
 
@@ -486,23 +474,22 @@ class _AgentConversationWorkspaceState
     ConversationAttachmentsProjection attachments,
     ConversationTabActivityProjection tabActivity,
     ConversationArchiveProjection archive,
-    MobileRelayProjection relay,
   ) {
-    _syncConversationListWithSelection(agents, root, native, canonical);
+    _syncConversationSelection(agents, root, native, canonical);
     _scheduleAgentBrowseCatalogWarm(agents);
+    final directive = LayoutAgentsDirectiveScope.maybeOf(context);
+    if (directive != null && directive.selectLocalGroupWhenIdle) {
+      _selectLocalGroupWhenIdle(root, canonical, agents);
+    }
+    final sidebarCollapsed = directive?.sidebarCollapsed ?? _sidebarCollapsed;
     final presentation = layoutAgentsPresentationOf(context);
     final selectedTarget = _selectedTarget(agents);
     final selectedSession = _selectedSession(native);
     final mobile = agents.mobileRuntime || isMobileClientPlatform(context);
-    final externalComposerHosted =
-        !mobile &&
-        LayoutExternalComposerScope.isHosted(context) &&
-        LayoutAgentsStrategyScope.maybeOf(context).messageStyle ==
-            AgentsMessageStyle.participantFlow;
     final canonicalDetail =
         root.authority == ConversationAuthority.canonicalConversation &&
         !_showAgentDetailInsideGroupList;
-    final detail = canonicalDetail
+    final pane = canonicalDetail
         ? CanonicalGroupConversationPane(
             conversation: widget.conversation,
             agents: widget.agents,
@@ -511,29 +498,10 @@ class _AgentConversationWorkspaceState
             composer: composer,
             attachments: attachments,
             framed: mobile,
-            onOpenAgentConversations: (agentId) {
-              _showAgentConversationList(agentId);
-              widget.conversation.intents.send(
-                const ClearCanonicalConversationSelection(),
-              );
-              widget.agents.intents.send(SelectAgent(agentId));
-            },
-          )
-        : _showWelcome
-        ? AgentConversationWelcome(
-            onNewConversation: agents.targetDetails.isEmpty
+            onOpenMemberHistory: _openMemberConversationHistory,
+            onOpenSettings: widget.onSelectDestination == null
                 ? null
-                : () {
-                    setState(() => _showWelcome = false);
-                    widget.agents.intents.send(
-                      StartAgentConversation(agents.targetDetails.first.id),
-                    );
-                  },
-            onNewGroupConversation: () => _showCreateGroup(agents),
-            onOpenMobilePairing: () =>
-                widget.onSelectDestination?.call(ClientSection.mobileRelay),
-            onOpenSettings: () =>
-                widget.onSelectDestination?.call(ClientSection.settings),
+                : () => widget.onSelectDestination!(ClientSection.settings),
           )
         : selectedTarget == null
         ? _EmptyConversation(
@@ -550,102 +518,240 @@ class _AgentConversationWorkspaceState
             composer,
             attachments,
             mobile: mobile,
+            onBackToGroup: _showAgentDetailInsideGroupList
+                ? () {
+                    final groupId = canonical.conversationId.trim();
+                    setState(() => _showAgentDetailInsideGroupList = false);
+                    if (groupId.isNotEmpty) {
+                      widget.conversation.intents.send(
+                        SelectCanonicalConversation(groupId),
+                      );
+                    }
+                  }
+                : null,
           );
-    final hostsInternalComposer =
-        canonicalDetail || (!_showWelcome && selectedTarget != null);
-    final relocatedDetail = externalComposerHosted && hostsInternalComposer
-        ? ExternalConversationComposerClip(child: detail)
-        : detail;
-
-    final pendingApprovals = relay.approvals.where(
-      (approval) => approval.state == RelayApprovalState.pending,
-    );
-    final decoratedDetail = pendingApprovals.isEmpty
-        ? relocatedDetail
+    final detail = tabActivity.pendingApprovals.isEmpty
+        ? pane
         : Column(
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-                child: SecureMeshApprovalCard(
-                  projection: relay,
-                  intents: widget.relay.intents,
+                child: NativeApprovalCard(
+                  approvals: tabActivity.pendingApprovals,
+                  errorCode: tabActivity.approvalErrorCode,
+                  intents: widget.conversation.intents,
                 ),
               ),
-              Expanded(child: relocatedDetail),
+              Expanded(child: pane),
             ],
           );
-    if (mobile) return decoratedDetail;
+    if (mobile) {
+      return LicoWindowGround(
+        key: const Key('agents-workspace-shell'),
+        color: presentation.canvasColor(context.layoutPalette),
+        child: detail,
+      );
+    }
+
+    if (directive != null &&
+        directive.sidebarMode != LayoutAgentsSidebarMode.list) {
+      return _avatarWorkspace(
+        context,
+        directive,
+        agents,
+        native,
+        canonical,
+        tabActivity,
+        archive,
+        detail,
+      );
+    }
 
     final sidebar = _sidebar(agents, native, canonical, tabActivity, archive);
-    return ColoredBox(
+    final layout = LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = math
+            .max(
+              agentsSidebarMinWidth,
+              constraints.maxWidth -
+                  agentsSidebarDividerWidth -
+                  agentsFloatingMinChatWidth -
+                  presentation.sidebarOuterHorizontalExtent -
+                  presentation.detailOuterHorizontalExtent,
+            )
+            .clamp(agentsSidebarMinWidth, agentsSidebarMaxWidth)
+            .toDouble();
+        final width = _sidebarWidth
+            .clamp(agentsSidebarMinWidth, maxWidth)
+            .toDouble();
+        final framedDetail = presentation.frameDetail(
+          context,
+          key: const Key('agents-workspace-detail-pane'),
+          sidebarCollapsed: sidebarCollapsed,
+          child: detail,
+        );
+        final hosted = MessagingSidebarGeometryScope.maybeOf(context) != null;
+        return presentation.frameWorkspace(
+          context,
+          key: const Key('agents-workspace-layout'),
+          child: hosted
+              ? MessagingSidebarColumn(
+                  sidebar: sidebar,
+                  detail: framedDetail,
+                  sidebarCollapsed: sidebarCollapsed,
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (!sidebarCollapsed)
+                      presentation.frameSidebar(
+                        context,
+                        key: const Key('agents-workspace-sidebar-card'),
+                        child: SizedBox(width: width, child: sidebar),
+                      ),
+                    Expanded(
+                      child: PaneEdgeDragHandle(
+                        dragHandleKey: const Key(
+                          'agents-workspace-split-divider',
+                        ),
+                        width: agentsSidebarDividerWidth,
+                        enabled: !sidebarCollapsed,
+                        onDragDelta: (delta) {
+                          setState(() {
+                            _sidebarWidth = (width + delta)
+                                .clamp(agentsSidebarMinWidth, maxWidth)
+                                .toDouble();
+                          });
+                          _writeLayoutState(
+                            LayoutStateChannels.agentsSidebar,
+                            LayoutPaneExtentState(_sidebarWidth),
+                          );
+                        },
+                        child: framedDetail,
+                      ),
+                    ),
+                  ],
+                ),
+        );
+      },
+    );
+
+    // Flat shells leave the window backdrop visible under the list column:
+    // the detail frames its own ground so the ambient layer stays inside
+    // the detail bounds.
+    return presentation.canvasGroundsWorkspace
+        ? LicoWindowGround(
+            key: const Key('agents-workspace-shell'),
+            color: presentation.canvasColor(context.layoutPalette),
+            child: layout,
+          )
+        : layout;
+  }
+
+  /// The hosted-sidebar arrangement: a pinned avatar column beside the
+  /// detail, the header switcher's full list over the detail, or the avatar
+  /// column alone while the shell shows its rail.
+  Widget _avatarWorkspace(
+    BuildContext context,
+    LayoutAgentsDirective directive,
+    AgentsProjection agents,
+    NativeConversationCatalogProjection native,
+    CanonicalConversationProjection canonical,
+    ConversationTabActivityProjection tabActivity,
+    ConversationArchiveProjection archive,
+    Widget detail,
+  ) {
+    final rail = directive.sidebarMode == LayoutAgentsSidebarMode.avatarRail;
+    final expand = directive.onExpandSidebar;
+    final toggleSwitcher = directive.onToggleSwitcher;
+    final switcherOpen =
+        !rail && directive.switcherOpen && toggleSwitcher != null;
+    final column = Container(
+      key: const Key('agents-workspace-avatar-column'),
+      width: MessagingDesktopMetrics.avatarColumnExtent,
+      decoration: BoxDecoration(
+        border: Border(
+          right: BorderSide(
+            color: context.licoColors.isDark
+                ? const Color(0x0FFFFFFF)
+                : Colors.black.withValues(alpha: 0.07),
+            width: 0.5,
+          ),
+        ),
+      ),
+      child: _sidebar(
+        agents,
+        native,
+        canonical,
+        tabActivity,
+        archive,
+        avatarColumn: true,
+        avatarColumnLeading: rail && expand != null
+            ? _AvatarRailExpandControl(onTap: expand)
+            : null,
+        afterSelect: rail
+            ? expand
+            : switcherOpen
+            ? toggleSwitcher
+            : null,
+      ),
+    );
+    if (rail) {
+      return KeyedSubtree(
+        key: const Key('agents-workspace-avatar-rail'),
+        child: column,
+      );
+    }
+    final colors = context.licoColors;
+    final presentation = layoutAgentsPresentationOf(context);
+    return LicoWindowGround(
       key: const Key('agents-workspace-shell'),
       color: presentation.canvasColor(context.layoutPalette),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final maxWidth = math
-              .max(
-                agentsSidebarMinWidth,
-                constraints.maxWidth -
-                    agentsSidebarDividerWidth -
-                    agentsFloatingMinChatWidth -
-                    presentation.sidebarOuterHorizontalExtent -
-                    presentation.detailOuterHorizontalExtent,
-              )
-              .clamp(agentsSidebarMinWidth, agentsSidebarMaxWidth)
-              .toDouble();
-          final width = _sidebarWidth
-              .clamp(agentsSidebarMinWidth, maxWidth)
-              .toDouble();
-          final framedDetail = presentation.frameDetail(
-            context,
-            key: const Key('agents-workspace-detail-pane'),
-            sidebarCollapsed: _sidebarCollapsed,
-            child: decoratedDetail,
-          );
-          final hosted = MessagingSidebarGeometryScope.maybeOf(context) != null;
-          return presentation.frameWorkspace(
-            context,
-            key: const Key('agents-workspace-layout'),
-            child: hosted
-                ? MessagingSidebarColumn(
-                    sidebar: sidebar,
-                    detail: framedDetail,
-                    sidebarCollapsed: _sidebarCollapsed,
-                  )
-                : Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (!_sidebarCollapsed)
-                        presentation.frameSidebar(
-                          context,
-                          key: const Key('agents-workspace-sidebar-card'),
-                          child: SizedBox(width: width, child: sidebar),
-                        ),
-                      Expanded(
-                        child: PaneEdgeDragHandle(
-                          dragHandleKey: const Key(
-                            'agents-workspace-split-divider',
-                          ),
-                          width: agentsSidebarDividerWidth,
-                          enabled: !_sidebarCollapsed,
-                          onDragDelta: (delta) {
-                            setState(() {
-                              _sidebarWidth = (width + delta)
-                                  .clamp(agentsSidebarMinWidth, maxWidth)
-                                  .toDouble();
-                            });
-                            _writeLayoutState(
-                              LayoutStateChannels.agentsSidebar,
-                              LayoutPaneExtentState(_sidebarWidth),
-                            );
-                          },
-                          child: framedDetail,
-                        ),
-                      ),
-                    ],
+      child: Row(
+        key: const Key('agents-workspace-avatar-layout'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          column,
+          ColoredBox(
+            color: colors.line.withAlpha(colors.isDark ? 70 : 110),
+            child: const SizedBox(width: 0.5),
+          ),
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                detail,
+                if (switcherOpen) ...[
+                  Positioned.fill(
+                    child: GestureDetector(
+                      key: const Key('agents-workspace-switcher-barrier'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: toggleSwitcher,
+                    ),
                   ),
-          );
-        },
+                  Positioned(
+                    left: 10,
+                    right: 10,
+                    top:
+                        MessagingDesktopMetrics.conversationHeaderOverlayExtent,
+                    bottom: 10,
+                    child: _ConversationSwitcherPanel(
+                      onDismiss: toggleSwitcher,
+                      child: _sidebar(
+                        agents,
+                        native,
+                        canonical,
+                        tabActivity,
+                        archive,
+                        afterSelect: toggleSwitcher,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -655,82 +761,36 @@ class _AgentConversationWorkspaceState
     NativeConversationCatalogProjection native,
     CanonicalConversationProjection canonical,
     ConversationTabActivityProjection tabActivity,
-    ConversationArchiveProjection archive,
-  ) {
+    ConversationArchiveProjection archive, {
+    bool avatarColumn = false,
+    Widget? avatarColumnLeading,
+    VoidCallback? afterSelect,
+  }) {
     final selectedId = _selectedSession(native)?.id ?? '';
-    var showConversationList = false;
-    var conversationListTargets = const <TargetCandidate>[];
-    var conversationListPriorityAgentId = '';
-    var showConversationAgentIcons = false;
-    if (_conversationListGroupId.isNotEmpty) {
-      showConversationList = true;
-      final selectedGroup = canonical.conversation;
-      if (selectedGroup != null &&
-          selectedGroup.id == _conversationListGroupId) {
-        conversationListTargets = agents.targetDetails
-            .where((target) => target.isConversationAgent)
-            .toList(growable: false);
-        conversationListPriorityAgentId =
-            selectedGroup.assistantMembership?.principal.agentId.trim() ?? '';
-      }
-      showConversationAgentIcons = true;
-    } else if (_conversationListAgentId.isNotEmpty) {
-      TargetCandidate? representative;
-      for (final candidate in agents.targetDetails) {
-        if (candidate.id == _conversationListAgentId ||
-            candidate.target == _conversationListAgentId) {
-          representative = candidate;
-          break;
-        }
-      }
-      if (representative != null) {
-        showConversationList = true;
-        final productId = agentConversationProductId(representative.target);
-        conversationListTargets = agents.targetDetails
-            .where(
-              (candidate) =>
-                  candidate.isConversationAgent &&
-                  agentConversationProductId(candidate.target) == productId,
-            )
-            .toList(growable: false);
-      }
-    }
-    final sessionsByAgent = _conversationListGroupId.isNotEmpty
-        ? (native.groupConversationId == _conversationListGroupId
-              ? native.groupSessionsByAgent
-              : const <String, List<AgentConversationSession>>{})
-        : <String, List<AgentConversationSession>>{
-            for (final catalog in native.agentCatalogs)
-              catalog.agentId: catalog.sessions,
-            if (native.agentCatalogs.isEmpty &&
-                agents.selectedAgentId.isNotEmpty)
-              agents.selectedAgentId: native.nativeSessions,
-          };
+    final sessionsByAgent = <String, List<AgentConversationSession>>{
+      for (final catalog in native.agentCatalogs)
+        catalog.agentId: catalog.sessions,
+      if (native.agentCatalogs.isEmpty && agents.selectedAgentId.isNotEmpty)
+        agents.selectedAgentId: native.nativeSessions,
+    };
     AgentConversationTabActivity activityFor(String agentId) =>
         _activityFor(tabActivity, agentId);
     bool runningFor(AgentConversationSession session) =>
         native.runningSessionIds.contains(session.id);
     void onSelectSession(String agentId, String sessionId) {
-      setState(() => _showWelcome = false);
-      if (_conversationListGroupId.isNotEmpty) {
-        final groupId = _conversationListGroupId;
-        setState(() => _showAgentDetailInsideGroupList = true);
-        widget.agents.intents.send(
-          SelectGroupAgentConversationSession(
-            groupConversationId: groupId,
-            agentId: agentId,
-            sessionId: sessionId,
-          ),
-        );
-        return;
-      }
+      afterSelect?.call();
       widget.agents.intents.send(
         SelectAgentConversationSession(agentId: agentId, sessionId: sessionId),
       );
     }
 
     void selectGroup(String conversationId) {
-      _showGroupConversationList(conversationId);
+      afterSelect?.call();
+      // A group row returns to the group chat directly, leaving any
+      // member-session detail view.
+      if (_showAgentDetailInsideGroupList) {
+        setState(() => _showAgentDetailInsideGroupList = false);
+      }
       widget.conversation.intents.send(
         SelectCanonicalConversation(conversationId),
       );
@@ -742,6 +802,18 @@ class _AgentConversationWorkspaceState
         intents: widget.conversation.intents,
         effects: widget.conversation.effects,
         targets: agents.targetDetails,
+      ),
+    );
+
+    void createProfile() => unawaited(
+      showConversationProfileCreateDialog(
+        context: context,
+        intents: widget.conversation.intents,
+        effects: widget.conversation.effects,
+        agentsIntents: widget.agents.intents,
+        targets: agents.targetDetails,
+        isRefreshingAgentCatalog: (agentId) =>
+            agents.acativa.agent(agentId)?.refreshingModelCatalog ?? false,
       ),
     );
 
@@ -761,12 +833,17 @@ class _AgentConversationWorkspaceState
         native.phase == PresentationPhase.loading ||
         canonical.phase == PresentationPhase.loading;
     final strategy = LayoutAgentsStrategyScope.maybeOf(context);
-    if (strategy.sidebarStyle == AgentsSidebarStyle.flatRecencyList) {
+    // The pinned avatar column is the same rail in every sidebar style — the
+    // tree-style list must never be squeezed into the 64px column.
+    if (avatarColumn ||
+        strategy.sidebarStyle == AgentsSidebarStyle.flatRecencyList) {
       return MessagingContactList(
         targets: agents.targetDetails,
         sessionsByAgent: sessionsByAgent,
         selectedAgentId: agents.selectedAgentId,
+        selectedSessionId: selectedId,
         groupConversations: canonical.groupConversations,
+        directConversations: canonical.directConversations,
         selectedGroupConversationId: canonical.conversationId,
         onSelectGroupConversation: selectGroup,
         onSetGroupConversationPinned: (conversationId, pinned) => widget
@@ -774,35 +851,30 @@ class _AgentConversationWorkspaceState
             .intents
             .send(SetCanonicalConversationPinned(conversationId, pinned)),
         onArchiveGroupConversation: (conversationId) {
-          if (_conversationListGroupId == conversationId) {
-            setState(() {
-              _showAgentDetailInsideGroupList = false;
-              _conversationListHistory.clear();
-              _applyConversationListLocation((agentId: '', groupId: ''));
-            });
+          if (canonical.conversationId == conversationId &&
+              _showAgentDetailInsideGroupList) {
+            setState(() => _showAgentDetailInsideGroupList = false);
           }
           widget.conversation.intents.send(ArchiveConversation(conversationId));
         },
         onNewGroupConversation: createGroup,
+        onNewAgentProfile: createProfile,
         activityFor: activityFor,
         runningFor: runningFor,
-        onSelectAgent: _openAgentConversationHome,
-        onNewConversation: () =>
-            widget.conversation.intents.send(const StartConversationSession()),
+        onSelectAgent: (agentId) {
+          afterSelect?.call();
+          widget.agents.intents.send(OpenAgentConversation(agentId));
+        },
+        onSelectAgentSession: onSelectSession,
+        onNewConversation: () {
+          afterSelect?.call();
+          widget.conversation.intents.send(const StartConversationSession());
+        },
         onSearch: widget.onSearch,
         onRefresh: refreshSidebarCatalog,
-        onOpenWelcome: _showWelcomePage,
-        showConversationList: showConversationList,
-        conversationListTargets: conversationListTargets,
-        selectedSessionId: selectedId,
-        showConversationAgentIcons: showConversationAgentIcons,
-        onSelectSession: onSelectSession,
-        onBack: _returnToPreviousConversationList,
-        onPrefetchSessions: _conversationListGroupId.isNotEmpty
-            ? null
-            : (agentId) => widget.conversation.intents.send(
-                RefreshConversationCatalog(agentId: agentId),
-              ),
+        onPrefetchSessions: (agentId) => widget.conversation.intents.send(
+          RefreshConversationCatalog(agentId: agentId),
+        ),
         isPinned: (targetId) {
           for (final target in agents.targets) {
             if (target.id == targetId) return target.pinned;
@@ -811,11 +883,16 @@ class _AgentConversationWorkspaceState
         },
         onTogglePinned: (agentId) =>
             widget.agents.intents.send(ToggleAgentPinned(agentId)),
-        priorityAgentId: conversationListPriorityAgentId,
         scanning: agents.scanning,
         loading: sidebarRefreshing,
+        loadingAgentIds: native.loadingAgentIds.toSet(),
+        loadingGroupConversationId: canonical.phase == PresentationPhase.loading
+            ? canonical.conversationId
+            : '',
         activeDestination: ClientSection.agents,
         onSelectDestination: widget.onSelectDestination,
+        avatarColumn: avatarColumn,
+        avatarColumnLeading: avatarColumnLeading,
       );
     }
     final nativeSidebar = AgentsWorkspaceSidebar(
@@ -827,11 +904,9 @@ class _AgentConversationWorkspaceState
       onSelectSession: onSelectSession,
       onNewConversation: () =>
           widget.conversation.intents.send(const StartConversationSession()),
-      onPrefetchSessions: _conversationListGroupId.isNotEmpty
-          ? null
-          : (agentId) => widget.conversation.intents.send(
-              RefreshConversationCatalog(agentId: agentId),
-            ),
+      onPrefetchSessions: (agentId) => widget.conversation.intents.send(
+        RefreshConversationCatalog(agentId: agentId),
+      ),
       onArchive: () => unawaited(
         showConversationArchiveDialog(
           context,
@@ -917,6 +992,7 @@ class _AgentConversationWorkspaceState
     ComposerProjection composer,
     ConversationAttachmentsProjection attachments, {
     required bool mobile,
+    VoidCallback? onBackToGroup,
   }) {
     final turn = turns.memberships.isEmpty ? null : turns.memberships.first;
     final active =
@@ -944,6 +1020,19 @@ class _AgentConversationWorkspaceState
       ),
       _ => null,
     };
+    // Runtime-binding gate codes are provisional while a scan or the
+    // selection-time executable binding is still in flight: the gate area
+    // shows a loading indicator instead of a verdict that can resolve itself
+    // moments later. A settled scan that still reports the code keeps the
+    // honest unavailable row.
+    final gateResolving =
+        const {
+          'native_agent_executable_not_detected',
+          'native_agent_runtime_profile_unavailable',
+          'runtime_message_send_unavailable',
+        }.contains(gateReasonCode) &&
+        (native.phase == PresentationPhase.loading ||
+            widget.agents.projection.current.scanning);
     final state = AgentConversationPaneState(
       target: target,
       session: session,
@@ -960,6 +1049,7 @@ class _AgentConversationWorkspaceState
       preparingNewConversation: native.preparingNewConversation,
       composerEnabled: composerEnabled,
       sendGateReasonCode: gateReasonCode,
+      sendGateResolving: gateResolving,
       composerDraft: composer.draft,
       hasAttachments: attachments.attachments.isNotEmpty,
       modelOptions: composer.modelOptions,
@@ -1105,15 +1195,20 @@ class _AgentConversationWorkspaceState
             detailsState: state,
             detailsActions: actions,
             opencodeServeState: serveState,
-            switcherSessions: native.nativeSessions,
-            switcherSelectedSessionId: session?.id ?? '',
-            onSwitchConversation: (sessionId) => widget.conversation.intents
+            historySessions: native.nativeSessions,
+            historySelectedSessionId: session?.id ?? '',
+            onSelectHistorySession: (sessionId) => widget.conversation.intents
                 .send(SelectConversationSession(sessionId)),
-            onSwitchNewConversation: () => widget.conversation.intents.send(
-              const StartConversationSession(),
-            ),
-            switcherRunningFor: (candidate) =>
+            // The member-session view inside a group must not offer a
+            // detached new conversation; the roster history omits it too.
+            onNewHistoryConversation: onBackToGroup == null
+                ? () => widget.conversation.intents.send(
+                    const StartConversationSession(),
+                  )
+                : null,
+            historyRunningFor: (candidate) =>
                 native.runningSessionIds.contains(candidate.id),
+            onBackToGroup: onBackToGroup,
           )
         : ConversationPaneHeader(state: headerState, actions: headerActions);
     return NativeSubagentHistoryScope(
@@ -1188,6 +1283,94 @@ class _EmptyConversation extends StatelessWidget {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The rail's expand control above its avatars.
+final class _AvatarRailExpandControl extends StatelessWidget {
+  const _AvatarRailExpandControl({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    final label = strings.isChinese ? '展开侧栏' : 'Expand the sidebar';
+    return SizedBox(
+      height: MessagingDesktopMetrics.conversationHeaderOverlayExtent,
+      child: Center(
+        child: Tooltip(
+          message: label,
+          waitDuration: LicoMotion.tooltipWait,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              key: const Key('agents-workspace-rail-expand'),
+              onTap: onTap,
+              customBorder: const CircleBorder(),
+              child: SizedBox.square(
+                dimension: 36,
+                child: Icon(
+                  Icons.keyboard_double_arrow_left_rounded,
+                  size: 18,
+                  color: colors.textMuted,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The header switcher's full conversation list, floating over the detail.
+/// Escape closes it; the barrier behind it closes it on outside clicks.
+final class _ConversationSwitcherPanel extends StatelessWidget {
+  const _ConversationSwitcherPanel({
+    required this.onDismiss,
+    required this.child,
+  });
+
+  final VoidCallback onDismiss;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.escape): onDismiss,
+      },
+      child: Focus(
+        autofocus: true,
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: 1),
+          duration: context.motion(LicoMotion.short),
+          curve: LicoMotion.decelerate,
+          builder: (context, t, child) => Opacity(
+            opacity: t,
+            child: Transform.translate(
+              offset: Offset(0, -6 * (1 - t)),
+              child: child,
+            ),
+          ),
+          child: MessagingConversationOverlayGlass(
+            key: const Key('agents-workspace-switcher-panel'),
+            readabilityVeil: true,
+            borderRadius: BorderRadius.circular(
+              MessagingDesktopMetrics.conversationListCardCornerRadius,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(
+                MessagingDesktopMetrics.conversationListCardCornerRadius,
+              ),
+              child: child,
+            ),
+          ),
         ),
       ),
     );

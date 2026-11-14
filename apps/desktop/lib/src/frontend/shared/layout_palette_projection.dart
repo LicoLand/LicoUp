@@ -42,6 +42,8 @@ LayoutPalette layoutPaletteFromColors(LicoThemeColors colors) {
     hoverOverlay: colors.hoverOverlay,
     pressedOverlay: colors.pressedOverlay,
     selectedSurface: colors.selectedSurface,
+    selectionInk: colors.selectionInk,
+    textOnSelection: colors.textOnSelection,
     brandGlow: colors.brandGlow,
     accentGlow: colors.accentGlow,
   );

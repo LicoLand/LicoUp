@@ -29,7 +29,7 @@ void main() {
 
       expect(service.calls, [
         [
-          'llm-gateway',
+          'gateway',
           'service',
           'initialize',
           '--port',
@@ -59,7 +59,7 @@ void main() {
 
       expect(service.calls, [
         [
-          'llm-gateway',
+          'gateway',
           'service',
           'initialize',
           '--port',
@@ -87,7 +87,7 @@ void main() {
     expect(controller.state, LlmGatewayRuntimeState.running);
     expect(controller.notice, isNull);
     expect(runner.calls.single, [
-      'llm-gateway',
+      'gateway',
       'service',
       'initialize',
       '--port',
@@ -100,7 +100,7 @@ void main() {
     expect(controller.notice, isNull);
     expect(controller.autoRevealRevision, 1);
     expect(runner.calls.last, [
-      'llm-gateway',
+      'gateway',
       'service',
       'start',
       '--port',

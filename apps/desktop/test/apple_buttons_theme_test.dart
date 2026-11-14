@@ -40,11 +40,11 @@ void main() {
       // action in a view, so the default filled button must not claim it.
       expect(bg, isNot(colors.primary));
       expect(bg, isNot(colors.primaryStrong));
-      // It resolves to a neutral surface role rather than a white alpha wash,
-      // so a preset with an unusual background is not given a foreign haze.
-      expect(bg, colors.surfaceRaised);
+      // It resolves to the accent-glass fill — never the solid brand gold
+      // reserved for the primary action button.
+      expect(bg, colors.accent.withValues(alpha: 0.22));
 
-      // Pressed and hovered are state washes composited over that surface.
+      // Pressed and hovered are state washes composited over that fill.
       final pressed = filledStyle.backgroundColor!.resolve({
         WidgetState.pressed,
       });
@@ -55,8 +55,11 @@ void main() {
       });
       expect(disabled!.a, lessThan(1.0));
 
-      // The rim comes from the line role, not from white alpha.
-      expect(filledStyle.side!.resolve({})!.color, colors.line);
+      // The rim is the accent hairline, not a neutral line.
+      expect(
+        filledStyle.side!.resolve({})!.color,
+        colors.accent.withValues(alpha: 0.5),
+      );
 
       expect(find.text('Primary'), findsOneWidget);
       expect(find.text('Glass'), findsOneWidget);

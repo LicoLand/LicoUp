@@ -3,7 +3,6 @@ import { ReceiptValidationError } from "../errors.mjs";
 import { assertReceiptPrivacy } from "../privacy.mjs";
 import { requireValue, text, validatePolicyBindings } from "../util.mjs";
 import { validateConfig } from "../validate-config.mjs";
-import { validateAndroidEvidence } from "../validate-evidence/android.mjs";
 import { validateCommonEvidence } from "../validate-evidence/common.mjs";
 import { validateMacosEvidence } from "../validate-evidence/macos.mjs";
 import { emptyReceipt } from "./empty.mjs";
@@ -71,7 +70,9 @@ export function buildCanonicalReceiptReport({
       };
       const facts = spec.platform === "macos"
         ? validateMacosEvidence(input.payload, context)
-        : validateAndroidEvidence(input.payload, context);
+        : (() => {
+          throw new ReceiptValidationError("receipt_platform_evidence_unsupported");
+        })();
       Object.assign(receipt, common, facts);
       receipt.installReceiptReady =
         receipt.installReady === true && receipt.launchReady === true &&

@@ -9,7 +9,7 @@ import { runClientCompatibilityFrontier } from "../../../tools/regression/client
 test("every supported platform owns a dedicated parallel compatibility entry", async () => {
   assert.equal(validateClientRegressionEntries(), true);
   assert.deepEqual(PLATFORM_REGRESSION_ENTRIES.map((entry) => entry.id), [
-    "macos", "android", "windows", "linux", "ios",
+    "macos", "windows", "linux",
   ]);
   for (const entry of PLATFORM_REGRESSION_ENTRIES) {
     assert.equal(entry.stage, "compatibility");
@@ -18,10 +18,6 @@ test("every supported platform owns a dedicated parallel compatibility entry", a
     assert.equal(typeof probe.eligible, "boolean");
     assert.equal(probe.reason === null || /^[a-z0-9_-]+$/u.test(probe.reason), true);
   }
-  const android = PLATFORM_REGRESSION_ENTRIES.find((entry) => entry.id === "android");
-  assert.deepEqual(android.resources, [
-    "platform-runtime:android", "cargo-target", "flutter-cache", "gradle-cache",
-  ]);
 });
 
 test("eligible platform branches probe and execute concurrently", async () => {

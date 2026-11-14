@@ -32,6 +32,7 @@ const languagePairs = [
   ["PRODUCT.md", "PRODUCT.zh-CN.md"],
   ["CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md"],
   ["SECURITY.md", "SECURITY.zh-CN.md"],
+  ["docs/RUNBOOK.md", "docs/RUNBOOK.zh-CN.md"],
   ["docs/functionality/USER-GUIDE.md", "docs/functionality/USER-GUIDE.zh-CN.md"],
   ["docs/architecture/README.md", "docs/architecture/README.zh-CN.md"],
   [
@@ -187,9 +188,9 @@ for (const generatedPath of ["docs/COMPATIBILITY.md", "docs/COMPATIBILITY.zh-CN.
   const source = readFileSync(path.join(repoRoot, generatedPath), "utf8");
   for (const token of [
     "tools/client-support-matrix.json",
-    "crates/licoup-native/resources/agent-conversation-drivers.json",
-    "crates/licoup-native/resources/agent-native-capabilities.json",
-    "crates/licoup-native/resources/agent-conversation-readiness.json",
+    "tools/agent-conversation-drivers.json",
+    "tools/agent-native-capabilities.json",
+    "tools/agent-conversation-readiness.json",
     "client:support-matrix:sync",
     "client:support-matrix:check",
   ]) {

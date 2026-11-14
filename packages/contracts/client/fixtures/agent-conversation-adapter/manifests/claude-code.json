@@ -9,6 +9,11 @@
   "officialCapabilityAssessment": {
     "completedBeforeImplementation": true,
     "sourceAuthority": "official",
+    "versionSupport": {
+      "kind": "unknown",
+      "source": "unverified",
+      "reason": "no_verified_vendor_bound"
+    },
     "interfaceName": "official streaming input and stream-json output",
     "assessedVersion": "version reported by fixed Claude Code probe",
     "versionProbe": "fixed --version probe",

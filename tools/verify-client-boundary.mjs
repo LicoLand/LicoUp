@@ -7,8 +7,10 @@ import process from "node:process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { REQUIRED_FLUTTER_TOP_LEVEL_DIRS } from "../apps/desktop/scripts/client-architecture/checks/flutter/physical-layers-and-libraries.mjs";
-import { loadSecureMeshClientBoundaryConfig } from "./scripts/lib/secure-mesh-client-boundary-config.mjs";
+import { loadClientBoundaryConfig } from "./scripts/lib/client-boundary-config.mjs";
 import { readSourceCheckBundle } from "./scripts/lib/source-check-bundle.mjs";
+
+import { isReviewedPrivacyFixture } from "./scripts/lib/privacy-test-fixtures.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const execFileAsync = promisify(execFile);
@@ -18,7 +20,6 @@ const ignoredDirs = new Set([
   "build",
   "target",
   ".dart_tool",
-  ".gradle",
   ".pub-cache",
   ".pub",
   "Pods",
@@ -38,9 +39,6 @@ const textExtensions = new Set([
   ".yml",
   ".xml",
   ".plist",
-  ".gradle",
-  ".kts",
-  ".kt",
   ".swift",
   ".h",
   ".cc",
@@ -62,14 +60,10 @@ const forbiddenPathParts = [
   "apps/build",
   "apps/desktop/.dart_tool",
   "apps/desktop/build",
-  "apps/desktop/android/.gradle",
-  "apps/desktop/android/build",
-  "apps/desktop/ios/build",
   "apps/desktop/linux/flutter/ephemeral",
   "apps/desktop/macos/Flutter/ephemeral",
   "apps/desktop/macos/Pods",
   "apps/desktop/windows/flutter/ephemeral",
-  "crates/licoup-native/target",
   "docs/plan",
   "scripts/local",
   "skills",
@@ -110,21 +104,20 @@ const forbiddenPublicDocumentContent = [
     reasonCode: "PUBLIC_DOCUMENT_PRODUCT_LANGUAGE_FORBIDDEN"
   }
 ];
-const allowedContentPaths = new Set();
 const retiredStatePolicyChecks = [];
 const flutterSrcRoot = "apps/desktop/lib/src";
 const requiredFlutterTopLevelDirs = REQUIRED_FLUTTER_TOP_LEVEL_DIRS;
 const allowedFlutterTopLevelDirs = new Set(requiredFlutterTopLevelDirs);
 const requiredFrontendFeatureDirs = [
   "agents",
-  "mobile_relay",
+  "devices",
   "skill_hub",
   "settings",
   "targets"
 ];
 const requiredBackendFeatureDirs = [
   "agents",
-  "mobile_relay"
+  "devices"
 ];
 const flutterLayerImportRules = [
   {
@@ -274,12 +267,10 @@ async function scanPublicFiles() {
     checkedFiles.push(relativePath);
     const source = await readFile(absolutePath, "utf8");
     for (const { pattern, reasonCode } of forbiddenContent) {
-      if (allowedContentPaths.has(relativePath)) {
-        continue;
-      }
       pattern.lastIndex = 0;
-      const match = pattern.exec(source);
-      if (match) {
+      for (const match of source.matchAll(pattern)) {
+        if (isReviewedPrivacyFixture({ file: relativePath, rule: reasonCode,
+          source, start: match.index, match: match[0] })) continue;
         addFailure(reasonCode, relativePath, match[0]);
       }
     }
@@ -550,7 +541,7 @@ async function enforceConfiguredClientBoundary(config) {
 
 await scanPublicFiles();
 await enforceFlutterFeatureFirstLayout();
-clientBoundarySummary = await enforceConfiguredClientBoundary(await loadSecureMeshClientBoundaryConfig());
+clientBoundarySummary = await enforceConfiguredClientBoundary(await loadClientBoundaryConfig());
 
 async function trackedFiles() {
   try {
@@ -584,18 +575,6 @@ if (!licenseText.includes("GNU AFFERO GENERAL PUBLIC LICENSE") ||
   !licenseText.includes("either version 3 of the License, or") ||
   !licenseText.includes("(at your option) any later version")) {
   addFailure("OPEN_SOURCE_LICENSE_TEXT_INVALID", "LICENSE", "AGPL-3.0-or-later text missing");
-}
-
-const cargoToml = await readFile(path.join(repoRoot, "crates/licoup-native/Cargo.toml"), "utf8");
-if (!cargoToml.includes("publish = false")) {
-  addFailure("CARGO_PUBLISH_FLAG_INVALID", "crates/licoup-native/Cargo.toml", cargoToml);
-}
-if (!cargoToml.includes("license.workspace = true")) {
-  addFailure("CARGO_LICENSE_METADATA_INVALID", "crates/licoup-native/Cargo.toml", cargoToml);
-}
-const workspaceCargoToml = await readFile(path.join(repoRoot, "Cargo.toml"), "utf8");
-if (!workspaceCargoToml.includes('license = "AGPL-3.0-or-later"')) {
-  addFailure("CARGO_WORKSPACE_LICENSE_INVALID", "Cargo.toml", workspaceCargoToml);
 }
 
 for (const check of retiredStatePolicyChecks) {

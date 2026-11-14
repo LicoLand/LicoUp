@@ -158,6 +158,148 @@ void main() {
     },
   );
 
+  test('creates a direct profile conversation, then designates the persona '
+      'assistant and persists its intent', () async {
+    final runner = _ConversationRunner();
+    final controller = ClientConversationController(native: runner);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+
+    final conversationId = await controller.createProfileConversation(
+      profileId: 'nova',
+      displayName: 'Nova',
+      agentId: 'codex',
+      profileIntent: const {
+        'preferredModel': 'gpt-5.4',
+        'preferredReasoningEffort': 'high',
+        'preferredInstructions': 'Answer briefly.',
+        'preferredContextWindow': 64000,
+      },
+    );
+
+    expect(conversationId, 'conversation:created');
+    final actions = [for (final request in runner.requests) request['action']];
+    final create = runner.requests.firstWhere(
+      (request) => request['action'] == 'conversation.create',
+    );
+    expect(create['isGroup'], isFalse);
+    final member = (create['members'] as List).single as Map;
+    expect((member['principal'] as Map)['id'], 'profile:nova');
+    expect((member['principal'] as Map)['agentId'], 'codex');
+
+    final assistantSet = runner.requests.firstWhere(
+      (request) => request['action'] == 'conversation.assistant.set',
+    );
+    expect(assistantSet['membershipId'], 'membership:profile:nova');
+    // Member insertion bumps the fresh conversation to revision 1, so the
+    // CAS token must echo the create response rather than assume zero.
+    expect(assistantSet['expectedRevision'], 1);
+    expect(
+      actions.indexOf('conversation.assistant.set'),
+      greaterThan(actions.indexOf('conversation.create')),
+    );
+    final profileUpdate = runner.requests.firstWhere(
+      (request) => request['action'] == 'conversation.profile.update',
+    );
+    expect(profileUpdate['membershipId'], 'membership:profile:nova');
+    expect(
+      actions.indexOf('conversation.profile.update'),
+      greaterThan(actions.indexOf('conversation.assistant.set')),
+    );
+    final intent = profileUpdate['intent'] as Map;
+    expect(intent['preferredModel'], 'gpt-5.4');
+    expect(intent['preferredReasoningEffort'], 'high');
+    expect(intent['preferredInstructions'], 'Answer briefly.');
+    expect(intent['preferredContextWindow'], 64000);
+    expect(controller.selectedConversationId, 'conversation:created');
+    expect(
+      controller.groupConversations.map((entry) => entry.id),
+      isNot(contains('conversation:created')),
+    );
+    expect(
+      controller.directConversations.map((entry) => entry.id),
+      contains('conversation:created'),
+    );
+  });
+
+  test(
+    'group creation persists a profile member intent on its membership',
+    () async {
+      final runner = _ConversationRunner();
+      final controller = ClientConversationController(native: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+
+      await controller.createGroup(
+        title: 'Review room',
+        members: const [
+          ClientConversationGroupMemberDraft(
+            agentId: 'codex',
+            displayName: 'Codex',
+          ),
+          ClientConversationGroupMemberDraft(
+            agentId: 'codex',
+            displayName: 'Nova',
+            profileId: 'nova',
+            profileIntent: {
+              'preferredModel': 'gpt-5.4',
+              'preferredReasoningEffort': 'low',
+            },
+          ),
+        ],
+      );
+
+      final create = runner.requests.firstWhere(
+        (request) => request['action'] == 'conversation.create',
+      );
+      final members = create['members'] as List;
+      expect(members, hasLength(2));
+      expect((members[1]['principal'] as Map)['id'], 'profile:nova');
+      expect((members[1]['principal'] as Map)['displayName'], 'Nova');
+      final profileUpdate = runner.requests.firstWhere(
+        (request) => request['action'] == 'conversation.profile.update',
+      );
+      expect(profileUpdate['membershipId'], 'membership:profile:nova');
+      final intent = profileUpdate['intent'] as Map;
+      expect(intent['preferredModel'], 'gpt-5.4');
+      expect(intent['preferredReasoningEffort'], 'low');
+    },
+  );
+
+  test(
+    'addProfileMembership adds the profile principal to the selected group',
+    () async {
+      final runner = _ConversationRunner();
+      final controller = ClientConversationController(native: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      expect(
+        await controller.addProfileMembership(
+          profileId: 'nova',
+          displayName: 'Nova',
+          agentId: 'codex',
+          profileIntent: const {'preferredModel': 'gpt-5.4'},
+        ),
+        isTrue,
+      );
+
+      final add = runner.requests.lastWhere(
+        (request) => request['action'] == 'conversation.membership.add',
+      );
+      final principal = ((add['member'] as Map)['principal']) as Map;
+      expect(principal['id'], 'profile:nova');
+      expect(principal['agentId'], 'codex');
+      expect(principal['displayName'], 'Nova');
+      final profileUpdate = runner.requests.lastWhere(
+        (request) => request['action'] == 'conversation.profile.update',
+      );
+      expect(profileUpdate['membershipId'], 'membership:profile:nova');
+      expect((profileUpdate['intent'] as Map)['preferredModel'], 'gpt-5.4');
+    },
+  );
+
   test(
     'selection binds immediately and reuses the loaded conversation snapshot',
     () async {
@@ -673,6 +815,36 @@ void main() {
   );
 
   test(
+    'resets the reserved default group in place and keeps the selection',
+    () async {
+      final runner = _ConversationRunner();
+      final controller = ClientConversationController(native: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('lico-group-default');
+
+      expect(await controller.archiveAndReopenSelected(), isTrue);
+
+      final archived = runner.requests.singleWhere(
+        (request) => request['action'] == 'conversation.archive',
+      );
+      expect(archived['conversationId'], 'lico-group-default');
+      expect(archived['archived'], isTrue);
+      expect(archived['reopen'], isTrue);
+      // The store resets the reserved default group in place: no successor,
+      // no duplicate, and the same conversation stays selected.
+      expect(runner.successorId, isEmpty);
+      expect(controller.selectedConversationId, 'lico-group-default');
+      expect(controller.selectedConversation, isNotNull);
+      expect(controller.failureCode, isEmpty);
+      expect(
+        controller.groupConversations.map((group) => group.id),
+        isNot(contains('conversation:successor')),
+      );
+    },
+  );
+
+  test(
     'refuses archive and reopen while a group dispatch is still live',
     () async {
       final runner = _ConversationRunner()
@@ -798,6 +970,9 @@ final class _ConversationRunner implements ClientConversationNativePort {
   bool groupArchived;
   final Completer<void>? gate;
   final Map<String, String> addedAgents = {};
+  final List<Map<String, dynamic>> addedMemberships = [];
+  bool createdIsGroup = true;
+  bool defaultGroupReset = false;
   bool failStrategyStart = false;
   bool dispatchPending = false;
   bool throwUntypedDispatch = false;
@@ -831,16 +1006,57 @@ final class _ConversationRunner implements ClientConversationNativePort {
     if (action == 'conversation.pin.set') {
       groupPinned = request['pinned'] == true;
     }
+    if (action == 'conversation.create') {
+      createdIsGroup = request['isGroup'] != false;
+      final members = request['members'] as List? ?? const [];
+      for (var index = 0; index < members.length; index += 1) {
+        final member = Map<String, dynamic>.from(members[index] as Map);
+        final principal = Map<String, dynamic>.from(
+          (member['principal'] ?? const {}) as Map,
+        );
+        addedMemberships.add(
+          _membership(
+            id: 'membership:${(principal['id'] ?? 'm$index').toString()}',
+            principalId: (principal['id'] ?? '').toString(),
+            kind: (principal['kind'] ?? 'agent').toString(),
+            label: (principal['displayName'] ?? '').toString(),
+            agentId: (principal['agentId'] ?? '').toString(),
+          ),
+        );
+      }
+    }
     if (action == 'conversation.archive') {
-      groupArchived = request['archived'] == true;
-      if (request['reopen'] == true) {
-        successorId = 'conversation:successor';
+      // The native store resets the reserved default local group in place
+      // instead of archiving it; this double mirrors that contract.
+      if (request['conversationId'] == 'lico-group-default') {
+        defaultGroupReset = request['archived'] == true;
+      } else {
+        groupArchived = request['archived'] == true;
+        if (request['reopen'] == true) {
+          successorId = 'conversation:successor';
+        }
       }
     }
     if (action == 'conversation.membership.add') {
-      final principal = Map<String, dynamic>.from(request['principal'] as Map);
-      addedAgents[(principal['agentId'] ?? '').toString()] =
-          (principal['displayName'] ?? '').toString();
+      final member = Map<String, dynamic>.from(
+        (request['member'] ?? request['principal']) as Map,
+      );
+      final principal = Map<String, dynamic>.from(
+        (member['principal'] ?? member) as Map,
+      );
+      final agentId = (principal['agentId'] ?? '').toString();
+      if (agentId.isNotEmpty) {
+        addedAgents[agentId] = (principal['displayName'] ?? '').toString();
+      }
+      addedMemberships.add(
+        _membership(
+          id: 'membership:${(principal['id'] ?? 'added').toString()}',
+          principalId: (principal['id'] ?? '').toString(),
+          kind: (principal['kind'] ?? 'agent').toString(),
+          label: (principal['displayName'] ?? '').toString(),
+          agentId: agentId,
+        ),
+      );
     }
     if (action == 'conversation.strategy.set') {
       strategyRevision = (request['strategyRevision'] ?? '').toString();
@@ -874,7 +1090,7 @@ final class _ConversationRunner implements ClientConversationNativePort {
       'ok': true,
       'result': switch (action) {
         'conversation.list' => _conversationList(request),
-        'conversation.create' => _conversation('conversation:created'),
+        'conversation.create' => _createdConversation(request),
         'conversation.get' => _conversation(
           (request['conversationId'] ?? 'conversation:group').toString(),
           addedAgents: addedAgents,
@@ -924,14 +1140,45 @@ final class _ConversationRunner implements ClientConversationNativePort {
         'conversation.archive' => <String, dynamic>{
           'conversationId': request['conversationId'],
           'archivedChildIds': <String>['conversation:child'],
-          if (request['reopen'] == true)
+          if (request['conversationId'] == 'lico-group-default' &&
+              defaultGroupReset)
+            'resetInPlace': true
+          else if (request['reopen'] == true && successorId.isNotEmpty)
             'successor': _conversation(successorId),
         },
-        'conversation.membership.add' => <String, dynamic>{},
+        'conversation.membership.add' =>
+          addedMemberships.lastOrNull ?? <String, dynamic>{},
+        'conversation.profile.get' => <String, dynamic>{
+          'revision': 0,
+          'membershipId': request['membershipId'],
+        },
         _ => <String, dynamic>{},
       },
     };
   }
+
+  Map<String, dynamic> _createdConversation(Map<String, dynamic> request) => {
+    'id': 'conversation:created',
+    'title': (request['title'] ?? 'Review room').toString(),
+    'archived': false,
+    'pinned': false,
+    'isGroup': createdIsGroup,
+    // Native bumps the fresh conversation once when members are inserted.
+    'revision': (request['members'] as List? ?? const []).isEmpty ? 0 : 1,
+    'createdAtUnixMs': 1,
+    'updatedAtUnixMs': 10,
+    'eventCount': 0,
+    'memberships': [
+      _membership(
+        id: 'membership:owner',
+        principalId: 'human:local',
+        kind: 'human',
+        label: 'Local User',
+        access: 'owner',
+      ),
+      ...addedMemberships,
+    ],
+  };
 
   List<Map<String, dynamic>> _conversationList(
     Map<String, dynamic> request,
@@ -945,6 +1192,10 @@ final class _ConversationRunner implements ClientConversationNativePort {
         members: 3,
         pinned: groupPinned,
         archived: groupArchived,
+        isGroup:
+            requests.any((entry) => entry['action'] == 'conversation.create')
+            ? createdIsGroup
+            : true,
       ),
     if (historyCleared && request['includeArchived'] == true)
       _summary(
@@ -964,6 +1215,7 @@ Map<String, dynamic> _summary({
   required int members,
   bool? pinned,
   bool archived = false,
+  bool? isGroup,
   String? parentConversationId,
   String? taskGoalId,
 }) => {
@@ -971,7 +1223,7 @@ Map<String, dynamic> _summary({
   'title': id == 'conversation:direct' ? 'Direct' : 'Lico',
   'archived': archived,
   'pinned': pinned ?? id == 'conversation:group',
-  'isGroup': id != 'conversation:direct',
+  'isGroup': isGroup ?? id != 'conversation:direct',
   'revision': 1,
   'updatedAtUnixMs': 10,
   'membershipCount': members,

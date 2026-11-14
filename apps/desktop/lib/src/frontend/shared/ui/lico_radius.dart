@@ -58,7 +58,7 @@ abstract final class LicoRadius {
   static double get composerControl => nested(composerField, composerInset);
 
   /// Radius for a standard content card.
-  static const double card = 12;
+  static const double card = 14;
 
   /// Radius for a floating layer: menu, popover, dropdown.
   static const double floating = 10;

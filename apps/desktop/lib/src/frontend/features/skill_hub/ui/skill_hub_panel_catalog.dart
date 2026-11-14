@@ -7,6 +7,7 @@ import 'package:licoup/src/frontend/features/skill_hub/ui/skill_surface.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -79,16 +80,20 @@ final class _SkillCategoryChip extends StatelessWidget {
       duration: context.motion(LicoMotion.short),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: continuousHairlineDecoration(
-        color: isSelected ? colors.primary : colors.surfaceLow,
+        color: isSelected
+            ? colors.selectedSurface
+            : (colors.isDark
+                  ? LicoPaneGlass.contentInnerCardFill
+                  : colors.surfaceLow),
         borderRadius: BorderRadius.circular(20),
         stroke: isSelected
-            ? colors.primary
+            ? colors.selectionInk.withValues(alpha: 0.45)
             : colors.line.withValues(alpha: 0.5),
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: isSelected ? colors.textOnPrimary : colors.text,
+          color: isSelected ? colors.selectionInk : colors.text,
           fontSize: 12,
           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
         ),

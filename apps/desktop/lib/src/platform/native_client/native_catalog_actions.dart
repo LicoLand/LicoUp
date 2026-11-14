@@ -1,17 +1,13 @@
-import 'dart:convert';
-
-import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
-/// Routes catalog payloads through a structured private transport.
+/// Routes catalog payloads through the structured `catalog.*` RPC methods.
+///
+/// The structured methods are the only catalog contract; there is no argv
+/// form of these operations.
 final class NativeCatalogActions {
   const NativeCatalogActions({
-    required AgentCommandRunner privateRunner,
     required NativeStdioRpcTransport stdioRpcTransport,
-    required bool persistentStdioRpcEnabled,
-  }) : _privateRunner = privateRunner,
-       _stdioRpcTransport = stdioRpcTransport,
-       _persistentStdioRpcEnabled = persistentStdioRpcEnabled;
+  }) : _stdioRpcTransport = stdioRpcTransport;
 
   static const _allowedOperations = {
     'status',
@@ -24,9 +20,7 @@ final class NativeCatalogActions {
     'observe',
   };
 
-  final AgentCommandRunner _privateRunner;
   final NativeStdioRpcTransport _stdioRpcTransport;
-  final bool _persistentStdioRpcEnabled;
 
   Future<Map<String, dynamic>> execute(
     String operation, {
@@ -37,14 +31,6 @@ final class NativeCatalogActions {
         const FormatException('catalog_operation_unsupported'),
       );
     }
-    if (_persistentStdioRpcEnabled) {
-      return _stdioRpcTransport.executeStructured('catalog.$operation', params);
-    }
-    return _privateRunner.runCliWithStdin([
-      'catalog',
-      operation,
-      '--stdin-json',
-      'true',
-    ], jsonEncode(params));
+    return _stdioRpcTransport.executeStructured('catalog.$operation', params);
   }
 }

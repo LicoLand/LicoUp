@@ -39,6 +39,13 @@ abstract interface class NativeCliProcessContext {
   });
 }
 
+/// Environment required by the dedicated process that changes the boot
+/// locator. It deliberately omits the selected data root so recovery can run
+/// while that root is unavailable.
+abstract interface class NativeCliDataHomeMutationContext {
+  Future<Map<String, String>?> buildDataHomeMutationEnvironment();
+}
+
 /// Persistent stdio transport used only on supported desktop runtimes.
 abstract interface class NativeStdioRpcTransport {
   Future<Map<String, dynamic>> execute(List<String> arguments);

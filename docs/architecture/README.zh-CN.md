@@ -40,7 +40,7 @@ LicoUp 的整体系统由 **水平平台分层（Horizontal Tiers）** 与 **垂
 1. **第 1 层：Flutter 用户外观层（Flutter Presentation / Shell Layer）** — 纯用户外观与交互呈现，不承担核心业务处理逻辑（现有残留逻辑后续逐步下移剥离）。
 2. **第 2 层：Bridging Contract 桥接协议层（Bridging Contract / RPC Protocol Layer）** — 负责 Flutter 与 Rust 间结构化 RPC 交互（`licoup.stdio.v1` 方法帧及移动端 FFI Command），定义严格前后端契约，杜绝 CLI 参数数组穿透。
 3. **第 3 层：Rust 功能核心与基础设施层（Rust Functional Core & Infrastructure Layer）** — 内部清晰划分为：
-   - **Rust 业务领域（Domain Core）**：包含 `Canonical Conversation`（调度门与轮次宿主）、`Adaptive Flywheel`（策略 Graph 与路由决策）以及 `Agent Adapters`（注册表所列智能体协议与运行时调度）。
+   - **Rust 业务领域（Domain Core）**：包含 `Canonical Conversation`（调度门与轮次宿主）、`Acativa`（策略 Graph 与路由决策）以及 `Agent Adapters`（注册表所列智能体协议与运行时调度）。
    - **Rust 基础设施与对外交互层（Infrastructure & External Boundary）**：作为应用内外部世界的清晰交界线，包含 **数据库存储（SQLite WAL）**、**动态配置文件**、**密钥管理门面（叠加在原生层之上）**、**网络通信与传输** 以及 **PTY/TTY 伪终端与子进程管理** 五大底层对外模块。
 4. **第 4 层：Native 原生系统适配层（Native OS / System Adaptation Layer）** — 底层操作系统与平台专用脚本/API 适配（macOS Keychain/PTY/launchd；Windows WinCred/ConPTY/PowerShell；Linux Secret Service/XDG；Android JNI/Keystore/SAF；iOS Secure Enclave/FaceID 等）。
 
@@ -66,7 +66,7 @@ flowchart TB
     subgraph LAYER3["3. Rust 功能核心与基础设施层 (Rust Functional Core & Infra)"]
         subgraph DOMAIN_BOX["Rust 业务领域 (Domain Core)"]
             CONVERSATIONS["Canonical Conversation 领域<br/>唯一持久聊天权威 · Membership · 调度门 · 轮次宿主"]
-            STRATEGIES["Adaptive Flywheel 策略领域<br/>不可变 Graph · 路由选择 · 持久化运行"]
+            STRATEGIES["Acativa 策略领域<br/>不可变 Graph · 路由选择 · 持久化运行"]
             AGENTS["智能体适配与运行时 (Agent Adapters)<br/>ACP · app-server · RPC · CLI · 注册表所列 Agent 驱动"]
         end
 
@@ -113,7 +113,7 @@ flowchart TB
 | **第 1 层：Flutter 用户外观层** | Flutter 用户界面 (Shell / UI) | 负责页面渲染、导航、用户交互、外观呈现与安全摘要展示。不包含核心业务处理逻辑（现有少量残留逻辑后续逐步下移）。 |
 | **第 2 层：Bridging Contract 桥接协议层** | 前后端通信契约 (RPC / FFI) | 负责 Flutter 与 Rust 间双向通信契约。桌面端承载 `licoup.stdio.v1` 结构化方法帧，移动端承载 C-ABI FFI 命令；严格杜绝 CLI 参数数组穿透。 |
 | **第 3 层：Rust 业务领域 (Domain Core)** | 统一 Conversation 领域 | 单聊/群聊、Human/Agent Membership、结构化 Event 与按 Membership 派发的唯一持久化权威；原生运行时位置保持私有。 |
-| | Adaptive Flywheel 策略领域 | 独立于 Conversation 历史的不可变包版本、JSON Graph 校验、绑定、准确授权、持久化运行归约与有界效果调度。 |
+| | Acativa 策略领域 | 独立于 Conversation 历史的不可变包版本、JSON Graph 校验、绑定、准确授权、持久化运行归约与有界效果调度。 |
 | | 智能体适配器与运行时 | 转换注册表所列的本机智能体接口（ACP、app-server、CLI、RPC）及虚拟机发现协议连接。 |
 | **第 3 层：Rust 基础设施 (Infrastructure)** | 数据库存储 (SQLite WAL) | 唯一数据持久化引擎，提供 ACID 事务、强类型迁移、复合索引检索。 |
 | | 动态配置文件系统 | 运行时配置解析、热重载/动态感知、确定性优先级合并（CLI > 环境变量 > 用户清单 > 系统默认）。 |
@@ -154,11 +154,13 @@ flowchart TB
 | **统一 Conversation 垂直领域** | 垂直切片 (第 1 ~ 4 层) | [CONVERSATION-DOMAIN.zh-CN.md](CONVERSATION-DOMAIN.zh-CN.md) | 前后端双向绑定、单聊基石与群聊协同封装、状态机驱动与端到端时序流 |
 | **智能体适配器与运行时架构** | 第 3 层：功能核心层 | [AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md](AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md) | 由注册表推导的驱动分类、标准协议(ACP/RPC/PTY)与私有协议(Codex/OpenCode)归一化 |
 | **Rust 基础设施与对外交互层** | 第 3 层：基础设施与边界 | [RUST-INFRASTRUCTURE-LAYER.zh-CN.md](RUST-INFRASTRUCTURE-LAYER.zh-CN.md) | 数据库存储 (SQLite WAL)、动态配置、密钥管理、网络传输、PTY/TTY |
-| **Adaptive Flywheel 策略** | 第 3 层：功能核心层 | [ADAPTIVE-FLYWHEEL.zh-CN.md](../functionality/ADAPTIVE-FLYWHEEL.zh-CN.md) | 不可变 Graph 版本、路由决策与持久化运行归约 |
+| **Acativa 策略** | 第 3 层：功能核心层 | [ACATIVA.zh-CN.md](../functionality/ACATIVA.zh-CN.md) | 不可变 Graph 版本、路由决策与持久化运行归约 |
 | **下属智能体 MCP** | 外部协议适配器 | [subagent-mcp.zh-CN.md](../protocols/subagent-mcp.zh-CN.md) | 独立构建的 MCP 进程通过原生 CLI 提供获准远程调用的 Subagents 子集 |
 | **语义对话与历史编目** | 第 3 层：功能核心层 | [semantic-conversation.md](../protocols/semantic-conversation.md) | 注册表所列 Agent 协议转换、厂商历史目录发现与只读回放 |
 | **安全与数据边界** | 第 3 层：功能核心层 | [SECURITY-AND-DATA-BOUNDARY.zh-CN.md](SECURITY-AND-DATA-BOUNDARY.zh-CN.md) | 虚拟机探测隔离、端点保护预览、平台密钥保管与数据零信任 |
-| **原生系统平台桥接** | 第 4 层：原生适配层 | `crates/licoup-native/src/platform/` | macOS、Windows、Linux、Android、iOS 底层 OS API 与工具链实现 |
+| **扩展平台** | 第 3 层：功能核心层 | [EXTENSION-PLATFORM.md](EXTENSION-PLATFORM.md) | 扩展契约、Profile、载体、生命周期、内核决定与包自描述兼容列表 |
+| **部署 Profile** | 第 3 层：功能核心层 | [DEPLOYMENT-PROFILES.md](DEPLOYMENT-PROFILES.md) | 安装 Profile、安装闭包、能力归属与第一方包规则 |
+| **原生系统平台桥接** | 第 4 层：原生适配层 | `crates/licoup/src/platform/`（LicoUp-CLI） | macOS、Windows、Linux、Android、iOS 底层 OS API 与工具链实现 |
 
 ---
 
@@ -167,19 +169,18 @@ flowchart TB
 | 路径 | 用途 |
 |:---|:---|
 | `apps/desktop/` | Flutter 桌面与移动客户端（第 1 层与部分第 2 层） |
-| `crates/licoup-native/` | Rust 客户端核心、命令与平台桥接（第 3 层与第 4 层） |
-| `crates/licoup-workflow/` | 纯工作流定义、诊断、编译索引和状态转换机 |
-| `crates/licoup-conversation/` | Canonical Conversation 领域 crate（已是 workspace 成员，抽取进行中） |
-| `crates/licoup-agent-runtime/` | Agent Runtime 与 adapter crate（已是 workspace 成员，抽取进行中） |
-| `crates/licoup-platform-bridges/` | 原生平台 ABI 与句柄管理（第 4 层） |
-| `crates/licoup-endpoint-core/` | 端点身份、密钥保管与加密基础 |
-| `crates/licoup-protocol-bindings/` | LicoArc Candidate 固定输入准入（由 LicoArc SDK 验证） |
-| `crates/licoup-client-state/` | 客户端状态管理契约 |
-| `crates/licoup-agent-adapters/` | 智能体适配器 trait 定义 |
-| `crates/lico-catalog-convergence/` | 目录收敛逻辑 |
-| `packages/contracts/client/` | 客户端自有 Schema（第 2 层） |
+| `packages/` | 客户端自有包工具与契约（第 2 层） |
+| `schemas/client_bridge/` | Desktop 自有 client bridge 契约 schema |
 | `tests/` | 使用合成数据的契约和边界测试 |
 | `tools/` | 可复用的构建与验证工具 |
+| `docs/` | 架构、功能、协议与工作流文档 |
+
+Rust workspace——`crates/licoup/`（Rust 客户端核心、命令与平台桥接，
+第 3 层与第 4 层）以及 gateway、workflow、conversation、agent-runtime、
+platform-bridge、endpoint-core、protocol-binding、client-state、adapter 与
+convergence crate——位于组件仓库
+[LicoUp-CLI](https://github.com/LicoLand/LicoUp-CLI)。本仓库消费其交付的
+二进制与包载荷，不携带也不构建 Rust 源码。
 
 计划、临时脚本、本地技能、原始证据和运行时数据属于本地工作材料，不进入公开源码。
 
@@ -196,9 +197,9 @@ flowchart TB
 |:---|:---|:---|:---|
 | **Application 编排器宽度** | 中 | `apps/desktop/lib/src/application/controller/` | `ClientController` 仍是内部、无 Flutter 依赖的生命周期与编排聚合；renderer 禁止导入它，功能级组合仅暴露语义 Binding。 |
 | **以 mixin 充当分解** | 高 | `application/controller/`、`application/features/agents/conversation/` | 应用全部 24 个 mixin 位于同一条继承链；共享 `this` 意味着没有封装。 |
-| **单体 Rust crate** | 高 | `crates/licoup-native/`（约 299K 行） | `domain/` 48 项、`core/` 52 项、`platform/` 85 项（72K 行）。编译慢、边界不清。最大文件：`client_conversation/store.rs`（6.6K 行）、`ffi/commands/mod.rs`（5.2K 行）。 |
+| **单体 Rust crate** | 高 | `crates/licoup/`（约 299K 行，LicoUp-CLI） | `domain/` 48 项、`core/` 52 项、`platform/` 85 项（72K 行）。编译慢、边界不清。最大文件：`client_conversation/store.rs`（6.6K 行）、`ffi/commands/mod.rs`（5.2K 行）。 |
 | **契约层膨胀** | 中 | `apps/desktop/lib/src/contracts/`（93 个文件, 15.7K 行） | 模型、接口、解析逻辑与生成代码混在同一层。 |
-| **大型 Flutter 界面文件** | 中 | `frontend/features/` | 原 2.6K 行 Canonical pane 已拆分为聚焦文件（最大叶文件 572 行）。仍较大的功能文件包括 `adaptive_flywheel_multi_capsule_section.dart`（1626）、`settings_panel.dart`（1184）、`agent_conversation_composer_capsules.dart`（1135）与 `agent_conversation_workspace.dart`（1132）。 |
+| **大型 Flutter 界面文件** | 中 | `frontend/features/` | 原 2.6K 行 Canonical pane 已拆分为聚焦文件（最大叶文件 572 行）。仍较大的功能文件包括 `acativa_multi_capsule_section.dart`（1626）、`settings_panel.dart`（1184）、`agent_conversation_composer_capsules.dart`（1135）与 `agent_conversation_workspace.dart`（1132）。 |
 
 ### 原生边界迁移
 
@@ -298,7 +299,7 @@ Renderer 优化与列表滑动管线仍属于 M7，不进入本轮边界闭环�
 
 #### 基本原则：CLI 即产品，Flutter 是显示适配器
 
-Rust 原生宿主（`licoup-cli`）是**完整的语义客户端**，可独立于任何 UI 运行。
+Rust 原生宿主（`licoup`）是**完整的语义客户端**，可独立于任何 UI 运行。
 它拥有全部会话状态、智能体运行时、持久化、授权与协议执行。Flutter 的唯一职责是
 **发送用户事件**并**忠实渲染投影状态**。Flutter 不包含任何业务逻辑。
 
@@ -341,13 +342,17 @@ Source 一致组的原子性必须贯穿异步准备和最终安装。X/Y 只能
 控制延迟和因果测量沿[原生交互边界](CLIENT-NATIVE-INTERACTION.md)。这些是迁移要求，
 不表示当前前端已实现。
 
-#### Rust Crate（目标分解）
+#### Rust Crate（目标分解，位于 LicoUp-CLI 仓库）
 
 ```
 crates/
-├── licoup-native/              # 宿主二进制 + FFI 入口
-│   ├── src/bin/                # licoup-cli、lico-gateway、lico-agent 等
+├── licoup/              # 宿主二进制 + FFI 入口
+│   ├── src/bin/                # licoup：唯一交付二进制（agent run / migrate /
+│   │   │                     # gateway run 为进程入口而非独立程序）
 │   └── src/ffi/                # 移动平台 FFI（Android/iOS）
+├── licoup-private-gateway/     # Private Gateway Runtime 进程：回环模型服务
+├── licoup-public-gateway/      # Public Gateway：MCP 引擎与可选服务、Telegram 通道
+├── licoup-vault/               # Gateway 凭证租约、移交与保管端口契约
 ├── licoup-conversation/        # L3: Conversation 领域（状态机、事件、投影）
 ├── licoup-workflow/            # 纯工作流编译器与状态转换机
 ├── licoup-agent-runtime/       # L4+L5: 智能体适配器 + settlement 仲裁器
@@ -355,6 +360,7 @@ crates/
 ├── licoup-protocol-bindings/   # L2: LicoArc Candidate 固定输入准入
 ├── licoup-client-state/        # 客户端状态管理（配额、持久化）
 ├── licoup-platform-bridges/    # 系统桥接（Keychain、WinCred 等）
+├── licoup-agent-adapter-sdk/   # 共享适配器契约、注册表、回放工具、解析器生命周期
 ├── licoup-agent-adapters/      # 智能体适配器 trait 定义
 └── lico-catalog-convergence/   # 目录管理
 ```
@@ -364,7 +370,7 @@ crates/
   与来源无关（本机与未来远端事件以同样方式处理）。
 - `licoup-agent-runtime` 独占 L4+L5：适配器调度、协议转换、settlement。
   适配器**上报**信号；settlement **裁决**结果。
-- `licoup-native` 仍是组合这些 crate 的二进制宿主。
+- `licoup` 仍是组合这些 crate 的二进制宿主。
 - crate 边界强制：conversation 逻辑不能依赖适配器细节，适配器不能决定会话结果。
 
 ### Flutter 渲染性能——维护要求
@@ -440,8 +446,8 @@ Flutter 渲染性能是一等架构关注点。
    controller renderer port、notifier presentation 路径与迁移 allowlist 已在同一迁移中删除。
 
 3. **Rust crate 抽取**——`licoup-conversation` 与 `licoup-agent-runtime`
-   已是 workspace 成员；继续从 `licoup-native/src/domain/` 抽取 L3、从
-   `licoup-native/src/platform/` 抽取 L4+L5 进入这两个 crate，把 `licoup-native`
+   已是 workspace 成员；继续从 `licoup/src/domain/` 抽取 L3、从
+   `licoup/src/platform/` 抽取 L4+L5 进入这两个 crate，把 `licoup`
    缩减为二进制宿主 + FFI 外壳。
 
 旧目录树、架构验证器 allowlist 与目标树必须按已迁移功能原子切换；

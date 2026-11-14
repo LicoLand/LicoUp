@@ -16,7 +16,7 @@ import '../../../fixtures/layout_scoped_state_fixture.dart';
 
 const Set<ClientSection> dashboardMobileExpectedDestinations = <ClientSection>{
   ClientSection.agents,
-  ClientSection.mobileRelay,
+  ClientSection.devices,
   ClientSection.settings,
 };
 
@@ -92,8 +92,8 @@ final class DashboardMobileTestShell extends StatelessWidget {
       ..sort((left, right) => left.index.compareTo(right.index));
     final baseTheme = buildLicoTheme(
       presetId: brightness == Brightness.dark
-          ? 'lico-crystal'
-          : 'geek-light-blue',
+          ? 'lico-starlit-gold'
+          : 'lico-taro-waffle',
       platformBrightness: brightness,
     );
     final scopedState = buildLayoutScopedStateFixture(
@@ -138,6 +138,7 @@ final class DashboardMobileTestShell extends StatelessWidget {
                           destination: activeDestination,
                           content: content,
                           state: scopedState,
+                          style: null,
                         ),
                       );
                       return variant.shellBuilder(
@@ -147,12 +148,14 @@ final class DashboardMobileTestShell extends StatelessWidget {
                           activeDestination: activeDestination,
                           availableDestinations: destinations,
                           destination: destination,
+                          content: content,
                           onSelectDestination: harness.selectDestination,
                           destinationLabel: (value) => value.name,
                           components: bundle.components,
                           tokens: bundle.tokens,
                           initialFocusTarget: 'primary-content',
                           chrome: chrome,
+                          style: null,
                         ),
                       );
                     },

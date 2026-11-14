@@ -10,12 +10,14 @@ import 'package:licoup/src/application/features/settings/controller/agent_resour
 import 'package:licoup/src/application/features/settings/controller/client_resource_usage_controller.dart';
 import 'package:licoup/src/composition/renderer_intent_trace.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_effect.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
 import 'package:licoup/src/presentation/settings/settings_providers.dart';
 import 'package:licoup/src/projections/close_broadcast_controller.dart';
 import 'package:licoup/src/projections/settings/settings_autostart_projection_source.dart';
+import 'package:licoup/src/projections/settings/settings_terminal_command_projection_source.dart';
 import 'package:licoup/src/projections/settings/settings_presentation_sources.dart';
 import 'package:licoup/src/projections/settings/settings_projection_producer.dart';
 import 'package:licoup/src/projections/settings/settings_resource_usage_projection_source.dart';
@@ -35,6 +37,7 @@ final class SettingsFeatureComposition {
         ),
       ),
     );
+    _terminalCommand = SettingsTerminalCommandProjectionSource();
     _autostart = SettingsAutostartProjectionSource(
       runner: controller.agentService,
       readGatewayPort: () => controller.llmGatewayLifecycleController.port,
@@ -45,6 +48,7 @@ final class SettingsFeatureComposition {
       presentationHub: _presentationHub,
       resourceUsage: _resourceUsage,
       autostart: _autostart,
+      terminalCommand: _terminalCommand,
       effects: _effects,
       beginRendererIntent: beginRendererIntent,
     );
@@ -52,6 +56,7 @@ final class SettingsFeatureComposition {
       projection: _projection,
       resourceUsage: _resourceUsage,
       autostart: _autostart,
+      terminalCommand: _terminalCommand,
       intents: _intents,
       effects: _effects,
     );
@@ -83,6 +88,9 @@ final class SettingsFeatureComposition {
       settingsResourceUsageSourceProvider.overrideWithValue(
         settingsResourceUsagePresentationSource(_resourceUsage),
       ),
+      settingsTerminalCommandSourceProvider.overrideWithValue(
+        settingsTerminalCommandPresentationSource(_terminalCommand),
+      ),
     ];
   }
 
@@ -91,6 +99,7 @@ final class SettingsFeatureComposition {
   final _SettingsEffects _effects;
   late final SettingsResourceUsageProjectionSource _resourceUsage;
   late final SettingsAutostartProjectionSource _autostart;
+  late final SettingsTerminalCommandProjectionSource _terminalCommand;
   late final _SettingsIntents _intents;
   late final SettingsBinding binding;
 
@@ -103,6 +112,7 @@ final class SettingsFeatureComposition {
   Future<void> dispose() => _disposal ??= _dispose();
 
   Future<void> _dispose() async {
+    await _terminalCommand.dispose();
     await _autostart.dispose();
     await _resourceUsage.dispose();
     await _projection.dispose();
@@ -137,6 +147,7 @@ final class _SettingsIntents implements IntentSink<SettingsIntent> {
     required SettingsPresentationHub presentationHub,
     required SettingsResourceUsageProjectionSource resourceUsage,
     required SettingsAutostartProjectionSource autostart,
+    required SettingsTerminalCommandProjectionSource terminalCommand,
     required _SettingsEffects effects,
     RendererIntentTraceFactory? beginRendererIntent,
   }) : _controller = controller,
@@ -144,6 +155,7 @@ final class _SettingsIntents implements IntentSink<SettingsIntent> {
        _presentationHub = presentationHub,
        _resourceUsage = resourceUsage,
        _autostart = autostart,
+       _terminalCommand = terminalCommand,
        _effects = effects,
        _beginRendererIntent = beginRendererIntent;
 
@@ -152,6 +164,7 @@ final class _SettingsIntents implements IntentSink<SettingsIntent> {
   final SettingsPresentationHub _presentationHub;
   final SettingsResourceUsageProjectionSource _resourceUsage;
   final SettingsAutostartProjectionSource _autostart;
+  final SettingsTerminalCommandProjectionSource _terminalCommand;
   final _SettingsEffects _effects;
   final RendererIntentTraceFactory? _beginRendererIntent;
 
@@ -173,14 +186,26 @@ final class _SettingsIntents implements IntentSink<SettingsIntent> {
           () => _controller.setLocalePreference(preference, cause: cause),
           trace,
         );
-      case SetReduceMotionPreference(:final enabled):
-        _run(() => _controller.setReduceMotion(enabled, cause: cause), trace);
+      case SetReduceMotionPreference(:final preference):
+        _run(
+          () => _controller.setReduceMotion(preference, cause: cause),
+          trace,
+        );
       case SetLoadingEffectPreference(:final id):
         _run(() => _controller.setLoadingEffect(id, cause: cause), trace);
       case SetLayoutPreference(:final profileId):
         _run(
           () => _controller.layoutManager.selectLayout(
             LayoutProfileId.parse(profileId),
+            cause: cause,
+          ),
+          trace,
+        );
+      case SetLayoutStyle(:final profileId, :final styleId):
+        _run(
+          () => _controller.layoutManager.selectStyle(
+            LayoutProfileId.parse(profileId),
+            LayoutStyleId.parse(styleId),
             cause: cause,
           ),
           trace,
@@ -225,12 +250,19 @@ final class _SettingsIntents implements IntentSink<SettingsIntent> {
           () => _controller.openDirectoryPath(path, caption: caption),
           trace,
         );
-      case ReloadAppearancePresets():
-        _run(_controller.reloadAppearancePresets, trace);
-      case RefreshConversationSnapshotLocation():
-        _run(_controller.refreshConversationSnapshotRoot, trace);
       case SetConversationSnapshotLocation(:final path):
         _run(() => _controller.setConversationSnapshotRoot(path), trace);
+      case RelocateDataHome(:final destinationParent):
+        _effects.emit(
+          DataHomeRelocationRequested(destinationParent, trace: trace),
+        );
+      case CleanupPreviousDataHome(:final expectedPreviousRootPath):
+        _effects.emit(
+          PreviousDataHomeCleanupRequested(
+            expectedPreviousRootPath,
+            trace: trace,
+          ),
+        );
       case RefreshArchivedConversations():
         _run(_controller.clientConversationController.refreshArchived, trace);
       case RestoreArchivedConversation(:final conversationId):
@@ -241,6 +273,12 @@ final class _SettingsIntents implements IntentSink<SettingsIntent> {
         _resourceUsage.start();
       case StopSettingsResourceUsage():
         _resourceUsage.stop();
+      case RefreshTerminalCommand():
+        _run(() => _terminalCommand.refresh(trace: trace), trace);
+      case InstallTerminalCommand():
+        _run(() => _terminalCommand.install(trace: trace), trace);
+      case UninstallTerminalCommand():
+        _run(() => _terminalCommand.uninstall(trace: trace), trace);
       case RefreshSettingsAutostart():
         _runAutostart(() => _autostart.refresh(trace: trace), trace);
       case SetSettingsAutostart(

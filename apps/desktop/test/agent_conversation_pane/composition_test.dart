@@ -1,12 +1,14 @@
 import 'package:licoup/src/frontend/shared/ui/composer_activity_border.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion/conversation_particle_field.dart';
-import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
 import 'dart:io' show Platform;
 
 import 'package:licoup/src/frontend/environment/workspace_home_directory_scope.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_view.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 
+import '../layout/fixtures/layout_destination_presentation_fixture.dart';
 import 'pane_test_harness.dart';
 
 void _useComposerPopoverViewport(WidgetTester tester) {
@@ -48,6 +50,67 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('transcript fade boundary follows the header extent', (
+    tester,
+  ) async {
+    Widget build(LayoutAgentsPresentation agents) => LayoutAgentsStrategyScope(
+      strategy: const AgentsPresentationStrategy.messaging(),
+      child: FixtureLayoutPresentationScope(
+        agents: agents,
+        child: paneTestApp(
+          AgentConversationActivePane(
+            state: paneTestState(
+              liveMessages: const [
+                AgentConversationMessage(
+                  id: 'm1',
+                  role: 'user',
+                  text: 'hello',
+                  createdAt: '2026-07-23T00:00:01Z',
+                ),
+              ],
+            ),
+            actions: paneTestActions(),
+            header: paneTestHeader(),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(build(const FixtureLayoutAgentsPresentation()));
+    await tester.pump();
+    var fade = tester.widget<ConversationTranscriptHeaderFade>(
+      find.byType(ConversationTranscriptHeaderFade),
+    );
+    // Capsule header: bottom edge = overlay extent minus the top inset.
+    expect(fade.headerBottom, 64);
+    var list = tester.widget<AgentConversationMessageList>(
+      find.byType(AgentConversationMessageList),
+    );
+    // First transcript row starts where the fade is fully opaque.
+    expect(
+      list.topOverlayInset,
+      fade.headerBottom + ConversationTranscriptHeaderFade.fadeExtent,
+    );
+
+    await tester.pumpWidget(
+      build(const FixtureLayoutAgentsPresentation.docked()),
+    );
+    await tester.pump();
+    fade = tester.widget<ConversationTranscriptHeaderFade>(
+      find.byType(ConversationTranscriptHeaderFade),
+    );
+    // Bar header: bottom edge is the presentation's declared bar extent.
+    expect(fade.headerBottom, 60);
+    list = tester.widget<AgentConversationMessageList>(
+      find.byType(AgentConversationMessageList),
+    );
+    expect(
+      list.topOverlayInset,
+      fade.headerBottom + ConversationTranscriptHeaderFade.fadeExtent,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'running turn uses the composer border and removes the header progress',
     (tester) async {
@@ -68,10 +131,7 @@ void main() {
       expect(pulse.active, isTrue);
       expect(
         pulse.color,
-        tester
-            .element(find.byType(RuntimeMessageComposer))
-            .licoColors
-            .primaryStrong,
+        tester.element(find.byType(RuntimeMessageComposer)).licoColors.accent,
       );
       expect(
         find.byKey(const Key('composer-activity-border-paint')),
@@ -116,32 +176,6 @@ void main() {
       find.byKey(const Key('composer-activity-border-paint')),
       findsOneWidget,
     );
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('relocated hidden composer does not keep an activity ticker', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      paneTestApp(
-        LayoutExternalComposerScope(
-          hosted: true,
-          child: AgentConversationActivePane(
-            state: paneTestState(turnActive: true),
-            actions: paneTestActions(),
-            header: paneTestHeader(),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
-          .active,
-      isTrue,
-    );
-    expect(tester.binding.transientCallbackCount, 0);
     expect(tester.takeException(), isNull);
   });
 
@@ -367,6 +401,79 @@ void main() {
     expect(
       find.byKey(const Key('conversation-send-failed-action')),
       findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a resolving runtime gate shows a loading row, never a verdict', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      paneTestApp(
+        AgentConversationActivePane(
+          state: paneTestState(
+            turnActive: false,
+            composerEnabled: false,
+            sendGateReasonCode: 'native_agent_executable_not_detected',
+            sendGateResolving: true,
+          ),
+          actions: paneTestActions(onUnblockSend: () {}),
+          header: paneTestHeader(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('conversation-send-resolving')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('conversation-send-resolving-label')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('conversation-send-unavailable')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('conversation-send-unavailable-reason')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('conversation-send-unavailable-action')),
+      findsNothing,
+    );
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a settled runtime gate keeps the honest unavailable row', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      paneTestApp(
+        AgentConversationActivePane(
+          state: paneTestState(
+            turnActive: false,
+            composerEnabled: false,
+            sendGateReasonCode: 'native_agent_executable_not_detected',
+          ),
+          actions: paneTestActions(onUnblockSend: () {}),
+          header: paneTestHeader(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('conversation-send-resolving')), findsNothing);
+    expect(
+      find.byKey(const Key('conversation-send-unavailable')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('conversation-send-unavailable-action')),
+      findsOneWidget,
     );
     expect(tester.takeException(), isNull);
   });

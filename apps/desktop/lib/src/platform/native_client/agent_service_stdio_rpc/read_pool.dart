@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/operation_pending_queue.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/stream_observation.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:licoup/src/platform/native_client/native_rpc_priority.dart';
 
@@ -10,19 +11,29 @@ typedef StdioRpcReadOperation = Future<void> Function(StdioRpcSessionManager);
 /// Reuses a bounded number of independent native query sessions. Pending work
 /// is assigned when any session becomes available, so a slow query cannot hold
 /// an idle peer behind it. Results are never cached by the transport.
+///
+/// Background bulk queries may occupy at most [capacity] - 1 sessions. One
+/// session always stays available for foreground work, so a catalog or history
+/// backlog cannot starve a read that is needed now, and a cancelled or failed
+/// background query cannot leave the pool without usable capacity.
 final class StdioRpcReadPool {
-  StdioRpcReadPool({required NativeCliProcessContext processContext})
-    : _processContext = processContext;
+  StdioRpcReadPool({
+    required NativeCliProcessContext processContext,
+    StreamObservationPort? observation,
+  }) : _processContext = processContext,
+       _observation = observation;
 
   // Each session owns one native sidecar. Keep startup and retained native
   // memory bounded while allowing independent feature reads to overlap.
   static const int capacity = 4;
 
   final NativeCliProcessContext _processContext;
+  final StreamObservationPort? _observation;
   final RpcOperationPendingQueue<StdioRpcReadOperation> _pending =
       RpcOperationPendingQueue<StdioRpcReadOperation>();
   final List<_ReadWorker> _workers = [];
   Future<void>? _closeFuture;
+  var _backgroundInFlight = 0;
 
   int get pendingCount => _pending.length;
   int get pendingPayloadBytes => _pending.totalPayloadBytes;
@@ -56,25 +67,66 @@ final class StdioRpcReadPool {
       },
     );
     onEnqueued?.call(handle);
-    var worker = _workers.where((worker) => worker.running == null).firstOrNull;
-    if (worker == null && _workers.length < capacity) {
-      worker = _ReadWorker(
-        StdioRpcSessionManager(processContext: _processContext),
-      );
-      _workers.add(worker);
-    }
-    if (worker != null) {
-      worker.running = _drain(worker);
-    }
+    _pump();
     return result.future;
   }
 
-  Future<void> _drain(_ReadWorker worker) async {
+  /// Assigns pending work to idle sessions. Foreground work is taken first;
+  /// background work only while a session stays reserved for foreground.
+  void _pump() {
+    while (_pending.isNotEmpty) {
+      final worker = _idleWorker();
+      if (worker == null) return;
+      final dispatch = _pending.takeNextEligible(
+        // Reserve the last session for foreground work: a pending bulk backlog
+        // waits for a free bulk session instead of taking the whole capacity.
+        (isBackground) => !isBackground || _backgroundInFlight < capacity - 1,
+      );
+      if (dispatch == null) return;
+      worker.running = _drain(worker, dispatch);
+    }
+  }
+
+  _ReadWorker? _idleWorker() {
+    for (final worker in _workers) {
+      if (worker.running == null) return worker;
+    }
+    if (_workers.length >= capacity) return null;
+    final worker = _ReadWorker(
+      StdioRpcSessionManager(
+        processContext: _processContext,
+        observation: _observation,
+      ),
+    );
+    _workers.add(worker);
+    return worker;
+  }
+
+  /// Runs accepted work on one session while pending work remains, so a session
+  /// is shut down only after the reads assigned to it have settled.
+  Future<void> _drain(
+    _ReadWorker worker,
+    ({StdioRpcReadOperation run, bool isBackground}) dispatch,
+  ) async {
     try {
-      while (_pending.isNotEmpty) {
+      while (true) {
+        if (dispatch.isBackground) {
+          _backgroundInFlight += 1;
+        }
         try {
-          await _pending.takeNext()(worker.manager);
-        } on Object catch (_) {}
+          await dispatch.run(worker.manager);
+        } on Object catch (_) {
+        } finally {
+          if (dispatch.isBackground) {
+            _backgroundInFlight -= 1;
+          }
+        }
+        if (_pending.isEmpty) return;
+        final next = _pending.takeNextEligible(
+          (isBackground) => !isBackground || _backgroundInFlight < capacity - 1,
+        );
+        if (next == null) return;
+        dispatch = next;
       }
     } finally {
       worker.running = null;

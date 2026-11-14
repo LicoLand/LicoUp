@@ -20,11 +20,17 @@ const moduleRoot = "apps/desktop/scripts/package-client";
 const leaves = Object.freeze([
   "build/flutter.mjs",
   "build/native.mjs",
+  "build/release-tools.mjs",
   "build/swift.mjs",
   "bundle-resolver/linux.mjs",
   "bundle-resolver/macos.mjs",
   "bundle-resolver/windows.mjs",
   "cli-policy.mjs",
+  "cli-release/conversation-protocol-digest.mjs",
+  "cli-release/invoked-commands.mjs",
+  "cli-release/release-archive.mjs",
+  "cli-release/release-pin.mjs",
+  "cli-release/stage.mjs",
   "config-codec.mjs",
   "macos/install.mjs",
   "macos/metadata.mjs",
@@ -51,7 +57,7 @@ async function sources() {
   );
 }
 
-test("clean Flutter staging closes the pure presentation package boundary", async () => {
+test("clean Flutter staging closes all declared presentation package boundaries", async () => {
   const cleanBuildRoot = await fs.mkdtemp(
     path.join(os.tmpdir(), "lico-package-client-stage-"),
   );
@@ -78,25 +84,33 @@ test("clean Flutter staging closes the pure presentation package boundary", asyn
       ),
       true,
     );
-    for (const generatedState of [
-      ".dart_tool",
-      ".flutter-plugins",
-      ".flutter-plugins-dependencies",
-      ".idea",
-      "build",
-    ]) {
-      assert.equal(
-        await fileExists(path.join(stagedContractRoot, generatedState)),
-        false,
-        generatedState,
-      );
+    const presentationPackages = ["presentation_contract", "presentation_flutter", "presentation_runtime"];
+    const manifest = await fs.readFile(path.join(stagedFlutterRoot, "pubspec.yaml"), "utf8");
+    for (const name of presentationPackages) {
+      assert.ok(manifest.includes(`path: ../../packages/${name}`));
+      const staged = path.join(path.dirname(stagedContractRoot), name);
+      assert.equal(await fileExists(path.join(staged, "pubspec.yaml")), true, name);
+      assert.equal(await fileExists(path.join(staged, "lib", `${name}.dart`)), true, name);
+      for (const generatedState of [
+        ".dart_tool",
+        ".flutter-plugins",
+        ".flutter-plugins-dependencies",
+        ".idea",
+        "build",
+      ]) {
+        assert.equal(
+          await fileExists(path.join(staged, generatedState)),
+          false,
+          `${name}/${generatedState}`,
+        );
+      }
     }
     const stagedPackages = await fs.readdir(path.dirname(stagedContractRoot), {
       withFileTypes: true,
     });
     assert.deepEqual(
       stagedPackages.map((entry) => `${entry.name}:${entry.isDirectory()}`).sort(),
-      ["presentation_contract:true"],
+      presentationPackages.map((name) => `${name}:true`),
     );
   } finally {
     if (previousCleanBuildRoot === undefined) {
@@ -126,7 +140,7 @@ test("package client facade preserves exactly the six existing named exports", a
   assert.equal(facade.includes("function packageClient("), false);
 });
 
-test("package client migration owns exactly nineteen bounded ordinary modules", async () => {
+test("package client keeps an exact bounded module inventory", async () => {
   assert.deepEqual(await collectModules(moduleRoot), [...leaves]);
   const source = await sources();
   for (const leaf of Object.keys(source)) {
@@ -213,8 +227,11 @@ test("dry-run is pure planning and never enters build preflight", async () => {
 test("build, bundle, manifest, and macOS concerns retain dedicated owners", async () => {
   const source = await sources();
   const ownership = new Map([
-    ["build/native.mjs", ["buildNativeSidecars", "cargoTargetDir"]],
-    ["build/swift.mjs", ["buildSwiftSidecars"]],
+    ["build/native.mjs", ["stageNativeSidecars", "nativeArtifactsDirectory"]],
+    ["cli-release/stage.mjs", ["stageCliRelease", "verifyCliReleaseContract"]],
+    ["cli-release/conversation-protocol-digest.mjs", ["conversationProtocolDigest"]],
+    ["cli-release/invoked-commands.mjs", ["extractInvokedCliCommands"]],
+    ["build/swift.mjs", ["buildSwiftSidecars", "swiftSidecarStagingDirectory"]],
     ["build/flutter.mjs", ["buildFlutterApp", "assertFlutterBuildPrereqs"]],
     ["bundle-resolver/linux.mjs", ["findLinuxBundleSource"]],
     ["bundle-resolver/macos.mjs", ["findMacosBundleSource"]],
@@ -233,41 +250,46 @@ test("build, bundle, manifest, and macOS concerns retain dedicated owners", asyn
   }
 });
 
-test("native build emits space-safe encoded rustflags and clears legacy RUSTFLAGS", async () => {
-  const { clientReleaseTrack, encodedRustFlagsWithPathRemap } = await import(
-    `${pathToFileURL(path.join(repoRoot, moduleRoot, "build/native.mjs")).href}?rustflags`
+test("native sidecars are staged into the delivered CLI artifact directory", async () => {
+  const {
+    binarySuffix,
+    clientReleaseTrack,
+    nativeArtifactsDirectory,
+  } = await import(
+    `${pathToFileURL(path.join(repoRoot, moduleRoot, "build/native.mjs")).href}?artifacts`
   );
   assert.equal(clientReleaseTrack({}), "nightly");
   assert.equal(
     clientReleaseTrack({ LICO_CLIENT_RELEASE_TRACK: "stable" }),
     "stable",
   );
-  const cargoHome = "/synthetic/lico cargo home/.cargo";
-  const encoded = encodedRustFlagsWithPathRemap({
-    CARGO_HOME: cargoHome,
-    RUSTFLAGS: "--cfg=legacy_flag",
-  });
-  const flags = encoded.split("\x1f");
-  assert.equal(flags[0], "--cfg=legacy_flag");
-  assert.ok(flags.includes(`--remap-path-prefix=${repoRoot}=/lico/source`));
-  assert.ok(flags.includes(`--remap-path-prefix=${cargoHome}=/cargo`));
-
-  const fromEncoded = encodedRustFlagsWithPathRemap({
-    CARGO_HOME: cargoHome,
-    CARGO_ENCODED_RUSTFLAGS: "--cfg encoded_a\x1f--cfg encoded_b",
-    RUSTFLAGS: "--cfg ignored_legacy",
-  });
-  assert.deepEqual(fromEncoded.split("\x1f").slice(0, 2), [
-    "--cfg encoded_a",
-    "--cfg encoded_b",
-  ]);
-
-  const source = await read(`${moduleRoot}/build/native.mjs`);
-  assert.ok(
-    source.includes("CARGO_ENCODED_RUSTFLAGS: encodedRustFlagsWithPathRemap()"),
+  assert.equal(binarySuffix("windows"), ".exe");
+  assert.equal(binarySuffix("macos"), "");
+  const staged = path.join(os.tmpdir(), "lico-artifacts-synthetic");
+  assert.equal(
+    nativeArtifactsDirectory(
+      { platform: "macos" },
+      { LICO_CLI_ARTIFACTS_DIR: staged },
+    ),
+    staged,
   );
-  assert.ok(source.includes("delete environment.RUSTFLAGS"));
-  assert.equal(source.includes('.join(" ")'), false);
+  assert.equal(
+    nativeArtifactsDirectory({ platform: "windows" }, {}),
+    path.join(repoRoot, "build", "native-artifacts", "windows-x64"),
+  );
+
+  // Desktop consumes the pinned CLI release; it never builds the CLI.
+  const source = await read(`${moduleRoot}/build/native.mjs`);
+  for (const retired of [
+    "crates/",
+    "Cargo.toml",
+    "SIDECAR_CRATES",
+    "cargo-client",
+    "RUSTFLAGS",
+    "cargoTargetDir",
+  ]) {
+    assert.equal(source.includes(retired), false, retired);
+  }
 });
 
 async function collectModules(relativeRoot) {

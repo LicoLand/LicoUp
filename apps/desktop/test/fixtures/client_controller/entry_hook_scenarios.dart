@@ -2,7 +2,6 @@ import 'package:licoup/src/application/features/navigation/controller/client_int
 
 import 'support/client_controller_scenario_dependencies.dart';
 import 'support/fake_agent_service.dart';
-import 'support/fake_mobile_relay_service.dart';
 
 void registerClientEntryHookScenarios() {
   test(
@@ -17,11 +16,9 @@ void registerClientEntryHookScenarios() {
         }
       });
       final service = FakeAgentService();
-      final relayService = FakeMobileRelayService();
       final controller = ClientController(
         portableData: PortableDataRoot(dataDirectoryOverride: directory),
         agentService: service,
-        mobileRelayService: relayService,
       );
       addTearDown(controller.currentViewTracker.flush);
       addTearDown(controller.dispose);
@@ -32,10 +29,11 @@ void registerClientEntryHookScenarios() {
       expect(controller.scannedTargets, hasLength(1));
       // Groups outside the restored conversation slice stay deferred until
       // their destination is entered.
-      expect(relayService.secureMeshStatusCalls, 0);
-      expect(relayService.refreshPairingStatusCalls, 0);
+      expect(
+        service.cliCalls.where((call) => call.first == 'devices'),
+        isEmpty,
+      );
       expect(controller.skillHubSkills, isEmpty);
-      expect(controller.statusMessage, isNot(contains('Secure Mesh')));
       expect(controller.statusMessage, isNot(contains('技能')));
     },
   );
@@ -51,19 +49,12 @@ void registerClientEntryHookScenarios() {
           await directory.delete(recursive: true);
         }
       });
-      final relayService = FakeMobileRelayService()
-        ..config = MobileRelayConfig.defaults().copyWith(
-          stationBaseUrl: 'https://station.example.test',
-          pairingId: 'pair-1',
-          pcTokenPresent: true,
-          paired: true,
-        );
+      final agentService = FakeAgentService();
       final agentsStarted = Completer<void>();
       final agentsDone = Completer<void>();
       final controller = _EntryHookScenarioClientController(
         portableData: PortableDataRoot(dataDirectoryOverride: directory),
-        agentService: FakeAgentService(),
-        mobileRelayService: relayService,
+        agentService: agentService,
         agentsTask: () async {
           agentsStarted.complete();
           await agentsDone.future;
@@ -82,24 +73,23 @@ void registerClientEntryHookScenarios() {
       await initializing;
 
       expect(controller.agentsCalls, 2);
-      expect(relayService.secureMeshStatusCalls, 0);
+      bool devicesStatusRead() => agentService.cliCalls.any(
+        (call) =>
+            call.length == 2 && call[0] == 'devices' && call[1] == 'status',
+      );
+      expect(devicesStatusRead(), isFalse);
 
-      controller.selectSection(ClientSection.mobileRelay);
+      controller.selectSection(ClientSection.devices);
       for (
         var attempt = 0;
-        attempt < 200 && relayService.refreshPairingStatusCalls == 0;
+        attempt < 200 && !devicesStatusRead();
         attempt += 1
       ) {
         await Future<void>.delayed(const Duration(milliseconds: 5));
       }
 
-      expect(controller.mobileRelayCalls, 1);
-      expect(relayService.secureMeshStatusCalls, greaterThanOrEqualTo(1));
-      expect(
-        relayService.secureMeshStatusAuthorizeFlags,
-        everyElement(isFalse),
-      );
-      expect(relayService.refreshPairingStatusCalls, greaterThanOrEqualTo(1));
+      expect(controller.devicesCalls, 1);
+      expect(devicesStatusRead(), isTrue);
     },
   );
 }
@@ -112,12 +102,11 @@ final class _EntryHookScenarioClientController extends ClientController {
     required this.agentsTask,
     super.portableData,
     super.agentService,
-    super.mobileRelayService,
   });
 
   final Future<void> Function() agentsTask;
   int agentsCalls = 0;
-  int mobileRelayCalls = 0;
+  int devicesCalls = 0;
 
   @override
   Map<ClientSection, ClientInterfaceEntryHookTask>
@@ -129,12 +118,11 @@ final class _EntryHookScenarioClientController extends ClientController {
         await agentsTask();
       },
     ),
-    ClientSection.mobileRelay: ClientInterfaceEntryHookTask(
-      section: ClientSection.mobileRelay,
+    ClientSection.devices: ClientInterfaceEntryHookTask(
+      section: ClientSection.devices,
       action: () async {
-        mobileRelayCalls += 1;
-        await refreshSecureMeshStatus(authorize: false, showProgress: false);
-        await refreshMobilePairingStatus();
+        devicesCalls += 1;
+        await devicesController.refresh();
       },
     ),
   };

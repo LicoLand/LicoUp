@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_bubble_edge_glow.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
+import 'package:licoup/src/frontend/shared/ui/conversation_material_scope.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -13,19 +14,7 @@ int _green8(Color color) => (color.toARGB32() >> 8) & 0xff;
 int _blue8(Color color) => color.toARGB32() & 0xff;
 
 void main() {
-  group('MessagingDesktopMetrics userBubbleGlass', () {
-    test('fill is fully transparent', () {
-      final darkFill = MessagingDesktopMetrics.userBubbleGlassFill(
-        isDark: true,
-      );
-      final lightFill = MessagingDesktopMetrics.userBubbleGlassFill(
-        isDark: false,
-      );
-
-      expect(_alpha8(darkFill), 0);
-      expect(_alpha8(lightFill), 0);
-    });
-
+  group('MessagingDesktopMetrics bubble edge glow', () {
     test('edge light band tints accent, never neutral line or brand', () {
       const accentGlow = Color(0x38007d8a);
       const line = Color(0xFF888888);
@@ -48,16 +37,9 @@ void main() {
       expect(top, isNot(equals(line.withAlpha(_alpha8(top)))));
       expect(top, isNot(equals(brandGlow.withAlpha(_alpha8(top)))));
     });
-
-    test('blur sigma matches conversation overlay glass', () {
-      expect(
-        MessagingDesktopMetrics.userBubbleGlassBlurSigma,
-        MessagingDesktopMetrics.conversationOverlayGlassBlurSigma,
-      );
-    });
   });
 
-  testWidgets('user bubble carries light on the rim, not in the fill', (
+  testWidgets('user bubble paints the accent tint with a rim light', (
     tester,
   ) async {
     final theme = buildLicoTheme(platformBrightness: Brightness.dark);
@@ -78,8 +60,6 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byType(BackdropFilter), findsOneWidget);
-
     final glowPaint = tester.widget<CustomPaint>(
       find.descendant(
         of: find.byType(MessagingBubbleEdgeGlow),
@@ -98,7 +78,6 @@ void main() {
       _alpha8(rimGradient.colors.first),
       MessagingDesktopMetrics.bubbleEdgeGlowAlphaDark,
     );
-    // The light is the border itself — no field passes blur outward.
 
     final animated = tester.widget<AnimatedContainer>(
       find.descendant(
@@ -107,20 +86,69 @@ void main() {
       ),
     );
     final decoration = animated.decoration! as ShapeDecoration;
-    expect(_alpha8(decoration.color!), 0);
-    expect(decoration.gradient, isNull);
-    expect(decoration.shadows ?? const <BoxShadow>[], isEmpty);
-    // At rest the bubble carries the neutral hairline and the light is off.
+    final colors = theme.extension<LicoThemeColors>()!;
+    // Dark surface: an opaque deep-violet diagonal (accent lifted on
+    // `accentSurface`) with a violet under-glow and a violet rim
+    // hairline; the brand gold gradient stays only on the light surface.
+    final gradient = decoration.gradient as LinearGradient?;
+    expect(gradient, isNotNull);
+    expect(decoration.color, isNull);
+    final expectedBody = MessagingUserBubbleGlass.deepVioletBody(colors.accent);
+    expect(gradient!.colors, expectedBody);
+    for (final stop in expectedBody) {
+      expect(_alpha8(stop), 0xFF);
+      // Deep violet is saturated — never the grey-mauve a pale alpha
+      // blend produces.
+      expect(HSLColor.fromColor(stop).saturation, greaterThan(0.45));
+    }
+    final rim = decoration.shadows!.single.color;
+    expect(_alpha8(rim), 0x4D);
+    // At rest the bubble carries the violet hairline and the light is off.
     final shape = decoration.shape as ContinuousRoundedBorder;
+    expect(_alpha8(shape.side.color), 140);
     expect(
-      shape.side.color,
-      MessagingDesktopMetrics.bubbleRestingBorder(
-        theme.extension<LicoThemeColors>()!.line,
-        isDark: true,
-      ),
+      HSLColor.fromColor(shape.side.color).hue,
+      closeTo(HSLColor.fromColor(colors.accent).hue, 8),
     );
     expect(painter.opacity, 0);
     expect(tester.takeException(), isNull);
+
+    // Spec §9: dark never shows gold — glass and opaque profiles alike.
+    for (final opaque in [false, true]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: theme,
+          home: Scaffold(
+            body: ConversationMaterialScope(
+              opaqueBubbles: opaque,
+              child: MessagingUserBubbleGlass(
+                borderRadius: BorderRadius.circular(20),
+                child: const Text('hi'),
+              ),
+            ),
+          ),
+        ),
+      );
+      final box = tester.widget<AnimatedContainer>(
+        find.descendant(
+          of: find.byType(MessagingUserBubbleGlass),
+          matching: find.byType(AnimatedContainer),
+        ),
+      );
+      final deco = box.decoration! as ShapeDecoration;
+      final scopedGradient = deco.gradient as LinearGradient?;
+      expect(
+        scopedGradient,
+        isNotNull,
+        reason:
+            'dark user bubble keeps the deep-violet body '
+            '(opaque=$opaque)',
+      );
+      expect(
+        scopedGradient!.colors.every((color) => _alpha8(color) == 0xFF),
+        isTrue,
+      );
+    }
 
     // Hover fades the light in and the resting hairline out.
     await tester.pumpWidget(

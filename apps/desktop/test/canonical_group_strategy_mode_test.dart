@@ -5,10 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
+import 'package:licoup/src/application/features/agents/contracts/acativa_gateway.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
-import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
+import 'package:licoup/src/contracts/acativa_models.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
@@ -55,7 +55,7 @@ void main() {
             onCopyText: (_) async {},
             framed: false,
             flywheelGateway: gateway,
-            onOpenAdaptiveFlywheel: (revision) async {
+            onOpenAcativa: (revision) async {
               openedRevisions.add(revision);
             },
           ),
@@ -82,7 +82,7 @@ void main() {
         find.byKey(const Key('canonical-group-strategy-picker-panel')),
         findsNothing,
       );
-      expect(find.text('Adaptive Flywheel'), findsOneWidget);
+      expect(find.text('Acativa'), findsOneWidget);
       expect(find.text('Authorized Graph'), findsNothing);
 
       await tester.tap(picker);
@@ -119,7 +119,7 @@ void main() {
             onCopyText: (_) async {},
             framed: false,
             flywheelGateway: gateway,
-            onOpenAdaptiveFlywheel: (revision) async {
+            onOpenAcativa: (revision) async {
               openedRevisions.add(revision);
             },
           ),
@@ -1487,7 +1487,7 @@ TargetCandidate _target(String id, String label) => TargetCandidate(
   supportedActions: const ['runtime.message.send'],
 );
 
-final class _StrategyGateway implements AdaptiveFlywheelGateway {
+final class _StrategyGateway implements AcativaGateway {
   _StrategyGateway({this.inspectionBarrier, this.callOrder});
 
   final Completer<void>? inspectionBarrier;
@@ -1508,7 +1508,7 @@ final class _StrategyGateway implements AdaptiveFlywheelGateway {
       inspectionCount += 1;
       if (inspectionFailures > 0) {
         inspectionFailures -= 1;
-        throw const AdaptiveFlywheelFailure(
+        throw const AcativaFailure(
           code: 'strategy_inspection_failed',
           recovery: 'Retry strategy inspection.',
           retryable: true,
@@ -1587,7 +1587,7 @@ final class _StrategyGateway implements AdaptiveFlywheelGateway {
       'strategy.run.start' => () {
         startCount += 1;
         if (failStart) {
-          throw const AdaptiveFlywheelFailure(
+          throw const AcativaFailure(
             code: 'strategy_actor_quota_exhausted',
             recovery: 'Review the strategy run.',
           );

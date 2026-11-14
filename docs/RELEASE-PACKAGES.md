@@ -39,11 +39,11 @@ build/releases/<product-version>/
 │   ├── LicoUp-macos-arm64-update.zip.sha256
 │   ├── LicoUp-macos-arm64.build.json
 │   └── LicoUp-macos-direct-arm64.package.json
-└── android-direct-arm64-v8a/
-    ├── LicoUp-android-arm64.apk
-    ├── LicoUp-android-arm64.apk.sha256
-    ├── LicoUp-android-arm64.build.json
-    └── LicoUp-android-direct-arm64-v8a.package.json
+└── linux-deb-arm64/
+    ├── licoup_<version>_arm64.deb
+    ├── licoup_<version>_arm64.deb.sha256
+    ├── licoup_<version>_arm64-deb.build.json
+    └── LicoUp-linux-deb-arm64.package.json
 ```
 
 There is no archive around this tree. Each leaf directory is independently
@@ -76,14 +76,13 @@ program execution ABI; it is not a publishable package.
 | Arch Linux ARM (arm64) | Arch Linux ARM rolling | `.pkg.tar.zst` | Pacman repository | Linux arm64 | Pacman repository |
 | Alpine (arm64, x64) | Alpine 3.20 | APK | Alpine repository | matching Linux host | Alpine repository |
 | AppImage (arm64, x64) | glibc 2.31 | AppImage | direct | matching Linux host | AppImage update information |
-| Android direct (arm64-v8a) | Android API 21 | APK | direct | macOS arm64 release host | manual download |
-| Android Play (arm64-v8a) | Android API 21 | AAB | Google Play | macOS arm64 release host | Google Play |
-| iOS App Store (arm64) | iOS 13.0 | IPA | App Store | macOS arm64 | App Store |
 
 The catalog contains one row per architecture where the native package differs;
 the parenthesized architectures above are separate target IDs. Debian, RPM,
 Arch Linux, Arch Linux ARM, Alpine, and AppImage are intentionally separate
-families. There is no generic Linux package target.
+families. There is no generic Linux package target. The Android and iOS
+implementations and their package targets live in the sibling LicoUp-Android
+and LicoUp-iOS repositories; this catalog no longer carries mobile targets.
 
 `packageBuildSupported` and `releaseSupported` are independent facts. A recipe
 can be buildable while release closure is still blocked. The macOS direct
@@ -110,7 +109,7 @@ Plan several independent packages in one request:
 
 ```sh
 npm run client:release:plan -- \
-  --targets macos-direct-arm64,android-direct-arm64-v8a
+  --targets macos-direct-arm64,linux-deb-arm64
 ```
 
 Repeated `--target` and comma-separated `--targets` may be combined. Duplicates,
@@ -121,12 +120,12 @@ unless every selected target has an implemented builder for the current host.
 Build, stage, or verify supported targets with the same selector:
 
 ```sh
-npm run client:release:build -- --target android-direct-arm64-v8a
+npm run client:release:build -- --target linux-deb-arm64
 npm run client:release:stage -- \
   --target macos-direct-arm64 \
-  --target android-direct-arm64-v8a
+  --target linux-deb-arm64
 npm run client:release:verify -- \
-  --targets macos-direct-arm64,android-direct-arm64-v8a
+  --targets macos-direct-arm64,linux-deb-arm64
 ```
 
 `stage` consumes already-built native artifacts and writes only the canonical
@@ -135,11 +134,10 @@ metadata, digest mismatches, and checksum mismatches.
 
 `build` runs the target's complete native recipe before atomically staging the
 selected set. Generic and remote macOS direct builds fail closed. An explicitly
-authorized local operator uses the Apple Release-owned `client:release:macos`
+authorized local operator uses the the release plane-owned `client:release:macos`
 entry; the coordinator requires
 Developer ID, Hardened Runtime, secure timestamps, notarization, stapling, and
-Gatekeeper verification. Android direct requires its protected APK signing
-inputs. Missing platform authority fails before a
+Gatekeeper verification. Missing platform authority fails before a
 canonical package leaf is replaced.
 
 ## Publication
@@ -160,8 +158,8 @@ consumer verification manifest that also binds every package-manifest digest,
 and publishes only after the complete selected set succeeds.
 
 Store and package-repository submission remain separate channel operations.
-Building an AAB, MSIX upload bundle, DEB, RPM, Pacman package, Alpine package, or
-App Store IPA never proves that the corresponding store or repository has
+Building an MSIX upload bundle, DEB, RPM, Pacman package, Alpine package, or
+App Store PKG never proves that the corresponding store or repository has
 accepted it.
 
 ## Template ownership
@@ -174,8 +172,6 @@ They follow the native metadata shapes documented by
 [Arch package guidelines](https://wiki.archlinux.org/title/Creating_packages),
 [Alpine packaging](https://wiki.alpinelinux.org/wiki/Creating_an_Alpine_package),
 and [AppImage packaging](https://docs.appimage.org/packaging-guide/index.html).
-Android store submission follows the
-[Android App Bundle](https://developer.android.com/guide/app-bundle) model;
 Apple store submissions remain Xcode/App Store Connect archives.
 
 The direct macOS compliance boundary is documented in

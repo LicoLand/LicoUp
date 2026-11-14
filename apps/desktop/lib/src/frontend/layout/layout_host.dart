@@ -196,6 +196,7 @@ final class _LayoutHostState extends State<LayoutHost> {
                       destination: widget.destination,
                       content: widget.content,
                       state: scopedState,
+                      style: selection.effectiveStyleId,
                     ),
                   );
                   return registered.variant.shellBuilder(
@@ -214,12 +215,14 @@ final class _LayoutHostState extends State<LayoutHost> {
                         semanticTarget: widget.primaryFocusTarget,
                         child: destination,
                       ),
+                      content: widget.content,
                       onSelectDestination: widget.onSelectDestination,
                       destinationLabel: widget.destinationLabel,
                       components: registered.bundle.components,
                       tokens: registered.bundle.tokens,
                       initialFocusTarget: initialFocusTarget,
                       chrome: widget.chrome,
+                      style: selection.effectiveStyleId,
                     ),
                   );
                 },

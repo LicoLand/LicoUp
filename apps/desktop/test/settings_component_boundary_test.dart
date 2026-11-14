@@ -43,7 +43,7 @@ void main() {
   testWidgets('locked dropdown does not change selection on tap', (
     tester,
   ) async {
-    var selected = 'lico-soda';
+    var selected = 'lico-starlit-gold';
 
     await tester.pumpWidget(
       MaterialApp(
@@ -59,11 +59,11 @@ void main() {
                   locked: true,
                   items: const [
                     SettingsDropdownItem(
-                      value: 'lico-soda',
+                      value: 'lico-starlit-gold',
                       label: 'LicoUp Dark',
                     ),
                     SettingsDropdownItem(
-                      value: 'lico-soda-light',
+                      value: 'lico-taro-waffle',
                       label: 'LicoUp Light',
                     ),
                   ],
@@ -82,7 +82,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('LicoUp Light'), findsNothing);
-    expect(selected, 'lico-soda');
+    expect(selected, 'lico-starlit-gold');
   });
 
   testWidgets('locale dropdown invokes the locale callback', (tester) async {

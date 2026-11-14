@@ -1,0 +1,46 @@
+{
+  "id": "live-acceptance",
+  "file": "08-live-acceptance.json",
+  "title": {
+    "en": "Centrally assigned live acceptance",
+    "zh": "统一真实验收"
+  },
+  "purpose": {
+    "en": "Exercise one explicit user-assigned real task.",
+    "zh": "执行用户单独指定的真实任务。"
+  },
+  "owner": {
+    "en": "User-designated acceptance Agent",
+    "zh": "用户指定的验收智能体"
+  },
+  "entry": {
+    "en": "Integrated engineering delivery and an explicit acceptance assignment",
+    "zh": "集成工程交付完成且已指定验收任务"
+  },
+  "steps": [
+    {
+      "en": "Prepare protected data",
+      "zh": "准备受保护数据"
+    },
+    {
+      "en": "Build and install once",
+      "zh": "统一构建安装"
+    },
+    {
+      "en": "Run assigned scenario",
+      "zh": "运行指定场景"
+    }
+  ],
+  "exit": {
+    "en": "The assigned scenario has an honest result and remaining limits.",
+    "zh": "指定场景有明确结果，保留限制如实报告。"
+  },
+  "failure": {
+    "en": "Diagnose the failing stage and enter scoped repair.",
+    "zh": "定位失败阶段，再进入范围内修复。"
+  },
+  "boundary": {
+    "en": "Install or launch alone does not authorize UI inspection, real Agent work or publication.",
+    "zh": "安装或启动本身不授权界面检查、真实智能体任务或发布。"
+  }
+}

@@ -16,10 +16,10 @@ export function macosAppDirFromBundle(bundle) {
 export const macosCustodyHelper = Object.freeze({
   bundleId: "land.lico.licoup.custody",
   appName: "LicoUpCustody.app",
-  executableName: "licoup-cli",
+  executableName: "licoup",
   relativeAppPath: "Contents/Helpers/LicoUpCustody.app",
   relativeExecutablePath:
-    "Contents/Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli",
+    "Contents/Helpers/LicoUpCustody.app/Contents/MacOS/licoup",
 });
 
 export function macosCustodyHelperPaths(appDir) {

@@ -1,5 +1,6 @@
 import 'package:presentation_contract/presentation_contract.dart';
 
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/client_update_models.dart';
 
 sealed class SettingsIntent {
@@ -19,8 +20,8 @@ final class SetLocalePreference extends SettingsIntent {
 }
 
 final class SetReduceMotionPreference extends SettingsIntent {
-  const SetReduceMotionPreference(this.enabled, {super.trace});
-  final bool enabled;
+  const SetReduceMotionPreference(this.preference, {super.trace});
+  final ReduceMotionPreference preference;
 }
 
 final class SetLoadingEffectPreference extends SettingsIntent {
@@ -31,6 +32,12 @@ final class SetLoadingEffectPreference extends SettingsIntent {
 final class SetLayoutPreference extends SettingsIntent {
   const SetLayoutPreference(this.profileId, {super.trace});
   final String profileId;
+}
+
+final class SetLayoutStyle extends SettingsIntent {
+  const SetLayoutStyle(this.profileId, this.styleId, {super.trace});
+  final String profileId;
+  final String styleId;
 }
 
 final class CheckForClientUpdate extends SettingsIntent {
@@ -78,17 +85,20 @@ final class OpenSettingsDirectory extends SettingsIntent {
   final String caption;
 }
 
-final class ReloadAppearancePresets extends SettingsIntent {
-  const ReloadAppearancePresets({super.trace});
-}
-
-final class RefreshConversationSnapshotLocation extends SettingsIntent {
-  const RefreshConversationSnapshotLocation({super.trace});
-}
-
 final class SetConversationSnapshotLocation extends SettingsIntent {
   const SetConversationSnapshotLocation(this.path, {super.trace});
   final String path;
+}
+
+final class RelocateDataHome extends SettingsIntent {
+  const RelocateDataHome(this.destinationParent, {super.trace});
+  final String destinationParent;
+}
+
+final class CleanupPreviousDataHome extends SettingsIntent {
+  const CleanupPreviousDataHome(this.expectedPreviousRootPath, {super.trace});
+
+  final String expectedPreviousRootPath;
 }
 
 final class RefreshArchivedConversations extends SettingsIntent {
@@ -128,4 +138,16 @@ final class SetSettingsAutostart extends SettingsIntent {
   final SettingsAutostartComponent component;
   final bool enabled;
   final bool? silent;
+}
+
+final class RefreshTerminalCommand extends SettingsIntent {
+  const RefreshTerminalCommand({super.trace});
+}
+
+final class InstallTerminalCommand extends SettingsIntent {
+  const InstallTerminalCommand({super.trace});
+}
+
+final class UninstallTerminalCommand extends SettingsIntent {
+  const UninstallTerminalCommand({super.trace});
 }

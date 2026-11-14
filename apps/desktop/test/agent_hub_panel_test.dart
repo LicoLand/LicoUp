@@ -128,12 +128,14 @@ List<AgentHubRecipe> _recipes({
   Set<String> updateAvailableIds = const {},
   Map<String, String> installedVersions = const {},
   Map<String, String> latestVersions = const {},
+  Map<String, List<String>> installKinds = const {},
+  Map<String, String> displayNames = const {},
 }) {
   return [
     for (final id in _ids)
       AgentHubRecipe(
         id: id,
-        displayName: _title(id),
+        displayName: displayNames[id] ?? _title(id),
         adaptation: id == 'antigravity'
             ? AgentHubAdaptationDepth.partial
             : id == 'deepseek-harness'
@@ -169,6 +171,7 @@ List<AgentHubRecipe> _recipes({
         latestVersion: latestVersions[id] ?? '',
         updateAvailable: updateAvailableIds.contains(id),
         version: installedVersions[id] ?? '',
+        installKinds: installKinds[id] ?? const [],
         installChannels: _channels(id),
       ),
   ];
@@ -183,6 +186,8 @@ AgentHubCatalogSnapshot _snapshot({
   Set<String> updateAvailableIds = const {},
   Map<String, String> installedVersions = const {},
   Map<String, String> latestVersions = const {},
+  Map<String, List<String>> installKinds = const {},
+  Map<String, String> displayNames = const {},
 }) {
   return AgentHubCatalogSnapshot(
     recipes: _recipes(
@@ -194,6 +199,8 @@ AgentHubCatalogSnapshot _snapshot({
       updateAvailableIds: updateAvailableIds,
       installedVersions: installedVersions,
       latestVersions: latestVersions,
+      installKinds: installKinds,
+      displayNames: displayNames,
     ),
   );
 }
@@ -208,6 +215,8 @@ final class _FakeHubEngine implements AgentHubEnginePort {
     this.updateAvailableIds = const {},
     this.installedVersions = const {},
     this.latestVersions = const {},
+    this.installKinds = const {},
+    this.displayNames = const {},
     this.seedCache,
     this.warehouseSnapshot,
     this.liveSnapshot,
@@ -225,6 +234,8 @@ final class _FakeHubEngine implements AgentHubEnginePort {
   final Set<String> updateAvailableIds;
   final Map<String, String> installedVersions;
   final Map<String, String> latestVersions;
+  final Map<String, List<String>> installKinds;
+  final Map<String, String> displayNames;
   final AgentHubCatalogSnapshot? seedCache;
   final AgentHubCatalogSnapshot? warehouseSnapshot;
 
@@ -260,6 +271,8 @@ final class _FakeHubEngine implements AgentHubEnginePort {
     updateAvailableIds: updateAvailableIds,
     installedVersions: installedVersions,
     latestVersions: latestVersions,
+    installKinds: installKinds,
+    displayNames: displayNames,
   );
 
   @override
@@ -407,8 +420,9 @@ final class _FakeHubEngine implements AgentHubEnginePort {
 typedef _HubHarness = (Widget, AgentHubCatalogController);
 typedef _AgentHubCatalogOrder =
     List<AgentHubEntryProjection> Function(
-      List<AgentHubEntryProjection> entries,
-    );
+      List<AgentHubEntryProjection> entries, [
+      int? seed,
+    ]);
 
 _HubHarness _harness(
   AgentHubEnginePort engine, {
@@ -458,7 +472,7 @@ _HubHarness _harness(
           skills: skills,
           openHomepage: openHomepage ?? (_) async {},
           onOpenAgent: onOpenAgent,
-          orderEntries: orderRecipes ?? (entries) => entries,
+          orderEntries: orderRecipes ?? (entries, [seed]) => entries,
         ),
       ),
     ),
@@ -664,53 +678,46 @@ void main() {
       expect(find.byKey(Key('agent-hub-status-$id')), findsNothing);
       expect(find.byKey(Key('agent-hub-more-$id')), findsNothing);
       final name = tester.widget<Text>(find.byKey(Key('agent-hub-name-$id')));
-      expect(name.maxLines, 2);
+      expect(name.maxLines, 1);
       expect(name.overflow, TextOverflow.ellipsis);
       final summary = tester.widget<Text>(
         find.byKey(Key('agent-hub-summary-$id')),
       );
-      expect(summary.maxLines, 3);
+      expect(summary.maxLines, 2);
       expect(summary.overflow, TextOverflow.ellipsis);
       expect(summary.data, _summaries[id]);
       expect(summary.textSpan, isNull);
       final paragraph = tester.renderObject<RenderParagraph>(
         find.byKey(Key('agent-hub-summary-$id')),
       );
-      expect(paragraph.maxLines, 3);
+      expect(paragraph.maxLines, 2);
       final boxes = paragraph.getBoxesForSelection(
         TextSelection(
           baseOffset: 0,
           extentOffset: paragraph.text.toPlainText().length,
         ),
       );
-      expect(_summaryLineCount(boxes), lessThanOrEqualTo(3));
-      final header = tester.widget<Padding>(
+      expect(_summaryLineCount(boxes), lessThanOrEqualTo(2));
+      final headerSize = tester.getSize(
         find.byKey(Key('agent-hub-header-$id')),
       );
-      expect(
-        header.padding,
-        const EdgeInsets.fromLTRB(
-          LicoContentSpacing.item,
-          LicoContentSpacing.compact,
-          LicoContentSpacing.item,
-          0,
-        ),
-      );
+      expect(headerSize, const Size(56, 56));
       final cardRect = tester.getRect(find.byKey(Key('agent-hub-card-$id')));
       final nameRect = tester.getRect(find.byKey(Key('agent-hub-name-$id')));
       expect(
         cardRect.right - nameRect.right,
         greaterThanOrEqualTo(LicoContentSpacing.item - 0.5),
       );
-      final headerRect = tester.getRect(
-        find.byKey(Key('agent-hub-header-$id')),
-      );
       final summaryRect = tester.getRect(
         find.byKey(Key('agent-hub-summary-$id')),
       );
       final introRect = tester.getRect(find.byKey(Key('agent-hub-intro-$id')));
-      expect(summaryRect.top - headerRect.bottom, closeTo(0, 0.5));
-      expect(introRect.bottom - summaryRect.bottom, closeTo(8, 0.5));
+      // The demo tile stacks avatar → name → summary with 10px / 6px gaps,
+      // and tapping the tile itself performs no navigation — the detail page
+      // opens through the corner chevron affordance only.
+      expect(summaryRect.top - nameRect.bottom, closeTo(6, 0.5));
+      expect(cardRect.right - introRect.right, closeTo(8, 0.5));
+      expect(introRect.top - cardRect.top, closeTo(8, 0.5));
       expect(
         tester.widget<InkWell>(find.byKey(Key('agent-hub-install-$id'))).onTap,
         isNotNull,
@@ -738,15 +745,15 @@ void main() {
     expect(find.text('Open'), findsNothing);
     expect(find.text('Uninstall'), findsNothing);
     expect(find.text('Visit →'), findsNothing);
-    expect(find.text('Installed'), findsNothing);
-    expect(find.text('Not installed'), findsNothing);
+    expect(find.text('Installed'), findsNWidgets(1));
+    expect(find.text('Not installed'), findsNWidgets(_ids.length + 1));
     expect(find.text('External'), findsNothing);
     expect(find.text('Failed'), findsNothing);
     expect(find.textContaining('rank'), findsNothing);
     expect(find.textContaining('Code mode'), findsNothing);
     expect(
       tester.getRect(find.byKey(const Key('agent-hub-card-codex'))).height,
-      closeTo(147.4, 0.5),
+      closeTo(213, 0.5),
     );
     expect(tester.takeException(), isNull);
   });
@@ -912,8 +919,9 @@ void main() {
   ) async {
     final calls = <int>[];
     List<AgentHubEntryProjection> rotatingOrder(
-      List<AgentHubEntryProjection> entries,
-    ) {
+      List<AgentHubEntryProjection> entries, [
+      int? seed,
+    ]) {
       calls.add(entries.length);
       if (entries.isEmpty) {
         return entries;
@@ -1190,7 +1198,7 @@ void main() {
           skills: skillFixture.binding,
           skillPresentation: skillPresentation,
           locale: const Locale('zh'),
-          presetId: 'lico-soda-light',
+          presetId: 'lico-taro-waffle',
         ),
       );
       await _openDetail(tester, 'codex');
@@ -1390,7 +1398,7 @@ void main() {
     expect(find.text('Visit →'), findsNothing);
     expect(find.text('卸载'), findsNothing);
     expect(find.text('外部安装'), findsNothing);
-    expect(find.text('未安装'), findsNothing);
+    expect(find.text('未安装'), findsNWidgets(_ids.length + 1));
     expect(tester.takeException(), isNull);
   });
 
@@ -1477,8 +1485,9 @@ void main() {
     (tester) async {
       final calls = <int>[];
       List<AgentHubEntryProjection> rotatingOrder(
-        List<AgentHubEntryProjection> entries,
-      ) {
+        List<AgentHubEntryProjection> entries, [
+        int? seed,
+      ]) {
         calls.add(entries.length);
         if (entries.isEmpty) {
           return entries;
@@ -1581,7 +1590,7 @@ void main() {
     },
   );
 
-  testWidgets('list card footer fills the area below the divider', (
+  testWidgets('list card footer spans the tile bottom under a divider', (
     tester,
   ) async {
     await _pumpHub(tester, _harness(_FakeHubEngine(ownedIds: const {'codex'})));
@@ -1591,11 +1600,19 @@ void main() {
       find.byKey(const Key('agent-hub-card-codex')),
     );
     final open = tester.getRect(find.byKey(const Key('agent-hub-open-codex')));
-    expect(open.left, closeTo(listCard.left, 0.5));
-    expect(open.right, closeTo(listCard.right, 0.5));
-    expect(open.bottom, closeTo(listCard.bottom, 0.5));
-    expect(open.height, closeTo(36, 1));
-    expect(find.byType(Divider), findsNWidgets(_ids.length));
+    // The footer is a flat 36px strip: edge to edge and flush with the card
+    // bottom, separated from the content by a hairline divider.
+    expect(open.left, closeTo(listCard.left, 1));
+    expect(open.right, closeTo(listCard.right, 1));
+    expect(open.bottom, closeTo(listCard.bottom, 1));
+    expect(open.height, closeTo(36, 2));
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('agent-hub-card-codex')),
+        matching: find.byType(Divider),
+      ),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('agent-hub-install-codex')), findsNothing);
     expect(find.byKey(const Key('agent-hub-update-codex')), findsNothing);
     expect(find.byKey(const Key('agent-hub-uninstall-codex')), findsNothing);
@@ -1610,6 +1627,72 @@ void main() {
     expect(find.byKey(const Key('agent-hub-update-codex')), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'card badges list detected install forms and titles drop channel suffixes',
+    (tester) async {
+      await _pumpHub(
+        tester,
+        _harness(
+          _FakeHubEngine(
+            ownedIds: const {'codex', 'antigravity'},
+            installKinds: const {
+              'antigravity': ['desktop', 'cli'],
+              'codex': ['cli'],
+              'cursor': ['ide'],
+              'pi': ['cli', 'plugin'],
+              'opencode': ['bogus-kind'],
+            },
+            displayNames: const {'codex': 'Codex CLI'},
+          ),
+        ),
+      );
+
+      final antigravity = find.byKey(const Key('agent-hub-card-antigravity'));
+      expect(
+        find.descendant(of: antigravity, matching: find.text('Desktop')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: antigravity, matching: find.text('CLI')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: antigravity, matching: find.text('IDE')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('agent-hub-card-cursor')),
+          matching: find.text('IDE'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('agent-hub-card-pi')),
+          matching: find.text('Plugin'),
+        ),
+        findsOneWidget,
+      );
+      // An unrecognized install form never surfaces as a badge.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('agent-hub-card-opencode')),
+          matching: find.text('bogus-kind'),
+        ),
+        findsNothing,
+      );
+      // The channel suffix is a delivery detail, not part of the name.
+      final name = tester.widget<Text>(
+        find.byKey(const Key('agent-hub-name-codex')),
+      );
+      expect(name.data, 'Codex');
+      expect(find.text('Codex CLI'), findsNothing);
+      expect(find.text('AI'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('unwired hub engine does not render a Dart recipe catalog', (
     tester,
@@ -1639,10 +1722,10 @@ void main() {
 
       expect(find.text('扫描中...'), findsNothing);
       expect(find.byKey(const Key('agent-hub-card-busy')), findsNothing);
-      expect(find.text('已安装'), findsNothing);
+      expect(find.text('已安装'), findsNWidgets(3));
       expect(find.text('外部安装'), findsNothing);
       expect(find.text('失败'), findsNothing);
-      expect(find.text('未安装'), findsNothing);
+      expect(find.text('未安装'), findsNWidgets(8));
       expect(find.text('brew'), findsNothing);
       expect(find.text('npm'), findsNothing);
       expect(find.text('official'), findsNothing);
@@ -1913,11 +1996,33 @@ void main() {
 
     expect(find.text('0.42.1'), findsNothing);
     expect(find.text('latest'), findsNothing);
-    expect(find.byKey(const Key('agent-hub-open-codex')), findsNothing);
     expect(find.byKey(const Key('agent-hub-install-codex')), findsNothing);
+    // An installed agent with an update splits the footer evenly: update on
+    // the left, chat on the right, both enabled.
+    final cardRect = tester.getRect(
+      find.byKey(const Key('agent-hub-card-codex')),
+    );
+    final updateRect = tester.getRect(
+      find.byKey(const Key('agent-hub-update-codex')),
+    );
+    final openRect = tester.getRect(
+      find.byKey(const Key('agent-hub-open-codex')),
+    );
+    expect(updateRect.left, closeTo(cardRect.left, 1));
+    expect(openRect.right, closeTo(cardRect.right, 1));
+    expect(updateRect.width, closeTo(openRect.width, 2));
+    expect(openRect.left, greaterThan(updateRect.left));
+    expect(updateRect.bottom, closeTo(cardRect.bottom, 1));
+    expect(openRect.bottom, closeTo(cardRect.bottom, 1));
     expect(
       tester
           .widget<InkWell>(find.byKey(const Key('agent-hub-update-codex')))
+          .onTap,
+      isNotNull,
+    );
+    expect(
+      tester
+          .widget<InkWell>(find.byKey(const Key('agent-hub-open-codex')))
           .onTap,
       isNotNull,
     );
@@ -2040,7 +2145,7 @@ void main() {
       expect(find.byKey(const Key('agent-hub-card-codex')), findsOneWidget);
       expect(find.text('扫描中...'), findsNothing);
       expect(find.byKey(const Key('agent-hub-card-busy')), findsNothing);
-      expect(find.text('未安装'), findsNothing);
+      expect(find.text('未安装'), findsNWidgets(_ids.length + 1));
       expect(find.text('外部安装'), findsNothing);
       expect(tester.takeException(), isNull);
     },

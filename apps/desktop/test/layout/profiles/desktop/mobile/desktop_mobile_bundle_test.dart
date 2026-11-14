@@ -23,7 +23,7 @@ void main() {
       };
       const expectedDestinations = {
         ClientSection.agents,
-        ClientSection.mobileRelay,
+        ClientSection.devices,
         ClientSection.settings,
       };
 
@@ -107,7 +107,10 @@ void main() {
           home: Center(
             child: SizedBox(
               width: 220,
-              child: Builder(builder: desktopMobileBundle.previewBuilder),
+              child: Builder(
+                builder: (context) =>
+                    desktopMobileBundle.previewBuilder(context, null),
+              ),
             ),
           ),
         ),
@@ -160,6 +163,7 @@ void main() {
                   destination: destination,
                   content: content,
                   state: state,
+                  style: null,
                 ),
               ),
             ),

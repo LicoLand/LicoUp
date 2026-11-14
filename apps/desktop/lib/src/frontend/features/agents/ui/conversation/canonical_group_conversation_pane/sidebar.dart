@@ -6,6 +6,8 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/conversation_visual_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_list_typography.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_selection_highlight.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -223,6 +225,7 @@ class _CanonicalGroupSidebarRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
     final colors = context.licoColors;
+    final ramp = LicoListTypeRamp.of(context);
     final title = conversation.title.trim().isEmpty
         ? strings.groupConversation
         : conversation.title.trim();
@@ -233,53 +236,79 @@ class _CanonicalGroupSidebarRow extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(LicoRadius.floating),
-          child: Container(
-            height: 48,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              color: selected ? colors.primary : Colors.transparent,
-              borderRadius: BorderRadius.circular(LicoRadius.floating),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.groups_2_rounded,
-                  size: 20,
-                  color: selected
-                      ? colors.textOnPrimary
-                      : ConversationVisualTokens.groupIdentityMark(colors),
-                ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: selected ? colors.textOnPrimary : colors.text,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        strings.groupConversationMemberCount(
-                          conversation.membershipCount,
-                        ),
-                        style: TextStyle(
-                          color: selected
-                              ? colors.textOnPrimary.withAlpha(180)
-                              : colors.textMuted,
-                          fontSize: 10.5,
-                        ),
-                      ),
-                    ],
+          hoverColor: LicoSelectionLight.hoverFill(context),
+          child: LicoSelectionLight(
+            selected: selected,
+            radius: LicoRadius.floating,
+            child: Container(
+              height: 48,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(LicoRadius.floating),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.groups_2_rounded,
+                    size: 20,
+                    color: selected && !LicoSelectionLight.isStarlight(context)
+                        ? colors.selectionInk
+                        : ConversationVisualTokens.groupIdentityMark(colors),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              (selected &&
+                                          !LicoSelectionLight.isStarlight(
+                                            context,
+                                          )
+                                      ? ramp.childTitleSelected
+                                      : ramp.childTitle)
+                                  .copyWith(
+                                    color:
+                                        selected &&
+                                            !LicoSelectionLight.isStarlight(
+                                              context,
+                                            )
+                                        ? null
+                                        : colors.text,
+                                  ),
+                        ),
+                        Text(
+                          strings.groupConversationMemberCount(
+                            conversation.membershipCount,
+                          ),
+                          style:
+                              (selected &&
+                                          !LicoSelectionLight.isStarlight(
+                                            context,
+                                          )
+                                      ? ramp.childMetaSelected
+                                      : ramp.childMeta)
+                                  .copyWith(
+                                    color:
+                                        selected &&
+                                            !LicoSelectionLight.isStarlight(
+                                              context,
+                                            )
+                                        ? null
+                                        : colors.textMuted,
+                                  ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

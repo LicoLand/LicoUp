@@ -5,9 +5,11 @@ import 'package:licoup/src/frontend/layout/layout_state_store.dart';
 import 'package:licoup/src/presentation/layout/semantic_destination_catalog.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_definition.dart';
@@ -525,14 +527,25 @@ final class MemoryPreferencesRepository
       PresentationPreferencesLoadResult(preferences: value);
 
   @override
-  Future<PresentationPreferences> setReduceMotion(bool enabled) async {
-    value = value.copyWith(reduceMotion: enabled);
+  Future<PresentationPreferences> setReduceMotion(
+    ReduceMotionPreference preference,
+  ) async {
+    value = value.copyWith(reduceMotion: preference);
     return value;
   }
 
   @override
   Future<PresentationPreferences> setLoadingEffect(String id) async {
     value = value.copyWith(loadingEffectId: id);
+    return value;
+  }
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) async {
+    value = value.withResourceSelection(kind, selection);
     return value;
   }
 
@@ -545,6 +558,17 @@ final class MemoryPreferencesRepository
   @override
   Future<PresentationPreferences> setLayoutProfile(LayoutProfileId id) async {
     value = value.copyWith(layoutProfileId: id);
+    return value;
+  }
+
+  @override
+  Future<PresentationPreferences> setLayoutStyle(
+    LayoutProfileId profile,
+    LayoutStyleId style,
+  ) async {
+    value = value.copyWith(
+      layoutStyleIds: {...value.layoutStyleIds, profile: style},
+    );
     return value;
   }
 

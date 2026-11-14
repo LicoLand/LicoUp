@@ -13,6 +13,7 @@ import 'package:licoup/src/frontend/layout/layout_scope.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/dashboard_desktop.dart';
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_selection_highlight.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import '../../../fixtures/layout_scoped_state_fixture.dart';
@@ -104,7 +105,7 @@ void main() {
         'statsPanel',
         'agentHub',
         'modelGateway',
-        'mobilePairing',
+        'devices',
       ]),
       selections: selections,
     );
@@ -138,8 +139,9 @@ void main() {
     final first = find.byKey(const Key('messaging-sidebar-list-agentHub'));
     expect(first, findsOneWidget);
 
-    // Row pitch is 48 (padding 10×2 + icon 20 + row gap 8): 80 carries the
-    // first row past two boundaries without reaching a third.
+    // Row pitch is 46 (height 44 + gap 2): 80 carries the row's centre
+    // past the next row's midpoint — the drop boundary — but not past the
+    // one after.
     final gesture = await tester.startGesture(tester.getCenter(first));
     await tester.pump(kLongPressTimeout + const Duration(milliseconds: 30));
     await gesture.moveBy(const Offset(0, 40));
@@ -153,7 +155,7 @@ void main() {
     expect(store.lastSaved!.first, 'modelGateway');
     expect(store.lastSaved!, [
       'modelGateway',
-      'mobilePairing',
+      'devices',
       'agentHub',
       'statsPanel',
     ]);
@@ -162,8 +164,8 @@ void main() {
     await _pumpFeatureList(tester, store: store, selections: selections);
     double dyOf(String id) =>
         tester.getTopLeft(find.byKey(Key('messaging-sidebar-list-$id'))).dy;
-    expect(dyOf('modelGateway'), lessThan(dyOf('mobilePairing')));
-    expect(dyOf('mobilePairing'), lessThan(dyOf('agentHub')));
+    expect(dyOf('modelGateway'), lessThan(dyOf('devices')));
+    expect(dyOf('devices'), lessThan(dyOf('agentHub')));
     expect(tester.takeException(), isNull);
   });
 
@@ -177,14 +179,12 @@ void main() {
       selections: selections,
       current: ClientSection.models,
     );
-    await tester.tap(
-      find.byKey(const Key('messaging-sidebar-list-mobilePairing')),
-    );
+    await tester.tap(find.byKey(const Key('messaging-sidebar-list-devices')));
     await tester.tap(
       find.byKey(const Key('messaging-sidebar-list-modelGateway')),
     );
     await tester.pump();
-    expect(selections, [ClientSection.mobileRelay, ClientSection.models]);
+    expect(selections, [ClientSection.devices, ClientSection.models]);
     expect(tester.takeException(), isNull);
   });
 
@@ -197,9 +197,6 @@ void main() {
       current: ClientSection.models,
     );
 
-    final colors = tester
-        .element(find.byKey(const Key('messaging-sidebar-feature-list')))
-        .licoColors;
     AnimatedContainer rowContainer(String id) =>
         tester.widget<AnimatedContainer>(
           find.descendant(
@@ -208,13 +205,28 @@ void main() {
           ),
         );
 
+    // Selected rows show the fluorescent highlight painter, never a fill.
     expect(
       (rowContainer('modelGateway').decoration! as BoxDecoration).color,
-      colors.primary,
+      Colors.transparent,
     );
     expect(
-      (rowContainer('mobilePairing').decoration! as BoxDecoration).color,
-      isNot(colors.primary),
+      find.descendant(
+        of: find.byKey(const Key('messaging-sidebar-list-modelGateway')),
+        matching: find.byWidgetPredicate(
+          (w) => w is CustomPaint && w.painter is LicoSelectionHighlightPainter,
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('messaging-sidebar-list-devices')),
+        matching: find.byWidgetPredicate(
+          (w) => w is CustomPaint && w.painter is LicoSelectionHighlightPainter,
+        ),
+      ),
+      findsNothing,
     );
     expect(tester.takeException(), isNull);
   });

@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
-
 /// Shared renderer measurements for the Messaging presentation.
 abstract final class MessagingDesktopMetrics {
   /// Far-left destination column on the unified clear-veil shell.
@@ -19,6 +17,15 @@ abstract final class MessagingDesktopMetrics {
   /// Widest shared sidebar column.
   static const double conversationListMaxExtent = 420;
 
+  /// Golden-ratio default split: the conversation detail column takes this
+  /// share of the whole window width, so the list column keeps the minor
+  /// 0.382 share minus whatever leading chrome (the navigation rail) owns.
+  static const double conversationDetailGoldenShare = 0.618;
+
+  /// Ceiling on the golden-ratio list default so the column stays narrow —
+  /// a dragged width may still reach [conversationListMaxExtent].
+  static const double conversationListGoldenCapExtent = 260;
+
   /// Drag-handle hit target on the shared sidebar column.
   static const double conversationListDividerWidth = 8;
 
@@ -28,7 +35,7 @@ abstract final class MessagingDesktopMetrics {
   /// Inset of the floating conversation-list glass card within the main
   /// content region — the card floats 4 inside the region (6 from the window
   /// edge), keeping a visible glass gutter around the one floating card.
-  static const double conversationListCardInset = 4;
+  static const double conversationListCardInset = 10;
 
   /// Inner radius of the floating conversation-list glass card — concentric
   /// with the region clip: [mainCardCornerRadius] − [conversationListCardInset]
@@ -225,25 +232,6 @@ abstract final class MessagingDesktopMetrics {
     required bool isDark,
   }) => conversationListCardShadows(isDark: isDark);
 
-  /// BackdropFilter sigma for user message bubbles — same family as overlay
-  /// glass so header, composer, and own-message bubbles feel matched.
-  static const double userBubbleGlassBlurSigma =
-      conversationOverlayGlassBlurSigma;
-
-  /// User bubble interior fill — always fully transparent. Do **not** tint
-  /// with brand/primary: even low brand alphas read as olive “底色”, and a
-  /// brand-colored layer under BackdropFilter frosts yellow into the pill.
-  static const int userBubbleGlassFillDarkAlpha = 0;
-
-  /// Light-canvas counterpart — also fully transparent.
-  static const int userBubbleGlassFillLightAlpha = 0;
-
-  /// Neutral transparent fill for user message bubbles.
-  static Color userBubbleGlassFill({required bool isDark}) =>
-      Colors.transparent.withAlpha(
-        isDark ? userBubbleGlassFillDarkAlpha : userBubbleGlassFillLightAlpha,
-      );
-
   /// Accent edge-light shared by conversation bubbles: a thin, bright rim
   /// line and nothing else — no light field, no fog. Interiors stay dark
   /// glass. Never brand/primary — lemon rims read as olive 泛黄 on the dark
@@ -281,9 +269,6 @@ abstract final class MessagingDesktopMetrics {
 
   /// Agent bubble interior: the shared black readability veil, not an accent
   /// tint — the accent lives only on the rim light.
-  static Color agentBubbleVeilFill({required bool isDark}) =>
-      conversationOverlayReadabilityVeilFill(isDark: isDark);
-
   /// Resting (unlit) neutral hairline on conversation bubbles — the plain
   /// style the hover-lit edge light fades back to.
   static Color bubbleRestingBorder(Color line, {required bool isDark}) =>
@@ -321,15 +306,11 @@ abstract final class MessagingDesktopMetrics {
   /// Fill wash for the floating conversation-list card. Widgets must use this
   /// helper (or the named alphas above) — do not hardcode tint alphas in
   /// presentation code.
-  static Color conversationListCardFill({required bool isDark}) =>
-      Color.fromARGB(
-        isDark
-            ? conversationListCardTintDarkAlpha
-            : conversationListCardTintLightAlpha,
-        255,
-        255,
-        255,
-      );
+  static Color conversationListCardFill({required bool isDark}) => isDark
+      // Black mask over the galaxy — slightly translucent, never a
+      // white/gray wash.
+      ? const Color(0xB807070A)
+      : const Color.fromARGB(conversationListCardTintLightAlpha, 255, 255, 255);
 
   /// Header capsule fill — aliases the shared conversation overlay glass.
   static Color conversationHeaderCapsuleFill({required bool isDark}) =>
@@ -397,10 +378,7 @@ abstract final class MessagingDesktopMetrics {
       .withAlpha(isDark ? glassEdgeRimLoAlphaDark : glassEdgeRimLoAlphaLight);
 
   /// Window inset of the unified content region on every edge. Narrow (4) by
-  /// design: destinations sit nearly flush with the window frame so the
-  /// region merges into the window glass and only the sidebar card reads as
-  /// floating (macOS split-view idiom).
-  static const double mainCardMargin = 4;
+  /// Page inset inside the unified main content region. Every single-pane
 
   /// Page inset inside the unified main content region. Every single-pane
   /// destination (Settings, Models, Skill Hub, Plugins, Monitoring, Mobile
@@ -410,12 +388,6 @@ abstract final class MessagingDesktopMetrics {
   /// Outer corner radius of the unified content region's clip — concentric
   /// with the window: [windowCornerRadius] − [mainCardMargin] = 24 − 4 = 20.
   static const double mainCardCornerRadius = 20;
-
-  /// Solid window ground shared by shell regions — the preset's own sunken
-  /// surface (bg-inset), opaque by contract. No wallpaper bleed and no blur
-  /// on this layer; translucency stays on the control layer (capsules,
-  /// composer, menus).
-  static Color surfaceGlassTint(LicoThemeColors colors) => colors.surfaceSunken;
 
   /// Translucent overlay on shell glass — same alpha in both presets; overlay
   /// color flips with mode (light wash in dark, dark wash in light).
@@ -475,6 +447,35 @@ abstract final class MessagingDesktopMetrics {
   /// cluster. The row replaces the old sidebar heading text; the lights
   /// overlay it vertically centered with an equal left inset.
   static const double trafficLightRowExtent = 40;
+
+  /// Height of the sidebar's first row on flat shells (the Dashboard plain
+  /// sidebar): vertically centred on the native traffic-light cluster, it
+  /// hosts the search capsule and the column's actions.
+  static const double sidebarTopRowExtent = 52;
+
+  /// Outer geometry of one sidebar list row, shared by the conversation
+  /// list and the index rows (Features, Settings) so every sidebar list
+  /// reads with the same metrics.
+  static const double sidebarRowExtent = 64;
+
+  /// Height of one single-line index row (Features, Settings): shorter
+  /// than the two-line conversation row but sharing its horizontal inset,
+  /// radius and fills, so icons sit on the avatar column's axis.
+  static const double sidebarIndexRowExtent = 44;
+  static const double sidebarRowGap = 2;
+  static const double sidebarRowHorizontalInset = 10;
+  static const double sidebarRowLeadingExtent = 44;
+  static const double sidebarRowIconExtent = 20;
+  static const double sidebarRowLabelGap = 10;
+
+  /// Alpha (0-255) of the flat sidebar row's hover wash.
+  static const int sidebarRowHoverAlpha = 8;
+
+  /// Width of the pinned avatar column at a hosted sidebar's left edge.
+  static const double avatarColumnExtent = 56;
+
+  /// Row height of one avatar in that column.
+  static const double avatarColumnTileExtent = 52;
 
   /// Reserved width of the traffic-light anchor at a sidebar card top-left;
   /// the native cluster (three buttons plus equal edge insets) overlays this

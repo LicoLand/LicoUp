@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/frontend/features/settings/ui/layout_profile_selector.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_registry.dart';
@@ -221,6 +222,126 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump();
     expect(intents.values.whereType<SetLayoutPreference>(), isNotEmpty);
+  });
+
+  group('column style control', () {
+    final styledDashboard = LayoutProfileDescriptor(
+      id: LayoutProfileId.parse('dashboard'),
+      label: LayoutProfileCopy(english: 'Dashboard', chinese: '工作台'),
+      description: LayoutProfileCopy(
+        english: 'Dashboard fixture',
+        chinese: '工作台夹具',
+      ),
+      styleIdentity: 'spacious-card-dashboard',
+      isDefault: true,
+      styles: [
+        LayoutStyleDescriptor(
+          id: LayoutStyleId.parse('plain'),
+          label: LayoutProfileCopy(english: 'Plain', chinese: '平铺'),
+        ),
+        LayoutStyleDescriptor(
+          id: LayoutStyleId.parse('card'),
+          label: LayoutProfileCopy(english: 'Card', chinese: '卡片'),
+        ),
+      ],
+      defaultStyleId: LayoutStyleId.parse('plain'),
+    );
+
+    final profiles = [styledDashboard, ...fixtureLayoutDescriptors().skip(1)];
+
+    List<PresentationChoice> styleChoices({String selected = 'plain'}) => [
+      PresentationChoice(
+        id: 'plain',
+        label: 'Plain',
+        selected: selected == 'plain',
+      ),
+      PresentationChoice(
+        id: 'card',
+        label: 'Card',
+        selected: selected == 'card',
+      ),
+    ];
+
+    testWidgets('shows the control for a styled profile on desktop and sends '
+        'SetLayoutStyle', (tester) async {
+      final runtime = buildFixtureLayoutRuntime(profiles: profiles);
+      final projection = settingsProjectionFixture(
+        layoutStyleChoices: styleChoices(),
+      );
+      final source = SettingsProjectionFixture(projection);
+      final presentation = SettingsPresentationFixture(projection: projection);
+      final intents = RecordingSettingsIntents();
+      final binding = settingsBindingFixture(source: source, intents: intents);
+      addTearDown(source.dispose);
+      addTearDown(presentation.dispose);
+
+      await _pumpSelector(
+        tester,
+        binding: binding,
+        registry: runtime.registry,
+        surface: LayoutRuntimeSurface.desktop,
+        presentation: presentation,
+      );
+
+      expect(find.byKey(const Key('layout-style-selector')), findsOneWidget);
+      expect(find.text('Plain'), findsOneWidget);
+      expect(find.text('Card'), findsOneWidget);
+
+      await tester.tap(find.text('Card'));
+      await tester.pump();
+      expect(intents.values, hasLength(1));
+      final intent = intents.values.single;
+      expect(intent, isA<SetLayoutStyle>());
+      final styleIntent = intent as SetLayoutStyle;
+      expect(styleIntent.profileId, 'dashboard');
+      expect(styleIntent.styleId, 'card');
+    });
+
+    testWidgets('hides the control when the committed profile declares no '
+        'styles', (tester) async {
+      final runtime = buildFixtureLayoutRuntime(profiles: profiles);
+      final projection = settingsProjectionFixture(
+        layoutId: 'atlas',
+        layoutStyleChoices: styleChoices(),
+      );
+      final source = SettingsProjectionFixture(projection);
+      final presentation = SettingsPresentationFixture(projection: projection);
+      final binding = settingsBindingFixture(source: source);
+      addTearDown(source.dispose);
+      addTearDown(presentation.dispose);
+
+      await _pumpSelector(
+        tester,
+        binding: binding,
+        registry: runtime.registry,
+        surface: LayoutRuntimeSurface.desktop,
+        presentation: presentation,
+      );
+
+      expect(find.byKey(const Key('layout-style-selector')), findsNothing);
+    });
+
+    testWidgets('hides the control on the mobile surface', (tester) async {
+      final runtime = buildFixtureLayoutRuntime(profiles: profiles);
+      final projection = settingsProjectionFixture(
+        layoutStyleChoices: styleChoices(),
+      );
+      final source = SettingsProjectionFixture(projection);
+      final presentation = SettingsPresentationFixture(projection: projection);
+      final binding = settingsBindingFixture(source: source);
+      addTearDown(source.dispose);
+      addTearDown(presentation.dispose);
+
+      await _pumpSelector(
+        tester,
+        binding: binding,
+        registry: runtime.registry,
+        surface: LayoutRuntimeSurface.mobile,
+        presentation: presentation,
+      );
+
+      expect(find.byKey(const Key('layout-style-selector')), findsNothing);
+    });
   });
 }
 

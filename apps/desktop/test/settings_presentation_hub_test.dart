@@ -9,7 +9,9 @@ import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/composition/features/settings/settings_feature_composition.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/presentation/settings/settings_inputs.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
@@ -65,14 +67,14 @@ void main() {
     });
 
     feature.binding.intents.send(
-      const SetAppearancePreference(AppearancePresetIds.licoSodaLight),
+      const SetAppearancePreference(AppearancePresetIds.taroWaffle),
     );
     await delivered.future;
 
     expect(appearanceChanges, hasLength(1));
     expect(
       appearanceChanges.single.snapshot.value.appearancePresetId,
-      AppearancePresetIds.licoSodaLight,
+      AppearancePresetIds.taroWaffle,
     );
     expect(
       appearanceChanges.single.base,
@@ -129,8 +131,9 @@ final class _HubPreferencesRepository
       PresentationPreferencesLoadResult(preferences: value);
 
   @override
-  Future<PresentationPreferences> setReduceMotion(bool enabled) async =>
-      value = value.copyWith(reduceMotion: enabled);
+  Future<PresentationPreferences> setReduceMotion(
+    ReduceMotionPreference preference,
+  ) async => value = value.copyWith(reduceMotion: preference);
 
   @override
   Future<PresentationPreferences> setLoadingEffect(String id) async =>
@@ -145,7 +148,21 @@ final class _HubPreferencesRepository
       value = value.copyWith(layoutProfileId: id);
 
   @override
+  Future<PresentationPreferences> setLayoutStyle(
+    LayoutProfileId profile,
+    LayoutStyleId style,
+  ) async => value = value.copyWith(
+    layoutStyleIds: {...value.layoutStyleIds, profile: style},
+  );
+
+  @override
   Future<PresentationPreferences> setLocalePreference(
     String preference,
   ) async => value = value.copyWith(localePreference: preference);
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) async => value = value.withResourceSelection(kind, selection);
 }

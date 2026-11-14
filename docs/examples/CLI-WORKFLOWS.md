@@ -3,7 +3,8 @@
 [Documentation](../README.md) · [Runbook](../RUNBOOK.md)
 
 These examples project the implemented native CLI surface. The command dispatch
-and contract tests under `crates/licoup-native/src/bin/` are authoritative.
+and contract tests under `crates/licoup/src/bin/` (LicoUp-CLI) are
+authoritative.
 All values below are placeholders; do not substitute real credentials, private
 addresses, device identifiers, or runtime payloads in committed examples.
 

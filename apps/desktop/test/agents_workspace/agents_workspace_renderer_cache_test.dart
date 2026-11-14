@@ -53,8 +53,10 @@ void registerAgentsWorkspaceRendererCacheScenarios() {
 
     await tester.pumpWidget(
       MaterialApp(
-        builder: (context, child) =>
-            FixtureLayoutPresentationScope(child: child!),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: FixtureLayoutPresentationScope(child: child!),
+        ),
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),

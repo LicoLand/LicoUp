@@ -51,9 +51,8 @@ dependencies:
   riverpod: ^3.4.3
   super_clipboard: ^0.9.1
   uuid: ^4.5.1
-  qr_code_dart_scan: 0.12.0
-  qr_flutter: ^4.1.0
   flutter_svg: ^2.3.0
+  xml: ^7.0.1
 
 dev_dependencies:
   flutter_test:
@@ -67,7 +66,6 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
-  xml: ^7.0.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -83,12 +81,14 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/fonts/OFL.txt
-    - assets/fonts/NotoSansSC-OFL.txt
     - assets/appearance-presets/
     - assets/agent-icons/
     - assets/agent-render-adapters/
     - assets/brand/
     - assets/mascot/
+    - assets/mascot/avatars/png/
+    - assets/mascot/figures/svg/
+    - assets/mascot/expressions/png/
     - assets/provider-icons/
     - assets/skill-category-icons/
 
@@ -100,6 +100,7 @@ flutter:
 
   shaders:
     - shaders/glass_lens.frag
+    - shaders/lico_galaxy.frag
 
   fonts:
     - family: Geist Sans
@@ -118,6 +119,3 @@ flutter:
           weight: 400
         - asset: assets/fonts/GeistMono-Medium.ttf
           weight: 500
-    - family: Noto Sans SC
-      fonts:
-        - asset: assets/fonts/NotoSansSC.ttf

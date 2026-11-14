@@ -16,32 +16,34 @@ test("regression report allowlists numeric metrics and never retains command out
     startedAt: "2026-01-01T00:00:00.000Z",
     completedAt: "2026-01-01T00:00:01.000Z",
     durationMs: 1_000,
-    concurrency: { maximumWeight: 4, maximumProcesses: 2, poolPeaks: { rust: 4 } },
+    candidateHead: "a".repeat(40),
+    sourceStateDigest: `sha256:${"b".repeat(64)}`,
+    concurrency: { maximumWeight: 4, maximumProcesses: 2, poolPeaks: { flutter: 4 } },
     results: [{
-      id: "rust-target-1",
-      stage: "backend",
-      lane: "backend",
-      toolchain: "rust",
+      id: "node-test-1",
+      stage: "foundation",
+      lane: "foundation",
+      toolchain: "node-test",
       status: "passed",
       reason: canary,
       durationMs: 1_000,
-      members: ["rust.domain.synthetic"],
+      members: ["regression.synthetic"],
+      evidenceHead: "a".repeat(40),
       metrics: {
         wallTimeMs: { status: "measured", value: 1_000, rawOutput: canary },
         directCpuMs: { status: "unavailable", reason: "native_metric_unavailable", raw: canary },
         descendantCpuMs: { status: "unavailable", reason: "native_metric_unavailable" },
         peakResidentBytes: { status: "unavailable", reason: "native_metric_unavailable" },
         toolchainNative: {
-          kind: "rust",
-          cargoBuildTimingReport: {
-            status: "measured",
-            value: { generated: true, format: "html", machineReadable: false, path: canary },
-          },
-          libtestSuiteWallTime: {
-            status: "measured",
-            value: { count: 1, totalMs: 50, minimumMs: 50, maximumMs: 50, name: canary },
-          },
-          libtestCaseWallTime: { status: "unavailable", reason: "not_verified", output: canary },
+          kind: "flutter",
+          suiteCount: { status: "measured", value: 2 },
+          testCount: { status: "measured", value: 12 },
+          passedCount: { status: "measured", value: 12 },
+          failedCount: { status: "measured", value: 0 },
+          skippedCount: { status: "measured", value: 0 },
+          totalTestDurationMs: { status: "measured", value: 800 },
+          longestTestDurationMs: { status: "measured", value: 300 },
+          privateOutput: canary,
         },
       },
     }],
@@ -58,11 +60,13 @@ test("regression report allowlists numeric metrics and never retains command out
 
   assert.equal(JSON.stringify(report).includes(canary), false);
   assert.equal(report.complete, true);
+  assert.equal(report.candidateHead, "a".repeat(40));
+  assert.equal(report.results[0].evidenceHead, "a".repeat(40));
   assert.equal(report.status, "failed");
   assert.equal(report.results[0].reason, "execution_failed");
   assert.equal(report.compatibility[0].reason, "compatibility_failed");
   assert.equal(report.results[0].metrics.wallTimeMs.value, 1_000);
-  assert.equal(report.results[0].metrics.toolchainNative.libtestSuiteWallTime.value.count, 1);
+  assert.equal(report.results[0].metrics.toolchainNative.testCount.value, 12);
   assert.equal(report.legacyBaseline.lowerBoundDurationMs, LEGACY_INCOMPLETE_BASELINE_MS);
   assert.equal(report.legacyBaseline.speedupPercent, null);
 });
@@ -74,21 +78,21 @@ test("retry reports redispatch failed modules and compatibility targets only", a
     await writeFile(reportPath, JSON.stringify({
       schemaVersion: "licoup.client-regression-report.v1",
       results: [
-        { stage: "backend", status: "failed", members: ["rust.domain.synthetic"] },
+        { stage: "foundation", status: "failed", members: ["regression.synthetic"] },
         { stage: "frontend", status: "passed", members: ["flutter.feature.synthetic"] },
-        { stage: "compatibility", status: "failed", members: ["codex"] },
+        { stage: "compatibility", status: "failed", members: ["macos"] },
       ],
       compatibility: [
-        { kind: "agent", id: "codex", status: "failed" },
+        { kind: "platform", id: "macos", status: "failed" },
         { kind: "platform", id: "linux", status: "unverified" },
       ],
     }));
     const retry = await retrySelectionFromReport(reportPath, {
-      validModuleIds: ["rust.domain.synthetic", "flutter.feature.synthetic"],
-      validCompatibilityIds: ["agent:codex", "platform:linux"],
+      validModuleIds: ["regression.synthetic", "flutter.feature.synthetic"],
+      validCompatibilityIds: ["platform:macos", "platform:linux"],
     });
-    assert.deepEqual(retry.moduleIds, ["rust.domain.synthetic"]);
-    assert.deepEqual(retry.compatibilityIds, ["agent:codex"]);
+    assert.deepEqual(retry.moduleIds, ["regression.synthetic"]);
+    assert.deepEqual(retry.compatibilityIds, ["platform:macos"]);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

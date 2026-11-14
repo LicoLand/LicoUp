@@ -14,10 +14,6 @@ final class ClientTargetComponentAssembly {
     required AgentTabOrderStore agentTabOrderStore,
     required ScannedTargetsCacheStore scannedTargetsCacheStore,
     required bool Function() isMobileRuntime,
-    required Future<List<TargetCandidate>> Function({
-      Map<String, dynamic>? pairingStatus,
-    })
-    discoverMobileTargets,
     required ApplicationCallback onTargetsSettled,
     required Future<void> Function(String) loadSelectedConversation,
     required String Function() selectedAgentId,
@@ -30,7 +26,6 @@ final class ClientTargetComponentAssembly {
          portableData: portableData,
          packagedTargetIds: AgentService.packagedScanTargetIds,
          isMobileRuntime: isMobileRuntime,
-         scanMobileTargets: discoverMobileTargets,
          onTargetsSettled: onTargetsSettled,
          loadSelectedConversation: () =>
              loadSelectedConversation(selectedAgentId()),

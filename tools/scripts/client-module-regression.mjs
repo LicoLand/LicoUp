@@ -24,7 +24,6 @@ const usage = `Usage:
   npm run client:regression:list
   npm run client:regression -- --module <module-id> [--module <module-id> ...]
   npm run client:regression -- --lane <lane-id> [--lane <lane-id> ...]
-  npm run client:regression -- --agent <agent-id> [--agent <agent-id> ...]
   npm run client:regression -- --platform <platform-id> [--platform <platform-id> ...]
   npm run client:regression -- --changed-from <git-revision>
   npm run client:regression -- --retry-report build/reports/client-module-regression.json
@@ -33,12 +32,11 @@ Options:
   --list                   List modules and compatibility entries without probes.
   --module <id>            Run exact modules; repeat or use comma-separated ids.
   --lane <id>              Run one core lane; repeat or use comma-separated ids.
-  --agent <id>             Run one Agent compatibility target; repeatable.
   --platform <id>          Run one platform compatibility target; repeatable.
   --changed-from <ref>     Select modules from changed repository paths.
   --retry-report <path>    Redispatch only failed/pending members from a prior report.
   --report <path>          Write the privacy-safe report under build/reports.
-  --static-compatibility   Do not execute eligible live platform/Agent verifiers.
+  --static-compatibility   Do not execute eligible live platform verifiers.
   --dry-run                Print the selection without spawning or probing.
   --help                   Show this help.
 `;
@@ -59,7 +57,6 @@ function reportFile(value) {
 
 export function parseClientModuleRegressionArgs(argv) {
   const options = {
-    agentIds: [],
     changedFrom: null,
     dryRun: false,
     help: false,
@@ -77,12 +74,11 @@ export function parseClientModuleRegressionArgs(argv) {
     else if (argument === "--dry-run") options.dryRun = true;
     else if (argument === "--static-compatibility") options.staticCompatibility = true;
     else if (argument === "--help" || argument === "-h") options.help = true;
-    else if (["--module", "--lane", "--agent", "--platform", "--changed-from", "--retry-report", "--report"].includes(argument)) {
+    else if (["--module", "--lane", "--platform", "--changed-from", "--retry-report", "--report"].includes(argument)) {
       const value = argv[++index];
       if (!value) throw new Error("client regression option value is required");
       if (argument === "--module") options.moduleIds.push(...commaValues(value, "module id"));
       else if (argument === "--lane") options.lanes.push(...commaValues(value, "lane id"));
-      else if (argument === "--agent") options.agentIds.push(...commaValues(value, "agent id"));
       else if (argument === "--platform") options.platformIds.push(...commaValues(value, "platform id"));
       else if (argument === "--changed-from") options.changedFrom = value;
       else if (argument === "--retry-report") options.retryReport = reportFile(value);
@@ -91,8 +87,6 @@ export function parseClientModuleRegressionArgs(argv) {
       options.moduleIds.push(...commaValues(argument.slice(9), "module id"));
     } else if (argument.startsWith("--lane=")) {
       options.lanes.push(...commaValues(argument.slice(7), "lane id"));
-    } else if (argument.startsWith("--agent=")) {
-      options.agentIds.push(...commaValues(argument.slice(8), "agent id"));
     } else if (argument.startsWith("--platform=")) {
       options.platformIds.push(...commaValues(argument.slice(11), "platform id"));
     } else if (argument.startsWith("--changed-from=")) options.changedFrom = argument.slice(15);
@@ -102,7 +96,7 @@ export function parseClientModuleRegressionArgs(argv) {
   }
   const selectorCount = Number(options.list) + Number(options.moduleIds.length > 0) +
     Number(options.lanes.length > 0) +
-    Number(options.agentIds.length > 0 || options.platformIds.length > 0) +
+    Number(options.platformIds.length > 0) +
     Number(options.changedFrom !== null) +
     Number(options.retryReport !== null) + Number(options.help);
   if (selectorCount > 1) {
@@ -115,7 +109,6 @@ export function parseClientModuleRegressionArgs(argv) {
   return Object.freeze({
     ...options,
     all,
-    agentIds: Object.freeze(options.agentIds),
     lanes: Object.freeze(options.lanes),
     moduleIds: Object.freeze(options.moduleIds),
     platformIds: Object.freeze(options.platformIds),
@@ -141,9 +134,8 @@ function writeSelection(modules, output) {
   }
 }
 
-function selectCompatibilityEntries(agentIds, platformIds) {
+function selectCompatibilityEntries(platformIds) {
   const requested = new Set([
-    ...agentIds.map((id) => `agent:${id}`),
     ...platformIds.map((id) => `platform:${id}`),
   ]);
   const available = new Map(CLIENT_COMPATIBILITY_ENTRIES.map((entry) =>
@@ -189,9 +181,9 @@ export async function main(argv = process.argv.slice(2), {
       selected = selectModulesById(options.moduleIds);
     } else if (options.lanes.length > 0) {
       selected = selectModulesByLane(options.lanes);
-    } else if (options.agentIds.length > 0 || options.platformIds.length > 0) {
+    } else if (options.platformIds.length > 0) {
       selected = [];
-      compatibilityEntries = selectCompatibilityEntries(options.agentIds, options.platformIds);
+      compatibilityEntries = selectCompatibilityEntries(options.platformIds);
     } else if (options.retryReport) {
       const retry = await retryLoader(options.retryReport, {
         validModuleIds: CLIENT_MODULE_CATALOG.map((module) => module.id),

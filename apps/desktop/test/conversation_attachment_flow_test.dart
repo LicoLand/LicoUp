@@ -55,7 +55,6 @@ void main() {
       workingDirectory: '',
       model: '',
       reasoningEffort: '',
-      throughMobileRelay: false,
       scopeKey: 'scope-a',
       attachments: signals.composerAttachmentsFor('scope-a'),
     );
@@ -85,7 +84,6 @@ void main() {
       workingDirectory: '',
       model: '',
       reasoningEffort: '',
-      throughMobileRelay: false,
       scopeKey: 'scope-a',
       attachments: attachments,
     );

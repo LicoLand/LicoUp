@@ -69,17 +69,6 @@ String messagingAgentBubbleGlowKey(TargetCandidate? candidate) {
   return '';
 }
 
-/// Brand hue identifying one conversation target, or null for unlisted and
-/// multicolor brands, whose identity cannot be one hue. Used to tint the
-/// avatar well in the target's own color.
-Color? messagingAgentBrandHue(TargetCandidate? candidate) {
-  final key = messagingAgentBubbleGlowKey(candidate);
-  if (key.isEmpty || _agentBubbleGlowRainbowKeys.contains(key)) {
-    return null;
-  }
-  return _agentBubbleGlowColors[key];
-}
-
 List<Color> _rainbowColors(int alpha) => const [
   Color(0xFFFF6B6B),
   Color(0xFFFFB86B),

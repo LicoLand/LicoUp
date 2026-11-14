@@ -1,4 +1,5 @@
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:presentation_contract/presentation_contract.dart';
@@ -191,7 +192,9 @@ final class _TelegramChannelCardState extends State<TelegramChannelCard> {
                 ),
                 FilledButton.tonal(
                   key: const Key('telegram-channel-clear-token'),
-                  style: FilledButton.styleFrom(foregroundColor: colors.error),
+                  style: colors.isDark
+                      ? FilledButton.styleFrom(foregroundColor: colors.error)
+                      : null,
                   onPressed: _busy || !state.configured
                       ? null
                       : () => widget.intents.send(const ClearTelegramToken()),
@@ -385,7 +388,9 @@ final class _PairingTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: continuousHairlineDecoration(
-          color: colors.surfaceLow,
+          color: (colors.isDark
+              ? LicoPaneGlass.contentInnerCardFill
+              : colors.surfaceLow),
           borderRadius: BorderRadius.circular(LicoRadius.card),
           stroke: colors.line.withAlpha(110),
         ),
@@ -410,7 +415,9 @@ final class _PairingTile extends StatelessWidget {
             if (primaryIsDestructive)
               FilledButton.tonal(
                 key: primaryKey,
-                style: FilledButton.styleFrom(foregroundColor: colors.error),
+                style: colors.isDark
+                    ? FilledButton.styleFrom(foregroundColor: colors.error)
+                    : null,
                 onPressed: onPrimary,
                 child: Text(primaryLabel),
               )

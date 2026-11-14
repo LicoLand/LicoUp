@@ -1,17 +1,17 @@
 import 'package:licoup/src/contracts/presentation/client_current_view.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
+import 'package:licoup/src/platform/storage/client_json_document_store.dart';
 
 final class PlatformClientCurrentViewStore implements ClientCurrentViewStore {
   const PlatformClientCurrentViewStore({
-    MobileRelayJsonStore jsonStore = const MobileRelayJsonStore(),
+    ClientJsonDocumentStore jsonStore = const ClientJsonDocumentStore(),
   }) : _jsonStore = jsonStore;
 
   static const _fileName = 'current-client-view.json';
   static const _schemaVersion = 1;
   static const _maxIdLength = 1024;
 
-  final MobileRelayJsonStore _jsonStore;
+  final ClientJsonDocumentStore _jsonStore;
 
   @override
   Future<ClientCurrentView?> load(Object portableData) async {

@@ -1,8 +1,20 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { normalizeAgentId } from "../../../tests/product-e2e/cli/agent-conversations/support/parity/agent-ids.mjs";
 import { defaultMaxStdoutBytes, probeAgentAuthentication } from "./probe.mjs";
+
+export function normalizeAgentId(value) {
+  const normalized = String(value).trim().toLowerCase().replaceAll("_", "-");
+  const aliases = {
+    kilo: "kilo-code",
+    kilocode: "kilo-code",
+    "github-copilot": "copilot",
+    "hermes-agent": "hermes",
+    "cursor-agent": "cursor",
+    kimicode: "kimi-code",
+  };
+  return aliases[normalized] || normalized;
+}
 
 const scriptRoot = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = resolve(scriptRoot, "../../..");

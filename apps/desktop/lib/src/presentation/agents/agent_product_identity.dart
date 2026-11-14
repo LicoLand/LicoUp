@@ -21,6 +21,7 @@ String? agentProductDisplayName(String value) =>
       'kimi-code' => 'Kimi Code',
       'grok' || 'xai-grok' => 'Grok',
       'command-code' || 'cmdc' => 'Command Code',
+
       'codebuddy' => 'CodeBuddy',
       'trae' || 'trae-agent' => 'Trae Agent',
       'trae-work' => 'Trae Work',

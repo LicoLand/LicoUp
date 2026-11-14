@@ -1,10 +1,10 @@
 import 'package:licoup/src/contracts/agent_tool_allowlist_repository.dart';
-import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
+import 'package:licoup/src/platform/storage/client_json_document_store.dart';
 
 /// Persists per-agent tool allowlists ("allow and remember").
 final class AgentToolAllowlistStore implements AgentToolAllowlistRepository {
   const AgentToolAllowlistStore({
-    MobileRelayJsonStore jsonStore = const MobileRelayJsonStore(),
+    ClientJsonDocumentStore jsonStore = const ClientJsonDocumentStore(),
   }) : _jsonStore = jsonStore;
 
   static const _fileName = 'agent-tool-allowlists.json';
@@ -12,7 +12,7 @@ final class AgentToolAllowlistStore implements AgentToolAllowlistRepository {
   static const _maxAgents = 64;
   static const _maxToolsPerAgent = 64;
 
-  final MobileRelayJsonStore _jsonStore;
+  final ClientJsonDocumentStore _jsonStore;
 
   @override
   Future<Map<String, List<String>>> load(Object portableData) async {

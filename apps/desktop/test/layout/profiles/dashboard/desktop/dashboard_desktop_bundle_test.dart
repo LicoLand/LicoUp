@@ -86,10 +86,10 @@ void main() {
 
   test('preview metadata is deterministic and Dashboard-owned', () {
     expect(
-      dashboardDesktopPreviewMetadata.styleIdentity,
+      dashboardCardPreviewMetadata.styleIdentity,
       'dashboard-channel-chat',
     );
-    expect(dashboardDesktopPreviewMetadata.structuralLandmarks, <String>[
+    expect(dashboardCardPreviewMetadata.structuralLandmarks, <String>[
       'traffic-light-row',
       'list-column',
       'chat-canvas',

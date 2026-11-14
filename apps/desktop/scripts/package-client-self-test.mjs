@@ -24,6 +24,7 @@ import {
   parsePackageClientArgs,
   validateMacosPackagingHost,
 } from "./package-client/cli-policy.mjs";
+import { selectPackagingModules } from "./package-client/module-selection.mjs";
 import { readFileSync } from "node:fs";
 import { sha256File } from "../../../tools/scripts/lib/client-release-artifact-digest.mjs";
 import {
@@ -31,7 +32,7 @@ import {
   retireStaleCleanBuildRuns,
   stagedPresentationContractRoot,
 } from "./package-client/source-staging.mjs";
-import { buildNativeSidecars } from "./package-client/build/native.mjs";
+import { stageNativeSidecars } from "./package-client/build/native.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const packageScript = "apps/desktop/scripts/package-client.mjs";
@@ -71,28 +72,47 @@ function outputIsReferenceOnly(value) {
     (!home || !output.includes(home));
 }
 
-const sidecarBuilds = [];
-buildNativeSidecars(
-  [
-    { cargoBin: "licoup-cli" },
-    { cargoBin: "lico-gateway" },
-    { cargoBin: "lico-subagent-mcp" },
-    { embeddedCargoBin: "lico-subagent-mcp" },
-  ],
-  { mode: "debug", platform: "windows" },
-  { runProcess: (_command, args) => sidecarBuilds.push(args) },
+const sidecarArtifactDir = mkdtempSync(
+  path.join(os.tmpdir(), "lico-native-artifacts-"),
 );
-requireValue(
-  sidecarBuilds.length === 2 &&
-    sidecarBuilds[0].includes(path.join("crates", "licoup-native", "Cargo.toml")) &&
-    sidecarBuilds[0].includes("licoup-cli") &&
-    sidecarBuilds[0].includes("lico-gateway") &&
-    !sidecarBuilds[0].includes("lico-subagent-mcp") &&
-    sidecarBuilds[1].includes(path.join("crates", "licoup-mcp", "Cargo.toml")) &&
-    sidecarBuilds[1].filter((arg) => arg === "lico-subagent-mcp").length === 1 &&
-    sidecarBuilds.every((args) => args.includes("--target")),
-  "native_and_mcp_sidecars_must_build_from_their_own_crates",
-);
+try {
+  for (const binary of ["licoup.exe"]) {
+    writeFileSync(path.join(sidecarArtifactDir, binary), "synthetic sidecar\n");
+  }
+  const previousArtifactsDir = process.env.LICO_CLI_ARTIFACTS_DIR;
+  process.env.LICO_CLI_ARTIFACTS_DIR = sidecarArtifactDir;
+  try {
+    // The pinned-release stage itself is covered by cli-release.test.mjs; here
+    // a synthetic stage proves the selected modules' sidecars are required.
+    const stage = () => ({ source: "pinned-release" });
+    stageNativeSidecars(
+      [{ cargoBin: "licoup" }],
+      { mode: "release", platform: "windows" },
+      { stage },
+    );
+    expectRejected(
+      () => stageNativeSidecars(
+        [{ cargoBin: "lico-subagent-mcp" }],
+        { mode: "release", platform: "windows" },
+        { stage },
+      ),
+      "absent_sidecar_artifact_was_accepted",
+    );
+    stageNativeSidecars(
+      [{ cargoBin: "licoup" }],
+      { mode: "release", platform: "windows", dryRun: true },
+      { stage: () => { throw new Error("dry_run_staged_cli_release"); } },
+    );
+  } finally {
+    if (previousArtifactsDir === undefined) {
+      delete process.env.LICO_CLI_ARTIFACTS_DIR;
+    } else {
+      process.env.LICO_CLI_ARTIFACTS_DIR = previousArtifactsDir;
+    }
+  }
+} finally {
+  rmSync(sidecarArtifactDir, { recursive: true, force: true });
+}
 
 assertReleaseSourceDigestStable(digest, digest);
 expectRejected(
@@ -319,6 +339,39 @@ const canonicalConfig = JSON.parse(readFileSync(
   "utf8",
 ));
 validatePackagingConfig(canonicalConfig);
+// An optional module is a capability this release may ship without: it can be
+// disabled, it reports itself as skipped, and no required module may depend on
+// it. A required module still cannot be disabled.
+const withoutOptional = selectPackagingModules(canonicalConfig, {
+  platform: "macos",
+  enabledOverrides: [],
+  disabledOverrides: ["extension-packages"],
+});
+requireValue(
+  withoutOptional.selected.every((module) => module.id !== "extension-packages") &&
+    withoutOptional.skipped.some((module) =>
+      module.id === "extension-packages" && module.status === "disabled"),
+  "optional_packaging_module_disable_failed",
+);
+requireValue(
+  withoutOptional.skipped.every((module) =>
+    module.required !== true || module.status === "skipped-platform"),
+  "optional_packaging_module_selection_invalid",
+);
+expectRejected(
+  () => selectPackagingModules(canonicalConfig, {
+    platform: "macos",
+    enabledOverrides: [],
+    disabledOverrides: ["native-sidecar"],
+  }),
+  "required_packaging_module_disable_was_accepted",
+);
+const optionalDependency = structuredClone(canonicalConfig);
+optionalDependency.modules["local-task-queue"].requires = ["extension-packages"];
+expectRejected(
+  () => validatePackagingConfig(optionalDependency),
+  "required_module_optional_dependency_was_accepted",
+);
 if (process.platform === "darwin" && process.arch === "arm64") {
   const macosArm64Options = parsePackageClientArgs(
     [

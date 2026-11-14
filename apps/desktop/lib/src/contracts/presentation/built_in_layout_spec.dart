@@ -1,25 +1,47 @@
 import 'layout_environment.dart';
 import 'layout_profile.dart';
 import 'layout_state_namespace.dart';
+import 'layout_style.dart';
 import 'layout_variant.dart';
 import 'semantic_destination.dart';
 
-/// Renderer-neutral facts for the two built-in layout products.
+/// Renderer-neutral facts for the built-in layout products.
 ///
 /// Application state and Flutter registries consume this same catalog so
 /// neither layer duplicates profile identity, coverage, or state channels.
 abstract final class BuiltInLayoutSpec {
+  /// Dashboard's plain arrangement: a slim navigation rail, a list
+  /// column beside it, and the main view (the chat pane for Messages).
+  static final LayoutStyleId dashboardPlainStyleId = LayoutStyleId.parse(
+    'plain',
+  );
+
+  /// Dashboard's card arrangement: the floating sidebar card beside
+  /// the main content region.
+  static final LayoutStyleId dashboardCardStyleId = LayoutStyleId.parse('card');
+
   static final LayoutProfileDescriptor dashboard = LayoutProfileDescriptor(
     id: LayoutProfileId.parse('dashboard'),
     label: LayoutProfileCopy(english: 'Dashboard', chinese: '仪表盘'),
     description: LayoutProfileCopy(
       english:
-          'Dashboard layout: the default product shell with a left navigation card, a flat conversation list, participant-style chat flow, and agent runtime details tucked into a details panel.',
-      chinese: 'Dashboard 布局：默认产品壳——左侧导航卡片、扁平会话列表、参与者式聊天流，智能体运行细节收进详情面板。',
+          'Dashboard layout in two styles: the default plain style pairs a slim navigation rail with a list column and the main view; the card style keeps a left navigation card with the conversation list and a bottom tab bar.',
+      chinese: 'Dashboard 布局提供两种样式：默认的平铺以窄导航栏搭配列表栏与主视图；卡片则保留左侧导航卡片、会话列表和底部标签栏。',
     ),
     styleIdentity: 'dashboard-channel-chat',
     isDefault: true,
     revision: 1,
+    styles: [
+      LayoutStyleDescriptor(
+        id: dashboardPlainStyleId,
+        label: LayoutProfileCopy(english: 'Plain', chinese: '平铺'),
+      ),
+      LayoutStyleDescriptor(
+        id: dashboardCardStyleId,
+        label: LayoutProfileCopy(english: 'Card', chinese: '卡片'),
+      ),
+    ],
+    defaultStyleId: dashboardPlainStyleId,
   );
 
   static final LayoutProfileDescriptor desktop = LayoutProfileDescriptor(
@@ -27,8 +49,9 @@ abstract final class BuiltInLayoutSpec {
     label: LayoutProfileCopy(english: 'Desktop', chinese: '桌面'),
     description: LayoutProfileCopy(
       english:
-          'Desktop layout: a floating stretchable capsule dock and Launchpad-style glass app store over one spacious main canvas.',
-      chinese: 'Desktop 布局：主画布上方可伸缩的悬浮胶囊 Dock 与 Launchpad 风格玻璃应用商店。',
+          'Desktop layout: a work area on the left hosts one app or plugin window at a time above a floating dock you arrange yourself, beside a resizable chat sidebar that keeps the conversation on the right.',
+      chinese:
+          'Desktop 布局：左侧工作区一次承载一个应用或插件窗口，底部是可自行排列的浮动 Dock；右侧可调宽度的聊天侧栏常驻对话。',
     ),
     styleIdentity: 'spacious-card-desktop',
     isDefault: false,
@@ -47,7 +70,7 @@ abstract final class BuiltInLayoutSpec {
 
   static const Set<ClientSection> mobileDestinations = {
     ClientSection.agents,
-    ClientSection.mobileRelay,
+    ClientSection.devices,
     ClientSection.settings,
   };
 
@@ -86,10 +109,10 @@ abstract final class BuiltInLayoutSpec {
     ...desktopMobileStateNamespaces,
   });
 
-  /// Both desktop-surface profiles expose the desktop-only state channels
-  /// (settings index and models pane selection) so the Dashboard navigation
-  /// list and the Desktop app store write pane selection through the same
-  /// retained channel.
+  /// Every desktop-surface profile exposes the desktop-only state channels
+  /// (settings index and models pane selection) so the feature lists and the
+  /// Desktop app store write pane selection through the same retained
+  /// channel.
   static Set<LayoutStateNamespace> _stateNamespaces(
     LayoutProfileDescriptor profile,
     LayoutRuntimeSurface surface, {

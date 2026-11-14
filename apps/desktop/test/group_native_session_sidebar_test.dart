@@ -45,21 +45,29 @@ void main() {
       ];
       controller.conversationSessionsByAgent = {
         'codex': [
-          for (final id in [
-            'old',
-            'new',
-            'unrelated',
-            for (var i = 0; i < 500; i++) 'unrelated-$i',
+          for (final entry in [
+            ('old', const Duration(minutes: 10)),
+            ('new', Duration.zero),
+            ('unrelated', const Duration(hours: 2)),
+            for (var i = 0; i < 500; i++)
+              ('unrelated-$i', Duration(hours: 3 + i)),
           ])
-            AgentConversationSession(
-              id: 'catalog:$id',
-              agentId: 'codex',
-              title: 'Synthetic $id',
-              nativeSessionId: id,
-              createdAt: DateTime.now().toUtc().toIso8601String(),
-              updatedAt: DateTime.now().toUtc().toIso8601String(),
-              messages: const [],
-            ),
+            () {
+              final stamp = DateTime.now()
+                  .subtract(entry.$2)
+                  .toUtc()
+                  .toIso8601String();
+              return AgentConversationSession(
+                id: 'catalog:${entry.$1}',
+                agentId: 'codex',
+                title: 'Synthetic ${entry.$1}',
+                nativeSessionId: entry.$1,
+                createdAt: stamp,
+                updatedAt: stamp,
+                cachedPreview: entry.$1 == 'new' ? 'Synthetic new reply' : '',
+                messages: const [],
+              );
+            }(),
         ],
       };
       await controller.clientConversationController.initialize();
@@ -114,23 +122,22 @@ void main() {
       final contacts = tester.widget<MessagingContactList>(
         find.byType(MessagingContactList),
       );
-      expect(contacts.sessionsByAgent['codex'], hasLength(2));
-      expect(contacts.showConversationList, isTrue);
-      expect(contacts.conversationListTargets, hasLength(1));
-      expect(find.text('Synthetic old'), findsOneWidget);
-      expect(find.text('Synthetic new'), findsOneWidget);
+      // The contact list shows one row per contact fed by the browse
+      // catalog; the group's own sessions stay in groupSessionsByAgent and
+      // are reached through the members panel, never the sidebar.
+      expect(contacts.sessionsByAgent['codex'], hasLength(503));
+      expect(find.byKey(const Key('messaging-contact-codex')), findsOneWidget);
+      expect(find.text('Synthetic new reply'), findsOneWidget);
+      expect(find.text('Synthetic old'), findsNothing);
       expect(find.text('Synthetic unrelated'), findsNothing);
-      expect(
-        tester
-            .widget<MessagingContactList>(find.byType(MessagingContactList))
-            .onPrefetchSessions,
-        isNull,
-      );
+      expect(contacts.onPrefetchSessions, isNotNull);
       native.associated = false;
       await controller.clientConversationController.reloadSelected();
       await tester.pump();
+      // Losing the group's session references changes nothing in the
+      // contact list — member sessions were never sidebar content.
+      expect(find.text('Synthetic new reply'), findsOneWidget);
       expect(find.text('Synthetic old'), findsNothing);
-      expect(find.text('Synthetic new'), findsNothing);
       expect(find.text('Synthetic unrelated'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());

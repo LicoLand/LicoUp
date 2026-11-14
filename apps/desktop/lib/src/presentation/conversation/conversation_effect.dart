@@ -45,3 +45,11 @@ final class CanonicalConversationGroupCreated extends ConversationEffect {
 
   final String conversationId;
 }
+
+/// Emitted once a conversation-profile persona is registered and its direct
+/// canonical Conversation is selected.
+final class ConversationProfileCreated extends ConversationEffect {
+  const ConversationProfileCreated(this.conversationId, {super.trace});
+
+  final String conversationId;
+}

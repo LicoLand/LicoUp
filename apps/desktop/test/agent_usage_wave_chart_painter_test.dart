@@ -15,8 +15,8 @@ void main() {
   for (final brightness in Brightness.values) {
     final colors = buildLicoTheme(
       presetId: brightness == Brightness.light
-          ? AppearancePresetIds.licoSodaLight
-          : AppearancePresetIds.licoSoda,
+          ? AppearancePresetIds.taroWaffle
+          : AppearancePresetIds.starlitGold,
       platformBrightness: brightness,
     ).extension<LicoThemeColors>()!;
 

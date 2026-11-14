@@ -59,8 +59,8 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.automation-token.outputs.token }}
           LICOUP_RELEASE_AUTOMATION_ENABLED: ${{ vars.LICOUP_RELEASE_AUTOMATION_ENABLED }}
-          LICOUP_APPLE_RELEASE_APP_ID: ${{ vars.LICOUP_APPLE_RELEASE_APP_ID }}
-          LICOUP_APPLE_RELEASE_BOT_LOGIN: ${{ vars.LICOUP_APPLE_RELEASE_BOT_LOGIN }}
+          LICOUP_RELEASE_PLANE_APP_ID: ${{ vars.LICOUP_RELEASE_PLANE_APP_ID }}
+          LICOUP_RELEASE_PLANE_BOT_LOGIN: ${{ vars.LICOUP_RELEASE_PLANE_BOT_LOGIN }}
         run: node tools/scripts/client-weekly-release.mjs
   candidate-ready:
     if: vars.LICOUP_RELEASE_AUTOMATION_ENABLED == 'true' && github.event_name == 'pull_request'
@@ -88,6 +88,6 @@ jobs:
       - name: Verify immutable monthly candidate
         env:
           GH_TOKEN: ${{ steps.automation-token.outputs.token }}
-          LICOUP_APPLE_RELEASE_APP_ID: ${{ vars.LICOUP_APPLE_RELEASE_APP_ID }}
+          LICOUP_RELEASE_PLANE_APP_ID: ${{ vars.LICOUP_RELEASE_PLANE_APP_ID }}
           HEAD_BRANCH: ${{ github.head_ref }}
         run: node tools/scripts/client-promotion.mjs validate --head "$HEAD_BRANCH" --base stable

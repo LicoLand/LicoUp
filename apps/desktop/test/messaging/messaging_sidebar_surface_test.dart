@@ -8,11 +8,14 @@ import 'package:licoup/src/application/features/conversations/client_conversatio
 import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import '../layout/fixtures/layout_destination_presentation_fixture.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -27,53 +30,36 @@ import 'package:licoup/src/presentation/conversation/conversation_projection.dar
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 void main() {
-  testWidgets(
-    'group roster is a centered capsule controlled by the header button',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(900, 640);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-
-      final controller = ClientConversationController(
-        native: _GroupConversationRunner(),
-      );
-      addTearDown(controller.dispose);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-      final targets = [
-        _target('codex', 'Codex'),
-        _target('claude-code', 'Claude Code'),
-      ];
-      final openedAgents = <String>[];
-      final bindings = _GroupBindings(
-        controller: controller,
-        targets: targets,
-        onOpenAgent: openedAgents.add,
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(
-          debugShowCheckedModeBanner: false,
-          builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context).copyWith(disableAnimations: true),
-            child: child!,
-          ),
-          locale: const Locale('en'),
-          supportedLocales: LicoStrings.supportedLocales,
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-          ],
-          theme: buildLicoTheme(
-            platformBrightness: Brightness.dark,
-          ).copyWith(platform: TargetPlatform.macOS),
-          home: Builder(
-            builder: (context) => LayoutPaletteScope(
-              palette: layoutPaletteFromColors(context.licoColors),
-              child: LayoutAgentsStrategyScope(
-                strategy: const AgentsPresentationStrategy.messaging(),
+  Future<void> pumpGroupPane(
+    WidgetTester tester,
+    _GroupBindings bindings, {
+    required void Function(String agentId) onOpenAgent,
+    LayoutAgentsPresentation? presentation,
+  }) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child!,
+        ),
+        locale: const Locale('en'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(
+          platformBrightness: Brightness.dark,
+        ).copyWith(platform: TargetPlatform.macOS),
+        home: Builder(
+          builder: (context) => LayoutPaletteScope(
+            palette: layoutPaletteFromColors(context.licoColors),
+            child: LayoutAgentsStrategyScope(
+              strategy: const AgentsPresentationStrategy.messaging(),
+              child: LayoutDestinationPresentationScope(
+                agents: presentation,
                 child: RepaintBoundary(
                   key: const Key('messaging-group-roster-qa-boundary'),
                   child: Scaffold(
@@ -84,7 +70,8 @@ void main() {
                       turns: bindings.turns,
                       composer: bindings.composer,
                       attachments: bindings.attachments,
-                      onOpenAgentConversations: openedAgents.add,
+                      onOpenMemberHistory: (target, _) =>
+                          onOpenAgent(target.target),
                       framed: false,
                     ),
                   ),
@@ -93,9 +80,43 @@ void main() {
             ),
           ),
         ),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+  }
+
+  Future<(ClientConversationController, _GroupBindings, List<String>)>
+  groupFixture(WidgetTester tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final controller = ClientConversationController(
+      native: _GroupConversationRunner(),
+    );
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+    final targets = [
+      _target('codex', 'Codex'),
+      _target('claude-code', 'Claude Code'),
+    ];
+    final openedAgents = <String>[];
+    final bindings = _GroupBindings(
+      controller: controller,
+      targets: targets,
+      onOpenAgent: openedAgents.add,
+    );
+    return (controller, bindings, openedAgents);
+  }
+
+  testWidgets(
+    'group roster is a centered capsule controlled by the header button',
+    (tester) async {
+      final (controller, bindings, openedAgents) = await groupFixture(tester);
+      await pumpGroupPane(tester, bindings, onOpenAgent: openedAgents.add);
 
       final paneFinder = find.byKey(
         const Key('canonical-group-conversation-pane'),
@@ -238,7 +259,7 @@ void main() {
       final codexWellRect = tester.getRect(
         find.descendant(
           of: codexAgentFinder,
-          matching: find.byKey(const Key('messaging-agent-avatar-well')),
+          matching: find.byType(MessagingAgentAvatar),
         ),
       );
       expect(codexDotRect.overlaps(codexWellRect), isTrue);
@@ -249,18 +270,22 @@ void main() {
         lessThanOrEqualTo(tester.getRect(codexAgentFinder).right),
       );
 
+      // A single tap opens the member's in-group history; the composer stays
+      // untouched because mention moved to the secondary-click menu.
       await tester.tap(codexAgentFinder);
       await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 1));
-      expect(controller.draft, '@Codex ');
-
-      controller.updateDraft('');
-      await tester.pump();
-      await tester.tap(codexAgentFinder);
-      await tester.pump(kDoubleTapMinTime);
-      await tester.tap(codexAgentFinder);
-      await tester.pumpAndSettle();
       expect(controller.draft, isEmpty);
       expect(openedAgents, ['codex']);
+
+      await tester.tap(codexAgentFinder, buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('canonical-group-roster-menu-codex')),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Mention Codex'));
+      await tester.pumpAndSettle();
+      expect(controller.draft, '@Codex ');
 
       expect(
         find.byKey(const Key('messaging-group-roster-qa-boundary')),
@@ -269,6 +294,49 @@ void main() {
       controller.dispose();
     },
   );
+
+  testWidgets('plain presentation renders the flat header bar and the members '
+      'side panel, collapsed by default and toggled by the header action', (
+    tester,
+  ) async {
+    final (controller, bindings, openedAgents) = await groupFixture(tester);
+    await pumpGroupPane(
+      tester,
+      bindings,
+      onOpenAgent: openedAgents.add,
+      presentation: const FixtureLayoutAgentsPresentation.docked(),
+    );
+
+    final barFinder = find.byKey(
+      const Key('messaging-conversation-header-bar'),
+    );
+    final panelFinder = find.byKey(const Key('canonical-group-members-panel'));
+    final toggleFinder = find.byKey(
+      const Key('canonical-group-members-toggle'),
+    );
+
+    // The plain style uses the flat header bar, and the members
+    // side panel starts collapsed until the header action opens it.
+    expect(barFinder, findsOneWidget);
+    expect(
+      find.byKey(const Key('messaging-conversation-header-bar-title')),
+      findsOneWidget,
+    );
+    expect(panelFinder, findsNothing);
+    expect(toggleFinder, findsOneWidget);
+    // The floating roster capsule is not used in the side-panel style.
+    expect(find.byKey(const Key('canonical-group-roster')), findsNothing);
+
+    await tester.tap(toggleFinder);
+    await tester.pumpAndSettle();
+    expect(panelFinder, findsOneWidget);
+
+    await tester.tap(toggleFinder);
+    await tester.pumpAndSettle();
+    expect(panelFinder, findsNothing);
+
+    controller.dispose();
+  });
 }
 
 final class _GroupBindings {

@@ -42,7 +42,6 @@ export async function checkPackageAndRunner({ assert, files, context }) {
     "client:package:plan",
     "client:cli:vm:list",
     "client:cli:vm:prepare",
-    "client:cli:vm:verify",
     "client:cli:vm:linux-product-bootstrap",
     "client:cli:vm:linux-product",
     "client:run:macos",
@@ -52,7 +51,6 @@ export async function checkPackageAndRunner({ assert, files, context }) {
     "client:install:macos",
     "client:analyze",
     "client:test",
-    "client:native:test",
   ]) {
     assert(Boolean(scripts[scriptName]), `package.json must define ${scriptName}`);
   }
@@ -87,8 +85,6 @@ export async function checkPackageAndRunner({ assert, files, context }) {
   for (const lane of [
     "source",
     "flutter",
-    "rust",
-    "android",
     "dependencies",
     "release-policy",
   ]) {
@@ -104,7 +100,6 @@ export async function checkPackageAndRunner({ assert, files, context }) {
     "classifyClientGatePaths",
     "validateClientGateTopology",
     "client-required",
-    "validateDelegatedApplePublicationTopology",
   ]) {
     assert(gateRunner.includes(token), `client gate runner must enforce ${token}`);
   }
@@ -114,7 +109,6 @@ export async function checkPackageAndRunner({ assert, files, context }) {
   for (const forbidden of [
     "client:get",
     "client:native:",
-    "client:test:android:native",
     "client:deps:audit",
     "client:verify:release-artifact-io:self-test",
   ]) {
@@ -125,8 +119,8 @@ export async function checkPackageAndRunner({ assert, files, context }) {
   }
 
   assert(
-    scripts["client:release:macos"]?.includes("apple-release release start"),
-    "macOS publication must be delegated to Apple Release",
+    scripts["client:release:macos"]?.includes("client-release-plane.mjs release start"),
+    "macOS publication must be delegated to the release plane",
   );
   assert(
     scripts["client:verify:product-line-security"]?.includes(

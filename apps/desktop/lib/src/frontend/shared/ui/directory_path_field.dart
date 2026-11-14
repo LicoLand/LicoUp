@@ -25,7 +25,6 @@ class DirectoryPathField extends StatelessWidget {
     this.showHeader = true,
     this.compactBreakpoint = 620,
     this.actions = const [],
-    this.headerTrailing,
     this.valueTextStyle,
     this.padding = const EdgeInsets.fromLTRB(
       LicoContentSpacing.item,
@@ -48,7 +47,6 @@ class DirectoryPathField extends StatelessWidget {
   final bool showHeader;
   final double compactBreakpoint;
   final List<Widget> actions;
-  final Widget? headerTrailing;
   final TextStyle? valueTextStyle;
   final FutureOr<void> Function(String path) onOpen;
   final EdgeInsetsGeometry padding;
@@ -103,10 +101,6 @@ class DirectoryPathField extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (headerTrailing != null) ...[
-                  const SizedBox(width: LicoContentSpacing.compact),
-                  headerTrailing!,
-                ],
               ],
             ),
             const SizedBox(height: LicoContentSpacing.compact),
@@ -207,9 +201,12 @@ class _PathInput extends StatelessWidget {
     final openButton = Tooltip(
       message: openTooltip,
       child: Padding(
+        // Inset-component rule: the nested button keeps an equal margin on
+        // every side that faces the frame interior — here top, bottom and
+        // right all resolve to LicoContentSpacing.inline (28 inside 36).
         padding: const EdgeInsets.only(right: LicoContentSpacing.inline),
         child: Material(
-          color: canOpen ? colors.brandSurface : colors.surfaceLow,
+          color: canOpen ? colors.surfaceSunken : colors.surfaceLow,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -218,8 +215,8 @@ class _PathInput extends StatelessWidget {
             ),
             onTap: canOpen ? onOpen : null,
             child: SizedBox(
-              width: 30,
-              height: 30,
+              width: 28,
+              height: 28,
               child: Icon(
                 Icons.open_in_new_outlined,
                 size: 14,
@@ -292,7 +289,7 @@ class _PathInput extends StatelessWidget {
       label: label,
       textField: controller != null && !readOnly,
       child: Container(
-        height: 38,
+        height: 36,
         decoration: continuousHairlineDecoration(
           color: backgroundColor,
           borderRadius: BorderRadius.circular(LicoRadius.chip),

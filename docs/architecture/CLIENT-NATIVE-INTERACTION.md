@@ -13,8 +13,8 @@ This document defines the technical specification for **Tier 2: Bridging Contrac
    - The platform implementation alone encodes these operations as structured method-and-parameter frames. Agent operations use generated `agent.conversation.*` methods; canonical requests use generated `client.conversation.execute` with the requested action in its payload. `ConversationProtocolMethod`, generated from the native protocol registry, remains the method authority.
    - Stateful operations **strictly never use a CLI argument array** as their client-to-native transport.
    - Generic command and process entry points reject the stateful `agent conversation` and `conversation` namespaces. Disabling persistent stateless execution or injecting a one-shot executor cannot redirect a stateful operation to a subprocess. Test fixtures inject semantic ports or structured transports explicitly.
-2. **Mobile Platform FFI**:
-   - On Android and iOS, communication passes through C-ABI FFI command boundaries (`android_ffi.rs`, `ios_ffi.rs`), invoking Rust functional core services in-process without shell processes.
+2. **Mobile Platform FFI** (owned by the sibling LicoUp-Android and LicoUp-iOS repositories):
+   - On Android and iOS, communication passes through C-ABI FFI command boundaries (`android_ffi.rs`, `ios_ffi.rs` in LicoUp-CLI), invoking Rust functional core services in-process without shell processes.
    - The desktop local conversation port reports an unavailable runtime on mobile. Mobile conversation routing continues through the approved secure relay and FFI paths; it never launches the desktop host.
 3. **Stateless Commands**:
    - The same RPC frame carries bounded stateless queries as `method: "execute"` with an argument array (e.g., catalog and target queries parsed via the public CLI command model).
@@ -32,8 +32,8 @@ The implementation authorities for the Bridging Contract Layer are:
 - **Platform Conversation Encoding**: `apps/desktop/lib/src/platform/native_client/native_conversation_port.dart`
 - **Client Agent Services**: `apps/desktop/lib/src/backend/features/agents/services/`
 - **Canonical Conversation Service**: `apps/desktop/lib/src/backend/features/conversations/services/client_conversation_service.dart`
-- **Native Frame Router**: `crates/licoup-native/src/bin/licoup/stdio_rpc/`
-- **Mobile FFI Bridges**: `crates/licoup-native/src/ffi/` (`android_ffi.rs`, `ios_ffi.rs`)
+- **Native Frame Router**: `crates/licoup/src/bin/licoup/stdio_rpc/` (LicoUp-CLI)
+- **Mobile FFI Bridges**: `crates/licoup/src/ffi/` (`android_ffi.rs`, `ios_ffi.rs`, LicoUp-CLI; consumed by the sibling LicoUp-Android and LicoUp-iOS shells)
 
 ## Refactor requirements for control and causal observation
 

@@ -79,7 +79,6 @@ ConversationQueuedTurn _turn(
     workingDirectory: '',
     model: '',
     reasoningEffort: '',
-    throughMobileRelay: false,
     awaitActiveSession: awaitActiveSession,
   );
 }

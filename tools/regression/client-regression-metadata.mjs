@@ -25,8 +25,6 @@ const FOUNDATION_KINDS = new Set([
   "regression-infrastructure",
   "architecture",
   "flutter-composition",
-  "rust-composition",
-  "rust-crate",
 ]);
 const FRONTEND_KINDS = new Set([
   "flutter-feature",
@@ -44,7 +42,6 @@ export function regressionStageForKind(kind) {
   if (FRONTEND_KINDS.has(kind)) return "frontend";
   if (INTEGRATION_KINDS.has(kind)) return "integration";
   if (SCENARIO_KINDS.has(kind)) return "scenarios";
-  if (["rust-domain", "rust-core", "rust-platform", "rust-ffi"].includes(kind)) return "backend";
   throw new Error(`client regression kind has no stage: ${kind}`);
 }
 
@@ -53,21 +50,13 @@ function innerToolchain(args) {
   const separator = args.indexOf("--");
   if (separator < 0) return null;
   const executable = args[separator + 1] || "";
-  if (executable === "flutter") return "flutter";
-  if (["./gradlew", "gradlew.bat"].includes(executable)) return "gradle";
+  if (["flutter", "dart"].includes(executable)) return "flutter";
   return null;
 }
 
 const BRIDGE_FORMAT_CONTRACT_FILES = Object.freeze([
   "tests/contract/client/client-bridge-generation.test.mjs",
   "tests/contract/client/continuous-assistant-contract.test.mjs",
-]);
-const RUST_SDK_CONTRACT_FILES = Object.freeze([
-  ...BRIDGE_FORMAT_CONTRACT_FILES,
-  "tests/contract/client/continuous-assistant-integration.test.mjs",
-  "tests/contract/client/continuous-assistant-scenarios.test.mjs",
-  "tests/contract/client/continuous-assistant-evaluation.test.mjs",
-  "tests/contract/client/continuous-assistant-adoption.test.mjs",
 ]);
 const FLUTTER_SDK_CONTRACT_FILES = Object.freeze([
   "tests/contract/client/continuous-assistant-ux.test.mjs",
@@ -80,7 +69,7 @@ function normalizeContractFile(file) {
 export function nodeTestFileToolchain(file) {
   const normalized = normalizeContractFile(file);
   if (FLUTTER_SDK_CONTRACT_FILES.includes(normalized)) return "flutter";
-  if (RUST_SDK_CONTRACT_FILES.includes(normalized)) return "rust";
+  if (BRIDGE_FORMAT_CONTRACT_FILES.includes(normalized)) return "node";
   return "node-test";
 }
 
@@ -89,7 +78,6 @@ function nodeTestFiles(args) {
 }
 
 export function regressionToolchain(command) {
-  if (command.program === "cargo") return "rust";
   const nested = innerToolchain(command.args);
   if (nested) return nested;
   if (command.program === "node" && command.args[0] === "--test") {
@@ -106,34 +94,22 @@ export function regressionToolchain(command) {
 }
 
 const TOOLCHAIN_WEIGHT = Object.freeze({
-  rust: 4,
   flutter: 3,
-  gradle: 4,
   "node-test": 2,
   node: 1,
 });
 
 const TOOLCHAIN_RESOURCES = Object.freeze({
-  rust: Object.freeze(["cargo-target"]),
   flutter: Object.freeze(["flutter-cache"]),
-  gradle: Object.freeze(["gradle-cache"]),
   "node-test": Object.freeze([]),
   node: Object.freeze([]),
 });
 
 function wrapperResources(command) {
-  if (command.program === "node" &&
-      command.args[0] === "tools/scripts/client-android-native-tests.mjs") {
-    // This bounded wrapper owns a Gradle test run, two Cargo FFI filters, and
-    // may consult Flutter Doctor while resolving Java. Charge every shared
-    // toolchain resource instead of disguising it as a pure Node leaf.
-    return ["cargo-target", "flutter-cache", "gradle-cache"];
-  }
   if (command.program === "node" && command.args[0] === "--test") {
     const resources = [];
     for (const file of nodeTestFiles(command.args)) {
       const toolchain = nodeTestFileToolchain(file);
-      if (toolchain === "rust") resources.push("cargo-target");
       if (toolchain === "flutter") resources.push("flutter-cache");
       if (BRIDGE_FORMAT_CONTRACT_FILES.includes(normalizeContractFile(file))) {
         resources.push("flutter-cache");
@@ -156,7 +132,7 @@ export function classifyClientModule({ id, kind, command }) {
     resources: Object.freeze([
       ...new Set([...TOOLCHAIN_RESOURCES[toolchain], ...wrapperResources(command)]),
     ]),
-    internalParallelism: ["rust", "flutter", "gradle", "node-test"].includes(toolchain),
+    internalParallelism: ["flutter", "node-test"].includes(toolchain),
     batchKey: `${toolchain}:${id}`,
   });
 }
@@ -166,20 +142,16 @@ export function defaultRegressionCapacities(available = os.availableParallelism(
   return Object.freeze({
     global,
     pools: Object.freeze({
-      rust: Math.max(4, Math.floor(global * 0.75)),
       flutter: Math.max(3, Math.floor(global * 0.5)),
-      gradle: Math.max(4, Math.floor(global * 0.5)),
       "node-test": Math.max(2, Math.floor(global * 0.75)),
       node: Math.max(2, global - 1),
       compatibility: Math.max(2, Math.floor(global * 0.5)),
     }),
     resources: Object.freeze({
-      // Cargo/libtest and Flutter already provide native internal parallelism.
-      // Keep their shared target/cache single-owner so hybrid platform
-      // wrappers cannot create a second hidden toolchain tree.
-      "cargo-target": 1,
+      // Flutter already provides internal parallelism. Keep its shared cache
+      // single-owner so hybrid platform wrappers cannot create a second hidden
+      // toolchain tree.
       "flutter-cache": 1,
-      "gradle-cache": 1,
     }),
   });
 }

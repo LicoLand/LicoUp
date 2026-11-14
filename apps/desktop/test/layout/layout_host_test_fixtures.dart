@@ -182,7 +182,7 @@ LayoutSurfaceBundle buildFixtureSurfaceBundle({
           },
         ),
     },
-    previewBuilder: (context) => SizedBox(
+    previewBuilder: (context, style) => SizedBox(
       key: Key('fixture-preview-${descriptor.id.value}-${surface.name}'),
     ),
     tokens: tokens,

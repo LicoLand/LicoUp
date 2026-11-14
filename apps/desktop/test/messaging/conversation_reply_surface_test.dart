@@ -22,9 +22,6 @@ import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
 import 'package:licoup/src/projections/conversation/conversation_execution_projection_producer.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
-import 'package:licoup/src/frontend/shared/messaging/conversation_motion_surface.dart';
-import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation_execution_binding_viewer.dart';
 import 'package:licoup/src/frontend/features/agents/ui/execution_process/conversation_execution_viewer.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
@@ -34,6 +31,7 @@ import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion/conversation_particle_field.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion/orb_waiting_indicator.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:flutter/gestures.dart';
 
 final _target = TargetCandidate(
   target: 'codex',
@@ -189,84 +187,6 @@ void main() {
   }
 
   testWidgets(
-    'light external composer uses actual clipped content and dock geometry',
-    (tester) async {
-      final state = ValueNotifier(_state(canonical: true, empty: true));
-      addTearDown(state.dispose);
-      await _pumpPane(
-        tester,
-        state,
-        external: true,
-        brightness: Brightness.light,
-        onSend: (_) async {
-          state.value = _state(
-            canonical: true,
-            active: true,
-            replies: [_reply(waiting: true)],
-          );
-          return true;
-        },
-      );
-      expect(
-        Theme.of(
-          tester.element(find.byType(AgentConversationActivePane)),
-        ).brightness,
-        Brightness.light,
-      );
-      expect(find.text('No messages yet'), findsNothing);
-      await _capture(tester, 'external-light-sphere');
-      final composer = find.byKey(const Key('synthetic-external-composer'));
-      await tester.enterText(
-        find.descendant(of: composer, matching: find.byType(TextField)),
-        _user.text,
-      );
-      await tester.pump();
-      await tester.tap(
-        find.descendant(
-          of: composer,
-          matching: find.byKey(const Key('agent-conversation-composer-send')),
-        ),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 80));
-      expect(find.byType(OrbWaitingIndicator), findsOneWidget);
-      await _readyAnchors(tester);
-      final field = tester.widget<ConversationParticleField>(
-        find.byType(ConversationParticleField),
-      );
-      final hostRect = tester.getRect(
-        find.byType(ConversationMotionHost).first,
-      );
-      final composerRect = tester.getRect(composer).shift(-hostRect.topLeft);
-      expect(
-        composerRect.contains(field.anchors.composer!.outerRect.center),
-        isTrue,
-      );
-      state.value = _state(
-        canonical: true,
-        active: true,
-        replies: [
-          _reply(text: 'The external composer also sends immediately.'),
-        ],
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 1900));
-      await _capture(tester, 'external-light-landing');
-      await tester.pump(const Duration(milliseconds: 250));
-      for (var frame = 0; frame < 4; frame++) {
-        await tester.pump();
-      }
-      await _capture(tester, 'external-light-assembled');
-      expect(find.byType(ConversationParticleField), findsNothing);
-      expect(
-        find.textContaining('external composer also sends', findRichText: true),
-        findsOneWidget,
-      );
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
     'switching to stored history never plays the first-send transition',
     (tester) async {
       final state = ValueNotifier(_state(empty: true));
@@ -407,6 +327,16 @@ void main() {
       );
       addTearDown(state.dispose);
       await _pumpPane(tester, state, reader: reader);
+      // The overflow control only appears while the message group is
+      // hovered or focused.
+      final hover = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(hover.removePointer);
+      await hover.moveTo(
+        tester.getCenter(
+          find.byKey(const Key('messaging-agent-message-group')),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 120));
       await tester.tap(find.byKey(const Key('conversation-execution-menu')));
       await tester.pump(const Duration(milliseconds: 200));
       await tester.tap(find.byIcon(Icons.visibility_outlined));
@@ -503,7 +433,6 @@ Future<void> _pumpPane(
   Future<bool> Function(String)? onSend,
   ports.ConversationExecutionReader? reader,
   Brightness brightness = Brightness.dark,
-  bool external = false,
 }) async {
   final executionProjection = ConversationExecutionProjectionProducer(reader);
   addTearDown(executionProjection.close);
@@ -514,8 +443,8 @@ Future<void> _pumpPane(
   addTearDown(tester.view.resetDevicePixelRatio);
   final theme = buildLicoTheme(
     presetId: brightness == Brightness.light
-        ? AppearancePresetIds.licoSodaLight
-        : AppearancePresetIds.licoSoda,
+        ? AppearancePresetIds.taroWaffle
+        : AppearancePresetIds.starlitGold,
     platformBrightness: brightness,
   ).copyWith(platform: TargetPlatform.macOS);
   await tester.pumpWidget(
@@ -571,40 +500,7 @@ Future<void> _pumpPane(
                           ),
                     ),
                   );
-                  if (!external) return pane;
-                  return ConversationMotionHost(
-                    child: Column(
-                      children: [
-                        Expanded(
-                          child: LayoutExternalComposerScope(
-                            hosted: true,
-                            child: ExternalConversationComposerClip(
-                              child: pane,
-                            ),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(110, 8, 110, 18),
-                          child: RuntimeMessageComposer(
-                            key: const Key('synthetic-external-composer'),
-                            targetLabel: 'Synthetic conversation',
-                            initialDraft: '',
-                            busy: false,
-                            enabled: true,
-                            activityVisible: value.turnActive,
-                            modelOptions: const [],
-                            selectedModel: '',
-                            reasoningEffortOptions: const [],
-                            selectedReasoningEffort: '',
-                            onModelChanged: (_) {},
-                            onReasoningEffortChanged: (_) {},
-                            onDraftChanged: (_) {},
-                            onSend: onSend ?? (_) async => true,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
+                  return pane;
                 },
               ),
             ),

@@ -2,7 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/contracts/client_conversation_models.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -11,6 +14,8 @@ import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 
 final class GroupStrategyProjection {
   const GroupStrategyProjection({
@@ -22,6 +27,74 @@ final class GroupStrategyProjection {
   final String revision;
   final Set<String> agentIds;
   final Map<String, AgentParticipantRuntimeProfile> runtimeProfiles;
+}
+
+/// The mention label the group dispatch parser recognizes for a membership:
+/// the membership display name first, then the canonical product name.
+String canonicalGroupMentionLabel(
+  ClientConversationMembership membership,
+  TargetCandidate target,
+) {
+  final displayName = membership.principal.displayName.trim();
+  if (displayName.isNotEmpty) return displayName;
+  final known =
+      agentProductDisplayName(target.target) ??
+      agentProductDisplayName(target.id);
+  if (known != null) return known;
+  return agentConversationTargetDisplayName(target);
+}
+
+/// Capsule label for the assistant identity: canonical product names first
+/// ("Codex", "Kimi Code"), otherwise each word capitalized.
+String canonicalGroupAssistantCapsuleLabel(
+  ClientConversationMembership membership,
+  TargetCandidate target,
+) {
+  final raw = canonicalGroupMentionLabel(membership, target);
+  final known = agentProductDisplayName(raw);
+  if (known != null) return known;
+  final words = raw
+      .split(RegExp(r'[\s\-_]+'))
+      .where((word) => word.isNotEmpty)
+      .toList();
+  if (words.isEmpty) return raw;
+  return words
+      .map((word) => word[0].toUpperCase() + word.substring(1))
+      .join(' ');
+}
+
+/// The assistant status light derivation, shared by the in-pane capsule and
+/// host-owned composer capsules (the Desktop expanded composer box).
+GroupAssistantStatusLight canonicalGroupAssistantStatus({
+  required ClientConversation conversation,
+  required bool assistantActive,
+  required CanonicalConversationProjection canonical,
+  required PersistentTurnProjection turns,
+}) {
+  if (conversation.assistantMembership == null) {
+    return GroupAssistantStatusLight.unconfigured;
+  }
+  if (!assistantActive) {
+    return GroupAssistantStatusLight.paused;
+  }
+  if ((canonical.notice?.reasonCode ?? '').isNotEmpty) {
+    return GroupAssistantStatusLight.failure;
+  }
+  if (turns.memberships.any(
+    (turn) => turn.phase == PersistentTurnPhase.waiting,
+  )) {
+    return GroupAssistantStatusLight.waiting;
+  }
+  if (canonical.dispatchPending ||
+      turns.memberships.any(
+        (turn) =>
+            (turn.participantRole.trim() != 'assistant' &&
+                turn.participantAgentId.trim().isNotEmpty) ||
+            turn.phase == PersistentTurnPhase.running,
+      )) {
+    return GroupAssistantStatusLight.working;
+  }
+  return GroupAssistantStatusLight.ready;
 }
 
 /// Assistant readiness projected into name color and accessible status.
@@ -81,7 +154,7 @@ final class _GroupStrategyPickerTrigger extends StatelessWidget {
     return Semantics(
       button: true,
       enabled: enabled,
-      label: strings.adaptiveFlywheel,
+      label: strings.acativa,
       child: AppleGlassSurface(
         borderRadius: kComposerCapsuleBorderRadius,
         fillAlpha: colors.isDark ? 22 : 10,
@@ -107,7 +180,7 @@ final class _GroupStrategyPickerTrigger extends StatelessWidget {
                   const SizedBox(width: 7),
                   Flexible(
                     child: Text(
-                      strings.adaptiveFlywheel,
+                      strings.acativa,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -361,6 +434,9 @@ final class _AssistantSunsetRimPainter extends CustomPainter {
     required this.colors,
   }) : super(repaint: animate ? progress : null);
 
+  /// Overall quieting factor for the rim sweep.
+  static const _quiet = 0.7;
+
   final Animation<double> progress;
   final bool animate;
   final BorderRadius borderRadius;
@@ -369,7 +445,7 @@ final class _AssistantSunsetRimPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
-    const width = 1.2;
+    const width = 1.0;
     final rect = Offset.zero & size;
     final path = Path()
       ..addRRect(continuousStrokeRRect(size, borderRadius, width));
@@ -381,11 +457,12 @@ final class _AssistantSunsetRimPainter extends CustomPainter {
       Paint()
         ..isAntiAlias = true
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 4
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4)
+        ..strokeWidth = 1.5
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2)
         ..shader = SweepGradient(
           colors: [
-            for (final color in colors) color.withValues(alpha: color.a * 0.45),
+            for (final color in colors)
+              color.withValues(alpha: color.a * 0.32 * _quiet),
           ],
           transform: rotation,
         ).createShader(rect),
@@ -397,7 +474,10 @@ final class _AssistantSunsetRimPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = width
         ..shader = SweepGradient(
-          colors: colors,
+          colors: [
+            for (final color in colors)
+              color.withValues(alpha: color.a * _quiet),
+          ],
           transform: rotation,
         ).createShader(rect),
     );
@@ -435,9 +515,14 @@ final class _AssistantParticipationToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
+    // Dark keeps the violet accent; light uses primaryStrong — the role the
+    // composer paints violet for its focus border — since light `accent`
+    // is the brown waffle tone.
     final track = enabled
-        ? (colors.isDark ? const Color(0xFF8A3FFC) : const Color(0xFF7C3AED))
-        : colors.textMuted.withAlpha(colors.isDark ? 64 : 48);
+        ? (colors.isDark ? colors.accent : colors.primaryStrong)
+        : (colors.isDark
+              ? Colors.white.withValues(alpha: 0.14)
+              : colors.textMuted.withAlpha(48));
     final duration = context.motion(LicoMotion.micro);
     return Semantics(
       button: true,
@@ -465,7 +550,7 @@ final class _AssistantParticipationToggle extends StatelessWidget {
                   color: track.withValues(
                     alpha: interactive ? track.a : track.a * 0.5,
                   ),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(LicoRadius.chip),
                 ),
                 child: AnimatedAlign(
                   duration: duration,
@@ -476,7 +561,7 @@ final class _AssistantParticipationToggle extends StatelessWidget {
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(LicoRadius.well),
                       boxShadow: const [
                         BoxShadow(
                           color: Color(0x33000000),
@@ -507,6 +592,7 @@ final class AssistantModelReadout extends StatelessWidget {
     required this.visible,
     required this.modelLabel,
     required this.effortLabel,
+    this.permissionLabel = '',
     required this.tooltip,
     required this.onTap,
   });
@@ -516,6 +602,10 @@ final class AssistantModelReadout extends StatelessWidget {
 
   /// Localized reasoning-effort label; empty hides the muted half.
   final String effortLabel;
+
+  /// Localized permission-mode label; empty when the assistant's agent has no
+  /// selectable permission control.
+  final String permissionLabel;
   final String tooltip;
   final VoidCallback onTap;
 
@@ -523,21 +613,26 @@ final class AssistantModelReadout extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!visible) return const SizedBox.shrink();
     final colors = context.licoColors;
+    final semanticLabel = [
+      modelLabel,
+      if (effortLabel.isNotEmpty) effortLabel,
+      if (permissionLabel.isNotEmpty) permissionLabel,
+    ].join(' ');
     return Semantics(
       button: true,
-      label: effortLabel.isEmpty ? modelLabel : '$modelLabel $effortLabel',
+      label: semanticLabel,
       hint: tooltip,
       child: Tooltip(
         message: tooltip,
         child: InkWell(
           key: const Key('canonical-group-assistant-model-readout'),
           onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(LicoRadius.chip),
           mouseCursor: SystemMouseCursors.click,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 220),
+              constraints: const BoxConstraints(maxWidth: 260),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -557,6 +652,24 @@ final class AssistantModelReadout extends StatelessWidget {
                     const SizedBox(width: 6),
                     Text(
                       effortLabel,
+                      maxLines: 1,
+                      style: TextStyle(
+                        color: colors.textMuted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                  if (permissionLabel.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.shield_outlined,
+                      size: 11,
+                      color: colors.textMuted,
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      permissionLabel,
                       maxLines: 1,
                       style: TextStyle(
                         color: colors.textMuted,
@@ -652,23 +765,18 @@ final class _AssistantNameLightState extends State<_AssistantNameLight>
 /// Detached floating action menu for the canonical group composer, anchored to
 /// a quiet plus icon before the assistant name. The menu
 /// is a plain transparent overlay child (no glass card) of circular
-/// overlay-glass action buttons stacked exactly above the trigger: attachments
-/// nearest the button, discard-pending-images above it while images are
-/// staged, and the archive action on top. Hovering a circle
-/// expands it rightward into a highlighted capsule — the icon stays pinned in
-/// a fixed left slot and the label extends right. Tapping outside dismisses
-/// the menu.
+/// overlay-glass action buttons stacked exactly above the trigger:
+/// discard-pending-images nearest the button while images are staged, and the
+/// archive action on top. Hovering a circle expands it rightward into a
+/// highlighted capsule — the icon stays pinned in a fixed left slot and the
+/// label extends right. Tapping outside dismisses the menu.
 final class CanonicalGroupAssistantActions extends StatefulWidget {
   const CanonicalGroupAssistantActions({
     super.key,
-    this.onPickAttachments,
     this.onArchive,
     this.onDiscardImages,
     this.showDiscardImages = false,
   });
-
-  /// Stages picked images into the group composer scope.
-  final VoidCallback? onPickAttachments;
 
   /// Archives the current group with everything it involves and opens a fresh
   /// assistant conversation after confirmation in the group pane.
@@ -747,16 +855,7 @@ final class _CanonicalGroupAssistantActionsState
                   verticalDirection: VerticalDirection.up,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _AssistantActionCircle(
-                      actionKey: const Key(
-                        'canonical-group-action-attachments',
-                      ),
-                      icon: Icons.attach_file,
-                      label: strings.attachments,
-                      onTap: () => _runAction(widget.onPickAttachments),
-                    ),
                     if (widget.showDiscardImages) ...[
-                      const SizedBox(height: 8),
                       _AssistantActionCircle(
                         actionKey: const Key(
                           'canonical-group-action-discard-images',
@@ -765,8 +864,8 @@ final class _CanonicalGroupAssistantActionsState
                         label: strings.discardPendingImages,
                         onTap: () => _runAction(widget.onDiscardImages),
                       ),
+                      const SizedBox(height: 8),
                     ],
-                    const SizedBox(height: 8),
                     _AssistantActionCircle(
                       actionKey: const Key('canonical-group-action-archive'),
                       icon: Icons.archive_outlined,

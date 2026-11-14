@@ -329,12 +329,6 @@ function verifyBuildManifestBinding(target, version, packageManifest, outputRoot
       buildManifest.updateSha256 !== update.sha256.slice("sha256:".length)) {
       fail("client_release_package_build_manifest_invalid");
     }
-  } else if (target.platform === "android") {
-    if (buildManifest.mode !== "release" ||
-      buildManifest.artifact?.digest !== packageArtifact.sha256 ||
-      buildManifest.reproducibility?.ready !== true) {
-      fail("client_release_package_build_manifest_invalid");
-    }
   } else {
     fail("client_release_package_build_manifest_platform_invalid");
   }

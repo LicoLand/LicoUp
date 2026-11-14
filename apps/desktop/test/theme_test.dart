@@ -7,6 +7,7 @@ import 'package:licoup/src/frontend/appearance/appearance_projection_adapter.dar
 import 'package:licoup/src/frontend/appearance/appearance_visuals.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/appearance/appearance_projection.dart';
@@ -24,7 +25,7 @@ void main() {
     'runtime theme tokens change visual roles without changing geometry',
     () {
       final original = builtInAppearancePresetConfigs.firstWhere(
-        (preset) => preset.id == AppearancePresetIds.licoSoda,
+        (preset) => preset.id == AppearancePresetIds.starlitGold,
       );
       final custom = AppearancePresetConfig.fromJson({
         'schemaVersion': 2,
@@ -40,7 +41,7 @@ void main() {
           'component-finish': 'glass',
         },
       });
-      final before = buildLicoTheme(presetId: AppearancePresetIds.licoSoda);
+      final before = buildLicoTheme(presetId: AppearancePresetIds.starlitGold);
       final after = buildLicoTheme(
         presetId: custom.id,
         presets: [...builtInAppearancePresetConfigs, custom],
@@ -116,7 +117,7 @@ void main() {
       expect(theme.colorScheme.surface, colors.surface);
       expect(theme.colorScheme.primary, colors.primary);
       // Secondary carries the interaction color so Material components that
-      // reach for `secondary` land on the accent rather than on lemon.
+      // reach for `secondary` land on the accent rather than on the brand.
       expect(theme.colorScheme.secondary, colors.accent);
       expect(theme.colorScheme.error, colors.error);
       expect(theme.colorScheme.onSurface, colors.text);
@@ -130,13 +131,21 @@ void main() {
       final cardTheme = theme.cardTheme;
       expect(cardTheme.shape, isA<ContinuousRoundedBorder>());
       expect(cardTheme.elevation, 0);
-      expect(cardTheme.color, colors.surface);
+      expect(
+        cardTheme.color,
+        colors.isDark ? LicoPaneGlass.contentInnerCardFill : colors.surface,
+      );
 
       // Surfaces and rims must come from the neutral ramp, never from a
       // white/black alpha wash that ignores the preset's own background.
       final inputTheme = theme.inputDecorationTheme;
       expect(inputTheme.filled, isTrue);
-      expect(inputTheme.fillColor, colors.surfaceLow);
+      expect(
+        inputTheme.fillColor,
+        colors.isDark
+            ? LicoPaneGlass.contentInnerCardFill
+            : colors.surfaceRaised,
+      );
       expect(
         theme.textSelectionTheme.cursorColor,
         colors.accent,
@@ -237,9 +246,10 @@ void main() {
     test('brand carries strokes through brand-strong, never as text', () {
       for (final preset in _fixedPresets) {
         final c = licoColorsFor(preset.id);
-        // A pale lemon fill cannot reach 3:1 against white, which is exactly
-        // why the brand is a fill-and-mark role. Every lemon stroke and
-        // indicator uses brand-strong, which must clear the graphic threshold.
+        // A pale gold or violet fill cannot reach 3:1 against its surface,
+        // which is exactly why the brand is a fill-and-mark role. Every brand
+        // stroke and indicator uses brand-strong, which must clear the
+        // graphic threshold.
         expect(
           _contrast(c.primaryStrong, c.surface),
           greaterThanOrEqualTo(graphic),
@@ -303,21 +313,14 @@ void main() {
     });
 
     test('neutrals stay in the family their mode owns', () {
-      // Each scheme owns a neutral family: the mist/cream/royale dark ramp is
-      // violet night, the mist/cream light ramp is warm cream, royale light
-      // is pale violet, and the Orbital pair keeps near-zero-chroma graphite
-      // dark and cream light. Values below chroma 0.008 are achromatic and
-      // carry no hue, so they pass in any family.
+      // Each scheme owns a neutral family: the starlit-gold dark ramp is
+      // violet night and the taro-waffle light ramp is warm waffle cream.
+      // Values below chroma 0.008 are achromatic and carry no hue, so they
+      // pass in any family.
       const families =
           <String, ({double minHue, double maxHue, double maxChroma})>{
-            'lico-mist': (minHue: 248, maxHue: 280, maxChroma: 0.11),
-            'lico-mist-light': (minHue: 20, maxHue: 45, maxChroma: 0.075),
-            'lico-cream': (minHue: 248, maxHue: 280, maxChroma: 0.09),
-            'lico-cream-light': (minHue: 20, maxHue: 45, maxChroma: 0.075),
-            'lico-royale': (minHue: 248, maxHue: 280, maxChroma: 0.14),
-            'lico-royale-light': (minHue: 248, maxHue: 280, maxChroma: 0.10),
-            'lico-soda': (minHue: 0, maxHue: 360, maxChroma: 0.013),
-            'lico-soda-light': (minHue: 10, maxHue: 45, maxChroma: 0.075),
+            'lico-starlit-gold': (minHue: 248, maxHue: 280, maxChroma: 0.11),
+            'lico-taro-waffle': (minHue: 20, maxHue: 45, maxChroma: 0.075),
           };
       for (final preset in _fixedPresets) {
         final c = licoColorsFor(preset.id);
@@ -352,54 +355,13 @@ void main() {
     });
 
     test('brand and interaction stay vivid in their own hue families', () {
-      // A brand that is scarce *and* desaturated is invisible. The mist,
-      // cream and royale schemes pair a taro-violet brand with a gold
-      // interaction in light mode, and invert to a gold brand with a violet
-      // interaction in dark mode. Orbital keeps its own families: lemon with
-      // a silver interaction in dark, cherry with ice blue in light.
+      // A brand that is scarce *and* desaturated is invisible. The two
+      // schemes pair a taro-violet brand with a waffle-brown interaction in
+      // light mode, and invert to a sparkling-gold brand with a violet
+      // interaction in dark mode.
       for (final preset in _fixedPresets) {
         final c = licoColorsFor(preset.id);
-        final orbital =
-            preset.id == AppearancePresetIds.licoSoda ||
-            preset.id == AppearancePresetIds.licoSodaLight;
-        if (orbital) {
-          if (c.isDark) {
-            // Electric lemon against the silver ramp — the reference point is
-            // the brief's own electric yellow #D9F14A at chroma 0.1855.
-            expect(
-              _chroma(c.primary),
-              greaterThanOrEqualTo(0.185),
-              reason:
-                  '${preset.id}: brand must be at least as vivid as #D9F14A',
-            );
-            expect(
-              _chroma(c.accent),
-              lessThanOrEqualTo(0.06),
-              reason: '${preset.id}: interaction belongs to the silver ramp',
-            );
-          } else {
-            expect(
-              _chroma(c.primary),
-              greaterThanOrEqualTo(0.14),
-              reason: '${preset.id}: the cherry brand must stay vivid',
-            );
-            expect(
-              _hue(c.primary),
-              lessThanOrEqualTo(25),
-              reason: '${preset.id}: the brand stays in the cherry family',
-            );
-            expect(
-              _hue(c.accent),
-              inInclusiveRange(185, 220),
-              reason: '${preset.id}: interaction stays in the ice-blue family',
-            );
-            expect(
-              _chroma(c.accent),
-              greaterThanOrEqualTo(0.07),
-              reason: '${preset.id}: the ice blue must stay vivid',
-            );
-          }
-        } else if (c.isDark) {
+        if (c.isDark) {
           // Gold brand over the violet-night ramp.
           expect(
             _hue(c.primary),
@@ -423,7 +385,7 @@ void main() {
             reason: '${preset.id}: the violet interaction must stay vivid',
           );
         } else {
-          // Taro-violet brand, gold interaction.
+          // Taro-violet brand, waffle-brown interaction.
           expect(
             _hue(c.primary),
             inInclusiveRange(246, 262),
@@ -436,20 +398,20 @@ void main() {
           );
           expect(
             _hue(c.accent),
-            inInclusiveRange(32, 50),
-            reason: '${preset.id}: interaction stays in the gold family',
+            inInclusiveRange(20, 36),
+            reason: '${preset.id}: interaction stays in the waffle family',
           );
           expect(
             _chroma(c.accent),
             greaterThanOrEqualTo(0.07),
-            reason: '${preset.id}: the gold interaction must stay vivid',
+            reason: '${preset.id}: the waffle interaction must stay vivid',
           );
         }
       }
     });
 
     test('the brand wash is a tint, not mud', () {
-      // Hand-picking a dark lemon tint produced olive mud (#2a2f12, chroma
+      // Hand-picking a dark brand tint produced olive mud (#2a2f12, chroma
       // 0.047). The wash is now computed at low alpha and must stay close to
       // neutral so it reads as a warm surface rather than a colour mistake.
       for (final preset in _fixedPresets) {
@@ -599,9 +561,10 @@ void main() {
   });
 
   test('each mode carries its own brand family from the logo system', () {
-    // Dark rides the gold over violet night; light rides the taro violet with
-    // a gold interaction. A system flip changes the palette by design — into
-    // the other owned family, never into an unrelated third hue.
+    // Dark rides the gold over violet night; light rides the taro violet
+    // with a waffle-brown interaction. A system flip changes the palette by
+    // design — into the other owned family, never into an unrelated third
+    // hue.
     final light = licoColorsFor(
       AppearancePresetIds.defaultSystem,
       platformBrightness: Brightness.light,
@@ -612,7 +575,7 @@ void main() {
     );
     expect(_hue(dark.primary), inInclusiveRange(32, 50));
     expect(_hue(light.primary), inInclusiveRange(246, 262));
-    expect(_hue(light.accent), inInclusiveRange(32, 50));
+    expect(_hue(light.accent), inInclusiveRange(20, 36));
   });
 
   test('every built-in light preset is directly selectable', () {
@@ -628,9 +591,12 @@ void main() {
   test('day night brightness helpers map to fixed presets', () {
     expect(
       appearancePresetIdForBrightness(false),
-      AppearancePresetIds.licoMistLight,
+      AppearancePresetIds.taroWaffle,
     );
-    expect(appearancePresetIdForBrightness(true), AppearancePresetIds.licoMist);
+    expect(
+      appearancePresetIdForBrightness(true),
+      AppearancePresetIds.starlitGold,
+    );
     expect(
       isResolvedAppearanceDark(
         AppearancePresetIds.defaultSystem,
@@ -655,10 +621,7 @@ void main() {
       true,
     );
     expect(darkPresets.map((preset) => preset.id), [
-      AppearancePresetIds.licoMist,
-      AppearancePresetIds.licoCream,
-      AppearancePresetIds.licoRoyale,
-      AppearancePresetIds.licoSoda,
+      AppearancePresetIds.starlitGold,
     ]);
 
     final lightPresets = selectableAppearancePresetsForBrightness(
@@ -666,10 +629,7 @@ void main() {
       false,
     );
     expect(lightPresets.map((preset) => preset.id), [
-      AppearancePresetIds.licoMistLight,
-      AppearancePresetIds.licoCreamLight,
-      AppearancePresetIds.licoRoyaleLight,
-      AppearancePresetIds.licoSodaLight,
+      AppearancePresetIds.taroWaffle,
     ]);
   });
 
@@ -683,7 +643,7 @@ void main() {
     );
     expect(
       appearanceBrightnessSelectionFor(
-        AppearancePresetIds.licoSodaLight,
+        AppearancePresetIds.taroWaffle,
         builtInAppearancePresetConfigs,
       ),
       AppearanceBrightnessSelection.light,
@@ -691,7 +651,7 @@ void main() {
     expect(
       appearancePresetIdForBrightnessSelection(
         AppearanceBrightnessSelection.system,
-        AppearancePresetIds.licoSodaLight,
+        AppearancePresetIds.taroWaffle,
         builtInAppearancePresetConfigs,
       ),
       AppearancePresetIds.defaultSystem,
@@ -702,31 +662,31 @@ void main() {
         AppearancePresetIds.defaultSystem,
         builtInAppearancePresetConfigs,
       ),
-      AppearancePresetIds.licoMistLight,
+      AppearancePresetIds.taroWaffle,
     );
     expect(
       appearancePresetIdForBrightnessSelection(
         AppearanceBrightnessSelection.dark,
-        AppearancePresetIds.licoSodaLight,
+        AppearancePresetIds.taroWaffle,
         builtInAppearancePresetConfigs,
       ),
-      AppearancePresetIds.licoMist,
+      AppearancePresetIds.starlitGold,
     );
     expect(
       appearancePresetIdForBrightnessSelection(
         AppearanceBrightnessSelection.light,
-        AppearancePresetIds.licoSoda,
+        AppearancePresetIds.starlitGold,
         builtInAppearancePresetConfigs,
       ),
-      AppearancePresetIds.licoMistLight,
+      AppearancePresetIds.taroWaffle,
     );
     expect(
       appearancePresetIdForBrightnessSelection(
         AppearanceBrightnessSelection.dark,
-        AppearancePresetIds.licoSoda,
+        AppearancePresetIds.starlitGold,
         builtInAppearancePresetConfigs,
       ),
-      AppearancePresetIds.licoSoda,
+      AppearancePresetIds.starlitGold,
     );
   });
 
@@ -740,22 +700,10 @@ void main() {
 
     expect(label(AppearancePresetIds.defaultSystem), 'System Default');
     expect(label(AppearancePresetIds.defaultSystem, 'zh-CN'), '跟随系统');
-    expect(label(AppearancePresetIds.licoMist), 'Taro Mist · Dark');
-    expect(label(AppearancePresetIds.licoMist, 'zh-CN'), '香芋晨雾 · 深色');
-    expect(label(AppearancePresetIds.licoMistLight), 'Taro Mist · Light');
-    expect(label(AppearancePresetIds.licoMistLight, 'zh-CN'), '香芋晨雾 · 浅色');
-    expect(label(AppearancePresetIds.licoCream), 'Butter Cream · Dark');
-    expect(label(AppearancePresetIds.licoCream, 'zh-CN'), '奶油主场 · 深色');
-    expect(label(AppearancePresetIds.licoCreamLight), 'Butter Cream · Light');
-    expect(label(AppearancePresetIds.licoCreamLight, 'zh-CN'), '奶油主场 · 浅色');
-    expect(label(AppearancePresetIds.licoRoyale), 'Violet Royale · Dark');
-    expect(label(AppearancePresetIds.licoRoyale, 'zh-CN'), '紫雾浓郁 · 深色');
-    expect(label(AppearancePresetIds.licoRoyaleLight), 'Violet Royale · Light');
-    expect(label(AppearancePresetIds.licoRoyaleLight, 'zh-CN'), '紫雾浓郁 · 浅色');
-    expect(label(AppearancePresetIds.licoSoda), 'Orbital · Dark');
-    expect(label(AppearancePresetIds.licoSoda, 'zh-CN'), '轨道 · 深色');
-    expect(label(AppearancePresetIds.licoSodaLight), 'Orbital · Light');
-    expect(label(AppearancePresetIds.licoSodaLight, 'zh-CN'), '轨道 · 浅色');
+    expect(label(AppearancePresetIds.taroWaffle), 'Taro Waffle · Light');
+    expect(label(AppearancePresetIds.taroWaffle, 'zh-CN'), '香芋华夫 · 浅色');
+    expect(label(AppearancePresetIds.starlitGold), 'Starlit Gold · Dark');
+    expect(label(AppearancePresetIds.starlitGold, 'zh-CN'), '星河鎏金 · 深色');
   });
 
   test('default-system resolves to configured light and dark presets', () {
@@ -845,7 +793,7 @@ void main() {
   test('window ground is an opaque grouped background, not a veil', () {
     for (final preset in _fixedPresets) {
       final colors = licoColorsFor(preset.id);
-      final ground = MessagingDesktopMetrics.surfaceGlassTint(colors);
+      final ground = colors.surfaceSunken;
       expect(
         ground,
         colors.surfaceSunken,
@@ -891,7 +839,7 @@ void main() {
   test('rgba token values resolve to a translucent color', () {
     // The overlay roles are authored as rgba(), which a hex-only parser would
     // have thrown on.
-    final colors = licoColorsFor(AppearancePresetIds.licoSoda);
+    final colors = licoColorsFor(AppearancePresetIds.starlitGold);
     expect(colors.hoverOverlay.a, greaterThan(0.0));
     expect(colors.hoverOverlay.a, lessThan(1.0));
     expect(colors.pressedOverlay.a, greaterThan(colors.hoverOverlay.a));
@@ -919,6 +867,61 @@ void main() {
 
     test('enclosing and nested are inverses', () {
       expect(LicoRadius.nested(LicoRadius.enclosing(6, 4), 4), 6);
+    });
+  });
+  group('button and field material styles', () {
+    test('dark resolves the black-mask and accent-glass recipes', () {
+      final theme = buildLicoTheme(platformBrightness: Brightness.dark);
+      final colors = theme.extension<LicoThemeColors>()!;
+
+      final outlined = theme.outlinedButtonTheme.style!;
+      expect(
+        outlined.backgroundColor!.resolve(const {}),
+        const Color(0x66000000),
+        reason: 'dark secondary buttons sit on the inner-card mask',
+      );
+      expect(outlined.side!.resolve(const {})!.color, const Color(0x1AFFFFFF));
+
+      final filled = theme.filledButtonTheme.style!;
+      expect(
+        filled.backgroundColor!.resolve(const {}),
+        colors.accent.withValues(alpha: 0.22),
+      );
+      expect(filled.foregroundColor!.resolve(const {}), colors.accent);
+
+      expect(
+        theme.inputDecorationTheme.fillColor,
+        LicoPaneGlass.contentInnerCardFill,
+      );
+    });
+
+    test('light resolves the latex recipes', () {
+      final theme = buildLicoTheme(
+        presetId: AppearancePresetIds.taroWaffle,
+        platformBrightness: Brightness.light,
+      );
+      final colors = theme.extension<LicoThemeColors>()!;
+
+      final outlined = theme.outlinedButtonTheme.style!;
+      expect(
+        outlined.backgroundColor!.resolve(const {}),
+        colors.surfaceRaised,
+        reason: 'light secondary buttons are the milk-latex surface',
+      );
+      expect(
+        outlined.side!.resolve(const {})!.color,
+        Colors.transparent,
+        reason: 'milk latex carries no hard border',
+      );
+
+      final filled = theme.filledButtonTheme.style!;
+      expect(
+        filled.backgroundColor!.resolve(const {}),
+        colors.primary.withValues(alpha: 0.85),
+      );
+      expect(filled.foregroundColor!.resolve(const {}), Colors.white);
+
+      expect(theme.inputDecorationTheme.fillColor, colors.surfaceRaised);
     });
   });
 }

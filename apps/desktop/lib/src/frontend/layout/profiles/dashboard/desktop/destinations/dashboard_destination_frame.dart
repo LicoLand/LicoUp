@@ -12,6 +12,7 @@ final class DashboardDestinationFrame extends StatelessWidget {
     required this.data,
     required this.expectedDestination,
     this.pagePadding = EdgeInsets.zero,
+    this.arrange,
   });
 
   final LayoutDestinationBuildContext data;
@@ -20,6 +21,9 @@ final class DashboardDestinationFrame extends StatelessWidget {
   /// Inner page inset shared by single-pane destinations. Agents keeps
   /// [EdgeInsets.zero] so the conversation split stays flush to the card.
   final EdgeInsetsGeometry pagePadding;
+
+  /// Places style-owned chrome around the destination content.
+  final Widget Function(BuildContext context, Widget content)? arrange;
 
   @override
   Widget build(BuildContext context) {
@@ -32,9 +36,10 @@ final class DashboardDestinationFrame extends StatelessWidget {
       context,
       expectedDestination,
     );
+    final arranged = arrange?.call(context, destination) ?? destination;
     final child = pagePadding == EdgeInsets.zero
-        ? destination
-        : Padding(padding: pagePadding, child: destination);
+        ? arranged
+        : Padding(padding: pagePadding, child: arranged);
     return Semantics(
       container: true,
       explicitChildNodes: true,

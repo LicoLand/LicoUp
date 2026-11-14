@@ -1,3 +1,10 @@
+import 'dart:collection';
+
+import 'layout_profile_copy.dart';
+import 'layout_style.dart';
+
+export 'layout_profile_copy.dart';
+
 /// Stable semantic identity for a complete presentation profile.
 final class LayoutProfileId implements Comparable<LayoutProfileId> {
   const LayoutProfileId._(this.value);
@@ -40,48 +47,6 @@ final class LayoutProfileId implements Comparable<LayoutProfileId> {
   String toString() => value;
 }
 
-/// Profile-owned copy for the client locales supported by this product.
-///
-/// Copy travels with the profile registration so adding a profile never adds
-/// an identity branch to shared localization or Settings code.
-final class LayoutProfileCopy {
-  factory LayoutProfileCopy({
-    required String english,
-    required String chinese,
-  }) {
-    final normalizedEnglish = english.trim();
-    final normalizedChinese = chinese.trim();
-    if (!_copyValue.hasMatch(normalizedEnglish) ||
-        !_copyValue.hasMatch(normalizedChinese)) {
-      throw const FormatException('layout_profile_copy_invalid');
-    }
-    return LayoutProfileCopy._(
-      english: normalizedEnglish,
-      chinese: normalizedChinese,
-    );
-  }
-
-  const LayoutProfileCopy._({required this.english, required this.chinese});
-
-  static final RegExp _copyValue = RegExp(r'^[^\u0000-\u001f\u007f]{1,512}$');
-
-  final String english;
-  final String chinese;
-
-  String resolve(String languageCode) =>
-      languageCode.toLowerCase() == 'zh' ? chinese : english;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is LayoutProfileCopy &&
-          other.english == english &&
-          other.chinese == chinese;
-
-  @override
-  int get hashCode => Object.hash(english, chinese);
-}
-
 /// Public profile-owned metadata for Settings and preview surfaces.
 final class LayoutProfileDescriptor
     implements Comparable<LayoutProfileDescriptor> {
@@ -93,12 +58,31 @@ final class LayoutProfileDescriptor
     required bool isDefault,
     bool selectable = true,
     int revision = 1,
+    List<LayoutStyleDescriptor> styles = const [],
+    LayoutStyleId? defaultStyleId,
   }) {
     if (!_styleIdentity.hasMatch(styleIdentity)) {
       throw const FormatException('layout_profile_style_identity_invalid');
     }
     if (revision < 1) {
       throw const FormatException('layout_profile_revision_invalid');
+    }
+    final declaredStyles = <LayoutStyleId>{};
+    for (final style in styles) {
+      if (!declaredStyles.add(style.id)) {
+        throw const FormatException('layout_profile_styles_duplicate');
+      }
+    }
+    if (styles.isEmpty && defaultStyleId != null) {
+      throw const FormatException('layout_profile_default_style_unexpected');
+    }
+    if (styles.isNotEmpty) {
+      if (defaultStyleId == null) {
+        throw const FormatException('layout_profile_default_style_missing');
+      }
+      if (!declaredStyles.contains(defaultStyleId)) {
+        throw const FormatException('layout_profile_default_style_unknown');
+      }
     }
     return LayoutProfileDescriptor._(
       id: id,
@@ -108,6 +92,8 @@ final class LayoutProfileDescriptor
       isDefault: isDefault,
       selectable: selectable,
       revision: revision,
+      styles: UnmodifiableListView(List<LayoutStyleDescriptor>.of(styles)),
+      defaultStyleId: defaultStyleId,
     );
   }
 
@@ -119,6 +105,8 @@ final class LayoutProfileDescriptor
     required this.isDefault,
     required this.selectable,
     required this.revision,
+    required this.styles,
+    required this.defaultStyleId,
   });
 
   static final RegExp _styleIdentity = RegExp(r'^[a-z]+(?:-[a-z]+)*$');
@@ -130,6 +118,14 @@ final class LayoutProfileDescriptor
   final bool isDefault;
   final bool selectable;
   final int revision;
+
+  /// Column arrangements the profile offers on the desktop surface. Empty
+  /// for single-arrangement profiles; then [defaultStyleId] is null.
+  final List<LayoutStyleDescriptor> styles;
+
+  /// The arrangement a profile starts on before the user's stored choice.
+  /// Non-null exactly when [styles] is non-empty and always one of them.
+  final LayoutStyleId? defaultStyleId;
 
   @override
   int compareTo(LayoutProfileDescriptor other) => id.compareTo(other.id);
@@ -144,7 +140,9 @@ final class LayoutProfileDescriptor
           other.styleIdentity == styleIdentity &&
           other.isDefault == isDefault &&
           other.selectable == selectable &&
-          other.revision == revision;
+          other.revision == revision &&
+          _sameStyleList(other.styles, styles) &&
+          other.defaultStyleId == defaultStyleId;
 
   @override
   int get hashCode => Object.hash(
@@ -155,5 +153,18 @@ final class LayoutProfileDescriptor
     isDefault,
     selectable,
     revision,
+    Object.hashAll(styles),
+    defaultStyleId,
   );
+
+  static bool _sameStyleList(
+    List<LayoutStyleDescriptor> left,
+    List<LayoutStyleDescriptor> right,
+  ) {
+    if (left.length != right.length) return false;
+    for (var index = 0; index < left.length; index += 1) {
+      if (left[index] != right[index]) return false;
+    }
+    return true;
+  }
 }

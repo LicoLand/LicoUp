@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
+import 'package:licoup/src/application/features/agents/agent_product_names.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/contracts/agent_hub.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_projection.dart';
@@ -60,7 +61,9 @@ final class AgentHubProjectionProducer
         for (final recipe in recipes)
           AgentHubEntryProjection(
             id: recipe.id,
-            name: recipe.displayName,
+            // Card titles carry the product name only — CLI/Desktop/IDE
+            // suffixes are install forms, rendered as badges instead.
+            name: agentProductLabel(recipe.displayName),
             description: recipe.summary,
             adaptation: switch (recipe.adaptation) {
               AgentHubAdaptationDepth.deep => AgentHubAdaptationProjection.deep,
@@ -81,6 +84,7 @@ final class AgentHubProjectionProducer
             updateAvailable: recipe.updateAvailable,
             homepage: recipe.homepage,
             channelLabel: recipe.channelChipLabel,
+            installKinds: recipe.installKinds,
             channels: [
               for (final channel in recipe.pickerChannels)
                 AgentHubChannelProjection(

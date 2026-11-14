@@ -69,13 +69,9 @@ void main() {
       expect(source, isNot(contains('notifyClientStateChanged')));
     }
     expect(appearance, isNot(contains('FunctionalStatusRuntime')));
-    expect(appearance, contains('reportAppearanceReloadOutcome('));
-    expect(appearance, contains('reportAppearanceReloadFailure();'));
     expect(locale, isNot(contains('FunctionalStatusRuntime')));
     expect(status, isNot(contains('AppearancePreferenceOwner')));
     expect(status, isNot(contains('LocalePreferenceOwner')));
-    expect(status, contains('Appearance presets reloaded.'));
-    expect(status, contains('appearance_preset_reload_failed'));
   });
 
   test('application assembly excludes renderer-local layout state', () {
@@ -94,7 +90,7 @@ void main() {
     expect(assembly, isNot(contains('FilePresentationPreferencesRepository')));
     expect(assembly, isNot(contains('createBuiltInLayoutCatalog')));
     expect(assembly, isNot(contains('Platform.')));
-    expect(composition, contains('_createProductionController'));
+    expect(composition, contains('createProductionController'));
     expect(composition, contains('FilePresentationPreferencesRepository'));
     expect(composition, contains('layoutCatalog: layout.catalog'));
     expect(composition, contains('layoutManager: manager'));

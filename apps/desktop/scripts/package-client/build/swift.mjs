@@ -3,7 +3,15 @@ import path from "node:path";
 
 import { packageClientRuntime } from "../cli-policy.mjs";
 import { runPackageProcess } from "../process-runner.mjs";
-import { cargoTargetDir } from "./native.mjs";
+
+/**
+ * Swift sidecars are compiled locally from Desktop-owned sources; the staging
+ * directory is separate from the delivered CLI artifact root so packaging
+ * never writes into a consumed artifact bundle.
+ */
+export function swiftSidecarStagingDirectory() {
+  return path.join(packageClientRuntime.swiftSidecarRoot, "bin");
+}
 
 export function buildSwiftSidecars(selected, options) {
   if (
@@ -22,7 +30,7 @@ export function buildSwiftSidecars(selected, options) {
     );
     const artifactName = moduleConfig.artifactName || moduleConfig.id;
     const target = path.join(
-      cargoTargetDir(options.mode, options),
+      swiftSidecarStagingDirectory(options),
       artifactName,
     );
     mkdirSync(path.dirname(target), { recursive: true });

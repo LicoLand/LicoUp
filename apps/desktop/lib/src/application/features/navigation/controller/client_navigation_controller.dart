@@ -43,7 +43,7 @@ final class ClientNavigationController extends ApplicationStateOwner {
     }
     return switch (requested) {
       ClientSection.agents ||
-      ClientSection.mobileRelay ||
+      ClientSection.devices ||
       ClientSection.settings => requested,
       _ => ClientSection.agents,
     };

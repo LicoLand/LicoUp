@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 
 /// One keyboard-accessible overflow menu for conversation chrome.
@@ -14,11 +15,16 @@ class MessagingConversationMenu extends StatefulWidget {
     required this.triggerKey,
     required this.panelKey,
     required this.childrenBuilder,
+    this.flatTrigger = false,
   });
 
   final Key triggerKey;
   final Key panelKey;
   final List<Widget> Function(VoidCallback close) childrenBuilder;
+
+  /// Draws the trigger as a quiet icon button for flat header bars instead
+  /// of a glass capsule over the transcript.
+  final bool flatTrigger;
 
   @override
   State<MessagingConversationMenu> createState() =>
@@ -42,7 +48,7 @@ class _MessagingConversationMenuState extends State<MessagingConversationMenu> {
     final menuWidth = math.min(320.0, view.width - 24);
     return MenuAnchor(
       controller: _controller,
-      childFocusNode: _focusNode,
+      childFocusNode: widget.flatTrigger ? null : _focusNode,
       alignmentOffset: Offset(-menuWidth, 6),
       style: const MenuStyle(
         alignment: Alignment.bottomRight,
@@ -74,21 +80,32 @@ class _MessagingConversationMenuState extends State<MessagingConversationMenu> {
           ),
         ),
       ],
-      builder: (context, controller, child) =>
-          MessagingConversationOverlayGlass(
-            borderRadius: BorderRadius.circular(999),
-            child: SizedBox.square(
-              dimension: MessagingDesktopMetrics.conversationHeaderMenuExtent,
-              child: IconButton(
-                key: widget.triggerKey,
-                focusNode: _focusNode,
-                tooltip: LicoStrings.of(context).moreActions,
-                onPressed: () =>
-                    controller.isOpen ? controller.close() : controller.open(),
-                icon: const Icon(Icons.more_horiz_rounded, size: 21),
-              ),
+      builder: (context, controller, child) {
+        void toggle() =>
+            controller.isOpen ? controller.close() : controller.open();
+        if (widget.flatTrigger) {
+          return LicoIconButton(
+            key: widget.triggerKey,
+            tooltip: LicoStrings.of(context).moreActions,
+            onPressed: toggle,
+            size: LicoIconButtonSize.large,
+            icon: const Icon(Icons.more_horiz_rounded),
+          );
+        }
+        return MessagingConversationOverlayGlass(
+          borderRadius: BorderRadius.circular(999),
+          child: SizedBox.square(
+            dimension: MessagingDesktopMetrics.conversationHeaderMenuExtent,
+            child: IconButton(
+              key: widget.triggerKey,
+              focusNode: _focusNode,
+              tooltip: LicoStrings.of(context).moreActions,
+              onPressed: toggle,
+              icon: const Icon(Icons.more_horiz_rounded, size: 21),
             ),
           ),
+        );
+      },
     );
   }
 }

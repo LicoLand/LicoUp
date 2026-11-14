@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/features/agents/ui/conversation_execution_entry.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
@@ -16,12 +17,12 @@ import 'package:licoup/src/frontend/features/agents/ui/lico_plan_document_panel.
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
-import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/mascot/mascot_catalog.dart';
 import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_header_bar.dart';
 
 /// Composes an already projected conversation view. Controller listening and
 /// domain-to-presentation adaptation belong exclusively to the workspace.
@@ -173,60 +174,57 @@ class _AgentConversationActivePaneState
     );
     final messagingFlow =
         strategy.messageStyle == AgentsMessageStyle.participantFlow;
-    final composer = TickerMode(
-      enabled: !LayoutExternalComposerScope.isHosted(context),
-      child: RuntimeMessageComposer(
-        // Keyed per conversation scope: a switch starts a fresh composer state
-        // seeded from that conversation's stored draft instead of relying on
-        // didUpdateWidget restores that can race the debounced draft echo.
-        key: ValueKey<String>(
-          'composer-${state.target.target}-'
-          '${state.session?.id ?? (state.preparingNewConversation ? 'draft' : 'none')}',
-        ),
-        targetLabel: state.conversationLabel.trim().isNotEmpty
-            ? state.conversationLabel.trim()
-            : agentConversationTargetDisplayName(state.target),
-        initialDraft: state.composerDraft,
-        hasAttachments: state.hasAttachments,
-        busy: state.composerBusy,
-        activityVisible:
-            state.turnActive || state.loading || state.composerBusy,
-        enabled: state.composerEnabled && state.inputEnabled,
-        cancelEnabled: state.cancelEnabled,
-        modelOptions: state.modelOptions,
-        selectedModel: state.selectedModel,
-        reasoningEffortOptions: state.reasoningEffortOptions,
-        selectedReasoningEffort: state.selectedReasoningEffort,
-        onModelChanged: actions.onModelChanged,
-        onReasoningEffortChanged: actions.onReasoningEffortChanged,
-        onDraftChanged: actions.onDraftChanged,
-        onSend: actions.onSend,
-        onSlashNewConversation: actions.onNewConversation,
-        onCancel: actions.onCancel,
-        defaultModel: state.defaultModel,
-        defaultReasoningEffort: state.defaultReasoningEffort,
-        showRuntimeSettings:
-            strategy.composerStyle == AgentsComposerStyle.withRuntimeBar,
-        showWorkingDirectory: state.showWorkingDirectory,
-        workingDirectory: state.workingDirectory,
-        workingDirectorySelectable: state.workingDirectorySelectable,
-        onChooseWorkingDirectory: actions.onChooseWorkingDirectory,
-        floatingMatteCapsule: !mobileClient && messagingFlow,
-        onAttach: actions.onAttach,
-        onPasteImage: actions.onPasteImage,
-        mentionTargets: state.participantTargets
-            .where(
-              (target) =>
-                  state.composerMentionLabels.containsKey(target.target),
-            )
-            .toList(growable: false),
-        mentionLabels: state.composerMentionLabels,
-        leading: state.composerLeading,
-        fieldTrailing: state.composerFieldTrailing,
+    final composer = RuntimeMessageComposer(
+      // Keyed per conversation scope: a switch starts a fresh composer state
+      // seeded from that conversation's stored draft instead of relying on
+      // didUpdateWidget restores that can race the debounced draft echo.
+      key: ValueKey<String>(
+        'composer-${state.target.target}-'
+        '${state.session?.id ?? (state.preparingNewConversation ? 'draft' : 'none')}',
       ),
+      targetLabel: state.conversationLabel.trim().isNotEmpty
+          ? state.conversationLabel.trim()
+          : agentConversationTargetDisplayName(state.target),
+      initialDraft: state.composerDraft,
+      hasAttachments: state.hasAttachments,
+      busy: state.composerBusy,
+      activityVisible: state.turnActive || state.loading || state.composerBusy,
+      enabled: state.composerEnabled && state.inputEnabled,
+      cancelEnabled: state.cancelEnabled,
+      modelOptions: state.modelOptions,
+      selectedModel: state.selectedModel,
+      reasoningEffortOptions: state.reasoningEffortOptions,
+      selectedReasoningEffort: state.selectedReasoningEffort,
+      onModelChanged: actions.onModelChanged,
+      onReasoningEffortChanged: actions.onReasoningEffortChanged,
+      onDraftChanged: actions.onDraftChanged,
+      onSend: actions.onSend,
+      onSlashNewConversation: actions.onNewConversation,
+      onCancel: actions.onCancel,
+      defaultModel: state.defaultModel,
+      defaultReasoningEffort: state.defaultReasoningEffort,
+      showRuntimeSettings:
+          strategy.composerStyle == AgentsComposerStyle.withRuntimeBar,
+      showWorkingDirectory: state.showWorkingDirectory,
+      workingDirectory: state.workingDirectory,
+      workingDirectorySelectable: state.workingDirectorySelectable,
+      onChooseWorkingDirectory: actions.onChooseWorkingDirectory,
+      floatingMatteCapsule: !mobileClient && messagingFlow,
+      onAttach: actions.onAttach,
+      onPasteImage: actions.onPasteImage,
+      mentionTargets: state.participantTargets
+          .where(
+            (target) => state.composerMentionLabels.containsKey(target.target),
+          )
+          .toList(growable: false),
+      mentionLabels: state.composerMentionLabels,
+      leading: state.composerLeading,
+      fieldTrailing: state.composerFieldTrailing,
     );
     final sendUnavailable = state.composerEnabled
         ? null
+        : state.sendGateResolving
+        ? const _ConversationSendResolvingRow()
         : _ConversationSendUnavailableRow(
             copy: unavailableCopy,
             onUnblock: unavailableCopy.unblockAction == null
@@ -279,8 +277,16 @@ class _AgentConversationActivePaneState
                 state.reasoningEffortOptions.isNotEmpty ||
                 licoProfileCapsule != null)) ||
         state.composerFlywheel != null;
+    // Bottom edge of the header overlay in transcript coordinates: the
+    // flat bar's extent, or the capsule's bottom (inset + pad + avatar).
+    final headerFadeEdge = messagingConversationHeaderUsesBar(context)
+        ? messagingConversationHeaderExtentOf(context)
+        : MessagingDesktopMetrics.conversationHeaderOverlayExtent -
+              MessagingDesktopMetrics.conversationHeaderCapsuleInsetV;
+    // The transcript's first row starts where the fade is fully opaque —
+    // at rest no content sits inside the transparent band.
     final headerOverlayInset = !mobileClient && messagingFlow
-        ? MessagingDesktopMetrics.conversationHeaderOverlayExtent
+        ? headerFadeEdge + ConversationTranscriptHeaderFade.fadeExtent
         : 0.0;
     final composerOverlayInset = !mobileClient && messagingFlow
         ? _composerDockExtent ??
@@ -290,11 +296,16 @@ class _AgentConversationActivePaneState
                             .conversationComposerCapsuleRowExtent
                       : 0))
         : 0.0;
-    final messageSurface =
+    // An untouched conversation lifts the composer dock to the middle of the
+    // pane, under the greeting, instead of pinning it to the bottom edge.
+    final transcriptEmpty =
         _empty(state) &&
-            (state.session?.messages.isEmpty ?? true) &&
-            state.liveMessages.isEmpty
-        ? const _ConversationEmptyGreeting()
+        (state.session?.messages.isEmpty ?? true) &&
+        state.liveMessages.isEmpty;
+    final messageSurface = transcriptEmpty
+        ? (messagingFlow
+              ? const SizedBox.expand()
+              : const _ConversationEmptyGreeting())
         : AgentConversationMessageList(
             scrollController: messageScrollController,
             loading: state.loading,
@@ -441,7 +452,10 @@ class _AgentConversationActivePaneState
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
-                            messages,
+                            ConversationTranscriptHeaderFade(
+                              headerBottom: headerFadeEdge,
+                              child: messages,
+                            ),
                             Align(
                               alignment: Alignment.topCenter,
                               child: messagingHeader,
@@ -468,15 +482,29 @@ class _AgentConversationActivePaneState
                 : Stack(
                     fit: StackFit.expand,
                     children: [
-                      messages,
+                      ConversationTranscriptHeaderFade(
+                        headerBottom: headerFadeEdge,
+                        child: messages,
+                      ),
                       Align(
                         alignment: Alignment.topCenter,
                         child: messagingHeader,
                       ),
-                      Align(
-                        alignment: Alignment.bottomCenter,
-                        child: bottomDock,
-                      ),
+                      if (transcriptEmpty)
+                        Column(
+                          children: [
+                            const Spacer(flex: 5),
+                            const _ConversationEmptyGreeting(expanded: false),
+                            const SizedBox(height: 28),
+                            bottomDock,
+                            const Spacer(flex: 6),
+                          ],
+                        )
+                      else
+                        Align(
+                          alignment: Alignment.bottomCenter,
+                          child: bottomDock,
+                        ),
                     ],
                   ),
           )
@@ -522,6 +550,49 @@ class _AgentConversationActivePaneState
         onOpen: actions.onOpenExecution,
         child: SelectionArea(child: pane),
       ),
+    );
+  }
+}
+
+/// Fades the transcript in below the overlay conversation header: fully
+/// transparent at the header's bottom edge, opaque [fadeExtent] px beneath
+/// it, so scrolled content never reads through the translucent header in
+/// any profile (bar or capsule).
+final class ConversationTranscriptHeaderFade extends StatelessWidget {
+  const ConversationTranscriptHeaderFade({
+    super.key,
+    required this.headerBottom,
+    required this.child,
+  });
+
+  /// Bottom edge of the header overlay in transcript coordinates.
+  final double headerBottom;
+  final Widget child;
+
+  /// Distance over which the transcript fades from clear to opaque.
+  static const double fadeExtent = 24;
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      blendMode: BlendMode.dstIn,
+      shaderCallback: (rect) {
+        final h = rect.height <= 0 ? 1.0 : rect.height;
+        final edge = (headerBottom / h).clamp(0.0, 1.0);
+        final full = ((headerBottom + fadeExtent) / h).clamp(0.0, 1.0);
+        return LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: const [
+            Color(0x00000000),
+            Color(0x00000000),
+            Color(0xFFFFFFFF),
+            Color(0xFFFFFFFF),
+          ],
+          stops: [0, edge, full, 1],
+        ).createShader(rect);
+      },
+      child: child,
     );
   }
 }
@@ -591,6 +662,11 @@ class _ConversationPermissionRetryRow extends StatelessWidget {
     this.onDeny,
   });
 
+  /// Matches the site's `.approval-card` box metrics.
+  static const double cardRadius = 16;
+  static const double lockTileRadius = 10;
+  static const double actionRadius = 10;
+
   final String tool;
   final VoidCallback? onAllow;
   final VoidCallback? onAllowAndRemember;
@@ -600,102 +676,242 @@ class _ConversationPermissionRetryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    // The permission card carries the gold family: the accent wash in light
-    // presets, the gold brand wash in dark presets — the same surface the
-    // site's approval card uses.
+    // The permission card carries the gold family: the waffle-textured accent
+    // wash in light presets, the gold brand wash with a brand glow in dark
+    // presets — the same surface the site's approval card uses.
     final cardFill = colors.isDark ? colors.brandSurface : colors.accentSurface;
     final cardBorder = colors.isDark ? colors.brandBorder : colors.accentBorder;
+    final cardShape = ContinuousRoundedBorder(
+      borderRadius: BorderRadius.circular(cardRadius),
+    );
+    final actionTextStyle = const TextStyle(
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+      height: 1.2,
+    );
+    final actionPadding = const EdgeInsets.symmetric(
+      horizontal: 14,
+      vertical: 7,
+    );
+    final actionShape = ContinuousRoundedBorder(
+      borderRadius: BorderRadius.circular(actionRadius),
+    );
     return Padding(
       key: const Key('conversation-permission-retry'),
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: continuousHairlineDecoration(
-          color: cardFill,
-          borderRadius: BorderRadius.circular(14),
-          stroke: cardBorder,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              width: 26,
-              height: 26,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: colors.warning.withValues(
-                  alpha: colors.isDark ? 0.18 : 0.14,
-                ),
-                borderRadius: BorderRadius.circular(8),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: ClipPath.shape(
+            shape: cardShape,
+            child: Container(
+              decoration: continuousHairlineDecoration(
+                color: cardFill,
+                borderRadius: BorderRadius.circular(cardRadius),
+                stroke: cardBorder,
+                shadows: colors.isDark
+                    ? [BoxShadow(color: colors.brandGlow, blurRadius: 24)]
+                    : null,
               ),
-              child: Icon(
-                Icons.lock_outline_rounded,
-                size: 14,
-                color: colors.warning,
+              child: Stack(
+                children: [
+                  if (!colors.isDark)
+                    const Positioned.fill(
+                      child: IgnorePointer(
+                        child: ExcludeSemantics(
+                          child: CustomPaint(painter: _ApprovalWafflePainter()),
+                        ),
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 14,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          alignment: Alignment.center,
+                          decoration: ShapeDecoration(
+                            color: colors.isDark
+                                ? colors.text.withValues(alpha: 0.06)
+                                : colors.surface,
+                            shape: ContinuousRoundedBorder(
+                              borderRadius: BorderRadius.circular(
+                                lockTileRadius,
+                              ),
+                              side: BorderSide(
+                                color: colors.isDark
+                                    ? colors.brandBorder
+                                    : colors.line,
+                              ),
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.lock_outline_rounded,
+                            size: 17,
+                            color: colors.isDark
+                                ? colors.primaryStrong
+                                : colors.accent,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Text(
+                            strings.conversationPermissionDenied(tool),
+                            key: const Key(
+                              'conversation-permission-retry-reason',
+                            ),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: colors.text,
+                              fontSize: 13,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Flexible(
+                          child: Wrap(
+                            alignment: WrapAlignment.end,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              TextButton(
+                                key: const Key(
+                                  'conversation-permission-retry-deny',
+                                ),
+                                onPressed: onDeny,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: colors.error,
+                                  backgroundColor: colors.isDark
+                                      ? (colors.isDark
+                                            ? LicoPaneGlass.contentInnerCardFill
+                                            : colors.surfaceRaised)
+                                      : colors.surface,
+                                  shape: actionShape.copyWith(
+                                    side: BorderSide(color: colors.line),
+                                  ),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  padding: actionPadding,
+                                  textStyle: actionTextStyle,
+                                ),
+                                child: Text(
+                                  strings.conversationPermissionDenyAction,
+                                ),
+                              ),
+                              TextButton(
+                                key: const Key(
+                                  'conversation-permission-retry-remember',
+                                ),
+                                onPressed: onAllowAndRemember,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: colors.textSecondary,
+                                  backgroundColor: colors.isDark
+                                      ? (colors.isDark
+                                            ? LicoPaneGlass.contentInnerCardFill
+                                            : colors.surfaceRaised)
+                                      : colors.surface,
+                                  shape: actionShape.copyWith(
+                                    side: BorderSide(color: colors.line),
+                                  ),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  padding: actionPadding,
+                                  textStyle: actionTextStyle,
+                                ),
+                                child: Text(
+                                  strings
+                                      .conversationPermissionAllowAndRememberAction,
+                                ),
+                              ),
+                              Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(
+                                    actionRadius,
+                                  ),
+                                  boxShadow: colors.isDark
+                                      ? [
+                                          BoxShadow(
+                                            color: colors.brandGlow,
+                                            blurRadius: 14,
+                                          ),
+                                        ]
+                                      : null,
+                                ),
+                                child: TextButton(
+                                  key: const Key(
+                                    'conversation-permission-retry-action',
+                                  ),
+                                  onPressed: onAllow,
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: colors.textOnSelection,
+                                    backgroundColor: colors.selectionInk,
+                                    shape: actionShape,
+                                    minimumSize: Size.zero,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    padding: actionPadding,
+                                    textStyle: actionTextStyle,
+                                  ),
+                                  child: Text(
+                                    strings.conversationPermissionAllowAction,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Text(
-                strings.conversationPermissionDenied(tool),
-                key: const Key('conversation-permission-retry-reason'),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: colors.text,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  height: 1.25,
-                ),
-              ),
-            ),
-            TextButton(
-              key: const Key('conversation-permission-retry-action'),
-              onPressed: onAllow,
-              style: TextButton.styleFrom(
-                foregroundColor: colors.accent,
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                textStyle: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              child: Text(strings.conversationPermissionAllowAction),
-            ),
-            TextButton(
-              key: const Key('conversation-permission-retry-remember'),
-              onPressed: onAllowAndRemember,
-              style: TextButton.styleFrom(
-                foregroundColor: colors.accent,
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                textStyle: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              child: Text(strings.conversationPermissionAllowAndRememberAction),
-            ),
-            TextButton(
-              key: const Key('conversation-permission-retry-deny'),
-              onPressed: onDeny,
-              style: TextButton.styleFrom(
-                foregroundColor: colors.textMuted,
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                textStyle: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              child: Text(strings.conversationPermissionDenyAction),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
+}
+
+/// The site's `.approval-card` waffle: two 45° crosshatch passes of a 1 px
+/// warm-tan groove at 9 px pitch, painted only under the light accent wash.
+final class _ApprovalWafflePainter extends CustomPainter {
+  const _ApprovalWafflePainter();
+
+  static const _groove = Color.fromRGBO(176, 122, 67, 0.18);
+  static const _pitch = 9.0 * 1.4142135623730951;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = _groove
+      ..strokeWidth = 1;
+    for (var x = 0.0; x <= size.width + size.height; x += _pitch) {
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset(x - size.height, size.height),
+        paint,
+      );
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset(x + size.height, size.height),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ApprovalWafflePainter oldDelegate) => false;
 }
 
 class _ConversationSendUnavailableRow extends StatelessWidget {
@@ -751,45 +967,98 @@ class _ConversationSendUnavailableRow extends StatelessWidget {
   }
 }
 
-/// The empty conversation moment: the bundled Lico mascot waves in, with a
-/// quiet greeting under it. This is the mascot's home in the client — the
-/// same character that greets from the website hero.
-class _ConversationEmptyGreeting extends StatelessWidget {
-  const _ConversationEmptyGreeting();
+/// Rendered while a scan or the selection-time executable binding still
+/// resolves a runtime-gate code: the row is a loading affordance, never a
+/// verdict — a listed agent was already discovered, so "not detected" copy
+/// can only be a transient scan state.
+class _ConversationSendResolvingRow extends StatelessWidget {
+  const _ConversationSendResolvingRow();
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    return SizedBox.expand(
-      key: const Key('conversation-empty-content'),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            MascotImage.expression(
-              'hi',
-              key: const Key('conversation-empty-mascot'),
-              size: 96,
-              semanticLabel: MascotCatalog.expressionName(
-                'hi',
-                chinese: strings.isChinese,
-              ),
+    return Padding(
+      key: const Key('conversation-send-resolving'),
+      padding: const EdgeInsets.fromLTRB(16, 8, 12, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.8,
+              color: colors.textMuted,
             ),
-            const SizedBox(height: 12),
-            Text(
-              strings.conversationEmptyGreeting,
-              key: const Key('conversation-empty-greeting'),
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              strings.conversationSendResolving,
+              key: const Key('conversation-send-resolving-label'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: colors.textMuted,
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: FontWeight.w500,
-                height: 1.4,
+                height: 1.25,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+/// The empty conversation moment: the bundled Lico mascot waves in, with a
+/// quiet greeting under it. This is the mascot's home in the client — the
+/// same character that greets from the website hero.
+class _ConversationEmptyGreeting extends StatelessWidget {
+  const _ConversationEmptyGreeting({this.expanded = true});
+
+  /// Whether the greeting fills its parent; the centered composer variant
+  /// shrinks to its content so the dock can sit directly beneath.
+  final bool expanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    if (!expanded) {
+      return _greeting(colors, strings);
+    }
+    return SizedBox.expand(child: Center(child: _greeting(colors, strings)));
+  }
+
+  Widget _greeting(LicoThemeColors colors, LicoStrings strings) {
+    return Column(
+      key: const Key('conversation-empty-content'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        MascotImage.expression(
+          'hi',
+          key: const Key('conversation-empty-mascot'),
+          size: 96,
+          semanticLabel: MascotCatalog.expressionName(
+            'hi',
+            chinese: strings.isChinese,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          strings.conversationEmptyGreeting,
+          key: const Key('conversation-empty-greeting'),
+          style: TextStyle(
+            color: colors.textMuted,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            height: 1.4,
+          ),
+        ),
+      ],
     );
   }
 }

@@ -1,14 +1,14 @@
 import 'package:licoup/src/contracts/skill_hub_preferences.dart';
-import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
+import 'package:licoup/src/platform/storage/client_json_document_store.dart';
 
 class PlatformSkillHubPreferencesStore implements SkillHubPreferencesStore {
   const PlatformSkillHubPreferencesStore({
-    MobileRelayJsonStore jsonStore = const MobileRelayJsonStore(),
+    ClientJsonDocumentStore jsonStore = const ClientJsonDocumentStore(),
   }) : _jsonStore = jsonStore;
 
   static const fileName = 'skill-hub-preferences.json';
 
-  final MobileRelayJsonStore _jsonStore;
+  final ClientJsonDocumentStore _jsonStore;
 
   @override
   Future<Object?> read(Object portableData) {

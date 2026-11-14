@@ -35,7 +35,9 @@ Widget hoverApp({
   bool light = false,
   double scale = 1,
 }) => MaterialApp(
-  theme: buildLicoTheme(presetId: light ? 'lico-soda-light' : 'lico-soda-dark'),
+  theme: buildLicoTheme(
+    presetId: light ? 'lico-taro-waffle' : 'lico-starlit-gold',
+  ),
   builder: (context, child) => MediaQuery(
     data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
     child: child!,

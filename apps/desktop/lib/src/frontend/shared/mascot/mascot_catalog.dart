@@ -1,4 +1,8 @@
 import 'package:flutter/widgets.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
+import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 
 /// The bundled Lico mascot pack — the same asset family the website ships
 /// (`licoup.com/assets/lico`), embedded so the client can put a face on its
@@ -50,6 +54,8 @@ abstract final class MascotCatalog {
     'sleepy': (en: 'Sleepy', zh: '困了'),
   };
 
+  static String figureAsset(String id) => 'assets/mascot/figures/svg/$id.svg';
+
   static String avatarAsset(String id) => '$_avatars/$id.png';
 
   static String expressionAsset(String id) => '$_expressions/$id.png';
@@ -72,42 +78,84 @@ abstract final class MascotCatalog {
 /// The widget-test asset bundle does not serve directory-registered PNGs, so
 /// a load failure degrades to an empty, layout-stable box instead of an
 /// error; on device the bundled asset always renders.
+enum _MascotArt { avatar, expression, figure }
+
 class MascotImage extends StatelessWidget {
   const MascotImage.avatar(
     this.id, {
     super.key,
     required this.semanticLabel,
     this.size = 96,
-  }) : isAvatar = true;
+  }) : _art = _MascotArt.avatar;
 
   const MascotImage.expression(
     this.id, {
     super.key,
     required this.semanticLabel,
     this.size = 96,
-  }) : isAvatar = false;
+  }) : _art = _MascotArt.expression;
+
+  /// The background-free figure art: the character on no painted
+  /// backdrop, for cells that already supply their own fill.
+  const MascotImage.figure(
+    this.id, {
+    super.key,
+    required this.semanticLabel,
+    this.size = 96,
+  }) : _art = _MascotArt.figure;
 
   final String id;
   final String semanticLabel;
   final double size;
-  final bool isAvatar;
+  final _MascotArt _art;
+
+  /// A missing asset must stay visible: an empty box looks like a lost
+  /// message in the transcript. Falls back to the mascot id chip.
+  Widget _fallback(BuildContext context) {
+    final colors = context.licoColors;
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: continuousHairlineDecoration(
+        color: colors.surfaceRaised,
+        borderRadius: BorderRadius.circular(size / 4),
+        stroke: colors.line,
+      ),
+      child: Text(
+        id,
+        style: TextStyle(fontSize: 11, color: colors.textMuted),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       label: semanticLabel,
       image: true,
-      child: Image.asset(
-        isAvatar
-            ? MascotCatalog.avatarAsset(id)
-            : MascotCatalog.expressionAsset(id),
-        width: size,
-        height: size,
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.high,
-        errorBuilder: (context, error, stackTrace) =>
-            SizedBox(width: size, height: size),
-      ),
+      child: _art == _MascotArt.figure
+          ? SvgPicture.asset(
+              MascotCatalog.figureAsset(id),
+              width: size,
+              height: size,
+              fit: BoxFit.contain,
+              placeholderBuilder: (context) =>
+                  SizedBox(width: size, height: size),
+              errorBuilder: (context, error, stackTrace) => _fallback(context),
+            )
+          : Image.asset(
+              _art == _MascotArt.avatar
+                  ? MascotCatalog.avatarAsset(id)
+                  : MascotCatalog.expressionAsset(id),
+              width: size,
+              height: size,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
+              errorBuilder: (context, error, stackTrace) => _fallback(context),
+            ),
     );
   }
 }

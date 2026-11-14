@@ -173,15 +173,15 @@ void main() {
       expect(selectSession.nativeSessionId, 'native-1');
     });
 
-    test('adaptive flywheel actions dispatch typed intents', () async {
+    test('acativa actions dispatch typed intents', () async {
       final intents = _RecordingAgentsIntents();
       final actions = AgentsCatalogActions.fromIntents(intents);
 
-      await actions.initializeAdaptiveFlywheel(initialRevision: 'rev-1');
-      await actions.importAdaptiveFlywheelPackage('package-fixture.zip');
-      await actions.selectAdaptiveFlywheelDefinition('rev-1');
-      await actions.saveAdaptiveFlywheelActorBindings(const [
-        AdaptiveFlywheelAssignmentIntent(
+      await actions.initializeAcativa(initialRevision: 'rev-1');
+      await actions.importAcativaPackage('package-fixture.zip');
+      await actions.selectAcativaDefinition('rev-1');
+      await actions.saveAcativaActorBindings(const [
+        AcativaAssignmentIntent(
           slotId: 'planner',
           ordinal: 0,
           agentId: 'codex',
@@ -189,35 +189,28 @@ void main() {
           reasoningEffort: 'high',
         ),
       ]);
-      await actions.refreshAdaptiveFlywheelModelCatalogs(const ['codex']);
-      await actions.readAdaptiveFlywheelAssistantProfile();
-      await actions.updateAdaptiveFlywheelAssistantProfile(
+      await actions.refreshAcativaModelCatalogs(const ['codex']);
+      await actions.readAcativaAssistantProfile();
+      await actions.updateAcativaAssistantProfile(
         agentId: 'codex',
         modelId: 'gpt-5',
         reasoningEffort: 'high',
       );
 
       expect(intents.values, hasLength(7));
+      expect((intents.values[0] as InitializeAcativa).initialRevision, 'rev-1');
       expect(
-        (intents.values[0] as InitializeAdaptiveFlywheel).initialRevision,
-        'rev-1',
-      );
-      expect(
-        (intents.values[1] as ImportAdaptiveFlywheelPackage).path,
+        (intents.values[1] as ImportAcativaPackage).path,
         'package-fixture.zip',
       );
-      expect(
-        (intents.values[2] as SelectAdaptiveFlywheelDefinition).revision,
-        'rev-1',
-      );
-      final save = intents.values[3] as SaveAdaptiveFlywheelActorBindings;
+      expect((intents.values[2] as SelectAcativaDefinition).revision, 'rev-1');
+      final save = intents.values[3] as SaveAcativaActorBindings;
       expect(save.assignments.single.slotId, 'planner');
       expect(save.assignments.single.reasoningEffort, 'high');
-      final refresh = intents.values[4] as RefreshAdaptiveFlywheelModelCatalogs;
+      final refresh = intents.values[4] as RefreshAcativaModelCatalogs;
       expect(refresh.agentIds, ['codex']);
-      expect(intents.values[5], isA<ReadAdaptiveFlywheelAssistantProfile>());
-      final update =
-          intents.values[6] as UpdateAdaptiveFlywheelAssistantProfile;
+      expect(intents.values[5], isA<ReadAcativaAssistantProfile>());
+      final update = intents.values[6] as UpdateAcativaAssistantProfile;
       expect(update.agentId, 'codex');
       expect(update.modelId, 'gpt-5');
       expect(update.reasoningEffort, 'high');
@@ -240,7 +233,7 @@ void main() {
       expect(inputs.mobileRuntime, value.mobileRuntime);
       expect(inputs.scanning, isTrue);
       expect(inputs.adding, value.adding);
-      expect(inputs.adaptiveFlywheel, value.adaptiveFlywheel);
+      expect(inputs.acativa, value.acativa);
       expect(inputs, AgentsCatalogInputs.fromProjection(value));
     });
   });

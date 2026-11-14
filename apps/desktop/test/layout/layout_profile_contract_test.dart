@@ -2,6 +2,7 @@ import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/contracts/presentation/layout_variant.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -214,8 +215,9 @@ void main() {
         'layoutProfileId': 'atlas',
         'appearancePresetId': 'dark',
         'localePreference': 'zh',
-        'reduceMotion': false,
+        'reduceMotion': 'system',
         'loadingEffectId': 'spinner',
+        'layoutStyleIds': <String, String>{},
       });
       expect(decoded.toJson(), isNot(contains('surface')));
       expect(decoded.toJson(), isNot(contains('viewport')));
@@ -230,4 +232,128 @@ void main() {
       );
     },
   );
+
+  test('layout style identities share the profile id grammar', () {
+    expect(LayoutStyleId.parse('plain'), LayoutStyleId.parse('plain'));
+    expect([LayoutStyleId.parse('card'), LayoutStyleId.parse('a')]..sort(), [
+      LayoutStyleId.parse('a'),
+      LayoutStyleId.parse('card'),
+    ]);
+
+    for (final invalid in ['3-column', 'Three', 'plain_style', '', '-lead']) {
+      expect(
+        () => LayoutStyleId.parse(invalid),
+        throwsA(isA<FormatException>()),
+        reason: invalid,
+      );
+    }
+  });
+
+  test('profile descriptor validates its declared styles', () {
+    final plain = LayoutStyleId.parse('plain');
+    final card = LayoutStyleId.parse('card');
+    LayoutStyleDescriptor style(LayoutStyleId id) => LayoutStyleDescriptor(
+      id: id,
+      label: LayoutProfileCopy(english: id.value, chinese: id.value),
+    );
+    LayoutProfileDescriptor descriptor({
+      List<LayoutStyleDescriptor>? styles,
+      LayoutStyleId? defaultStyleId,
+      bool clearDefault = false,
+    }) => LayoutProfileDescriptor(
+      id: LayoutProfileId.parse('dashboard'),
+      label: LayoutProfileCopy(english: 'Dashboard', chinese: '仪表盘'),
+      description: LayoutProfileCopy(
+        english: 'Dashboard layout',
+        chinese: '仪表盘布局',
+      ),
+      styleIdentity: 'dashboard-channel-chat',
+      isDefault: true,
+      styles: styles ?? const [],
+      defaultStyleId: clearDefault ? null : defaultStyleId,
+    );
+
+    expect(
+      () => descriptor(
+        styles: [style(plain), style(plain)],
+        defaultStyleId: plain,
+      ),
+      throwsA(isA<FormatException>()),
+      reason: 'duplicate style ids are rejected',
+    );
+    expect(
+      () => descriptor(styles: [style(card)], defaultStyleId: plain),
+      throwsA(isA<FormatException>()),
+      reason: 'the default must be one of the declared styles',
+    );
+    expect(
+      () => descriptor(defaultStyleId: plain),
+      throwsA(isA<FormatException>()),
+      reason: 'a style-less profile declares no default style',
+    );
+    expect(
+      () => descriptor(styles: [style(plain)], clearDefault: true),
+      throwsA(isA<FormatException>()),
+      reason: 'styled profiles always carry a declared default',
+    );
+
+    final styled = descriptor(
+      styles: [style(plain), style(card)],
+      defaultStyleId: plain,
+    );
+    expect(styled.defaultStyleId, plain);
+    expect(() => styled.styles.add(style(card)), throwsUnsupportedError);
+  });
+
+  test('presentation preferences round-trip layout style choices', () {
+    final dashboard = LayoutProfileId.parse('dashboard');
+    final fallback = PresentationPreferences(
+      layoutProfileId: dashboard,
+      appearancePresetId: 'default-system',
+      localePreference: 'system',
+    );
+
+    // An old document without the key loads with an empty map.
+    final legacy = PresentationPreferences.fromJson({
+      'schemaVersion': 1,
+      'layoutProfileId': 'dashboard',
+      'appearancePresetId': 'dark',
+      'localePreference': 'zh',
+    }, fallback: fallback);
+    expect(legacy.layoutStyleIds, isEmpty);
+
+    // Malformed entries drop independently without failing the document.
+    final decoded = PresentationPreferences.fromJson({
+      'schemaVersion': 1,
+      'layoutProfileId': 'dashboard',
+      'appearancePresetId': 'dark',
+      'localePreference': 'zh',
+      'layoutStyleIds': {
+        'dashboard': 'card',
+        'Bad Profile': 'wide',
+        'atlas': 42,
+        'desktop': 'Invalid Case',
+      },
+    }, fallback: fallback);
+    expect(decoded.layoutStyleIds, {dashboard: LayoutStyleId.parse('card')});
+
+    // A canonical document round-trips its style map byte-for-byte.
+    final roundTripped = PresentationPreferences.fromJson(
+      decoded.toJson(),
+      fallback: fallback,
+    );
+    expect(roundTripped, decoded);
+
+    // A fresh document writes and reads back the same selections.
+    final stored = fallback.copyWith(
+      layoutStyleIds: {dashboard: LayoutStyleId.parse('plain')},
+    );
+    expect(
+      PresentationPreferences.fromJson(
+        stored.toJson(),
+        fallback: fallback,
+      ).layoutStyleIds[dashboard],
+      LayoutStyleId.parse('plain'),
+    );
+  });
 }

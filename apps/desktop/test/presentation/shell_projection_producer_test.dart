@@ -1,16 +1,20 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
-import 'package:licoup/src/application/controller/appearance_preference_owner.dart';
+import 'package:licoup/src/application/features/settings/controller/appearance_preference_owner.dart';
 import 'package:licoup/src/application/controller/functional_status_runtime.dart';
 import 'package:licoup/src/application/controller/locale_preference_owner.dart';
+import 'package:licoup/src/application/controller/locale_resource_owner.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
+import 'package:licoup/src/contracts/presentation/presentation_plan_appearance.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/projections/shell/shell_projection_producer.dart';
@@ -40,6 +44,7 @@ void main() {
     final producer = ShellProjectionProducer(
       appearance: appearanceOwner,
       locale: localeOwner,
+      localeResources: LocaleResourceOwner(),
       status: statusRuntime,
       navigation: navigation,
       layoutManager: manager,
@@ -62,7 +67,7 @@ void main() {
 
     expect(producer.navigation.current.destinations, const [
       ClientSection.agents,
-      ClientSection.mobileRelay,
+      ClientSection.devices,
       ClientSection.settings,
     ]);
     expect(
@@ -82,7 +87,7 @@ void main() {
       [0, 1, 0, 0, 0, 1],
     );
 
-    appearanceOwner.replacePreset(AppearancePresetIds.licoSodaLight);
+    appearanceOwner.replacePreset(AppearancePresetIds.taroWaffle);
     expect(
       _counts(appearance, locale, layout, environment, destinations, status),
       [1, 1, 0, 0, 0, 1],
@@ -124,6 +129,94 @@ void main() {
   });
 
   test(
+    'the appearance plane carries what the published plan resolved',
+    () async {
+      final appearanceOwner = AppearancePreferenceOwner();
+      final localeOwner = LocalePreferenceOwner();
+      final statusRuntime = FunctionalStatusRuntime();
+      final navigation = ClientNavigationController(
+        isMobileRuntime: () => true,
+      );
+      final runtime = buildFixtureLayoutRuntime();
+      final manager = LayoutManager(
+        catalog: runtime.catalog,
+        preferencesRepository: _MemoryPreferencesRepository(),
+        canonicalFallback: _preferences(),
+      );
+      final environmentSource = EnvironmentProjectionSource(
+        EnvironmentState(
+          environment: _environment(width: 390),
+          runtimeSurface: LayoutRuntimeSurface.mobile,
+        ),
+      );
+      final producer = ShellProjectionProducer(
+        appearance: appearanceOwner,
+        locale: localeOwner,
+        localeResources: LocaleResourceOwner(),
+        status: statusRuntime,
+        navigation: navigation,
+        layoutManager: manager,
+        environment: environmentSource,
+      );
+
+      // No plan published: the plane reports no plan tokens of its own. The
+      // built-in appearance belongs to the renderer, not to the plan, so nothing
+      // is invented here.
+      expect(producer.appearance.current.planTokens, isEmpty);
+      expect(producer.appearance.current.planFallbackReason, isNull);
+
+      // A plan that selected a theme resource: the roles it published are the
+      // roles the shell reads, and a serving resource reports no fallback.
+      appearanceOwner.replacePlanAppearance(
+        PresentationPlanAppearance(
+          source: PlanAppearanceSource.selectedResource,
+          systemId: 'system',
+          resourceId: 'org.example.orbital-nights',
+          packageGeneration: 4,
+          tokens: const {'brand': '#ff0055', 'bg-base': '#101020'},
+        ),
+      );
+
+      expect(producer.appearance.current.planTokens, const {
+        'brand': '#ff0055',
+        'bg-base': '#101020',
+      });
+      expect(producer.appearance.current.planFallbackReason, isNull);
+
+      // A plan whose declared default serves because the selection was
+      // uninstalled: the plan's own recorded reason reaches the shell.
+      appearanceOwner.replacePlanAppearance(
+        PresentationPlanAppearance(
+          source: PlanAppearanceSource.declaredDefault,
+          systemId: 'system',
+          fallback: const PresentationPlanFallback(
+            resourceId: 'org.example.orbital-nights',
+            packageId: 'org.example.appearance',
+            reason: PresentationPlanFallbackReason.uninstalled,
+          ),
+        ),
+      );
+
+      expect(producer.appearance.current.planTokens, isEmpty);
+      expect(producer.appearance.current.planFallbackReason, 'uninstalled');
+
+      // Withdrawing the plan returns rendering to the built-in appearance.
+      appearanceOwner.replacePlanAppearance(null);
+
+      expect(producer.appearance.current.planTokens, isEmpty);
+      expect(producer.appearance.current.planFallbackReason, isNull);
+
+      await producer.dispose();
+      await environmentSource.dispose();
+      manager.dispose();
+      navigation.dispose();
+      statusRuntime.dispose();
+      localeOwner.dispose();
+      appearanceOwner.dispose();
+    },
+  );
+
+  test(
     'layout plane escapes loading when initialization keeps the profile',
     () async {
       final appearanceOwner = AppearancePreferenceOwner();
@@ -147,6 +240,7 @@ void main() {
       final producer = ShellProjectionProducer(
         appearance: appearanceOwner,
         locale: localeOwner,
+        localeResources: LocaleResourceOwner(),
         status: statusRuntime,
         navigation: navigation,
         layoutManager: manager,
@@ -219,12 +313,19 @@ final class _MemoryPreferencesRepository
       PresentationPreferencesLoadResult(preferences: value);
 
   @override
-  Future<PresentationPreferences> setReduceMotion(bool enabled) async =>
-      value = value.copyWith(reduceMotion: enabled);
+  Future<PresentationPreferences> setReduceMotion(
+    ReduceMotionPreference preference,
+  ) async => value = value.copyWith(reduceMotion: preference);
 
   @override
   Future<PresentationPreferences> setLoadingEffect(String id) async =>
       value = value.copyWith(loadingEffectId: id);
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) async => value = value.withResourceSelection(kind, selection);
 
   @override
   Future<PresentationPreferences> setAppearancePreset(String id) async =>
@@ -233,6 +334,14 @@ final class _MemoryPreferencesRepository
   @override
   Future<PresentationPreferences> setLayoutProfile(LayoutProfileId id) async =>
       value = value.copyWith(layoutProfileId: id);
+
+  @override
+  Future<PresentationPreferences> setLayoutStyle(
+    LayoutProfileId profile,
+    LayoutStyleId style,
+  ) async => value = value.copyWith(
+    layoutStyleIds: {...value.layoutStyleIds, profile: style},
+  );
 
   @override
   Future<PresentationPreferences> setLocalePreference(

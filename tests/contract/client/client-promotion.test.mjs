@@ -97,9 +97,9 @@ test("promotion base inference follows the release train without a default-branc
 });
 
 test("required checks reconcile without a wall-clock deadline", () => {
-  const required = ["Branch flow", "Apple Release ready"];
+  const required = ["Branch flow", "the release plane ready"];
   assert.deepEqual(reconcileRequiredChecks([], required), { status: "pending", context: "Branch flow" });
-  assert.deepEqual(reconcileRequiredChecks([{ name: "Branch flow", conclusion: "success" }], required), { status: "pending", context: "Apple Release ready" });
-  assert.deepEqual(reconcileRequiredChecks([{ name: "Branch flow", conclusion: "success" }, { name: "Apple Release ready", conclusion: "failure" }], required), { status: "failed", context: "Apple Release ready" });
-  assert.deepEqual(reconcileRequiredChecks([{ name: "Branch flow", conclusion: "success" }, { name: "Apple Release ready", conclusion: "success" }], required), { status: "complete" });
+  assert.deepEqual(reconcileRequiredChecks([{ name: "Branch flow", conclusion: "success" }], required), { status: "pending", context: "the release plane ready" });
+  assert.deepEqual(reconcileRequiredChecks([{ name: "Branch flow", conclusion: "success" }, { name: "the release plane ready", conclusion: "failure" }], required), { status: "failed", context: "the release plane ready" });
+  assert.deepEqual(reconcileRequiredChecks([{ name: "Branch flow", conclusion: "success" }, { name: "the release plane ready", conclusion: "success" }], required), { status: "complete" });
 });

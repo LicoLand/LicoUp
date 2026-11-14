@@ -2,9 +2,11 @@
 
 English (normative) · [简体中文](README.zh-CN.md)
 
-LicoUp is a local-first open-source desktop and mobile client. Its product
+LicoUp is a local-first open-source desktop client. Its product
 boundary is owned by [`PRODUCT.md`](../../PRODUCT.md) and
-[`CLIENT-DESKTOP.md`](../../docs/functionality/CLIENT-DESKTOP.md).
+[`CLIENT-DESKTOP.md`](../../docs/functionality/CLIENT-DESKTOP.md). The Android
+and iOS implementations live in the sibling LicoUp-Android and LicoUp-iOS
+repositories; this tree carries only the macOS, Windows, and Linux shell.
 
 ## Default Product Scope
 
@@ -13,7 +15,7 @@ The client includes four foundation capabilities:
 - a lightweight local Rust task queue;
 - ACP adaptation for local-agent execution and protected remote carriage;
 - MCP request and response adaptation; and
-- platform adaptation for macOS, Windows, Ubuntu, Android, and iOS.
+- platform adaptation for macOS, Windows, and Ubuntu.
 
 The default interface contains only these user scenarios:
 
@@ -26,23 +28,20 @@ The default interface contains only these user scenarios:
   inspect usage frequency, and move a selected skill to the system Trash;
 - `Usage`: report token use by agent or model, with the most recent 30 days as
   the default window;
-- `Mobile Relay`: carry end-to-end protected opaque envelopes between desktop
-  and mobile clients; and
+- `Devices`: enroll and pair desktop endpoints and exchange protected session
+  messages over the client-owned `licoarc-client` line; and
 - `Settings`: manage local settings, platform authorization, and approval for
   external transfers.
 
 ACP and MCP are built-in protocol-adaptation foundations, not separate
 navigation entries.
 
-`Mobile Relay` currently executes the
-[current retiring endpoint-protection Preview](../../docs/STATUS.md) and
-carries it through the implemented candidate `licoarc.relay.v1` outer adapter.
-That preview is not a Lico Arc Profile and has no future compatibility promise.
-A stable client will execute a pinned Lico Arc Protocol Line for
-wire-observable Pairwise Protection, Generic Message, Reliable Exchange,
-negotiation, and Transport Profile semantics while continuing to own its
-private keys, Provider configuration, plaintext, history, backups, trust
-decisions, approvals, and local effects.
+`Devices` sessions execute on the client-owned `licoarc-client` line and are
+carried through the implemented candidate `licoarc.relay.v1` outer adapter.
+Lico Arc Protocol owns stable wire-observable Pairwise Protection, Generic
+Message, Reliable Exchange, negotiation, and Transport Profile semantics while
+LicoUp continues to own its private keys, Provider configuration, plaintext,
+history, backups, trust decisions, approvals, and local effects.
 
 Packaged targets currently include Antigravity, Claude Code, Codex, Cursor,
 DeepSeek Harness, Copilot, Hermes, Kilo Code, Kimi Code, Lico Agent, OpenClaw,
@@ -112,15 +111,13 @@ npm run client:test
 npm run client:native:test
 ```
 
-Run a desktop or mobile client:
+Run the desktop client:
 
 ```bash
 npm run client:run:macos
-npm run client:run:android -- --debug
-npm run client:run:ios -- --debug
 ```
 
-Dependency, Gradle, and Flutter caches stay outside the source tree. When a
+Dependency and Flutter caches stay outside the source tree. When a
 cache location must be overridden, use the supported `LICO_CLIENT_*_CACHE`
 environment variables and placeholder paths such as `<cache-root>`; never put
 a workstation path in documentation, logs, or evidence.
@@ -142,13 +139,12 @@ policy once and only the affected technology lane:
 npm run client:gate:source
 npm run client:gate:flutter         # Flutter changes only
 npm run client:gate:rust            # Rust changes only
-npm run client:gate:android         # Android changes only
 npm run client:gate:dependencies    # dependency changes only
 npm run client:gate:release-policy  # release-policy changes only
 ```
 
-The source policy requires only Node and does not install Flutter, Rust, or
-Android toolchains. Technology lanes are independent and may run in parallel;
+The source policy requires only Node and does not install Flutter or Rust
+toolchains. Technology lanes are independent and may run in parallel;
 do not chain unaffected platforms. Architecture, ACP/MCP, conversation, skill,
 usage, backup, endpoint protection, and platform adapters use their registered
 module-specific regression entry points.
@@ -160,14 +156,13 @@ npm run client:package:plan
 npm run client:build -- --platform macos
 npm run client:build -- --platform windows
 npm run client:build -- --platform linux
-npm run client:build -- --platform android
 ```
 
 `client:build` is the only build entry. It automatically removes inactive
 compiler output and temporary Flutter build caches without removing runnable
 or packaged output needed by installers.
 
-Builds for macOS, Windows, Ubuntu, Android, and iOS; ordinary verification;
+Builds for macOS, Windows, and Ubuntu; ordinary verification;
 GitHub Release; and each platform store are independent claims. Missing
 publisher identity or signing conditions for one store block only that
 channel, not source development, ordinary builds, or another verified

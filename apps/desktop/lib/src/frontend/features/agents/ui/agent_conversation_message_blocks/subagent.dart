@@ -10,6 +10,7 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/base_surface.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 
 /// Height cap of the expanded card body. The delegated task content scrolls
 /// inside this bounded frame like a page, instead of stretching the whole
@@ -124,7 +125,10 @@ class _AgentConversationSubagentCardBlockState
       children,
       history?.session?.sourceMessageCount,
     );
-    final preview = conversationMessagePreviewText(widget.message.text);
+    final preview = conversationMessagePreviewText(
+      widget.message.text,
+      chinese: strings.isChinese,
+    );
     // Native lineage owns the tree. Build each descendant only when its
     // parent is expanded so every recorded task remains reachable.
     final canExpandInline = children.isNotEmpty || canLoad;
@@ -475,7 +479,7 @@ class _SubagentStepRunState extends State<_SubagentStepRun> {
         color: Colors.transparent,
         child: InkWell(
           key: const Key('subagent-step-run-toggle'),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(LicoRadius.well),
           onTap: () => setState(() => _expanded = !_expanded),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),

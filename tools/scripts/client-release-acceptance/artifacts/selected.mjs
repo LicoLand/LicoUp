@@ -8,7 +8,6 @@ import {
 import { repoRoot, maxJsonBytes, SHA256 } from "../constants.mjs";
 import { sanitizeArtifactBinding } from "../sanitize-binding.mjs";
 import { artifactFileByteLimit, requireValue, text } from "../util.mjs";
-import { verifyAndroidArtifact } from "./android.mjs";
 import { verifyMacosArtifact } from "./macos.mjs";
 
 export function verifySelectedArtifacts(config, selectedTargets, clientVersion, receiptContext) {
@@ -17,9 +16,6 @@ export function verifySelectedArtifacts(config, selectedTargets, clientVersion, 
     if (!spec) return [target.id, sanitizeArtifactBinding({ targetId: target.id })];
     if (spec.artifactKind === "macos-distribution-archive") {
       return [target.id, verifyMacosArtifact(target, spec, clientVersion, receiptContext)];
-    }
-    if (spec.artifactKind === "android-apk") {
-      return [target.id, verifyAndroidArtifact(target, spec, clientVersion, receiptContext)];
     }
     return [target.id, sanitizeArtifactBinding({ targetId: target.id })];
   }));
@@ -59,12 +55,6 @@ export function captureSelectedArtifactInputState(config, selectedTargets) {
       state.distributionManifestDigest = sha256File(resolveContainedExistingPath(
         buildRoot,
         path.join(repoRoot, spec.distributionManifestRef),
-        { expectedKind: "file" },
-      ), { maxBytes: maxJsonBytes });
-    } else if (spec.artifactKind === "android-apk") {
-      state.buildManifestDigest = sha256File(resolveContainedExistingPath(
-        path.dirname(artifactPath),
-        path.join(path.dirname(artifactPath), "build-manifest.json"),
         { expectedKind: "file" },
       ), { maxBytes: maxJsonBytes });
     } else {

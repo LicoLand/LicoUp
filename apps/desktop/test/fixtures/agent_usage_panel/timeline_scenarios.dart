@@ -2,6 +2,7 @@ import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -162,10 +163,15 @@ void registerAgentUsageTimelineScenarios() {
           matching: find.byKey(const ValueKey('usage-wave-tooltip-glass-fill')),
         ),
       );
-      final expectedFillBase = tester
+      final tooltipColors = tester
           .element(find.byKey(const ValueKey('usage-wave-tooltip')))
-          .licoColors
-          .surfaceRaised;
+          .licoColors;
+      // The tooltip is floating chrome — it rides the shared overlay
+      // glass: the black inner-card mask in dark, the raised surface in
+      // light.
+      final expectedFillBase = tooltipColors.isDark
+          ? LicoPaneGlass.contentInnerCardFill
+          : tooltipColors.surfaceRaised;
       expect(glassFill.color.a, closeTo(0.72, 0.01));
       expect(glassFill.color.r, closeTo(expectedFillBase.r, 0.01));
       expect(glassFill.color.g, closeTo(expectedFillBase.g, 0.01));

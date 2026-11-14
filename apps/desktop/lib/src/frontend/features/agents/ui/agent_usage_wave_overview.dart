@@ -7,7 +7,6 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_usage_chart_control
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_chart_geometry.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_timeline_data.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_wave_chart_painter.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_usage_summary_widgets.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_window_control.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
@@ -154,15 +153,19 @@ final class _AgentUsageWaveOverviewState extends State<AgentUsageWaveOverview> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        AgentUsagePanelHeader(
-          trailing: [
-            if (widget.showGroupingControl) ...[
+        // Right-aligned control row that wraps to a second line when the host
+        // pane is narrower than the two controls (e.g. the Desktop left pane);
+        // a plain Row overflows there.
+        Wrap(
+          alignment: WrapAlignment.end,
+          spacing: LicoContentSpacing.compact,
+          runSpacing: LicoContentSpacing.compact,
+          children: [
+            if (widget.showGroupingControl)
               AgentUsageGroupingSwitch(
                 grouping: widget.grouping,
                 onChanged: widget.onGroupingChanged,
               ),
-              const SizedBox(width: LicoContentSpacing.compact),
-            ],
             AgentUsageWindowControl(
               days: widget.windowDays,
               busy: widget.windowBusy,

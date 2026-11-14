@@ -8,7 +8,7 @@
 
 [![许可证：AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?style=flat-square)](LICENSE)
 [![版本：0.1.0-alpha](https://img.shields.io/badge/version-0.1.0--alpha-orange?style=flat-square)](docs/STATUS.zh-CN.md)
-[![平台：macOS · Windows · Linux · Android · iOS](https://img.shields.io/badge/platforms-macOS_%C2%B7_Windows_%C2%B7_Linux_%C2%B7_Android_%C2%B7_iOS-24292f?style=flat-square)](docs/COMPATIBILITY.zh-CN.md)
+[![平台：macOS · Windows · Linux](https://img.shields.io/badge/platforms-macOS_%C2%B7_Windows_%C2%B7_Linux-24292f?style=flat-square)](docs/COMPATIBILITY.zh-CN.md)
 
 </div>
 
@@ -33,7 +33,6 @@ LicoUp 是一个开源的智能体协作客户端，专注于多端互联与隐�
 | --- | --- |
 | Node.js | 22 或 24 |
 | Flutter | stable |
-| Rust | stable |
 
 ```bash
 npm ci
@@ -41,6 +40,12 @@ npm run client:get
 npm run client:analyze
 npm run client:test
 ```
+
+本客户端内嵌的原生 sidecar 二进制由
+[LicoUp-CLI](https://github.com/LicoLand/LicoUp-CLI) 组件仓库交付——本仓库
+不再携带生成它们的 Rust 工作区。Android 与 iOS 实现位于兄弟仓库
+[LicoUp-Android](https://github.com/LicoLand/LicoUp-Android) 与
+[LicoUp-iOS](https://github.com/LicoLand/LicoUp-iOS)。
 
 > [!NOTE]
 > LicoUp 仍处于早期 Alpha：可以构建或处于预览状态，不代表已经完整支
@@ -65,7 +70,7 @@ npm run client:test
 | **多智能体协作** | 将分散在不同设备与端点的智能体连入同一张协作网络，让你的工作流与其它人的工作流自然交汇。 |
 | **扩展智能体** | 发现、定制和添加智能体扩展以增强智能体的能力、降低智能体的工作成本，提升经济效益。 |
 | **智能体无缝参与对话** | 无缝接入智能体 — 对话中随时唤起智能体加入，它作为可见的参与者获取上下文，就地协助。 |
-| **自定义工作流** | Adaptive Flywheel 是一套策略生成器，为你的工作方式生成专属工作流：一次性流水线、分支流程，或可自循环、围绕目标持续迭代的智能体循环。为每个角色绑定智能体、模型与思考强度，授权确切版本，再让会话驱动运行。 |
+| **自定义工作流** | Acativa 是一套策略生成器，为你的工作方式生成专属工作流：一次性流水线、分支流程，或可自循环、围绕目标持续迭代的智能体循环。为每个角色绑定智能体、模型与思考强度，授权确切版本，再让会话驱动运行。 |
 | **隐私与安全** | 敏感运行时数据留在设备上；默认场景不上传明文。对端传输在离开发送端之前完成端到端加密；没有明确确认，受保护内容不会离开客户端，除非你选择了 Telegram 等外部通讯软件作为你的可信通道——详见下方[隐私关切](#隐私关切)。 |
 
 ## 隐私关切

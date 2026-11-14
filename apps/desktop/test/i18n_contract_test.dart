@@ -33,7 +33,7 @@ void main() {
     expect(chinese.agentHubPendingCommand, '即将执行的命令');
     expect(chinese.pluginManagementRefresh, '刷新插件目录');
     expect(chinese.modelGateway, '模型网关');
-    expect(chinese.mobilePairing, '移动配对');
+    expect(chinese.devices, '设备');
     expect(chinese.chatChannels, '聊天频道');
     expect(chinese.exit, '退出');
     expect(english.byAgent, 'By Agent');
@@ -57,7 +57,7 @@ void main() {
     expect(english.agentHubPendingCommand, 'Command to run');
     expect(english.pluginManagementRefresh, 'Refresh plugin catalog');
     expect(english.modelGateway, 'Model Gateway');
-    expect(english.mobilePairing, 'Mobile Pairing');
+    expect(english.devices, 'Devices');
     expect(english.chatChannels, 'Chat Channels');
     expect(english.exit, 'Exit');
     expect(chinese.lastDays(30), '最近 30 天');
@@ -100,8 +100,8 @@ void main() {
   test(
     'status captions are translated while unknown source text is preserved',
     () {
-      expect(chinese.statusCaptionLabel('Mobile relay'), '移动中转');
-      expect(english.statusCaptionLabel('Mobile relay'), 'Mobile relay');
+      expect(chinese.statusCaptionLabel('Devices'), '设备');
+      expect(english.statusCaptionLabel('Devices'), 'Devices');
       expect(chinese.statusCaptionLabel('ChatGPT'), 'ChatGPT');
       expect(english.statusCaptionLabel('ChatGPT'), 'ChatGPT');
     },
@@ -146,15 +146,15 @@ void main() {
 
       controller.localePreference = 'zh';
       expect(_displayStatusMessage(controller), '等待扫描目标适配器。');
-      controller.statusCaption = 'Mobile relay';
-      expect(_displayStatusCaption(controller), '移动中转');
+      controller.statusCaption = 'Devices';
+      expect(_displayStatusCaption(controller), '设备');
 
       controller.localePreference = 'en';
       expect(
         _displayStatusMessage(controller),
         'Waiting to scan target adapters.',
       );
-      expect(_displayStatusCaption(controller), 'Mobile relay');
+      expect(_displayStatusCaption(controller), 'Devices');
       expect(controller.statusMessage, '等待扫描目标适配器。');
     },
   );

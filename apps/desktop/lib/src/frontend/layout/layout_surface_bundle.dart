@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/contracts/presentation/layout_variant.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
@@ -20,7 +21,8 @@ typedef LayoutDestinationBuilder =
     Widget Function(BuildContext context, LayoutDestinationBuildContext data);
 typedef LayoutShellBuilder =
     Widget Function(BuildContext context, LayoutShellBuildContext data);
-typedef LayoutPreviewBuilder = Widget Function(BuildContext context);
+typedef LayoutPreviewBuilder =
+    Widget Function(BuildContext context, LayoutStyleId? style);
 typedef LayoutDestinationLabelResolver = String Function(ClientSection value);
 
 final class LayoutDestinationBuildContext {
@@ -29,12 +31,17 @@ final class LayoutDestinationBuildContext {
     required this.destination,
     required this.content,
     required this.state,
+    required this.style,
   });
 
   final LayoutEnvironment environment;
   final ClientSection destination;
   final LayoutDestinationContentPort content;
   final LayoutScopedState state;
+
+  /// The profile's effective column arrangement, null when the profile
+  /// declares no styles.
+  final LayoutStyleId? style;
 }
 
 final class LayoutShellBuildContext {
@@ -43,12 +50,14 @@ final class LayoutShellBuildContext {
     required this.activeDestination,
     required Iterable<ClientSection> availableDestinations,
     required this.destination,
+    required this.content,
     required this.onSelectDestination,
     required this.destinationLabel,
     required this.components,
     required this.tokens,
     required this.initialFocusTarget,
     required this.chrome,
+    required this.style,
   }) : availableDestinations = UnmodifiableListView(
          List<ClientSection>.of(availableDestinations),
        );
@@ -57,6 +66,14 @@ final class LayoutShellBuildContext {
   final ClientSection activeDestination;
   final List<ClientSection> availableDestinations;
   final Widget destination;
+
+  /// The profile's effective column arrangement, null when the profile
+  /// declares no styles.
+  final LayoutStyleId? style;
+
+  /// The destination content port, for shells that host a destination panel
+  /// beside the active one.
+  final LayoutDestinationContentPort content;
   final ValueChanged<ClientSection> onSelectDestination;
   final LayoutDestinationLabelResolver destinationLabel;
   final LayoutComponentKit components;

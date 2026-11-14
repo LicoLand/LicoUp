@@ -10,13 +10,10 @@ const repositoryRoot = path.resolve(
 );
 const manifestPath = "schemas/client_bridge/manifest.json";
 const schemaPrefix = "schemas/client_bridge/";
-const rustPrefix = "crates/licoup-native/src/ffi/generated/";
 const dartPrefix = "apps/desktop/lib/src/contracts/generated/";
 const allowedNonBridgeOutputs = new Set([
-  `${rustPrefix}mod.rs`,
   `${dartPrefix}README.md`,
   `${dartPrefix}conversation_protocol.g.dart`,
-  `${dartPrefix}secure_mesh_capability_catalog.g.dart`,
 ]);
 const maximumDiagnostics = 20;
 const maximumManifestBytes = 64 * 1024;
@@ -87,7 +84,6 @@ function validateManifest() {
 
   const ids = new Set();
   const schemas = new Set();
-  const rustOutputs = new Set();
   const dartOutputs = new Set();
   let activeCount = 0;
 
@@ -109,12 +105,10 @@ function validateManifest() {
     if (family.status === "active") activeCount += 1;
 
     validatePath(family.schema, schemaPrefix, ".json", "schema");
-    validatePath(family.rustOutput, rustPrefix, ".rs", "Rust output");
     validatePath(family.dartOutput, dartPrefix, ".g.dart", "Dart output");
 
     for (const [value, seen, label] of [
       [family.schema, schemas, "schema"],
-      [family.rustOutput, rustOutputs, "Rust output"],
       [family.dartOutput, dartOutputs, "Dart output"],
     ]) {
       if (seen.has(value)) fail(`duplicate bridge ${label} path`);
@@ -130,33 +124,24 @@ function validateManifest() {
 function validateRegisteredFiles(manifest, checkOnly) {
   const diagnostics = [];
   const registeredOutputs = new Set(
-    manifest.families.flatMap(({ rustOutput, dartOutput }) => [
-      rustOutput,
-      dartOutput,
-    ]),
+    manifest.families.map(({ dartOutput }) => dartOutput),
   );
 
   for (const family of manifest.families) {
     const schemaExists = fs.existsSync(path.join(repositoryRoot, family.schema));
-    const rustExists = fs.existsSync(path.join(repositoryRoot, family.rustOutput));
     const dartExists = fs.existsSync(path.join(repositoryRoot, family.dartOutput));
     if (family.status === "active") {
       if (!schemaExists) diagnostics.push(`missing active schema: ${family.schema}`);
-      if (checkOnly && !rustExists) {
-        diagnostics.push(`missing active output: ${family.rustOutput}`);
-      }
       if (checkOnly && !dartExists) {
         diagnostics.push(`missing active output: ${family.dartOutput}`);
       }
     } else {
       if (schemaExists) diagnostics.push(`planned schema must be absent: ${family.schema}`);
-      if (rustExists) diagnostics.push(`planned output must be absent: ${family.rustOutput}`);
       if (dartExists) diagnostics.push(`planned output must be absent: ${family.dartOutput}`);
     }
   }
 
   for (const [directory, suffix] of [
-    [rustPrefix, ".rs"],
     [dartPrefix, ".g.dart"],
   ]) {
     const absoluteDirectory = path.join(repositoryRoot, directory);
@@ -284,65 +269,6 @@ function readStateSchema(family) {
   return schema;
 }
 
-function readSecureMeshSchema(family) {
-  const schema = readBoundedJson(
-    family.schema,
-    maximumSchemaBytes,
-    "active bridge schema",
-  );
-  const validStrings = (values, pattern) =>
-    Array.isArray(values) &&
-    values.length > 0 &&
-    new Set(values).size === values.length &&
-    values.every((value) => typeof value === "string" && pattern.test(value));
-  if (
-    !isRecord(schema) ||
-    schema.title !== "SecureMeshBridge" ||
-    schema.version !== 1 ||
-    schema.protocolVersion !== "licomesh.secure-mesh.v1" ||
-    !Number.isSafeInteger(schema.maxRequestBytes) ||
-    schema.maxRequestBytes <= 0 ||
-    schema.maxRequestBytes > 16 * 1024 * 1024 ||
-    !Number.isSafeInteger(schema.maxDepth) ||
-    schema.maxDepth <= 0 ||
-    schema.maxDepth > 128 ||
-    !Number.isSafeInteger(schema.maxNodes) ||
-    schema.maxNodes <= 0 ||
-    schema.maxNodes > 1_000_000 ||
-    !Number.isSafeInteger(schema.maxCollectionEntries) ||
-    schema.maxCollectionEntries <= 0 ||
-    schema.maxCollectionEntries > schema.maxNodes ||
-    !Number.isSafeInteger(schema.maxStringBytes) ||
-    schema.maxStringBytes <= 0 ||
-    schema.maxStringBytes > schema.maxRequestBytes ||
-    !validStrings(schema.actions, /^secure_mesh\.[a-zA-Z][a-zA-Z0-9.]*$/u) ||
-    !validStrings(schema.failureCodes, /^[a-z][a-z0-9_]*$/u) ||
-    JSON.stringify(schema.failureCodes) !==
-      JSON.stringify([
-        "unsupported_action",
-        "invalid_payload",
-        "forbidden_secret_material",
-        "native_operation_failed",
-      ]) ||
-    !validStrings(schema.fileStatuses, /^[a-z][a-z0-9_]*$/u) ||
-    !validStrings(schema.approvalStatuses, /^[a-z][a-z0-9_]*$/u) ||
-    !validStrings(schema.approvalDecisions, /^[a-z][a-z0-9_]*$/u) ||
-    JSON.stringify(schema.forbiddenFields) !==
-      JSON.stringify([
-        "privateKey",
-        "privateKeyMaterial",
-        "secret",
-        "seed",
-        "token",
-        "credential",
-        "absolutePath",
-      ])
-  ) {
-    fail(`unsupported active bridge schema: ${family.schema}`);
-  }
-  return schema;
-}
-
 function readConversationSchema(family) {
   const schema = readBoundedJson(
     family.schema,
@@ -404,27 +330,8 @@ function readConversationSchema(family) {
   return schema;
 }
 
-const CONTINUITY_GENERATED_RS =
-  "crates/licoup-conversation/src/continuity/generated.rs";
-const RUNTIME_WORK_CONTEXT_GENERATED_RS =
-  "crates/licoup-agent-runtime/src/work_context/generated.rs";
-const RUNTIME_NEEDED_ENUMS = Object.freeze([
-  "CapabilitySupport",
-  "FailureCode",
-  "FailureStage",
-  "EffectClass",
-  "RecoveryClass",
-  "DecisionLayer",
-]);
-
 function continuityTypeName(name) {
   return name.startsWith("Continuity") ? name : `Continuity${name}`;
-}
-
-function rustSnake(name) {
-  return name.replace(/[A-Z]/g, (character, index) =>
-    index === 0 ? character.toLowerCase() : `_${character.toLowerCase()}`,
-  );
 }
 
 function uniqueStrings(values, pattern, label) {
@@ -463,36 +370,6 @@ function parseContinuityFieldType(raw) {
     return { kind: raw };
   }
   fail(`unsupported continuity field type: ${raw}`);
-}
-
-function rustContinuityInner(type) {
-  switch (type.kind) {
-    case "id":
-    case "label":
-    case "reason":
-    case "digest":
-    case "string":
-      return "String";
-    case "i64":
-      return "i64";
-    case "u64":
-      return "u64";
-    case "bool":
-      return "bool";
-    case "enum":
-    case "struct":
-    case "union":
-      return continuityTypeName(type.name);
-    default:
-      fail(`unsupported continuity rust type: ${type.kind}`);
-  }
-}
-
-function rustContinuityType(type) {
-  const inner = rustContinuityInner(type);
-  if (type.array) return `Vec<${inner}>`;
-  if (type.optional) return `Option<${inner}>`;
-  return inner;
 }
 
 function dartContinuityInner(type) {
@@ -627,294 +504,6 @@ function readContinuousAssistant(schema, schemaPath) {
     }
   }
   return continuity;
-}
-
-function rustContinuityField(field, visibility = "pub ") {
-  const type = parseContinuityFieldType(field.type);
-  const rustName = rustSnake(field.name);
-  const rustType = rustContinuityType(type);
-  const lines = [];
-  if (type.optional) {
-    lines.push('    #[serde(default, skip_serializing_if = "Option::is_none")]');
-  }
-  if (rustName !== field.name) {
-    lines.push(`    #[serde(rename = ${JSON.stringify(field.name)})]`);
-  }
-  lines.push(`    ${visibility}${rustName}: ${rustType},`);
-  return lines.join("\n");
-}
-
-function rustContinuityStruct(name, definition) {
-  return `#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ${continuityTypeName(name)} {
-${definition.fields.map((field) => rustContinuityField(field)).join("\n")}
-}
-`;
-}
-
-function rustContinuityUnion(name, definition) {
-  const variants = Object.entries(definition.variants).map(([wire, fields]) => {
-    const variantName = pascal(wire);
-    if (fields.length === 0) {
-      return `    #[serde(rename = ${JSON.stringify(wire)})]\n    ${variantName},`;
-    }
-    const body = fields.map((field) => rustContinuityField(field, "")).join("\n");
-    return `    #[serde(rename = ${JSON.stringify(wire)})]\n    ${variantName} {\n${body}\n    },`;
-  });
-  return `#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind", deny_unknown_fields)]
-pub enum ${continuityTypeName(name)} {
-${variants.join("\n")}
-}
-`;
-}
-
-function requireContinuityStruct(continuity, name) {
-  const definition = continuity.structs?.[name];
-  if (!isRecord(definition) || !Array.isArray(definition.fields)) {
-    fail(`continuity generation missing struct: ${name}`);
-  }
-  return definition;
-}
-
-function requireContinuityEnum(continuity, name) {
-  const values = continuity.enums?.[name];
-  if (!Array.isArray(values) || values.length === 0) {
-    fail(`continuity generation missing enum: ${name}`);
-  }
-  return values;
-}
-
-function describeContinuityFieldType(raw) {
-  const type = parseContinuityFieldType(raw);
-  let text = type.kind === "enum" || type.kind === "struct" || type.kind === "union"
-    ? `${type.kind}:${type.name}`
-    : type.kind;
-  if (type.array) text = `array:${text}`;
-  if (type.optional) text = `optional:${text}`;
-  return text;
-}
-
-function rustProposalResponseContract(continuity) {
-  const response = requireContinuityStruct(continuity, "AssistantTurnResponse");
-  const proposal = requireContinuityStruct(continuity, "InterpretationProposal");
-  const envelope = requireContinuityStruct(continuity, "WriteEnvelope");
-  const sourceRef = requireContinuityStruct(continuity, "SourceRef");
-  const span = requireContinuityStruct(continuity, "Utf8ByteSpan");
-  const association = requireContinuityStruct(continuity, "MatterAssociation");
-  const commitment = requireContinuityStruct(continuity, "CommitmentProposal");
-  const criterion = requireContinuityStruct(continuity, "Criterion");
-  const agreement = requireContinuityStruct(continuity, "AgreementProposal");
-  const admission = requireContinuityStruct(continuity, "TaskChildAdmission");
-  const speechActs = requireContinuityEnum(continuity, "SpeechAct");
-  const subjects = requireContinuityEnum(continuity, "MatterSubject");
-  const followThrough = requireContinuityEnum(continuity, "FollowThroughKind");
-  const ownerKinds = requireContinuityEnum(continuity, "SourceOwnerKind");
-  const validity = requireContinuityEnum(continuity, "SourceValidity");
-  const scopes = requireContinuityEnum(continuity, "VisibilityScope");
-  const oracleKinds = requireContinuityEnum(continuity, "OracleKind");
-  const agreementScopes = requireContinuityEnum(continuity, "AgreementScope");
-  const agreementOrigins = requireContinuityEnum(continuity, "AgreementOrigin");
-  if (!speechActs.includes("delegation")) {
-    fail("proposal response contract requires speechAct delegation");
-  }
-  if (!subjects.includes("new")) {
-    fail("proposal response contract requires subject new");
-  }
-  if (!followThrough.includes("durable")) {
-    fail("proposal response contract requires followThroughKind durable");
-  }
-  const fieldLine = (field) =>
-    `${field.name}: ${describeContinuityFieldType(field.type)}`;
-  const exampleSource = {
-    ownerKind: "event",
-    opaqueId: "AUTHORIZED_SOURCE_OPAQUE_ID",
-    sourceRevision: 1,
-    digest:
-      "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    visibilityScope: "conversation",
-    validity: "current",
-  };
-  const example = {
-    envelope: {
-      conversationId: "HOST_OWNED_CONVERSATION_ID",
-      sourceEventRefs: [exampleSource],
-      observedRevision: 0,
-      designationEpoch: 0,
-      requestId: "HOST_OWNED_REQUEST_ID",
-    },
-    matterAssociations: [],
-    speechAct: "delegation",
-    commitmentProposals: [
-      {
-        matterId: "matter:notes",
-        subject: "new",
-        expectedResult: "Prepare notes",
-        criteria: [
-          {
-            id: "criterion:notes-done",
-            descriptionRef: exampleSource,
-            required: true,
-            oracleKind: "user",
-            artifactVersionRule: "exact-source",
-            freshnessRule: "current",
-            evaluatorPolicy: "user-acceptance",
-          },
-        ],
-        createGoal: true,
-      },
-    ],
-    agreementProposals: [],
-    capabilityNeeds: [],
-    uncertaintyReasons: [],
-    requestedReads: [],
-    taskChildAdmission: {
-      goalId: "goal:notes",
-      parentConversationId: "HOST_OWNED_CONVERSATION_ID",
-      speechAct: "delegation",
-      followThroughKind: "durable",
-      requestId: "request:admit:notes",
-    },
-  };
-  const requestedReadsExample = {
-    ...example,
-    speechAct: "reference",
-    commitmentProposals: [],
-    taskChildAdmission: undefined,
-    requestedReads: [exampleSource],
-  };
-  delete requestedReadsExample.taskChildAdmission;
-  const responseExample = {
-    replyText:
-      "I'll prepare the notes in a child conversation and keep this reply readable.",
-    interpretationProposal: example,
-  };
-  const requestedReadsResponseExample = {
-    replyText: "I need one authorized source again before I can continue.",
-    interpretationProposal: requestedReadsExample,
-  };
-  const contract = [
-    "Respond with one JSON object matching ContinuityAssistantTurnResponse.",
-    "replyText is the ordinary user-facing reply and must be nonempty usable prose. interpretationProposal is the one private typed proposal. Do not emit a second object, delimiter, or any prose outside this JSON.",
-    "The host restamps envelope.conversationId, envelope.sourceEventRefs, envelope.observedRevision, envelope.designationEpoch, envelope.requestId, and taskChildAdmission.parentConversationId from the current authorized assembly. Model-supplied envelope and parent values are not trusted.",
-    "Every required array must be present, including when empty. Do not copy these instructions into user-authored Event or Part text. Private proposal bytes must not appear as the user-facing reply.",
-    "",
-    "Required AssistantTurnResponse fields:",
-    ...response.fields.map((field) => `- ${fieldLine(field)}`),
-    "",
-    "Required InterpretationProposal fields:",
-    ...proposal.fields.map((field) => `- ${fieldLine(field)}`),
-    "",
-    "WriteEnvelope fields (host-owned, restamped):",
-    ...envelope.fields.map((field) => `- ${fieldLine(field)}`),
-    "",
-    "SourceRef fields. Copy authorized objects verbatim; do not invent ids, revisions, digests, or scopes:",
-    ...sourceRef.fields.map((field) => `- ${fieldLine(field)}`),
-    `Utf8ByteSpan: ${span.fields.map(fieldLine).join("; ")}.`,
-    `ownerKind: ${ownerKinds.join("|")}.`,
-    `validity: ${validity.join("|")}.`,
-    `visibilityScope: ${scopes.join("|")}.`,
-    "",
-    "Nested required shapes:",
-    `MatterAssociation: ${association.fields.map(fieldLine).join("; ")}.`,
-    `CommitmentProposal: ${commitment.fields.map(fieldLine).join("; ")}.`,
-    `Criterion: ${criterion.fields.map(fieldLine).join("; ")}.`,
-    `AgreementProposal: ${agreement.fields.map(fieldLine).join("; ")}.`,
-    `TaskChildAdmission: ${admission.fields.map(fieldLine).join("; ")}.`,
-    "",
-    `speechAct: ${speechActs.join("|")}.`,
-    `subject: ${subjects.join("|")}.`,
-    `followThroughKind: ${followThrough.join("|")}.`,
-    `oracleKind: ${oracleKinds.join("|")}.`,
-    `agreement scope: ${agreementScopes.join("|")}; origin: ${agreementOrigins.join("|")}.`,
-    "",
-    "Durable delegation with taskChildAdmission. requestedReads stays [] unless a further authorized read is needed:",
-    JSON.stringify(responseExample, null, 2),
-    "",
-    "Conditional requestedReads: emit this shape only when a selected authorized source must be read again. Leave requestedReads [] otherwise. This is not a compulsory extra hop and is not an abstain-only contract:",
-    JSON.stringify(requestedReadsResponseExample, null, 2),
-  ].join("\n");
-  return `pub const PROPOSAL_RESPONSE_CONTRACT: &str = ${JSON.stringify(contract)};
-pub const PROPOSAL_RESPONSE_DELEGATION_EXAMPLE: &str = ${JSON.stringify(JSON.stringify(example))};
-`;
-}
-
-function rustContinuityTypes(continuity) {
-  const enums = Object.entries(continuity.enums)
-    .map(([name, values]) => rustEnum(continuityTypeName(name), values))
-    .join("\n");
-  const structs = Object.entries(continuity.structs)
-    .map(([name, definition]) => rustContinuityStruct(name, definition))
-    .join("\n");
-  const unions = Object.entries(continuity.unions)
-    .map(([name, definition]) => rustContinuityUnion(name, definition))
-    .join("\n");
-  return `
-pub const CONTINUITY_BRIDGE_SCHEMA_VERSION: &str = ${JSON.stringify(continuity.schemaId)};
-pub const CONTINUITY_SPAN_ENCODING: &str = ${JSON.stringify(continuity.spanEncoding)};
-pub const CONTINUITY_MAX_PAGE_SIZE: usize = ${continuity.maxPageSize};
-pub const CONTINUITY_MAX_ORIENTATION_ITEMS: usize = ${continuity.maxOrientationItems};
-pub const CONTINUITY_MAX_REFS: usize = ${continuity.maxRefs};
-pub const CONTINUITY_MAX_ID_BYTES: usize = ${continuity.maxIdBytes};
-pub const CONTINUITY_MAX_LABEL_BYTES: usize = ${continuity.maxLabelBytes};
-pub const CONTINUITY_MAX_REASON_BYTES: usize = ${continuity.maxReasonBytes};
-pub const CONTINUITY_MAX_DIGEST_BYTES: usize = ${continuity.maxDigestBytes};
-${rustProposalResponseContract(continuity)}
-${enums}
-${rustEnum("ContinuityCommand", continuity.commands)}
-${rustEnum("ContinuityPort", continuity.ports)}
-${structs}
-${unions}
-pub fn parse_continuity_value<T: for<'de> Deserialize<'de>>(
-    value: &Value,
-) -> Result<T, ContinuityFailure> {
-    serde_json::from_value(value.clone()).map_err(|_| ContinuityFailure {
-        code: ContinuityFailureCode::InvalidRequest,
-        stage: ContinuityFailureStage::ContinuityParse,
-        recovery: ContinuityRecoveryClass::CorrectRequest,
-        effect_class: ContinuityEffectClass::None,
-        decision_layer: ContinuityDecisionLayer::Admission,
-        retryable: false,
-    })
-}
-`;
-}
-
-function rustContinuityModule(continuity, schemaPath) {
-  return `// @generated by ${schemaPath}; do not edit.
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-
-${rustContinuityTypes(continuity)}
-`;
-}
-
-function rustRuntimeWorkContextModule(continuity, schemaPath) {
-  for (const name of RUNTIME_NEEDED_ENUMS) {
-    if (!Array.isArray(continuity.enums?.[name])) {
-      fail(`runtime work-context generation missing enum: ${name}`);
-    }
-  }
-  if (!isRecord(continuity.structs?.NativeCapabilitySnapshot)) {
-    fail("runtime work-context generation missing NativeCapabilitySnapshot");
-  }
-  if (!isRecord(continuity.structs?.ContinuityFailure)) {
-    fail("runtime work-context generation missing ContinuityFailure");
-  }
-  const enums = RUNTIME_NEEDED_ENUMS.map((name) =>
-    rustEnum(continuityTypeName(name), continuity.enums[name]),
-  ).join("\n");
-  return `// @generated by ${schemaPath}#continuousAssistant; do not edit.
-use serde::{Deserialize, Serialize};
-
-${enums}
-${rustContinuityStruct(
-    "NativeCapabilitySnapshot",
-    continuity.structs.NativeCapabilitySnapshot,
-  )}
-${rustContinuityStruct("ContinuityFailure", continuity.structs.ContinuityFailure)}
-`;
 }
 
 function dartRequiredEnumParse(typeName, expression) {
@@ -1241,37 +830,6 @@ ${unions}
 `;
 }
 
-function rustConversationOutput(schema, schemaPath) {
-  const enums = [
-    ["ConversationPrincipalKind", schema.principalKinds],
-    ["ConversationMembershipAccess", schema.membershipAccess],
-    ["ConversationMembershipStatus", schema.membershipStatuses],
-    ["ConversationTurnState", schema.turnStates],
-    ["ConversationEventKind", schema.eventKinds],
-    ["ConversationEventPartKind", schema.eventPartKinds],
-    ["ConversationFailureCode", schema.failureCodes],
-  ];
-  return `// @generated by ${schemaPath}; do not edit.
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-
-${enums.map(([name, values]) => rustEnum(name, values)).join("\n")}
-
-pub const CONVERSATION_BRIDGE_SCHEMA_VERSION: &str = "lico.conversation.v1";
-pub const CONVERSATION_BRIDGE_MAX_REQUEST_BYTES: usize = ${schema.maxRequestBytes};
-pub const CONVERSATION_BRIDGE_DEFAULT_EVENT_PAGE_SIZE: usize = ${schema.defaultEventPageSize};
-pub const CONVERSATION_BRIDGE_MAX_EVENT_PAGE_SIZE: usize = ${schema.maxEventPageSize};
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct ConversationAction {
-    pub action: ConversationActionKind,
-}
-
-${rustEnum("ConversationActionKind", schema.actions)}
-${rustContinuityTypes(schema.continuousAssistant)}
-`;
-}
-
 function dartConversationOutput(schema, schemaPath) {
   const enums = [
     ["ConversationPrincipalKind", schema.principalKinds],
@@ -1358,39 +916,6 @@ function readStrategySchema(family) {
     fail(`unsupported active bridge schema: ${family.schema}`);
   }
   return schema;
-}
-
-function rustStrategyOutput(schema, schemaPath) {
-  const enums = [
-    ["StrategyBindingKind", schema.bindingKinds],
-    ["StrategyRuntimeKind", schema.runtimeKinds],
-    ["StrategyStateKind", schema.stateKinds],
-    ["StrategyTransitionMode", schema.transitionModes],
-    ["StrategyCallbackDecision", schema.callbackDecisions],
-    ["StrategyRunStatus", schema.runStatuses],
-    ["StrategyFailureCode", schema.failureCodes],
-    ["StrategyWorkflowDiagnosticStage", schema.diagnosticStages],
-    ["StrategyWorkflowDiagnosticCode", schema.diagnosticCodes],
-    ["StrategyWorkflowDiagnosticRecovery", schema.diagnosticRecoveries],
-    ["StrategyWorkflowDiagnosticExpected", schema.diagnosticExpectedKinds],
-    ["StrategyWorkflowDiagnosticActualKind", schema.diagnosticActualKinds],
-    ["StrategyActionKind", schema.actions],
-  ];
-  return `// @generated by ${schemaPath}; do not edit.
-use serde::{Deserialize, Serialize};
-
-${enums.map(([name, values]) => rustEnum(name, values)).join("\n")}
-
-pub const STRATEGY_BRIDGE_SCHEMA_VERSION: &str = "licoup.adaptive-flywheel.bridge.v1";
-pub const STRATEGY_BRIDGE_MAX_REQUEST_BYTES: usize = ${schema.maxRequestBytes};
-pub const STRATEGY_BRIDGE_MAX_PACKAGE_BYTES: usize = ${schema.maxPackageBytes};
-pub const STRATEGY_BRIDGE_MAX_STATES: usize = ${schema.maxStates};
-pub const STRATEGY_BRIDGE_MAX_TRANSITIONS: usize = ${schema.maxTransitions};
-pub const STRATEGY_BRIDGE_MAX_PARALLELISM: usize = ${schema.maxParallelism};
-pub const STRATEGY_WORKFLOW_MAX_DIAGNOSTICS: usize = ${schema.maxDiagnostics};
-pub const STRATEGY_WORKFLOW_MAX_DIAGNOSTIC_PATH_BYTES: usize = ${schema.maxDiagnosticPathBytes};
-pub const STRATEGY_WORKFLOW_MAX_RELATED_PATHS: usize = ${schema.maxDiagnosticRelatedPaths};
-`;
 }
 
 function dartStrategyOutput(schema, schemaPath) {
@@ -1541,81 +1066,8 @@ function pascal(value) {
     .join("");
 }
 
-function secureMeshVariant(action) {
-  if (action === "secure_mesh.status") return "SecureMeshStatus";
-  return pascal(action.replace(/^secure_mesh\./u, ""));
-}
-
 function enumField(schema, name) {
   return schema.fields.find((field) => field.name === name).values;
-}
-
-function rustEnum(name, values) {
-  return `#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum ${name} {
-${values
-  .map((value) => `    #[serde(rename = ${JSON.stringify(value)})]\n    ${pascal(value)},`)
-  .join("\n")}
-}
-`;
-}
-
-function rustClientErrorOutput(schema, schemaPath) {
-  return `// @generated by ${schemaPath}; do not edit.
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-
-${rustEnum("ClientErrorCode", enumField(schema, "code"))}
-${rustEnum("ClientErrorStage", enumField(schema, "stage"))}
-${rustEnum("ClientErrorComponent", enumField(schema, "component"))}
-${rustEnum("ClientErrorRecovery", enumField(schema, "recovery"))}
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct ClientError {
-    pub code: ClientErrorCode,
-    pub stage: ClientErrorStage,
-    pub component: ClientErrorComponent,
-    pub retryable: bool,
-    pub recovery: ClientErrorRecovery,
-    #[serde(rename = "presentationArgs", default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub presentation_args: BTreeMap<String, String>,
-}
-
-impl ClientError {
-    pub fn new(
-        code: ClientErrorCode,
-        stage: ClientErrorStage,
-        component: ClientErrorComponent,
-        retryable: bool,
-        recovery: ClientErrorRecovery,
-    ) -> Self {
-        Self {
-            code,
-            stage,
-            component,
-            retryable,
-            recovery,
-            presentation_args: BTreeMap::new(),
-        }
-    }
-
-    pub fn with_presentation_arg(mut self, key: &str, value: &str) -> Self {
-        const ALLOWED_KEYS: &[&str] = &[
-${schema.fields
-  .find(({ name }) => name === "presentationArgs")
-  .allowedKeys.map((key) => `            ${JSON.stringify(key)},`)
-  .join("\n")}
-        ];
-        if self.presentation_args.len() < 4
-            && ALLOWED_KEYS.contains(&key)
-            && key.len() <= 32
-            && value.len() <= 96
-        {
-            self.presentation_args.insert(key.to_owned(), value.to_owned());
-        }
-        self
-    }
-}
-`;
 }
 
 const DART_RESERVED_WORDS = new Set([
@@ -1686,33 +1138,6 @@ ${formattedCondition}
       }
     }
     return ${name}.unknown;
-  }
-}
-`;
-}
-
-function dartSecureMeshActionEnum(actions) {
-  const entries = actions.map((action) => {
-    const variant = secureMeshVariant(action);
-    const member = variant[0].toLowerCase() + variant.slice(1);
-    return `  ${member}(${JSON.stringify(action)}),`;
-  });
-  return `enum SecureMeshAction {
-${entries.join("\n")}
-  unknown('');
-
-  const SecureMeshAction(this.wireName);
-  final String wireName;
-
-  static SecureMeshAction fromWire(Object? value) {
-    if (value is! String) return SecureMeshAction.unknown;
-    for (final candidate in SecureMeshAction.values) {
-      if (candidate != SecureMeshAction.unknown &&
-          candidate.wireName == value) {
-        return candidate;
-      }
-    }
-    return SecureMeshAction.unknown;
   }
 }
 `;
@@ -1789,187 +1214,6 @@ final class ClientError {
   static const _allowedPresentationKeys = <String>{
 ${allowedKeys.map((key) => `    ${JSON.stringify(key)},`).join("\n")}
   };
-}
-`;
-}
-
-function rustStateOutput(schema, schemaPath) {
-  return `// @generated by ${schemaPath}; do not edit.
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
-use serde_json::Value;
-use std::collections::BTreeMap;
-
-pub const CLIENT_STATE_SCHEMA_VERSION: &str = "v0.0.1:schema:definition-1";
-pub const CLIENT_STATE_MAX_DOCUMENT_BYTES: usize = ${schema.maxDocumentBytes};
-
-${rustEnum("ClientStateCollection", schema.collections)}
-impl ClientStateCollection {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-${schema.collections
-  .map((value) => `            Self::${pascal(value)} => ${JSON.stringify(value)},`)
-  .join("\n")}
-        }
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct ClientStateDocument {
-    #[serde(rename = "schemaVersion")]
-    pub schema_version: String,
-    pub collection: ClientStateCollection,
-    #[serde(flatten)]
-    pub content: BTreeMap<String, Value>,
-}
-
-impl ClientStateDocument {
-    pub fn for_collection(
-        collection: ClientStateCollection,
-        value: Value,
-    ) -> Result<Self, &'static str> {
-        let mut object = match value {
-            Value::Object(object) => object,
-            value => {
-                let mut object = serde_json::Map::new();
-                object.insert("items".to_owned(), value);
-                object
-            }
-        };
-        object.insert(
-            "schemaVersion".to_owned(),
-            Value::String(CLIENT_STATE_SCHEMA_VERSION.to_owned()),
-        );
-        object.insert(
-            "collection".to_owned(),
-            Value::String(collection.as_str().to_owned()),
-        );
-        Self::from_value(Value::Object(object))
-    }
-
-    pub fn from_value(value: Value) -> Result<Self, &'static str> {
-        let mut object = value.as_object().cloned().ok_or("invalid_document")?;
-        let schema_version = object
-            .remove("schemaVersion")
-            .and_then(|value| value.as_str().map(str::to_owned))
-            .filter(|value| value == CLIENT_STATE_SCHEMA_VERSION)
-            .ok_or("invalid_document")?;
-        let collection = object
-            .remove("collection")
-            .ok_or("invalid_collection")
-            .and_then(|value| {
-                serde_json::from_value(value).map_err(|_| "invalid_collection")
-            })?;
-        let document = Self {
-            schema_version,
-            collection,
-            content: object.into_iter().collect(),
-        };
-        let size = serde_json::to_vec(&document)
-            .map_err(|_| "invalid_document")?
-            .len();
-        if size > CLIENT_STATE_MAX_DOCUMENT_BYTES {
-            return Err("invalid_document");
-        }
-        Ok(document)
-    }
-
-    pub fn into_value(self) -> Value {
-        serde_json::to_value(self).expect("generated client-state document serializes")
-    }
-}
-
-impl<'de> Deserialize<'de> for ClientStateDocument {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let value = Value::deserialize(deserializer)?;
-        Self::from_value(value).map_err(D::Error::custom)
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct ClientStateGetRequest {
-    pub collection: ClientStateCollection,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct ClientStateSetRequest {
-    pub collection: ClientStateCollection,
-    pub document: ClientStateDocument,
-}
-
-impl<'de> Deserialize<'de> for ClientStateSetRequest {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct Wire {
-            collection: ClientStateCollection,
-            document: ClientStateDocument,
-        }
-        let wire = Wire::deserialize(deserializer)?;
-        if wire.collection != wire.document.collection {
-            return Err(D::Error::custom("invalid_document"));
-        }
-        Ok(Self {
-            collection: wire.collection,
-            document: wire.document,
-        })
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct ClientStateGetResult {
-    pub ok: bool,
-    pub collection: ClientStateCollection,
-    pub document: ClientStateDocument,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct ClientStateActivity {
-    #[serde(rename = "schemaVersion")]
-    pub schema_version: String,
-    #[serde(rename = "eventId")]
-    pub event_id: String,
-    #[serde(rename = "type")]
-    pub event_type: String,
-    pub target: String,
-    #[serde(rename = "createdAt")]
-    pub created_at: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub payload: Option<Value>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct ClientStateSetResult {
-    pub ok: bool,
-    pub collection: ClientStateCollection,
-    pub document: ClientStateDocument,
-    pub activity: ClientStateActivity,
-}
-
-${rustEnum("ClientStateFailureCode", schema.failureCodes)}
-impl ClientStateFailureCode {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-${schema.failureCodes
-  .map((value) => `            Self::${pascal(value)} => ${JSON.stringify(value)},`)
-  .join("\n")}
-        }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct ClientStateFailure {
-    pub code: ClientStateFailureCode,
-}
-
-impl ClientStateFailure {
-    pub const fn new(code: ClientStateFailureCode) -> Self {
-        Self { code }
-    }
 }
 `;
 }
@@ -2166,452 +1410,78 @@ final class ClientStateFailure implements Exception {
 `;
 }
 
-function rustSecureMeshOutput(schema, schemaPath) {
-  const actionVariants = schema.actions
-    .map(
-      (action) =>
-        `    #[serde(rename = ${JSON.stringify(action)})]\n    ${secureMeshVariant(action)},`,
-    )
-    .join("\n");
-  const actionNames = schema.actions
-    .map(
-      (action) =>
-        `            Self::${secureMeshVariant(action)} => ${JSON.stringify(action)},`,
-    )
-    .join("\n");
-  const forbidden = schema.forbiddenFields
-    .map((field) => `    ${JSON.stringify(field)},`)
-    .join("\n");
-  const projections = [
-    "SecureMeshCapabilityProjection",
-    "SecureMeshSelectedCustody",
-    "SecureMeshMlsPublicIdentity",
-    "SecureMeshMlsTrustedIdentity",
-    "SecureMeshMlsContentContext",
-    "SecureMeshMlsRequest",
-    "SecureMeshMlsResponse",
-    "SecureMeshKtPinnedAuthority",
-    "SecureMeshKtRequest",
-    "SecureMeshKtResponse",
-    "SecureMeshApprovalRequest",
-    "SecureMeshFileSyncTransfer",
-  ]
-    .map(
-      (name) => `#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct ${name} {
-    #[serde(flatten)]
-    pub fields: BTreeMap<String, Value>,
-}
-`,
-    )
-    .join("\n");
-  return `// @generated by ${schemaPath}; do not edit.
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
-use serde_json::{Map, Value};
-use std::collections::BTreeMap;
-
-pub const SECURE_MESH_PROTOCOL_VERSION: &str = ${JSON.stringify(schema.protocolVersion)};
-pub const SECURE_MESH_MAX_REQUEST_BYTES: usize = ${schema.maxRequestBytes};
-pub const SECURE_MESH_MAX_DEPTH: usize = ${schema.maxDepth};
-pub const SECURE_MESH_MAX_NODES: usize = ${schema.maxNodes};
-pub const SECURE_MESH_MAX_COLLECTION_ENTRIES: usize = ${schema.maxCollectionEntries};
-pub const SECURE_MESH_MAX_STRING_BYTES: usize = ${schema.maxStringBytes};
-const FORBIDDEN_FIELDS: &[&str] = &[
-${forbidden}
-];
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum SecureMeshAction {
-${actionVariants}
-}
-
-impl SecureMeshAction {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-${actionNames}
-        }
-    }
-}
-
-${rustEnum("SecureMeshFailureCode", schema.failureCodes)}
-impl SecureMeshFailureCode {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-${schema.failureCodes
-  .map((code) => `            Self::${pascal(code)} => ${JSON.stringify(code)},`)
-  .join("\n")}
-        }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct SecureMeshFailure {
-    pub code: SecureMeshFailureCode,
-}
-
-impl SecureMeshFailure {
-    pub const fn new(code: SecureMeshFailureCode) -> Self {
-        Self { code }
-    }
-}
-
-impl std::fmt::Display for SecureMeshFailure {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(self.code.as_str())
-    }
-}
-
-impl std::error::Error for SecureMeshFailure {}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct SecureMeshRequest {
-    pub action: SecureMeshAction,
-    pub params: Value,
-    pub authorize: bool,
-}
-
-impl SecureMeshRequest {
-    pub fn new(action: SecureMeshAction, params: Value) -> Result<Self, SecureMeshFailure> {
-        if !params.is_object() {
-            return Err(SecureMeshFailure::new(SecureMeshFailureCode::InvalidPayload));
-        }
-        validate_value(&params)?;
-        let request = Self { action, params, authorize: false };
-        let size = serde_json::to_vec(&request)
-            .map_err(|_| SecureMeshFailure::new(SecureMeshFailureCode::InvalidPayload))?
-            .len();
-        if size > SECURE_MESH_MAX_REQUEST_BYTES {
-            return Err(SecureMeshFailure::new(SecureMeshFailureCode::InvalidPayload));
-        }
-        Ok(request)
-    }
-
-    pub fn from_value(value: Value) -> Result<Self, SecureMeshFailure> {
-        validate_value(&value)?;
-        let mut object = value
-            .as_object()
-            .cloned()
-            .ok_or_else(|| SecureMeshFailure::new(SecureMeshFailureCode::InvalidPayload))?;
-        if object
-            .keys()
-            .any(|key| key != "action" && key != "params" && key != "authorize")
-        {
-            return Err(SecureMeshFailure::new(SecureMeshFailureCode::InvalidPayload));
-        }
-        let action = object
-            .remove("action")
-            .ok_or_else(|| SecureMeshFailure::new(SecureMeshFailureCode::UnsupportedAction))
-            .and_then(|value| serde_json::from_value(value).map_err(|_| {
-                SecureMeshFailure::new(SecureMeshFailureCode::UnsupportedAction)
-            }))?;
-        let params = object.remove("params").unwrap_or_else(|| Value::Object(Map::new()));
-        let authorize = object
-            .remove("authorize")
-            .map(|value| value.as_bool().ok_or_else(|| {
-                SecureMeshFailure::new(SecureMeshFailureCode::InvalidPayload)
-            }))
-            .transpose()?
-            .unwrap_or(false);
-        let mut request = Self::new(action, params)?;
-        request.authorize = authorize;
-        Ok(request)
-    }
-}
-
-impl Serialize for SecureMeshRequest {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut object = Map::new();
-        object.insert("action".to_owned(), Value::String(self.action.as_str().to_owned()));
-        object.insert("params".to_owned(), self.params.clone());
-        if self.authorize {
-            object.insert("authorize".to_owned(), Value::Bool(true));
-        }
-        Value::Object(object).serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for SecureMeshRequest {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        Self::from_value(Value::deserialize(deserializer)?).map_err(D::Error::custom)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct SecureMeshResult {
-    value: Value,
-}
-
-impl SecureMeshResult {
-    pub fn from_value(value: Value) -> Result<Self, SecureMeshFailure> {
-        if !value.is_object() {
-            return Err(SecureMeshFailure::new(SecureMeshFailureCode::InvalidPayload));
-        }
-        validate_value(&value)?;
-        Ok(Self { value })
-    }
-
-    pub const fn value(&self) -> &Value {
-        &self.value
-    }
-
-    pub fn into_value(self) -> Value {
-        self.value
-    }
-}
-
-impl Serialize for SecureMeshResult {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        self.value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for SecureMeshResult {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        Self::from_value(Value::deserialize(deserializer)?).map_err(D::Error::custom)
-    }
-}
-
-fn validate_value(root: &Value) -> Result<(), SecureMeshFailure> {
-    let mut stack = vec![(root, 1usize)];
-    let mut nodes = 0usize;
-    while let Some((value, depth)) = stack.pop() {
-        if depth > SECURE_MESH_MAX_DEPTH {
-            return Err(SecureMeshFailure::new(SecureMeshFailureCode::InvalidPayload));
-        }
-        nodes = nodes.checked_add(1).ok_or_else(|| {
-            SecureMeshFailure::new(SecureMeshFailureCode::InvalidPayload)
-        })?;
-        if nodes > SECURE_MESH_MAX_NODES {
-            return Err(SecureMeshFailure::new(SecureMeshFailureCode::InvalidPayload));
-        }
-        match value {
-            Value::String(value) if value.len() > SECURE_MESH_MAX_STRING_BYTES => {
-                return Err(SecureMeshFailure::new(SecureMeshFailureCode::InvalidPayload));
-            }
-            Value::Array(values) => {
-                if values.len() > SECURE_MESH_MAX_COLLECTION_ENTRIES {
-                    return Err(SecureMeshFailure::new(SecureMeshFailureCode::InvalidPayload));
-                }
-                stack.extend(values.iter().rev().map(|value| (value, depth + 1)));
-            }
-            Value::Object(values) => {
-                if values.len() > SECURE_MESH_MAX_COLLECTION_ENTRIES {
-                    return Err(SecureMeshFailure::new(SecureMeshFailureCode::InvalidPayload));
-                }
-                for (key, value) in values.iter().rev() {
-                    if key.len() > SECURE_MESH_MAX_STRING_BYTES {
-                        return Err(SecureMeshFailure::new(SecureMeshFailureCode::InvalidPayload));
-                    }
-                    if FORBIDDEN_FIELDS
-                        .iter()
-                        .any(|forbidden| key.eq_ignore_ascii_case(forbidden))
-                    {
-                        return Err(SecureMeshFailure::new(
-                            SecureMeshFailureCode::ForbiddenSecretMaterial,
-                        ));
-                    }
-                    stack.push((value, depth + 1));
-                }
-            }
-            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
-        }
-    }
-    Ok(())
-}
-
-${projections}
-${rustEnum("SecureMeshFileSyncStatus", schema.fileStatuses)}
-${rustEnum("SecureMeshApprovalStatus", schema.approvalStatuses)}
-${rustEnum("SecureMeshApprovalDecision", schema.approvalDecisions)}
-`;
-}
-
-function dartSecureMeshOutput(schema, schemaPath) {
-  const templateDirectory = "tools/templates/client_bridge";
-  const projectionFiles = [
-    "secure_mesh_capability_models.dart",
-    "secure_mesh_kt_models.dart",
-    "secure_mesh_mls_models.dart",
-    "secure_mesh_file_sync_models.dart",
-    "secure_mesh_approval_models.dart",
+function readPackageSchema(family) {
+  const schema = readBoundedJson(
+    family.schema,
+    maximumSchemaBytes,
+    "active bridge schema",
+  );
+  const validValues = (values, pattern) =>
+    Array.isArray(values) &&
+    values.length > 0 &&
+    new Set(values).size === values.length &&
+    values.every((value) => typeof value === "string" && pattern.test(value));
+  const expectedOperations = [
+    "package.catalog",
+    "package.install.plan",
+    "package.install.confirm",
+    "package.install.apply",
+    "package.import",
+    "package.enable",
+    "package.disable",
+    "package.uninstall.preview",
+    "package.uninstall.drain",
+    "package.uninstall.collect",
+    "package.recover",
+    "package.update.preview",
+    "package.update.apply",
+    "package.activate",
+    "package.resource.select",
   ];
-  const projections = projectionFiles
-    .map((name) => {
-      const relativePath = `${templateDirectory}/${name}`;
-      const source = fs.readFileSync(path.join(repositoryRoot, relativePath), "utf8");
-      return source.replace(/^import .*;\n+/gmu, "").trim();
-    })
-    .join("\n\n");
-  const forbidden = schema.forbiddenFields
-    .map((field) => `  ${JSON.stringify(field).replaceAll('"', "'")},`)
-    .join("\n");
+  if (
+    !isRecord(schema) ||
+    schema.title !== "PackageBridge" ||
+    schema.version !== 1 ||
+    schema.maxRequestBytes !== 1024 * 1024 ||
+    schema.maxArchiveBytes !== 256 * 1024 * 1024 ||
+    schema.maxRegistrations !== 32 ||
+    schema.maxInstances !== 64 ||
+    JSON.stringify(schema.operations) !== JSON.stringify(expectedOperations) ||
+    !validValues(schema.sources, /^[a-z][a-z0-9-]*$/u) ||
+    !validValues(schema.lifecycles, /^[a-z][a-z0-9-]*$/u) ||
+    !validValues(schema.instanceLifecycles, /^[a-z][a-z0-9-]*$/u) ||
+    !validValues(schema.remainingWorkChoices, /^[a-z][a-z0-9-]*$/u) ||
+    !validValues(schema.registrationOwners, /^[a-z][a-z0-9-]*$/u) ||
+    !validValues(schema.maintenanceOperations, /^[a-z][a-z0-9-]*$/u) ||
+    !validValues(schema.preservedFacts, /^[a-z][a-z0-9-]*$/u) ||
+    !validValues(schema.failureCodes, /^[a-z][a-z0-9_]*$/u) ||
+    JSON.stringify(schema.maintenanceOperations) !==
+      JSON.stringify(["update-apply", "activation"])
+  ) {
+    fail(`unsupported active bridge schema: ${family.schema}`);
+  }
+  return schema;
+}
+
+function dartPackageOutput(schema, schemaPath) {
+  const enums = [
+    ["PackageOperation", schema.operations],
+    ["PackageSourceKind", schema.sources],
+    ["PackageLifecycleKind", schema.lifecycles],
+    ["PackageInstanceLifecycle", schema.instanceLifecycles],
+    ["PackageRemainingWorkChoice", schema.remainingWorkChoices],
+    ["PackageRegistrationOwner", schema.registrationOwners],
+    ["PackageMaintenanceOperation", schema.maintenanceOperations],
+    ["PackagePreservedFact", schema.preservedFacts],
+    ["PackageFailureCode", schema.failureCodes],
+  ];
   return `// @generated by ${schemaPath}; do not edit.
-import 'dart:collection';
-import 'dart:convert';
-
-import 'package:licoup/src/contracts/generated/secure_mesh_capability_catalog.g.dart';
-
-const String secureMeshProtocolVersion = ${JSON.stringify(schema.protocolVersion).replaceAll('"', "'")};
-const int secureMeshMaxRequestBytes = ${schema.maxRequestBytes};
-const int secureMeshMaxDepth = ${schema.maxDepth};
-const int secureMeshMaxNodes = ${schema.maxNodes};
-const int secureMeshMaxCollectionEntries = ${schema.maxCollectionEntries};
-const int secureMeshMaxStringBytes = ${schema.maxStringBytes};
-const Set<String> _secureMeshForbiddenFields = <String>{
-${forbidden}
-};
-
-${dartSecureMeshActionEnum(schema.actions)}
-${dartEnum("SecureMeshFailureCode", schema.failureCodes)}
-final class SecureMeshFailure implements Exception {
-  const SecureMeshFailure({required this.code});
-
-  factory SecureMeshFailure.fromJson(Map<String, Object?> json) {
-    final code = SecureMeshFailureCode.fromWire(json['code']);
-    return SecureMeshFailure(
-      code: code == SecureMeshFailureCode.unknown
-          ? SecureMeshFailureCode.nativeOperationFailed
-          : code,
-    );
-  }
-
-  final SecureMeshFailureCode code;
-
-  Map<String, Object> toJson() => <String, Object>{'code': code.wireName};
-
-  @override
-  String toString() => 'SecureMeshFailure(\${code.wireName})';
-}
-
-final class SecureMeshRequest {
-  SecureMeshRequest({
-    required this.action,
-    Map<String, Object?> params = const <String, Object?>{},
-    this.authorize = false,
-  }) : params = Map<String, Object?>.unmodifiable(params) {
-    if (action == SecureMeshAction.unknown) {
-      throw const SecureMeshFailure(
-        code: SecureMeshFailureCode.unsupportedAction,
-      );
-    }
-    _validateSecureMeshValue(this.params);
-    if (utf8.encode(jsonEncode(toJson())).length > secureMeshMaxRequestBytes) {
-      throw const SecureMeshFailure(code: SecureMeshFailureCode.invalidPayload);
-    }
-  }
-
-  factory SecureMeshRequest.fromJson(Map<String, Object?> json) {
-    final action = SecureMeshAction.fromWire(json['action']);
-    final rawParams = json['params'];
-    if (rawParams != null && rawParams is! Map) {
-      throw const SecureMeshFailure(code: SecureMeshFailureCode.invalidPayload);
-    }
-    return SecureMeshRequest(
-      action: action,
-      params: rawParams == null
-          ? const <String, Object?>{}
-          : Map<String, Object?>.from(rawParams as Map),
-      authorize: json['authorize'] == true,
-    );
-  }
-
-  final SecureMeshAction action;
-  final Map<String, Object?> params;
-  final bool authorize;
-
-  Map<String, Object?> toJson() => <String, Object?>{
-    'action': action.wireName,
-    'params': params,
-    if (authorize) 'authorize': true,
-  };
-}
-
-final class SecureMeshResult {
-  SecureMeshResult.fromJson(Map<String, Object?> json)
-    : value = Map<String, Object?>.unmodifiable(json),
-      ok = json['ok'] == true,
-      protocolVersion = json['protocolVersion'] is String
-          ? json['protocolVersion']! as String
-          : '',
-      productionReady = json['productionReady'] == true {
-    _validateSecureMeshValue(value);
-    if (!ok) {
-      throw SecureMeshFailure.fromJson(json);
-    }
-  }
-
-  final Map<String, Object?> value;
-  final bool ok;
-  final String protocolVersion;
-  final bool productionReady;
-}
-
-void _validateSecureMeshValue(Object? root) {
-  final stack = <(Object?, int)>[(root, 1)];
-  var nodes = 0;
-  while (stack.isNotEmpty) {
-    final (value, depth) = stack.removeLast();
-    nodes += 1;
-    if (depth > secureMeshMaxDepth || nodes > secureMeshMaxNodes) {
-      throw const SecureMeshFailure(code: SecureMeshFailureCode.invalidPayload);
-    }
-    if (value is String) {
-      if (utf8.encode(value).length > secureMeshMaxStringBytes) {
-        throw const SecureMeshFailure(
-          code: SecureMeshFailureCode.invalidPayload,
-        );
-      }
-    } else if (value is List) {
-      if (value.length > secureMeshMaxCollectionEntries) {
-        throw const SecureMeshFailure(
-          code: SecureMeshFailureCode.invalidPayload,
-        );
-      }
-      for (final nested in value.reversed) {
-        stack.add((nested, depth + 1));
-      }
-    } else if (value is Map) {
-      if (value.length > secureMeshMaxCollectionEntries) {
-        throw const SecureMeshFailure(
-          code: SecureMeshFailureCode.invalidPayload,
-        );
-      }
-      for (final entry in value.entries) {
-        final key = entry.key;
-        if (key is! String ||
-            utf8.encode(key).length > secureMeshMaxStringBytes) {
-          throw const SecureMeshFailure(
-            code: SecureMeshFailureCode.invalidPayload,
-          );
-        }
-        if (_secureMeshForbiddenFields.any(
-          (forbidden) => forbidden.toLowerCase() == key.toLowerCase(),
-        )) {
-          throw const SecureMeshFailure(
-            code: SecureMeshFailureCode.forbiddenSecretMaterial,
-          );
-        }
-        stack.add((entry.value, depth + 1));
-      }
-    } else if (value != null && value is! bool && value is! num) {
-      throw const SecureMeshFailure(code: SecureMeshFailureCode.invalidPayload);
-    }
-  }
-}
-
-${projections}
+${enums.map(([name, values]) => dartEnum(name, values)).join("\n")}
+const String packageBridgeSchemaVersion = 'licoup.package-lifecycle.bridge.v1';
+const int packageBridgeMaxRequestBytes = ${schema.maxRequestBytes};
+const int packageBridgeMaxArchiveBytes = ${schema.maxArchiveBytes};
+const int packageBridgeMaxRegistrations = ${schema.maxRegistrations};
+const int packageBridgeMaxInstances = ${schema.maxInstances};
 `;
 }
 
@@ -2619,54 +1489,30 @@ function renderFamily(family) {
   switch (family.id) {
     case "client_error": {
       const schema = readClientErrorSchema(family);
-      return [
-        formatRust(rustClientErrorOutput(schema, family.schema)),
-        dartClientErrorOutput(schema, family.schema),
-      ];
+      return dartClientErrorOutput(schema, family.schema);
     }
     case "state": {
       const schema = readStateSchema(family);
-      return [
-        formatRust(rustStateOutput(schema, family.schema)),
-        dartStateOutput(schema, family.schema),
-      ];
-    }
-    case "secure_mesh": {
-      const schema = readSecureMeshSchema(family);
-      return [
-        formatRust(rustSecureMeshOutput(schema, family.schema)),
-        dartSecureMeshOutput(schema, family.schema),
-      ];
+      return dartStateOutput(schema, family.schema);
     }
     case "conversation": {
       const schema = readConversationSchema(family);
-      return [
-        formatRust(rustConversationOutput(schema, family.schema)),
-        formatDart(dartConversationOutput(schema, family.schema), family.dartOutput),
-      ];
+      return formatDart(
+        dartConversationOutput(schema, family.schema),
+        family.dartOutput,
+      );
     }
     case "strategy": {
       const schema = readStrategySchema(family);
-      return [
-        formatRust(rustStrategyOutput(schema, family.schema)),
-        dartStrategyOutput(schema, family.schema),
-      ];
+      return dartStrategyOutput(schema, family.schema);
+    }
+    case "package": {
+      const schema = readPackageSchema(family);
+      return dartPackageOutput(schema, family.schema);
     }
     default:
       fail(`unsupported active bridge family: ${family.id}`);
   }
-}
-
-function formatRust(source) {
-  const result = spawnSync("rustfmt", ["--edition", "2024", "--emit", "stdout"], {
-    cwd: repositoryRoot,
-    encoding: "utf8",
-    input: source,
-  });
-  if (result.status !== 0 || typeof result.stdout !== "string") {
-    fail("rustfmt rejected generated bridge output");
-  }
-  return result.stdout;
 }
 
 function formatDart(source, outputPath) {
@@ -2739,39 +1585,12 @@ function main() {
   const diagnostics = [];
   for (const family of manifest.families) {
     if (family.status !== "active") continue;
-    const [rust, dart] = renderFamily(family);
-    const outputs = [
-      [family.rustOutput, rust],
-      [family.dartOutput, dart],
-    ];
-    for (const [relativePath, content] of outputs) {
-      const diagnostic = reconcileOutput(relativePath, content, checkOnly);
-      if (diagnostic) diagnostics.push(diagnostic);
-    }
-    if (family.id === "conversation") {
-      const schema = readConversationSchema(family);
-      const extraOutputs = [
-        [
-          CONTINUITY_GENERATED_RS,
-          formatRust(
-            rustContinuityModule(schema.continuousAssistant, family.schema),
-          ),
-        ],
-        [
-          RUNTIME_WORK_CONTEXT_GENERATED_RS,
-          formatRust(
-            rustRuntimeWorkContextModule(
-              schema.continuousAssistant,
-              family.schema,
-            ),
-          ),
-        ],
-      ];
-      for (const [relativePath, content] of extraOutputs) {
-        const diagnostic = reconcileOutput(relativePath, content, checkOnly);
-        if (diagnostic) diagnostics.push(diagnostic);
-      }
-    }
+    const diagnostic = reconcileOutput(
+      family.dartOutput,
+      renderFamily(family),
+      checkOnly,
+    );
+    if (diagnostic) diagnostics.push(diagnostic);
   }
   if (diagnostics.length > 0) fail(diagnostics.join("\n"));
 }

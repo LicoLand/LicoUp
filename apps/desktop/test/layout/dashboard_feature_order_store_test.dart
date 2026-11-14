@@ -28,13 +28,13 @@ void main() {
     expect(await store.load(portableData), [
       'agentHub',
       'modelGateway',
-      'mobilePairing',
+      'devices',
       'statsPanel',
     ]);
   });
 
   test('saved custom order survives a fresh load', () async {
-    final custom = ['statsPanel', 'agentHub', 'modelGateway', 'mobilePairing'];
+    final custom = ['statsPanel', 'agentHub', 'modelGateway', 'devices'];
     await store.save(portableData, custom);
 
     expect(await store.load(portableData), custom);
@@ -53,7 +53,7 @@ void main() {
     expect(await store.load(portableData), [
       'agentHub',
       'modelGateway',
-      'mobilePairing',
+      'devices',
       'statsPanel',
     ]);
   });

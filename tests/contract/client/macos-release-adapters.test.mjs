@@ -20,7 +20,7 @@ test('four adapters delegate once and force stable build track', async () => {
     ['run', 'client:gate:source'], ['run', 'client:gate:release-policy'], ['run', 'client:build', '--', '--platform', 'macos']]);
   assert.equal(calls[2][2].env.LICO_CLIENT_RELEASE_TRACK, 'stable');
   assert.ok(calls.every(call => call[2].cwd === process.cwd() || call[2].cwd === `${process.cwd()}/`));
-  assert.deepEqual(calls[3][1], ['tools/scripts/client-update-manifest.mjs', '--assets', 'build/apple-release',
+  assert.deepEqual(calls[3][1], ['tools/scripts/client-update-manifest.mjs', '--assets', 'build/release-plane',
     '--tag', `v${document.productVersion}`, '--repo', 'LicoLand/LicoUp', '--targets', 'macos-direct-arm64',
     '--release-track', 'stable', '--minimum-supported-version', '0.0.0']);
 });

@@ -1,6 +1,8 @@
 import 'dart:collection';
 
 import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_sticker_panel.dart';
+import 'package:licoup/src/frontend/shared/mascot/mascot_catalog.dart';
 
 int recommendedPluginsCount(List<String> blocks) {
   var count = 0;
@@ -61,7 +63,12 @@ MessageDisplayContent splitMessageDisplayBlocks(String data) {
   return content;
 }
 
-String conversationMessagePreviewText(String text) {
+String conversationMessagePreviewText(String text, {bool chinese = false}) {
+  final stickerId = stickerExpressionIdFromCode(text);
+  if (stickerId != null) {
+    final name = MascotCatalog.expressionName(stickerId, chinese: chinese);
+    return chinese ? '[表情：$name]' : '[sticker: $name]';
+  }
   return sanitizeConversationDisplayText(splitMessageDisplayBlocks(text).body);
 }
 

@@ -6,26 +6,17 @@ import {
   linuxProductReportRootPreparationCommand,
 } from "./shell-helpers.mjs";
 
-export function linuxProductCommand(distro, expectedSourceDigest, releaseBinding) {
+export function linuxProductCommand(distro, expectedSourceDigest) {
   if (distro.id !== "ubuntu" || !/^sha256:[a-f0-9]{64}$/u.test(expectedSourceDigest)) {
     throw new Error("Linux product acceptance source binding is invalid.");
-  }
-  if (
-    !releaseBinding?.challenge ||
-    !releaseBinding?.invocationNonce ||
-    !Number.isFinite(Date.parse(String(releaseBinding?.startedAt || "")))
-  ) {
-    throw new Error("Linux product release-closure binding is invalid.");
   }
   const archive =
     "$HOME/lico-up/build/apps/desktop/verification/linux-arm64/LicoUp-linux-arm64-verification.tar.gz";
   const verificationManifest =
     "$HOME/lico-up/build/apps/desktop/verification/linux-arm64/verification-manifest.json";
-  const vmReceipt = "$HOME/lico-product-artifacts/secure-mesh-linux-vm-package-receipt.json";
-  const nodeMatrix = "$HOME/lico-product-artifacts/secure-mesh-linux-node-matrix.json";
-  const releaseCliReport =
-    "$HOME/lico-up/build/apps/desktop/verification/linux-arm64/secure-mesh-release-cli-proof.json";
-  const archivedCli = "$LICO_VM_PRODUCT_ROOT/release-cli/bundle/licoup-cli";
+  const extractedBundleRoot = "$LICO_VM_PRODUCT_ROOT/release-cli/bundle";
+  const archivedClient = `${extractedBundleRoot}/licoup`;
+  const archivedCli = `${extractedBundleRoot}/licoup-cli`;
   const generateValidationKey = [
     "const {generateKeyPairSync}=require('node:crypto')",
     "const fs=require('node:fs')",
@@ -38,20 +29,11 @@ export function linuxProductCommand(distro, expectedSourceDigest, releaseBinding
     linuxProductVerificationReportTreePreparationCommand();
   return [
     "set -euo pipefail",
-    '. "$HOME/.cargo/env"',
-    'export PATH="$HOME/.local/node/bin:$HOME/.local/flutter/bin:$HOME/.cargo/bin:$PATH"',
+    'export PATH="$HOME/.local/node/bin:$HOME/.local/flutter/bin:$PATH"',
     'export PUB_CACHE="$HOME/.cache/licomesh/pub-cache"',
-    'export CARGO_TARGET_DIR="$HOME/.cache/licomesh/cargo-target"',
-    "export CARGO_BUILD_JOBS=1",
     "export CMAKE_BUILD_PARALLEL_LEVEL=1",
     "export LICO_CLIENT_EXPECTED_SOURCE_STATE_DIGEST=" +
       quoteShellArg(expectedSourceDigest),
-    "export LICO_CLIENT_RELEASE_CLOSURE_CHALLENGE=" +
-      quoteShellArg(releaseBinding.challenge),
-    "export LICO_CLIENT_RELEASE_CLOSURE_STARTED_AT=" +
-      quoteShellArg(releaseBinding.startedAt),
-    "export LICO_CLIENT_RELEASE_INVOCATION_NONCE=" +
-      quoteShellArg(releaseBinding.invocationNonce),
     'export LICO_VM_PRODUCT_ROOT="$HOME/.cache/licomesh/linux-product"',
     'export LICO_LINUX_VM_REPORT_ROOT="$HOME/lico-product-artifacts"',
     'export LICO_LINUX_VERIFICATION_SIGNING_KEY_PATH="$LICO_VM_PRODUCT_ROOT/validation-key.pem"',
@@ -69,24 +51,20 @@ export function linuxProductCommand(distro, expectedSourceDigest, releaseBinding
     `node -e ${quoteShellArg(generateValidationKey)} "$LICO_LINUX_VERIFICATION_SIGNING_KEY_PATH" >/dev/null 2>&1`,
     "npm run client:verify:linux-bundle-carrier >/dev/null 2>&1",
     "printf '%s\\n' '{\"step\":\"verification_carrier_created\"}'",
-    `node tools/scripts/client-secure-mesh-linux-vm-package-receipt.mjs --archive "${archive}" --verification-manifest "${verificationManifest}" --expected-source-digest ${quoteShellArg(expectedSourceDigest)} --report "${vmReceipt}"`,
-    "printf '%s\\n' '{\"step\":\"vm_install_receipt_ready\"}'",
+    prepareVerificationReportTree,
     'rm -rf "$LICO_VM_PRODUCT_ROOT/release-cli"',
     'mkdir -p "$LICO_VM_PRODUCT_ROOT/release-cli"',
     `tar -xzf "${archive}" -C "$LICO_VM_PRODUCT_ROOT/release-cli"`,
+    `test -x "${archivedClient}"`,
     `test -x "${archivedCli}"`,
-    prepareVerificationReportTree,
-    `node tools/scripts/client-secure-mesh-release-cli-proof.mjs --cli "${archivedCli}" --platform "ubuntu-linux-arm64" --report "${releaseCliReport}"`,
-    `cp "${releaseCliReport}" "$HOME/lico-product-artifacts/secure-mesh-release-cli-proof.json"`,
-    "printf '%s\\n' '{\"step\":\"archived_release_cli_proof_ready\"}'",
-    `node tools/scripts/client-secure-mesh-linux-node-matrix.mjs --archive "${archive}" --verification-manifest "${verificationManifest}" --vm-receipt "${vmReceipt}" --expected-source-digest ${quoteShellArg(expectedSourceDigest)} --docker-command ${quoteShellArg('["sudo","docker"]')} --report "${nodeMatrix}"`,
-    "printf '%s\\n' '{\"step\":\"three_node_matrix_ready\"}'",
+    `"${archivedCli}" --help >/dev/null`,
+    "printf '%s\\n' '{\"step\":\"archived_delivered_cli_smoke_ready\"}'",
     "node tools/scripts/client-source-manifest-verify.mjs >/dev/null",
     "printf '%s\\n' '{\"step\":\"source_manifest_verified_after_build\"}'",
     `cp "${archive}" "$HOME/lico-product-artifacts/LicoUp-linux-arm64-verification.tar.gz"`,
     `cp "${archive}.sig" "$HOME/lico-product-artifacts/LicoUp-linux-arm64-verification.tar.gz.sig"`,
     `cp "${verificationManifest}" "$HOME/lico-product-artifacts/linux-arm64-verification-manifest.json"`,
     `cp "$HOME/lico-up/${linuxSourceManifestRemoteRef}" "$HOME/lico-product-artifacts/${linuxSourceManifestName}"`,
-    "printf '%s\\n' '{\"ok\":true,\"currentSourceArchive\":true,\"vmInstallReceiptReady\":true,\"archivedReleaseCliProofReady\":true,\"threeNodeMatrixReady\":true}'",
+    "printf '%s\\n' '{\"ok\":true,\"currentSourceArchive\":true,\"archivedDeliveredCliSmokeReady\":true}'",
   ].join(" && ");
 }

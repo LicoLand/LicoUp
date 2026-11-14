@@ -7,10 +7,8 @@ void main() {
     const root = 'lib/src/application/features/agents/conversation';
     final componentFiles = [
       'conversation_session_state_controller.dart',
-      'conversation_mobile_session_controller.dart',
       'conversation_session_controller.dart',
       'conversation_live_projection_controller.dart',
-      'conversation_relay_projection_controller.dart',
       'conversation_message_controller.dart',
     ];
     final composer = File(

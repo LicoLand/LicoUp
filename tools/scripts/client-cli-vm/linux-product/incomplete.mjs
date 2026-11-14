@@ -5,9 +5,6 @@ export function writeLinuxProductIncomplete(distro, reason) {
   const artifacts = linuxProductArtifactPaths(distro);
   mkdirSync(artifacts.root, { recursive: true });
   for (const key of [
-    "vmReceipt",
-    "nodeMatrix",
-    "releaseCliProof",
     "archive",
     "signature",
     "verificationManifest",
@@ -19,7 +16,7 @@ export function writeLinuxProductIncomplete(distro, reason) {
     artifacts.incomplete,
     `${JSON.stringify(
       {
-        schema: "licomesh.secure-mesh.linux-current-source-incomplete",
+        schema: "licomesh.client-linux.current-source-incomplete",
         schemaVersion: 1,
         ok: false,
         artifactKind: "linux-current-source-acceptance",

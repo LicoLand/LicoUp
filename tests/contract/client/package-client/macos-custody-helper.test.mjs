@@ -34,7 +34,6 @@ function fixture(t) {
   mkdirSync(executableDir, { recursive: true });
   const source = path.join(root, "synthetic-cli");
   writeFileSync(source, "synthetic executable");
-  writeFileSync(path.join(executableDir, "licoup-cli"), "superseded executable");
   const executable = stageMacosCustodyHelper(source, { executableDir });
   const appProfile = path.join(root, "app.provisionprofile");
   const helperProfile = path.join(root, "helper.provisionprofile");
@@ -50,20 +49,18 @@ function fixture(t) {
   return { app, executableDir, executable, environment, readProfile, signingRoot: path.join(root, "signing") };
 }
 
-test("custody staging keeps one executable and the permanent public CLI alias", async (t) => {
+test("custody staging keeps one helper executable and no public MacOS entry", async (t) => {
   const f = fixture(t);
-  const entry = path.join(f.executableDir, "licoup-cli");
-  assert.equal(readlinkSync(entry), "../Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli");
-  assert.equal(realpathSync(entry), realpathSync(f.executable));
-  assert.equal(readFileSync(entry, "utf8"), "synthetic executable");
+  assert.equal(f.executable, macosCustodyHelperPaths(f.app).executablePath);
+  assert.equal(readFileSync(f.executable, "utf8"), "synthetic executable");
   assert.deepEqual(await verifyMacosCustodyHelper(f.app, { architectures: () => ["arm64"] }), []);
   const runnableApp = path.join(path.dirname(f.app), "runnable", "LicoUp.app");
   copyTree(f.app, runnableApp);
   assert.deepEqual(await verifyMacosCustodyHelper(runnableApp, { architectures: () => ["arm64"] }), []);
-  rmSync(entry);
-  writeFileSync(entry, "unexpected second executable");
+  const stale = path.join(f.executableDir, "licoup-cli");
+  writeFileSync(stale, "unexpected second executable");
   assert.deepEqual(await verifyMacosCustodyHelper(f.app, { architectures: () => ["arm64"] }),
-    ["public CLI alias missing or not a symlink"]);
+    ["unexpected MacOS entry: licoup-cli"]);
 });
 
 test("custody mode is explicit, release-only, and its public plan has no identity or profile paths", () => {

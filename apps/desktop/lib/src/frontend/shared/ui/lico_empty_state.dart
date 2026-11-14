@@ -6,7 +6,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 /// hint, and an optional action.
 ///
 /// Feature panels used to grow one of these per surface — agents, skill hub,
-/// and mobile relay each had their own, drifting in icon size, title weight,
+/// and devices each had their own, drifting in icon size, title weight,
 /// and spacing. The shared recipe follows the refined mobile/skill-hub
 /// pattern: the title is bold and in `text`, because a bare muted line reads
 /// as disabled rather than empty, and supporting copy sits in `textMuted`.

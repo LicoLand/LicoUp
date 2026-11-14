@@ -3,6 +3,11 @@ name: Commit identity
 on:
   push:
     branches: [macos-release-candidate, macos-nightly-release-candidate]
+  # pull_request_target is deliberate: this gate writes a required commit status
+  # on PR heads (including forks, where a pull_request token is read-only) and
+  # runs the base branch's trusted workflow definition so a PR cannot amend the
+  # gate that judges it. It never checks out or executes PR code and requests
+  # only the statuses/pull-requests permissions it needs.
   pull_request_target:
     types:
       - opened

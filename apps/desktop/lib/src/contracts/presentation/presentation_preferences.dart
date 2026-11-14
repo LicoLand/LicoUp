@@ -1,4 +1,11 @@
+import 'dart:collection';
+
+import 'appearance_resource_state.dart';
 import 'layout_profile.dart';
+import 'layout_style.dart';
+import 'reduce_motion_preference.dart';
+
+export 'reduce_motion_preference.dart' show ReduceMotionPreference;
 
 enum PresentationPreferencesLoadIssue { invalidDocument }
 
@@ -19,8 +26,10 @@ final class PresentationPreferences {
     required LayoutProfileId layoutProfileId,
     required String appearancePresetId,
     required String localePreference,
-    bool reduceMotion = false,
+    ReduceMotionPreference reduceMotion = ReduceMotionPreference.system,
     String loadingEffectId = 'spinner',
+    Map<LayoutProfileId, LayoutStyleId> layoutStyleIds = const {},
+    Map<String, PresentationResourceSelection> resourceSelections = const {},
   }) {
     final appearance = appearancePresetId.trim();
     final locale = localePreference.trim();
@@ -36,6 +45,13 @@ final class PresentationPreferences {
       localePreference: locale,
       reduceMotion: reduceMotion,
       loadingEffectId: loadingEffectId,
+      layoutStyleIds: UnmodifiableMapView(
+        Map<LayoutProfileId, LayoutStyleId>.of(layoutStyleIds),
+      ),
+      resourceSelections:
+          Map<String, PresentationResourceSelection>.unmodifiable(
+            Map<String, PresentationResourceSelection>.of(resourceSelections),
+          ),
     );
   }
 
@@ -51,6 +67,28 @@ final class PresentationPreferences {
     final rawAppearance = json['appearancePresetId'];
     final rawLocale = json['localePreference'];
     final rawReduceMotion = json['reduceMotion'];
+    final rawStyleIds = json['layoutStyleIds'];
+    final layoutStyleIds = <LayoutProfileId, LayoutStyleId>{};
+    // Additive schema-1 field: a missing or malformed member never fails the
+    // document — each entry is validated independently and dropped on error.
+    if (rawStyleIds is Map) {
+      for (final entry in rawStyleIds.entries) {
+        final key = entry.key;
+        final value = entry.value;
+        if (key is! String || value is! String) {
+          continue;
+        }
+        try {
+          layoutStyleIds[LayoutProfileId.parse(
+            resolveLegacyLayoutProfileId(key),
+          )] = LayoutStyleId.parse(
+            value,
+          );
+        } on FormatException {
+          continue;
+        }
+      }
+    }
     return PresentationPreferences(
       layoutProfileId: rawLayout is String && rawLayout.trim().isNotEmpty
           ? LayoutProfileId.parse(resolveLegacyLayoutProfileId(rawLayout))
@@ -62,12 +100,25 @@ final class PresentationPreferences {
       localePreference: rawLocale is String && rawLocale.trim().isNotEmpty
           ? rawLocale
           : fallback.localePreference,
-      reduceMotion: rawReduceMotion is bool ? rawReduceMotion : false,
+      reduceMotion: ReduceMotionPreference.parse(rawReduceMotion),
       loadingEffectId: json['loadingEffectId'] is String
           ? json['loadingEffectId']! as String
           : 'spinner',
+      layoutStyleIds: layoutStyleIds,
+      resourceSelections: readResourceSelections(json['resourceSelections']),
     );
   }
+
+  /// Reads the stored resource requests strictly.
+  ///
+  /// A key this build does not know is kept with the identity it was written
+  /// with, so a newer client's request survives an older client's write. A
+  /// value this build cannot read refuses the document instead of being
+  /// dropped or reinterpreted: an unreadable request is not a different
+  /// request.
+  static Map<String, PresentationResourceSelection> readResourceSelections(
+    Object? value,
+  ) => readPresentationResourceSelections(value);
 
   const PresentationPreferences._({
     required this.layoutProfileId,
@@ -75,6 +126,8 @@ final class PresentationPreferences {
     required this.localePreference,
     required this.reduceMotion,
     required this.loadingEffectId,
+    required this.layoutStyleIds,
+    required this.resourceSelections,
   });
 
   static const schemaVersion = 1;
@@ -104,15 +157,35 @@ final class PresentationPreferences {
   final LayoutProfileId layoutProfileId;
   final String appearancePresetId;
   final String localePreference;
-  final bool reduceMotion;
+  final ReduceMotionPreference reduceMotion;
   final String loadingEffectId;
+
+  /// Per-profile column-style choices. Entries for profiles that declare no
+  /// styles are inert: the effective style always comes from the profile's
+  /// declared styles or default.
+  final Map<LayoutProfileId, LayoutStyleId> layoutStyleIds;
+
+  /// The resource the user asked this client to serve, per resource kind id.
+  ///
+  /// An absent kind is not "unavailable" and not "the declared default was
+  /// chosen": it records no request for that kind. The map is the only durable
+  /// owner of a resource request; whether the request is served is the package
+  /// owner's answer and is never written here.
+  final Map<String, PresentationResourceSelection> resourceSelections;
+
+  /// The stored request for one kind, if the user made one.
+  PresentationResourceSelection? resourceSelection(
+    PresentationResourceKind kind,
+  ) => resourceSelections[kind.id];
 
   PresentationPreferences copyWith({
     LayoutProfileId? layoutProfileId,
     String? appearancePresetId,
     String? localePreference,
-    bool? reduceMotion,
+    ReduceMotionPreference? reduceMotion,
     String? loadingEffectId,
+    Map<LayoutProfileId, LayoutStyleId>? layoutStyleIds,
+    Map<String, PresentationResourceSelection>? resourceSelections,
   }) {
     return PresentationPreferences(
       layoutProfileId: layoutProfileId ?? this.layoutProfileId,
@@ -120,7 +193,28 @@ final class PresentationPreferences {
       localePreference: localePreference ?? this.localePreference,
       reduceMotion: reduceMotion ?? this.reduceMotion,
       loadingEffectId: loadingEffectId ?? this.loadingEffectId,
+      layoutStyleIds: layoutStyleIds ?? this.layoutStyleIds,
+      resourceSelections: resourceSelections ?? this.resourceSelections,
     );
+  }
+
+  /// Records, or clears, one kind's request.
+  ///
+  /// Clearing means the user asked for the client's own declared default; it is
+  /// not a fallback and leaves no entry behind.
+  PresentationPreferences withResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) {
+    final next = Map<String, PresentationResourceSelection>.of(
+      resourceSelections,
+    );
+    if (selection == null) {
+      next.remove(kind.id);
+    } else {
+      next[kind.id] = selection;
+    }
+    return copyWith(resourceSelections: next);
   }
 
   Map<String, Object> toJson() => {
@@ -128,8 +222,19 @@ final class PresentationPreferences {
     'layoutProfileId': layoutProfileId.value,
     'appearancePresetId': appearancePresetId,
     'localePreference': localePreference,
-    'reduceMotion': reduceMotion,
+    'reduceMotion': reduceMotion.name,
     'loadingEffectId': loadingEffectId,
+    'layoutStyleIds': {
+      for (final entry in layoutStyleIds.entries)
+        entry.key.value: entry.value.value,
+    },
+    // Omitted while no resource request is recorded, so a document that never
+    // made one keeps the shape the previous release wrote.
+    if (resourceSelections.isNotEmpty)
+      'resourceSelections': <String, Object>{
+        for (final key in _sortedResourceKeys(resourceSelections))
+          key: resourceSelections[key]!.toJson(),
+      },
   };
 
   @override
@@ -140,7 +245,9 @@ final class PresentationPreferences {
           other.appearancePresetId == appearancePresetId &&
           other.localePreference == localePreference &&
           other.reduceMotion == reduceMotion &&
-          other.loadingEffectId == loadingEffectId;
+          other.loadingEffectId == loadingEffectId &&
+          _sameStyleIdMap(other.layoutStyleIds, layoutStyleIds) &&
+          _sameResourceSelections(other.resourceSelections, resourceSelections);
 
   @override
   int get hashCode => Object.hash(
@@ -149,7 +256,43 @@ final class PresentationPreferences {
     localePreference,
     reduceMotion,
     loadingEffectId,
+    Object.hashAllUnordered(
+      layoutStyleIds.entries.map(
+        (entry) => Object.hash(entry.key, entry.value),
+      ),
+    ),
+    Object.hashAll(
+      _sortedResourceKeys(
+        resourceSelections,
+      ).map((key) => Object.hash(key, resourceSelections[key])),
+    ),
   );
+
+  static bool _sameStyleIdMap(
+    Map<LayoutProfileId, LayoutStyleId> left,
+    Map<LayoutProfileId, LayoutStyleId> right,
+  ) =>
+      left.length == right.length &&
+      left.entries.every((entry) => right[entry.key] == entry.value);
+}
+
+List<String> _sortedResourceKeys(
+  Map<String, PresentationResourceSelection> selections,
+) => selections.keys.toList(growable: false)..sort();
+
+bool _sameResourceSelections(
+  Map<String, PresentationResourceSelection> left,
+  Map<String, PresentationResourceSelection> right,
+) {
+  if (left.length != right.length) {
+    return false;
+  }
+  for (final entry in left.entries) {
+    if (right[entry.key] != entry.value) {
+      return false;
+    }
+  }
+  return true;
 }
 
 final class PresentationPreferencesLoadResult {
@@ -169,11 +312,23 @@ abstract interface class PresentationPreferencesRepository {
 
   Future<PresentationPreferences> setLayoutProfile(LayoutProfileId id);
 
+  Future<PresentationPreferences> setLayoutStyle(
+    LayoutProfileId profile,
+    LayoutStyleId style,
+  );
+
   Future<PresentationPreferences> setAppearancePreset(String id);
 
   Future<PresentationPreferences> setLocalePreference(String preference);
 
-  Future<PresentationPreferences> setReduceMotion(bool enabled);
+  Future<PresentationPreferences> setReduceMotion(
+    ReduceMotionPreference preference,
+  );
 
   Future<PresentationPreferences> setLoadingEffect(String id);
+
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  );
 }

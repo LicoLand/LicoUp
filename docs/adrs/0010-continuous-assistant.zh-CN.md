@@ -20,7 +20,7 @@
 
 ## 决策
 
-采纳[持续 Assistant 规范](../architecture/CONTINUOUS-ASSISTANT.zh-CN.md)，由它唯一拥有新增连续性语义。保留显式 Conversation Assistant 角色、规范 Event/Part 历史、Membership 准入、既有 PersistentTurn 与 Adaptive Flywheel 执行，以及原生适配器。
+采纳[持续 Assistant 规范](../architecture/CONTINUOUS-ASSISTANT.zh-CN.md)，由它唯一拥有新增连续性语义。保留显式 Conversation Assistant 角色、规范 Event/Part 历史、Membership 准入、既有 PersistentTurn 与 Acativa 执行，以及原生适配器。
 
 Agent 理解意图并提出事项、约定和承诺变更；确定性 Conversation 权威校验并提交。上下文按当前工作选择；原生 Session 保持为私有、可替换的执行绑定。目标跟进通过现有宿主安排重新检查。职责资格提供测得的准入依据，不复制能力／价格目录，也不引入加权智力分数。
 

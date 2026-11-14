@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -91,6 +92,44 @@ void main() {
     );
   });
 
+  test(
+    'save order survives delayed path resolution and writer drain',
+    () async {
+      final delayedRoot = _DelayedClientDirectoryRoot(directory);
+      final first = store.save(
+        delayedRoot,
+        const DesktopDockLayoutSnapshot(
+          entries: [DesktopDockStoredAppEntry('monitoring')],
+        ),
+      );
+      await delayedRoot.firstRequested.future;
+      final second = store.save(
+        delayedRoot,
+        const DesktopDockLayoutSnapshot(
+          entries: [DesktopDockStoredAppEntry('agentHub')],
+        ),
+      );
+      var drained = false;
+      final drain = delayedRoot.stopAppManagedWritersAndDrain().then((_) {
+        drained = true;
+      });
+      try {
+        await Future<void>.value();
+        expect(delayedRoot.resolutions, 1);
+        expect(drained, isFalse);
+      } finally {
+        delayedRoot.releaseFirst.complete();
+        await Future.wait([first, second, drain]);
+      }
+      final snapshot = await store.load(delayedRoot);
+      expect(snapshot.entries, hasLength(1));
+      expect(
+        (snapshot.entries.single as DesktopDockStoredAppEntry).app,
+        'agentHub',
+      );
+    },
+  );
+
   test('load skips malformed entries and dedupes first-wins', () async {
     final file = await storeFile();
     await file.parent.create(recursive: true);
@@ -147,4 +186,23 @@ void main() {
     expect(entries[0], {'type': 'app', 'app': 'skillHub'});
     expect(entries[1], {'type': 'app', 'app': 'monitoring'});
   });
+}
+
+final class _DelayedClientDirectoryRoot extends PortableDataRoot {
+  _DelayedClientDirectoryRoot(Directory directory)
+    : super(dataDirectoryOverride: directory);
+
+  final firstRequested = Completer<void>();
+  final releaseFirst = Completer<void>();
+  int resolutions = 0;
+
+  @override
+  Future<Directory> clientDirectory() async {
+    resolutions += 1;
+    if (resolutions == 1) {
+      firstRequested.complete();
+      await releaseFirst.future;
+    }
+    return super.clientDirectory();
+  }
 }

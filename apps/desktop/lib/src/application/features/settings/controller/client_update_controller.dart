@@ -67,6 +67,23 @@ final class ClientUpdateController extends ApplicationStateOwner {
   String get repo => _repo;
   bool get busy => _busy;
 
+  /// The last observed host maintenance answer. Absent or unreadable answers
+  /// stay fail closed: the client never approves an installed-state change on
+  /// its own.
+  ClientUpdateAdmission get admission => _status.admission;
+
+  /// The unfinished tasks the native host reported behind [admission].
+  List<ClientUpdateBlocker> get admissionBlockers => _status.admission.blockers;
+
+  /// True when the native decision reported more blockers than it listed.
+  bool get admissionBlockersTruncated => _status.admission.truncated;
+
+  /// The stable code explaining why apply is locked, or empty when it is not.
+  String get applyLockReasonCode => _status.admission.lockReasonCode;
+
+  /// Whether the host administration answer still permits the pending switch.
+  bool get admissionAllowsApply => _status.admission.allowsMaintenance;
+
   String get sourceAddress => clientUpdatePublicSourceAddress(
     repo: _repo,
     githubReleaseUrl: _status.githubReleaseUrl,
@@ -78,11 +95,16 @@ final class ClientUpdateController extends ApplicationStateOwner {
       _status.updateAvailable &&
       !_artifactDownloaded &&
       _status.phase == ClientUpdatePhase.updateAvailable;
+
+  /// Apply is unlocked only by a verified artifact *and* a native idle
+  /// decision. A local busy flag, a label change or a closed card never
+  /// unlocks it.
   bool get canApplyUpdate =>
       !_busy &&
       _artifactVerified &&
       (_status.phase == ClientUpdatePhase.verified ||
-          _status.phase == ClientUpdatePhase.applyPlanned);
+          _status.phase == ClientUpdatePhase.applyPlanned) &&
+      _status.admission.allowsMaintenance;
 
   void selectTargetReleaseTrack(ReleaseTrack track) {
     if (_busy ||
@@ -128,6 +150,7 @@ final class ClientUpdateController extends ApplicationStateOwner {
         repo: _repo,
         stateRoot: _stateRoot,
       );
+      _adoptAdmission(next.admission);
       if (next.runningVersion.isNotEmpty) {
         _status = _status.copyWith(
           runningVersion: next.runningVersion,
@@ -137,6 +160,22 @@ final class ClientUpdateController extends ApplicationStateOwner {
       }
     } catch (_) {
       // Identity hydrate must not paint a failed check.
+    } finally {
+      _end();
+    }
+  }
+
+  /// Re-reads the host-wide maintenance answer and re-projects the apply gate.
+  ///
+  /// The answer is native-owned: this reads it, never decides it. An
+  /// unreadable answer stays fail closed, so a locked update can only be
+  /// unlocked by a new answer from the host.
+  Future<void> refreshAdmission() async {
+    if (!_begin()) return;
+    try {
+      await _refreshAdmissionLocked();
+    } catch (_) {
+      _adoptAdmission(const ClientUpdateAdmission.unavailable());
     } finally {
       _end();
     }
@@ -381,6 +420,10 @@ final class ClientUpdateController extends ApplicationStateOwner {
     _requireMatchingReceipt(verified, 'verify');
     _status = _adopt(verified);
     _artifactVerified = true;
+    // Re-project the visible phase from whatever admission answer rode along,
+    // so a verified artifact whose host still refuses maintenance renders
+    // blocked rather than an unlocked restart.
+    _adoptAdmission(_status.admission);
   }
 
   Future<void> planApply() async {
@@ -411,6 +454,23 @@ final class ClientUpdateController extends ApplicationStateOwner {
     _begin();
     await _resolveRoots();
     try {
+      // The native decision is read immediately before the switch. A locked or
+      // unreadable answer refuses here, so no local state can approve an
+      // installed-state change the host still refuses.
+      try {
+        await _refreshAdmissionLocked();
+      } catch (_) {
+        _adoptAdmission(const ClientUpdateAdmission.unavailable());
+      }
+      final lock = execute ? _status.admission.lockReasonCode : '';
+      if (lock.isNotEmpty) {
+        _report(
+          '仍有未完成的任务，更新已锁定。请先停止它们。',
+          'Unfinished work still blocks this update. Stop it first.',
+          errorCode: lock,
+        );
+        return false;
+      }
       final applied = await _gateway.apply(
         agentService: _agentService,
         execute: execute,
@@ -449,6 +509,49 @@ final class ClientUpdateController extends ApplicationStateOwner {
       (_manifestPath.isNotEmpty || _source == 'github') &&
       _artifactReceiptId.isNotEmpty &&
       _status.updateAvailable;
+
+  /// Reads the host-wide maintenance answer through the same native status
+  /// surface and re-projects the visible phase from it.
+  Future<void> _refreshAdmissionLocked() async {
+    await _resolveRoots();
+    final observed = await _gateway.status(
+      agentService: _agentService,
+      targetReleaseTrack: _targetReleaseTrack,
+      source: 'local',
+      repo: _repo,
+      stateRoot: _stateRoot,
+    );
+    _adoptAdmission(observed.admission);
+  }
+
+  /// Adopts one native answer and keeps the visible phase honest: a verified
+  /// artifact whose host still refuses maintenance renders [blocked] instead of
+  /// a restart that would be refused.
+  void _adoptAdmission(ClientUpdateAdmission admission) {
+    var phase = _status.phase;
+    var errorCode = _status.errorCode;
+    if (_artifactVerified) {
+      if (!admission.allowsMaintenance &&
+          (phase == ClientUpdatePhase.verified ||
+              phase == ClientUpdatePhase.applyPlanned)) {
+        phase = ClientUpdatePhase.blocked;
+      } else if (admission.allowsMaintenance &&
+          phase == ClientUpdatePhase.blocked) {
+        phase = ClientUpdatePhase.verified;
+      }
+      if (phase == ClientUpdatePhase.blocked ||
+          phase == ClientUpdatePhase.verified) {
+        // Carry the lock reason in the one field the settings projection
+        // already publishes, so a changed host answer reaches the card.
+        errorCode = admission.lockReasonCode;
+      }
+    }
+    _status = _status.copyWith(
+      phase: phase,
+      errorCode: errorCode,
+      admission: admission,
+    );
+  }
 
   ClientUpdateStatus _adopt(ClientUpdateStatus next) {
     if (next.runningVersion.isNotEmpty) return next;

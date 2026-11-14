@@ -5,15 +5,6 @@ import {
   sha256File as stableSha256File,
   stableReadFile,
 } from "../../lib/client-release-artifact-digest.mjs";
-import { requireReleaseCliTargetEvidence } from "../../lib/client-release-target-evidence.mjs";
-import {
-  validateLinuxNodeMatrixReport,
-  validateLinuxVmPackageReceipt,
-} from "../../lib/secure-mesh-linux-evidence.mjs";
-import {
-  releaseClosureChallengeDigest,
-  releaseInvocationNonceDigest,
-} from "../../lib/release-closure-challenge.mjs";
 import { repoRoot } from "../constants.mjs";
 import { linuxProductArtifactPaths } from "./artifacts.mjs";
 import { verifyLinuxProductSourceManifest } from "./source-manifest.mjs";
@@ -63,12 +54,9 @@ export function verifyLinuxArchiveDigestSignature(distribution, signatureBytes, 
   }
 }
 
-export function validateLinuxProductArtifacts(distro, expectedSourceDigest, releaseBinding) {
+export function validateLinuxProductArtifacts(distro, expectedSourceDigest) {
   const artifacts = linuxProductArtifactPaths(distro);
   if (
-    !existsSync(artifacts.vmReceipt) ||
-    !existsSync(artifacts.nodeMatrix) ||
-    !existsSync(artifacts.releaseCliProof) ||
     !existsSync(artifacts.archive) ||
     !existsSync(artifacts.signature) ||
     !existsSync(artifacts.verificationManifest) ||
@@ -77,15 +65,6 @@ export function validateLinuxProductArtifacts(distro, expectedSourceDigest, rele
     throw new Error("Linux product acceptance artifacts are incomplete.");
   }
   verifyLinuxProductSourceManifest(distro, expectedSourceDigest);
-  const receipt = JSON.parse(
-    stableReadFile(artifacts.vmReceipt, { maxBytes: 2 * 1024 * 1024 }).toString("utf8"),
-  );
-  const nodeMatrix = JSON.parse(
-    stableReadFile(artifacts.nodeMatrix, { maxBytes: 2 * 1024 * 1024 }).toString("utf8"),
-  );
-  const releaseCliProof = JSON.parse(
-    stableReadFile(artifacts.releaseCliProof, { maxBytes: 2 * 1024 * 1024 }).toString("utf8"),
-  );
   const distribution = JSON.parse(
     stableReadFile(artifacts.verificationManifest, {
       maxBytes: 2 * 1024 * 1024,
@@ -96,18 +75,6 @@ export function validateLinuxProductArtifacts(distro, expectedSourceDigest, rele
       maxBytes: 1024 * 1024,
     }).toString("utf8"),
   );
-  validateLinuxVmPackageReceipt(
-    receipt,
-    expectedSourceDigest,
-    clientVersion.productVersion,
-    clientVersion.buildNumber,
-  );
-  validateLinuxNodeMatrixReport(nodeMatrix, expectedSourceDigest);
-  requireReleaseCliTargetEvidence(releaseCliProof, {
-    platform: "ubuntu-linux-arm64",
-    sourceStateDigest: expectedSourceDigest,
-    runtimeExecutableDigest: receipt.sourceBinding.nativeClientDigest,
-  });
   const archiveDigest = stableSha256File(artifacts.archive);
   const signatureBytes = decodeCanonicalBase64(
     stableReadFile(artifacts.signature, { maxBytes: 16 * 1024 }).toString("utf8").trim(),
@@ -119,8 +86,6 @@ export function validateLinuxProductArtifacts(distro, expectedSourceDigest, rele
     archiveDigest,
   );
   if (
-    receipt.sourceBinding.archiveDigest !== archiveDigest ||
-    nodeMatrix.sourceBinding.archiveDigest !== archiveDigest ||
     distribution.targetId !== "linux-glibc-arm64" ||
     distribution.schemaVersion !== "licomesh.client-linux.verification-carrier.v1" ||
     distribution.mode !== "verification" ||
@@ -129,21 +94,11 @@ export function validateLinuxProductArtifacts(distro, expectedSourceDigest, rele
     distribution.sourceStateDigest !== expectedSourceDigest ||
     distribution.productVersion !== clientVersion.productVersion ||
     distribution.buildNumber !== clientVersion.buildNumber ||
-    receipt.closureChallengeDigest !==
-      releaseClosureChallengeDigest(releaseBinding.challenge) ||
-    receipt.invocationNonceDigest !==
-      releaseInvocationNonceDigest(releaseBinding.invocationNonce) ||
-    releaseCliProof.closureChallengeDigest !==
-      releaseClosureChallengeDigest(releaseBinding.challenge) ||
-    releaseCliProof.invocationNonceDigest !==
-      releaseInvocationNonceDigest(releaseBinding.invocationNonce) ||
     distribution.signature?.algorithm !== "Ed25519" ||
     distribution.signature?.payload !== "archive-sha256-digest" ||
     distribution.signature?.keyId !== "linux-vm-acceptance" ||
     distribution.signature?.file !== "LicoUp-linux-arm64-verification.tar.gz.sig" ||
     distribution.sha256 !== archiveDigest.slice("sha256:".length) ||
-    receipt.sourceBinding.bundleManifestDigest !== distribution.bundleManifestDigest ||
-    nodeMatrix.sourceBinding.bundleManifestDigest !== distribution.bundleManifestDigest ||
     directSignatureReady !== true
   ) {
     throw new Error("Linux product artifact bindings are inconsistent.");

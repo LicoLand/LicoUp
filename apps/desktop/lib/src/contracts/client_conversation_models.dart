@@ -14,6 +14,8 @@ final class ClientConversationSummary {
     this.parentConversationId,
     this.taskGoalId,
     this.listingKind,
+    this.memberAgentIds = const <String>[],
+    this.hasLocalOwner = false,
     this.children = const <ClientConversationSummary>[],
     this.archivedChildren = const <ClientConversationSummary>[],
   });
@@ -32,6 +34,8 @@ final class ClientConversationSummary {
         parentConversationId: _optionalId(json['parentConversationId']),
         taskGoalId: _optionalId(json['taskGoalId']),
         listingKind: _optionalId(json['listingKind']),
+        memberAgentIds: _strings(json['memberAgentIds']),
+        hasLocalOwner: json['hasLocalOwner'] == true,
       );
 
   final String id;
@@ -46,6 +50,14 @@ final class ClientConversationSummary {
   final String? parentConversationId;
   final String? taskGoalId;
   final String? listingKind;
+
+  /// Active Agent members' agent ids in join order — the group mosaic
+  /// avatar in conversation lists resolves these against the target catalog.
+  final List<String> memberAgentIds;
+
+  /// Whether an active human owner membership exists — the local user's cell
+  /// in the mosaic.
+  final bool hasLocalOwner;
   final List<ClientConversationSummary> children;
   final List<ClientConversationSummary> archivedChildren;
 
@@ -68,6 +80,8 @@ final class ClientConversationSummary {
       parentConversationId: parentConversationId,
       taskGoalId: taskGoalId,
       listingKind: listingKind,
+      memberAgentIds: memberAgentIds,
+      hasLocalOwner: hasLocalOwner,
       children: List<ClientConversationSummary>.unmodifiable(next),
       archivedChildren: archivedChildren,
     );
@@ -89,6 +103,8 @@ final class ClientConversationSummary {
       parentConversationId: parentConversationId,
       taskGoalId: taskGoalId,
       listingKind: listingKind,
+      memberAgentIds: memberAgentIds,
+      hasLocalOwner: hasLocalOwner,
       children: children,
       archivedChildren: List<ClientConversationSummary>.unmodifiable(next),
     );
@@ -367,10 +383,21 @@ final class ClientConversationGroupMemberDraft {
   const ClientConversationGroupMemberDraft({
     required this.agentId,
     required this.displayName,
+    this.profileId,
+    this.profileIntent,
   });
 
   final String agentId;
   final String displayName;
+
+  /// When set the member joins with the `profile:<id>` principal identity
+  /// instead of `agent:<agentId>`, keeping the Persona distinct from the
+  /// backing Agent's own membership.
+  final String? profileId;
+
+  /// The persisted intent applied to the new Membership right after
+  /// creation — model, effort and the persona's advanced preferences.
+  final Map<String, dynamic>? profileIntent;
 }
 
 String? _optionalId(Object? value) {
@@ -386,6 +413,13 @@ int _integer(Object? value) => switch (value) {
 
 Map<String, dynamic> _map(Object? value) =>
     value is Map ? Map<String, dynamic>.from(value) : const <String, dynamic>{};
+
+List<String> _strings(Object? value) => value is List
+    ? value
+          .map((entry) => entry.toString().trim())
+          .where((entry) => entry.isNotEmpty)
+          .toList(growable: false)
+    : const <String>[];
 
 List<Map<String, dynamic>> _maps(Object? value) => value is List
     ? value.whereType<Map>().map(Map<String, dynamic>.from).toList()

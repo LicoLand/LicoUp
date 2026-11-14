@@ -6,7 +6,9 @@ import 'package:licoup/src/composition/features/settings/settings_feature_compos
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
 import 'package:licoup/src/presentation/settings/settings_effect.dart';
 
@@ -52,28 +54,38 @@ void main() {
 
       final appearanceUpdate = feature.binding.projection.changes.first;
       feature.binding.intents.send(
-        const SetAppearancePreference(AppearancePresetIds.licoSodaLight),
+        const SetAppearancePreference(AppearancePresetIds.taroWaffle),
       );
       await appearanceUpdate;
-      expect(controller.appearancePresetId, AppearancePresetIds.licoSodaLight);
+      expect(controller.appearancePresetId, AppearancePresetIds.taroWaffle);
       expect(
         preferences.value.appearancePresetId,
-        AppearancePresetIds.licoSodaLight,
+        AppearancePresetIds.taroWaffle,
       );
 
       final motionUpdate = feature.binding.projection.changes.first;
-      feature.binding.intents.send(const SetReduceMotionPreference(true));
+      feature.binding.intents.send(
+        const SetReduceMotionPreference(ReduceMotionPreference.on),
+      );
       await motionUpdate;
-      expect(controller.reduceMotion, isTrue);
-      expect(preferences.value.reduceMotion, isTrue);
-      expect(feature.binding.projection.current.reduceMotion, isTrue);
+      expect(controller.reduceMotion, ReduceMotionPreference.on);
+      expect(preferences.value.reduceMotion, ReduceMotionPreference.on);
+      expect(
+        feature.binding.projection.current.reduceMotion,
+        ReduceMotionPreference.on,
+      );
 
       final resetMotionUpdate = feature.binding.projection.changes.first;
-      feature.binding.intents.send(const SetReduceMotionPreference(false));
+      feature.binding.intents.send(
+        const SetReduceMotionPreference(ReduceMotionPreference.system),
+      );
       await resetMotionUpdate;
-      expect(controller.reduceMotion, isFalse);
-      expect(preferences.value.reduceMotion, isFalse);
-      expect(feature.binding.projection.current.reduceMotion, isFalse);
+      expect(controller.reduceMotion, ReduceMotionPreference.system);
+      expect(preferences.value.reduceMotion, ReduceMotionPreference.system);
+      expect(
+        feature.binding.projection.current.reduceMotion,
+        ReduceMotionPreference.system,
+      );
 
       final loadingUpdate = feature.binding.projection.changes.first;
       feature.binding.intents.send(
@@ -86,10 +98,12 @@ void main() {
 
       preferences.failMotionWrite = true;
       final rejected = feature.binding.effects.effects.first;
-      feature.binding.intents.send(const SetReduceMotionPreference(true));
+      feature.binding.intents.send(
+        const SetReduceMotionPreference(ReduceMotionPreference.on),
+      );
       expect(await rejected, isA<SettingsActionRejected>());
-      expect(controller.reduceMotion, isFalse);
-      expect(preferences.value.reduceMotion, isFalse);
+      expect(controller.reduceMotion, ReduceMotionPreference.system);
+      expect(preferences.value.reduceMotion, ReduceMotionPreference.system);
 
       await feature.dispose();
       await feature.dispose();
@@ -102,7 +116,7 @@ final class _SettingsPreferencesRepository
   bool failMotionWrite = false;
   PresentationPreferences value = PresentationPreferences(
     layoutProfileId: LayoutProfileId.parse('dashboard'),
-    appearancePresetId: AppearancePresetIds.licoSodaLight,
+    appearancePresetId: AppearancePresetIds.taroWaffle,
     localePreference: LocalePreference.system,
   );
 
@@ -111,9 +125,11 @@ final class _SettingsPreferencesRepository
       PresentationPreferencesLoadResult(preferences: value);
 
   @override
-  Future<PresentationPreferences> setReduceMotion(bool enabled) async {
+  Future<PresentationPreferences> setReduceMotion(
+    ReduceMotionPreference preference,
+  ) async {
     if (failMotionWrite) throw StateError('synthetic_write_failure');
-    return value = value.copyWith(reduceMotion: enabled);
+    return value = value.copyWith(reduceMotion: preference);
   }
 
   @override
@@ -131,7 +147,21 @@ final class _SettingsPreferencesRepository
       value = value.copyWith(layoutProfileId: id);
 
   @override
+  Future<PresentationPreferences> setLayoutStyle(
+    LayoutProfileId profile,
+    LayoutStyleId style,
+  ) async => value = value.copyWith(
+    layoutStyleIds: {...value.layoutStyleIds, profile: style},
+  );
+
+  @override
   Future<PresentationPreferences> setLocalePreference(
     String preference,
   ) async => value = value.copyWith(localePreference: preference);
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) async => value = value.withResourceSelection(kind, selection);
 }

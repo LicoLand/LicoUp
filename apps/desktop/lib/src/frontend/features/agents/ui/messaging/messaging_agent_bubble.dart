@@ -10,12 +10,10 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 /// Agent-side message bubble: profile-owned material when requested, or a
 /// readability veil with a thin neutral hairline at rest.
 ///
-/// Plain profile (opaque): a quiet brand-family tint — the pale violet brand
-/// surface in light presets, the violet accent surface in dark presets — so
-/// the other speaker's words sit on the scheme's own wash. Card profile
-/// (glass): the interior stays a neutral veil; on hover the **edge light**
-/// fades in, in the speaking agent's brand hue — light lives on the rim,
-/// never in the fill.
+/// Plain profile: the demo's neutral `bg-subtle`/`bg-surface` fill — dark
+/// carries a faint violet hairline (`rgba(169,140,246,.18)`), light the
+/// neutral border. On hover the **edge light** fades in, in the speaking
+/// agent's brand hue — light lives on the rim, never in the fill.
 class MessagingAgentBubble extends StatelessWidget {
   const MessagingAgentBubble({
     super.key,
@@ -40,13 +38,22 @@ class MessagingAgentBubble extends StatelessWidget {
     final colors = context.licoColors;
     final isDark = colors.isDark;
     final opaque = ConversationMaterialScope.opaqueBubblesOf(context);
-    final fill = opaque
-        ? (isDark ? colors.accentSurface : colors.brandSurface)
-        : MessagingDesktopMetrics.agentBubbleVeilFill(isDark: isDark);
-    final restingBorder = MessagingDesktopMetrics.bubbleRestingBorder(
-      colors.line,
-      isDark: isDark,
-    );
+    // Demo [data-theme="dark"] --bubble-other-bg is `bg-subtle` with a faint
+    // violet-tinted border rgba(169,140,246,.18); light is `bg-surface` with
+    // the plain neutral border-subtle.
+    // Dark on glass: a white 5.5% veil so the ambient reads through; opaque
+    // material profiles (Dashboard) keep the solid surface fill.
+    // Black mask over the ambient — slightly translucent, never a
+    // white/gray wash, matching the floating-card recipe.
+    final fill = isDark ? const Color(0xB807070A) : colors.surface;
+    final restingBorder = opaque && isDark
+        ? colors.accent.withAlpha(46)
+        : (isDark
+              ? const Color(0x12FFFFFF)
+              : MessagingDesktopMetrics.bubbleRestingBorder(
+                  colors.line,
+                  isDark: isDark,
+                ));
     return MessagingBubbleEdgeGlow(
       borderRadius: borderRadius,
       agentKey: agentKey,

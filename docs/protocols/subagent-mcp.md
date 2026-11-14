@@ -1,19 +1,28 @@
 # LicoUp Subagent MCP
 
+Updated: 2026-09-30
+
 | Reference | Document |
 | --- | --- |
 | Localization | [简体中文](subagent-mcp.zh-CN.md) |
 | Native façade | [Native CLI](../architecture/NATIVE-CLI.md) |
 | Provider execution and registration | [Agent adapters](../architecture/AGENT-ADAPTERS-ARCHITECTURE.md) |
-| Public schema | [Subagent MCP schema](../../schemas/subagent_mcp/subagent_mcp.schema.json) |
+| Public schema | `schemas/subagent_mcp/subagent_mcp.schema.json` (LicoUp-CLI) |
 
 ## Module boundary
 
-`crates/licoup-mcp` owns the optional public MCP service and stdio connector.
-It is independently buildable using published Rust dependencies; it has no
-native, Flutter, domain-crate, or source-path dependency. Its only connection
-to LicoUp is the public `licoup.stdio.v1` process contract of the installed
+`crates/licoup-public-gateway` owns the optional public MCP service and stdio connector.
+It is independently buildable using published Rust dependencies and the neutral
+`licoup-foundation` crate for shared data-root resolution and process access leases.
+It has no native, Flutter, or domain-crate dependency. Runtime operations reach
+LicoUp through the public `licoup.stdio.v1` process contract of the installed
 native CLI. The outbound MCP client adapter remains a separate native capability.
+
+MCP transport credentials retain their independent `private_state` owner. They
+are not a facade over Foundation's generic private-file helpers. In particular,
+Windows credential files require current-user ownership, an exact protected
+current-user DACL, and reparse-point rejection. Sharing data-root coordination
+does not replace or relax these credential guards.
 
 The native `domain/subagents` application owns caller Membership checks,
 provider execution admission, durable dispatch claims, continuation, cancellation,
@@ -56,23 +65,36 @@ routes callers to the appropriate interface.
 
 ## Independent lifecycle and development
 
-The packaged executable is `lico-subagent-mcp`. The local native façade manages
-it with `licoup mcp start`, `stop`, `status`, and `reload`. `start` and `reload`
-accept `--binary` to select a separately built module executable. They ensure
-the native host is available without requiring Flutter. Normal desktop host
-startup also starts the optional module; failure degrades MCP availability and
-does not stop the native host.
+The executable `lico-subagent-mcp` is the payload of the optional
+`org.licoland.feature.mcp` package, not a bundled part of the client. The client
+neither ships a copy nor starts the service on its own: the package declares
+`on-demand` activation, so a caller starts it, and an absent or switched-off
+package starts no process and publishes no endpoint. `licoup mcp start`, `stop`,
+`status`, and `reload` remain the local native façade for that process; `start`
+and `reload` accept `--binary` to select a separately built module executable.
+They ensure the native host is available without requiring Flutter.
 
-For independent module development:
+For independent module development (the Rust workspace lives in the
+LicoUp-CLI repository):
 
 ```sh
-node tools/scripts/cargo-client.mjs build -p licoup-mcp
+node tools/scripts/cargo-client.mjs build -p licoup-public-gateway
 licoup mcp reload --binary <built-lico-subagent-mcp>
+```
+
+A release fills the package's declared native entry in the delivered
+`.licopkg` payload, which the LicoUp-CLI repository's packaging lane produces.
+This repository selects the delivered payload through
+`tools/client-release-package-set.json` and indexes it with:
+
+```sh
+npm run client:release:package-index:build
 ```
 
 The module also accepts `service start|stop|status|reload` directly. Its native
 CLI executable is explicitly supplied in `LICOUP_CLI_BINARY`; state is scoped by
-`LICOUP_PORTABLE_DIR`. A reusable bounded pool of public CLI sessions carries
+`LICOUP_HOME`. `LICOUP_PORTABLE_DIR` remains a lower-priority alias for existing
+published installations. A reusable bounded pool of public CLI sessions carries
 admissions. Cancellation has its own reserved transport session, so a slow
 inventory or admission request cannot occupy its channel.
 
@@ -126,7 +148,7 @@ their existing authority.
 
 | Scope | Maintained route |
 | --- | --- |
-| Public transport and tool expectations | [Interop manifest](../../tests/product-e2e/cli/subagent-mcp/interop-manifest.yaml) |
-| Caller-side protocol acceptance | [Upstream interop](../../tests/product-e2e/cli/subagent-mcp/upstream.mjs) |
-| Native target execution and control | [Downstream interop](../../tests/product-e2e/cli/subagent-mcp/downstream.mjs) |
-| Independent process lifecycle, recovery and cancellation isolation | [Module lifecycle tests](../../crates/licoup-mcp/tests/lifecycle.rs) |
+| Public transport and tool expectations | `tests/product-e2e/cli/subagent-mcp/interop-manifest.yaml` (LicoUp-CLI) |
+| Caller-side protocol acceptance | `tests/product-e2e/cli/subagent-mcp/upstream.mjs` (LicoUp-CLI) |
+| Native target execution and control | `tests/product-e2e/cli/subagent-mcp/downstream.mjs` (LicoUp-CLI) |
+| Independent process lifecycle, recovery and cancellation isolation | `crates/licoup-public-gateway/tests/lifecycle.rs` (LicoUp-CLI) |

@@ -152,3 +152,16 @@ final settingsResourceUsageSnapshotProvider = _snapshotProvider(
 final settingsResourceUsageInputsProvider = _inputsProvider(
   settingsResourceUsageSnapshotProvider,
 );
+
+final settingsTerminalCommandSourceProvider =
+    Provider<PresentationSource<SettingsTerminalCommandProjection>>(
+      (_) => _unavailableSource('terminal-command'),
+    );
+
+final settingsTerminalCommandSnapshotProvider = _snapshotProvider(
+  settingsTerminalCommandSourceProvider,
+);
+
+final settingsTerminalCommandInputsProvider = _inputsProvider(
+  settingsTerminalCommandSnapshotProvider,
+);

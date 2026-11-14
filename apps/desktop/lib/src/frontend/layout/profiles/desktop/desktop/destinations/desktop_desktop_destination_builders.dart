@@ -9,6 +9,7 @@ import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/destinations/desktop_destination_frame.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/presentation/desktop_desktop_destination_presentations.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/settings/desktop_settings_app.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 
 /// Desktop destination builders. 对话 and 设置 are fullscreen-exclusive apps:
 /// 对话 installs the messaging presentation strategy (participant flow, plain
@@ -22,7 +23,7 @@ desktopDesktopDestinationBuilders =
       ClientSection.monitoring: buildDesktopMonitoringDestination,
       ClientSection.skillHub: buildDesktopSkillHubDestination,
       ClientSection.pluginManagement: buildDesktopPluginManagementDestination,
-      ClientSection.mobileRelay: buildDesktopMobileRelayDestination,
+      ClientSection.devices: buildDesktopDevicesDestination,
       ClientSection.models: buildDesktopModelsDestination,
       ClientSection.settings: buildDesktopSettingsDestination,
       ClientSection.agentHub: buildDesktopAgentHubDestination,
@@ -50,6 +51,7 @@ Widget buildDesktopSettingsDestination(
   child: DesktopDestinationFrame(
     data: data,
     expectedDestination: ClientSection.settings,
+    pagePadding: LicoContentSpacing.paneContentPadding,
     child: DesktopSettingsApp(data: data),
   ),
 );
@@ -69,10 +71,10 @@ Widget buildDesktopPluginManagementDestination(
   LayoutDestinationBuildContext data,
 ) => _framed(data, ClientSection.pluginManagement);
 
-Widget buildDesktopMobileRelayDestination(
+Widget buildDesktopDevicesDestination(
   BuildContext context,
   LayoutDestinationBuildContext data,
-) => _framed(data, ClientSection.mobileRelay);
+) => _framed(data, ClientSection.devices);
 
 Widget buildDesktopModelsDestination(
   BuildContext context,

@@ -6,7 +6,6 @@ import 'package:presentation_contract/presentation_contract.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/features/agents/agents_feature_composition.dart';
 import 'package:licoup/src/composition/features/conversation/conversation_feature_composition.dart';
-import 'package:licoup/src/composition/features/mobile_relay/mobile_relay_feature_composition.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
@@ -48,19 +47,12 @@ class _AgentConversationWorkspaceFixtureState
     extends State<AgentConversationWorkspaceFixture> {
   late final AgentsFeatureComposition _agents;
   late final ConversationFeatureComposition _conversation;
-  late final MobileRelayFeatureComposition _relay;
 
   @override
   void initState() {
     super.initState();
     _agents = AgentsFeatureComposition(widget.controller);
     _conversation = ConversationFeatureComposition(widget.controller);
-    _relay = MobileRelayFeatureComposition(
-      relay: widget.controller.mobileRelayController,
-      secureMesh: widget.controller.secureMeshController,
-      homeLayout: widget.controller.mobileHomeLayoutController,
-      readMobileRuntime: () => widget.controller.mobileClientRuntimePlatform,
-    );
   }
 
   @override
@@ -74,13 +66,7 @@ class _AgentConversationWorkspaceFixtureState
 
   @override
   void dispose() {
-    unawaited(
-      Future.wait<void>([
-        _agents.close(),
-        _conversation.close(),
-        _relay.dispose(),
-      ]),
-    );
+    unawaited(Future.wait<void>([_agents.close(), _conversation.close()]));
     super.dispose();
   }
 
@@ -118,7 +104,6 @@ class _AgentConversationWorkspaceFixtureState
           intents: conversation.intents,
           effects: conversation.effects,
         ),
-        relay: _relay.binding,
         onAddTarget: widget.onAddTarget,
         onSearch: widget.onSearch,
         allowManualTargetActions: widget.allowManualTargetActions,

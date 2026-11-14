@@ -17,6 +17,44 @@ const int stdioRpcMaxErrorCodeBytes = conversationProtocolMaxErrorCodeBytes;
 const int stdioRpcMaxArgs = conversationProtocolMaxArgs;
 const Duration stdioRpcShutdownTimeout = Duration(seconds: 2);
 
+/// Frames at or above this size decode on a helper isolate. Smaller frames
+/// decode inline so a control reply (cancel/steer/detach) never waits for a
+/// bulk history or catalog frame that is still decoding.
+const int stdioRpcBulkDecodeThresholdBytes = 256 * 1024;
+
+/// Framed bytes may accumulate up to this bound before the transport pauses
+/// stdout. Pausing stalls the pipe, so the native child process applies real
+/// backpressure instead of the client buffering an unbounded decode backlog.
+/// The chunk that reaches the watermark is still accepted, so the pending
+/// backlog is bounded by this watermark plus one stdout chunk; the framer may
+/// additionally retain one in-progress frame up to [stdioRpcMaxFrameBytes].
+const int stdioRpcMaxDecodeBacklogBytes = stdioRpcMaxFrameBytes;
+
+/// stdout resumes once the decode backlog drains below this watermark.
+const int stdioRpcResumeDecodeBacklogBytes = stdioRpcMaxFrameBytes ~/ 4;
+
+/// Bulk bytes the native producer may hold in flight ahead of a control frame.
+///
+/// The producer's own bounded bulk write budget reserves this much for the
+/// frames already admitted when a control frame becomes ready, so a cancel,
+/// steer or detach reply is never further behind bulk than this bound. It is
+/// congruent with `STDIO_RPC_BULK_WRITE_HIGH_WATERMARK_BYTES` in the native
+/// stdio server (`crates/licoup/src/bin/licoup/stdio_rpc/frame_lane.rs` in LicoUp-CLI):
+/// a producer that exceeds it is applying less backpressure than the transport
+/// accounted for, and the control-aware window closes at its declared bound.
+const int stdioRpcProducerBulkWriteBudgetBytes = stdioRpcMaxFrameBytes;
+
+/// Framed bytes the transport may retain while a control request is
+/// outstanding.
+///
+/// The ordinary watermark plus the producer's declared bulk write budget: the
+/// reply cannot be further behind bulk than the backlog already retained plus
+/// the bulk the producer may still be writing ahead of it. The shared stdout
+/// pipe is never paused below this bound while control is outstanding, because
+/// pausing there would stop the reader short of the reply it is waiting for.
+const int stdioRpcControlWindowBacklogBytes =
+    stdioRpcMaxDecodeBacklogBytes + stdioRpcProducerBulkWriteBudgetBytes;
+
 int _workflowSequence = 0;
 
 String newStdioRpcWorkflowId() {

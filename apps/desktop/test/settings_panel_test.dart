@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:presentation_contract/presentation_contract.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/contracts/presentation/built_in_layout_spec.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_panel.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_panel_widgets.dart';
@@ -18,6 +21,7 @@ import 'package:licoup/src/frontend/shared/ui/directory_path_field.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_inputs.dart';
 import 'package:licoup/src/presentation/settings/settings_projection.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/frontend/features/settings/ui/client_resource_usage_card.dart';
@@ -29,6 +33,36 @@ import 'layout/layout_host_test_fixtures.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
 void main() {
+  testWidgets('segmented control labels keep the theme font family', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLicoTheme(
+          presetId: AppearancePresetIds.taroWaffle,
+          platformBrightness: Brightness.light,
+        ),
+        home: Scaffold(
+          body: SettingsSegmentedControl<int>(
+            segments: const [
+              (value: 0, label: 'Light'),
+              (value: 1, label: 'Dark'),
+            ],
+            selected: 0,
+            onChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    for (final label in ['Light', 'Dark']) {
+      final element = tester.element(find.text(label));
+      final family = Theme.of(element).textTheme.bodyMedium?.fontFamily;
+      expect(family, isNotNull);
+      expect(DefaultTextStyle.of(element).style.fontFamily, family);
+    }
+  });
+
   testWidgets('language picker dispatches a semantic locale intent', (
     tester,
   ) async {
@@ -63,9 +97,11 @@ void main() {
       find.byKey(const Key('appearance-day-night-toggle')),
       findsOneWidget,
     );
-    expect(find.text('跟随系统'), findsOneWidget);
+    expect(find.text('跟随系统'), findsNWidgets(2));
     expect(find.text('明亮'), findsOneWidget);
     expect(find.text('暗黑'), findsOneWidget);
+    expect(find.text('减少动态效果'), findsOneWidget);
+    expect(find.byKey(const Key('settings-reduce-motion')), findsOneWidget);
     expect(find.bySemanticsLabel('界面布局'), findsOneWidget);
     final dropdowns = tester
         .widgetList<SettingsDropdownList<String>>(
@@ -107,6 +143,107 @@ void main() {
       find.text('test-data/licoup/native-conversation-snapshots'),
       findsOneWidget,
     );
+  });
+
+  testWidgets(
+    'a mounted plan contribution renders through its compiled primitive view',
+    (tester) async {
+      final fixture = _settingsFixture(
+        planContributions: [
+          MountedContribution(
+            id: 'org.licoland.appearance.synthetic/status',
+            primitive: DeclarativePrimitive.text,
+            inputs: const {'text': 'Synthetic appearance package is serving'},
+          ),
+        ],
+      );
+      await _pumpSettings(tester, fixture);
+
+      expect(
+        find.byKey(const Key('settings-plan-contributions')),
+        findsOneWidget,
+        reason: 'the mounted revision reaches the surface',
+      );
+      expect(
+        find.byKey(
+          const Key('host-text-org.licoland.appearance.synthetic/status'),
+        ),
+        findsOneWidget,
+        reason: 'the compiled primitive view renders it',
+      );
+      expect(
+        find.text('Synthetic appearance package is serving'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('a plan that mounted nothing contributes no surface', (
+    tester,
+  ) async {
+    final fixture = _settingsFixture();
+    await _pumpSettings(tester, fixture);
+
+    expect(find.byKey(const Key('settings-plan-contributions')), findsNothing);
+  });
+
+  testWidgets('retained data root moves to Trash only after confirmation', (
+    tester,
+  ) async {
+    final fixture = _settingsFixture();
+    final storage = fixture.presentation.storage.value;
+    fixture.presentation.storage.publish(
+      SettingsStorageInputs(
+        portableDataPath: storage.portableDataPath,
+        portableDataSource: 'saved',
+        previousDataHomePath: '/synthetic/previous-root',
+        previousDataHomeAvailable: true,
+        snapshotRootPath: storage.snapshotRootPath,
+        savingSnapshotRoot: false,
+      ),
+    );
+    await _pumpSettings(tester, fixture, height: 1400);
+
+    final scrollable = find
+        .descendant(
+          of: find.byKey(const Key('settings-content-scroll')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    final cleanup = find.byKey(
+      const Key('settings-data-home-cleanup-previous'),
+    );
+    await tester.scrollUntilVisible(cleanup, 360, scrollable: scrollable);
+    await tester.ensureVisible(cleanup);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Original folder retained: /synthetic/previous-root'),
+      findsOneWidget,
+    );
+    final relocate = find.byKey(const Key('settings-data-home-relocate'));
+    await tester.ensureVisible(relocate);
+    expect(tester.widget<FilledButton>(relocate).onPressed, isNotNull);
+    expect(tester.widget<OutlinedButton>(cleanup).onPressed, isNotNull);
+
+    await tester.tap(cleanup);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Move the original data folder to Trash?'),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        '“/synthetic/previous-root” will be moved to the system Trash. Your current LicoUp data folder will not change.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Move original folder to Trash').last);
+    await tester.pump();
+
+    final cleanupIntent = fixture.intents.values
+        .whereType<CleanupPreviousDataHome>()
+        .single;
+    expect(cleanupIntent.expectedPreviousRootPath, '/synthetic/previous-root');
   });
 
   testWidgets('backup directory open intent retains the edited path', (
@@ -282,7 +419,7 @@ void main() {
     tester,
   ) async {
     final fixture = _settingsFixture(
-      appearanceId: AppearancePresetIds.licoSoda,
+      appearanceId: AppearancePresetIds.starlitGold,
     );
     await _pumpSettings(tester, fixture, height: 460);
 
@@ -294,15 +431,17 @@ void main() {
     expect(
       dropdown.items.map((item) => item.value).toSet().intersection(const {
         'default-system',
-        'lico-soda',
-        'lico-soda-light',
+        'lico-starlit-gold',
+        'lico-taro-waffle',
       }),
-      const {'lico-soda'},
+      const {'lico-starlit-gold'},
     );
     expect(
       find.text(
         dropdown.items
-            .singleWhere((item) => item.value == AppearancePresetIds.licoSoda)
+            .singleWhere(
+              (item) => item.value == AppearancePresetIds.starlitGold,
+            )
             .label,
       ),
       findsOneWidget,
@@ -323,7 +462,9 @@ void main() {
         ?.style
         ?.color;
 
-    expect(indexForeground('General'), colors.textOnPrimary);
+    // Selected index rows render in the shared selection ink, not a
+    // filled-surface tone.
+    expect(indexForeground('General'), colors.selectionInk);
     final scrollable = find
         .descendant(
           of: find.byKey(const Key('settings-content-scroll')),
@@ -337,11 +478,13 @@ void main() {
     );
     await tester.drag(scrollable, const Offset(0, -240));
     await tester.pump(const Duration(milliseconds: 500));
-    expect(indexForeground('General'), isNot(colors.textOnPrimary));
+    expect(indexForeground('General'), isNot(colors.selectionInk));
 
     await tester.tap(find.text('General').first);
     await tester.pump(const Duration(milliseconds: 500));
-    expect(indexForeground('General'), colors.textOnPrimary);
+    // Selected index rows render in the shared selection ink, not a
+    // filled-surface tone.
+    expect(indexForeground('General'), colors.selectionInk);
     expect(tester.takeException(), isNull);
   });
 
@@ -416,38 +559,36 @@ void main() {
           .whereType<SetAppearancePreference>()
           .single
           .presetId,
-      AppearancePresetIds.licoMistLight,
+      AppearancePresetIds.taroWaffle,
     );
     expect(fixture.intents.values.whereType<SetLayoutPreference>(), isEmpty);
   });
 
   testWidgets(
-    'macOS motion follows the system and other desktop systems can reduce motion',
+    'reduce motion follows the system by default and toggles manually',
     (tester) async {
-      var fixture = _settingsFixture();
-      await _pumpSettings(tester, fixture, disableAnimations: true);
-      final systemControl = tester.widget<ListTile>(
-        find.byKey(const Key('settings-reduce-motion')),
-      );
-      expect(systemControl.onTap, isNull);
-      expect(find.text('On · Managed by system'), findsOneWidget);
-
-      await tester.pumpWidget(const SizedBox.shrink());
-      fixture = _settingsFixture();
-      await _pumpSettings(tester, fixture, platform: TargetPlatform.linux);
-      final control = tester.widget<SwitchListTile>(
-        find.byKey(const Key('settings-reduce-motion')),
-      );
-      expect(control.onChanged, isNotNull);
-      await tester.tap(find.byKey(const Key('settings-reduce-motion')));
-      await tester.pump();
-      expect(
-        fixture.intents.values
-            .whereType<SetReduceMotionPreference>()
-            .single
-            .enabled,
-        isTrue,
-      );
+      for (final platform in [TargetPlatform.macOS, TargetPlatform.linux]) {
+        final fixture = _settingsFixture();
+        await _pumpSettings(tester, fixture, platform: platform);
+        final toggleFinder = find.byKey(const Key('settings-reduce-motion'));
+        final control = tester
+            .widget<SettingsSegmentedControl<ReduceMotionPreference>>(
+              toggleFinder,
+            );
+        expect(control.selected, ReduceMotionPreference.system);
+        await tester.tap(
+          find.descendant(of: toggleFinder, matching: find.text('On')),
+        );
+        await tester.pump();
+        expect(
+          fixture.intents.values
+              .whereType<SetReduceMotionPreference>()
+              .single
+              .preference,
+          ReduceMotionPreference.on,
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
     },
   );
 
@@ -467,8 +608,75 @@ void main() {
       await tester.pump(const Duration(milliseconds: 16));
     }
     expect(find.text('Export Logs'), findsOneWidget);
+    expect(find.byKey(const Key('settings-log-export-card')), findsOneWidget);
+    expect(
+      find.byKey(const Key('settings-section-header-diagnostics')),
+      findsOneWidget,
+    );
     expect(find.byType(ClientResourceUsageCard), findsNothing);
     expect(find.text('Tools'), findsNothing);
+  });
+
+  testWidgets('settings selection controls share one geometry', (tester) async {
+    final fixture = _settingsFixture();
+    await _pumpSettings(tester, fixture, height: 1400);
+
+    final dropdownSize = tester.getSize(
+      find.byKey(const Key('settings-locale-dropdown')),
+    );
+    expect(dropdownSize.height, settingsControlHeight);
+    expect(dropdownSize.width, settingsControlWidth);
+    final toggleSize = tester.getSize(
+      find.byKey(const Key('appearance-day-night-toggle')),
+    );
+    expect(toggleSize.height, settingsControlHeight);
+    expect(toggleSize.width, settingsControlWidth);
+
+    // Directory rows echo live state, so no refresh buttons remain anywhere
+    // in the settings content.
+    final scrollable = find
+        .descendant(
+          of: find.byKey(const Key('settings-content-scroll')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.text('LicoUp Backup Directory'),
+      360,
+      scrollable: scrollable,
+    );
+    expect(find.byIcon(Icons.refresh_outlined), findsNothing);
+  });
+
+  testWidgets('updates and startup render the shared section header', (
+    tester,
+  ) async {
+    final fixture = _settingsFixture();
+    await _pumpSettings(tester, fixture, height: 1400);
+    final scrollable = find
+        .descendant(
+          of: find.byKey(const Key('settings-content-scroll')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('settings-section-header-updates')),
+      360,
+      scrollable: scrollable,
+    );
+    expect(
+      find.byKey(const Key('settings-section-header-updates')),
+      findsOneWidget,
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('settings-section-header-startup')),
+      360,
+      scrollable: scrollable,
+    );
+    expect(
+      find.byKey(const Key('settings-section-header-startup')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('an empty theme catalog leaves general and layout available', (
@@ -529,9 +737,10 @@ void main() {
   SettingsPresentationFixture presentation,
 })
 _settingsFixture({
-  String appearanceId = AppearancePresetIds.licoSoda,
+  String appearanceId = AppearancePresetIds.starlitGold,
   String locale = 'system',
   String snapshotRoot = 'test-data/licoup/backups',
+  List<MountedContribution> planContributions = const [],
 }) {
   final projection = settingsProjectionFixture(
     appearanceId: appearanceId,
@@ -544,7 +753,10 @@ _settingsFixture({
     source: source,
     intents: intents,
     binding: settingsBindingFixture(source: source, intents: intents),
-    presentation: SettingsPresentationFixture(projection: projection),
+    presentation: SettingsPresentationFixture(
+      projection: projection,
+      planContributions: planContributions,
+    ),
   );
 }
 

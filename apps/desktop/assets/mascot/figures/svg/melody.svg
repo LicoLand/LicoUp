@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Lico avatar">
+  <defs><linearGradient id="a-melody-bg" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#f9f1ff"/><stop offset="1" stop-color="#dfc4f5"/></linearGradient><radialGradient id="a-melody-glow"><stop offset="0.1" stop-color="#ffffff" stop-opacity="0.75"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient></defs>
+  <g transform="translate(-12 1) scale(1.12)">
+  <defs>
+    <radialGradient id="a-melody-head" cx="38%" cy="30%" r="80%"><stop offset="0" stop-color="#f4fffa"/><stop offset="0.55" stop-color="#dbf5e9"/><stop offset="1" stop-color="#b0e0c9"/></radialGradient>
+    <radialGradient id="a-melody-arm" cx="40%" cy="28%" r="85%"><stop offset="0" stop-color="#f4fffa"/><stop offset="0.6" stop-color="#dbf5e9"/><stop offset="1" stop-color="#b0e0c9"/></radialGradient>
+    <radialGradient id="a-melody-occlusion"><stop offset="0.15" stop-color="#7db79b" stop-opacity="0.5"/><stop offset="1" stop-color="#7db79b" stop-opacity="0"/></radialGradient>
+    <radialGradient id="a-melody-highlight"><stop offset="0.3" stop-color="#ffffff" stop-opacity="0.95"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="a-melody-blush"><stop offset="0.25" stop-color="#ffadb5" stop-opacity="0.95"/><stop offset="1" stop-color="#ffadb5" stop-opacity="0"/></radialGradient>
+    <radialGradient id="a-melody-armshadow"><stop offset="0.2" stop-color="#6d4a2a" stop-opacity="0.3"/><stop offset="1" stop-color="#6d4a2a" stop-opacity="0"/></radialGradient>
+    <radialGradient id="a-melody-rimshadow"><stop offset="0.2" stop-color="#8a5a33" stop-opacity="0.32"/><stop offset="1" stop-color="#8a5a33" stop-opacity="0"/></radialGradient>
+    <linearGradient id="a-melody-rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3dcb8"/><stop offset="0.55" stop-color="#e6c595"/><stop offset="1" stop-color="#d3a877"/></linearGradient>
+    <linearGradient id="a-melody-cup" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e2bb8b"/><stop offset="1" stop-color="#cf9f6c"/></linearGradient>
+    <linearGradient id="a-melody-cupside" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8a5a33" stop-opacity="0.28"/><stop offset="0.22" stop-color="#8a5a33" stop-opacity="0"/><stop offset="0.75" stop-color="#8a5a33" stop-opacity="0"/><stop offset="1" stop-color="#8a5a33" stop-opacity="0.32"/></linearGradient>
+    <radialGradient id="a-melody-eye" cx="42%" cy="34%" r="75%"><stop offset="0" stop-color="#3b4580"/><stop offset="0.7" stop-color="#1a1f3f"/><stop offset="1" stop-color="#11142b"/></radialGradient>
+    <linearGradient id="a-melody-rimlight" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c9b8ff" stop-opacity="0"/><stop offset="0.55" stop-color="#c9b8ff" stop-opacity="0"/><stop offset="1" stop-color="#b8a2ff" stop-opacity="0.75"/></linearGradient>
+    <clipPath id="a-melody-cupclip"><path d="M40 142H160L148 201Q146 209 138 209H62Q54 209 52 201Z"/></clipPath>
+    <clipPath id="a-melody-headclip"><circle cx="100" cy="90" r="66"/></clipPath>
+    <linearGradient id="a-melody-band" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#a58bff"/><stop offset="1" stop-color="#6a4ce0"/></linearGradient>
+    <linearGradient id="a-melody-cupL" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7b5ff0"/><stop offset="1" stop-color="#3b2a8f"/></linearGradient>
+  </defs>
+  <g>
+    <g>
+      <circle cx="100" cy="90" r="66" fill="url(#a-melody-head)"/>
+      <ellipse cx="100" cy="150" rx="78" ry="34" fill="url(#a-melody-occlusion)" clip-path="url(#a-melody-headclip)"/>
+      <circle cx="100" cy="90" r="64.8" fill="none" stroke="url(#a-melody-rimlight)" stroke-width="2.6" opacity="0.55"/>
+      <ellipse cx="76" cy="50" rx="24" ry="14" fill="url(#a-melody-highlight)" transform="rotate(-28 76 50)"/>
+      <g>
+        <g>
+          <g><ellipse cx="78" cy="98" rx="8.2" ry="10" fill="url(#a-melody-eye)"/>
+            <ellipse cx="122" cy="98" rx="8.2" ry="10" fill="url(#a-melody-eye)"/>
+            <circle cx="81.2" cy="93.2" r="3.1" fill="#fff"/><circle cx="125.2" cy="93.2" r="3.1" fill="#fff"/>
+            <circle cx="75.4" cy="103" r="1.4" fill="#fff" opacity=".8"/><circle cx="119.4" cy="103" r="1.4" fill="#fff" opacity=".8"/></g>
+        </g>
+        <g><ellipse cx="62" cy="113" rx="14" ry="9" fill="url(#a-melody-blush)"/><ellipse cx="138" cy="113" rx="14" ry="9" fill="url(#a-melody-blush)"/></g>
+        <g><path d="M94 111.5q6 5.5 12 0" fill="none" stroke="#7a4636" stroke-width="2.6" stroke-linecap="round"/></g>
+      </g>
+      <g>
+        <path d="M29 92A71 71 0 0 1 171 92" fill="none" stroke="url(#a-melody-band)" stroke-width="7" stroke-linecap="round"/>
+        <path d="M37 72A66 66 0 0 1 72 30" fill="none" stroke="#e6ddff" stroke-width="1.8" stroke-linecap="round" opacity=".8"/>
+        <rect x="20" y="74" width="19" height="35" rx="9.5" fill="url(#a-melody-cupL)"/>
+        <rect x="161" y="74" width="19" height="35" rx="9.5" fill="url(#a-melody-cupL)"/>
+        <rect x="33.5" y="78" width="7" height="27" rx="3.5" fill="#c9b8ff"/>
+        <rect x="159.5" y="78" width="7" height="27" rx="3.5" fill="#c9b8ff"/>
+        <circle cx="27" cy="91.5" r="3.6" fill="#f2d38b"/><circle cx="173" cy="91.5" r="3.6" fill="#f2d38b"/>
+      </g>
+    </g>
+    <g>
+      <path d="M40 142H160L148 201Q146 209 138 209H62Q54 209 52 201Z" fill="url(#a-melody-cup)"/>
+      <g clip-path="url(#a-melody-cupclip)" fill="none" stroke-linecap="round">
+        <path d="M-60 140 l70 72 M10 140 l-70 72 M-37 140 l70 72 M33 140 l-70 72 M-14 140 l70 72 M56 140 l-70 72 M9 140 l70 72 M79 140 l-70 72 M32 140 l70 72 M102 140 l-70 72 M55 140 l70 72 M125 140 l-70 72 M78 140 l70 72 M148 140 l-70 72 M101 140 l70 72 M171 140 l-70 72 M124 140 l70 72 M194 140 l-70 72 M147 140 l70 72 M217 140 l-70 72 M170 140 l70 72 M240 140 l-70 72 M193 140 l70 72 M263 140 l-70 72 M216 140 l70 72 M286 140 l-70 72 " stroke="#b9854f" stroke-width="3.2" opacity=".35" transform="translate(0 1.4)"/>
+        <path d="M-60 140 l70 72 M10 140 l-70 72 M-37 140 l70 72 M33 140 l-70 72 M-14 140 l70 72 M56 140 l-70 72 M9 140 l70 72 M79 140 l-70 72 M32 140 l70 72 M102 140 l-70 72 M55 140 l70 72 M125 140 l-70 72 M78 140 l70 72 M148 140 l-70 72 M101 140 l70 72 M171 140 l-70 72 M124 140 l70 72 M194 140 l-70 72 M147 140 l70 72 M217 140 l-70 72 M170 140 l70 72 M240 140 l-70 72 M193 140 l70 72 M263 140 l-70 72 M216 140 l70 72 M286 140 l-70 72 " stroke="#f0d0a2" stroke-width="2.8" opacity=".9"/>
+      </g>
+      <path d="M40 142H160L148 201Q146 209 138 209H62Q54 209 52 201Z" fill="url(#a-melody-cupside)"/>
+      <rect x="30" y="121" width="140" height="27" rx="13.5" fill="url(#a-melody-rim)"/>
+      <path d="M44 126.5h112" stroke="#fbead0" stroke-width="3" stroke-linecap="round" opacity=".9"/>
+      <ellipse cx="100" cy="150" rx="66" ry="7" fill="url(#a-melody-rimshadow)" clip-path="url(#a-melody-cupclip)"/>
+    </g>
+    <g>
+      <ellipse cx="72" cy="139" rx="20" ry="7.5" fill="url(#a-melody-armshadow)"/>
+      <ellipse cx="69" cy="131" rx="20" ry="12.5" fill="url(#a-melody-arm)" transform="rotate(-8 69 131)"/>
+    </g>
+    <g>
+      <ellipse cx="128" cy="139" rx="20" ry="7.5" fill="url(#a-melody-armshadow)"/>
+      <ellipse cx="131" cy="131" rx="20" ry="12.5" fill="url(#a-melody-arm)" transform="rotate(8 131 131)"/>
+    </g>
+  </g>
+  </g>
+</svg>

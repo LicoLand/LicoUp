@@ -8,7 +8,7 @@ English · [简体中文](README.zh-CN.md)
 
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?style=flat-square)](LICENSE)
 [![Version: 0.1.0-alpha](https://img.shields.io/badge/version-0.1.0--alpha-orange?style=flat-square)](docs/STATUS.md)
-[![Platforms: macOS · Windows · Linux · Android · iOS](https://img.shields.io/badge/platforms-macOS_%C2%B7_Windows_%C2%B7_Linux_%C2%B7_Android_%C2%B7_iOS-24292f?style=flat-square)](docs/COMPATIBILITY.md)
+[![Platforms: macOS · Windows · Linux](https://img.shields.io/badge/platforms-macOS_%C2%B7_Windows_%C2%B7_Linux-24292f?style=flat-square)](docs/COMPATIBILITY.md)
 
 </div>
 
@@ -34,7 +34,6 @@ To build from source instead:
 | --- | --- |
 | Node.js | 22 or 24 |
 | Flutter | stable |
-| Rust | stable |
 
 ```bash
 npm ci
@@ -42,6 +41,13 @@ npm run client:get
 npm run client:analyze
 npm run client:test
 ```
+
+The native sidecar binaries this client embeds are delivered by the
+[LicoUp-CLI](https://github.com/LicoLand/LicoUp-CLI) component repository —
+this repository no longer carries the Rust workspace that produces them.
+The Android and iOS implementations live in the sibling
+[LicoUp-Android](https://github.com/LicoLand/LicoUp-Android) and
+[LicoUp-iOS](https://github.com/LicoLand/LicoUp-iOS) repositories.
 
 > [!NOTE]
 > LicoUp is in early alpha: a build target or preview feature is not a
@@ -66,7 +72,7 @@ Building a distributed collaboration network for the agentic era — where human
 | **Multi-Agent Collaboration** | Connect agents across devices and endpoints into one collaborative network where your workflow and others' naturally converge. |
 | **Extending Agents** | Discover, customize, and add extensions to enhance agent capabilities, reduce operational cost, and maximize the value of every token. |
 | **Seamless Chat with Agents** | Bring agents into any conversation on demand. They join as visible participants, pick up context, and assist in place. |
-| **Customized Workflow** | Adaptive Flywheel is a strategy generator for your way of working: one-shot pipelines, branching flows, or self-looping agent cycles that keep iterating toward the goal. Bind each role's agent, model, and reasoning effort, authorize the exact revision, and let the conversation run it. |
+| **Customized Workflow** | Acativa is a strategy generator for your way of working: one-shot pipelines, branching flows, or self-looping agent cycles that keep iterating toward the goal. Bind each role's agent, model, and reasoning effort, authorize the exact revision, and let the conversation run it. |
 | **Privacy and Security** | Sensitive runtime data stays on the device; default scenarios do not upload plaintext. Peer transfers are end-to-end encrypted before they leave the sender, and no protected content leaves the client without explicit approval, unless you choose Telegram or another external messenger as a trusted channel — details in [Privacy concerns](#privacy-concerns). |
 
 ## Privacy concerns

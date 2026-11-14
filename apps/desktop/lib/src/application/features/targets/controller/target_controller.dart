@@ -34,7 +34,6 @@ class TargetController extends ApplicationStateOwner {
     required Object portableData,
     required Iterable<String> packagedTargetIds,
     required bool Function() isMobileRuntime,
-    required Future<List<TargetCandidate>> Function() scanMobileTargets,
     required void Function() onTargetsSettled,
     required Future<void> Function() loadSelectedConversation,
     required bool Function() shouldLoadSelectedConversation,
@@ -46,7 +45,6 @@ class TargetController extends ApplicationStateOwner {
        _portableData = portableData,
        _packagedTargetIds = List.unmodifiable(packagedTargetIds),
        _isMobileRuntime = isMobileRuntime,
-       _scanMobileTargets = scanMobileTargets,
        _onTargetsSettled = onTargetsSettled,
        _loadSelectedConversation = loadSelectedConversation,
        _shouldLoadSelectedConversation = shouldLoadSelectedConversation,
@@ -59,7 +57,6 @@ class TargetController extends ApplicationStateOwner {
   final Object _portableData;
   final List<String> _packagedTargetIds;
   final bool Function() _isMobileRuntime;
-  final Future<List<TargetCandidate>> Function() _scanMobileTargets;
   final void Function() _onTargetsSettled;
   final Future<void> Function() _loadSelectedConversation;
   final bool Function() _shouldLoadSelectedConversation;
@@ -260,9 +257,9 @@ class TargetController extends ApplicationStateOwner {
     var loadSelectedConversation = false;
     try {
       if (_isMobileRuntime()) {
-        final targets = await _scanMobileTargets();
-        if (!_isCurrentScan(generation)) return;
-        _targets = List.unmodifiable(targets);
+        // The mobile runtime has no local targets and no paired-device
+        // transport until the mobile clients adopt LicoArc pairing.
+        _targets = const <TargetCandidate>[];
         _onTargetsSettled();
         if (showProgress) _emitScanComplete();
         return;
@@ -469,8 +466,7 @@ class TargetController extends ApplicationStateOwner {
     );
     for (final slot in reduction.successfulSlots) {
       final candidate = slot.candidate;
-      if (candidate != null &&
-          TargetPolicy.hasSelectedAgentModelCatalog(candidate)) {
+      if (candidate != null && candidate.hasSelectedAgentModelCatalog) {
         _nativeModelCatalogRefreshedIds.add(slot.targetId);
       }
     }
@@ -523,8 +519,7 @@ class TargetController extends ApplicationStateOwner {
         candidate,
         replaceModelCatalog: enableAgentCliModelLookup,
       );
-      if (enableAgentCliModelLookup &&
-          TargetPolicy.hasSelectedAgentModelCatalog(candidate)) {
+      if (enableAgentCliModelLookup && candidate.hasSelectedAgentModelCatalog) {
         _nativeModelCatalogRefreshedIds.add(targetId);
       }
       if (!_sameTargets(_targets, next)) {

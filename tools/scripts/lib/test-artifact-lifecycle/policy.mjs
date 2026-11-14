@@ -3,6 +3,7 @@ import { existsSync, lstatSync } from "node:fs";
 import path from "node:path";
 import {
   FORBIDDEN_TARGET_SEGMENTS,
+  FLUTTER_TEST_TARGET,
   REGISTRY_PATH,
   TEST_ARTIFACT_SCHEMA_VERSION,
 } from "./constants.mjs";
@@ -20,9 +21,8 @@ export function normalizeTestArtifactTarget(repoRoot, targetPath) {
     throw new Error("test artifact target must stay inside the repository");
   }
   const normalized = relative.split(path.sep).join("/");
-  const managedCompilerOutput = normalized.startsWith("build/") ||
-    normalized === "apps/desktop/build" ||
-    normalized.startsWith("apps/desktop/build/");
+  const managedCompilerOutput = normalized === FLUTTER_TEST_TARGET ||
+    normalized.startsWith(`${FLUTTER_TEST_TARGET}/`);
   if (!managedCompilerOutput || normalized === REGISTRY_PATH ||
       normalized.startsWith(`${REGISTRY_PATH}/`)) {
     throw new Error("test artifact target must be a managed build output");

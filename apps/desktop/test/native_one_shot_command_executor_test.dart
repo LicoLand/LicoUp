@@ -46,7 +46,7 @@ void main() {
 
     Object? caught;
     try {
-      await executor.execute(const ['state', 'admit', '/tmp/x']);
+      await executor.execute(const ['state', 'admit', '/tmp/example-x']);
     } on Object catch (error) {
       caught = error;
     }

@@ -11,12 +11,17 @@ export const packageClientRuntime = Object.freeze((() => {
     workspaceRoot,
     flutterClientRoot,
     clientBuildRoot: path.join(workspaceRoot, "build", "apps", "desktop"),
-    nativeTargetRoot: path.join(
+    nativeArtifactsRoot: path.join(
       workspaceRoot,
       "build",
-      "crates",
-      "licoup-native",
-      "target",
+      "native-artifacts",
+    ),
+    swiftSidecarRoot: path.join(
+      workspaceRoot,
+      "build",
+      "apps",
+      "desktop",
+      "swift-sidecars",
     ),
     defaultConfigPath: path.join(flutterClientRoot, "packaging.modules.json"),
     canonicalPackagingConfigRef: "apps/desktop/packaging.modules.json",
@@ -24,7 +29,6 @@ export const packageClientRuntime = Object.freeze((() => {
       "package-metadata/licoup/packaging-modules.json",
     macosArm64TargetId: "macos-arm64",
     windowsX64TargetId: "windows-x64",
-    windowsX64RustTarget: "x86_64-pc-windows-msvc",
     bundleId: "land.lico.licoup",
     appName: "LicoUp.app",
   };
@@ -269,7 +273,7 @@ export function runtimeDataPolicyRecord(platform = "generic") {
           ? "system-xdg-data"
           : "system-application-support",
     directoryName: "portable-data",
-    environmentOverride: "LICOUP_PORTABLE_DIR",
+    environmentOverride: "LICOUP_HOME",
     packagedMacAppIgnoresEnvironmentOverride: true,
   });
 }

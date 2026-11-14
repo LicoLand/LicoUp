@@ -224,4 +224,97 @@ void main() {
     expect(find.byType(RepaintBoundary), findsWidgets);
     expect(find.text('Row A'), findsOneWidget);
   });
+
+  testWidgets('CollectionView indexes item keys per list, not per build', (
+    tester,
+  ) async {
+    var keyReads = 0;
+    final items = List.generate(500, (index) => 'Msg $index');
+
+    late StateSetter rebuild;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              rebuild = setState;
+              return CollectionView<String>(
+                items: items,
+                itemKey: (item) {
+                  keyReads++;
+                  return item;
+                },
+                itemBuilder: (context, item, index) =>
+                    SizedBox(height: 40, child: Text(item)),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    final readsAfterFirstBuild = keyReads;
+    expect(readsAfterFirstBuild, greaterThanOrEqualTo(items.length));
+
+    // An unrelated parent rebuild must not walk the whole list again; only the
+    // rows this lazy viewport actually rebuilds read their key.
+    rebuild(() {});
+    await tester.pump();
+
+    expect(
+      keyReads - readsAfterFirstBuild,
+      lessThan(items.length),
+      reason: 'a rebuild must not re-index every item',
+    );
+
+    // The index still resolves items that were never built before.
+    await tester.dragUntilVisible(
+      find.text('Msg 499'),
+      find.byType(Scrollable),
+      const Offset(0, -600),
+    );
+    expect(find.text('Msg 499'), findsOneWidget);
+  });
+
+  testWidgets('reading position survives new items without a manual capture', (
+    tester,
+  ) async {
+    final controller = ReadingPositionScrollController();
+    var items = List.generate(20, (index) => 'Msg $index');
+
+    late StateSetter setListState;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              setListState = setState;
+              return CollectionView<String>(
+                controller: controller,
+                reverse: true,
+                items: items,
+                itemKey: (item) => item,
+                itemBuilder: (context, item, index) =>
+                    SizedBox(height: 60, child: Text(item)),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    controller.jumpTo(300);
+    await tester.pump();
+    final before = tester.getTopLeft(find.text('Msg 12')).dy;
+
+    // New content arrives at the newest edge. The list captures the reading
+    // anchor itself, so the scrolled-up reader keeps the same visible rows.
+    setListState(() {
+      items = ['Msg new', ...items];
+    });
+    await tester.pump();
+
+    expect(tester.getTopLeft(find.text('Msg 12')).dy, before);
+    expect(controller.offset, 360);
+  });
 }

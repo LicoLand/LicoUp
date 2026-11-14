@@ -68,9 +68,16 @@ class MessagingConversationOverlayGlass extends StatelessWidget {
     return LicoGlass(
       borderRadius: borderRadius,
       fill: readabilityVeil ? Colors.transparent : washFill,
-      shadows: MessagingDesktopMetrics.conversationOverlayGlassShadows(
-        isDark: isDark,
-      ),
+      shadows: focused
+          ? [
+              BoxShadow(color: colors.accentGlow, blurRadius: 14),
+              ...MessagingDesktopMetrics.conversationOverlayGlassShadows(
+                isDark: isDark,
+              ),
+            ]
+          : MessagingDesktopMetrics.conversationOverlayGlassShadows(
+              isDark: isDark,
+            ),
       size: LicoGlassSize.large,
       readBackdrop: true,
       blurSigma: MessagingDesktopMetrics.conversationOverlayGlassBlurSigma,
@@ -78,7 +85,8 @@ class MessagingConversationOverlayGlass extends StatelessWidget {
       trackLight: true,
       gelPress: false,
       focused: focused,
-      focusColor: focused ? colors.accent : null,
+      focusColor: focused ? colors.accent.withValues(alpha: 0.6) : null,
+      focusWidth: 1,
       child: content,
     );
   }

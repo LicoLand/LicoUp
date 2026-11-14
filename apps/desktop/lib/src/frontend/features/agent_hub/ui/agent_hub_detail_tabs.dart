@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_surface.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 
 /// One quiet track with a traveling selection, rather than independent chips.
 class AgentHubDetailTabs extends StatelessWidget {
@@ -49,7 +51,9 @@ class AgentHubDetailTabs extends StatelessWidget {
     return SizedBox(
       width: preferredWidth(context, labels),
       child: AgentHubDetailSelectorSurface(
-        fill: colors.surfaceLow,
+        fill: (colors.isDark
+            ? LicoPaneGlass.contentInnerCardFill
+            : colors.surfaceLow),
         stroke: colors.line,
         child: Padding(
           padding: const EdgeInsets.all(2),
@@ -67,8 +71,12 @@ class AgentHubDetailTabs extends StatelessWidget {
                     width: segmentWidth,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: colors.surfaceRaised,
-                        borderRadius: BorderRadius.circular(10),
+                        color: (colors.isDark
+                            ? LicoPaneGlass.contentInnerCardFill
+                            : colors.surfaceRaised),
+                        borderRadius: BorderRadius.circular(
+                          LicoRadius.floating,
+                        ),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(
@@ -105,7 +113,9 @@ class AgentHubDetailTabs extends StatelessWidget {
                               button: true,
                               child: InkWell(
                                 key: Key('agent-hub-detail-tab-$index'),
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(
+                                  LicoRadius.floating,
+                                ),
                                 onTap: () => onSelected(index),
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(

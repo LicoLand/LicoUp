@@ -91,8 +91,8 @@ void main() {
           ],
           theme: buildLicoTheme(
             presetId: scene.brightness == Brightness.light
-                ? AppearancePresetIds.licoSodaLight
-                : AppearancePresetIds.licoSoda,
+                ? AppearancePresetIds.taroWaffle
+                : AppearancePresetIds.starlitGold,
             platformBrightness: scene.brightness,
           ),
           builder: (context, child) => MediaQuery(

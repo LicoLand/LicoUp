@@ -23,10 +23,10 @@ void main() {
     ),
     'client_settings_component_assembly.dart': (
       owner: 'ClientUpdateController(',
-      forbidden: 'SecureMeshController(',
+      forbidden: 'DevicesController(',
     ),
-    'client_mobile_component_assembly.dart': (
-      owner: 'SecureMeshController(',
+    'client_devices_component_assembly.dart': (
+      owner: 'DevicesController(',
       forbidden: 'ClientUpdateController(',
     ),
     'client_usage_component_assembly.dart': (
@@ -39,7 +39,7 @@ void main() {
     ),
     'client_navigation_component_assembly.dart': (
       owner: 'ClientNavigationController(',
-      forbidden: 'MobileRelayController(',
+      forbidden: 'DevicesController(',
     ),
     'client_catalog_convergence_component_assembly.dart': (
       owner: 'CatalogConvergenceController(',
@@ -77,7 +77,7 @@ void main() {
         'ClientTargetComponentAssembly(',
         'ClientSkillComponentAssembly(',
         'ClientSettingsComponentAssembly(',
-        'ClientMobileComponentAssembly(',
+        'ClientDevicesComponentAssembly(',
         'ClientUsageComponentAssembly(',
         'ClientAgentHubComponentAssembly(',
         'ClientNavigationComponentAssembly(',
@@ -86,7 +86,7 @@ void main() {
         expect(source, contains(className));
       }
       expect(source, isNot(contains('= TargetController(')));
-      expect(source, isNot(contains('= SecureMeshController(')));
+      expect(source, isNot(contains('= DevicesController(')));
     },
   );
 }

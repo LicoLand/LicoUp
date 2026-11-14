@@ -3,14 +3,14 @@ import 'dart:async';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptive_flywheel_controller.dart';
-import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptive_flywheel_target_catalog.dart';
-import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
+import 'package:licoup/src/application/features/agents/acativa/acativa_controller.dart';
+import 'package:licoup/src/application/features/agents/acativa/acativa_target_catalog.dart';
+import 'package:licoup/src/contracts/acativa_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/presentation/agents/agent_product_identity.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
-import 'package:licoup/src/presentation/agents/adaptive_flywheel_projection.dart';
+import 'package:licoup/src/presentation/agents/acativa_projection.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
 import 'package:licoup/src/projections/close_broadcast_controller.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
@@ -22,17 +22,17 @@ final class AgentsProjectionProducer
     implements ProjectionSource<AgentsProjection> {
   AgentsProjectionProducer(
     ClientController controller, {
-    required AdaptiveFlywheelController adaptiveFlywheel,
+    required AcativaController acativa,
   }) : _controller = controller,
-       _adaptiveFlywheel = adaptiveFlywheel,
+       _acativa = acativa,
        _current = _read(
          controller,
-         adaptiveFlywheel,
-         const AdaptiveFlywheelAssistantProjection.empty(),
+         acativa,
+         const AcativaAssistantProjection.empty(),
        ) {
     _subscriptions = <StreamSubscription<ApplicationChange>>[
       controller.targetController.changes.listen(_handleChange),
-      adaptiveFlywheel.changes.listen(_handleChange),
+      acativa.changes.listen(_handleChange),
       controller.conversationPresentationSignals.structureChanges.listen(
         _handleChange,
       ),
@@ -43,15 +43,15 @@ final class AgentsProjectionProducer
   }
 
   final ClientController _controller;
-  final AdaptiveFlywheelController _adaptiveFlywheel;
+  final AcativaController _acativa;
   late final List<StreamSubscription<ApplicationChange>> _subscriptions;
   final StreamController<ProjectionUpdate<AgentsProjection>> _changes =
       StreamController<ProjectionUpdate<AgentsProjection>>.broadcast(
         sync: true,
       );
   AgentsProjection _current;
-  AdaptiveFlywheelAssistantProjection _assistant =
-      const AdaptiveFlywheelAssistantProjection.empty();
+  AcativaAssistantProjection _assistant =
+      const AcativaAssistantProjection.empty();
   bool _closed = false;
 
   @override
@@ -60,11 +60,11 @@ final class AgentsProjectionProducer
   @override
   Stream<ProjectionUpdate<AgentsProjection>> get changes => _changes.stream;
 
-  AdaptiveFlywheelAgentProjection? callableAgent(String agentId) =>
-      _current.adaptiveFlywheel.agent(agentId);
+  AcativaAgentProjection? callableAgent(String agentId) =>
+      _current.acativa.agent(agentId);
 
   void setAssistantProfile(
-    AdaptiveFlywheelAssistantProjection assistant, {
+    AcativaAssistantProjection assistant, {
     TraceContext? trace,
   }) {
     if (_closed || assistant == _assistant) return;
@@ -78,7 +78,7 @@ final class AgentsProjectionProducer
   }
 
   void _emit({TraceContext? trace}) {
-    final next = _read(_controller, _adaptiveFlywheel, _assistant);
+    final next = _read(_controller, _acativa, _assistant);
     if (next == _current) return;
     _current = next;
     _changes.add(ProjectionUpdate<AgentsProjection>(next, trace: trace));
@@ -95,8 +95,8 @@ final class AgentsProjectionProducer
 
   static AgentsProjection _read(
     ClientController controller,
-    AdaptiveFlywheelController adaptiveFlywheel,
-    AdaptiveFlywheelAssistantProjection assistant,
+    AcativaController acativa,
+    AcativaAssistantProjection assistant,
   ) {
     final targets = controller.targetController.orderedConversationTargets(
       controller.targetController.targets.where(
@@ -107,10 +107,10 @@ final class AgentsProjectionProducer
       for (final target in agentOrchestrationCommanderTargets(targets))
         _agentProjection(controller, target),
     ];
-    final adaptiveProjection = AdaptiveFlywheelProjection(
+    final adaptiveProjection = AcativaProjection(
       definitions: [
-        for (final definition in adaptiveFlywheel.definitions)
-          AdaptiveFlywheelDefinitionProjection(
+        for (final definition in acativa.definitions)
+          AcativaDefinitionProjection(
             id: definition.id,
             name: definition.name,
             version: definition.version,
@@ -118,12 +118,12 @@ final class AgentsProjectionProducer
             authorized: definition.authorized,
           ),
       ],
-      selectedRevision: adaptiveFlywheel.selectedRevision,
-      inspection: _inspectionProjection(adaptiveFlywheel.inspection),
+      selectedRevision: acativa.selectedRevision,
+      inspection: _inspectionProjection(acativa.inspection),
       callableAgents: callableAgents,
       assistant: _assistantProjection(controller, callableAgents, assistant),
-      busy: adaptiveFlywheel.busy,
-      error: adaptiveFlywheel.error,
+      busy: acativa.busy,
+      error: acativa.error,
     );
     return AgentsProjection(
       targets: [
@@ -149,7 +149,7 @@ final class AgentsProjectionProducer
               severity: PresentationNoticeSeverity.error,
               reasonCode: controller.targetController.lastErrorCode,
             ),
-      adaptiveFlywheel: adaptiveProjection,
+      acativa: adaptiveProjection,
     );
   }
 
@@ -196,7 +196,7 @@ final class AgentsProjectionProducer
           .toUtc()
           .millisecondsSinceEpoch;
 
-  static AdaptiveFlywheelAgentProjection _agentProjection(
+  static AcativaAgentProjection _agentProjection(
     ClientController controller,
     TargetCandidate target,
   ) {
@@ -205,14 +205,14 @@ final class AgentsProjectionProducer
       for (final group in groups)
         for (final model in group.models) model: group,
     };
-    return AdaptiveFlywheelAgentProjection(
+    return AcativaAgentProjection(
       id: target.target,
       displayName: agentProductLabel(
         target.label.trim().isEmpty ? target.target : target.label,
       ),
       models: [
         for (final model in agentOrchestrationCommanderModels(target))
-          AdaptiveFlywheelModelProjection(
+          AcativaModelProjection(
             id: model,
             label: agentOrchestrationModelDisplayName(target, model),
             providerId: providerByModel[model]?.providerId ?? '',
@@ -225,17 +225,18 @@ final class AgentsProjectionProducer
                 agentOrchestrationDefaultReasoningEffortForModel(target, model),
           ),
       ],
+      permissionModes: target.conversationPermissionModes,
       refreshingModelCatalog: controller.isRefreshingNativeModelCatalog(
         target.target,
       ),
     );
   }
 
-  static AdaptiveFlywheelInspectionProjection? _inspectionProjection(
-    AdaptiveFlywheelInspection? inspection,
+  static AcativaInspectionProjection? _inspectionProjection(
+    AcativaInspection? inspection,
   ) {
     if (inspection == null) return null;
-    return AdaptiveFlywheelInspectionProjection(
+    return AcativaInspectionProjection(
       status: inspection.status,
       modelDisplayNames: inspection.modelDisplayNames,
       currentStates: inspection.currentStates,
@@ -244,7 +245,7 @@ final class AgentsProjectionProducer
       assignments: [
         for (final slot in inspection.slots)
           for (final binding in inspection.bindings[slot.id] ?? const [])
-            AdaptiveFlywheelAssignmentProjection(
+            AcativaAssignmentProjection(
               slotId: binding.slotId,
               ordinal: binding.ordinal,
               agentId: binding.valueId,
@@ -255,7 +256,7 @@ final class AgentsProjectionProducer
       ],
       slots: [
         for (final slot in inspection.slots)
-          AdaptiveFlywheelSlotProjection(
+          AcativaSlotProjection(
             id: slot.id,
             kind: slot.kind,
             label: slot.label,
@@ -265,7 +266,7 @@ final class AgentsProjectionProducer
       ],
       states: [
         for (final state in inspection.states)
-          AdaptiveFlywheelGraphStateProjection(
+          AcativaGraphStateProjection(
             id: state.id,
             kind: state.kind,
             label: state.label,
@@ -273,7 +274,7 @@ final class AgentsProjectionProducer
       ],
       edges: [
         for (final edge in inspection.edges)
-          AdaptiveFlywheelGraphEdgeProjection(
+          AcativaGraphEdgeProjection(
             from: edge.from,
             to: edge.to,
             event: edge.event,
@@ -286,15 +287,15 @@ final class AgentsProjectionProducer
     );
   }
 
-  static AdaptiveFlywheelAssistantProjection _assistantProjection(
+  static AcativaAssistantProjection _assistantProjection(
     ClientController controller,
-    List<AdaptiveFlywheelAgentProjection> agents,
-    AdaptiveFlywheelAssistantProjection assistant,
+    List<AcativaAgentProjection> agents,
+    AcativaAssistantProjection assistant,
   ) {
     final conversation =
         controller.clientConversationController.selectedConversation;
     if (conversation == null || !conversation.group) {
-      return const AdaptiveFlywheelAssistantProjection.empty();
+      return const AcativaAssistantProjection.empty();
     }
     if (assistant.conversationId == conversation.id) return assistant;
     final membership =
@@ -307,20 +308,21 @@ final class AgentsProjectionProducer
         : (agents.isEmpty ? '' : agents.first.id);
     final agent = _findAgent(agents, agentId);
     final model = agent?.models.firstOrNull;
-    return AdaptiveFlywheelAssistantProjection(
+    return AcativaAssistantProjection(
       conversationId: conversation.id,
       membershipId: membership?.id ?? '',
       agentId: agentId,
       modelId: model?.id ?? '',
       reasoningEffort: model?.defaultReasoningEffort ?? '',
+      permissionMode: '',
       profileRevision: 0,
       loading: false,
       saving: false,
     );
   }
 
-  static AdaptiveFlywheelAgentProjection? _findAgent(
-    List<AdaptiveFlywheelAgentProjection> agents,
+  static AcativaAgentProjection? _findAgent(
+    List<AcativaAgentProjection> agents,
     String agentId,
   ) {
     for (final agent in agents) {

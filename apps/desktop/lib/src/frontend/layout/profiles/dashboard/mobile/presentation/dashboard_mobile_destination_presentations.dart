@@ -19,6 +19,9 @@ final class DashboardMobileAgentsPresentation
   Color canvasColor(LayoutPalette palette) => palette.background;
 
   @override
+  bool get canvasGroundsWorkspace => true;
+
+  @override
   double get sidebarOuterHorizontalExtent => 0;
 
   @override
@@ -39,8 +42,32 @@ final class DashboardMobileAgentsPresentation
   @override
   bool get showConversationSidebarControl => false;
 
+  /// The mobile shell itself carries the Devices / Chats / Settings bottom
+  /// tabs, so the Agents conversation list must not re-add the desktop
+  /// 功能 / 对话 / 设置 row — that row's 功能 tab targets `agentHub`, which is
+  /// not a mobile destination at all. This is the same suppression the
+  /// Desktop dock profile applies for its own chrome.
   @override
-  bool get showSidebarBottomNav => true;
+  bool get showSidebarBottomNav => false;
+
+  @override
+  LayoutAgentsSidebarHeader get sidebarHeader =>
+      LayoutAgentsSidebarHeader.trafficLights;
+
+  @override
+  bool get showConversationFilters => false;
+
+  @override
+  @override
+  double get conversationHeaderBarExtent => 60;
+
+  @override
+  LayoutConversationHeaderStyle get conversationHeaderStyle =>
+      LayoutConversationHeaderStyle.capsules;
+
+  @override
+  LayoutGroupMembersPlacement get groupMembersPlacement =>
+      LayoutGroupMembersPlacement.avatarStrip;
 
   @override
   Widget frameWorkspace(
@@ -97,7 +124,13 @@ final class DashboardMobileSettingsPresentation
 
   @override
   EdgeInsetsGeometry get selectorGridPadding =>
-      const EdgeInsets.only(top: LicoContentSpacing.item);
+      // The selector cards align with the setting rows' left edge.
+      const EdgeInsets.fromLTRB(
+        LicoContentSpacing.item,
+        LicoContentSpacing.item,
+        LicoContentSpacing.item,
+        0,
+      );
 
   @override
   Widget frameIndex(

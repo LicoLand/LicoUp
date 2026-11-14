@@ -9,7 +9,7 @@ an independent receipt contract.
 The canonical selected-target receipt is produced by:
 
 ```bash
-LICO_CLIENT_RELEASE_TARGETS=macos-direct-arm64,android-direct-arm64-v8a \
+LICO_CLIENT_RELEASE_TARGETS=macos-direct-arm64 \
   npm run client:verify:artifact-verification-receipts
 ```
 
@@ -17,9 +17,8 @@ The target list is explicit and non-empty. Only selected targets are reduced;
 an unselected or deferred target is not an implicit blocker. In one release
 closure, the reducer creates a random closure challenge and a distinct random
 invocation nonce for every selected target, deletes any previous target report,
-and directly invokes the approved platform producer. Therefore selecting
-Android can install and launch on the authorized phone, and selecting macOS can
-launch the installed app.
+and directly invokes the approved platform producer. Therefore selecting macOS
+can launch the installed app.
 Only an exit-zero producer result generated after that invocation and bound to
 both digests can be accepted; a producer failure can never reuse an older green
 JSON file. Report modification time is not an authority.
@@ -49,13 +48,9 @@ The accepted local-install boundary is:
 | Target | Required local evidence | Publication boundary |
 | --- | --- | --- |
 | `macos-direct-arm64` | A locally produced DMG and update ZIP bind source, version, build, and exact `.app` digest; every nested executable and the outer app pass Developer ID, Hardened Runtime, secure-timestamp, notarization-ticket, and Gatekeeper checks; the updater requires the exact installed designated requirement and team before replacement | Local-only Developer ID channel. Remote/GitHub publication and Mac App Store submission remain blocked and are not authorized by the receipt |
-| `android-direct-arm64-v8a` | APK package/version/debuggable/ABI/single-signer/signature-scheme/alignment facts and the exact stored ARM64 native-library digest match the current build and package manifests; the controlled release-runner class matches; install returns explicit success; the installed `base.apk` matches; exact activity launch consumes the challenge and nonce | Google Play publication is a separate `android-play-arm64-v8a` AAB target; the current direct APK update authority is manual/system installation |
 
-Android certificate material is process-local verification input, not release
-evidence. The APK build manifest, distribution manifest, and physical
-install/launch receipt publish only `signerIdentityVerified` and
-`signingPolicySatisfied` conclusions. They never serialize a certificate
-digest, fingerprint, subject, or other stable signing-identity value.
+Android and iOS artifact receipts are owned by the sibling LicoUp-Android and
+LicoUp-iOS repositories; this receipt surface no longer selects mobile targets.
 
 Validation signatures authenticate an artifact only within their declared
 verification policy. When the macOS Developer ID platform channel is explicitly requested, a separate
@@ -72,7 +67,7 @@ They never expose publisher accounts, team/store identifiers, certificate
 subjects or stable fingerprints, credentials, private keys, custody details,
 or private-channel infrastructure.
 
-Apple Release owns the post-release macOS publication receipt. One immutable
+the release plane owns the post-release macOS publication receipt. One immutable
 authorization binds the exact accepted `origin/release` source, version, build,
 tag, Release name, and public installer name. Repository source and the
 protected promotion train are read-only to this delegated operation.
@@ -111,7 +106,6 @@ npm run client:verify:artifact-verification-receipts:self-test
 npm run client:verify:release-artifact-io:self-test
 npm run client:verify:source-state-digest:self-test
 npm run client:verify:linux-tar-resource-bounds:self-test
-npm run client:verify:android-apk-zip-facts:self-test
 npm run client:verify:release-report-schema:self-test
 npm run client:verify:macos-nested-code-bounds:self-test
 npm run client:verify:package-client:self-test

@@ -1,5 +1,6 @@
 import 'dart:ui' show FrameTiming;
 
+import 'package:flutter/widgets.dart' show SizedBox;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/frontend/binding/frame_timing_telemetry.dart';
 
@@ -34,6 +35,48 @@ void main() {
 
     telemetry.dispose();
     telemetry.dispose();
+  });
+
+  testWidgets('disabled telemetry records nothing across real frames', (
+    tester,
+  ) async {
+    final telemetry = FrameTimingTelemetry(
+      sampleLimit: 1,
+      sink: (_) => fail('disabled telemetry must not emit'),
+      binding: tester.binding,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    await tester.pump();
+
+    telemetry.dispose();
+    telemetry.dispose();
+  });
+
+  testWidgets('a virtual-clock pump fabricates no frame phase sample', (
+    tester,
+  ) async {
+    final summaries = <FrameTimingSummary>[];
+    final telemetry = FrameTimingTelemetry(
+      sampleLimit: 1,
+      sink: summaries.add,
+      enabled: true,
+      binding: tester.binding,
+    );
+    addTearDown(telemetry.dispose);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      summaries,
+      isEmpty,
+      reason:
+          'virtual-clock widget frames carry no engine timing, so the counted '
+          'widget evidence never becomes a frame-duration claim',
+    );
   });
 
   testWidgets(

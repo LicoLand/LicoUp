@@ -8,7 +8,7 @@
 | Decision | [ADR 0010](../adrs/0010-continuous-assistant.md) | Adoption, alternatives and consequences |
 | Conversation | [Conversation domain](CONVERSATION-DOMAIN.md) | Canonical history, Membership and turn authority |
 | Native Agents | [Agent adapters](AGENT-ADAPTERS-ARCHITECTURE.md) | Native transport, parsing and capabilities |
-| Workflows | [Adaptive Flywheel](../functionality/ADAPTIVE-FLYWHEEL.md) | Graph execution authority |
+| Workflows | [Acativa](../functionality/ACATIVA.md) | Graph execution authority |
 | Workflow evolution | [Workflow control and compiler](ASSISTANT-WORKFLOW-CONTROL.md) | Target compiler, node activation and local/peer intervention |
 | Current evidence | [STATUS.md](../STATUS.md) | Implemented and verified capability |
 
@@ -165,7 +165,7 @@ a provider; the product reports the actual boundary rather than promising it.
 Local derived stores must not silently resurrect deleted data from an old
 summary or imported backup generation.
 
-Optional Requirement Cognition and Knowledge Domain services remain independent
+Optional requirement-domain and knowledge-domain services remain independent
 owners. LicoUp discovers their advertised, versioned capabilities through an
 admitted discovery boundary; it does not mirror another repository's endpoint
 list or schema. Read-only lookup never creates requirements or knowledge.
@@ -283,7 +283,7 @@ approval or an external event. An ended turn may await evidence or User acceptan
 
 The Assistant decides whether to continue. Goal tracking records what is owed and
 what remains unverified; it does not impose an outer model loop. PersistentTurn or
-Adaptive Flywheel executes admitted actions through the existing dispatch, authority,
+Acativa executes admitted actions through the existing dispatch, authority,
 resource and effect gates. Native termination does not replace agreed acceptance.
 
 Closure requires current evidence for every required condition, the agreed

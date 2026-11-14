@@ -23,10 +23,7 @@ void main() {
       ClientSection.agents,
     );
     expect(controller.resolve(ClientSection.agentHub), ClientSection.agents);
-    expect(
-      controller.resolve(ClientSection.mobileRelay),
-      ClientSection.mobileRelay,
-    );
+    expect(controller.resolve(ClientSection.devices), ClientSection.devices);
   });
 
   test('selection invokes enter, exit, and reselect hooks exactly once', () {

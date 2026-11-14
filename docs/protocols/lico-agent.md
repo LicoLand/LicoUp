@@ -2,9 +2,10 @@
 
 English (normative) · [简体中文](lico-agent.zh-CN.md)
 
-Authority: `domain/lico_agent/`, `platform/lico_agent_driver/`,
-`platform/process_sandbox/`, and the `lico-agent` sibling binary. Update this
-projection when those implementations or their verification change.
+Authority: `licoup-agent-targets`' `domain/lico_agent/`,
+`licoup-agent-lico-agent`'s `driver/`, the shared `platform/process_sandbox/`
+primitive, and the `licoup agent run` process entry of the `licoup` binary. Update this projection when
+those implementations or their verification change.
 
 Lico Agent is a **first-party** LicoUp-owned runtime. It appears in the agent
 list as one ordinary option (`lico-agent`), peer to third-party adapters such as
@@ -32,7 +33,7 @@ Pi or Codex. It is not a special Conversation, role, or orchestration owner.
 The canonical Conversation backend may admit Lico Agent through an ordinary
 Agent Membership, exactly like any other runnable integration. A user-defined
 Conversation Role may include that Membership, and an explicitly started
-Adaptive Flywheel may select it from the Role's ordered candidate pool. There
+Acativa may select it from the Role's ordered candidate pool. There
 is no built-in main-agent slot, automatic group turn-taking, or dedicated Lico
 group identity. The current delivery does not claim a desktop group or
 Flywheel editor.

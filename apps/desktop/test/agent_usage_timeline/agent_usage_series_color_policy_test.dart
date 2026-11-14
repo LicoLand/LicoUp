@@ -77,8 +77,8 @@ void main() {
     for (final brightness in Brightness.values) {
       final theme = buildLicoTheme(
         presetId: brightness == Brightness.light
-            ? AppearancePresetIds.licoSodaLight
-            : AppearancePresetIds.licoSoda,
+            ? AppearancePresetIds.taroWaffle
+            : AppearancePresetIds.starlitGold,
         platformBrightness: brightness,
       ).extension<LicoThemeColors>()!;
       for (final label in [

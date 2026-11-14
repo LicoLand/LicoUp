@@ -1093,7 +1093,7 @@ void main() {
                       conversation: conversation,
                       targets: targets,
                       onMentionAgent: (target) => mentioned.add(target.target),
-                      onOpenAgentConversations: (target) =>
+                      onOpenMemberHistory: (target, _) =>
                           opened.add(target.target),
                     ),
                   ),
@@ -1118,9 +1118,21 @@ void main() {
     expect(find.byIcon(Icons.push_pin_rounded), findsNothing);
     expect(find.byKey(const Key('canonical-group-roster')), findsOneWidget);
     final headerAvatar = tester.widget<Container>(
-      find.byKey(const Key('canonical-group-header-avatar')),
+      find
+          .descendant(
+            of: find.byKey(const Key('canonical-group-header-avatar')),
+            matching: find.byType(Container),
+          )
+          .first,
     );
-    expect((headerAvatar.decoration! as BoxDecoration).color, Colors.black);
+    // The mosaic's 1px cell gaps show the container's hairline fill.
+    expect(
+      (headerAvatar.decoration! as BoxDecoration).color,
+      tester
+          .element(find.byKey(const Key('canonical-group-header-avatar')))
+          .licoColors
+          .line,
+    );
     // Member names live in tooltips only — the capsule shows bare avatars.
     expect(find.text('Codex'), findsNothing);
     expect(find.text('Claude'), findsNothing);
@@ -1138,18 +1150,15 @@ void main() {
     final codexAvatar = find.byKey(
       const Key('canonical-group-roster-agent-codex'),
     );
+    // A single tap opens the member's in-group history — the former
+    // double-tap path is gone and the composer stays untouched.
     await tester.tap(codexAvatar);
     await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 1));
-    expect(mentioned, ['codex']);
-
-    mentioned.clear();
-    await tester.tap(codexAvatar);
-    await tester.pump(kDoubleTapMinTime);
-    await tester.tap(codexAvatar);
-    await tester.pumpAndSettle();
     expect(mentioned, isEmpty);
     expect(opened, ['codex']);
 
+    // Mention survives on the secondary-click menu; the removed
+    // "open conversations" entry must not come back.
     await tester.tap(codexAvatar, buttons: kSecondaryButton);
     await tester.pumpAndSettle();
     expect(
@@ -1157,7 +1166,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Mention Codex'), findsOneWidget);
-    expect(find.text('Open Codex conversations'), findsOneWidget);
+    expect(find.text('Open Codex conversations'), findsNothing);
+    await tester.tap(find.text('Mention Codex'));
+    await tester.pumpAndSettle();
+    expect(mentioned, ['codex']);
     expect(tester.takeException(), isNull);
   });
 

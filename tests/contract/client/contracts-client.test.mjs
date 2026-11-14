@@ -19,7 +19,6 @@ const SCHEMA_DIR = resolve(__dirname, "../../../packages/contracts/client");
 const SCHEMAS = [
   "agent-conversation-adapter.schema.json",
   "snapshot-archive-result.schema.json",
-  "mobile-relay-command.schema.json",
   "optional-collaboration-local-deployment.schema.json",
   "optional-collaboration-mcp-install.schema.json",
   "optional-collaboration-plugin.schema.json",

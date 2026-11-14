@@ -21,6 +21,8 @@ final class PluginManagementFeatureComposition {
        _beginRendererIntent = beginRendererIntent {
     _projection = PluginManagementProjectionProducer(
       plugins: controller.adapterPluginController,
+      packages: controller.packageCenterController,
+      recommendations: controller.packageRecommendationController,
       collaboration: controller.optionalCollaborationController,
     );
     _effects = SemanticEffectChannel<PluginManagementEffect>();
@@ -65,6 +67,62 @@ final class PluginManagementFeatureComposition {
     switch (intent) {
       case RefreshPlugins():
         await _controller.adapterPluginController.refresh();
+        await _controller.packageCenterController.refresh();
+      case InstallPackage(:final packageId, :final archive):
+        if (packageId.isEmpty || archive.isEmpty) {
+          // The archive is the bytes the user holds; without one there is
+          // nothing to review and nothing to apply.
+          _effects.emit(
+            PluginActionRejected(
+              'packages',
+              'package_install_source_missing',
+              trace: trace,
+            ),
+          );
+          break;
+        }
+        if (!await _controller.packageCenterController.installFromArchive(
+          archive,
+        )) {
+          _effects.emit(
+            PluginActionRejected(
+              'packages',
+              'package_install_failed',
+              trace: trace,
+            ),
+          );
+        }
+      case UninstallPackage(:final packageId, :final version):
+        if (!await _controller.packageCenterController.uninstall(
+          packageId: packageId,
+          version: version,
+        )) {
+          _effects.emit(
+            PluginActionRejected(
+              'packages',
+              'package_uninstall_failed',
+              trace: trace,
+            ),
+          );
+        }
+      case SetPackageEnabled(:final packageId, :final version, :final enabled):
+        if (!await _controller.packageCenterController.setEnabled(
+          packageId: packageId,
+          version: version,
+          enabled: enabled,
+        )) {
+          _effects.emit(
+            PluginActionRejected(
+              'packages',
+              enabled ? 'package_enable_failed' : 'package_disable_failed',
+              trace: trace,
+            ),
+          );
+        }
+      case ResolvePackageRecommendation(:final accepted):
+        await _controller.packageRecommendationController.resolveOffer(
+          accepted: accepted,
+        );
       case PlanPluginInstall(:final agentId, :final pluginId):
         await _planPluginLifecycle(
           agentId: agentId,
@@ -252,12 +310,6 @@ final class PluginManagementFeatureComposition {
       return;
     }
 
-    if (agentId == 'codex' &&
-        pluginId == 'lico-up-codex' &&
-        action == PluginLifecyclePlanAction.install) {
-      await _planCodexPlugin(adapter, plugin, trace);
-      return;
-    }
     if (!adapter.supports(domainAction)) {
       _reject(agentId, 'adapter_plugin_action_not_declared', trace);
       return;
@@ -277,76 +329,9 @@ final class PluginManagementFeatureComposition {
         pluginId: pluginId,
         pluginLabel: plugin.label,
         action: action,
-        kind: PluginInstallPlanKind.catalog,
         trace: trace,
       ),
     );
-  }
-
-  Future<void> _planCodexPlugin(
-    AdapterPluginDescriptor adapter,
-    AdapterPluginEntry plugin,
-    TraceContext? trace,
-  ) async {
-    final binaryPath = _controller.scannedTargets
-        .where((candidate) => candidate.target == adapter.agentId)
-        .map((candidate) => candidate.binaryPath?.trim() ?? '')
-        .where((value) => value.isNotEmpty)
-        .firstOrNull;
-    if (binaryPath == null) {
-      _reject(adapter.agentId, 'codex_executable_missing', trace);
-      return;
-    }
-    try {
-      final status = await _controller.agentService.codexPluginStatus(
-        binaryPath: binaryPath,
-      );
-      if (status['ok'] == true && status['ready'] == true) {
-        await _controller.adapterPluginController.refresh();
-        return;
-      }
-      final payload = await _controller.agentService.planCodexPlugin(
-        binaryPath: binaryPath,
-      );
-      final digest = '${payload['digest'] ?? ''}'.trim();
-      final source = '${payload['marketplaceSource'] ?? ''}'.trim();
-      final release = '${payload['marketplaceRelease'] ?? ''}'.trim();
-      final version = '${payload['pluginVersion'] ?? ''}'.trim();
-      if (payload['ok'] != true ||
-          payload['requiresConfirmation'] != true ||
-          digest.isEmpty ||
-          source.isEmpty ||
-          release.isEmpty ||
-          version.isEmpty) {
-        _reject(adapter.agentId, 'codex_plugin_plan_failed', trace);
-        return;
-      }
-      final plan = _PendingPluginPlan(
-        id: _newPluginPlanId(),
-        agentId: adapter.agentId,
-        pluginId: plugin.id,
-        action: PluginLifecyclePlanAction.install,
-        binaryPath: binaryPath,
-        confirmation: digest,
-      );
-      _pendingPluginPlan = plan;
-      _effects.emit(
-        PluginLifecyclePlanReady(
-          planId: plan.id,
-          agentId: adapter.agentId,
-          pluginId: plugin.id,
-          pluginLabel: plugin.label,
-          action: PluginLifecyclePlanAction.install,
-          kind: PluginInstallPlanKind.codexPinnedRelease,
-          marketplaceSource: source,
-          marketplaceRelease: release,
-          pluginVersion: version,
-          trace: trace,
-        ),
-      );
-    } on Object {
-      _reject(adapter.agentId, 'codex_plugin_plan_failed', trace);
-    }
   }
 
   Future<void> _applyPluginPlan(String planId, TraceContext? trace) async {
@@ -356,25 +341,6 @@ final class PluginManagementFeatureComposition {
       return;
     }
     _pendingPluginPlan = null;
-    if (plan.confirmation.isNotEmpty) {
-      try {
-        final result = await _controller.agentService.installCodexPlugin(
-          binaryPath: plan.binaryPath,
-          confirmation: plan.confirmation,
-        );
-        if (result['ok'] != true || result['installed'] != true) {
-          _reject(plan.agentId, 'codex_plugin_install_failed', trace);
-          return;
-        }
-        await _controller.adapterPluginController.refresh();
-        _effects.emit(
-          PluginActionCompleted('codex_plugin_installed', trace: trace),
-        );
-      } on Object {
-        _reject(plan.agentId, 'codex_plugin_install_failed', trace);
-      }
-      return;
-    }
     if (plan.action == PluginLifecyclePlanAction.install) {
       await _controller.adapterPluginController.install(plan.agentId);
     } else {
@@ -436,14 +402,10 @@ final class _PendingPluginPlan {
     required this.agentId,
     required this.pluginId,
     required this.action,
-    this.binaryPath = '',
-    this.confirmation = '',
   });
 
   final String id;
   final String agentId;
   final String pluginId;
   final PluginLifecyclePlanAction action;
-  final String binaryPath;
-  final String confirmation;
 }

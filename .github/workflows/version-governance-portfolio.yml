@@ -1,6 +1,10 @@
 name: version-governance-portfolio
 
 on:
+  # pull_request_target is deliberate: the portfolio gate must run the base
+  # branch's trusted definition so a PR cannot amend the gate that judges it,
+  # and the reusable workflow it delegates to is pinned by SHA. No PR code is
+  # checked out or executed and only read permissions are requested.
   pull_request_target:
     types:
       - opened

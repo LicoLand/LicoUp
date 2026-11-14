@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 export const LONG_LIVED_BRANCHES = Object.freeze(["nightly", "stable", "release"]);
 export const MACOS_CANDIDATE = "macos-release-candidate";
 export const MACOS_NIGHTLY_CANDIDATE = "macos-nightly-release-candidate";
-// Both Apple Release tracks publish from a tool-managed candidate branch that
+// Both the release plane tracks publish from a tool-managed candidate branch that
 // is pushed once at the frozen revision and never merged back.
 export const CANDIDATE_BRANCHES = Object.freeze([MACOS_CANDIDATE, MACOS_NIGHTLY_CANDIDATE]);
 export const CUTOFF_PATTERN = /^nightly-cutoff\/\d{4}-\d{2}-\d{2}$/u;

@@ -13,7 +13,15 @@ import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 /// the last drag width does not jump. Persists through the agents sidebar
 /// channel, which is the single declared pane-extent for this column.
 final class MessagingSidebarGeometry extends StatefulWidget {
-  const MessagingSidebarGeometry({super.key, required this.child});
+  const MessagingSidebarGeometry({
+    super.key,
+    this.leadingExtent = 0,
+    required this.child,
+  });
+
+  /// Width of chrome columns that sit left of the workspace (the navigation
+  /// rail), so the golden-ratio default can be measured against the window.
+  final double leadingExtent;
 
   final Widget child;
 
@@ -24,7 +32,8 @@ final class MessagingSidebarGeometry extends StatefulWidget {
 
 final class _MessagingSidebarGeometryState
     extends State<MessagingSidebarGeometry> {
-  double _width = MessagingDesktopMetrics.conversationListExtent;
+  /// The persisted drag width; null while the column follows the default.
+  double? _explicitWidth;
   LayoutScopedState? _layoutState;
   String? _layoutIdentity;
   bool _hydrated = false;
@@ -50,7 +59,7 @@ final class _MessagingSidebarGeometryState
       LayoutStateChannels.agentsSidebar,
     );
     if (stored is LayoutPaneExtentState) {
-      _width = stored.extent.clamp(
+      _explicitWidth = stored.extent.clamp(
         MessagingDesktopMetrics.conversationListMinExtent,
         MessagingDesktopMetrics.conversationListMaxExtent,
       );
@@ -58,25 +67,26 @@ final class _MessagingSidebarGeometryState
     _hydrated = true;
   }
 
-  void _resize(double delta, double maxWidth) {
-    final next = (_width + delta)
+  void _resize(double delta, double maxWidth, double currentWidth) {
+    final next = ((_explicitWidth ?? currentWidth) + delta)
         .clamp(MessagingDesktopMetrics.conversationListMinExtent, maxWidth)
         .toDouble();
-    if (next == _width) {
+    if (next == _explicitWidth) {
       return;
     }
-    setState(() => _width = next);
+    setState(() => _explicitWidth = next);
     _layoutState?.writeIfDeclaredFor(
       ClientSection.agents,
       LayoutStateChannels.agentsSidebar,
-      LayoutPaneExtentState(_width),
+      LayoutPaneExtentState(next),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return MessagingSidebarGeometryScope(
-      width: _width,
+      explicitWidth: _explicitWidth,
+      leadingExtent: widget.leadingExtent,
       onResize: _resize,
       child: widget.child,
     );
@@ -88,20 +98,28 @@ final class _MessagingSidebarGeometryState
 final class MessagingSidebarGeometryScope extends InheritedWidget {
   const MessagingSidebarGeometryScope({
     super.key,
-    required this.width,
+    required this.explicitWidth,
+    required this.leadingExtent,
     required this.onResize,
     required super.child,
   });
 
-  final double width;
-  final void Function(double delta, double maxWidth) onResize;
+  /// The persisted drag width, or null while the column follows the default.
+  final double? explicitWidth;
+
+  /// Width of chrome columns left of the workspace (the navigation rail).
+  final double leadingExtent;
+
+  final void Function(double delta, double maxWidth, double currentWidth)
+  onResize;
 
   static MessagingSidebarGeometryScope? maybeOf(BuildContext context) => context
       .dependOnInheritedWidgetOfExactType<MessagingSidebarGeometryScope>();
 
   @override
   bool updateShouldNotify(MessagingSidebarGeometryScope oldWidget) =>
-      oldWidget.width != width;
+      oldWidget.explicitWidth != explicitWidth ||
+      oldWidget.leadingExtent != leadingExtent;
 }
 
 /// One resizable sidebar column: framed list card, persisted width, and the
@@ -141,13 +159,29 @@ final class MessagingSidebarColumn extends StatelessWidget {
               MessagingDesktopMetrics.conversationListMaxExtent,
             )
             .toDouble();
-        final width =
-            (geometry?.width ?? MessagingDesktopMetrics.conversationListExtent)
+        // Golden-ratio default: the chat detail keeps 61.8% of the window,
+        // so the list column owns the 0.382 remainder minus the rail — capped
+        // narrow so the conversation always reads as the dominant surface.
+        final leading = geometry?.leadingExtent ?? 0;
+        final windowWidth = constraints.maxWidth + leading;
+        final goldenDefault =
+            (windowWidth *
+                        (1 -
+                            MessagingDesktopMetrics
+                                .conversationDetailGoldenShare) -
+                    leading -
+                    resolvedPresentation.sidebarOuterHorizontalExtent)
                 .clamp(
                   MessagingDesktopMetrics.conversationListMinExtent,
-                  maxSidebarWidth,
+                  MessagingDesktopMetrics.conversationListGoldenCapExtent,
                 )
                 .toDouble();
+        final width = (geometry?.explicitWidth ?? goldenDefault)
+            .clamp(
+              MessagingDesktopMetrics.conversationListMinExtent,
+              maxSidebarWidth,
+            )
+            .toDouble();
         return Row(
           key: const Key('messaging-sidebar-split'),
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -167,7 +201,7 @@ final class MessagingSidebarColumn extends StatelessWidget {
                 width: MessagingDesktopMetrics.conversationListDividerWidth,
                 enabled: !sidebarCollapsed,
                 onDragDelta: (delta) =>
-                    geometry?.onResize(delta, maxSidebarWidth),
+                    geometry?.onResize(delta, maxSidebarWidth, width),
                 child: detail,
               ),
             ),
@@ -187,6 +221,7 @@ final class _MessagingSidebarResizeHandle extends StatelessWidget {
   });
 
   final double width;
+
   final bool enabled;
   final ValueChanged<double>? onDragDelta;
   final Widget child;

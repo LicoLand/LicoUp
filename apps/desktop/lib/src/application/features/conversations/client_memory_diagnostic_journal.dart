@@ -70,21 +70,23 @@ final class ClientMemoryDiagnosticJournal {
     final rss = _rssBytes();
     _lastWrittenRssBytes = rss;
     unawaited(
-      _sink.record(
-        ClientMemoryDiagnosticRecord(
-          event: observation.event,
-          createdAt: _now().toUtc(),
-          surface: observation.surface,
-          rssBytes: rss,
-          maxRssBytes: _maxRssBytes(),
-          eventCount: observation.eventCount,
-          loadedEventCount: observation.loadedEventCount,
-          liveTurnCount: observation.liveTurnCount,
-          livePartCount: observation.livePartCount,
-          liveMessageCount: observation.liveMessageCount,
-          cachedConversationCount: observation.cachedConversationCount,
-        ),
-      ),
+      _sink
+          .record(
+            ClientMemoryDiagnosticRecord(
+              event: observation.event,
+              createdAt: _now().toUtc(),
+              surface: observation.surface,
+              rssBytes: rss,
+              maxRssBytes: _maxRssBytes(),
+              eventCount: observation.eventCount,
+              loadedEventCount: observation.loadedEventCount,
+              liveTurnCount: observation.liveTurnCount,
+              livePartCount: observation.livePartCount,
+              liveMessageCount: observation.liveMessageCount,
+              cachedConversationCount: observation.cachedConversationCount,
+            ),
+          )
+          .catchError((Object _) {}),
     );
   }
 

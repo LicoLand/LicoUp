@@ -1,5 +1,7 @@
 # Contributing
 
+Updated: 2026-10-12
+
 English · [简体中文](CONTRIBUTING.zh-CN.md) · [Home](README.md)
 
 Thank you for helping LicoUp. Keep each change small enough to review and
@@ -7,21 +9,19 @@ test as one clear client feature, module, or flow.
 
 ## Set up
 
-You need Node.js 22 or 24 for the source policy. Use the available Flutter,
-Rust, Java, and Android tooling for affected checks within the scope below.
+You need Node.js 22 or 24 for the source policy. Use the available Flutter
+and Rust tooling for affected checks within the scope below.
 
 ```bash
 npm ci
 ```
 
-During development, run the smallest relevant checks. Before handoff, run the
-targeted tests for the changed module. After every intended change is confirmed
-effective, run the mandatory Node-only source policy once and only the affected
-technology lanes: Flutter, Rust, Android, or dependency regression. These lanes
-are independent and may run in parallel. Release policy is not a changed-path
-lane; it runs only at the `stable` → `release` promotion edge described in the
-[client promotion authority](docs/releases/PROMOTION-GATES.md). The commit gate
-never builds or publishes every platform.
+During development, run the smallest registered check that owns the change.
+After all intended changes are confirmed effective, run the verified delivery
+entry below. It executes the complete host profile before building, installing
+and opening the client. Release publication remains a
+separate `stable` → `release` obligation described in the
+[client promotion authority](docs/releases/PROMOTION-GATES.md).
 
 The maintained complete client regression is a bounded dependency graph. It
 runs the shared foundation once, overlaps frontend and backend work, settles
@@ -37,22 +37,93 @@ contract, and aggregated Node tests attribute failures through anonymous input
 indexes, so one Agent or test file does not invalidate its whole peer batch.
 
 After all intended changes, source review, in-scope repairs, and focused checks
-are complete, run the selected complete regression once. If it fails, diagnose
-and report the cause, effect, and concrete repair and verification proposal.
-The developer decides subsequent repairs and whether to rerun that regression;
-do not automatically widen scope, repair, or repeat it. Continue independent
-authorized work and report required checks that remain incomplete. Ordinary
-implementation and focused-test failures within the accepted scope can be
-fixed directly. Promotion failures follow the separate
+are complete, run the selected complete regression once. Diagnose failures at
+the responsible boundary and repair ordinary in-scope errors, including format,
+type and static-check omissions. Reuse valid passing evidence and repeat only
+affected checks. Escalate changes to the approved objective, published contracts
+or risk boundary with a concrete investigation and options; pause only work that
+depends on that decision. Promotion failures follow the separate
 [promotion gates](docs/releases/PROMOTION-GATES.md).
 
 ```bash
-npm run client:gate:source
-npm run client:gate:flutter         # Flutter changes only
-npm run client:gate:rust            # Rust changes only
-npm run client:gate:android         # Android changes only
-npm run client:gate:dependencies    # dependency authority changes only
+npm run client:gate:step -- <module-id>
+npm run client:gate:verify -- --base origin/nightly --head HEAD --target delivery
 ```
+
+### Verification coverage and escaped defects
+
+The maintained registry is the coverage authority. It assigns every required
+check to a functional module and failure category, names the owning subcheck and
+dependencies, and records where that check runs: focused local development, the
+final local workflow, commit and push hooks, pull requests, CI, or release
+promotion. Each entry must state what it proves. Tests, scripts, and platform
+checks that are not registered, not wired into every applicable stage, not run, or
+blocked cannot support a merge-ready result.
+
+The final local command executes the complete host profile: every generic check
+the host supports plus every check specific to the host platform. It never runs
+another platform's checks. Independent checks must settle and report their
+failures together. A check whose real dependency did not complete must report
+`blocked` and make the command fail; it must not hide the blocked work behind a
+passed parent or an inventory-only result. A generic check the host cannot execute
+is covered by the cloud engineering job. Platform, device, credential,
+live-service, and other external limits remain explicit unverified evidence where
+the local environment cannot establish them. They do not turn into passes, and a
+device must not defer its own platform's checks to CI merely because CI also runs
+them.
+
+Merge readiness is the cloud aggregate of per-platform evidence: the generic
+engineering result plus only the target jobs selected by the changed paths. Each
+selected target job runs on its own runner, Linux on Ubuntu, macOS on macOS and
+Windows on Windows, and executes only that platform's specific checks. An
+unselected platform is never required, so a problem on a platform the change does
+not affect cannot block the pull request. Local delivery success is a separate,
+per-platform claim.
+
+When a defect escapes, first determine why this workflow did not detect it.
+Repair the owning subcheck and its registry and stage wiring before repairing
+the product defect. If no existing category owns the failure, add one registered
+subcheck with a clear boundary. Run that subcheck directly while developing the
+repair. After all scoped repairs and focused checks pass, run the complete host
+profile in the local workflow once, and only then commit, open the pull request,
+or start a publication workflow. Do not substitute a read-only inventory, a
+partial pass, or launcher success for that result.
+
+`client:gate:verify` is the sole verified delivery entry, and the same command on
+every platform device. It runs the canonical privacy check on the real host and
+executes the complete host profile: every generic check the host supports plus
+every check specific to the host platform. It writes the canonical module report
+to `build/reports/client-module-regression.json`. Live Agent, device, credential,
+signing, installation, launch, and publication checks remain separate explicit
+workflows and are never converted into engineering passes. After the host profile
+passes, the delivery target uses the existing owners to build, install, and open
+the local client. It never publishes or activates real data. No verification tool
+can promise to detect unknown defects exhaustively.
+
+### Cross-platform ownership
+
+Use a portable implementation when the supported targets provide the required
+capability. Shared Rust, Flutter, and Node modules must not derive product
+behavior from the development host or embed an operating-system path, command,
+permission, lifecycle, or storage assumption. Put a real target difference
+behind an explicit platform adapter contract and keep the shared caller in
+terms of that contract.
+
+Scope platform work to the targets it changes. A routine fix for one platform
+must not modify or revalidate unrelated adapters. A refactor that changes shared
+behavior or several adapters must register every affected target; each affected
+target runs its required engineering checks on that platform's own device or
+runner. An affected target that does not run is `blocked` or `unverified`; the
+pull request requires only the target jobs its changed paths select. Live
+acceptance remains separate where deterministic engineering checks cannot
+establish the behavior.
+
+The verification registry owns each module's platform applicability and the
+workflow owns the corresponding runner. Selection, focused execution, the final
+local workflow, and CI must consume those same owners; one machine never runs
+another platform's checks. Static source inspection may find a suspicious host
+assumption, but keyword or path scanning alone does not prove that shared code is
+portable or that a platform adapter works.
 
 **One crate, one version.** The dependency graph must not carry two versions of
 the same crate. Duplicates bloat the binary, split types across versions, and
@@ -62,9 +133,11 @@ to the latest compatible version instead of raising the duplicate allowance.
 The dependency gate fails on any duplicate generation; the historical exception
 list is being burned down to zero and accepts no new entries.
 
-Build-producing tests share one managed compiler target. The test runner holds
-an active lease while a build is using it and marks the output reclaimable on
-every terminal path. Inspect or remove only inactive, marked output with:
+Build-producing tests share one managed build output root
+(`apps/desktop/build`). The test runner holds an active lease on the managed
+target while a build is using it, retains its output for incremental reuse, and
+marks the output reclaimable on every terminal path. Inspect or remove only
+inactive, marked output with:
 
 ```bash
 npm run client:artifacts:status
@@ -72,11 +145,11 @@ npm run client:artifacts:prune -- --dry-run
 npm run client:artifacts:prune
 ```
 
-Pruning never removes Cargo, Pub, Gradle, SDK, or toolchain download caches, so
-the next build can continue to reuse downloaded dependencies. Unmanaged legacy
-targets are reported but are not deleted automatically. After an abnormal test
-exit, a structurally valid dead lease remains protected for a grace period and
-only then becomes reclaimable; malformed or tampered records always fail closed.
+Pruning never removes Pub, SDK, or toolchain download caches, so the
+next build can continue to reuse downloaded dependencies. Unmanaged directories
+are reported but are not deleted automatically. After an abnormal test exit, a
+structurally valid dead lease remains protected for a grace period and only
+then becomes reclaimable; malformed or tampered records always fail closed.
 
 ## Format before final verification
 
@@ -85,14 +158,13 @@ regression. This is a required preparation step, including for Agent-assisted
 work. Review the formatting diff, then run the selected checks.
 
 ```bash
-npm run client:format              # Flutter and Rust changes together
+npm run client:format              # Flutter changes
 npm run client:format:flutter      # Flutter changes only
-npm run client:format:rust         # Rust changes only
 ```
 
 The shared entry reuses `dart format` for the same `lib` and `test` roots as
-the Flutter format check, and `cargo fmt --all` for the Rust workspace. It adds
-no formatter dependency. Use only the relevant entry; documentation and Node-only
+the Flutter format check. It adds no formatter dependency; the Rust workspace
+format lane lives in the LicoUp-CLI repository. Use only the relevant entry; documentation and Node-only
 changes do not require these toolchains. Do not format while another writer is
 still editing. If later repairs change source, format those affected sources
 again before verification. CI and regression lanes remain check-only: they
@@ -102,11 +174,12 @@ verified. Formatting does not stage files or create a commit.
 ### Verification scope
 
 Test the affected behavior using the environments already available locally.
-The developer organizes additional devices and cross-platform testing. Do not
-require a device matrix, a minimum hardware tier, or a missing host, simulator,
-SDK, or device to complete local development and delivery. Record unavailable
-checks as not run, with their limits; they do not fail or block local delivery
-and do not establish support for an untested platform.
+The developer organizes optional device and live acceptance. Do not invent a
+device matrix or minimum hardware tier for a change that does not affect it.
+An unavailable optional acceptance check is recorded as not run and does not
+establish support. An actual target named by an affected registered engineering
+owner is required on that platform's own device or runner; only the target jobs
+selected by the changed paths block merge readiness.
 
 Reuse existing checks and run shared work once. Do not add approval gates,
 verification frameworks, repeated regressions, or device provisioning merely
@@ -118,6 +191,9 @@ change separately authorized production and release requirements.
 
 For component style changes, first produce the real-component review images
 defined by the [Design System visual reference](docs/functionality/DESIGN-SYSTEM.md#visual-reference-and-style-review).
+Visual changes are reviewed and approved in the Flutter design bench described
+in [AGENTS.md](AGENTS.md#frontend-interface-development-workflow); record the
+reviewed fixture states as evidence.
 
 Describe UI acceptance as actions and visible results: refresh the conversation
 list, switch navigation repeatedly, scroll long lists in both directions, type
@@ -144,11 +220,46 @@ widget checks distinct from real-engine performance runs. Do not replace these
 measurements with a backend trace project or add arbitrary scorecards and
 approval gates. Focused state and lifecycle tests support this model.
 
+## Extension development
+
+An extension package is a program the client starts and speaks one line-delimited
+JSON-RPC 2.0 protocol to. Write it in any language, implement the handshake and
+the methods of the profile it serves, and package it as a ZIP archive whose root
+carries `manifest.json`. The
+[extension platform guide](docs/architecture/EXTENSION-PLATFORM.md#12-build-package-and-import-an-extension)
+is the walkthrough; the rules it points at live in
+`crates/licoup-extension-contracts/` and the
+running host lives in
+`crates/licoup/src/platform/extension_packages/` — both in the
+component repository `LicoUp-CLI`.
+
+Two checked samples are the fastest start: `samples/echo-agent/` is the smallest
+complete Agent, and `samples/converter-package/` is the smallest complete format
+converter. Both live in LicoUp-CLI and are read by the crate's own tests, so
+they cannot drift from the contract they demonstrate. Their checks run in the
+LicoUp-CLI repository:
+
+```bash
+cargo test -p licoup-extension-contracts
+cd crates/licoup-extension-contracts && python3 -B -m unittest discover -s tests -p 'test_*.py'
+npm run repo:docs
+```
+
+Keep the boundaries the platform publishes: a package carries the program and the
+protocol it needs; the kernel keeps the generic PTY/CLI adapter and the extension
+host and no vendor implementation; converters are native executables inside the
+package payload; local import is offline and bind trust to the exact bytes; a
+`user:` runtime reference names something the user installed and is never removed
+by the client. Diagnostics stay local and bounded, and a package's cancel answer
+is reported as the package gave it.
+
 ## Local client verification
 
-After a client fix or behavior change, including a bundled Agent prompt or
-Skill change, build macOS once and verify that exact installed output when
-the local macOS build and installation environment is available:
+Implementation Agents may build, install, launch and inspect the local client to
+verify and diagnose their own changes, including visual checks of the rendered
+interface. The integrated candidate's delivery build, installation and launch
+remain assigned by the maintainer to the delivery owner, who verifies that exact
+installed output:
 
 ```bash
 npm run client:build -- --platform macos
@@ -163,15 +274,21 @@ log (`diagnostics/client-lifecycle.jsonl` under the client state root), naming
 the failed bootstrap step in the `detail` field. A visible "initialization
 failed" banner therefore fails the install instead of passing silently.
 
-Do not substitute `client:run:macos`; it rebuilds. Ordinary documentation and
+Do not substitute `client:run:macos`; it rebuilds. `npm run client:deliver:macos`
+performs the same plain build, install and open through those owners with no
+verification or delivery claim; milestone usable-delivery claims still require the
+canonical entry. Ordinary documentation and
 tests without product binary impact do not require a client build or launch.
-Honor an explicit request to skip installation and report the remaining
-verification. Local installation does not authorize signing, notarization,
-source promotion, public publication, or production changes.
+An installed trial never starts the next milestone; an explicit finite programme
+assignment may continue to the next dependency-satisfied engineering milestone
+after the current one is reviewed and its delivery is recorded. Local installation
+does not authorize signing, notarization, source promotion, public publication, or
+production changes.
 
 A live response or transport check spends real tokens, so use the cheapest
 adequate model. The per-Agent choice has one file:
-[`tools/scripts/config/agent-conversation-verification-models.toml`](tools/scripts/config/agent-conversation-verification-models.toml).
+`tools/scripts/config/agent-conversation-verification-models.toml`
+(in the component repository `LicoUp-CLI`).
 Change a test model there and nowhere else; inherited environment variables
 must not select a more expensive model or effort. Use the lowest supported
 reasoning effort for a response check. Send `Hi` once and accept the Agent's
@@ -210,16 +327,32 @@ quote the relevant rule, and explain what decision or authority is missing.
 
 Scale planning and tests to the change. Delegate only useful independent work,
 with clear ownership and no fast mode. Allow at least a 10-minute observation
-window for ordinary delegated work and 30 minutes for large work. Use the host's
-completion notification and let it arrive instead of splitting the window into
-repeated waits; only a host that cannot notify needs bounded waits, and each
-expiry carries a progress update. These windows are not deadlines; a wait
-returning does not prove completion or permit cancellation.
+window for ordinary delegated work and 30 minutes for large work, split into
+host-supported waits with progress updates. These windows are not deadlines;
+a wait returning does not prove completion or permit cancellation.
 
 Relay the Agent's own conversation. Never ask an Agent to answer in a format
 LicoUp defines, and never check whether it followed one. A reply is not
 invalid, empty or an abstention just because it is plain language. Continuity
 reads what the Agent actually said.
+
+## Local reports
+
+Local workflow, state-machine and architecture pages come from the maintained
+report sources:
+
+```bash
+node tools/development/reports.mjs
+node tools/development/reports.mjs --better-plan <local-source>
+```
+
+The output stays in ignored `build/reports/`. The second form adds one explicitly
+selected read-only Better Plan projection for the private planning workspace, and
+running without it removes that generated page and its navigation entry. Reports
+are English and local-only: they are never shipped with the client, run no checks,
+Agents or client processes, and are not an execution authority. Change the sources
+described in [workflow and report sources](tools/development/workflows/README.md),
+never a generated page.
 
 ## Agent-assisted contribution
 
@@ -228,11 +361,10 @@ an Agent takes part in your contribution, prepare in this order before the
 first commit:
 
 1. Clone the repository and run `npm ci`.
-2. Authenticate GitHub CLI with your own account, then install and verify the
-   repository identity policy:
+2. Configure your Git identity (`user.name` and `user.email`) for this
+   machine, then install and verify the repository identity policy:
 
    ```bash
-   gh auth login
    npm run repo:identity:install
    npm run repo:identity:verify
    ```
@@ -272,32 +404,32 @@ photo library, the media library, network volumes, or unused Agent stores. A
 usage string, entitlement, or plugin that the current action does not use must
 not ship.
 
-When every locked dependency is already cached, the dependency audit has a
-separate offline form: `npm run client:deps:audit:offline`. It does not cause
-unaffected language or platform lanes to run.
-
 ## Commit identity and authorship
 
-Every newly created commit must carry exactly one authenticated developer
-identity. The repository Git identity must match the account currently
-authenticated by GitHub CLI. Existing human-authored history keeps its original
-Author and Committer metadata when it is consolidated or published. After
-cloning the repository, and whenever `gh auth` changes to a different account,
-install the repository policy:
+Every newly created commit must carry exactly one real developer identity.
+Which identity that is belongs to the contributor's machine — a repository
+never prescribes it; on machines that route repositories through GitVault,
+that routing decides which account may act on this repository. Existing
+human-authored history keeps its original Author and Committer metadata when
+it is consolidated or published. After cloning the repository, install the
+repository policy:
 
 ```bash
 npm run repo:identity:install
 npm run repo:identity:verify
 ```
 
-The installer uses the account's canonical GitHub noreply address and enables
-the repository-controlled `pre-commit`, `commit-msg`, and `pre-push` hooks.
-The hooks inspect every commit that is not already reachable from the selected
+The installer enables the repository-controlled `pre-commit`, `commit-msg`,
+and `pre-push` hooks. It never rewrites `user.name` or `user.email` — the
+gate asserts only that a non-Agent identity is configured. When a recognized
+global hook dispatcher is already configured it stays in charge of the
+repository hooks; otherwise `core.hooksPath` is pointed at `.githooks`. The
+hooks inspect every commit that is not already reachable from the selected
 remote, not only `HEAD`. They reject Agent-shaped Authors, Committers, and
-attribution lines while allowing historical human identities and GitHub's merge
-service. Missing, redirected, modified, symbolic-link, or non-executable policy
-files fail closed. Never use `--no-verify`, change `core.hooksPath`, or otherwise
-bypass these gates.
+attribution lines while allowing historical human identities and GitHub's
+merge service. Missing, redirected, modified, symbolic-link, or
+non-executable policy files fail closed. Never use `--no-verify`, change
+`core.hooksPath`, or otherwise bypass these gates.
 
 An Agent may assist a developer, but it must never replace, overwrite, or claim
 the developer's authorship. An Agent's name, email, or other contact details
@@ -307,8 +439,9 @@ rejected locally and remotely, and all attribution trailers are forbidden so an
 unknown Agent cannot enter the contributor graph as a secondary identity. No
 metadata rule can identify an Agent that deliberately impersonates an ordinary
 human identity; the trust boundary for that case is the repository-controlled
-hook, the authenticated GitHub identity, and the developer's personal review
-before committing.
+hook, the contributor's configured Git identity (and, where present, the
+machine-level account routing), and the developer's personal review before
+committing.
 
 ## Privacy rules
 
@@ -328,12 +461,13 @@ before committing.
 The Flutter client and the Rust native core share two interfaces:
 
 - Generated contract types, owned by `schemas/client_bridge/` and generated
-  into Dart (`apps/desktop/lib/src/contracts/generated/*.g.dart`) and Rust
-  (`crates/licoup-native/src/ffi/generated/*.rs`) from one schema.
+  into Dart (`apps/desktop/lib/src/contracts/generated/*.g.dart`) here and into
+  Rust (`crates/licoup/src/ffi/generated/*.rs`) in the LicoUp-CLI
+  repository from one schema.
 - The native CLI command surface (`licoup.stdio.v1` frames and one-shot
   arguments). The Rust side admits options through `admitted_params` in
-  `crates/licoup-native/src/ffi/commands/`; the Flutter side sends them from
-  `apps/desktop/lib/src/platform/native_client/`.
+  `crates/licoup/src/ffi/commands/` (in LicoUp-CLI); the Flutter side
+  sends them from `apps/desktop/lib/src/platform/native_client/`.
 
 The packaged app carries its own sidecar, so a running app keeps the old
 native binary until it is rebuilt. Rebuild and verify the client bundle
@@ -363,9 +497,10 @@ cost source beside the current catalog.
 
 ## Cut onto `release`; delegate publication
 
-`nightly` is the open integration branch. Product changes land there through
-ordinary action-prefixed pull requests, then one accepted snapshot advances by
-merge commit from `nightly` to `stable` and from `stable` to `release`.
+`nightly` is the only integration trunk and the open development branch. Product
+changes land there through ordinary action-prefixed pull requests, then one accepted
+snapshot advances by merge commit from `nightly` to `stable` and from `stable` to
+`release`.
 
 The project must complete 100 distinct releases before promoting any build to
 the `1.0.0` line. Every pre-1.0 release keeps its own immutable version,
@@ -381,10 +516,10 @@ merges a pull request, or mutates the protected release train.
 ## Pull request checklist
 
 Finish product changes, refactors, migrations, release tooling, workflows,
-Rulesets, identity policy, and Auditor policy through separate ordinary pull
+Rulesets, and identity policy through separate ordinary pull
 requests. Product work lands on `nightly`; the cut advances only through the
 fixed protected train. Public publication is a separate operation from the
-exact accepted `origin/release` source and is owned by Apple Release.
+exact accepted `origin/release` source and is owned by the release plane.
 
 A remote build, promotion merge, successful workflow, or draft is not release
 success. Success requires downloading the final public assets, verifying their
@@ -407,8 +542,8 @@ never replace an asset in place.
 - New or changed tests use made-up, redacted data.
 - Public documentation has matching English and Chinese text.
 - No sensitive values or raw runtime output are included.
-- New commits use the current `gh` account; published history contains no Agent
-  Author, Committer, attribution trailer, or bypassed hook.
+- New commits carry the configured developer identity; published history
+  contains no Agent Author, Committer, attribution trailer, or bypassed hook.
 - The temporary branch is deleted on the remote and in the local clone once its
   merge commit is on `nightly`.
 

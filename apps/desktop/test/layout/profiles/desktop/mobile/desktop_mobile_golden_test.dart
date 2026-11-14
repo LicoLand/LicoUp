@@ -37,7 +37,10 @@ void main() {
                 ),
                 child: SizedBox(
                   width: 240,
-                  child: Builder(builder: desktopMobileBundle.previewBuilder),
+                  child: Builder(
+                    builder: (context) =>
+                        desktopMobileBundle.previewBuilder(context, null),
+                  ),
                 ),
               ),
             ),

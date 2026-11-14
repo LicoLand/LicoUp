@@ -81,11 +81,12 @@ final class RecordingSettingsEffects implements EffectSource<SettingsEffect> {
 }
 
 SettingsProjection settingsProjectionFixture({
-  String appearanceId = AppearancePresetIds.licoSoda,
+  String appearanceId = AppearancePresetIds.starlitGold,
   List<SettingsAppearancePresetProjection>? appearancePresets,
   String locale = 'system',
   String layoutId = 'dashboard',
   List<PresentationChoice>? layoutChoices,
+  List<PresentationChoice>? layoutStyleChoices,
   List<ArchivedConversationProjection> archived = const [],
   bool archivedConversationsLoading = false,
   PresentationPhase layoutPhase = PresentationPhase.ready,
@@ -153,6 +154,7 @@ SettingsProjection settingsProjectionFixture({
           selected: layoutId == 'atlas',
         ),
       ],
+  layoutStyleChoices: layoutStyleChoices ?? const [],
   archivedConversations: archived,
   archivedConversationsLoading: archivedConversationsLoading,
   layoutPhase: layoutPhase,
@@ -195,6 +197,9 @@ SettingsBinding settingsBindingFixture({
       SettingsValueProjectionFixture(
         SettingsResourceUsageProjection.unsupported(),
       ),
+  terminalCommand: SettingsValueProjectionFixture(
+    const SettingsTerminalCommandProjection.loading(),
+  ),
   autostart:
       autostart ??
       SettingsValueProjectionFixture(

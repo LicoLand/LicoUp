@@ -4,15 +4,17 @@ import 'package:presentation_contract/presentation_contract.dart';
 import 'package:presentation_runtime/presentation_runtime.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptive_flywheel_controller.dart';
+import 'package:licoup/src/application/features/agents/acativa/acativa_controller.dart';
 import 'package:licoup/src/composition/renderer_intent_trace.dart';
-import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
+import 'package:licoup/src/contracts/acativa_models.dart';
+import 'package:licoup/src/contracts/agent_conversation_session.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation_session_ordering.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_effect.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
-import 'package:licoup/src/presentation/agents/adaptive_flywheel_projection.dart';
+import 'package:licoup/src/presentation/agents/acativa_projection.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
 import 'package:licoup/src/presentation/agents/agents_view.dart';
 import 'package:licoup/src/projections/agents/agents_presentation_source.dart';
@@ -24,22 +26,14 @@ final class AgentsFeatureComposition {
     ClientController controller, {
     RendererIntentTraceFactory? beginRendererIntent,
   }) {
-    _adaptiveFlywheel = AdaptiveFlywheelController(
-      gateway: controller.adaptiveFlywheelGateway,
-    );
+    _acativa = AcativaController(gateway: controller.acativaGateway);
     _effects = _AgentsEffects();
-    _projection = AgentsProjectionProducer(
-      controller,
-      adaptiveFlywheel: _adaptiveFlywheel,
-    );
+    _projection = AgentsProjectionProducer(controller, acativa: _acativa);
     _intents = _AgentsIntents.pending(
       controller,
       beginRendererIntent: beginRendererIntent,
     );
-    _intents.attach(
-      adaptiveFlywheel: _adaptiveFlywheel,
-      projection: _projection,
-    );
+    _intents.attach(acativa: _acativa, projection: _projection);
     _intents.effects = _effects;
     _catalogSource = AgentsPresentationSource(projection: _projection);
     catalogEntry = presentationProviderEntry(_catalogSource);
@@ -51,7 +45,7 @@ final class AgentsFeatureComposition {
     );
   }
 
-  late final AdaptiveFlywheelController _adaptiveFlywheel;
+  late final AcativaController _acativa;
   late final AgentsProjectionProducer _projection;
   late final _AgentsEffects _effects;
   late final _AgentsIntents _intents;
@@ -70,7 +64,7 @@ final class AgentsFeatureComposition {
     _closed = true;
     await _catalogSource.dispose();
     await _projection.close();
-    _adaptiveFlywheel.dispose();
+    _acativa.dispose();
     await _effects.close();
   }
 }
@@ -95,7 +89,7 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
 
   final ClientController _controller;
   final RendererIntentTraceFactory? _beginRendererIntent;
-  late AdaptiveFlywheelController _adaptiveFlywheel;
+  late AcativaController _acativa;
   late AgentsProjectionProducer _projection;
   late _AgentsEffects effects;
   Map<String, dynamic>? _assistantProfile;
@@ -103,10 +97,10 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
   String _assistantProfileMembershipId = '';
 
   void attach({
-    required AdaptiveFlywheelController adaptiveFlywheel,
+    required AcativaController acativa,
     required AgentsProjectionProducer projection,
   }) {
-    _adaptiveFlywheel = adaptiveFlywheel;
+    _acativa = acativa;
     _projection = projection;
   }
 
@@ -117,32 +111,29 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
       _beginRendererIntent,
     );
     switch (intent) {
-      case InitializeAdaptiveFlywheel(:final initialRevision):
+      case InitializeAcativa(:final initialRevision):
         _run(
           () async {
             await Future.wait([
-              _adaptiveFlywheel.initialize(),
+              _acativa.initialize(),
               _loadAssistantProfile(trace: trace),
             ]);
             if (initialRevision.isNotEmpty &&
-                _adaptiveFlywheel.definitions.any(
+                _acativa.definitions.any(
                   (definition) => definition.revisionDigest == initialRevision,
                 ) &&
-                _adaptiveFlywheel.selectedRevision != initialRevision) {
-              await _adaptiveFlywheel.selectDefinition(initialRevision);
+                _acativa.selectedRevision != initialRevision) {
+              await _acativa.selectDefinition(initialRevision);
             }
             await _refreshSelectedModelCatalogs();
           },
           trace,
-          reasonCode: 'adaptive_flywheel_initialize_failed',
+          reasonCode: 'acativa_initialize_failed',
         );
-      case ImportAdaptiveFlywheelPackage(:final path):
+      case ImportAcativaPackage(:final path):
         if (path.trim().isEmpty) {
           effects.add(
-            AdaptiveFlywheelActionRejected(
-              'adaptive_flywheel_package_required',
-              trace: trace,
-            ),
+            AcativaActionRejected('acativa_package_required', trace: trace),
           );
           return;
         }
@@ -152,29 +143,29 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
             ? conversation.id
             : '';
         _run(
-          () => _adaptiveFlywheel.importPackage(
+          () => _acativa.importPackage(
             path.trim(),
             conversationId: conversationId,
           ),
           trace,
-          reasonCode: 'adaptive_flywheel_import_failed',
+          reasonCode: 'acativa_import_failed',
         );
-      case SelectAdaptiveFlywheelDefinition(:final revision):
+      case SelectAcativaDefinition(:final revision):
         if (revision.trim().isEmpty) return;
         _run(
-          () => _adaptiveFlywheel.selectDefinition(revision.trim()),
+          () => _acativa.selectDefinition(revision.trim()),
           trace,
-          reasonCode: 'adaptive_flywheel_selection_failed',
+          reasonCode: 'acativa_selection_failed',
         );
-      case SaveAdaptiveFlywheelActorBindings(:final assignments):
+      case SaveAcativaActorBindings(:final assignments):
         _run(
           () async {
             await _saveActorBindings(assignments, trace: trace);
           },
           trace,
-          reasonCode: 'adaptive_flywheel_bindings_save_failed',
+          reasonCode: 'acativa_bindings_save_failed',
         );
-      case RefreshAdaptiveFlywheelModelCatalogs(:final agentIds):
+      case RefreshAcativaModelCatalogs(:final agentIds):
         _run(
           () => _controller.refreshAgentModelCatalogs(
             agentIds
@@ -183,18 +174,19 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
                 .toSet(),
           ),
           trace,
-          reasonCode: 'adaptive_flywheel_model_refresh_failed',
+          reasonCode: 'acativa_model_refresh_failed',
         );
-      case ReadAdaptiveFlywheelAssistantProfile():
+      case ReadAcativaAssistantProfile():
         _run(
           () => _loadAssistantProfile(trace: trace),
           trace,
-          reasonCode: 'adaptive_flywheel_profile_read_failed',
+          reasonCode: 'acativa_profile_read_failed',
         );
-      case UpdateAdaptiveFlywheelAssistantProfile(
+      case UpdateAcativaAssistantProfile(
         :final agentId,
         :final modelId,
         :final reasoningEffort,
+        :final permissionMode,
       ):
         _run(
           () async {
@@ -202,11 +194,12 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
               agentId: agentId,
               modelId: modelId,
               reasoningEffort: reasoningEffort,
+              permissionMode: permissionMode,
               trace: trace,
             );
           },
           trace,
-          reasonCode: 'adaptive_flywheel_profile_update_failed',
+          reasonCode: 'acativa_profile_update_failed',
         );
       case ScanAgents(:final showProgress, :final forceRescanKnown):
         _run(
@@ -218,8 +211,6 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
         );
       case SelectAgent(:final agentId):
         _run(() => _controller.selectConversationAgent(agentId), trace);
-      case ShowAgentsWelcome():
-        _controller.showConversationWelcomePage();
       case SelectAgentConversationSession(
         :final agentId,
         :final sessionId,
@@ -267,6 +258,32 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
           _controller.clientConversationController.clearSelection();
           await _controller.selectConversationAgent(agentId);
           _controller.startNewConversationSession();
+        }, trace);
+      case OpenAgentConversation(:final agentId):
+        _run(() async {
+          _controller.clientConversationController.clearSelection();
+          await _controller.selectConversationAgent(agentId);
+          if (!_controller.conversationSessionsByAgent.containsKey(agentId)) {
+            await _controller.loadConversationSessions(agentId);
+          }
+          AgentConversationSession? latest;
+          for (final session
+              in _controller.conversationSessionsByAgent[agentId] ??
+                  const <AgentConversationSession>[]) {
+            // Sub-agent threads merge into their parent conversation and are
+            // never themselves the Agent's latest row.
+            if (session.parentSessionId.trim().isNotEmpty) continue;
+            if (latest == null ||
+                conversationSessionSortTime(session) >
+                    conversationSessionSortTime(latest)) {
+              latest = session;
+            }
+          }
+          if (latest == null) {
+            _controller.startNewConversationSession();
+          } else {
+            _controller.selectConversationSession(latest.id);
+          }
         }, trace);
       case AddManualAgent(
         :final command,
@@ -327,7 +344,7 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
   }
 
   Future<void> _refreshSelectedModelCatalogs() {
-    final projection = _projection.current.adaptiveFlywheel;
+    final projection = _projection.current.acativa;
     final agentIds = <String>{
       for (final assignment in projection.inspection?.assignments ?? const [])
         if (assignment.agentId.trim().isNotEmpty) assignment.agentId.trim(),
@@ -338,19 +355,19 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
   }
 
   Future<bool> _saveActorBindings(
-    List<AdaptiveFlywheelAssignmentIntent> assignments, {
+    List<AcativaAssignmentIntent> assignments, {
     required TraceContext? trace,
     bool emitCompletion = true,
   }) async {
-    final bySlot = <String, List<AdaptiveFlywheelBinding>>{};
+    final bySlot = <String, List<AcativaBinding>>{};
     for (final assignment in assignments) {
       final slotId = assignment.slotId.trim();
       final agentId = assignment.agentId.trim();
       if (slotId.isEmpty || agentId.isEmpty) continue;
       bySlot
-          .putIfAbsent(slotId, () => <AdaptiveFlywheelBinding>[])
+          .putIfAbsent(slotId, () => <AcativaBinding>[])
           .add(
-            AdaptiveFlywheelBinding(
+            AcativaBinding(
               slotId: slotId,
               ordinal: assignment.ordinal,
               valueId: agentId,
@@ -362,10 +379,10 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
     for (final values in bySlot.values) {
       values.sort((left, right) => left.ordinal.compareTo(right.ordinal));
     }
-    await _adaptiveFlywheel.saveActorBindings(bySlot);
-    if (_adaptiveFlywheel.error.isNotEmpty) return false;
+    await _acativa.saveActorBindings(bySlot);
+    if (_acativa.error.isNotEmpty) return false;
     if (emitCompletion) {
-      effects.add(AdaptiveFlywheelSaveCompleted(trace: trace));
+      effects.add(AcativaSaveCompleted(trace: trace));
     }
     return true;
   }
@@ -376,7 +393,7 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
     if (conversation == null || !conversation.group) {
       _clearAssistantProfile();
       _projection.setAssistantProfile(
-        const AdaptiveFlywheelAssistantProjection.empty(),
+        const AcativaAssistantProjection.empty(),
         trace: trace,
       );
       return;
@@ -388,21 +405,16 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
             : conversation.activeAgentMemberships.first);
     final agentId = membership?.principal.agentId.trim().isNotEmpty == true
         ? membership!.principal.agentId.trim()
-        : (_projection
-                  .current
-                  .adaptiveFlywheel
-                  .callableAgents
-                  .firstOrNull
-                  ?.id ??
-              '');
+        : (_projection.current.acativa.callableAgents.firstOrNull?.id ?? '');
     final defaults = _assistantDefaults(agentId);
     _projection.setAssistantProfile(
-      AdaptiveFlywheelAssistantProjection(
+      AcativaAssistantProjection(
         conversationId: conversation.id,
         membershipId: membership?.id ?? '',
         agentId: agentId,
         modelId: defaults.modelId,
         reasoningEffort: defaults.reasoningEffort,
+        permissionMode: '',
         profileRevision: 0,
         loading: membership != null,
         saving: false,
@@ -434,13 +446,18 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
       modelId: modelId,
       reasoningEffort: effort,
     );
+    final permissionMode = _assistantPermissionMode(
+      agentId,
+      (profile?['preferredPermissionMode'] ?? '').toString(),
+    );
     _projection.setAssistantProfile(
-      AdaptiveFlywheelAssistantProjection(
+      AcativaAssistantProjection(
         conversationId: conversation.id,
         membershipId: membership.id,
         agentId: agentId,
         modelId: resolved.modelId,
         reasoningEffort: resolved.reasoningEffort,
+        permissionMode: permissionMode,
         profileRevision: (profile?['revision'] as num?)?.toInt() ?? 0,
         loading: false,
         saving: false,
@@ -467,10 +484,26 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
     );
   }
 
+  /// Resolve the persisted permission mode against the agent's executable
+  /// modes: an unsupported stored value falls back to empty rather than being
+  /// displayed or re-persisted as applied.
+  String _assistantPermissionMode(String agentId, String stored) {
+    final modes = _projection.callableAgent(agentId)?.permissionModes;
+    if (modes == null || modes.isEmpty) {
+      return '';
+    }
+    final trimmed = stored.trim();
+    if (trimmed.isEmpty) {
+      return modes.first;
+    }
+    return modes.contains(trimmed) ? trimmed : '';
+  }
+
   Future<bool> _updateAssistantProfile({
     required String agentId,
     required String modelId,
     required String reasoningEffort,
+    String? permissionMode,
     TraceContext? trace,
     bool emitCompletion = true,
   }) async {
@@ -481,15 +514,12 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
         !conversation.group ||
         normalizedAgentId.isEmpty) {
       effects.add(
-        AdaptiveFlywheelActionRejected(
-          'adaptive_flywheel_assistant_required',
-          trace: trace,
-        ),
+        AcativaActionRejected('acativa_assistant_required', trace: trace),
       );
       return false;
     }
     _projection.setAssistantProfile(
-      _projection.current.adaptiveFlywheel.assistant.copyWith(saving: true),
+      _projection.current.acativa.assistant.copyWith(saving: true),
       trace: trace,
     );
     var membership = _membershipForAgent(conversation, normalizedAgentId);
@@ -500,19 +530,19 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
         displayName: agent?.displayName ?? normalizedAgentId,
       );
       if (!joined) {
-        _rejectProfileUpdate('adaptive_flywheel_membership_unavailable', trace);
+        _rejectProfileUpdate('acativa_membership_unavailable', trace);
         return false;
       }
       final refreshed = controller.selectedConversation;
       if (refreshed == null || refreshed.id != conversation.id) {
-        _rejectProfileUpdate('adaptive_flywheel_conversation_changed', trace);
+        _rejectProfileUpdate('acativa_conversation_changed', trace);
         return false;
       }
       membership = _membershipForAgent(refreshed, normalizedAgentId);
     }
     if (membership == null ||
         !await controller.setSelectedAssistantMembership(membership.id)) {
-      _rejectProfileUpdate('adaptive_flywheel_assistant_unavailable', trace);
+      _rejectProfileUpdate('acativa_assistant_unavailable', trace);
       return false;
     }
     var profile =
@@ -522,7 +552,7 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
         : null;
     profile ??= await controller.membershipProfile(membership.id);
     if (profile == null) {
-      _rejectProfileUpdate('adaptive_flywheel_profile_unavailable', trace);
+      _rejectProfileUpdate('acativa_profile_unavailable', trace);
       return false;
     }
     await controller.updateMembershipProfileIntent(
@@ -541,21 +571,48 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
             ? null
             : reasoningEffort.trim(),
         'preferredEnvironment': profile['preferredEnvironment'],
+        'preferredPermissionMode': _persistedPermissionMode(
+          agentId: normalizedAgentId,
+          requested: permissionMode,
+          profile: profile,
+        ),
       },
     );
     await _loadAssistantProfile(trace: trace);
     if (emitCompletion) {
-      effects.add(AdaptiveFlywheelSaveCompleted(trace: trace));
+      effects.add(AcativaSaveCompleted(trace: trace));
     }
     return true;
   }
 
+  /// Persist only a mode the agent's adapter can actually execute: an
+  /// explicit supported selection wins, an omitted update preserves the
+  /// stored value when still valid, and anything else clears the field so an
+  /// unsupported mode is never re-persisted as applied.
+  String? _persistedPermissionMode({
+    required String agentId,
+    required String? requested,
+    required Map<String, dynamic> profile,
+  }) {
+    final modes = _projection.callableAgent(agentId)?.permissionModes;
+    if (modes == null || modes.isEmpty) {
+      return null;
+    }
+    final candidate =
+        (requested ?? (profile['preferredPermissionMode'] ?? '').toString())
+            .trim();
+    if (candidate.isEmpty) {
+      return null;
+    }
+    return modes.contains(candidate) ? candidate : null;
+  }
+
   void _rejectProfileUpdate(String reasonCode, TraceContext? trace) {
     _projection.setAssistantProfile(
-      _projection.current.adaptiveFlywheel.assistant.copyWith(saving: false),
+      _projection.current.acativa.assistant.copyWith(saving: false),
       trace: trace,
     );
-    effects.add(AdaptiveFlywheelActionRejected(reasonCode, trace: trace));
+    effects.add(AcativaActionRejected(reasonCode, trace: trace));
   }
 
   ClientConversationMembership? _membershipForAgent(
@@ -591,7 +648,7 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
         effects.add(
           reasonCode == 'agents_action_failed'
               ? AgentSelectionRejected(reasonCode, trace: trace)
-              : AdaptiveFlywheelActionRejected(reasonCode, trace: trace),
+              : AcativaActionRejected(reasonCode, trace: trace),
         );
       }),
     );

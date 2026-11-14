@@ -1,4 +1,4 @@
-import * as adaptiveFlywheel from "./adaptive-flywheel.mjs";
+import * as acativa from "./adaptive-flywheel.mjs";
 import * as agentTabOrder from "./agent-tab-order.mjs";
 import * as appearancePresentation from "./appearance-presentation.mjs";
 import * as canonicalConversation from "./canonical-conversation.mjs";
@@ -9,7 +9,7 @@ import * as gatewayCredentialCustody from "./gateway-credential-custody.mjs";
 import { createGenericJsonCodec } from "./generic-json.mjs";
 
 const CODEC_MAP = {
-  "adaptive-flywheel": adaptiveFlywheel,
+  "adaptive-flywheel": acativa,
   "agent-tab-order": agentTabOrder,
   "appearance-presentation": appearancePresentation,
   "canonical-conversation": canonicalConversation,

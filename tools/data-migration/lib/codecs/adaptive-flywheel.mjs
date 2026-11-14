@@ -100,7 +100,7 @@ export function forward(dataRoot, fromVer, toVer) {
       }
     }
     removeFileSync(getLegacyTomlPath(dataRoot));
-    return { converted: true, details: "migrated adaptive flywheel to schema 2" };
+    return { converted: true, details: "migrated Acativa to schema 2" };
   }
 
   if (fromVer === 1 && toVer === 2) {
@@ -124,7 +124,7 @@ export function forward(dataRoot, fromVer, toVer) {
         try { db.close(); } catch {}
       }
     }
-    return { converted: true, details: "migrated adaptive flywheel to schema 3 (workflow routing)" };
+    return { converted: true, details: "migrated Acativa to schema 3 (workflow routing)" };
   }
 
   if (fromVer === 0 && toVer === 2) {
@@ -158,7 +158,7 @@ export function reverse(dataRoot, fromVer, toVer) {
           try { db.close(); } catch {}
         }
       }
-      return { converted: true, details: "downgraded adaptive flywheel to schema 2" };
+      return { converted: true, details: "downgraded Acativa to schema 2" };
     }
     return { converted: true, details: "database absent" };
   }
@@ -177,7 +177,7 @@ export function reverse(dataRoot, fromVer, toVer) {
         }
       }
       removeFileSync(dbPath);
-      return { converted: true, details: "downgraded adaptive flywheel to v0 (store absent; definitions preserved)" };
+      return { converted: true, details: "downgraded Acativa to v0 (store absent; definitions preserved)" };
     }
     return { converted: true, details: "database absent" };
   }

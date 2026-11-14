@@ -25,9 +25,7 @@ const leaves = Object.freeze([
   "self-test/runner.mjs",
   "util.mjs",
   "validate-config.mjs",
-  "validate-evidence/android.mjs",
   "validate-evidence/common.mjs",
-  "validate-evidence/linux.mjs",
   "validate-evidence/macos.mjs",
 ]);
 
@@ -124,7 +122,7 @@ test("artifact verification receipts facade is a thin serial CLI entry", async (
   assert.equal(typeof module.runArtifactVerificationReceiptsCli, "function");
 });
 
-test("artifact verification receipts owns exactly seventeen bounded ordinary modules", async () => {
+test("artifact verification receipts owns exactly fifteen bounded ordinary modules", async () => {
   assert.deepEqual(await collectModules(moduleRoot), [...leaves]);
   const source = await sources();
   for (const leaf of Object.keys(source)) {

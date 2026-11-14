@@ -1,7 +1,7 @@
 // Rendered proof for the interactive Dashboard navigation behaviors, driven
 // against the real production shell (production fixture: real controller,
 // real composition, deterministic fixture backends):
-//   - 模型网关 opens its gateway and 移动配对 includes chat channels
+//   - 模型网关 opens its gateway and 设备 opens the Devices surface
 //   - long-press drag reorders the 功能 list and the order survives a remount
 // Golden PNGs double as the visual-verification evidence for these bullets.
 
@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../../../support/bundled_font_loader.dart';
 
+import 'package:licoup/src/contracts/presentation/built_in_layout_spec.dart';
 import 'package:licoup/src/contracts/presentation/dashboard_feature_order.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
@@ -43,6 +44,9 @@ void main() {
       destination: ClientSection.agentHub,
       size: const Size(1280, 800),
       brightness: Brightness.dark,
+      // Pin the preserved card style so these baselines stay the
+      // byte-identical record of the classic Dashboard arrangement.
+      layoutStyleId: BuiltInLayoutSpec.dashboardCardStyleId,
     );
     addTearDown(fixture.controller.dispose);
     final store = _GoldenOrderStore();
@@ -71,7 +75,7 @@ void main() {
     const frozenOrder = <String>[
       'agentHub',
       'modelGateway',
-      'mobilePairing',
+      'devices',
       'statsPanel',
     ];
     double? previousDy;
@@ -85,25 +89,20 @@ void main() {
       previousDy = dy;
     }
 
-    // Chat channels live inside mobile pairing.
-    await tester.tap(
-      find.byKey(const Key('messaging-sidebar-list-mobilePairing')),
-    );
+    // The Devices feature row opens the Devices surface.
+    await tester.tap(find.byKey(const Key('messaging-sidebar-list-devices')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 120));
     await tester.pump();
-    expect(fixture.controller.currentSection, ClientSection.mobileRelay);
-    expect(
-      find.byKey(const Key('mobile-pairing-chat-channels')),
-      findsOneWidget,
-    );
+    expect(fixture.controller.currentSection, ClientSection.devices);
+    expect(find.byKey(const Key('devices-panel')), findsOneWidget);
     expect(
       find.byKey(const Key('models-panel-licoup-keys-layout-v3-gateway-first')),
       findsNothing,
     );
     await expectLater(
       find.byKey(const Key('dashboard-interaction-repaint')),
-      matchesGoldenFile('goldens/dashboard_mobile_pairing_channels.png'),
+      matchesGoldenFile('goldens/dashboard_devices_surface.png'),
     );
 
     // Model gateway retains its own destination.
@@ -140,7 +139,7 @@ void main() {
     expect(store._stored, [
       'modelGateway',
       'agentHub',
-      'mobilePairing',
+      'devices',
       'statsPanel',
     ]);
     await expectLater(
@@ -153,8 +152,8 @@ void main() {
     double dyOf(String id) =>
         tester.getTopLeft(find.byKey(Key('messaging-sidebar-list-$id'))).dy;
     expect(dyOf('modelGateway'), lessThan(dyOf('agentHub')));
-    expect(dyOf('agentHub'), lessThan(dyOf('mobilePairing')));
-    expect(dyOf('mobilePairing'), lessThan(dyOf('statsPanel')));
+    expect(dyOf('agentHub'), lessThan(dyOf('devices')));
+    expect(dyOf('devices'), lessThan(dyOf('statsPanel')));
     await expectLater(
       find.byKey(const Key('dashboard-interaction-repaint')),
       matchesGoldenFile('goldens/dashboard_features_reorder_restored.png'),

@@ -4,7 +4,7 @@ Status: Implemented
 
 ## Context
 
-As the LicoUp codebase and documentation evolved, technical specifications and subsystem details—such as the 4-tier architectural models, Canonical Conversation domain structures, endpoint security and encryption specifications, subagent wire protocols, Adaptive Flywheel strategies, platform-specific OS adaptations, and model token-cost metadata catalogs—were repeatedly duplicated and aggregated into top-level overview files or across multiple peer documents.
+As the LicoUp codebase and documentation evolved, technical specifications and subsystem details—such as the 4-tier architectural models, Canonical Conversation domain structures, endpoint security and encryption specifications, subagent wire protocols, Acativa strategies, platform-specific OS adaptations, and model token-cost metadata catalogs—were repeatedly duplicated and aggregated into top-level overview files or across multiple peer documents.
 
 This monolithic and fragmented approach introduced severe structural issues:
 1. **Compounding Documentation Drift**: When subsystem rules, wire formats, or state machines evolved, changes in domain files were not consistently synchronized with top-level architecture summaries, causing contradictory claims.
@@ -37,7 +37,7 @@ All technical and product documentation in this repository (encompassing archite
 | **Product Goals & Philosophy** | `PRODUCT.md` | Product vision, design philosophy, durable promises, command identity | Top-level governing charter; avoids low-level code details |
 | **Top-Level System Architecture** | `docs/architecture/README.md` | 4-tier client architecture, cross-cutting flowcharts, and Native OS adaptation boundaries | Avoids subsystem details; navigates via domain index tables |
 | **Domain Architecture Specifications** | `docs/architecture/*.md` | Conversation domain model, security & data boundaries, client-native bridging contracts | Owns the unique models, state machines, and entity definitions for that domain |
-| **Feature Specifications** | `docs/functionality/*.md` | Adaptive Flywheel strategies, desktop client capability boundaries, user guides, design systems | Focuses on standalone feature mechanisms and lifecycles |
+| **Feature Specifications** | `docs/functionality/*.md` | Acativa strategies, desktop client capability boundaries, user guides, design systems | Focuses on standalone feature mechanisms and lifecycles |
 | **Wire Protocols & Schemas** | `docs/protocols/*.md` | Subagent MCP, Conversation MCP, Lico Agent, LLM Gateway, Station Adapter | Strict wire fields, envelope formats, RPC exchanges, and codecs |
 | **Platform Compliance** | `docs/platforms/*.md` | macOS direct-distribution compliance, OS-specific requirements | Non-portable OS specifications and release compliance checklists |
 | **Current Status & Compatibility** | `docs/STATUS.md`, `COMPATIBILITY.md` | Verified implementation facts, platform and 13-agent support matrices | Sole truth for current support; never claim unverified capabilities |

@@ -9,16 +9,15 @@ import {
   IdentityPolicyError,
   assertCommitMessage,
   assertCommitRecord,
-  boundedIdentityRead,
-  canonicalGitHubEmail,
+  commandSucceeds,
   isAgentIdentity,
   isMergeInProgress,
+  isSupportedDispatcherChain,
   managedPolicyDrift,
   managedPolicyPaths,
   outgoingCommits,
   outgoingObjectChecks,
   parseRawDiffEntries,
-  parseGitHubIdentity,
   shouldRejectEmptyStagedCandidate,
   stagedObjectChecks,
 } from "../../../tools/scripts/repository-identity-policy.mjs";
@@ -32,48 +31,12 @@ import {
   sensitiveExtensions,
 } from "../../../tools/scripts/lib/repository-sensitive-file-policy.mjs";
 
-test("identity reads retry only their bounded read operation", () => {
-  let attempts = 0;
-  assert.equal(boundedIdentityRead(() => {
-    attempts += 1;
-    if (attempts < 2) throw new Error("transient");
-    return "ready";
-  }), "ready");
-  assert.equal(attempts, 2);
-});
-import {
-  allBranchesRulesetName,
-  assertReleaseDefaultBranch,
-  buildRulesets,
-  boundedRead,
-  identityStatusContext,
-  cutoffRulesetName,
-  planRulesetApply,
-  promotionRulesetNames,
-  promotionRequiredStatusContexts,
-  pushRulesetCapability,
-  sensitivePublicationRulesetName,
-} from "../../../tools/scripts/repository-rulesets.mjs";
-
-test("Ruleset reads retry transient failures without retrying mutations", () => {
-  let attempts = 0;
-  assert.equal(boundedRead(() => {
-    attempts += 1;
-    if (attempts < 3) throw new Error("transient");
-    return "ready";
-  }), "ready");
-  assert.equal(attempts, 3);
-  assert.throws(() => boundedRead(() => { throw new Error("persistent"); }, 2));
-});
-
-const identity = Object.freeze({ login: "human-developer", id: "123456" });
-
 function validRecord(overrides = {}) {
   return {
-    authorName: identity.login,
-    authorEmail: canonicalGitHubEmail(identity),
-    committerName: identity.login,
-    committerEmail: canonicalGitHubEmail(identity),
+    authorName: "human-developer",
+    authorEmail: "human-developer@example.invalid",
+    committerName: "human-developer",
+    committerEmail: "human-developer@example.invalid",
     message: "Add repository identity policy",
     ...overrides,
   };
@@ -85,11 +48,6 @@ function rejectsWithCode(operation, code) {
     (error) => error instanceof IdentityPolicyError && error.code === code,
   );
 }
-
-test("GitHub identity parser accepts only a canonical login and numeric account ID", () => {
-  assert.deepEqual(parseGitHubIdentity("human-developer\t123456"), identity);
-  rejectsWithCode(() => parseGitHubIdentity("Agent Name\tnot-numeric"), "GH_IDENTITY_INVALID");
-});
 
 test("commit history preserves human identities and rejects Agent attribution", () => {
   assert.doesNotThrow(() => assertCommitRecord(validRecord()));
@@ -145,88 +103,6 @@ test("pull request identity workflow requires a User or verified GitHub merge se
   assert.match(workflow, /has_forbidden_attribution/u);
 });
 
-test("branch-scoped Rulesets cover identity, every promotion edge, and push publication", () => {
-  const integrationId = 15368;
-  const appleIntegrationId = 27182;
-  const rulesets = buildRulesets(integrationId, appleIntegrationId);
-  assert.equal(rulesets.length, 6);
-  assert.deepEqual(
-    rulesets.map(({ name }) => name),
-    [
-      allBranchesRulesetName,
-      ...Object.values(promotionRulesetNames),
-      cutoffRulesetName,
-      sensitivePublicationRulesetName,
-    ],
-  );
-  for (const ruleset of rulesets) {
-    assert.equal(ruleset.enforcement, "active");
-    assert.deepEqual(ruleset.bypass_actors, []);
-  }
-
-  const [identityRuleset, ...rest] = rulesets;
-  const promotionRulesets = rest.slice(0, 3);
-  const cutoffRuleset = rest[3];
-  const pushRuleset = rest.at(-1);
-  assert.deepEqual(identityRuleset.conditions.ref_name.include, ["~ALL"]);
-  assert.ok(identityRuleset.rules.some(({ type }) => type === "commit_author_email_pattern"));
-  const authorRule = identityRuleset.rules.find(
-    ({ type }) => type === "commit_author_email_pattern",
-  );
-  const committerRule = identityRuleset.rules.find(
-    ({ type }) => type === "committer_email_pattern",
-  );
-  for (const rule of [authorRule, committerRule]) {
-    assert.equal(rule.parameters.negate, true);
-    const pattern = new RegExp(rule.parameters.pattern.replace(/^\(\?i\)/u, ""), "iu");
-    assert.equal(pattern.test("123+developer@users.noreply.github.com"), false);
-    assert.equal(pattern.test("legacy-human@example.invalid"), false);
-    assert.equal(pattern.test("cursor-agent@example.invalid"), true);
-    assert.equal(pattern.test("service[bot]@users.noreply.github.com"), true);
-  }
-  assert.equal(
-    identityRuleset.rules.filter(({ type }) => type === "commit_message_pattern").length,
-    1,
-  );
-  const messageRule = identityRuleset.rules.find(
-    ({ type }) => type === "commit_message_pattern",
-  );
-  assert.match(messageRule.parameters.pattern, /co-authored-by/u);
-  assert.match(messageRule.parameters.pattern, /cursor/u);
-
-  assert.equal(identityStatusContext, "Commit identity");
-  for (const [index, branch] of ["nightly", "stable", "release"].entries()) {
-    const promotionRuleset = promotionRulesets[index];
-    for (const requiredType of [
-      "deletion", "non_fast_forward", "pull_request", "required_status_checks",
-    ]) {
-      assert.ok(promotionRuleset.rules.some(({ type }) => type === requiredType));
-    }
-    const statusRule = promotionRuleset.rules.find(
-      ({ type }) => type === "required_status_checks",
-    );
-    const expectedChecks = promotionRequiredStatusContexts[branch]
-      .map((context) => ({ context, integration_id: integrationId }));
-    if (branch === "stable") expectedChecks.push({ context: "Apple Release ready", integration_id: appleIntegrationId });
-    assert.deepEqual(statusRule.parameters.required_status_checks, expectedChecks);
-    assert.deepEqual(promotionRuleset.conditions.ref_name.include,
-      [`refs/heads/${branch}`]);
-  }
-  assert.deepEqual(cutoffRuleset.conditions.ref_name.include, ["refs/heads/nightly-cutoff/*"]);
-  assert.deepEqual(cutoffRuleset.rules.map(({ type }) => type), ["deletion", "update"]);
-  assert.equal(cutoffRuleset.rules[1].parameters.update_allows_fetch_and_merge, false);
-
-  assert.equal(pushRuleset.target, "push");
-  assert.equal(Object.hasOwn(pushRuleset, "conditions"), false);
-  const extensionRule = pushRuleset.rules.find(
-    ({ type }) => type === "file_extension_restriction",
-  );
-  assert.ok(extensionRule);
-  assert.deepEqual(extensionRule.parameters, {
-    restricted_file_extensions: sensitiveRulesetExtensions(),
-  });
-});
-
 test("ignore defense mirrors every canonical sensitive suffix", () => {
   const ignored = new Set(readFileSync(".gitignore", "utf8").split(/\r?\n/u));
   for (const extension of sensitiveExtensions) {
@@ -280,6 +156,10 @@ function initFixtureRepo() {
   git(["config", "user.name", "Guard Regression"]);
   git(["config", "user.email", "guard-regression@example.invalid"]);
   git(["config", "commit.gpgsign", "false"]);
+  // The fixture repository must not inherit the host's global hooks: a shared
+  // hooksPath would run the host's checkers inside a directory they do not
+  // govern and fail the fixture for reasons outside the test.
+  git(["config", "core.hooksPath", path.join(dir, ".git", "hooks")]);
   return { dir, git, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
@@ -545,57 +425,6 @@ test("a new remote ref scans only history not already reachable from that remote
   }
 });
 
-test("push Ruleset capability requires an internal/private Team or Enterprise repository", () => {
-  assert.equal(pushRulesetCapability({ visibility: "public", plan: { name: "free" } }), false);
-  assert.equal(pushRulesetCapability({ visibility: "private", plan: { name: "free" } }), false);
-  assert.equal(pushRulesetCapability({ visibility: "private", plan: { name: "team" } }), true);
-  assert.equal(pushRulesetCapability({ visibility: "private", plan: { name: "enterprise" } }), true);
-  assert.equal(pushRulesetCapability({ visibility: "internal", plan: { name: "Team" } }), true);
-  assert.equal(pushRulesetCapability({ visibility: "private" }), false);
-  assert.equal(pushRulesetCapability(null), false);
-});
-
-test("unsupported public push target still plans branch authorities", () => {
-  const plan = planRulesetApply({ visibility: "public", plan: { name: "free" } }, 15368, 27182);
-  assert.equal(plan.status, "branch-only");
-  assert.equal(plan.code, "PUSH_RULESET_UNSUPPORTED");
-  assert.deepEqual(plan.desired.map(({ name }) => name),
-    [allBranchesRulesetName, ...Object.values(promotionRulesetNames), cutoffRulesetName]);
-  assert.ok(plan.desired.every(({ target }) => target === "branch"));
-});
-
-test("supported push target plans all managed Rulesets in deterministic order", () => {
-  const calls = [];
-  const recorder = { apply(payload) { calls.push(payload.name); } };
-  for (const planName of ["team", "enterprise"]) {
-    const plan = planRulesetApply({ visibility: "private", plan: { name: planName } }, 15368, 27182);
-    assert.equal(plan.status, "supported");
-    assert.deepEqual(plan.desired.map(({ name }) => name),
-      [
-        allBranchesRulesetName,
-        ...Object.values(promotionRulesetNames),
-        cutoffRulesetName,
-        sensitivePublicationRulesetName,
-      ]);
-    assert.deepEqual(plan.desired.slice(0, 5).map(({ target }) => target),
-      ["branch", "branch", "branch", "branch", "branch"]);
-    assert.equal(plan.desired[5].target, "push");
-    assert.deepEqual(plan.desired[5].bypass_actors, []);
-    for (const payload of plan.desired) recorder.apply(payload);
-  }
-  assert.equal(calls.length, 12);
-});
-
-test("release remains the required default branch", () => {
-  assert.doesNotThrow(() => assertReleaseDefaultBranch({ default_branch: "release" }));
-  assert.throws(() => assertReleaseDefaultBranch({ default_branch: "nightly" }),
-    (error) => error?.code === "DEFAULT_BRANCH_INVALID");
-  const source = readFileSync(path.resolve("tools/scripts/repository-rulesets.mjs"), "utf8");
-  assert.doesNotMatch(source, /default_branch=/u);
-  assert.doesNotMatch(source, /--default-branch/u);
-  assert.doesNotMatch(source, /["']PATCH["']/u);
-});
-
 // The managed-policy check compares each file with the committed revision at HEAD. It must
 // never compare with a digest recorded when the policy was installed: that made the gate
 // satisfiable only while the checkout stayed on the install-time revision, so a branch
@@ -613,6 +442,8 @@ test("managed policy drift is read from HEAD, so advancing the revision is not d
     git("init", "-q");
     git("config", "user.name", "policy-fixture");
     git("config", "user.email", "policy-fixture@example.invalid");
+    git("config", "commit.gpgsign", "false");
+    git("config", "core.hooksPath", path.join(root, ".git", "hooks"));
     git("add", "-A");
     git("commit", "-q", "-m", "policy revision one");
     assert.deepEqual(managedPolicyDrift(root), []);
@@ -633,6 +464,33 @@ test("managed policy drift is read from HEAD, so advancing the revision is not d
     rmSync(path.join(root, managedPolicyPaths[0]));
     writeFileSync(path.join(root, managedPolicyPaths[1]), "another local edit\n", { mode: 0o755 });
     assert.deepEqual(managedPolicyDrift(root), [managedPolicyPaths[0], managedPolicyPaths[1]].sort());
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a supported chain is decided by the verifier's exit status, not its output", () => {
+  // The contract is the process result: a silent success is still a pass,
+  // and a noisy failure is still a refusal.
+  assert.equal(commandSucceeds(process.execPath, ["-e", "process.exit(0)"]), true);
+  assert.equal(commandSucceeds(process.execPath, ["-e", "process.exit(1)"]), false);
+  assert.equal(commandSucceeds("definitely-not-a-real-command", []), false);
+});
+
+test("an unsupported or absent dispatcher chain is never treated as the repository's hooks", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "licoup-dispatcher-"));
+  try {
+    // An inert directory with hook-named entries is not a chain: only the
+    // dispatcher's owner can attest the contract, and it does not.
+    const inert = path.join(root, "inert");
+    mkdirSync(inert, { recursive: true });
+    for (const entry of ["_dispatch", "pre-commit", "commit-msg", "pre-push"]) {
+      writeFileSync(path.join(inert, entry), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    }
+    assert.equal(isSupportedDispatcherChain(inert), false);
+
+    // A hooksPath that does not exist at all is not a chain either.
+    assert.equal(isSupportedDispatcherChain(path.join(root, "absent")), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

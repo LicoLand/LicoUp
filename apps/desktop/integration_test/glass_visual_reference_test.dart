@@ -36,7 +36,7 @@ void main() {
           MaterialApp(
             locale: const Locale('en'),
             theme: buildLicoTheme(
-              presetId: dark ? 'lico-soda' : 'lico-soda-light',
+              presetId: dark ? 'lico-starlit-gold' : 'lico-taro-waffle',
               platformBrightness: dark ? Brightness.dark : Brightness.light,
             ).copyWith(platform: TargetPlatform.macOS),
             home: Scaffold(
@@ -94,9 +94,9 @@ class _Scene extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final ink = dark ? const Color(0xFFF4F4F6) : const Color(0xFF472413);
+    final ink = colors.text;
     return ColoredBox(
-      color: dark ? const Color(0xFF17191E) : const Color(0xFFF4E3DC),
+      color: colors.surfaceSunken,
       child: Padding(
         padding: const EdgeInsets.all(36),
         child: DefaultTextStyle(
@@ -326,7 +326,6 @@ class _Scene extends StatelessWidget {
                                 showRuntimeSettings: false,
                                 floatingMatteCapsule: true,
                                 leading: CanonicalGroupAssistantActions(
-                                  onPickAttachments: () {},
                                   onArchive: () {},
                                 ),
                                 fieldTrailing: const AssistantModelReadout(

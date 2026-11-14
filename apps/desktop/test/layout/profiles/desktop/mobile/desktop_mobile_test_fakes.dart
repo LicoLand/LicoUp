@@ -5,14 +5,14 @@ import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 
 const List<ClientSection> desktopMobileTestDestinations = [
   ClientSection.agents,
-  ClientSection.mobileRelay,
+  ClientSection.devices,
   ClientSection.settings,
 ];
 
 String desktopMobileTestLabel(ClientSection destination) =>
     switch (destination) {
       ClientSection.agents => 'Agents',
-      ClientSection.mobileRelay => 'Pairing',
+      ClientSection.devices => 'Pairing',
       ClientSection.settings => 'Settings',
       _ => destination.name,
     };

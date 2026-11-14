@@ -7,7 +7,9 @@ import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/frontend/layout/layout_state_store.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
@@ -195,14 +197,25 @@ final class _MemoryPreferencesRepository
       PresentationPreferencesLoadResult(preferences: value);
 
   @override
-  Future<PresentationPreferences> setReduceMotion(bool enabled) async {
-    value = value.copyWith(reduceMotion: enabled);
+  Future<PresentationPreferences> setReduceMotion(
+    ReduceMotionPreference preference,
+  ) async {
+    value = value.copyWith(reduceMotion: preference);
     return value;
   }
 
   @override
   Future<PresentationPreferences> setLoadingEffect(String id) async {
     value = value.copyWith(loadingEffectId: id);
+    return value;
+  }
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) async {
+    value = value.withResourceSelection(kind, selection);
     return value;
   }
 
@@ -219,6 +232,17 @@ final class _MemoryPreferencesRepository
   }
 
   @override
+  Future<PresentationPreferences> setLayoutStyle(
+    LayoutProfileId profile,
+    LayoutStyleId style,
+  ) async {
+    value = value.copyWith(
+      layoutStyleIds: {...value.layoutStyleIds, profile: style},
+    );
+    return value;
+  }
+
+  @override
   Future<PresentationPreferences> setLocalePreference(String value) async {
     this.value = this.value.copyWith(localePreference: value);
     return this.value;
@@ -228,9 +252,6 @@ final class _MemoryPreferencesRepository
 final class _RecordingChromePort extends ValueNotifier<LayoutChromeSnapshot>
     implements LayoutChromePort {
   _RecordingChromePort() : super(const LayoutChromeSnapshot.empty());
-
-  @override
-  Future<void> openPairing(BuildContext context) async {}
 
   @override
   Future<void> openGlobalSearch(BuildContext context) async {}

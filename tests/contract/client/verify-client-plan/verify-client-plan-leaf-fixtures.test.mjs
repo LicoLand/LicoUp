@@ -3,9 +3,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { checkAndroidIos } from "../../../../apps/desktop/scripts/verify-client-plan/checks/android-ios.mjs";
-import { checkLinuxWindows } from "../../../../apps/desktop/scripts/verify-client-plan/checks/linux-windows.mjs";
-import { checkSecretStore } from "../../../../apps/desktop/scripts/verify-client-plan/checks/secret-store.mjs";
 import { createPlanAssertions } from "../../../../apps/desktop/scripts/verify-client-plan/shared/assert.mjs";
 import { createPlanFileReader } from "../../../../apps/desktop/scripts/verify-client-plan/shared/fs.mjs";
 
@@ -13,15 +10,8 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../../../..", import.meta.u
 const scriptRoot = path.join(repoRoot, "apps/desktop/scripts/verify-client-plan/checks");
 const fixtures = Object.freeze([
   ["package-and-runner.mjs", "checkPackageAndRunner", "tools/scripts/client-gate-policy.mjs"],
-  ["client-boundary.mjs", "checkClientBoundary", "secure-mesh-client-boundary.json"],
-  ["evidence-routing.mjs", "checkEvidenceRouting", "secure-mesh-e2ee-evidence-routes.json"],
-  ["crypto-redaction-handoff.mjs", "checkCryptoRedactionHandoff", "secure-mesh-encrypted-file-handoff.json"],
-  ["secret-store.mjs", "checkSecretStore", "secure-mesh-platform-secret-store-matrix.json"],
-  ["physical-evidence.mjs", "checkPhysicalEvidence", "secure-mesh-physical-device-matrix.json"],
-  ["android-ios.mjs", "checkAndroidIos", "SecureMeshIosBridge.swift"],
-  ["linux-windows.mjs", "checkLinuxWindows", "client-secure-mesh-windows-implementation.mjs"],
-  ["trust-release.mjs", "checkTrustRelease", "secure-mesh-release-proof.json"],
-  ["docs-readiness.mjs", "checkDocsReadiness", "agent-conversation-drivers.json"],
+  ["client-boundary.mjs", "checkClientBoundary", "client-boundary.json"],
+  ["docs-readiness.mjs", "checkDocsReadiness", "packaging.modules.json"],
 ]);
 
 test("every leaf imports without side effects and owns its fixture family", async () => {
@@ -46,7 +36,10 @@ test("shared file reader accepts repository fixtures and rejects traversal", asy
 
 test("platform leaves close independently against their complete source bundles", async () => {
   const files = createPlanFileReader(repoRoot);
-  for (const check of [checkSecretStore, checkAndroidIos, checkLinuxWindows]) {
+  const { checkClientBoundary } = await import(
+    pathToFileURL(path.join(scriptRoot, "client-boundary.mjs")).href,
+  );
+  for (const check of [checkClientBoundary]) {
     const { assert: planAssert, getFailures } = createPlanAssertions();
     await check({ assert: planAssert, files });
     assert.deepEqual(getFailures(), []);

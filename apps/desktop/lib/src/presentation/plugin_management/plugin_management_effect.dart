@@ -8,8 +8,6 @@ sealed class PluginManagementEffect {
 
 enum PluginLifecyclePlanAction { install, uninstall }
 
-enum PluginInstallPlanKind { catalog, codexPinnedRelease }
-
 final class PluginLifecyclePlanReady extends PluginManagementEffect {
   const PluginLifecyclePlanReady({
     required this.planId,
@@ -17,10 +15,6 @@ final class PluginLifecyclePlanReady extends PluginManagementEffect {
     required this.pluginId,
     required this.pluginLabel,
     required this.action,
-    required this.kind,
-    this.marketplaceSource = '',
-    this.marketplaceRelease = '',
-    this.pluginVersion = '',
     super.trace,
   });
 
@@ -29,10 +23,6 @@ final class PluginLifecyclePlanReady extends PluginManagementEffect {
   final String pluginId;
   final String pluginLabel;
   final PluginLifecyclePlanAction action;
-  final PluginInstallPlanKind kind;
-  final String marketplaceSource;
-  final String marketplaceRelease;
-  final String pluginVersion;
 }
 
 final class PluginActionCompleted extends PluginManagementEffect {

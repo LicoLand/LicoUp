@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:licoup/src/contracts/presentation/built_in_layout_spec.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_ambient_layer.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_window_ground.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_sidebar_navigation.dart';
@@ -34,7 +38,7 @@ void main() {
     for (final hosted in <ClientSection>[
       ClientSection.agentHub,
       ClientSection.models,
-      ClientSection.mobileRelay,
+      ClientSection.devices,
       ClientSection.monitoring,
       ClientSection.pluginManagement,
       ClientSection.skillHub,
@@ -98,31 +102,14 @@ void main() {
         find.byKey(const Key('dashboard-fake-content-agentHub')),
         findsOneWidget,
       );
-      final region = tester.widget<ColoredBox>(
-        find.byKey(const Key('dashboard-content-region')),
-      );
-      final regionContext = tester.element(
-        find.byKey(const Key('dashboard-content-region')),
-      );
+      // Card style: no content-region veil or clip shell — the shell's
+      // own window ground covers the window and the content floats as one
+      // solid card inset 10 px from the window and the sidebar card.
+      expect(find.byKey(const Key('dashboard-content-region')), findsNothing);
       expect(
-        region.color,
-        Theme.of(regionContext).colorScheme.surfaceContainerLowest,
-      );
-      final card = tester.widget<ClipRRect>(
         find.byKey(const Key('dashboard-desktop-main-card')),
+        findsNothing,
       );
-      expect(
-        card.borderRadius,
-        BorderRadius.circular(MessagingDesktopMetrics.mainCardCornerRadius),
-      );
-      expect(card.clipBehavior, Clip.antiAlias);
-      final cardRect = tester.getRect(
-        find.byKey(const Key('dashboard-desktop-main-card')),
-      );
-      expect(cardRect.top, MessagingDesktopMetrics.mainCardMargin);
-      expect(cardRect.left, MessagingDesktopMetrics.mainCardMargin);
-      expect(width - cardRect.right, MessagingDesktopMetrics.mainCardMargin);
-      expect(700 - cardRect.bottom, MessagingDesktopMetrics.mainCardMargin);
       expect(harness.buildCalls, [ClientSection.agentHub]);
       expect(tester.takeException(), isNull);
     });
@@ -475,12 +462,7 @@ void main() {
       find.byKey(const Key('messaging-sidebar-feature-list')),
       findsOneWidget,
     );
-    const order = <String>[
-      'agentHub',
-      'modelGateway',
-      'mobilePairing',
-      'statsPanel',
-    ];
+    const order = <String>['agentHub', 'modelGateway', 'devices', 'statsPanel'];
     double? previousDy;
     for (final id in order) {
       final row = find.byKey(Key('messaging-sidebar-list-$id'));
@@ -491,7 +473,7 @@ void main() {
       }
       previousDy = dy;
     }
-    for (final label in <String>['智能体中心', '模型网关', '移动配对', '统计面板']) {
+    for (final label in <String>['智能体中心', '模型网关', '设备', '统计面板']) {
       expect(find.text(label), findsOneWidget, reason: 'missing label $label');
     }
 
@@ -511,14 +493,9 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.tap(
-      find.byKey(const Key('messaging-sidebar-list-mobilePairing')),
-    );
+    await tester.tap(find.byKey(const Key('messaging-sidebar-list-devices')));
     await tester.pump();
-    expect(harness.selections, [
-      ClientSection.models,
-      ClientSection.mobileRelay,
-    ]);
+    expect(harness.selections, [ClientSection.models, ClientSection.devices]);
 
     await tester.tap(
       find.byKey(const Key('messaging-sidebar-list-statsPanel')),
@@ -608,9 +585,11 @@ void main() {
       find.byKey(const Key('messaging-sidebar-settings-list')),
       findsOneWidget,
     );
+    // The shared column opens at the golden-ratio default, which this window
+    // width resolves to the golden cap.
     expect(
       tester.getSize(find.byKey(const Key('messaging-sidebar-column'))).width,
-      MessagingDesktopMetrics.conversationListExtent,
+      MessagingDesktopMetrics.conversationListGoldenCapExtent,
     );
 
     final handleRect = tester.getRect(
@@ -655,7 +634,7 @@ void main() {
     await tester.pumpWidget(
       DashboardDesktopTestShell(
         environment: dashboardDesktopEnvironment(width: 1280, height: 700),
-        activeDestination: ClientSection.mobileRelay,
+        activeDestination: ClientSection.devices,
         content: DashboardDesktopFixtureContent(harness),
         harness: harness,
       ),
@@ -671,5 +650,108 @@ void main() {
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  group('destination window grounds', () {
+    // Agents mounts its own grounds inside the conversation workspace and
+    // Agent Hub inside its panel; every other destination must paint the
+    // shared opaque ground or the host desktop shows through the window.
+
+    // Messages frames its own content card inside the conversation
+    // workspace (the plain agents presentation's `frameDetail`), so the
+    // fixture destination carries no card of its own.
+
+    for (final style in [
+      BuiltInLayoutSpec.dashboardPlainStyleId,
+      BuiltInLayoutSpec.dashboardCardStyleId,
+    ]) {
+      for (final destination in dashboardDesktopExpectedDestinations) {
+        testWidgets(
+          '${style.value} ${destination.name} sits on an opaque ground',
+          (tester) async {
+            final harness = DashboardDesktopHarness();
+            await tester.pumpWidget(
+              DashboardDesktopTestShell(
+                environment: dashboardDesktopEnvironment(
+                  width: 1280,
+                  height: 800,
+                ),
+                activeDestination: destination,
+                content: DashboardDesktopFixtureContent(harness),
+                harness: harness,
+                style: style,
+              ),
+            );
+            await tester.pump();
+
+            final marker = find.byKey(
+              ValueKey<String>('dashboard-fake-content-${destination.name}'),
+            );
+            final grounds = tester.widgetList<LicoWindowGround>(
+              find.ancestor(
+                of: marker,
+                matching: find.byType(LicoWindowGround),
+              ),
+            );
+            if (style == BuiltInLayoutSpec.dashboardPlainStyleId) {
+              // Plain is flat: no content card, no band. Every non-Messages
+              // destination sits on the shell's flat detail ground — one
+              // opaque fill that owns the ground scope so feature-owned
+              // grounds keep their fill but mount no ambient layer; the
+              // ambient never mounts under the plain style.
+              expect(
+                find.ancestor(of: marker, matching: find.byType(LicoPaneCard)),
+                findsNothing,
+                reason: '${destination.name} must not sit inside a card',
+              );
+              // The shell ground owns the one ambient layer for the
+              // whole window in dark — every destination shares it.
+              expect(
+                find.byType(LicoAmbientLayer),
+                findsOneWidget,
+                reason:
+                    'plain ${destination.name}: the shell ground owns the '
+                    'ambient layer in dark',
+              );
+              expect(
+                grounds.any((ground) => ground.color.a == 1.0),
+                isTrue,
+                reason:
+                    '${destination.name} must paint a fully opaque '
+                    'detail surface',
+              );
+            } else {
+              // Card: the shell mounts the single ambient-owning ground
+              // for the whole window; a destination's own nested ground
+              // paints fill only. Messages sits on the shell ground;
+              // every hosted destination sits inside the opaque content
+              // card on it.
+              expect(grounds.last.color.a, 1.0);
+              expect(
+                find.byType(LicoAmbientLayer),
+                findsOneWidget,
+                reason:
+                    'card ${destination.name}: exactly one ambient layer '
+                    'at shell level',
+              );
+              if (destination != ClientSection.agents) {
+                expect(
+                  find.ancestor(
+                    of: marker,
+                    matching: find.byKey(
+                      const Key('dashboard-card-content-card'),
+                    ),
+                  ),
+                  findsOneWidget,
+                  reason:
+                      'card ${destination.name} sits inside the opaque '
+                      'content card',
+                );
+              }
+            }
+          },
+        );
+      }
+    }
   });
 }

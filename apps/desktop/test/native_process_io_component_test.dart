@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:licoup/src/platform/native_client/agent_service_process_io.dart';
@@ -162,6 +163,82 @@ printf '{"ok":true}'
       ),
     );
   });
+
+  test('silent stdout past the request timeout still resumes', () async {
+    if (Platform.isWindows) {
+      return;
+    }
+    final directory = await Directory.systemTemp.createTemp(
+      'bounded-native-io-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final executable = File('${directory.path}/sidecar');
+    await executable.writeAsString(r'''#!/bin/sh
+printf '{"seq":1}\n'
+sleep 1
+printf '{"seq":2}\n'
+''');
+    expect((await Process.run('chmod', ['+x', executable.path])).exitCode, 0);
+    final processIo = BoundedNativeProcessIo(
+      processContext: _LiveProcessContext(
+        executable,
+        requestTimeout: const Duration(milliseconds: 200),
+      ),
+      commandExecutor: _StaticExecutor(const {}),
+      stdioRpcTransport: _FakeStdioTransport(),
+      persistentStdioRpcEnabled: false,
+    );
+
+    expect(
+      await processIo
+          .streamCliJsonLinesWithStdin(const ['private', 'stream'], '{}')
+          .toList(),
+      [
+        {'seq': 1},
+        {'seq': 2},
+      ],
+    );
+  });
+
+  test('cancelling the stream subscription kills the child process', () async {
+    if (Platform.isWindows) {
+      return;
+    }
+    final directory = await Directory.systemTemp.createTemp(
+      'bounded-native-io-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final executable = File('${directory.path}/sidecar');
+    await executable.writeAsString(r'''#!/bin/sh
+printf '{"seq":1}\n'
+sleep 60
+''');
+    expect((await Process.run('chmod', ['+x', executable.path])).exitCode, 0);
+    final context = _LiveProcessContext(executable);
+    final processIo = BoundedNativeProcessIo(
+      processContext: context,
+      commandExecutor: _StaticExecutor(const {}),
+      stdioRpcTransport: _FakeStdioTransport(),
+      persistentStdioRpcEnabled: false,
+    );
+
+    final firstEvent = Completer<Map<String, dynamic>>();
+    final subscription = processIo
+        .streamCliJsonLinesWithStdin(const ['private', 'stream'], '{}')
+        .listen((event) {
+          if (!firstEvent.isCompleted) {
+            firstEvent.complete(event);
+          }
+        });
+    addTearDown(subscription.cancel);
+    expect(await firstEvent.future, {'seq': 1});
+
+    await subscription.cancel();
+    final exitCode = await context.lastProcess!.exitCode.timeout(
+      const Duration(seconds: 10),
+    );
+    expect(exitCode, isNot(0));
+  });
 }
 
 class _StaticExecutor implements NativeCommandExecutor {
@@ -236,12 +313,16 @@ class _FakeStdioTransport implements NativeStdioRpcTransport {
 }
 
 final class _LiveProcessContext implements NativeCliProcessContext {
-  const _LiveProcessContext(this.executable);
+  _LiveProcessContext(
+    this.executable, {
+    this.requestTimeout = const Duration(seconds: 10),
+  });
 
   final File executable;
+  Process? lastProcess;
 
   @override
-  Duration get requestTimeout => const Duration(seconds: 10);
+  final Duration requestTimeout;
 
   @override
   Future<Map<String, String>?> buildEnvironment() async => null;
@@ -255,12 +336,13 @@ final class _LiveProcessContext implements NativeCliProcessContext {
     List<String> arguments,
     Map<String, String>? environment, {
     ProcessStartMode mode = ProcessStartMode.normal,
-  }) {
-    return Process.start(
+  }) async {
+    lastProcess = await Process.start(
       executable,
       arguments,
       environment: environment,
       mode: mode,
     );
+    return lastProcess!;
   }
 }

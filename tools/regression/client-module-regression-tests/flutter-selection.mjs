@@ -167,13 +167,13 @@ test("changed Flutter feature paths select only their bounded feature module", (
     "flutter.feature.agent-usage.visualization",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/application/features/mobile_relay/controller/secure_mesh_controller.dart",
+    "apps/desktop/lib/src/application/features/devices/devices_controller.dart",
   ])), [
     "architecture.client-boundaries",
-    "flutter.feature.mobile-relay.secure-mesh-controller",
+    "flutter.feature.devices",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_shell.dart",
+    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_card_shell.dart",
   ])), [
     "architecture.client-boundaries",
     "flutter.layer.layout",
@@ -207,18 +207,10 @@ test("changed Flutter feature paths select only their bounded feature module", (
     "flutter.feature.agent-conversations.message-blocks-disclosures",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart",
+    "apps/desktop/lib/src/frontend/features/devices/ui/devices_panel.dart",
   ])), [
     "architecture.client-boundaries",
-    "regression.mobile-relay-panel-source-bundle",
-    "flutter.feature.mobile-relay.panel-composition",
-  ]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/frontend/features/mobile_relay/ui/mobile_relay_panel/trust.dart",
-  ])), [
-    "architecture.client-boundaries",
-    "regression.mobile-relay-panel-source-bundle",
-    "flutter.feature.mobile-relay.panel-trust",
+    "flutter.feature.devices",
   ]);
 });
 
@@ -230,10 +222,11 @@ test("Flutter controller assembly selects precise closures", () => {
     "flutter.controller.facade",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/application/controller/assembly/client_mobile_component_assembly.dart",
+    "apps/desktop/lib/src/application/controller/assembly/client_devices_component_assembly.dart",
   ])), [
     "architecture.client-boundaries",
-    "flutter.controller.assembly.mobile",
+    "flutter.feature.devices",
+    "flutter.controller.assembly.devices",
   ]);
   const facade = CLIENT_MODULE_CATALOG.find(
     (module) => module.id === "flutter.controller.facade",
@@ -252,4 +245,7 @@ test("Dashboard and desktop layout keep focused catalog ownership", () => {
     "apps/desktop/lib/src/frontend/layout/**"), false);
   assert.equal(layoutFoundation.inputs.includes(
     "apps/desktop/test/layout/**"), false);
+  assert.ok(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/platform/layout/desktop_dock_layout_store.dart",
+  ])).includes("flutter.layer.layout"));
 });

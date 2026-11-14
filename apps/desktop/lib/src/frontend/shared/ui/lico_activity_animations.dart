@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 
 /// A bounded activity indicator that sweeps along the top edge of an existing
 /// rounded surface.
@@ -384,6 +385,10 @@ class _LicoShimmerMaskState extends State<LicoShimmerMask>
       animation: _controller,
       builder: (context, child) {
         final t = _controller.value;
+        // The pulse dims and restores the content's own ink, so the same
+        // shimmer reads on cream (dark ink) and on glass (light ink).
+        final ink = context.licoColors.text;
+        final dim = ink.withValues(alpha: 0.38);
         return ShaderMask(
           blendMode: BlendMode.srcIn,
           shaderCallback: (bounds) {
@@ -391,12 +396,7 @@ class _LicoShimmerMaskState extends State<LicoShimmerMask>
             return LinearGradient(
               begin: Alignment(-1.2 + shift, 0),
               end: Alignment(0.8 + shift, 0),
-              colors: const [
-                Color(0x61FFFFFF),
-                Color(0xFFFFFFFF),
-                Color(0xFFFFFFFF),
-                Color(0x61FFFFFF),
-              ],
+              colors: [dim, ink, ink, dim],
               stops: const [0.0, 0.35, 0.65, 1.0],
             ).createShader(
               Rect.fromLTWH(

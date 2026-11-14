@@ -25,7 +25,6 @@
         "licoup/pairings",
         "licoup/skills",
         "licoup/pins",
-        "licoup/mobile-relay",
         "licoup/activity",
         "licoup/snapshots"
       ]
@@ -108,22 +107,6 @@
         "portable-data"
       ]
     },
-    "mobile-relay": {
-      "label": "Mobile pairing and command relay control plane",
-      "category": "mobile-relay",
-      "enabled": true,
-      "required": true,
-      "platforms": [
-        "macos",
-        "linux",
-        "windows"
-      ],
-      "packaging": "runtime-capability",
-      "requires": [
-        "portable-data",
-        "target-adapters"
-      ]
-    },
     "activity-snapshots": {
       "label": "Activity log and independent snapshot store",
       "category": "activity",
@@ -167,7 +150,7 @@
       "packaging": "flutter-app"
     },
     "native-sidecar": {
-      "label": "Rust LicoUp client CLI sidecar",
+      "label": "Rust LicoUp client binary: CLI, gateway service, Lico Agent runtime and migration tool",
       "category": "core",
       "enabled": true,
       "required": true,
@@ -177,41 +160,7 @@
         "windows"
       ],
       "packaging": "sidecar-binary",
-      "cargoBin": "licoup-cli"
-    },
-    "subagents-mcp": {
-      "label": "Independent LicoUp MCP connector and service using the native CLI",
-      "category": "agents",
-      "enabled": true,
-      "required": true,
-      "platforms": [
-        "macos",
-        "linux",
-        "windows"
-      ],
-      "packaging": "sidecar-binary",
-      "cargoBin": "lico-subagent-mcp",
-      "requires": [
-        "native-sidecar",
-        "target-adapters",
-        "skill-hub"
-      ]
-    },
-    "gateway-sidecar": {
-      "label": "LicoUp Gateway Runtime (LLM Gateway + Communication Channels)",
-      "category": "agents",
-      "enabled": true,
-      "required": true,
-      "platforms": [
-        "macos",
-        "linux",
-        "windows"
-      ],
-      "packaging": "sidecar-binary",
-      "cargoBin": "lico-gateway",
-      "requires": [
-        "native-sidecar"
-      ]
+      "cargoBin": "licoup"
     },
     "lico-agent-sidecar": {
       "label": "LicoUp first-party Agent runtime (Gateway + Plan profile)",
@@ -223,15 +172,61 @@
         "linux",
         "windows"
       ],
-      "packaging": "sidecar-binary",
-      "cargoBin": "lico-agent",
+      "packaging": "runtime-capability",
+      "requires": [
+        "native-sidecar"
+      ]
+    },
+    "gateway-sidecar": {
+      "label": "LicoUp Private Gateway Runtime (LLM Gateway)",
+      "category": "agents",
+      "enabled": true,
+      "required": false,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
+      "requires": [
+        "native-sidecar"
+      ]
+    },
+    "subagents-mcp": {
+      "label": "Independent LicoUp MCP connector and service, delivered by the org.licoland.feature.mcp package",
+      "category": "agents",
+      "enabled": false,
+      "required": false,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
       "requires": [
         "native-sidecar",
-        "gateway-sidecar"
+        "target-adapters",
+        "skill-hub"
+      ]
+    },
+    "telegram-channel": {
+      "label": "Telegram communication channel, delivered by the org.licoland.channel.telegram package",
+      "category": "agents",
+      "enabled": false,
+      "required": false,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
+      "requires": [
+        "native-sidecar",
+        "extension-packages"
       ]
     },
     "codex-plugin": {
-      "label": "LicoUp Codex Plugin 0.2.0 thin connector",
+      "label": "LicoUp Codex Plugin 0.2.0 thin connector, installed from the Codex plugin marketplace",
       "category": "agents",
       "enabled": true,
       "required": true,
@@ -240,11 +235,25 @@
         "linux",
         "windows"
       ],
-      "packaging": "module-resources",
-      "embeddedCargoBin": "lico-subagent-mcp",
-      "embeddedCargoTarget": "plugins/lico-up-codex/bin/lico-subagent-mcp",
+      "packaging": "runtime-capability",
       "requires": [
-        "subagents-mcp"
+        "native-sidecar"
+      ]
+    },
+    "extension-packages": {
+      "label": "Independently released first-party packages read through a signed package index",
+      "category": "packages",
+      "enabled": true,
+      "required": false,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
+      "requires": [
+        "native-sidecar",
+        "portable-data"
       ]
     }
   },

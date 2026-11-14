@@ -93,6 +93,16 @@ abstract interface class AgentConversationNativePort {
     AgentDispatchBind bind = const AgentDispatchBind(),
   });
 
+  /// Delivers one structured reply to a native interaction the Agent parked
+  /// in [turn] (for example a permission request), through the same steer
+  /// operation. [interactionResponse] follows the parked request's response
+  /// shape; an approval carries a boolean `allow`.
+  Future<Map<String, dynamic>> resolveInteraction(
+    AgentSessionTurnScope turn, {
+    required String adapterCallbackTokenRef,
+    required Map<String, Object?> interactionResponse,
+  });
+
   Future<Map<String, dynamic>> cancel(AgentConversationTurnScope turn);
 
   Future<Map<String, dynamic>> cleanup(AgentConversationSessionScope session);

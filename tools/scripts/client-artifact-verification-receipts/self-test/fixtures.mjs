@@ -11,8 +11,8 @@ export function fixtureMacos({
   invocationNonceDigest,
 }) {
   return {
-    schemaVersion: "licomesh.secure-mesh.macos-adaptive-capabilities-receipt.v3",
-    verifier: "tools/scripts/client-secure-mesh-macos-capabilities.mjs",
+    schemaVersion: "licomesh.client.macos-consumer-verification.v1",
+    verifier: "tools/scripts/client-macos-consumer-verification.mjs",
     generatedAt,
     closureChallengeDigest,
     invocationNonceDigest,
@@ -23,11 +23,7 @@ export function fixtureMacos({
     rawRuntimeOutputIncluded: false,
     rawPrivateMaterialIncluded: false,
     sourceStateDigest: sourceDigest,
-    dependencies: [{
-      id: "macos-user-presence-proof",
-      ref: "build/reports/secure-mesh-macos-keychain-user-presence-proof.json",
-      digest: fixtureDigest("f"),
-    }],
+    dependencies: [],
     receipts: [{
       targetId: "macos-arm64",
       productVersion,
@@ -52,95 +48,7 @@ export function fixtureMacos({
       stableProcessWindowReady: true,
       postLaunchArtifactStable: true,
       smokeReady: true,
-      capabilityProofReady: true,
     }],
-  };
-}
-
-export function fixtureAndroid({
-  sourceDigest,
-  artifactDigest,
-  productVersion,
-  generatedAt,
-  closureChallengeDigest,
-  invocationNonceDigest,
-}) {
-  return {
-    schemaVersion: "licomesh.secure-mesh.android-physical-install-launch-report.v3",
-    verifier: "tools/scripts/client-android-physical-install-launch.mjs",
-    generatedAt,
-    closureChallengeDigest,
-    invocationNonceDigest,
-    ok: true,
-    targetId: "android-arm64",
-    productVersion,
-    buildNumber: 7,
-    platform: "android",
-    physicalDevice: true,
-    packageName: "land.lico.licoup",
-    redacted: true,
-    reportLeakScan: true,
-    rawPrivateMaterialIncluded: false,
-    rawPlaintextIncluded: false,
-    apk: { sha256: artifactDigest, nativeSecureMeshAbi: "arm64-v8a" },
-    apkBinaryFacts: {
-      packageName: "land.lico.licoup",
-      versionCode: "7",
-      versionName: productVersion,
-      debuggable: false,
-      abis: ["arm64-v8a"],
-      launchableActivity: "land.lico.licoup.MainActivity",
-      signerCount: 1,
-      signatureSchemes: ["v2"],
-      zipAligned: true,
-      nativeSecureMeshLibrary: {
-        path: "lib/arm64-v8a/liblicoup_native.so",
-        contentDigest: fixtureDigest("d"),
-        size: 4096,
-        compressedSize: 4096,
-        crc32: "12345678",
-        compression: "stored",
-        regular: true,
-        unique: true,
-        zipEntryCount: 10,
-      },
-    },
-    sourceBuild: { sourceStateDigest: sourceDigest },
-    evidenceBinding: {
-      sourceStateDigest: sourceDigest,
-      apkSha256: artifactDigest,
-      signatureMatchedBuildManifest: true,
-    },
-    signing: {
-      signingKind: "local-install-keystore",
-      signatureVerified: true,
-      signerIdentityVerified: true,
-      signingPolicySatisfied: true,
-      singleSigner: true,
-      signatureMatchedBuildManifest: true,
-    },
-    install: {
-      attempted: true,
-      installedViaVerifier: true,
-      packagePresentAfterInstall: true,
-      installedArtifactMatched: true,
-    },
-    launch: {
-      attempted: true,
-      launchedViaVerifier: true,
-      runtimeStatusFreshAfterLaunch: true,
-    },
-    summary: {
-      installReady: true,
-      launchReady: true,
-      runtimeStatusReady: true,
-      nativeRuntimeReady: true,
-      androidCustodyReady: true,
-      adaptiveAuthorizationReady: true,
-      evidenceBindingReady: true,
-      closureChallengeBound: true,
-      invocationNonceBound: true,
-    },
   };
 }
 
@@ -153,7 +61,7 @@ export function fixtureLinux({
   invocationNonceDigest,
 }) {
   return {
-    schema: "licomesh.secure-mesh.linux-vm-package-receipt",
+    schema: "licoup.client.linux-vm-package-receipt",
     schemaVersion: 2,
     producer: "linux-vm-package-receipt",
     generatedAt,

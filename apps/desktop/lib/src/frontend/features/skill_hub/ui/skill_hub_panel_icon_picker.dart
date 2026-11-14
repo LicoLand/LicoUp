@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -183,7 +184,9 @@ Future<void> showSkillIconPicker({
                         decoration: continuousHairlineDecoration(
                           color: selected
                               ? previewColor.withValues(alpha: 0.14)
-                              : colors.surfaceLow,
+                              : (colors.isDark
+                                    ? LicoPaneGlass.contentInnerCardFill
+                                    : colors.surfaceLow),
                           borderRadius: BorderRadius.circular(
                             LicoRadius.floating,
                           ),

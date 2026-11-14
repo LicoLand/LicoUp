@@ -1,5 +1,5 @@
 import 'package:licoup/src/contracts/presentation/desktop_dock_layout.dart';
-import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
+import 'package:licoup/src/platform/storage/client_json_document_store.dart';
 
 /// File-backed store for the Desktop dock layout. Dock order is pure
 /// presentation state, so load is fully tolerant: a missing, malformed, or
@@ -9,7 +9,7 @@ import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
 /// `DesktopDockLayoutStore` port.
 final class PlatformDesktopDockLayoutStore {
   const PlatformDesktopDockLayoutStore({
-    MobileRelayJsonStore jsonStore = const MobileRelayJsonStore(),
+    ClientJsonDocumentStore jsonStore = const ClientJsonDocumentStore(),
   }) : _jsonStore = jsonStore;
 
   static const fileName = 'desktop-dock-layout.json';
@@ -18,7 +18,7 @@ final class PlatformDesktopDockLayoutStore {
   static const _maxFolderChildren = 32;
   static const _maxIdLength = 128;
 
-  final MobileRelayJsonStore _jsonStore;
+  final ClientJsonDocumentStore _jsonStore;
 
   Future<DesktopDockLayoutSnapshot> load(Object portableData) async {
     final decoded = await _jsonStore.read(portableData, fileName);

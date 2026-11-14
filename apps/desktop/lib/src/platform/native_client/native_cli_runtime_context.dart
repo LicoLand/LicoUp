@@ -1,21 +1,27 @@
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 /// Resolves the native sidecar and its bounded, client-owned environment.
-class NativeCliRuntimeContext implements NativeCliProcessContext {
+class NativeCliRuntimeContext
+    implements NativeCliProcessContext, NativeCliDataHomeMutationContext {
   NativeCliRuntimeContext({
     Future<String> Function()? dataDirectory,
+    Future<DataHomeSelection> Function()? dataHomeSelection,
     NativeResolveCliBinary? resolveCliBinary,
     NativeStartCliExecutable? startCliExecutable,
     this.requestTimeout = const Duration(seconds: 150),
   }) : _dataDirectory = dataDirectory,
+       _dataHomeSelection = dataHomeSelection,
        _resolveCliBinaryOverride = resolveCliBinary,
        _startCliExecutable = startCliExecutable ?? _defaultStartCliExecutable;
 
   final Future<String> Function()? _dataDirectory;
+  final Future<DataHomeSelection> Function()? _dataHomeSelection;
   final NativeResolveCliBinary? _resolveCliBinaryOverride;
   final NativeStartCliExecutable _startCliExecutable;
 
@@ -43,7 +49,7 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
   /// client executable path and environment.
   ///
   /// The resolved binary must never be the client executable itself. The
-  /// bundled helper executable is `licoup-cli`; the sibling `licoup` inside an app
+  /// bundled helper executable is `licoup`; the `LicoUp` executable inside an app
   /// bundle is the GUI client. Spawning the client as its own CLI starts a
   /// full new client per command, and each one rescans, snowballing into a
   /// process storm.
@@ -59,13 +65,14 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
 
     final suffix = Platform.isWindows ? '.exe' : '';
     final selfPath = await _canonicalPath(File(executablePath));
-    final executableDirectory = File(executablePath).parent.path;
     // An installed app bundle must use its app-like custody helper. Developer CLI and
-    // cargo overlays leak into `open` from an Agent shell and can outlive the
+    // artifact overlays leak into `open` from an Agent shell and can outlive the
     // exact installed product binary.
     final insideAppBundle = executablePath.contains('.app/Contents/MacOS/');
     if (insideAppBundle) {
-      final appRoot = p.normalize(p.join(executableDirectory, '..', '..'));
+      final appRoot = p.normalize(
+        p.join(File(executablePath).parent.path, '..', '..'),
+      );
       final helper = File(
         p.join(
           appRoot,
@@ -74,7 +81,7 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
           'LicoUpCustody.app',
           'Contents',
           'MacOS',
-          'licoup-cli',
+          'licoup',
         ),
       );
       if (!await helper.exists()) return null;
@@ -87,25 +94,23 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
       return File(canonical);
     }
     final explicitBinary = environment['LICO_CLIENT_PATH'];
-    final cargoTargetDirectory = environment['CARGO_TARGET_DIR'];
+    // The CLI binary is a delivered artifact: either an explicit delivery root
+    // or the conventional `build/native-artifacts/<runtime-target>` staging
+    // root a fetch step populated, matching the packaging delivery seam.
+    final artifactsDirectory = environment['LICO_CLI_ARTIFACTS_DIR'];
+    final runtimeTarget = Abi.current().toString().replaceAll('_', '-');
     final candidates = <String>[
       if (explicitBinary != null && explicitBinary.trim().isNotEmpty)
         explicitBinary.trim(),
-      if (cargoTargetDirectory != null &&
-          cargoTargetDirectory.trim().isNotEmpty)
-        p.join(cargoTargetDirectory.trim(), 'debug', 'licoup-cli$suffix'),
-      p.join(executableDirectory, 'licoup-cli$suffix'),
-      p.join(executableDirectory, 'licoup$suffix'),
+      if (artifactsDirectory != null && artifactsDirectory.trim().isNotEmpty)
+        p.join(artifactsDirectory.trim(), 'licoup$suffix'),
       p.join(
         workingDirectory,
         'build',
-        'crates',
-        'licoup-native',
-        'target',
-        'debug',
-        'licoup-cli$suffix',
+        'native-artifacts',
+        runtimeTarget,
+        'licoup$suffix',
       ),
-      p.join(workingDirectory, 'target', 'debug', 'licoup-cli$suffix'),
     ];
     for (final candidate in candidates) {
       final normalized = p.normalize(p.absolute(candidate));
@@ -130,6 +135,36 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
 
   @override
   Future<Map<String, String>?> buildEnvironment() async {
+    final environment = _baseEnvironment();
+    final dataHomeSelection = _dataHomeSelection;
+    if (dataHomeSelection != null) {
+      final selection = await dataHomeSelection();
+      environment['LICOUP_HOME'] = switch (selection.source) {
+        DataHomeSelectionSource.explicitEnvironment ||
+        DataHomeSelectionSource.legacyEnvironment => selection.path,
+        _ => '',
+      };
+      // A parent process may have launched with an older alias. Blank both
+      // variables when the selection comes from the locator/default so child
+      // CLI processes preserve that same boot authority.
+      environment['LICOUP_PORTABLE_DIR'] = '';
+      return environment;
+    }
+    final dataDirectory = _dataDirectory;
+    if (dataDirectory != null) {
+      final directory = await dataDirectory();
+      environment['LICOUP_HOME'] = directory;
+    }
+    return environment.isEmpty ? null : environment;
+  }
+
+  @override
+  Future<Map<String, String>?> buildDataHomeMutationEnvironment() async {
+    final environment = _baseEnvironment();
+    return environment.isEmpty ? null : environment;
+  }
+
+  Map<String, String> _baseEnvironment() {
     final environment = <String, String>{
       ..._macOSLocalAuthenticationEnvironment(),
       'LICOUP_CLIENT_PID': '$pid',
@@ -142,12 +177,7 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
       // the same local agent executables as the product process.
       environment['PATH'] = executablePath;
     }
-    final dataDirectory = _dataDirectory;
-    if (dataDirectory != null) {
-      final directory = await dataDirectory();
-      environment['LICOUP_PORTABLE_DIR'] = directory;
-    }
-    return environment.isEmpty ? null : environment;
+    return environment;
   }
 
   @override
@@ -172,8 +202,6 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
     if (!Platform.isMacOS) {
       return const {};
     }
-    return const {
-      'LICO_SECURE_MESH_MACOS_USER_PRESENCE_REQUIRED': 'production',
-    };
+    return const {'LICOUP_DEVICE_KEY_USER_PRESENCE': 'required'};
   }
 }
