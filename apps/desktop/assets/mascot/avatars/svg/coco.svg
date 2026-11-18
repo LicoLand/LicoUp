@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Lico avatar">
+  <defs><linearGradient id="a-coco-bg" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#f6f3ff"/><stop offset="1" stop-color="#d6c9ff"/></linearGradient><radialGradient id="a-coco-glow"><stop offset="0.1" stop-color="#ffffff" stop-opacity="0.75"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient></defs>
+  <rect width="200" height="200" fill="url(#a-coco-bg)"/>
+  <ellipse cx="100" cy="100" rx="96" ry="90" fill="url(#a-coco-glow)"/>
+  <g transform="translate(-12 1) scale(1.12)">
+  <defs>
+    <radialGradient id="a-coco-head" cx="38%" cy="30%" r="80%"><stop offset="0" stop-color="#fbf1e8"/><stop offset="0.55" stop-color="#edd6c2"/><stop offset="1" stop-color="#d3ae8e"/></radialGradient>
+    <radialGradient id="a-coco-arm" cx="40%" cy="28%" r="85%"><stop offset="0" stop-color="#fbf1e8"/><stop offset="0.6" stop-color="#edd6c2"/><stop offset="1" stop-color="#d3ae8e"/></radialGradient>
+    <radialGradient id="a-coco-occlusion"><stop offset="0.15" stop-color="#a47a57" stop-opacity="0.5"/><stop offset="1" stop-color="#a47a57" stop-opacity="0"/></radialGradient>
+    <radialGradient id="a-coco-highlight"><stop offset="0.3" stop-color="#ffffff" stop-opacity="0.95"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="a-coco-blush"><stop offset="0.25" stop-color="#ffadb5" stop-opacity="0.95"/><stop offset="1" stop-color="#ffadb5" stop-opacity="0"/></radialGradient>
+    <radialGradient id="a-coco-armshadow"><stop offset="0.2" stop-color="#6d4a2a" stop-opacity="0.3"/><stop offset="1" stop-color="#6d4a2a" stop-opacity="0"/></radialGradient>
+    <radialGradient id="a-coco-rimshadow"><stop offset="0.2" stop-color="#8a5a33" stop-opacity="0.32"/><stop offset="1" stop-color="#8a5a33" stop-opacity="0"/></radialGradient>
+    <linearGradient id="a-coco-rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3dcb8"/><stop offset="0.55" stop-color="#e6c595"/><stop offset="1" stop-color="#d3a877"/></linearGradient>
+    <linearGradient id="a-coco-cup" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e2bb8b"/><stop offset="1" stop-color="#cf9f6c"/></linearGradient>
+    <linearGradient id="a-coco-cupside" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8a5a33" stop-opacity="0.28"/><stop offset="0.22" stop-color="#8a5a33" stop-opacity="0"/><stop offset="0.75" stop-color="#8a5a33" stop-opacity="0"/><stop offset="1" stop-color="#8a5a33" stop-opacity="0.32"/></linearGradient>
+    <radialGradient id="a-coco-eye" cx="42%" cy="34%" r="75%"><stop offset="0" stop-color="#3b4580"/><stop offset="0.7" stop-color="#1a1f3f"/><stop offset="1" stop-color="#11142b"/></radialGradient>
+    <linearGradient id="a-coco-rimlight" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c9b8ff" stop-opacity="0"/><stop offset="0.55" stop-color="#c9b8ff" stop-opacity="0"/><stop offset="1" stop-color="#b8a2ff" stop-opacity="0.75"/></linearGradient>
+    <clipPath id="a-coco-cupclip"><path d="M40 142H160L148 201Q146 209 138 209H62Q54 209 52 201Z"/></clipPath>
+    <clipPath id="a-coco-headclip"><circle cx="100" cy="90" r="66"/></clipPath>
+    <linearGradient id="a-coco-beret" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8a6ff2"/><stop offset="1" stop-color="#3b2a8f"/></linearGradient>
+  </defs>
+  <g>
+    <g>
+      <circle cx="100" cy="90" r="66" fill="url(#a-coco-head)"/>
+      <ellipse cx="100" cy="150" rx="78" ry="34" fill="url(#a-coco-occlusion)" clip-path="url(#a-coco-headclip)"/>
+      <circle cx="100" cy="90" r="64.8" fill="none" stroke="url(#a-coco-rimlight)" stroke-width="2.6" opacity="0.55"/>
+      <ellipse cx="76" cy="50" rx="24" ry="14" fill="url(#a-coco-highlight)" transform="rotate(-28 76 50)"/>
+      <g>
+        <g>
+          <g><ellipse cx="78" cy="98" rx="8.2" ry="10" fill="url(#a-coco-eye)"/>
+            <ellipse cx="122" cy="98" rx="8.2" ry="10" fill="url(#a-coco-eye)"/>
+            <circle cx="81.2" cy="93.2" r="3.1" fill="#fff"/><circle cx="125.2" cy="93.2" r="3.1" fill="#fff"/>
+            <circle cx="75.4" cy="103" r="1.4" fill="#fff" opacity=".8"/><circle cx="119.4" cy="103" r="1.4" fill="#fff" opacity=".8"/></g>
+        </g>
+        <g><ellipse cx="62" cy="113" rx="14" ry="9" fill="url(#a-coco-blush)"/><ellipse cx="138" cy="113" rx="14" ry="9" fill="url(#a-coco-blush)"/></g>
+        <g><path d="M94 111.5q6 5.5 12 0" fill="none" stroke="#7a4636" stroke-width="2.6" stroke-linecap="round"/></g>
+      </g>
+      <g>
+        <g transform="rotate(-13 98 30)">
+          <path d="M100 10Q101 4 105 2.5" fill="none" stroke="#3b2a8f" stroke-width="3.2" stroke-linecap="round"/>
+          <path d="M55 35C56 17 79 9 100 9.5C124 10 142 20 140 33C121 40.5 75 41.5 55 35Z" fill="url(#a-coco-beret)"/>
+          <path d="M55.5 35C75 41.5 121 40.5 140 33" fill="none" stroke="#2a1d66" stroke-width="3.2" stroke-linecap="round"/>
+          <ellipse cx="80" cy="18.5" rx="9" ry="3.2" fill="#fff" opacity=".75" transform="rotate(-8 80 18.5)"/>
+        </g>
+      </g>
+    </g>
+    <g>
+      <path d="M40 142H160L148 201Q146 209 138 209H62Q54 209 52 201Z" fill="url(#a-coco-cup)"/>
+      <g clip-path="url(#a-coco-cupclip)" fill="none" stroke-linecap="round">
+        <path d="M-60 140 l70 72 M10 140 l-70 72 M-37 140 l70 72 M33 140 l-70 72 M-14 140 l70 72 M56 140 l-70 72 M9 140 l70 72 M79 140 l-70 72 M32 140 l70 72 M102 140 l-70 72 M55 140 l70 72 M125 140 l-70 72 M78 140 l70 72 M148 140 l-70 72 M101 140 l70 72 M171 140 l-70 72 M124 140 l70 72 M194 140 l-70 72 M147 140 l70 72 M217 140 l-70 72 M170 140 l70 72 M240 140 l-70 72 M193 140 l70 72 M263 140 l-70 72 M216 140 l70 72 M286 140 l-70 72 " stroke="#b9854f" stroke-width="3.2" opacity=".35" transform="translate(0 1.4)"/>
+        <path d="M-60 140 l70 72 M10 140 l-70 72 M-37 140 l70 72 M33 140 l-70 72 M-14 140 l70 72 M56 140 l-70 72 M9 140 l70 72 M79 140 l-70 72 M32 140 l70 72 M102 140 l-70 72 M55 140 l70 72 M125 140 l-70 72 M78 140 l70 72 M148 140 l-70 72 M101 140 l70 72 M171 140 l-70 72 M124 140 l70 72 M194 140 l-70 72 M147 140 l70 72 M217 140 l-70 72 M170 140 l70 72 M240 140 l-70 72 M193 140 l70 72 M263 140 l-70 72 M216 140 l70 72 M286 140 l-70 72 " stroke="#f0d0a2" stroke-width="2.8" opacity=".9"/>
+      </g>
+      <path d="M40 142H160L148 201Q146 209 138 209H62Q54 209 52 201Z" fill="url(#a-coco-cupside)"/>
+      <rect x="30" y="121" width="140" height="27" rx="13.5" fill="url(#a-coco-rim)"/>
+      <path d="M44 126.5h112" stroke="#fbead0" stroke-width="3" stroke-linecap="round" opacity=".9"/>
+      <ellipse cx="100" cy="150" rx="66" ry="7" fill="url(#a-coco-rimshadow)" clip-path="url(#a-coco-cupclip)"/>
+    </g>
+    <g>
+      <ellipse cx="72" cy="139" rx="20" ry="7.5" fill="url(#a-coco-armshadow)"/>
+      <ellipse cx="69" cy="131" rx="20" ry="12.5" fill="url(#a-coco-arm)" transform="rotate(-8 69 131)"/>
+    </g>
+    <g>
+      <ellipse cx="128" cy="139" rx="20" ry="7.5" fill="url(#a-coco-armshadow)"/>
+      <ellipse cx="131" cy="131" rx="20" ry="12.5" fill="url(#a-coco-arm)" transform="rotate(8 131 131)"/>
+    </g>
+  </g>
+  </g>
+</svg>

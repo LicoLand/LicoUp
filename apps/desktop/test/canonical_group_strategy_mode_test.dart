@@ -1,0 +1,1962 @@
+import 'dart:async';
+
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:licoup/src/application/features/agents/contracts/acativa_gateway.dart';
+import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
+import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
+import 'package:licoup/src/contracts/acativa_models.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
+import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
+import 'package:licoup/src/frontend/shared/ui/composer_activity_border.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
+
+import 'support/canonical_group/canonical_group_binding_fixture.dart';
+
+void main() {
+  testWidgets(
+    'strategy activation persists across remounts, the capsule opens only the editor, and posts stay ordinary',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final callOrder = <String>[];
+      final conversationRunner = _GroupConversationRunner(callOrder: callOrder);
+      final gateway = _StrategyGateway(callOrder: callOrder);
+      final openedRevisions = <String?>[];
+      final controller = ClientConversationController(
+        native: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+      final targets = [
+        _target('codex', 'Codex'),
+        _target('worker-a', 'Worker A'),
+        _target('claude-code', 'Claude Code'),
+      ];
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: targets,
+            onCopyText: (_) async {},
+            framed: false,
+            flywheelGateway: gateway,
+            onOpenAcativa: (revision) async {
+              openedRevisions.add(revision);
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final picker = find.byKey(const Key('canonical-group-strategy-picker'));
+      expect(picker, findsOneWidget);
+      expectAssistantIdentityLabel('Codex');
+      expect(
+        find.byKey(const Key('canonical-group-assistant-control')),
+        findsOneWidget,
+      );
+
+      // No hover list: hovering shows nothing, and tapping opens the
+      // orchestration editor directly (nothing selected yet → null revision).
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(picker));
+      await tester.pump();
+      expect(
+        find.byKey(const Key('canonical-group-strategy-picker-panel')),
+        findsNothing,
+      );
+      expect(find.text('Acativa'), findsOneWidget);
+      expect(find.text('Authorized Graph'), findsNothing);
+
+      await tester.tap(picker);
+      await tester.pumpAndSettle();
+      expect(openedRevisions, <String?>[null]);
+
+      // Activate the strategy through the durable controller path (the same
+      // path the orchestration editor uses).
+      expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
+      await tester.pumpAndSettle();
+
+      expectAssistantIdentityLabel('Codex');
+      expect(
+        find.byKey(const Key('canonical-group-assistant-control')),
+        findsOneWidget,
+      );
+      expect(conversationRunner.strategyRevision, 'rev-auth');
+      final membershipWritesBeforeRemount = conversationRunner.requests
+          .where(
+            (request) => request['action'] == 'conversation.membership.add',
+          )
+          .length;
+      final strategyWritesBeforeRemount = conversationRunner.requests
+          .where((request) => request['action'] == 'conversation.strategy.set')
+          .length;
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: targets,
+            onCopyText: (_) async {},
+            framed: false,
+            flywheelGateway: gateway,
+            onOpenAcativa: (revision) async {
+              openedRevisions.add(revision);
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expectAssistantIdentityLabel('Codex');
+      expect(
+        find.byKey(const Key('canonical-group-assistant-control')),
+        findsOneWidget,
+      );
+      expect(
+        conversationRunner.requests
+            .where(
+              (request) => request['action'] == 'conversation.membership.add',
+            )
+            .length,
+        membershipWritesBeforeRemount,
+      );
+      expect(
+        conversationRunner.requests
+            .where(
+              (request) => request['action'] == 'conversation.strategy.set',
+            )
+            .length,
+        strategyWritesBeforeRemount,
+      );
+
+      // With a selection active, tapping the capsule edits that revision.
+      await tester.tap(picker);
+      await tester.pumpAndSettle();
+      expect(openedRevisions, [null, 'rev-auth']);
+
+      expect(gateway.actions, isNot(contains('strategy.run.start')));
+      expect(gateway.actions, isNot(contains('strategy.run.cancel')));
+
+      await tester.enterText(find.byType(TextField), 'start the graph');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gateway.actions, isNot(contains('strategy.run.start')));
+      expect(gateway.startCount, 0);
+      expect(callOrder, contains('conversation:conversation.message.post'));
+      final post = conversationRunner.requests.lastWhere(
+        (request) => request['action'] == 'conversation.message.post',
+      );
+      expect(post['content'], 'start the graph');
+      expect(post.containsKey('mentionedMembershipIds'), isFalse);
+
+      callOrder.clear();
+      await tester.enterText(find.byType(TextField), 'continue the graph');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pumpAndSettle();
+      expect(callOrder, contains('conversation:conversation.message.post'));
+      expect(callOrder, isNot(contains('flywheel:strategy.run.active')));
+      expect(callOrder, isNot(contains('flywheel:strategy.run.cancel')));
+      expect(callOrder, isNot(contains('flywheel:strategy.run.start')));
+      final continuation = conversationRunner.requests.lastWhere(
+        (request) => request['action'] == 'conversation.message.post',
+      );
+      expect(continuation.containsKey('mentionedMembershipIds'), isFalse);
+      expect(gateway.startCount, 0);
+      final cancelsBeforeClearingStrategy = gateway.actions
+          .where((action) => action == 'strategy.run.cancel')
+          .length;
+
+      // Clearing the selection also goes through the durable controller path.
+      expect(await controller.setSelectedStrategyRevision(null), isTrue);
+      await tester.pumpAndSettle();
+
+      expect(
+        gateway.actions
+            .where((action) => action == 'strategy.run.cancel')
+            .length,
+        cancelsBeforeClearingStrategy,
+      );
+      expectAssistantIdentityLabel('Codex');
+      expect(
+        find.byKey(const Key('canonical-group-assistant-control')),
+        findsOneWidget,
+      );
+      expect(conversationRunner.strategyRevision, isEmpty);
+      expect(
+        conversationRunner.requests
+            .where(
+              (request) => request['action'] == 'conversation.strategy.set',
+            )
+            .length,
+        strategyWritesBeforeRemount + 1,
+      );
+
+      await tester.enterText(find.byType(TextField), 'ordinary after exit');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pumpAndSettle();
+      expect(gateway.startCount, 0);
+      controller.dispose();
+    },
+  );
+
+  testWidgets(
+    'group strategy follow-up posts without cancelling or starting from Dart',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final callOrder = <String>[];
+      final conversationRunner = _GroupConversationRunner(callOrder: callOrder);
+      final gateway = _StrategyGateway(callOrder: callOrder);
+      final controller = ClientConversationController(
+        native: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [
+              _target('codex', 'Codex'),
+              _target('worker-a', 'Worker A'),
+            ],
+            onCopyText: (_) async {},
+            framed: false,
+            flywheelGateway: gateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('canonical-group-strategy-picker')),
+        findsOneWidget,
+      );
+      expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'start the graph');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pumpAndSettle();
+      expect(gateway.startCount, 0);
+
+      callOrder.clear();
+      await tester.enterText(find.byType(TextField), 'hi');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pumpAndSettle();
+      expect(callOrder, contains('conversation:conversation.message.post'));
+      expect(callOrder, isNot(contains('flywheel:strategy.run.cancel')));
+      expect(callOrder, isNot(contains('flywheel:strategy.run.start')));
+      expect(gateway.startCount, 0);
+      controller.dispose();
+    },
+  );
+
+  testWidgets(
+    'Assistant name suppresses only its future dispatch while mentions remain enabled',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final runner = _GroupConversationRunner();
+      final controller = ClientConversationController(native: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final toggle = find.byKey(const Key('canonical-group-assistant-toggle'));
+      expect(toggle, findsOneWidget);
+      await tester.tap(toggle);
+      await tester.pump();
+      expect(
+        find.byKey(const Key('canonical-group-assistant-status-paused')),
+        findsOneWidget,
+      );
+      expectAssistantIdentityLabel('Codex');
+
+      await tester.enterText(find.byType(TextField), '@Claude Code continue');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        runner.requests.where(
+          (request) => request['action'] == 'conversation.dispatch.after-post',
+        ),
+        hasLength(1),
+        reason:
+            'Paused assistant still routes an explicit mention through native dispatch',
+      );
+      final pausedDispatch = runner.requests.singleWhere(
+        (request) => request['action'] == 'conversation.dispatch.after-post',
+      );
+      expect(pausedDispatch['suppressAssistant'], isTrue);
+
+      await tester.tap(toggle);
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'dispatch again');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pumpAndSettle();
+      final dispatches = runner.requests
+          .where(
+            (request) =>
+                request['action'] == 'conversation.dispatch.after-post',
+          )
+          .toList();
+      expect(dispatches, hasLength(2));
+      expect(dispatches.last['suppressAssistant'], isFalse);
+      controller.dispose();
+    },
+  );
+
+  testWidgets(
+    'Assistant capsule leads the capsule row and its name opens the editor',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1000, 700);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final runner = _GroupConversationRunner();
+      final controller = ClientConversationController(native: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(
+        tester.getCenter(
+          find.byKey(const Key('canonical-group-assistant-control')),
+        ),
+      );
+      await tester.pump();
+      expect(
+        find.byKey(const Key('canonical-group-assistant-toggle')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('canonical-group-assistant-editor')),
+        findsNothing,
+      );
+      final assistant = tester.getRect(
+        find.byKey(const Key('canonical-group-assistant-control')),
+      );
+      final picker = tester.getRect(
+        find.byKey(const Key('canonical-group-strategy-picker')),
+      );
+      final field = tester.getRect(
+        find.byKey(const Key('agent-conversation-composer-field')),
+      );
+      expect(assistant.height, 32);
+      expect(picker.height, 32);
+      expect(assistant.center.dy, closeTo(picker.center.dy, 0.5));
+      expect(picker.left, greaterThanOrEqualTo(assistant.right));
+      expect(assistant.bottom, lessThanOrEqualTo(field.top));
+      // Without a selected model the readout stays hidden.
+      expect(
+        find.byKey(const Key('canonical-group-assistant-model-readout')),
+        findsNothing,
+      );
+      await tester.tap(
+        find.byKey(const Key('canonical-group-assistant-control')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('assistant-configuration-dialog')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('canonical-group-assistant-status-paused')),
+        findsNothing,
+      );
+
+      controller.dispose();
+    },
+  );
+
+  testWidgets(
+    'persists a selected strategy when navigation disposes the pane immediately',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final inspectionBarrier = Completer<void>();
+      final conversationRunner = _GroupConversationRunner();
+      final gateway = _StrategyGateway(inspectionBarrier: inspectionBarrier);
+      final controller = ClientConversationController(
+        native: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+      final targets = [
+        _target('codex', 'Codex'),
+        _target('worker-a', 'Worker A'),
+      ];
+
+      Widget groupPane() => _groupApp(
+        CanonicalGroupConversationPaneFixture(
+          controller: controller,
+          targets: targets,
+          onCopyText: (_) async {},
+          framed: false,
+          flywheelGateway: gateway,
+        ),
+      );
+
+      await tester.pumpWidget(groupPane());
+      await tester.pumpAndSettle();
+
+      // This models activating a strategy and immediately leaving the screen,
+      // before definition inspection or membership reconciliation completes.
+      expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
+      await tester.pumpWidget(const SizedBox(key: Key('other-interface')));
+      await tester.pump();
+
+      expect(conversationRunner.strategyRevision, 'rev-auth');
+      expect(
+        conversationRunner.requests
+            .where(
+              (request) => request['action'] == 'conversation.strategy.set',
+            )
+            .length,
+        1,
+      );
+
+      inspectionBarrier.complete();
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(groupPane());
+      await tester.pumpAndSettle();
+
+      expectAssistantIdentityLabel('Codex');
+      expect(
+        find.byKey(const Key('canonical-group-assistant-control')),
+        findsOneWidget,
+      );
+      expect(conversationRunner.strategyRevision, 'rev-auth');
+      controller.dispose();
+    },
+  );
+
+  testWidgets(
+    'keeps the persisted strategy visible while retrying transient inspection failure',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final conversationRunner = _GroupConversationRunner();
+      final gateway = _StrategyGateway();
+      final controller = ClientConversationController(
+        native: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+            flywheelGateway: gateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      gateway.inspectionFailures = 1;
+      expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
+      await tester.pumpAndSettle();
+
+      expect(gateway.inspectionCount, 1);
+      expect(
+        find.byKey(const Key('canonical-group-assistant-control')),
+        findsOneWidget,
+      );
+      expectAssistantIdentityLabel('Codex');
+      expect(conversationRunner.strategyRevision, 'rev-auth');
+
+      controller.updateDraft('notify projection retry');
+      await tester.pumpAndSettle();
+
+      expect(gateway.inspectionCount, 2);
+      expect(
+        find.byKey(const Key('canonical-group-assistant-control')),
+        findsOneWidget,
+      );
+      expectAssistantIdentityLabel('Codex');
+      controller.dispose();
+    },
+  );
+
+  testWidgets(
+    'skips the strategy run when the conversation changes while the post is in flight',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final postBarrier = Completer<void>();
+      final conversationRunner = _GroupConversationRunner(
+        postBarrier: postBarrier,
+      );
+      final gateway = _StrategyGateway();
+      final controller = ClientConversationController(
+        native: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+            flywheelGateway: gateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('canonical-group-assistant-control')),
+        findsOneWidget,
+      );
+
+      await tester.enterText(find.byType(TextField), 'race the switch');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pump();
+
+      // The message post is suspended inside the runner while the user
+      // navigates to another group conversation.
+      await controller.selectConversation('conversation:other');
+      await tester.pump();
+      expect(controller.selectedConversationId, 'conversation:other');
+
+      postBarrier.complete();
+      await tester.pumpAndSettle();
+
+      expect(
+        conversationRunner.requests
+            .where(
+              (request) => request['action'] == 'conversation.message.post',
+            )
+            .length,
+        1,
+      );
+      expect(gateway.actions, isNot(contains('strategy.run.start')));
+      expect(gateway.startCount, 0);
+      controller.dispose();
+    },
+  );
+
+  testWidgets(
+    'surfaces a strategy start failure on the group conversation banner',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final conversationRunner = _GroupConversationRunner()
+        ..failStrategyStart = true;
+      final gateway = _StrategyGateway();
+      final controller = ClientConversationController(
+        native: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+            flywheelGateway: gateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'hi');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(controller.failureStage, 'strategy/start');
+      expect(controller.failureCode, 'strategy_actor_quota_exhausted');
+      expect(controller.failureRef, matches(RegExp(r'^#L-[0-9A-F]{4}$')));
+      expect(find.byKey(const Key('canonical-group-failure')), findsOneWidget);
+      expect(
+        find.byKey(const Key('canonical-group-failure-copy')),
+        findsOneWidget,
+      );
+      expect(find.textContaining(controller.failureRef), findsWidgets);
+      controller.dispose();
+    },
+  );
+
+  testWidgets(
+    'strategy dispatch without handles and without a typed error shows no failure',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final conversationRunner = _GroupConversationRunner()
+        ..dispatchPending = true;
+      final controller = ClientConversationController(
+        native: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'hi');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(controller.failureCode, isEmpty);
+      expect(controller.dispatchPending, isFalse);
+      expect(find.byKey(const Key('canonical-group-failure')), findsNothing);
+      expect(
+        tester
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
+        isFalse,
+      );
+      controller.dispose();
+    },
+  );
+
+  testWidgets(
+    'plain group text does not show agent-turn progress while posting',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final postBarrier = Completer<void>();
+      final conversationRunner = _GroupConversationRunner(
+        postBarrier: postBarrier,
+      );
+      final controller = ClientConversationController(
+        native: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'plain group note');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pump();
+
+      expect(controller.sending, isTrue);
+      expect(controller.dispatchPending, isFalse);
+      expect(
+        tester
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
+        isFalse,
+      );
+
+      postBarrier.complete();
+      await tester.pumpAndSettle();
+      expect(controller.dispatchPending, isFalse);
+      expect(
+        tester
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
+        isFalse,
+      );
+      controller.dispose();
+    },
+  );
+
+  testWidgets(
+    'group mention attach uses posted turn handles without waiting for activeTurns',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final conversationRunner = _GroupConversationRunner()
+        ..postTurns = [
+          {
+            'turnHandle': 'dispatch:live',
+            'conversationId': 'conversation:group',
+            'membershipId': 'membership:codex',
+            'agent': 'codex',
+          },
+        ]
+        ..dispatchPending = true;
+      final persistent = _PersistentGateway();
+      addTearDown(persistent.dispose);
+      final controller = ClientConversationController(
+        native: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+            persistentGateway: persistent,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'hello @Codex');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+
+      expect(controller.liveTurns.single['turnHandle'], 'dispatch:live');
+      expect(persistent.attachedHandles, ['dispatch:live']);
+      expect(find.text('streaming token'), findsOneWidget);
+      expect(
+        tester
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
+        isTrue,
+      );
+      controller.dispose();
+    },
+  );
+
+  testWidgets('new group observer replays a discovered turn from cursor zero', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final conversationRunner = _GroupConversationRunner();
+    final persistent = _PersistentGateway(
+      active: const [
+        {
+          'turnHandle': 'dispatch:existing',
+          'conversationId': 'conversation:group',
+          'membershipId': 'membership:codex',
+          'agent': 'codex',
+          'highWater': 9,
+        },
+      ],
+    );
+    addTearDown(persistent.dispose);
+    final controller = ClientConversationController(native: conversationRunner);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    await tester.pumpWidget(
+      _groupApp(
+        CanonicalGroupConversationPaneFixture(
+          controller: controller,
+          targets: [_target('codex', 'Codex')],
+          onCopyText: (_) async {},
+          framed: false,
+          persistentGateway: persistent,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
+
+    expect(persistent.attachedHandles, ['dispatch:existing']);
+    expect(persistent.attachedAfterCursors, [0]);
+    expect(find.text('streaming token'), findsOneWidget);
+    controller.dispose();
+  });
+
+  testWidgets(
+    'chunk burst renders once after the coalesced publish window and keeps '
+    'projection caches stable across repaint-only rebuilds',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final conversationRunner = _GroupConversationRunner()
+        ..postTurns = [
+          {
+            'turnHandle': 'dispatch:live',
+            'conversationId': 'conversation:group',
+            'membershipId': 'membership:codex',
+            'agent': 'codex',
+          },
+        ];
+      final persistent = _BurstGateway();
+      addTearDown(persistent.dispose);
+      final controller = ClientConversationController(
+        native: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+            persistentGateway: persistent,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'hello @Codex');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pump();
+
+      expect(persistent.attachedHandles, ['dispatch:live']);
+
+      // The 12-chunk burst lands in one microtask; the coalesced publish fires
+      // after the 32 ms window, so the complete text appears in one step
+      // instead of a per-chunk repaint cascade.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(find.textContaining('burst-11'), findsOneWidget);
+
+      final flowFinder = find.byType(MessagingParticipantFlow);
+      expect(flowFinder, findsOneWidget);
+      final itemsAfterBurst = tester
+          .widget<MessagingParticipantFlow>(flowFinder)
+          .items;
+
+      // Rebuilds with no new content must reuse the timeline instead of
+      // re-projecting history: the message list keeps list identity.
+      await tester.pump();
+      await tester.pump();
+      final itemsAfterIdleRebuilds = tester
+          .widget<MessagingParticipantFlow>(flowFinder)
+          .items;
+      expect(identical(itemsAfterBurst, itemsAfterIdleRebuilds), isTrue);
+
+      // Typing in the composer must not re-project the message history either.
+      await tester.enterText(find.byType(TextField), 'still typing');
+      await tester.pump();
+      final itemsAfterDraft = tester
+          .widget<MessagingParticipantFlow>(flowFinder)
+          .items;
+      expect(identical(itemsAfterBurst, itemsAfterDraft), isTrue);
+      controller.dispose();
+    },
+  );
+
+  testWidgets(
+    'terminal handoff keeps the live reply until durable readback arrives',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final conversationRunner = _GroupConversationRunner()
+        ..postTurns = [
+          {
+            'turnHandle': 'dispatch:live',
+            'conversationId': 'conversation:group',
+            'membershipId': 'membership:codex',
+            'agent': 'codex',
+          },
+        ]
+        ..dispatchPending = true;
+      final persistent = _PersistentGateway();
+      addTearDown(persistent.dispose);
+      final controller = ClientConversationController(
+        native: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+            persistentGateway: persistent,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'hello @Codex');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(find.text('streaming token'), findsOneWidget);
+
+      final reloadBarrier = Completer<void>();
+      conversationRunner
+        ..persistedEvents = [_completedConversationEvent()]
+        ..nextGetBarrier = reloadBarrier;
+      persistent.completeObserver();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+
+      // The attach stream has ended, but the live scope remains visible while
+      // the two durable Conversation RPCs are still in flight.
+      expect(find.text('streaming token'), findsOneWidget);
+      expect(controller.dispatchPending, isTrue);
+
+      reloadBarrier.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('streaming token'), findsOneWidget);
+      expect(controller.dispatchPending, isFalse);
+      controller.dispose();
+    },
+  );
+
+  testWidgets(
+    'terminal handoff retains live reply until finalized readback is available',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final conversationRunner = _GroupConversationRunner()
+        ..postTurns = [
+          {
+            'turnHandle': 'dispatch:live',
+            'conversationId': 'conversation:group',
+            'membershipId': 'membership:codex',
+            'agent': 'codex',
+          },
+        ]
+        ..dispatchPending = true;
+      final persistent = _PersistentGateway();
+      addTearDown(persistent.dispose);
+      final controller = ClientConversationController(
+        native: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+            persistentGateway: persistent,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'hello @Codex');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+
+      conversationRunner.getFailuresRemaining = 2;
+      persistent.completeObserver();
+      await tester.pump();
+      expect(find.text('streaming token'), findsOneWidget);
+      expect(controller.dispatchPending, isTrue);
+      // Drive the fixture's explicit durable-readback retry timers. A settled
+      // animation frame does not mean those asynchronous retries have finished.
+      for (final retryDelay in const [200, 400, 800]) {
+        await tester.pump(Duration(milliseconds: retryDelay));
+        expect(find.text('streaming token'), findsOneWidget);
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.text('streaming token'), findsOneWidget);
+      expect(controller.dispatchPending, isFalse);
+      controller.dispose();
+    },
+  );
+
+  testWidgets('observer loss detaches without inventing a turn failure', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final conversationRunner = _GroupConversationRunner()
+      ..postTurns = [
+        {
+          'turnHandle': 'dispatch:live',
+          'conversationId': 'conversation:group',
+          'membershipId': 'membership:codex',
+          'agent': 'codex',
+        },
+      ]
+      ..dispatchPending = true;
+    final persistent = _PersistentGateway();
+    addTearDown(persistent.dispose);
+    final controller = ClientConversationController(native: conversationRunner);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    await tester.pumpWidget(
+      _groupApp(
+        CanonicalGroupConversationPaneFixture(
+          controller: controller,
+          targets: [_target('codex', 'Codex')],
+          onCopyText: (_) async {},
+          framed: false,
+          persistentGateway: persistent,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'hello @Codex');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
+    await tester.pump();
+    await tester.pump();
+    expect(controller.dispatchPending, isTrue);
+
+    persistent.failObserver();
+    await tester.pumpAndSettle();
+
+    expect(controller.failureStage, isEmpty);
+    expect(controller.failureCode, isEmpty);
+    expect(controller.dispatchPending, isFalse);
+    expect(persistent.cancelCount, 0);
+    controller.dispose();
+  });
+
+  testWidgets('observer loss reattaches an active turn after its last cursor', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final conversationRunner = _GroupConversationRunner();
+    final persistent = _PersistentGateway(
+      active: const [
+        {
+          'turnHandle': 'dispatch:existing',
+          'conversationId': 'conversation:group',
+          'membershipId': 'membership:codex',
+          'agent': 'codex',
+        },
+      ],
+    );
+    addTearDown(persistent.dispose);
+    final controller = ClientConversationController(native: conversationRunner);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    await tester.pumpWidget(
+      _groupApp(
+        CanonicalGroupConversationPaneFixture(
+          controller: controller,
+          targets: [_target('codex', 'Codex')],
+          onCopyText: (_) async {},
+          framed: false,
+          persistentGateway: persistent,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
+    expect(persistent.attachedAfterCursors, [0]);
+
+    persistent.failObserver();
+    for (
+      var attempt = 0;
+      attempt < 20 && persistent.attachedAfterCursors.length < 2;
+      attempt += 1
+    ) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    expect(persistent.attachedHandles, [
+      'dispatch:existing',
+      'dispatch:existing',
+    ]);
+    expect(persistent.attachedAfterCursors, [0, 1]);
+    expect(find.text('streaming token'), findsOneWidget);
+    controller.dispose();
+  });
+
+  testWidgets('single active group turn exposes an explicit stop operation', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final conversationRunner = _GroupConversationRunner();
+    final persistent = _PersistentGateway(
+      active: const [
+        {
+          'turnHandle': 'dispatch:existing',
+          'conversationId': 'conversation:group',
+          'membershipId': 'membership:codex',
+          'agent': 'codex',
+        },
+      ],
+    );
+    addTearDown(persistent.dispose);
+    final controller = ClientConversationController(native: conversationRunner);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    await tester.pumpWidget(
+      _groupApp(
+        CanonicalGroupConversationPaneFixture(
+          controller: controller,
+          targets: [_target('codex', 'Codex')],
+          onCopyText: (_) async {},
+          framed: false,
+          persistentGateway: persistent,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
+
+    await tester.tap(find.byKey(const Key('canonical-group-assistant-toggle')));
+    await tester.pump();
+    expect(persistent.cancelCount, 0);
+    expect(find.byIcon(Icons.stop_rounded), findsOneWidget);
+    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
+    await tester.pump();
+    expect(persistent.cancelCount, 1);
+    controller.dispose();
+  });
+
+  testWidgets('observer loss reloads and preserves exact persisted failure', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final conversationRunner = _GroupConversationRunner()
+      ..postTurns = [
+        {
+          'turnHandle': 'dispatch:live',
+          'conversationId': 'conversation:group',
+          'membershipId': 'membership:codex',
+          'agent': 'codex',
+        },
+      ]
+      ..dispatchPending = true;
+    final persistent = _PersistentGateway();
+    addTearDown(persistent.dispose);
+    final controller = ClientConversationController(native: conversationRunner);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    await tester.pumpWidget(
+      _groupApp(
+        CanonicalGroupConversationPaneFixture(
+          controller: controller,
+          targets: [_target('codex', 'Codex')],
+          onCopyText: (_) async {},
+          framed: false,
+          persistentGateway: persistent,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'hello @Codex');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
+    await tester.pump();
+    await tester.pump();
+
+    conversationRunner.persistedEvents = [_failedConversationEvent()];
+    persistent.failObserver();
+    for (
+      var attempt = 0;
+      attempt < 20 && controller.failureCode.isEmpty;
+      attempt += 1
+    ) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    expect(controller.failureStage, 'native/turn');
+    expect(controller.failureCode, 'exact_native_failure');
+    expect(controller.failureCode, isNot('transport_failed'));
+    expect(controller.dispatchPending, isFalse);
+    expect(persistent.cancelCount, 0);
+    controller.dispose();
+  });
+
+  testWidgets(
+    'strategy send shows running edge only after dispatch returns handles',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final dispatchBarrier = Completer<void>();
+      final conversationRunner =
+          _GroupConversationRunner(dispatchBarrier: dispatchBarrier)
+            ..postTurns = [
+              {
+                'turnHandle': 'dispatch:live',
+                'conversationId': 'conversation:group',
+                'agent': 'codex',
+              },
+            ]
+            ..dispatchPending = true;
+      final controller = ClientConversationController(
+        native: conversationRunner,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(await controller.setSelectedStrategyRevision('rev-auth'), isTrue);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'hi');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pump();
+
+      // While after-post is in flight no handle exists yet, so the running
+      // edge stays off even though the composer is busy.
+      expect(controller.sending, isTrue);
+      expect(controller.dispatchPending, isFalse);
+      expect(
+        tester
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
+        isFalse,
+      );
+
+      dispatchBarrier.complete();
+      await tester.pump();
+      await tester.pump();
+
+      expect(controller.dispatchPending, isTrue);
+      expect(controller.liveTurns.single['turnHandle'], 'dispatch:live');
+      expect(
+        tester
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
+        isTrue,
+      );
+      controller.dispose();
+    },
+  );
+}
+
+Widget _groupApp(Widget child) {
+  return MaterialApp(
+    debugShowCheckedModeBanner: false,
+    locale: const Locale('en'),
+    supportedLocales: LicoStrings.supportedLocales,
+    localizationsDelegates: const [
+      GlobalMaterialLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+    ],
+    theme: buildLicoTheme(
+      platformBrightness: Brightness.dark,
+    ).copyWith(platform: TargetPlatform.macOS),
+    home: Builder(
+      builder: (context) => LayoutPaletteScope(
+        palette: layoutPaletteFromColors(context.licoColors),
+        child: LayoutAgentsStrategyScope(
+          strategy: const AgentsPresentationStrategy.messaging(),
+          child: Scaffold(body: child),
+        ),
+      ),
+    ),
+  );
+}
+
+/// The composer keeps the assistant Membership display name while status changes.
+void expectAssistantIdentityLabel(String label) {
+  expect(
+    find.descendant(
+      of: find.byKey(const Key('canonical-group-assistant-control')),
+      matching: find.text(label),
+    ),
+    findsOneWidget,
+  );
+}
+
+TargetCandidate _target(String id, String label) => TargetCandidate(
+  id: id,
+  target: id,
+  label: label,
+  kind: 'cli',
+  status: 'detected',
+  configured: true,
+  confidence: 1,
+  adapterStatus: 'implemented',
+  binaryPath: '/fixture/agent',
+  adapterCapabilities: const {
+    'conversationDriver': 'implemented',
+    'conversationProtocol': 'fixture',
+    'conversationReadiness': 'ready',
+  },
+  modelCatalog: const {
+    'models': [
+      {
+        'id': 'model-a',
+        'reasoningEfforts': ['low', 'high'],
+        'defaultReasoningEffort': 'low',
+      },
+    ],
+  },
+  supportedActions: const ['runtime.message.send'],
+);
+
+final class _StrategyGateway implements AcativaGateway {
+  _StrategyGateway({this.inspectionBarrier, this.callOrder});
+
+  final Completer<void>? inspectionBarrier;
+  final List<String>? callOrder;
+  final List<String> actions = [];
+  int startCount = 0;
+  int inspectionCount = 0;
+  int inspectionFailures = 0;
+  bool needsHumanInput = false;
+  bool failStart = false;
+
+  @override
+  Future<Object?> execute(Map<String, dynamic> request) async {
+    final action = (request['action'] ?? '').toString();
+    actions.add(action);
+    callOrder?.add('flywheel:$action');
+    if (action == 'strategy.definition.inspect') {
+      inspectionCount += 1;
+      if (inspectionFailures > 0) {
+        inspectionFailures -= 1;
+        throw const AcativaFailure(
+          code: 'strategy_inspection_failed',
+          recovery: 'Retry strategy inspection.',
+          retryable: true,
+        );
+      }
+      await inspectionBarrier?.future;
+      return {
+        'projection': {
+          'status': 'pending',
+          'currentStates': <String>[],
+          'neighborStates': <String>[],
+          'allowedOperations': ['strategy.run.start'],
+          'bindings': [
+            {
+              'slotId': 'entry',
+              'valueId': 'codex',
+              'ordinal': 0,
+              'revision': 1,
+            },
+            {
+              'slotId': 'worker-a',
+              'valueId': 'worker-a',
+              'ordinal': 0,
+              'revision': 1,
+            },
+          ],
+        },
+        'workflow': {
+          'initial': 'work',
+          'actorSlots': [
+            {
+              'id': 'entry',
+              'kind': 'actor',
+              'label': 'Entry',
+              'required': true,
+              'entry': true,
+            },
+            {
+              'id': 'worker-a',
+              'kind': 'actor',
+              'label': 'Worker A',
+              'required': true,
+            },
+          ],
+          'states': [
+            {'id': 'work', 'kind': 'actor', 'label': 'Work'},
+          ],
+          'transitions': <Map<String, dynamic>>[],
+        },
+      };
+    }
+    return switch (action) {
+      'strategy.definition.list' => [
+        {
+          'definitionId': 'authorized',
+          'name': 'Authorized Graph',
+          'version': '1.0.0',
+          'revisionDigest': 'rev-auth',
+          'semanticsDigest': 'sem-auth',
+          'authorized': true,
+        },
+        {
+          'definitionId': 'pending',
+          'name': 'Pending Graph',
+          'version': '1.0.0',
+          'revisionDigest': 'rev-pending',
+          'semanticsDigest': 'sem-pending',
+          'authorized': false,
+        },
+      ],
+      'strategy.run.active' => {
+        'runId': startCount == 0 ? null : 'run-1',
+        'needsHumanInput': needsHumanInput,
+      },
+      'strategy.run.cancel' => {'runId': 'run-1', 'status': 'cancelled'},
+      'strategy.run.start' => () {
+        startCount += 1;
+        if (failStart) {
+          throw const AcativaFailure(
+            code: 'strategy_actor_quota_exhausted',
+            recovery: 'Review the strategy run.',
+          );
+        }
+        needsHumanInput = false;
+        return {'runId': 'run-1', 'needsHumanInput': false};
+      }(),
+      _ => throw StateError('unexpected action $action'),
+    };
+  }
+}
+
+final class _GroupConversationRunner implements ClientConversationNativePort {
+  _GroupConversationRunner({
+    this.callOrder,
+    this.postBarrier,
+    this.dispatchBarrier,
+  });
+
+  final List<String>? callOrder;
+  final Completer<void>? postBarrier;
+  final Completer<void>? dispatchBarrier;
+  final List<Map<String, dynamic>> requests = [];
+  final Map<String, String> addedAgents = {};
+  String strategyRevision = '';
+  int revision = 2;
+  bool failStrategyStart = false;
+  bool dispatchPending = false;
+  List<Map<String, dynamic>> postTurns = const [];
+  List<Map<String, dynamic>> persistedEvents = const [];
+  Completer<void>? nextGetBarrier;
+  int getFailuresRemaining = 0;
+
+  @override
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
+  ) async {
+    final request = command.payload;
+    requests.add(request);
+    final action = request['action'];
+    callOrder?.add('conversation:$action');
+    if (action == 'conversation.message.post') {
+      await postBarrier?.future;
+    }
+    if (action == 'conversation.dispatch.after-post') {
+      await dispatchBarrier?.future;
+    }
+    if (action == 'conversation.get') {
+      if (getFailuresRemaining > 0) {
+        getFailuresRemaining -= 1;
+        throw StateError('conversation get unavailable');
+      }
+      final barrier = nextGetBarrier;
+      nextGetBarrier = null;
+      await barrier?.future;
+    }
+    if (action == 'conversation.membership.add') {
+      final principal = Map<String, dynamic>.from(request['principal'] as Map);
+      addedAgents[(principal['agentId'] ?? '').toString()] =
+          (principal['displayName'] ?? '').toString();
+    } else if (action == 'conversation.strategy.set') {
+      final next = (request['strategyRevision'] ?? '').toString();
+      if (next != strategyRevision) {
+        strategyRevision = next;
+        revision += 1;
+      }
+    }
+    return {
+      'ok': true,
+      'result': switch (action) {
+        'conversation.list' => [_summary(revision)],
+        'conversation.get' => _conversation(
+          addedAgents,
+          strategyRevision: strategyRevision,
+          revision: revision,
+          conversationId: (request['conversationId'] ?? 'conversation:group')
+              .toString(),
+        ),
+        'conversation.events.page' => {
+          'events': persistedEvents,
+          'nextCursor': null,
+          'totalCount': persistedEvents.length,
+        },
+        'conversation.message.post' => {
+          'event': <String, dynamic>{
+            'id': 'event:posted',
+            'conversationId': 'conversation:group',
+            'sequence': 2,
+            'authorMembershipId': 'membership:owner',
+            'kind': 'message',
+            'createdAtUnixMs': 2,
+            'finalized': true,
+            'parts': <Map<String, dynamic>>[],
+          },
+          'directTurns': <Map<String, dynamic>>[],
+          'turns': <Map<String, dynamic>>[],
+          'dispatchPending': false,
+        },
+        'conversation.dispatch.after-post' => {
+          'event': <String, dynamic>{'id': request['eventId']},
+          'directTurns': <Map<String, dynamic>>[],
+          'turns': postTurns,
+          'dispatchPending': dispatchPending && !failStrategyStart,
+          if (failStrategyStart)
+            'strategyError': <String, dynamic>{
+              'code': 'strategy_actor_quota_exhausted',
+              'stage': 'strategy/start',
+            },
+        },
+        'conversation.membership.add' => <String, dynamic>{},
+        'conversation.strategy.set' => <String, dynamic>{},
+        'conversation.profile.get' => <String, dynamic>{
+          'revision': 0,
+          'requiredCapabilities': <String>[],
+          'preferredCapabilities': <String>[],
+          'skillReferences': <String>[],
+        },
+        'conversation.profile.update' => <String, dynamic>{
+          'profile': request['intent'],
+        },
+        _ => <String, dynamic>{},
+      },
+    };
+  }
+}
+
+Map<String, dynamic> _summary(int revision) => {
+  'id': 'conversation:group',
+  'title': 'Lico',
+  'archived': false,
+  'pinned': true,
+  'isGroup': true,
+  'revision': revision,
+  'updatedAtUnixMs': 2,
+  'membershipCount': 3,
+  'eventCount': 0,
+};
+
+Map<String, dynamic> _conversation(
+  Map<String, String> addedAgents, {
+  required String strategyRevision,
+  required int revision,
+  String conversationId = 'conversation:group',
+}) => {
+  'id': conversationId,
+  'title': 'Lico',
+  'archived': false,
+  'pinned': true,
+  'isGroup': true,
+  'assistantMembershipId': 'membership:codex',
+  if (strategyRevision.isNotEmpty) 'strategyRevision': strategyRevision,
+  'revision': revision,
+  'createdAtUnixMs': 1,
+  'updatedAtUnixMs': 2,
+  'eventCount': 0,
+  'memberships': [
+    _membership(
+      id: 'membership:owner',
+      principalId: 'human:local',
+      kind: 'human',
+      label: 'Local User',
+      access: 'owner',
+      conversationId: conversationId,
+    ),
+    _membership(
+      id: 'membership:codex',
+      principalId: 'agent:codex',
+      kind: 'agent',
+      label: 'Codex',
+      agentId: 'codex',
+      conversationId: conversationId,
+    ),
+    _membership(
+      id: 'membership:claude',
+      principalId: 'agent:claude-code',
+      kind: 'agent',
+      label: 'Claude Code',
+      agentId: 'claude-code',
+      conversationId: conversationId,
+    ),
+    for (final entry in addedAgents.entries)
+      _membership(
+        id: 'membership:${entry.key}',
+        principalId: 'agent:${entry.key}',
+        kind: 'agent',
+        label: entry.value,
+        agentId: entry.key,
+        conversationId: conversationId,
+      ),
+  ],
+};
+
+Map<String, dynamic> _failedConversationEvent() => {
+  'id': 'event:failed',
+  'conversationId': 'conversation:group',
+  'sequence': 1,
+  'authorMembershipId': 'membership:codex',
+  'correlationId': 'dispatch:live',
+  'kind': 'message',
+  'createdAtUnixMs': 3,
+  'finalized': true,
+  'parts': [
+    {
+      'id': 'part:failure',
+      'eventId': 'event:failed',
+      'ordinal': 0,
+      'kind': 'diagnostic',
+      'content': '{"code":"exact_native_failure","stage":"native/turn"}',
+      'createdAtUnixMs': 3,
+    },
+  ],
+};
+
+Map<String, dynamic> _completedConversationEvent() => {
+  'id': 'event:completed',
+  'conversationId': 'conversation:group',
+  'sequence': 1,
+  'authorMembershipId': 'membership:codex',
+  'correlationId': 'dispatch:live',
+  'kind': 'message',
+  'createdAtUnixMs': 3,
+  'finalized': true,
+  'parts': [
+    {
+      'id': 'part:reply',
+      'eventId': 'event:completed',
+      'ordinal': 0,
+      'kind': 'text',
+      'content': 'streaming token',
+      'createdAtUnixMs': 3,
+    },
+  ],
+};
+
+Map<String, dynamic> _membership({
+  required String id,
+  required String principalId,
+  required String kind,
+  required String label,
+  String agentId = '',
+  String access = 'member',
+  String conversationId = 'conversation:group',
+}) => {
+  'id': id,
+  'conversationId': conversationId,
+  'principal': {
+    'id': principalId,
+    'kind': kind,
+    'displayName': label,
+    if (agentId.isNotEmpty) 'agentId': agentId,
+    'createdAtUnixMs': 1,
+  },
+  'access': access,
+  'status': 'active',
+  'joinedAtUnixMs': 1,
+};
+
+final class _PersistentGateway implements PersistentAgentConversationGateway {
+  _PersistentGateway({List<Map<String, dynamic>> active = const []})
+    : _active = List<Map<String, dynamic>>.unmodifiable(active) {
+    _chunks = StreamController<AgentDispatchEvent>.broadcast();
+  }
+
+  final List<Map<String, dynamic>> _active;
+  final List<String> attachedHandles = [];
+  final List<int> attachedAfterCursors = [];
+  late final StreamController<AgentDispatchEvent> _chunks;
+  var cancelCount = 0;
+
+  void failObserver() {
+    _chunks.addError(const AgentDispatchStreamException('transport_failed'));
+  }
+
+  void completeObserver() {
+    _chunks.add(
+      const AgentDispatchEvent(
+        kind: 'dispatch.turn.completed',
+        payload: {
+          'ok': true,
+          'terminalTransition': {'kind': 'lifecycle', 'stage': 'completed'},
+        },
+      ),
+    );
+  }
+
+  void dispose() {
+    unawaited(_chunks.close());
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> activeTurns({
+    required String agentId,
+    String sessionId = '',
+    String conversationId = '',
+    Duration waitForChange = Duration.zero,
+  }) async => _active;
+
+  @override
+  Future<void> ensureRuntime({String conversationId = ''}) async {}
+
+  @override
+  Stream<AgentDispatchEvent> attachActiveTurn({
+    required String turnHandle,
+    required String conversationId,
+    int afterCursor = 0,
+  }) {
+    attachedHandles.add(turnHandle);
+    attachedAfterCursors.add(afterCursor);
+    scheduleMicrotask(() {
+      if (_chunks.isClosed) return;
+      _chunks.add(
+        const AgentDispatchEvent(
+          kind: 'agent.message.chunk',
+          payload: {'text': 'streaming token', 'cursor': 1},
+        ),
+      );
+    });
+    return _chunks.stream;
+  }
+
+  @override
+  Future<AgentDispatchTurnResult> steerActiveTurn({
+    required String turnHandle,
+    required String conversationId,
+    required String text,
+  }) async => const AgentDispatchTurnResult(ok: true);
+
+  @override
+  Future<AgentDispatchCancelResult> cancelActiveTurn({
+    required String turnHandle,
+    required String conversationId,
+  }) async {
+    cancelCount += 1;
+    return const AgentDispatchCancelResult(ok: true);
+  }
+}
+
+/// Emits a burst of chunk events carrying a responding lifecycle prefix when a
+/// turn attaches, so tests can exercise the coalesced publish window.
+final class _BurstGateway extends _PersistentGateway {
+  int burstSize = 12;
+
+  @override
+  Stream<AgentDispatchEvent> attachActiveTurn({
+    required String turnHandle,
+    required String conversationId,
+    int afterCursor = 0,
+  }) {
+    attachedHandles.add(turnHandle);
+    attachedAfterCursors.add(afterCursor);
+    scheduleMicrotask(() {
+      if (_chunks.isClosed) return;
+      for (var index = 0; index < burstSize; index += 1) {
+        _chunks.add(
+          AgentDispatchEvent(
+            kind: 'agent.message.chunk',
+            payload: {
+              'text': 'burst-$index',
+              'lifecyclePrefix': const [
+                'submitted',
+                'accepted',
+                'processing',
+                'responding',
+              ],
+            },
+          ),
+        );
+      }
+    });
+    return _chunks.stream;
+  }
+}

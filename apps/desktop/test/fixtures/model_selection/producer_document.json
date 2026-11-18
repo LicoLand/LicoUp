@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "scopes": ["direct", "workflow"],
+  "agent": "kimi-code",
+  "generation": "generation-fixture-1",
+  "observedAtUnixMs": 1726000000000,
+  "entries": [
+    {
+      "agent": "kimi-code",
+      "model": "k3-256k",
+      "canonicalId": "moonshotai/kimi-k3",
+      "canonicalDisplayName": "Kimi K3",
+      "evidence": "observed",
+      "support": { "state": "supported", "reason": "declared_identity" },
+      "availability": {
+        "state": "observed",
+        "reason": "observed_by_live_source",
+        "observedAtUnixMs": 1726000000000
+      },
+      "credentials": {
+        "state": "unknown",
+        "reason": "provider_credential_unknown"
+      },
+      "providers": ["kimi-for-coding"],
+      "scopes": [
+        {
+          "scope": "direct",
+          "state": "undetermined",
+          "reason": "selection_policy_owner_absent"
+        },
+        {
+          "scope": "workflow",
+          "state": "undetermined",
+          "reason": "selection_policy_owner_absent"
+        }
+      ]
+    },
+    {
+      "agent": "kimi-code",
+      "model": "mystery-preview",
+      "canonicalId": null,
+      "canonicalDisplayName": null,
+      "evidence": "observed",
+      "support": {
+        "state": "unknown",
+        "reason": "observed_without_declared_identity"
+      },
+      "availability": {
+        "state": "observed",
+        "reason": "observed_by_live_source",
+        "observedAtUnixMs": 1726000000000
+      },
+      "credentials": { "state": "unknown", "reason": "provider_not_recorded" },
+      "providers": [],
+      "scopes": [
+        {
+          "scope": "direct",
+          "state": "undetermined",
+          "reason": "selection_policy_owner_absent"
+        },
+        {
+          "scope": "workflow",
+          "state": "undetermined",
+          "reason": "selection_policy_owner_absent"
+        }
+      ]
+    }
+  ]
+}

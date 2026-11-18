@@ -1,0 +1,46 @@
+{
+  "id": "defect-repair",
+  "file": "09-defect-repair.json",
+  "title": {
+    "en": "Scoped defect repair",
+    "zh": "缺陷修复"
+  },
+  "purpose": {
+    "en": "Resolve the responsible cause completely within the approved objective.",
+    "zh": "在已批准目标内完整解决根因。"
+  },
+  "owner": {
+    "en": "Responsible owner and integrator",
+    "zh": "对应负责人及集成人"
+  },
+  "entry": {
+    "en": "A reproducible failed stage",
+    "zh": "存在可定位的失败阶段"
+  },
+  "steps": [
+    {
+      "en": "Diagnose ownership",
+      "zh": "定位责任归属"
+    },
+    {
+      "en": "Repair or refactor",
+      "zh": "修复或重构"
+    },
+    {
+      "en": "Verify and resume",
+      "zh": "验证并恢复操作"
+    }
+  ],
+  "exit": {
+    "en": "The cause and affected consumers are corrected with engineering coverage.",
+    "zh": "根因与受影响使用方已修正，并有工程覆盖。"
+  },
+  "failure": {
+    "en": "Escalate only changed scope, published obligations or unauthorized effects.",
+    "zh": "只提交范围、已发布义务或未获授权影响的变化供决策。"
+  },
+  "boundary": {
+    "en": "Do not accumulate local workarounds or development compatibility versions.",
+    "zh": "不积累局部补丁链或开发过程兼容版本。"
+  }
+}

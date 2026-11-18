@@ -1,0 +1,147 @@
+{
+  "schema": "licoup.client-support-matrix",
+  "services": [
+    {
+      "id": "client-shell",
+      "label": "LicoUp client",
+      "category": "core-client",
+      "releaseBlocking": true
+    },
+    {
+      "id": "rust-task-queue",
+      "label": "Local Rust task queue",
+      "category": "local-client-capability",
+      "releaseBlocking": false
+    },
+    {
+      "id": "acp-adapter",
+      "label": "ACP adapter",
+      "category": "local-client-capability",
+      "releaseBlocking": false
+    },
+    {
+      "id": "mcp-adapter",
+      "label": "MCP adapter",
+      "category": "local-client-capability",
+      "releaseBlocking": false
+    },
+    {
+      "id": "agent-discovery",
+      "label": "Local agent discovery",
+      "category": "desktop-client-capability",
+      "releaseBlocking": false
+    },
+    {
+      "id": "agent-conversations",
+      "label": "Local agent conversations",
+      "category": "desktop-client-capability",
+      "releaseBlocking": false
+    },
+    {
+      "id": "skill-management",
+      "label": "Local skill management",
+      "category": "desktop-client-capability",
+      "releaseBlocking": false
+    },
+    {
+      "id": "conversation-backup",
+      "label": "Local conversation backup",
+      "category": "desktop-client-capability",
+      "releaseBlocking": false
+    },
+    {
+      "id": "token-usage",
+      "label": "Local token usage",
+      "category": "desktop-client-capability",
+      "releaseBlocking": false
+    },
+    {
+      "id": "devices",
+      "label": "Desktop-to-desktop devices",
+      "category": "core-client",
+      "releaseBlocking": true
+    },
+    {
+      "id": "optional-licoup-plugin",
+      "label": "Optional LicoUp plugin",
+      "category": "manual-integration",
+      "releaseBlocking": false
+    }
+  ],
+  "defaults": {
+    "desktop": {
+      "client-shell": "unverified",
+      "rust-task-queue": "preview",
+      "acp-adapter": "preview",
+      "mcp-adapter": "preview",
+      "agent-discovery": "preview",
+      "agent-conversations": "preview",
+      "skill-management": "preview",
+      "conversation-backup": "preview",
+      "token-usage": "preview",
+      "optional-licoup-plugin": "deferred",
+      "devices": "unverified"
+    }
+  },
+  "targets": [
+    {
+      "targetId": "windows-x64",
+      "profile": "desktop",
+      "buildSupported": true,
+      "overrides": {
+        "client-shell": "preview",
+        "devices": "preview"
+      }
+    },
+    {
+      "targetId": "windows-arm64",
+      "profile": "desktop",
+      "buildSupported": false
+    },
+    {
+      "targetId": "macos-arm64",
+      "profile": "desktop",
+      "buildSupported": true,
+      "overrides": {
+        "client-shell": "supported",
+        "devices": "preview"
+      }
+    },
+    {
+      "targetId": "linux-glibc-x64",
+      "profile": "desktop",
+      "buildSupported": true,
+      "overrides": {
+        "client-shell": "preview",
+        "devices": "preview"
+      }
+    },
+    {
+      "targetId": "linux-glibc-arm64",
+      "profile": "desktop",
+      "buildSupported": true,
+      "overrides": {
+        "client-shell": "preview",
+        "devices": "preview"
+      }
+    },
+    {
+      "targetId": "linux-musl-x64",
+      "profile": "desktop",
+      "buildSupported": true,
+      "overrides": {
+        "client-shell": "preview",
+        "devices": "preview"
+      }
+    },
+    {
+      "targetId": "linux-musl-arm64",
+      "profile": "desktop",
+      "buildSupported": true,
+      "overrides": {
+        "client-shell": "preview",
+        "devices": "preview"
+      }
+    }
+  ]
+}

@@ -1,0 +1,832 @@
+import 'dart:convert';
+
+import 'package:licoup/src/frontend/features/agents/ui/conversation_execution_entry.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion/orb_waiting_indicator.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion_surface.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_self_avatar.dart';
+
+import 'package:flutter/material.dart';
+
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/acativa_renderer_models.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_bubble.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_bubble_edge_glow.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_sticker_panel.dart';
+import 'package:licoup/src/frontend/shared/mascot/mascot_expression_motion.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/mascot/mascot_catalog.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+
+/// One author group in the messaging participant flow: a header row with the
+/// author avatar, display name, and AGENT badge for agent authors, followed
+/// by every message in the group. Messages render with the shared markdown
+/// content renderer inside a readable message bubble. Hovering a row applies
+/// a subtle surface highlight and reveals that message's copy action
+/// outside the bubble at its bottom-left corner and its timestamp outside the
+/// bubble at its bottom-right corner.
+class MessagingMessageGroup extends StatelessWidget {
+  const MessagingMessageGroup({
+    super.key,
+    required this.authorIsUser,
+    required this.participantLabel,
+    required this.participantRole,
+    required this.participantTarget,
+    required this.messages,
+    required this.target,
+    required this.adapter,
+    this.runtimeProfile,
+    this.assistantActive = false,
+    this.motionAvatar = false,
+    this.conversationId = '',
+    this.streamingMessageIds = const <String>{},
+    this.onCopyText,
+    this.onRetryMessage,
+    this.onDeleteMessage,
+    this.scrollController,
+  });
+
+  final bool authorIsUser;
+  final String participantLabel;
+  final String participantRole;
+  final TargetCandidate? participantTarget;
+  final List<AgentConversationMessage> messages;
+  final TargetCandidate target;
+  final AgentRenderAdapter adapter;
+  final AgentParticipantRuntimeProfile? runtimeProfile;
+
+  /// Whether the group assistant lane is active; an active assistant's
+  /// message header carries its agent's brand mark instead of the generic
+  /// sparkles.
+  final bool assistantActive;
+  final bool motionAvatar;
+
+  /// Ids of messages whose body is a partially written streamed reply. The
+  /// owning pane derives the set from the live turn state; it is never
+  /// inferred from text shape.
+  final Set<String> streamingMessageIds;
+
+  /// Clipboard write routed through the platform boundary; message rows
+  /// expose an explicit copy action when present.
+  final Future<void> Function(String)? onCopyText;
+  final Future<void> Function(String)? onRetryMessage;
+  final Future<void> Function(String)? onDeleteMessage;
+
+  /// This author's native/local conversation id, revealed on message hover
+  /// immediately before the timestamp (agent bubbles only).
+  final String conversationId;
+  final ScrollController? scrollController;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    final isAssistant = participantRole.trim().toLowerCase() == 'assistant';
+    final bubbleGlowKey = authorIsUser
+        ? ''
+        : messagingAgentBubbleGlowKey(participantTarget ?? target);
+    final authorName = authorIsUser
+        ? strings.you
+        : participantLabel.trim().isNotEmpty
+        ? participantLabel.trim()
+        : participantTarget != null
+        ? agentConversationTargetDisplayName(participantTarget!)
+        : agentConversationTargetDisplayName(target);
+    return Column(
+      key: Key(
+        authorIsUser
+            ? 'messaging-user-message-group'
+            : 'messaging-agent-message-group',
+      ),
+      crossAxisAlignment: authorIsUser
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 36,
+          child: Row(
+            mainAxisAlignment: authorIsUser
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: authorIsUser
+                ? [
+                    Flexible(
+                      child: Text(
+                        authorName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          color: colors.text,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    _MessagingUserAvatar(accessibilityLabel: authorName),
+                  ]
+                : [
+                    _avatar(),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Text(
+                        authorName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.text,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    _MessagingAgentBadge(participantRole: participantRole),
+                    if (!isAssistant && runtimeProfile?.hasDetails == true) ...[
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          _runtimeProfileLabel(
+                            strings,
+                            participantTarget,
+                            runtimeProfile!,
+                          ),
+                          key: const Key('messaging-subagent-runtime-profile'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: colors.textMuted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+          ),
+        ),
+        const SizedBox(height: LicoContentSpacing.compact),
+        for (var index = 0; index < messages.length; index++) ...[
+          RepaintBoundary(
+            key: ValueKey<String>(
+              'messaging-group-message-${_messageIdentity(messages[index])}',
+            ),
+            child: ReadingPositionAnchor(
+              controller: scrollController,
+              anchorId: _messageIdentity(messages[index]),
+              child: _MessagingGroupMessageRow(
+                message: messages[index],
+                target: participantTarget ?? target,
+                adapter: adapter,
+                authorIsUser: authorIsUser,
+                agentKey: bubbleGlowKey,
+                conversationId: conversationId,
+                isStreaming: streamingMessageIds.contains(messages[index].id),
+                onCopyText: onCopyText,
+                onRetryMessage: onRetryMessage,
+                onDeleteMessage: onDeleteMessage,
+              ),
+            ),
+          ),
+          if (index != messages.length - 1)
+            const SizedBox(height: LicoContentSpacing.compact),
+        ],
+      ],
+    );
+  }
+
+  Widget _avatar() {
+    final avatar = MessagingAgentAvatar(
+      target: participantTarget ?? target,
+      size: MessagingDesktopMetrics.conversationAvatarExtent,
+      iconSize: MessagingDesktopMetrics.conversationAvatarMarkExtent,
+    );
+    return motionAvatar
+        ? ConversationMotionAvatarTarget(child: avatar)
+        : avatar;
+  }
+
+  String _runtimeProfileLabel(
+    LicoStrings strings,
+    TargetCandidate? target,
+    AgentParticipantRuntimeProfile profile,
+  ) {
+    final model = profile.model.trim();
+    final effort = profile.reasoningEffort.trim();
+    final labels = <String>[];
+    if (model.isNotEmpty) {
+      labels.add(
+        target == null
+            ? model
+            : agentOrchestrationModelDisplayName(target, model),
+      );
+    }
+    if (effort.isNotEmpty) {
+      labels.add(strings.reasoningEffortOptionLabel(effort, effort));
+    }
+    return labels.join(' · ');
+  }
+}
+
+class _MessagingGroupMessageRow extends StatefulWidget {
+  const _MessagingGroupMessageRow({
+    required this.message,
+    required this.target,
+    required this.adapter,
+    required this.authorIsUser,
+    this.agentKey = '',
+    this.conversationId = '',
+    this.isStreaming = false,
+    this.onCopyText,
+    this.onRetryMessage,
+    this.onDeleteMessage,
+  });
+
+  final AgentConversationMessage message;
+  final TargetCandidate target;
+  final AgentRenderAdapter adapter;
+
+  /// Drives the asymmetric treatment. Giving both authors an identical bordered
+  /// bubble is why the surface did not read like a chat client: there was no
+  /// visual cue for who is speaking beyond the avatar.
+  final bool authorIsUser;
+
+  /// Rim-light palette key for agent bubbles (the speaking agent's brand hue);
+  /// empty selects the shared white light.
+  final String agentKey;
+  final String conversationId;
+
+  /// Whether the message body is a partially written streamed reply.
+  final bool isStreaming;
+
+  /// Clipboard write routed through the platform boundary; hovering the bubble
+  /// reveals an explicit copy action at its bottom-left corner when present.
+  final Future<void> Function(String)? onCopyText;
+  final Future<void> Function(String)? onRetryMessage;
+  final Future<void> Function(String)? onDeleteMessage;
+
+  @override
+  State<_MessagingGroupMessageRow> createState() =>
+      _MessagingGroupMessageRowState();
+}
+
+class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
+  bool _hovered = false;
+  bool _focused = false;
+
+  bool get _actionsVisible => _hovered || _focused;
+
+  DateTime? get _messageTime =>
+      parseAgentConversationTimestamp(widget.message.createdAt);
+
+  Future<void> _copyMessageText(BuildContext context) async {
+    final write = widget.onCopyText;
+    if (write == null) return;
+    final text = widget.message.text.trim();
+    if (text.isEmpty) return;
+    await write(text);
+    if (!context.mounted) return;
+    showLicoToast(
+      context,
+      message: LicoStrings.of(context).conversationMessageCopied,
+      kind: LicoToastKind.success,
+    );
+  }
+
+  Future<void> _showMessageMenu(
+    BuildContext context,
+    TapDownDetails details,
+  ) async {
+    final delete = widget.onDeleteMessage;
+    if (!widget.authorIsUser || delete == null) return;
+    final selected = await showMessagingGlassMenu<String>(
+      context: context,
+      globalPosition: details.globalPosition,
+      menuKey: const Key('messaging-message-context-menu'),
+      actions: [
+        MessagingGlassMenuAction<String>(
+          value: 'delete',
+          label: LicoStrings.of(context).delete,
+          leading: Icon(
+            Icons.delete_outline_rounded,
+            size: 16,
+            color: context.licoColors.error,
+          ),
+        ),
+      ],
+    );
+    if (selected == 'delete') {
+      await delete(widget.message.id);
+    }
+  }
+
+  Widget _buildCopyAction(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    return Tooltip(
+      message: strings.conversationCopyMessage,
+      waitDuration: LicoMotion.tooltipWait,
+      child: InkWell(
+        key: const Key('messaging-message-copy-action'),
+        borderRadius: BorderRadius.circular(LicoRadius.chip),
+        onTap: () => _copyMessageText(context),
+        child: Padding(
+          padding: const EdgeInsets.all(2),
+          child: Icon(
+            Icons.copy_outlined,
+            size: 13,
+            color: colors.textMuted.withAlpha(colors.isDark ? 180 : 200),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // The hover band lives inside the Stack's own bounds: the padded bubble
+  // reserves the space below itself and the corner actions sit inside it, so
+  // the copy action stays hittable (content overflowing a Stack's bounds is
+  // painted but not hit-testable). Extent = 6 gap + 17 copy box + 2 margin.
+  static const double _hoverBandExtent = 25;
+
+  /// Short messages still read as a bubble instead of a cramped chip.
+  static const double _bubbleMinWidth = 64;
+
+  Widget _buildBubbleWithHoverBand(BuildContext context, Widget bubble) {
+    final colors = context.licoColors;
+    final messageTime = _messageTime;
+    final timestampLabel = messageTime == null
+        ? null
+        : MaterialLocalizations.of(
+            context,
+          ).formatTimeOfDay(TimeOfDay.fromDateTime(messageTime));
+    final conversationId = widget.conversationId.trim();
+    final showMeta = timestampLabel != null || conversationId.isNotEmpty;
+    final canCopy =
+        widget.onCopyText != null && widget.message.text.trim().isNotEmpty;
+    if (!showMeta && !canCopy && widget.authorIsUser) {
+      return bubble;
+    }
+    final metaStyle = TextStyle(
+      color: colors.textMuted.withAlpha(colors.isDark ? 180 : 200),
+      fontSize: 10.5,
+      fontWeight: FontWeight.w400,
+      height: 1.2,
+    );
+    final bubbleBand = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: _hoverBandExtent),
+          child: bubble,
+        ),
+        if (canCopy)
+          Positioned(
+            left: 0,
+            bottom: 0,
+            child: AnimatedOpacity(
+              opacity: _hovered ? 1 : 0,
+              duration: context.motion(LicoMotion.micro),
+              curve: LicoMotion.standard,
+              child: _buildCopyAction(context),
+            ),
+          ),
+        if (showMeta)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 2,
+            child: AnimatedOpacity(
+              opacity: _hovered ? 1 : 0,
+              duration: context.motion(LicoMotion.micro),
+              curve: LicoMotion.standard,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (conversationId.isNotEmpty) ...[
+                    Flexible(
+                      child: Tooltip(
+                        message: conversationId,
+                        waitDuration: LicoMotion.tooltipWait,
+                        child: Text(
+                          conversationId,
+                          key: const Key(
+                            'messaging-message-hover-conversation-id',
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
+                          style: metaStyle,
+                        ),
+                      ),
+                    ),
+                    if (timestampLabel != null) const SizedBox(width: 8),
+                  ],
+                  if (timestampLabel != null)
+                    Text(
+                      timestampLabel,
+                      key: const Key('messaging-message-hover-timestamp'),
+                      style: metaStyle,
+                    ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+    if (widget.authorIsUser) {
+      return bubbleBand;
+    }
+    // The more-actions control rides the bubble's right edge at its top, not
+    // a reserved band above it.
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Flexible(child: bubbleBand),
+        const SizedBox(width: 6),
+        AnimatedOpacity(
+          opacity: _actionsVisible ? 1 : 0,
+          duration: context.motion(LicoMotion.micro),
+          curve: LicoMotion.standard,
+          child: IgnorePointer(
+            ignoring: !_actionsVisible,
+            child: ConversationExecutionMenu(
+              message: widget.message,
+              target: widget.target,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.message.cardType == 'continuity-task-card') {
+      return _ContinuousAssistantTimelineCard(message: widget.message);
+    }
+    final colors = context.licoColors;
+    final waiting = !widget.authorIsUser && widget.message.waitingForReply;
+    final terminal = widget.message.replyTerminalState;
+    final strings = LicoStrings.of(context);
+    final stickerExpressionId = waiting || terminal != null
+        ? null
+        : stickerExpressionIdFromCode(widget.message.text);
+    final content = waiting
+        ? const SizedBox(
+            key: Key('conversation-agent-waiting-bubble'),
+            width: 56,
+            height: 32,
+            child: Center(child: OrbWaitingIndicator(active: true, size: 18)),
+          )
+        : terminal != null
+        ? Text(
+            switch (terminal) {
+              AgentConversationReplyTerminalState.completed =>
+                strings.replyCompletedWithoutText,
+              AgentConversationReplyTerminalState.cancelled =>
+                strings.replyCancelled,
+              AgentConversationReplyTerminalState.interrupted =>
+                strings.replyInterrupted,
+              AgentConversationReplyTerminalState.failed => strings.replyFailed,
+            },
+            key: const Key('conversation-reply-terminal'),
+            style: TextStyle(
+              color: colors.textMuted,
+              fontSize: 13,
+              height: 1.4,
+            ),
+          )
+        : stickerExpressionId != null
+        ? _MessagingStickerMessage(
+            expressionId: stickerExpressionId,
+            authorIsUser: widget.authorIsUser,
+          )
+        : AgentConversationMessageContent(
+            data: widget.message.text,
+            // The user's own bubble is the brand gradient, so its ink takes
+            // the on-brand role to clear AA on violet/gold.
+            foreground: widget.authorIsUser
+                ? (colors.isDark ? colors.text : colors.textOnPrimary)
+                : agentConversationMessageForeground(
+                    colors,
+                    widget.message.role,
+                  ),
+            accent: colors.accent,
+            // On the brand-gradient bubble the surface tones read as opaque
+            // dark slabs; tint with the on-brand ink instead so inline code
+            // and blocks sit as translucent glass over the gradient.
+            codeBackground: widget.authorIsUser
+                ? colors.textOnPrimary.withAlpha(30)
+                : agentConversationToneColor(colors, widget.adapter.codeTone),
+            blockBackground: widget.authorIsUser
+                ? colors.textOnPrimary.withAlpha(44)
+                : agentConversationToneColor(colors, widget.adapter.quoteTone),
+            borderColor: colors.line,
+            renderStyle: widget.adapter.markdownStyle,
+            images: widget.message.images,
+            isStreaming: widget.isStreaming,
+          );
+    final bubbleRadius = widget.authorIsUser
+        ? const BorderRadius.only(
+            topLeft: Radius.circular(
+              MessagingDesktopMetrics.bubbleCornerRadius,
+            ),
+            topRight: Radius.circular(
+              MessagingDesktopMetrics.bubbleCornerRadius,
+            ),
+            bottomLeft: Radius.circular(
+              MessagingDesktopMetrics.bubbleCornerRadius,
+            ),
+            bottomRight: Radius.circular(
+              MessagingDesktopMetrics.bubbleAnchorCornerRadius,
+            ),
+          )
+        : BorderRadius.circular(16);
+    final bubblePadding = const EdgeInsets.symmetric(
+      horizontal: 14,
+      vertical: 10,
+    );
+    // A sticker renders as the bare expression image like the demo
+    // transcript: no bubble chrome behind it.
+    final bubble = stickerExpressionId != null
+        ? content
+        : widget.authorIsUser
+        ? MessagingUserBubbleGlass(
+            key: const Key('messaging-message-bubble'),
+            borderRadius: bubbleRadius,
+            padding: bubblePadding,
+            hovered: _hovered,
+            child: content,
+          )
+        : MessagingAgentBubble(
+            key: const Key('messaging-message-bubble'),
+            borderRadius: bubbleRadius,
+            padding: bubblePadding,
+            hovered: _hovered,
+            agentKey: widget.agentKey,
+            child: content,
+          );
+    final failed =
+        widget.authorIsUser &&
+        widget.message.deliveryState ==
+            AgentConversationMessageDeliveryState.failed;
+    final userBubble = Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (failed && widget.onRetryMessage != null) ...[
+          _MessagingFailedMessageRetry(
+            messageId: widget.message.id,
+            onRetry: widget.onRetryMessage!,
+          ),
+          const SizedBox(width: 6),
+        ],
+        Flexible(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minWidth: _bubbleMinWidth,
+              maxWidth: widget.adapter.userBubble.maxWidth,
+            ),
+            child: _buildBubbleWithHoverBand(context, bubble),
+          ),
+        ),
+      ],
+    );
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: FocusableActionDetector(
+        onShowFocusHighlight: (focused) => setState(() => _focused = focused),
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onSecondaryTapDown:
+              widget.authorIsUser && widget.onDeleteMessage != null
+              ? (details) => _showMessageMenu(context, details)
+              : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 1),
+            child: widget.authorIsUser
+                ? Align(alignment: Alignment.centerRight, child: userBubble)
+                : Align(
+                    alignment: Alignment.centerLeft,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        minWidth: _bubbleMinWidth,
+                      ),
+                      child: _buildBubbleWithHoverBand(context, bubble),
+                    ),
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A sticker message renders the bundled expression without bubble chrome,
+/// matching the demo transcript.
+final class _MessagingStickerMessage extends StatelessWidget {
+  const _MessagingStickerMessage({
+    required this.expressionId,
+    required this.authorIsUser,
+  });
+
+  final String expressionId;
+  final bool authorIsUser;
+
+  static const double _extent = 120;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    final name = MascotCatalog.expressionName(
+      expressionId,
+      chinese: strings.isChinese,
+    );
+    return Column(
+      key: const Key('messaging-sticker-message'),
+      crossAxisAlignment: authorIsUser
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Semantics(
+          image: true,
+          label: strings.stickerDeliveredNote(name),
+          child: MascotExpressionMotion(
+            expressionId: expressionId,
+            child: MascotImage.expression(
+              expressionId,
+              size: _extent,
+              semanticLabel: name,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Failure affordance layered beside the unchanged ordinary user bubble.
+class _MessagingFailedMessageRetry extends StatelessWidget {
+  const _MessagingFailedMessageRetry({
+    required this.messageId,
+    required this.onRetry,
+  });
+
+  final String messageId;
+  final Future<void> Function(String) onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Tooltip(
+        message: LicoStrings.of(context).retry,
+        waitDuration: LicoMotion.tooltipWait,
+        child: IconButton(
+          key: Key('messaging-message-retry-action-$messageId'),
+          constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+          padding: EdgeInsets.zero,
+          visualDensity: VisualDensity.compact,
+          onPressed: () => onRetry(messageId),
+          icon: Icon(Icons.refresh_rounded, size: 18, color: colors.error),
+        ),
+      ),
+    );
+  }
+}
+
+class _MessagingUserAvatar extends StatelessWidget {
+  const _MessagingUserAvatar({required this.accessibilityLabel});
+
+  final String accessibilityLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: accessibilityLabel,
+      child: MessagingSelfAvatar(
+        key: const Key('messaging-user-avatar'),
+        size: MessagingDesktopMetrics.conversationAvatarExtent,
+      ),
+    );
+  }
+}
+
+/// The small caps pill marking an agent participant, mirroring the BOT badge
+/// in chat clients.
+class _MessagingAgentBadge extends StatelessWidget {
+  const _MessagingAgentBadge({required this.participantRole});
+
+  final String participantRole;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    final role = switch (participantRole.trim().toLowerCase()) {
+      'assistant' => strings.assistantBadge,
+      'member' || 'peer-agent' => strings.subagentBadge,
+      'main-agent' => 'MAIN AGENT',
+      _ => strings.agentBadge,
+    };
+    return Container(
+      key: const Key('messaging-agent-badge'),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+      decoration: continuousHairlineDecoration(
+        borderRadius: BorderRadius.circular(4),
+        stroke: colors.isDark
+            ? const Color(0x1AFFFFFF)
+            : colors.line.withAlpha(110),
+      ),
+      child: Text(
+        role,
+        style: TextStyle(
+          color: colors.textMuted,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.6,
+          height: 1.1,
+        ),
+      ),
+    );
+  }
+}
+
+class _ContinuousAssistantTimelineCard extends StatelessWidget {
+  const _ContinuousAssistantTimelineCard({required this.message});
+
+  final AgentConversationMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = ContinuousAssistantHostScope.maybeOf(context);
+    Map<String, dynamic> metadata = const <String, dynamic>{};
+    try {
+      final decoded = jsonDecode(message.text);
+      if (decoded is Map) {
+        metadata = Map<String, dynamic>.from(decoded);
+      }
+    } on Object {
+      metadata = <String, dynamic>{
+        'goalId': message.cardTitle,
+        'childConversationId': message.text,
+      };
+    }
+    final sequence = int.tryParse((metadata['sequence'] ?? '').toString()) ?? 0;
+    final task = continuousAssistantTaskFromCardMetadata(
+      metadata: metadata,
+      parentConversationId: scope?.conversationId ?? '',
+      eventId: message.id,
+      sequence: sequence,
+    );
+    if (task == null) {
+      return const SizedBox.shrink();
+    }
+    final live = scope?.progressFor(task.relation.goalId);
+    final resolved = live == null
+        ? task
+        : ContinuousAssistantTaskView(
+            relation: task.relation,
+            progress: live,
+            contract: task.contract,
+            matter: task.matter,
+            childWorkContexts: task.childWorkContexts,
+          );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: LicoContentSpacing.item),
+      child: ContinuousAssistantParentCard(
+        task: resolved,
+        onOpenChild: scope == null
+            ? null
+            : (_) => scope.onOpenChild(resolved.relation.childConversationId),
+        onCommand: scope?.onCommand,
+      ),
+    );
+  }
+}
+
+Object _messageIdentity(AgentConversationMessage message) =>
+    message.stableIdentity.isNotEmpty
+    ? message.stableIdentity
+    : (message.id, message.createdAt);

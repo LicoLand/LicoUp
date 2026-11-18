@@ -1,0 +1,465 @@
+#!/usr/bin/env node
+
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
+import {
+  assertReleaseSourceDigestStable,
+  diffReleaseSourceManifests,
+  packageSourceStateBinding,
+  validatePackagingConfig,
+  validateReleaseBuildPolicy,
+} from "./package-client.mjs";
+import {
+  parsePackageClientArgs,
+  validateMacosPackagingHost,
+} from "./package-client/cli-policy.mjs";
+import { selectPackagingModules } from "./package-client/module-selection.mjs";
+import { readFileSync } from "node:fs";
+import { sha256File } from "../../../tools/scripts/lib/client-release-artifact-digest.mjs";
+import {
+  prepareStagedFlutterSource,
+  retireStaleCleanBuildRuns,
+  stagedPresentationContractRoot,
+} from "./package-client/source-staging.mjs";
+import { stageNativeSidecars } from "./package-client/build/native.mjs";
+
+const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
+const packageScript = "apps/desktop/scripts/package-client.mjs";
+const digest = `sha256:${"a".repeat(64)}`;
+
+function requireValue(condition, code) {
+  if (!condition) throw new Error(code);
+}
+
+function expectRejected(operation, code) {
+  let rejected = false;
+  try {
+    operation();
+  } catch {
+    rejected = true;
+  }
+  requireValue(rejected, code);
+}
+
+function invoke(args) {
+  return spawnSync(process.execPath, [packageScript, ...args], {
+    cwd: repoRoot,
+    env: process.env,
+    encoding: "utf8",
+    stdio: "pipe",
+    timeout: 30_000,
+    maxBuffer: 4 * 1024 * 1024,
+  });
+}
+
+function outputIsReferenceOnly(value) {
+  const output = String(value || "");
+  const home = String(process.env.HOME || "");
+  return !/(?:^|[\s"':])\/(?:[^/\s"']|$)/mu.test(output) &&
+    !/[A-Za-z]:\\/u.test(output) &&
+    !output.includes(repoRoot) &&
+    (!home || !output.includes(home));
+}
+
+const sidecarArtifactDir = mkdtempSync(
+  path.join(os.tmpdir(), "lico-native-artifacts-"),
+);
+try {
+  for (const binary of ["licoup.exe"]) {
+    writeFileSync(path.join(sidecarArtifactDir, binary), "synthetic sidecar\n");
+  }
+  const previousArtifactsDir = process.env.LICO_CLI_ARTIFACTS_DIR;
+  process.env.LICO_CLI_ARTIFACTS_DIR = sidecarArtifactDir;
+  try {
+    // The pinned-release stage itself is covered by cli-release.test.mjs; here
+    // a synthetic stage proves the selected modules' sidecars are required.
+    const stage = () => ({ source: "pinned-release" });
+    stageNativeSidecars(
+      [{ cargoBin: "licoup" }],
+      { mode: "release", platform: "windows" },
+      { stage },
+    );
+    expectRejected(
+      () => stageNativeSidecars(
+        [{ cargoBin: "lico-subagent-mcp" }],
+        { mode: "release", platform: "windows" },
+        { stage },
+      ),
+      "absent_sidecar_artifact_was_accepted",
+    );
+    stageNativeSidecars(
+      [{ cargoBin: "licoup" }],
+      { mode: "release", platform: "windows", dryRun: true },
+      { stage: () => { throw new Error("dry_run_staged_cli_release"); } },
+    );
+  } finally {
+    if (previousArtifactsDir === undefined) {
+      delete process.env.LICO_CLI_ARTIFACTS_DIR;
+    } else {
+      process.env.LICO_CLI_ARTIFACTS_DIR = previousArtifactsDir;
+    }
+  }
+} finally {
+  rmSync(sidecarArtifactDir, { recursive: true, force: true });
+}
+
+assertReleaseSourceDigestStable(digest, digest);
+expectRejected(
+  () => assertReleaseSourceDigestStable(digest, `sha256:${"b".repeat(64)}`),
+  "source_change_during_build_was_accepted",
+);
+const manifestDiff = diffReleaseSourceManifests(
+  { entries: [{ path: "apps/desktop/source-a", digest, mode: 0o644, size: 1 }] },
+  { entries: [{ path: "apps/desktop/source-b", digest, mode: 0o644, size: 1 }] },
+);
+requireValue(
+  manifestDiff.changedSourceCount === 2 &&
+    manifestDiff.changedSourceRefs.join(",") ===
+      "apps/desktop/source-a,apps/desktop/source-b" &&
+    manifestDiff.truncated === false,
+  "source_manifest_diff_is_not_exact",
+);
+let ordinaryDigestCalls = 0;
+const ordinaryBinding = packageSourceStateBinding(
+  { platform: "macos", releaseSourceStateDigest: "" },
+  {
+    environment: {},
+    sourceDigest: () => {
+      ordinaryDigestCalls += 1;
+      return digest;
+    },
+  },
+);
+requireValue(ordinaryBinding.digest === digest &&
+  ordinaryBinding.provenance === "git-worktree" && ordinaryDigestCalls === 1,
+"ordinary_release_source_binding_bypassed_git");
+let attestedDigestCalls = 0;
+const attestedBinding = packageSourceStateBinding(
+  { platform: "linux", releaseSourceStateDigest: "" },
+  {
+    environment: {
+      LICO_CLIENT_EXPECTED_SOURCE_STATE_DIGEST: digest,
+    },
+    sourceDigest: () => {
+      attestedDigestCalls += 1;
+      throw new Error("git digest must not run in the non-git VM workspace");
+    },
+    verifySourceManifest: (expectedDigest) => ({
+      ok: true,
+      sourceStateDigest: expectedDigest,
+      manifestDigest: `sha256:${"b".repeat(64)}`,
+    }),
+  },
+);
+requireValue(attestedBinding.digest === digest &&
+  attestedBinding.provenance === "vm-orchestrator-verified" &&
+  attestedDigestCalls === 0,
+"valid_vm_source_attestation_called_git");
+for (const fixture of [
+  {
+    platform: "macos",
+    environment: {
+      LICO_CLIENT_EXPECTED_SOURCE_STATE_DIGEST: digest,
+    },
+  },
+  {
+    platform: "linux",
+    environment: {
+      LICO_CLIENT_EXPECTED_SOURCE_STATE_DIGEST: digest,
+    },
+  },
+  {
+    platform: "linux",
+    environment: {
+      LICO_CLIENT_EXPECTED_SOURCE_STATE_DIGEST: "sha256:invalid",
+    },
+  },
+]) {
+  expectRejected(
+    () => packageSourceStateBinding(
+      { platform: fixture.platform, releaseSourceStateDigest: "" },
+      { environment: fixture.environment, sourceDigest: () => digest },
+    ),
+    "invalid_vm_source_attestation_was_accepted",
+  );
+}
+const sourceFixtureRoot = mkdtempSync(path.join(os.tmpdir(), "lico-package-source-"));
+try {
+  const sourceFixture = path.join(sourceFixtureRoot, "source.txt");
+  writeFileSync(sourceFixture, "before", { mode: 0o600 });
+  const sourceBeforeBuild = sha256File(sourceFixture);
+  writeFileSync(sourceFixture, "changed-during-build", { mode: 0o600 });
+  expectRejected(
+    () => assertReleaseSourceDigestStable(
+      sourceBeforeBuild,
+      sha256File(sourceFixture),
+    ),
+    "source_file_change_during_build_was_accepted",
+  );
+} finally {
+  rmSync(sourceFixtureRoot, { recursive: true, force: true });
+}
+const cleanupFixtureRoot = mkdtempSync(
+  path.join(os.tmpdir(), "lico-package-cleanup-"),
+);
+try {
+  const fixtureUuid = "12345678-1234-4123-8123-123456789abc";
+  const dead = `run-9101-1-${fixtureUuid}`;
+  const live = `run-9102-1-${fixtureUuid}`;
+  const current = `run-9103-1-${fixtureUuid}`;
+  for (const name of [dead, live, current, "bundle", "pub-cache"]) {
+    mkdirSync(path.join(cleanupFixtureRoot, name));
+  }
+  const retired = retireStaleCleanBuildRuns(cleanupFixtureRoot, current, {
+    isProcessAlive: (pid) => pid === 9102,
+  });
+  requireValue(retired.removed === 1 &&
+    !existsSync(path.join(cleanupFixtureRoot, dead)) &&
+    existsSync(path.join(cleanupFixtureRoot, live)) &&
+    existsSync(path.join(cleanupFixtureRoot, current)) &&
+    existsSync(path.join(cleanupFixtureRoot, "bundle")) &&
+    existsSync(path.join(cleanupFixtureRoot, "pub-cache")),
+  "clean_build_retirement_boundary_failed");
+
+  const failed = `run-9104-1-${fixtureUuid}`;
+  mkdirSync(path.join(cleanupFixtureRoot, failed));
+  let cleanupError = null;
+  try {
+    retireStaleCleanBuildRuns(cleanupFixtureRoot, current, {
+      isProcessAlive: () => false,
+      removeDirectory: () => {
+        throw new Error("synthetic removal failure");
+      },
+    });
+  } catch (error) {
+    cleanupError = error;
+  }
+  requireValue(cleanupError?.code === "packaging_temporary_cleanup_failed" &&
+    cleanupError?.details?.stage === "flutter-clean-build-retire" &&
+    cleanupError?.details?.reason === "temporary_directory_removal_failed",
+  "clean_build_cleanup_failure_was_not_typed");
+} finally {
+  rmSync(cleanupFixtureRoot, { recursive: true, force: true });
+}
+const sourceStageFixtureRoot = mkdtempSync(
+  path.join(os.tmpdir(), "lico-package-source-stage-"),
+);
+const previousCleanBuildRoot = process.env.LICO_CLIENT_CLEAN_BUILD_ROOT;
+try {
+  process.env.LICO_CLIENT_CLEAN_BUILD_ROOT = sourceStageFixtureRoot;
+  const stagedFlutterRoot = prepareStagedFlutterSource();
+  const stagedContractRoot = stagedPresentationContractRoot();
+  const stagedPackagesRoot = path.dirname(stagedContractRoot);
+  const stagedPackageEntries = readdirSync(stagedPackagesRoot, {
+    withFileTypes: true,
+  });
+  requireValue(
+    path.resolve(stagedFlutterRoot, "..", "..", "packages", "presentation_contract") ===
+      path.resolve(stagedContractRoot),
+    "presentation_contract_relative_resolution_changed",
+  );
+  requireValue(
+    existsSync(path.join(stagedContractRoot, "pubspec.yaml")) &&
+      existsSync(path.join(stagedContractRoot, "lib", "presentation_contract.dart")),
+    "presentation_contract_was_not_staged",
+  );
+  requireValue(
+    [
+      ".dart_tool",
+      ".flutter-plugins",
+      ".flutter-plugins-dependencies",
+      ".idea",
+      "build",
+    ].every((name) => !existsSync(path.join(stagedContractRoot, name))),
+    "presentation_contract_generated_state_was_staged",
+  );
+  requireValue(
+    stagedPackageEntries.length === 3 &&
+      stagedPackageEntries.every((entry) => entry.isDirectory()) &&
+      stagedPackageEntries
+        .map((entry) => entry.name)
+        .sort()
+        .join(",") ===
+        "presentation_contract,presentation_flutter,presentation_runtime",
+    "unrelated_packages_were_staged",
+  );
+  for (const name of ["presentation_runtime", "presentation_flutter"]) {
+    const stagedPackageRoot = path.join(stagedPackagesRoot, name);
+    requireValue(
+      existsSync(path.join(stagedPackageRoot, "pubspec.yaml")),
+      `${name}_was_not_staged`,
+    );
+  }
+} finally {
+  if (previousCleanBuildRoot === undefined) {
+    delete process.env.LICO_CLIENT_CLEAN_BUILD_ROOT;
+  } else {
+    process.env.LICO_CLIENT_CLEAN_BUILD_ROOT = previousCleanBuildRoot;
+  }
+  rmSync(sourceStageFixtureRoot, { recursive: true, force: true });
+}
+for (const field of ["skipFlutterBuild", "skipNativeBuild"]) {
+  expectRejected(() => validateReleaseBuildPolicy({
+    mode: "release",
+    dryRun: false,
+    skipFlutterBuild: field === "skipFlutterBuild",
+    skipNativeBuild: field === "skipNativeBuild",
+  }), `release_${field}_was_accepted`);
+}
+for (const invalid of [
+  { configPath: path.join(repoRoot, "external-packaging.json") },
+  { configPath: path.join(repoRoot, "apps/desktop/packaging.modules.json"), enabledOverrides: ["native-sidecar"] },
+  { configPath: path.join(repoRoot, "apps/desktop/packaging.modules.json"), disabledOverrides: ["native-sidecar"] },
+  { configPath: path.join(repoRoot, "apps/desktop/packaging.modules.json"), profile: "licoup" },
+]) {
+  expectRejected(() => validateReleaseBuildPolicy({
+    mode: "release",
+    dryRun: true,
+    skipFlutterBuild: true,
+    skipNativeBuild: true,
+    enabledOverrides: [],
+    disabledOverrides: [],
+    profile: null,
+    ...invalid,
+  }), "release_packaging_policy_override_was_accepted");
+}
+const canonicalConfig = JSON.parse(readFileSync(
+  path.join(repoRoot, "apps/desktop/packaging.modules.json"),
+  "utf8",
+));
+validatePackagingConfig(canonicalConfig);
+// An optional module is a capability this release may ship without: it can be
+// disabled, it reports itself as skipped, and no required module may depend on
+// it. A required module still cannot be disabled.
+const withoutOptional = selectPackagingModules(canonicalConfig, {
+  platform: "macos",
+  enabledOverrides: [],
+  disabledOverrides: ["extension-packages"],
+});
+requireValue(
+  withoutOptional.selected.every((module) => module.id !== "extension-packages") &&
+    withoutOptional.skipped.some((module) =>
+      module.id === "extension-packages" && module.status === "disabled"),
+  "optional_packaging_module_disable_failed",
+);
+requireValue(
+  withoutOptional.skipped.every((module) =>
+    module.required !== true || module.status === "skipped-platform"),
+  "optional_packaging_module_selection_invalid",
+);
+expectRejected(
+  () => selectPackagingModules(canonicalConfig, {
+    platform: "macos",
+    enabledOverrides: [],
+    disabledOverrides: ["native-sidecar"],
+  }),
+  "required_packaging_module_disable_was_accepted",
+);
+const optionalDependency = structuredClone(canonicalConfig);
+optionalDependency.modules["local-task-queue"].requires = ["extension-packages"];
+expectRejected(
+  () => validatePackagingConfig(optionalDependency),
+  "required_module_optional_dependency_was_accepted",
+);
+if (process.platform === "darwin" && process.arch === "arm64") {
+  const macosArm64Options = parsePackageClientArgs(
+    [
+      "--platform",
+      "macos",
+      "--mode",
+      "release",
+      "--agent-conversation-release-live",
+    ],
+    {},
+  );
+  requireValue(
+    macosArm64Options.platform === "macos",
+    "macos_arm64_packaging_policy_rejected",
+  );
+  requireValue(
+    macosArm64Options.agentConversationReleaseLive === true,
+    "agent_conversation_release_live_option_not_preserved",
+  );
+} else {
+  expectRejected(
+    () => parsePackageClientArgs(
+      ["--platform", "macos", "--mode", "release"],
+      {},
+    ),
+    "macos_non_arm64_host_was_accepted",
+  );
+}
+validateMacosPackagingHost({ platform: "macos", dryRun: false }, "darwin", "arm64");
+for (const [platform, arch] of [
+  ["darwin", "x64"],
+  ["linux", "arm64"],
+]) {
+  expectRejected(
+    () => validateMacosPackagingHost(
+      { platform: "macos", dryRun: false },
+      platform,
+      arch,
+    ),
+    "macos_non_arm64_host_was_accepted",
+  );
+}
+validateMacosPackagingHost({ platform: "macos", dryRun: true }, "darwin", "x64");
+for (const mutate of [
+  (value) => { value.unknown = true; },
+  (value) => { value.modules["../escape"] = value.modules["native-sidecar"]; },
+  (value) => { value.modules["native-sidecar"].includePaths = ["../outside"]; },
+  (value) => {
+    value.modules["native-sidecar"].embeddedCargoTarget = "../outside";
+  },
+]) {
+  const fixture = structuredClone(canonicalConfig);
+  mutate(fixture);
+  expectRejected(() => validatePackagingConfig(fixture),
+    "unsafe_packaging_schema_fixture_was_accepted");
+}
+
+const dryRun = invoke(["--platform", "macos", "--mode", "release", "--dry-run"]);
+requireValue(dryRun.status === 0, "package_dry_run_failed");
+requireValue(outputIsReferenceOnly(`${dryRun.stdout}\n${dryRun.stderr}`),
+  "package_dry_run_disclosed_absolute_path");
+const windowsX64DryRun = invoke([
+  "--platform", "windows", "--target", "windows-x64", "--mode", "release", "--dry-run",
+]);
+requireValue(windowsX64DryRun.status === 0,
+  "windows_x64_package_dry_run_failed");
+const windowsArm64DryRun = invoke([
+  "--platform", "windows", "--target", "windows-arm64", "--mode", "release", "--dry-run",
+]);
+requireValue(windowsArm64DryRun.status !== 0 &&
+  outputIsReferenceOnly(`${windowsArm64DryRun.stdout}\n${windowsArm64DryRun.stderr}`),
+"windows_arm64_upstream_boundary_not_fail_closed");
+
+const privateArgument = ["", "sensitive-root", "fixture", "private-value"].join("/");
+const rejected = invoke(["--unknown-option", privateArgument]);
+requireValue(rejected.status !== 0, "unknown_package_option_was_accepted");
+requireValue(outputIsReferenceOnly(`${rejected.stdout}\n${rejected.stderr}`) &&
+  !`${rejected.stdout}\n${rejected.stderr}`.includes(privateArgument),
+"package_failure_disclosed_private_argument");
+
+console.log(JSON.stringify({
+  ok: true,
+  caseCount: 32,
+  canonicalReleaseConfigRequired: true,
+  releaseOverridesRejected: true,
+  packagingSchemaClosed: true,
+  packagingPathsContained: true,
+  presentationContractStaged: true,
+  buildExecuted: false,
+  privatePathsIncluded: false,
+}));

@@ -1,0 +1,427 @@
+import 'package:presentation_contract/presentation_contract.dart';
+
+import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
+import 'package:licoup/src/contracts/client_conversation_models.dart';
+import 'package:licoup/src/contracts/conversation_execution.dart';
+import 'package:licoup/src/contracts/conversation_profile.dart';
+import 'package:licoup/src/presentation/conversation/conversation_execution_projection.dart';
+
+sealed class ConversationIntent {
+  const ConversationIntent({this.trace});
+
+  final TraceContext? trace;
+}
+
+final class OpenConversationExecutionView extends ConversationIntent {
+  const OpenConversationExecutionView({
+    required this.viewId,
+    required this.reference,
+    super.trace,
+  });
+
+  final ConversationExecutionViewId viewId;
+  final ConversationExecutionReference reference;
+}
+
+final class CloseConversationExecutionView extends ConversationIntent {
+  const CloseConversationExecutionView(this.viewId, {super.trace});
+
+  final ConversationExecutionViewId viewId;
+}
+
+final class RefreshConversationCatalog extends ConversationIntent {
+  const RefreshConversationCatalog({this.agentId = '', super.trace});
+
+  final String agentId;
+}
+
+final class LoadMoreConversationSessions extends ConversationIntent {
+  const LoadMoreConversationSessions({super.trace});
+}
+
+/// Allows or denies one pending local native permission request.
+final class ResolveNativeApproval extends ConversationIntent {
+  const ResolveNativeApproval(
+    this.pendingOperationId, {
+    required this.allow,
+    super.trace,
+  });
+
+  final String pendingOperationId;
+  final bool allow;
+}
+
+final class SelectConversationSession extends ConversationIntent {
+  const SelectConversationSession(this.sessionId, {super.trace});
+
+  final String sessionId;
+}
+
+final class SelectCanonicalConversation extends ConversationIntent {
+  const SelectCanonicalConversation(this.conversationId, {super.trace});
+
+  final String conversationId;
+}
+
+final class ClearCanonicalConversationSelection extends ConversationIntent {
+  const ClearCanonicalConversationSelection({super.trace});
+}
+
+/// Creates a reusable Agent profile ("创建智能体"): registers the persona
+/// client-side and materializes its direct (non-group) canonical
+/// Conversation with the `profile:<id>` persona member designated as the
+/// assistant. The profile's model/reasoning/advanced preferences are
+/// persisted as that membership's profile intent.
+final class CreateConversationProfile extends ConversationIntent {
+  const CreateConversationProfile(this.profile, {super.trace});
+
+  final ConversationProfile profile;
+}
+
+final class CreateCanonicalConversationGroup extends ConversationIntent {
+  CreateCanonicalConversationGroup({
+    required this.title,
+    required Iterable<ClientConversationGroupMemberDraft> members,
+    super.trace,
+  }) : members = List<ClientConversationGroupMemberDraft>.unmodifiable(members);
+
+  final String title;
+  final List<ClientConversationGroupMemberDraft> members;
+}
+
+final class StartConversationSession extends ConversationIntent {
+  const StartConversationSession({super.trace});
+}
+
+final class LoadEarlierConversationEvents extends ConversationIntent {
+  const LoadEarlierConversationEvents(this.conversationId, {super.trace});
+
+  final String conversationId;
+}
+
+final class LoadChildConversationMessages extends ConversationIntent {
+  const LoadChildConversationMessages(
+    this.childSessionId, {
+    this.earlier = false,
+    super.trace,
+  });
+
+  final String childSessionId;
+  final bool earlier;
+}
+
+final class PostConversationMessage extends ConversationIntent {
+  PostConversationMessage({
+    required this.conversationId,
+    required this.content,
+    required Iterable<String> addressedMembershipIds,
+    this.dispatchCanonical = true,
+    this.suppressAssistant = false,
+    super.trace,
+  }) : addressedMembershipIds = List<String>.unmodifiable(
+         addressedMembershipIds,
+       );
+
+  final String conversationId;
+  final String content;
+  final List<String> addressedMembershipIds;
+  final bool dispatchCanonical;
+
+  /// Excludes the designated Assistant from this message's native addressing.
+  /// The Event still persists and independently bound Flywheel routing remains.
+  final bool suppressAssistant;
+}
+
+final class UpdateConversationDraft extends ConversationIntent {
+  const UpdateConversationDraft(this.conversationId, this.draft, {super.trace});
+
+  final String conversationId;
+  final String draft;
+}
+
+final class CopyConversationText extends ConversationIntent {
+  const CopyConversationText(this.text, {super.trace});
+
+  final String text;
+}
+
+final class AddConversationAttachment extends ConversationIntent {
+  const AddConversationAttachment(this.conversationId, {super.trace});
+
+  final String conversationId;
+}
+
+final class PasteConversationAttachment extends ConversationIntent {
+  const PasteConversationAttachment(this.conversationId, {super.trace});
+
+  final String conversationId;
+}
+
+final class StageConversationAttachments extends ConversationIntent {
+  StageConversationAttachments(
+    this.conversationId,
+    Iterable<ConversationAttachment> attachments, {
+    super.trace,
+  }) : attachments = List<ConversationAttachment>.unmodifiable(attachments);
+
+  final String conversationId;
+  final List<ConversationAttachment> attachments;
+}
+
+final class SetConversationAttachmentStatus extends ConversationIntent {
+  const SetConversationAttachmentStatus(
+    this.conversationId,
+    this.statusCode, {
+    super.trace,
+  });
+
+  final String conversationId;
+  final String statusCode;
+}
+
+final class ClearConversationAttachments extends ConversationIntent {
+  const ClearConversationAttachments(this.conversationId, {super.trace});
+
+  final String conversationId;
+}
+
+final class SelectConversationModel extends ConversationIntent {
+  const SelectConversationModel(this.model, {super.trace});
+
+  final String model;
+}
+
+final class SelectConversationReasoningEffort extends ConversationIntent {
+  const SelectConversationReasoningEffort(this.effort, {super.trace});
+
+  final String effort;
+}
+
+final class SelectConversationLicoProfile extends ConversationIntent {
+  const SelectConversationLicoProfile(this.profile, {super.trace});
+
+  final String profile;
+}
+
+final class RetryConversationPermission extends ConversationIntent {
+  const RetryConversationPermission({this.remember = false, super.trace});
+
+  final bool remember;
+}
+
+final class DismissConversationPermission extends ConversationIntent {
+  const DismissConversationPermission({super.trace});
+}
+
+final class AuthorizeConversationRuntime extends ConversationIntent {
+  const AuthorizeConversationRuntime({super.trace});
+}
+
+final class CopyConversationFailure extends ConversationIntent {
+  const CopyConversationFailure(this.content, {super.trace});
+
+  final String content;
+}
+
+final class ReplaceConversationAttachments extends ConversationIntent {
+  ReplaceConversationAttachments(
+    this.conversationId,
+    Iterable<ConversationAttachment> attachments, {
+    this.statusCode = '',
+    super.trace,
+  }) : attachments = List<ConversationAttachment>.unmodifiable(attachments);
+
+  final String conversationId;
+  final List<ConversationAttachment> attachments;
+  final String statusCode;
+}
+
+final class RemoveConversationAttachment extends ConversationIntent {
+  const RemoveConversationAttachment(
+    this.conversationId,
+    this.attachmentId, {
+    super.trace,
+  });
+
+  final String conversationId;
+  final String attachmentId;
+}
+
+final class RetryConversationDispatch extends ConversationIntent {
+  const RetryConversationDispatch(
+    this.conversationId,
+    this.membershipId, {
+    super.trace,
+  });
+
+  final String conversationId;
+  final String membershipId;
+}
+
+final class DismissConversationFailure extends ConversationIntent {
+  const DismissConversationFailure(
+    this.conversationId,
+    this.membershipId, {
+    super.trace,
+  });
+
+  final String conversationId;
+  final String membershipId;
+}
+
+final class InterruptConversationTurn extends ConversationIntent {
+  const InterruptConversationTurn(
+    this.conversationId,
+    this.membershipId, {
+    super.trace,
+  });
+
+  final String conversationId;
+  final String membershipId;
+}
+
+final class RetryCanonicalConversationMessage extends ConversationIntent {
+  const RetryCanonicalConversationMessage(this.eventId, {super.trace});
+
+  final String eventId;
+}
+
+final class DeleteCanonicalConversationMessage extends ConversationIntent {
+  const DeleteCanonicalConversationMessage(this.eventId, {super.trace});
+
+  final String eventId;
+}
+
+final class ArchiveAndReopenConversation extends ConversationIntent {
+  const ArchiveAndReopenConversation({super.trace});
+}
+
+final class RefreshCanonicalAssistantProfile extends ConversationIntent {
+  const RefreshCanonicalAssistantProfile({super.trace});
+}
+
+final class SurfaceConversationFailure extends ConversationIntent {
+  const SurfaceConversationFailure({
+    required this.stage,
+    required this.reasonCode,
+    this.conversationId = '',
+    super.trace,
+  });
+
+  final String stage;
+  final String reasonCode;
+
+  /// The Conversation the failure belongs to. Renderers that know their
+  /// Conversation pass it so the failure never lands on a sibling; empty
+  /// attributes to the Conversation selected when the intent is handled.
+  final String conversationId;
+}
+
+final class EnsureCanonicalAgentMembership extends ConversationIntent {
+  const EnsureCanonicalAgentMembership({
+    required this.agentId,
+    required this.displayName,
+    super.trace,
+  });
+
+  final String agentId;
+  final String displayName;
+}
+
+final class SetCanonicalAssistantMembership extends ConversationIntent {
+  const SetCanonicalAssistantMembership(this.membershipId, {super.trace});
+
+  final String? membershipId;
+}
+
+final class SetCanonicalStrategyRevision extends ConversationIntent {
+  const SetCanonicalStrategyRevision(this.revision, {super.trace});
+
+  final String? revision;
+}
+
+final class SetCanonicalConversationPinned extends ConversationIntent {
+  const SetCanonicalConversationPinned(
+    this.conversationId,
+    this.pinned, {
+    super.trace,
+  });
+
+  final String conversationId;
+  final bool pinned;
+}
+
+final class SetCanonicalConversationSurfaceAttached extends ConversationIntent {
+  const SetCanonicalConversationSurfaceAttached(this.attached, {super.trace});
+
+  final bool attached;
+}
+
+final class SetConversationTabActive extends ConversationIntent {
+  const SetConversationTabActive(
+    this.conversationId,
+    this.active, {
+    super.trace,
+  });
+
+  final String conversationId;
+  final bool active;
+}
+
+final class ArchiveConversation extends ConversationIntent {
+  const ArchiveConversation(this.conversationId, {super.trace});
+
+  final String conversationId;
+}
+
+final class RestoreConversation extends ConversationIntent {
+  const RestoreConversation(this.conversationId, {super.trace});
+
+  final String conversationId;
+}
+
+final class BackupAllNativeConversations extends ConversationIntent {
+  const BackupAllNativeConversations({
+    required this.sourceAgentId,
+    required this.destination,
+    super.trace,
+  });
+
+  final String sourceAgentId;
+  final String destination;
+}
+
+final class ExecuteContinuousAssistantCommand extends ConversationIntent {
+  const ExecuteContinuousAssistantCommand({
+    required this.conversationId,
+    required this.command,
+    required this.goalId,
+    super.trace,
+  });
+
+  final String conversationId;
+  final String command;
+  final String goalId;
+}
+
+final class ActivateContinuityCompletionNotice extends ConversationIntent {
+  const ActivateContinuityCompletionNotice({
+    required this.notificationId,
+    super.trace,
+  });
+
+  final String notificationId;
+}
+
+final class BackupNativeConversationsByExactKeyword extends ConversationIntent {
+  const BackupNativeConversationsByExactKeyword({
+    required this.query,
+    required this.sourceAgentId,
+    required this.destination,
+    super.trace,
+  });
+
+  final String query;
+  final String sourceAgentId;
+  final String destination;
+}

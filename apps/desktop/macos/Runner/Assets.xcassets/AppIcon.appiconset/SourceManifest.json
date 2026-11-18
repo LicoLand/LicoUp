@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "lico-app-icon-source-v2",
+  "source": {
+    "path": "apps/desktop/assets/brand/lico-app-icon.svg",
+    "digest": "sha256:5b50f379d0026f2cf7e2a75148445a3ace88986e422f3afb9c36f0278f03e5b9"
+  },
+  "icons": [
+    {
+      "size": 16,
+      "path": "app_icon_16.png",
+      "digest": "sha256:6c2626d9110ad983455beab0b03bb2441bcfd84078396d745b1a5e33af41f384"
+    },
+    {
+      "size": 32,
+      "path": "app_icon_32.png",
+      "digest": "sha256:c7afb797529a906f0407670de898a1ed737591ae980728227800b2b6b0472e12"
+    },
+    {
+      "size": 64,
+      "path": "app_icon_64.png",
+      "digest": "sha256:00892d1ac182cde47d3e7cc45e8d1cf2e3a71fdfcbe186497535fbba85b01563"
+    },
+    {
+      "size": 128,
+      "path": "app_icon_128.png",
+      "digest": "sha256:8542c8bb049a86027039d525bf4e08fbb6fade8e1745840c09617a5a591285d9"
+    },
+    {
+      "size": 256,
+      "path": "app_icon_256.png",
+      "digest": "sha256:0c4d1712bb3b1b700ca8932310de854aacb139c0052bca127a05f546d1212041"
+    },
+    {
+      "size": 512,
+      "path": "app_icon_512.png",
+      "digest": "sha256:cec340baee9f096664e9fd08e146df950c21aebea4a310c26941b6dc26ee34d2"
+    },
+    {
+      "size": 1024,
+      "path": "app_icon_1024.png",
+      "digest": "sha256:d1dc22819db7ca788bef4530359904b0224e39bc2ef01e8373831c463cc5dd54"
+    }
+  ],
+  "deployed": {
+    "raster": {
+      "path": "apps/desktop/assets/brand/lico-app-icon.png",
+      "digest": "sha256:d1dc22819db7ca788bef4530359904b0224e39bc2ef01e8373831c463cc5dd54"
+    },
+    "windows": {
+      "sizes": [
+        16,
+        24,
+        32,
+        48,
+        64,
+        128,
+        256
+      ],
+      "path": "apps/desktop/windows/runner/resources/app_icon.ico",
+      "digest": "sha256:f5091391cd77c88b410b853a99420f154bda72be5d0c0bbeb9b038768b87083a"
+    }
+  }
+}

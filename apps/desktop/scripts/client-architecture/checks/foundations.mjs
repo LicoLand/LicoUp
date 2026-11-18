@@ -1,0 +1,295 @@
+import path from "node:path";
+import process from "node:process";
+
+const requiredFutureModules = [
+  "desktop-app",
+  "native-sidecar",
+  "portable-data",
+  "target-adapters",
+  "local-task-queue",
+  "protocol-adapters",
+  "skill-hub",
+  "activity-snapshots",
+  "settings",
+  "lico-agent-sidecar"
+];
+const optionalFutureModules = [
+  "extension-packages",
+  "subagents-mcp",
+  "telegram-channel",
+  // The Gateway Runtime is an optional capability: `org.licoland.feature.gateway`
+  // is released as its own package and appears in `OPTIONAL_CAPABILITY_CRATES`.
+  // The default client still ships the sidecar, so the module stays enabled, but
+  // it is no longer a prerequisite every distribution must contain.
+  "gateway-sidecar"
+];
+// Optional modules whose implementation an independently released package
+// carries. The minimal client must not bundle a second copy: an enabled module
+// here would put the payload back into every distribution and make the
+// package's own install state a lie.
+const packageDeliveredModules = [
+  "subagents-mcp",
+  "telegram-channel"
+];
+const allFutureModules = [...requiredFutureModules, ...optionalFutureModules];
+const packageClientFacadePath = "apps/desktop/scripts/package-client.mjs";
+const packageClientModuleRoot = "apps/desktop/scripts/package-client";
+const packageClientSourceBundleTestPath =
+  "tests/contract/client/package-client/package-client-source-bundle.test.mjs";
+const packageClientLeafResponsibilities = new Map([
+  ["build/flutter.mjs", "function buildFlutterApp("],
+  ["build/native.mjs", "function stageNativeSidecars("],
+  ["build/release-tools.mjs", "function buildReleaseTools("],
+  ["build/swift.mjs", "function buildSwiftSidecars("],
+  ["bundle-resolver/linux.mjs", "function findLinuxBundleSource("],
+  ["bundle-resolver/macos.mjs", "function findMacosBundleSource("],
+  ["bundle-resolver/windows.mjs", "function findWindowsBundleSource("],
+  ["cli-policy.mjs", "function runtimeDataPolicyRecord("],
+  ["cli-release/conversation-protocol-digest.mjs", "function conversationProtocolDigest("],
+  ["cli-release/invoked-commands.mjs", "function extractInvokedCliCommands("],
+  ["cli-release/release-archive.mjs", "function readArchiveMembers("],
+  ["cli-release/release-pin.mjs", "function loadCliReleasePin("],
+  ["cli-release/stage.mjs", "function stageCliRelease("],
+  ["config-codec.mjs", "function validatePackagingConfig("],
+  ["macos/install.mjs", "function installRunnableClient("],
+  ["macos/metadata.mjs", "function updateMacosAppMetadata("],
+  ["macos/signing.mjs", "function signMacosBundle("],
+  ["module-selection.mjs", "function selectPackagingModules("],
+  ["orchestrator.mjs", "function packageClient("],
+  ["portable-manifest.mjs", "function preparePortableManifest("],
+  ["process-runner.mjs", "function runPackageProcess("],
+  ["pub-cache.mjs", "function prepareStagedPubCache("],
+  ["resource-assembly.mjs", "function assemblePackageResources("],
+  ["source-staging.mjs", "function prepareStagedFlutterSource("],
+  ["windows-manifest.mjs", "function writeWindowsPlatformManifest("],
+]);
+
+export async function checkPackagingAndTargetProjection(context) {
+  const {
+    assert,
+    collectDartSourceFiles,
+    collectEnumValues,
+    collectSourceFiles,
+    exists,
+    fail,
+    lineNumberForToken,
+    moduleSupportsPlatform,
+    readDartSourceByBasename,
+    readImmediateDirectoryNames,
+    readJoinedDartSourcesByBasename,
+    readJoinedText,
+    readJson,
+    readText,
+    runJson,
+    sameSet,
+  } = context;
+  const packaging = await readJson("apps/desktop/packaging.modules.json");
+  const futureModules = Object.keys(packaging.modules || {}).sort();
+  assert(
+    sameSet(futureModules, [...allFutureModules].sort()),
+    `packaging.modules.json must define exactly ${allFutureModules.join(", ")}`
+  );
+  assert(packaging.packageProfile === "licoup", "default package profile must be licoup");
+  const modules = packaging.modules || {};
+  const enabledConfigModules = Object.entries(modules)
+    .filter(([, module]) => module.enabled !== false)
+    .map(([id]) => id)
+    .sort();
+  const requiredEnabled = requiredFutureModules.filter((id) => modules[id]?.enabled !== false).sort();
+  assert(
+    sameSet(requiredEnabled, [...requiredFutureModules].sort()),
+    `required modules must remain enabled: ${requiredFutureModules.join(", ")}`
+  );
+  for (const moduleId of requiredFutureModules) {
+    assert(modules[moduleId]?.required === true, `future module must be required: ${moduleId}`);
+  }
+  // A module whose implementation arrives as an independent package asset is
+  // optional: the release must stay complete and startable without it, and no
+  // required module may depend on it.
+  for (const moduleId of optionalFutureModules) {
+    assert(modules[moduleId]?.required === false,
+      `package-provided module must stay optional: ${moduleId}`);
+    assert(
+      Object.entries(modules).every(([id, module]) =>
+        !requiredFutureModules.includes(id) ||
+        !(module.requires || []).includes(moduleId)),
+      `required module must not depend on optional module: ${moduleId}`
+    );
+  }
+  for (const moduleId of packageDeliveredModules) {
+    assert(optionalFutureModules.includes(moduleId),
+      `package-delivered module must stay optional: ${moduleId}`);
+    assert(modules[moduleId]?.enabled === false,
+      `package-delivered module must not be bundled: ${moduleId}`);
+    assert(
+      modules[moduleId]?.cargoBin === undefined &&
+        modules[moduleId]?.embeddedCargoBin === undefined,
+      `no packaging module may bundle the package's own binary: ${moduleId}`
+    );
+  }
+  for (const moduleId of enabledConfigModules) {
+    assert(allFutureModules.includes(moduleId), `enabled module must be known: ${moduleId}`);
+  }
+  const deferredCapabilities = packaging.deferredCapabilities || {};
+  assert(
+    Object.keys(deferredCapabilities).length === 0,
+    "default packaging must not embed deferred service or plugin implementations"
+  );
+  const packagedTargets = modules["target-adapters"]?.targetAdapters || [];
+  assert(Array.isArray(packagedTargets) && packagedTargets.length > 0,
+    "target-adapters module must define the canonical packaged target set");
+  assert(new Set(packagedTargets).size === packagedTargets.length && packagedTargets.every((target) => typeof target === "string" && target.trim().length > 0),
+    "target-adapters module targetAdapters must contain unique non-empty target ids");
+  return { futureModules, modules, packagedTargets };
+}
+
+export async function checkPackageDryRuns(context, { futureModules, modules }) {
+  const {
+    assert,
+    collectDartSourceFiles,
+    collectEnumValues,
+    collectSourceFiles,
+    exists,
+    fail,
+    lineNumberForToken,
+    moduleSupportsPlatform,
+    readDartSourceByBasename,
+    readImmediateDirectoryNames,
+    readJoinedDartSourcesByBasename,
+    readJoinedText,
+    readJson,
+    readText,
+    runJson,
+    sameSet,
+  } = context;
+  const packageClientLeafPaths = [...packageClientLeafResponsibilities.keys()]
+    .map((leaf) => `${packageClientModuleRoot}/${leaf}`);
+  const discoveredPackageClientLeaves = await collectSourceFiles(
+    packageClientModuleRoot,
+    ".mjs",
+  );
+  assert(
+    sameSet(discoveredPackageClientLeaves, packageClientLeafPaths),
+    "package-client must own exactly the architecture-approved source bundle",
+  );
+  const packageClientFacadeSource = await readText(packageClientFacadePath);
+  assert(
+    packageClientFacadeSource.includes(
+        'export { validateReleaseBuildPolicy } from "./package-client/cli-policy.mjs";',
+      ) &&
+      packageClientFacadeSource.includes(
+        'export { validatePackagingConfig } from "./package-client/config-codec.mjs";',
+      ) &&
+      packageClientFacadeSource.includes(
+        'export { packageClient } from "./package-client/orchestrator.mjs";',
+      ) &&
+      packageClientFacadeSource.includes("assertReleaseSourceDigestStable") &&
+      packageClientFacadeSource.includes("diffReleaseSourceManifests") &&
+      packageClientFacadeSource.includes("packageSourceStateBinding"),
+    "package-client root must remain a thin six-export CLI facade over the split source bundle",
+  );
+  for (const retiredRootToken of [
+    "execFileSync",
+    "readFileSync",
+    "function packageClient(",
+    "function validatePackagingConfig(",
+    "function buildFlutterApp(",
+    "function buildNativeSidecars(",
+    "function preparePortableManifest(",
+    "function assemblePackageResources(",
+    "function signMacosBundle(",
+  ]) {
+    assert(
+      !packageClientFacadeSource.includes(retiredRootToken),
+      `package-client root must not restore retired implementation ownership via ${retiredRootToken}`,
+    );
+  }
+  const packageClientLeafSources = Object.fromEntries(await Promise.all(
+    [...packageClientLeafResponsibilities].map(async ([leaf]) => [
+      leaf,
+      await readText(`${packageClientModuleRoot}/${leaf}`),
+    ]),
+  ));
+  const packageClientJoinedSource = await readJoinedText(packageClientLeafPaths);
+  for (const [leaf, responsibilityToken] of packageClientLeafResponsibilities) {
+    assert(
+      packageClientLeafSources[leaf].includes(responsibilityToken),
+      `${packageClientModuleRoot}/${leaf} must retain its package-client responsibility ${responsibilityToken}`,
+    );
+    assert(
+      !packageClientLeafSources[leaf].includes("../package-client.mjs"),
+      `${packageClientModuleRoot}/${leaf} must not depend back on the retired root implementation`,
+    );
+  }
+  assert(
+    packageClientJoinedSource.includes("if (options.dryRun)") &&
+      packageClientJoinedSource.includes("preflight(options)") &&
+      packageClientJoinedSource.includes("captureReleaseSourceState") &&
+      packageClientJoinedSource.includes("assertReleaseSourceStateStable") &&
+      packageClientJoinedSource.includes("publicPackageFailure"),
+    "package-client joined leaves must preserve dry-run, build preflight, source-state, and redacted-failure semantics",
+  );
+  const packageClientSourceBundleTestExists = await exists(
+    packageClientSourceBundleTestPath,
+  );
+  assert(
+    packageClientSourceBundleTestExists,
+    `${packageClientSourceBundleTestPath} must own the focused package-client regression`,
+  );
+  if (packageClientSourceBundleTestExists) {
+    const packageClientSourceBundleTest = await readText(
+      packageClientSourceBundleTestPath,
+    );
+    assert(
+      packageClientSourceBundleTest.includes(
+        "package client keeps an exact bounded module inventory",
+      ) &&
+        packageClientSourceBundleTest.includes(
+          "assert.deepEqual(await collectModules(moduleRoot), [...leaves]);",
+        ) &&
+        packageClientSourceBundleTest.includes(
+          'assert.equal(facade.includes("function packageClient("), false);',
+        ) &&
+        packageClientSourceBundleTest.includes(
+          "assert.equal(findImportCycle(source), null);",
+        ) &&
+        [...packageClientLeafResponsibilities.keys()].every((leaf) =>
+          packageClientSourceBundleTest.includes(`"${leaf}"`)
+        ),
+      "package-client source-bundle regression must own the exact leaves, no-old-root boundary, and import DAG",
+    );
+  }
+  const packagePlanCheckedPlatforms = [];
+  for (const platform of ["macos", "linux", "windows"]) {
+    const packagePlan = runJson(process.execPath, [
+      "apps/desktop/scripts/package-client.mjs",
+      "--dry-run",
+      "--platform",
+      platform
+    ]);
+    if (packagePlan) {
+      packagePlanCheckedPlatforms.push(platform);
+      const enabledPlanModules = packagePlan.enabledModules.map((item) => item.id).sort();
+      // A module the configuration disables is not enabled by any platform; it
+      // is reported as a target-skipped module instead.
+      const expectedPlanModules = futureModules
+        .filter((moduleId) =>
+          modules[moduleId]?.enabled !== false &&
+          moduleSupportsPlatform(modules[moduleId], platform))
+        .sort();
+      assert(packagePlan.platform === platform, `package dry-run must report platform ${platform}`);
+      assert(
+        typeof packagePlan.configPath === "string" &&
+          !path.isAbsolute(packagePlan.configPath) &&
+          !packagePlan.configPath.startsWith(".."),
+        `package dry-run for ${platform} must not disclose an absolute or parent-local config path`
+      );
+      assert(
+        sameSet(enabledPlanModules, expectedPlanModules),
+        `package dry-run for ${platform} must enable only supported future modules`
+      );
+    }
+  }
+
+  return { packagePlanCheckedPlatforms };
+}

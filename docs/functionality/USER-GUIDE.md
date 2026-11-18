@@ -1,0 +1,288 @@
+# LicoUp User Guide
+
+English (normative) · [简体中文](USER-GUIDE.zh-CN.md) · [Documentation](../README.md) · [Project](../../README.md)
+
+LicoUp is an early alpha client. Check the
+[compatibility matrix](../COMPATIBILITY.md) before using a platform or
+feature for important work.
+
+## Start the client
+
+Install Node.js 22 or 24, Flutter stable, and Rust stable. Then run:
+
+```bash
+npm ci
+npm run client:get
+```
+
+Common launch and build commands are:
+
+```bash
+npm run client:run:macos
+npm run client:build -- --platform macos
+npm run client:build -- --platform linux
+npm run client:build -- --platform windows
+```
+
+The Android and iOS implementations live in the sibling LicoUp-Android and
+LicoUp-iOS repositories.
+
+The single build entry automatically reclaims inactive compiler output and
+temporary Flutter build caches. Runnable and packaged output remains available
+for installation, including the macOS Applications workflow.
+
+A command being present does not mean that its platform is fully supported.
+
+## Work with local agents
+
+1. Open **Agents**.
+2. Let LicoUp find supported agents installed on the device.
+3. Choose an agent.
+4. Start a new conversation or continue an existing one when the adapter
+   supports it.
+
+Agent history, settings, and process details stay local. LicoUp shows safe
+summaries in the interface instead of exposing raw tool input, credentials, or
+local paths.
+
+On the Messaging desktop Agents surface, the conversation composer keeps
+secondary runtime controls in glass capsules above the input:
+
+- **Workspace** — the directory the next turn will use. Prefer the selected
+  conversation’s own project path from native history; choose a specific
+  project directory when starting fresh. Personal roots such as the home folder
+  or media libraries are refused because the agent would index the whole tree.
+- **Model / reasoning effort** — open the runtime capsule to set **Model** and
+  **Reasoning Effort** as parallel rows. Leaving the model on **Auto** uses the
+  agent’s native default. Effort options follow the effective model (the
+  selected model, or that native default when Auto is selected).
+
+Hover the top-right conversation, details, or notification controls to open
+floating glass cards anchored to those icons; there is no conversation-details
+sidebar.
+
+Discovery probes only the Agent Scan Path Manifest: named Agent binaries,
+configuration, and history directories. It does not walk `PATH`, Desktop,
+Documents, Downloads, Pictures, Music, or network volumes, does not execute
+third-party Agent binaries at launch, and unused-agent
+scans do not open other apps' containers. Opening an Agent's conversation
+interface loads that Agent's model list from its CLI or named store. Token
+usage is read when you open Monitoring, not at launch. The probes run
+concurrently with a fixed bound. Normalized paths and configuration references
+stay in the client cache so later launches do not need a full scan.
+
+When continuing a conversation, LicoUp prefers the agent's native attach or
+resume operation. If an adapter cannot accept input during a running turn, the
+client keeps projecting its live output and starts the next turn only after the
+agent has completed its reply.
+
+**Cursor** send always uses the Agent CLI lane (`cursor-agent`), not the in-app
+IDE Agent panel. Cursor IDE chats and CLI chats use separate stores; CLI
+`--resume` does not load IDE history. When you continue an IDE-listed Cursor
+conversation from LicoUp, the first send opens a **new** CLI session and injects
+a one-time handoff: the IDE composer id, `state.vscdb` path/key prefixes, and
+the last IDE assistant return, followed by your message. Later sends on that
+CLI session resume normally without repeating the handoff.
+
+The unified group-Conversation foundation remains separate from the direct
+Agent entry point. Acativa has its own desktop strategy surface: the
+catalog stays empty until you import a ZIP package of an immutable JSON Graph
+strategy. See
+[Acativa strategies](ACATIVA.md) for strategy import, the
+capsule role editor, background runtime detection, and the workflow diagram.
+
+**Lico Agent** is a separate first-party runtime in the agent list (not the
+group entry itself). When chatting with it, choose Agent or Plan mode; Plan
+mode may only write the bound local plan file under OS sandbox. See
+[Lico Agent](../protocols/lico-agent.md).
+
+Open **Acativa** to choose everyday conversation agents and configure
+the Assistant workflow surface. The flywheel is the only route-selection
+authority: each workflow entry resolves to one agent, model, and reasoning
+effort, and LicoUp freezes that decision in the run receipt.
+
+The Assistant is the long-lived owner of your goal in the same native
+conversation. It either completes the work itself or submits one bounded
+temporary workflow Graph with exact Membership bindings. The Graph is compiled
+and preflighted before any Agent effect: structure, quota, model, Agent, Skill,
+environment, capability, readiness, and existing-Authority problems return stable typed errors first, and
+runtime failures that cannot be preflighted return to the Assistant, which may
+continue directly or author a later Graph. The native CLI Assistant commands rank
+Profiles and execute (including internal preflight and durable admission),
+inspect, or explicitly cancel a temporary workflow. The calling Agent must
+be the exact active designated Assistant Membership; it cannot choose routes,
+bind native sessions, or create hidden participants. Independent workflows can
+run concurrently while each workflow and Membership turn stays ordered.
+
+Assistant still controls the everyday conversation picker. Its model and
+reasoning controls remain separate from Acativa route selection. Save
+Acativa after changing a route so the client reads the new persisted
+state; the client does not expose the state file, executable paths, or native
+continuation locations.
+
+In a group composer, **Automatic adaptation** means the next message goes to
+the designated Assistant through the same native lane used by a one-to-one
+chat. Imported strategies are Assistant-controlled workflow tools, not a
+replacement Assistant. Workflow rejections identify the failing stage and
+safe request location, and the role plus Assistant model catalogs load in one
+background target batch.
+
+DeepSeek Harness is an adaptation target through the official SDK JSON-RPC
+runtime carrier. It supports text sessions, exact session continuity,
+structured streaming events, and explicit model selection. Its release
+readiness remains unverified, and LicoUp does not claim cancel, active-prompt
+steer, history readback, reasoning override, or multimodal input for this lane.
+
+## Continue work in ordinary chat
+
+Ordinary chat stays in the current conversation. When the Assistant accepts
+durable follow-through, LicoUp opens one child conversation in the parent's
+second-level list and keeps one task card on the original parent message. The
+people and agents who write in that child keep their own authorship. The parent
+card does not add executor badges.
+
+You can pause a goal, cancel the exact operation, close an observer, or delete
+a conversation. Those actions stay distinct. Turning the adoption policy off
+stops new automatic interpretation and dispatch; it does not erase goals,
+history, or unknown work that still needs recovery. Offline and admitted-shadow
+stages also keep automatic follow-through off even when the policy is enabled.
+Expanded coverage means more than one distinct qualified responsibility, not
+two stored identities of the same one. Archiving a conversation or losing
+owner access stops new automatic follow-through immediately. A source label is not authorization. Source material reaches a child only
+through the already admitted grant for that recipient.
+
+Qualification for a real or paid model remains unknown until that evaluation
+is separately authorized. This client does not claim live verification, a
+full release, or always-on mobile background work. The owning specification is
+[Continuous Assistant](../architecture/CONTINUOUS-ASSISTANT.md).
+
+## Connect OpenClaw or Hermes in your VM
+
+This desktop flow is for a VM you control. Install and configure OpenClaw or
+Hermes in the VM first. OpenClaw's ACP command must be able to reach its
+configured Gateway inside the VM.
+
+Open **Agents** while your local OrbStack machines are running. LicoUp
+checks the Agent Scan Path Manifest for these install families:
+
+- OpenClaw: the installer prefix under `~/.openclaw`, the user wrapper under
+  `~/.local/bin`, common npm/pnpm/Bun/Volta/Nix user bins, and system bins.
+- Hermes: `~/.local/bin`, the installer venv under
+  `~/.hermes/hermes-agent/venv`, the Hermes/Nix user bins, and system bins.
+
+These locations follow the
+[OpenClaw installer](https://docs.openclaw.ai/install/installer) and
+[Hermes installation guide](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/getting-started/installation.md).
+For Hermes, LicoUp checks the optional ACP package first. A default Hermes
+installer environment without that extra uses Hermes'
+[built-in TUI Gateway JSON-RPC](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/developer-guide/programmatic-integration.md)
+instead; LicoUp does not install or change anything in the VM. Select the
+discovered VM target to list sessions, open an existing session, or create a
+new conversation.
+
+For a non-OrbStack VM or a nonstandard install:
+
+1. Configure system OpenSSH key or agent authentication for the VM and add its
+   host key to the system `known_hosts` file. LicoUp uses strict host checking
+   and noninteractive authentication, so it will not open a password, key, or
+   first-connect trust prompt.
+2. Choose **Add target**, then select **OpenClaw** or **Hermes**.
+3. Set **Runtime location** to **Virtual machine (SSH)**.
+4. Enter the VM host, optional SSH port and user, the executable name or
+   absolute executable path inside the VM, and an absolute VM working directory
+   beginning with `/`.
+5. Add and select the target.
+
+The conversation header shows the exact SSH destination before you send.
+
+LicoUp starts `openclaw acp` or `hermes acp` through the system SSH client and
+uses ACP `session/list`, `session/load`, and the native new/prompt lifecycle. It
+does not read or copy the VM's private history database. Passwords and private
+keys are not accepted as target fields, local MCP server descriptors are not
+forwarded into the VM, and automatic and manual VM connections are excluded
+from the fast discovery cache. Pressing **Send** gives the selected VM agent the
+exact prompt over the authenticated SSH transport.
+
+## Manage agent adapter plugins
+
+Open **Plugin Management** from the desktop navigation to inspect every
+packaged agent adapter. Native Support and Native ACP lanes need no additional
+installation. A LicoUp Adaptive Bridge owns the target-specific adaptation
+when neither category applies. Install or uninstall appears only when its
+catalog entry declares a real lifecycle action. Each bridge action requires
+direct confirmation and changes only LicoUp-owned files or namespaced hooks.
+Discovery and installation do not by themselves prove that an agent is ready
+for conversation. Plugin readiness is reported separately from the native
+Assistant workflow and Acativa authorities.
+
+Optional collaboration remains outside the default client. Installation or
+enablement never grants continuing transfer permission. Assembly does not
+start the server automatically; importing its signing key, assembling the
+fixed signed runner, starting it on loopback, and approving any external
+effect are separate direct-user actions.
+
+For an external MCP effect, the bridge first creates a non-transmitting
+preview of the exact request or selected files. The native client then asks
+for fresh protected user presence for that preview's canonical digest; a
+matching preview can be claimed exactly once before exchange. Changing the
+request, destination, purpose, protocol revision, or session requires another
+preview and approval. If protected platform authentication is unavailable,
+external transfer remains disabled.
+
+## Manage local data
+
+- Skill Hub only discovers skills already present in local agent directories.
+  It does not download, install, update, or synchronize skill packages. Removing
+  a selected local skill moves its exact directory to the system Trash.
+- Skill usage counts come from actual local invocation events and can be viewed
+  by time window; browsing a skill does not count as use.
+- Conversation backups go to a directory chosen by the user. Choose all
+  conversations or an exact keyword filter before previewing and starting the
+  local backup job.
+- Token usage views are calculated from local records. The default window is
+  the latest 30 days; choose the Agent, Model, or Workflow dimension and a
+  custom window when needed. Workflow shows Graph runs, commands, and exact
+  Membership attribution with checked numeric usage and exact coverage.
+  LicoUp owns workflow accounting, Acativa
+  owns route selection, and raw native conversation locations remain a private
+  adapter binding. The view does not expose prompts, replies, tool payloads, summaries,
+  compaction, or cache controls; active work plus the newest twenty terminal
+  rollups are bounded by the native ledger. Cursor is the exception: its usage
+  and quota ring come from the account's own hosted dashboard rather than local
+  IDE counters. Requests Cursor reports without token fields stay request
+  counts, and plan, Auto/API, and on-demand budgets stay separate.
+- Logs and diagnostics stay local unless the user saves an explicit, redacted
+  copy.
+
+Do not attach raw logs, histories, paths, or device details to a public issue.
+
+## Preview a protected transfer to another client
+
+This flow uses the
+[current retiring endpoint-protection Preview](../STATUS.md). It can be
+carried through the candidate `licoarc.relay.v1` outer adapter, and one bounded
+two-fresh-endpoint scenario has been locally verified through an actual
+BadTower candidate. This does not establish a Published Lico Arc Protocol
+Line, stable neutral-station support, release, or hosted operation. Only use
+the protected peer flow for test or explicitly accepted preview content:
+
+1. Choose the receiving LicoUp client.
+2. Review the exact message or file and its destination.
+3. Approve that one transfer.
+4. LicoUp encrypts the content on the sending device.
+5. The receiving client verifies and decrypts it.
+
+The current transport is not trusted with plaintext. LicoUp sends it only
+encrypted content and the minimum routing data needed for the transfer.
+Changing the peer or content requires a new approval. The current inner
+preview is not a Lico Arc Profile and has no future compatibility promise; it
+is to be retired directly when a complete pinned Lico Arc Protocol Line
+replaces it.
+
+## Verify a release file
+
+Use only files attached to the project's release page. Compare the file digest
+and signature with the public verification data supplied for that release. A
+build result is not a release claim by itself.
+
+For a deeper view of the client, read the [architecture guide](../architecture/README.md).

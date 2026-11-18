@@ -1,0 +1,167 @@
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/application/features/layout/layout_manager.dart';
+import 'package:licoup/src/composition/features/settings/settings_feature_composition.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/contracts/presentation/appearance_resource_state.dart';
+import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_effect.dart';
+
+import 'fixtures/client_controller/support/fake_agent_service.dart';
+import 'layout/layout_host_test_fixtures.dart';
+
+void main() {
+  test(
+    'semantic preference intents update Application and projection',
+    () async {
+      final runtime = buildFixtureLayoutRuntime();
+      final preferences = _SettingsPreferencesRepository();
+      final layoutManager = LayoutManager(
+        catalog: runtime.catalog,
+        preferencesRepository: preferences,
+        canonicalFallback: preferences.value,
+      );
+      final controller = ClientController(
+        agentService: FakeAgentService(),
+        layoutCatalog: runtime.catalog,
+        layoutManager: layoutManager,
+      );
+      await controller.layoutManager.initialize();
+      final feature = SettingsFeatureComposition(controller: controller);
+      addTearDown(() async {
+        await feature.dispose();
+        controller.dispose();
+      });
+
+      final localeUpdate = feature.binding.projection.changes.first;
+      feature.binding.intents.send(
+        const SetLocalePreference(LocalePreference.chinese),
+      );
+      await localeUpdate;
+      expect(controller.localePreference, LocalePreference.chinese);
+      expect(preferences.value.localePreference, LocalePreference.chinese);
+      expect(
+        feature.binding.projection.current.localeChoices
+            .singleWhere((choice) => choice.id == LocalePreference.chinese)
+            .selected,
+        isTrue,
+      );
+
+      final appearanceUpdate = feature.binding.projection.changes.first;
+      feature.binding.intents.send(
+        const SetAppearancePreference(AppearancePresetIds.taroWaffle),
+      );
+      await appearanceUpdate;
+      expect(controller.appearancePresetId, AppearancePresetIds.taroWaffle);
+      expect(
+        preferences.value.appearancePresetId,
+        AppearancePresetIds.taroWaffle,
+      );
+
+      final motionUpdate = feature.binding.projection.changes.first;
+      feature.binding.intents.send(
+        const SetReduceMotionPreference(ReduceMotionPreference.on),
+      );
+      await motionUpdate;
+      expect(controller.reduceMotion, ReduceMotionPreference.on);
+      expect(preferences.value.reduceMotion, ReduceMotionPreference.on);
+      expect(
+        feature.binding.projection.current.reduceMotion,
+        ReduceMotionPreference.on,
+      );
+
+      final resetMotionUpdate = feature.binding.projection.changes.first;
+      feature.binding.intents.send(
+        const SetReduceMotionPreference(ReduceMotionPreference.system),
+      );
+      await resetMotionUpdate;
+      expect(controller.reduceMotion, ReduceMotionPreference.system);
+      expect(preferences.value.reduceMotion, ReduceMotionPreference.system);
+      expect(
+        feature.binding.projection.current.reduceMotion,
+        ReduceMotionPreference.system,
+      );
+
+      final loadingUpdate = feature.binding.projection.changes.first;
+      feature.binding.intents.send(
+        const SetLoadingEffectPreference('particles'),
+      );
+      await loadingUpdate;
+      expect(controller.loadingEffectId, 'particles');
+      expect(preferences.value.loadingEffectId, 'particles');
+      expect(feature.binding.projection.current.loadingEffectId, 'particles');
+
+      preferences.failMotionWrite = true;
+      final rejected = feature.binding.effects.effects.first;
+      feature.binding.intents.send(
+        const SetReduceMotionPreference(ReduceMotionPreference.on),
+      );
+      expect(await rejected, isA<SettingsActionRejected>());
+      expect(controller.reduceMotion, ReduceMotionPreference.system);
+      expect(preferences.value.reduceMotion, ReduceMotionPreference.system);
+
+      await feature.dispose();
+      await feature.dispose();
+    },
+  );
+}
+
+final class _SettingsPreferencesRepository
+    implements PresentationPreferencesRepository {
+  bool failMotionWrite = false;
+  PresentationPreferences value = PresentationPreferences(
+    layoutProfileId: LayoutProfileId.parse('dashboard'),
+    appearancePresetId: AppearancePresetIds.taroWaffle,
+    localePreference: LocalePreference.system,
+  );
+
+  @override
+  Future<PresentationPreferencesLoadResult> load() async =>
+      PresentationPreferencesLoadResult(preferences: value);
+
+  @override
+  Future<PresentationPreferences> setReduceMotion(
+    ReduceMotionPreference preference,
+  ) async {
+    if (failMotionWrite) throw StateError('synthetic_write_failure');
+    return value = value.copyWith(reduceMotion: preference);
+  }
+
+  @override
+  Future<PresentationPreferences> setLoadingEffect(String id) async {
+    if (failMotionWrite) throw StateError('synthetic_write_failure');
+    return value = value.copyWith(loadingEffectId: id);
+  }
+
+  @override
+  Future<PresentationPreferences> setAppearancePreset(String id) async =>
+      value = value.copyWith(appearancePresetId: id);
+
+  @override
+  Future<PresentationPreferences> setLayoutProfile(LayoutProfileId id) async =>
+      value = value.copyWith(layoutProfileId: id);
+
+  @override
+  Future<PresentationPreferences> setLayoutStyle(
+    LayoutProfileId profile,
+    LayoutStyleId style,
+  ) async => value = value.copyWith(
+    layoutStyleIds: {...value.layoutStyleIds, profile: style},
+  );
+
+  @override
+  Future<PresentationPreferences> setLocalePreference(
+    String preference,
+  ) async => value = value.copyWith(localePreference: preference);
+
+  @override
+  Future<PresentationPreferences> setResourceSelection(
+    PresentationResourceKind kind,
+    PresentationResourceSelection? selection,
+  ) async => value = value.withResourceSelection(kind, selection);
+}

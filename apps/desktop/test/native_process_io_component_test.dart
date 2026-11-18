@@ -1,0 +1,349 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:licoup/src/platform/native_client/agent_service_process_io.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+var _synthSeq = 0;
+String _synth(String label) => '$label-${_synthSeq++}';
+
+void main() {
+  test(
+    'bounded process I/O delegates public commands to its narrow port',
+    () async {
+      final executor = _StaticExecutor({'ok': true});
+      final context = _FakeProcessContext();
+      final transport = _FakeStdioTransport();
+      final processIo = BoundedNativeProcessIo(
+        processContext: context,
+        commandExecutor: executor,
+        stdioRpcTransport: transport,
+        persistentStdioRpcEnabled: false,
+      );
+
+      expect(await processIo.runCli(const ['status']), {'ok': true});
+      expect(executor.arguments, ['status']);
+    },
+  );
+
+  test(
+    'bounded process I/O rejects oversized stdin before process start',
+    () async {
+      final context = _FakeProcessContext();
+      final processIo = BoundedNativeProcessIo(
+        processContext: context,
+        commandExecutor: _StaticExecutor(const {}),
+        stdioRpcTransport: _FakeStdioTransport(),
+        persistentStdioRpcEnabled: false,
+      );
+
+      await expectLater(
+        processIo.runCliWithStdin(const [
+          'private',
+          'request',
+        ], List<String>.filled(1024 * 1024 + 1, 'x').join()),
+        throwsA(
+          predicate(
+            (error) => error.toString().contains('request is too large'),
+          ),
+        ),
+      );
+      expect(context.startCount, 0);
+    },
+  );
+
+  test(
+    'strategy execute uses the persistent structured conversation lane',
+    () async {
+      final transport = _FakeStdioTransport();
+      final context = _FakeProcessContext();
+      final processIo = BoundedNativeProcessIo(
+        processContext: context,
+        commandExecutor: _StaticExecutor(const {}),
+        stdioRpcTransport: transport,
+        persistentStdioRpcEnabled: true,
+      );
+
+      await processIo.runCliWithStdin(
+        const ['strategy', 'execute', '--stdin-json', 'true'],
+        '{"action":"strategy.run.active","revisionDigest":"rev","conversationId":"conversation:group"}',
+      );
+
+      expect(context.startCount, 0);
+      expect(transport.structuredCalls.single.method, 'strategy.execute');
+      expect(transport.structuredCalls.single.params, {
+        'action': 'strategy.run.active',
+        'revisionDigest': 'rev',
+        'conversationId': 'conversation:group',
+      });
+    },
+  );
+
+  test(
+    'LLM credential writes reuse the persistent authorized process',
+    () async {
+      final svSynthetic = _synth('synthetic');
+      final transport = _FakeStdioTransport();
+      final context = _FakeProcessContext();
+      final processIo = BoundedNativeProcessIo(
+        processContext: context,
+        commandExecutor: _StaticExecutor(const {}),
+        stdioRpcTransport: transport,
+        persistentStdioRpcEnabled: true,
+      );
+
+      final createBody =
+          '{"provider":"kimi","label":"Primary","apiKey":"$svSynthetic",'
+          '"leaseDays":30}';
+      await processIo.runCliWithStdin(const [
+        'llm-gateway',
+        'credentials',
+        'create',
+        '--stdin-json',
+        'true',
+      ], createBody);
+      await processIo.runCliWithStdin(const [
+        'llm-gateway',
+        'credentials',
+        'update',
+        '11111111-1111-4111-8111-111111111111',
+        '--stdin-json',
+        'true',
+      ], '{"label":"Renamed"}');
+
+      expect(context.startCount, 0);
+      // The JSON payload travels as structured params inside the RPC frame,
+      // never inside the CLI argument array (Tier-2 boundary).
+      expect(transport.executions, isEmpty);
+      expect(transport.structuredCalls.map((call) => call.method), [
+        'gateway.credentials.create',
+        'gateway.credentials.update',
+      ]);
+      expect(transport.structuredCalls[0].params, {
+        'provider': 'kimi',
+        'label': 'Primary',
+        'apiKey': svSynthetic,
+        'leaseDays': 30,
+      });
+      expect(transport.structuredCalls[1].params, {
+        'label': 'Renamed',
+        'credentialId': '11111111-1111-4111-8111-111111111111',
+      });
+    },
+  );
+
+  test('process I/O drains stderr with a fixed upper bound', () async {
+    if (Platform.isWindows) {
+      return;
+    }
+    final directory = await Directory.systemTemp.createTemp(
+      'bounded-native-io-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final executable = File('${directory.path}/sidecar');
+    await executable.writeAsString(r'''#!/bin/sh
+head -c 524289 /dev/zero 1>&2
+printf '{"ok":true}'
+''');
+    expect((await Process.run('chmod', ['+x', executable.path])).exitCode, 0);
+    final processIo = BoundedNativeProcessIo(
+      processContext: _LiveProcessContext(executable),
+      commandExecutor: _StaticExecutor(const {}),
+      stdioRpcTransport: _FakeStdioTransport(),
+      persistentStdioRpcEnabled: false,
+    );
+
+    await expectLater(
+      processIo.runCliWithStdin(const ['private', 'request'], '{}'),
+      throwsA(
+        predicate(
+          (error) => error.toString().contains('output exceeded its limit'),
+        ),
+      ),
+    );
+  });
+
+  test('silent stdout past the request timeout still resumes', () async {
+    if (Platform.isWindows) {
+      return;
+    }
+    final directory = await Directory.systemTemp.createTemp(
+      'bounded-native-io-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final executable = File('${directory.path}/sidecar');
+    await executable.writeAsString(r'''#!/bin/sh
+printf '{"seq":1}\n'
+sleep 1
+printf '{"seq":2}\n'
+''');
+    expect((await Process.run('chmod', ['+x', executable.path])).exitCode, 0);
+    final processIo = BoundedNativeProcessIo(
+      processContext: _LiveProcessContext(
+        executable,
+        requestTimeout: const Duration(milliseconds: 200),
+      ),
+      commandExecutor: _StaticExecutor(const {}),
+      stdioRpcTransport: _FakeStdioTransport(),
+      persistentStdioRpcEnabled: false,
+    );
+
+    expect(
+      await processIo.streamCliJsonLinesWithStdin(const [
+        'private',
+        'stream',
+      ], '{}').toList(),
+      [
+        {'seq': 1},
+        {'seq': 2},
+      ],
+    );
+  });
+
+  test('cancelling the stream subscription kills the child process', () async {
+    if (Platform.isWindows) {
+      return;
+    }
+    final directory = await Directory.systemTemp.createTemp(
+      'bounded-native-io-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final executable = File('${directory.path}/sidecar');
+    await executable.writeAsString(r'''#!/bin/sh
+printf '{"seq":1}\n'
+sleep 60
+''');
+    expect((await Process.run('chmod', ['+x', executable.path])).exitCode, 0);
+    final context = _LiveProcessContext(executable);
+    final processIo = BoundedNativeProcessIo(
+      processContext: context,
+      commandExecutor: _StaticExecutor(const {}),
+      stdioRpcTransport: _FakeStdioTransport(),
+      persistentStdioRpcEnabled: false,
+    );
+
+    final firstEvent = Completer<Map<String, dynamic>>();
+    final subscription = processIo
+        .streamCliJsonLinesWithStdin(const ['private', 'stream'], '{}')
+        .listen((event) {
+          if (!firstEvent.isCompleted) {
+            firstEvent.complete(event);
+          }
+        });
+    addTearDown(subscription.cancel);
+    expect(await firstEvent.future, {'seq': 1});
+
+    await subscription.cancel();
+    final exitCode = await context.lastProcess!.exitCode.timeout(
+      const Duration(seconds: 10),
+    );
+    expect(exitCode, isNot(0));
+  });
+}
+
+class _StaticExecutor implements NativeCommandExecutor {
+  _StaticExecutor(this.response);
+
+  final Map<String, dynamic> response;
+  List<String>? arguments;
+
+  @override
+  Future<Map<String, dynamic>> execute(List<String> arguments) async {
+    this.arguments = List<String>.unmodifiable(arguments);
+    return response;
+  }
+}
+
+class _FakeProcessContext implements NativeCliProcessContext {
+  @override
+  Duration get requestTimeout => const Duration(seconds: 1);
+
+  var startCount = 0;
+
+  @override
+  Future<Map<String, String>?> buildEnvironment() async => null;
+
+  @override
+  Future<File?> resolveCliBinary() async => null;
+
+  @override
+  Future<Process> startProcess(
+    String executable,
+    List<String> arguments,
+    Map<String, String>? environment, {
+    ProcessStartMode mode = ProcessStartMode.normal,
+  }) async {
+    startCount += 1;
+    throw StateError('unexpected process start');
+  }
+}
+
+class _FakeStdioTransport implements NativeStdioRpcTransport {
+  Map<String, dynamic>? conversationRequest;
+  final List<List<String>> executions = [];
+  final List<({String method, Map<String, dynamic> params})> structuredCalls =
+      [];
+
+  @override
+  Future<void> dispose() async {}
+
+  @override
+  Future<Map<String, dynamic>> execute(List<String> arguments) async {
+    executions.add(List<String>.unmodifiable(arguments));
+    return const {};
+  }
+
+  @override
+  Future<Map<String, dynamic>> executeStructured(
+    String method,
+    Map<String, dynamic> params,
+  ) async {
+    final copied = Map<String, dynamic>.from(params);
+    structuredCalls.add((method: method, params: copied));
+    return <String, dynamic>{'ok': true, 'operation': method.split('.').last};
+  }
+
+  @override
+  Stream<Map<String, dynamic>> streamConversation(
+    Map<String, dynamic> request,
+  ) async* {
+    conversationRequest = Map<String, dynamic>.unmodifiable(request);
+    yield const {'event': 'done'};
+  }
+}
+
+final class _LiveProcessContext implements NativeCliProcessContext {
+  _LiveProcessContext(
+    this.executable, {
+    this.requestTimeout = const Duration(seconds: 10),
+  });
+
+  final File executable;
+  Process? lastProcess;
+
+  @override
+  final Duration requestTimeout;
+
+  @override
+  Future<Map<String, String>?> buildEnvironment() async => null;
+
+  @override
+  Future<File?> resolveCliBinary() async => executable;
+
+  @override
+  Future<Process> startProcess(
+    String executable,
+    List<String> arguments,
+    Map<String, String>? environment, {
+    ProcessStartMode mode = ProcessStartMode.normal,
+  }) async {
+    lastProcess = await Process.start(
+      executable,
+      arguments,
+      environment: environment,
+      mode: mode,
+    );
+    return lastProcess!;
+  }
+}

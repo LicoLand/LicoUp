@@ -1,0 +1,46 @@
+{
+  "id": "engineering-handoff",
+  "file": "07-engineering-handoff.json",
+  "title": {
+    "en": "Engineering handoff",
+    "zh": "工程交付"
+  },
+  "purpose": {
+    "en": "Close one milestone at engineering handoff; the next dependency-satisfied milestone starts only under an explicit finite programme assignment.",
+    "zh": "在工程交付处闭环一个里程碑；下一个依赖已满足的里程碑仅在显式有限程序安排下启动。"
+  },
+  "owner": {
+    "en": "Integrator",
+    "zh": "集成人"
+  },
+  "entry": {
+    "en": "Implementation, review and non-live checks are complete",
+    "zh": "实现、审阅与非真实验证完成"
+  },
+  "steps": [
+    {
+      "en": "Map requirements to evidence",
+      "zh": "对应需求与证据"
+    },
+    {
+      "en": "List live-only unknowns",
+      "zh": "列明仅真实环境待证项"
+    },
+    {
+      "en": "Deliver and stop",
+      "zh": "交付并停止"
+    }
+  ],
+  "exit": {
+    "en": "Reviewed buildable source and concise completion evidence are handed over. Continuing to a dependency-satisfied successor requires an explicit finite programme assignment.",
+    "zh": "交付审阅过的可构建源码和简洁完成证据；继续到依赖已满足的后续里程碑需要显式有限程序安排。"
+  },
+  "failure": {
+    "en": "Incomplete code returns to implementation; missing live evidence stays separate; the next milestone remains inactive without an explicit finite programme assignment.",
+    "zh": "代码缺口返回开发；真实环境待证项单独列出；没有显式有限程序安排时，下一个里程碑保持不启动。"
+  },
+  "boundary": {
+    "en": "Do not initiate real conversations, Computer Use or per-worker installations. Only an explicit finite programme assignment may start the next dependency-satisfied milestone after the current milestone has been reviewed and its delivery recorded.",
+    "zh": "不得自行启动真实对话、Computer Use 或各自安装客户端。只有在当前里程碑已通过评审且交付结果已记录后，显式有限程序安排才允许启动下一个依赖已满足的里程碑。"
+  }
+}

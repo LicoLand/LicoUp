@@ -1,0 +1,113 @@
+import 'package:licoup/src/application/state/application_signal.dart';
+import 'package:licoup/src/application/features/settings/controller/client_log_export_controller.dart';
+import 'package:licoup/src/application/features/settings/controller/client_update_controller.dart';
+import 'package:licoup/src/application/features/settings/controller/directory_path_controller.dart';
+import 'package:licoup/src/contracts/client_update_models.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
+
+mixin ClientMaintenanceFacade {
+  ApplicationDiagnosticSink get diagnosticSink;
+  AgentService get agentService;
+  ClientLogExportController get clientLogExportController;
+  ClientUpdateController get clientUpdateController;
+  DirectoryPathController get directoryPathController;
+  Map<String, dynamic>? opencodeServeState;
+
+  String get clientLogExportPath => clientLogExportController.exportedPath;
+
+  bool get isExportingClientLogs => clientLogExportController.busy;
+
+  Future<void> exportClientLogs(String destinationPath) =>
+      clientLogExportController.export(destinationPath);
+
+  ClientUpdateStatus get clientUpdateStatus => clientUpdateController.status;
+
+  String get clientUpdateManifestPath => clientUpdateController.manifestPath;
+
+  String get clientUpdatePublicKeysPath =>
+      clientUpdateController.publicKeysPath;
+
+  String get clientUpdateArtifactReceiptId =>
+      clientUpdateController.artifactReceiptId;
+
+  String get clientUpdateSource => clientUpdateController.source;
+
+  String get clientUpdateRepo => clientUpdateController.repo;
+
+  String get clientUpdateSourceAddress => clientUpdateController.sourceAddress;
+
+  bool get isClientUpdateBusy => clientUpdateController.busy;
+
+  bool get canCheckClientUpdate => clientUpdateController.canCheckUpdate;
+
+  bool get canDownloadClientUpdate => clientUpdateController.canDownloadUpdate;
+
+  bool get canApplyClientUpdate => clientUpdateController.canApplyUpdate;
+
+  Future<void> hydrateClientUpdateIdentity({String targetReleaseTrack = ''}) =>
+      clientUpdateController.hydrateIdentity(
+        targetReleaseTrack: targetReleaseTrack,
+      );
+
+  void selectClientUpdateReleaseTrack(ReleaseTrack track) =>
+      clientUpdateController.selectTargetReleaseTrack(track);
+
+  Future<void> checkClientUpdate({
+    required String manifestPath,
+    required String publicKeysPath,
+    String targetReleaseTrack = '',
+    String revocationPath = '',
+  }) => clientUpdateController.check(
+    manifestPath: manifestPath,
+    publicKeysPath: publicKeysPath,
+    targetReleaseTrack: targetReleaseTrack,
+    revocationPath: revocationPath,
+  );
+
+  Future<void> checkClientUpdateFromGithub({
+    String repo = kClientUpdateGithubRepo,
+  }) => clientUpdateController.checkGithub(repo: repo);
+
+  Future<void> downloadClientUpdateArtifact({required String sourcePath}) =>
+      clientUpdateController.download(sourcePath: sourcePath);
+
+  Future<void> downloadClientUpdateFromGithub() =>
+      clientUpdateController.downloadGithub();
+
+  Future<void> applyClientUpdateThenExit(void Function() exitClient) =>
+      clientUpdateController.applyThenExit(exitClient);
+
+  Future<void> openDirectoryPath(String path, {String caption = ''}) =>
+      directoryPathController.open(path, caption: caption);
+
+  Future<void> ensureOpencodeServeSilently() async {
+    try {
+      opencodeServeState = await agentService.ensureOpencodeServe();
+      if (opencodeServeState?['ok'] != true) {
+        diagnosticSink('opencode_serve_bootstrap_unavailable');
+      }
+    } catch (_) {
+      opencodeServeState = <String, dynamic>{
+        'ok': false,
+        'status': 'unavailable',
+        'errorCode': 'opencode_serve_unavailable',
+      };
+      diagnosticSink('opencode_serve_bootstrap_failed');
+    }
+  }
+
+  /// Coordinator-facing runtime authorization entry; satisfies
+  /// [AgentWorkspaceCoordinator] once mixed into the root controller.
+  Future<Map<String, dynamic>> agentWorkspaceAuthorizeRuntime(
+    String agentId, {
+    String binaryPath = '',
+  }) {
+    if (agentId.trim() != 'antigravity') {
+      return Future.value(const <String, dynamic>{
+        'ok': false,
+        'error': <String, dynamic>{'code': 'runtime_authorize_unsupported'},
+      });
+    }
+    return agentService.authorizeAntigravityRuntime(binaryPath: binaryPath);
+  }
+}

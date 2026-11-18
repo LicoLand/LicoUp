@@ -1,0 +1,197 @@
+#!/usr/bin/env node
+import fs from "node:fs/promises";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { sanitizeError } from "../../../tools/scripts/lib/sanitize-error.mjs";
+import { macosCustodyHelper, macosCustodyHelperPaths } from "./package-client/macos/metadata.mjs";
+
+const workspaceRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
+const localProfile = process.argv.slice(2).includes("--local");
+const custodySigning = process.argv.slice(2).includes("--macos-custody-signing");
+const roots = [
+  {
+    kind: "bundle",
+    root: path.join(workspaceRoot, "build", "apps", "desktop", "bundles", "macos", "release", "bundle"),
+    appName: "licoup.app"
+  },
+  {
+    kind: "runnable",
+    root: path.join(workspaceRoot, "build", "apps", "desktop", "runnable", "macos", "release"),
+    appName: "LicoUp.app"
+  }
+];
+
+async function fileExists(filePath) {
+  try {
+    const stat = await fs.stat(filePath);
+    return stat.isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function fileSize(filePath) {
+  try {
+    const stat = await fs.stat(filePath);
+    return stat.isFile() ? stat.size : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function readJson(filePath) {
+  return JSON.parse(await fs.readFile(filePath, "utf8"));
+}
+
+async function readText(filePath) {
+  return fs.readFile(filePath, "utf8");
+}
+
+function appExecutablePath(root, appName, executableName = "licoup") {
+  return path.join(root, appName, "Contents", "MacOS", executableName);
+}
+
+function plistHasString(plist, key, value) {
+  const pattern = new RegExp(
+    `<key>${key}</key>\\s*<string>${value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}</string>`
+  );
+  return pattern.test(plist);
+}
+
+function executableArchitectures(executable) {
+  const result = spawnSync("/usr/bin/lipo", ["-archs", executable], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (result.status !== 0) return [];
+  return String(result.stdout || "").trim().split(/\s+/u).filter(Boolean);
+}
+
+export async function verifyMacosCustodyHelper(appPath, {
+  provisioned = false, architectures = executableArchitectures,
+} = {}) {
+  const missing = [];
+  const helper = macosCustodyHelperPaths(appPath);
+  if (!(await fileSize(helper.executablePath))) missing.push("custody executable missing");
+  const arch = architectures(helper.executablePath);
+  if (arch.length !== 1 || arch[0] !== "arm64") missing.push("custody executable must contain only arm64");
+  if (!(await fileExists(helper.infoPath))) {
+    missing.push("custody Info.plist missing");
+  } else {
+    const plist = await readText(helper.infoPath);
+    for (const [key, value] of [["CFBundleIdentifier", macosCustodyHelper.bundleId],
+      ["CFBundleExecutable", macosCustodyHelper.executableName], ["CFBundlePackageType", "APPL"]]) {
+      if (!plistHasString(plist, key, value)) missing.push(`custody ${key} invalid`);
+    }
+  }
+  for (const stale of ["licoup-cli", "licoup", "lico-gateway", "lico-agent", "licoup-migrate"]) {
+    const stalePath = path.join(appPath, "Contents", "MacOS", stale);
+    if (await fileExists(stalePath) || await fs.lstat(stalePath).then(() => true).catch(() => false)) {
+      missing.push(`unexpected MacOS entry: ${stale}`);
+    }
+  }
+  for (const profile of [helper.profilePath, path.join(appPath, "Contents", "embedded.provisionprofile")]) {
+    if ((await fileExists(profile)) !== provisioned) missing.push("provisioning profile presence differs from signing mode");
+  }
+  return missing;
+}
+
+async function main() {
+  if (localProfile && custodySigning) throw new Error("macOS signing verification modes conflict");
+  const missing = [];
+  for (const { kind, root, appName } of roots) {
+    const appPath = path.join(root, appName);
+    const flutterSize = await fileSize(appExecutablePath(root, appName));
+    if (flutterSize <= 0) {
+      missing.push(`${appPath} missing non-empty Flutter executable`);
+    }
+    const flutterArchitectures = executableArchitectures(
+      appExecutablePath(root, appName),
+    );
+    if (
+      flutterArchitectures.length !== 1 ||
+      flutterArchitectures[0] !== "arm64"
+    ) {
+      missing.push(`${appPath} Flutter executable must contain only arm64`);
+    }
+    const plistPath = path.join(appPath, "Contents", "Info.plist");
+    if (!(await fileExists(plistPath))) {
+      missing.push(`${appPath} missing Info.plist`);
+    } else {
+      const plist = await readText(plistPath);
+      if (!plistHasString(plist, "CFBundleName", "LicoUp")) {
+        missing.push(`${appPath} CFBundleName must be LicoUp`);
+      }
+      if (!plistHasString(plist, "CFBundleDisplayName", "LicoUp")) {
+        missing.push(`${appPath} CFBundleDisplayName must be LicoUp`);
+      }
+    }
+    missing.push(...(await verifyMacosCustodyHelper(appPath, { provisioned: custodySigning }))
+      .map((failure) => `${kind}: ${failure}`));
+    for (const relativePath of [
+      path.join("package-metadata", "licoup", "packaging-modules.json"),
+      "README-macos.txt"
+    ]) {
+      if (!(await fileExists(path.join(root, relativePath)))) {
+        missing.push(`${root} missing ${relativePath}`);
+      }
+    }
+    if (kind === "runnable" && !(await fileExists(path.join(root, "RUNNABLE_CLIENT.txt")))) {
+      missing.push(`${root} missing RUNNABLE_CLIENT.txt`);
+    }
+    const manifestPath = path.join(root, "package-metadata", "licoup", "packaging-modules.json");
+    if (await fileExists(manifestPath)) {
+      const manifest = await readJson(manifestPath);
+      if (manifest.platform !== "macos") {
+        missing.push(`${root} macOS package manifest has platform=${manifest.platform}`);
+      }
+      if (manifest.mode !== "release") {
+        missing.push(`${root} macOS package manifest has mode=${manifest.mode}`);
+      }
+      const signing = manifest.signing || {};
+      if (signing.signingKind !== (custodySigning ? "local-provisioned-developer-id-codesign" : "local-ad-hoc-codesign")) {
+        missing.push(`${root} macOS package manifest has signing.signingKind=${signing.signingKind}`);
+      }
+      if (signing.custodyHelper !== macosCustodyHelper.relativeExecutablePath ||
+          signing.custodyProvisioningRequested !== custodySigning) {
+        missing.push(`${kind}: custody signing manifest mismatch`);
+      }
+      const expectedProductionEntitlements = !localProfile;
+      const expectedEntitlementProfile = localProfile ? "release" : "production-release";
+      const expectedEntitlementsFile = localProfile
+        ? "apps/desktop/macos/Runner/Release.entitlements"
+        : "apps/desktop/macos/Runner/ProductionRelease.entitlements";
+      if (signing.productionEntitlementsRequested !== expectedProductionEntitlements) {
+        missing.push(
+          `${root} macOS package manifest has signing.productionEntitlementsRequested=${signing.productionEntitlementsRequested}`
+        );
+      }
+      if (signing.entitlementProfile !== expectedEntitlementProfile) {
+        missing.push(`${root} macOS package manifest has signing.entitlementProfile=${signing.entitlementProfile}`);
+      }
+      if (signing.entitlementsFile !== expectedEntitlementsFile) {
+        missing.push(`${root} macOS package manifest has signing.entitlementsFile=${signing.entitlementsFile}`);
+      }
+      const expectedExecutable = kind === "runnable"
+        ? path.join("LicoUp.app", "Contents", "MacOS", "licoup")
+        : path.join("licoup.app", "Contents", "MacOS", "licoup");
+      if (manifest.flutterExecutable !== expectedExecutable) {
+        missing.push(`${root} macOS package manifest has flutterExecutable=${manifest.flutterExecutable}`);
+      }
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(missing.join("\n"));
+  }
+  console.log(`macOS ${custodySigning ? "local-provisioned" : localProfile ? "local" : "production-entitlements"} bundle verification passed`);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(`[macos-bundle] ${sanitizeError(error)}`);
+    process.exitCode = 1;
+  }
+}

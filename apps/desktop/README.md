@@ -1,0 +1,175 @@
+# LicoUp Desktop Client
+
+English (normative) · [简体中文](README.zh-CN.md)
+
+LicoUp is a local-first open-source desktop client. Its product
+boundary is owned by [`PRODUCT.md`](../../PRODUCT.md) and
+[`CLIENT-DESKTOP.md`](../../docs/functionality/CLIENT-DESKTOP.md). The Android
+and iOS implementations live in the sibling LicoUp-Android and LicoUp-iOS
+repositories; this tree carries only the macOS, Windows, and Linux shell.
+
+## Default Product Scope
+
+The client includes four foundation capabilities:
+
+- a lightweight local Rust task queue;
+- ACP adaptation for local-agent execution and protected remote carriage;
+- MCP request and response adaptation; and
+- platform adaptation for macOS, Windows, and Ubuntu.
+
+The default interface contains only these user scenarios:
+
+- `Agents`: concurrently discover local agents and create, list, or continue
+  native conversations with local or explicitly configured OpenClaw or Hermes
+  virtual-machine targets;
+- `Conversations`: search, manage, and back up all native conversations or
+  those matching a keyword;
+- `Skill Hub`: discover and display skills already present in local agent roots,
+  inspect usage frequency, and move a selected skill to the system Trash;
+- `Usage`: report token use by agent or model, with the most recent 30 days as
+  the default window;
+- `Devices`: enroll and pair desktop endpoints and exchange protected session
+  messages over the client-owned `licoarc-client` line; and
+- `Settings`: manage local settings, platform authorization, and approval for
+  external transfers.
+
+ACP and MCP are built-in protocol-adaptation foundations, not separate
+navigation entries.
+
+`Devices` sessions execute on the client-owned `licoarc-client` line and are
+carried through the implemented candidate `licoarc.relay.v1` outer adapter.
+Lico Arc Protocol owns stable wire-observable Pairwise Protection, Generic
+Message, Reliable Exchange, negotiation, and Transport Profile semantics while
+LicoUp continues to own its private keys, Provider configuration, plaintext,
+history, backups, trust decisions, approvals, and local effects.
+
+Packaged targets currently include Antigravity, Claude Code, Codex, Cursor,
+DeepSeek Harness, Copilot, Hermes, Kilo Code, Kimi Code, Lico Agent, OpenClaw,
+OpenCode, and Pi Agent.
+Discovery, readable history, or a synthetic check does not establish
+conversation support. Send remains enabled only for an adapter that passes
+native-conversation parity acceptance. Native drivers and the readiness
+catalog own current adapter state and project it into
+[`docs/COMPATIBILITY.md`](../../docs/COMPATIBILITY.md); an unready adapter
+fails closed.
+
+## Local Data Boundary
+
+Local paths, configuration, conversations, usage, diagnostics, device facts,
+and files remain in client-owned local storage by default. Any transfer beyond
+the current device must be initiated or directly approved for that single
+operation, remain cancellable before commit, and never reuse historical
+approval.
+
+Pressing Send for one explicitly addressed end-to-end protected message
+authorizes only that message and destination. For a manually configured
+virtual-machine target, the conversation view continues to show the SSH
+destination; pressing Send authorizes only delivery of that prompt to the
+selected agent inside the virtual machine.
+
+## Agent Conversations
+
+Conversations use an agent's official protocol, SDK, or structured CLI to
+create and continue the same native session. An adapter preserves native
+session identity, effective model and permission settings, event order, final
+result, and error semantics. If the native interface cannot accept guidance
+during a turn, the client may project live progress but waits for that turn to
+finish before starting the next one.
+
+Every packaged desktop adapter runs accepted turns in one client-local CLI
+host per portable data root. Closing LicoUp removes only the GUI observer: it
+does not cancel, steer, truncate, or time out the active turn. A replacement
+client or stdio proxy attaches to the same Conversation-scoped turn handle
+with its process-local cursor (zero after a full GUI restart), replays committed
+frames in order, and then continues live. The host uses private client-local IPC
+only. Canonical Conversation events own durable replay; a disposable 16 MiB
+cache per active turn serves the hot suffix and a cursor below its floor
+falls back to indexed Conversation storage. The host exits after its final
+client is gone and every accepted turn is terminal.
+
+Each user message is followed by one turn lifecycle that merges with contiguous
+reasoning and tool activity. Generic provider bookkeeping is grouped into a
+quiet runtime-log row instead of appearing as another process card. Expanded
+details still contain only redacted summaries, never raw chain-of-thought,
+tool arguments, credentials, native identifiers, or local paths.
+
+The desktop client can add OpenClaw or Hermes virtual-machine targets over
+SSH. It stores only the host, optional port and user, in-VM executable, and
+absolute in-VM working directory; passwords and private keys are rejected.
+Rust invokes the fixed `openclaw acp` or `hermes acp` command through system
+OpenSSH with strict host verification and non-interactive authentication, then
+lists, loads, and continues sessions through ACP. It neither reads nor copies
+the VM history database and does not forward local MCP service descriptions
+into the VM.
+
+## Development
+
+```bash
+npm run client:get
+npm run client:analyze
+npm run client:test
+npm run client:native:test
+```
+
+Run the desktop client:
+
+```bash
+npm run client:run:macos
+```
+
+Dependency and Flutter caches stay outside the source tree. When a
+cache location must be overridden, use the supported `LICO_CLIENT_*_CACHE`
+environment variables and placeholder paths such as `<cache-root>`; never put
+a workstation path in documentation, logs, or evidence.
+
+## Minimum Regression Closure
+
+Select the affected module during development:
+
+```bash
+npm run client:regression:list
+npm run client:regression -- --changed-from <ref> --dry-run
+npm run client:regression -- --module <module-id>
+```
+
+After all targeted checks and acceptance work pass, run the required source
+policy once and only the affected technology lane:
+
+```bash
+npm run client:gate:source
+npm run client:gate:flutter         # Flutter changes only
+npm run client:gate:rust            # Rust changes only
+npm run client:gate:dependencies    # dependency changes only
+npm run client:gate:release-policy  # release-policy changes only
+```
+
+The source policy requires only Node and does not install Flutter or Rust
+toolchains. Technology lanes are independent and may run in parallel;
+do not chain unaffected platforms. Architecture, ACP/MCP, conversation, skill,
+usage, backup, endpoint protection, and platform adapters use their registered
+module-specific regression entry points.
+
+## Build And Packaging
+
+```bash
+npm run client:package:plan
+npm run client:build -- --platform macos
+npm run client:build -- --platform windows
+npm run client:build -- --platform linux
+```
+
+`client:build` is the only build entry. It automatically removes inactive
+compiler output and temporary Flutter build caches without removing runnable
+or packaged output needed by installers.
+
+Builds for macOS, Windows, and Ubuntu; ordinary verification;
+GitHub Release; and each platform store are independent claims. Missing
+publisher identity or signing conditions for one store block only that
+channel, not source development, ordinary builds, or another verified
+platform.
+
+Public artifacts contain only the minimum digest, signature or proof, and
+public verification material needed by consumers; they exclude user and
+client runtime information. Each GitHub Release dispatch selects one supported
+target. Different targets may build concurrently; only the same-tag asset
+manifest update is briefly serialized.
